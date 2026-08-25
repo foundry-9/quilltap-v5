@@ -87014,3 +87014,121 @@ The loader's doc comment now records the new capture point (`6afacb18`, after
 
 Version: cli 0.0.10 → 0.0.11.
 
+### Unit 2 — the v5-side behavioural guard (v4's `completion-behavior.test.js`, both vintages)
+
+`crates/quilltap-cli/tests/completion_behavior.rs` mirrors the **union** of v4's
+new test at `6afacb18` (146 lines) and its `8f910137` extension (+18): every
+bash case, every zsh structural case, and the `zsh -n` parse arm with
+`8f910137`'s absent-shell skip.
+
+Mechanism, v4's exactly: a stub `quilltap` written to a temp dir (mode 0755)
+answering `instances list --names-only` → `StubInstance` and
+`docs list --names-only` → `Stub Store\nOther Store`; the template sourced under
+a real `bash` with `COMP_LINE`/`COMP_WORDS`/`COMP_CWORD` set as at a prompt, and
+`COMPREPLY` printed back. **The bytes under test are the SHIPPED bytes** — the
+test `include_str!`s the same two paths `src/completion_cmd.rs` emits from, so a
+template that drifted from what `quilltap completion bash` prints cannot exist.
+
+Cases carried (13 bash + 4 zsh):
+
+- verbs survive: no flags; `--instance Friday`; `-i Friday`; `--limit 5`;
+  `--json`; flags on both sides; `db --limit 5` → `characters`;
+  `db characters --instance Friday` → `status`;
+- `memories -i` is `--ignore-case`: offers `ls`, withholds `StubInstance`;
+- store names with spaces come back `printf '%q'`-escaped as `Stub\ Store` on
+  `--mount`, on the `docs ls` positional, and on the **destination** store of
+  `docs move Src a.md` — and are withheld from `docs find`, which takes a query;
+- zsh: no `(( CURRENT ==` word-index test survives; both `(-)`-prefixed
+  top-level positional specs present; at least 6 `1: :->` positional
+  dispatchers (7 at this pin); `zsh -n` accepts the template.
+
+Both shells are probed before use and skip with a **named, loud** `eprintln!`
+naming the test rather than passing silently (the order's rule; v4's own
+`8f910137` reasoning for the zsh arm).
+
+**Red proof (the guard is a real pin, not decoration):** re-run with the
+pre-fix `bash.template`/`zsh.template` swapped back in — 3 of 4 tests FAIL, with
+exactly bug 101's symptoms:
+
+```
+test zsh_completion_parses_positions_instead_of_counting_words ... FAILED
+test bash_completion_survives_flags_on_the_line ... FAILED
+test bash_completion_looks_up_names_against_the_addressed_instance ... FAILED
+  the zsh template still tests a hard-coded word index
+  `quilltap docs --limit 5 ` should offer "list", got ["--mount", "--instance", …]
+  `quilltap docs --mount ` should offer "Stub\\ Store", got ["Stub", "Store", "Other", "Store"]
+```
+
+`zsh_template_is_syntactically_valid` passes on **both** vintages, correctly:
+the old zsh template parsed fine, it was semantically wrong. That is the same
+split v4's own file draws.
+
+v4's other test change in the commit — the ±6 in
+`__tests__/unit/packages/quilltap/completion-template.test.js`, loosening
+`"'1: :->subcommand'"` to `": :->subcommand'"` so the assertion is prefix-
+agnostic — has **no v5 counterpart to update**: v5 never mirrored that static
+coverage test. Its invariant is held here instead, and more tightly: this lane
+asserts the `(-)`-prefixed spelling *specifically*, because that prefix is the
+fix.
+
+Version: cli 0.0.11 → 0.0.12.
+
+### `8f910137` — the NO-PORT evidence (this lane gathers; `/unify` ratifies)
+
+`8f9101370c429c031e545f956b16b9afd2b6570e` — "fix(ci): the zsh completion check
+no longer fails where zsh isn't installed" (2026-08-25).
+
+Complete file list (`git show --name-only`), 7 files:
+
+| file | change | v5 disposition |
+|---|---|---|
+| `.github/workflows/ci.yml` | +7: an `apt-get install -y zsh` step before `npm run test:coverage` | v5 has no v4 CI and does not run v4's jest suite |
+| `README.md` | version badge `4.9.0-dev.65` → `.66` | version bump |
+| `docs/CHANGELOG.md` | +4, v4's own changelog | v4-side docs |
+| `package-lock.json` | version bump | version bump |
+| `package.json` | `4.9.0-dev.65` → `.66` | version bump |
+| `packages/quilltap/package.json` | the same bump | version bump |
+| `packages/quilltap/lib/__tests__/completion-behavior.test.js` | +18/−1: `HAS_ZSH` probe + `(HAS_ZSH ? it : it.skip)` on the parse arm, plus a docblock paragraph | **absorbed by unit 2** |
+
+Measured, not inferred:
+
+- `git show 8f910137 --name-only -- lib/ app/ packages/ plugins/` lists ONLY the
+  test file and `packages/quilltap/package.json` (the version bump). There is
+  **no behavioural hunk** anywhere under `lib/`, `app/`, `packages/`, or
+  `plugins/`.
+- `git diff 6afacb18 8f910137 -- packages/quilltap/lib/completion/` is **empty**
+  — no template moved, so unit 1's copy is current at v4 `main` HEAD too.
+- The `README.md`/`package*.json` hunks are, verbatim, `4.9.0-dev.65` →
+  `4.9.0-dev.66` and nothing else.
+
+**Nothing is lost by ratifying NO-PORT:** the +18 test lines ARE ported —
+`completion_behavior.rs::zsh_template_is_syntactically_valid` carries exactly
+that arm (a `has_shell("zsh")` probe with a loud named skip). Unit 2 mirrors the
+union of both vintages, not just `6afacb18`'s.
+
+### Lane close
+
+Both Tier-1 deliverables landed; Tier 2 (the NO-PORT evidence) is the block
+above. **Nothing deferred** — the order's Tier 3 anticipated a possible
+template-substitution deferral, and the survey found no substitution on either
+side, so the condition never arose.
+
+`crates/quilltap-harness/**` was **not touched**: the CLI Tier R driver lives at
+`crates/quilltap-cli/tests/cli_differential.rs`, not in the harness crate, so the
+harness version does not move for this lane.
+
+### Lane gate (final, on the two-commit tree)
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean; the same with
+  `--features quilltap-core/native-transport` clean.
+- `cargo test --workspace` — **455 test binaries / 2,365 tests / 0 failed**
+  (exit 0). The lane's own delta is exactly **+1 binary / +4 tests**
+  (`completion_behavior`); nothing else in the lane is code.
+- Tier R by name at the lane pin, with `--nocapture` so the count is on the
+  record: **`CLI differential: 188 cases, 0 failures`** (325 s, exit 0).
+- `cargo test -p quilltap-cli --test completion_behavior` — 4 passed, 0 failed,
+  **0 skipped**: both `bash` and `zsh` answered on this host (GNU bash 3.2.57,
+  macOS), so no arm went unexercised.
+
+No SPA gate: the lane touches no `apps/web` file.

@@ -302,6 +302,44 @@ Two v5-only adaptations: class strings live in Angular inline templates inside
 `qt-`-prefixed token too — `qt-text-replacement-settings` collides head-on with
 the `qt-text-` family — so the selectors are read out of the source itself rather
 than kept in an allowlist that would rot.
+#### 2026-08-25 — test(cli): the shipped completion templates are driven under a real shell
+
+_Versions: cli 0.0.12._
+
+P4.D118 unit 2 — the v5-side mirror of v4's `completion-behavior.test.js`
+(new at `6afacb18`, extended at `8f910137`; both vintages' cases are carried).
+Tier R proves the templates are v4's bytes; this proves the bytes actually do
+something.
+
+`crates/quilltap-cli/tests/completion_behavior.rs` writes a stub `quilltap` to a
+temp dir — v4's own `makeStubBin` shape, answering `instances list --names-only`
+with `StubInstance` and `docs list --names-only` with `Stub Store\nOther Store`
+— sources the template under a real `bash` with `COMP_LINE`, `COMP_WORDS` and
+`COMP_CWORD` set as at a prompt, and reads `COMPREPLY` back. The bytes under
+test are the shipped bytes: the test `include_str!`s the same paths
+`src/completion_cmd.rs` emits from, so a template that drifted from what
+`quilltap completion bash` prints cannot exist.
+
+Thirteen bash cases: the verb list survives no flags, `--instance Friday`,
+`-i Friday`, `--limit 5`, `--json`, and flags on both sides; `db --limit 5`
+still offers `characters` and `db characters --instance Friday` still offers
+`status`; `memories -i` offers `ls` and withholds instance names, because `-i`
+is `--ignore-case` there. Store names carrying a space come back
+`printf '%q'`-escaped as `Stub\ Store` on `--mount`, on the `docs ls`
+positional, and on the destination store of `docs move Src a.md` — and are
+withheld from `docs find`, which takes a query. Four zsh cases, structural as
+v4's are (its completion system only runs inside a widget): no `(( CURRENT ==`
+word-index test survives, both `(-)`-prefixed top-level positional specs are
+present, at least six `1: :->` positional dispatchers exist, and `zsh -n`
+accepts the template. Each shell is probed first and skips with a loud named
+message rather than passing silently — v4 added that guard for zsh at
+`8f910137` because GitHub's ubuntu runners ship without the shell.
+
+Red-proven: swapping the pre-fix templates back in fails three of the four
+tests with exactly bug 101's symptoms. The fourth,
+`zsh_template_is_syntactically_valid`, passes on both vintages, correctly — the
+old zsh template parsed fine, it was semantically wrong.
+
 #### 2026-08-25 — fix(cli): shell completion survives flags on the line (v4 bug 101)
 
 _Versions: cli 0.0.11._
