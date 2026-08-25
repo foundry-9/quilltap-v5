@@ -21,7 +21,8 @@ function makeFsStoreDir(tag: string): string {
  * over the frozen P4.6v/P4.6y mount-file dispatch surface (fully live — no
  * capability probe). Three beats:
  *  1. a DATABASE store end-to-end: create → open detail → upload a text file
- *     (multipart) → the row appears → expand → edit the description → delete the
+ *     (multipart) → the row appears → expand → edit the description →
+ *     DOWNLOAD the stored bytes → delete the
  *     file → back → delete the store.
  *  2. a FILESYSTEM store: point it at a temp dir holding a markdown file, scan,
  *     and see the file indexed.
@@ -111,6 +112,12 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     await expect(desc).toBeVisible({ timeout: 15_000 });
     await desc.fill('A curious brass artifact.');
     await page.locator('qt-file-detail-row').getByRole('button', { name: 'Save' }).click();
+
+    // The detail row's Download button (v4 `af1bc479`) fetches the stored bytes
+    // and saves them under the STORED name — a real browser download.
+    const downloadPromise = page.waitForEvent('download', { timeout: 15_000 });
+    await page.locator('qt-file-detail-row').getByRole('button', { name: 'Download' }).click();
+    expect((await downloadPromise).suggestedFilename()).toBe('artifact.bin');
 
     // Delete the file (database mount → the per-row Delete button; confirm auto-accepts).
     await page.locator('qt-file-detail-row').getByRole('button', { name: 'Delete' }).click();

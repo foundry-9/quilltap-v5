@@ -13,7 +13,10 @@ import { PHOTOS_E2E_CAPTION_A, PHOTOS_E2E_CAPTION_B } from './support/seed-photo
  *      showing the two entries global-setup seeded for this walk.
  *   2. Clicking a card opens the detail modal with its linker list, prompt,
  *      and identity block; Escape closes it.
- *   3. A link-only delete round-trips through `photoGalleryEntryRemove` and a
+ *   3. The modal's Download button (v4 `af1bc479`) produces a REAL browser
+ *      download named after the stored file, and a photo with no bytes behind
+ *      it takes v4's failure arm instead.
+ *   4. A link-only delete round-trips through `photoGalleryEntryRemove` and a
  *      RELOAD proves it persisted server-side (not just optimistic UI).
  *
  * ⚠ NAVIGATION: the walk reaches `/photos` by URL, because the shell's photos
@@ -94,6 +97,58 @@ test.describe('P4.9a — My Photos', () => {
     await expect(modal.getByText(/sha256: 9a11/)).toBeVisible();
     // The read-only tags from the frontmatter.
     await expect(modal.getByText('zeppelin', { exact: true })).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(modal).toHaveCount(0);
+  });
+
+  test('the detail modal downloads the picture on display (v4 af1bc479)', async ({ page }) => {
+    await gotoPhotos(page);
+
+    // Entry A is the one global-setup gave real bytes on the blobs route.
+    await page.getByRole('button', { name: PHOTOS_E2E_CAPTION_A }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+
+    // v4's footer row, in order. Scoped to the FOOTER, because the modal
+    // header's `×` carries aria-label="Close" too and an unscoped Close
+    // locator is a strict-mode violation.
+    const footer = modal.locator('footer');
+    // Regexes, not strings: the buttons carry template whitespace around their
+    // labels. The exact bytes are pinned at the unit tier (photos.spec.ts);
+    // what this beat owns is that all four are present, in v4's order.
+    await expect(footer.getByRole('button')).toHaveText([
+      /Remove from this album/,
+      /Download/,
+      /Copy/,
+      /Close/,
+    ]);
+
+    // The click produces a REAL browser download, named after the stored file.
+    const downloadPromise = page.waitForEvent('download', { timeout: 15_000 });
+    await footer.getByRole('button', { name: 'Download' }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('e2e-zeppelin.webp');
+
+    await page.keyboard.press('Escape');
+    await expect(modal).toHaveCount(0);
+  });
+
+  test('a photo with no bytes behind it toasts v4’s failure sentence', async ({ page }) => {
+    await gotoPhotos(page);
+
+    // Entry B deliberately has NO blob row, so the blobs endpoint 404s and the
+    // page takes v4's catch arm rather than downloading a 404 body as a file.
+    await page.getByRole('button', { name: PHOTOS_E2E_CAPTION_B }).click();
+    const modal = page.getByRole('dialog');
+    await expect(modal).toBeVisible();
+    await modal.locator('footer').getByRole('button', { name: 'Download' }).click();
+
+    await expect(page.getByText('Failed to download photo')).toBeVisible({ timeout: 15_000 });
+    // The busy latch released — the label is back to "Download", not "Downloading…".
+    await expect(
+      modal.locator('footer').getByRole('button', { name: 'Download', exact: true }),
+    ).toBeVisible();
 
     await page.keyboard.press('Escape');
     await expect(modal).toHaveCount(0);

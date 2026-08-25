@@ -85758,3 +85758,46 @@ shared instance with a real project or force a server refusal, and the dialog
 caps the name at `maxlength="100"` so the over-max body is not reachable
 through the UI. The walk's own header records that it "only READS + navigates
 … the shared fixture is left pristine"; that stands.
+
+### Unit 5 — the live download beats (v4 `af1bc479`)
+
+Three beats, all green on a real server:
+
+- `photos-flow` **+2**: the four-button footer row in v4's order, and a
+  Download click producing a real Playwright `download` event whose
+  `suggestedFilename()` is the stored `e2e-zeppelin.webp`; then entry B — which
+  has no bytes — taking v4's catch arm against a live 404 from the blobs route
+  (`Failed to download photo`, and the busy label back to `Download`).
+- `scriptorium-flow`: the existing upload walk gains a Download step between
+  describe and delete, asserting the stored `artifact.bin`.
+
+`seed-photos-fixture` gained a `doc_mount_blobs` row for entry A (with the
+`CREATE TABLE IF NOT EXISTS` v4's repo does lazily on first WRITE — a store
+that has never held a blob has no table), and entry B is deliberately left
+without one so the failure arm is reachable. The blob's `storedMimeType` is
+`image/webp`, matching the stored name: a Content-Type that disagrees with the
+download name invites Chromium to rewrite the extension, which would make the
+assertion about the browser rather than about the port.
+
+**No generate-image beat.** The Download button only exists after a real
+generation, which needs a live image provider; the convergence is pinned at the
+unit tier instead (three specs, including the new `res.ok` guard).
+
+### ⚠ The gotcha this unit cost an hour to: the e2e port is repo-wide
+
+`apps/web/e2e/support/env.ts` hard-codes `PORT = 4319`. **Two lanes cannot run
+Playwright at the same time**, and the collision is silent: the second lane's
+global-setup takes the port, and the first lane's browser starts loading the
+SIBLING's SPA dist against the SIBLING's instance — mid-run.
+
+The symptom here was a photos-flow run where beats 1–2 passed and beats 3–5
+failed as though the SPA change had never landed (the modal's OLD two-button
+footer, then two 30 s timeouts). The dist on disk *did* carry the new markup.
+`lsof -iTCP:4319 -sTCP:LISTEN -n -P` plus `ps aux | ggrep "[q]uilltap-web"`
+settled it in one command — the server's own `--spa-dir` argument names the
+worktree it is serving, and it was
+`.claude/worktrees/wardrobe-containers-spa-port-8780ff` (P4.D113). Re-run after
+that lane's suite finished: 5/5 green.
+
+Banked as a memory note (`e2e-port-4319-is-repo-wide`). **Check 4319 before any
+Playwright run in a parallel round.**

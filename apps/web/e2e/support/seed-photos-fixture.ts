@@ -41,6 +41,20 @@ const LINK_B = '9a000000-0000-4000-8000-0000000000e2';
 export const PHOTOS_E2E_CAPTION_A = 'Zeppelin over the Ironworks';
 export const PHOTOS_E2E_CAPTION_B = 'The Ironworks at dusk';
 
+const BLOB_A = '9a000000-0000-4000-8000-0000000000b1';
+
+/**
+ * A valid 1×1 PNG's bytes, as a SQLite `x'…'` hex literal (nothing decodes
+ * them — the walk only needs the endpoint to serve SOMETHING). Entry A gets
+ * real bytes on
+ * the blobs endpoint so `photos-flow`'s Download beat can produce an actual
+ * browser download (P4.D114 / v4 `af1bc479`); entry B deliberately gets NONE,
+ * so the same beat can walk the failure arm on a live 404.
+ */
+const TINY_PNG_HEX =
+  '89504E470D0A1A0A0000000D4948445200000001000000010802000000907753DE' +
+  '0000000C49444154789C63F8CFC0000003010100C9FE92EF0000000049454E44AE426082';
+
 const TS = '2026-03-01T00:00:00.000Z';
 
 function write(cli: string, statement: string, mount = false): void {
@@ -164,6 +178,32 @@ export function seedPhotosFixture(cli: string): void {
       true,
     );
   }
+
+  // Entry A gets real bytes on the blobs route (the Download beat needs a
+  // download to actually happen). The table is created lazily by v4's repo on
+  // first WRITE, so a store that has never held a blob has none yet.
+  write(
+    cli,
+    `CREATE TABLE IF NOT EXISTS "doc_mount_blobs" (` +
+      `"id" TEXT PRIMARY KEY, "fileId" TEXT NOT NULL, "sha256" TEXT NOT NULL, ` +
+      `"sizeBytes" INTEGER NOT NULL, "storedMimeType" TEXT NOT NULL, ` +
+      `"data" BLOB NOT NULL, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL, ` +
+      `FOREIGN KEY ("fileId") REFERENCES "doc_mount_files" ("id") ON DELETE CASCADE)`,
+    true,
+  );
+  write(
+    cli,
+    `INSERT OR REPLACE INTO doc_mount_blobs ` +
+      `(id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt) ` +
+      `VALUES ('${BLOB_A}', '${MOUNT_FILE_A}', ` +
+      `'9a11111111111111111111111111111111111111111111111111111111111111', 69, ` +
+      // The stored MIME matches the stored `.webp` name deliberately: a
+      // Content-Type that disagrees with the download name invites Chromium to
+      // rewrite the extension, which would make the beat's filename assertion
+      // about the browser rather than about the port.
+      `'image/webp', x'${TINY_PNG_HEX}', '${TS}', '${TS}')`,
+    true,
+  );
 
   process.stderr.write(
     `[e2e] seeded ${rows.length} photos/ gallery entries into mount ${mountPointId}\n`,

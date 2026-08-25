@@ -195,6 +195,26 @@ Recorded mechanism divergence: v4's module also exports
 mutations ride dispatch verbs, so that routing lands in `wardrobe.api.ts` as a
 verb router in a later unit of this lane; the types and the encoding stay
 v4's verbatim.
+#### 2026-08-25 — test(e2e): the download buttons produce real browser downloads (P4.D114)
+
+_Versions: no crate versions bumped (the SPA rides un-bumped per the round's ownership split; the unifier recounts)._
+
+Three live beats for v4 `af1bc479`. `photos-flow` gains two: the detail
+modal's four-button footer row plus a Download click that yields a real
+Playwright `download` event named after the stored file, and a photo with no
+bytes behind it taking v4's failure arm (a live 404 from the blobs route → the
+`Failed to download photo` toast, and the busy latch released). The
+Scriptorium walk's existing upload beat gains a Download step between describe
+and delete, asserting the stored name.
+
+`seed-photos-fixture` now gives its first entry real bytes in `doc_mount_blobs`
+(the table is created lazily on first write, so a store that never held a blob
+has none) and deliberately leaves the second without, so the two arms are both
+reachable. The stored MIME matches the stored `.webp` name on purpose: a
+Content-Type that disagrees with the download name invites Chromium to rewrite
+the extension, which would make the assertion about the browser rather than
+about the port.
+
 #### 2026-08-25 — fix(home): a failed New Project shows v4's sentence, not the server's (P4.D114)
 
 _Versions: no crate versions bumped (the SPA rides un-bumped per the round's ownership split; the unifier recounts)._
