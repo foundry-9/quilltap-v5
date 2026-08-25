@@ -85801,3 +85801,57 @@ that lane's suite finished: 5/5 green.
 
 Banked as a memory note (`e2e-port-4319-is-repo-wide`). **Check 4319 before any
 Playwright run in a parallel round.**
+
+### P4.D114 — lane gate (all five units)
+
+Run on the final tree, in this order:
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — **exit 0**.
+- `cargo clippy --workspace --all-targets --features
+  quilltap-core/native-transport -- -D warnings` — **exit 0**.
+- `cargo test --workspace` (`CARGO_INCREMENTAL=0`, full log + `EXIT=` sentinel,
+  never `| tail`) — **453 test binaries / 2,349 tests / 0 failed, exit 0**
+  (`grep -c '^test result: FAILED'` = 0). +9 tests over the lane's baseline,
+  exactly the nine new `create_schema_tests`.
+- `projects_routes_equivalence` by name over an oracle regenerated FRESH at
+  `f6a10055` through the sweep driver — **RAN, not skipped**: 1 passed, with all
+  19 `create*` arms named OK in the output (grepped). Confirmed again on the
+  final tree after the last commit.
+- `binary_routes` by name — 1 passed, both new blob arms exercised.
+- SPA: `npm test` — **342 files / 5,089 tests, all passed**;
+  `npm run build` — clean, exit 0.
+- Playwright **full suite: 239 passed / 0 failed / 0 skipped (19.6 m)** — the
+  suite grew 237 → 239 with the two new photos beats; the Scriptorium walk's
+  new Download step is inside its existing beat.
+
+**Mutation proofs, by unit:** unit 1 ×2 (drop the header; prefer
+`originalFileName`), unit 2 ×3 (no validation → 13 arms red; v5's old trim
+guard → whitespace-name red; `description` non-nullable → the bug-98 arm red),
+unit 3 ×1 (`entry.fileName` → `entry.relativePath`), unit 4 ×1 (the failure
+sentence).
+
+**Versions:** `quilltap-web` 0.0.86 → **0.0.87** — the only bump, per the
+round's ownership split. The lane's `quilltap-core`, `quilltap-harness` and SPA
+edits ride un-bumped for the unifier to recount.
+
+### Deferrals, loud
+
+- **Tier 3, as the order specifies:** no Tauri-native save dialog (the standing
+  recorded non-goal in `core/download-utils`' header, now matched by
+  `core/clipboard-utils`' own header for v4's Electron IPC clipboard arm); the
+  `help/mount-points.md` / `help/photo-gallery.md` / `help/profile-avatar.md`
+  deltas go to the `p4.9i2` bank.
+- **The six other hand-rolled anchor sites stay** (census in the unit-3 record)
+  — v4 did not converge its counterparts in `af1bc479`.
+- **No generate-image e2e beat** (needs a live image provider) and **no
+  home-flow beat for the create toasts** (would dirty the shared instance or
+  need a refusal the dialog's `maxlength="100"` makes unreachable through the
+  UI). Both are pinned at the unit tier instead.
+- **The `color`/`icon` null-vs-absent properties seam** is untouched and
+  pre-existing (repo layer, not `api/projects.rs`): v4's create route hands the
+  repository an explicit `color: null`, v5's `ProjectProperties` folds it to an
+  absent key. The one differential arm that must cross it masks those two keys
+  and says so.
+- ⚠ **`screens/prospero/project-create-dialog.ts` is outside this lane's named
+  Ownership row** (no other lane owns it either) — see the unit-4 record.
