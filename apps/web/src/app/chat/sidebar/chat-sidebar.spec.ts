@@ -88,6 +88,7 @@ class Host {
     alertCharactersOfLanternImages: null,
     projectId: null,
     projectName: null,
+    scenarioText: null,
     agentModeEnabled: null,
   };
   readonly visibilityState: VisibilityState = {

@@ -92,6 +92,31 @@ Neutrality proven by regenerating `chat_create_capstone` from a v4 worktree
 pinned at `44a8137e` (which carries v4's own extraction) and re-running it
 green; the family's `two_char_scenario` case is the live create-path scenario
 arm. The resolver's own four-tier differential arrives with the verb.
+#### 2026-08-25 — feat(salon): the scene can be changed without leaving the conversation (P4.D116 units 3-4)
+
+_Versions: SPA 0.5.559._
+
+The client half of v4 `44a8137e`'s in-chat picker. The Chat drawer gains a
+Scenario control offering the same four tiers the New Chat dialog does —
+project, general, group, and (when a single LLM character is present) character
+— plus a Custom option that reveals a free-text box. Saving dispatches the new
+`chatSetScenario` verb; an empty custom scenario clears the scene, and the
+server's own message is what the toast says, the `changed: false` no-op arm
+("Scenario unchanged") included.
+
+The control opens on the scene actually in force. `ChatDetail` gains
+`scenarioText` — v4's chat GET never projected it, which is why its picker
+could only ever open on "Custom…", even immediately after a save — and the
+seed is derived rather than copied into state, so it settles as the option
+tiers finish loading without fighting a choice the user has since made.
+
+The tier lists get their own per-scope query keys (v4's `queryKeys.scenarios`)
+and reuse the existing list verbs; the group tier is keyed on the comma-joined,
+sorted LLM-character ids. The sidebar derives that cast from the raw
+`controlledBy` column rather than `isUserDrivenSeat`, which is v4's actual
+spelling and the right one: an impersonated LLM character is still an LLM
+character whose group memberships belong in the picker.
+
 #### 2026-08-25 — refactor(new-chat): the scenario dropdown moves onto the shared component (P4.D116 unit 2)
 
 _Versions: SPA 0.5.558._

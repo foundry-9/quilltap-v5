@@ -9,6 +9,7 @@ import { fetchImageProfiles, imageProfileKeys } from '../../screens/settings/ima
 import { fetchRoleplayTemplates, templateKeys } from '../../screens/settings/templates/templates.api';
 import { Icon } from '../../ui/icon';
 import { ToastService } from '../../ui/toast.service';
+import { ChatScenarioControl } from './chat-scenario-control';
 
 /** The chat-record fields this section edits. `null` ⇒ not set / inherit. */
 export interface ChatSectionState {
@@ -20,6 +21,12 @@ export interface ChatSectionState {
   alertCharactersOfLanternImages: boolean | null;
   projectId: string | null;
   projectName: string | null;
+  /**
+   * The scene this chat runs on (v4 `44a8137e`). v4 threads it to `ChatSection`
+   * as its own prop alongside `projectId`; v5's sidebar carries the whole slice
+   * in this bag, which `projectId` already rode, so it joins it here.
+   */
+  scenarioText: string | null;
   /**
    * The RESOLVED agent-mode value (v4 syncs its local `agentModeEnabled` from
    * `chat.resolvedAgentModeEnabled`, `useChatControls.ts:76-82`), which is what
@@ -90,7 +97,7 @@ export interface ChatSectionState {
 @Component({
   selector: 'qt-chat-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [ChatScenarioControl, Icon],
   template: `
     <div class="qt-chat-sidebar-section qt-chat-sidebar-section-chat flex flex-col gap-3">
       <!-- Agent Mode (v4 :1116-1127). v4 puts this between the Concierge
@@ -127,6 +134,17 @@ export interface ChatSectionState {
           }
         </select>
       </label>
+
+      <!-- Scenario — the scene this chat runs on (v4 44a8137e, in v4's slot) -->
+      <qt-chat-scenario-control
+        [chatId]="chatId()"
+        [projectId]="state().projectId"
+        [scenarioText]="state().scenarioText"
+        [llmCharacterIds]="llmCharacterIds()"
+        [singleLlmCharacterId]="singleLlmCharacterId()"
+        [enabled]="hasEverOpened()"
+        (chatUpdated)="chatUpdated.emit()"
+      />
 
       <!-- The Story's Clock — episodic-memory timeline mode -->
       <label class="qt-label">
@@ -267,6 +285,10 @@ export class ChatSection {
   readonly regeneratingBackground = input(false);
   /** True while this accordion section is open — latches the reference fetches. */
   readonly sectionOpen = input(false);
+  /** Character IDs of the LLM-controlled cast, for the scenario picker's group tier. */
+  readonly llmCharacterIds = input<readonly string[]>([]);
+  /** The lone LLM character's ID, or null when several share the room. */
+  readonly singleLlmCharacterId = input<string | null>(null);
 
   /** Fired after any chat-record field is mutated (v4 `onChatUpdated` → fetchChat). */
   readonly chatUpdated = output<void>();
@@ -354,7 +376,7 @@ export class ChatSection {
   private readonly localAlertImages = signal<boolean | null | undefined>(undefined);
 
   /** One-shot latch: fetch reference data only after the section is first opened. */
-  private readonly hasEverOpened = signal(false);
+  protected readonly hasEverOpened = signal(false);
 
   constructor() {
     effect(() => {

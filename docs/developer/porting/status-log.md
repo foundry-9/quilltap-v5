@@ -86525,3 +86525,77 @@ to `[]`. The binding is therefore omitted rather than wired to
 `core().groupScenarios()`, which would render optgroups v4 does not.
 
 Versions: SPA 0.5.558.
+
+### Units 3–4 — the `chatSetScenario` verb, the per-tier query keys, and the in-chat control
+
+**Contract (unit 3).** `core-contract.ts` gains `ChatSetScenarioRequest` (all
+six scenario fields optional AND nullable, mirroring v4's `setScenarioSchema`
+`.nullish()` throughout so the absent/null/value tri-state survives the wire)
+and `ChatSetScenarioResult` (`{scenarioText, changed, message}`, §Shared
+contract §2). `ChatDetail` gains `scenarioText?: string | null` — v4's chat GET
+never projected it, which is exactly why v4's picker could only ever open on
+"Custom…". The response's `type` string is deliberately NOT load-bearing: the
+client reads the body through `dispatchData` (the `connectionTestMessage`
+precedent), so the sibling server lane can name the variant as it likes.
+
+**The chat payload reaches the control unmediated.** Checked per the order's
+reducer-carry warning (memory `v4-client-fix-needs-the-reducer-carry`): the
+Salon's `chatQuery` returns `resp.data.chat` whole and `chat()` is that signal —
+there is no pure reducer between the wire and the render site, so the projection
+field needs no second carry. (The STREAM reducer is a different path and does
+not carry the chat record.)
+
+**`apps/web/src/app/scenario/scenario.api.ts`** holds v4's `queryKeys.scenarios`
+family (`all` / `general` / `project(id)` / `group(charIdsKey)` /
+`character(id)`) plus the four tier fetchers over the EXISTING list verbs
+(§Shared contract §5 — no new list endpoints). Per SCOPE, not per chat: two
+chats in the same project share one cached project tier. `new-chat.state.ts`'s
+private `mapScenario` is now an alias of the shared `toScenarioOption` (same
+body, byte for byte).
+
+**The control (unit 4)** is `chat/sidebar/chat-scenario-control.ts`, sitting in
+v4's exact slot — after Roleplay Template, before The Story's Clock. v4's four
+strings are byte-exact and surveyed, not invented: the `Scenario` label, the
+`Change scenario` / `Setting the scene…` button, the
+`Set the scene for this conversation…` placeholder, and the standing caution
+("Changing the scene rewrites every character's standing instructions, and the
+Host announces the revision to the company."). **Tier 2 answered by survey: v4
+shows no special no-op UX** — it toasts `data?.message || 'Scenario updated'`,
+so `changed: false` simply reads "Scenario unchanged". Nothing invented.
+
+**The LLM cast** is derived in `chat-sidebar.ts`, v4's predicate character for
+character: `controlledBy !== 'user' && status !== 'removed' && character?.id`.
+⚠ **The order asked about the overlay tension; the answer is that v4's raw
+`controlledBy` read is RIGHT here and is kept.** It is an OWNERSHIP read in the
+P4.D56 taxonomy — an impersonated LLM character is still an LLM character whose
+group memberships and own scenarios belong in the picker, and the offered tiers
+must not shuffle when an impersonation comes and goes. The sibling reader two
+computeds down (`activeCharacterCount`, v4 `:386`) reads the column the same way
+for the same reason. `isUserDrivenSeat` would have been wrong. Recorded in the
+computed's own doc comment.
+
+**v5 threads `scenarioText` through the `ChatSectionState` bag** rather than as
+its own prop; v4's `ChatSidebar` takes flat props and threads `projectId` and
+`scenarioText` separately, but v5's sidebar already carried `projectId` in that
+bag. Same destination, v5's own idiom.
+
+**Mutation proofs (17-arm spec, each mutation reddening exactly its own arms):**
+
+| mutation | result |
+|---|---|
+| seeding ignores the projected scene (the pre-`44a8137e` bug) | RED ×3 |
+| character tier's fetch gate drops `singleLlmCharacterId` | RED |
+| project tier's fetch gate drops `projectId` | RED |
+| the group key is not sorted | RED |
+| free text sent for a preset too | RED |
+| the `enabled` latch is ignored | RED |
+| `characterScenarios ?? null` gate removed at the render site | **SURVIVED** |
+
+That last one is a fidelity FACT, not a hole: **v4's gate there is redundant in
+v4 too.** `characterScenarios` is already gated on the same id and the query
+behind it does not fire without one, so `singleLlmCharacterId ? … : null`
+changes nothing in either implementation. Transcribed anyway because it is v4's
+spelling; the load-bearing gate is the query's `enabled`, which mutation 2
+reddens. Recorded in the code.
+
+Versions: SPA 0.5.559.

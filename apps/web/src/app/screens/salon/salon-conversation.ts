@@ -2092,6 +2092,9 @@ export class SalonConversation {
       alertCharactersOfLanternImages: c?.alertCharactersOfLanternImages ?? null,
       projectId: c?.projectId ?? null,
       projectName: c?.projectName ?? null,
+      // Projected since v4 `44a8137e` — the in-chat scenario picker opens on
+      // the scene actually in force instead of always on "Custom…".
+      scenarioText: c?.scenarioText ?? null,
       // v4 seeds its badge from the RESOLVED cascade value, not the stored
       // column (`useChatControls.ts:76-82`).
       agentModeEnabled: c?.resolvedAgentModeEnabled ?? null,

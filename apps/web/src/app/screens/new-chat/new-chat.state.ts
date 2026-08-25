@@ -34,6 +34,7 @@ import type {
   ScenarioDto,
   ScenarioListDto,
 } from '../../core/core-contract';
+import { toScenarioOption } from '../../scenario/scenario.api';
 import type { ToastService } from '../../ui/toast.service';
 import type { GreenRoomController } from './green-room.types';
 import { buildCreateRequest } from './new-chat.logic';
@@ -58,16 +59,12 @@ export interface NewChatOptions {
 /** A `{ chatId, isAutonomous } | null` submit outcome (v4 `handleCreateChat` return). */
 export type CreateOutcome = { chatId: string; isAutonomous: boolean } | null;
 
-function mapScenario(s: ScenarioDto): ScenarioOption {
-  return {
-    path: s.path,
-    filename: s.filename,
-    name: s.name,
-    ...(s.description !== undefined && { description: s.description }),
-    isDefault: s.isDefault,
-    body: s.body,
-  };
-}
+/**
+ * The DTO → option narrowing now lives with the shared scenario module, since
+ * the in-chat picker needs the same one (v4 `44a8137e`). Aliased rather than
+ * renamed at the call sites so this module reads as it always has.
+ */
+const mapScenario = toScenarioOption;
 
 /**
  * Per-source tolerance for a reference read. v4's `fetch` resolves on a non-2xx

@@ -281,6 +281,8 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [storyBackgroundsEnabled]="storyBackgroundsEnabled()"
             [regeneratingBackground]="regeneratingBackground()"
             [sectionOpen]="openSection() === 'chat'"
+            [llmCharacterIds]="llmCharacterIds()"
+            [singleLlmCharacterId]="singleLlmCharacterId()"
             (chatUpdated)="chatUpdated.emit()"
             (regenerateBackground)="regenerateBackground.emit()"
             (openProject)="openProject.emit()"
@@ -526,6 +528,30 @@ export class ChatSidebar implements OnInit {
       if (this.turnState().lastSpeakerId) return this.turnState().lastSpeakerId;
     }
     return this.turnSelectionResult()?.nextSpeakerId ?? null;
+  });
+
+  /**
+   * The LLM-controlled cast, for the scenario picker's group and character
+   * tiers (v4 `44a8137e` `ChatSidebar.tsx:248-256`). Characters that have left
+   * the room can't lend it a scenario.
+   *
+   * ⚠ This reads the RAW `controlledBy` column, not `isUserDrivenSeat`, and
+   * that is v4's actual spelling — deliberately kept. It is an OWNERSHIP read
+   * in the P4.D56 taxonomy: an impersonated LLM character is still an LLM
+   * character whose group memberships and own scenarios belong in the picker,
+   * and the tiers must not shuffle when an impersonation comes and goes. The
+   * sibling reader two computeds down ({@link activeCharacterCount}, v4
+   * `:386`) reads the column the same way for the same reason.
+   */
+  protected readonly llmCharacterIds = computed<string[]>(() =>
+    this.participants()
+      .filter((p) => p.controlledBy !== 'user' && p.status !== 'removed' && p.character?.id)
+      .map((p) => p.character!.id),
+  );
+
+  protected readonly singleLlmCharacterId = computed<string | null>(() => {
+    const ids = this.llmCharacterIds();
+    return ids.length === 1 ? ids[0] : null;
   });
 
   protected readonly activeCharacterCount = computed(

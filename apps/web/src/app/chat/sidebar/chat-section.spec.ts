@@ -69,6 +69,7 @@ function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
     alertCharactersOfLanternImages: null,
     projectId: null,
     projectName: null,
+    scenarioText: null,
     agentModeEnabled: null,
     ...over,
   };

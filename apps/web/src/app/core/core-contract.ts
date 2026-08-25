@@ -2726,6 +2726,14 @@ export interface ChatDetail {
   messages: MessageDto[];
   projectId: string | null;
   projectName: string | null;
+  /**
+   * The scene this chat runs on — `{{scenario}}` in every identity stack (v4
+   * `44a8137e`). v4's chat GET never projected it, so the in-chat scenario
+   * picker could only ever open on "Custom…", even immediately after a save;
+   * that commit added it to the projection and the sidebar's picker reads it
+   * here. The Shared contract pins the field name and `string | null`.
+   */
+  scenarioText?: string | null;
   turnSkippingEnabled: boolean | null;
   /** The two whole-set disable lists (`api/salon.rs:384-387`). */
   disabledTools?: string[];
@@ -4751,6 +4759,7 @@ export type MemoryRequest =
   // P4.6ao/P4.6ap (folded at unification; the block at the end of this file).
   | ChatGetCostRequest
   | ChatRegenerateBackgroundRequest
+  | ChatSetScenarioRequest
   // P4.6ar/P4.6as/P4.6at (folded at unification; the block at the end of this
   // file).
   | LlmLogsListRequest
@@ -5462,6 +5471,48 @@ export interface ChatGetCostRequest {
 export interface ChatRegenerateBackgroundRequest {
   type: 'chatRegenerateBackground';
   chatId: string;
+}
+
+/**
+ * Set (or clear) the chat's scene (v4 `44a8137e`,
+ * `POST /api/v1/chats/:id?action=scenario`). The Shared contract pins the wire
+ * name, the field names, and the success body.
+ *
+ * Every field is OPTIONAL and NULLABLE, mirroring v4's `setScenarioSchema`
+ * (`.nullish()` throughout) — the absent/null/value tri-state is preserved end
+ * to end, so the server can tell "leave this tier alone" from "clear it".
+ * The client sends the tier fields `scenarioSelectionToPayload` produces, plus
+ * `scenario` (the free text) only when the selection is Custom.
+ *
+ * Precedence, resolved server-side: `scenarioId` > `projectScenarioPath` >
+ * `groupScenarioPath` > `generalScenarioPath`, with free `scenario` layered
+ * beneath whatever resolves — the same chain `chatCreate` uses.
+ */
+export interface ChatSetScenarioRequest {
+  type: 'chatSetScenario';
+  chatId: string;
+  scenario?: string | null;
+  scenarioId?: string | null;
+  /** ≤ 500 chars (v4's schema bound). */
+  projectScenarioPath?: string | null;
+  /** ≤ 500 chars (v4's schema bound). */
+  groupScenarioPath?: string | null;
+  groupScenarioGroupId?: string | null;
+  /** ≤ 500 chars (v4's schema bound). */
+  generalScenarioPath?: string | null;
+}
+
+/**
+ * The `chatSetScenario` success body (Shared contract §2). `changed: false` is
+ * v4's no-op arm — re-picking the scene already in force writes nothing and
+ * posts no announcement. The response's `type` string is deliberately NOT
+ * load-bearing (the client reads it through `dispatchData`, the
+ * `connectionTestMessage` precedent); only this body shape is pinned.
+ */
+export interface ChatSetScenarioResult {
+  scenarioText: string | null;
+  changed: boolean;
+  message: 'Scenario updated' | 'Scenario cleared' | 'Scenario unchanged';
 }
 
 // --- P4.6ar/P4.6as/P4.6at unification fold ---
