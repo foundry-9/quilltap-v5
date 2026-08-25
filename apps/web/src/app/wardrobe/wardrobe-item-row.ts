@@ -14,7 +14,10 @@ import { WARDROBE_SLOT_META } from './slot-meta';
  *  - `[+]` icon that adds the item to a slot. Single-slot items target their
  *    only slot directly; multi-slot items open a small popover picker.
  *  - `⋮` kebab menu with secondary actions: Edit, toggle the default-outfit
- *    flag, Duplicate, Move, Copy, and Delete.
+ *    flag, Duplicate, Move, Copy, and Delete. Which of these appear is
+ *    governed by the `canManage` predicate: items living in the container
+ *    being browsed get the full set, items merged in from another shared
+ *    tier keep only Move and Copy.
  *
  * Composite items keep a `▶/▼` expander so the user can peek at the
  * components without entering the editor (nested rows are read-only browse:
@@ -55,7 +58,7 @@ import { WARDROBE_SLOT_META } from './slot-meta';
             @if (isComposite()) {
               <span class="qt-text-xs qt-text-secondary">· bundle</span>
             }
-            @if (isShared()) {
+            @if (!manageable()) {
               <span class="qt-text-xs qt-text-secondary">· shared</span>
             }
             @if (item().isDefault) {
@@ -141,7 +144,7 @@ import { WARDROBE_SLOT_META } from './slot-meta';
                 class="absolute right-0 top-full mt-1 z-30 min-w-[14rem] rounded border qt-border-default qt-bg-default shadow-md"
               >
                 <ul class="divide-y qt-border-default">
-                  @if (!isShared()) {
+                  @if (manageable()) {
                     <li>
                       <button
                         type="button"
@@ -198,7 +201,7 @@ import { WARDROBE_SLOT_META } from './slot-meta';
                       Copy
                     </button>
                   </li>
-                  @if (!isShared()) {
+                  @if (manageable()) {
                     <li>
                       <button
                         type="button"
@@ -230,6 +233,7 @@ import { WARDROBE_SLOT_META } from './slot-meta';
                 [item]="c"
                 [allItems]="allItems()"
                 [inChat]="false"
+                [canManage]="canManage()"
                 [depth]="depth() + 1"
                 (toggleDefault)="toggleDefault.emit($event)"
                 (edit)="edit.emit($event)"
@@ -252,6 +256,15 @@ export class WardrobeItemRow {
   readonly allItems = input.required<WardrobeItemDto[]>();
   /** When set, equip controls are visible. */
   readonly inChat = input.required<boolean>();
+  /**
+   * Whether an item can be managed (edited / starred / duplicated / deleted)
+   * from the current view — true when the item lives in the container being
+   * browsed, false when it was merged in from a shared tier elsewhere. Items
+   * failing this check keep only Move and Copy, and are badged `· shared`.
+   * Defaults to the character-view rule: manageable iff character-owned
+   * (v4 `wardrobe-item-row.tsx:36-40`, `:83-85`).
+   */
+  readonly canManage = input<((item: WardrobeItemDto) => boolean) | undefined>(undefined);
   /** Label for the equip-replace button (v4 default "Wear"). */
   readonly equipLabel = input('Wear');
   /** Whether `[+]` is framed as "layer onto" (Live) or "add to" (Builder) —
@@ -277,8 +290,15 @@ export class WardrobeItemRow {
   protected readonly kebabOpen = signal(false);
 
   protected readonly isComposite = computed(() => (this.item().componentItemIds ?? []).length > 0);
-  /** v4 `:84` — shared = no owning character. */
-  protected readonly isShared = computed(() => !this.item().characterId);
+  /**
+   * v4 `:83-85` — without an explicit predicate, fall back to the
+   * character-view rule: personal items are manageable, shared-tier items are
+   * Move/Copy only.
+   */
+  protected readonly manageable = computed(() => {
+    const predicate = this.canManage();
+    return predicate ? predicate(this.item()) : Boolean(this.item().characterId);
+  });
 
   protected readonly components = computed(() => {
     if (!this.isComposite()) return [];

@@ -76,6 +76,18 @@ the exact UUID. Unit tests mirror v4's new `wardrobe-slug-map.test.ts`; the
 the `vault-wardrobe-write` fixture a collision-returns op, both proven
 red-first against the old code and green against oracles regenerated at the
 `f6a10055` pin.
+#### 2026-08-25 — feat(wardrobe): a row's kebab follows the container it is being browsed in (P4.D113)
+
+_Versions: SPA 0.5.552._
+
+The wardrobe row's `isShared = !item.characterId` rule becomes an optional
+`canManage` predicate. An item that lives in the container being browsed gets
+the full kebab (Edit, star, Duplicate, Move, Copy, Delete); an item merged in
+from a shared tier elsewhere keeps Move and Copy and wears the `· shared`
+badge. Without a predicate the row falls back to v4's character-view rule
+exactly, so the character view is unchanged. Nested composite components
+inherit the predicate rather than re-deriving it from `characterId`.
+
 #### 2026-08-25 — feat(wardrobe): every container reachable over its own verb, and Duplicate keeps the Portrait Cue (P4.D113)
 
 _Versions: SPA 0.5.551._

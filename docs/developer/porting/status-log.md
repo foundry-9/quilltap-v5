@@ -85276,3 +85276,23 @@ the group-star routing and the Portrait Cue in both a present and an absent
 **Mutation proofs (2):** dropping `imagePrompt` from the duplicate payload reds
 the Portrait-Cue case; returning `resolutionItems: own` instead of the pool reds
 the General-pool case. Both restored green.
+
+### Unit 3 — `canManage` on the wardrobe row (tier 1, item 2 part a)
+
+`wardrobe-item-row.ts`. v4's `isShared = !item.characterId` (`:83`) becomes
+the optional `canManage?: (item) => boolean` predicate (`d7263f39` `:36-40`,
+`:83-85`): full kebab iff manageable, otherwise Move/Copy only plus the
+`· shared` badge, and nested composite components inherit the predicate
+(`:399`) instead of re-deriving it. With no predicate the row falls back to
+v4's character-view rule character-for-character, so the character view is
+untouched.
+
+NEW `wardrobe-item-row.spec.ts` (4 cases — the component had no spec before):
+the fallback in both directions with the kebab's exact six labels in v4's
+order, the predicate overriding the character rule BOTH ways (a
+`characterId: null` item fully manageable in its own container; a
+character-owned item the predicate refuses reduced to Move/Copy), the
+per-item question in a mixed list, and the nested-component inheritance.
+
+**Mutation proof:** making the fallback `true` instead of
+`Boolean(item.characterId)` reds the fallback case; restored green.
