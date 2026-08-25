@@ -86227,3 +86227,36 @@ scenario arm is `two_char_scenario` (free-text tier); the other three tiers are
 covered by unit 3's new family, which drives v4's REAL
 `resolveScenarioSelection` directly. Recorded honestly: the capstone proves the
 create path's WIRING is unchanged, not all four tiers.
+
+### Unit 2 — the Host scenario-revision writer + the transcript carry
+
+`postHostScenarioRevisionAnnouncement` + `HOST_KIND_SCENARIO_CHANGE` ported into
+`services::host_notifications`; all four strings byte-exact against
+`writer.ts`'s hunk. `scenario-change` joins `HOST_LINK_KINDS` in
+`services::markdown_transcript` (4 → 5 members) with v4's rewritten
+why-comment.
+
+Two things this unit decided:
+
+1. **The blank arm is v4 code the verb cannot reach.** Unlike the chat-start
+   `postHostScenarioAnnouncement`, the revision writer does NOT return early on
+   a blank scene — it posts the CLEARED pair. But the verb only ever passes
+   `None` or a non-blank string, because `combine_scenario_text` trims. So the
+   branch was split into a pure `scenario_revision_pair()` and pinned by unit
+   test in BOTH directions (`None` and three blank-but-present spellings take
+   the cleared pair; a scene that survives trimming never does).
+2. **A cross-module pin.** The kind the writer stamps and the kind the
+   transcript keeps live in different modules and nothing compared them, so a
+   rename on either side would drop every revision notice from an export in
+   silence. `markdown_transcript::host_link_kinds()` exposes the set and
+   `scenario_change_is_an_exported_host_link_kind` asserts the writer's constant
+   is in it.
+
+**Mutation proofs (three, each reddening exactly one test):** inverting
+`scenario_revision_pair`'s emptiness test → `scenario_revision_blank_takes_the_cleared_pair`
+FAILED; a one-space typo in the revision content →
+`scenario_revision_content_is_v4_byte_for_byte` FAILED; dropping
+`scenario-change` from `HOST_LINK_KINDS` →
+`scenario_change_is_an_exported_host_link_kind` FAILED. The
+end-to-end pin (the announcement row the verb actually writes, and the notice
+surviving into an exported transcript) arrives with unit 3's route family.

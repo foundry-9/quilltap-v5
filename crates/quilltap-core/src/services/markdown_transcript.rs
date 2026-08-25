@@ -59,14 +59,26 @@ use crate::services::carina_query::BRAHMA_CARINA_ANSWERER_ID;
 use crate::staff_display_names::staff_display_name;
 use crate::templates::{process_template, TemplateContext};
 
-/// Host notices that record where a conversation came from or moved to — v4
-/// `HOST_LINK_KINDS`.
-const HOST_LINK_KINDS: [&str; 4] = [
+/// Host notices a reader needs: where the conversation came from or moved to,
+/// and any mid-transcript revision of the scene. The header prints whatever
+/// scene is in force at export time, so without the revision notices a reader
+/// would see the story relocate with nothing to mark the move. (v4
+/// `HOST_LINK_KINDS`; `scenario-change` joined at v4 [`44a8137e`].)
+const HOST_LINK_KINDS: [&str; 5] = [
     "continuation-from",
     "continuation-to",
     "merge-from",
     "merge-to",
+    "scenario-change",
 ];
+
+/// [`HOST_LINK_KINDS`], for the cross-module pin in
+/// `host_notifications`: the kind the Host writer stamps on a scenario
+/// revision has to be one this set keeps, or every revision notice would
+/// vanish from an export in silence.
+pub fn host_link_kinds() -> &'static [&'static str] {
+    &HOST_LINK_KINDS
+}
 
 /// The host offset the zone-less formatting path reads (v4
 /// `date.getTimezoneOffset()`, positive = west of UTC).

@@ -233,6 +233,33 @@ pub fn build_scenario_opaque_content(scenario_text: &str) -> String {
     format!("Scene:\n\n{}", js_trim(scenario_text))
 }
 
+/// v4 [`44a8137e`] `HOST_KIND_SCENARIO_CHANGE`.
+const HOST_KIND_SCENARIO_CHANGE: &str = "scenario-change";
+
+/// v4 [`44a8137e`] `buildScenarioRevisionContent`.
+pub fn build_scenario_revision_content(scenario_text: &str) -> String {
+    format!(
+        "The Host revises the scene for the proceedings:\n\n{}",
+        js_trim(scenario_text)
+    )
+}
+
+/// v4 [`44a8137e`] `buildScenarioRevisionOpaqueContent`.
+pub fn build_scenario_revision_opaque_content(scenario_text: &str) -> String {
+    format!(
+        "Scene (revised — this replaces the scene described earlier):\n\n{}",
+        js_trim(scenario_text)
+    )
+}
+
+/// v4 [`44a8137e`] `SCENARIO_CLEARED_CONTENT`.
+const SCENARIO_CLEARED_CONTENT: &str =
+    "The Host draws the previous scene aside; the company carries on without a set scene.";
+
+/// v4 [`44a8137e`] `SCENARIO_CLEARED_OPAQUE_CONTENT`.
+const SCENARIO_CLEARED_OPAQUE_CONTENT: &str =
+    "Scene: none. The scene described earlier no longer applies.";
+
 /// v4 `buildUserCharacterContent`.
 pub fn build_user_character_content(
     user_character_name: &str,
@@ -927,6 +954,61 @@ pub async fn post_host_scenario_announcement(
     .await
 }
 
+/// v4 [`44a8137e`] `HostScenarioRevisionAnnouncement`.
+#[derive(Clone, Debug)]
+pub struct HostScenarioRevisionAnnouncement {
+    pub chat_id: String,
+    /// The scene as it now stands. Empty/blank means the scene was cleared.
+    pub scenario_text: Option<String>,
+}
+
+/// Announce a scene changed mid-conversation (v4 [`44a8137e`]
+/// `postHostScenarioRevisionAnnouncement`). Deliberately distinct from the
+/// chat-start [`post_host_scenario_announcement`]: the opening one still stands
+/// earlier in the transcript, so this one has to read as a revision rather than
+/// as a second, contradictory scene-setting. A blank `scenario_text` retires the
+/// scene instead.
+///
+/// ⚠ Unlike the chat-start announcement, a blank scene here does NOT return
+/// early — it posts the CLEARED pair. (The `?action=scenario` verb only ever
+/// passes `None` or a non-blank string, because `combine_scenario_text` trims;
+/// the blank-STRING arm is v4's and is pinned by unit test in both directions.)
+pub async fn post_host_scenario_revision_announcement(
+    db: &Db,
+    params: HostScenarioRevisionAnnouncement,
+) -> Option<PostedHostMessage> {
+    let (content, opaque_content) = scenario_revision_pair(params.scenario_text.as_deref());
+    post_host_message_with_targets(
+        db,
+        &params.chat_id,
+        content,
+        Some(opaque_content),
+        HOST_KIND_SCENARIO_CHANGE,
+        None,
+    )
+    .await
+}
+
+/// The `(content, opaqueContent)` pair v4's `postHostScenarioRevisionAnnouncement`
+/// picks: the REVISION pair for a scene that survives trimming, the CLEARED pair
+/// otherwise (v4's `text.length > 0` on the trimmed string). Split out of the
+/// poster so the branch itself is unit-testable — the verb can only ever reach
+/// the `None` and non-blank arms.
+fn scenario_revision_pair(scenario_text: Option<&str>) -> (String, String) {
+    let text = js_trim(scenario_text.unwrap_or(""));
+    if text.is_empty() {
+        (
+            SCENARIO_CLEARED_CONTENT.to_string(),
+            SCENARIO_CLEARED_OPAQUE_CONTENT.to_string(),
+        )
+    } else {
+        (
+            build_scenario_revision_content(text),
+            build_scenario_revision_opaque_content(text),
+        )
+    }
+}
+
 /// v4 `HostUserCharacterAnnouncement`.
 #[derive(Clone, Debug)]
 pub struct HostUserCharacterAnnouncement {
@@ -1322,5 +1404,89 @@ mod tests {
     fn status_phrase_fallback() {
         assert_eq!(status_phrase("active"), "present and speaking freely");
         assert_eq!(status_phrase("mystery"), "mystery");
+    }
+
+    // ── P4.D115 (v4 `44a8137e`): the scenario-revision strings ──────────────
+    // The route family pins these end-to-end (the announcement row the verb
+    // writes is compared byte-for-byte). These unit tests pin the two branches
+    // the route CANNOT reach: a blank-but-present `scenario_text`. The verb
+    // only ever passes `None` or a non-blank string, because
+    // `combine_scenario_text` trims — so the cleared pair's blank-STRING arm is
+    // v4 code that is unreachable through v4's own write path, and is pinned
+    // here the way P4.D112 pinned its unreachable boundary escapes.
+
+    #[test]
+    fn scenario_revision_content_is_v4_byte_for_byte() {
+        assert_eq!(
+            build_scenario_revision_content("  A rooftop in the rain.  "),
+            "The Host revises the scene for the proceedings:\n\nA rooftop in the rain."
+        );
+        assert_eq!(
+            build_scenario_revision_opaque_content("  A rooftop in the rain.  "),
+            "Scene (revised — this replaces the scene described earlier):\n\nA rooftop in the rain."
+        );
+    }
+
+    #[test]
+    fn scenario_revision_is_distinct_from_the_chat_start_announcement() {
+        // The opening notice still stands earlier in the transcript, so the two
+        // must not read alike (v4's own reason for the second pair).
+        let text = "A tavern at dusk.";
+        assert_ne!(
+            build_scenario_revision_content(text),
+            build_scenario_content(text)
+        );
+        assert_ne!(
+            build_scenario_revision_opaque_content(text),
+            build_scenario_opaque_content(text)
+        );
+    }
+
+    /// The blank/cleared split, both directions: whitespace-only text takes the
+    /// CLEARED pair and anything else takes the revision pair. Mirrors v4's
+    /// `text.length > 0` test on the trimmed string.
+    #[test]
+    fn scenario_revision_blank_takes_the_cleared_pair() {
+        let cleared = (
+            "The Host draws the previous scene aside; the company carries on without a set scene."
+                .to_string(),
+            "Scene: none. The scene described earlier no longer applies.".to_string(),
+        );
+        // `None` (the verb's cleared arm) AND every blank-but-present string
+        // (v4 code the verb cannot reach) take the cleared pair.
+        assert_eq!(scenario_revision_pair(None), cleared);
+        for blank in ["", "   ", "\n\t \u{00a0}"] {
+            assert!(
+                js_trim(blank).is_empty(),
+                "{blank:?} must trim to empty for this test to mean anything"
+            );
+            assert_eq!(
+                scenario_revision_pair(Some(blank)),
+                cleared,
+                "blank {blank:?}"
+            );
+        }
+        // …and the other direction: a scene that survives trimming never takes
+        // the cleared pair.
+        assert_eq!(
+            scenario_revision_pair(Some("  A rooftop in the rain.  ")),
+            (
+                build_scenario_revision_content("A rooftop in the rain."),
+                build_scenario_revision_opaque_content("A rooftop in the rain."),
+            )
+        );
+    }
+
+    #[test]
+    fn scenario_change_is_an_exported_host_link_kind() {
+        // The kind the writer stamps has to be the one the Markdown transcript
+        // keeps — a mismatch would silently drop every revision notice from an
+        // export. Pinned here because the two constants live in different
+        // modules and nothing else compares them.
+        assert!(
+            crate::services::markdown_transcript::host_link_kinds()
+                .contains(&HOST_KIND_SCENARIO_CHANGE),
+            "the writer's kind must be in the transcript's exported set"
+        );
     }
 }

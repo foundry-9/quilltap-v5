@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — feat(host): the Host announces a scene revised mid-conversation
+
+_Versions: core 0.0.663._
+
+Ports v4 `44a8137e`'s `postHostScenarioRevisionAnnouncement` and the new
+`scenario-change` host kind. The four strings are byte-exact; a blank scene
+takes the cleared pair ("The Host draws the previous scene aside…") rather than
+returning early, which is where this writer differs from the chat-start
+`scenario` announcement it deliberately does not resemble — the opening notice
+still stands earlier in the transcript, so the revision has to read as
+superseding it rather than contradicting it.
+
+`scenario-change` also joins `HOST_LINK_KINDS` in the Markdown transcript
+export, with v4's rewritten why-comment: the header prints whatever scene is in
+force at export time, so without the revision notices a reader would see the
+story relocate with nothing to mark the move.
+
+The branch that picks the cleared pair is split into a pure helper so it is
+testable; the blank-but-present arm is v4 code the `?action=scenario` verb
+cannot reach (`combine_scenario_text` trims), pinned by unit test in both
+directions. A cross-module test asserts the kind the writer stamps is one the
+transcript keeps — a mismatch would drop every revision notice from an export
+in silence.
+
 #### 2026-08-25 — feat(chat): the scenario precedence chain moves into its own resolver
 
 _Versions: core 0.0.662._
