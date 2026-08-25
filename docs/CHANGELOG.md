@@ -195,6 +195,22 @@ Recorded mechanism divergence: v4's module also exports
 mutations ride dispatch verbs, so that routing lands in `wardrobe.api.ts` as a
 verb router in a later unit of this lane; the types and the encoding stay
 v4's verbatim.
+#### 2026-08-25 — fix(home): a failed New Project shows v4's sentence, not the server's (P4.D114)
+
+_Versions: no crate versions bumped (the SPA rides un-bumped per the round's ownership split; the unifier recounts)._
+
+The client half of v4 `c93ec7ff`. v4 gave `QuickActionsRow`'s own create
+handler the two toasts its raw `fetch` never had, with the same sentences
+Prospero's `useProjects` hook already used — so both v4 hosts now agree.
+
+v5 reaches both hosts through ONE shared `qt-project-create-dialog`, which
+already toasted `Project created successfully!`. Its failure arm surfaced the
+transport's own message, which v4 never does: `useProjects` throws a fixed
+`Failed to create project` without reading the response body. That mattered
+more once bug 98's schema landed, since a refused create now answers
+`Validation error` — a sentence a v4 user never sees. The dialog now shows
+v4's fixed sentence in both hosts.
+
 #### 2026-08-25 — feat(images): every gallery can download the picture on display (P4.D114)
 
 _Versions: no crate versions bumped (the SPA rides un-bumped per the round's ownership split; the unifier recounts)._

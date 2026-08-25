@@ -85711,3 +85711,50 @@ boundary (`HTMLAnchorElement.prototype.click`, a stubbed `navigator.clipboard`
 
 **Mutation proof:** `triggerBlobDownload(blob, entry.fileName)` →
 `entry.relativePath` reds the photos download spec.
+
+### Unit 4 — the create-project toasts (v4 `c93ec7ff`, client half)
+
+v4's `QuickActionsRow` did its own raw `fetch` and toasted nothing; `c93ec7ff`
+gave it `showSuccessToast('Project created successfully!')` and
+`showErrorToast('Failed to create project')` on BOTH failure arms (the
+`!res.ok` else and the catch). The sentences are the ones Prospero's
+`useProjects.createProject` hook already used, so v4's two hosts now agree.
+
+**v5's shape differs and the port has to account for it, loudly.** v5 reaches
+both hosts through ONE shared `screens/prospero/project-create-dialog.ts`,
+which had already transcribed the Prospero hook's success toast. So the success
+arm was in place for both hosts before this unit.
+
+The failure arm was NOT: v5's dialog surfaced
+`err instanceof Error ? err.message : …`, i.e. the transport's own message.
+**v4 never surfaces it** — `hooks/useProjects.ts:56` throws its own fixed
+`'Failed to create project'` on `!res.ok` WITHOUT reading the body, and
+`c93ec7ff`'s new home-host arms are that same fixed string. This became
+user-visible with unit 2: a refused create now answers `Validation error`,
+which a v4 user can never see. The dialog now answers v4's sentence.
+
+⚠ **Ownership note for the unifier:** `screens/prospero/project-create-dialog.ts`
+is not named in this lane's Ownership row, but no other lane in the round owns
+it either (P4.D112 is core + `wardrobe_routes.rs`; P4.D113 is
+`apps/web/src/app/wardrobe/**`), and the deliverable is unreachable without it
+— the try/catch lives there, not in `quick-actions-row.ts`. The edit is four
+lines plus comments.
+
+**Proof:** `quick-actions-row.spec.ts` +2, driving the REAL dialog hosted
+inside the REAL quick-actions row and reading the sentences off `ToastService`
+— success, and a rejecting `dispatchData` whose message is literally
+`Validation error`, asserting the toast is `Failed to create project` and not
+that. Mutation: changing the sentence reds the failure spec.
+
+**Why the gesture reaches past the DOM:** the dialog's Create button lives in
+the modal FOOTER and reaches the form through `form="qt-project-create-form"`,
+which jsdom does not implement; and `ngModel`'s write-back does not settle
+under the zoneless fixture. The spec sets the dialog's `name` signal and calls
+its real `submit()`, so `createProject`, the toasts and the close all run for
+real. (Worth a memory note — this is the second lane to trip on it.)
+
+**No e2e beat, and why.** A home-flow beat would have to either dirty the
+shared instance with a real project or force a server refusal, and the dialog
+caps the name at `maxlength="100"` so the over-max body is not reachable
+through the UI. The walk's own header records that it "only READS + navigates
+… the shared fixture is left pristine"; that stands.

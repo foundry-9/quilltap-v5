@@ -9,7 +9,12 @@ import { ToastService } from '../../ui/toast.service';
 /**
  * The Create Project dialog (v4 `CreateProjectDialog.tsx`): name* (max 100) +
  * optional description (max 2000). On success it emits the new project's id
- * (the list navigates into the detail). Failures surface an inline alert.
+ * (the list navigates into the detail) and toasts v4's success sentence;
+ * failures toast v4's fixed failure sentence (see `submit`).
+ *
+ * This ONE dialog serves both of v4's hosts — Prospero (`ProsperoView` →
+ * `useProjects.createProject`) and the home page's quick-actions row — which
+ * `c93ec7ff` brought into agreement on both sentences.
  */
 @Component({
   selector: 'qt-project-create-dialog',
@@ -89,8 +94,14 @@ export class ProjectCreateDialog {
       const project = await createProject(this.core, name, this.description() || null);
       this.toasts.showSuccess('Project created successfully!');
       this.created.emit(project.id);
-    } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : 'Failed to create project');
+    } catch {
+      // v4's create NEVER surfaces the server's own sentence: `useProjects`
+      // throws its own fixed `'Failed to create project'` on `!res.ok` without
+      // reading the body (`hooks/useProjects.ts:56`), and `af1bc479`'s sibling
+      // `c93ec7ff` gave the home host's QuickActionsRow the SAME fixed string
+      // on both its failure arms. v5 used to leak the transport's message —
+      // which, since bug 98's schema landed, would read `Validation error`.
+      this.toasts.showError('Failed to create project');
     } finally {
       this.saving.set(false);
     }
