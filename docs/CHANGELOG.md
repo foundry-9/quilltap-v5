@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — fix(custom-tools): the run body is parsed against v4's runSchema, not collapsed key-by-key (P4.60 unit 1)
+
+_Versions: core 0.0.646, harness 0.0.563, web 0.0.80._
+
+`POST /api/v1/chats/{id}/custom-tools?action=run` read its four body keys with
+`and_then(Value::as_str)` / `as_bool` / `as_object`, which turned a
+present-but-wrong-typed value into "the caller didn't say". v4 calls
+`runSchema.parse` uncaught, so `tool: 123`, `parameters: "nope"`,
+`private: null` and `asCharacterId: 42` are all a flat 400 `Validation error`
+there; v5 ran the tool.
+
+The schema is now ported as `quilltap_core::api::custom_tools::parse_run_body`,
+which the edge calls. A second divergence the collapse had hidden: v4 reads
+`asCharacterId` through a truthiness gate at all four of its sites, so an empty
+string means "nobody named" — v5 answered `No character participant with id  is
+in this chat`, and on the effect path would have written to a character's sheet
+where v4 writes to nobody's. `chat_custom_tool_run` normalizes it, so the
+dispatch entrance agrees with the edge.
+
+`pascal_custom_tools_route_equivalence` gains twelve arms (24 → 36) driving the
+real parser, and its POST leg now goes through it rather than re-reading the
+keys itself. New `web_edge_body_parse_guard` holds the whole
+`quilltap-web/src/*_routes.rs` surface to a per-file census of the collapsing
+idiom and pins that the fixed edge still routes through its parser.
+
 #### 2026-08-24 — docs(porting): the no-drift maintenance round ordered (P4.59 ∥ P4.60 ∥ P4.61)
 
 _Docs-only; no version bumps._

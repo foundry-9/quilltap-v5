@@ -70,28 +70,21 @@ pub async fn custom_tools_post(
         }
     };
 
-    // v4's runSchema: tool (required, min 1), parameters (record, nullish),
-    // private (bool, optional), asCharacterId (string, nullish).
-    let tool = match json_body.get("tool").and_then(Value::as_str) {
-        Some(t) if !t.is_empty() => t.to_string(),
-        _ => return error_json(StatusCode::BAD_REQUEST, "A tool name is required"),
+    // v4's `runSchema.parse` — UNCAUGHT, so any failure is the middleware's flat
+    // 400 `{error: 'Validation error'}` (P4.60: this used to read each key with
+    // `and_then(Value::as_str)`/`as_bool`/`as_object`, which turned a
+    // present-but-wrong-typed value into "the caller didn't say").
+    let body = match quilltap_core::api::custom_tools::parse_run_body(&json_body) {
+        Ok(b) => b,
+        Err(resp) => return unwrap_to_http(resp, StatusCode::OK),
     };
-    let parameters = json_body
-        .get("parameters")
-        .and_then(Value::as_object)
-        .cloned();
-    let private = json_body.get("private").and_then(Value::as_bool);
-    let as_character_id = json_body
-        .get("asCharacterId")
-        .and_then(Value::as_str)
-        .map(str::to_string);
 
     let req = CoreRequest::ChatCustomToolRun {
         chat_id: id,
-        tool,
-        parameters,
-        private,
-        as_character_id,
+        tool: body.tool,
+        parameters: body.parameters,
+        private: body.private,
+        as_character_id: body.as_character_id,
     };
     match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),

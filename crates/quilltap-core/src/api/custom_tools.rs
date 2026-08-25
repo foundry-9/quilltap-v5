@@ -537,6 +537,93 @@ enum RunPrep {
     ),
 }
 
+/// v4 `runSchema` (`route.ts:371-378`), ported whole:
+///
+/// ```text
+/// tool:          z.string().min(1, 'A tool name is required')
+/// parameters:    z.record(z.string(), z.unknown()).nullish()
+/// private:       z.boolean().optional()
+/// asCharacterId: z.string().nullish()
+/// ```
+///
+/// `handleRun` calls `runSchema.parse` — **uncaught** — so every failure
+/// surfaces through v4's middleware as the FLAT 400 `{error: 'Validation
+/// error'}` (`context.ts:166`; the `details` issue array is the standing
+/// project-wide deferral, same as the groups/wardrobe routes). The per-issue
+/// sentences (`'A tool name is required'` included) only ever appear INSIDE
+/// `details`, so this parser reports pass/fail and nothing finer.
+///
+/// This is what P4.60 replaced at the web edge: reading each key with
+/// `and_then(Value::as_str)`/`as_bool`/`as_object` collapsed absent, explicit
+/// `null`, and a present-but-WRONG-TYPED value into one `None`, so a body v4
+/// refuses outright ran as if the caller had said nothing.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomToolRunBody {
+    pub tool: String,
+    /// `nullish()` — absent and `null` are indistinguishable downstream
+    /// (`body.parameters ?? undefined`).
+    pub parameters: Option<Map<String, Value>>,
+    pub private: Option<bool>,
+    /// `nullish()`, and every downstream read is `body.asCharacterId ? … : …`
+    /// — so an EMPTY string is the falsy branch, exactly like absent. Normalized
+    /// here so both entrances (this edge and the dispatch verb) agree.
+    pub as_character_id: Option<String>,
+}
+
+/// Parse a raw `POST ?action=run` body against v4's `runSchema`.
+///
+/// `Err` is v4's uncaught-ZodError 400, already shaped.
+pub fn parse_run_body(body: &Value) -> Result<CustomToolRunBody, Response> {
+    let invalid = || {
+        Response::error(
+            ErrorKind::BadRequest,
+            crate::services::chat_participants::VALIDATION_ERROR,
+        )
+    };
+
+    // `z.object` — a non-object input is itself an invalid_type issue.
+    let Some(obj) = body.as_object() else {
+        return Err(invalid());
+    };
+
+    // tool: z.string().min(1) — required. Lengths are UTF-16 units, but `min(1)`
+    // only separates empty from non-empty, and no encoding disagrees there.
+    let tool = match obj.get("tool") {
+        Some(Value::String(s)) if !s.is_empty() => s.clone(),
+        _ => return Err(invalid()),
+    };
+
+    // parameters: z.record(...).nullish() — an ARRAY is `received array`, not a
+    // record (probed on v4's zod 4.4.3), so `as_object` is the right gate.
+    let parameters = match obj.get("parameters") {
+        None | Some(Value::Null) => None,
+        Some(Value::Object(m)) => Some(m.clone()),
+        Some(_) => return Err(invalid()),
+    };
+
+    // private: z.boolean().optional() — optional but NOT nullable, so an
+    // explicit `null` is a ZodError where an absent key is not.
+    let private = match obj.get("private") {
+        None => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return Err(invalid()),
+    };
+
+    // asCharacterId: z.string().nullish() — then the handler's truthiness gate.
+    let as_character_id = match obj.get("asCharacterId") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) => Some(s.clone()),
+        Some(_) => return Err(invalid()),
+    };
+
+    Ok(CustomToolRunBody {
+        tool,
+        parameters,
+        private,
+        as_character_id,
+    })
+}
+
 /// v4 `handleRun` — run one tool at the operator's behest.
 #[allow(clippy::too_many_arguments)]
 pub async fn chat_custom_tool_run(
@@ -557,6 +644,12 @@ pub async fn chat_custom_tool_run(
     let user_id_owned = user_id.to_string();
     let chat_id_owned = chat_id.to_string();
     let tool_owned = tool.to_string();
+    // v4 reads `body.asCharacterId` through a truthiness gate at all four sites
+    // (perspective choice, `metadata`, the group scope, the effect `characterId`),
+    // so an EMPTY string means "nobody named" — not "a character whose id is ''".
+    // `parse_run_body` already normalizes the edge's copy; this keeps the
+    // dispatch entrance (the SPA's path) from disagreeing with it.
+    let as_character_id = as_character_id.filter(|s| !s.is_empty());
     let as_char = as_character_id.clone();
 
     let prep = db.read_main(|main| {

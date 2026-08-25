@@ -256,6 +256,31 @@ fn canon(v: &Value) -> Value {
     }
 }
 
+/// v4's middleware answers an uncaught `ZodError` with `{error: 'Validation
+/// error', details: [...issues]}`. The `details` issue array is the standing
+/// project-wide deferral (the P4.6ay-unit-12 / groups / wardrobe precedent), so
+/// v5's envelope carries the sentence alone.
+///
+/// This does NOT just drop the key: it first pins that the sentence the deferral
+/// leaves behind is exactly `Validation error`. A route that answered some OTHER
+/// top-level string with a `details` array would fail here rather than pass
+/// silently.
+fn drop_zod_details(name: &str, want_body: &Value) -> Value {
+    let Some(o) = want_body.as_object() else {
+        return want_body.clone();
+    };
+    if !o.contains_key("details") {
+        return want_body.clone();
+    }
+    assert_eq!(
+        o.get("error").and_then(Value::as_str),
+        Some("Validation error"),
+        "case '{name}': a ZodError body whose top-level sentence is NOT \
+         'Validation error' — the details deferral must not hide that"
+    );
+    json!({ "error": "Validation error" })
+}
+
 /// A minted `id`/`createdAt` is a non-empty string; the fixture's stable vault
 /// ids never appear as an `id`/`createdAt` key on a message object.
 fn looks_minted(v: &Value) -> bool {
@@ -581,6 +606,99 @@ async fn custom_tools_route_matches_oracle() {
             ),
             false,
         ),
+        // -------------------------------------------------------------------
+        // P4.60 — the wrong-type-collapse arms. `handleRun` calls
+        // `runSchema.parse` UNCAUGHT, so every refusal here is the middleware's
+        // flat 400 `Validation error`; the schema's own sentences (including
+        // `'A tool name is required'`) live only in the deferred `details`.
+        // The passing arms are the other two poles the corpus needs: an explicit
+        // `null` where the key is `nullish()`, and an unknown key `z.object`
+        // strips.
+        // -------------------------------------------------------------------
+        (
+            "run-tool-wrong-type",
+            CHAT,
+            Some(json!({ "tool": 123, "asCharacterId": "a1000000-0000-4000-8000-00000000000a" })),
+            false,
+        ),
+        (
+            "run-tool-empty",
+            CHAT,
+            Some(json!({ "tool": "", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" })),
+            false,
+        ),
+        (
+            "run-tool-missing",
+            CHAT,
+            Some(json!({ "asCharacterId": "a1000000-0000-4000-8000-00000000000a" })),
+            false,
+        ),
+        (
+            "run-parameters-wrong-type",
+            CHAT,
+            Some(
+                json!({ "tool": "coin", "parameters": "nope", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-parameters-array",
+            CHAT,
+            Some(
+                json!({ "tool": "coin", "parameters": [1], "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-parameters-null",
+            CHAT,
+            Some(
+                json!({ "tool": "coin", "parameters": null, "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-private-wrong-type",
+            CHAT,
+            Some(
+                json!({ "tool": "coin", "private": "yes", "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-private-null",
+            CHAT,
+            Some(
+                json!({ "tool": "coin", "private": null, "asCharacterId": "a1000000-0000-4000-8000-00000000000a" }),
+            ),
+            false,
+        ),
+        (
+            "run-as-character-wrong-type",
+            CHAT,
+            Some(json!({ "tool": "coin", "asCharacterId": 42 })),
+            false,
+        ),
+        (
+            "run-as-character-null",
+            CHAT,
+            Some(json!({ "tool": "coin", "asCharacterId": null })),
+            false,
+        ),
+        (
+            "run-ledger-as-empty-string",
+            CHAT,
+            Some(json!({ "tool": "ledger", "asCharacterId": "" })),
+            false,
+        ),
+        (
+            "run-unknown-key",
+            CHAT,
+            Some(
+                json!({ "tool": "coin", "asCharacterId": "a1000000-0000-4000-8000-00000000000a", "bogus": 1 }),
+            ),
+            false,
+        ),
     ];
 
     // Declared on BOTH sides, so a case added to the oracle and forgotten here
@@ -608,37 +726,43 @@ async fn custom_tools_route_matches_oracle() {
                 (s, b, Vec::new())
             }
             Some(b) => {
-                let tool = b["tool"].as_str().unwrap().to_string();
-                let parameters = b.get("parameters").and_then(Value::as_object).cloned();
-                let private = b.get("private").and_then(Value::as_bool);
-                let as_character_id = b
-                    .get("asCharacterId")
-                    .and_then(Value::as_str)
-                    .map(str::to_string);
-                // The REAL consult seam, exactly as the engine passes it since
-                // P4.6bd: a `ProviderConsultRunner` over the canned provider —
-                // the handler builds the real `CustomToolLlmInvoker` through
-                // it. Profile-free cases stop at v4's `no connection profiles
-                // are configured`; the `profile: true` case resolves through
-                // the oracle-recorded canned rows.
-                let runner = ProviderConsultRunner {
-                    completion: canned_provider(want),
-                };
-                let (s, bd) = status_body(
-                    chat_custom_tool_run(
-                        &db,
-                        USER,
-                        chat,
-                        &tool,
-                        parameters,
-                        private,
-                        as_character_id,
-                        Some(&runner),
-                    )
-                    .await,
-                );
-                let rows = system_rows(&db);
-                (s, bd, rows)
+                // P4.60: the raw body goes through the REAL `runSchema` port the
+                // web edge calls. Reading the keys HERE with `as_str`/`as_bool`/
+                // `as_object` — what this leg used to do — mirrored the edge's own
+                // wrong-type collapse and would make every new arm below vacuous.
+                match quilltap_core::api::custom_tools::parse_run_body(b) {
+                    Err(resp) => {
+                        let (s, bd) = status_body(resp);
+                        (s, bd, system_rows(&db))
+                    }
+                    Ok(parsed) => {
+                        // The REAL consult seam, exactly as the engine passes it
+                        // since P4.6bd: a `ProviderConsultRunner` over the canned
+                        // provider — the handler builds the real
+                        // `CustomToolLlmInvoker` through it. Profile-free cases
+                        // stop at v4's `no connection profiles are configured`;
+                        // the `profile: true` case resolves through the
+                        // oracle-recorded canned rows.
+                        let runner = ProviderConsultRunner {
+                            completion: canned_provider(want),
+                        };
+                        let (s, bd) = status_body(
+                            chat_custom_tool_run(
+                                &db,
+                                USER,
+                                chat,
+                                &parsed.tool,
+                                parsed.parameters,
+                                parsed.private,
+                                parsed.as_character_id,
+                                Some(&runner),
+                            )
+                            .await,
+                        );
+                        let rows = system_rows(&db);
+                        (s, bd, rows)
+                    }
+                }
             }
         };
 
@@ -655,7 +779,7 @@ async fn custom_tools_route_matches_oracle() {
         );
         assert_eq!(
             canon(&resp_body),
-            canon(&want["body"]),
+            canon(&drop_zod_details(name, &want["body"])),
             "case '{name}' body"
         );
         assert_eq!(

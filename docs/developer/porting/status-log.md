@@ -83948,3 +83948,76 @@ warnings` clean, plain AND `--features quilltap-core/native-transport`;
 `cargo test --workspace` **449 test binaries / 2,325 passed / 0 failed**, zero
 `not set; skipping` lines (2,320 → 2,325, exactly this change's five); release
 build (`quilltap-web` + `quilltap-cli`) clean. Versions: host 0.0.80.
+
+
+## P4.60 — the wrong-type-collapse edge adjudication (lane `claude/p4-60-collapse-edges-ec17d3`)
+
+Ordered 2026-08-24 (`work-orders/p4.60-wrong-type-collapse-edges.md`), v4
+baseline `0ba942b1`. Drift-checked at lane start: `git log 0ba942b1..main` is
+EMPTY, the checkout sits on `main` with a CLEAN tree, and `bugfix` HEAD is
+`3a76b17d` with nothing unabsorbed — a genuinely no-drift lane, so every regen
+runs against the live checkout rather than a pinned worktree.
+
+### The class, restated
+
+An edge that reads a body key with `.and_then(Value::as_str)` (or `as_bool` /
+`as_array` / `as_object`) collapses **absent**, explicit **null**, and
+**present-but-wrong-typed** into one `None`. The third is the dangerous one: a
+value v4's Zod refuses outright becomes, in v5, "the caller didn't say".
+
+### Unit 1 — `POST /api/v1/chats/{id}/custom-tools?action=run` — DIVERGENT, FIXED
+
+v4 (`app/api/v1/chats/[id]/custom-tools/route.ts:371-385`) calls
+`runSchema.parse(await req.json())` **uncaught**, so every failure surfaces
+through the middleware as the flat 400 `{error: 'Validation error', details:
+[…]}` (`lib/api/middleware/context.ts:166` → `responses.ts:validationError`).
+The schema's own sentences — `'A tool name is required'` included — appear ONLY
+inside `details`, which is the standing project-wide deferral (the
+P4.6ay-unit-12 / groups / wardrobe precedent). v5 answered its own
+`"A tool name is required"` at the top level and, for every non-string value,
+did not refuse at all.
+
+Ported as `quilltap_core::api::custom_tools::parse_run_body` (returning v4's
+already-shaped `Response` on failure), which `custom_tools_routes.rs` calls.
+The four keys, measured against v4's zod 4.4.3 rather than predicted:
+
+| key | schema | absent | `null` | wrong-typed |
+|---|---|---|---|---|
+| `tool` | `z.string().min(1)` | 400 | 400 | 400 (empty string too) |
+| `parameters` | `z.record(…).nullish()` | pass | pass | 400 — an ARRAY is `received array`, not a record |
+| `private` | `z.boolean().optional()` | pass | **400** — optional is not nullable | 400 |
+| `asCharacterId` | `z.string().nullish()` | pass | pass | 400 |
+
+**A second divergence the collapse had hidden.** `asCharacterId` survives the
+schema as any string, and all four of v4's downstream reads are truthiness
+gates (`body.asCharacterId ? … : …`): the perspective choice, `metadata`, the
+group scope, and the effect applier's `characterId`. An EMPTY string therefore
+means "nobody named". v5 carried `Some("")` into `find(|p| p.character_id ==
+"")` and answered `No character participant with id  is in this chat`; worse,
+had it resolved, `as_character_id.map(|_| perspective_character_id)` would have
+written a side effect to a character's sheet where v4 writes to nobody's. The
+normalization lives in `chat_custom_tool_run` so the dispatch entrance (the
+SPA's path) cannot disagree with the REST edge.
+
+**Differential.** `pascal_custom_tools_route_equivalence` 24 → 36 cases, all
+driving v4's REAL route handler. Its POST leg used to re-read the raw case body
+with `as_str`/`as_bool`/`as_object` — the same collapse as the edge — which
+would have made every new arm vacuous; it now runs `parse_run_body` and returns
+the parser's refusal directly. The oracle's `details` array is dropped by
+`drop_zod_details`, which first ASSERTS the surviving top-level sentence is
+exactly `Validation error`, so the deferral cannot hide a wrong one.
+
+Two mutation proofs, both on v5 source (never the fixture):
+
+- `private`'s wrong-type arm reverted to `Some(_) => None` →
+  `run-private-wrong-type` reds on status.
+- the `as_character_id` empty-string normalization removed →
+  `run-ledger-as-empty-string` reds on status.
+
+**New: `web_edge_body_parse_guard`** (the `db_error_key_guard` idiom). Two
+tests: the fixed edge must still contain its `parse_run_body(` call — a
+differential over the parser alone would stay green while the route went back
+to collapsing — and the whole `crates/quilltap-web/src/*_routes.rs` surface is
+held to an exact per-file count of `and_then(Value::as_` with the adjudication
+written beside each number. The census IS this lane's enumeration deliverable;
+rows still carrying collapsing sites name what is left to do.

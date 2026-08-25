@@ -466,6 +466,35 @@ async function main(): Promise<void> {
     // `revealOdds: false` + cascade precedence (chat's difficulty wins over
     // general's).
     { name: 'run-sealed-tally', method: 'POST', body: { tool: 'sealed_tally', asCharacterId: CHAR_A } },
+    // ---------------------------------------------------------------------
+    // P4.60 — the wrong-type-collapse arms. `runSchema.parse` is UNCAUGHT, so
+    // every refusal below is the middleware's flat 400 `{error: 'Validation
+    // error'}`; the schema's own sentences live only in `details`. v5's edge
+    // used to read each key with `and_then(Value::as_str)`/`as_bool`/
+    // `as_object`, which turned a present-but-wrong-typed value into "the
+    // caller said nothing" — these cases are what measures that.
+    // ---------------------------------------------------------------------
+    { name: 'run-tool-wrong-type', method: 'POST', body: { tool: 123, asCharacterId: CHAR_A } },
+    { name: 'run-tool-empty', method: 'POST', body: { tool: '', asCharacterId: CHAR_A } },
+    { name: 'run-tool-missing', method: 'POST', body: { asCharacterId: CHAR_A } },
+    { name: 'run-parameters-wrong-type', method: 'POST', body: { tool: 'coin', parameters: 'nope', asCharacterId: CHAR_A } },
+    { name: 'run-parameters-array', method: 'POST', body: { tool: 'coin', parameters: [1], asCharacterId: CHAR_A } },
+    // `.nullish()` — an explicit null PASSES and reads as "no parameters".
+    { name: 'run-parameters-null', method: 'POST', body: { tool: 'coin', parameters: null, asCharacterId: CHAR_A } },
+    { name: 'run-private-wrong-type', method: 'POST', body: { tool: 'coin', private: 'yes', asCharacterId: CHAR_A } },
+    // `.optional()` is NOT `.nullable()` — an explicit null is a ZodError here
+    // where the two `nullish()` keys accept one. The absent/null/value poles
+    // are what the corpus needs (js-nullish-chain-is-or-else-not-filter).
+    { name: 'run-private-null', method: 'POST', body: { tool: 'coin', private: null, asCharacterId: CHAR_A } },
+    { name: 'run-as-character-wrong-type', method: 'POST', body: { tool: 'coin', asCharacterId: 42 } },
+    { name: 'run-as-character-null', method: 'POST', body: { tool: 'coin', asCharacterId: null } },
+    // The EMPTY-STRING arm: `asCharacterId` passes the schema, then every one
+    // of the handler's four reads is a truthiness gate (`body.asCharacterId ?
+    // … : …`) — so '' means "nobody named". Run through `ledger` so WHERE the
+    // effect lands is in the dump: this must match `run-ledger-no-character`.
+    { name: 'run-ledger-as-empty-string', method: 'POST', body: { tool: 'ledger', asCharacterId: '' } },
+    // z.object is non-strict: an unknown key is STRIPPED, not refused.
+    { name: 'run-unknown-key', method: 'POST', body: { tool: 'coin', asCharacterId: CHAR_A, bogus: 1 } },
   ];
 
   const out = fs.createWriteStream(outPath);
