@@ -86899,3 +86899,61 @@ run left `generate-image-page.spec.ts` red once on an unrelated assertion
 the full suite ran green **three consecutive times** (5,150/5,150). Recorded
 here rather than in a memory note because the cause left with the code that
 caused it.
+
+### P4.D117 deferrals (loud)
+
+1. **`help/character-gallery.md` → the `p4.9i2` bank (tier 3, item 8).**
+   `8018c487` adds ONE bullet after "Clear avatar", describing the thumbnail's
+   downward-arrow Download and the same control at the top right of the enlarged
+   view. Port it whenever the help pool is drained; nothing in this lane depends
+   on it. Nothing else in v4's `help/` moved in either source commit.
+2. **`qt-image-gallery` still has no v5 host (tier 3, item 7, E5, pre-existing).**
+   `309aaa97` rewrote one class in v4's `components/images/image-gallery.tsx` and
+   this lane's sweep applied the same rewrite to `src/app/images/image-gallery.ts`
+   — so the component's classes are current, but no v5 screen renders it (v4's
+   two mount sites are unported and `GET /api/v1/images?tagType&tagId` has no v5
+   verb). The component's own header note already records this; it was not
+   extended, because the lane's change to it was a one-word class rename.
+3. **Five `qt-text-tertiary` sites in `src/app/screens/new-chat/`** — P4.D116's
+   dirs, held by the guard's `PENDING_CROSS_LANE_SITES` tripwire. **The unifier
+   applies `qt-text-tertiary` → `qt-text-secondary` in
+   `green-room-dialog.ts` (`:62`, `:77`, `:82`), `outfit-slots-preview.ts`
+   (`:38`) and `outfit-slots-preview.spec.ts` (`:39`), then deletes the block.**
+   The guard errors while the block names a site that is already fixed, so this
+   hand-off cannot be forgotten quietly.
+4. **`photo-gallery-modal.ts`'s own `z-50` overlay is not portaled** — v4's
+   `PhotoGalleryModal.tsx` is not either (`8018c487` portals only
+   `ImageDetailModal`), so this is faithfulness, not a gap. If v4 portals that
+   layer later, it is a drift row.
+
+### P4.D117 — the lane gate
+
+Run on `claude/qt-classes-gallery-download-4e8e8a` at `b28729ba`:
+
+| gate | result |
+|---|---|
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| … `--features quilltap-core/native-transport` | clean |
+| `cargo test --workspace` | **454 test binaries / 2,361 tests / 0 failed** |
+| `check-qt-classes` | green — 934 qt-* classes defined, every guarded reference resolves (3 cross-lane sites held) |
+| `npm test` (SPA) | **344 files / 5,150 tests / 0 failed**, three consecutive runs |
+| `npm run build` | clean |
+| `npx playwright test` | **243 passed / 0 failed / 1 skipped (5.7 m)** — the suite grew 241 → 244 with this lane's two beats |
+
+The one skip is the pre-existing `wardrobe-flow` component-transfer beat that
+self-parks on the committed fixture's missing General store (P4.D112's recorded
+ACTIVATE-AT-UNIFY row) — not this lane's.
+
+**⚠ The port-4319 collision the order warned about actually happened, and it is
+worth the next lane's attention.** A first full-suite launch here ran while the
+P4.D116 worktree already had `quilltap-web` on 4319. Global setup does NOT kill a
+squatter and does NOT fail on the bind: it spawns its own server (which dies on
+`EADDRINUSE`), then waits for the port to answer — and the *sibling's* server
+answers. The run proceeds silently against the other lane's SPA build and the
+other lane's instance, and reads as ordinary test failures (`aa-foundation` went
+red first). It was discarded and re-run after the port freed. **The tell is
+`lsof -iTCP:4319 -sTCP:LISTEN` naming another worktree's `target/release/
+quilltap-web`; check it before every suite run, and queue behind the other lane
+rather than racing.** No data crossed over — each worktree has its own instance
+directory — so the sibling's run was unaffected beyond CPU contention.

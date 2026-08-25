@@ -192,6 +192,21 @@ collapse to a stray space. The host carries `block`, so `.qt-select`'s
 `select.value` after the children mount, so a selection naming no rendered
 option leaves the control blank instead of snapping to row 0 - reachable here
 whenever a tier's list refetches without the row the current selection names.
+#### 2026-08-25 — docs(porting): the P4.D117 lane record — deferrals and the gate
+
+_Docs-only change._
+
+The lane's loud deferrals (the `help/character-gallery.md` bullet to the `p4.9i2`
+bank, the pre-existing `qt-image-gallery` host gap, the five `qt-text-tertiary`
+sites in P4.D116's directory that the guard holds under a self-retiring tripwire,
+and `photo-gallery-modal`'s un-portaled overlay which matches v4) and the gate
+numbers.
+
+Also recorded: the port-4319 collision the order warned about, which happened.
+Playwright's global setup neither kills a squatter nor fails on the bind — it
+waits for the port to answer, and a sibling lane's server answers, so the run
+proceeds silently against the other lane's build and reads as ordinary failures.
+
 #### 2026-08-25 — fix(images): the image detail modal escapes the workspace stacking trap (bug 99, part 2)
 
 _Versions: SPA 0.5.559._
