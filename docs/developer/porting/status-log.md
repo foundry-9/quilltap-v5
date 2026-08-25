@@ -86484,3 +86484,44 @@ post-render assignment reddens exactly three arms (the selected-row assertion,
 the blank-off-list arm, and the late-arriving-options arm) and nothing else.
 
 Versions: SPA 0.5.557.
+
+### Unit 2 — the New-Chat form refactored onto `ScenarioSelect`
+
+v4's own half of the extraction, mirrored: `new-chat.types.ts` re-exports the
+five types + four constants from `app/scenario/scenario.types` (v4's exact
+re-export list) instead of declaring its own; `ScenarioOption` and
+`CharacterScenarioOption` survive as v5-local aliases, because v5 had collapsed
+v4's two identical `Project`/`General` interfaces into one name before the
+shared module existed. `scenarioSelectPatch(value)` is now the composition
+`scenarioSelectionPatch(scenarioValueToSelection(value))` — which is exactly
+what v4's refactor made it — and the form renders `<qt-scenario-select>`.
+
+**Neutrality proof:** the existing new-chat specs are green UNCHANGED — the
+spec diff is additions only (`git diff` shows a single `-` line, the file
+header). Full SPA suite 346 files / 5,167 tests, 0 failed.
+
+**Two things v4's refactor genuinely changed, both handled:**
+
+1. **A malformed group token now reads as custom.** v4's pre-`44a8137e`
+   `handleScenarioSelectChange` had `if (colonIdx > -1) { … }` with no `else`,
+   so `group:no-colon-after-this` fell through to the character arm and was
+   stored whole as a `scenarioId`. The shared `scenarioValueToSelection`
+   returns `{ kind: 'custom' }` from inside that branch. v5 had reproduced the
+   old fall-through exactly; the new arm is pinned by spec and the code comment
+   names the sha.
+2. **The character tier regains its ` — description` suffix.** v4's inline
+   dropdown always rendered `{s.description ? \` — ${s.description}\` : ''}` on
+   character options; v5's transcription had dropped it (project and general
+   kept theirs). Adopting the shared component restores it — a pre-existing v5
+   divergence closed on the way, pinned by unit 1's label spec.
+
+**The group optgroup stays absent, and the reason is now written down.** The
+old comment said "v4's `/salon/new` never passes group scenarios into the form
+(dead UI)"; the survey CONFIRMED it at `44a8137e` — `NewChatForm` declares the
+prop and hands it to `<ScenarioSelect>`, `useNewChat` fetches the union, but
+neither `app/salon/new/NewChatPageClient.tsx` nor
+`components/new-chat/NewChatModal.tsx` passes it, so the prop always defaults
+to `[]`. The binding is therefore omitted rather than wired to
+`core().groupScenarios()`, which would render optgroups v4 does not.
+
+Versions: SPA 0.5.558.

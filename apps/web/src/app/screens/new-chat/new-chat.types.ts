@@ -17,40 +17,43 @@ import type {
 
 export type { NewChatAutonomousState };
 
+/**
+ * Scenario option shapes and dropdown tokens are shared with the Salon
+ * sidebar's in-chat picker — they live in `app/scenario/scenario.types` and are
+ * re-exported here so this module stays the New Chat dialog's single import
+ * (v4 `44a8137e` does exactly this in `components/new-chat/types.ts`).
+ */
+export type {
+  CharacterScenario,
+  ProjectScenarioOption,
+  GeneralScenarioOption,
+  GroupScenarioOption,
+  ScenarioSelection,
+} from '../../scenario/scenario.types';
+export {
+  CUSTOM_SCENARIO_VALUE,
+  PROJECT_SCENARIO_PREFIX,
+  GENERAL_SCENARIO_PREFIX,
+  GROUP_SCENARIO_PREFIX,
+} from '../../scenario/scenario.types';
+import type {
+  CharacterScenario,
+  ProjectScenarioOption,
+} from '../../scenario/scenario.types';
+
 /** The special connection-profile option that flips a cast entry to the user (v4 `USER_CONTROLLED_PROFILE`). */
 export const USER_CONTROLLED_PROFILE = '__USER_CONTROLLED__';
-/** The dropdown "Custom…" free-text sentinel (v4 `CUSTOM_SCENARIO_VALUE`). */
-export const CUSTOM_SCENARIO_VALUE = '__custom__';
-/** `<option value>` prefix for a project scenario: `project:<relativePath>`. */
-export const PROJECT_SCENARIO_PREFIX = 'project:';
-/** `<option value>` prefix for a general scenario: `general:<relativePath>`. */
-export const GENERAL_SCENARIO_PREFIX = 'general:';
-/** `<option value>` prefix for a group scenario: `group:<groupId>:<relativePath>`. */
-export const GROUP_SCENARIO_PREFIX = 'group:';
 
-/** A scenario file option in the dropdown (project / general / group share this shape). */
-export interface ScenarioOption {
-  path: string;
-  filename: string;
-  name: string;
-  description?: string;
-  isDefault: boolean;
-  body: string;
-}
-
-/** A group-scoped scenario option (adds the owning group's id/name). */
-export interface GroupScenarioOption extends ScenarioOption {
-  groupId: string;
-  groupName: string;
-}
+/**
+ * A scenario file option in the dropdown. v4 declares `ProjectScenarioOption`
+ * and `GeneralScenarioOption` as two identical interfaces; v5 collapsed them
+ * into one name before the shared module existed, so this alias keeps the v5
+ * call sites reading naturally while the shape is the shared one.
+ */
+export type ScenarioOption = ProjectScenarioOption;
 
 /** A character's own scenario (v4 `CharacterScenario` — the list projection). */
-export interface CharacterScenarioOption {
-  id: string;
-  title: string;
-  content: string;
-  description?: string;
-}
+export type CharacterScenarioOption = CharacterScenario;
 
 /** A slim project row for the in-form project picker (v4 `ProjectListEntry`). */
 export interface ProjectListEntry {

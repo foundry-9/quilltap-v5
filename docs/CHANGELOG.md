@@ -92,6 +92,29 @@ Neutrality proven by regenerating `chat_create_capstone` from a v4 worktree
 pinned at `44a8137e` (which carries v4's own extraction) and re-running it
 green; the family's `two_char_scenario` case is the live create-path scenario
 arm. The resolver's own four-tier differential arrives with the verb.
+#### 2026-08-25 — refactor(new-chat): the scenario dropdown moves onto the shared component (P4.D116 unit 2)
+
+_Versions: SPA 0.5.558._
+
+Mirrors v4 `44a8137e`'s New Chat half: `new-chat.types.ts` re-exports the option
+shapes and tokens from `app/scenario/scenario.types` instead of declaring its
+own, the form renders `<qt-scenario-select>` in place of its inline `<select>`,
+and the token-to-patch helper becomes the composition of the shared parser with
+a new selection-taking `scenarioSelectionPatch` — which is exactly what v4's
+refactor made it.
+
+The refactor is equivalence-preserving and the existing new-chat specs are
+green UNCHANGED (additions only). One arm genuinely moved and is pinned: a
+malformed group token (`group:` with no second colon) used to fall out of the
+group branch into the character arm and be stored whole as a `scenarioId`; the
+shared parser returns custom from inside that branch, so it now clears every
+source. Unreachable from the rendered dropdown either way.
+
+The character tier now carries its ` — description` suffix, which v4 has always
+rendered and v5's inline copy had dropped. The group optgroup stays absent: v4
+declares the prop and hands it to the shared component, but neither of its two
+callers ever passes it, so v4 renders no group optgroup either.
+
 #### 2026-08-25 — feat(scenario): the scenario dropdown becomes a shared component (P4.D116 unit 1)
 
 _Versions: SPA 0.5.557._

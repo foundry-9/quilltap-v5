@@ -10,10 +10,10 @@
 import { buildAutonomousCreatePatch } from '../../autonomous/autonomous.logic';
 import type { CharacterListItem, ChatCreateRequest } from '../../core/core-contract';
 import {
-  CUSTOM_SCENARIO_VALUE,
-  GENERAL_SCENARIO_PREFIX,
-  GROUP_SCENARIO_PREFIX,
-  PROJECT_SCENARIO_PREFIX,
+  scenarioValueToSelection,
+  type ScenarioSelection,
+} from '../../scenario/scenario.types';
+import {
   USER_CONTROLLED_PROFILE,
   type NewChatFormState,
   type NewChatSelectedCharacter,
@@ -140,40 +140,37 @@ type ScenarioSourcePatch = Pick<
 >;
 
 /**
- * The scenario dropdown token → source-field patch (v4
- * `NewChatForm.handleScenarioSelectChange`). Each choice nulls the other three
- * sources; it never touches free-text `scenario` (the layering invariant).
+ * A scenario SELECTION → source-field patch (v4 `44a8137e`'s refactored
+ * `NewChatForm.handleScenarioSelectionChange`). Each choice nulls the other
+ * three sources; it never touches free-text `scenario` (the layering
+ * invariant).
+ */
+export function scenarioSelectionPatch(selection: ScenarioSelection): ScenarioSourcePatch {
+  return {
+    scenarioId: selection.kind === 'character' ? selection.scenarioId : null,
+    projectScenarioPath: selection.kind === 'project' ? selection.path : null,
+    generalScenarioPath: selection.kind === 'general' ? selection.path : null,
+    groupScenarioPath: selection.kind === 'group' ? selection.path : null,
+    groupScenarioGroupId: selection.kind === 'group' ? selection.groupId : null,
+  };
+}
+
+/**
+ * The dropdown token → source-field patch (v4's PRE-`44a8137e`
+ * `handleScenarioSelectChange`, now the composition of the shared parser with
+ * {@link scenarioSelectionPatch} — which is exactly what v4's refactor made it).
+ *
+ * ⚠ That composition is the one place v4's refactor genuinely CHANGED
+ * behavior. The old inline handler let a malformed group token (`group:` with
+ * no second colon) fall out of the group branch into the character arm and
+ * stored the whole token as a `scenarioId`; the shared
+ * `scenarioValueToSelection` returns `{ kind: 'custom' }` from inside that
+ * branch, so the same token now clears every source. Unreachable from the
+ * rendered dropdown either way — pinned by spec because it is the one arm that
+ * moved.
  */
 export function scenarioSelectPatch(value: string): ScenarioSourcePatch {
-  const cleared: ScenarioSourcePatch = {
-    scenarioId: null,
-    projectScenarioPath: null,
-    generalScenarioPath: null,
-    groupScenarioPath: null,
-    groupScenarioGroupId: null,
-  };
-  if (value === CUSTOM_SCENARIO_VALUE || value === '') {
-    return cleared;
-  }
-  if (value.startsWith(PROJECT_SCENARIO_PREFIX)) {
-    return { ...cleared, projectScenarioPath: value.slice(PROJECT_SCENARIO_PREFIX.length) };
-  }
-  if (value.startsWith(GENERAL_SCENARIO_PREFIX)) {
-    return { ...cleared, generalScenarioPath: value.slice(GENERAL_SCENARIO_PREFIX.length) };
-  }
-  if (value.startsWith(GROUP_SCENARIO_PREFIX)) {
-    const rest = value.slice(GROUP_SCENARIO_PREFIX.length);
-    const colonIdx = rest.indexOf(':');
-    if (colonIdx > -1) {
-      return {
-        ...cleared,
-        groupScenarioGroupId: rest.slice(0, colonIdx),
-        groupScenarioPath: rest.slice(colonIdx + 1),
-      };
-    }
-  }
-  // A bare UUID — a character scenario.
-  return { ...cleared, scenarioId: value };
+  return scenarioSelectionPatch(scenarioValueToSelection(value));
 }
 
 /**

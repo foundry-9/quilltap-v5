@@ -16,12 +16,11 @@ import type {
 } from '../../core/core-contract';
 import { Icon } from '../../ui/icon';
 import { ImageProfilePicker } from '../../images/image-profile-picker';
-import { applyPlayAs, scenarioSelectPatch } from './new-chat.logic';
+import { ScenarioSelect, hasAnyScenarioOptions } from '../../scenario/scenario-select';
+import type { ScenarioSelection } from '../../scenario/scenario.types';
+import { applyPlayAs, scenarioSelectionPatch } from './new-chat.logic';
 import { NewChatState } from './new-chat.state';
 import {
-  CUSTOM_SCENARIO_VALUE,
-  GENERAL_SCENARIO_PREFIX,
-  PROJECT_SCENARIO_PREFIX,
   type CharacterScenarioOption,
   type NewChatSelectedCharacter,
   type ScenarioOption,
@@ -41,8 +40,15 @@ interface PlayAsOption {
  * avatar toggle, the Reality-Injection timestamp card, and the project row.
  * Autonomous mode is a loud disabled-with-title deferral.
  *
- * The group-scenario optgroup is intentionally absent — v4's `/salon/new` never
- * passes group scenarios into the form (dead UI), so it is not rendered here.
+ * The group-scenario optgroup is intentionally absent. v4's `NewChatForm`
+ * declares a `groupScenarios` prop and (since `44a8137e`) hands it to the
+ * shared `<ScenarioSelect>`, but NEITHER of its two callers —
+ * `app/salon/new/NewChatPageClient.tsx` and `components/new-chat/NewChatModal.tsx`
+ * — ever passes it, so the prop always defaults to `[]` and v4 renders no group
+ * optgroup either. `useNewChat` fetches the union regardless, and v5's
+ * `NewChatState` mirrors that fetch: dead UI, ported faithfully. The binding is
+ * therefore omitted here rather than wired to `core().groupScenarios()`, which
+ * would render optgroups v4 does not.
  */
 @Component({
   selector: 'qt-new-chat-form',
@@ -53,6 +59,7 @@ interface PlayAsOption {
     ImageProfilePicker,
     MarkdownField,
     OutfitSelector,
+    ScenarioSelect,
     TimestampConfigCard,
     AutonomousRoomCard,
   ],
@@ -163,60 +170,16 @@ interface PlayAsOption {
             >Starting Scenario (Optional)</label
           >
           @if (showScenarioDropdown()) {
-            <select
-              id="new-chat-scenario-select"
-              [ngModel]="dropdownValue()"
-              (ngModelChange)="onScenarioSelect($event)"
+            <qt-scenario-select
+              selectId="new-chat-scenario-select"
+              [selection]="scenarioSelection()"
+              (selectionChange)="onScenarioSelect($event)"
+              [projectScenarios]="projectScenarios()"
+              [generalScenarios]="generalScenarios()"
+              [characterScenarios]="characterScenarios()"
+              [characterDefaultScenarioId]="singleLlm()?.character?.defaultScenarioId ?? null"
               [disabled]="creating()"
-              class="qt-select mb-2"
-            >
-              <option
-                [value]="CUSTOM_SCENARIO_VALUE"
-                [selected]="dropdownValue() === CUSTOM_SCENARIO_VALUE"
-              >
-                Custom...
-              </option>
-              @if (projectScenarios().length > 0) {
-                <optgroup label="Project Scenarios">
-                  @for (s of projectScenarios(); track s.path) {
-                    <option
-                      [value]="PROJECT_SCENARIO_PREFIX + s.path"
-                      [selected]="dropdownValue() === PROJECT_SCENARIO_PREFIX + s.path"
-                    >
-                      {{ s.name }}{{ s.isDefault ? ' (project default)' : ''
-                      }}{{ s.description ? ' — ' + s.description : '' }}
-                    </option>
-                  }
-                </optgroup>
-              }
-              @if (generalScenarios().length > 0) {
-                <optgroup label="General Scenarios">
-                  @for (s of generalScenarios(); track s.path) {
-                    <option
-                      [value]="GENERAL_SCENARIO_PREFIX + s.path"
-                      [selected]="dropdownValue() === GENERAL_SCENARIO_PREFIX + s.path"
-                    >
-                      {{ s.name }}{{ s.isDefault ? ' (general default)' : ''
-                      }}{{ s.description ? ' — ' + s.description : '' }}
-                    </option>
-                  }
-                </optgroup>
-              }
-              @if (characterScenarios().length > 0) {
-                <optgroup label="Character Scenarios">
-                  @for (s of characterScenarios(); track s.id) {
-                    <option [value]="s.id" [selected]="dropdownValue() === s.id">
-                      {{ s.title
-                      }}{{
-                        singleLlm()?.character?.defaultScenarioId === s.id
-                          ? ' (character default)'
-                          : ''
-                      }}
-                    </option>
-                  }
-                </optgroup>
-              }
-            </select>
+            />
           }
 
           @if (overrideNote(); as note) {
@@ -351,10 +314,6 @@ export class NewChatForm {
 
   private readonly coreClient = inject(CoreClient);
 
-  protected readonly CUSTOM_SCENARIO_VALUE = CUSTOM_SCENARIO_VALUE;
-  protected readonly PROJECT_SCENARIO_PREFIX = PROJECT_SCENARIO_PREFIX;
-  protected readonly GENERAL_SCENARIO_PREFIX = GENERAL_SCENARIO_PREFIX;
-
   private core(): NewChatState {
     return this.state();
   }
@@ -421,11 +380,13 @@ export class NewChatForm {
     return s && s.length > 0 ? s : [];
   });
 
-  protected readonly showScenarioDropdown = computed(
-    () =>
-      this.projectScenarios().length > 0 ||
-      this.generalScenarios().length > 0 ||
-      this.characterScenarios().length > 0,
+  protected readonly showScenarioDropdown = computed(() =>
+    hasAnyScenarioOptions({
+      projectScenarios: this.projectScenarios(),
+      generalScenarios: this.generalScenarios(),
+      // Group scenarios are deliberately absent — see the class header.
+      characterScenarios: this.characterScenarios(),
+    }),
   );
 
   private readonly selectedProjectScenario = computed<ScenarioOption | undefined>(() =>
@@ -451,13 +412,19 @@ export class NewChatForm {
     return null;
   });
 
-  protected readonly dropdownValue = computed<string>(() => {
-    if (this.selectedProjectScenario())
-      return PROJECT_SCENARIO_PREFIX + this.selectedProjectScenario()!.path;
-    if (this.selectedGeneralScenario())
-      return GENERAL_SCENARIO_PREFIX + this.selectedGeneralScenario()!.path;
-    if (this.selectedCharacterScenario()) return this.selectedCharacterScenario()!.id;
-    return CUSTOM_SCENARIO_VALUE;
+  /**
+   * The selection the dropdown shows, in v4's exact precedence order (v4
+   * `44a8137e`'s `scenarioSelection` — the same chain its `dropdownValue`
+   * expressed as tokens before the extraction).
+   */
+  protected readonly scenarioSelection = computed<ScenarioSelection>(() => {
+    const project = this.selectedProjectScenario();
+    if (project) return { kind: 'project', path: project.path };
+    const general = this.selectedGeneralScenario();
+    if (general) return { kind: 'general', path: general.path };
+    const character = this.selectedCharacterScenario();
+    if (character) return { kind: 'character', scenarioId: character.id };
+    return { kind: 'custom' };
   });
 
   private readonly characterDefaultScenario = computed<CharacterScenarioOption | undefined>(() => {
@@ -538,8 +505,8 @@ export class NewChatForm {
     this.core().setSelectedCharacters((prev) => applyPlayAs(prev, nextId));
   }
 
-  protected onScenarioSelect(value: string): void {
-    this.core().patchForm(scenarioSelectPatch(value));
+  protected onScenarioSelect(selection: ScenarioSelection): void {
+    this.core().patchForm(scenarioSelectionPatch(selection));
   }
 
   protected switchToCharacterDefault(): void {

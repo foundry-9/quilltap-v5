@@ -6,6 +6,7 @@ import {
   applyProfileChange,
   buildCreateRequest,
   generateTitle,
+  scenarioSelectionPatch,
   scenarioSelectPatch,
   seedSelectedCharacter,
   sortRoster,
@@ -174,6 +175,24 @@ describe('scenarioSelectPatch (v4 handleScenarioSelectChange)', () => {
       groupScenarioGroupId: null,
     });
   });
+  /**
+   * The ONE arm v4's `44a8137e` refactor genuinely moved. Before the
+   * extraction, `handleScenarioSelectChange` let a malformed group token fall
+   * out of the group branch into the character arm and stored the whole token
+   * as a `scenarioId`; the shared `scenarioValueToSelection` returns
+   * `{ kind: 'custom' }` from inside that branch, so it now clears every
+   * source. Unreachable from the rendered dropdown either way — pinned because
+   * it moved.
+   */
+  it('a MALFORMED group token now clears every source (v4 44a8137e)', () => {
+    expect(scenarioSelectPatch('group:no-colon-after-this')).toEqual({
+      scenarioId: null,
+      projectScenarioPath: null,
+      generalScenarioPath: null,
+      groupScenarioPath: null,
+      groupScenarioGroupId: null,
+    });
+  });
   it('does NOT touch free-text scenario notes (the layering invariant)', () => {
     // The patch owns only the source fields; applied over typed notes, they survive.
     const next = {
@@ -182,6 +201,33 @@ describe('scenarioSelectPatch (v4 handleScenarioSelectChange)', () => {
     };
     expect(next.generalScenarioPath).toBe('Scenarios/c.md');
     expect(next.scenario).toBe('typed notes');
+  });
+
+});
+
+describe('scenarioSelectionPatch (v4 44a8137e handleScenarioSelectionChange)', () => {
+  it('maps each tier to its own source field, nulling the rest', () => {
+    expect(scenarioSelectionPatch({ kind: 'character', scenarioId: 'uuid-1' })).toEqual({
+      scenarioId: 'uuid-1',
+      projectScenarioPath: null,
+      generalScenarioPath: null,
+      groupScenarioPath: null,
+      groupScenarioGroupId: null,
+    });
+    expect(scenarioSelectionPatch({ kind: 'group', groupId: 'g1', path: 'c.md' })).toEqual({
+      scenarioId: null,
+      projectScenarioPath: null,
+      generalScenarioPath: null,
+      groupScenarioPath: 'c.md',
+      groupScenarioGroupId: 'g1',
+    });
+    expect(scenarioSelectionPatch({ kind: 'custom' })).toEqual({
+      scenarioId: null,
+      projectScenarioPath: null,
+      generalScenarioPath: null,
+      groupScenarioPath: null,
+      groupScenarioGroupId: null,
+    });
   });
 });
 
