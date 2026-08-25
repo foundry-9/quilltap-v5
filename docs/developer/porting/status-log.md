@@ -85379,3 +85379,59 @@ restored green.
 
 SPA gate at this point: `npm test` 343 files / 5,128 passed; `npm run build`
 clean.
+
+### Unit 5 — the e2e beats (tier 2, item 7)
+
+`apps/web/e2e/wardrobe-flow.spec.ts`. Every `#wardrobe-char-select` reference
+became `#wardrobe-container-select`, and the payload-less-tab beat's expected
+select value became the encoded `character:c1`.
+
+**(a) LIVE — the container selector.** Opens the dialog, asserts the
+Characters and General optgroups and the `general:` option, switches to
+Quilltap General, and proves the shared-container view: the note, the
+right-hand outfit column standing aside (v4 keeps it behind
+`selectedCharacterId`), Aria's own garments NOT merged in, and the editor
+opened from there PINNED — the destination note present, the `[role=radiogroup]`
+scope selector absent.
+
+**⚠ The write half is SELF-ACTIVATING, and the reason is measured, not
+assumed.** The first run of this beat went red on the create, so the cause was
+probed directly against a booted server on the fixture: `wardrobeList` answers
+`[]`, `wardrobeCreate` answers `Internal server error`, and
+`SELECT ... FROM instance_settings` answers **`no such table:
+instance_settings`**. The committed `characters-main.db` is a narrow hand-built
+DB (20 tables, no `instance_settings`, no `doc_mount_points`), so
+`ensure_builtin_mounts` hits its own `sqliteTableExists` guard at boot and the
+instance has NO Quilltap General store at all. **That gap predates this lane** —
+the character view's "Shared — everywhere" create scope has never been
+exercisable here either. Widening the fixture would ripple across every spec
+that shares it (a cross-lane change the order says to stop on), so the beat
+carries a `hasGeneralStore(page)` probe: it writes a throwaway archetype,
+deletes it on success, and the create/edit round-trip switches on the day the
+fixture gains a store. The routing itself is unit-proven and mutation-proven in
+`wardrobe.api.spec.ts` and `wardrobe-item-editor.spec.ts`.
+
+**(c) LIVE — the component prompt and the copy+move refusal**, run in the
+character view where this fixture DOES have a writable container. Builds a
+composite through the editor's bundle mode, then: Copy offers exactly two
+choices with "Move the components along with it" absent (v4 makes the illegal
+combination unreachable rather than erroring — that IS the refusal), the
+singular "bundles 1 component" legend renders, and Aria's own vault is dropped
+from the destination list; Move offers exactly three with the first checked.
+No transfer executes.
+
+**(b) GATED `P4D112_TRANSFER_COMPONENTS_LANDED` (ACTIVATE-AT-UNIFY)** — the
+components actually travelling needs P4.D112's `components` field, and its
+destination needs a shared container this fixture lacks, so it carries both the
+constant and the store probe.
+
+**Two e2e traps banked:** the editor's "Outfit bundle" and the list's
+Items/Outfits filters are `role="tab"`, not buttons — `getByRole('button')`
+hangs for the full test timeout; and a beat that times out at 90 s in this
+serial file destabilises the beats after it (the in-chat staging beat went red
+purely as collateral and went green again the moment the tab-role locator was
+fixed — proven by three runs: full-red, `--grep-invert` on the new beats
+all-green, and full-green after the fix).
+
+Wardrobe spec: **7 passed / 1 skipped (the gated P4.D112 beat) in 55.9 s**,
+zero unexplained skips.

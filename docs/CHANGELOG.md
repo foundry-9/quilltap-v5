@@ -76,6 +76,27 @@ the exact UUID. Unit tests mirror v4's new `wardrobe-slug-map.test.ts`; the
 the `vault-wardrobe-write` fixture a collision-returns op, both proven
 red-first against the old code and green against oracles regenerated at the
 `f6a10055` pin.
+#### 2026-08-25 — test(wardrobe): browser beats for the container browser and the component prompt (P4.D113)
+
+_Versions: SPA 0.5.554._
+
+Three beats in the wardrobe walk. The container selector beat browses Quilltap
+General from the new top menu and proves the shared-container view: its own
+contents only, the shared-wardrobe note, the right-hand outfit column standing
+aside, and the editor pinned with a destination note instead of the "Add to"
+scope selector. The composite beat builds an outfit and opens both transfer
+dialogs: Move offers three component choices defaulting to move, Copy offers
+two and never offers a move — v4 makes the illegal combination unreachable
+rather than surfacing it as an error — and the item's own home is dropped from
+the destination list.
+
+The write half of the container beat is self-activating rather than skipped by
+choice: the committed `characters-*` fixture pair has no `instance_settings`
+table, so the boot ensure skips and the instance has no Quilltap General store
+to write into. The beat probes the instance and switches the create/edit
+round-trip on when a store exists. The components-actually-travel beat is
+gated on P4.D112's server half.
+
 #### 2026-08-25 — feat(wardrobe): the dialog browses and edits every wardrobe container (P4.D113)
 
 _Versions: SPA 0.5.553._

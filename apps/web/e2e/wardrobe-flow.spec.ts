@@ -53,6 +53,16 @@ const SEEDED_ACCESSORY = 'Aether Scarf';
  */
 const P4D87_HAIR_SLOT_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D113 → P4.D112). The component-carrying transfer beat
+ * sends `components` on `wardrobeTransferApply`, which the server half
+ * (P4.D112) must accept before the components can actually travel. Flip to
+ * `true` at unification. Everything the container browser can prove WITHOUT
+ * the new server fields — browsing, in-place create/edit, and the radio pair
+ * itself — is live in this lane and runs unconditionally.
+ */
+const P4D112_TRANSFER_COMPONENTS_LANDED = false;
+
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;
 const INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'wardrobe-instance');
@@ -178,7 +188,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
 
     // Aria is preselected in the header dropdown (the dialog opened with her
     // characterId in context).
-    await expect(page.locator('#wardrobe-char-select')).toHaveValue(/./);
+    await expect(page.locator('#wardrobe-container-select')).toHaveValue(/./);
 
     // Create an item through the editor (characterWardrobeCreate — landed).
     await page.getByRole('button', { name: '+ New Item' }).click();
@@ -285,6 +295,249 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       page.locator('.qt-card-interactive').filter({ hasText: 'Marcel Waves' }).first(),
     ).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /**
+   * P4.D113 tier-2 (a) — the container browser, LIVE. The new top selector
+   * lists every place a wardrobe item can live, browsing Quilltap General
+   * shows exactly that container (no tier merging), the shared-wardrobe note
+   * appears, the right-hand outfit column steps aside because there is nobody
+   * to dress, and the editor opened from there is PINNED — its "Add to" scope
+   * radiogroup is replaced by a destination note.
+   *
+   * ⚠ THE WRITE HALF IS SELF-ACTIVATING, NOT SKIPPED BY CHOICE. This spec runs
+   * on the committed `characters-*` fixture pair, which is a narrow hand-built
+   * DB: it has no `instance_settings` table, so `ensure_builtin_mounts` skips
+   * at boot and the instance has NO Quilltap General store to write into.
+   * (Measured: `wardrobeList` answers `[]` and `wardrobeCreate` answers
+   * `Internal server error` — `resolve_wardrobe_mount` finds no
+   * `generalMountPointId`.) That gap predates this lane — the character view's
+   * "Shared — everywhere" create scope has never been exercisable here either.
+   * The probe below asks the instance directly and the write half switches on
+   * the day the fixture gains a General store; until then the container
+   * routing is proven at unit level (`wardrobe.api.spec.ts`'s four routers and
+   * `wardrobe-item-editor.spec.ts`'s pinned-container arms, both
+   * mutation-proven).
+   */
+  test('the container selector browses Quilltap General, and pins the editor to it (P4.D113)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    const dialog = page.getByRole('dialog');
+    const selector = dialog.locator('#wardrobe-container-select');
+    // The menu lists every place an item can live, not just characters. The
+    // Characters and General groups are always present; Projects/Groups appear
+    // only when the instance has any, so they are not asserted by count.
+    await expect(selector.locator('optgroup[label="Characters"]')).toHaveCount(1);
+    await expect(selector.locator('optgroup[label="General"]')).toHaveCount(1);
+    await expect(selector.locator('option[value="general:"]')).toHaveText(/Quilltap General/);
+    // The label is v4's new one.
+    await expect(dialog.getByText('Wardrobe:', { exact: true })).toBeVisible();
+
+    await selector.selectOption('general:');
+    // Browsing a shared wardrobe: the note appears and — with nobody to dress
+    // — the right-hand outfit column steps aside (v4 keeps it behind
+    // `selectedCharacterId`, `:1260`).
+    await expect(dialog.getByText('Browsing a shared wardrobe', { exact: false })).toBeVisible();
+    await expect(dialog.getByRole('button', { name: 'Outfit Builder' })).toBeHidden();
+    // Aria's own garments are NOT merged in — a shared container shows exactly
+    // its own contents (this fixture's General store is empty, so the list is
+    // the empty-filter notice rather than her wardrobe).
+    await expect(
+      dialog.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' }),
+    ).toHaveCount(0);
+
+    // The editor opened here is PINNED: no "Add to" scope radiogroup, just the
+    // destination note naming the container.
+    await dialog.getByRole('button', { name: '+ New Item' }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeVisible();
+    await expect(page.getByText('Every character, in every chat, can wear it.')).toBeVisible();
+    await expect(page.locator('[role="radiogroup"]')).toHaveCount(0);
+    await expect(page.getByText('Shared — everywhere')).toHaveCount(0);
+
+    // The write half, self-activating (see the docblock).
+    const generalWritable = await hasGeneralStore(page);
+    if (generalWritable) {
+      await page.locator('#wardrobe-title').fill('Domino Mask');
+      await page
+        .locator('label')
+        .filter({ hasText: 'accessories' })
+        .locator('input[type="checkbox"]')
+        .click();
+      await page.getByRole('button', { name: 'Create', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeHidden();
+
+      // It lands in the General list with the FULL kebab — the container
+      // browser's whole point; a merged shared item in the character view gets
+      // Move/Copy only.
+      const maskRow = dialog
+        .locator('.qt-card-interactive')
+        .filter({ hasText: 'Domino Mask' })
+        .first();
+      await expect(maskRow).toBeVisible();
+      await expect(maskRow).not.toContainText('· shared');
+      await maskRow.getByRole('button', { name: 'More actions' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Edit' })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: 'Delete' })).toBeVisible();
+
+      // Edit IN PLACE, then reopen: the PUT reached this container's store.
+      await page.getByRole('menuitem', { name: 'Edit' }).click();
+      await expect(page.getByRole('heading', { name: 'Edit Wardrobe Item' })).toBeVisible();
+      await page.locator('#wardrobe-title').fill('Domino Mask (lacquered)');
+      await page.getByRole('button', { name: 'Update', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Edit Wardrobe Item' })).toBeHidden();
+      await dialog.getByRole('button', { name: 'Done' }).click();
+      await expect(dialog).toBeHidden();
+      await page.getByRole('button', { name: 'Open wardrobe for Aria' }).click();
+      const reopened = page.getByRole('dialog');
+      await reopened.locator('#wardrobe-container-select').selectOption('general:');
+      await expect(
+        reopened
+          .locator('.qt-card-interactive')
+          .filter({ hasText: 'Domino Mask (lacquered)' })
+          .first(),
+      ).toBeVisible({ timeout: 10_000 });
+      await reopened.getByRole('button', { name: 'Done' }).click();
+      return;
+    }
+
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await dialog.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /**
+   * P4.D113 tier-2 (c) — the component prompt and the copy+move refusal, LIVE
+   * in the character view (where this fixture DOES have a writable container).
+   * v4 makes the illegal combination unreachable rather than surfacing it as
+   * an error: Move offers three component choices, Copy offers two, and "Move
+   * the components" is absent from the copy arm entirely. That IS the refusal,
+   * and it is a pure client property — no transfer is executed here.
+   */
+  test('a composite outfit prompts for its components, and Copy never offers a move (P4.D113)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    const dialog = page.getByRole('dialog');
+
+    // Build an outfit in Aria's own vault out of the item the first beat left
+    // behind (this file runs serially), through the editor's bundle mode.
+    await dialog.getByRole('button', { name: '+ New Item' }).click();
+    await page.getByRole('tab', { name: 'Outfit bundle' }).click();
+    await page.locator('#wardrobe-title').fill('Masquerade Kit');
+    // The component picker groups its candidates (all groups start expanded);
+    // each row is a label carrying the checkbox.
+    await page
+      .locator('qt-wardrobe-component-picker label')
+      .filter({ hasText: 'Brass Goggles' })
+      .first()
+      .locator('input[type="checkbox"]')
+      .click();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeHidden();
+
+    // Outfits live behind the kind filter's second tab.
+    await dialog.getByRole('tab', { name: 'Outfits' }).click();
+    const kitRow = dialog
+      .locator('.qt-card-interactive')
+      .filter({ hasText: 'Masquerade Kit' })
+      .first();
+    await expect(kitRow).toBeVisible();
+
+    // Copy: two choices, and the move is nowhere on offer.
+    await kitRow.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Copy' }).click();
+    const copyDialog = page.getByRole('dialog').filter({ hasText: 'Copy wardrobe item' });
+    await expect(copyDialog.getByText('This outfit bundles 1 component')).toBeVisible();
+    await expect(copyDialog.locator('input[name="wardrobe-transfer-components"]')).toHaveCount(2);
+    await expect(copyDialog.getByText('Copy the components along with it')).toBeVisible();
+    await expect(copyDialog.getByText('Move the components along with it')).toHaveCount(0);
+    // The item's known home — Aria's own vault — is dropped from the list.
+    await expect(copyDialog.locator('option[value^="character:"]')).toHaveCount(0);
+    await copyDialog.getByRole('button', { name: 'Cancel' }).click();
+
+    // Move: three choices, defaulting to moving them along.
+    await kitRow.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Move' }).click();
+    const moveDialog = page.getByRole('dialog').filter({ hasText: 'Move wardrobe item' });
+    await expect(moveDialog.locator('input[name="wardrobe-transfer-components"]')).toHaveCount(3);
+    await expect(
+      moveDialog.locator('input[name="wardrobe-transfer-components"]').first(),
+    ).toBeChecked();
+    await moveDialog.getByRole('button', { name: 'Cancel' }).click();
+
+    await dialog.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /**
+   * P4.D113 tier-2 (b) — the components actually travel. ACTIVATE-AT-UNIFY:
+   * `components` on `wardrobeTransferApply` is P4.D112's server half, so until
+   * that lands the outfit would move alone and the assertions below would be
+   * measuring the OLD behaviour rather than the new contract. The destination
+   * also needs a shared container, which this fixture has none of (see the
+   * first beat's docblock) — so the beat additionally probes for one.
+   */
+  test('moving an outfit with "Move components" carries them to the destination (ACTIVATE-AT-UNIFY, lane P4.D112)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D112_TRANSFER_COMPONENTS_LANDED,
+      'ACTIVATE-AT-UNIFY (lane P4.D112): `components` on wardrobeTransferApply is the server half',
+    );
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    test.skip(
+      !(await hasGeneralStore(page)),
+      'the committed characters-* fixture has no Quilltap General store to move into (see the container-selector beat)',
+    );
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    const dialog = page.getByRole('dialog');
+    await dialog.getByRole('tab', { name: 'Outfits' }).click();
+    const kitRow = dialog
+      .locator('.qt-card-interactive')
+      .filter({ hasText: 'Masquerade Kit' })
+      .first();
+    await expect(kitRow).toBeVisible();
+    await kitRow.getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Move' }).click();
+
+    const moveDialog = page.getByRole('dialog').filter({ hasText: 'Move wardrobe item' });
+    await moveDialog.locator('select').selectOption('general:');
+    // "Move the components along with it" is the default; name it anyway so
+    // the beat still means what it says if the default ever changes.
+    await moveDialog.getByText('Move the components along with it').click();
+    await moveDialog.getByRole('button', { name: 'Move item' }).click();
+    await expect(moveDialog).toBeHidden({ timeout: 15_000 });
+
+    // The outfit AND its component left Aria's vault…
+    await dialog.getByRole('tab', { name: 'Items' }).click();
+    await expect(
+      dialog.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' }),
+    ).toHaveCount(0, { timeout: 10_000 });
+
+    // …and both arrived in General, the outfit still resolving its piece.
+    await dialog.locator('#wardrobe-container-select').selectOption('general:');
+    await dialog.getByRole('tab', { name: 'Outfits' }).click();
+    await expect(
+      dialog.locator('.qt-card-interactive').filter({ hasText: 'Masquerade Kit' }).first(),
+    ).toBeVisible({ timeout: 10_000 });
+    await dialog.getByRole('tab', { name: 'Items' }).click();
+    await expect(
+      dialog.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' }).first(),
+    ).toBeVisible();
+    await dialog.getByRole('button', { name: 'Done' }).click();
   });
 
   test('out of chat: Preview reaches the no-API-key badRequest (P4.6bf; live render is a dogfood item)', async ({
@@ -632,6 +885,35 @@ async function dispatch(page: Page, req: unknown): Promise<Record<string, unknow
   const res = await page.request.post(`${BASE_URL}/api/dispatch`, { data: req });
   const body = (await res.json().catch(() => null)) as { data?: Record<string, unknown> } | null;
   return body?.data ?? {};
+}
+
+/**
+ * Does this instance actually HAVE a Quilltap General store to write into? The
+ * committed `characters-*` fixture pair does not (no `instance_settings` table
+ * → `ensure_builtin_mounts` skips at boot), so the container browser's write
+ * half self-activates rather than pretending. The probe writes a throwaway
+ * archetype and removes it again; a `wardrobeCreate` that fails is the exact
+ * signal (`resolve_wardrobe_mount` → `NoMount` → 500).
+ */
+async function hasGeneralStore(page: Page): Promise<boolean> {
+  const created = (
+    await dispatch(page, {
+      type: 'wardrobeCreate',
+      item: {
+        title: '__p4d113_probe__',
+        description: null,
+        imagePrompt: null,
+        types: ['accessories'],
+        appropriateness: null,
+        isDefault: false,
+        componentItemIds: [],
+        replace: false,
+      },
+    })
+  )['wardrobeItem'] as { id?: string } | undefined;
+  if (!created?.id) return false;
+  await dispatch(page, { type: 'wardrobeDelete', itemId: created.id });
+  return true;
 }
 
 function runCliWrite(cli: string, sql: string): void {
