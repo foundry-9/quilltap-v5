@@ -631,10 +631,13 @@ test.describe('P4.9E3C — Search & Replace', () => {
  *   2. a run round-trips through the provider (to the in-worker mock Serper) and
  *      renders a Web Search result card.
  *
- * The server was launched (global setup) with `SERPER_API_KEY` set +
- * `QUILLTAP_SERPER_BASE_URL` pointed at this mock, and the OPENAI_COMPATIBLE
- * profile has `allowWebSearch = 1`, so the tool clears BOTH inventory gates. No
- * live Serper call, no spend.
+ * P4.59 (dogfood #98) makes this the CONFIGURED path: the native Serper provider
+ * is registered, so the per-call key is resolved from the seeded `api_keys` row
+ * — `SERPER_API_KEY` is no longer set at launch, so a green run proves the row
+ * is what reached the wire. `QUILLTAP_SERPER_BASE_URL` points the provider's real
+ * blocking transport at this mock, and the OPENAI_COMPATIBLE profile has
+ * `allowWebSearch = 1`, so the tool clears BOTH inventory gates. No live Serper
+ * call, no spend.
  */
 test.describe('P4.42 — Web search', () => {
   let serper: MockSerper;

@@ -84639,3 +84639,54 @@ error'` default) left the oracle: the REAL plugin cannot produce
 mapping, named as such.
 
 Versions: harness 0.0.566.
+
+### Unit 5 — the SPA: the API-keys surface offers the search provider (#98's remaining half)
+
+**The invented filter.** v4's `ApiKeyModal.tsx:70-71` filters the provider list
+on `providerAcceptsApiKey(p.configRequirements)` and **nothing else** — no
+`type` test. v5 had `p.type === 'llm' && providerAcceptsApiKey(…)`. Harmless
+while no search row existed; the moment one does it makes a Serper key
+uncreatable, and with it the whole configured search path unreachable from the
+UI. That is dogfood #98's remaining half, and it would have survived every
+server-side proof in this lane. The filter is now v4's, with the reason written
+down at the site so it does not come back.
+
+Both directions are pinned: the search provider IS offered (sorted in by display
+name, as v4 sorts), and a provider that accepts NO key (Ollama) is still
+excluded — so the fix reads as "v4's predicate", not "the filter was deleted".
+
+**`ProviderInfo.capabilities` is optional now**, because v4's search row carries
+no capability bag at all — and that absence is load-bearing, not incidental: it
+is exactly how v4's own profile editor keeps search providers out of the LLM
+picker (`ProfileModal.tsx:424` → `p.capabilities?.chat` on an absent bag). Two
+specs pin that direction, and the second proves the filter is the CAPABILITY and
+not the type by excluding a non-chat LLM provider too. Three v5 sites read the
+bag non-optionally and were made safe (`wizard-state` ×2,
+`provider-selection-step`; the last also needed
+`keyof NonNullable<ProviderInfo['capabilities']>` — `keyof (T | undefined)` is
+`never`, which types every key in the table as an error). All three are wizard
+sites that only ever see `type: 'llm'` rows, because `wizard-api` filters as
+v4's `fetchProviders` does.
+
+**Mutation proofs (SPA source):** restoring `p.type === 'llm'` reds the
+"offers the SEARCH provider" spec; dropping the `capabilities?.chat` filter reds
+both profile-modal specs. 3 failed / 5,069 passed under mutation; 341 files /
+5,072 passed reverted.
+
+**The e2e is where registration gets its production proof.** The settings walk
+now asserts the `SERPER` option is listed with `Serper Web Search` and creates a
+Serper key through the modal — a row that only exists because the real binary
+registered the native manifest and `provider_list` served its `type: 'search'`
+entry.
+
+⚠ **And the salon web-search beat had to move, or this lane would have broken
+it.** With the provider registered, `search_web` no longer reads
+`SERPER_API_KEY` — it resolves the per-call key from `api_keys`, exactly as v4
+does — so the P4.42 beat would have started answering v4's `No API key
+configured for Serper Web Search…` sentence. Rather than paper over that with
+the env var, global setup now **seeds the `api_keys` row and stops setting
+`SERPER_API_KEY` at all**: the beat is a live proof of dogfood #98's configured
+path instead of the deprecated env fallback, and a green run proves the seeded
+row is what reached the wire.
+
+Versions: SPA 0.5.549.

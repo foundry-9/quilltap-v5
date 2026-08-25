@@ -511,6 +511,20 @@ export default async function globalSetup(): Promise<void> {
   //     also launched with SERPER_API_KEY + QUILLTAP_SERPER_BASE_URL below, so the
   //     run executes through the in-worker mock Serper.
   runCliWrite(cli, `UPDATE connection_profiles SET allowWebSearch = 1;`);
+  // P4.59 (dogfood #98): the Serper provider is REGISTERED now, so the per-call
+  // key comes from the user's `api_keys` row — the way v4 tells a user to
+  // configure it (Settings → API Keys) — and NOT from `SERPER_API_KEY`, which
+  // the launch below no longer sets. Seed that row so the search beat exercises
+  // the configured path end to end; without it the run would answer v4's
+  // "No API key configured for Serper Web Search…" sentence, which is the whole
+  // finding.
+  runCliWrite(
+    cli,
+    `INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, createdAt, updatedAt) ` +
+      `SELECT 'a1000000-0000-4000-8000-0000000005e6', userId, 'E2E Serper', 'SERPER', ` +
+      `'e2e-mock-serper-key', 1, '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z' ` +
+      `FROM connection_profiles LIMIT 1;`,
+  );
   runCliWrite(
     cli,
     `UPDATE chats SET participants = (` +
@@ -564,11 +578,14 @@ export default async function globalSetup(): Promise<void> {
   );
 
   // Launch the real server (no env pepper → locked) serving the built SPA.
-  // P4.42: SERPER_API_KEY makes the host build the web-search provider at
-  // unlock (so `search_web` runs + the inventory advertises it);
+  // P4.42 + P4.59: the host builds the web-search provider at unlock because the
+  // native Serper provider is REGISTERED (the site-plugins gate is unset here, as
+  // on a default install), so `search_web` runs and the inventory advertises it.
+  // `SERPER_API_KEY` is deliberately NOT set: the key comes from the seeded
+  // `api_keys` row above, which makes the search beat a live proof of dogfood
+  // #98's configured path rather than of the deprecated env fallback.
   // QUILLTAP_SERPER_BASE_URL points that provider's real blocking HTTP transport
-  // at the in-worker mock Serper (no live call, no spend). A synthetic key — it
-  // never leaves this process, and the mock ignores it.
+  // at the in-worker mock Serper (no live call, no spend).
   const logFd = openSync(SERVER_LOG, 'w');
   const child = spawn(
     web,
@@ -578,7 +595,6 @@ export default async function globalSetup(): Promise<void> {
       detached: true,
       env: {
         ...withoutPepper(),
-        SERPER_API_KEY: 'e2e-mock-serper-key',
         QUILLTAP_SERPER_BASE_URL: `http://127.0.0.1:${MOCK_SERPER_PORT}/search`,
       },
     },

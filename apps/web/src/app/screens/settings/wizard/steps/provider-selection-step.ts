@@ -13,7 +13,13 @@ import { Icon } from '../../../../ui/icon';
 import { fetchProviders } from '../wizard-api';
 import { WizardStore } from '../wizard-state';
 
-const CAPABILITY_LABELS: Array<{ key: keyof ProviderInfo['capabilities']; label: string }> = [
+// `capabilities` is optional on ProviderInfo since P4.59 (a `type: 'search'` row
+// carries no bag), so unwrap it before taking `keyof` — `keyof (T | undefined)`
+// is `never`, which types every key below as an error.
+const CAPABILITY_LABELS: Array<{
+  key: keyof NonNullable<ProviderInfo['capabilities']>;
+  label: string;
+}> = [
   { key: 'chat', label: 'Chat' },
   { key: 'embeddings', label: 'Embeddings' },
   { key: 'imageGeneration', label: 'Images' },
@@ -119,7 +125,12 @@ export class ProviderSelectionStep implements OnInit {
   }
 
   protected capabilitiesOf(p: ProviderInfo): string[] {
-    return CAPABILITY_LABELS.filter((c) => p.capabilities[c.key]).map((c) => c.label);
+    // `capabilities` is optional since P4.59 (a `type: 'search'` row carries no
+    // bag at all). The wizard only ever sees `type: 'llm'` rows — `wizard-api`
+    // filters, as v4's does — so this reads as "no badges" rather than throwing.
+    const caps = p.capabilities;
+    if (!caps) return [];
+    return CAPABILITY_LABELS.filter((c) => caps[c.key]).map((c) => c.label);
   }
 
   protected async load(): Promise<void> {

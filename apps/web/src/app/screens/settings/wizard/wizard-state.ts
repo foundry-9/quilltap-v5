@@ -68,7 +68,7 @@ export class WizardStore {
 
   /** At least one selected provider is chat-capable. */
   readonly hasValidChatProvider = computed(() =>
-    this.selectedProviders().some((id) => this.providerById(id)?.capabilities.chat),
+    this.selectedProviders().some((id) => this.providerById(id)?.capabilities?.chat),
   );
 
   /** Every selected provider that needs a key has a validated one. */
@@ -88,7 +88,7 @@ export class WizardStore {
   chatProviders(): ProviderInfo[] {
     return this.selectedProviders()
       .map((id) => this.providerById(id))
-      .filter((p): p is ProviderInfo => p !== undefined && p.capabilities.chat);
+      .filter((p): p is ProviderInfo => p !== undefined && !!p.capabilities?.chat);
   }
 
   /** Step-gate for the Next button (v4 `canProceed`). */

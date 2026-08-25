@@ -25,6 +25,27 @@ function provider(over: Partial<ProviderInfo>): ProviderInfo {
   };
 }
 
+/**
+ * P4.59 (dogfood #98): the SEARCH row as `GET /api/v1/providers` emits it — no
+ * `capabilities` key AT ALL. That absence is what keeps it out of this picker,
+ * exactly as in v4 (`ProfileModal.tsx:424` filters on `p.capabilities?.chat`).
+ * Built by hand rather than through `provider()` so the key is genuinely absent
+ * rather than present-and-false.
+ */
+const SEARCH_ROW = {
+  id: 'SERPER',
+  name: 'SERPER',
+  displayName: 'Serper Web Search',
+  description: 'Google search results via the Serper.dev API',
+  abbreviation: 'SRP',
+  type: 'search',
+  configRequirements: {
+    requiresApiKey: true,
+    requiresBaseUrl: false,
+    apiKeyLabel: 'Serper API Key',
+  },
+} as unknown as ProviderInfo;
+
 function stubClient(over: Partial<CoreClient> = {}): Partial<CoreClient> {
   return {
     dispatchExpect: vi.fn(async () => ({
@@ -1778,5 +1799,44 @@ describe('ProfileModal optional api key (Bug 81)', () => {
     const body = create['profile'] as Record<string, unknown>;
     expect(body['provider']).toBe('OLLAMA');
     expect(body['apiKeyId']).toBeNull();
+  });
+});
+
+describe('ProfileModal — search providers never enter the LLM picker (dogfood #98)', () => {
+  it('lists the chat-capable LLM providers and omits the capability-less search row', async () => {
+    const fixture = await render({
+      providers: [provider({}), SEARCH_ROW],
+    });
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '#qt-pf-provider',
+    )!;
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toContain('OPENAI');
+    expect(values).not.toContain('SERPER');
+  });
+
+  it('omits an LLM provider that is not chat-capable, so the filter is the capability not the type', async () => {
+    const fixture = await render({
+      providers: [
+        provider({}),
+        provider({
+          id: 'IMAGES_ONLY',
+          name: 'IMAGES_ONLY',
+          displayName: 'Images Only',
+          capabilities: {
+            chat: false,
+            imageGeneration: true,
+            embeddings: false,
+            webSearch: false,
+          },
+        }),
+      ],
+    });
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '#qt-pf-provider',
+    )!;
+    const values = Array.from(select.options).map((o) => o.value);
+    expect(values).toContain('OPENAI');
+    expect(values).not.toContain('IMAGES_ONLY');
   });
 });

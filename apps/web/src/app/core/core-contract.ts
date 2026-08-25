@@ -3079,7 +3079,13 @@ export interface ProviderInfo {
   colors?: { bg: string; text: string; icon: string };
   icon?: string | null;
   type: 'llm' | 'search' | string;
-  capabilities: {
+  /**
+   * OPTIONAL: a `type: 'search'` row carries no capability bag at all (v4's
+   * providers route hand-builds those rows without one), and that absence is
+   * load-bearing — v4's own profile editor keeps search providers out of the LLM
+   * picker with `p.capabilities?.chat`. Read it optionally everywhere.
+   */
+  capabilities?: {
     chat: boolean;
     imageGeneration: boolean;
     embeddings: boolean;

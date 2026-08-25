@@ -27,6 +27,24 @@ const PROVIDERS = [
     type: 'llm',
     configRequirements: { requiresApiKey: true },
   },
+  {
+    name: 'OLLAMA',
+    displayName: 'Ollama',
+    type: 'llm',
+    configRequirements: { requiresApiKey: false },
+  },
+  // P4.59: the SEARCH row, exactly as `GET /api/v1/providers` emits it —
+  // appended last, with NO capability bag and a three-key configRequirements.
+  {
+    name: 'SERPER',
+    displayName: 'Serper Web Search',
+    type: 'search',
+    configRequirements: {
+      requiresApiKey: true,
+      requiresBaseUrl: false,
+      apiKeyLabel: 'Serper API Key',
+    },
+  },
 ];
 
 function stubClient(): Partial<CoreClient> {
@@ -81,6 +99,33 @@ describe('ApiKeyModal — provider select (dogfood-#6)', () => {
 });
 
 /** v4 `ApiKeyModal.tsx:104-112` — one 4000ms toast per auto-association. */
+/**
+ * P4.59 (dogfood #98): v4's `ApiKeyModal.tsx:70-71` filters the provider list on
+ * `providerAcceptsApiKey(p.configRequirements)` and NOTHING else — no `type`
+ * test. v5 had added `p.type === 'llm'`, which made a Serper key uncreatable and
+ * so made the configured search path unreachable from the UI. Both directions
+ * are pinned here: the search provider IS offered, and a keyless provider is
+ * still excluded (so the filter was not simply deleted).
+ */
+describe('ApiKeyModal — which providers may hold a key (dogfood #98)', () => {
+  it('offers the SEARCH provider alongside the LLM ones, sorted by display name', async () => {
+    const fixture = await render();
+    const select = fixture.nativeElement.querySelector('#qt-key-provider') as HTMLSelectElement;
+    const options = Array.from(select.options)
+      .filter((o) => o.value !== '')
+      .map((o) => ({ value: o.value, label: o.textContent?.trim() }));
+
+    expect(options.map((o) => o.value)).toEqual(['ANTHROPIC', 'OPENAI', 'SERPER']);
+    expect(options.find((o) => o.value === 'SERPER')?.label).toBe('Serper Web Search');
+  });
+
+  it('still excludes a provider that accepts no key at all', async () => {
+    const fixture = await render();
+    const select = fixture.nativeElement.querySelector('#qt-key-provider') as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).not.toContain('OLLAMA');
+  });
+});
+
 describe('ApiKeyModal auto-association toasts', () => {
   function toasts(): { type: string; message: string; duration: number }[] {
     return TestBed.inject(ToastService)

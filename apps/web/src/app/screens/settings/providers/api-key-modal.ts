@@ -127,10 +127,18 @@ export class ApiKeyModal {
    * differ for OpenAI-Compatible, whose hosted endpoints need a bearer token its
    * local ones have no use for, and asking the stricter question left no way to
    * create such a key at all (v4 bug 81).
+   *
+   * **`type` is deliberately NOT filtered** (v4 `ApiKeyModal.tsx:70-71` asks
+   * `providerAcceptsApiKey` and nothing else). SEARCH providers hold API keys
+   * exactly like LLM providers do — a Serper key created here is the row the
+   * `search_web` tool resolves per call — so an added `type === 'llm'` test
+   * would make the configured search path unreachable from the UI, which is
+   * dogfood finding #98. The list is sorted by displayName, so Serper Web Search
+   * falls in alphabetically among the rest, as it does in v4.
    */
   protected readonly providerOptions = computed<ProviderOption[]>(() =>
     (this.providersQuery.data() ?? [])
-      .filter((p) => p.type === 'llm' && providerAcceptsApiKey(p.configRequirements))
+      .filter((p) => providerAcceptsApiKey(p.configRequirements))
       .map((p) => ({ value: p.name, label: p.displayName }))
       .sort((a, b) => a.label.localeCompare(b.label)),
   );

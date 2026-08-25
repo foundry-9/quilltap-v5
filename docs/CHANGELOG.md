@@ -161,6 +161,32 @@ real parser, and its POST leg now goes through it rather than re-reading the
 keys itself. New `web_edge_body_parse_guard` holds the whole
 `quilltap-web/src/*_routes.rs` surface to a per-file census of the collapsing
 idiom and pins that the fixed edge still routes through its parser.
+#### 2026-08-24 — fix(spa): the API-keys surface offers the search provider (dogfood #98)
+
+_Versions: SPA 0.5.549._
+
+v4's Add-New-API-Key modal filters the provider list on
+`providerAcceptsApiKey(p.configRequirements)` and nothing else. v5 had added
+`p.type === 'llm'`, which — once the search row exists — makes a Serper key
+uncreatable and so leaves the configured search path unreachable from the UI.
+That is dogfood #98's remaining half. The filter is now v4's, and both
+directions are spec-pinned: the search provider IS offered (sorted in by display
+name, as in v4), and a keyless provider is still excluded, so the filter was not
+simply deleted.
+
+`ProviderInfo.capabilities` is optional, because the search row carries no
+capability bag at all — and that absence is load-bearing: it is how v4's own
+profile editor keeps search providers out of the LLM picker
+(`p.capabilities?.chat`). Two specs pin that direction, one of them proving the
+filter is the capability rather than the type by excluding a non-chat LLM
+provider. Three call sites that read the bag directly were made optional-safe.
+
+The e2e beats become the registration proof over the real binary. The settings
+walk asserts the Serper option and creates a Serper key; the salon web-search
+beat now runs the CONFIGURED path — `SERPER_API_KEY` is no longer set at launch,
+global setup seeds the `api_keys` row instead, so a green run proves the row is
+what reached the wire.
+
 #### 2026-08-24 — test(search): the tier-3 web-search oracle drives v4's REAL registry, plugin and key predicate
 
 _Versions: harness 0.0.566._

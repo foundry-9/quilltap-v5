@@ -175,11 +175,32 @@ test.describe('Settings vertical (fresh instance → wizard → configured profi
     // …and Ollama, which takes no key at all, still is not.
     await expect(provider.locator('option[value="OLLAMA"]')).toHaveCount(0);
 
+    // -----------------------------------------------------------------------
+    // P4.59 (dogfood #98) — the SEARCH provider is offered here too, which is
+    // the whole point: a Serper key created on this screen is the `api_keys` row
+    // the `search_web` tool resolves per call. This is the registration proof
+    // over the REAL binary — the row only exists because the host registered the
+    // native Serper manifest and `provider_list` served its `type: 'search'`
+    // entry.
+    // -----------------------------------------------------------------------
+    await expect(provider.locator('option[value="SERPER"]')).toHaveCount(1);
+    await expect(provider.locator('option[value="SERPER"]')).toHaveText('Serper Web Search');
+
     await page.locator('#qt-key-label').fill('Hosted OAC key');
     await provider.selectOption('OPENAI_COMPATIBLE');
     await page.locator('#qt-key-value').fill('sk-e2e-not-a-real-secret');
     await page.getByRole('button', { name: 'Create API Key' }).click();
     await expect(page.getByText('Hosted OAC key')).toBeVisible();
+
+    // P4.59: a Serper key created the way v4 tells the user to create one, and
+    // listed with its provider — the exact row `getSearchProviderApiKey` reads.
+    await page.getByRole('button', { name: '+ Add API Key' }).click();
+    await page.locator('#qt-key-label').fill('Search key');
+    await page.locator('#qt-key-provider').selectOption('SERPER');
+    await page.locator('#qt-key-value').fill('serper-e2e-not-a-real-secret');
+    await page.getByRole('button', { name: 'Create API Key' }).click();
+    await expect(page.getByText('Search key')).toBeVisible();
+    await expect(page.getByText('SERPER', { exact: false }).first()).toBeVisible();
 
     // The profile form now offers the key field — UNSTARRED, with the optional
     // placeholder — and holds what is chosen.
