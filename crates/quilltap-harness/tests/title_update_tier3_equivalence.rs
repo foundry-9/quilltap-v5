@@ -569,108 +569,194 @@ fn title_update_runner_registration_e2e() {
 }
 
 // ===========================================================================
-// P4.D110 — the checkpoint-burned warn (v4 `3c041e46`, bug 96)
+// P4.D110 + P4.61 — the handler's log lines, pinned with a capturing layer
 // ===========================================================================
+//
+// The differential above cannot see any of these: a log line writes no row, and
+// several of them ride branches whose DB state is byte-identical to a sibling's
+// (the checkpoint-burned warn vs a genuine decline is the extreme case — that
+// identity IS bug 96's invisibility). So the sanctioned proof for a log-only
+// port is a capturing `tracing::Layer` over the REAL `handle_title_update`, on
+// the committed fixture, with no oracle — asserting BOTH that the line fires on
+// its own branch and that the sibling branches stay SILENT, because a line
+// attached to the wrong branch is exactly the defect a presence-only assertion
+// cannot catch.
+//
+// P4.61 carries v4 `title-update.ts`'s remaining log sites. Two of the eight are
+// NO-PORTs with evidence, recorded here so a later reader does not "fix" them
+// back in:
+//
+//   * `:89` `[Title Update] No cheap LLM available` — dead code in v4 itself.
+//     `getCheapLLMProvider` is typed `: CheapLLMSelection` and has no `return
+//     null` on any path (`cheap-llm.ts:176-278`; priority 5 always yields the
+//     current profile), so `if (!cheapLLMSelection)` can never be entered. v5's
+//     `get_cheap_llm_provider` returns non-optionally for that reason, so there
+//     is no branch to attach the line to on either side.
+//   * `:185` `[Title Update] Failed to create system event:` — its `try` cannot
+//     throw. `estimateMessageCost` catches its whole body and returns
+//     `{cost: null, source: 'unavailable'}` (`cost-estimation.service.ts:124`);
+//     `createSystemEvent` catches its whole body, logs its OWN different
+//     sentence, and returns null (`system-events.service.ts:73`). v5's seams are
+//     `Option`-returning for the same reason.
 
-/// v4's new inner arm inside the no-rename guard: when the model asked for a
-/// rename and handed back nothing usable, say so instead of burning the
-/// checkpoint in silence.
+use std::sync::{Arc, Mutex};
+use tracing_subscriber::layer::SubscriberExt;
+
+struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+struct FieldVisitor(String);
+impl tracing::field::Visit for FieldVisitor {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.0.push_str(&format!(" {}={}", field.name(), value));
+    }
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.0.push_str(&format!(" {}={}", field.name(), value));
+    }
+    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
+        self.0.push_str(&format!(" {}={}", field.name(), value));
+    }
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.0.push_str(&format!(" {value:?}"));
+        } else {
+            self.0.push_str(&format!(" {}={value:?}", field.name()));
+        }
+    }
+}
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let meta = event.metadata();
+        let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+        event.record(&mut visitor);
+        self.0.lock().unwrap().push(visitor.0);
+    }
+}
+
+/// Drive the REAL handler `runs` times over ONE fresh copy of the committed
+/// fixture and return every line it logged.
 ///
-/// The differential above cannot see this — the warn writes no row, and the
-/// `rename_with_no_usable_title` case's DB state is byte-identical to a genuine
-/// decline (that identity IS the bug's invisibility). So this pins the WIRING:
-/// a capturing `Layer` over the REAL `handle_title_update`, on the committed
-/// fixture, with no oracle. It also asserts the sibling silence — a decline
-/// must NOT warn — so a warn moved outside the guard is red too.
-#[test]
-fn checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title() {
-    use std::sync::{Arc, Mutex};
-    use tracing_subscriber::layer::SubscriberExt;
-
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-    struct FieldVisitor(String);
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
-    }
-
-    let spec: Spec = serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap();
+/// * `override_reply` / `throws` are the model boundary, as in the differential.
+/// * `break_jobs_table` drops `background_jobs` first, so the story-background
+///   enqueue really fails — v4's `:303` catch arm has no other way in, since the
+///   enqueue's only failure mode is the database refusing it.
+/// * `runs > 1` re-drives the same chat on the same DB, which exercises v4's
+///   `isNew: false` dedupe arm (the second enqueue finds the first job pending
+///   and must say nothing).
+#[allow(clippy::too_many_arguments)]
+fn capture_runs(
+    spec: &Spec,
+    tag: &str,
+    chat_id: &str,
+    user_id: &str,
+    override_reply: Option<CannedTitle>,
+    throws: bool,
+    break_jobs_table: bool,
+    runs: usize,
+) -> Vec<String> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
+    let db = fresh_db(tag);
+    if break_jobs_table {
+        rt.block_on(db.write(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE background_jobs;")?;
+            Ok(())
+        }))
+        .expect("drop background_jobs");
+    }
 
-    // Drive one canned reply through the real handler, returning the captured
-    // lines.
-    let run = |tag: &str, content: &str| -> Vec<String> {
-        let db = fresh_db(tag);
-        let provider = CannedTitleProvider {
-            canned: spec.canned_titles.clone(),
-            override_reply: Some(CannedTitle {
-                content: content.to_string(),
-                prompt_tokens: 40,
-                completion_tokens: 10,
-            }),
-            throws: false,
-        };
-        let payload = TitleUpdatePayload {
-            chat_id: spec.chat_title_id.clone(),
-            connection_profile_id: spec.connection_profile_id.clone(),
-            current_interchange: 5.0,
-        };
-        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
-        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        {
-            let _guard = tracing::subscriber::set_default(subscriber);
+    let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+    {
+        let _guard = tracing::subscriber::set_default(subscriber);
+        for _ in 0..runs {
+            let provider = CannedTitleProvider {
+                canned: spec.canned_titles.clone(),
+                override_reply: override_reply.clone(),
+                throws,
+            };
+            let payload = TitleUpdatePayload {
+                chat_id: chat_id.to_string(),
+                connection_profile_id: spec.connection_profile_id.clone(),
+                current_interchange: 5.0,
+            };
             rt.block_on(handle_title_update(
                 &db,
                 &provider,
                 &CheapLlmTaskExecutor::new(),
                 &NoMessageCost,
-                &spec.user_enabled_id,
+                user_id,
                 &payload,
                 spec.frozen_now_ms,
             ))
             .expect("handler");
         }
-        let out = logs.lock().unwrap().clone();
-        out
-    };
+    }
+    let out = logs.lock().unwrap().clone();
+    out
+}
+
+fn read_spec() -> Spec {
+    serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).unwrap()
+}
+
+fn canned(content: &str) -> Option<CannedTitle> {
+    Some(CannedTitle {
+        content: content.to_string(),
+        prompt_tokens: 40,
+        completion_tokens: 10,
+    })
+}
+
+/// The one line in `lines` containing `needle`, or a panic naming everything the
+/// handler DID log.
+fn one<'a>(lines: &'a [String], needle: &str) -> &'a String {
+    let hits: Vec<&String> = lines.iter().filter(|l| l.contains(needle)).collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "expected exactly one {needle:?} line, got {}: {lines:#?}",
+        hits.len()
+    );
+    hits[0]
+}
+
+fn none(lines: &[String], needle: &str) {
+    assert!(
+        !lines.iter().any(|l| l.contains(needle)),
+        "expected NO {needle:?} line: {lines:#?}"
+    );
+}
+
+/// v4 `:196` — when the model asked for a rename and handed back nothing usable,
+/// say so instead of burning the checkpoint in silence.
+#[test]
+fn checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title() {
+    let spec = read_spec();
 
     // (a) The bug-96 residue: a rename asked for under a key nothing can read.
-    let lines = run(
+    let lines = capture_runs(
+        &spec,
         "burned_warn",
-        r#"{"needsNewTitle":true,"reason":"the current title says nothing","headline":"Under An Unknown Key"}"#,
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        canned(
+            r#"{"needsNewTitle":true,"reason":"the current title says nothing","headline":"Under An Unknown Key"}"#,
+        ),
+        false,
+        false,
+        1,
     );
-    let burned = lines
-        .iter()
-        .find(|l| {
-            l.contains("[Title Update] Rename requested with no usable title — checkpoint burned")
-        })
-        .unwrap_or_else(|| panic!("no checkpoint-burned warn in {lines:#?}"));
+    let burned = one(
+        &lines,
+        "[Title Update] Rename requested with no usable title — checkpoint burned",
+    );
     assert!(
         burned.contains("context=background-jobs.title-update"),
         "{burned}"
@@ -686,12 +772,242 @@ fn checkpoint_burned_warn_fires_only_when_a_rename_had_no_usable_title() {
     );
 
     // (b) A genuine decline takes the SAME guard and must stay silent.
-    let lines = run(
+    let lines = capture_runs(
+        &spec,
         "burned_warn_silent",
-        r#"{"needsNewTitle":false,"reason":"the title still fits","suggestedTitle":null}"#,
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        canned(r#"{"needsNewTitle":false,"reason":"the title still fits","suggestedTitle":null}"#),
+        false,
+        false,
+        1,
+    );
+    none(&lines, "checkpoint burned");
+}
+
+/// v4 `:152` — `[Title Update] Failed for chat ${chatId}: ${result.error}`, one
+/// rendered sentence with no fields bag. The failing cheap-LLM call is the only
+/// absorbed failure in the handler, so before P4.61 an exhausted quota burned
+/// checkpoints in complete silence.
+#[test]
+fn failed_call_warn_fires_only_when_the_cheap_llm_call_failed() {
+    let spec = read_spec();
+
+    // (a) The provider throws — v4's `!result.success` arm.
+    let lines = capture_runs(
+        &spec,
+        "failed_warn",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        true,
+        false,
+        1,
+    );
+    let failed = one(
+        &lines,
+        &format!("[Title Update] Failed for chat {}: ", spec.chat_title_id),
+    );
+    assert!(failed.contains("canned provider failure"), "{failed}");
+    // The whole sentence is the message; v4 passes no context object, so nothing
+    // but the target rides along.
+    assert!(failed.starts_with("WARN "), "{failed}");
+
+    // (b) A successful evaluation must not claim a failure.
+    let lines = capture_runs(
+        &spec,
+        "failed_warn_silent",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        false,
+        false,
+        1,
+    );
+    none(&lines, "[Title Update] Failed for chat");
+}
+
+/// v4 `:213` + `:224` — the decided-to-rename line and the wrote-the-title line.
+/// Both are single rendered sentences; `:224` quotes the title, and the quotes
+/// are v4's own bytes.
+#[test]
+fn rename_info_lines_fire_only_when_a_title_is_written() {
+    let spec = read_spec();
+
+    // (a) The canned literary verdict renames the chat.
+    let lines = capture_runs(
+        &spec,
+        "rename_info",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        false,
+        false,
+        1,
+    );
+    one(
+        &lines,
+        &format!(
+            "[Title Update] Chat {} - needsNewTitle: true, reason: the generic title says nothing of the ballonet",
+            spec.chat_title_id
+        ),
+    );
+    one(
+        &lines,
+        &format!(
+            "[Title Update] Updated title for chat {} to: \"The Ballonet's Slow Betrayal\"",
+            spec.chat_title_id
+        ),
+    );
+
+    // (b) A decline writes no title, so neither line may appear.
+    let lines = capture_runs(
+        &spec,
+        "rename_info_silent",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        canned(r#"{"needsNewTitle":false,"reason":"the title still fits","suggestedTitle":null}"#),
+        false,
+        false,
+        1,
+    );
+    none(&lines, "needsNewTitle: true");
+    none(&lines, "[Title Update] Updated title for chat");
+
+    // (c) So does a failed call — the earlier return must not reach either line.
+    let lines = capture_runs(
+        &spec,
+        "rename_info_silent_failed",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        true,
+        false,
+        1,
+    );
+    none(&lines, "needsNewTitle: true");
+    none(&lines, "[Title Update] Updated title for chat");
+}
+
+/// v4 `:294` — the queued-a-background line, gated on `isNew`, with the fields
+/// an operator needs to find the job. The three gates that skip the enqueue
+/// (settings disabled, an autonomous room, a dedupe hit) must each stay silent.
+#[test]
+fn queued_story_background_info_fires_once_per_new_job() {
+    let spec = read_spec();
+
+    // (a) A fresh rename on a story-backgrounds-enabled user queues one.
+    let lines = capture_runs(
+        &spec,
+        "queued_info",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        false,
+        false,
+        1,
+    );
+    let queued = one(&lines, "[Title Update] Queued story background generation");
+    assert!(
+        queued.contains("context=background-jobs.title-update"),
+        "{queued}"
     );
     assert!(
-        !lines.iter().any(|l| l.contains("checkpoint burned")),
-        "a decline must not warn: {lines:#?}"
+        queued.contains(&format!("chat_id={}", spec.chat_title_id)),
+        "{queued}"
     );
+    assert!(queued.contains("job_id="), "{queued}");
+    assert!(queued.contains("image_profile_id="), "{queued}");
+    assert!(queued.contains("character_count=2"), "{queued}");
+
+    // (b) The dedupe arm: a second run finds the first job pending, so
+    //     `isNew` is false and v4 says nothing. Exactly ONE line across both.
+    let lines = capture_runs(
+        &spec,
+        "queued_info_dedupe",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        false,
+        false,
+        2,
+    );
+    one(&lines, "[Title Update] Queued story background generation");
+
+    // (c) Story backgrounds disabled — renamed, but nothing queued.
+    let lines = capture_runs(
+        &spec,
+        "queued_info_disabled",
+        &spec.chat_title_id,
+        &spec.user_disabled_id,
+        None,
+        false,
+        false,
+        1,
+    );
+    one(&lines, "[Title Update] Updated title for chat");
+    none(&lines, "Queued story background generation");
+
+    // (d) An autonomous room — the Lantern's auto-trigger is off there.
+    let lines = capture_runs(
+        &spec,
+        "queued_info_autonomous",
+        &spec.chat_autonomous_id,
+        &spec.user_enabled_id,
+        None,
+        false,
+        false,
+        1,
+    );
+    one(&lines, "[Title Update] Updated title for chat");
+    none(&lines, "Queued story background generation");
+}
+
+/// v4 `:303` — the enqueue's catch arm. The only way in is the database refusing
+/// the job row, so the fixture copy loses its `background_jobs` table first.
+#[test]
+fn failed_to_queue_warn_fires_only_when_the_enqueue_errors() {
+    let spec = read_spec();
+
+    // (a) No `background_jobs` table — the enqueue errors and says so.
+    let lines = capture_runs(
+        &spec,
+        "queue_fail_warn",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        false,
+        true,
+        1,
+    );
+    let failed = one(
+        &lines,
+        "[Title Update] Failed to queue story background generation",
+    );
+    assert!(
+        failed.contains("context=background-jobs.title-update"),
+        "{failed}"
+    );
+    assert!(
+        failed.contains(&format!("chat_id={}", spec.chat_title_id)),
+        "{failed}"
+    );
+    assert!(failed.contains("error="), "{failed}");
+    // The failure is loud INSTEAD of the success line, not alongside it.
+    none(&lines, "Queued story background generation");
+    // And the handler still completed — the enqueue stays best-effort.
+    one(&lines, "[Title Update] Updated title for chat");
+
+    // (b) A healthy enqueue must not warn.
+    let lines = capture_runs(
+        &spec,
+        "queue_fail_warn_silent",
+        &spec.chat_title_id,
+        &spec.user_enabled_id,
+        None,
+        false,
+        false,
+        1,
+    );
+    none(&lines, "Failed to queue story background generation");
 }

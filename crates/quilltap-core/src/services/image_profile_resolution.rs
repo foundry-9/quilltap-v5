@@ -185,8 +185,21 @@ pub async fn queue_story_background_if_enabled(
         .get("projectId")
         .and_then(Value::as_str)
         .map(str::to_string);
-    // Errors swallowed — the automatic path must never affect the caller.
-    let _ = crate::services::queue_service::enqueue_story_background_generation(
+    // Errors swallowed — the automatic path must never affect the caller. v4
+    // says so out loud, though: the enqueue's two outcomes are the last two log
+    // sites of `title-update.ts` (`:294` info / `:303` warn), and P4.61 carries
+    // them so a background that never got queued is visible in `combined.log`.
+    //
+    // The `isNew` gate is v4's: a dedupe hit (a story-background job already
+    // pending for this chat) returns the EXISTING id with `isNew: false` and
+    // says nothing.
+    //
+    // Recorded shape divergence: v4 carries the failure text inside the context
+    // bag (`{context, chatId, error}` — `logger.warn` has no error parameter),
+    // while v5's `error = %e` is the house idiom at 130-odd sites and the P4.49
+    // file layer hoists a field named `error` into the record's own `error` key.
+    // The text is present and greppable either way; the placement differs.
+    match crate::services::queue_service::enqueue_story_background_generation(
         db,
         user_id,
         chat_id,
@@ -195,5 +208,27 @@ pub async fn queue_story_background_if_enabled(
         Some(new_title),
         project_id,
     )
-    .await;
+    .await
+    {
+        Ok((job_id, is_new)) => {
+            if is_new {
+                tracing::info!(
+                    context = crate::services::title_update_job::CONTEXT,
+                    chat_id = %chat_id,
+                    job_id = %job_id,
+                    image_profile_id = %image_profile_id,
+                    character_count = character_ids.len(),
+                    "[Title Update] Queued story background generation"
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                context = crate::services::title_update_job::CONTEXT,
+                chat_id = %chat_id,
+                error = %e,
+                "[Title Update] Failed to queue story background generation"
+            );
+        }
+    }
 }

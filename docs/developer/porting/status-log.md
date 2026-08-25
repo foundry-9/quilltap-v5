@@ -84730,3 +84730,160 @@ deferred; nothing in this lane loads code at runtime. The site-plugins gate is
 honored for the Serper plugin ONLY — v5's ten native LLM providers are not gated
 by `SITE_PLUGINS_*` (recorded above). The plugin's `validateApiKey` was NOT
 deferred: a v5 surface reaches it, so it was ported.
+---
+
+## Lane record — P4.61 unit 1 (the title-update handler's log lines) — v4 `0ba942b1`
+
+**Drift check at lane start:** v4 `main` HEAD = `0ba942b1` (the baseline
+exactly), tree CLEAN, checkout on `main`; `bugfix` HEAD = `3a76b17d`, unchanged
+from planning. **No drift — no pin worktree needed**, and the family was
+regenerated against the live checkout on that basis.
+
+### The bank, discharged: five lines land, two are NO-PORTs with evidence
+
+P4.D110 banked that v5's `title_update_job.rs` carried **one of v4's eight log
+sites** — the `:196` checkpoint-burned warn. The order asked for the other
+seven. Two of those seven turn out to be **unreachable in v4 itself**, and the
+lane's first act was the re-survey the order demanded rather than inventing a
+branch to hang them on:
+
+| v4 site | Level | Disposition |
+|---|---|---|
+| `:89` `[Title Update] No cheap LLM available` | warn | **NO-PORT (dead in v4)** |
+| `:152` `[Title Update] Failed for chat …: …` | warn | **LANDED** |
+| `:185` `[Title Update] Failed to create system event:` | error | **NO-PORT (unreachable catch)** |
+| `:196` checkpoint burned | warn | already ported (P4.D110) — untouched |
+| `:213` `[Title Update] Chat … - needsNewTitle: true, reason: …` | info | **LANDED** |
+| `:224` `[Title Update] Updated title for chat … to: "…"` | info | **LANDED** |
+| `:294` `[Title Update] Queued story background generation` | info | **LANDED** |
+| `:303` `[Title Update] Failed to queue story background generation` | warn | **LANDED** |
+
+**`:89`'s evidence.** `getCheapLLMProvider` is declared `: CheapLLMSelection`
+(`lib/llm/cheap-llm.ts:176-278`) and no path in its body returns null or
+undefined — priority 5 always yields a selection built from the current profile.
+So `if (!cheapLLMSelection)` cannot be entered, and v4's own cursor-advance
+inside it is dead with it. v5's `get_cheap_llm_provider` returns
+non-optionally for exactly that reason (a decision the port already recorded at
+`title_update_job.rs`), so there is no branch on either side. The existing
+comment now names the log line it also implies.
+
+**`:185`'s evidence.** The `try` wraps exactly two awaits, and **neither can
+reject**: `estimateMessageCost` catches its whole body and returns
+`{cost: null, source: 'unavailable'}` (`cost-estimation.service.ts:124`), and
+`createSystemEvent` catches its whole body, logs its **own different** sentence
+(`Failed to create system event` — no `[Title Update]` prefix, fields
+`{chatId, eventType, error}`), and returns null (`system-events.service.ts:73`).
+v5's seams are `Option`-returning for the same reason: `MessageCostEstimator::
+estimate → Option<f64>`, `create_title_generation_event → Option<String>`.
+Attaching `:185` to "the event creator answered `None`" would emit a sentence v4
+never emits in that situation — so it stays unported, in the source, by name.
+
+### Where the last two lines live — a v5 file split, not a lane overrun
+
+v4 keeps `queueStoryBackgroundIfEnabled` in `title-update.ts`; v5 split it into
+`services/image_profile_resolution.rs` (P4.6ao). `:294` and `:303` are therefore
+edits to **that** file. It belongs to no lane in this round's ownership table
+(P4.59 owns the host spine + web-search + providers settings; P4.60 owns six
+`quilltap-web` route modules), so the lanes still meet nowhere — but the
+unifier should know the diff reaches one file beyond P4.61's listed three.
+
+The enqueue's result was being discarded (`let _ = …`). It is now matched, which
+is what gives v4's `isNew` gate and its `catch` arm somewhere to land: a dedupe
+hit returns the EXISTING job id with `isNew: false` and says nothing.
+
+### Recorded field-shape decisions (two, both deliberate)
+
+1. **Field idents stay snake_case** (`chat_id`, `job_id`, `image_profile_id`,
+   `character_count`) rather than v4's camelCase. The order asks for v4's field
+   keys; the same order forbids re-touching `:196`, which P4.D110 landed with
+   `chat_id` / `current_interchange`. Camel-casing the new lines would leave the
+   one handler emitting both spellings. The house idiom across the core is
+   snake_case, and P4.49's own module doc records the standing P4.18 ruling that
+   the *content* of `context` is deliberately unchecked. The key SET is v4's;
+   the spelling is v5's. One line per site if the human rules otherwise.
+2. **`error = %e` on `:303`** follows the 130-odd existing sites in the core —
+   but the P4.49 file layer special-cases a field literally named `error` and
+   hoists it into the record's own `error` key, where v4 keeps the text inside
+   the `context` bag (`logger.warn` has no error parameter). The text is present
+   and greppable either way; the placement differs. Recorded in the source.
+
+`${result.error}` renders `undefined` when absent, matching JS — the only
+producer (`core-execution.ts:372`) always sets it, but the spelling is the
+faithful one.
+
+### The proof: a capturing layer, presence AND silence, six mutations
+
+A log line writes no row, so `title_update_matches_oracle` is structurally blind
+to every line here (memory `differential-blind-to-a-log-only-fix`). The pins
+extend P4.D110's machinery rather than paralleling it: the `CaptureLayer` /
+`FieldVisitor` / driver moved to module scope as `capture_runs(…)`, which drives
+the REAL `handle_title_update` over one fresh copy of the committed
+`cost-background-{main,mount}.db` fixture and returns every line logged. Two
+knobs were added for this lane:
+
+- `break_jobs_table` — `DROP TABLE background_jobs` on the scratch copy before
+  the handler runs. The enqueue's **only** failure mode is the database refusing
+  it, so this is the only way into v4's `:303` catch.
+- `runs` — re-drive the same chat on the same DB, which exercises v4's
+  `isNew: false` dedupe arm.
+
+Four new tests, each with its silence legs (5 → 7 tests in the family):
+
+- `failed_call_warn_fires_only_when_the_cheap_llm_call_failed` — the throwing
+  provider warns; a successful evaluation must not.
+- `rename_info_lines_fire_only_when_a_title_is_written` — both info lines on the
+  canned literary verdict; silent on a decline AND on a failed call.
+- `queued_story_background_info_fires_once_per_new_job` — presence with all five
+  fields; **exactly one** line across two runs (the dedupe arm); silent when
+  story backgrounds are disabled and inside an autonomous room, both of which
+  still rename.
+- `failed_to_queue_warn_fires_only_when_the_enqueue_errors` — the warn with its
+  fields, the success line ABSENT, the handler still completing (best-effort
+  preserved), and silence on a healthy enqueue.
+
+**Six mutation proofs**, each reverting one line in v5 SOURCE (never the
+fixture — memory `fixture-side-mutation-proves-nothing`) with the file restored
+from a backup copy rather than `git checkout`:
+
+| Mutation | Red |
+|---|---|
+| M1 `:152` warn deleted | `failed_call_warn_…` only |
+| M2 `:213` info deleted | `rename_info_lines_…` only |
+| M3 `:224` info deleted | `rename_info_lines_…` + the two arms that use it as a still-completed witness |
+| M4 `:294` info deleted | `queued_story_background_…` only |
+| M5 `:294` escapes the `isNew` gate (`if true`) | `queued_story_background_…` only — the dedupe silence leg |
+| M6 `:303` warn deleted | `failed_to_queue_warn_…` only |
+
+M5 is the wiring-class proof the order asked for: a line attached one brace too
+high is invisible to any presence-only assertion.
+
+### The mirror rider (tier 2)
+
+`docs/v4/` refreshed by mechanical `rsync` from the v4 checkout's `docs/` at
+`0ba942b1` (`.DS_Store` excluded, no `--delete` so the mirror's selective
+`docs/v4/help/` survives), plus `docs/v4/help/database-protection.md` from v4's
+`help/`. **19 files modified, 97 added**, `diff -rq` clean afterwards. The
+order's "~8 differing files" estimate was stale in both directions:
+`developer/API.md` was already byte-identical, while 18 other files had drifted
+and 83 `bugs/fixed/` rows plus four releases (4.8.1–4.8.4), the two
+`CUSTOM_TOOL_SPEC*.json` files, `bugfix-sessions/`, and seven feature docs were
+missing entirely. No v5 prose was edited to match; the mirror is reference-only.
+
+### Deferrals, loud
+
+- **The wider handler-logging parity sweep** (Tier 3) — NOT run; named only.
+  One adjacent gap was enumerated in passing and is NOT this lane's to fix:
+  v5's `cost_events::create_system_event` swallows a failed write and returns
+  `None` where v4 logs `Failed to create system event` with
+  `{chatId, eventType, error}` (`system-events.service.ts:74`). That is the
+  sibling of `:185` and lives in `cost_events.rs`, outside P4.61's ownership.
+- 💸 **A live look at the new lines in `combined.log` on a real title cycle**
+  joins the dogfood queue. The five sentences are unit-proven; none has been
+  seen in a real file.
+
+Gate: `cargo fmt --all --check` clean; clippy `--workspace --all-targets -D
+warnings` clean, plain AND `--features quilltap-core/native-transport`;
+`cargo test --workspace` full-log with the lane's env var; `title_update_tier3`
+regenerated fresh at `0ba942b1` through the sweep driver and re-run by name —
+**17/17 differential cases OK, zero SKIP**, which is also the proof the lane
+moved no DB state. Versions: core 0.0.646, harness 0.0.563.

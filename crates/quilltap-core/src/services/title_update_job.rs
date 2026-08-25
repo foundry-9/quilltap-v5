@@ -65,7 +65,7 @@ use crate::services::job_runner::{JobFuture, JobHandler, JobOutcome};
 /// v4's `context: 'background-jobs.title-update'` for this handler's warn lines
 /// — byte-exact, because it is what an operator greps `combined.log` for
 /// (P4.D110 / v4 bug 96).
-const CONTEXT: &str = "background-jobs.title-update";
+pub(crate) const CONTEXT: &str = "background-jobs.title-update";
 
 /// The decoded `TITLE_UPDATE` payload (v4 `TitleUpdatePayload`).
 #[derive(Clone, Debug, Default)]
@@ -222,13 +222,15 @@ where
         .collect();
 
     // ── The cheap-LLM selection ──
-    // v4 has a `if (!cheapLLMSelection)` arm here that logs and advances the
-    // cursor. It is DEAD given the throw above: `getCheapLLMProvider`'s
-    // priority-5 fallback always yields the current profile, and we only reach
-    // this line with a valid one. The port's `get_cheap_llm_provider` returns a
-    // selection non-optionally for exactly that reason (the `context_summary`
-    // precedent, `:478`), so there is no arm to carry — and no way to exercise
-    // one, on either side.
+    // v4 has a `if (!cheapLLMSelection)` arm here that logs
+    // `[Title Update] No cheap LLM available` (`:89`) and advances the cursor.
+    // It is DEAD: `getCheapLLMProvider` is declared `: CheapLLMSelection` and
+    // no path in its body returns null — its priority-5 fallback always yields
+    // the current profile (`cheap-llm.ts:176-278`). The port's
+    // `get_cheap_llm_provider` returns a selection non-optionally for exactly
+    // that reason (the `context_summary` precedent, `:478`), so there is no arm
+    // to carry — and no way to exercise one, on either side. P4.61 re-surveyed
+    // this before declining to port the line.
     //
     // `ollama_available: false` + `registry_cheapest_for_current: None` follow
     // the `carina_memory_extraction` job precedent (`:271`); both feed only the
@@ -331,12 +333,34 @@ where
     };
 
     if !task.success {
+        // v4 `:152` — one rendered sentence, no fields bag. `result.error` is
+        // `string | undefined` in v4's `CheapLLMTaskResult`, so an absent one
+        // interpolates as the literal `undefined`; the only producer
+        // (`core-execution.ts:372`) always sets it, but the JS spelling is what
+        // this renders.
+        tracing::warn!(
+            "[Title Update] Failed for chat {}: {}",
+            payload.chat_id,
+            task.error.as_deref().unwrap_or("undefined")
+        );
         // A persistently-failing cheap LLM shouldn't re-fire every turn either.
         advance_cursor(db, &payload.chat_id, payload.current_interchange, now_ms).await;
         return Ok(());
     }
 
     // ── The spend trace (best-effort — v4 wraps this in its own try/catch) ──
+    //
+    // v4 `:185` logs `[Title Update] Failed to create system event:` from that
+    // catch. **NO-PORT with evidence:** the catch is unreachable in v4 itself —
+    // `estimateMessageCost` wraps its whole body and returns
+    // `{cost: null, source: 'unavailable'}` on any throw
+    // (`cost-estimation.service.ts:124`), and `createSystemEvent` wraps its whole
+    // body, logs its OWN different sentence, and returns null
+    // (`system-events.service.ts:73`). Neither can reject, so nothing reaches the
+    // handler's catch. v5's seams mirror that: `estimate` yields `Option<f64>`
+    // and `create_title_generation_event` yields `Option<String>` — there is no
+    // error arm to attach the line to, and inventing one would emit a sentence
+    // v4 never emits.
     if let Some(usage) = task
         .usage
         .filter(|u| u.prompt_tokens > 0 || u.completion_tokens > 0)
@@ -399,6 +423,13 @@ where
         return Ok(());
     };
 
+    // v4 `:213` — the decided-to-rename line, ahead of the write.
+    tracing::info!(
+        "[Title Update] Chat {} - needsNewTitle: true, reason: {}",
+        payload.chat_id,
+        verdict.reason
+    );
+
     write_chat(
         db,
         &payload.chat_id,
@@ -410,6 +441,13 @@ where
         },
     )
     .await;
+
+    // v4 `:224` — the written title, quoted, after the write.
+    tracing::info!(
+        "[Title Update] Updated title for chat {} to: \"{}\"",
+        payload.chat_id,
+        new_title
+    );
 
     // Story backgrounds run for normal chats only — help chats are skipped here,
     // autonomous rooms inside the gate.
