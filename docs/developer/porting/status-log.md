@@ -84238,3 +84238,65 @@ sends garbage bytes and asserted a 400 from the loader; that payload is not JSON
 so v4 answers 500 and now so does v5. The assertion was updated with the reason
 — the status was never that test's point (reaching the handler at all is), but it
 is asserted so a future change has to be deliberate.
+
+### The adjudication table (tier-1 deliverable 1) — every enumerated key, with its verdict
+
+Read against v4 at `0ba942b1`, one route at a time. "FAITHFUL" rows were
+measured, not assumed — each has an arm in the family named beside it.
+
+| v5 edge | key | v4 route + schema | verdict |
+|---|---|---|---|
+| `custom_tools_routes.rs:75` | `tool` | `chats/[id]/custom-tools/route.ts:372` `z.string().min(1)`, `.parse` uncaught | **DIVERGENT-FIXED** — 400 `Validation error`, not the schema's own sentence |
+| `custom_tools_routes.rs:81` | `parameters` | `:373` `z.record(…).nullish()` | **DIVERGENT-FIXED** — a string or ARRAY is refused |
+| `custom_tools_routes.rs:83` | `private` | `:375` `z.boolean().optional()` | **DIVERGENT-FIXED** — optional is not nullable: an explicit `null` 400s |
+| `custom_tools_routes.rs:86` | `asCharacterId` | `:377` `z.string().nullish()` + four truthiness reads | **DIVERGENT-FIXED** ×2 — wrong type refused, AND `''` means "nobody named" |
+| `characters_routes.rs:136` | `fileId` | `characters/[id]/photos/route.ts:70` `z.string().min(1).optional()` + a refine | **DIVERGENT-FIXED** — v4's joined issue sentences are wire payload |
+| `characters_routes.rs:140` | `linkId` | `:71`, same | **DIVERGENT-FIXED** |
+| `characters_routes.rs:301` | `caption` | `:72` `z.string().nullable().optional()` | **DIVERGENT-FIXED** — a wrong-typed caption was DROPPED and the photo saved 201 |
+| `characters_routes.rs:308` | `tags` | `:73` `z.array(z.string()).optional()` | **DIVERGENT-FIXED** — per-element issues in index order |
+| `characters_routes.rs:453` | `name` | `handlers/get.ts:98` — an ENTITY field off the typed record | **FAITHFUL** (recorded; `characters_read` arms already cover the export body) |
+| `characters_routes.rs:459` | `defaultImageId` | `handlers/get.ts:76` — an ENTITY field | **FAITHFUL** (recorded) |
+| `characters_routes.rs` (export) | `format` | `handlers/get.ts:72` — a QUERY parameter, `searchParams.get('format') || 'json'` | **FAITHFUL** (recorded — not body input at all) |
+| `backup_routes.rs:61` | `compact` | `system/backup/route.ts:28` `body.compact === true` | **FAITHFUL** — v5 already compared the whole `Value` |
+| `backup_routes.rs:147` | `mode` | `system/restore/route.ts:205` `!mode \|\| !['replace','new-account'].includes(mode)` | **FAITHFUL** on the sentence (`restore_mode_wrong_type`), but the ORDER moved — see unit 4 |
+| `backup_routes.rs:165` | `keepArchivedCharacterBundles` | `:199` `!== false` | **FAITHFUL** (`restore_keep_bundles_wrong_type`); carried raw anyway so the dispatch entrance cannot serde-fail where v4 accepts |
+| `backup_routes.rs:279` | `uploadId` | `:196` + `UUID_REGEX.test` at `:57` | **DIVERGENT-FIXED** — a truthy wrong type answers the OTHER sentence |
+| `brahma_routes.rs:175` | `fileIds` | `brahma-console/[id]/messages/route.ts:21` `z.array(z.string().uuid()).optional()` | **DIVERGENT-FIXED** — refused, not emptied; and the 404 gate runs first |
+| `embedding_profiles_routes.rs:186` | `scope` | `embedding-profiles/[id]/route.ts:344` `String(body.scope)` | **DIVERGENT-FIXED** — `[object Object]`, comma-joined arrays, and the absent/null split |
+| `qtap_routes.rs:118–226` | sub-objects | `system/tools/route.ts:720-850` | **CONFIRMED** (`data_key_absent` still describes the code) — and the same pass found two neighbouring divergences, both fixed (unit 6) |
+
+Four more keys were adjudicated because reading v4 for an enumerated one put
+them in front of us, all in owned files and all the same class (the order's
+tier-2 licence): brahma `content` (DIVERGENT-FIXED), brahma create's
+`connectionProfileId` (DIVERGENT-FIXED — `''` used to fall back to the default),
+brahma rename's `title` (DIVERGENT-FIXED), and brahma set-model's
+`connectionProfileId` (DIVERGENT-FIXED). **Zero DIVERGENT-RECORDED rows** — no
+deliberate divergence was needed anywhere, and nothing was escalated.
+
+`llm_logs_routes.rs:53–66` was not re-flagged, per the order.
+
+### The tier-2 enumeration sweep (tier-2 deliverable 5) — enumerated, not fixed
+
+Made EXECUTABLE rather than written down: `web_edge_body_parse_guard` holds the
+whole `crates/quilltap-web/src` surface to per-file counts under two needles —
+P4.57's `and_then(Value::as_` and the closure spelling `.as_str())`, which
+P4.57's needle could not see. Each count carries its verdict in the table; a new
+one has to be argued for.
+
+What the sweep found beyond this lane's sites:
+
+- **`system_data_routes.rs`, 13 sites** — the jobs/maintenance control bodies
+  (`action`, `concurrency`, `threshold`, `priority`, `maxAttempts`, …). The
+  largest remaining pocket, and the natural next order in this class.
+- **`files_routes.rs`, 5 caller-input sites** (plus 2 that read the server's own
+  response entity to choose 201 vs 200) — `content`/`encoding` on the mount-file
+  write, the `str_field` chat-attach pair, `fileId` on the link leg, and the
+  multipart `tags` part's parsed `tagId`s. Wants v4's `mount-points/**` and
+  `chats/[id]/files/**` routes read first.
+- **`llm_logs_routes.rs`, 1 site** — the request-preview `content` projection.
+  Named so a future sweep does not re-flag it; explicitly out of scope here.
+- **`qtap_target_route.rs`, 3 sites** — entity fields off a chat row. Not the
+  class.
+
+None of these were touched. They are named, counted, and pinned so the next
+order starts from a measurement rather than a grep.

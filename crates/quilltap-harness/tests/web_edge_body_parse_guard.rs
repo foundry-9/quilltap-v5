@@ -126,6 +126,25 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
 
 const NEEDLE: &str = "and_then(Value::as_";
 
+/// The same collapse spelled with a closure — `and_then(|v| v.as_str())`. P4.57
+/// enumerated the `Value::as_*` form only; this second needle is what makes
+/// P4.60's tier-2 sweep executable rather than a paragraph, and it is how
+/// `files_routes.rs`'s seven body-key reads were found.
+const CLOSURE_NEEDLE: &str = ".as_str())";
+
+/// `(routes file, expected closure-form sites, the adjudication)`.
+const CLOSURE_CENSUS: &[(&str, usize, &str)] = &[(
+    "crates/quilltap-web/src/files_routes.rs",
+    7,
+    "NOT adjudicated by P4.60 (outside its enumerated sites) — FIVE are caller \
+     input (`content` and `encoding` on the mount-file write, the `str_field` \
+     chat-attach reads, `fileId` on the link leg, and the multipart `tags` \
+     part's parsed `tagId`s), and TWO read the server's OWN response entity to \
+     pick 201 vs 200. Named tier-2 fodder for a future order: the five want \
+     v4's `mount-points/**` and `chats/[id]/files/**` routes read first, \
+     exactly as this lane read its own.",
+)];
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -149,8 +168,8 @@ fn adjudicated_edges_still_route_through_their_parser() {
     }
 }
 
-#[test]
-fn web_route_body_reads_match_the_census() {
+/// Walk `quilltap-web/src` and hold one needle's per-file counts to a census.
+fn census_walk(needle: &str, census: &[(&str, usize, &str)], failures: &mut Vec<String>) {
     let root = repo_root();
     let dir = root.join("crates/quilltap-web/src");
     let mut files: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -170,12 +189,11 @@ fn web_route_body_reads_match_the_census() {
         files.len()
     );
 
-    let mut failures: Vec<String> = Vec::new();
     let mut seen: Vec<String> = Vec::new();
 
     for path in &files {
         let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
-        let count = text.matches(NEEDLE).count();
+        let count = text.matches(needle).count();
         if count == 0 {
             continue;
         }
@@ -185,15 +203,15 @@ fn web_route_body_reads_match_the_census() {
             .to_string_lossy()
             .replace('\\', "/");
         seen.push(rel.clone());
-        match COLLAPSE_CENSUS.iter().find(|(p, ..)| *p == rel) {
+        match census.iter().find(|(p, ..)| *p == rel) {
             None => failures.push(format!(
-                "{rel}: {count} `{NEEDLE}` site(s) with no census entry. A body \
+                "{rel}: {count} `{needle}` site(s) with no census entry. A body \
                  key read this way cannot tell absent from wrong-typed — read \
                  v4's route, then either port its schema or record the verdict \
                  here (P4.60)."
             )),
             Some((_, expected, _)) if count != *expected => failures.push(format!(
-                "{rel}: {count} `{NEEDLE}` site(s), census says {expected}. \
+                "{rel}: {count} `{needle}` site(s), census says {expected}. \
                  Adjudicate the new one against v4's route before moving the \
                  number."
             )),
@@ -201,15 +219,21 @@ fn web_route_body_reads_match_the_census() {
         }
     }
 
-    for (rel, expected, why) in COLLAPSE_CENSUS {
+    for (rel, expected, why) in census {
         if !seen.contains(&(*rel).to_string()) {
             failures.push(format!(
-                "{rel}: census expects {expected} `{NEEDLE}` site(s), found none. \
+                "{rel}: census expects {expected} `{needle}` site(s), found none. \
                  If the collapse is genuinely gone, drop the row ({why})."
             ));
         }
     }
+}
 
+#[test]
+fn web_route_body_reads_match_the_census() {
+    let mut failures: Vec<String> = Vec::new();
+    census_walk(NEEDLE, COLLAPSE_CENSUS, &mut failures);
+    census_walk(CLOSURE_NEEDLE, CLOSURE_CENSUS, &mut failures);
     assert!(
         failures.is_empty(),
         "the web-edge wrong-type-collapse census has drifted:\n  {}",

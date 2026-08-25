@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — test(web): the collapse census gains the closure spelling, and the adjudication table lands (P4.60 unit 7)
+
+_Versions: harness 0.0.569._
+
+P4.57's survey needle was `and_then(Value::as_`, which cannot see the same
+collapse written `and_then(|v| v.as_str())`. `web_edge_body_parse_guard` now
+walks both, so P4.60's tier-2 enumeration is executable rather than a paragraph
+— it is what found `files_routes.rs`'s five caller-input reads.
+
+The full adjudication table (every enumerated key, its v4 route and schema, and
+its verdict) is in the lane record: fourteen DIVERGENT-FIXED, six FAITHFUL, one
+CONFIRMED, and no deliberate divergences.
+
 #### 2026-08-24 — fix(qtap): the import legs' exportData guard is JS falsiness, and a non-JSON body is v4's 500 (P4.60 unit 6)
 
 _Versions: harness 0.0.568, web 0.0.85._
