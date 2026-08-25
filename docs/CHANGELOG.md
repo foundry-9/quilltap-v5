@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — refactor(brahma): the create-body Zod arm reads as what it is (P4.60 tidy)
+
+_Versions: core 0.0.651._
+
+`brahma_console_create`'s `connectionProfileId` arm was written with a guard
+(`None | Some(Value::Null) if !matches!(…)`) that behaved correctly and read as
+if it did not. Absent is the only case that falls back to the default, which is
+now what the code says. The two Zod helpers take `&Value` rather than
+`Option<&Value>`, since every caller had one in hand. Behavior-neutral; the
+brahma routes differential is green over the pinned oracle either way.
+
 #### 2026-08-24 — test(web): the collapse census gains the closure spelling, and the adjudication table lands (P4.60 unit 7)
 
 _Versions: harness 0.0.569._

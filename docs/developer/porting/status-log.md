@@ -84300,3 +84300,12 @@ What the sweep found beyond this lane's sites:
 
 None of these were touched. They are named, counted, and pinned so the next
 order starts from a measurement rather than a grep.
+
+### Tidy — the brahma create arm's guard (behavior-neutral)
+
+`brahma_console_create`'s `connectionProfileId` arm shipped in unit 3 as
+`None | Some(Value::Null) if !matches!(requested_profile_id, Some(Value::Null))`
+— correct (the guard makes the first arm fire only for `None`) and unreadable.
+Rewritten as the two-arm match it always was, with the two Zod helpers taking
+`&Value` since every caller had one in hand. The differential is green over the
+pinned oracle before and after.

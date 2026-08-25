@@ -128,17 +128,17 @@ pub fn parse_brahma_send_body(
 /// 400. P4.60: the edge used to read these with `and_then(Value::as_str)`, which
 /// answered the schema's own sentence (a string that only ever appears inside
 /// the deferred `details`) and did not refuse a wrong TYPE at all.
-fn zod_min1_string(v: Option<&Value>) -> Result<String, Response> {
+fn zod_min1_string(v: &Value) -> Result<String, Response> {
     match v {
-        Some(Value::String(s)) if !s.is_empty() => Ok(s.clone()),
+        Value::String(s) if !s.is_empty() => Ok(s.clone()),
         _ => Err(validation_error()),
     }
 }
 
 /// `z.string().uuid(…)` on a raw body value.
-fn zod_uuid_string(v: Option<&Value>) -> Result<String, Response> {
+fn zod_uuid_string(v: &Value) -> Result<String, Response> {
     match v {
-        Some(Value::String(s)) if super::chat_outfits::is_zod_uuid(s) => Ok(s.clone()),
+        Value::String(s) if super::chat_outfits::is_zod_uuid(s) => Ok(s.clone()),
         _ => Err(validation_error()),
     }
 }
@@ -255,12 +255,12 @@ pub async fn brahma_console_create(
     // but not nullable, so an explicit null (or an empty string, or a non-uuid)
     // is a 400 `Validation error` rather than "fall back to the default".
     let requested_profile_id = match requested_profile_id {
-        None | Some(Value::Null) if !matches!(requested_profile_id, Some(Value::Null)) => None,
-        Some(v) => match zod_uuid_string(Some(v)) {
+        // `.optional()` — an ABSENT key is the only thing that falls back.
+        None => None,
+        Some(v) => match zod_uuid_string(v) {
             Ok(pid) => Some(pid),
             Err(r) => return r,
         },
-        None => None,
     };
     // Resolve the starting profile: the requested one (must exist + be owned),
     // else the user's default.
@@ -389,7 +389,7 @@ pub async fn brahma_console_rename(
         return r;
     }
     // `renameSchema.parse` runs AFTER the verify (v4 `[id]/route.ts:78-80`).
-    let title = match zod_min1_string(Some(title)) {
+    let title = match zod_min1_string(title) {
         Ok(t) => t,
         Err(r) => return r,
     };
@@ -429,7 +429,7 @@ pub async fn brahma_console_set_model(
         return r;
     }
     // `setModelSchema.parse` runs AFTER the verify (v4 `[id]/route.ts:109-111`).
-    let connection_profile_id = match zod_uuid_string(Some(connection_profile_id)) {
+    let connection_profile_id = match zod_uuid_string(connection_profile_id) {
         Ok(p) => p,
         Err(r) => return r,
     };
