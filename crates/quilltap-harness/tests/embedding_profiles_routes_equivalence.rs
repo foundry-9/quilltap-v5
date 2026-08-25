@@ -205,8 +205,15 @@ fn embedding_profiles_routes_match_oracle() {
         .build()
         .unwrap();
     let mut failed: Vec<String> = Vec::new();
+    // Every oracle case the Rust side actually consumed. Without this a case
+    // added to the oracle and forgotten here passes silently on a smaller set
+    // (`harness-corpus-shape-constants-rot`); a `RefCell` keeps the check-helper
+    // signatures untouched.
+    let seen: std::cell::RefCell<std::collections::HashSet<String>> =
+        std::cell::RefCell::new(std::collections::HashSet::new());
 
     let ok = |name: &str, resp: &Response, blank: &[&str], failed: &mut Vec<String>| {
+        seen.borrow_mut().insert(name.to_string());
         if let Response::Error(e) = resp {
             eprintln!("[{name}] expected success, got {:?}: {}", e.kind, e.message);
             failed.push(name.to_string());
@@ -225,6 +232,7 @@ fn embedding_profiles_routes_match_oracle() {
         }
     };
     let check_tables = |name: &str, got: &Value, failed: &mut Vec<String>| {
+        seen.borrow_mut().insert(name.to_string());
         let want = &oracle[name]["tables"];
         if norm(got, &[]) != norm(want, &[]) {
             eprintln!(
@@ -237,6 +245,7 @@ fn embedding_profiles_routes_match_oracle() {
         }
     };
     let err = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        seen.borrow_mut().insert(name.to_string());
         let want = &oracle[name];
         let want_status = want["status"].as_i64().unwrap();
         let want_msg = want["body"]["error"].as_str().unwrap_or("");
@@ -500,24 +509,19 @@ fn embedding_profiles_routes_match_oracle() {
     );
 
     // ── reindex ──────────────────────────────────────────────────────────────
-    let reindex = |name: &str, id: &str, scope: Option<&str>, failed: &mut Vec<String>| {
+    let reindex = |name: &str, id: &str, scope: Option<Value>, failed: &mut Vec<String>| {
         let db = fresh_db(&spec, name);
-        let r = rt.block_on(ep::embedding_profile_reindex(
-            &db,
-            &uid,
-            id,
-            scope.map(str::to_string),
-        ));
+        let r = rt.block_on(ep::embedding_profile_reindex(&db, &uid, id, scope.as_ref()));
         ok(name, &r, JOBID, failed);
         check_tables(name, &dump_state(&db), failed);
     };
-    reindex("reindex_all", EP_DEFAULT, Some("all"), &mut failed);
+    reindex("reindex_all", EP_DEFAULT, Some(json!("all")), &mut failed);
     // Legacy no-body call == scope None == 'all'.
     reindex("reindex_legacy_no_body", EP_DEFAULT, None, &mut failed);
     reindex(
         "reindex_mismatched",
         EP_TRUNC,
-        Some("mismatched-dim"),
+        Some(json!("mismatched-dim")),
         &mut failed,
     );
     err(
@@ -526,7 +530,7 @@ fn embedding_profiles_routes_match_oracle() {
             &fresh_db(&spec, "rmnt"),
             &uid,
             EP_BUILTIN,
-            Some("mismatched-dim".to_string()),
+            Some(&json!("mismatched-dim")),
         )),
         &mut failed,
     );
@@ -536,10 +540,39 @@ fn embedding_profiles_routes_match_oracle() {
             &fresh_db(&spec, "rbs"),
             &uid,
             EP_DEFAULT,
-            Some("nonsense".to_string()),
+            Some(&json!("nonsense")),
         )),
         &mut failed,
     );
+
+    // P4.60 — the wrong-type-collapse arms. v4 interpolates `String(body.scope)`
+    // into the refusal (an object is `[object Object]`, an array is its
+    // comma-joined elements), and its guard is `body.scope !== undefined`, so an
+    // explicit `null` REACHES the refusal where an absent key defaults to 'all'.
+    for (name, scope) in [
+        ("reindex_scope_number", json!(123)),
+        ("reindex_scope_null", Value::Null),
+        ("reindex_scope_true", json!(true)),
+        ("reindex_scope_object", json!({ "a": 1 })),
+        // The trap arm: `String(['mismatched-dim'])` is a VALID scope name, and
+        // v4 refuses anyway — the comparison is against the array.
+        ("reindex_scope_array", json!(["mismatched-dim"])),
+        ("reindex_scope_empty_string", json!("")),
+    ] {
+        err(
+            name,
+            &rt.block_on(ep::embedding_profile_reindex(
+                &fresh_db(&spec, name),
+                &uid,
+                EP_DEFAULT,
+                Some(&scope),
+            )),
+            &mut failed,
+        );
+    }
+    // A non-object body has no `.scope` at all — the absent pole, which must
+    // still enqueue an 'all' reindex.
+    reindex("reindex_body_not_object", EP_DEFAULT, None, &mut failed);
 
     // ── reapply ──────────────────────────────────────────────────────────────
     {
@@ -567,6 +600,15 @@ fn embedding_profiles_routes_match_oracle() {
         &mut failed,
     );
 
+    let mut unconsumed: Vec<&String> = oracle
+        .keys()
+        .filter(|k| !seen.borrow().contains(*k))
+        .collect();
+    unconsumed.sort();
+    assert!(
+        unconsumed.is_empty(),
+        "oracle cases the Rust side never checked: {unconsumed:?}"
+    );
     assert!(failed.is_empty(), "route differential failures: {failed:?}");
     eprintln!("OK: embedding_profiles routes matched oracle.");
 }

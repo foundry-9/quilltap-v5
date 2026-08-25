@@ -84158,3 +84158,39 @@ the uploadId check → `restore_upload_id_absent_bad_mode` red.
 `required_upload_id` is gone and `backup_routes.rs` now has ZERO
 `and_then(Value::as_` sites; the edge's `raw_field` forwarding is pinned in
 `web_edge_body_parse_guard`.
+
+### Unit 5 — `POST /api/v1/embedding-profiles/{id}?action=reindex` — DIVERGENT, FIXED
+
+Not an `and_then(Value::as_str)` site — the edge had already noticed the wrong
+type and reached for `Value::to_string()`. That is the JSON text; v4's refusal
+interpolates `String(body.scope)`. Measured:
+
+| `scope` | v4's sentence |
+|---|---|
+| `123` / `true` / `''` | `Invalid scope: 123.` / `true.` / `.` |
+| `{a: 1}` | `Invalid scope: [object Object].` |
+| `["mismatched-dim"]` | `Invalid scope: mismatched-dim.` |
+| `null` | `Invalid scope: null.` (v4 tests `!== undefined`) |
+| body `42` (not an object) | 200, scope `all` |
+
+The array row is the one worth reading twice: `String(['mismatched-dim'])` is a
+VALID scope name, and v4 refuses anyway, because the comparison is against the
+array, not its coercion. The sentence names a scope that would have worked.
+
+Two things had to survive the edge, so `scope` rides the verb RAW as
+`Option<Value>`: the coercion (now `pascal::js_value::to_js_string`, the ported
+`String(value)`) and the **absent-vs-null split** — `Option<String>` had no way
+to carry it, and the old `.map(|v| …)` happened to preserve it only by accident.
+A non-object body still defaults to `all`, because `Value::get("scope")` on a
+number or an array is `None`, exactly as `body.scope` is `undefined` in v4.
+
+**Differential.** `embedding_profiles_routes_equivalence` 37 → 44 cases. Two
+mutation proofs on v5 source: restoring the `to_js_string` → `to_string`
+coercion reds `reindex_scope_object` and `reindex_scope_array`; collapsing
+`Some(Null)` into the absent branch reds `reindex_scope_null`.
+
+The family also gained a **consumed-case guard**: it had no `cases.len() ==
+oracle.len()` assertion, and its `ok`/`err`/`check_tables` helpers index
+`oracle[name]`, so a case added to the oracle and forgotten on the Rust side
+passed silently. A `RefCell<HashSet>` of consumed names keeps the helper
+signatures untouched and fails with the missing names.

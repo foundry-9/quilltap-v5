@@ -363,6 +363,37 @@ async function main(): Promise<void> {
       run: async () =>
         respond(await (await idRoute()).POST(mockRequest(`${B}/${EP_DEFAULT}?action=reindex`, { scope: 'nonsense' }), params(EP_DEFAULT))),
     },
+    // P4.60 — the wrong-type-collapse arms. v4 interpolates `String(body.scope)`
+    // into the refusal, so the sentence depends on JS coercion, not on
+    // `JSON.stringify`: an object is `[object Object]` and an array is its
+    // comma-joined elements. `body.scope !== undefined` also means an explicit
+    // `null` REACHES the refusal rather than defaulting to 'all'.
+    ...([
+      ['reindex_scope_number', 123],
+      ['reindex_scope_null', null],
+      ['reindex_scope_true', true],
+      ['reindex_scope_object', { a: 1 }],
+      ['reindex_scope_array', ['mismatched-dim']],
+      ['reindex_scope_empty_string', ''],
+    ] as Array<[string, unknown]>).map(([name, scope]) => ({
+      name,
+      run: async () =>
+        respond(
+          await (await idRoute()).POST(
+            mockRequest(`${B}/${EP_DEFAULT}?action=reindex`, { scope }),
+            params(EP_DEFAULT),
+          ),
+        ),
+    })),
+    // A non-object body has no `.scope` at all, so it silently defaults to
+    // 'all' — the pole that proves the guard is `typeof body === 'object'`.
+    {
+      name: 'reindex_body_not_object',
+      run: async () => {
+        const r = await (await idRoute()).POST(mockRequest(`${B}/${EP_DEFAULT}?action=reindex`, 42), params(EP_DEFAULT));
+        return { ...(await respond(r)), tables: await dumpState() };
+      },
+    },
     // ── reapply ──────────────────────────────────────────────────────────────
     { name: 'reapply_has_trunc', run: () => postAction(EP_TRUNC, 'reapply', {}) },
     {

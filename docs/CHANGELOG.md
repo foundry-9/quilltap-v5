@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — fix(embedding-profiles): the reindex scope keeps its absent/null split and v4's String() coercion (P4.60 unit 5)
+
+_Versions: core 0.0.650, harness 0.0.567, web 0.0.84._
+
+The reindex edge coerced a non-string `scope` with `Value::to_string()`, which
+is the JSON text; v4 interpolates `String(body.scope)`, so an object reads
+`[object Object]` and an array reads its comma-joined elements. And v4's guard
+is `body.scope !== undefined`, a distinction the edge's `Option<String>` could
+not carry — an explicit `null` must reach the refusal while an absent key
+defaults to `all`.
+
+`scope` now rides the verb raw, and the handler uses `to_js_string`.
+`embedding_profiles_routes_equivalence` gains seven arms (37 → 44), among them
+`scope: ["mismatched-dim"]` — which v4 refuses with a sentence naming a valid
+scope, because the comparison is against the array. The family also gained the
+consumed-case guard it lacked.
+
 #### 2026-08-24 — fix(restore): the uploadId and mode guards run in v4's order, on the raw values (P4.60 unit 4)
 
 _Versions: core 0.0.649, harness 0.0.566, web 0.0.83._

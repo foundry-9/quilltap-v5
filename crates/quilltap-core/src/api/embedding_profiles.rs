@@ -765,7 +765,7 @@ pub async fn embedding_profile_reindex(
     db: &Db,
     user_id: &str,
     profile_id: &str,
-    scope: Option<String>,
+    scope: Option<&Value>,
 ) -> Response {
     let profile = match db.read_main(|conn| ep::find_by_id(conn, profile_id)) {
         Ok(Some(p)) => p,
@@ -773,13 +773,23 @@ pub async fn embedding_profile_reindex(
         Err(e) => return internal_fixed("Failed to trigger reindex", e),
     };
     // Optional body `{scope}`; absent = 'all'; anything else 400.
-    let scope = match scope.as_deref() {
-        None | Some("all") => "all",
-        Some("mismatched-dim") => "mismatched-dim",
+    //
+    // The tri-state is load-bearing: v4's guard is `body.scope !== undefined`,
+    // so an explicit `null` REACHES the refusal where an absent key defaults to
+    // 'all'. And the refusal interpolates `String(body.scope)`, NOT
+    // `JSON.stringify` — so an object reads `[object Object]` and an array
+    // reads its comma-joined elements (P4.60: `Value::to_string()` printed the
+    // JSON text for both, and `and_then(Value::as_str)` could not have told the
+    // explicit null from an absent key at all).
+    let scope = match scope {
+        None => "all",
+        Some(Value::String(s)) if s == "all" => "all",
+        Some(Value::String(s)) if s == "mismatched-dim" => "mismatched-dim",
         Some(other) => {
+            let shown = crate::pascal::js_value::to_js_string(other);
             return bad_request(format!(
-                "Invalid scope: {other}. Expected 'all' or 'mismatched-dim'."
-            ))
+                "Invalid scope: {shown}. Expected 'all' or 'mismatched-dim'."
+            ));
         }
     };
     // Partial scope needs a target dim (truncateToDimensions ?? dimensions).

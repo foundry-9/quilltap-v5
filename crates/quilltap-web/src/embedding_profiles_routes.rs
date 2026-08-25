@@ -180,14 +180,10 @@ pub async fn item_post(
             let json_body = parse_body_lenient(&body);
             CoreRequest::EmbeddingProfileReindex {
                 profile_id: id,
-                // v4 reads `body.scope`; a present non-string value drops to its
-                // JSON text so the handler's `Invalid scope: …` arm fires (an
-                // absent scope defaults to 'all').
-                scope: json_body.get("scope").map(|v| {
-                    v.as_str()
-                        .map(str::to_string)
-                        .unwrap_or_else(|| v.to_string())
-                }),
+                // RAW, absent-vs-null preserved: v4 tests `body.scope !==
+                // undefined` and interpolates `String(scope)` into the refusal,
+                // neither of which survives a coercion here (P4.60).
+                scope: json_body.get("scope").cloned(),
             }
         }
         Some("reapply") => CoreRequest::EmbeddingProfileReapply { profile_id: id },

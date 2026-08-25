@@ -2636,7 +2636,7 @@ impl CoreEngine {
                         &db,
                         SINGLE_USER_ID,
                         &profile_id,
-                        scope,
+                        scope.as_ref(),
                     )
                     .await
                 }

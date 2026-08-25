@@ -52,6 +52,13 @@ const PARSER_WIRING: &[(&str, &str, &str)] = &[
          values so BOTH entrances answer the same sentence",
     ),
     (
+        "crates/quilltap-web/src/embedding_profiles_routes.rs",
+        "json_body.get(\"scope\").cloned()",
+        "POST /api/v1/embedding-profiles/{id}?action=reindex — v4 tests \
+         `body.scope !== undefined` and interpolates `String(scope)`, so \
+         both the absent/null split and the coercion must survive the edge",
+    ),
+    (
         "crates/quilltap-core/src/api/engine.rs",
         "brahma::brahma_send_prepare(",
         "POST /api/v1/brahma-console/{id}/messages — `verifyBrahmaChat` FIRST, \

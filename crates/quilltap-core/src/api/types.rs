@@ -956,8 +956,12 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     EmbeddingProfileReindex {
         profile_id: String,
+        /// RAW, and the ABSENT/`null` split matters (P4.60): v4's guard is
+        /// `body.scope !== undefined`, so an explicit null reaches the refusal
+        /// while an absent key defaults to `'all'` — and the refusal
+        /// interpolates `String(scope)`, which is not the JSON text.
         #[serde(default)]
-        scope: Option<String>,
+        scope: Option<serde_json::Value>,
     },
     /// v4 `POST /api/v1/embedding-profiles/[id]?action=reapply` →
     /// `{message, jobId, targetDimensions}`.
