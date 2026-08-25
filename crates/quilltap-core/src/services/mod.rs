@@ -57,6 +57,7 @@ pub mod chat_enrichment;
 pub mod chat_events;
 pub mod chat_files;
 pub mod chat_initialize;
+pub mod chat_scenario;
 pub mod cheap_llm_exec;
 pub mod cold_chunk_reembed;
 pub mod collapse_stale_chat_caches;

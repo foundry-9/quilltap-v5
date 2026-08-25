@@ -1,0 +1,13 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "f0000000-0000-4000-8000-00000000000f",
+  "seedTimestamp": "2026-05-01T00:00:00.000Z",
+  "frozenNowMs": 1777939200000,
+  "generalBody": "The Grand Concourse at dusk, the gaslamps just lit.",
+  "projectBody": "A tavern at the ford, rain against the shutters.",
+  "groupBody": "The eastern quay, fog coming in off the water.",
+  "beaScenarioOneBody": "Bea's parlour, the signal-book open on the table.",
+  "beaScenarioTwoBody": "The lower deck at watch-change.",
+  "drewScenarioBody": "A room Drew has already walked out of.",
+  "freeTextNotes": "It is raining, and the porter has not come back."
+}

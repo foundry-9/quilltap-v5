@@ -237,3 +237,150 @@ fn find_scenario_content(character: Option<&Value>, scenario_id: &str) -> Option
                 .to_string()
         })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// A connection with NO tables. Any tier that actually QUERIES fails on it,
+    /// which is what makes the JS-truthiness guards measurable: a falsy pointer
+    /// must be skipped BEFORE the read, so the resolver still answers `Ok`.
+    fn bare() -> Connection {
+        Connection::open_in_memory().unwrap()
+    }
+
+    /// The module header's JS-truthiness contract, pinned where the differential
+    /// corpus cannot see it: every empty-string pointer produces the SAME output
+    /// as an absent one, so only the WARNING differs — and a state diff is blind
+    /// to a log (`differential-blind-to-a-log-only-fix`). These arms make the
+    /// difference observable instead: without the `truthy()` filter each tier
+    /// reads the DB, and a table-less connection turns that into an `Err`.
+    #[test]
+    fn empty_string_pointers_are_falsy_and_never_reach_the_db() {
+        let (main, mount) = (bare(), bare());
+        for fields in [
+            ScenarioSelectionFields {
+                project_scenario_path: Some("Scenarios/p.md"),
+                ..Default::default()
+            },
+            ScenarioSelectionFields {
+                group_scenario_path: Some("Scenarios/g.md"),
+                group_scenario_group_id: Some(""),
+                ..Default::default()
+            },
+            ScenarioSelectionFields {
+                general_scenario_path: Some(""),
+                ..Default::default()
+            },
+            ScenarioSelectionFields {
+                project_scenario_path: Some(""),
+                group_scenario_path: Some(""),
+                general_scenario_path: Some(""),
+                ..Default::default()
+            },
+        ] {
+            let got = resolve_scenario_selection(
+                &main,
+                &mount,
+                &fields,
+                &ResolveScenarioSelectionOptions {
+                    // An EMPTY `projectId` is falsy too — v4's `if (!projectId)`.
+                    project_id: Some(""),
+                    character: None,
+                    log_tag: None,
+                },
+            );
+            assert_eq!(
+                got.expect("a falsy pointer must be skipped before any DB read"),
+                None,
+                "fields {fields:?} resolved something"
+            );
+        }
+    }
+
+    /// The character tier's falsy guard, and the falsy-`content` fall-through —
+    /// both v4 arms that its own `CharacterScenario` schema (`id` a uuid,
+    /// `content` `min(1)`) makes unreachable through v4's write path, so they
+    /// are pinned here the way P4.D112 pinned its unreachable boundary escapes.
+    #[test]
+    fn empty_scenario_id_and_empty_content_are_both_falsy() {
+        let (main, mount) = (bare(), bare());
+        let character = json!({
+            "id": "char-1",
+            "scenarios": [
+                { "id": "", "content": "an empty id must never be matched" },
+                { "id": "s-blank", "content": "" },
+            ],
+        });
+        fn opts(c: &serde_json::Value) -> ResolveScenarioSelectionOptions<'_> {
+            ResolveScenarioSelectionOptions {
+                project_id: None,
+                character: Some(c),
+                log_tag: None,
+            }
+        }
+        // An empty `scenarioId` is falsy: the tier is skipped, not matched.
+        assert_eq!(
+            resolve_scenario_selection(
+                &main,
+                &mount,
+                &ScenarioSelectionFields {
+                    scenario_id: Some(""),
+                    ..Default::default()
+                },
+                &opts(&character),
+            )
+            .unwrap(),
+            None
+        );
+        // A match whose `content` is empty leaves `presetBody` FALSY, so the
+        // free text still lands on its own rather than beneath a blank preset…
+        assert_eq!(
+            resolve_scenario_selection(
+                &main,
+                &mount,
+                &ScenarioSelectionFields {
+                    scenario_id: Some("s-blank"),
+                    scenario: Some("Notes survive."),
+                    ..Default::default()
+                },
+                &opts(&character),
+            )
+            .unwrap()
+            .as_deref(),
+            Some("Notes survive.")
+        );
+        // …and, the part an `Option<String>` model would get WRONG: a falsy
+        // preset means the NEXT tier still gets its turn. Over a table-less
+        // connection the project tier's read is an `Err`, and that error IS the
+        // evidence — a model treating the empty match as "found" would skip the
+        // read and answer `Ok`. (The general tier is no use here: its
+        // `instance_settings` read tolerates a missing table by design.)
+        assert!(
+            resolve_scenario_selection(
+                &main,
+                &mount,
+                &ScenarioSelectionFields {
+                    scenario_id: Some("s-blank"),
+                    project_scenario_path: Some("Scenarios/p.md"),
+                    ..Default::default()
+                },
+                &ResolveScenarioSelectionOptions {
+                    project_id: Some("proj-1"),
+                    character: Some(&character),
+                    log_tag: None,
+                },
+            )
+            .is_err(),
+            "an empty-`content` match must NOT stop the chain"
+        );
+    }
+
+    /// v4's default `logTag` exists and is `'[Scenario]'`; both real call sites
+    /// override it with `'[Chats v1]'`.
+    #[test]
+    fn default_log_tag_is_v4s() {
+        assert_eq!(DEFAULT_LOG_TAG, "[Scenario]");
+    }
+}

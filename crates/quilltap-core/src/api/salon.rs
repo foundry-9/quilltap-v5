@@ -406,6 +406,13 @@ fn assemble_chat_get(
             .unwrap_or(Value::Null),
     );
     out.insert("projectName".into(), json!(project_name));
+    // v4 [`44a8137e`]: the scene in force. Projected so the sidebar's scenario
+    // picker can open on what the chat actually has rather than always on
+    // "Custom…".
+    out.insert(
+        "scenarioText".into(),
+        get_v("scenarioText").unwrap_or(Value::Null),
+    );
     out.insert("disabledTools".into(), arr_or_empty("disabledTools"));
     out.insert(
         "disabledToolGroups".into(),

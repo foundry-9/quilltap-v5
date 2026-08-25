@@ -2889,6 +2889,35 @@ pub enum Request {
         #[serde(default)]
         enabled: Option<Option<bool>>,
     },
+    /// Change (or clear) the chat's scenario mid-conversation (v4
+    /// `POST …?action=scenario`, NEW at v4 [`44a8137e`]).
+    ///
+    /// The six body fields are v4's `setScenarioSchema` one-for-one, and all six
+    /// are `.nullish()` — an explicit `null` and an absent key mean the same
+    /// thing, so an entirely empty payload CLEARS the scene. They are typed
+    /// `Option<Value>` rather than `Option<String>` on purpose: v4 validates
+    /// with Zod inside the handler, so a wrong-TYPED field has to reach v4's
+    /// flat `Validation error` 400 rather than failing at the serde boundary,
+    /// where the transport would answer its own `Invalid request: …`
+    /// (the P4.60 wrong-type-collapse convention). The Zod floors — `z.uuid()`
+    /// on the two ids, `.max(500)` on the three paths — live in
+    /// [`crate::services::chat_scenario`].
+    #[serde(rename_all = "camelCase")]
+    ChatSetScenario {
+        chat_id: String,
+        #[serde(default)]
+        scenario: Option<serde_json::Value>,
+        #[serde(default)]
+        scenario_id: Option<serde_json::Value>,
+        #[serde(default)]
+        project_scenario_path: Option<serde_json::Value>,
+        #[serde(default)]
+        group_scenario_path: Option<serde_json::Value>,
+        #[serde(default)]
+        group_scenario_group_id: Option<serde_json::Value>,
+        #[serde(default)]
+        general_scenario_path: Option<serde_json::Value>,
+    },
     /// Reset and re-queue danger classification (v4 `POST …?action=reclassify-danger`).
     #[serde(rename_all = "camelCase")]
     ChatReclassifyDanger {

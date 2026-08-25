@@ -1455,6 +1455,32 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::ChatSetScenario {
+                chat_id,
+                scenario,
+                scenario_id,
+                project_scenario_path,
+                group_scenario_path,
+                group_scenario_group_id,
+                general_scenario_path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    crate::services::chat_scenario::chat_set_scenario(
+                        &db,
+                        &chat_id,
+                        crate::services::chat_scenario::SetScenarioBody {
+                            scenario,
+                            scenario_id,
+                            project_scenario_path,
+                            group_scenario_path,
+                            group_scenario_group_id,
+                            general_scenario_path,
+                        },
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::ChatReclassifyDanger { chat_id } => match self.ready_db() {
                 Ok(db) => {
                     crate::services::chat_admin::chat_reclassify_danger(

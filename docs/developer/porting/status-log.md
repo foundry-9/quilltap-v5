@@ -86260,3 +86260,171 @@ FAILED; a one-space typo in the revision content →
 `scenario_change_is_an_exported_host_link_kind` FAILED. The
 end-to-end pin (the announcement row the verb actually writes, and the notice
 surviving into an exported transcript) arrives with unit 3's route family.
+
+### Unit 3 — the `chatSetScenario` verb, the chat-GET projection, and the family
+
+`services::chat_scenario::chat_set_scenario` ports v4's
+`actions/scenario.ts` whole (`findCharacterOwningScenario` included), reached by
+the new `Request::ChatSetScenario` variant + its engine arm. `api::salon`'s
+chat-GET projection gains `scenarioText` at v4's exact site, with v4's
+why-comment about the picker opening on "Custom…". `ChatUpdate` gains
+`scenario_text` — the column had NO update setter at all before this lane,
+which is exactly v4's `helpers.ts` position, so the setter carries that comment
+and the surface is guarded (below).
+
+**Three decisions, all measured rather than reasoned:**
+
+1. **The guard order is the COMPOSITE, and it is the opposite of what the
+   handler says.** `handleSetScenario` parses first and 404s second — but
+   `handlers/post.ts:114-118` 404s on a missing chat BEFORE it dispatches to any
+   action handler. v5 has no separate route layer, so the verb must reproduce
+   what a client sees: **404 beats 400**. Measured by adding
+   `verb_bad_body_chat_missing` to the corpus and reading v4's answer (404,
+   `Chat not found`) before writing the Rust.
+2. **The six fields are raw `Value`s in the dispatch variant.** v4 validates
+   with Zod inside the handler, so a wrong-TYPED field must reach v4's flat
+   `Validation error`. Typed `Option<String>` fields would instead fail at the
+   serde boundary, where `/api/dispatch` answers its own
+   `Invalid request: …` — a different sentence for the same input (the P4.60
+   wrong-type-collapse convention). Every `verb_*` case decodes THROUGH the
+   `Request` enum before dispatching, so a narrowing would fail in the
+   differential rather than silently collapsing an arm.
+3. **`.nullish()` means there is no tri-state to preserve.** All six fields
+   accept `null` AND absence as the same thing; v4's chain reads both as falsy.
+   `verb_all_fields_null_clears` pins it.
+
+**The family — `chat_scenario_routes_equivalence`, 50 cases, GREEN on its first
+complete run** (over the new committed `chat-scenario-{main,mount}.db` fixture):
+
+- 19 `resolver_*` cases driving v4's REAL `resolveScenarioSelection`
+  un-mocked over the fixture's real stores — the four tiers, the precedence
+  chain, both layering shapes, and every fail-soft arm (dangling `scenarioId`,
+  project path with no project / no official store, group path with no group id
+  / an unknown group, a path that resolves to no body, free text surviving a
+  failed preset).
+- 28 `verb_*` cases: the four tiers through the route, the whole-cast search
+  (BEA is SECOND, so ARIA must not stop the walk), the `removed`-seat skip, the
+  unreadable-vault skip, three clear spellings, three no-op spellings, five
+  refusals + the composite-order 404.
+- 3 `export_*` cases: change the scene, then export the Markdown transcript.
+
+**Red-first, as the order requires:** dropping `scenario-change` from
+`HOST_LINK_KINDS` reddens exactly `export_after_scenario_change` and
+`export_after_scenario_cleared` (and NOT `export_after_noop`, which is the
+counterexample that keeps them honest).
+
+**Mutation proofs (five on the family):** the no-op guard removed → the three
+`verb_noop_*` cases + `export_after_noop`, bodies AND tables; the
+`status === 'removed'` filter dropped → `verb_character_preset_on_removed_participant`;
+the general tier's fall-through disabled → 30 cases; the cleared/revision pair
+swapped → every writing case's tables + two export cases; and the transcript
+kind dropped (above).
+
+**The JS-truthiness fix is NOT measurable through the corpus — recorded, and
+pinned another way.** A sixth mutation (removing the `truthy()` filter) stayed
+GREEN: with an empty-string pointer every tier still falls through to the same
+answer, so only the WARNING differs, and a state diff is blind to a log
+(`differential-blind-to-a-log-only-fix`). Pinned instead by two unit tests over
+a TABLE-LESS in-memory connection, where "was the DB read at all" becomes
+observable as `Ok` vs `Err`: `empty_string_pointers_are_falsy_and_never_reach_the_db`
+and `empty_scenario_id_and_empty_content_are_both_falsy` (whose second half
+proves a falsy `content` lets the NEXT tier take its turn — the thing an
+`Option<String>` model gets wrong). Both mutation-proven.
+
+**Tier 2, both items landed with the verb:**
+
+- The closed-update-surface comment carried onto `ChatUpdate.scenario_text`,
+  plus `chat_update_surface_cannot_reach_scenario_text` — TWO pins, because
+  either alone is weak: a behavioral one (a `chatUpdate` bag carrying
+  `scenarioText` leaves the column exactly as it was, while a sibling `title` in
+  the same bag DOES land, so the assertion cannot pass by the update being
+  ignored) and a source census (`ChatUpdate { … scenario_text: Some(…) }` is
+  constructed at exactly ONE site). Mutation-proven: a leaked construction in
+  `api/salon.rs` reddens the census.
+- The `isDefault`-not-`default` tail note carried to `db/scenarios.rs`'s
+  frontmatter default read.
+
+**Tier 3 item 9 — the REST edge — DEFERRED LOUDLY, with the survey.** No v5
+consumer speaks `POST /api/v1/chats/{id}?action=scenario`: the CLI, the Tauri
+shell and the e2e specs contain no reference, and every sibling chat action
+reaches the core through `/api/dispatch` via `core-contract.ts` (the §Shared
+contract pins P4.D116 to the `chatSetScenario` verb for the same reason). The
+existing `quilltap-web` chat POST edge already answers the loud pointer — "Only
+the equip and regenerate-avatar actions are served on this route; the other chat
+actions ride POST /api/dispatch" — which covers `?action=scenario` correctly, so
+the deferral needs no new refusal. The group-wardrobe precedent (P4.D112,
+dispatch-only) is the same shape. **If a v5 consumer ever needs the URL, the
+edge is a three-line addition to `wardrobe_routes::chat_action_post`.**
+
+### Fixture — `chat-scenario-{main,mount}.db` (NEW, committed)
+
+Built by `harness/oracle/fixtures/build-chat-scenario-fixture.ts` through v4's
+REAL repositories at the lane pin. Consumed by `chat_scenario_routes_equivalence`
+ONLY — no other family reads it, so nothing else is invalidated by a rebuild.
+
+Three things worth carrying forward:
+
+1. **Character-scenario ids are MINTED by the vault projection and are RANDOM
+   per build** — v4's `CharacterScenario` schema demands an `id` at write time
+   but the projection overwrites it. The ids that a rebuild produces are echoed,
+   keyed by title, to `chat-scenario-main.db.meta.json`, which both the oracle
+   case and the Rust test read (the `chat-admin-web` precedent). **A rebuild
+   therefore requires an oracle regen**; the sidecar is load-bearing, not
+   decoration.
+2. **An empty-`content` character scenario is NOT seedable** — v4's own schema
+   is `min(1)`, so `characters.create` refuses it. That fall-through arm is v4
+   code unreachable through v4's write path; it is pinned by unit test instead
+   (the P4.D112 precedent for unreachable arms).
+3. **The `chat_settings` row seeds `timezone: 'UTC'` deliberately.** The
+   Markdown transcript's headings otherwise render in v5's HOST zone (v5's
+   `system_tz()`) against v4's `TZ=UTC`, and the two sides disagree by the
+   operator's offset. Seeding the zone makes the export cases independent of the
+   machine (the `build-chat-dialogs-fixture` precedent). The table also has to
+   EXIST at all: without it v5's export read errors into the route's fixed 500,
+   which is how the first run of the export cases failed.
+
+### Help-doc deltas → the `p4.9i2` bank (P4.D115, nothing ported)
+
+`44a8137e` also rewrote three help files. None ported — v5 has no help content
+yet; the rows are banked so `p4.9i2` picks them up whole:
+
+1. **`help/chats.md`** — the Export-Markdown bullet reworded ("the chat's title
+   and **the scene in force**… Where the scene was revised mid-conversation, the
+   Host's revision notices appear in the body at the moment they were made"),
+   plus a whole new **"Changing the Scene Mid-Conversation"** section (the Chat
+   drawer's Scenario control, the four preset tiers + Custom, the three things
+   that happen together, the empty-box retirement, the no-op silence, and the
+   "the transcript is a record, not a fair copy" note about leaving the original
+   scene-setting message where it is).
+2. **`help/general-scenarios.md`** — a new **"Changing a Chat's Scenario
+   Later"** section pointing at `chats.md`, ending with the `isDefault`-not-
+   `default` warning.
+3. **`help/project-scenarios.md`** — the same new section, verbatim.
+
+`docs/developer/API.md`'s `?action=scenario` entry is v4-side developer docs —
+no v5 action (v5's API surface doc is the dispatch contract, not v4's file).
+
+### Lane gate (P4.D115)
+
+- `cargo fmt --all --check`: clean.
+- `cargo clippy --workspace --all-targets -- -D warnings`: clean, **both**
+  feature sets (plain and `--features quilltap-core/native-transport`).
+- `cargo test --workspace` with `QT_ORACLE_CHAT_SCENARIO` + the capstone's four
+  variables: **455 test binaries / 2,371 tests / 0 failed**, exit 0, **zero
+  SKIP** (454/2,361 at lane start — the delta is exactly this lane's 3 new
+  harness tests + 7 new core unit tests).
+- The two moving families by name, over oracles regenerated FRESH from the
+  lane-pinned worktree at `44a8137e`, through `harness/tools/recipe_sweep.py
+  --v4 <pin>`: `chat_scenario_routes_equivalence` (3 tests, 50 differential
+  cases) and `chat_create_capstone_equivalence` (the refactor's neutrality) —
+  both ok, positively confirmed to have RUN.
+- Changed-bytes grep on the regenerated NDJSON (a green regen is not coverage):
+  `The Host revises the scene` ×14, `Scenario unchanged` ×3, `scenario-change`
+  ×18, `draws the previous scene aside` ×6.
+- No SPA gate owed — this lane touches no `apps/web/**` file (P4.D116 owns the
+  client half, including `core-contract.ts`).
+- Versions: **core 0.0.661 → 0.0.664, harness 0.0.576 → 0.0.577**;
+  host/web/cli/tauri unchanged. ⚠ `crates/quilltap-web/tests/fixtures/` gained
+  three files (the two committed `.db`s + the sidecar) — fixture BYTES, not web
+  source, so no web version bump; that directory is where all 82 committed
+  differential fixtures live and no sibling lane owns it.

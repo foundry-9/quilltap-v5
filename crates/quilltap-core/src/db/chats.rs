@@ -462,6 +462,19 @@ pub struct CreateOptions {
 pub struct ChatUpdate {
     pub title: Option<String>,
     pub context_summary: Option<Option<String>>,
+    /// v4 [`44a8137e`] — the ONLY writer of this column after creation is
+    /// `?action=scenario` ([`crate::services::chat_scenario`]).
+    ///
+    /// ⚠ Keep it that way. `chat.scenarioText` feeds the `{{scenario}}`
+    /// template variable in the identity stack, so a change to it requires
+    /// recompiling all stacks AND announcing the revision. v4's
+    /// `updateChatSchema` DELIBERATELY does not expose the field
+    /// (`app/api/v1/chats/[id]/helpers.ts:512-519`) — "a bare field update here
+    /// would skip both" — and neither does v5's `ChatUpdateRequest`. The setter
+    /// lives here because the scenario verb needs it; nothing else may reach
+    /// it, and `chat_update_surface_cannot_reach_scenario_text` fails if the
+    /// dispatch update surface ever grows the key.
+    pub scenario_text: Option<Option<String>>,
     pub is_paused: Option<bool>,
     pub is_manually_renamed: Option<bool>,
     pub message_count: Option<f64>,
@@ -983,6 +996,9 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.context_summary {
             set_col!("contextSummary", Box::new(v.clone()));
+        }
+        if let Some(v) = &patch.scenario_text {
+            set_col!("scenarioText", Box::new(v.clone()));
         }
         if let Some(v) = patch.is_paused {
             set_col!("isPaused", Box::new(v));

@@ -212,6 +212,10 @@ pub fn parse_scenario_doc(doc: &VaultFolderDoc) -> Option<ParsedScenario> {
                 frontmatter_description = Some(utf16_truncate(t, 500));
             }
         }
+        // ⚠ The frontmatter key is `isDefault`, NOT `default` (v4 `44a8137e`'s
+        // own tail note). A file marked `default: true` claims nothing, so no
+        // scenario pre-selects and the picker opens on "Custom…" — which reads
+        // like a bug in the picker and is not one.
         raw_is_default = data.get("isDefault") == Some(&Value::Bool(true));
     }
 

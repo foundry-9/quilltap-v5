@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — feat(chat): the scene can be changed without leaving the conversation (server)
+
+_Versions: core 0.0.664, harness 0.0.577._
+
+Ports the server half of v4 `44a8137e`: the `chatSetScenario` dispatch verb
+(v4 `POST /api/v1/chats/[id]?action=scenario`), the chat-GET `scenarioText`
+projection, and the `ChatUpdate.scenario_text` setter the verb needs.
+
+The verb rewrites `chat.scenarioText`, recompiles every participant's identity
+stack (best-effort, as v4 does — the compiler has a read-through fallback), and
+posts the Host's revision announcement. Re-picking the scene already in force
+is a no-op: no write, no recompile, no announcement, and `changed: false`. A
+character `scenarioId` is resolved against whichever active seat owns it, and a
+character whose vault will not open is skipped rather than failing the change.
+
+The guard order is the COMPOSITE v4 exposes at the URL, not the handler's own:
+`handlePost` 404s on a missing chat before it dispatches, so an invalid body
+against a missing chat is a 404 and not a 400. The six body fields are raw
+`Value`s in the dispatch variant so a wrong-typed field reaches v4's flat
+`Validation error` instead of the transport's own decode 400.
+
+`ChatUpdate` gains `scenario_text`, and the dispatch `chatUpdate` bag stays
+closed around it — v4 keeps `scenarioText` off `updateChatSchema` on purpose,
+because a bare field update would skip the recompile and the announcement. Both
+halves are pinned: a `chatUpdate` carrying the key leaves the column untouched,
+and a source census fails if the setter gains a second construction site.
+
+New family `chat_scenario_routes_equivalence` (50 cases over the new committed
+`chat-scenario-{main,mount}.db` fixture): the four preset tiers, the precedence
+chain, every fail-soft fall-through, the clear/no-op/refusal arms, and three
+`export_*` cases proving the revision notice survives into a Markdown
+transcript — red-first before `scenario-change` joined the exported kinds.
+
 #### 2026-08-25 — feat(host): the Host announces a scene revised mid-conversation
 
 _Versions: core 0.0.663._
