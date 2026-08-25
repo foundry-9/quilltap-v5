@@ -598,19 +598,32 @@ pub fn slugify_wardrobe_title(title: &str) -> String {
 
 /// Build the `(itemId → slug)` list a wardrobe write uses to translate
 /// `componentItemIds` UUIDs to slugs — v4 `buildSlugByItemIdMap`
-/// (`character-vault.ts:240`). First item that slugifies to a given slug claims
-/// it; empty slugs and later collisions are skipped. `items` is `(id, title)` in
-/// the caller's order; the result preserves first-seen order (the analogue of v4's
-/// insertion-ordered `Map`).
+/// (`character-vault.ts:240`, the `f6a10055` two-pass form). `items` is
+/// `(id, title)` in the caller's order; the result preserves item order (the
+/// analogue of v4's insertion-ordered `Map`).
+///
+/// A slug borne by MORE THAN ONE item in the list is assigned to nobody — every
+/// reference to any of the colliders is written as a UUID instead. A slug is
+/// only an alias for "the one item with this title"; when two items share the
+/// title, writer array order and the reader's filename-sorted order can crown
+/// different winners, silently rewiring a composite's components on the next
+/// read (a moved outfit pointing at a same-titled stranger instead of the piece
+/// that travelled with it). The UUID fallback is exact in both directions.
 pub fn build_slug_by_item_id_map(items: &[(String, String)]) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    let mut claimed: HashSet<String> = HashSet::new();
-    for (id, title) in items {
+    let mut slug_counts: HashMap<String, usize> = HashMap::new();
+    for (_, title) in items {
         let slug = slugify_wardrobe_title(title);
-        if slug.is_empty() || claimed.contains(&slug) {
+        if slug.is_empty() {
             continue;
         }
-        claimed.insert(slug.clone());
+        *slug_counts.entry(slug).or_insert(0) += 1;
+    }
+    let mut out = Vec::new();
+    for (id, title) in items {
+        let slug = slugify_wardrobe_title(title);
+        if slug.is_empty() || slug_counts.get(&slug) != Some(&1) {
+            continue;
+        }
         out.push((id.clone(), slug));
     }
     out
@@ -2226,6 +2239,48 @@ mod tests {
             stable_uuid_from_string("scenario:x:y"),
             stable_uuid_from_string("scenario:x:z")
         );
+    }
+
+    /// v4 `wardrobe-slug-map.test.ts` — the `f6a10055` slug-ambiguity rules.
+    fn id_titles(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(id, t)| (id.to_string(), t.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn slug_map_maps_unique_titles_to_their_slugs() {
+        let map: HashMap<String, String> =
+            build_slug_by_item_id_map(&id_titles(&[("a", "Test Coat"), ("b", "Test Boots")]))
+                .into_iter()
+                .collect();
+        assert_eq!(map.get("a").map(String::as_str), Some("test-coat"));
+        assert_eq!(map.get("b").map(String::as_str), Some("test-boots"));
+    }
+
+    #[test]
+    fn slug_map_assigns_an_ambiguous_slug_to_nobody() {
+        let map: HashMap<String, String> = build_slug_by_item_id_map(&id_titles(&[
+            ("a", "Test Boots"),
+            ("b", "Test Boots"),
+            ("c", "Test Coat"),
+        ]))
+        .into_iter()
+        .collect();
+        assert!(!map.contains_key("a"));
+        assert!(!map.contains_key("b"));
+        assert_eq!(map.get("c").map(String::as_str), Some("test-coat"));
+    }
+
+    #[test]
+    fn slug_map_treats_identical_slugifications_as_colliding() {
+        let map: HashMap<String, String> =
+            build_slug_by_item_id_map(&id_titles(&[("a", "Test Boots"), ("b", "test   BOOTS!")]))
+                .into_iter()
+                .collect();
+        assert!(!map.contains_key("a"));
+        assert!(!map.contains_key("b"));
     }
 
     /// A `WardrobeItemFromFile` with only the fields the resolver reads.

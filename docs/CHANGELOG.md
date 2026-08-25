@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — fix(wardrobe): an ambiguous title slug is assigned to nobody (P4.D112)
+
+_Versions: quilltap-core 0.0.656._
+
+Ports v4 `f6a10055`'s `buildSlugByItemIdMap` fix. The vault wardrobe writer
+used to hand a colliding title slug to the first item in write order while
+the reader resolved slugs in filename order, so two same-titled items in one
+container could silently rewire a composite's components on the next read.
+`build_slug_by_item_id_map` is now two-pass: a slug borne by more than one
+item is assigned to nobody and every reference to a collider is written as
+the exact UUID. Unit tests mirror v4's new `wardrobe-slug-map.test.ts`; the
+`vault-wardrobe-emit` corpus gains a differently-spelled-collision case and
+the `vault-wardrobe-write` fixture a collision-returns op, both proven
+red-first against the old code and green against oracles regenerated at the
+`f6a10055` pin.
+
 #### 2026-08-25 — docs(porting): the f6a10055 wardrobe-containers drift round is planned (P4.D112 ∥ P4.D113 ∥ P4.D114)
 
 Docs-only. v4 moved four commits past `0ba942b1` — the gallery-downloads +

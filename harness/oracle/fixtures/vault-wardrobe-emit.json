@@ -1821,6 +1821,83 @@
         "updatedAt": "2026-01-01T00:00:00.000Z",
         "characterId": null
       }
+    ],
+    [
+      {
+        "id": "00000000-0000-4000-8000-0000000000b1",
+        "title": "Test Boots",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000b2",
+        "title": "test   BOOTS!",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000b3",
+        "title": "Test Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000b4",
+        "title": "Test Ensemble",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "00000000-0000-4000-8000-0000000000b3",
+          "00000000-0000-4000-8000-0000000000b1"
+        ],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null
+      }
     ]
   ]
 }

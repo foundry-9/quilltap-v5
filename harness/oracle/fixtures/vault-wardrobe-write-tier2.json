@@ -1,6 +1,8 @@
 {
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
-  "store": { "id": "57c0de00-0000-4000-8000-0000000000c1" },
+  "store": {
+    "id": "57c0de00-0000-4000-8000-0000000000c1"
+  },
   "characterId": "char-vault-write",
   "seedWardrobeJson": "{\n  \"items\": []\n}\n",
   "ops": [
@@ -13,7 +15,9 @@
           "title": "Blue Shirt",
           "description": "A comfortable blue shirt.",
           "imagePrompt": null,
-          "types": ["top"],
+          "types": [
+            "top"
+          ],
           "componentItemIds": [],
           "appropriateness": null,
           "isDefault": false,
@@ -29,7 +33,9 @@
           "title": "Red Pants",
           "description": null,
           "imagePrompt": null,
-          "types": ["bottom"],
+          "types": [
+            "bottom"
+          ],
           "componentItemIds": [],
           "appropriateness": null,
           "isDefault": false,
@@ -45,7 +51,9 @@
           "title": "Hat",
           "description": null,
           "imagePrompt": null,
-          "types": ["accessories"],
+          "types": [
+            "accessories"
+          ],
           "componentItemIds": [],
           "appropriateness": null,
           "isDefault": false,
@@ -61,7 +69,9 @@
           "title": "Hat",
           "description": null,
           "imagePrompt": null,
-          "types": ["accessories"],
+          "types": [
+            "accessories"
+          ],
           "componentItemIds": [],
           "appropriateness": null,
           "isDefault": false,
@@ -77,7 +87,9 @@
           "title": "Full Outfit",
           "description": "Bundles the shirt and hat.",
           "imagePrompt": null,
-          "types": ["top"],
+          "types": [
+            "top"
+          ],
           "componentItemIds": [
             "00000000-0000-4000-8000-0000000000a1",
             "00000000-0000-4000-8000-0000000000a3"
@@ -101,7 +113,9 @@
           "title": "Navy Shirt",
           "description": "A comfortable blue shirt.",
           "imagePrompt": null,
-          "types": ["top"],
+          "types": [
+            "top"
+          ],
           "componentItemIds": [],
           "appropriateness": null,
           "isDefault": false,
@@ -117,7 +131,9 @@
           "title": "Hat",
           "description": null,
           "imagePrompt": null,
-          "types": ["accessories"],
+          "types": [
+            "accessories"
+          ],
           "componentItemIds": [],
           "appropriateness": null,
           "isDefault": false,
@@ -133,7 +149,89 @@
           "title": "Full Outfit",
           "description": "Bundles the shirt and hat.",
           "imagePrompt": null,
-          "types": ["top"],
+          "types": [
+            "top"
+          ],
+          "componentItemIds": [
+            "00000000-0000-4000-8000-0000000000a1",
+            "00000000-0000-4000-8000-0000000000a3"
+          ],
+          "appropriateness": null,
+          "isDefault": false,
+          "replace": false,
+          "migratedFromClothingRecordId": null,
+          "archivedAt": null,
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-02T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "label": "collision-returns",
+      "items": [
+        {
+          "id": "00000000-0000-4000-8000-0000000000a1",
+          "characterId": null,
+          "title": "Navy Shirt",
+          "description": "A comfortable blue shirt.",
+          "imagePrompt": null,
+          "types": [
+            "top"
+          ],
+          "componentItemIds": [],
+          "appropriateness": null,
+          "isDefault": false,
+          "replace": false,
+          "migratedFromClothingRecordId": null,
+          "archivedAt": null,
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-0000000000a3",
+          "characterId": null,
+          "title": "Hat",
+          "description": null,
+          "imagePrompt": null,
+          "types": [
+            "accessories"
+          ],
+          "componentItemIds": [],
+          "appropriateness": null,
+          "isDefault": false,
+          "replace": false,
+          "migratedFromClothingRecordId": null,
+          "archivedAt": null,
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "updatedAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-0000000000a6",
+          "characterId": null,
+          "title": "Hat",
+          "description": null,
+          "imagePrompt": null,
+          "types": [
+            "accessories"
+          ],
+          "componentItemIds": [],
+          "appropriateness": null,
+          "isDefault": false,
+          "replace": false,
+          "migratedFromClothingRecordId": null,
+          "archivedAt": null,
+          "createdAt": "2026-01-03T00:00:00.000Z",
+          "updatedAt": "2026-01-03T00:00:00.000Z"
+        },
+        {
+          "id": "00000000-0000-4000-8000-0000000000a5",
+          "characterId": null,
+          "title": "Full Outfit",
+          "description": "Bundles the shirt and hat.",
+          "imagePrompt": null,
+          "types": [
+            "top"
+          ],
           "componentItemIds": [
             "00000000-0000-4000-8000-0000000000a1",
             "00000000-0000-4000-8000-0000000000a3"

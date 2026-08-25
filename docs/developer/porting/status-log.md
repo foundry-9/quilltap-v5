@@ -85014,3 +85014,40 @@ unchanged, SPA 0.5.549.
    planning note in phase-4.md sizes it).
 5. The handler-logging sweep (P4.61's named deferral, incl. the
    `cost_events::create_system_event` sibling).
+
+## Lane record — P4.D112 (wardrobe-containers, server half) — v4 pin `f6a10055`
+
+Lane branch `claude/p4-d112-wardrobe-containers-3af91f`. Drift check at lane
+start: v4 main HEAD == `f6a10055` (checkout on `main`, tree clean — no pin
+worktree needed; every regen notes the branch); `bugfix` HEAD `3a76b17d`,
+nothing unabsorbed. Sibling lanes P4.D113 (SPA) / P4.D114 (downloads+bug98);
+ownership per the order's table.
+
+### Unit 1 — the slug-collision vault fix (`build_slug_by_item_id_map`)
+
+- v4 `f6a10055` rewrote `buildSlugByItemIdMap` two-pass: count slugs, then
+  assign only where the count is exactly 1 — an ambiguous slug is assigned to
+  NOBODY and every reference to a collider is written as the exact UUID. The
+  reader was NOT changed (verified in the v4 diff; v5's reader stays
+  untouched too, `db/vault_read_overlay.rs`).
+- `vault_overlay::build_slug_by_item_id_map` ported to the two-pass form,
+  v4's why-comment carried. Three unit tests mirror v4's new
+  `wardrobe-slug-map.test.ts` (unique titles; same-spelled colliders; titles
+  that slugify identically though spelled differently). The fourth v4 case
+  (UUID refs in the emitted file) is the differential's new corpus case.
+- **Differential, red-first:** `vault-wardrobe-emit.json` gained case 6
+  (Test Boots / `test   BOOTS!` / Test Coat / Test Ensemble referencing one
+  collider + the unique coat); the existing case 2 (two `Hat`s referenced by
+  `Full Outfit`) flipped as designed. Fresh oracle at the pin → current v5
+  RED (`hat` vs the collider UUID), fix → GREEN.
+  `vault-wardrobe-write-tier2.json` gained op 2 `collision-returns` (a second
+  Hat returns so the FINAL projected state carries a collision — the family
+  dumps final state only, so without this op the write leg could not
+  discriminate). Fresh oracle → GREEN with the UUID byte confirmed in the
+  NDJSON.
+- **Mutation proof:** the fix reverted (file-backup, not git checkout) →
+  BOTH families red; restored → both green.
+- Consumers of the two fixtures checked: `vault-wardrobe-emit.json` → emit
+  family only; `vault-wardrobe-write-tier2.json` → write family only.
+- Versions: core 0.0.656.
+
