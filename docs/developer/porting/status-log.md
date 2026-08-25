@@ -84309,3 +84309,66 @@ order starts from a measurement rather than a grep.
 Rewritten as the two-arm match it always was, with the two Zod helpers taking
 `&Value` since every caller had one in hand. The differential is green over the
 pinned oracle before and after.
+
+### ⚠ v4 DRIFTED mid-lane — every regen re-run from a pinned worktree
+
+At lane start v4 main was AT the baseline `0ba942b1`, tree clean, so the first
+pass of regens ran against the live checkout. **v4 then committed `af1bc479`
+(`feat(images): every gallery can download the picture on display`, 2026-08-24
+22:39) while this lane was working.** It touches `app/`, `components/`, help
+content, and one route (`mount-points/[id]/blobs/[...path]/route.ts`) — none of
+the six routes this lane's oracles drive — but the discipline does not turn on
+whether the drift *looks* relevant.
+
+So a detached worktree was pinned at the baseline
+(`/tmp/qt-v4-pin-p460-0ba942b1`, all three symlink classes: root
+`node_modules`, `packages/quilltap/node_modules`, and 15
+`plugins/dist/*/node_modules`) and **all six families were regenerated and
+re-run from it through the sweep driver's `--v4`** — 6/6 ok, zero SKIP. Every
+fresh NDJSON was then grepped for the new arms' discriminating bytes
+(`green-regen-is-not-coverage`): 12 pascal arms, 11 characters arms, 17 brahma
+arms, 17 restore-guard arms, 7 embedding-profile arms, 24 qtap arms, all
+present, with `Validation error` ×14, `[object Object]`, `Upload not found or
+expired` ×7, the two-sentence `Too small…; Provide exactly one…` join, and
+`Failed to preview import` where they belong.
+
+**The unifier must drift-check again**: v4 HEAD is `af1bc479`, one commit past
+the baseline this round adopted. `af1bc479` is not dispositioned here — it
+arrived after planning and belongs to whoever runs the next drift check.
+
+### Lane close — what landed, what did not
+
+**Closed:** every tier-1 deliverable (the complete adjudication table; every fix
+decoding through the `Request` enum or a serde-typed body with v4's guard order;
+every fixed arm pinned with a wrong-typed case AND the absent/null poles; the
+`qtap_routes.rs` confirm-only pass recorded) and the tier-2 enumeration sweep,
+made executable rather than written down.
+
+**Deferred, loudly, and named:** nothing was banked from the order's own scope.
+The tier-2 sweep's finds are *by design* not this lane's fixes and are listed in
+the enumeration section above — `system_data_routes.rs`'s 13 sites (the largest
+remaining pocket and the natural next order in this class),
+`files_routes.rs`'s 5 caller-input reads, and `llm_logs_routes.rs`'s single
+projection. All three are counted and pinned by `web_edge_body_parse_guard`, so
+the next order starts from a measurement.
+
+**No escalations, and no DIVERGENT-RECORDED rows.** Every divergence found had
+an unambiguous v4 answer, so nothing needed a ruling and no both-directions
+tripwire was added.
+
+**Core files touched** (the order asks these be named so the unifier audits the
+non-version delta): `api/brahma.rs`, `api/characters.rs`, `api/custom_tools.rs`,
+`api/embedding_profiles.rs`, `api/engine.rs`, `api/system_backup.rs`,
+`api/types.rs`. Four `Request` variants changed shape — `BrahmaConsoleCreate`,
+`BrahmaConsoleRename`, `BrahmaConsoleSetModel`, `BrahmaConsoleSend`,
+`SystemRestorePreview`, `SystemRestoreExecute`, `EmbeddingProfileReindex` —
+all from typed fields to RAW `Value`, and all verified against what the SPA
+actually sends (`brahma-wire.ts` omits absent keys; `restore-dialog.ts` sends
+real strings and a real boolean; the reindex caller sends one of the two valid
+scopes). **No `apps/web` change was needed and none was made**, so no SPA gate.
+
+💸 **Nothing for the dogfood queue.** Every fix is a wire-level 400/500 on a
+refusal path, oracle-provable and invisible to a live screen: no user-facing
+sentence a person would meet in normal use changed. The one behaviour a human
+could notice is a *better* refusal — a mistyped body that used to be silently
+ignored is now declined.
