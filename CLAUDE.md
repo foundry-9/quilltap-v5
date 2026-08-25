@@ -1909,10 +1909,56 @@ records THERE. Update this summary only when a phase or round completes.
   test green because they all called the function directly — so a
   `runtime_facts()` arm was added. Live: `Free Memory: 12.3 GB` against Node's
   12.22 GB on the same host.
+- **The no-drift maintenance round (P4.59 ∥ P4.60 ∥ P4.61): UNIFIED on main
+  (2026-08-25) — ALL THREE CLOSED; the baseline STAYS `0ba942b1`, and ⚠ v4
+  drifted TWO commits DURING the round (`af1bc479` + `c93ec7ff`, both ported
+  surfaces — the catch-up is the top next candidate; pin `0ba942b1` for
+  every regen until it runs).** Dogfood **#98 CLOSED** — the configured
+  search provider end-to-end: the native `SearchManifest`/`SearchRegistry`
+  behind v4's site-plugins gate (one recorded divergence: the ten native LLM
+  providers are not `SITE_PLUGINS_*`-gated), ONE registration answer feeding
+  the runner (`serper_registered = true`, per-call keys live from `api_keys`
+  through the now-load-bearing `DbSearchApiKeys`), the tools-inventory bool
+  AND the providers listing's `type: 'search'` row (whole-row byte compare,
+  key order included — whose first run caught the harness's own
+  `Map::remove` swap-remove reordering under `preserve_order`); the
+  plugin-arm-only `User-Agent` + the reachable `validateApiKey` probe; the
+  tier-3 oracle rebuilt over v4's REAL registry + REAL dist plugin (17 → 26,
+  the vacuous which-key arm caught by mutation and fixed with a header-echo
+  comparand); **the SPA's invented `type === 'llm'` API-keys filter removed**
+  (v4 filters on `providerAcceptsApiKey` alone — the invented filter was
+  #98's remaining half) with `capabilities` optional; the salon web-search
+  beat MOVED to the configured path (no env key; the seeded `api_keys` row
+  is what reaches the wire) ∥ P4.60: the wrong-type-collapse adjudication
+  COMPLETE — 14 DIVERGENT-FIXED / 6 FAITHFUL / zero escalations across
+  custom-tools, characters photos, the four Brahma bodies (validated AFTER
+  v4's 404 gate via `brahma_send_prepare`), the restore trio (guard order in
+  ONE place — the two entrances used to disagree), the reindex `scope`
+  (absent/null split + `String()` coercion), and two qtap neighbours the
+  confirm-only pass found; the census is EXECUTABLE
+  (`web_edge_body_parse_guard`) with the remaining pockets named
+  (`system_data_routes` 13, `files_routes` 5, `llm_logs_routes` 1) ∥ P4.61:
+  five of v4's eight `[Title Update]` log lines byte-faithful (`:89`/`:185`
+  NO-PORTs with v4-source evidence — a dead branch and an unreachable
+  catch), capture-layer presence + silence pins with six mutation proofs;
+  the `docs/v4/` mirror refreshed at the baseline (19 modified + 97 added).
+  **The §3 review: NO blocking findings** (fidelity re-checked against v4's
+  real code; the lane-close timeline audited against the drift — no regen
+  ever saw a moved tree). Gate: 13/13 families fresh from the pinned
+  worktree zero SKIP with discriminating bytes grepped; 453 test binaries /
+  2,338 / 0 with the round's 20-variable env block; clippy both feature
+  sets; release build; ng 341 / 5,072; full Playwright green (numbers in
+  the round record). Versions: core 0.0.655, harness 0.0.574, host 0.0.82,
+  web 0.0.86, SPA 0.5.549. 💸 the dogfood queue gains the finding-#98
+  scenario itself on the Friday copy (the `SERPER` row v4 wrote should now
+  just work, no env var) + the title-update lines in a real `combined.log`.
+  Round record: `status-log.md`.
 - **Oracle baseline: `0ba942b1` (2026-08-23, v4 main — "fix(openrouter):
   the plugin declares the vision path it already implements (bug 97)"),
-  adopted at the 0ba942b1-round unification (2026-08-23).** v4 had NOT
-  moved past it at unification. The round's pin worktrees are removed;
+  adopted at the 0ba942b1-round unification (2026-08-23), RETAINED at the
+  no-drift-round unification (2026-08-25).** ⚠ v4 HEAD is now TWO commits
+  past it (`af1bc479` + `c93ec7ff` — the pending catch-up): pin a detached
+  worktree at `0ba942b1` for EVERY regen until it lands. The round's pin worktrees are removed;
   build a fresh lane-unique pin per lane whenever v4 HEAD moves past the
   baseline or the checkout is dirty. **Drift-check BOTH development
   branches every round** (`git log <baseline>..main` AND

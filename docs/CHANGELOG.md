@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — chore(unify): the no-drift maintenance round lands whole (P4.59 ∥ P4.60 ∥ P4.61)
+
+_Versions: quilltap-core 0.0.655, quilltap-harness 0.0.574, quilltap-host 0.0.82, quilltap-web 0.0.86, SPA 0.5.549._
+
+All three lanes of the 2026-08-24 round unified on `unify/p459-round` and
+fast-forwarded to main. Dogfood #98 closes (the configured Serper search
+provider end-to-end — registration behind v4's site-plugins gate, per-call
+keys from `api_keys`, the providers listing's search row, the API-keys
+modal's invented type filter removed); the wrong-type-collapse adjudication
+completes (14 divergences fixed, 6 faithful verdicts recorded, the
+executable census guard); the title-update handler's five portable log
+lines land byte-faithfully (two proven NO-PORTs), and the `docs/v4/` mirror
+is refreshed at the baseline. The §3 review found no blocking findings.
+Gate: 13/13 families regenerated fresh from a worktree pinned at
+`0ba942b1`, zero SKIP; 453 test binaries / 2,338 passed / 0 failed; clippy
+both feature sets; release build; ng 341 files / 5,072; full Playwright
+237/237 zero skips. ⚠ v4 drifted two commits mid-round (`af1bc479` +
+`c93ec7ff`) — the catch-up is the next round's top candidate.
+
 #### 2026-08-24 — refactor(brahma): the create-body Zod arm reads as what it is (P4.60 tidy)
 
 _Versions: core 0.0.651._

@@ -5835,3 +5835,67 @@ orders; the #101 NanoGPT-caching cost question also awaits the human);
 the tri-state `taboo`/`brahma-console` three-call-site residue (P4.56's
 note — adjacent to P4.60's territory but a different class; next
 maintenance pass); PB1 (parked by standing rule).
+
+**The no-drift maintenance round — UNIFIED on main (2026-08-25). ALL THREE
+LANES CLOSED; the baseline STAYS `0ba942b1` — and ⚠ v4 drifted DURING the
+round.** P4.59 landed whole (dogfood #98 CLOSED: the Serper provider
+registered natively behind v4's site-plugins gate, per-call keys live from
+`api_keys`, the providers listing's `type: 'search'` row, the SPA's invented
+`type === 'llm'` API-keys filter removed — v4 filters on
+`providerAcceptsApiKey` alone; the salon web-search beat now proves the
+CONFIGURED path with no env key); P4.60 landed whole (the complete
+adjudication table — 14 DIVERGENT-FIXED, 6 FAITHFUL, zero escalations; the
+Brahma trio validates after the 404 gate; the restore guard order lives in
+one place; the executable `web_edge_body_parse_guard` census; remaining
+pockets NAMED: `system_data_routes` 13 / `files_routes` 5 /
+`llm_logs_routes` 1); P4.61 landed (5 of 8 log lines byte-faithful, `:89` +
+`:185` NO-PORTs with v4-source evidence; the `docs/v4/` mirror refreshed at
+the baseline). **The §3 review: NO blocking findings** (fidelity re-checked
+against v4's real code; the lane-close timeline audited against the drift
+commits — no regen ever saw a moved tree). Gate: 13/13 families fresh from
+the pinned worktree zero SKIP; 453 test binaries / 2,338 / 0; clippy both
+feature sets; release build; ng 341 / 5,072; full Playwright green (numbers
+in the round record). Versions: core 0.0.655, harness 0.0.574, host 0.0.82,
+web 0.0.86, SPA 0.5.549. Round record: `status-log.md`.
+
+**Next candidates, in rough value order** (updated at the no-drift-round
+unification, 2026-08-25):
+
+1. **The `c93ec7ff` drift catch-up** — v4 moved TWO commits past the
+   baseline mid-round, BOTH on ported surfaces: `af1bc479` (gallery
+   download buttons across My Photos/avatar-grid/Scriptorium + the
+   mount-blob route's inline `Content-Disposition` with the stored
+   basename) and `c93ec7ff` (bug 98 — the projects create schema stops
+   refusing a blank description). Check both branches first, as always;
+   **pin `0ba942b1` for EVERY regen until this lands.**
+2. **The owed 💸 dogfood queue** — now incl. the finding-#98 scenario
+   itself on the Friday copy (the `SERPER` row v4 wrote should just work,
+   no env var) and the title-update log lines in a real `combined.log`;
+   plus the standing items (Pascal's other three write paths, the Brahma
+   deep-query budget, dedup/summaries, the candid story background).
+3. **The next wrong-type-collapse order**: `system_data_routes.rs`'s 13
+   sites (the largest remaining pocket; P4.60's census makes it a
+   measurement, not a grep), then `files_routes.rs`'s 5.
+4. **`p4.9i2` — help/HelpChat as a dedicated round** (sized in the
+   planning note above).
+5. The handler-logging sweep (P4.61's named deferral, incl. the
+   `cost_events::create_system_event` sibling) and the
+   `taboo`/`brahma-console` tri-state residue.
+
+PB1 stays parked by the standing rule.
+
+**Standing regen note (supersedes the one above):** the oracle baseline
+remains **`0ba942b1`** (2026-08-23, v4 main — the bug-97 fix), retained at
+the no-drift-round unification (2026-08-25). ⚠ **v4 HEAD is now TWO commits
+past it** (`af1bc479` gallery downloads + `c93ec7ff` bug 98 — candidate 1
+above, both on ported surfaces): **pin a detached worktree at `0ba942b1`
+for EVERY regen until the catch-up lands** (all three symlink classes; the
+unification's `/tmp/qt-v4-pin-unify-p459round-0ba942b1` is removed
+post-round — build a fresh lane-unique pin per lane). Drift-check BOTH
+development branches every round (`git log 0ba942b1..main` AND `git diff
+main bugfix -- lib/ app/ packages/` — measure bugfix by `diff`, never the
+commit list; its only unabsorbed content today is the tests-only
+`009c49b2`; note WHICH branch the checkout occupies before any regen). The
+sweep driver remains the sanctioned per-family regen path — never run two
+sweeps concurrently. The distill-transitive TZ pins, the committed-fixture
+rule, and the venue/staging rules stand unchanged.

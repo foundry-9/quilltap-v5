@@ -84887,3 +84887,130 @@ warnings` clean, plain AND `--features quilltap-core/native-transport`;
 regenerated fresh at `0ba942b1` through the sweep driver and re-run by name —
 **17/17 differential cases OK, zero SKIP**, which is also the proof the lane
 moved no DB state. Versions: core 0.0.646, harness 0.0.563.
+
+---
+
+## Round record — the no-drift maintenance round (P4.59 ∥ P4.60 ∥ P4.61), UNIFIED 2026-08-25
+
+**All three lanes CLOSED; the baseline STAYS `0ba942b1` — and v4 drifted DURING
+the round** (see "The drift" below). Branch `unify/p459-round`, cherry-picked
+P4.60 → P4.59 → P4.61 (17 commits), version-file conflicts only — the silent
+identical-base auto-merge fired exactly as the playbook predicts and the
+recount landed as its own commit (core 645+3+6+1 → **0.0.655**, harness
+562+4+7+1 → **0.0.574**, web 79+1+6 → **0.0.86**; host 0.0.82 and SPA 0.5.549
+single-lane, unclobbered).
+
+### What landed (per lane; full detail in the lane records above)
+
+- **P4.59 — the configured search provider (dogfood #98).** The native
+  `SearchManifest`/`SearchRegistry` + generated `search_serper.json`; v4's
+  site-plugins gate honored for the Serper plugin (recorded divergence: the ten
+  native LLM providers are not gated); ONE registration answer threaded into
+  the runner (`serper_registered = true`, keys live from `api_keys` via
+  `DbSearchApiKeys`), the tools-inventory bool, AND the providers listing's
+  `type: 'search'` row — advertised, listed and executed cannot disagree; the
+  plugin-arm `User-Agent` + the reachable `validateApiKey` probe; the tier-3
+  oracle rebuilt over v4's REAL registry + REAL dist plugin (17 → 26 cases);
+  the SPA's invented `type === 'llm'` API-keys filter removed (v4 filters on
+  `providerAcceptsApiKey` alone) with `ProviderInfo.capabilities` optional;
+  the salon web-search beat moved to the CONFIGURED path (`SERPER_API_KEY`
+  unset at e2e launch; the `api_keys` row seeded).
+- **P4.60 — the wrong-type-collapse adjudication.** The complete table: 14
+  DIVERGENT-FIXED + 6 FAITHFUL-recorded + the qtap confirm-only pass, zero
+  escalations, zero deliberate divergences; the Brahma trio validates AFTER
+  the 404 gate (`brahma_send_prepare`); the restore trio rides RAW with v4's
+  guard order in ONE place (the two entrances used to disagree); the reindex
+  `scope` keeps the absent/null split + `String()` coercion; two neighbouring
+  qtap divergences found by the confirm pass and fixed; the census guard
+  (`web_edge_body_parse_guard`) holds the whole routes surface to per-file
+  counts with verdicts inline. Remaining pockets named: `system_data_routes`
+  (13), `files_routes` (5), `llm_logs_routes` (1).
+- **P4.61 — the title-update handler's log lines.** Five of eight landed
+  byte-faithfully; `:89` and `:185` are NO-PORTs with v4-source evidence (dead
+  branch / unreachable catch); the `:294`/`:303` pair lives in
+  `image_profile_resolution.rs` (v5's file split — one file beyond the
+  order's list, recorded); capture-layer presence + silence pins, six
+  mutation proofs incl. the wiring-class M5. Rider: the `docs/v4/` mirror
+  refreshed at `0ba942b1` (19 modified + 97 added — verified byte-identical
+  against the unification pin's `docs/`).
+
+### The §3 unification review — NO blocking findings
+
+The whole combined diff was read (every source hunk; the mirror verified
+mechanically against the pin), and the fidelity claims were re-checked against
+v4's real code independently: the web-search handler flow + sentences, the
+plugin metadata (including the module-vs-manifest.json description
+discrepancy the lane caught), the providers route's hand-built three-key
+search row, `ApiKeyModal.tsx`'s accepts-only filter, `ProfileModal.tsx:425`'s
+`p.capabilities?.chat`, `wizard-api`'s `type === 'llm'`, the title-update log
+sites 89–303 with both NO-PORT evidences (`getCheapLLMProvider`'s non-null
+type; both self-catching awaits), the restore guard order, and the SPA brahma
+senders' omit-absent shapes against the new raw-Value verbs. Non-blocking
+notes: P4.61's honest one-file ownership overrun; the CHANGELOG union is
+lane-ordered rather than strictly time-ordered (standing practice). Timeline
+audit: P4.61 closed 21:44, P4.59 22:37, both BEFORE `af1bc479` (22:39);
+P4.60 closed 22:53 having caught the drift and re-run pinned; `c93ec7ff`
+(23:52) postdates all three — so no lane regen ever saw a moved tree, and the
+unified sweep re-proved every family from the pin regardless.
+
+### ⚠ The drift — v4 moved TWO commits past the baseline during the round
+
+- `af1bc479` — "feat(images): every gallery can download the picture on
+  display": client download buttons (My Photos detail modal + Copy, the
+  avatar-selector/wizard grid hover, the Scriptorium file table detail row),
+  `lib/download-utils.ts` adoption on Generate Image + wardrobe preview, and
+  ONE route change — the mount-blob endpoint's inline `Content-Disposition`
+  with the STORED basename. Ported surfaces; a real catch-up.
+- `c93ec7ff` — "fix(projects): a blank description no longer refuses the
+  whole project (bug 98)": the projects create route gains `schemas.ts` and
+  stops refusing blank descriptions + a QuickActionsRow client tweak. Ported
+  surface; a real catch-up.
+
+**Neither is dispositioned here.** The drift catch-up is the next round's top
+candidate; pin `0ba942b1` for EVERY regen until it lands.
+
+### The unified gate (all regens from the pinned worktree `/tmp/qt-v4-pin-unify-p459round-0ba942b1`)
+
+- `cargo fmt --all --check` clean; clippy `--workspace --all-targets
+  -D warnings` clean, plain AND `--features quilltap-core/native-transport`.
+- The 13 affected families regenerated fresh at the pin through the sweep
+  driver and re-run by name — **13/13 ok, zero SKIP**, discriminating bytes
+  grepped in every fresh NDJSON (`"type": "search"`, `Validation error` 8+14,
+  `Upload not found or expired` ×7, `[object Object]`,
+  `Failed to preview import` ×2, the two-sentence refine join, the
+  site-plugins 19-case table); `git status` clean after — the committed
+  web-search-wire corpus and all eleven manifests regenerated byte-identical.
+- `cargo test --workspace` with the round's 20-variable env block: **453 test
+  binaries / 2,338 passed / 0 failed**, zero `not set; skipping` lines
+  (449/2,325 baseline → +4 binaries, exactly the round's new
+  site_plugins/system_restore_guards/qtap_import_guards/web_edge_body_parse_guard).
+- Release build (`quilltap-web` + `quilltap-cli`) clean.
+- SPA: `npm test` **341 files / 5,072 passed**; `npm run build` clean.
+- Full Playwright: **237 passed / 0 failed / 0 skipped (5.5 m)** — including the two moved beats (the
+  settings walk creating a Serper key through the modal; the salon web-search
+  beat on the configured path with no env key).
+
+Versions: core 0.0.655, harness 0.0.574, host 0.0.82, web 0.0.86, cli/tauri
+unchanged, SPA 0.5.549.
+
+### 💸 The dogfood queue gains
+
+- The finding-#98 scenario itself on the Friday copy: the `SERPER` row v4
+  wrote is already in that instance's `api_keys`, so `search_web` should now
+  run with NO env var — the exact thing the finding said was impossible.
+- The five title-update log lines in a real `combined.log` on a real title
+  cycle.
+
+### Next candidates (also reflected in phase-4.md)
+
+1. The `c93ec7ff` drift catch-up (both commits above; check both branches
+   first, as always).
+2. The owed 💸 items above + the standing queue (Pascal's other three write
+   paths, the Brahma deep-query budget, dedup/summaries, the candid
+   story-background arm).
+3. The next wrong-type-collapse order: `system_data_routes.rs`'s 13 sites
+   (P4.60's census makes it a measurement, not a grep).
+4. `p4.9i2` — help/HelpChat, the recommended next DEDICATED round (the
+   planning note in phase-4.md sizes it).
+5. The handler-logging sweep (P4.61's named deferral, incl. the
+   `cost_events::create_system_event` sibling).
