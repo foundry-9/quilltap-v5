@@ -546,6 +546,35 @@ describe('MessageRow — the Staff header bar (P4.26)', () => {
     expect(bar.querySelector('.qt-chat-system-bar-kind').textContent.trim()).toBe('mail delivery');
   });
 
+  /**
+   * P4.D116 / v4 `44a8137e` — the SECOND of v5's two Staff render sites (the
+   * P4.D36 whisper-tag pair: this bar and `announcement-group`'s chip). A host
+   * `scenario-change` is chipped in production, so it never reaches this row;
+   * driving one through anyway proves this site reads the SAME label and
+   * importance tables rather than a divergent copy of its own — which is the
+   * thing the order asked to be verified rather than assumed.
+   */
+  it('resolves the scenario-change kind identically at the second render site', () => {
+    const fixture = render(
+      message({
+        systemSender: 'host',
+        systemKind: 'scenario-change',
+        participantId: null,
+        content: 'The Host revises the scene for the proceedings:\n\nA cellar.',
+      }),
+    );
+    const bar = fixture.nativeElement.querySelector('.qt-chat-system-bar');
+    expect(bar.querySelector('.qt-chat-system-bar-sender').textContent.trim()).toBe('The Host');
+    expect(bar.querySelector('.qt-chat-system-bar-kind').textContent.trim()).toBe(
+      'scenario change',
+    );
+    expect(
+      bar
+        .querySelector('.qt-chat-announcement-dot')
+        .classList.contains('qt-chat-announcement-dot-medium'),
+    ).toBe(true);
+  });
+
   it('leaves an ordinary character line with its author header and no bar', () => {
     const fixture = render(message({ content: 'Good evening.' }));
     expect(fixture.nativeElement.querySelector('.qt-chat-system-bar')).toBeNull();

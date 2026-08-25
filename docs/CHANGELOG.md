@@ -92,6 +92,29 @@ Neutrality proven by regenerating `chat_create_capstone` from a v4 worktree
 pinned at `44a8137e` (which carries v4's own extraction) and re-running it
 green; the family's `two_char_scenario` case is the live create-path scenario
 arm. The resolver's own four-tier differential arrives with the verb.
+#### 2026-08-25 — test(salon): the scenario-change kind at both render sites, and the gated picker walk (P4.D116 units 5-6)
+
+_Versions: SPA 0.5.560._
+
+v4 `44a8137e` added the `scenario-change` announcement kind and NO table entry
+for it — no display override, no host importance row — so both apps answer
+through their fall-through arms: the label de-hyphenates to "scenario change"
+and the dot lands on the host tier's `'*'`, medium. Verified rather than
+assumed, and pinned at both of v5's Staff render sites (the P4.D36 whisper-tag
+pair): the chip that `chat-view-model` builds and `announcement-group` draws,
+and the header bar `message-row` draws for the carve-out senders. A row with no
+`systemKind` column is pinned too — the revision wording is deliberately unlike
+the chat-start "The Host sets the scene", so content inference correctly
+declines to call it `scenario`.
+
+The e2e beat lands gated on `P4D115_SERVER_LANDED`: a chat is seeded with a
+scene that matches no preset, the picker opens on Custom holding that text (the
+GET projection), a project scenario is picked and the Host announces the
+revision, re-picking the same scene announces nothing, and an empty Custom box
+clears it. It runs a dedicated server on port 4330 over a copy of the salon
+fixture; the project and its `Scenarios/` entry are created through the API,
+since a scenario file lives in a document store and cannot be planted with SQL.
+
 #### 2026-08-25 — feat(salon): the scene can be changed without leaving the conversation (P4.D116 units 3-4)
 
 _Versions: SPA 0.5.559._

@@ -113,6 +113,29 @@ describe('buildRenderItems', () => {
     expect(pascal.type === 'message' && pascal.message.id).toBe('p');
   });
 
+  /**
+   * P4.D116 / v4 `44a8137e` — render site 1 of 2 for the new `scenario-change`
+   * kind. v4 added no table entry for it, so it must arrive as a CHIP with the
+   * de-hyphenated label and the host tier's fall-through importance.
+   */
+  it('chips a scenario-change announcement as "scenario change" at medium (v4 44a8137e)', () => {
+    const items = buildRenderItems([
+      msg({
+        id: 'sc',
+        systemSender: 'host',
+        systemKind: 'scenario-change',
+        content: 'The Host revises the scene for the proceedings:\n\nA cellar.',
+      }),
+    ]);
+    const group = items[0];
+    expect(group.type).toBe('announcement-group');
+    if (group.type === 'announcement-group') {
+      expect(group.chips[0].sender).toBe('The Host');
+      expect(group.chips[0].kind).toBe('scenario change');
+      expect(group.chips[0].importance).toBe('medium');
+    }
+  });
+
   it('labels a nudge announcement "invited to speak" at medium importance (v4 6a8a77aa)', () => {
     const items = buildRenderItems([
       msg({ id: 'n', systemSender: 'host', systemKind: 'nudge' }),

@@ -86599,3 +86599,51 @@ spelling; the load-bearing gate is the query's `enabled`, which mutation 2
 reddens. Recorded in the code.
 
 Versions: SPA 0.5.559.
+
+### Units 5–6 — the `scenario-change` kind at both render sites, and the gated walk
+
+**The kind's answer was MEASURED, not assumed** (the order's instruction).
+`ggrep -rn "scenario-change" lib components app` in the v4 checkout finds
+exactly two hits — the writer's constant and the transcript-export kind set.
+v4 added **no** `KIND_DISPLAY_OVERRIDES` row and **no** `host` importance row,
+so both implementations answer through the same fall-throughs:
+`KIND_DISPLAY_OVERRIDES[raw] ?? raw.replace(/-/g, ' ')` → `'scenario change'`,
+and the host tier's `'*'` → `medium`. v5's two tables were diffed against v4's
+at the pin and are identical, so v5 matches by construction.
+
+**Both render sites pinned** (v5's pair is the one the P4.D36 whisper tag
+taught: `announcement-group.ts`'s chip and `message-row.ts`'s Staff header bar —
+`ggrep -rn "qt-chat-system-bar-whisper"` names exactly those two):
+
+- `chat-view-model.spec.ts` — a host `scenario-change` becomes a CHIP labelled
+  "scenario change" at medium.
+- `announcement-group.spec.ts` — the chip prints that kind, wears
+  `qt-chat-announcement-dot-medium`, and expands into the revision body through
+  the ordinary message block.
+- `message-row.spec.ts` — the same kind driven through the SECOND site resolves
+  identically. A host announcement is chipped in production and never reaches
+  that row; driving one through anyway is what proves the site reads the shared
+  tables rather than a divergent copy.
+- `system-message-labels.spec.ts` — the label, the importance (asserted
+  alongside `scenario`'s, which reaches the same value by a different route, so
+  a future table edit to either is visible), the null-`systemKind` arm (content
+  inference correctly declines to call it `scenario`: v4's revision wording is
+  deliberately unlike the chat-start "The Host sets the scene"), and the
+  no-outcome/no-accent arm.
+
+**The walk** (`e2e/salon-scenario-flow.spec.ts`, gated on
+`P4D115_SERVER_LANDED = false`, port 4330, its own server over a COPY of the
+salon fixture): seed a scene matching no preset → the picker opens on Custom
+holding that text (the projection proof — before `44a8137e` the box was always
+empty) → pick a project scenario → v4's revision bubble → reload, the picker now
+opens on the PRESET → save again → "Scenario unchanged" and NO new bubble →
+empty Custom → the cleared sentence. The project and its `Scenarios/` entry are
+created through the API, because a scenario file lives in a document store and
+is invisible to a SQL seed (memory:
+`store-overlay-properties-cannot-be-sql-seeded`).
+
+⚠ **Port 4330** is this lane's claim; P4.D117 is the other SPA lane this round
+and the unifier should confirm no collision (4319–4329 and 4530 were taken at
+lane start).
+
+Versions: SPA 0.5.560.

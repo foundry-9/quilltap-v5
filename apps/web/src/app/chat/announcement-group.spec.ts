@@ -87,6 +87,41 @@ function render(
 describe('AnnouncementGroup — Pascal outcome accent (P4.d21)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
+  /**
+   * P4.D116 / v4 `44a8137e` — render site 2 of 2 for the `scenario-change`
+   * kind. The chip wears the medium dot, prints the de-hyphenated kind, and
+   * expands into the Host's revision wording through the ordinary message
+   * block; the kind needs nothing special from this component, which is the
+   * point being pinned.
+   */
+  it('renders a scenario-change chip and expands it to the revision body', () => {
+    const fixture = render([
+      chip({
+        kind: 'scenario change',
+        importance: 'medium',
+        message: message({
+          systemKind: 'scenario-change',
+          content: 'The Host revises the scene for the proceedings:\n\nA cellar.',
+        }),
+      }),
+    ]);
+    const button = fixture.nativeElement.querySelector('.qt-chat-announcement-chip');
+    expect(button.querySelector('.qt-chat-system-bar-kind').textContent.trim()).toBe(
+      'scenario change',
+    );
+    expect(
+      button
+        .querySelector('.qt-chat-announcement-dot')
+        .classList.contains('qt-chat-announcement-dot-medium'),
+    ).toBe(true);
+
+    button.click();
+    fixture.detectChanges();
+    const body = fixture.nativeElement.querySelector('.qt-chat-message-assistant');
+    expect(body).not.toBeNull();
+    expect(body.textContent).toContain('The Host revises the scene for the proceedings:');
+  });
+
   it('gives an ordinary Staff chip the importance dot and no accent', () => {
     const button = render([chip()]).nativeElement.querySelector('.qt-chat-announcement-chip');
     expect(button.classList.contains('qt-pascal-result')).toBe(false);

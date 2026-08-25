@@ -258,3 +258,44 @@ describe('resolveRawKind — the legacy content inference (P4.26)', () => {
     );
   });
 });
+
+/**
+ * P4.D116 — the `scenario-change` kind (v4 `44a8137e`'s host writer). v4 added
+ * NO entry for it to either table: no `KIND_DISPLAY_OVERRIDES` row and no
+ * `host` importance row. Both sides therefore answer through their fall-through
+ * arms, and that is the behavior — pinned here rather than assumed, because the
+ * order's instruction was to VERIFY the default arm rather than trust it.
+ */
+describe('the scenario-change kind (v4 44a8137e)', () => {
+  const sceneChange = (over: Partial<StaffFields> = {}): StaffFields => ({
+    systemSender: 'host',
+    systemKind: 'scenario-change',
+    content: 'The Host revises the scene for the proceedings:\n\nA cellar.',
+    pascalMeta: null,
+    ...over,
+  });
+
+  it('labels it by de-hyphenating the kind (no override in either app)', () => {
+    expect(getSystemKindDisplayLabel(sceneChange())).toBe('scenario change');
+  });
+
+  it('rates it at the host tier’s fall-through, medium — not the chat-start `scenario` tier', () => {
+    expect(getAnnouncementImportance(sceneChange())).toBe('medium');
+    // Same value as `scenario`, arrived at differently: `scenario` has its own
+    // row; `scenario-change` has none and lands on `'*'`. Asserted together so a
+    // future table edit that moves either one is visible here.
+    expect(getAnnouncementImportance(sceneChange({ systemKind: 'scenario' }))).toBe('medium');
+  });
+
+  it('is NOT reachable by content inference — the column carries it', () => {
+    // `inferKindFromContent` recognises "The Host sets the scene" (chat start);
+    // the revision wording is deliberately different, so a row with no column
+    // falls to the generic host label rather than mislabelling itself `scenario`.
+    expect(getSystemKindDisplayLabel(sceneChange({ systemKind: null }))).toBe('announcement');
+  });
+
+  it('carries no outcome state and no accent (it is not a Pascal roll)', () => {
+    expect(getAnnouncementOutcomeState(sceneChange())).toBeNull();
+    expect(getAnnouncementAccentClasses(sceneChange())).toBe('');
+  });
+});
