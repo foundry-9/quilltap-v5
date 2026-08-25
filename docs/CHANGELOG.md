@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — fix(restore): the uploadId and mode guards run in v4's order, on the raw values (P4.60 unit 4)
+
+_Versions: core 0.0.649, harness 0.0.566, web 0.0.83._
+
+`POST /api/v1/system/restore` reads `uploadId` and `mode` with no Zod at all —
+v4 destructures and guards them by hand, so `if (!uploadId)` is JS falsiness and
+a truthy wrong-typed value passes it and reaches `UUID_REGEX.test(uploadId)`,
+which `String()`-coerces. The two failures answer different sentences;
+`and_then(Value::as_str)` collapsed both into `uploadId is required`.
+
+The three fields now ride the verbs raw and the core arms guard them in v4's
+measured order — uploadId, then mode, then the upload lookup. That order used to
+differ between the two entrances: the REST edge checked `uploadId` first, the
+dispatch arm checked `mode` first.
+
+New `system_restore_guards_equivalence` (17 arms) drives v4's real route
+handlers. It needs no provisioned instance on either side, because every arm
+stops inside the guards. `compact` and `keepArchivedCharacterBundles` are
+recorded FAITHFUL — both of v4's checks are strict comparisons against a
+literal, which no collapse can change.
+
 #### 2026-08-24 — fix(brahma): the console bodies are validated in v4's order, after the 404 gate (P4.60 unit 3)
 
 _Versions: core 0.0.648, harness 0.0.565, web 0.0.82._

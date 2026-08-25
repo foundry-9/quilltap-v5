@@ -100,6 +100,25 @@ fn is_uuid(s: &str) -> bool {
     })
 }
 
+/// v4's `const { uploadId } = body; if (!uploadId) …` — plain destructuring, no
+/// Zod. Two things follow, and P4.60's `and_then(Value::as_str)` read collapsed
+/// both into the first:
+///
+/// - the guard is JS **falsiness**, so `0`, `false` and `''` are "required"
+///   just as absent is;
+/// - a truthy wrong-typed value passes it and reaches
+///   `UUID_REGEX.test(uploadId)`, which `String()`-coerces — so it answers
+///   `Upload not found or expired`, a DIFFERENT sentence.
+fn resolve_upload_id(upload_id: &Value) -> Result<String, Response> {
+    if !super::system_qtap::js_truthy(Some(upload_id)) {
+        return Err(Response::error(
+            ErrorKind::BadRequest,
+            "uploadId is required",
+        ));
+    }
+    Ok(crate::pascal::js_value::to_js_string(upload_id))
+}
+
 /// v4 `POST /api/v1/system/restore?action=preview` (`route.ts:145`).
 ///
 /// `{uploadId}` → `{success:true, preview}`. Both failure arms are v4's,
@@ -107,11 +126,15 @@ fn is_uuid(s: &str) -> bool {
 /// or expired')`, and a parse failure is `serverError(error.message)` — this
 /// handler **leaks the message**, unlike backup create, because the malformed-
 /// archive wording is what tells the user their file is not a backup.
-pub fn restore_preview(host: &dyn BackupHost, upload_id: &str) -> Response {
-    if !is_uuid(upload_id) {
+pub fn restore_preview(host: &dyn BackupHost, upload_id: &Value) -> Response {
+    let upload_id = match resolve_upload_id(upload_id) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    if !is_uuid(&upload_id) {
         return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
     }
-    let Some(zip_path) = host.get_upload(upload_id) else {
+    let Some(zip_path) = host.get_upload(&upload_id) else {
         return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
     };
     match preview_restore(&zip_path, &host.temp_dir()) {
@@ -144,20 +167,34 @@ pub fn restore_preview(host: &dyn BackupHost, upload_id: &str) -> Response {
 pub async fn restore_execute(
     db: &Db,
     host: &dyn BackupHost,
-    upload_id: &str,
-    mode: &str,
-    keep_archived_character_bundles: Option<bool>,
+    upload_id: &Value,
+    mode: &Value,
+    keep_archived_character_bundles: Option<&Value>,
 ) -> Response {
-    let Some(mode) = RestoreMode::parse(mode) else {
+    // v4's order (`restore/route.ts:196-212`), measured: `uploadId` FIRST, then
+    // `mode`, then the upload lookup. v5 used to check `mode` first at the
+    // dispatch entrance and `uploadId` first at the REST edge — the two
+    // entrances disagreed with each other, and one of them with v4.
+    let upload_id = match resolve_upload_id(upload_id) {
+        Ok(id) => id,
+        Err(r) => return r,
+    };
+    // `!mode || !['replace','new-account'].includes(mode)` — `includes` is
+    // strict equality, so only those two exact strings pass.
+    let Some(mode) = mode.as_str().and_then(RestoreMode::parse) else {
         return Response::error(
             ErrorKind::BadRequest,
             "mode must be \"replace\" or \"new-account\"",
         );
     };
-    if !is_uuid(upload_id) {
+    // `body.keepArchivedCharacterBundles !== false` — ONLY a literal `false`
+    // disables it; absent, null and a wrong type all keep the bundles.
+    let keep_archived_character_bundles =
+        Some(keep_archived_character_bundles != Some(&Value::Bool(false)));
+    if !is_uuid(&upload_id) {
         return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
     }
-    let Some(zip_path) = host.get_upload(upload_id) else {
+    let Some(zip_path) = host.get_upload(&upload_id) else {
         return Response::error(ErrorKind::BadRequest, "Upload not found or expired");
     };
 
@@ -172,7 +209,7 @@ pub async fn restore_execute(
         },
     )
     .await;
-    host.remove_upload(upload_id); // v4's `finally removePendingUpload` (`:238`).
+    host.remove_upload(&upload_id); // v4's `finally removePendingUpload` (`:238`).
 
     match result {
         Ok(summary) => {

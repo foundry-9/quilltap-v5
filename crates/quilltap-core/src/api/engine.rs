@@ -1579,7 +1579,7 @@ impl CoreEngine {
                         host.as_ref(),
                         &upload_id,
                         &mode,
-                        keep_archived_character_bundles,
+                        keep_archived_character_bundles.as_ref(),
                     )
                     .await
                 }

@@ -2508,18 +2508,27 @@ pub enum Request {
     /// v4 `POST /api/v1/system/restore?action=preview` `{uploadId}`.
     #[serde(rename_all = "camelCase")]
     SystemRestorePreview {
-        upload_id: String,
+        /// RAW (P4.60): v4 destructures `{uploadId}` with no Zod — `!uploadId`
+        /// is JS FALSINESS, and a truthy wrong type is `String()`-coerced into
+        /// the UUID regex, so the two failures answer DIFFERENT sentences.
+        upload_id: serde_json::Value,
     },
     /// v4 `POST /api/v1/system/restore` `{uploadId, mode:'replace'|'new-account'}`.
     #[serde(rename_all = "camelCase")]
     SystemRestoreExecute {
-        upload_id: String,
-        mode: String,
+        /// RAW — see `SystemRestorePreview`.
+        upload_id: serde_json::Value,
+        /// RAW: v4's `['replace','new-account'].includes(mode)` is strict
+        /// equality, so only those two exact strings pass.
+        mode: serde_json::Value,
         /// v4 `RestoreOptions.keepArchivedCharacterBundles` (`d553f72a`) —
         /// REPLACE-mode only (it feeds the pre-restore wipe), but ACCEPTED in
-        /// both modes exactly as v4's options bag is. Effective default TRUE.
+        /// both modes exactly as v4's options bag is. RAW, because v4's test is
+        /// `!== false`: only a literal `false` disables it, and a typed
+        /// `Option<bool>` would make a wrong-typed value a serde failure at the
+        /// dispatch entrance where v4 simply keeps the bundles.
         #[serde(default)]
-        keep_archived_character_bundles: Option<bool>,
+        keep_archived_character_bundles: Option<serde_json::Value>,
     },
     // === P4.37: The Almanack (system report) ===
     // The web-edge action strings keep v4's frozen `capabilities-report-*`

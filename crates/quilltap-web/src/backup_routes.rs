@@ -123,9 +123,7 @@ pub async fn system_restore_post(
             let Some(parsed) = collect_json(body).await else {
                 return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body");
             };
-            let Some(upload_id) = required_upload_id(&parsed) else {
-                return error_json(StatusCode::BAD_REQUEST, "uploadId is required");
-            };
+            let upload_id = raw_field(&parsed, "uploadId");
             match dispatch_core(&state, CoreRequest::SystemRestorePreview { upload_id }).await {
                 Ok(resp) => system_body_public(resp, StatusCode::OK),
                 Err(r) => r,
@@ -136,33 +134,18 @@ pub async fn system_restore_post(
             let Some(parsed) = collect_json(body).await else {
                 return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body");
             };
-            let Some(upload_id) = required_upload_id(&parsed) else {
-                return error_json(StatusCode::BAD_REQUEST, "uploadId is required");
-            };
-            // v4 validates the mode at the route (`:202`) before it ever looks
-            // the upload up; the core arm validates it again for the dispatch
-            // entrance, which is the one the SPA actually uses.
-            let mode = parsed
-                .get("mode")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            if mode != "replace" && mode != "new-account" {
-                return error_json(
-                    StatusCode::BAD_REQUEST,
-                    "mode must be \"replace\" or \"new-account\"",
-                );
-            }
+            // P4.60: all three fields ride RAW. v4 guards them inside the
+            // handler in one order (uploadId → mode → the upload lookup), and
+            // that order now lives in ONE place — the core arm — so the REST
+            // edge and the dispatch entrance cannot answer different sentences.
             match dispatch_core(
                 &state,
                 CoreRequest::SystemRestoreExecute {
-                    upload_id,
-                    mode,
-                    // v4 `d553f72a`: absent keeps the archive bundles; only an
-                    // explicit `false` wipes them with the rest.
+                    upload_id: raw_field(&parsed, "uploadId"),
+                    mode: raw_field(&parsed, "mode"),
                     keep_archived_character_bundles: parsed
                         .get("keepArchivedCharacterBundles")
-                        .and_then(Value::as_bool),
+                        .cloned(),
                 },
             )
             .await
@@ -271,14 +254,11 @@ async fn collect_json(body: axum::body::Body) -> Option<Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-/// v4's `const { uploadId } = body; if (!uploadId) …` — JS falsiness, so an
-/// empty string is "missing" too.
-fn required_upload_id(parsed: &Value) -> Option<String> {
-    parsed
-        .get("uploadId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+/// A body key, verbatim — absent becomes JSON `null`, which is what v4's
+/// destructuring `undefined` behaves as at every guard downstream (both are
+/// falsy, and neither is one of `mode`'s two accepted strings).
+fn raw_field(parsed: &Value, key: &str) -> Value {
+    parsed.get(key).cloned().unwrap_or(Value::Null)
 }
 
 /// v4 `new Date().toISOString().replace(/[:.]/g, '-')` for the download

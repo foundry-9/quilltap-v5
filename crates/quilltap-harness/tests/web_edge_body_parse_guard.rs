@@ -45,6 +45,13 @@ const PARSER_WIRING: &[(&str, &str, &str)] = &[
          payload",
     ),
     (
+        "crates/quilltap-web/src/backup_routes.rs",
+        "raw_field(&parsed, \"uploadId\")",
+        "POST /api/v1/system/restore — v4 guards uploadId, then mode, then the \
+         upload lookup, all inside the handler; the edge must forward the raw \
+         values so BOTH entrances answer the same sentence",
+    ),
+    (
         "crates/quilltap-core/src/api/engine.rs",
         "brahma::brahma_send_prepare(",
         "POST /api/v1/brahma-console/{id}/messages — `verifyBrahmaChat` FIRST, \
@@ -79,17 +86,6 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
         "crates/quilltap-web/src/qtap_target_route.rs",
         3,
         "FAITHFUL: entity fields off a chat row, not request-body keys.",
-    ),
-    (
-        "crates/quilltap-web/src/backup_routes.rs",
-        3,
-        "TWO measured FAITHFUL: `mode` reaches the same 400 sentence whatever \
-         its type (v4 `restore/route.ts:205`), and \
-         `keepArchivedCharacterBundles` is v4's `!== false` — only a literal \
-         `false` is false, which is exactly what `as_bool` leaves as \
-         `Some(false)`. The third (`uploadId`) is still collapsing: v4 tests a \
-         wrong-typed-but-truthy id against its UUID regex and answers a \
-         DIFFERENT 400 sentence.",
     ),
     (
         "crates/quilltap-web/src/qtap_routes.rs",

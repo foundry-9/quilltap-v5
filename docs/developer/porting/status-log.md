@@ -84110,3 +84110,51 @@ restoring create's "any non-empty string" read → all three create arms red
 `brahma_send_prepare` call is pinned in `web_edge_body_parse_guard`'s wiring
 list — for this surface the wiring that matters is in the dispatch arm, not the
 routes file.
+
+### Unit 4 — `POST /api/v1/system/restore` (+ backup create) — DIVERGENT, FIXED
+
+This route uses **no Zod at all**: v4 destructures `{ uploadId, mode }` and
+guards them by hand, so the questions are JS-semantic. Measured, not predicted
+(`system-restore-guards.test.ts` → the 17-arm oracle):
+
+| body | v4 |
+|---|---|
+| `uploadId` absent / `null` / `''` / `0` / `false` | `uploadId is required` |
+| `uploadId` 123 / `true` / `{}` / `['x']` | **`Upload not found or expired`** |
+| `{uploadId: 123, mode: 'nope'}` | `mode must be "replace" or "new-account"` |
+| `{mode: 'nope'}` (no uploadId) | `uploadId is required` |
+| `keepArchivedCharacterBundles: 'no'` | accepted (keeps them) |
+
+The second row is the whole finding: a truthy wrong-typed id passes
+`if (!uploadId)` and reaches `UUID_REGEX.test(uploadId)`, which `String()`s it —
+a different sentence. `and_then(Value::as_str)` collapsed it into the first row.
+The third and fourth rows pin the ORDER: uploadId, then mode, then the lookup.
+
+**The two entrances disagreed with each other.** The REST edge guarded
+`uploadId` first (v4's order) while `restore_execute` guarded `mode` first, so
+the SPA's dispatch path and the v4-URL path answered different sentences for the
+same body. All three fields now ride the verbs RAW and the order lives in one
+place — the core arm. `keepArchivedCharacterBundles` became raw too: v4's test
+is `!== false`, and a typed `Option<bool>` would have made a wrong-typed value a
+serde failure at the dispatch entrance where v4 simply keeps the bundles.
+
+**Two FAITHFUL verdicts recorded** (the order listed both as sites to
+adjudicate): `backup_routes.rs:61` `compact` is v4's `body.compact === true`,
+which v5 already spelled as a whole-`Value` comparison; and `mode` reaches the
+same sentence whatever its type, because `['replace','new-account'].includes` is
+strict equality.
+
+**Differential.** New `system_restore_guards_equivalence` against v4's REAL
+route handlers. It is cheap because every arm stops inside the guards: v4's
+`pendingUploads` map is module-local and empty on a fresh import, so the oracle
+needs no provisioned instance (only a stubbed session + `users.findById`, which
+`buildRequestContext` consults and the guards never do), and this side needs no
+populated database.
+
+Two mutation proofs on v5 source: restoring the `as_str` read → four preview
+arms and one restore arm red on the sentence; swapping the mode check ahead of
+the uploadId check → `restore_upload_id_absent_bad_mode` red.
+
+`required_upload_id` is gone and `backup_routes.rs` now has ZERO
+`and_then(Value::as_` sites; the edge's `raw_field` forwarding is pinned in
+`web_edge_body_parse_guard`.
