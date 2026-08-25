@@ -84517,3 +84517,61 @@ now v5) answers `true` on a default install; the proof of THAT is the e2e beat
 in unit 5, which drives the real binary.
 
 Versions: core 0.0.647, harness 0.0.564, host 0.0.81, web 0.0.80.
+
+### Unit 3 — the registered arm's real wire: the plugin's User-Agent + `validateApiKey`
+
+Two wire facts that only matter now that the plugin path is live, and that the
+existing families could not see while it was dark.
+
+**(a) The `User-Agent`.** The plugin sends
+`'User-Agent': getQuilltapUserAgent()` (`Quilltap/<version>`); v4's legacy
+env-var fallback, hand-built in the main-app handler, sends no such header at
+all. So `build_serper_request` takes `user_agent: Option<&str>` — the byte
+follows the ARM, not a global default — and `RealWebSearchProvider` carries the
+host's UA (injected; the core has no build version). `web_search_wire_
+equivalence` compares headers now that the recorder captures them, with names
+lowercased (the two sides spell `Content-Type` differently) and the
+version-bearing UA + the key folded to placeholders, per the
+`provider_header_common::normalize_header` precedent — the pin is on the header
+NAME and scheme, since v4's recorded value is its own build version.
+
+⚠ The differential builds requests through `build_serper_request` directly, so
+it proves the header's BYTES but not which arm asks for it. A **wiring pin**
+over a recording transport does that: registered → the UA is on the wire;
+env-var fallback → no `user-agent` header at all.
+
+**(b) `validateApiKey` — the plugin's second fetch site, and it IS reachable.**
+The order listed it as a possible tier-3 refusal "if no v5 surface reaches it".
+It does: `app/api/v1/api-keys/[id]/route.ts` `testProviderApiKey` tries the LLM
+registry first and then `searchProviderRegistry.validateApiKey`, and v5's
+api-keys card has the same Test button (`apiKeyTest`). Before this unit a Serper
+key would fall through `WireConnectionValidator`'s catch-all — unknown to the
+LLM registry, so no base URL, so a silent `Ok(false)` — and the screen would
+call a perfectly good key invalid. The SERPER arm is the plugin's probe: the
+search request with `{q: 'test', num: 1}`, answering `response.ok`, ignoring the
+`baseUrl` argument exactly as the plugin does (`_baseUrl`) — the differential
+passes one to prove it changes nothing.
+
+**Corpus:** the committed `web-search-wire.recorded.ndjson` regenerated from the
+REAL plugin, 14 → 19 rows (five `validate` cases: 200 / 401 / 429 / 500 /
+network error). The validate rows drive v5's REAL `WireConnectionValidator`
+over a transport canned on that row's wire, so the boolean under test is the one
+`?action=test` would receive. Shape assert: ≥5 validate rows, and the corpus
+carries both verdicts.
+
+**Mutation proofs (v5 source, one side only):** the `User-Agent` push dropped
+from `build_serper_request` → `kg_unshift_under_capacity headers` reds; the
+`"SERPER"` match arm renamed → `validate_ok valid` reds; the probe body changed
+to `num: 5` → `validate_ok body` reds; the UA sent on BOTH arms → the wiring pin
+reds.
+
+Regen recipe (the corpus is committed — this WRITES into the repo, so it is a
+lane decision, never a sweep step):
+
+```bash
+cd ~/source/quilltap-server/plugins/dist/qtap-plugin-search-serper
+TZ=UTC node <V5W>/harness/oracle/providers/record-web-search-wire.mjs \
+  --out <V5W>/harness/oracle/fixtures/web-search-wire/web-search-wire.recorded.ndjson
+```
+
+Versions: core 0.0.648, harness 0.0.565, host 0.0.82.

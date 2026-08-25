@@ -72,6 +72,7 @@ use crate::model::request_builder::{build_request, RequestInput, StreamMessage};
 use crate::model::transport::transport_headers;
 use crate::model::wire::SyncWireTransport;
 use crate::provider_manifest::Registry;
+use crate::tools::web_search::build_serper_validate_request;
 
 use super::settings::{self, ConnectionValidator, ModelsFetcher};
 use super::types::{ErrorKind, Response};
@@ -222,6 +223,23 @@ impl<T: SyncWireTransport> ConnectionValidator for WireConnectionValidator<'_, T
                 api_key,
                 base_url,
             ),
+            // P4.59: v4's route tries the LLM registry FIRST, then the SEARCH
+            // registry (`app/api/v1/api-keys/[id]/route.ts` `testProviderApiKey`),
+            // and the Serper plugin's `validateApiKey` POSTs a fixed minimal
+            // search and answers `response.ok`. It ignores the `baseUrl`
+            // argument entirely (`_baseUrl`), so no endpoint override applies.
+            // Reached from the API-keys screen's Test button once a Serper key
+            // exists — which it now can.
+            "SERPER" => {
+                let req = build_serper_validate_request(api_key, Some(self.user_agent));
+                probe_ok(
+                    self.transport,
+                    &req.method,
+                    req.url.clone(),
+                    req.headers.clone(),
+                    &req.body_string(),
+                )
+            }
             // The OpenAI-SDK family + any other manifest provider: the shared
             // base-class `validateApiKey` — the requireApiKey guard, then
             // `client.models.list()` success.

@@ -85,7 +85,7 @@ fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
 /// The Serper endpoint (`build_serper_request` default URL) — the key the canned
 /// transport is registered under (base_url override is `None` here).
 fn canned_serper_transport(query: &str, max_results: i64, body: &str) -> CannedSyncWireTransport {
-    let req = build_serper_request(query, max_results, "k");
+    let req = build_serper_request(query, max_results, "k", None);
     CannedSyncWireTransport::new().with_raw_response(
         wire_key(&req.method, &req.url, &req.body_string()),
         WireResponse::new(200, body),
@@ -119,6 +119,7 @@ async fn runner_with_provider_executes_search_web() {
         NoSearchApiKeys,
         false,
         Some("k".to_string()),
+        "Quilltap/0.0.0-test".to_string(),
     ));
     let runner = BuiltInToolRunner::new(db, fixture_env()).with_web_search_provider(provider);
 
@@ -295,6 +296,7 @@ async fn web_search_advertised_iff_executable() {
         NoSearchApiKeys,
         false,
         Some("k".to_string()),
+        "Quilltap/0.0.0-test".to_string(),
     ));
 
     for (label, web_search) in [

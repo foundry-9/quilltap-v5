@@ -3213,7 +3213,7 @@ mod tests {
     #[test]
     fn providers_listing_shape() {
         // The listing surfaces every built-in with the manifest-covered fields.
-        match provider_list() {
+        match provider_list(&[]) {
             Response::Providers(v) => {
                 let count = v.get("count").and_then(Value::as_u64).unwrap();
                 let providers = v.get("providers").and_then(Value::as_array).unwrap();
@@ -3237,5 +3237,33 @@ mod tests {
             }
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    /// P4.59: with the Serper provider registered the search row is APPENDED
+    /// (v4's spread order) and carries no capability bag — the absence v4's own
+    /// profile editor filters the LLM picker on.
+    #[test]
+    fn providers_listing_appends_the_registered_search_row() {
+        let search =
+            crate::provider_manifest::search::SearchRegistry::built_in().registered(None, None);
+        let (with, without) = (provider_list(&search), provider_list(&[]));
+        let (Response::Providers(with), Response::Providers(without)) = (with, without) else {
+            panic!("expected two listings");
+        };
+        let a = with["providers"].as_array().unwrap();
+        let b = without["providers"].as_array().unwrap();
+        assert_eq!(a.len(), b.len() + 1, "the search row is additive");
+        assert_eq!(&a[..b.len()], &b[..], "the LLM rows are untouched");
+        let row = a.last().unwrap();
+        assert_eq!(row["id"], json!("SERPER"));
+        assert_eq!(row["type"], json!("search"));
+        assert!(row.get("capabilities").is_none());
+        assert!(row.get("optionsSchema").is_none());
+        assert!(row.get("thinkingTurnRule").is_none());
+        assert_eq!(
+            serde_json::to_string(&row["configRequirements"]).unwrap(),
+            r#"{"requiresApiKey":true,"requiresBaseUrl":false,"apiKeyLabel":"Serper API Key"}"#
+        );
+        assert_eq!(with["count"], json!(a.len()));
     }
 }

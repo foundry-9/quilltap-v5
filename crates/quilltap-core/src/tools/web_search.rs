@@ -259,22 +259,45 @@ pub fn format_web_search_results(results: &[WebSearchResult]) -> String {
 pub const SERPER_API_URL: &str = "https://google.serper.dev/search";
 
 /// Build the Serper search request (v4 `executeSearch` / the legacy fallback —
-/// identical body/url). The `X-API-KEY` header carries the key; only method / url
-/// / body are differential-checked.
-pub fn build_serper_request(query: &str, max_results: i64, api_key: &str) -> BuiltRequest {
+/// identical method / url / body). The `X-API-KEY` header carries the key.
+///
+/// `user_agent` is the ONE header the two arms differ on: the PLUGIN sends
+/// `User-Agent: getQuilltapUserAgent()`, the legacy env-var fallback in v4's own
+/// handler sends no such header at all. Pass `Some(ua)` on the registered
+/// (plugin) path and `None` on the fallback, so the wire byte follows the arm
+/// rather than a global default.
+pub fn build_serper_request(
+    query: &str,
+    max_results: i64,
+    api_key: &str,
+    user_agent: Option<&str>,
+) -> BuiltRequest {
     let mut body = Map::new();
     body.insert("q".to_string(), Value::String(query.to_string()));
     body.insert("num".to_string(), Value::from(max_results));
+    let mut headers = vec![
+        ("X-API-KEY".to_string(), api_key.to_string()),
+        ("content-type".to_string(), "application/json".to_string()),
+    ];
+    if let Some(ua) = user_agent {
+        headers.push(("User-Agent".to_string(), ua.to_string()));
+    }
     BuiltRequest {
         method: "POST".to_string(),
         url: SERPER_API_URL.to_string(),
-        headers: vec![
-            ("X-API-KEY".to_string(), api_key.to_string()),
-            ("content-type".to_string(), "application/json".to_string()),
-        ],
+        headers,
         body: Value::Object(body),
         attachment_results: Default::default(),
     }
+}
+
+/// Build the Serper `validateApiKey` probe (v4 plugin `index.ts`'s SECOND fetch
+/// site — the one the API-keys screen's Test button reaches through
+/// `searchProviderRegistry.validateApiKey`). It is the search request with the
+/// plugin's fixed minimal arguments; the plugin ignores the `baseUrl` argument
+/// entirely (`_baseUrl`), so there is no endpoint override here either.
+pub fn build_serper_validate_request(api_key: &str, user_agent: Option<&str>) -> BuiltRequest {
+    build_serper_request("test", 1, api_key, user_agent)
 }
 
 fn str_or_empty(v: &Value, key: &str) -> String {
@@ -394,6 +417,10 @@ pub struct RealWebSearchProvider<T: SyncWireTransport, K: SearchApiKeyLookup> {
     key_lookup: K,
     serper_registered: bool,
     fallback_env_key: Option<String>,
+    /// The host's `Quilltap/<version>` string — v4's `getQuilltapUserAgent()`,
+    /// which the PLUGIN sends and the legacy fallback does not. Injected because
+    /// the core carries no build version.
+    user_agent: String,
     /// An OPTIONAL override for the Serper endpoint URL (P4.42, additive). `None`
     /// (the default) keeps [`build_serper_request`]'s hard-coded [`SERPER_API_URL`]
     /// so the wire bytes and the wire differential are unchanged; production sets
@@ -409,12 +436,14 @@ impl<T: SyncWireTransport, K: SearchApiKeyLookup> RealWebSearchProvider<T, K> {
         key_lookup: K,
         serper_registered: bool,
         fallback_env_key: Option<String>,
+        user_agent: String,
     ) -> Self {
         Self {
             transport,
             key_lookup,
             serper_registered,
             fallback_env_key,
+            user_agent,
             base_url: None,
         }
     }
@@ -437,7 +466,9 @@ impl<T: SyncWireTransport, K: SearchApiKeyLookup> RealWebSearchProvider<T, K> {
         api_key: &str,
         fallback: bool,
     ) -> WebSearchOutcome {
-        let req = build_serper_request(query, max_results, api_key);
+        // The plugin sends the `User-Agent`; the legacy fallback does not.
+        let ua = (!fallback).then_some(self.user_agent.as_str());
+        let req = build_serper_request(query, max_results, api_key, ua);
         let body = req.body_string();
         // `base_url` is the additive host override (P4.42); `None` keeps
         // `req.url` (= `SERPER_API_URL`), so the default path is byte-identical.
@@ -510,6 +541,8 @@ impl<T: SyncWireTransport, K: SearchApiKeyLookup> WebSearchProvider
 mod tests {
     use super::*;
     use serde_json::json;
+
+    const TEST_UA: &str = "Quilltap/0.0.0-test";
 
     struct Canned(WebSearchOutcome);
     impl WebSearchProvider for Canned {
@@ -588,7 +621,7 @@ mod tests {
 
     #[test]
     fn serper_request_and_kg_unshift() {
-        let req = build_serper_request("cats", 3, "k");
+        let req = build_serper_request("cats", 3, "k", None);
         assert_eq!(req.url, SERPER_API_URL);
         assert_eq!(req.body_string(), r#"{"q":"cats","num":3}"#);
 
@@ -638,7 +671,7 @@ mod tests {
             }
         }
 
-        let req = build_serper_request("cats", 5, "sk");
+        let req = build_serper_request("cats", 5, "sk", Some(TEST_UA));
         let key = wire_key(&req.method, &req.url, &req.body_string());
         let transport = CannedSyncWireTransport::new().with_raw_response(
             key,
@@ -647,7 +680,8 @@ mod tests {
                 r#"{"organic":[{"title":"A","link":"https://a","snippet":"s"}]}"#,
             ),
         );
-        let provider = RealWebSearchProvider::new(transport, OneKey("sk"), true, None);
+        let provider =
+            RealWebSearchProvider::new(transport, OneKey("sk"), true, None, TEST_UA.to_string());
         let out = provider.search("cats", 5, "u");
         match out {
             WebSearchOutcome::ProviderResult {
@@ -660,8 +694,13 @@ mod tests {
         }
 
         // No key + registered → MissingApiKey (Serper Web Search display name).
-        let provider2 =
-            RealWebSearchProvider::new(CannedSyncWireTransport::new(), NoSearchApiKeys, true, None);
+        let provider2 = RealWebSearchProvider::new(
+            CannedSyncWireTransport::new(),
+            NoSearchApiKeys,
+            true,
+            None,
+            TEST_UA.to_string(),
+        );
         match provider2.search("cats", 5, "u") {
             WebSearchOutcome::MissingApiKey { display_name } => {
                 assert_eq!(display_name, "Serper Web Search")
@@ -675,11 +714,80 @@ mod tests {
             NoSearchApiKeys,
             false,
             None,
+            TEST_UA.to_string(),
         );
         assert!(matches!(
             provider3.search("cats", 5, "u"),
             WebSearchOutcome::NotConfigured
         ));
+    }
+
+    /// P4.59 WIRING pin: which arm sends the `User-Agent`. The differential
+    /// (`web_search_wire_equivalence`) builds requests through
+    /// `build_serper_request` directly, so it can prove the header's BYTES but
+    /// not that `run_serper` asks for it on the plugin arm and withholds it on
+    /// v4's legacy fallback — where v4's own handler sends no such header. A
+    /// recording transport is the only way to see the difference.
+    #[test]
+    fn only_the_registered_arm_sends_the_user_agent() {
+        use crate::model::wire::WireResponse;
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct Recorder(Mutex<Vec<Vec<(String, String)>>>);
+        impl SyncWireTransport for Recorder {
+            fn send(
+                &self,
+                _method: &str,
+                _url: &str,
+                headers: &[(String, String)],
+                _body: &str,
+            ) -> Result<WireResponse, String> {
+                self.0.lock().unwrap().push(headers.to_vec());
+                Ok(WireResponse::new(200, r#"{"organic":[]}"#))
+            }
+        }
+        fn ua_of(headers: &[(String, String)]) -> Option<&str> {
+            headers
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("user-agent"))
+                .map(|(_, v)| v.as_str())
+        }
+
+        struct OneKey;
+        impl SearchApiKeyLookup for OneKey {
+            fn find_active_key(&self, _p: &str, _u: &str) -> Option<String> {
+                Some("k".to_string())
+            }
+        }
+
+        // Registered (the plugin path) → the UA is on the wire.
+        let registered = RealWebSearchProvider::new(
+            Recorder::default(),
+            OneKey,
+            true,
+            None,
+            TEST_UA.to_string(),
+        );
+        registered.search("q", 5, "u");
+        let sent = registered.transport.0.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(ua_of(&sent[0]), Some(TEST_UA));
+        drop(sent);
+
+        // The legacy env-var fallback → no User-Agent at all (v4's handler
+        // builds that fetch by hand and sends only the key + content type).
+        let fallback = RealWebSearchProvider::new(
+            Recorder::default(),
+            NoSearchApiKeys,
+            false,
+            Some("env".to_string()),
+            TEST_UA.to_string(),
+        );
+        fallback.search("q", 5, "u");
+        let sent = fallback.transport.0.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(ua_of(&sent[0]), None);
     }
 
     #[test]
@@ -689,7 +797,7 @@ mod tests {
         // The override changes ONLY the POST target: build the request the way the
         // provider does, but key the canned transport on the OVERRIDDEN url.
         let mock = "http://127.0.0.1:45399/search";
-        let req = build_serper_request("cats", 5, "k");
+        let req = build_serper_request("cats", 5, "k", None);
         assert_eq!(req.url, SERPER_API_URL, "build_serper_request unchanged");
         let key = wire_key(&req.method, mock, &req.body_string());
         let transport = CannedSyncWireTransport::new().with_raw_response(
@@ -700,9 +808,14 @@ mod tests {
             ),
         );
         // fallback path (serper_registered=false, env key present).
-        let provider =
-            RealWebSearchProvider::new(transport, NoSearchApiKeys, false, Some("k".into()))
-                .with_base_url(Some(mock.to_string()));
+        let provider = RealWebSearchProvider::new(
+            transport,
+            NoSearchApiKeys,
+            false,
+            Some("k".into()),
+            TEST_UA.to_string(),
+        )
+        .with_base_url(Some(mock.to_string()));
         match provider.search("cats", 5, "u") {
             WebSearchOutcome::ProviderResult {
                 success, results, ..

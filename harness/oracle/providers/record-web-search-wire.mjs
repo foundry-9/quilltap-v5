@@ -11,6 +11,11 @@
  * The env-var FALLBACK error set (`executeSerperFallback`) lives in the main-app
  * handler, not the plugin, and is verified in the tier-3 `web_search_tool` regen.
  *
+ * P4.59 added two things the registered arm needs now that it is LIVE: the
+ * request HEADERS (the plugin sends a `User-Agent` the legacy fallback does not),
+ * and the plugin's SECOND fetch site — `validateApiKey`, which the API-keys
+ * screen's Test button reaches through `searchProviderRegistry.validateApiKey`.
+ *
  * Run FROM the serper plugin directory (Node 24, tsx), TZ=UTC (formatResults'
  * `toLocaleDateString`):
  *   cd ~/source/quilltap-server/plugins/dist/qtap-plugin-search-serper
@@ -66,6 +71,19 @@ const FORMAT_CASES = [
   { name: 'empty', results: [] },
 ];
 
+/**
+ * `validateApiKey` cases — the plugin's second fetch site. It POSTs a fixed
+ * minimal search (`{q: 'test', num: 1}`) and answers `response.ok`; any throw is
+ * caught and answers false.
+ */
+const VALIDATE_CASES = [
+  { name: 'validate_ok', wire: { status: 200, statusText: 'OK', body: '{}' } },
+  { name: 'validate_401', wire: { status: 401, statusText: 'Unauthorized', body: 'nope' } },
+  { name: 'validate_429', wire: { status: 429, statusText: 'Too Many Requests', body: 'slow' } },
+  { name: 'validate_500', wire: { status: 500, statusText: 'Internal Server Error', body: 'boom' } },
+  { name: 'validate_network_error', networkError: 'socket hang up' },
+];
+
 async function main() {
   const args = parseArgs();
   const outPath = args.out;
@@ -85,7 +103,15 @@ async function main() {
       const method = (init && init.method) || 'POST';
       let body = (init && init.body) || null;
       if (body && typeof body !== 'string') body = new TextDecoder().decode(body);
-      if (!captured) captured = { method, url: u, body };
+      if (!captured) {
+        // P4.59: headers too. The plugin sends `User-Agent` (the legacy
+        // fallback in the main-app handler does not), and once the provider is
+        // registered that header is on the real wire.
+        const headers = {};
+        const raw = (init && init.headers) || {};
+        for (const [k, v] of Object.entries(raw)) headers[k] = String(v);
+        captured = { method, url: u, body, headers };
+      }
       if (c.networkError) throw new Error(c.networkError);
       return makeResponse(c.wire.status, c.wire.statusText, c.wire.body);
     };
@@ -104,6 +130,39 @@ async function main() {
       wire: c.wire ?? null,
       networkError: c.networkError ?? null,
       output: { success: output.success, results: output.results ?? null, error: output.error ?? null },
+    }));
+  }
+
+  for (const c of VALIDATE_CASES) {
+    let captured = null;
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      const u = typeof url === 'string' ? url : (url && url.url) || String(url);
+      const method = (init && init.method) || 'POST';
+      let body = (init && init.body) || null;
+      if (body && typeof body !== 'string') body = new TextDecoder().decode(body);
+      if (!captured) {
+        const headers = {};
+        const raw = (init && init.headers) || {};
+        for (const [k, v] of Object.entries(raw)) headers[k] = String(v);
+        captured = { method, url: u, body, headers };
+      }
+      if (c.networkError) throw new Error(c.networkError);
+      return makeResponse(c.wire.status, c.wire.statusText, c.wire.body);
+    };
+    let valid;
+    try {
+      valid = await plugin.validateApiKey('test-key', undefined);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+    lines.push(JSON.stringify({
+      kind: 'validate',
+      case: c.name,
+      request: captured,
+      wire: c.wire ?? null,
+      networkError: c.networkError ?? null,
+      valid,
     }));
   }
 

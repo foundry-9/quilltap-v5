@@ -24,6 +24,12 @@ use quilltap_core::tools::web_search::{
 };
 use serde_json::{json, Value};
 
+/// The host's `Quilltap/<version>` User-Agent (v4 `getQuilltapUserAgent()`). The
+/// PLUGIN arm sends it; the legacy fallback does not. It never reaches the canned
+/// transport's key (which is method+url+body), so it does not affect these cases
+/// — the wire-byte pin lives in `web_search_wire_equivalence`.
+const UA: &str = "Quilltap/0.0.0-test";
+
 /// A key lookup that always returns a fixed active key (the provider path).
 struct OneKey(&'static str);
 impl SearchApiKeyLookup for OneKey {
@@ -61,7 +67,9 @@ fn transport_for(
     key: &str,
     resp: WireResponse,
 ) -> CannedSyncWireTransport {
-    let req = build_serper_request(query, max_results, key);
+    // Headers do not participate in `wire_key`, so the UA is irrelevant to the
+    // canned lookup; the wire-byte pin for it is `web_search_wire_equivalence`.
+    let req = build_serper_request(query, max_results, key, None);
     CannedSyncWireTransport::new()
         .with_raw_response(wire_key(&req.method, &req.url, &req.body_string()), resp)
 }
@@ -134,6 +142,7 @@ fn web_search_tool_matches_oracle() {
             OneKey("k"),
             true,
             None,
+            UA.to_string(),
         );
         check(
             &oracle,
@@ -151,6 +160,7 @@ fn web_search_tool_matches_oracle() {
             OneKey("k"),
             true,
             None,
+            UA.to_string(),
         );
         check(
             &oracle,
@@ -171,6 +181,7 @@ fn web_search_tool_matches_oracle() {
             OneKey("k"),
             true,
             None,
+            UA.to_string(),
         );
         check(
             &oracle,
@@ -183,7 +194,13 @@ fn web_search_tool_matches_oracle() {
     // reaches the wire, so the transport is deliberately empty: any request at all
     // would fail it.
     {
-        let p = RealWebSearchProvider::new(CannedSyncWireTransport::new(), OneKey("k"), true, None);
+        let p = RealWebSearchProvider::new(
+            CannedSyncWireTransport::new(),
+            OneKey("k"),
+            true,
+            None,
+            UA.to_string(),
+        );
         check(
             &oracle,
             "lenient_true_refused",
@@ -199,6 +216,7 @@ fn web_search_tool_matches_oracle() {
             OneKey("k"),
             true,
             None,
+            UA.to_string(),
         );
         check(
             &oracle,
@@ -219,6 +237,7 @@ fn web_search_tool_matches_oracle() {
             OneKey("k"),
             true,
             None,
+            UA.to_string(),
         );
         check(&oracle, label, json!({ "query": "x" }), &p);
     }
@@ -238,8 +257,13 @@ fn web_search_tool_matches_oracle() {
     }
     // missing_api_key: registered but no key.
     {
-        let p =
-            RealWebSearchProvider::new(CannedSyncWireTransport::new(), NoSearchApiKeys, true, None);
+        let p = RealWebSearchProvider::new(
+            CannedSyncWireTransport::new(),
+            NoSearchApiKeys,
+            true,
+            None,
+            UA.to_string(),
+        );
         check(
             &oracle,
             "missing_api_key",
@@ -259,6 +283,7 @@ fn web_search_tool_matches_oracle() {
             NoSearchApiKeys,
             false,
             Some("env-key".into()),
+            UA.to_string(),
         );
         check(
             &oracle,
@@ -277,6 +302,7 @@ fn web_search_tool_matches_oracle() {
             NoSearchApiKeys,
             false,
             Some("env-key".into()),
+            UA.to_string(),
         );
         check(&oracle, label, json!({ "query": "x" }), &p);
     }
@@ -287,6 +313,7 @@ fn web_search_tool_matches_oracle() {
             NoSearchApiKeys,
             false,
             None,
+            UA.to_string(),
         );
         check(&oracle, "not_configured", json!({ "query": "nothing" }), &p);
     }
@@ -297,6 +324,7 @@ fn web_search_tool_matches_oracle() {
             NoSearchApiKeys,
             false,
             None,
+            UA.to_string(),
         );
         check(&oracle, "validation_empty", json!({ "query": "   " }), &p);
         check(&oracle, "validation_nonobject", json!("nope"), &p);

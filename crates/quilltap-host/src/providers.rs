@@ -308,6 +308,7 @@ impl ProviderIo {
             key_lookup,
             serper_registered,
             fallback_env_key,
+            self.user_agent.clone(),
         )
         .with_base_url(base_url)
     }

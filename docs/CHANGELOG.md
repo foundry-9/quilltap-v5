@@ -161,6 +161,35 @@ real parser, and its POST leg now goes through it rather than re-reading the
 keys itself. New `web_edge_body_parse_guard` holds the whole
 `quilltap-web/src/*_routes.rs` surface to a per-file census of the collapsing
 idiom and pins that the fixed edge still routes through its parser.
+#### 2026-08-24 — fix(search): the registered arm's real wire — the plugin's User-Agent and its `validateApiKey` probe
+
+_Versions: core 0.0.648, harness 0.0.565, host 0.0.82._
+
+Two wire facts that only matter now that the plugin path is live, and that the
+differential could not see while it was dark.
+
+The Serper plugin sends `User-Agent: getQuilltapUserAgent()`; v4's legacy
+env-var fallback, built by hand in the main-app handler, sends no such header.
+`build_serper_request` takes the user agent as an argument so the byte follows
+the arm rather than a global default, and `RealWebSearchProvider` carries the
+host's `Quilltap/<version>`. The recorder now captures request headers, so
+`web_search_wire_equivalence` compares them (names folded, the version-bearing
+UA and the key folded to placeholders — the `provider_header_common`
+precedent). A unit test pins the WIRING the differential cannot see: which arm
+asks for the header, proven with a recording transport.
+
+The plugin's second fetch site — `validateApiKey`, a fixed `{q: 'test', num: 1}`
+POST answering `response.ok` — is reachable from the API-keys screen's Test
+button through v4's `searchProviderRegistry.validateApiKey`, and reachable in
+v5 now that a Serper key can exist. `WireConnectionValidator` gains the SERPER
+arm; without it the catch-all answered a silent `{valid: false}` for every
+Serper key. Five recorded validate rows drive v5's real validator over a canned
+transport.
+
+Mutation-proven: dropping the UA push reds the search headers; disabling the
+SERPER arm reds `validate_ok`; a `num: 5` probe body reds `validate_ok body`;
+sending the UA on both arms reds the wiring pin.
+
 #### 2026-08-24 — feat(search): registration goes live — the providers listing gains v4's `type: 'search'` row
 
 _Versions: core 0.0.647, harness 0.0.564, host 0.0.81, web 0.0.80._
