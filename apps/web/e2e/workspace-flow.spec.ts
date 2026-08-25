@@ -250,7 +250,10 @@ test('the wardrobe tab renders the bare asTab surface (activate-at-unify)', asyn
   await expect(bare).toBeVisible();
   await expect(page.locator('.qt-dialog-overlay')).toHaveCount(0);
   await expect(page.locator('.qt-dialog-footer')).toHaveCount(0);
-  await expect(page.locator('#wardrobe-char-select')).toBeVisible();
+  // P4.D113 renamed this control: the top selector is no longer a character
+  // dropdown but a CONTAINER one (characters, Quilltap General, projects,
+  // groups), so the id moved with it.
+  await expect(page.locator('#wardrobe-container-select')).toBeVisible();
 });
 
 test('every bundled theme gives the workspace a distinct accent (cross-theme, p4.9j3 item 6)', async ({

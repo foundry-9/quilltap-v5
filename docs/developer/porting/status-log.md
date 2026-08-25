@@ -85435,3 +85435,61 @@ all-green, and full-green after the fix).
 
 Wardrobe spec: **7 passed / 1 skipped (the gated P4.D112 beat) in 55.9 s**,
 zero unexplained skips.
+
+### Unit 6 — the rename's one out-of-folder consequence (⚠ ownership note for the unifier)
+
+The full Playwright suite caught a single reference to the old control id
+outside this lane's folder: `apps/web/e2e/workspace-flow.spec.ts:253` asserted
+the wardrobe body renders by looking for `#wardrobe-char-select`. A tree-wide
+grep confirms it was the ONLY one.
+
+**That file is in no lane's Ownership table this round** (P4.D112 owns crates;
+P4.D114 owns the photos / scriptorium / generate-image / home specs), so rather
+than stop on a collision that does not exist, the one line was updated to
+`#wardrobe-container-select` with a comment naming the rename. **Flagged here
+and in the lane's final report** so the unifier can see it deliberately, since
+it is the lane's only edit outside `apps/web/src/app/wardrobe/**` +
+`apps/web/e2e/wardrobe-flow.spec.ts`.
+
+### Tier-3 deferrals — LOUD
+
+1. **Group-tier in-place browsing beats stay gated.** The dialog's Groups
+   optgroup and the group verb router are live, but nothing can be created,
+   edited, or transferred in a group until P4.D112's five `groupWardrobe*` verbs
+   exist. The gate constant is `P4D112_TRANSFER_COMPONENTS_LANDED` in
+   `wardrobe-flow.spec.ts` (ACTIVATE-AT-UNIFY — flip to `true` at unification).
+   ⚠ Note the e2e fixture ALSO lacks any group/project/General store, so a group
+   beat needs a fixture with one; the store probe (`hasGeneralStore`) is the
+   shape to copy.
+2. **The Prospero project-wardrobe manager: RECORDED, not refactored.** v4's
+   commit did not touch its project-wardrobe manager either, and the order
+   forbids touching `screens/prospero/**`. The container browser now offers a
+   SECOND door to the same room — `screens/prospero/wardrobe/
+   project-wardrobe-manager.ts` (its own draft state + `WardrobeMutator` seam)
+   is now redundant with browsing `project:<id>` in the dialog. v4's own help
+   text calls this out explicitly ("a second door to the same room"), so it is a
+   deliberate duplication upstream, not drift. **No convergence attempted.**
+3. **Help-doc deltas → the `p4.9i2` bank.** `d7263f39` + `f6a10055` rewrote
+   `help/wardrobe.md` (the "Pick any wardrobe" bullet, the new "Curate a shared
+   wardrobe in place" bullet, the reworded shared-item paragraph pointing at the
+   Wardrobe dropdown, the "Add to" step's browsing-a-shared-wardrobe parenthesis,
+   and the whole component-prompt paragraph), `help/groups.md` (the "or select
+   the Group itself from the dialog's Wardrobe dropdown" clause), and
+   `help/project-wardrobe.md` (the "second door to the same room" sentence).
+   None ported — v5 has no help content yet.
+4. **`componentsTransferred` / `unresolvedComponentIds` are NOT rendered** —
+   see unit 4: v4's client never reads them. This is a refutation of the order's
+   tier-1 item 5, not a deferral of work v4 has.
+
+### Lane gate (P4.D113)
+
+- `npm test`: **343 files / 5,128 passed / 0 failed** (5,072 → 5,128, exactly
+  this lane's new cases).
+- `npm run build`: clean.
+- Playwright, whole suite: **239 passed / 0 failed / 1 skipped (5.6 m)** — the
+  one skip is the gated P4.D112 component-transfer beat, by design. The wardrobe
+  spec alone: 7 passed / 1 skipped.
+- No crate source touched → no cargo gate owed. (`target/release/quilltap-web`
+  and `quilltap` were built only because the e2e harness needs them; the
+  worktree `target/` is removed at lane close.)
+- Versions: **SPA 0.5.549 → 0.5.555**; no crate bumped.

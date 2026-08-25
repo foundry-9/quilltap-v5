@@ -76,6 +76,15 @@ the exact UUID. Unit tests mirror v4's new `wardrobe-slug-map.test.ts`; the
 the `vault-wardrobe-write` fixture a collision-returns op, both proven
 red-first against the old code and green against oracles regenerated at the
 `f6a10055` pin.
+#### 2026-08-25 — test(workspace): follow the wardrobe selector's rename (P4.D113)
+
+_Versions: SPA 0.5.555._
+
+The workspace tab beat asserted the wardrobe body renders by looking for
+`#wardrobe-char-select`. That control is now the container selector
+`#wardrobe-container-select` — a one-line follow-on of the rename, caught by
+the full Playwright suite.
+
 #### 2026-08-25 — test(wardrobe): browser beats for the container browser and the component prompt (P4.D113)
 
 _Versions: SPA 0.5.554._
