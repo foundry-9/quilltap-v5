@@ -330,6 +330,20 @@ fn discover_photo_link_id(db: &Db, character_id: &str, relative_path: &str) -> S
     .unwrap()
 }
 
+/// The character's vault mount-point id — the key the photos/ link dump reads.
+fn discover_photo_mount_point(db: &Db, character_id: &str) -> String {
+    let cid = character_id.to_string();
+    db.read_main(move |main| {
+        main.query_row(
+            "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+            rusqlite::params![cid],
+            |r| r.get(0),
+        )
+        .map_err(Into::into)
+    })
+    .unwrap()
+}
+
 /// Dump the mount-index photo GC tables + the character's defaultImageId, in the
 /// oracle's shape.
 fn dump_photo_tables(db: &Db, character_id: &str) -> Value {
@@ -883,6 +897,117 @@ fn characters_mutations_match_oracle() {
             extra.push("photo_save_link_tables".to_string());
         } else {
             eprintln!("[photo_save_link tables] OK.");
+        }
+    }
+
+    {
+        // -------------------------------------------------------------------
+        // P4.60 — the `saveByIdSchema` body arms. Each drives the REAL ported
+        // parser the web edge calls; reading the keys here instead would mirror
+        // the collapse these cases exist to measure. The photos/ link dump
+        // rides along, so a refusal proves it wrote NOTHING.
+        // -------------------------------------------------------------------
+        const FIXED_KEPT_AT: &str = "2026-04-01T12:00:00.000Z";
+        // `(case, body — `"<link>"` is the discovered avatar link id)`.
+        let body_cases: Vec<(&str, Value)> = vec![
+            ("photo_body_file_id_number", json!({ "fileId": 123 })),
+            ("photo_body_file_id_empty", json!({ "fileId": "" })),
+            ("photo_body_link_id_null", json!({ "linkId": null })),
+            ("photo_body_neither", json!({})),
+            ("photo_body_both", json!({ "fileId": "x", "linkId": "y" })),
+            ("photo_body_not_object", json!(42)),
+            (
+                "photo_body_caption_number",
+                json!({ "linkId": "<link>", "caption": 5 }),
+            ),
+            (
+                "photo_body_tags_string",
+                json!({ "linkId": "<link>", "tags": "airship" }),
+            ),
+            (
+                "photo_body_tags_element",
+                json!({ "linkId": "<link>", "tags": ["ok", 2] }),
+            ),
+            (
+                "photo_body_two_issues",
+                json!({ "fileId": "", "caption": 5 }),
+            ),
+            (
+                "photo_body_caption_null_ok",
+                json!({ "linkId": "<link>", "caption": null, "tags": ["brass", ""] }),
+            ),
+        ];
+        for (case, raw) in &body_cases {
+            let db = fresh_db(&spec, case);
+            let source_link = discover_photo_link_id(&db, ARIA, "images/avatar.webp");
+            let body: Value = serde_json::from_str(
+                &serde_json::to_string(raw)
+                    .unwrap()
+                    .replace("\"<link>\"", &format!("\"{source_link}\"")),
+            )
+            .unwrap();
+            let mp_id = discover_photo_mount_point(&db, ARIA);
+
+            let (status, got_body) =
+                match quilltap_core::api::characters::parse_photo_save_by_id_body(&body) {
+                    Err(message) => (400u64, json!({ "error": message })),
+                    Ok(parsed) => {
+                        let link = parsed
+                            .link_id
+                            .clone()
+                            .expect("the passing arm names a linkId");
+                        let caption = parsed.caption.clone();
+                        let tags = parsed.tags.clone();
+                        let saved: Value = rt
+                            .block_on(db.write(move |writers| {
+                                let mount = writers.mount_index().unwrap().connection();
+                                let main = writers.main().connection();
+                                let r = quilltap_core::photos::character_gallery_service::save_link_to_character_gallery(
+                                    main, mount, ARIA, &link, caption.as_deref(), &tags, FIXED_KEPT_AT,
+                                );
+                                Ok(r.map_err(|e| format!("{e:?}")))
+                            }))
+                            .unwrap()
+                            .expect("save_link ok");
+                        (201, saved)
+                    }
+                };
+
+            let want = &oracle[*case];
+            let mut got_norm = got_body.clone();
+            let mut want_norm = want["body"].clone();
+            // Only the passing arm mints a link id.
+            if got_norm.get("linkId").is_some() {
+                got_norm["linkId"] = Value::String("<linkId>".into());
+            }
+            if want_norm.get("linkId").is_some() {
+                want_norm["linkId"] = Value::String("<linkId>".into());
+            }
+            if status != want["status"].as_u64().unwrap() {
+                eprintln!(
+                    "[{case}] STATUS {status} != {}",
+                    want["status"].as_u64().unwrap()
+                );
+                extra.push(format!("{case}_status"));
+            } else if norm_tables(&got_norm) != norm_tables(&want_norm) {
+                eprintln!(
+                    "[{case}] MISMATCH:\n{}",
+                    first_diff(&norm_tables(&got_norm), &norm_tables(&want_norm))
+                );
+                extra.push((*case).to_string());
+            } else {
+                eprintln!("[{case}] OK ({status}).");
+            }
+            // Writes-nothing (or writes-exactly-one) is state, not prose.
+            let saved_links = dump_saved_photo_links(&db, &mp_id);
+            let want_tables = &want["tables"];
+            if norm_tables(&saved_links) != norm_tables(want_tables) {
+                eprintln!(
+                    "[{case} tables] MISMATCH:\n{}",
+                    first_diff(&norm_tables(&saved_links), &norm_tables(want_tables))
+                );
+                extra.push(format!("{case}_tables"));
+            }
         }
     }
 

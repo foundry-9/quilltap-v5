@@ -78,6 +78,7 @@ interface CaseSpec {
     | 'st-import'
     | 'photo-remove'
     | 'photo-save'
+    | 'photo-save-body'
     | 'character-delete'
     | 'archive-guard-repo'
     | 'archive-guard-wardrobe';
@@ -86,6 +87,11 @@ interface CaseSpec {
   itemTitle?: string;
   /** For photo-remove: discover the vault link id by this relativePath. */
   photoRelativePath?: string;
+  /** P4.60 (`photo-save-body`): POST this body VERBATIM to the photos route,
+   *  substituting the discovered `photoRelativePath` link id wherever the body
+   *  carries the string `<link>`. Records `{status, body}` plus the photos/
+   *  link dump, so a refusal proves it wrote NOTHING. */
+  rawBody?: unknown;
   body?: unknown;
   /** For `update-seq`: apply each PUT body in order over the same fresh DB; the
    *  FINAL PUT response (an overlay re-read) is the echo. Used to prove the
@@ -381,6 +387,79 @@ async function runCase(
         // Dump the freshly-written photos/ link straight from the raw column
         // (deterministic under the frozen clock; the link id is not selected —
         // it's the only minted value).
+        const { getRawMountIndexDatabase } = await import(
+          '@/lib/database/backends/sqlite/mount-index-client'
+        );
+        const midb = getRawMountIndexDatabase() as unknown as {
+          prepare: (s: string) => { all: (...a: unknown[]) => unknown };
+        };
+        const savedLinks = midb
+          .prepare(
+            "SELECT relativePath, fileId, originalMimeType, extractedText, description " +
+              "FROM doc_mount_file_links WHERE mountPointId = ? AND relativePath LIKE 'photos/%' " +
+              'ORDER BY relativePath',
+          )
+          .all(vault.mountPointId);
+        tables = { savedLinks };
+      } finally {
+        global.Date = RealDate;
+      }
+      return { name: c.name, status, body, tables };
+    }
+    if (c.kind === 'photo-save-body') {
+      // P4.60: POST an arbitrary body at the REAL photos route and record what
+      // v4's `saveByIdSchema.safeParse` answers. The route joins its issue
+      // messages with '; ' into `badRequest`, so these sentences are wire
+      // payload, not just a status. The photos/ link dump rides along: a
+      // refusal must write NOTHING.
+      const RealDate = Date;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      global.Date = class extends RealDate {
+        constructor(...a: unknown[]) {
+          if (a.length === 0) super(FIXED_KEPT_AT);
+          // @ts-expect-error forward variadic args
+          else super(...a);
+        }
+        static now(): number {
+          return RealDate.parse(FIXED_KEPT_AT);
+        }
+      } as unknown as DateConstructor;
+      try {
+        const { getCharacterVaultStore } = await import(
+          '@/lib/file-storage/character-vault-bridge'
+        );
+        const vault = await getCharacterVaultStore(ARIA);
+        if (!vault) throw new Error('Aria vault did not resolve');
+        const allLinks = await getRepositories().docMountFileLinks.findByMountPointId(
+          vault.mountPointId,
+        );
+        let payload = c.rawBody;
+        if (c.photoRelativePath) {
+          const source = allLinks.find(
+            (l: { relativePath: string }) => l.relativePath === c.photoRelativePath,
+          );
+          if (!source) throw new Error(`source link ${c.photoRelativePath} not found`);
+          payload = JSON.parse(
+            JSON.stringify(c.rawBody).replace('"<link>"', JSON.stringify((source as { id: string }).id)),
+          );
+        }
+        const url = `http://localhost/api/v1/characters/${ARIA}/photos`;
+        const { POST } = (await import('@/app/api/v1/characters/[id]/photos/route')) as {
+          POST: (...a: unknown[]) => Promise<unknown>;
+        };
+        const req = {
+          method: 'POST',
+          url,
+          nextUrl: new URL(url),
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: jest.fn().mockResolvedValue(payload),
+        };
+        const response = (await POST(req, { params: Promise.resolve({ id: ARIA }) })) as {
+          status: number;
+          json: () => Promise<unknown>;
+        };
+        status = response.status;
+        body = await response.json();
         const { getRawMountIndexDatabase } = await import(
           '@/lib/database/backends/sqlite/mount-index-client'
         );
@@ -838,6 +917,51 @@ async function main(): Promise<void> {
     // leg — bytes from the source link's mount-blob). Frozen clock → deterministic
     // path + markdown.
     { name: 'photo_save_link', kind: 'photo-save', photoRelativePath: 'images/avatar.webp' },
+    // -----------------------------------------------------------------------
+    // P4.60 — the `saveByIdSchema` wrong-type-collapse arms. v5's edge used to
+    // read fileId/linkId/caption/tags with `and_then(Value::as_str)`/`as_array`,
+    // so a wrong-typed caption or tag list was DROPPED and the photo saved 201.
+    // The refine's own quirk is measured here too: an `invalid_type` issue
+    // suppresses it, a `too_small` issue does not.
+    // -----------------------------------------------------------------------
+    { name: 'photo_body_file_id_number', kind: 'photo-save-body', rawBody: { fileId: 123 } },
+    { name: 'photo_body_file_id_empty', kind: 'photo-save-body', rawBody: { fileId: '' } },
+    { name: 'photo_body_link_id_null', kind: 'photo-save-body', rawBody: { linkId: null } },
+    { name: 'photo_body_neither', kind: 'photo-save-body', rawBody: {} },
+    { name: 'photo_body_both', kind: 'photo-save-body', rawBody: { fileId: 'x', linkId: 'y' } },
+    { name: 'photo_body_not_object', kind: 'photo-save-body', rawBody: 42 },
+    {
+      name: 'photo_body_caption_number',
+      kind: 'photo-save-body',
+      photoRelativePath: 'images/avatar.webp',
+      rawBody: { linkId: '<link>', caption: 5 },
+    },
+    {
+      name: 'photo_body_tags_string',
+      kind: 'photo-save-body',
+      photoRelativePath: 'images/avatar.webp',
+      rawBody: { linkId: '<link>', tags: 'airship' },
+    },
+    {
+      name: 'photo_body_tags_element',
+      kind: 'photo-save-body',
+      photoRelativePath: 'images/avatar.webp',
+      rawBody: { linkId: '<link>', tags: ['ok', 2] },
+    },
+    // Two failing keys at once: issue ORDER is shape order, joined with '; '.
+    {
+      name: 'photo_body_two_issues',
+      kind: 'photo-save-body',
+      rawBody: { fileId: '', caption: 5 },
+    },
+    // The passing poles: an explicit null caption (nullable) and a tag list the
+    // JSON leg does NOT filter (unlike the multipart leg's empty-tag drop).
+    {
+      name: 'photo_body_caption_null_ok',
+      kind: 'photo-save-body',
+      photoRelativePath: 'images/avatar.webp',
+      rawBody: { linkId: '<link>', caption: null, tags: ['brass', ''] },
+    },
     // P4.6i: remove Aria's avatar from the gallery — exercises the
     // defaultImageId-pointer clear + the GC-safe deleteWithGC (last link → the
     // file + blob are reclaimed).

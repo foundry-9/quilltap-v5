@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — fix(characters): the photos JSON body is parsed against v4's saveByIdSchema (P4.60 unit 2)
+
+_Versions: core 0.0.647, harness 0.0.564, web 0.0.81._
+
+`POST /api/v1/characters/{id}/photos` with a JSON body read `fileId`, `linkId`,
+`caption` and `tags` with `and_then(Value::as_str)` / `as_array`. A wrong-typed
+`caption: 5` or `tags: "airship"` was silently dropped and the photo saved with
+a 201; v4 `safeParse`s and answers 400 with the joined issue sentences.
+
+`api::characters::parse_photo_save_by_id_body` ports the schema, including the
+refine's measured quirk: an `invalid_type` issue anywhere — one bad element of
+`tags` included — suppresses the refinement, while a `too_small` issue does not,
+so `{fileId: ''}` answers two sentences and `{fileId: null}` answers one.
+
+`characters_mutations_equivalence` gains eleven arms driving v4's real photos
+route, each diffing the joined sentence AND the photos/ link dump, so a refusal
+proves it wrote nothing.
+
 #### 2026-08-24 — fix(custom-tools): the run body is parsed against v4's runSchema, not collapsed key-by-key (P4.60 unit 1)
 
 _Versions: core 0.0.646, harness 0.0.563, web 0.0.80._

@@ -24,12 +24,22 @@
 use std::path::PathBuf;
 
 /// `(routes file, substring that must appear, what it wires)`.
-const PARSER_WIRING: &[(&str, &str, &str)] = &[(
-    "crates/quilltap-web/src/custom_tools_routes.rs",
-    "custom_tools::parse_run_body(",
-    "POST /api/v1/chats/{id}/custom-tools?action=run — v4's `runSchema.parse`, \
-     uncaught, so any wrong-typed key is the flat 400 `Validation error`",
-)];
+const PARSER_WIRING: &[(&str, &str, &str)] = &[
+    (
+        "crates/quilltap-web/src/custom_tools_routes.rs",
+        "custom_tools::parse_run_body(",
+        "POST /api/v1/chats/{id}/custom-tools?action=run — v4's \
+         `runSchema.parse`, uncaught, so any wrong-typed key is the flat 400 \
+         `Validation error`",
+    ),
+    (
+        "crates/quilltap-web/src/characters_routes.rs",
+        "characters::parse_photo_save_by_id_body(",
+        "POST /api/v1/characters/{id}/photos (JSON leg) — v4's \
+         `saveByIdSchema.safeParse`, whose joined issue sentences are wire \
+         payload",
+    ),
+];
 
 /// `(routes file, expected collapsing sites, the adjudication)`.
 ///
@@ -45,14 +55,13 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/quilltap-web/src/characters_routes.rs",
-        9,
-        "PART FAITHFUL, part unadjudicated: the export leg's `format` is a \
-         QUERY parameter and `defaultImageId`/`name` are ENTITY fields v4 reads \
-         off the typed character record, not caller input (v4 \
-         `handlers/get.ts:72-98`); the `?action=` JSON leg's reads mirror v4's \
-         own untyped destructuring. The FOUR photos-JSON-body reads \
-         (`fileId`/`linkId`/`caption`/`tags`) are v4's `saveByIdSchema` and are \
-         still collapsing.",
+        6,
+        "FAITHFUL, measured (P4.60 unit 2): NONE of the six reads caller input. \
+         The export leg's `format` is a QUERY parameter and \
+         `defaultImageId`/`name` are ENTITY fields v4 reads off the typed \
+         character record (v4 `handlers/get.ts:72-98`); the ST-import PNG leg's \
+         three read the server's OWN echo. The sixth occurrence is the comment \
+         naming what `parse_photo_save_by_id_body` replaced.",
     ),
     (
         "crates/quilltap-web/src/qtap_target_route.rs",

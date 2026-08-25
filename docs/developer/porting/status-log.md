@@ -84021,3 +84021,44 @@ to collapsing — and the whole `crates/quilltap-web/src/*_routes.rs` surface is
 held to an exact per-file count of `and_then(Value::as_` with the adjudication
 written beside each number. The census IS this lane's enumeration deliverable;
 rows still carrying collapsing sites name what is left to do.
+
+### Unit 2 — `POST /api/v1/characters/{id}/photos` (JSON leg) — DIVERGENT, FIXED
+
+v4 (`app/api/v1/characters/[id]/photos/route.ts:68-92`) `safeParse`s
+`saveByIdSchema` and answers `badRequest(parsed.error.issues.map(i =>
+i.message).join('; '))`. Unlike the uncaught-ZodError routes, these sentences
+are WIRE PAYLOAD and have to be byte-exact, in issue order. v5 read all four
+keys with `and_then(Value::as_str)`/`as_array`, so `caption: 5` and
+`tags: "airship"` were DROPPED and the photo saved 201.
+
+Ported as `api::characters::parse_photo_save_by_id_body`. Two things had to be
+measured rather than assumed, both probed against v4's zod 4.4.3:
+
+- **Issue order is shape order** (`fileId`, `linkId`, `caption`, `tags`), with
+  one issue per offending `tags` element in index order — and an element
+  mismatch carries the same sentence as a scalar one.
+- **When the refine runs.** An `invalid_type` issue anywhere suppresses the
+  refinement; a `too_small` issue does not. So `{fileId: ''}` answers *two*
+  sentences (`Too small: …; Provide exactly one of fileId or linkId`) while
+  `{fileId: null}` answers one. That rule is load-bearing across three arms —
+  the mutation that always ran the refine reddened all three.
+
+**Differential.** `characters_mutations_equivalence` gains a `photo-save-body`
+case kind driving v4's REAL route with a verbatim body (the discovered avatar
+link substituted for `"<link>"`), recording `{status, body}` plus the photos/
+link dump — so every refusal proves it wrote NOTHING and the one passing arm
+proves it wrote exactly one row. Eleven arms: the six refusals with no valid
+id, the three wrong-typed `caption`/`tags` shapes, the two-issue join, and the
+passing `caption: null` + unfiltered `tags` pole (the JSON leg does NOT drop an
+empty tag; only the multipart leg does).
+
+Two mutation proofs on v5 source: dropping the `tags` non-array arm →
+`photo_body_tags_string` reds 201-vs-400 *and* its table dump; forcing the
+refine to always run → three arms red on the extra sentence.
+
+The two dead helpers the collapse used (`json_caption`, `json_tags`) are gone,
+and `web_edge_body_parse_guard` gains the route's wiring row. The census row
+for `characters_routes.rs` drops 9 → 6 and is now wholly FAITHFUL: the export
+leg's `format` is a query parameter, `defaultImageId`/`name` are entity fields
+v4 reads off its typed record, and the ST-import PNG leg's three reads are of
+the server's own echo.

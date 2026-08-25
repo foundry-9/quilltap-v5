@@ -1514,6 +1514,141 @@ pub async fn character_photo_remove(
     }
 }
 
+/// v4 `saveByIdSchema` (`app/api/v1/characters/[id]/photos/route.ts:68-78`),
+/// ported whole:
+///
+/// ```text
+/// z.object({
+///   fileId:  z.string().min(1).optional(),
+///   linkId:  z.string().min(1).optional(),
+///   caption: z.string().nullable().optional(),
+///   tags:    z.array(z.string()).optional(),
+/// }).refine(v => (v.fileId?1:0) + (v.linkId?1:0) === 1,
+///           { message: 'Provide exactly one of fileId or linkId' })
+/// ```
+///
+/// The route `safeParse`s and answers
+/// `badRequest(parsed.error.issues.map(i => i.message).join('; '))`, so unlike
+/// the uncaught-ZodError routes these issue sentences are WIRE PAYLOAD — they
+/// have to be byte-exact, in issue order.
+///
+/// **When the refine runs** (probed on v4's zod 4.4.3, not assumed): an
+/// `invalid_type` issue anywhere — including on one element of `tags` —
+/// suppresses the refinement; a `too_small` issue does not. So `{fileId: ''}`
+/// answers *two* sentences and `{fileId: null}` answers one.
+///
+/// P4.60: v5 used to read the four keys with `and_then(Value::as_str)` /
+/// `as_array`, so `caption: 5` and `tags: "airship"` were silently DROPPED and
+/// the photo saved with a 201 where v4 refuses.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PhotoSaveByIdBody {
+    pub file_id: Option<String>,
+    pub link_id: Option<String>,
+    /// v4 `parsed.data.caption ?? null` — absent and `null` are the same thing.
+    pub caption: Option<String>,
+    pub tags: Vec<String>,
+}
+
+/// Parse a `POST /api/v1/characters/{id}/photos` JSON body.
+///
+/// `Err` is v4's already-joined `badRequest` sentence.
+pub fn parse_photo_save_by_id_body(body: &Value) -> Result<PhotoSaveByIdBody, String> {
+    use super::chat_outfits::received;
+
+    let Some(obj) = body.as_object() else {
+        // A non-object aborts the whole parse: one issue, refine skipped.
+        return Err(format!(
+            "Invalid input: expected object, received {}",
+            received(Some(body))
+        ));
+    };
+
+    let mut issues: Vec<String> = Vec::new();
+    // Zod skips a refinement once any value has ABORTED (an invalid_type), but
+    // not for a mere failed check like `min(1)`.
+    let mut aborted = false;
+    let mut out = PhotoSaveByIdBody::default();
+
+    // Issues collect in shape-key order: fileId, linkId, caption, tags.
+    let min1 = |key: &str, issues: &mut Vec<String>, aborted: &mut bool| -> Option<String> {
+        match obj.get(key) {
+            None => None,
+            Some(Value::String(s)) => {
+                if s.is_empty() {
+                    issues.push("Too small: expected string to have >=1 characters".to_string());
+                }
+                // Kept either way: the refine reads the parsed value, and an
+                // empty string is FALSY there.
+                Some(s.clone())
+            }
+            v => {
+                issues.push(format!(
+                    "Invalid input: expected string, received {}",
+                    received(v)
+                ));
+                *aborted = true;
+                None
+            }
+        }
+    };
+    out.file_id = min1("fileId", &mut issues, &mut aborted);
+    out.link_id = min1("linkId", &mut issues, &mut aborted);
+
+    // caption: z.string().nullable().optional()
+    match obj.get("caption") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(s)) => out.caption = Some(s.clone()),
+        v => {
+            issues.push(format!(
+                "Invalid input: expected string, received {}",
+                received(v)
+            ));
+            aborted = true;
+        }
+    }
+
+    // tags: z.array(z.string()).optional() — element issues carry the SAME
+    // sentence as a scalar mismatch, one per offending index, in index order.
+    match obj.get("tags") {
+        None => {}
+        Some(Value::Array(a)) => {
+            for item in a {
+                match item {
+                    Value::String(s) => out.tags.push(s.clone()),
+                    other => {
+                        issues.push(format!(
+                            "Invalid input: expected string, received {}",
+                            received(Some(other))
+                        ));
+                        aborted = true;
+                    }
+                }
+            }
+        }
+        v => {
+            issues.push(format!(
+                "Invalid input: expected array, received {}",
+                received(v)
+            ));
+            aborted = true;
+        }
+    }
+
+    if !aborted {
+        let named = usize::from(out.file_id.as_deref().is_some_and(|s| !s.is_empty()))
+            + usize::from(out.link_id.as_deref().is_some_and(|s| !s.is_empty()));
+        if named != 1 {
+            issues.push("Provide exactly one of fileId or linkId".to_string());
+        }
+    }
+
+    if issues.is_empty() {
+        Ok(out)
+    } else {
+        Err(issues.join("; "))
+    }
+}
+
 /// v4 `POST /characters/[id]/photos` JSON leg (`saveByIdSchema` — exactly one of
 /// `fileId`/`linkId`). The `linkId` leg (`saveLinkToCharacterGallery`) reads bytes
 /// from the source link's mount-blob and hard-links a copy into the character's

@@ -131,25 +131,23 @@ pub async fn characters_photos_post(
             Ok(v) => v,
             Err(_) => return bad_request("Invalid JSON body"),
         };
-        let file_id = body
-            .get("fileId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty());
-        let link_id = body
-            .get("linkId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty());
-        if file_id.is_some() == link_id.is_some() {
-            // Neither or both — v4's refine.
-            return bad_request("Provide exactly one of fileId or linkId");
-        }
-        let caption = json_caption(&body);
-        let tags = json_tags(&body);
+        // v4 `saveByIdSchema.safeParse` → `badRequest(issues.join('; '))`. P4.60:
+        // reading the four keys here with `and_then(Value::as_str)`/`as_array`
+        // silently DROPPED a wrong-typed `caption`/`tags` and saved the photo
+        // 201 where v4 refuses.
+        let parsed = match quilltap_core::api::characters::parse_photo_save_by_id_body(&body) {
+            Ok(p) => p,
+            Err(message) => return bad_request(&message),
+        };
+        let caption = parsed.caption;
+        let tags = parsed.tags;
 
-        if let Some(link_id) = link_id {
-            save_via_link(&db, &id, link_id, caption, tags).await
+        if let Some(link_id) = parsed.link_id {
+            save_via_link(&db, &id, &link_id, caption, tags).await
         } else {
-            save_via_file_id(&db, &backend, &id, file_id.unwrap(), caption, tags).await
+            // The refine guarantees exactly one of the two is named.
+            let file_id = parsed.file_id.expect("the refine names one of the two");
+            save_via_file_id(&db, &backend, &id, &file_id, caption, tags).await
         }
     } else {
         // v4 `req.formData().catch(() => null)`.
@@ -292,27 +290,6 @@ where
         .await
         .map_err(|e| PhotoErr::Gallery(GalleryError::Db(e)))?;
     inner.map_err(PhotoErr::Gallery)
-}
-
-/// v4 `caption: z.string().nullable().optional()` → `caption ?? null`. A JSON
-/// `null` or absent → `None`; a string → itself.
-fn json_caption(body: &Value) -> Option<String> {
-    body.get("caption")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-}
-
-/// v4 `tags: z.array(z.string()).optional()`.
-fn json_tags(body: &Value) -> Vec<String> {
-    body.get("tags")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 // ===========================================================================
