@@ -161,6 +161,41 @@ real parser, and its POST leg now goes through it rather than re-reading the
 keys itself. New `web_edge_body_parse_guard` holds the whole
 `quilltap-web/src/*_routes.rs` surface to a per-file census of the collapsing
 idiom and pins that the fixed edge still routes through its parser.
+#### 2026-08-24 — test(search): the tier-3 web-search oracle drives v4's REAL registry, plugin and key predicate
+
+_Versions: harness 0.0.566._
+
+The `web_search_tool` oracle used to mock `searchProviderRegistry` with a
+hand-built object whose `executeSearch` returned canned output, so on the
+provider path v4's own plugin — its request, its error sentences, its formatter
+— was never in the loop. Now the oracle initializes the REAL registry the way
+v4's boot does, with the REAL built `qtap-plugin-search-serper` bundle, over a
+mocked `fetch`. Only the repository read is mocked, and it answers with a
+realistic multi-row list so v4's own
+`find(k => k.provider === 'SERPER' && k.isActive)` decides.
+
+This side goes through the production `DbSearchApiKeys` over a real provisioned
+instance whose `api_keys` rows are written by the real repository — one
+instance, one user per row-set, so the read is user-scoped as production's is.
+New arms: an inactive-only row, another provider's row, an inactive row skipped
+for a later active one, two active rows where the first wins, the knowledge-graph
+unshift through the plugin's own mapping, the plugin's network-error catch, and
+the two precedence arms — a registered provider short-circuits the env fallback
+(the tell is the plugin's 401 sentence, not the fallback's), and a registered
+but keyless provider refuses rather than falling back. 17 cases to 26.
+
+**One arm was vacuous on its first pass and a mutation proved it.** Which key
+the lookup chose is invisible in the tool's output — it travels as a request
+header, and the canned transport's key is method + url + body — so a mutation
+taking the LAST active row passed green. Both sides now echo the `X-API-KEY`
+header into the result title, and that mutation reds. Also mutation-proven:
+`serper_registered` forced false; `isActive` dropped from the predicate; the
+registered path preferring the env key.
+
+The registry keeps its state on `globalThis` and survives `jest.resetModules()`,
+so each case deletes that key first — without it a case that must see an empty
+registry inherits the previous case's provider.
+
 #### 2026-08-24 — fix(search): the registered arm's real wire — the plugin's User-Agent and its `validateApiKey` probe
 
 _Versions: core 0.0.648, harness 0.0.565, host 0.0.82._

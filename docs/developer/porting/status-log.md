@@ -84575,3 +84575,67 @@ TZ=UTC node <V5W>/harness/oracle/providers/record-web-search-wire.mjs \
 ```
 
 Versions: core 0.0.648, harness 0.0.565, host 0.0.82.
+
+### Unit 4 — the tier-3 oracle drives v4's REAL registry, plugin and key predicate
+
+The order's requirement, and the one that makes the registered arm comparable at
+all. The old oracle mocked `searchProviderRegistry` with a hand-built object
+whose `executeSearch` returned canned output — the
+`jest-oracle-empty-provider-registry` trap one level up: v4's own plugin (its
+request, its error sentences, its `formatResults`) was never in the loop on the
+provider path, which was defensible only while that path was dark.
+
+Now the oracle calls `initializeSearchProviderRegistry([plugin])` with the REAL
+built `qtap-plugin-search-serper` bundle loaded through `createRequire`, and
+mocks `globalThis.fetch`. Only the repository read is mocked — it is the
+boundary — and it answers with a realistic multi-row list so v4's OWN
+`find(k => k.provider === 'SERPER' && k.isActive)` is what decides. The
+handler's `formatWebSearchResults` now delegates to the plugin's `formatResults`
+too, so the recorded `formatted` string also proves the plugin's formatter and
+the handler's built-in one agree byte for byte (they do — the code is
+duplicated verbatim in v4).
+
+⚠ **The registry keeps its state on `globalThis`, so it SURVIVES
+`jest.resetModules()`.** Each case deletes `__quilltapSearchProviderRegistryState`
+first; without that, every case after the first registered one inherits a
+provider, and the whole fallback/not-configured half of the corpus quietly stops
+testing what it claims to.
+
+The v5 side goes through the production `DbSearchApiKeys` over a **real
+provisioned instance** (`provision_fresh_instance` + rows written by the real
+`ApiKeysRepository::create`), with **one user per row-set** so the read is
+user-scoped exactly as production's is.
+
+Corpus 17 → 26 cases. New arms: inactive-only; another provider's row; an
+inactive row SKIPPED for a later active one; two active rows where the FIRST
+wins; the knowledgeGraph unshift through the plugin's own mapping; the plugin's
+network-error catch (`socket hang up` reaches the output verbatim); and the two
+precedence arms — **a registered provider short-circuits the env fallback** (the
+tell is the PLUGIN's 401 sentence, which differs from the fallback's) and **a
+registered-but-keyless provider refuses rather than falling back**.
+
+⚠ **One arm was VACUOUS on its first pass, and only a mutation showed it.**
+Which key the lookup chose is invisible in the tool's output: the key travels as
+a request HEADER and appears in no field either side emits, and `wire_key` is
+`METHOD\nURL\nBODY`. So `key_takes_first_active` searched successfully whichever
+row it picked, and a mutation taking the LAST active row passed GREEN. Both
+sides now echo the `X-API-KEY` header into the result title (a `KeyEchoTransport`
+here, an echoing `fetch` mock there), which turns "which key" into a real
+comparand and adds two more arms with it — the registered path sends the DB
+row's key even with an env key present, and the fallback path sends the env key.
+This is the [[blinded-comparand-hides-the-new-arm]] class with a new face: not a
+normalizer erasing the field, but a field that never existed.
+
+**Mutation proofs (v5 source, one side only):** `serper_registered` forced false
+→ `provider_success` reds; `is_active` dropped from the predicate →
+`missing_api_key_inactive_only` reds; the resolver taking the LAST active row →
+`key_takes_first_active` reds (green before the echo arms existed); the
+registered path preferring the env key → `key_registered_sends_db_key_not_env`
+reds.
+
+The `provider_failure_no_error` case (v4's `?? 'Search provider returned an
+error'` default) left the oracle: the REAL plugin cannot produce
+`success:false, error:null`. It is kept as a Rust-side assertion on the same
+mapping, named as such.
+
+Versions: harness 0.0.566.
