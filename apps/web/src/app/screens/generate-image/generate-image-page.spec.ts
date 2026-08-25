@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { GenerateImagePage, type GeneratedImage } from './generate-image-page';
@@ -275,5 +275,73 @@ describe('GenerateImagePage (v4 app/generate-image/GenerateImageView.tsx)', () =
     const img = fixture.nativeElement.querySelector('.grid img') as HTMLImageElement;
     expect(img.getAttribute('src')).toContain('/api/v1/files/img-9');
     expect(img.getAttribute('src')).not.toContain('tool/nine.png');
+  });
+});
+
+/**
+ * The download convergence (v4 `af1bc479`): the hand-rolled anchor click is
+ * gone, replaced by the shared `core/download-utils`. These drive the REAL
+ * util and intercept the anchor, so the saved name and the new `res.ok` guard
+ * are both measured.
+ */
+describe('GenerateImagePage — download (v4 af1bc479)', () => {
+  let clicked: { download: string; href: string } | null;
+
+  beforeEach(() => {
+    clicked = null;
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = () => 'blob:gen';
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = () => {};
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked = { download: this.download, href: this.href };
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  type WithDownload = { onDownload(image: GeneratedImage): Promise<void> };
+
+  it('fetches the file-id source and saves under the image filename', async () => {
+    const fixture = await render(stubClient({}));
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: true, blob: async () => new Blob(['b']) } as unknown as Response);
+
+    await (fixture.componentInstance as unknown as WithDownload).onDownload(image({}));
+    await settle(fixture);
+
+    expect((fetchSpy.mock.calls[0][0] as string).endsWith('/api/v1/files/img-1')).toBe(true);
+    expect(clicked).toEqual({ download: 'one.png', href: 'blob:gen' });
+  });
+
+  it('falls back to v4’s generated-image.png when the filename is empty', async () => {
+    const fixture = await render(stubClient({}));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['b']),
+    } as unknown as Response);
+
+    await (fixture.componentInstance as unknown as WithDownload).onDownload(
+      image({ filename: '' }),
+    );
+    await settle(fixture);
+    expect(clicked?.download).toBe('generated-image.png');
+  });
+
+  it('a non-ok response toasts and saves nothing — v4’s new res.ok guard', async () => {
+    const fixture = await render(stubClient({}));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as unknown as Response);
+
+    await (fixture.componentInstance as unknown as WithDownload).onDownload(image({}));
+    await settle(fixture);
+
+    expect(clicked).toBeNull();
+    expect(toasts()).toContainEqual({ type: 'error', message: 'Failed to download image' });
   });
 });

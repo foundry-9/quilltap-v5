@@ -195,6 +195,31 @@ Recorded mechanism divergence: v4's module also exports
 mutations ride dispatch verbs, so that routing lands in `wardrobe.api.ts` as a
 verb router in a later unit of this lane; the types and the encoding stay
 v4's verbatim.
+#### 2026-08-25 — feat(images): every gallery can download the picture on display (P4.D114)
+
+_Versions: no crate versions bumped (the SPA rides un-bumped per the round's ownership split; the unifier recounts)._
+
+Port of v4 `af1bc479`'s client half. My Photos' detail modal gains v4's
+three-button footer row — Download (busy label `Downloading…`, error toast
+`Failed to download photo`), Copy (`Image copied to clipboard` /
+`Failed to copy image to clipboard`), Close. The Scriptorium file table's
+detail row gains a Download button beside Open bytes, named after the STORED
+file rather than the blob's `originalFileName`. The Generate Image page's
+hand-rolled anchor click converges onto `core/download-utils`, gaining v4's
+new `res.ok` guard on the way — a 404 body used to be saved as a file. The
+(still unhosted) `qt-image-gallery` mirror gains its hover download in v4's
+bottom-left corner.
+
+New: `core/clipboard-utils.ts`, a transcription of v4's `lib/clipboard-utils`
+browser arm (Clipboard API first, PNG conversion through an offscreen canvas,
+loaded from a data URL because the CSP allows `data:` and not `blob:`). v4's
+Electron IPC fallback has no v5 counterpart and is recorded as a non-goal in
+the module header, the same class as `download-utils`' native save arm.
+
+The specs drive the REAL utils and intercept the anchor click and the
+`ClipboardItem` write, so the saved filename and the copied MIME are measured
+at the browser boundary rather than at a mock.
+
 #### 2026-08-25 — fix(projects): create validates exactly as v4's schema does (bug 98, P4.D114)
 
 _Versions: no crate versions bumped (core + harness ride un-bumped per the round's ownership split; the unifier recounts)._

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { WORKSPACE_TAB_VISIBLE } from '../../workspace/workspace-contract';
+import { ToastService } from '../../ui/toast.service';
 import { PhotosPage } from './photos-page';
 import {
   GalleryEntry,
@@ -337,6 +338,157 @@ describe('PhotosPage (v4 app/photos/PhotosView.tsx)', () => {
     expect(page.entries()).toHaveLength(0);
     expect(page.total()).toBe(0);
     accepted.mockRestore();
+  });
+});
+
+describe('PhotosPage detail-modal Download + Copy (v4 af1bc479)', () => {
+  /**
+   * These drive the REAL `core/download-utils` + `core/clipboard-utils` (ESM
+   * exports cannot be `vi.spyOn`-ed, and mocking them would prove only that the
+   * page called something). The anchor click and the `ClipboardItem` write are
+   * intercepted instead, so the filename and the copied MIME are measured at
+   * the browser boundary.
+   */
+  let clicked: { download: string; href: string } | null;
+  let clipboardWrites: unknown[][];
+  let clipboardFails: boolean;
+
+  beforeEach(() => {
+    (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class {
+      observe(): void {}
+      disconnect(): void {}
+    };
+    clicked = null;
+    clipboardWrites = [];
+    clipboardFails = false;
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = () => 'blob:photo';
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = () => {};
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked = { download: this.download, href: this.href };
+    });
+    (globalThis as unknown as { ClipboardItem: unknown }).ClipboardItem = class {
+      constructor(public readonly items: Record<string, Blob>) {}
+    };
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        write: (items: unknown[]) => {
+          if (clipboardFails) return Promise.reject(new Error('denied'));
+          clipboardWrites.push(items);
+          return Promise.resolve();
+        },
+      },
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  /** Open the modal on the first card so the footer renders. */
+  async function openModal(): Promise<ComponentFixture<PhotosPage>> {
+    const { fixture } = await render([
+      { entries: [entry({ linkId: 'L1', fileName: 'a.webp' })], total: 1, hasMore: false },
+    ]);
+    (
+      fixture.componentInstance as unknown as { selected: { set: (e: GalleryEntry) => void } }
+    ).selected.set(entry({ linkId: 'L1', fileName: 'a.webp' }));
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders v4’s three-button footer row with its icons and title', async () => {
+    const fixture = await openModal();
+    const buttons = [...(fixture.nativeElement as HTMLElement).querySelectorAll('footer button')];
+    expect(buttons.map((b) => (b.textContent ?? '').trim())).toEqual([
+      'Remove from this album',
+      'Download',
+      'Copy',
+      'Close',
+    ]);
+    expect(
+      [...(fixture.nativeElement as HTMLElement).querySelectorAll('footer qt-icon')].map((i) =>
+        i.getAttribute('name'),
+      ),
+    ).toEqual(['download', 'copy']);
+    expect(buttons[2].getAttribute('title')).toBe('Copy image to clipboard');
+  });
+
+  it('Download fetches the displayed bytes and saves them under entry.fileName', async () => {
+    const fixture = await openModal();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: true, blob: async () => new Blob(['bytes']) } as unknown as Response);
+
+    const page = fixture.componentInstance as unknown as {
+      onDownload: (e: GalleryEntry) => Promise<void>;
+      downloading: () => boolean;
+    };
+    await page.onDownload.call(page, entry({ linkId: 'L1', fileName: 'a.webp' }));
+
+    expect(fetchSpy).toHaveBeenCalledWith('/api/v1/mount-points/MP1/blobs/photos/a.webp');
+    expect(clicked).toEqual({ download: 'a.webp', href: 'blob:photo' });
+    // The busy latch is released again (v4's `finally`).
+    expect(page.downloading()).toBe(false);
+  });
+
+  it('a non-ok response toasts v4’s sentence and downloads nothing', async () => {
+    const fixture = await openModal();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 404,
+    } as unknown as Response);
+    const err = vi.spyOn(TestBed.inject(ToastService), 'showError');
+
+    const page = fixture.componentInstance as unknown as {
+      onDownload: (e: GalleryEntry) => Promise<void>;
+      downloading: () => boolean;
+    };
+    await page.onDownload.call(page, entry({ linkId: 'L1', fileName: 'a.webp' }));
+
+    expect(clicked).toBeNull();
+    expect(err).toHaveBeenCalledWith('Failed to download photo');
+    expect(page.downloading()).toBe(false);
+  });
+
+  it('Copy writes an image/png ClipboardItem and toasts the success sentence', async () => {
+    const fixture = await openModal();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['bytes'], { type: 'image/png' }),
+    } as unknown as Response);
+    const ok = vi.spyOn(TestBed.inject(ToastService), 'showSuccess');
+
+    const page = fixture.componentInstance as unknown as {
+      onCopy: (e: GalleryEntry) => Promise<void>;
+    };
+    await page.onCopy.call(page, entry({ linkId: 'L1' }));
+
+    expect(clipboardWrites).toHaveLength(1);
+    // v4's clipboard util only ever writes `image/png`.
+    expect(Object.keys((clipboardWrites[0][0] as { items: Record<string, Blob> }).items)).toEqual([
+      'image/png',
+    ]);
+    expect(ok).toHaveBeenCalledWith('Image copied to clipboard');
+  });
+
+  it('a refused clipboard write toasts v4’s failure sentence', async () => {
+    const fixture = await openModal();
+    clipboardFails = true;
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['bytes'], { type: 'image/png' }),
+    } as unknown as Response);
+    const err = vi.spyOn(TestBed.inject(ToastService), 'showError');
+
+    const page = fixture.componentInstance as unknown as {
+      onCopy: (e: GalleryEntry) => Promise<void>;
+    };
+    await page.onCopy.call(page, entry({ linkId: 'L1' }));
+
+    expect(err).toHaveBeenCalledWith('Failed to copy image to clipboard');
   });
 });
 

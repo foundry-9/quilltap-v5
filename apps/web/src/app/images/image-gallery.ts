@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
 
 import { apiUrl } from '../core/api-url';
+import { triggerBlobDownload } from '../core/download-utils';
 import { Icon } from '../ui/icon';
 import { DeletedImagePlaceholder } from './deleted-image-placeholder';
 import { ToastService } from '../ui/toast.service';
@@ -11,8 +12,8 @@ import type { ImageData } from './images.api';
  * `components/images/image-gallery.tsx` (187 lines): per-tile missing-image
  * detection (BOTH arms — `onError` AND the zero-dimension `onLoad` check,
  * `image-gallery.tsx:146-155`), the deleted-image placeholder swap, the
- * hover delete overlay (hidden for missing tiles, `:161`), and the optional
- * selection affordance.
+ * hover delete overlay (hidden for missing tiles, `:161`), the hover DOWNLOAD
+ * button beside it (v4 `af1bc479`), and the optional selection affordance.
  *
  * **Data-ownership divergence, loud:** v4 self-fetches
  * `GET /api/v1/images?tagType&tagId` (`:47-56`) — a LIST route v5 has not
@@ -78,6 +79,15 @@ import type { ImageData } from './images.api';
               >
                 <button
                   type="button"
+                  class="absolute bottom-2 left-2 qt-bg-overlay-btn hover:qt-bg-overlay-btn qt-text-overlay p-2 rounded-full transition-colors"
+                  title="Download image"
+                  aria-label="Download image"
+                  (click)="$event.stopPropagation(); handleDownloadImage(image)"
+                >
+                  <qt-icon name="download" class="w-5 h-5" />
+                </button>
+                <button
+                  type="button"
                   class="absolute bottom-2 right-2 bg-destructive qt-text-destructive-foreground p-2 rounded-full hover:qt-bg-destructive/90 transition-colors"
                   title="Delete image"
                   aria-label="Delete image"
@@ -130,6 +140,23 @@ export class ImageGallery {
   protected checkDimensions(img: HTMLImageElement, id: string): void {
     if (img.naturalWidth === 0 || img.naturalHeight === 0) {
       this.markMissing(id);
+    }
+  }
+
+  /**
+   * v4 `handleDownloadImage` (`af1bc479`) — the hover download on each tile.
+   * Fetches the same source the tile renders and hands it to the shared util.
+   */
+  protected async handleDownloadImage(image: ImageData): Promise<void> {
+    try {
+      const response = await fetch(this.srcFor(image));
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image (${response.status})`);
+      }
+      const blob = await response.blob();
+      triggerBlobDownload(blob, image.filename);
+    } catch {
+      this.toasts.showError('Failed to download image');
     }
   }
 

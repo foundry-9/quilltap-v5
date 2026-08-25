@@ -11,6 +11,7 @@ import {
 import { RouterLink } from '@angular/router';
 
 import { CoreClient } from '../../core/core-client';
+import { triggerBlobDownload } from '../../core/download-utils';
 import { onTabActivated } from '../../workspace/workspace-contract';
 import { ImageProfilePicker } from '../../images/image-profile-picker';
 import { ImageModal } from '../../images/image-modal';
@@ -425,21 +426,22 @@ export class GenerateImagePage implements OnInit {
   }
 
   /**
-   * v4 `:151-166` — a client-side blob download. There is no server "save" from
-   * this screen; the bytes are fetched back and handed to an anchor.
+   * v4 `:151-162` — a client-side blob download. There is no server "save" from
+   * this screen; the bytes are fetched back and handed to the shared util.
+   *
+   * v4 `af1bc479` replaced its own hand-rolled anchor click with
+   * `triggerDownload` (so the Electron shell gets a native save dialog); v5
+   * converges onto `core/download-utils` the same way, and gains the same
+   * `res.ok` guard — a 404 body used to be "downloaded" as a file.
    */
   protected async onDownload(image: GeneratedImage): Promise<void> {
     try {
       const res = await fetch(this.srcFor(image));
+      if (!res.ok) {
+        throw new Error(`Failed to fetch image (${res.status})`);
+      }
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = image.filename || 'generated-image.png';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      triggerBlobDownload(blob, image.filename || 'generated-image.png');
     } catch {
       this.toasts.showError('Failed to download image');
     }

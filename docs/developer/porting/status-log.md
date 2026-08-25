@@ -85649,3 +85649,65 @@ legs the differential has to mask and the UTF-16 astral boundary.
 
 Regen recipe: unchanged — `python3 harness/tools/recipe_sweep.py --run
 projects_routes_equivalence`.
+
+### Unit 3 — the four download surfaces + the clipboard util (v4 `af1bc479`, client half)
+
+v4's commit routes more surfaces through `lib/download-utils.ts` (which
+predates the drift — v5's `core/download-utils.ts` already existed and is NOT
+re-ported) and adds the buttons. All four v5 counterparts landed:
+
+| v4 | v5 |
+|---|---|
+| `PhotosView.tsx` `PhotoDetailModal` footer | `screens/photos/photos-page.ts` (the modal is inline in the page) |
+| `scriptorium/[id]/components/FileTable.tsx` `FileDetailRow` | `screens/scriptorium/file-detail-row.ts` |
+| `generate-image/GenerateImageView.tsx` `handleDownload` | `screens/generate-image/generate-image-page.ts` `onDownload` |
+| `components/images/image-gallery.tsx` hover button | `images/image-gallery.ts` |
+
+Sentences, labels, icons and gating carried byte-for-byte: `Downloading…`,
+`Failed to download photo`, `Image copied to clipboard`,
+`Failed to copy image to clipboard`, `Failed to download file`,
+`Failed to download image`, `Copy image to clipboard` (the title attribute),
+`Download image` (title + aria-label), and the `download`/`copy` icon names.
+The FileTable and gallery buttons are gated on exactly what v4 gates them on
+(`blobUrl` / `!missingImages.has(id)`), and v4's why-comment about the WebP
+transcode is carried at BOTH sites that pick a filename.
+
+**New file:** `apps/web/src/app/core/clipboard-utils.ts` — v4's
+`lib/clipboard-utils.ts` browser arm transcribed whole, including the two
+comments that are load-bearing: the Clipboard API comes FIRST (not as a
+fallback) so a copy pastes back into the same renderer, and the canvas source
+is a **data URL, not a `blob:` URL**, because the CSP `img-src` allows one and
+not the other. v4's Electron IPC fallback has no v5 bridge — recorded as a
+non-goal in the header, the same class as `download-utils`' native save arm,
+and v4's own terminal sentence (`No clipboard write method available`) is what
+a v4 browser build reaches too.
+
+**A convergence NOT made, deliberately.** v5 has accumulated six other
+hand-rolled anchor-click download sites (`images/image-modal.ts`,
+`images/chat-gallery-image-view-modal.ts`, `images/image-detail-modal.ts`,
+`screens/files/file-preview-modal.ts`, and two in `characters.api.ts`). v4 did
+NOT converge its counterparts of those in `af1bc479`; converging them would be
+v5-invented drift. Census recorded here for a future v4 convergence.
+`images/image-detail-modal.ts` also keeps its own inline clipboard write
+(v4's counterpart likewise does not route through `clipboard-utils`).
+
+**Proofs** — the specs drive the REAL utils and intercept the browser
+boundary (`HTMLAnchorElement.prototype.click`, a stubbed `navigator.clipboard`
++ `ClipboardItem`), rather than mocking the module (ESM exports cannot be
+`vi.spyOn`-ed, and mocking would prove only that the page called *something*):
+
+- `photos.spec.ts` +5: the footer's button ORDER, icons and title; a download
+  saving under `entry.fileName`; the non-ok arm toasting and downloading
+  nothing; a copy writing an `image/png` ClipboardItem; a refused write's
+  toast.
+- `file-detail-row.spec.ts` (new) +4: present with `blobUrl`, absent without,
+  saved under `file.fileName` NOT the blob's `originalFileName` (the fixture
+  makes them disagree, which is v4's whole why-comment), the non-ok toast.
+- `image-gallery.spec.ts` +3: one download button per tile in v4's bottom-LEFT
+  corner, the fetch + filename, and `stopPropagation` keeping the click off the
+  tile's select handler.
+- `generate-image-page.spec.ts` +3: the file-id source, the
+  `generated-image.png` fallback, and the NEW `res.ok` guard.
+
+**Mutation proof:** `triggerBlobDownload(blob, entry.fileName)` →
+`entry.relativePath` reds the photos download spec.

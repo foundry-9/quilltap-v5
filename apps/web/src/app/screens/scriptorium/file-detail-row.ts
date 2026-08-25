@@ -1,6 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, input, OnInit, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  OnInit,
+  output,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 
+import { triggerBlobDownload } from '../../core/download-utils';
+import { ToastService } from '../../ui/toast.service';
 import type { DocumentStoreBlob, DocumentStoreFile } from './scriptorium.api';
 
 /** File types backed by the blob store (pdf/docx/generic binary). */
@@ -78,6 +89,11 @@ export function isBlobBacked(fileType: string): boolean {
                 Open bytes
               </a>
             }
+            @if (blobUrl()) {
+              <button type="button" (click)="download()" class="qt-button-secondary text-xs">
+                Download
+              </button>
+            }
             <button type="button" (click)="copyMarkdown()" class="qt-button-secondary text-xs">
               Copy link
             </button>
@@ -112,6 +128,8 @@ export class FileDetailRow implements OnInit {
   /** Open this definition on Pascal's Workbench (the table owns the route). */
   readonly openWorkbench = output<string>();
 
+  private readonly toasts = inject(ToastService);
+
   protected readonly description = signal('');
 
   /** v4 `isCustomToolDefinition` — ROOT-level `Tools/*.tool.json`, case-insensitive. */
@@ -129,6 +147,31 @@ export class FileDetailRow implements OnInit {
 
   ngOnInit(): void {
     this.description.set(this.blob()?.description ?? '');
+  }
+
+  /**
+   * v4 `FileDetailRow.handleDownload` (`af1bc479`) — fetch the served bytes and
+   * hand them to the shared download util.
+   *
+   * The name is `file.fileName`, which tracks the STORED bytes: uploads are
+   * transcoded to WebP, so `blob.originalFileName`'s extension can mismatch
+   * what the endpoint serves. It is only the second chance.
+   */
+  protected async download(): Promise<void> {
+    const url = this.blobUrl();
+    if (!url) {
+      return;
+    }
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch file (${res.status})`);
+      }
+      const bytes = await res.blob();
+      triggerBlobDownload(bytes, this.file().fileName || this.blob()?.originalFileName || 'file');
+    } catch {
+      this.toasts.showError('Failed to download file');
+    }
   }
 
   protected async copyMarkdown(): Promise<void> {

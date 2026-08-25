@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ImageGallery } from './image-gallery';
 import type { ImageData } from './images.api';
@@ -166,5 +166,96 @@ describe('ImageGallery — deleted image handling', () => {
       const { fixture } = await render({ images: [] });
       expect(fixture.nativeElement.textContent).toContain('No images found');
     });
+  });
+});
+
+/**
+ * The hover download button (v4 `af1bc479`). This component still has NO v5
+ * host (see its header), so the proof is spec-only — the mirror stays in step
+ * with v4 rather than drifting until a host lands.
+ */
+describe('ImageGallery — hover download (v4 af1bc479)', () => {
+  let clicked: { download: string; href: string } | null;
+
+  beforeEach(() => {
+    clicked = null;
+    (URL as unknown as { createObjectURL: unknown }).createObjectURL = () => 'blob:tile';
+    (URL as unknown as { revokeObjectURL: unknown }).revokeObjectURL = () => {};
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      clicked = { download: this.download, href: this.href };
+    });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  async function render(images: ImageData[]): Promise<ComponentFixture<ImageGallery>> {
+    TestBed.configureTestingModule({ imports: [ImageGallery] });
+    const fixture = TestBed.createComponent(ImageGallery);
+    fixture.componentRef.setInput('images', images);
+    fixture.detectChanges();
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    return fixture;
+  }
+
+  it('every tile carries a download button in v4’s bottom-LEFT corner', async () => {
+    const fixture = await render([image({}), image({ id: 'b', filename: 'b.png' })]);
+    const buttons = [
+      ...fixture.nativeElement.querySelectorAll('button[aria-label="Download image"]'),
+    ] as HTMLButtonElement[];
+    expect(buttons).toHaveLength(2);
+    // v4 puts Download bottom-left and Delete bottom-right on the same overlay.
+    expect(buttons[0].className).toContain('left-2');
+    expect(buttons[0].getAttribute('title')).toBe('Download image');
+    expect(buttons[0].querySelector('qt-icon')?.getAttribute('name')).toBe('download');
+  });
+
+  it('a click fetches the tile’s own source and saves it under image.filename', async () => {
+    const fixture = await render([image({})]);
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({ ok: true, blob: async () => new Blob(['b']) } as unknown as Response);
+
+    const button = fixture.nativeElement.querySelector(
+      'button[aria-label="Download image"]',
+    ) as HTMLButtonElement;
+    button.click();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    expect(fetchSpy).toHaveBeenCalledWith('/uploads/valid1.png');
+    expect(clicked).toEqual({ download: 'valid1.png', href: 'blob:tile' });
+  });
+
+  it('the click does NOT fall through to the tile’s select handler', async () => {
+    const selected: string[] = [];
+    TestBed.configureTestingModule({ imports: [ImageGallery] });
+    const fixture = TestBed.createComponent(ImageGallery);
+    fixture.componentRef.setInput('images', [image({})]);
+    fixture.componentRef.setInput('onSelectImage', (img: ImageData) => selected.push(img.id));
+    fixture.detectChanges();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['b']),
+    } as unknown as Response);
+
+    (
+      fixture.nativeElement.querySelector(
+        'button[aria-label="Download image"]',
+      ) as HTMLButtonElement
+    ).click();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(selected).toEqual([]);
   });
 });

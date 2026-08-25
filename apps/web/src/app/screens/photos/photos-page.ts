@@ -13,6 +13,10 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { CoreClient } from '../../core/core-client';
+import { copyImageToClipboard } from '../../core/clipboard-utils';
+import { triggerBlobDownload } from '../../core/download-utils';
+import { Icon } from '../../ui/icon';
+import { ToastService } from '../../ui/toast.service';
 import { onTabActivated } from '../../workspace/workspace-contract';
 import {
   GalleryEntry,
@@ -62,7 +66,7 @@ import {
 @Component({
   selector: 'qt-photos-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, Icon],
   // v4's detail modal binds Escape on `window` (`:394-400`). The listener is
   // declared on the page rather than the modal because the modal is inline
   // control flow here, not a child component with its own lifecycle.
@@ -314,9 +318,29 @@ import {
               >
                 {{ deleting() === entry.linkId ? 'Removing…' : 'Remove from this album' }}
               </button>
-              <button type="button" class="qt-button-secondary" (click)="selected.set(null)">
-                Close
-              </button>
+              <div class="flex items-center gap-3">
+                <button
+                  type="button"
+                  class="qt-button-secondary inline-flex items-center gap-2"
+                  [disabled]="downloading()"
+                  (click)="onDownload(entry)"
+                >
+                  <qt-icon name="download" class="h-4 w-4" />
+                  {{ downloading() ? 'Downloading…' : 'Download' }}
+                </button>
+                <button
+                  type="button"
+                  class="qt-button-secondary inline-flex items-center gap-2"
+                  title="Copy image to clipboard"
+                  (click)="onCopy(entry)"
+                >
+                  <qt-icon name="copy" class="h-4 w-4" />
+                  Copy
+                </button>
+                <button type="button" class="qt-button-secondary" (click)="selected.set(null)">
+                  Close
+                </button>
+              </div>
             </footer>
           </div>
         </div>
@@ -326,6 +350,7 @@ import {
 })
 export class PhotosPage implements OnDestroy {
   private readonly core = inject(CoreClient);
+  private readonly toasts = inject(ToastService);
 
   protected readonly PAGE_SIZE = PAGE_SIZE;
   protected readonly entries = signal<GalleryEntry[]>([]);
@@ -338,6 +363,8 @@ export class PhotosPage implements OnDestroy {
   protected readonly appliedQuery = signal('');
   protected readonly selected = signal<GalleryEntry | null>(null);
   protected readonly deleting = signal<string | null>(null);
+  /** v4 `PhotoDetailModal`'s `downloading` (`af1bc479`). */
+  protected readonly downloading = signal(false);
 
   /**
    * v4's `fetchGenerationRef` (`:77`). Every new search bumps it; a resolved
@@ -533,6 +560,37 @@ export class PhotosPage implements OnDestroy {
       this.error.set(messageOf(err, 'Failed to delete'));
     } finally {
       this.deleting.set(null);
+    }
+  }
+
+  /**
+   * v4 `PhotoDetailModal.handleDownload` (`af1bc479`): fetch the displayed
+   * bytes, then hand them to the shared download util — so the picture is
+   * reachable in a shell with no right-click Save Image.
+   */
+  protected async onDownload(entry: GalleryEntry): Promise<void> {
+    this.downloading.set(true);
+    try {
+      const res = await fetch(this.imageUrl(entry));
+      if (!res.ok) {
+        throw new Error(`Failed to fetch image (${res.status})`);
+      }
+      const blob = await res.blob();
+      triggerBlobDownload(blob, entry.fileName);
+    } catch {
+      this.toasts.showError('Failed to download photo');
+    } finally {
+      this.downloading.set(false);
+    }
+  }
+
+  /** v4 `PhotoDetailModal.handleCopy` (`af1bc479`). */
+  protected async onCopy(entry: GalleryEntry): Promise<void> {
+    try {
+      await copyImageToClipboard(this.imageUrl(entry));
+      this.toasts.showSuccess('Image copied to clipboard');
+    } catch {
+      this.toasts.showError('Failed to copy image to clipboard');
     }
   }
 
