@@ -20,6 +20,8 @@
 use serde_json::{json, Map, Value};
 
 use crate::collation::locale_compare;
+use crate::db::chats_outfits::ChatOutfitsRepository;
+use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::document_store_overlay::OverlayError;
@@ -31,8 +33,13 @@ use crate::db::groups::{
     GroupsRepository,
 };
 use crate::db::runtime::Db;
-use crate::db::{characters_read, DbError};
+use crate::db::vault_wardrobe_public::{
+    create_project_wardrobe_item, delete_project_wardrobe_item, update_project_wardrobe_item,
+    WardrobePatch, WardrobePublicError,
+};
+use crate::db::{archetype_wardrobe, characters_read, DbError};
 use crate::services::image_job_common::with_both_conns;
+use crate::vault_overlay::WardrobeItem;
 
 use super::scenarios as scenarios_api;
 use super::types::{db_error_response, ErrorKind, Response};
@@ -956,5 +963,367 @@ pub async fn group_state_reset(db: &Db, group_id: &str) -> Response {
             tracing::error!(target: "quilltap::groups", error = %e, "Error resetting state");
             Response::error(ErrorKind::Internal, "Failed to reset state")
         }
+    }
+}
+
+// ===========================================================================
+// Group wardrobe CRUD (P4.D112 — v4 `d7263f39` `groups/[id]/wardrobe/route.ts`
+// + `[itemId]/route.ts`). The group tier of the four-tier wardrobe model
+// (character vault > group stores > project stores > Quilltap General),
+// mirroring the project wardrobe routes. Group and project items share the
+// same mount-folder storage, so the writes reuse the mount-scoped helpers in
+// `vault_wardrobe_public`. Served DISPATCH-ONLY (the project-wardrobe
+// precedent — v4's REST URLs get no quilltap-web edge; the SPA calls the
+// dispatch verbs and nothing else consumes the URL).
+// ===========================================================================
+
+/// The v4 wardrobe schemas' field bag, validated Zod-faithfully. Both schemas
+/// share `wardrobeItemFieldsSchema`; `createWardrobeSchema` uses it as-is and
+/// `updateWardrobeSchema` is its `.partial()`. A ZodError escapes the route
+/// into v4's middleware, which answers the FLAT 400 `{error: 'Validation
+/// error'}` (the `details` issue array is the standing project-wide deferral).
+struct WardrobeFields {
+    title: Option<String>,
+    description: Option<Option<String>>,
+    image_prompt: Option<Option<String>>,
+    types: Option<Vec<String>>,
+    appropriateness: Option<Option<String>>,
+    is_default: Option<bool>,
+    component_item_ids: Option<Vec<String>>,
+    replace: Option<bool>,
+}
+
+/// Parse the shared field bag. `partial` = the update schema (every field
+/// optional); create additionally requires `title` + `types`. `Err(())` = any
+/// ZodError (the caller answers the flat `Validation error`). The checks
+/// mirror Zod: `.min(1)` counts UTF-16 units on the RAW string (no trim);
+/// `types` elements must be members of the slot enum; the nullable-optional
+/// strings accept absent | null | string; `title`/`types`/booleans/
+/// `componentItemIds` are optional but NOT nullable. `z.object` is non-strict,
+/// so unknown keys are stripped (the builders below read only known fields).
+fn parse_wardrobe_fields(body: &Value, partial: bool) -> Result<WardrobeFields, ()> {
+    let Some(obj) = body.as_object() else {
+        return Err(());
+    };
+    let get = |k: &str| obj.get(k);
+
+    // title: z.string().min(1) (create) / the same `.optional()` (update).
+    let title = match get("title") {
+        None if partial => None,
+        Some(Value::String(s)) if crate::jsstr::utf16_len(s) >= 1 => Some(s.clone()),
+        _ => return Err(()),
+    };
+
+    // The three nullable-optional strings.
+    let nullable = |k: &str| -> Result<Option<Option<String>>, ()> {
+        match get(k) {
+            None => Ok(None),
+            Some(Value::Null) => Ok(Some(None)),
+            Some(Value::String(s)) => Ok(Some(Some(s.clone()))),
+            _ => Err(()),
+        }
+    };
+    let description = nullable("description")?;
+    let image_prompt = nullable("imagePrompt")?;
+    let appropriateness = nullable("appropriateness")?;
+
+    // types: z.array(WardrobeItemTypeEnum).min(1) (`.optional()` on update).
+    let types = match get("types") {
+        None if partial => None,
+        Some(Value::Array(a)) if !a.is_empty() => {
+            let mut out = Vec::with_capacity(a.len());
+            for v in a {
+                match v.as_str() {
+                    Some(s) if crate::wardrobe::WARDROBE_SLOT_TYPES.contains(&s) => {
+                        out.push(s.to_string())
+                    }
+                    _ => return Err(()),
+                }
+            }
+            Some(out)
+        }
+        _ => return Err(()),
+    };
+
+    // isDefault / replace: z.boolean().optional().
+    let boolean = |k: &str| -> Result<Option<bool>, ()> {
+        match get(k) {
+            None => Ok(None),
+            Some(Value::Bool(b)) => Ok(Some(*b)),
+            _ => Err(()),
+        }
+    };
+    let is_default = boolean("isDefault")?;
+    let replace = boolean("replace")?;
+
+    // componentItemIds: z.array(z.string()).optional().
+    let component_item_ids = match get("componentItemIds") {
+        None => None,
+        Some(Value::Array(a)) => {
+            let mut out = Vec::with_capacity(a.len());
+            for v in a {
+                match v.as_str() {
+                    Some(s) => out.push(s.to_string()),
+                    None => return Err(()),
+                }
+            }
+            Some(out)
+        }
+        _ => return Err(()),
+    };
+
+    Ok(WardrobeFields {
+        title,
+        description,
+        image_prompt,
+        types,
+        appropriateness,
+        is_default,
+        component_item_ids,
+        replace,
+    })
+}
+
+/// v4's route-level write-error split: a component-cycle rejection from the
+/// vault writer surfaces as a plain Error → 400 with ITS message; anything
+/// else rethrows into the middleware → the generic 500.
+fn group_wardrobe_write_err(e: WardrobePublicError) -> Response {
+    match e {
+        WardrobePublicError::Cycle(msg) => bad_request(msg),
+        _ => Response::error(ErrorKind::Internal, "Internal server error"),
+    }
+}
+
+/// Resolve the group + ensure its official store AND the `Wardrobe/` folder
+/// (the COLLECTION routes' shape — v4 `route.ts` GET/POST both ensure the
+/// folder). `Ok(Err(..))` carries the refusal: 404 `Group` when the group is
+/// absent, the explicit 500 sentence when the store ensure fails.
+fn ensure_group_wardrobe_mount(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    group_id: &str,
+) -> Result<Result<String, Response>, DbError> {
+    let repo = GroupsRepository::new(main, mount);
+    let Some(group) = repo.find_by_id(group_id).map_err(overlay_to_db)? else {
+        return Ok(Err(not_found("Group")));
+    };
+    let name = group.get("name").and_then(Value::as_str).unwrap_or("");
+    let Some(ensured) = ensure_official_store::<GroupEntity>(main, mount, group_id, name)? else {
+        return Ok(Err(internal("Failed to ensure group document store")));
+    };
+    let links = DocMountFileLinksRepository::new(mount);
+    archetype_wardrobe::ensure_group_wardrobe_folder(&links, &ensured.mount_point_id)?;
+    Ok(Ok(ensured.mount_point_id))
+}
+
+/// v4 `resolveGroupMount` (the ITEM routes' shape — store ensure only, NO
+/// `Wardrobe/` folder ensure): the group is absent OR the ensure fails →
+/// `None` → the caller's 404 `Group`.
+fn resolve_group_wardrobe_mount(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    group_id: &str,
+) -> Result<Option<String>, DbError> {
+    let repo = GroupsRepository::new(main, mount);
+    let Some(group) = repo.find_by_id(group_id).map_err(overlay_to_db)? else {
+        return Ok(None);
+    };
+    let name = group.get("name").and_then(Value::as_str).unwrap_or("");
+    Ok(
+        ensure_official_store::<GroupEntity>(main, mount, group_id, name)?
+            .map(|e| e.mount_point_id),
+    )
+}
+
+/// v4 GET `/groups/[id]/wardrobe`: `{ mountPointId, wardrobeItems }` (include
+/// archived).
+pub fn group_wardrobe_list(db: &Db, group_id: &str) -> Response {
+    let gid = group_id.to_string();
+    let out = read_both(db, move |main, mount| {
+        let mp = match ensure_group_wardrobe_mount(main, mount, &gid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        let docs = DocMountDocumentsRepository::new(mount);
+        let items = archetype_wardrobe::read_group_wardrobe(&docs, &mp, true)?;
+        Ok(Ok((mp, items)))
+    });
+    match out {
+        Ok(Ok((mp, items))) => {
+            Response::Group(json!({ "mountPointId": mp, "wardrobeItems": items }))
+        }
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 POST `/groups/[id]/wardrobe`: find-group FIRST (404 `Group`), THEN parse
+/// `createWardrobeSchema` (400 `Validation error`), mint the item id + ISO
+/// timestamps IN THE ROUTE, create in the group store, re-list. Body
+/// `{ mountPointId, wardrobeItem, wardrobeItems }` (201 at v4's transport).
+/// Component cycles → 400 with the writer's message.
+pub async fn group_wardrobe_create(db: &Db, group_id: &str, body: Value) -> Response {
+    let gid = group_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        // v4 order: repos.groups.findById → notFound BEFORE the schema parse.
+        {
+            let repo = GroupsRepository::new(main, mount);
+            if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
+                return Ok(Err(not_found("Group")));
+            }
+        }
+        let Ok(fields) = parse_wardrobe_fields(&body, false) else {
+            return Ok(Err(bad_request(VALIDATION_ERROR)));
+        };
+        let mp = match ensure_group_wardrobe_mount(main, mount, &gid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        // v4 mints id + ISO timestamps + the explicit-null columns.
+        let now = crate::clock::now_iso();
+        let item = WardrobeItem {
+            id: uuid::Uuid::new_v4().to_string(),
+            character_id: Some(None),
+            title: fields.title.unwrap_or_default(),
+            description: Some(fields.description.flatten()),
+            image_prompt: Some(fields.image_prompt.flatten()),
+            types: fields.types.unwrap_or_default(),
+            component_item_ids: fields.component_item_ids.unwrap_or_default(),
+            appropriateness: Some(fields.appropriateness.flatten()),
+            is_default: fields.is_default.unwrap_or(false),
+            replace: fields.replace.unwrap_or(false),
+            migrated_from_clothing_record_id: Some(None),
+            archived_at: Some(None),
+            created_at: now.clone(),
+            updated_at: now,
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        let docs = DocMountDocumentsRepository::new(mount);
+        let stored = match create_project_wardrobe_item(main, &links, &docs, &mp, &item) {
+            Ok(s) => s,
+            Err(e) => return Ok(Err(group_wardrobe_write_err(e))),
+        };
+        // Return the freshly listed items so the client needs no follow-up GET.
+        let items = archetype_wardrobe::read_group_wardrobe(&docs, &mp, true)?;
+        Ok(Ok((
+            mp,
+            serde_json::to_value(stored).unwrap_or(Value::Null),
+            items,
+        )))
+    })
+    .await;
+    match out {
+        Ok(Ok((mp, item, items))) => Response::Group(json!({
+            "mountPointId": mp,
+            "wardrobeItem": item,
+            "wardrobeItems": items,
+        })),
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 GET `/groups/[id]/wardrobe/[itemId]`: `{ wardrobeItem }` or the 404s.
+pub fn group_wardrobe_get(db: &Db, group_id: &str, item_id: &str) -> Response {
+    let gid = group_id.to_string();
+    let iid = item_id.to_string();
+    let out = read_both(db, move |main, mount| {
+        let Some(mp) = resolve_group_wardrobe_mount(main, mount, &gid)? else {
+            return Ok(None);
+        };
+        let docs = DocMountDocumentsRepository::new(mount);
+        let items = archetype_wardrobe::read_group_wardrobe(&docs, &mp, true)?;
+        Ok(Some(items.into_iter().find(|i| {
+            i.get("id").and_then(Value::as_str) == Some(iid.as_str())
+        })))
+    });
+    match out {
+        Ok(Some(Some(item))) => Response::Group(json!({ "wardrobeItem": item })),
+        Ok(Some(None)) => not_found("Group wardrobe item"),
+        Ok(None) => not_found("Group"),
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 PUT `/groups/[id]/wardrobe/[itemId]`: resolve the mount (404 `Group`),
+/// parse `updateWardrobeSchema` (400 `Validation error`), apply the patch.
+/// Body `{ wardrobeItem }`; cycles → 400; missing item → 404.
+pub async fn group_wardrobe_update(
+    db: &Db,
+    group_id: &str,
+    item_id: &str,
+    body: Value,
+) -> Response {
+    let gid = group_id.to_string();
+    let iid = item_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let Some(mp) = resolve_group_wardrobe_mount(main, mount, &gid)? else {
+            return Ok(Err(not_found("Group")));
+        };
+        let Ok(fields) = parse_wardrobe_fields(&body, true) else {
+            return Ok(Err(bad_request(VALIDATION_ERROR)));
+        };
+        let patch = WardrobePatch {
+            title: fields.title,
+            types: fields.types,
+            component_item_ids: fields.component_item_ids,
+            description: fields.description,
+            image_prompt: fields.image_prompt,
+            appropriateness: fields.appropriateness,
+            is_default: fields.is_default,
+            replace: fields.replace,
+            archived_at: None,
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        let docs = DocMountDocumentsRepository::new(mount);
+        match update_project_wardrobe_item(main, &links, &docs, &mp, &iid, &patch) {
+            // Re-read through the overlay so the echo carries the full
+            // null-inclusive shape v4's JS object emits (the WardrobeItem
+            // struct serialize skips `None` fields; the Value read path
+            // renders them as null).
+            Ok(Some(_)) => {
+                let item = archetype_wardrobe::read_group_wardrobe(&docs, &mp, true)?
+                    .into_iter()
+                    .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
+                    .unwrap_or(Value::Null);
+                Ok(Ok(item))
+            }
+            Ok(None) => Ok(Err(not_found("Group wardrobe item"))),
+            Err(e) => Ok(Err(group_wardrobe_write_err(e))),
+        }
+    })
+    .await;
+    match out {
+        Ok(Ok(item)) => Response::Group(json!({ "wardrobeItem": item })),
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 DELETE `/groups/[id]/wardrobe/[itemId]`:
+/// `removeEquippedItemFromAllChats(itemId)` warn-and-proceed → delete. Body
+/// `{ success: true }`; missing item → 404 `Group wardrobe item`.
+pub async fn group_wardrobe_delete(db: &Db, group_id: &str, item_id: &str) -> Response {
+    let gid = group_id.to_string();
+    let iid = item_id.to_string();
+    let out = with_both_conns(db, move |main, mount| {
+        let Some(mp) = resolve_group_wardrobe_mount(main, mount, &gid)? else {
+            return Ok(Err(not_found("Group")));
+        };
+        // warn-and-proceed cleanup (v4 wraps this in its own try/catch → warn).
+        let _ = ChatOutfitsRepository::new(main).remove_equipped_item_from_all_chats(&iid);
+        let links = DocMountFileLinksRepository::new(mount);
+        let docs = DocMountDocumentsRepository::new(mount);
+        match delete_project_wardrobe_item(main, &links, &docs, &mp, &iid) {
+            Ok(true) => Ok(Ok(())),
+            Ok(false) => Ok(Err(not_found("Group wardrobe item"))),
+            Err(e) => Ok(Err(group_wardrobe_write_err(e))),
+        }
+    })
+    .await;
+    match out {
+        Ok(Ok(())) => Response::Group(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
     }
 }

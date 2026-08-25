@@ -2438,6 +2438,33 @@ impl CoreEngine {
                 Ok(db) => super::groups::group_scenarios_union(&db, character_ids).await,
                 Err(r) => r,
             },
+            // --- Group wardrobe CRUD (P4.D112) ------------------------------
+            Request::GroupWardrobeList { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_wardrobe_list(&db, &group_id),
+                Err(r) => r,
+            },
+            Request::GroupWardrobeCreate { group_id, item } => match self.ready_db() {
+                Ok(db) => super::groups::group_wardrobe_create(&db, &group_id, item).await,
+                Err(r) => r,
+            },
+            Request::GroupWardrobeGet { group_id, item_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_wardrobe_get(&db, &group_id, &item_id),
+                Err(r) => r,
+            },
+            Request::GroupWardrobeUpdate {
+                group_id,
+                item_id,
+                item,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_wardrobe_update(&db, &group_id, &item_id, item).await
+                }
+                Err(r) => r,
+            },
+            Request::GroupWardrobeDelete { group_id, item_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_wardrobe_delete(&db, &group_id, &item_id).await,
+                Err(r) => r,
+            },
 
             // --- General (instance-wide) scenarios (P4.6n) -------------------
             Request::ScenarioList => match self.ready_db() {

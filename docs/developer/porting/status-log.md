@@ -85104,3 +85104,55 @@ ownership per the order's table.
 - normalize_item now blanks UUIDs inside string ARRAYS (minted copy refs);
   the literal expect* arms carry the un-normalized truth.
 - Versions: core 0.0.657, harness 0.0.575.
+
+### Unit 3 — the group wardrobe CRUD (five dispatch verbs)
+
+- v5 had NO group wardrobe verbs (confirmed at survey — zero `GroupWardrobe*`
+  variants). Landed: `Request::GroupWardrobe{List,Create,Get,Update,Delete}`
+  (serde camelCase, §Shared-contract field shapes = the `ProjectWardrobe*`
+  five), engine arms, and the handlers in `api/groups.rs` composed over the
+  EXISTING mount-scoped writers (`create/update/delete_project_wardrobe_item`
+  — v4's own comment: group and project items share the same mount-folder
+  storage) + `read_group_wardrobe` + `ensure_group_wardrobe_folder`.
+- v4-faithful splits carried: the COLLECTION routes ensure store + folder,
+  the ITEM routes resolve the store only (`resolveGroupMount` — a failed
+  ensure is a 404 `Group` there, not a 500); create checks the group BEFORE
+  parsing (the P4.55 guard-order class — v5's project-tier sibling has the
+  opposite order, recorded as a P4.D114-territory lead, not touched);
+  schema failures answer the FLAT 400 `Validation error` (the standing
+  details-array deferral); the cycle 400 carries the writer's sentence;
+  delete runs `remove_equipped_item_from_all_chats` warn-and-proceed. The
+  Zod port: UTF-16 `.min(1)` on the raw title, the `WARDROBE_SLOT_TYPES`
+  enum on every `types` element, nullable-optional vs optional-not-nullable
+  split per field.
+- **Differential (new family `group_wardrobe_routes_equivalence`):** the
+  oracle case (`group-wardrobe.test.ts`, the wardrobe-transfers real-DB jest
+  idiom) drives v4's REAL `groups/[id]/wardrobe` route files through the
+  real `createContextParamsHandler` middleware over the SAME
+  wardrobe-transfers fixture pair (its group already carries the provisioned
+  store + folder + Household Livery), built to its own `/tmp/qt-gw-*.db`
+  paths so it never clobbers the transfers family's staging. 15 cases:
+  list/create/get/update/delete + every 404 arm + the create/update schema
+  400s (invalid title, unknown slot type, empty types array, null title).
+  Bodies diff after per-case `normalize` dot-paths (fixture-baked ids stay
+  LITERAL); the seven-table remap diff runs on every case, so the error
+  arms are also whole-table nothing-was-written proofs (doc counts
+  16 → 17 on create / → 15 on delete confirmed in the fresh NDJSON).
+  Dispatch-only means success statuses (200 vs 201) live at the transport
+  and are not comparable — recorded in the family header.
+- **Mutation proof:** the delete handler's missing-item arm collapsed to
+  success → the family reds (the table diff + the 404 arm); restored,
+  green. Recipe verified end-to-end through the sweep driver
+  (`--run group_wardrobe_routes_equivalence`); driver `--self-test` clean.
+- **Tier-3 deferrals (loud):** (1) the v4 REST URLs
+  `/api/v1/groups/[id]/wardrobe[/itemId]` get NO quilltap-web edge — the
+  project-tier dispatch-only precedent; v4 serves REST, v5's SPA calls the
+  dispatch verbs, nothing else consumes the URL (the CLI has no wardrobe
+  entrance). If a future consumer needs the URL, that is its order.
+  (2) Help-doc deltas → the `p4.9i2` bank: `d7263f39` touches
+  `help/groups.md` (the group-shelf paragraph gains the Wardrobe-dropdown
+  door), `help/project-wardrobe.md` (the atelier paragraph gains the dialog
+  door), `help/wardrobe.md` (step 1 becomes pick-a-wardrobe; the merged-view
+  vs shared-container kebab paragraphs); `f6a10055` adds the
+  outfit-components paragraph to `help/wardrobe.md`. Port nothing here.
+- Versions: core 0.0.658, harness 0.0.576.

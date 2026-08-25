@@ -12,7 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
-#### 2026-08-25 — feat(wardrobe): moving or copying an outfit brings its components along (P4.D112)
+#### 2026-08-25 — feat(groups): the group wardrobe gets its own CRUD verbs (P4.D112)
+
+_Versions: quilltap-core 0.0.658, quilltap-harness 0.0.576._
+
+Ports the server half of v4 `d7263f39`'s new group wardrobe API
+(`/api/v1/groups/[id]/wardrobe[/itemId]` — the group tier previously had
+list-only plumbing). Five dispatch verbs — `groupWardrobeList` / `Create` /
+`Get` / `Update` / `Delete` — mirror the project-wardrobe five over the
+shared mount-scoped writers (group and project items share the same
+mount-folder storage). The collection verbs ensure the group's official
+store and its `Wardrobe/` folder; the item verbs resolve the store only,
+exactly as v4's routes split it. Error bodies match v4's: 404 `Group` /
+404 `Group wardrobe item`, the flat 400 `Validation error` for schema
+failures on create/update (Zod-faithful field checks incl. the slot-type
+enum and UTF-16 lengths), and the component-cycle 400 with the writer's
+own sentence. Delete clears equipped references warn-and-proceed first.
+Served dispatch-only per the project-tier precedent — the v4 REST URLs get
+no quilltap-web edge. A new `group_wardrobe_routes_equivalence` family
+drives v4's REAL route files (jest real-DB oracle over the
+wardrobe-transfers fixture pair, whose group store the cases reuse) across
+15 cases with the seven-table remap diff — the error arms double as
+nothing-was-written proofs — regenerated at the `f6a10055` pin and
+runnable through the sweep driver.
 
 _Versions: quilltap-core 0.0.657, quilltap-harness 0.0.575._
 

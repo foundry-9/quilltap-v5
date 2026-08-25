@@ -792,6 +792,38 @@ pub enum Request {
         group_id: String,
         scenario_path: String,
     },
+    // --- Group wardrobe CRUD (P4.D112, v4 `d7263f39`) — the group tier of the
+    //     four-tier wardrobe model; mirrors the `ProjectWardrobe*` five. ---
+    /// v4 `GET /api/v1/groups/[id]/wardrobe`.
+    #[serde(rename_all = "camelCase")]
+    GroupWardrobeList {
+        group_id: String,
+    },
+    /// v4 `POST /api/v1/groups/[id]/wardrobe`.
+    #[serde(rename_all = "camelCase")]
+    GroupWardrobeCreate {
+        group_id: String,
+        item: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/groups/[id]/wardrobe/[itemId]`.
+    #[serde(rename_all = "camelCase")]
+    GroupWardrobeGet {
+        group_id: String,
+        item_id: String,
+    },
+    /// v4 `PUT /api/v1/groups/[id]/wardrobe/[itemId]`.
+    #[serde(rename_all = "camelCase")]
+    GroupWardrobeUpdate {
+        group_id: String,
+        item_id: String,
+        item: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/groups/[id]/wardrobe/[itemId]`.
+    #[serde(rename_all = "camelCase")]
+    GroupWardrobeDelete {
+        group_id: String,
+        item_id: String,
+    },
     /// v4 `GET /api/v1/groups/scenarios?characterIds=` — the participant-union.
     #[serde(rename_all = "camelCase")]
     GroupScenariosUnion {
