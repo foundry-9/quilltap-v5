@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-24 — fix(qtap): the import legs' exportData guard is JS falsiness, and a non-JSON body is v4's 500 (P4.60 unit 6)
+
+_Versions: harness 0.0.568, web 0.0.85._
+
+The order listed the `.qtap` import legs as confirm-only. The `data_key_absent`
+comment does still describe the code — but measuring the neighbouring guards
+against v4's real route rather than reading them found two divergences.
+
+v4's `if (!body.exportData)` is JS falsiness, so `0`, `''` and `false` are
+missing exactly as `null` is; v5 excluded only `null`, so a falsy body fell
+through to the manifest check and answered the wrong sentence. And v4's
+`await req.json()` sits inside the handler's `try`, so a malformed body's
+rejection escapes to the outer catch as a **500** with the leg's own sentence —
+as does a body that is literally `null`, via the TypeError from
+`null.exportData`. A body that is `42` or `"nope"` does not, because JS reads a
+missing property off a scalar as `undefined`.
+
+New `qtap_import_guards_equivalence` (24 arms, real HTTP against a served
+instance) pins all of it. `files_write_routes`' 101 MB ceiling test now asserts
+that 500 — the status was never its point, but it is asserted so a future change
+has to be deliberate.
+
 #### 2026-08-24 — fix(embedding-profiles): the reindex scope keeps its absent/null split and v4's String() coercion (P4.60 unit 5)
 
 _Versions: core 0.0.650, harness 0.0.567, web 0.0.84._

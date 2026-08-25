@@ -59,6 +59,13 @@ const PARSER_WIRING: &[(&str, &str, &str)] = &[
          both the absent/null split and the coercion must survive the edge",
     ),
     (
+        "crates/quilltap-web/src/qtap_routes.rs",
+        "truthy_export_data(",
+        "POST /api/v1/system/tools?action=import-preview|import-execute — v4's \
+         `if (!exportData)` is JS falsiness, so `0`/`''`/`false` are missing \
+         exactly as `null` is",
+    ),
+    (
         "crates/quilltap-core/src/api/engine.rs",
         "brahma::brahma_send_prepare(",
         "POST /api/v1/brahma-console/{id}/messages — `verifyBrahmaChat` FIRST, \
@@ -97,9 +104,11 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
     (
         "crates/quilltap-web/src/qtap_routes.rs",
         2,
-        "FAITHFUL (confirm-only pass): `manifest.format`/`version` mirror v4's \
-         `validateExportFile` strict `!==` comparisons, which reject a \
-         wrong-typed value on both sides.",
+        "FAITHFUL, measured (P4.60 unit 6's confirm-only pass): \
+         `manifest.format`/`version` mirror v4's `validateExportFile` strict \
+         `!==` comparisons, which reject a wrong-typed value on both sides. The \
+         `exportData` truthiness and the non-JSON-body 500 that the same pass \
+         found ARE fixed — see `qtap_import_guards_equivalence`.",
     ),
     (
         "crates/quilltap-web/src/llm_logs_routes.rs",

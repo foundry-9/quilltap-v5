@@ -92,6 +92,7 @@ async fn load_export(
     headers: &HeaderMap,
     body: Bytes,
     missing_json_field: &str,
+    leg_failure: &str,
 ) -> Result<QuilltapExport, AxumResponse> {
     let content_type = headers
         .get("content-type")
@@ -114,14 +115,44 @@ async fn load_export(
         return load_qtap_from_upload(&file.bytes).map_err(|e| bad_request(&e));
     }
 
-    let parsed: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-    let Some(export_data) = parsed.get("exportData").filter(|v| !v.is_null()) else {
+    let Some(parsed) = json_leg_body(&body) else {
+        return Err(error_json(StatusCode::INTERNAL_SERVER_ERROR, leg_failure));
+    };
+    let Some(export_data) = truthy_export_data(&parsed) else {
         return Err(bad_request(missing_json_field));
     };
     Ok(QuilltapExport {
         manifest: export_data.get("manifest").cloned().unwrap_or(Value::Null),
         data: export_data.get("data").cloned().unwrap_or(Value::Null),
     })
+}
+
+/// The legacy JSON leg's body, with v4's two 500 arms (P4.60, measured against
+/// v4's real route rather than reasoned about):
+///
+/// - `await req.json()` REJECTS on a malformed or empty body, and the reject
+///   escapes the handler's `try` into the outer catch → **500** with the leg's
+///   own sentence, not a 400;
+/// - a body that is literally `null` parses fine, and then `body.exportData`
+///   is a TypeError — the same 500. A body that is `42` or `"nope"` is NOT: JS
+///   reads a missing property off a scalar as `undefined`, so those fall
+///   through to the 400.
+///
+/// `None` is "answer the leg's 500"; the caller owns the sentence, which differs
+/// between preview and execute.
+fn json_leg_body(body: &Bytes) -> Option<Value> {
+    match serde_json::from_slice::<Value>(body) {
+        Ok(Value::Null) | Err(_) => None,
+        Ok(v) => Some(v),
+    }
+}
+
+/// v4's `if (!body.exportData)` / `if (!exportData)` — JS FALSINESS, so `0`,
+/// `''` and `false` are "missing" exactly as `null` and an absent key are.
+fn truthy_export_data(parsed: &Value) -> Option<&Value> {
+    parsed
+        .get("exportData")
+        .filter(|v| system_qtap::js_truthy(Some(v)))
 }
 
 fn bad_request(message: &str) -> AxumResponse {
@@ -132,7 +163,14 @@ fn bad_request(message: &str) -> AxumResponse {
 /// (`route.ts:655`). Read-only: it counts what an import would do and flags
 /// conflicts, and writes nothing.
 pub async fn import_preview(state: &SharedState, headers: &HeaderMap, body: Bytes) -> AxumResponse {
-    let export = match load_export(headers, body, "Missing required field: exportData").await {
+    let export = match load_export(
+        headers,
+        body,
+        "Missing required field: exportData",
+        "Failed to preview import",
+    )
+    .await
+    {
         Ok(e) => e,
         Err(resp) => return resp,
     };
@@ -214,8 +252,13 @@ pub async fn import_execute(state: &SharedState, headers: &HeaderMap, body: Byte
         };
         (export, false, options)
     } else {
-        let parsed: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
-        let Some(export_data) = parsed.get("exportData").filter(|v| !v.is_null()) else {
+        let Some(parsed) = json_leg_body(&body) else {
+            return error_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to execute import",
+            );
+        };
+        let Some(export_data) = truthy_export_data(&parsed) else {
             return bad_request("Missing required field: exportData");
         };
         let export = QuilltapExport {

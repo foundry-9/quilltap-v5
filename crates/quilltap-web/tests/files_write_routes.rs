@@ -193,11 +193,17 @@ async fn chat_file_upload_over_axum_default_body_limit() {
 /// step 2 rather than an error.
 ///
 /// The assertion is deliberately "not 413": the payload here is garbage, so the
-/// handler's own loader refuses it. Reaching a `400` from the LOADER is the
-/// proof that the transport let the body through — which is precisely what a
-/// 100 MB ceiling prevented. Sending 101 MB (not 10 GB) keeps the test cheap
-/// while sitting on the far side of the old limit; it fails the moment anyone
-/// lowers the ceiling back under it.
+/// handler's own loader refuses it. Reaching the LOADER's refusal is the proof
+/// that the transport let the body through — which is precisely what a 100 MB
+/// ceiling prevented. Sending 101 MB (not 10 GB) keeps the test cheap while
+/// sitting on the far side of the old limit; it fails the moment anyone lowers
+/// the ceiling back under it.
+///
+/// P4.60 moved that refusal from a 400 to v4's own **500**: `await req.json()`
+/// rejects on a non-JSON body inside the handler's `try`, and the reject
+/// escapes to the outer catch as `serverError('Failed to preview import')`.
+/// The status is not the point of this test — reaching the handler is — but it
+/// is asserted exactly so a future change has to be deliberate.
 #[tokio::test(flavor = "multi_thread")]
 async fn import_body_over_the_old_100mb_ceiling_reaches_the_handler() {
     let base = common::materialize_fixture_instance();
@@ -229,8 +235,9 @@ async fn import_body_over_the_old_100mb_ceiling_reaches_the_handler() {
     );
     assert_eq!(
         status,
-        400,
-        "the LOADER should be what refuses this garbage payload (body: {:?})",
+        500,
+        "the LOADER should be what refuses this garbage payload, with v4's own \
+         non-JSON-body 500 (body: {:?})",
         resp.text().await.unwrap_or_default()
     );
 }

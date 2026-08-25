@@ -84194,3 +84194,47 @@ oracle.len()` assertion, and its `ok`/`err`/`check_tables` helpers index
 `oracle[name]`, so a case added to the oracle and forgotten on the Rust side
 passed silently. A `RefCell<HashSet>` of consumed names keeps the helper
 signatures untouched and fails with the missing names.
+
+### Unit 6 — the `.qtap` import legs — CONFIRM-ONLY pass, and what it found
+
+The order's confirm-only item is satisfied on its own terms: `qtap_routes.rs`'s
+`data_key_absent` still does what its comment says — it distinguishes an ABSENT
+`data` key from an explicit null, because JS's TypeError wording differs between
+them and `Value` cannot carry that on its own (the core twin at
+`system_qtap.rs:229` says so too). No change there.
+
+But "confirm" was done by MEASUREMENT rather than by reading, and the same
+oracle run found two real divergences in the same owned file:
+
+| body | v4 | v5 before |
+|---|---|---|
+| `exportData: 0` / `''` / `false` | `Missing required field: exportData` | fell through to `Invalid export file format…` |
+| a non-JSON body | **500** `Failed to preview import` | 400 `Missing required field: exportData` |
+| body literally `null` | **500** (TypeError from `null.exportData`) | 400 |
+| body `42` / `"nope"` | 400 (JS reads a missing property off a scalar as `undefined`) | 400 ✓ |
+
+`if (!body.exportData)` is JS falsiness, and `await req.json()` sits inside the
+handler's `try` — so its rejection escapes to the outer catch, where the leg's
+own sentence becomes a 500. Both fixed: `truthy_export_data` and `json_leg_body`,
+the latter also treating a JSON-`null` body as v4's TypeError.
+
+`manifest.format` / `manifest.version` are recorded FAITHFUL: v4's
+`validateExportFile` compares them with strict `!==`, which rejects a
+wrong-typed value on both sides — measured, not assumed (three arms).
+
+**Differential.** New `qtap_import_guards_equivalence`, 24 arms. It lives in
+`crates/quilltap-web/tests/` rather than the harness because these guards ARE
+the transport edge: the comparand is the real axum route over real HTTP against
+a served instance, which is also what lets the `conflictStrategy` arms (which
+need a host) ride along. The oracle side is DB-free — every arm stops in the
+route's guards, so a stubbed session and `users.findById` are all
+`buildRequestContext` needs.
+
+Two mutation proofs on v5 source: restoring the null-only filter reds four arms;
+dropping the JSON-`null` leg of `json_leg_body` reds both `body_null` arms.
+
+**One existing test moved with it.** `files_write_routes`' 101 MB-ceiling arm
+sends garbage bytes and asserted a 400 from the loader; that payload is not JSON,
+so v4 answers 500 and now so does v5. The assertion was updated with the reason
+— the status was never that test's point (reaching the handler at all is), but it
+is asserted so a future change has to be deliberate.
