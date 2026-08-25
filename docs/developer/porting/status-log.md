@@ -86181,3 +86181,49 @@ reconstruction can no longer switch the reroute off in silence.
   (bug 101)"), with three commits past `f6a10055` touching `lib/`/`app/`/
   `components/`. Every v4 read in this walk used `git show f6a10055:<path>`,
   never the moved checkout. The catch-up remains the top next candidate.
+
+---
+
+## P4.D115 — the `44a8137e` scenario-change drift, server half (lane record)
+
+Lane branch `claude/p4-scenario-change-server-c9cdcb`; v4 baseline `f6a10055`,
+lane pin `/tmp/qt-v4-pin-p4d115-44a8137e` (detached at `44a8137e`, the commit
+this lane ports — it contains everything in the baseline plus the feature).
+Drift-ledger §2 freshness probe run at lane start: **PASS** (branch `main`,
+tree clean, both logs empty).
+
+### Unit 1 — `services::scenario_selection` + the create-path refactor
+
+v4 `lib/chat/scenario-selection.ts` (NEW at `44a8137e`, 164 lines) ported whole
+into `crates/quilltap-core/src/services/scenario_selection.rs`, and
+`chat_create.rs`'s inline chain (its steps 4a–4d, ~40 lines) replaced by one
+call — the same move v4 made in `app/api/v1/chats/route.ts` (−116 lines).
+v4's why-comments carried, including the two "read the slim/raw row so
+resolution doesn't throw on a degraded store" notes.
+
+**Two things the port had to decide, both measured against v4's source:**
+
+1. **The warnings.** v5's inline chain emitted NONE of v4's five
+   `logger.warn`s. They are now carried at all five sites with v4's payload
+   keys, prefixed by the caller's `logTag` — v4's default is `'[Scenario]'`
+   and BOTH real call sites pass `'[Chats v1]'`, so `log_tag` is
+   `Option<&str>` defaulting to the former. (v4's extraction also changed one
+   payload on the way: the `scenarioId not found` warn used to name
+   `buildResult.firstCharacter.characterId` and now names `character?.id ??
+   null`. The port follows the post-extraction shape.)
+2. **JS truthiness — a latent v5 divergence CLOSED.** v4 guards every tier
+   with `if (!presetBody && fields.<pointer>)`, so an empty-string pointer is
+   falsy and the chain falls through; likewise a character scenario whose
+   `content` is `''` leaves `presetBody` falsy and the NEXT tier still gets a
+   turn. v5's inline chain entered the branch on `Some("")`. The resolver
+   models `preset_body` as a plain `String` whose emptiness IS the falsy test
+   and reads every pointer through a `truthy()` filter. The corpus's
+   empty-pointer arms (unit 3) pin it.
+
+**Neutrality proof (the order's item 1).** `chat_create_capstone` regenerated
+FRESH from the lane pin — i.e. against v4's own post-extraction create route —
+and re-run: `1 passed; 0 failed`, 19 oracle rows. The family's live create-path
+scenario arm is `two_char_scenario` (free-text tier); the other three tiers are
+covered by unit 3's new family, which drives v4's REAL
+`resolveScenarioSelection` directly. Recorded honestly: the capstone proves the
+create path's WIRING is unchanged, not all four tiers.

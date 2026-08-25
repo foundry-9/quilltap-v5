@@ -146,6 +146,7 @@ pub mod quilltap_import;
 pub mod recall_replay;
 pub mod recovery;
 pub mod regenerate_swipe;
+pub mod scenario_selection;
 pub mod scene_state_tracking;
 pub mod scheduled_maintenance;
 pub mod sillytavern;

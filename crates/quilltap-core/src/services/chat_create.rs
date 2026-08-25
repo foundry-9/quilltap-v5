@@ -38,7 +38,7 @@ use crate::db::projects::ProjectsRepository;
 use crate::db::runtime::Db;
 use crate::db::{
     api_keys, characters_read, chat_settings, chats_read, connection_profiles, image_profiles,
-    projects, scenarios, wardrobe_read, DbError,
+    wardrobe_read, DbError,
 };
 use crate::enclave::cron;
 use crate::enclave::lifecycle::{self, LifecycleDeps, StartManualRunResult};
@@ -47,7 +47,6 @@ use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::model::stream::StreamingCompletionProvider;
 use crate::provider_manifest::Registry;
-use crate::scenario_text::combine_scenario_text;
 use crate::services::avatar_generation::{
     trigger_avatar_generation_if_enabled, AvatarGenerationParams,
 };
@@ -78,6 +77,9 @@ use crate::services::prospero_notifications::{
     load_prospero_general_context, load_prospero_project_context,
     post_prospero_context_announcement, post_prospero_group_context_whisper,
     ProsperoContextAnnouncement, ProsperoGroupContextWhisper,
+};
+use crate::services::scenario_selection::{
+    resolve_scenario_selection, ResolveScenarioSelectionOptions, ScenarioSelectionFields,
 };
 use crate::services::system_prompt_compiler::compile_all_identity_stacks;
 use crate::tools::wardrobe_shared::resolve_project_mount_point_ids_for_chat;
@@ -356,55 +358,27 @@ where
     // Fetch the primary character for defaults resolution.
     let primary_character = characters_read::find_by_id(main, mount, &built.first_character_id)?;
 
-    // 4. Resolve the chosen preset scenario body, by precedence.
-    let mut resolved_scenario: Option<String> = None;
-    if resolved_scenario.is_none() {
-        if let Some(scenario_id) = req.scenario_id.as_deref() {
-            resolved_scenario = primary_character
-                .as_ref()
-                .and_then(|c| c.get("scenarios"))
-                .and_then(Value::as_array)
-                .and_then(|arr| {
-                    arr.iter()
-                        .find(|s| s.get("id").and_then(Value::as_str) == Some(scenario_id))
-                })
-                .and_then(|s| s.get("content").and_then(Value::as_str))
-                .map(str::to_string);
-        }
-    }
-    if resolved_scenario.is_none() {
-        if let Some(path) = req.project_scenario_path.as_deref() {
-            if let Some(project_id) = req.project_id.as_deref() {
-                // Only the store pointer is needed — the slim raw read.
-                if let Some(Some(mpid)) =
-                    projects::find_official_mount_point_id_raw(main, project_id)?
-                {
-                    resolved_scenario =
-                        scenarios::resolve_project_scenario_body(mount, &mpid, path);
-                }
-            }
-        }
-    }
-    if resolved_scenario.is_none() {
-        if let Some(path) = req.group_scenario_path.as_deref() {
-            if let Some(group_id) = req.group_scenario_group_id.as_deref() {
-                if let Some(Some(mpid)) =
-                    crate::db::groups::find_official_mount_point_id_raw(main, group_id)?
-                {
-                    resolved_scenario = scenarios::resolve_group_scenario_body(mount, &mpid, path);
-                }
-            }
-        }
-    }
-    if resolved_scenario.is_none() {
-        if let Some(path) = req.general_scenario_path.as_deref() {
-            resolved_scenario = scenarios::resolve_general_scenario_body(main, mount, path)?;
-        }
-    }
-
-    // Append the free-text notes (beneath a preset, or as the whole scenario).
-    let preset_body = resolved_scenario.clone();
-    let resolved_scenario = combine_scenario_text(preset_body.as_deref(), req.scenario.as_deref());
+    // 4. Resolve the chosen preset scenario body and layer the free-text notes
+    //    beneath it. The precedence chain lives in `resolve_scenario_selection`
+    //    (v4 `44a8137e` extracted it out of this route) so the in-chat scenario
+    //    picker resolves a selection exactly the way the New Chat dialog does.
+    let resolved_scenario = resolve_scenario_selection(
+        main,
+        mount,
+        &ScenarioSelectionFields {
+            scenario: req.scenario.as_deref(),
+            scenario_id: req.scenario_id.as_deref(),
+            project_scenario_path: req.project_scenario_path.as_deref(),
+            group_scenario_path: req.group_scenario_path.as_deref(),
+            group_scenario_group_id: req.group_scenario_group_id.as_deref(),
+            general_scenario_path: req.general_scenario_path.as_deref(),
+        },
+        &ResolveScenarioSelectionOptions {
+            project_id: req.project_id.as_deref(),
+            character: primary_character.as_ref(),
+            log_tag: Some("[Chats v1]"),
+        },
+    )?;
 
     // 5. Build the chat context (system prompt + first message + characters).
     let chat_context = build_chat_context(

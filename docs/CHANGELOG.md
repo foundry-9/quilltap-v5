@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — feat(chat): the scenario precedence chain moves into its own resolver
+
+_Versions: core 0.0.662._
+
+Ports v4 `44a8137e`'s `lib/chat/scenario-selection.ts` extraction. The
+four-tier precedence chain (character `scenarioId` > project path > group path
+> general path, free text layered beneath whatever resolves) leaves
+`chat_create.rs` for the new `services::scenario_selection`, so the in-chat
+`?action=scenario` verb landing next resolves a selection exactly the way the
+New Chat dialog does. Every tier still fails soft; the warnings v5's inline
+chain never emitted are now carried, tagged with the caller's log prefix.
+
+The extraction closes a latent divergence on the way: v4 guards each tier with
+JS truthiness, so an empty-string pointer (`scenarioId: ''`, an empty
+`projectId`, an empty resolved body) is treated as absent and the chain falls
+through. v5's inline chain treated `Some("")` as present. The resolver models
+`presetBody` as a plain `String` whose emptiness is the falsy test, matching
+v4 arm for arm.
+
+Neutrality proven by regenerating `chat_create_capstone` from a v4 worktree
+pinned at `44a8137e` (which carries v4's own extraction) and re-running it
+green; the family's `two_char_scenario` case is the live create-path scenario
+arm. The resolver's own four-tier differential arrives with the verb.
+
 #### 2026-08-25 — docs(porting): the four work orders for the `8f910137` drift catch-up round (P4.D115–P4.D118)
 
 _Docs-only change._
