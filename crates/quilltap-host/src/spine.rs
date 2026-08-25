@@ -938,9 +938,10 @@ where
     /// (P4.6bd; `None` for canned test spines — the tool then fails soft into
     /// the author's `errorMessage`, the pre-wire behavior).
     pub consult: Option<Arc<dyn ConsultRunner>>,
-    /// The Serper web-search provider `search_web` runs through (P4.42; `None`
-    /// for canned test spines + when `SERPER_API_KEY` is unset — the tool then
-    /// answers v4's "not configured" error). ONE `Option` feeds both the in-chat
+    /// The Serper web-search provider `search_web` runs through (P4.42/P4.59;
+    /// `None` for canned test spines + when the provider is neither REGISTERED
+    /// nor given a `SERPER_API_KEY` — the tool then answers v4's "not configured"
+    /// error). ONE `Option` feeds both the in-chat
     /// turn (via [`OrchestratorDeps`]) and the carina/Brahma/Run-Tool engines
     /// (via [`Self::tool_runner`]).
     pub web_search: Option<Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>>,
@@ -1342,8 +1343,8 @@ where
             carina_query: &mut carina_query,
             prospero: &mut prospero,
             rng_bytes: &mut rng_bytes,
-            // P4.42: the in-chat turn's `search_web` provider (None until
-            // SERPER_API_KEY is set).
+            // P4.42/P4.59: the in-chat turn's `search_web` provider (None only
+            // when the Serper provider is neither registered nor env-keyed).
             web_search: self.web_search.clone(),
             // The a14a1811-round wire: the in-chat `describe_image` vision tier
             // + the photo-tool bytes store (the §3 review's catch).
@@ -1717,8 +1718,8 @@ where
             carina_query: &mut carina_query,
             prospero: &mut prospero,
             rng_bytes: &mut rng_bytes,
-            // P4.42: the in-chat turn's `search_web` provider (None until
-            // SERPER_API_KEY is set).
+            // P4.42/P4.59: the in-chat turn's `search_web` provider (None only
+            // when the Serper provider is neither registered nor env-keyed).
             web_search: self.web_search.clone(),
             // The a14a1811-round wire: the in-chat `describe_image` vision tier
             // + the photo-tool bytes store (the §3 review's catch).
@@ -2995,9 +2996,9 @@ pub struct SpineBundle {
     /// The Serper web-search provider (P4.42) — the SAME `Option` held by the
     /// bundle's `ChatSpine`. The host places it in the `EngineAssembly` so the
     /// tools inventory's `web_search_configured` derives from the same source the
-    /// runner uses. `None` for canned test factories + when `SERPER_API_KEY` is
-    /// unset → `search_web` refuses (v4's unconfigured arm) and the inventory
-    /// advertises it unavailable.
+    /// runner uses. `None` for canned test factories + when the Serper provider is
+    /// neither REGISTERED nor env-keyed (P4.59) → `search_web` refuses (v4's
+    /// unconfigured arm) and the inventory advertises it unavailable.
     pub web_search: Option<Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>>,
     /// The SEARCH-provider manifests this boot registered (P4.59) — v4's
     /// `searchProviderRegistry.getAllProviders()`, which `GET /api/v1/providers`
