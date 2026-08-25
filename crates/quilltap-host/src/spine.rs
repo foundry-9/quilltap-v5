@@ -217,11 +217,13 @@ impl ProviderKeySource for DbProviderKeys {
 /// `getAllApiKeys().find(provider === X && isActive)`, the exact analogue of
 /// [`DbProviderKeys`] over the same `find_active_api_key_for_provider` resolver.
 ///
-/// DELIBERATELY inert on this lane's runtime path: `serper_registered` stays
-/// `false` (the plugin registry is the standing deferral), so
+/// LIVE since P4.59: with the Serper provider registered,
 /// [`RealWebSearchProvider`](quilltap_core::tools::web_search::RealWebSearchProvider)
-/// never consults it — the env-key fallback is the only live path. It is wired so
-/// that when the plugin half lands, the api-key-row path is already correct.
+/// consults this on every `search_web` call, and a missing row surfaces as v4's
+/// `MissingApiKey` sentence rather than as a silent refusal. The error fold
+/// (`.ok().flatten()`) is v4's own: its `getSearchProviderApiKey` catches, logs,
+/// and returns `null`, so a read failure is indistinguishable from "no key" on
+/// both sides.
 #[derive(Clone)]
 pub struct DbSearchApiKeys(pub Db);
 
@@ -2997,6 +2999,12 @@ pub struct SpineBundle {
     /// unset → `search_web` refuses (v4's unconfigured arm) and the inventory
     /// advertises it unavailable.
     pub web_search: Option<Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>>,
+    /// The SEARCH-provider manifests this boot registered (P4.59) — v4's
+    /// `searchProviderRegistry.getAllProviders()`, which `GET /api/v1/providers`
+    /// lists. Computed from the SAME registration decision that gave `web_search`
+    /// its `serper_registered` flag, so the listing cannot advertise a provider
+    /// the runner does not have. Empty for canned test factories.
+    pub search_providers: Vec<&'static quilltap_core::provider_manifest::search::SearchManifest>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
 }
 
@@ -3089,25 +3097,43 @@ impl SpineFactory for ProductionSpineFactory {
         // vision tier shares it too (its own Arc — `completion` moves below).
         let turn_describe_completion = Arc::clone(&completion);
         let announcement_embedding = Arc::clone(&embedding);
-        // P4.42: build the Serper web-search provider iff SERPER_API_KEY is set —
-        // the SINGLE source of truth. `serper_registered = false` (the plugin
-        // registry is the standing deferral), so the env key is the only live
-        // path; the `DbSearchApiKeys` lookup is wired inert for the plugin half.
+        // P4.42 + P4.59: web search, from ONE registration decision.
+        //
+        // v4's boot registers the bundled Serper plugin into
+        // `searchProviderRegistry` unless the site-plugins env gate drops it, and
+        // `isWebSearchConfigured()` is `registry.isSearchConfigured() ||
+        // SERPER_API_KEY`. Both terms are live here: `search_providers` is the
+        // registration (empty only when an operator disabled the plugin), and the
+        // provider is built when EITHER term holds. `serper_registered` then
+        // decides, per call, whether the key comes from the user's `api_keys` row
+        // (v4's plugin path — a missing key surfaces as v4's `MissingApiKey`
+        // sentence) or from the deprecated env var (v4's legacy fallback).
+        //
         // This one `Option` feeds BOTH the runner (ChatSpine below) AND the tools
-        // inventory bool (via the SpineBundle → EngineAssembly), so advertised and
-        // executed can never disagree.
+        // inventory bool (via the SpineBundle → EngineAssembly), and
+        // `search_providers` feeds the providers listing — so advertised, listed
+        // and executed can never disagree.
+        let site_enabled = std::env::var("SITE_PLUGINS_ENABLED").ok();
+        let site_disabled = std::env::var("SITE_PLUGINS_DISABLED").ok();
+        let search_providers = quilltap_core::provider_manifest::search::SearchRegistry::built_in()
+            .registered(site_enabled.as_deref(), site_disabled.as_deref());
+        let serper_registered = !search_providers.is_empty();
+        let serper_env_key = std::env::var("SERPER_API_KEY")
+            .ok()
+            .filter(|k| !k.is_empty());
         let web_search: Option<Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>> =
-            std::env::var("SERPER_API_KEY")
-                .ok()
-                .filter(|k| !k.is_empty())
-                .map(|env_key| {
-                    Arc::new(self.io.web_search_provider(
-                        DbSearchApiKeys(db.clone()),
-                        false,
-                        Some(env_key),
-                    ))
-                        as Arc<dyn quilltap_core::tools::web_search::WebSearchProvider>
-                });
+            if serper_registered || serper_env_key.is_some() {
+                Some(Arc::new(self.io.web_search_provider(
+                    DbSearchApiKeys(db.clone()),
+                    serper_registered,
+                    serper_env_key,
+                ))
+                    as Arc<
+                        dyn quilltap_core::tools::web_search::WebSearchProvider,
+                    >)
+            } else {
+                None
+            };
         let spine = Arc::new(ChatSpine {
             db: db.clone(),
             events: events.clone(),
@@ -3292,6 +3318,8 @@ impl SpineFactory for ProductionSpineFactory {
             // P4.42: the same provider the spine's runner holds — the host derives
             // the tools-inventory bool from `is_some()`.
             web_search,
+            // P4.59: the registration that decided `serper_registered` above.
+            search_providers,
             job_handlers,
         }
     }

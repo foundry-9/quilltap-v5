@@ -194,6 +194,10 @@ impl SpineFactory for CreateSpineFactory {
             // attach ladder then resolves to '' (v4's own any-failure arm).
             image_describe: None,
             web_search: None,
+            // P4.59: the canned factory registers no search provider, so the
+            // providers listing has no search row — consistent with the `None`
+            // above (the listing and the runner answer from one fact).
+            search_providers: Vec::new(),
             job_handlers: Vec::new(),
         }
     }

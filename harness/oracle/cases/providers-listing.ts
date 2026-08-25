@@ -7,10 +7,16 @@
  * (the pure transform in `app/api/v1/providers/route.ts`). The Rust
  * `settings::provider_list` answers from the W4.7a manifests; the differential
  * diffs the manifest-covered fields per provider, normalizing away the ONE field
- * the manifest deliberately lacks (`icon`) and the search providers (no
- * search-provider manifest is ported) — both documented absences. `optionsSchema`
- * has been a comparand since P4.D83, and `configRequirements` is the plugin's
- * whole `config` object since P4.D93 (v4 bug 81's `acceptsApiKey`).
+ * the manifest deliberately lacks (`icon`) — a documented absence.
+ * `optionsSchema` has been a comparand since P4.D83, and `configRequirements` is
+ * the plugin's whole `config` object since P4.D93 (v4 bug 81's `acceptsApiKey`).
+ *
+ * P4.59 appends the SEARCH provider row: the route spreads
+ * `[...providerList, ...searchProviderList]`, so it comes AFTER the ten LLM rows,
+ * and its shape is materially different — no `capabilities`, no `optionsSchema`,
+ * no `thinkingTurnRule`, and a hand-built THREE-key `configRequirements`. The
+ * key SET and the key ORDER are both wire-visible under `preserve_order`, so the
+ * differential compares the serialized bytes of every row.
  *
  * Run (Node 24, from the v4 checkout):
  *   cd ~/source/quilltap-server
@@ -41,6 +47,12 @@ const PLUGIN_DIRS = [
   'openai-compatible',
   'nanogpt',
 ];
+
+/**
+ * The bundled SEARCH provider dirs, in registration order. v4 ships exactly one
+ * (`enabledByDefault: true`), and the route appends them after the LLM rows.
+ */
+const SEARCH_PLUGIN_DIRS = ['search-serper'];
 
 function main() {
   const rows: Array<Record<string, unknown>> = [];
@@ -85,6 +97,34 @@ function main() {
       // the route serves it — `plugin.thinkingTurnRule ?? null`, so the key is
       // ALWAYS present and `null` where the plugin declares none.
       thinkingTurnRule: plugin.thinkingTurnRule ?? null,
+    });
+  }
+  // P4.59: the search providers, appended exactly as the route spreads them
+  // (`[...providerList, ...searchProviderList]`). v4 ships exactly one.
+  for (const dir of SEARCH_PLUGIN_DIRS) {
+    const m = nodeRequire(
+      join(process.cwd(), 'plugins', 'dist', `qtap-plugin-${dir}`, 'index.js'),
+    );
+    const plugin = m.plugin || m.default?.plugin || m.default;
+    const md = plugin.metadata;
+    // The exact route transform (minus icon, normalized away). Note the search
+    // row carries NO `capabilities` key at all — which is how v4's own profile
+    // editor keeps it out of the LLM picker (`p.capabilities?.chat`) — and its
+    // `configRequirements` is hand-built from three named fields, not the
+    // plugin's whole `config`.
+    rows.push({
+      id: md.providerName,
+      name: md.providerName,
+      displayName: md.displayName,
+      description: md.description,
+      abbreviation: md.abbreviation,
+      colors: md.colors,
+      type: 'search',
+      configRequirements: {
+        requiresApiKey: plugin.config.requiresApiKey,
+        requiresBaseUrl: plugin.config.requiresBaseUrl,
+        apiKeyLabel: plugin.config.apiKeyLabel,
+      },
     });
   }
   process.stdout.write(JSON.stringify({ providers: rows, count: rows.length }) + '\n');

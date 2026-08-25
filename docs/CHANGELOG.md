@@ -161,6 +161,43 @@ real parser, and its POST leg now goes through it rather than re-reading the
 keys itself. New `web_edge_body_parse_guard` holds the whole
 `quilltap-web/src/*_routes.rs` surface to a per-file census of the collapsing
 idiom and pins that the fixed edge still routes through its parser.
+#### 2026-08-24 — feat(search): registration goes live — the providers listing gains v4's `type: 'search'` row
+
+_Versions: core 0.0.647, harness 0.0.564, host 0.0.81, web 0.0.80._
+
+The host now computes v4's registration once, at spine build, from the
+site-plugins gate, and threads the SAME answer into both consumers: the
+`search_web` runner's `serper_registered` flag and the new
+`EngineAssembly.search_providers` the providers listing serves. v4's
+`isWebSearchConfigured()` is `registry.isSearchConfigured() || SERPER_API_KEY`,
+and both terms are now live — the provider is built when either holds, so
+`web_search.is_some()` is that `||` term for term. `DbSearchApiKeys`, wired
+inert since P4.42, is load-bearing from here: with the provider registered the
+per-call key comes from the user's `api_keys` row, and a missing row surfaces
+as v4's `No API key configured for Serper Web Search…` sentence instead of a
+silent refusal.
+
+`provider_list` gains the search row in v4's spread position (after the ten LLM
+rows) with its materially different shape: no `capabilities` — which is exactly
+how v4's own profile editor keeps it out of the LLM picker (`p.capabilities?.chat`
+on an absent bag) — no `optionsSchema`, no `thinkingTurnRule`, and a hand-built
+three-key `configRequirements`. The "no search-provider manifest is ported"
+comment retires.
+
+`providers_listing_equivalence` grew the row, red-first (oracle 11 vs got 10),
+and gained a whole-row byte compare with key ORDER included, since `Value`
+equality under `preserve_order` catches a wrong key but is blind to a wrong
+position — and the search row's whole value is which keys it omits and where
+its three-key bag sits. Mutation-proven: dropping the append reds the count;
+moving `apiKeyLabel` before `requiresBaseUrl` reds the SERPER row bytes.
+
+**That new assert immediately caught a harness bug of its own.** The family's
+`normalize` dropped `icon` with `Map::remove`, which under `preserve_order` is
+IndexMap's SWAP-remove — it moved `thinkingTurnRule` from last into `icon`'s
+slot and manufactured a key-order difference in every LLM row. Now
+`shift_remove`. Nothing shipped was wrong; the old order-independent compare
+simply could not see it.
+
 #### 2026-08-24 — feat(search): the native Serper search-provider manifest + v4's site-plugins gate
 
 _Versions: core 0.0.646, harness 0.0.563._

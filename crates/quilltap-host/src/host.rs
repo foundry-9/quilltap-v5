@@ -587,6 +587,9 @@ impl EngineAssembler for HostAssembler {
             // P4.42: the web-search provider (the tools-inventory bool derives
             // from `is_some()`; the spine's own copy runs `search_web`).
             web_search,
+            // P4.59: the registered SEARCH-provider manifests the providers
+            // listing serves — the same registration `web_search` came from.
+            search_providers,
         ) = match spine_bundle {
             Some(bundle) => {
                 for (job_type, handler) in bundle.job_handlers {
@@ -610,11 +613,28 @@ impl EngineAssembler for HostAssembler {
                     bundle.outfit_llm_choose,
                     bundle.image_describe,
                     bundle.web_search,
+                    bundle.search_providers,
                 )
             }
             None => (
-                None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-                None, None, None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Vec::new(),
             ),
         };
 
@@ -831,6 +851,13 @@ impl EngineAssembler for HostAssembler {
             // embedders) get `None` → the tool is advertised unavailable AND
             // refuses, consistently. ===
             web_search,
+            // === P4.59: the registered SEARCH-provider manifests. v4's
+            // `GET /api/v1/providers` lists `searchProviderRegistry.getAllProviders()`,
+            // and that registry is exactly what decided `web_search`'s
+            // `serper_registered` above — so the listing and the runner answer
+            // from one fact. Spine-less assemblies list none, matching their
+            // `web_search: None`. ===
+            search_providers,
             // The out-of-create llm_choose pick, LIVE from the spine's
             // completion provider (⚠ one cheap-LLM call per pick); spine-less
             // assemblies keep None → the default-outfit fallback.

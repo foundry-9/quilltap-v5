@@ -84457,3 +84457,63 @@ QT_ORACLE_SITE_PLUGINS=/tmp/oracle-site-plugins.ndjson \
 ```
 
 Versions: core 0.0.646, harness 0.0.563.
+
+### Unit 2 — registration goes live; the providers listing gains the search row
+
+**One registration answer, two consumers.** `ProductionSpineFactory::build` now
+reads `SITE_PLUGINS_ENABLED` / `SITE_PLUGINS_DISABLED` once, asks
+`SearchRegistry::registered`, and derives BOTH `serper_registered` (for the
+`search_web` runner) and `SpineBundle.search_providers` (for the providers
+listing) from it. v4's `isWebSearchConfigured()` is
+`searchProviderRegistry.isSearchConfigured() || SERPER_API_KEY`; the host builds
+the provider when EITHER term holds, so `web_search.is_some()` is that `||` term
+for term — and the P4.42 invariant now covers three surfaces, not two:
+**advertised, listed and executed cannot disagree.**
+
+`DbSearchApiKeys` — wired inert since P4.42 and explicitly flagged unverified by
+the order — is load-bearing from here. Its predicate was measured against v4's
+`getSearchProviderApiKey`: `getAllApiKeys().find(k => k.provider === name &&
+k.isActive)` → `key_value` (RAW; there is no read-time decryption on either
+side), any lookup error → logged → `null`. v5 reaches the same rows through
+`api_key_service::find_active_api_key_for_provider` (FIRST active match in
+insertion order) and folds a read error with `.ok().flatten()`, so on both sides
+a failed read is indistinguishable from "no key". Its behavioural proof is unit
+4's tier-3 arms, which drive it over a real provisioned DB.
+
+`provider_list` takes the registered manifests and appends v4's search row in
+the spread position, with the shape v4 actually emits: **no `capabilities`**
+(v4's own profile editor filters the LLM picker on `p.capabilities?.chat`, so
+inventing one would put Serper in the connection-profile dropdown), no
+`optionsSchema`, no `thinkingTurnRule`, and a hand-built THREE-key
+`configRequirements`. The "no search-provider manifest is ported — a documented
+absence" comment retires.
+
+**Differential, red-first:** the extended `providers-listing.ts` oracle against
+the unchanged Rust gave `provider count mismatch (oracle 11 vs got 10)`. The
+family gained a **whole-row byte compare, key ORDER included** — `Value`
+equality under `preserve_order` notices a wrong key but is blind to a wrong
+POSITION, and the search row's entire value is which keys it omits and where its
+three-key bag sits — plus a `search_rows == 1` shape assert and a positive
+"a search row must carry NO capabilities key" assert.
+
+**Mutation proofs (v5 source):** the search append skipped → the count reds;
+`apiKeyLabel` moved before `requiresBaseUrl` → the SERPER row bytes red.
+
+⚠ **The new byte assert immediately caught a defect in the harness itself.** The
+family's `normalize` dropped `icon` with `Map::remove`, which under
+`preserve_order` is IndexMap's **swap**-remove: it moved `thinkingTurnRule` from
+last into `icon`'s slot, so every LLM row reported a key-order difference on the
+assert's first run. Now `shift_remove`. Nothing shipped was ever wrong — the
+old order-independent compare simply could not see it — but the same mistake in
+a *product* normalizer would have been a wire defect, and it is worth knowing
+that `serde_json::Map::remove` is order-destroying in this tree.
+
+**Recorded seam (not a defect):** `tools_inventory_equivalence`'s oracle runs
+under jest with an EMPTY search registry, so v4's `isWebSearchConfigured()`
+there is `false` unless the case sets `SERPER_API_KEY` — the
+`jest-oracle-empty-provider-registry` class. The Rust side passes the matching
+boolean, so the family stays green and blind to registration. Production v4 (and
+now v5) answers `true` on a default install; the proof of THAT is the e2e beat
+in unit 5, which drives the real binary.
+
+Versions: core 0.0.647, harness 0.0.564, host 0.0.81, web 0.0.80.

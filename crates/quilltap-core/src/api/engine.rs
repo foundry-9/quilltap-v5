@@ -239,9 +239,19 @@ pub struct EngineAssembly {
     /// unconfigured arm) and the runner refuses.
     ///
     /// v4's `isWebSearchConfigured()` is `searchProviderRegistry.isSearchConfigured()
-    /// || SERPER_API_KEY`; v5 has no plugin registry (the standing deferral), so the
-    /// host builds this iff `SERPER_API_KEY` is set (`serper_registered = false`).
+    /// || SERPER_API_KEY`. Since P4.59 v5 has both halves: the host registers the
+    /// native Serper search manifest (subject to the site-plugins gate) and
+    /// builds this whenever EITHER the provider is registered OR `SERPER_API_KEY`
+    /// is set — so `is_some()` is v4's `||`, term for term.
     pub web_search: Option<Arc<dyn crate::tools::web_search::WebSearchProvider>>,
+    /// The SEARCH-provider manifests this boot registered (P4.59) — v4's
+    /// `searchProviderRegistry.getAllProviders()`, which is what
+    /// `GET /api/v1/providers` lists. The host computes registration ONCE and
+    /// threads the same answer into [`Self::web_search`] and into this list, so
+    /// the listing cannot advertise a provider the runner does not have. Empty
+    /// for canned test factories + read-only embedders, and empty on a boot whose
+    /// `SITE_PLUGINS_*` disable the bundled plugin.
+    pub search_providers: Vec<&'static crate::provider_manifest::search::SearchManifest>,
     /// The out-of-create `llm_choose` outfit runner (P4.9E3B) — the host holds
     /// the completion provider + a per-call logging cheap executor (the
     /// `RegenerateTitleDriver` arrangement). `None` → both call sites fall
@@ -307,6 +317,7 @@ impl EngineAssembly {
             // === end P4.9E3A ===
             // === P4.9E3B / P4.42 ===
             web_search: None,
+            search_providers: Vec::new(),
             outfit_llm_choose: None,
             // === end P4.9E3B ===
             // === P4.9E4A ===
@@ -513,6 +524,9 @@ struct ReadyEngine {
     /// so the advertised availability is LITERALLY the presence of the provider the
     /// runner would use.
     web_search: Option<Arc<dyn crate::tools::web_search::WebSearchProvider>>,
+    /// The registered SEARCH-provider manifests (P4.59) — the providers listing's
+    /// search rows, from the same registration answer `web_search` came from.
+    search_providers: Vec<&'static crate::provider_manifest::search::SearchManifest>,
     outfit_llm_choose: Option<Arc<dyn crate::services::outfit_selections::OutfitLlmChooseRunner>>,
     // === end P4.9E3B ===
     // === P4.9E4A ===
@@ -934,7 +948,7 @@ impl CoreEngine {
                 Err(r) => r,
             },
             Request::ProviderList => match self.ready_db() {
-                Ok(_) => super::settings::provider_list(),
+                Ok(_) => super::settings::provider_list(&self.search_providers()),
                 Err(r) => r,
             },
             Request::ModelList { provider } => match self.ready_db() {
@@ -4720,6 +4734,16 @@ impl CoreEngine {
         }
     }
 
+    /// The registered SEARCH-provider manifests (P4.59) — the providers listing's
+    /// search rows. Empty when locked or unassembled; the `ProviderList` arm
+    /// gates on `ready_db` first, so a locked engine never reaches this.
+    fn search_providers(&self) -> Vec<&'static crate::provider_manifest::search::SearchManifest> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => r.search_providers.clone(),
+            EngineState::Locked { .. } => Vec::new(),
+        }
+    }
+
     /// The out-of-create llm_choose outfit runner (P4.9E3B) — `None` when
     /// locked or unassembled (both call sites then take v4's default-outfit
     /// fallback with a named warning).
@@ -5616,6 +5640,7 @@ fn open_ready(
         // === end P4.9E2A ===
         // === P4.9E3B / P4.42 ===
         web_search: assembly.web_search,
+        search_providers: assembly.search_providers,
         outfit_llm_choose: assembly.outfit_llm_choose,
         // === end P4.9E3B ===
         // === P4.9E4A ===

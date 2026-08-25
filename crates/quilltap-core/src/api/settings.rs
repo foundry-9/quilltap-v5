@@ -44,6 +44,7 @@ use crate::db::{
     api_keys, chat_settings, connection_profiles, instance_settings, provider_models,
     roleplay_templates, tags, DbError,
 };
+use crate::provider_manifest::search::SearchManifest;
 use crate::provider_manifest::{Capability, Registry};
 use crate::services::profile_names::normalize_profile_name;
 
@@ -2234,9 +2235,21 @@ pub async fn connection_profile_reset_sort(db: &Db, user_id: &str) -> Response {
 // ===========================================================================
 
 /// v4 `GET /api/v1/providers` — the plugin-registry listing becomes a read over
-/// the v5 manifest [`Registry`]. Emits the LLM providers only (no search-provider
-/// manifest is ported — a documented absence); `icon` is always `null` (the
-/// manifest deliberately lacks it), and `type` is always `"llm"`.
+/// the v5 manifest [`Registry`]. `icon` is always `null` (the manifest
+/// deliberately lacks it).
+///
+/// `search_providers` are the SEARCH-provider manifests the host registered this
+/// boot (P4.59) — the SAME registration answer that decides whether the
+/// `search_web` runner has a provider, so what is advertised here and what
+/// executes can never disagree. v4's route spreads
+/// `[...providerList, ...searchProviderList]`, so they are appended AFTER the
+/// LLM rows, and their row shape is materially different: no `capabilities`
+/// (which is how v4's own profile editor keeps them out of the LLM picker —
+/// `p.capabilities?.chat` on an absent bag), no `optionsSchema`, no
+/// `thinkingTurnRule`, and a hand-built THREE-key `configRequirements` (no
+/// `acceptsApiKey`, no base-URL labels). Key order is wire-visible under
+/// `preserve_order`; mirror the omissions and the positions exactly, per the
+/// bug-81 precedent below.
 ///
 /// `optionsSchema` is served from the manifest since P4.D83 (shared contract B):
 /// per provider, v4's `ProviderOptionsSchema` verbatim, or `null` exactly when
@@ -2245,7 +2258,7 @@ pub async fn connection_profile_reset_sort(db: &Db, user_id: &str) -> Response {
 /// untouched — the renderer reads and writes the flat bag, and the provider
 /// reads the SAME keys at call time — so the value is carried opaquely and never
 /// reshaped here.
-pub fn provider_list() -> Response {
+pub fn provider_list(search_providers: &[&SearchManifest]) -> Response {
     let registry = Registry::built_in();
     let providers: Vec<Value> = registry
         .all_providers()
@@ -2305,6 +2318,31 @@ pub fn provider_list() -> Response {
             })
         })
         .collect();
+    let mut providers = providers;
+    for m in search_providers {
+        let req = &m.config_requirements;
+        // The route hand-builds these THREE keys, in this order — NOT the
+        // plugin's whole `config` (that is the LLM arm above).
+        let mut config = Map::new();
+        config.insert("requiresApiKey".into(), json!(req.requires_api_key));
+        config.insert("requiresBaseUrl".into(), json!(req.requires_base_url));
+        // v4 reads `plugin.config.apiKeyLabel` unguarded, so the key is ALWAYS
+        // present — `undefined` would drop it, but every search plugin declares
+        // one and `JSON.stringify` of an absent label would be `null` in the
+        // manifest either way.
+        config.insert("apiKeyLabel".into(), json!(req.api_key_label));
+        providers.push(json!({
+            "id": m.id,
+            "name": m.id,
+            "displayName": m.display_name,
+            "description": m.description,
+            "abbreviation": m.abbreviation,
+            "colors": { "bg": m.colors.bg, "text": m.colors.text, "icon": m.colors.icon },
+            "icon": Value::Null,
+            "type": "search",
+            "configRequirements": Value::Object(config),
+        }));
+    }
     let count = providers.len();
     Response::Providers(json!({ "providers": providers, "count": count }))
 }
