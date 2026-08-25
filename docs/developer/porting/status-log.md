@@ -84372,3 +84372,88 @@ refusal path, oracle-provable and invisible to a live screen: no user-facing
 sentence a person would meet in normal use changed. The one behaviour a human
 could notice is a *better* refusal — a mistyped body that used to be silently
 ignored is now declined.
+---
+
+## P4.59 — the configured search provider (dogfood #98)
+
+Lane branch `claude/p4-59-search-provider-36cc67`, ordered
+`docs/developer/porting/work-orders/p4.59-configured-search-provider.md`,
+v4 baseline `0ba942b1` (drift-checked at lane start: `main` HEAD == the
+baseline, tree clean, checkout on `main`; `bugfix` HEAD `3a76b17d` with
+nothing unabsorbed — so every regen ran from the live checkout).
+
+### Unit 1 — the native search-provider manifest + v4's site-plugins gate
+
+v4 reaches its one search provider through the same plugin machinery the LLM
+providers used, and everything the host reads off `searchProviderRegistry` is
+DATA: `plugin.metadata` (`providerName` / `displayName` / `description` /
+`abbreviation` / `colors`) and `plugin.config` (`requiresApiKey` /
+`apiKeyLabel` / `requiresBaseUrl`). So the search half takes the W4.7a shape —
+a generated declarative manifest plus the compiled implementation that already
+exists in `tools::web_search`. New: `provider_manifest/search.rs`
+(`SearchManifest` / `SearchConfigRequirements` / `SearchRegistry`) and the
+generated `manifests/search_serper.json`.
+
+**The manifest is NOT the LLM `Manifest`, deliberately.** v4's search plugin
+declares no capability bag, no endpoints, no models and no pricing, and its
+`/api/v1/providers` row carries a hand-built THREE-key `configRequirements`.
+Modelling it as an LLM manifest would have invented fields v4 does not have.
+
+**A measured transcription trap.** The plugin module's
+`metadata.description` is `Google search results via the Serper.dev API`; its
+`manifest.json` `searchProviderConfig.description` is `Google search results
+via Serper.dev API` — they DISAGREE, and the order's survey quoted the
+manifest.json spelling. The registry holds the loaded MODULE's `plugin`
+object and the route serves `plugin.metadata.description`, so the module's
+spelling (with "the") is the one on the wire. The generator reads it from the
+module for exactly that reason.
+
+**The site-plugins decision: HONOR the gate (measured, not assumed).** v4's
+manifest loader applies `isSitePluginEnabled(manifest.name)`
+(`lib/plugins/site-plugins.ts`, the `SITE_PLUGINS_ENABLED` /
+`SITE_PLUGINS_DISABLED` deployment env vars) BEFORE `enabledByDefault` is even
+read, so an operator writing `SITE_PLUGINS_DISABLED=qtap-plugin-search-serper`
+gets an instance with no search provider at all. The predicate is ported whole
+as `is_site_plugin_enabled` — pure, both env values injected, because the core
+reads no environment. The gate is not free complexity: the providers listing
+and the search runner must derive from ONE registration answer (the P4.42
+invariant), so registration had to become a value the host computes either
+way.
+
+⚠ **Recorded divergence.** v5's ten LLM providers are native and are NOT gated
+by `SITE_PLUGINS_*` — they have no plugin name to gate on, and the loader that
+consults the gate is part of the standing un-ported plugin runtime. So
+`SITE_PLUGINS_ENABLED=qtap-plugin-anthropic` narrows v4 to one LLM provider and
+narrows v5 not at all; only the Serper arm is faithful. It is, however, the arm
+an operator can actually exercise today.
+
+**Differential:** the new `site_plugins_equivalence` (tier-1) drives v4's REAL
+`isSitePluginEnabled` over 19 cases via `harness/oracle/cases/site-plugins.ts`
+— unset vs empty-string vs whitespace-only (a port reading
+`env::var().unwrap_or_default()` collapses the first two silently, so the
+oracle row records `null` for UNSET and the harness passes `Option`), the
+literal `all` in three casings, comma lists with stray spaces and empty
+segments, a commas-only value (`,,,` → empty → the `'all'` default → TRUE), and
+the disabled-wins overlap. Shape asserts, not hand counts: ≥19 cases with ≥5 of
+each verdict, so a corpus that drifted to all-true could not pass green.
+
+**Mutation proofs (v5 source, one side only):** `to_lowercase()` dropped from
+the `all` compare → `enabled_all_upper` reds; the disabled-list check dropped →
+`disabled_serper` reds. Both reverted from a file backup.
+
+The generator (`gen-provider-manifests.mjs`) learned the search shape in the
+SAME commit — the standing rule for that file, since a hand-written manifest is
+silently reverted by the next regen. All ten LLM manifests regenerated
+byte-identical (`git status` clean but for the new file).
+
+Regen recipe:
+
+```bash
+cd ~/source/quilltap-server
+npx tsx <V5W>/harness/oracle/cases/site-plugins.ts > /tmp/oracle-site-plugins.ndjson
+cd <V5W>
+QT_ORACLE_SITE_PLUGINS=/tmp/oracle-site-plugins.ndjson \
+  cargo test -p quilltap-harness --test site_plugins_equivalence
+```
+
+Versions: core 0.0.646, harness 0.0.563.

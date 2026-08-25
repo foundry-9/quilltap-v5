@@ -34,6 +34,7 @@
 //! pricing is the STATIC fallback tier, NOT the live fetcher (W4.7e).
 
 mod rewrite;
+pub mod search;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

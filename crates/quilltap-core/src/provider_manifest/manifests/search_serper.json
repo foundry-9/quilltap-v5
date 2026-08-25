@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "SERPER",
+  "displayName": "Serper Web Search",
+  "description": "Google search results via the Serper.dev API",
+  "abbreviation": "SRP",
+  "colors": {
+    "bg": "bg-orange-100",
+    "text": "text-orange-800",
+    "icon": "text-orange-600"
+  },
+  "configRequirements": {
+    "requiresApiKey": true,
+    "requiresBaseUrl": false,
+    "apiKeyLabel": "Serper API Key"
+  },
+  "pluginName": "qtap-plugin-search-serper",
+  "enabledByDefault": true
+}

@@ -50,6 +50,15 @@
  *   git -C ~/source/quilltap-v5 status --short   # expect clean on no drift
  *   (then re-run `provider_registry_equivalence` to confirm)
  *
+ * P4.59 adds the SEARCH provider manifest (`search_serper.json`) alongside the
+ * ten LLM ones. It is a different shape — v4's search plugin declares no
+ * capability bag, no endpoints and no models, and its `/api/v1/providers` row
+ * carries a hand-built THREE-key `configRequirements` — so it is built by its
+ * own function and written to its own file; the ten LLM manifests are untouched
+ * by it. The two `manifest.json` facts registration needs (`name` for the
+ * site-plugins gate, `enabledByDefault`) are read from the plugin's real
+ * manifest.json, not from the module.
+ *
  * The generator MUST run from the quilltap-server checkout root (it loads the
  * built plugins/dist bundles via createRequire).
  */
@@ -479,12 +488,64 @@ function buildManifest(provider) {
   };
 }
 
-// Build all ten BEFORE writing any: a loud failure (an unrecognized
+/**
+ * The bundled SEARCH provider plugins, in registration order. v4 ships exactly
+ * one (`enabledByDefault: true`), and the search-provider registry is
+ * initialized from `getEnabledByCapability('SEARCH_PROVIDER')`.
+ */
+const SEARCH_PROVIDERS = [{ dir: 'qtap-plugin-search-serper', file: 'search_serper.json' }];
+
+/**
+ * Build a search provider's manifest. The runtime registry holds the loaded
+ * MODULE's `plugin` object, so `metadata`/`config` are read from there — note
+ * that the plugin's own `metadata.description` ("via the Serper.dev API") and
+ * the manifest.json `searchProviderConfig.description` ("via Serper.dev API")
+ * DISAGREE, and `/api/v1/providers` serves `plugin.metadata.description`. The
+ * two registration facts have no home on the module and come from manifest.json.
+ */
+function buildSearchManifest(provider) {
+  const plugin = loadPlugin(provider.dir);
+  const meta = plugin.metadata;
+  const cfg = plugin.config || {};
+  const manifestJson = JSON.parse(
+    readFileSync(join(process.cwd(), 'plugins', 'dist', provider.dir, 'manifest.json'), 'utf-8'),
+  );
+  if (!Array.isArray(manifestJson.capabilities) || !manifestJson.capabilities.includes('SEARCH_PROVIDER')) {
+    fail(`${provider.dir}: manifest.json does not declare the SEARCH_PROVIDER capability`);
+  }
+  if (typeof manifestJson.name !== 'string' || manifestJson.name.length === 0) {
+    fail(`${provider.dir}: manifest.json has no plugin name (the site-plugins gate key)`);
+  }
+  return {
+    schemaVersion: 1,
+    id: meta.providerName,
+    displayName: meta.displayName,
+    description: meta.description,
+    abbreviation: meta.abbreviation,
+    colors: meta.colors,
+    // The route hand-builds these THREE keys, in this order.
+    configRequirements: {
+      requiresApiKey: !!cfg.requiresApiKey,
+      requiresBaseUrl: !!cfg.requiresBaseUrl,
+      apiKeyLabel: cfg.apiKeyLabel ?? null,
+    },
+    pluginName: manifestJson.name,
+    // v4 `manifest-loader.ts`: `enabled: manifest.enabledByDefault ?? false`.
+    enabledByDefault: manifestJson.enabledByDefault ?? false,
+  };
+}
+
+// Build all eleven BEFORE writing any: a loud failure (an unrecognized
 // `supportedModels` shape, say) must not leave a half-overwritten manifest dir.
 const rendered = PROVIDERS.map((provider) => {
   const manifest = buildManifest(provider);
   return { id: manifest.id, path: join(outDir, `${manifest.id.toLowerCase()}.json`), text: serializeManifest(manifest) };
-});
+}).concat(
+  SEARCH_PROVIDERS.map((provider) => {
+    const manifest = buildSearchManifest(provider);
+    return { id: manifest.id, path: join(outDir, provider.file), text: JSON.stringify(manifest, null, 2) + '\n' };
+  }),
+);
 
 for (const { id, path, text } of rendered) {
   writeFileSync(path, text, 'utf-8');
