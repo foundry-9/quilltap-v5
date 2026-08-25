@@ -195,6 +195,28 @@ Recorded mechanism divergence: v4's module also exports
 mutations ride dispatch verbs, so that routing lands in `wardrobe.api.ts` as a
 verb router in a later unit of this lane; the types and the encoding stay
 v4's verbatim.
+#### 2026-08-25 — fix(projects): create validates exactly as v4's schema does (bug 98, P4.D114)
+
+_Versions: no crate versions bumped (core + harness ride un-bumped per the round's ownership split; the unifier recounts)._
+
+Port of v4 `c93ec7ff`. v4's `createProjectSchema` moved out of `route.ts` into
+`app/api/v1/projects/schemas.ts` and its four presentational fields became
+`.nullable().optional()`: the create dialogs send `description || null` for a
+blank field, and the old plain `.optional()` refused the whole project over it.
+
+v5's create was hand-rolled and validated only that `name` was non-blank, so it
+never had bug 98 — but it also enforced none of the length, hex-colour,
+UUID-array or type rules v4 has always enforced, and it REFUSED a
+whitespace-only name that v4 accepts (`.min(1)` runs on the raw string; there
+is no `.trim()` in this schema). It now runs a `PROJECT_CREATE_SCHEMA` table in
+the `PROJECT_UPDATE_SCHEMA` idiom, and every refusal answers v4's flat
+`Validation error` — including a non-object body, where v5 used to answer its
+own invented sentence.
+
+`projects_routes_equivalence` gains eighteen arms, one per row of the
+old-vs-new measurement table taken from v4's real schema. Thirteen of them were
+red before the port.
+
 #### 2026-08-25 — feat(mount-points): the blob endpoint names the bytes it serves (P4.D114)
 
 _Versions: web 0.0.87._

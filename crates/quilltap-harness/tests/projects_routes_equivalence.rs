@@ -428,6 +428,142 @@ fn projects_routes_match_oracle() {
         ));
         check("create", &response_data(&resp), true, &mut failed);
     }
+    // ---- P4.D114 / v4 bug 98 (`c93ec7ff`) ----
+    // v4's create schema moved into `schemas.ts` and the four presentational
+    // fields became `.nullable().optional()`. MEASURED against v4's real
+    // schema (old vs new): ONLY the four null legs moved. Everything else here
+    // is unchanged in v4 and exists because v5's hand-rolled create validated
+    // nothing but the name — and refused a whitespace-only name v4 accepts.
+    for (name, tag, body) in [
+        (
+            "create_blank_description",
+            "cbd",
+            json!({ "name": "Nu", "description": null, "instructions": null,
+                    "color": "#abcdef", "icon": "rocket" }),
+        ),
+        (
+            // `.min(1)` on the RAW string — no `.trim()` in this schema.
+            "create_whitespace_name",
+            "cwn",
+            json!({ "name": "   ", "color": "#abcdef", "icon": "rocket" }),
+        ),
+        (
+            "create_unknown_key_stripped",
+            "cuk",
+            json!({ "name": "Omicron", "color": "#abcdef", "icon": "rocket",
+                    "notAField": "should vanish" }),
+        ),
+    ] {
+        let db = fresh_db(&spec, tag);
+        let resp = rt.block_on(projects::project_create(&db, body));
+        check(name, &response_data(&resp), true, &mut failed);
+    }
+    {
+        // `color`/`icon` null: bug 98's other two legs — v4 REFUSED this body
+        // before `c93ec7ff`. The echo is compared with `color` and `icon`
+        // MASKED OUT on both sides, because those two keys sit on the
+        // pre-existing null-vs-absent properties seam the `create` case's own
+        // comment records (v4's route hands `create` an explicit
+        // `color: null`; v5's `ProjectProperties` folds a null to an absent
+        // key). Everything else about the created project — that it exists at
+        // all, its name, the prefaults, the whole rest of the bag — is a live
+        // comparand, which is what this arm is for.
+        let db = fresh_db(&spec, "cnci");
+        let resp = rt.block_on(projects::project_create(
+            &db,
+            json!({ "name": "Xi", "color": null, "icon": null }),
+        ));
+        let mask = |v: &Value| {
+            let mut v = v.clone();
+            if let Some(p) = v.get_mut("project").and_then(Value::as_object_mut) {
+                p.remove("color");
+                p.remove("icon");
+            }
+            v
+        };
+        let got = mask(&response_data(&resp));
+        let want = mask(&oracle["create_null_color_and_icon"]["body"]);
+        if norm_blanked(&got) != norm_blanked(&want) {
+            eprintln!(
+                "[create_null_color_and_icon] MISMATCH:\n{}",
+                first_diff(&norm_blanked(&got), &norm_blanked(&want))
+            );
+            failed.push("create_null_color_and_icon".to_string());
+        } else {
+            eprintln!("[create_null_color_and_icon] OK (color/icon masked).");
+        }
+        // The masked keys still carry the ONE assertion that matters here: v4
+        // answers an explicit null, and v5 answers null-or-absent — never a
+        // stale value, and never a refusal.
+        let v5_color = response_data(&resp)["project"]["color"].clone();
+        assert!(
+            v5_color.is_null(),
+            "a null colour must not survive as a value: {v5_color}"
+        );
+    }
+    for (name, tag, body) in [
+        ("create_missing_name", "cmn", json!({})),
+        ("create_empty_name", "cen", json!({ "name": "" })),
+        (
+            "create_name_over_max",
+            "cnom",
+            json!({ "name": "x".repeat(101) }),
+        ),
+        (
+            // Zod counts UTF-16 code units: 51 top hats are 102.
+            "create_name_astral_over_max",
+            "cnaom",
+            json!({ "name": "\u{1F3A9}".repeat(51) }),
+        ),
+        ("create_name_wrong_type", "cnwt", json!({ "name": 42 })),
+        (
+            "create_description_over_max",
+            "cdom",
+            json!({ "name": "P", "description": "x".repeat(2001) }),
+        ),
+        (
+            "create_instructions_over_max",
+            "ciom",
+            json!({ "name": "P", "instructions": "x".repeat(10001) }),
+        ),
+        (
+            "create_icon_over_max",
+            "ciom2",
+            json!({ "name": "P", "icon": "x".repeat(51) }),
+        ),
+        (
+            "create_bad_color",
+            "cbc",
+            json!({ "name": "P", "color": "blue" }),
+        ),
+        (
+            "create_roster_non_uuid",
+            "crnu",
+            json!({ "name": "P", "characterRoster": ["not-a-uuid"] }),
+        ),
+        (
+            // `.optional().prefault([])` is NOT `.nullable()`.
+            "create_roster_null",
+            "crn",
+            json!({ "name": "P", "characterRoster": null }),
+        ),
+        (
+            "create_allow_any_wrong_type",
+            "caawt",
+            json!({ "name": "P", "allowAnyCharacter": "yes" }),
+        ),
+        (
+            "create_allow_any_null",
+            "caan",
+            json!({ "name": "P", "allowAnyCharacter": null }),
+        ),
+        // Zod's root `invalid_type` reaches the same flat sentence.
+        ("create_non_object_body", "cnob", json!("hello")),
+    ] {
+        let db = fresh_db(&spec, tag);
+        let resp = rt.block_on(projects::project_create(&db, body));
+        check_error(name, &resp, &mut failed);
+    }
     {
         let db = fresh_db(&spec, "update");
         let resp = rt.block_on(projects::project_update(

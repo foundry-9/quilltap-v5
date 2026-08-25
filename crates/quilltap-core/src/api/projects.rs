@@ -149,22 +149,90 @@ pub fn project_list(db: &Db) -> Response {
     }
 }
 
+/// The `error` sentence v4's middleware emits for any uncaught `ZodError`
+/// (`lib/api/responses.ts:113` via `middleware/context.ts:166`). The schema's
+/// own per-issue messages — `'Name is required'` among them — only ever appear
+/// inside the `details` array, which is the standing project-wide deferral;
+/// they are NOT the top-level sentence.
+const VALIDATION_ERROR: &str = "Validation error";
+
+/// v4 `createProjectSchema` (`app/api/v1/projects/schemas.ts` — the `c93ec7ff`
+/// bug-98 fix lifted it out of `route.ts` and made the four presentational
+/// fields `.nullable()`) in declaration order:
+/// `(key, rule, nullable, required)`.
+///
+/// `required` is v4's *absence* of `.optional()`: `name` is the only one, and a
+/// missing `name` is Zod's `invalid_type` issue. `nullable` is `.nullable()`;
+/// bug 98 is exactly the four `true`s below — the create dialogs send
+/// `description || null` for a blank field, and the OLD schema's plain
+/// `.optional()` refused the whole project over it. (The handler coerces falsy
+/// to null afterwards either way.)
+///
+/// **Measured, not assumed** (v4's real schema at `f6a10055`, old vs new):
+/// only the four `null` legs moved — `null` description/instructions/color/icon
+/// went 400 → 200. Every length, regex, uuid and type leg is unchanged, and
+/// `""` was always legal. v5's hand-rolled create enforced NONE of them, and
+/// additionally rejected a whitespace-only name that v4 accepts (`.min(1)` runs
+/// on the RAW string; there is no `.trim()` in this schema).
+const PROJECT_CREATE_SCHEMA: &[(&str, FieldRule, bool, bool)] = &[
+    ("name", FieldRule::Str(1, 100), false, true),
+    ("description", FieldRule::Str(0, 2000), true, false),
+    ("instructions", FieldRule::Str(0, 10_000), true, false),
+    ("allowAnyCharacter", FieldRule::Bool, false, false),
+    ("characterRoster", FieldRule::UuidArray, false, false),
+    ("color", FieldRule::Color, true, false),
+    ("icon", FieldRule::Str(0, 50), true, false),
+];
+
+/// `createProjectSchema.parse(body)` reduced to its verdict — the handler reads
+/// the recognized keys itself, which is `z.object`'s unknown-key strip by
+/// construction.
+fn validate_project_create(body: &Value) -> Result<(), ()> {
+    // Zod's root arm: a non-object body is its own `invalid_type` issue, so it
+    // reaches the SAME flat sentence as a bad field (v5 used to answer its own
+    // invented `Expected a JSON object body` here).
+    let Some(obj) = body.as_object() else {
+        return Err(());
+    };
+    for (key, rule, nullable, required) in PROJECT_CREATE_SCHEMA {
+        match obj.get(*key) {
+            None => {
+                if *required {
+                    return Err(());
+                }
+            }
+            Some(Value::Null) => {
+                if !nullable {
+                    return Err(());
+                }
+            }
+            Some(v) => {
+                if !field_value_ok(rule, v) {
+                    return Err(());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 // ===========================================================================
 // Create (v4 POST /api/v1/projects) — default injection.
 // ===========================================================================
 
 pub async fn project_create(db: &Db, body: Value) -> Response {
-    let Some(obj) = body.as_object() else {
-        return bad_request("Expected a JSON object body");
-    };
+    // `createProjectSchema.parse(body)` (v4 `projects/route.ts:62`) — the parse
+    // is UNCAUGHT, so any failure escapes into `handleRouteError` as the flat
+    // 400 `{error: 'Validation error'}`. See PROJECT_CREATE_SCHEMA.
+    if validate_project_create(&body).is_err() {
+        return bad_request(VALIDATION_ERROR);
+    }
+    let obj = body.as_object().expect("validated as an object");
     let name = obj
         .get("name")
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    if name.trim().is_empty() {
-        return bad_request("Name is required");
-    }
     // createProjectSchema: allowAnyCharacter prefault false, characterRoster
     // prefault []. The four literals (defaultDisabledTools/…/backgroundDisplayMode)
     // are already ProjectProperties defaults; state:{} passed explicitly.
@@ -442,7 +510,7 @@ pub async fn project_update(db: &Db, project_id: &str, patch: Value) -> Response
         Ok(ProjectUpdateOutcome::NotFound) => not_found("Project"),
         // v4 `validationError(...)` — the `details` issues array is the
         // recorded no-details divergence class.
-        Ok(ProjectUpdateOutcome::Invalid) => bad_request("Validation error"),
+        Ok(ProjectUpdateOutcome::Invalid) => bad_request(VALIDATION_ERROR),
         Err(e) => db_error_response(e),
     }
 }
@@ -1812,5 +1880,112 @@ pub async fn project_file_remove(db: &Db, project_id: &str, file_id: &str) -> Re
         Ok(Ok(())) => Response::Project(json!({ "success": true })),
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
+    }
+}
+
+#[cfg(test)]
+mod create_schema_tests {
+    use super::*;
+
+    fn ok(body: Value) -> bool {
+        validate_project_create(&body).is_ok()
+    }
+
+    /// The bug-98 rows. MEASURED against v4's real `createProjectSchema` at
+    /// `f6a10055` (old schema → new schema): each of these four went 400 → 200,
+    /// and they are the ENTIRE behavioural delta of `c93ec7ff`.
+    #[test]
+    fn the_four_nullable_fields_accept_an_explicit_null() {
+        assert!(ok(json!({ "name": "P", "description": null })));
+        assert!(ok(json!({ "name": "P", "instructions": null })));
+        assert!(ok(json!({ "name": "P", "color": null })));
+        assert!(ok(json!({ "name": "P", "icon": null })));
+        // All four at once — the create dialog's actual blank-field body.
+        assert!(ok(json!({
+            "name": "P", "description": null, "instructions": null,
+            "color": null, "icon": null
+        })));
+    }
+
+    /// `allowAnyCharacter` and `characterRoster` are `.optional().prefault(…)`
+    /// but NOT `.nullable()` — an explicit null still refuses, in both schemas.
+    #[test]
+    fn the_prefaulted_fields_are_not_nullable() {
+        assert!(!ok(json!({ "name": "P", "allowAnyCharacter": null })));
+        assert!(!ok(json!({ "name": "P", "characterRoster": null })));
+    }
+
+    /// `name` is the one field with no `.optional()`.
+    #[test]
+    fn name_is_required_and_never_nullable() {
+        assert!(!ok(json!({})));
+        assert!(!ok(json!({ "name": null })));
+        assert!(!ok(json!({ "name": 42 })));
+        assert!(!ok(json!({ "name": "" })));
+    }
+
+    /// `.min(1)` runs on the RAW string — there is no `.trim()` in this schema,
+    /// so a whitespace-only name is length 1 and PASSES. v5's old
+    /// `name.trim().is_empty()` guard wrongly refused it.
+    #[test]
+    fn a_whitespace_only_name_passes_as_it_does_in_v4() {
+        assert!(ok(json!({ "name": " " })));
+        assert!(ok(json!({ "name": "   " })));
+    }
+
+    /// Zod measures `String.length` — UTF-16 code units. 50 astral characters
+    /// are 100 units and pass; 51 are 102 and fail.
+    #[test]
+    fn lengths_are_utf16_code_units() {
+        assert!(ok(json!({ "name": "🎩".repeat(50) })));
+        assert!(!ok(json!({ "name": "🎩".repeat(51) })));
+        assert!(ok(json!({ "name": "x".repeat(100) })));
+        assert!(!ok(json!({ "name": "x".repeat(101) })));
+        assert!(ok(json!({ "name": "P", "description": "x".repeat(2000) })));
+        assert!(!ok(json!({ "name": "P", "description": "x".repeat(2001) })));
+        assert!(ok(
+            json!({ "name": "P", "instructions": "x".repeat(10_000) })
+        ));
+        assert!(!ok(
+            json!({ "name": "P", "instructions": "x".repeat(10_001) })
+        ));
+        assert!(ok(json!({ "name": "P", "icon": "x".repeat(50) })));
+        assert!(!ok(json!({ "name": "P", "icon": "x".repeat(51) })));
+    }
+
+    /// `/^#(?:[0-9a-fA-F]{3}){1,2}$/` — three or six hex digits, nothing else.
+    #[test]
+    fn the_colour_regex_is_whole_string_three_or_six_digits() {
+        assert!(ok(json!({ "name": "P", "color": "#abc" })));
+        assert!(ok(json!({ "name": "P", "color": "#ABCDEF" })));
+        assert!(!ok(json!({ "name": "P", "color": "#abcd" })));
+        assert!(!ok(json!({ "name": "P", "color": "blue" })));
+    }
+
+    #[test]
+    fn the_roster_is_an_array_of_zod_uuids() {
+        assert!(ok(json!({ "name": "P", "characterRoster": [] })));
+        assert!(ok(
+            json!({ "name": "P", "characterRoster": ["a1000000-0000-4000-8000-000000000001"] })
+        ));
+        assert!(!ok(
+            json!({ "name": "P", "characterRoster": ["not-a-uuid"] })
+        ));
+        assert!(!ok(json!({ "name": "P", "characterRoster": "x" })));
+    }
+
+    /// `z.object` is non-strict: an unknown key is STRIPPED, never a refusal.
+    /// (The handler reads only the recognized keys, which is that strip.)
+    #[test]
+    fn an_unknown_key_is_stripped_not_refused() {
+        assert!(ok(json!({ "name": "P", "notAField": "should vanish" })));
+    }
+
+    /// A non-object body is Zod's root `invalid_type` — the same flat sentence.
+    #[test]
+    fn a_non_object_body_is_a_validation_error_too() {
+        assert!(!ok(json!("hello")));
+        assert!(!ok(json!([])));
+        assert!(!ok(Value::Null));
     }
 }

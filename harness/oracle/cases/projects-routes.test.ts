@@ -225,6 +225,133 @@ async function main(): Promise<void> {
         mockRequest(B, { name: 'Mu', description: 'A new project', allowAnyCharacter: true, characterRoster: [ARIA], color: '#abcdef', icon: 'rocket' }),
       )),
     },
+    // ---- P4.D114 / v4 bug 98 (`c93ec7ff`) ----
+    // `createProjectSchema` moved out of `route.ts` into `schemas.ts` and the
+    // four presentational fields became `.nullable().optional()`. The create
+    // dialogs send `description || null` for a blank field, so the old plain
+    // `.optional()` refused the whole project over an empty description.
+    // MEASURED, old schema vs new: ONLY the four null legs moved. Every other
+    // arm below is unchanged by the fix and exists because v5's hand-rolled
+    // create validated NOTHING but the name.
+    {
+      // The bug-98 body itself. `icon` is a real string for the same reason
+      // the `create` case above gives (the null-vs-absent properties seam).
+      name: 'create_blank_description',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'Nu', description: null, instructions: null, color: '#abcdef', icon: 'rocket' }),
+      )),
+    },
+    {
+      // `.min(1)` is on the RAW string — no `.trim()` in this schema, so a
+      // whitespace-only name is length 3 and PASSES. v5's old
+      // `name.trim().is_empty()` guard refused it.
+      name: 'create_whitespace_name',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: '   ', color: '#abcdef', icon: 'rocket' }),
+      )),
+    },
+    {
+      // `color`/`icon` null — bug 98's other two legs (v4 REFUSED this body
+      // before `c93ec7ff`). The Rust side masks `color`/`icon` out of BOTH
+      // echoes: they sit on the pre-existing null-vs-absent properties seam
+      // the `create` case's own comment records. The rest of the echo is a
+      // live comparand.
+      name: 'create_null_color_and_icon',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'Xi', color: null, icon: null }),
+      )),
+    },
+    {
+      name: 'create_missing_name',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, {}),
+      )),
+    },
+    {
+      name: 'create_empty_name',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: '' }),
+      )),
+    },
+    {
+      name: 'create_name_over_max',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'x'.repeat(101) }),
+      )),
+    },
+    {
+      name: 'create_name_astral_over_max',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: '\u{1F3A9}'.repeat(51) }),
+      )),
+    },
+    {
+      name: 'create_name_wrong_type',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 42 }),
+      )),
+    },
+    {
+      name: 'create_description_over_max',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'P', description: 'x'.repeat(2001) }),
+      )),
+    },
+    {
+      name: 'create_instructions_over_max',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'P', instructions: 'x'.repeat(10001) }),
+      )),
+    },
+    {
+      name: 'create_icon_over_max',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'P', icon: 'x'.repeat(51) }),
+      )),
+    },
+    {
+      name: 'create_bad_color',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'P', color: 'blue' }),
+      )),
+    },
+    {
+      name: 'create_roster_non_uuid',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'P', characterRoster: ['not-a-uuid'] }),
+      )),
+    },
+    {
+      name: 'create_roster_null',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'P', characterRoster: null }),
+      )),
+    },
+    {
+      name: 'create_allow_any_wrong_type',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'P', allowAnyCharacter: 'yes' }),
+      )),
+    },
+    {
+      name: 'create_allow_any_null',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'P', allowAnyCharacter: null }),
+      )),
+    },
+    {
+      name: 'create_non_object_body',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, 'hello'),
+      )),
+    },
+    {
+      // Non-strict `z.object`: the unknown key is stripped, not refused.
+      name: 'create_unknown_key_stripped',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
+        mockRequest(B, { name: 'Omicron', color: '#abcdef', icon: 'rocket', notAField: 'should vanish' }),
+      )),
+    },
     { name: 'update', run: async () => respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { name: 'Iota Renamed', backgroundDisplayMode: 'theme' }), p(IOTA))) },
     // P4.55 (the merge-verb silent-keep sweep): v4 runs
     // `updateProjectSchema.parse(body)` and hands the repository the PARSED

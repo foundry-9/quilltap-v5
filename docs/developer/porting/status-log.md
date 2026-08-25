@@ -85562,3 +85562,90 @@ documents-arm assertion fails; making the blob arm prefer `originalFileName` →
 Gate for this unit: `cargo test --workspace` 453 test binaries / 2,340 tests /
 0 failed (exit 0); `cargo fmt --all --check` clean; `cargo clippy -p
 quilltap-web --all-targets -D warnings` clean. Version: web 0.0.86 → 0.0.87.
+
+### Unit 2 — bug 98: the projects CREATE schema (v4 `c93ec7ff`)
+
+**The measurement first** (the `convergence-lane-measure-dont-assume` rule).
+v4's REAL `createProjectSchema` at `f6a10055` was driven from `npx tsx`
+alongside a transcription of the OLD inline schema from `route.ts`, over 22
+bodies. The delta is exactly four rows:
+
+| body | old v4 | new v4 | v5 before this unit |
+|---|---|---|---|
+| `description: null` | 400 | **200** | 200 |
+| `instructions: null` | 400 | **200** | 200 |
+| `color: null` | 400 | **200** | 200 |
+| `icon: null` | 400 | **200** | 200 |
+| `description: ""` | 200 | 200 | 200 |
+| `description` 2001 chars | 400 | 400 | **200** |
+| `instructions` 10001 | 400 | 400 | **200** |
+| `icon` 51 | 400 | 400 | **200** |
+| `color: "blue"` | 400 | 400 | **200** |
+| roster `["not-a-uuid"]` | 400 | 400 | **200** |
+| `characterRoster: null` | 400 | 400 | **200** (written!) |
+| `allowAnyCharacter: "yes"` | 400 | 400 | **200** |
+| `allowAnyCharacter: null` | 400 | 400 | **200** |
+| `name` 101 chars | 400 | 400 | **200** |
+| `name` 51 astral chars (102 units) | 400 | 400 | **200** |
+| `name: 42` | 400 | 400 | 400 (wrong sentence) |
+| `name: ""` / missing | 400 | 400 | 400 (wrong sentence) |
+| `name: "   "` | **200** | **200** | **400** ← a v5 refusal v4 never makes |
+| unknown key | 200 (stripped) | 200 (stripped) | 200 (ignored) |
+| non-object body | 400 | 400 | 400 (wrong sentence) |
+
+So **bug 98's own shape was already absent from v5** — and the far larger
+finding is the reverse: v5's create enforced NOTHING but a non-blank name, and
+refused a whitespace-only name v4 accepts. `.min(1)` runs on the RAW string;
+there is no `.trim()` in this schema.
+
+**The port** (`crates/quilltap-core/src/api/projects.rs`): a
+`PROJECT_CREATE_SCHEMA` table in the same `(key, rule, nullable)` idiom
+`PROJECT_UPDATE_SCHEMA` already used (P4.55), plus a fourth `required` column
+for v4's *absence* of `.optional()` on `name`. It reuses the existing
+`FieldRule` / `field_value_ok` / `is_hex_color` / `is_zod_uuid` machinery
+unchanged — no second spelling of any rule. The refusal envelope is v4's flat
+`Validation error` (`VALIDATION_ERROR`, now a named const the update side reads
+too): v4's route runs an UNCAUGHT `.parse`, so `handleRouteError` maps the
+ZodError, and the schema's own `'Name is required'` message only ever reaches
+`details` — the standing project-wide deferral. v5's invented
+`Expected a JSON object body` and `Name is required` sentences are both gone.
+
+**Differential** (`projects_routes_equivalence` + its oracle case, both extended
+in place — 18 new arms, one per measurement row):
+
+- 4 body arms — `create_blank_description` (the bug itself),
+  `create_whitespace_name`, `create_null_color_and_icon`,
+  `create_unknown_key_stripped`;
+- 14 error arms through the family's existing `check_error` (status +
+  v4's `error` sentence).
+
+Two things the arms had to work around, both recorded rather than papered over:
+
+1. **The `color`-absent seam.** v4's route hands `create` an explicit
+   `color: validatedData.color || null`; v5's `ProjectProperties` folds a null
+   to an ABSENT key. That is pre-existing (the family's original `create` case
+   dodged it by always supplying a real colour) and repo-layer, not this lane's.
+   The three new body arms therefore supply `color: '#abcdef'`, exactly as the
+   original `create` case supplies `icon`.
+2. **`create_null_color_and_icon`** is the one arm that cannot: its whole point
+   is the two null legs. It compares the echo with `color`/`icon` MASKED OUT of
+   both sides — everything else about the created project is still a live
+   comparand — plus a direct assertion that v5's `color` is null-or-absent and
+   never a stale value.
+
+**Mutation proofs (3):**
+
+- make the validator accept every object → **13 of the 14 error arms red**
+  (the 14th, `create_non_object_body`, is the one leg the mutation kept) — the
+  red-first record of what v5 answered before this unit;
+- restore v5's old `name.trim().is_empty()` guard →
+  `create_whitespace_name` red;
+- flip `description`'s `nullable` to false → `create_blank_description` red
+  (bug 98's core).
+
+Also landed: nine `create_schema_tests` unit tests in `api/projects.rs` pinning
+the whole measurement table at the pure-function tier, including the two null
+legs the differential has to mask and the UTF-16 astral boundary.
+
+Regen recipe: unchanged — `python3 harness/tools/recipe_sweep.py --run
+projects_routes_equivalence`.
