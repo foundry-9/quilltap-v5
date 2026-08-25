@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — docs(porting): the four work orders for the `8f910137` drift catch-up round (P4.D115–P4.D118)
+
+_Docs-only change._
+
+The next round is the drift catch-up over the five v4 commits past the
+`f6a10055` baseline, planned as four parallel lanes:
+
+- **P4.D115** (`work-orders/p4.d115-scenario-change-server.md`) — the
+  `44a8137e` scenario-change feature, server half: the scenario-selection
+  resolver extracted to its own module (chat-create refactored onto it,
+  neutrality-proven), the `chatSetScenario` verb with v4's guard order and
+  no-op semantics, the chat-GET `scenarioText` projection, the Host
+  scenario-revision announcement strings byte-exact, and the transcript
+  export's `scenario-change` carry.
+- **P4.D116** (`work-orders/p4.d116-scenario-change-spa.md`) — the client
+  half: the shared ScenarioSelect extraction with the New-Chat form
+  refactored onto it, the in-chat ChatScenarioControl in the Chat drawer,
+  the sidebar/SalonView threading, the scenario query keys, and a gated e2e
+  beat. Meets P4.D115 only at the pinned shared contract.
+- **P4.D117** (`work-orders/p4.d117-qt-classes-gallery-download.md`) — the
+  client-fixes pair: v4 bugs 100/102 (the qt-* utility sheet's missing
+  opacity steps, hand-written state variants, and `qt-text-on-*` family,
+  plus the call-site sweep and a ported `check-qt-classes` build guard —
+  v5 confirmed to carry 20+ files of inert names) and bug 99 (the
+  embedded-gallery download + the image-detail modal freed from the
+  workspace stacking trap, measured before ported).
+- **P4.D118** (`work-orders/p4.d118-cli-completion-bug101.md`) — v4 bug
+  101: the three shell-completion templates re-byte-copied (flag-tolerant
+  verb lookup, space-safe candidates), proven through Tier R red-first plus
+  a v5-side bash-driving behavioral guard mirroring v4's new test; also
+  gathers the NO-PORT evidence for the CI-only `8f910137`.
+
+The drift ledger's five §3 rows move to ORDERED. The regen rule stands:
+pin `f6a10055` (or the lane's own later pin where an order says so) for
+every regen until the round moves the baseline.
+
 #### 2026-08-25 — docs(porting): the v4 drift ledger and /driftcheck; the porting commands probe instead of re-checking
 
 _Docs-only change._
