@@ -85051,3 +85051,56 @@ ownership per the order's table.
   family only; `vault-wardrobe-write-tier2.json` → write family only.
 - Versions: core 0.0.656.
 
+### Unit 2 — transfers: the explicit source container + component-carrying moves/copies
+
+- Service (`services/wardrobe_transfers.rs`): `resolve_explicit_source`
+  (v4 `d7263f39` — general/character/project/group arms, ownership gate on
+  character, store+`Wardrobe/` ensure on project/group, `name || fallback`);
+  both resolvers now carry `container_items`; `collect_container_components`
+  (BFS closure, visited-set cycle tolerance, other-tier refs excluded by the
+  byId miss); the plan-first flow (one `id_map`, copies mint, moves keep;
+  `remap` over every travelling ref), the collision refusal over EVERY
+  planned id with v4's title-in-"the ID of" quirk byte-for-byte, components
+  land first, move deletes components-then-item with v4's two explicit
+  serverError sentences (a NEW `TransferError::Server` variant so those
+  messages reach the wire — the old code collapsed them into the catch-all,
+  a pre-existing fidelity gap), and the post-write read-back
+  (`unresolvedComponentIds` + the tracing error line).
+- Parse (`api/wardrobe.rs::parse_transfer_request`, now `pub`):
+  `sourceCharacterId` optional (absent OK, null refuses), `source` object
+  with its own enum ORDER (`character|project|group|general`), `components`
+  enum, and the two refines — refines run only when the base shape parsed,
+  and BOTH run (measured against v4: the joined two-sentence 400 is in the
+  oracle). Response gains `componentsTransferred` always +
+  `unresolvedComponentIds` when non-empty.
+- **Differential:** the transfers tier-2 family reworked to drive the SAME
+  parse layer with key-presence-faithful bodies (scenarios stay raw
+  `Value`s — a typed Option would collapse null-vs-absent; the
+  `edge-must-decode-through-the-request-enum` lesson applied at the service
+  parse). Corpus 8 → 18 scenarios + the `__destinations` GET row: explicit
+  group source (no `sourceCharacterId` in the body at all), move+move (ids
+  kept, LITERAL-compared — the UUID-normalizer-blindness rule),
+  move+copy / copy+copy (minted refs counted and proven absent from the
+  committed spec text), the copy+move refine refusal, the
+  component-collision refusal (whole-table diff = fixture baseline), the
+  components-omitted move whose UUID refs cannot resolve at General — the
+  read-back pin, LITERAL `[Coat, Formal set]` both sides — and the three
+  parse tri-states (`source: null`, `components: null`, neither-source +
+  both refines joined `; `). The legacy collision scenario's sentence moved
+  to v4's title-carrying form (the drift tripwire, updated). Fixture
+  builder seeds the composite family leaf-first through v4's REAL
+  `repos.wardrobe.create` and the project-store collision twin through
+  `createProjectWardrobeItem`.
+- The web edge (`wardrobe-routes` shared-corpus family, quilltap-web):
+  five new `transferApply` cases prove the flattened body rides the edge
+  undamaged — explicit character source 200, `source: null` /
+  `components: null` / neither-source / copy+components-move 400s, all
+  against v4's REAL route; the legacy `tr_collision` row's new sentence and
+  the `componentsTransferred` key on every success row confirmed in the
+  fresh NDJSON.
+- **Mutation proofs:** read-back verification dropped → red
+  (`composite_move_components_none`); collision refusal disabled → red
+  (`id_collision_at_destination`); both restored, family green.
+- normalize_item now blanks UUIDs inside string ARRAYS (minted copy refs);
+  the literal expect* arms carry the un-normalized truth.
+- Versions: core 0.0.657, harness 0.0.575.

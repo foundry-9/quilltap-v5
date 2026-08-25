@@ -63,6 +63,12 @@ interface Spec {
   sourceItem: ItemSpec;
   generalItem: ItemSpec;
   destCharacterItem: ItemSpec;
+  /** P4.D112: the composite family seeded into the SOURCE character's vault
+   * (leaf-first order — a ref must resolve when its holder is written). */
+  compositeItems: ItemSpec[];
+  /** P4.D112: a project-store item sharing the travelling Coat's id (the
+   * component-collision refusal seed). */
+  projectCollisionItem: ItemSpec;
 }
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
@@ -261,6 +267,13 @@ async function main(): Promise<void> {
   await seedItem(spec.destCharacterItem, spec.destCharacterId);
   // Archetype item -> Quilltap General.
   await seedItem(spec.generalItem, null);
+  // [P4.D112 / v4 f6a10055] The composite family -> the source character's
+  // vault, leaf-first so every componentItemIds ref resolves as it is written.
+  // "Formal set" nests Cufflinks plus the General archetype (the shared-tier
+  // piece that must never travel); "Sunday Best" bundles Coat + Formal set.
+  for (const item of spec.compositeItems) {
+    await seedItem(item, spec.characterId);
+  }
 
   // [P4.D71 / v4 8600c83f] The GROUP tier as a transfer SOURCE. The source
   // character must be a MEMBER — the tier resolves per character — and the
@@ -278,6 +291,34 @@ async function main(): Promise<void> {
   const { createProjectWardrobeItem } = await import(
     '@/lib/database/repositories/vault-overlay/wardrobe-writes'
   );
+  // [P4.D112 / v4 f6a10055] The component-collision seed: a PROJECT-store item
+  // sharing the travelling Coat's id, so moving "Sunday Best" with
+  // components: 'move' into the project must refuse before writing anything.
+  const projectRow = await repos.projects.findByIdRaw(spec.projectId);
+  const projectMp = projectRow?.officialMountPointId as string;
+  if (!projectMp) throw new Error('project official store not minted');
+  const { ensureProjectWardrobeFolder } = await import('@/lib/mount-index/project-wardrobe');
+  await ensureProjectWardrobeFolder(projectMp);
+  const { createProjectWardrobeItem: createIntoMount } = await import(
+    '@/lib/database/repositories/vault-overlay/wardrobe-writes'
+  );
+  await createIntoMount(projectMp, {
+    id: spec.projectCollisionItem.id,
+    characterId: null,
+    title: spec.projectCollisionItem.title,
+    description: spec.projectCollisionItem.description ?? null,
+    imagePrompt: spec.projectCollisionItem.imagePrompt ?? null,
+    types: spec.projectCollisionItem.types,
+    componentItemIds: spec.projectCollisionItem.componentItemIds ?? [],
+    appropriateness: spec.projectCollisionItem.appropriateness ?? null,
+    isDefault: spec.projectCollisionItem.isDefault ?? false,
+    replace: spec.projectCollisionItem.replace ?? false,
+    migratedFromClothingRecordId: null,
+    archivedAt: null,
+    createdAt: PINNED_TS,
+    updatedAt: PINNED_TS,
+  } as never);
+
   await ensureGroupWardrobeFolder(groupMp);
   await createProjectWardrobeItem(groupMp, {
     id: spec.groupItem.id,

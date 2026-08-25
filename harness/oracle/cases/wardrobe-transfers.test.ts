@@ -79,8 +79,15 @@ interface Scenario {
   name: string;
   action: string;
   itemId: string;
-  sourceCharacterId: string;
+  /** Absent for the explicit-source / neither-source scenarios (P4.D112). */
+  sourceCharacterId?: string;
   sourceProjectId?: string | null;
+  /** The explicit source container (v4 d7263f39). KEY PRESENCE matters: an
+   * explicit null in the spec JSON is sent as `source: null` (the tri-state
+   * parse arm), while an absent key omits it from the body. */
+  source?: unknown;
+  /** v4 f6a10055 `components: 'move'|'copy'|'none'` — same key-presence rule. */
+  components?: unknown;
   destination: Destination;
   expect: string;
   expectMessage?: string;
@@ -184,18 +191,50 @@ async function runScenario(
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
-  const { POST } = await import('@/app/api/v1/wardrobe/transfers/route');
+  const { GET, POST } = await import('@/app/api/v1/wardrobe/transfers/route');
 
   await initializeDatabase();
 
+  // The synthetic __destinations row (P4.D112 tier-2 item 4): one GET so the
+  // destination roster is pinned unchanged at the pin. No table dump — GET
+  // writes nothing.
+  if (scenario.name === '__destinations') {
+    try {
+      const response = await GET({
+        method: 'GET',
+        url: 'http://localhost/api/v1/wardrobe/transfers',
+        headers: new Headers(),
+      } as never);
+      const status: number = response.status;
+      const body = await response.json();
+      return { name: scenario.name, ok: status >= 200 && status < 300, status, body };
+    } finally {
+      await closeDatabase();
+      closeMountIndexSQLiteClient();
+      rmSync(work, { recursive: true, force: true });
+    }
+  }
+
   try {
-    const req = createMockRequest({
+    // Key-presence-faithful body: sourceCharacterId / source / components ride
+    // only when the spec carries the key (an explicit null in the spec IS
+    // sent — the tri-state parse arms need all three poles).
+    const reqBody: Record<string, unknown> = {
       action: scenario.action,
       itemId: scenario.itemId,
-      sourceCharacterId: scenario.sourceCharacterId,
       sourceProjectId: scenario.sourceProjectId ?? null,
       destination: scenario.destination,
-    });
+    };
+    if (Object.prototype.hasOwnProperty.call(scenario, 'sourceCharacterId')) {
+      reqBody.sourceCharacterId = scenario.sourceCharacterId;
+    }
+    if (Object.prototype.hasOwnProperty.call(scenario, 'source')) {
+      reqBody.source = scenario.source;
+    }
+    if (Object.prototype.hasOwnProperty.call(scenario, 'components')) {
+      reqBody.components = scenario.components;
+    }
+    const req = createMockRequest(reqBody);
     const response = await POST(req as never);
     const status: number = response.status;
     const body = await response.json();
@@ -266,7 +305,12 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'error';
 
   const outLines: string[] = [];
-  for (const scenario of spec.scenarios) {
+  const allScenarios: Scenario[] = [
+    ...spec.scenarios,
+    // The GET destinations unchanged-check rides as a synthetic row.
+    { name: '__destinations', action: '', itemId: '', destination: { scope: '' }, expect: 'ok' },
+  ];
+  for (const scenario of allScenarios) {
     const payload = await runScenario(spec, scenario, scratch, mainFixture, mountFixture);
     outLines.push(JSON.stringify(payload));
   }

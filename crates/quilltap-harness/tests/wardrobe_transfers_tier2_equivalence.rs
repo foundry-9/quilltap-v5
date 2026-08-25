@@ -1,15 +1,24 @@
 //! Tier-2 differential for the wardrobe TRANSFERS service:
+//! `api::wardrobe::parse_transfer_request` +
 //! `quilltap-core::services::wardrobe_transfers::transfer_wardrobe_item` vs v4's
-//! REAL `app/api/v1/wardrobe/transfers/route.ts` POST handler.
+//! REAL `app/api/v1/wardrobe/transfers/route.ts` POST handler. Since P4.D112
+//! each scenario's POST BODY is built with the same key-presence rules on both
+//! sides (an explicit `null` in the spec is sent; an absent key is omitted) and
+//! goes through the same parse layer the route uses — so the `source` /
+//! `components` tri-states, both refine sentences, and the joined-issues 400
+//! envelope all diff for real. A final `__destinations` row pins the GET roster
+//! (exact — everything in it is fixture-baked).
 //!
 //! Both sides start from the SAME baked two-DB fixture (a users row; a source
-//! character with one wardrobe item in its vault; a destination character holding
-//! a collision-seed item; a project + group each with a provisioned official
-//! store; a Quilltap General store with one archetype item). Per scenario, both
-//! run the same transfer against a fresh COPY of the fixture, then the SEVEN
-//! mount-index tables are structural-diffed (doc_mount_points / _files /
-//! _documents / _file_links / _folders + project_doc_mount_links +
-//! group_doc_mount_links), plus the outcome (`wardrobe_item` + action).
+//! character with one wardrobe item AND the four-item composite family in its
+//! vault; a destination character holding a collision-seed item; a project
+//! [holding the component-collision seed] + group each with a provisioned
+//! official store; a Quilltap General store with one archetype item). Per
+//! scenario, both run the same transfer against a fresh COPY of the fixture,
+//! then the SEVEN mount-index tables are structural-diffed (doc_mount_points /
+//! _files / _documents / _file_links / _folders + project_doc_mount_links +
+//! group_doc_mount_links), plus the outcome (`wardrobe_item` + action +
+//! componentsTransferred + the unresolved list, LITERAL where fixture-baked).
 //!
 //! REMAP FORM (shared cross-table/cross-db id-map, extended for content-addressed
 //! bytes). A COPY writes the item's MINTED uuid + `now` timestamps INTO the
@@ -52,10 +61,10 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use quilltap_core::api::wardrobe::parse_transfer_request;
 use quilltap_core::db::Writer;
 use quilltap_core::services::wardrobe_transfers::{
-    action_str, transfer_wardrobe_item, DestinationScope, TransferAction, TransferError,
-    TransferRequest,
+    action_str, enumerate_destinations, transfer_wardrobe_item, TransferError,
 };
 use regex::Regex;
 use serde::Deserialize;
@@ -66,36 +75,44 @@ use sha2::{Digest, Sha256};
 /// normalizer, so the value is irrelevant to the diff.
 const FROZEN_NOW: &str = "2026-05-05T05:05:05.005Z";
 
+/// Scenarios stay RAW `Value`s: for the P4.D112 tri-state parse arms, the
+/// PRESENCE of the `source` / `components` / `sourceCharacterId` keys matters
+/// (an explicit `null` in the spec is sent as `null`; an absent key is
+/// omitted), and a typed Option would collapse null-vs-absent.
 #[derive(Deserialize)]
 struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
     #[serde(rename = "userId")]
     user_id: String,
-    scenarios: Vec<Scenario>,
+    scenarios: Vec<Value>,
 }
 
-#[derive(Deserialize)]
-struct Scenario {
-    name: String,
-    action: String,
-    #[serde(rename = "itemId")]
-    item_id: String,
-    #[serde(rename = "sourceCharacterId")]
-    source_character_id: String,
-    #[serde(default, rename = "sourceProjectId")]
-    source_project_id: Option<String>,
-    destination: Destination,
-    expect: String,
-    #[serde(default, rename = "expectMessage")]
-    expect_message: Option<String>,
+/// The POST body for a scenario — the SAME key-presence rules the oracle case
+/// applies, so both sides parse identical bytes.
+fn body_for(scenario: &Value) -> Value {
+    let obj = scenario.as_object().expect("scenario object");
+    let mut body = Map::new();
+    body.insert("action".to_string(), scenario["action"].clone());
+    body.insert("itemId".to_string(), scenario["itemId"].clone());
+    body.insert(
+        "sourceProjectId".to_string(),
+        scenario
+            .get("sourceProjectId")
+            .cloned()
+            .unwrap_or(Value::Null),
+    );
+    body.insert("destination".to_string(), scenario["destination"].clone());
+    for key in ["sourceCharacterId", "source", "components"] {
+        if let Some(v) = obj.get(key) {
+            body.insert(key.to_string(), v.clone());
+        }
+    }
+    Value::Object(body)
 }
 
-#[derive(Deserialize)]
-struct Destination {
-    scope: String,
-    #[serde(default)]
-    id: Option<String>,
+fn scen_str<'a>(scenario: &'a Value, key: &str) -> Option<&'a str> {
+    scenario.get(key).and_then(Value::as_str)
 }
 
 /// The mount-index tables dumped after each scenario, in the canonical walk order
@@ -447,6 +464,19 @@ fn normalize_item(item: &Value) -> Value {
                 let s = blank_uuids_in(&placeholder_ts_in(s));
                 pairs.push((k.clone(), Value::String(s)));
             }
+            // componentItemIds may carry MINTED copy ids — blank them too (the
+            // relational identity is verified by the table dumps; the literal
+            // expect* arms pin the fixture-baked / minted split).
+            Value::Array(a) => {
+                let a: Vec<Value> = a
+                    .iter()
+                    .map(|e| match e {
+                        Value::String(s) => Value::String(blank_uuids_in(&placeholder_ts_in(s))),
+                        other => other.clone(),
+                    })
+                    .collect();
+                pairs.push((k.clone(), Value::Array(a)));
+            }
             other => pairs.push((k.clone(), other.clone())),
         }
     }
@@ -457,24 +487,6 @@ fn normalize_item(item: &Value) -> Value {
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/wardrobe-transfers-tier2.json")
-}
-
-fn action_from_str(s: &str) -> TransferAction {
-    match s {
-        "move" => TransferAction::Move,
-        "copy" => TransferAction::Copy,
-        other => panic!("unknown action {other}"),
-    }
-}
-
-fn scope_from_str(s: &str) -> DestinationScope {
-    match s {
-        "general" => DestinationScope::General,
-        "project" => DestinationScope::Project,
-        "group" => DestinationScope::Group,
-        "character" => DestinationScope::Character,
-        other => panic!("unknown scope {other}"),
-    }
 }
 
 #[test]
@@ -521,21 +533,30 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         .collect();
     assert_eq!(
         oracle_by_name.len(),
-        spec.scenarios.len(),
-        "oracle scenario count != corpus"
+        spec.scenarios.len() + 1,
+        "oracle scenario count != corpus + the __destinations row"
     );
 
+    // The committed spec's raw text — a minted id must not collide with ANY
+    // fixture-baked id (the literal `expectMintedComponents` arm).
+    let spec_text = std::fs::read_to_string(spec_path()).unwrap();
+
     for scenario in &spec.scenarios {
+        let name = scen_str(scenario, "name")
+            .expect("scenario name")
+            .to_string();
+        let expect = scen_str(scenario, "expect")
+            .expect("scenario expect")
+            .to_string();
+        let expect_message = scen_str(scenario, "expectMessage").map(str::to_string);
         let want = oracle_by_name
-            .get(&scenario.name)
-            .unwrap_or_else(|| panic!("oracle missing scenario {}", scenario.name));
+            .get(&name)
+            .unwrap_or_else(|| panic!("oracle missing scenario {name}"));
 
         // Fresh copies so the shared seed fixtures stay pristine.
         let pid = std::process::id();
-        let main_work =
-            std::env::temp_dir().join(format!("qt-wtr-main-rust-{pid}-{}.db", scenario.name));
-        let mount_work =
-            std::env::temp_dir().join(format!("qt-wtr-mount-rust-{pid}-{}.db", scenario.name));
+        let main_work = std::env::temp_dir().join(format!("qt-wtr-main-rust-{pid}-{name}.db"));
+        let mount_work = std::env::temp_dir().join(format!("qt-wtr-mount-rust-{pid}-{name}.db"));
         let _ = std::fs::remove_file(&main_work);
         let _ = std::fs::remove_file(&mount_work);
         std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
@@ -546,22 +567,18 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64)
             .unwrap_or_else(|e| panic!("open mount: {e}"));
 
-        let req = TransferRequest {
-            action: action_from_str(&scenario.action),
-            item_id: scenario.item_id.clone(),
-            source_character_id: scenario.source_character_id.clone(),
-            source_project_id: scenario.source_project_id.clone(),
-            destination_scope: scope_from_str(&scenario.destination.scope),
-            destination_id: scenario.destination.id.clone(),
+        // The body goes through the SAME parse layer the route uses (v4's
+        // ZodError → 400 with the joined issue messages).
+        let result = match parse_transfer_request(&body_for(scenario)) {
+            Ok(req) => transfer_wardrobe_item(
+                main.connection(),
+                mount.connection(),
+                &spec.user_id,
+                &req,
+                FROZEN_NOW,
+            ),
+            Err(joined) => Err(TransferError::BadRequest(joined)),
         };
-
-        let result = transfer_wardrobe_item(
-            main.connection(),
-            mount.connection(),
-            &spec.user_id,
-            &req,
-            FROZEN_NOW,
-        );
 
         // Compare the outcome/error tag against the oracle body.
         let want_ok = want.get("ok").and_then(Value::as_bool).unwrap_or(false);
@@ -573,34 +590,115 @@ fn wardrobe_transfers_tier2_matches_oracle() {
                     normalize_item(want_body.get("wardrobeItem").expect("oracle wardrobeItem"));
                 assert_eq!(
                     got_item, want_item,
-                    "scenario {}: wardrobe_item diverged\n  rust:   {got_item}\n  oracle: {want_item}",
-                    scenario.name
+                    "scenario {name}: wardrobe_item diverged\n  rust:   {got_item}\n  oracle: {want_item}"
                 );
                 assert_eq!(
                     action_str(outcome.action),
                     want_body.get("action").and_then(Value::as_str).unwrap(),
-                    "scenario {}: action",
-                    scenario.name
+                    "scenario {name}: action"
                 );
+                // v4 f6a10055: componentsTransferred always; the unresolved
+                // list only when non-empty.
                 assert_eq!(
-                    scenario.expect, "ok",
-                    "scenario {} expected ok",
-                    scenario.name
+                    outcome.components_transferred as i64,
+                    want_body
+                        .get("componentsTransferred")
+                        .and_then(Value::as_i64)
+                        .unwrap_or_else(|| panic!(
+                            "scenario {name}: oracle body missing componentsTransferred"
+                        )),
+                    "scenario {name}: componentsTransferred"
                 );
+                let want_unresolved = want_body.get("unresolvedComponentIds");
+                if outcome.unresolved_component_ids.is_empty() {
+                    assert!(
+                        want_unresolved.is_none(),
+                        "scenario {name}: oracle carries unresolvedComponentIds, rust is empty"
+                    );
+                } else {
+                    // LITERAL compare — the unresolved ids in this corpus are
+                    // fixture-baked, so the UUID normalizer must not see them
+                    // (the uuid-normalizer-blindness rule).
+                    assert_eq!(
+                        &serde_json::to_value(&outcome.unresolved_component_ids).unwrap(),
+                        want_unresolved.unwrap_or_else(|| panic!(
+                            "scenario {name}: rust has unresolved ids, oracle body lacks the key"
+                        )),
+                        "scenario {name}: unresolvedComponentIds"
+                    );
+                }
+                // The spec's literal arms (v5-side; the structural remap is
+                // blind to fixture-baked ids by design).
+                if let Some(want_count) = scenario
+                    .get("expectComponentsTransferred")
+                    .and_then(Value::as_i64)
+                {
+                    assert_eq!(
+                        outcome.components_transferred as i64, want_count,
+                        "scenario {name}: expectComponentsTransferred"
+                    );
+                }
+                if let Some(want_id) = scen_str(scenario, "expectItemId") {
+                    assert_eq!(
+                        outcome.wardrobe_item.get("id").and_then(Value::as_str),
+                        Some(want_id),
+                        "scenario {name}: expectItemId (literal)"
+                    );
+                }
+                if let Some(want_refs) = scenario.get("expectComponentItemIds") {
+                    assert_eq!(
+                        outcome
+                            .wardrobe_item
+                            .get("componentItemIds")
+                            .unwrap_or(&Value::Null),
+                        want_refs,
+                        "scenario {name}: expectComponentItemIds (literal)"
+                    );
+                }
+                if let Some(minted) = scenario
+                    .get("expectMintedComponents")
+                    .and_then(Value::as_u64)
+                {
+                    let refs: Vec<&str> = outcome
+                        .wardrobe_item
+                        .get("componentItemIds")
+                        .and_then(Value::as_array)
+                        .map(|a| a.iter().filter_map(Value::as_str).collect())
+                        .unwrap_or_default();
+                    assert_eq!(
+                        refs.len() as u64,
+                        minted,
+                        "scenario {name}: expectMintedComponents count"
+                    );
+                    for r in refs {
+                        assert!(
+                            !spec_text.contains(r),
+                            "scenario {name}: ref {r} is a fixture-baked id — expected a MINTED one"
+                        );
+                    }
+                }
+                if let Some(want_unres) = scenario.get("expectUnresolvedComponentIds") {
+                    assert_eq!(
+                        &serde_json::to_value(&outcome.unresolved_component_ids).unwrap(),
+                        want_unres,
+                        "scenario {name}: expectUnresolvedComponentIds (literal)"
+                    );
+                }
+                assert_eq!(expect, "ok", "scenario {name} expected ok");
             }
             (Err(e), false) => {
                 assert_eq!(
-                    scenario.expect, "error",
-                    "scenario {}: rust errored but corpus expected ok ({e:?})",
-                    scenario.name
+                    expect, "error",
+                    "scenario {name}: rust errored but corpus expected ok ({e:?})"
                 );
-                if let Some(msg) = &scenario.expect_message {
+                if let Some(msg) = &expect_message {
                     let got_msg = match e {
                         TransferError::BadRequest(m) => m.clone(),
                         TransferError::NotFound => "Wardrobe item".to_string(),
+                        TransferError::Server(m) => m.clone(),
                         TransferError::Internal(m) => m.clone(),
                     };
-                    assert_eq!(&got_msg, msg, "scenario {}: error message", scenario.name);
+                    assert_eq!(&got_msg, msg, "scenario {name}: error message");
                     // The oracle body carries v4's error text.
                     assert_eq!(
                         want.get("body")
@@ -608,20 +706,15 @@ fn wardrobe_transfers_tier2_matches_oracle() {
                             .and_then(Value::as_str)
                             .unwrap(),
                         msg,
-                        "scenario {}: oracle error text",
-                        scenario.name
+                        "scenario {name}: oracle error text"
                     );
                 }
             }
             (Ok(_), false) => panic!(
-                "scenario {}: rust succeeded but oracle expected an error ({:?})",
-                scenario.name,
+                "scenario {name}: rust succeeded but oracle expected an error ({:?})",
                 want.get("body")
             ),
-            (Err(e), true) => panic!(
-                "scenario {}: rust errored ({e:?}) but oracle succeeded",
-                scenario.name
-            ),
+            (Err(e), true) => panic!("scenario {name}: rust errored ({e:?}) but oracle succeeded"),
         }
 
         // Dump + diff the seven mount-index tables.
@@ -654,19 +747,48 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         for (i, s) in TABLES.iter().enumerate() {
             assert_eq!(
                 got[i]["columns"], wanted[i]["columns"],
-                "scenario {} / {}: column set",
-                scenario.name, s.table
+                "scenario {name} / {}: column set",
+                s.table
             );
             assert_eq!(
                 got[i]["rows"], wanted[i]["rows"],
-                "scenario {} / {}: remapped rows diverged\n  rust:   {}\n  oracle: {}",
-                scenario.name, s.table, got[i]["rows"], wanted[i]["rows"]
+                "scenario {name} / {}: remapped rows diverged\n  rust:   {}\n  oracle: {}",
+                s.table, got[i]["rows"], wanted[i]["rows"]
             );
         }
     }
 
+    // The __destinations unchanged-check (P4.D112 tier-2 item 4): the GET
+    // roster over the untouched fixture must match v4's byte-for-byte —
+    // everything in it is fixture-baked, so the compare is EXACT.
+    {
+        let want = oracle_by_name
+            .get("__destinations")
+            .expect("oracle missing the __destinations row");
+        let pid = std::process::id();
+        let main_work = std::env::temp_dir().join(format!("qt-wtr-main-rust-{pid}-dest.db"));
+        let mount_work = std::env::temp_dir().join(format!("qt-wtr-mount-rust-{pid}-dest.db"));
+        let _ = std::fs::remove_file(&main_work);
+        let _ = std::fs::remove_file(&mount_work);
+        std::fs::copy(&main_fixture, &main_work).unwrap();
+        std::fs::copy(&mount_fixture, &mount_work).unwrap();
+        let main = Writer::open_writable(&main_work, &spec.test_pepper_base64).unwrap();
+        let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64).unwrap();
+        let got = enumerate_destinations(main.connection(), mount.connection(), &spec.user_id)
+            .expect("enumerate_destinations");
+        assert_eq!(
+            &got,
+            want.get("body").expect("oracle __destinations body"),
+            "__destinations: the GET roster diverged"
+        );
+        drop(main);
+        drop(mount);
+        let _ = std::fs::remove_file(&main_work);
+        let _ = std::fs::remove_file(&mount_work);
+    }
+
     eprintln!(
-        "OK: wardrobe-transfers tier-2 matched oracle ({} scenarios, 7 tables each).",
+        "OK: wardrobe-transfers tier-2 matched oracle ({} scenarios + __destinations, 7 tables each).",
         spec.scenarios.len()
     );
 }

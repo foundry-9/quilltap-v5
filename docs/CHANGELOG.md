@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — feat(wardrobe): moving or copying an outfit brings its components along (P4.D112)
+
+_Versions: quilltap-core 0.0.657, quilltap-harness 0.0.575._
+
+Ports the server half of v4 `d7263f39` + `f6a10055` on the transfers route.
+The transfer body gains an explicit `source: {scope, id}` container (used
+when the dialog browses a shared container directly — no character probing)
+alongside the legacy `sourceCharacterId`, and `components: move|copy|none`
+for composites: the transitive closure of the outfit's same-container
+components travels with it (shared-tier pieces stay put), all-or-nothing,
+with copy-minted ids rewritten into every travelling `componentItemIds`.
+Any planned id already taken at the destination refuses the whole transfer
+before anything is written, with v4's title-carrying sentence. Components
+land before the outfit; a move deletes the travelling components and then
+the item. A post-write verification reads the outfit back and reports
+planned references that did not survive the round-trip
+(`unresolvedComponentIds`); the response now always carries
+`componentsTransferred`. The schema port adds both refine sentences and the
+`source`/`components` tri-states (absent / null / value) with Zod-exact
+messages. The transfers tier-2 family now drives the shared parse layer
+with key-presence-faithful bodies over 18 scenarios (composite fixtures
+seeded through v4's real repos; literal id compares where the UUID
+normalizer would be blind; a `__destinations` GET row pins the roster) and
+the wardrobe-routes web family gains five tri-state cases — all against
+oracles regenerated at the `f6a10055` pin, with the read-back and
+collision arms mutation-proven.
+
 #### 2026-08-25 — fix(wardrobe): an ambiguous title slug is assigned to nobody (P4.D112)
 
 _Versions: quilltap-core 0.0.656._

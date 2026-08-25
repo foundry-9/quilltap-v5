@@ -42,7 +42,8 @@ use crate::db::vault_wardrobe_public::{
 use crate::db::DbError;
 use crate::services::image_job_common::with_both_conns;
 use crate::services::wardrobe_transfers::{
-    self, DestinationScope, TransferAction, TransferError, TransferRequest,
+    self, ComponentMode, DestinationScope, ExplicitSource, SourceScope, TransferAction,
+    TransferError, TransferRequest,
 };
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_tiers::SharedWardrobeTiers;
@@ -429,8 +430,13 @@ pub fn wardrobe_transfer_destinations(db: &Db, user_id: &str) -> Response {
 /// Zod-message port of v4 `transferRequestSchema` (the route CATCHES the
 /// ZodError and joins the issue messages with `'; '`, so these strings are wire
 /// payload). Issues collect in shape-key order: `action`, `itemId`,
-/// `sourceCharacterId`, `sourceProjectId`, `destination` (then its keys).
-fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
+/// `sourceCharacterId`, `sourceProjectId`, `source`, `destination` (then its
+/// keys), `components`. The two `.refine`s run only when the base shape parsed
+/// (Zod skips refinements on a failed object parse), and BOTH run when it did.
+///
+/// `pub` so the transfers tier-2 differential can drive the same body-parse
+/// layer the route does.
+pub fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
     use super::chat_outfits::received;
 
     let obj = body.as_object();
@@ -455,9 +461,11 @@ fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
         }
     };
 
-    // itemId / sourceCharacterId: z.string().min(1)
-    let min1 = |key: &str, issues: &mut Vec<String>| -> Option<String> {
-        match get(key) {
+    // itemId: z.string().min(1); sourceCharacterId: the same `.optional()`
+    // (absent OK, an explicit null is NOT — `.optional()` without
+    // `.nullable()`).
+    let min1 = |v: Option<&Value>, issues: &mut Vec<String>| -> Option<String> {
+        match v {
             Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
             Some(Value::String(_)) => {
                 issues.push("Too small: expected string to have >=1 characters".to_string());
@@ -472,8 +480,11 @@ fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
             }
         }
     };
-    let item_id = min1("itemId", &mut issues);
-    let source_character_id = min1("sourceCharacterId", &mut issues);
+    let item_id = min1(get("itemId"), &mut issues);
+    let source_character_id = match get("sourceCharacterId") {
+        None => None,
+        v => min1(v, &mut issues),
+    };
 
     // sourceProjectId: z.string().nullable().optional()
     let source_project_id = match get("sourceProjectId") {
@@ -487,6 +498,55 @@ fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
             None
         }
     };
+
+    // source: z.object({ scope: z.enum(['character','project','group',
+    // 'general']), id: z.string().optional() }).optional() — the explicit
+    // container (d7263f39). NOTE the enum ORDER differs from destination's.
+    let mut source: Option<ExplicitSource> = None;
+    match get("source") {
+        None => {}
+        Some(Value::Object(src)) => {
+            let scope = match src.get("scope") {
+                Some(Value::String(s)) => match s.as_str() {
+                    "character" => Some(SourceScope::Character),
+                    "project" => Some(SourceScope::Project),
+                    "group" => Some(SourceScope::Group),
+                    "general" => Some(SourceScope::General),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if scope.is_none() {
+                issues.push(
+                    "Invalid option: expected one of \"character\"|\"project\"|\"group\"|\"general\""
+                        .to_string(),
+                );
+            }
+            let mut source_id: Option<String> = None;
+            match src.get("id") {
+                None => {}
+                Some(Value::String(s)) => source_id = Some(s.clone()),
+                v => {
+                    issues.push(format!(
+                        "Invalid input: expected string, received {}",
+                        received(v)
+                    ));
+                }
+            }
+            if let Some(scope) = scope {
+                source = Some(ExplicitSource {
+                    scope,
+                    id: source_id,
+                });
+            }
+        }
+        v => {
+            issues.push(format!(
+                "Invalid input: expected object, received {}",
+                received(v)
+            ));
+        }
+    }
 
     // destination: z.object({ scope: z.enum([...]), id: z.string().optional() })
     let mut destination_scope: Option<DestinationScope> = None;
@@ -535,17 +595,47 @@ fn parse_transfer_request(body: &Value) -> Result<TransferRequest, String> {
         }
     }
 
+    // components: z.enum(['move', 'copy', 'none']).optional() (f6a10055).
+    let components = match get("components") {
+        None => ComponentMode::None,
+        Some(Value::String(s)) if s == "move" => ComponentMode::Move,
+        Some(Value::String(s)) if s == "copy" => ComponentMode::Copy,
+        Some(Value::String(s)) if s == "none" => ComponentMode::None,
+        _ => {
+            issues.push("Invalid option: expected one of \"move\"|\"copy\"|\"none\"".to_string());
+            ComponentMode::None
+        }
+    };
+
     if !issues.is_empty() {
         return Err(issues.join("; "));
+    }
+
+    // The two schema refines — they only run once the base shape parsed, and
+    // both run (each failure is its own joined issue).
+    let mut refine_issues: Vec<String> = Vec::new();
+    if source_character_id.is_none() && source.is_none() {
+        refine_issues.push("Either sourceCharacterId or source is required".to_string());
+    }
+    if action == Some(TransferAction::Copy) && components == ComponentMode::Move {
+        refine_issues.push(
+            "Copying an outfit cannot move its components — the original outfit still needs them"
+                .to_string(),
+        );
+    }
+    if !refine_issues.is_empty() {
+        return Err(refine_issues.join("; "));
     }
 
     Ok(TransferRequest {
         action: action.unwrap(),
         item_id: item_id.unwrap(),
-        source_character_id: source_character_id.unwrap(),
+        source_character_id,
         source_project_id,
+        source,
         destination_scope: destination_scope.unwrap(),
         destination_id,
+        components,
     })
 }
 
@@ -569,12 +659,26 @@ pub async fn wardrobe_transfer_apply(db: &Db, user_id: &str, body: Value, now: &
     .await;
 
     match out {
-        Ok(Ok(outcome)) => Response::Wardrobe(json!({
-            "wardrobeItem": outcome.wardrobe_item,
-            "action": wardrobe_transfers::action_str(outcome.action),
-        })),
+        Ok(Ok(outcome)) => {
+            // v4: `{ wardrobeItem, action, componentsTransferred,
+            // ...(unresolvedComponentIds when non-empty) }`.
+            let mut body = json!({
+                "wardrobeItem": outcome.wardrobe_item,
+                "action": wardrobe_transfers::action_str(outcome.action),
+                "componentsTransferred": outcome.components_transferred,
+            });
+            if !outcome.unresolved_component_ids.is_empty() {
+                body.as_object_mut().unwrap().insert(
+                    "unresolvedComponentIds".to_string(),
+                    json!(outcome.unresolved_component_ids),
+                );
+            }
+            Response::Wardrobe(body)
+        }
         Ok(Err(TransferError::NotFound)) => not_found("Wardrobe item"),
         Ok(Err(TransferError::BadRequest(m))) => bad_request(m),
+        // v4's explicit serverError arms — the message IS the wire payload.
+        Ok(Err(TransferError::Server(m))) => internal(m),
         // v4's catch → serverError with this exact message.
         Ok(Err(TransferError::Internal(_))) => internal("Failed to transfer wardrobe item"),
         Err(e) => internal(e),
