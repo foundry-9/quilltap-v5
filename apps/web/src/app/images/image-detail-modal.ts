@@ -2,6 +2,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -43,7 +45,24 @@ import { ToastService } from '../ui/toast.service';
  * `'Character'` (`useImageActions.ts:34`, `:61`, `:67`), and the Avatar badge
  * does not move after Set Avatar until the panel reloads. Reproduced, not
  * repaired — a repair would be silent divergence.
-
+ *
+ * PORTALED TO `document.body` (v4 bug 99, `8018c487` — v4 uses
+ * `createPortal(modal, document.body)`; v5 reparents its own host, the idiom
+ * `search-dialog.ts` established for bug 40). Rendered in place, the overlay
+ * lands inside `.qt-workspace`, whose `isolation: isolate`
+ * (`_workspace.css:34`) makes it a stacking context, so this `z-[60]` is
+ * resolved WITHIN the workspace rather than against the page — and the sticky
+ * `.qt-page-toolbar` (`z-30`, `_layout.css:707`), painted by an ancestor
+ * context, covers the whole strip the top-right Download/Copy/Save/Close
+ * cluster occupies. Nothing is clipped, hidden or mispositioned: the controls
+ * lay out exactly where they belong and are simply painted over, so Escape
+ * still closes the modal and the picture is merely unsaveable. Measured before
+ * the fix (P4.D117's e2e beat): `document.elementFromPoint()` at the Download
+ * button's centre returned the toolbar's queue-status badges.
+ *
+ * NOT z-index escalation, deliberately — v4 rejects that and the workspace's
+ * isolation is load-bearing (it is what keeps the pane backdrop below the
+ * panes).
  */
 @Component({
   selector: 'qt-image-detail-modal',
@@ -175,6 +194,25 @@ export class ImageDetailModal {
       });
     });
     inject(DestroyRef).onDestroy(() => dispose?.());
+
+    // The portal (see the class docblock). v4's `createPortal` guard is
+    // `typeof document === 'undefined'` for SSR; the same guard here keeps the
+    // component renderable where there is no DOM.
+    //
+    // It has to run AFTER the first render, not in the constructor the way
+    // `search-dialog.ts` can. That dialog is mounted unconditionally, so its
+    // host is already in the DOM when its constructor runs; every host of THIS
+    // modal mounts it under an `@if`, and an embedded view's root nodes are
+    // attached to the container only after the view is created — so a
+    // constructor-time reparent is silently undone by the insertion that
+    // follows it. (Measured: the gallery's modal was still inside the pane.)
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    inject(DestroyRef).onDestroy(() => host.remove());
+    afterNextRender(() => {
+      if (typeof document !== 'undefined') {
+        document.body.appendChild(host);
+      }
+    });
   }
 
   private async loadEntities(imageId: string): Promise<void> {

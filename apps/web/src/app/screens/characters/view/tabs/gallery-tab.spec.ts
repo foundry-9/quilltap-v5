@@ -216,8 +216,12 @@ describe('CharacterGalleryTab (EmbeddedPhotoGallery parity)', () => {
       fixture.nativeElement.querySelector('button.aspect-square') as HTMLButtonElement
     ).click();
     await flush(fixture);
-    const modal = fixture.nativeElement.querySelector('qt-image-detail-modal');
+    // The modal PORTALS to document.body (bug 99), so it is NOT in this
+    // component's subtree — querying the fixture would silently pass forever.
+    const modal = document.querySelector('qt-image-detail-modal');
     expect(modal).toBeTruthy();
+    expect(modal!.parentElement).toBe(document.body);
+    expect(fixture.nativeElement.querySelector('qt-image-detail-modal')).toBeNull();
   });
 
   // GalleryImage.tsx:36-39 — a failed thumbnail collapses to the icon tile.
@@ -359,7 +363,9 @@ describe('CharacterGalleryTab (EmbeddedPhotoGallery parity)', () => {
     // port, though in BOTH the action overlay is a sibling of the tile button
     // rather than a child, so nothing bubbles into it either way. The pin that
     // matters is the observable one: downloading opens no detail view.
-    expect(fixture.nativeElement.querySelector('qt-image-detail-modal')).toBeNull();
+    // Queried on the DOCUMENT, not the fixture — the modal portals to the body,
+    // so a fixture-scoped query could never see it and would never fail.
+    expect(document.querySelector('qt-image-detail-modal')).toBeNull();
     expect(toasts()).toEqual([]);
   });
 

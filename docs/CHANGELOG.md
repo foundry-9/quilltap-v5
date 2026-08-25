@@ -192,6 +192,36 @@ collapse to a stray space. The host carries `block`, so `.qt-select`'s
 `select.value` after the children mount, so a selection naming no rendered
 option leaves the control blank instead of snapping to row 0 - reachable here
 whenever a tier's list refetches without the row the current selection names.
+#### 2026-08-25 — fix(images): the image detail modal escapes the workspace stacking trap (bug 99, part 2)
+
+_Versions: SPA 0.5.559._
+
+The stacking half of v4 `8018c487`, and v5 measurably had it. `.qt-workspace`
+carries `isolation: isolate`, which makes it a stacking context, so the modal's
+`z-[60]` was resolved inside the workspace rather than against the page and the
+sticky `.qt-page-toolbar` (`z-30`, painted by an ancestor context) covered the
+whole strip its Download/Copy/Save/Close cluster occupies. Nothing was clipped or
+mispositioned — the controls laid out exactly where they belonged and were simply
+painted over, so Escape still closed the modal and the picture was merely
+unsaveable.
+
+Measured before the fix by the new e2e beat: `document.elementFromPoint()` at the
+Download control's centre returned the toolbar's queue-status badges, while
+Playwright's `toBeVisible()` passed on the same controls in the same failing run.
+No non-browser layer can see this — jsdom runs no compositing.
+
+The modal now reparents its host to `document.body`, the v5 equivalent of v4's
+`createPortal`, and the idiom `search-dialog.ts` established for bug 40. Not
+z-index escalation: v4 rejects that and the workspace isolation is load-bearing.
+
+The reparent runs in `afterNextRender`, not the constructor. Every host mounts
+this modal under an `@if`, and an embedded view's root nodes are attached only
+after the view is created, so a constructor-time reparent is silently undone by
+the insertion that follows — which is what the full suite caught. That discovery
+also exposed two assertions in sibling specs that queried the modal inside the
+fixture's own subtree, where a portaled modal can never be; both now query the
+document.
+
 #### 2026-08-25 — fix(images): a character's photo gallery can download a picture again (bug 99, part 1)
 
 _Versions: SPA 0.5.558._

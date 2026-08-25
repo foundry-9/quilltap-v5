@@ -235,7 +235,9 @@ describe('PhotoGalleryModal', () => {
       (gridImgs(fixture)[0].closest('button') as HTMLButtonElement).click();
       await flush(fixture);
       expect(fixture.nativeElement.querySelector('qt-chat-gallery-image-view-modal')).toBeTruthy();
-      expect(fixture.nativeElement.querySelector('qt-image-detail-modal')).toBeNull();
+      // The detail modal PORTALS to document.body (bug 99), so it is looked for
+      // there — a fixture-scoped query could not fail either way.
+      expect(document.querySelector('qt-image-detail-modal')).toBeNull();
     });
 
     // PhotoGalleryModal.tsx:353-361 — an image item routes to the deep detail modal.
@@ -246,7 +248,10 @@ describe('PhotoGalleryModal', () => {
       );
       (gridImgs(fixture)[0].closest('button') as HTMLButtonElement).click();
       await flush(fixture);
-      expect(fixture.nativeElement.querySelector('qt-image-detail-modal')).toBeTruthy();
+      // Portaled to document.body (bug 99) rather than rendered in the pane.
+      const detail = document.querySelector('qt-image-detail-modal');
+      expect(detail).toBeTruthy();
+      expect(detail!.parentElement).toBe(document.body);
       expect(fixture.nativeElement.querySelector('qt-chat-gallery-image-view-modal')).toBeNull();
     });
 

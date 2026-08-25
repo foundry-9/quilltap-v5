@@ -86793,3 +86793,109 @@ Marked `qt-class-exception` — the convention the sheet header now documents
 
 Gate for the unit: guard green; `npm test` **344 files / 5,145 tests, 0
 failed**.
+
+### Unit 2 — the gallery download button + hook (bug 99, part 1)
+
+v4 `8018c487`'s download half. **Measured first:** `gallery-tab.ts` (v5's
+collapse of `EmbeddedPhotoGallery` + `GalleryControls` + `GalleryGrid` +
+`GalleryImage` + `useGalleryData`) had **no download control at all** — the same
+gap v4 records, `af1bc479` (P4.D114) having given the affordance to every other
+grid and missed this one.
+
+Ported: the hover button between Set-as-avatar and Delete, gated
+`!isMissingImage` as v4 gates it, with v4's `title`/`aria-label`
+`"Download image"` and its class string in the post-bug-100 spelling
+(`hover:qt-text-on-primary`, not the `hover:text-primary-foreground` `8018c487`
+shipped and `309aaa97` then rewrote). The handler is
+`useGalleryData.handleDownloadImage` (`:143-160`) verbatim — `image.url` first,
+the leading-slash normalization otherwise, `Failed to fetch image (${status})`
+on a non-ok response, the blob to `triggerBlobDownload` under the entry's own
+`fileName`, and on failure the FIXED toast `Failed to download image` beside a
+console line carrying the real message and v4's exact `{error, entityId,
+imageId}` bag.
+
+One structural note: the tile → `ImageData` mapping was factored out of
+`selectedImage` into `toImageData`, because v4's hook and modal read the same
+`GalleryImage` and the two projections must not be able to drift.
+
+**Recorded, not ported:** v4's `stopPropagation` is carried faithfully but is
+inert in BOTH implementations — the action overlay is a SIBLING of the tile
+button, not a child, so nothing bubbles into it either way. The spec pins the
+observable consequence (downloading opens no detail view) rather than the
+mechanism.
+
+Four specs; three mutations, each reddening exactly one:
+
+| mutation | reddens |
+|---|---|
+| filename from the blob path's basename instead of `fileName` | the filename-source case |
+| toast reads the thrown message instead of the fixed sentence | the failure case |
+| drop the `!isMissingImage` gate | the missing-image case |
+
+### Unit 3 — the detail modal out of the workspace's stacking trap (bug 99, part 2)
+
+**v5 measurably HAD this bug, and the measurement is v4's own reproduced.**
+`.qt-workspace` carries `isolation: isolate` (`_workspace.css:34`),
+`.qt-page-toolbar` is `sticky top-0 z-30` with a `backdrop-filter`
+(`_layout.css:705-712`), and `qt-image-detail-modal` rendered in place at both
+its mount sites (`gallery-tab.ts:215`, `photo-gallery-modal.ts:174`). The
+`z-[60]` was therefore resolved inside the workspace, and the toolbar — painted
+by an ancestor context — covered the strip the top-right cluster occupies.
+
+The e2e beat was written and run RED before the fix. `document.elementFromPoint()`
+at the Download control's centre returned
+
+```
+span › span.qt-queue-badge-idle › div.qt-queue-badge-group › qt-queue-status-badges
+```
+
+— the toolbar's queue-status badges, the same element family v4 measured
+(`SPAN › .qt-queue-badge-summary › .qt-page-toolbar`). Not clipped, not hidden:
+Playwright's `toBeVisible()` passed on both controls in the same failing run.
+**No non-browser layer can see this** — jsdom runs no compositing, which is why
+the unit-tier pin below is deliberately a pin on the MECHANISM and the e2e beat
+is the pin on the consequence.
+
+The fix is v4's: leave the workspace. v4 uses `createPortal(modal,
+document.body)`; v5 reparents its own host, the idiom `search-dialog.ts`
+established for dogfood #45 / v4's bug 40. **NOT z-index escalation** — v4
+rejects that explicitly and the workspace's isolation is load-bearing.
+
+**One v5-specific trap, found by measurement not inspection.** The first
+attempt copied `search-dialog.ts` exactly and reparented in the CONSTRUCTOR.
+That is correct for the search dialog, which is mounted unconditionally (its
+host is already in the DOM when its constructor runs), and **silently useless
+here**: every host mounts this modal under an `@if`, and an embedded view's root
+nodes are attached to the container only AFTER the view is created — so the
+insertion that follows simply undoes the reparent. The full SPA suite is what
+caught it (`gallery-tab.spec.ts`'s existing `querySelector('qt-image-detail-modal')`
+still found the modal inside the pane). Moved to `afterNextRender`.
+
+That same discovery exposed two **vacuous** assertions the change would
+otherwise have created, both fixed: `gallery-tab.spec.ts` and
+`photo-gallery-modal.spec.ts` looked for the modal in the fixture's own subtree,
+where a portaled modal can never be — so both would have passed forever
+whatever happened. They now query the document and assert the parent is
+`document.body`.
+
+The unit-tier pin (`image-detail-modal.spec.ts`) mounts the modal inside a
+`PaneHost` under an `@if`, because a bare `TestBed.createComponent` attaches the
+host to the body ANYWAY and the assertion could never fail. Mutations:
+
+| mutation | result |
+|---|---|
+| remove the `appendChild` | `portals its host out of the pane` RED; `opens the deep detail modal` RED |
+| remove the `onDestroy` cleanup | still green — **measured**: Angular's own view destruction removes the node (`DefaultDomRenderer2.removeChild` ignores the recorded parent), so the explicit removal is insurance, not the mechanism. Kept for symmetry with `search-dialog.ts`. |
+
+**Recorded, not fixed (v4-faithful):** `photo-gallery-modal.ts` renders its own
+`z-50` overlay in place and is presumably trapped the same way. v4's
+`PhotoGalleryModal.tsx` is too — `8018c487` portals ONLY `ImageDetailModal` —
+so v5 matches v4 exactly. If v4 later portals the gallery layer, that is a
+drift row, not a v5 defect.
+
+**One flake investigated, not waved away.** The discarded constructor-portal
+run left `generate-image-page.spec.ts` red once on an unrelated assertion
+(`fetchSpy.mock.calls[0]`). It did not recur: with the `afterNextRender` version
+the full suite ran green **three consecutive times** (5,150/5,150). Recorded
+here rather than in a memory note because the cause left with the code that
+caused it.

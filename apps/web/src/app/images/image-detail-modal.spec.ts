@@ -1,3 +1,4 @@
+import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -74,6 +75,24 @@ async function render(
   return fixture;
 }
 
+/** A pane that mounts the modal under an `@if`, as every real host does. */
+@Component({
+  selector: 'qt-pane-host',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ImageDetailModal],
+  template: `
+    <div class="pane">
+      @if (open()) {
+        <qt-image-detail-modal [image]="image" />
+      }
+    </div>
+  `,
+})
+class PaneHost {
+  readonly open = signal(true);
+  readonly image = imageData({});
+}
+
 async function flush(fixture: ComponentFixture<ImageDetailModal>): Promise<void> {
   for (let i = 0; i < 5; i++) {
     await new Promise((r) => setTimeout(r, 0));
@@ -123,6 +142,44 @@ describe('ImageDetailModal', () => {
     );
     expect(fixture.nativeElement.textContent).toContain('In Photo Albums');
     expect(fixture.nativeElement.textContent).toContain('Aria');
+  });
+
+  /**
+   * v4 bug 99 (`8018c487`): the overlay renders through
+   * `createPortal(…, document.body)`. Inside `.qt-workspace` — whose
+   * `isolation: isolate` makes it a stacking context — the `z-[60]` below is
+   * resolved within the workspace and the sticky `.qt-page-toolbar` (z-30, an
+   * ancestor context) paints over the whole control cluster. jsdom runs no
+   * cascade, so THIS spec can only pin the mechanism (where the host ends up);
+   * the consequence is pinned in `e2e/workspace-gallery-modal-flow.spec.ts`
+   * with a real hit test.
+   */
+  it('portals its host out of the pane it is mounted in', async () => {
+    // Mounted inside a pane, under an `@if`, which is how every real host
+    // mounts it. A bare `TestBed.createComponent` would attach the host to the
+    // body ANYWAY and the assertion could never fail.
+    TestBed.configureTestingModule({
+      imports: [PaneHost],
+      providers: [{ provide: CoreClient, useValue: stubClient({}) }],
+    });
+    const fixture = TestBed.createComponent(PaneHost);
+    fixture.detectChanges();
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    const pane = (fixture.nativeElement as HTMLElement).querySelector('.pane')!;
+    const modal = document.querySelector('qt-image-detail-modal');
+    expect(modal, 'the modal rendered').toBeTruthy();
+    expect(modal!.parentElement).toBe(document.body);
+    expect(pane.querySelector('qt-image-detail-modal')).toBeNull();
+    expect(modal!.querySelector('.fixed.inset-0')).toBeTruthy();
+
+    // And it leaves nothing behind on the body when the host closes it.
+    fixture.componentInstance.open.set(false);
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(document.querySelector('qt-image-detail-modal')).toBeNull();
   });
 
   // ImageDetailModal.tsx:87 — the overlay is z-[60] (one above the z-50 gallery).
