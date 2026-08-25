@@ -195,6 +195,24 @@ Recorded mechanism divergence: v4's module also exports
 mutations ride dispatch verbs, so that routing lands in `wardrobe.api.ts` as a
 verb router in a later unit of this lane; the types and the encoding stay
 v4's verbatim.
+#### 2026-08-25 — feat(mount-points): the blob endpoint names the bytes it serves (P4.D114)
+
+_Versions: web 0.0.87._
+
+Port of v4 `af1bc479`'s server half. `GET /api/v1/mount-points/{id}/blobs/{*path}`
+now sends `Content-Disposition: inline` with the STORED basename on both
+response arms, through the existing `quilltap_core::content_disposition`
+helper. The name is `relativePath.split('/').pop()`, not `originalFileName`:
+images are transcoded to WebP on upload, so the original name's extension can
+mismatch the bytes the endpoint actually serves. `originalFileName` (blob arm)
+and the literal `document` (documents-fallback arm) are the falsy fallbacks v4
+chains behind it.
+
+`binary_routes` gains the pins: a nested blob path where the stored basename
+and `originalFileName` disagree, a non-ASCII basename whose header was
+compared byte-for-byte against v4's real `buildContentDisposition`, and the
+documents-fallback arm. The routing-unreachable `'document'` default is pinned
+as a unit test on the name helper instead.
 
 #### 2026-08-25 — docs(porting): the f6a10055 wardrobe-containers drift round is planned (P4.D112 ∥ P4.D113 ∥ P4.D114)
 

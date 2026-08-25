@@ -8,6 +8,7 @@
 
 mod common;
 
+use quilltap_core::db::doc_mount_blobs::{CreateBlobInput, DocMountBlobsRepository};
 use quilltap_core::db::Writer;
 use serde_json::Value;
 
@@ -56,6 +57,40 @@ fn seed_files(base: &std::path::Path) {
             rusqlite::params![IMG_ID],
         )
         .unwrap();
+}
+
+/// Seed two blob rows on the fixture's mount point so the `/blobs` route's
+/// blob arm (not just the documents fallback) is reachable: one at a NESTED
+/// path whose `originalFileName` deliberately disagrees with the stored
+/// basename, and one whose basename needs the RFC 5987 escape.
+fn seed_blobs(base: &std::path::Path, mount_point_id: &str) {
+    let w = Writer::open_writable(
+        &base.join("data/quilltap-mount-index.db"),
+        common::TEST_PEPPER,
+    )
+    .unwrap();
+    let repo = DocMountBlobsRepository::new(w.connection());
+    for (rel, original) in [
+        // v4's why-comment: the upload was transcoded to WebP, so the ORIGINAL
+        // name's extension mismatches the bytes served here.
+        ("Images/holiday/photo.webp", "holiday photo.HEIC"),
+        // The non-ASCII arm — `filename*=UTF-8''…` plus the underscored fallback.
+        ("Images/Suparṇā's cat.webp", "cat.HEIC"),
+    ] {
+        repo.create(&CreateBlobInput {
+            mount_point_id: mount_point_id.to_string(),
+            relative_path: rel.to_string(),
+            original_file_name: original.to_string(),
+            original_mime_type: "image/heic".to_string(),
+            stored_mime_type: "image/webp".to_string(),
+            sha256: String::new(),
+            data: TINY_PNG.to_vec(),
+            description: None,
+            file_name: None,
+            file_type: None,
+        })
+        .unwrap();
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -174,6 +209,7 @@ async fn binary_routes_serve_files_thumbnails_and_mount_bytes() {
         );
         row.expect("the fixture store has a markdown file")
     };
+    seed_blobs(base.path(), &mp);
 
     let resp = client
         .get(format!(
@@ -215,6 +251,46 @@ async fn binary_routes_serve_files_thumbnails_and_mount_bytes() {
         "text/markdown; charset=utf-8"
     );
     assert_eq!(resp.headers()["x-blob-sha256"].to_str().unwrap(), sha);
+    // v4 `af1bc479`, the documents-fallback arm: the stored basename, inline.
+    // (`relativePath.split('/').pop() || 'document'` — the `'document'` default
+    // is unreachable through the router, so it is pinned as a unit test on
+    // `blob_disposition_name` instead.)
+    let want_doc_name = rel.rsplit('/').next().unwrap();
+    assert_eq!(
+        resp.headers()["content-disposition"].to_str().unwrap(),
+        format!("inline; filename=\"{want_doc_name}\"")
+    );
+
+    // --- the blob arm: the stored basename beats originalFileName ---
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/mount-points/{mp}/blobs/Images/holiday/photo.webp"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers()["content-type"], "image/webp");
+    // NOT `holiday photo.HEIC` — the served bytes are the WebP.
+    assert_eq!(
+        resp.headers()["content-disposition"].to_str().unwrap(),
+        "inline; filename=\"photo.webp\""
+    );
+
+    // The RFC 5987 arm — byte-for-byte with v4's `buildContentDisposition`.
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/mount-points/{mp}/blobs/Images/Supar%E1%B9%87%C4%81's%20cat.webp"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers()["content-disposition"].to_str().unwrap(),
+        "inline; filename=\"Supar__'s cat.webp\"; \
+         filename*=UTF-8''Supar%E1%B9%87%C4%81%27s%20cat.webp"
+    );
 
     // Unknown path → 404 Blob not found.
     let resp = client

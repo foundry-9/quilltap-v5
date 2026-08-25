@@ -85493,3 +85493,72 @@ it is the lane's only edit outside `apps/web/src/app/wardrobe/**` +
   and `quilltap` were built only because the e2e harness needs them; the
   worktree `target/` is removed at lane close.)
 - Versions: **SPA 0.5.549 → 0.5.555**; no crate bumped.
+---
+
+## Lane record — P4.D114 (gallery downloads `af1bc479` + bug-98 `c93ec7ff`) — v4 `f6a10055`
+
+Drift-checked at lane start: `git log f6a10055..main --oneline` empty, the v4
+checkout on `main`, tree CLEAN. No pin worktree needed for the lane's own
+surveys; the oracle regen is pinned by the sweep driver's own venue rules.
+
+### Unit 1 — the blobs endpoint sends `Content-Disposition` (v4 `af1bc479`, server half)
+
+v4 added the header to BOTH arms of
+`app/api/v1/mount-points/[id]/blobs/[...path]/route.ts`, with two different
+fallback chains:
+
+| arm | v4 name expression |
+|---|---|
+| blob | `relativePath.split('/').pop() \|\| meta.originalFileName \|\| 'file'` |
+| documents fallback | `relativePath.split('/').pop() \|\| 'document'` |
+
+The **why-comment is the point and is carried verbatim in v5**: the stored
+basename, NOT `originalFileName` — images are transcoded to WebP on upload, so
+the original name's extension can mismatch the bytes actually served.
+
+Ported in `crates/quilltap-web/src/files_routes.rs`:
+
+- a new pure `blob_disposition_name(relative_path, fallbacks)` — JS
+  `pop()`-faithful (`"".split('/').pop()` and `"a/".split('/').pop()` are both
+  `""`, which is falsy, so both fall through, exactly as `rsplit` does here);
+- `mount_blob_get`'s read closure now carries the name out of whichever branch
+  produced the bytes (the tuple went 4 → 5 elements), and the response adds
+  `content-disposition` through the EXISTING
+  `quilltap_core::content_disposition::build_content_disposition(_, Inline)`
+  (already the two other binary routes' helper — no new string code).
+
+**The header bytes were checked against v4's REAL helper, not against a
+transcription.** `npx tsx` importing `lib/api/content-disposition` at the pin
+returned, for the two names the new pins assert:
+
+```
+"inline; filename=\"photo.webp\""
+"inline; filename=\"Supar__'s cat.webp\"; filename*=UTF-8''Supar%E1%B9%87%C4%81%27s%20cat.webp"
+```
+
+— byte-identical to what `binary_routes` now asserts. (v5's
+`content_disposition.rs` had already converged onto v4's widened
+`encodeExtValue` at the bug-41 round; this re-measures it at the new baseline
+rather than assuming.)
+
+**Pins** (`crates/quilltap-web/tests/binary_routes.rs`, extended in place —
+the test now seeds two real blob rows so the BLOB arm is reachable at all,
+which it never was before; the file only ever exercised the documents
+fallback):
+
+1. a nested path `Images/holiday/photo.webp` whose `originalFileName` is
+   deliberately `holiday photo.HEIC` — the stored basename must win;
+2. `Images/Suparṇā's cat.webp` — the RFC 5987 arm, whole header byte-compared;
+3. the documents-fallback arm's basename.
+
+The `'document'` literal is **routing-unreachable** (axum's `{*path}` never
+matches an empty segment), so it is pinned as a unit test on
+`blob_disposition_name` rather than pretended to be an integration arm.
+
+**Mutation proofs (2, both red):** dropping the header line → the
+documents-arm assertion fails; making the blob arm prefer `originalFileName` →
+`GOT "inline; filename=\"holiday photo.HEIC\"" / WANT "…photo.webp\""`.
+
+Gate for this unit: `cargo test --workspace` 453 test binaries / 2,340 tests /
+0 failed (exit 0); `cargo fmt --all --check` clean; `cargo clippy -p
+quilltap-web --all-targets -D warnings` clean. Version: web 0.0.86 → 0.0.87.

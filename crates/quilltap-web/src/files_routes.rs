@@ -91,6 +91,29 @@ pub(crate) fn db_and_backend(
 /// also fixed a divergence this copy carried: the ASCII fallback replaced each
 /// non-ASCII `char`, where JS replaces each UTF-16 code UNIT, so an astral
 /// character (an emoji in a filename) got one underscore instead of two.
+/// v4's `relativePath.split('/').pop() || <fallback>` for the blobs route's
+/// `Content-Disposition` name (`af1bc479`).
+///
+/// The STORED basename, not `originalFileName`: images are transcoded to WebP
+/// on upload, so the original name's extension can mismatch the bytes actually
+/// served here. `originalFileName` is only the blob arm's second chance, for
+/// the (routing-unreachable) empty/trailing-slash path where `pop()` is falsy.
+///
+/// JS `pop()` on `"".split('/')` is `""` — falsy — so an empty relative path
+/// and one ending in `/` both fall through, exactly as `rsplit` does here.
+fn blob_disposition_name<'a>(relative_path: &'a str, fallbacks: &[&'a str]) -> &'a str {
+    let basename = relative_path.rsplit('/').next().unwrap_or("");
+    if !basename.is_empty() {
+        return basename;
+    }
+    for f in fallbacks {
+        if !f.is_empty() {
+            return f;
+        }
+    }
+    ""
+}
+
 fn build_content_disposition(filename: &str) -> String {
     quilltap_core::content_disposition::build_content_disposition(
         filename,
@@ -422,49 +445,57 @@ pub async fn mount_blob_get(
         Err(resp) => return *resp,
     };
     #[allow(clippy::type_complexity)]
-    let read: Result<Option<(Vec<u8>, String, String, usize)>, quilltap_core::db::DbError> = db
-        .read_mount_index({
-            let id = id.clone();
-            let path = path.clone();
-            move |conn| {
-                // The blob branch, error-tolerant on a store with no
-                // doc_mount_blobs table yet (v4's hand-rolled repo creates it
-                // lazily on first WRITE; a read-only route must not).
-                let blobs = DocMountBlobsRepository::new(conn);
-                if let Ok(Some(meta)) = blobs.find_by_mount_point_and_path(&id, &path) {
-                    let Some(data) = blobs.read_data(&meta.id)? else {
-                        return Ok(None);
-                    };
-                    let len = meta.size_bytes.max(0) as usize;
-                    return Ok(Some((data, meta.stored_mime_type, meta.sha256, len)));
-                }
-                // The documents fallback (a text file addressed via /blobs —
-                // v4's uploads-store back-compat).
-                let links = DocMountFileLinksRepository::new(conn);
-                let Some(link) = links.find_by_mount_point_and_path(&id, &path)? else {
+    let read: Result<
+        Option<(Vec<u8>, String, String, usize, String)>,
+        quilltap_core::db::DbError,
+    > = db.read_mount_index({
+        let id = id.clone();
+        let path = path.clone();
+        move |conn| {
+            // The blob branch, error-tolerant on a store with no
+            // doc_mount_blobs table yet (v4's hand-rolled repo creates it
+            // lazily on first WRITE; a read-only route must not).
+            let blobs = DocMountBlobsRepository::new(conn);
+            if let Ok(Some(meta)) = blobs.find_by_mount_point_and_path(&id, &path) {
+                let Some(data) = blobs.read_data(&meta.id)? else {
                     return Ok(None);
                 };
-                let docs = DocMountDocumentsRepository::new(conn);
-                let Some(content) = docs.find_by_mount_point_and_path(&id, &path)? else {
-                    return Ok(None);
-                };
-                let bytes = content.into_bytes();
-                let len = bytes.len();
-                Ok(Some((
-                    bytes,
-                    mime_for_document(&link.file_type).to_string(),
-                    link.sha256,
-                    len,
-                )))
+                let len = meta.size_bytes.max(0) as usize;
+                let name =
+                    blob_disposition_name(&path, &[&meta.original_file_name, "file"]).to_string();
+                return Ok(Some((data, meta.stored_mime_type, meta.sha256, len, name)));
             }
-        });
+            // The documents fallback (a text file addressed via /blobs —
+            // v4's uploads-store back-compat).
+            let links = DocMountFileLinksRepository::new(conn);
+            let Some(link) = links.find_by_mount_point_and_path(&id, &path)? else {
+                return Ok(None);
+            };
+            let docs = DocMountDocumentsRepository::new(conn);
+            let Some(content) = docs.find_by_mount_point_and_path(&id, &path)? else {
+                return Ok(None);
+            };
+            let bytes = content.into_bytes();
+            let len = bytes.len();
+            Ok(Some((
+                bytes,
+                mime_for_document(&link.file_type).to_string(),
+                link.sha256,
+                len,
+                blob_disposition_name(&path, &["document"]).to_string(),
+            )))
+        }
+    });
 
     match read {
-        Ok(Some((bytes, mime, sha, len))) => (
+        Ok(Some((bytes, mime, sha, len, name))) => (
             StatusCode::OK,
             [
                 ("content-type", mime),
                 ("content-length", len.to_string()),
+                // v4 `af1bc479`: the stored basename, INLINE — so a gallery's
+                // download button gets the name of the bytes it just fetched.
+                ("content-disposition", build_content_disposition(&name)),
                 ("cache-control", "private, max-age=3600".to_string()),
                 ("x-blob-sha256", sha),
             ],
@@ -938,5 +969,46 @@ pub async fn files_delete(
     match dispatch_core(&state, core_req).await {
         Ok(resp) => core_response_to_http(resp, StatusCode::OK),
         Err(r) => r,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// v4 `af1bc479`: `relativePath.split('/').pop() || meta.originalFileName ||
+    /// 'file'` on the blob arm, `… || 'document'` on the documents fallback.
+    #[test]
+    fn blob_disposition_name_prefers_the_stored_basename() {
+        // The nested path's basename wins over the original name — the whole
+        // point of the change (a WebP-transcoded upload keeps `photo.HEIC` as
+        // its originalFileName while the served bytes are `photo.webp`).
+        assert_eq!(
+            blob_disposition_name("Images/holiday/photo.webp", &["photo.HEIC", "file"]),
+            "photo.webp"
+        );
+        // A bare basename (no folder) is its own last segment.
+        assert_eq!(
+            blob_disposition_name("photo.webp", &["photo.HEIC", "file"]),
+            "photo.webp"
+        );
+    }
+
+    #[test]
+    fn blob_disposition_name_falls_through_a_falsy_basename() {
+        // JS: `''.split('/').pop()` and `'a/'.split('/').pop()` are both `''`.
+        assert_eq!(
+            blob_disposition_name("", &["photo.HEIC", "file"]),
+            "photo.HEIC"
+        );
+        assert_eq!(
+            blob_disposition_name("a/", &["photo.HEIC", "file"]),
+            "photo.HEIC"
+        );
+        // An empty originalFileName is falsy too → v4's literal last resort.
+        assert_eq!(blob_disposition_name("", &["", "file"]), "file");
+        // The documents fallback arm has ONE fallback, `'document'`.
+        assert_eq!(blob_disposition_name("", &["document"]), "document");
+        assert_eq!(blob_disposition_name("notes/a.md", &["document"]), "a.md");
     }
 }
