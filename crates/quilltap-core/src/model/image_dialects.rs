@@ -869,20 +869,37 @@ pub fn build_models_request(
 }
 
 /// The OpenAI SDK's `APIError` message, which v4 surfaces verbatim as
-/// `fetchError`: `${status} ${body.error.message}`, falling back to the raw body
-/// text when the body carries no `error.message`. v5's host wire hands back the
-/// status and body where v4's SDK threw, so the message is reconstructed here.
-/// Measured at the pin against the real SDK (`401 Incorrect API key provided: …`
-/// and `400 service unavailable`).
+/// `fetchError`. v5's host wire hands back the status and body where v4's SDK
+/// threw, so the message is reconstructed here.
+///
+/// The SDK's rule is three-way, not one-way (`APIError.makeMessage`):
+///
+/// | body | SDK message |
+/// |---|---|
+/// | `{"error":{"message":"Invalid model"}}` | `400 Invalid model` |
+/// | `{"error":"…rejected by content moderation."}` | `400 "…rejected by content moderation."` |
+/// | `service unavailable` (not JSON) | `500 service unavailable` |
+///
+/// A **string** `error` — no `.message` to read — is `JSON.stringify`d, quotes
+/// included; only a body with no `error` at all falls back to the raw text.
+/// Dogfood finding #104: the middle row is exactly what Grok's Images API
+/// returns on a moderation refusal, and reading the whole raw body there (the
+/// previous fallback) is not what an operator sees in v4.
+///
+/// All four rows measured against the REAL SDK at 2026-08-25 (a stub server per
+/// case, `client.images.generate` driven through it), not transcribed.
 fn openai_sdk_error(resp: &WireResponse) -> ImageGenError {
     let parsed: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
-    let message = parsed
-        .get("error")
-        .and_then(|e| e.get("message"))
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| resp.body.clone());
+    let message = match parsed.get("error") {
+        Some(err) => match err.get("message") {
+            // `typeof error.message === 'string' ? error.message : JSON.stringify(error.message)`
+            Some(Value::String(m)) if !m.is_empty() => m.clone(),
+            Some(m) => m.to_string(),
+            // `error ? JSON.stringify(error) : message`
+            None => err.to_string(),
+        },
+        None => resp.body.clone(),
+    };
     ImageGenError::new(format!("{} {message}", resp.status))
 }
 
@@ -1400,8 +1417,30 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
             .send(&request.method, &request.url, &request.headers, &body)
             .await
         {
+            // v4 generates through `new OpenAI(...)` + `client.images.generate`
+            // for OPENAI / GROK / Z_AI / NANOGPT, and the SDK THROWS an
+            // `APIError` on any non-2xx — carrying the API's own message — long
+            // before reaching the `data` check. Their `Invalid response from …
+            // Images API` sentence is reserved for a 2xx with a malformed body.
+            // v5 fetches the wire itself, so the status gate has to be here.
+            // Dogfood finding #104: without it a Grok 400 (`{"error":
+            // "Generated image rejected by content moderation."}`) collapsed
+            // into the generic sentence and the operator lost the reason.
+            //
+            // GOOGLE and OPENROUTER are the raw-`fetch` pair in v4 (they check
+            // `response.ok` themselves and throw their own sentences), which
+            // `parse_image_response` reproduces — so they must NOT come through
+            // here. NanoGPT is raw-fetch only for its MODEL LISTING; its
+            // generation is the SDK, which is why it belongs on this list.
+            // `sdk_and_raw_fetch_providers_keep_their_own_non_2xx_sentences`
+            // pins the split in both directions.
+            Ok(resp)
+                if !resp.ok() && matches!(provider, "OPENAI" | "GROK" | "Z_AI" | "NANOGPT") =>
+            {
+                Err(openai_sdk_error(&resp))
+            }
             Ok(resp) => parse_image_response(provider, &model, &resp),
-            // The SDK/transport throw (moderation, network) surfaces verbatim.
+            // The SDK/transport throw (network) surfaces verbatim.
             Err(message) => Err(ImageGenError::new(message)),
         }?;
         // `ca22ec45`: Z.AI returns URLs (valid ~30 days), not base64 — but every
@@ -1552,6 +1591,7 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageModelDiscovery for RealImageProv
 mod tests {
     use super::*;
     use crate::model::image::ImageGenParams;
+    use crate::model::wire::CannedWireTransport;
 
     fn params(model: &str) -> ImageGenParams {
         ImageGenParams {
@@ -1567,6 +1607,141 @@ mod tests {
             guidance_scale: None,
             steps: None,
         }
+    }
+
+    // ── Dogfood finding #104: an image API's own error must reach the
+    // operator. v4 calls OPENAI / GROK / Z_AI through the OpenAI SDK, which
+    // THROWS on any non-2xx with the API's message; v5 fetches the wire itself
+    // and used to hand a 400 body straight to the parser, which found no
+    // `data` key and answered the generic "Invalid response from … Images API".
+    // The table below was measured against the REAL SDK (a stub server per
+    // case), not transcribed. ──
+
+    /// The four `APIError` messages the real SDK produces, measured
+    /// 2026-08-25 by driving `client.images.generate` against a stub server.
+    #[test]
+    fn sdk_error_reconstruction_matches_the_measured_table() {
+        let cases: &[(u16, &str, &str)] = &[
+            // A STRING error — Grok's moderation refusal, the live shape that
+            // found this. The SDK `JSON.stringify`s it, quotes included.
+            (
+                400,
+                r#"{"error":"Generated image rejected by content moderation."}"#,
+                r#"400 "Generated image rejected by content moderation.""#,
+            ),
+            // An object error with a string message — the plain message.
+            (
+                400,
+                r#"{"error":{"message":"Invalid model","type":"invalid_request_error"}}"#,
+                "400 Invalid model",
+            ),
+            (
+                401,
+                r#"{"error":{"message":"Incorrect API key provided: sk-xxx"}}"#,
+                "401 Incorrect API key provided: sk-xxx",
+            ),
+            // No `error` key at all (and not even JSON) — the raw body.
+            (500, "service unavailable", "500 service unavailable"),
+        ];
+        for (status, body, want) in cases {
+            let got = openai_sdk_error(&WireResponse::new(*status, *body));
+            assert_eq!(&got.message, want, "body {body}");
+        }
+    }
+
+    /// The gate itself: a non-2xx from an SDK provider never reaches the parser.
+    #[tokio::test]
+    async fn a_non_2xx_from_an_sdk_provider_carries_the_api_message() {
+        for provider in ["OPENAI", "GROK", "Z_AI", "NANOGPT"] {
+            let p = params(match provider {
+                "OPENAI" => "gpt-image-1",
+                "GROK" => "grok-imagine-image",
+                "NANOGPT" => "chroma",
+                _ => "cogview-4-250304",
+            });
+            let request = build_image_request(provider, &p).unwrap();
+            let wire = CannedWireTransport::new().with_response(
+                &request.method,
+                &request.url,
+                &request.body_string(),
+                WireResponse::new(
+                    400,
+                    r#"{"error":"Generated image rejected by content moderation."}"#,
+                ),
+            );
+            let err = RealImageProvider::new(wire)
+                .generate_image(provider, "k", &p)
+                .await
+                .expect_err("a 400 must be an error");
+            assert_eq!(
+                err.message, r#"400 "Generated image rejected by content moderation.""#,
+                "{provider} should surface the API's own message"
+            );
+            assert!(
+                !err.message.contains("Invalid response from"),
+                "{provider} must not fall through to the malformed-body sentence: {}",
+                err.message
+            );
+        }
+    }
+
+    /// The SDK/raw-fetch SPLIT, pinned in BOTH directions. Widening the gate
+    /// to every provider compiles, reads like a simplification, and silently
+    /// replaces GOOGLE's and OPENROUTER's own v4 sentences — a mutation that
+    /// stayed green until this test existed.
+    #[tokio::test]
+    async fn sdk_and_raw_fetch_providers_keep_their_own_non_2xx_sentences() {
+        // (provider, model, the sentence a 502 must produce)
+        let cases: &[(&str, &str, &str)] = &[
+            // The raw-`fetch` pair: v4 checks `response.ok` in the plugin and
+            // throws its own wording, which `parse_image_response` reproduces.
+            ("GOOGLE", "gemini-2.5-flash-image", "Gemini API error: 502"),
+            ("GOOGLE", "imagen-4", "Google Imagen API error: 502"),
+            (
+                "OPENROUTER",
+                "google/gemini-2.5-flash-image",
+                "OpenRouter API error: 502 - upstream exploded",
+            ),
+            // The SDK four: the reconstructed `APIError`.
+            ("OPENAI", "gpt-image-1", "502 upstream exploded"),
+            ("GROK", "grok-imagine-image", "502 upstream exploded"),
+            ("Z_AI", "cogview-4-250304", "502 upstream exploded"),
+            ("NANOGPT", "chroma", "502 upstream exploded"),
+        ];
+        for (provider, model, want) in cases {
+            let p = params(model);
+            let request = build_image_request(provider, &p).unwrap();
+            let wire = CannedWireTransport::new().with_response(
+                &request.method,
+                &request.url,
+                &request.body_string(),
+                WireResponse::new(502, "upstream exploded"),
+            );
+            let err = RealImageProvider::new(wire)
+                .generate_image(provider, "k", &p)
+                .await
+                .expect_err("a 502 must be an error");
+            assert_eq!(&err.message, want, "{provider} / {model}");
+        }
+    }
+
+    /// The other half of v4's contract: that sentence is still what a **2xx**
+    /// with a malformed body answers, so the gate cannot swallow it.
+    #[tokio::test]
+    async fn a_2xx_without_a_data_array_still_says_invalid_response() {
+        let p = params("grok-imagine-image");
+        let request = build_image_request("GROK", &p).unwrap();
+        let wire = CannedWireTransport::new().with_response(
+            &request.method,
+            &request.url,
+            &request.body_string(),
+            WireResponse::new(200, r#"{"unexpected":true}"#),
+        );
+        let err = RealImageProvider::new(wire)
+            .generate_image("GROK", "k", &p)
+            .await
+            .expect_err("a malformed 2xx body must be an error");
+        assert_eq!(err.message, "Invalid response from Grok Images API");
     }
 
     #[test]

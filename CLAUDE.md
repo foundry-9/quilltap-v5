@@ -2035,9 +2035,30 @@ records THERE. Update this summary only when a phase or round completes.
   with a short list — **v4 is byte-identical there**, so it is a ported wart
   and a candidate upstream nicety; and `qt-image-gallery` still has no v5
   host. **Still owed:** Pascal's other three write paths (deferred a fourth
-  time, but the recipe is now written down), the avatar-preview download, the
-  Brahma deep-query budget, dedup/summaries, and the candid story-background
-  arm.
+  time, but the recipe is now written down), the Brahma deep-query budget, and
+  dedup/summaries.
+- **The same-day human-authorized follow-up (E6 / E7 / G6) found a SECOND
+  finding — #104, FIXED (core 0.0.660).** With image spend authorized: the
+  **candid story-background arm** proved out to the character (an
+  `IMAGE_PROMPT_CRAFTING` prompt of **4,255 UTF-16 units — exactly** the
+  computed candid join; the same arithmetic reproduces P4.D94's recorded 5,114
+  concealed, which validates the method), Generate Image downloaded under its
+  file-id name, and the avatar-preview rider passed **both** arms with **zero
+  `a[download]` anchors** in the DOM. **FIXED: finding #104** — every non-2xx
+  from an SDK-backed image provider collapsed into the generic `Invalid
+  response from <name> Images API`. v4 generates through the OpenAI SDK for
+  **OPENAI/GROK/Z_AI/NANOGPT** and the SDK throws on any non-2xx with the API's
+  own message, reserving that sentence for a 2xx with a malformed body; v5
+  passed the response to the parser whatever the status. Found by replaying a
+  real failed generation: Grok answered **`400 {"error":"Generated image
+  rejected by content moderation."}`** — which also **explains the 2026-08-19
+  pass's unexplained `Invalid response from Grok Images API`**. Fixed with the
+  status gate plus the SDK's full three-way message rule (all four rules
+  measured against the REAL SDK through a stub server), three tests, and a
+  both-directions split guard added because a mutation widening the gate to ALL
+  providers — silently replacing GOOGLE's and OPENROUTER's own sentences —
+  stayed green until it existed. Five mutations, each reddening the right
+  tests.
 - **Oracle baseline: `f6a10055` (2026-08-25, v4 main — "feat(wardrobe):
   moving or copying an outfit brings its components along"), adopted at
   the f6a10055-round unification (2026-08-25).** ⚠ v4 HEAD moved TWO

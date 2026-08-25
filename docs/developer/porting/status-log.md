@@ -86069,6 +86069,59 @@ the behaviour is unchanged and v4-faithful; it is merely audible now.
   project-tier / group-tier (the last needing the exactly-one rule), each
   verifiable from the effect's own `{target, previous, next, tier}` record.
 
+### The human-authorized follow-up (same day) — E6 / E7 / G6, and a SECOND finding
+
+With real image spend authorized, the three deferred rows ran and one of them
+found **finding #104**.
+
+- **G6 — the candid story-background arm: PASS, to the character.** No profile
+  had to be built: the instance already carries `uncensoredImageProfileId:
+  6710bbbb-…` (NanoGPT **Chroma**) globally and 46 chats flagged
+  `isDangerousChat=1`, so `is_dangerous_chat && has_uncensored_image_provider`
+  was already true. `chatRegenerateBackground` on a flagged chat produced an
+  `IMAGE_PROMPT_CRAFTING` row whose system prompt measures **4,255 UTF-16
+  units — exactly** the candid five-element join computed from the constants.
+  The same arithmetic reproduces P4.D94's recorded **5,114** for the concealed
+  variant, which is what validates the method. Both candid markers present,
+  both concealment markers absent.
+- **E7 — Generate Image: PASS.** A real generation on GPT Image 2, then
+  `download="generated_1787681089236.webp"` off a `blob:` href — the file-id
+  source, not the `generated-image.png` fallback.
+- **E6 — the avatar-preview rider: PASS on both arms.** A real preview, then
+  `download="Abigail_preview.webp"` with **zero `a[download]` anchors in the
+  DOM** (the hidden-anchor mechanism really is retired — the whole of the
+  `af1bc479` rider). Forcing `/api/v1/files/**` to 404 produced v4's
+  `Failed to download avatar preview` and downloaded nothing.
+
+### The second finding — #104, fixed on main
+
+**An image API's own error never reaches the operator.** G6's render failed
+with `Image generation failed: Invalid response from Grok Images API` — the
+same opaque sentence the **2026-08-19** pass recorded as an unexplained open
+question. Replaying the exact crafted prompt against
+`https://api.x.ai/v1/images/generations` with the instance's own key returned
+**`HTTP 400 {"error":"Generated image rejected by content moderation."}`**,
+while the same key and endpoint answer **200** with a real image for a benign
+prompt — so nothing was misconfigured and the real reason was being discarded.
+
+v4 generates through `new OpenAI(...)` + `client.images.generate(...)` for
+**OPENAI, GROK, Z_AI and NANOGPT** (all four plugin sources checked at the
+pin), and the SDK throws an `APIError` on any non-2xx carrying the API's
+message; its `Invalid response from … Images API` is reserved for a **2xx with
+a malformed body**. v5 fetches the wire itself and passed the response to the
+parser whatever the status. A second half compounded it: `openai_sdk_error`
+reproduced only one of the SDK's three message rules, falling back to the raw
+body where the SDK `JSON.stringify`s a **string** `error` — precisely Grok's
+shape.
+
+Fixed with the status gate in `generate_image` for the four SDK providers and
+the full three-way rule in the helper. **All four rules measured against the
+REAL SDK** (a stub server per case driving `client.images.generate`), not
+transcribed. Three tests plus a both-directions split guard — added because a
+mutation widening the gate to ALL providers, silently replacing GOOGLE's
+`Gemini API error: 502` and OPENROUTER's own wording, stayed **green** until
+it existed. Five mutations, each reddening exactly the right tests.
+
 ### Recorded, not filed
 
 - **The kebab menu is clipped by the list's own scroll container** — with a

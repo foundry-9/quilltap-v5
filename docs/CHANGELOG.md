@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — fix(images): a provider's own error reaches the operator (dogfood finding #104)
+
+_Versions: core 0.0.660._
+
+Every non-2xx from an SDK-backed image provider was collapsing into the generic
+`Invalid response from <name> Images API`. v4 generates through the OpenAI SDK
+for OPENAI, GROK, Z_AI and NANOGPT, and the SDK throws an `APIError` on any
+non-2xx carrying the API's own message — its `Invalid response` sentence is
+reserved for a 2xx with a malformed body. v5 fetches the wire itself and handed
+the response to the parser whatever the status; a 400 body has no `data` key, so
+every failure read as a malformed body.
+
+Found by dogfooding: a real story-background generation failed with
+`Invalid response from Grok Images API`, the same opaque sentence an earlier
+pass had recorded as an unexplained open question. Replaying the exact prompt
+against the API returned `400 {"error":"Generated image rejected by content
+moderation."}` — the reason, discarded.
+
+The status gate now sits in `generate_image` for the four SDK providers, and
+`openai_sdk_error` implements the SDK's full three-way message rule instead of
+only one arm: a string `error` is JSON-stringified (quotes included, which is
+exactly Grok's shape), an object error yields its plain message, and a non-JSON
+body falls back to the raw text. All four rules were measured against the real
+SDK through a stub server rather than transcribed.
+
+GOOGLE and OPENROUTER are raw-`fetch` in v4 and keep their own sentences. A
+mutation widening the gate to every provider — silently replacing those — stayed
+green until `sdk_and_raw_fetch_providers_keep_their_own_non_2xx_sentences` was
+added to pin the split in both directions.
+
 #### 2026-08-25 — docs(porting): the f6a10055-round dogfood pass — 41 rows, finding #103, #98 closed
 
 _Docs-only change._
