@@ -25,7 +25,15 @@ anything that can't be restored by the next rsync.
 
 Read each order's status header, the status-log round records, and the
 standing 💸 live-proof queue (CLAUDE.md status bullets) to derive what is
-newly LIVE vs still refusal-armed. Then write the walk plan to
+newly LIVE vs still refusal-armed. Read the drift ledger
+(`docs/developer/porting/drift-ledger.md`) too — do not check drift
+yourself; run its §2 freshness probe and, if stale, `/driftcheck` first.
+The ledger changes the walk two ways: a surface with a pending §3 drift row
+gets a note in its walk step (an apparent failure there may be the drift,
+not a v5 defect), and any 💸 proof that depends on damaged rows existing
+gets its population MEASURED before the walk is planned around it — v4 runs
+daily on the real instance and heals data out from under banked proofs
+(ledger §5.5). Then write the walk plan to
 **`docs/developer/porting/dogfood-walks/YYYY-MM-DD-<slug>.md`** — this file is
 updated in place as tests run, so structure every step as a checklist row:
 
@@ -137,8 +145,12 @@ never batch the recording to the end**.
 1. **Reproduce and localize** before changing anything (console/server logs,
    the network tab, a curl against the dispatch API, the failing component's
    source).
-2. **Diagnose against v4 as the oracle.** Survey the corresponding v4
-   component and classify:
+2. **Diagnose against v4 as the oracle — at the ledger's baseline.** Check
+   the drift ledger's §3 first: if the surface has a pending drift row, the
+   "divergence" may be v4 having moved, not v5 having broken — diagnose
+   against `git show <baseline>:<path>`, and note the drift row in the
+   finding instead of porting ahead of the catch-up round. Then survey the
+   corresponding v4 component and classify:
    - **Port divergence** — v4 behaves correctly, v5 dropped or narrowed
      something. Fix v5 to be v4-faithful.
    - **Migration-vintage schema divergence** — fresh-DDL fixtures vs a real

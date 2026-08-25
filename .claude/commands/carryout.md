@@ -14,9 +14,18 @@ what's marked landed.
 
 ## Ground rules for the lane
 
-1. **Drift-check first.** The order pins a v4 baseline commit. In
-   `~/source/quilltap-server`, run `git log <baseline>..HEAD`. If HEAD moved,
-   **STOP and report** — do not port against a moved oracle.
+1. **Probe the drift ledger first — do not check drift yourself.** The
+   order pins a v4 baseline commit; the drift state of record is
+   `docs/developer/porting/drift-ledger.md`. Run its §2 freshness probe
+   (four read-only commands). If the probe PASSES, follow the ledger's
+   regen rule (§1) — typically a lane-unique pinned worktree per §5.1
+   whenever v4 HEAD is past your baseline — and proceed. If the probe
+   FAILS (v4 moved past what the ledger records, the checkout changed
+   branch, or the tree went dirty in `lib/`/`app/`/`packages/`/`plugins/`),
+   **STOP and report** — never run `/driftcheck` or update the ledger from
+   inside a lane (parallel lanes must not race on it), and never port
+   against unrecorded drift. Re-run the probe before each regen batch;
+   the checkout has gone dirty MID-LANE before (ledger §5.1).
 2. **Work on your own branch, never on main.** Use a worktree
    (`.claude/worktrees/…`, branch `claude/<order-slug>-…`) or a branch off
    main. Unification back into main is a separate step (`/unify`) — do not

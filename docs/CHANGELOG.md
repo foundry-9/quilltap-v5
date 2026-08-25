@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — docs(porting): the v4 drift ledger and /driftcheck; the porting commands probe instead of re-checking
+
+_Docs-only change._
+
+Drift tracking moves into the repo. `docs/developer/porting/drift-ledger.md`
+is now the single record of where v4 stands relative to the oracle baseline:
+the current state and the regen rule in force (§1), a four-command read-only
+freshness probe consumers run (§2), the per-commit drift table with a
+disposition lifecycle — UNPROCESSED → ORDERED → ABSORBED/NO-PORT-RATIFIED
+(§3), the full check method (§4), and the standing recipes and traps formerly
+kept only in session memory: the pinned-worktree regen recipe with all three
+symlink classes, the silent-stale-pass discipline, commit-prose-misdescribes-
+the-diff, convergence-measure-don't-assume, and expiring live proofs (§5).
+
+A new `/driftcheck` command runs the check and updates the ledger. The other
+porting commands (`/setupphase`, `/carryout`, `/unify`, `/dogfood`) no longer
+check drift themselves: they run the ledger's §2 probe and read what the last
+`/driftcheck` recorded. Lanes STOP on a probe failure and never write the
+ledger; `/unify` owns moving the baseline and retiring absorbed rows.
+CLAUDE.md's baseline bullet now points at the ledger instead of carrying the
+method. (The ledger file itself rode into the previous commit by accident of
+a shared working tree; this commit carries the commands and the CLAUDE.md
+pointer.)
+
+The seeding check found v4 main FIVE commits past `f6a10055` — three more
+than the round record knew: bug 101's completion-template rewrite, bugs
+100/102's qt-* utility repair, and a NO-PORT-candidate CI fix, alongside the
+two already recorded. All five sit UNPROCESSED in the ledger; the regen rule
+is pin-required.
+
 #### 2026-08-25 — test(images): pin the moderation reroute to the reconstructed message (finding #104)
 
 _Versions: core 0.0.661._

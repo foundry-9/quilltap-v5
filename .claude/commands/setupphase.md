@@ -9,13 +9,26 @@ Plan the next unit of the port and write the work orders that a separate agent
 is **committed work-order documents plus a report telling the human exactly
 where each one is** — not implementation.
 
-## 1. Drift-check the oracle first
+## 1. Read the drift ledger first
 
-The oracle baseline (v4 HEAD) is recorded in CLAUDE.md's Status section. In
-`~/source/quilltap-server`, run `git log <baseline>..HEAD --oneline`. If v4
-moved, **stop planning**: classify the drift (behavior change vs docs/infra),
-verify whether any already-ported unit is affected, report, and only then
-plan the round against the new baseline.
+Drift state lives in **`docs/developer/porting/drift-ledger.md`** — do NOT
+re-derive it here. Run the ledger's §2 freshness probe (four read-only
+commands); if the probe fails, run `/driftcheck` to bring the ledger current
+before planning anything.
+
+Then plan FROM the ledger:
+
+- **UNPROCESSED `PORT`/`PORT-NEW`/`CONVERGENCE` rows make the drift
+  catch-up the round** (or its first lanes) — the standing rule is that
+  drift debt is cleared before new scope. Use each row's intersection
+  column (which v5 surfaces/rounds it hits) to shape the lanes instead of
+  re-deriving it; the per-order fresh v4 survey in §4 still happens, but
+  from the shipped hunks the ledger points at, never from commit prose
+  (ledger §5.3).
+- **Mark every row you turn into an order as `ORDERED(<order-id>)`** in the
+  ledger's §3, in the same commit as the orders.
+- Carry the ledger's **regen rule** (§1) into every order's preamble — if a
+  pin is required, say so and point at the ledger's §5.1 recipe.
 
 ## 2. Determine the scope
 
@@ -61,8 +74,10 @@ Location: `docs/developer/porting/work-orders/<id>-<slug>.md`. Follow the
 shape of the existing orders (e.g. `p4.6f-characters-server.md`):
 
 - **Status header** (starts empty/OPEN) — the unifier updates it later.
-- **Preamble**: the v4 baseline commit + the instruction to drift-check at
-  lane start and STOP if HEAD moved; sibling lanes; worktree note.
+- **Preamble**: the v4 baseline commit + the drift-ledger regen rule in
+  force (pin required or not, per `drift-ledger.md` §1) + the instruction to
+  run the ledger's §2 freshness probe at lane start and STOP on a probe
+  failure; sibling lanes; worktree note.
 - **Mandate**: one paragraph of what the lane delivers, and what it must NOT
   touch.
 - **Survey-verified starting points**: do a FRESH v4 survey now (file paths,

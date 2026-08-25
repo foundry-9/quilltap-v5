@@ -11,8 +11,14 @@ Unify the finished lane branch(es) for: **$ARGUMENTS**
 
 - `git worktree list` + `git branch -a` — find each lane's branch and
   worktree; confirm the worktrees are clean (no uncommitted WIP).
-- Confirm v4 (`~/source/quilltap-server`) is still at the oracle baseline;
-  if it moved, stop and report before unifying.
+- Run the drift ledger's §2 freshness probe
+  (`docs/developer/porting/drift-ledger.md`) — do not re-derive drift. If
+  the probe passes, the ledger's §1 verdict and regen rule govern this
+  unification. If it fails (v4 moved or the checkout changed since the
+  ledger's check), run `/driftcheck` to record the new state FIRST — new
+  drift doesn't block unifying already-finished lanes, but it does flip
+  the regen rule to pinned worktrees (§5.1) for every §5 regen, and the
+  round record must note which drift arrived mid-round.
 - Read each lane's commits AND its status-log/CHANGELOG additions. **Verify
   delivered scope against the order's tier list yourself — do not trust
   "complete".** Anything banked or refusal-armed is a load-bearing fact for
@@ -99,8 +105,12 @@ work is a commit of its own.
 - `cargo fmt --all --check`; release build; `cargo clippy --workspace
   --all-targets -- -D warnings` both plain AND with
   `--features quilltap-core/native-transport`.
-- **Regenerate every affected oracle FRESH from the v4 checkout** (each in
-  its own clean invocation; jest cases via a `/tmp` mirror; Node 24), then
+- **Regenerate every affected oracle FRESH from the v4 checkout, under the
+  drift ledger's regen rule** (a pinned detached worktree per ledger §5.1
+  whenever v4 HEAD is past the baseline or the checkout is dirty; each
+  regen in its own clean invocation; jest cases via a `/tmp` mirror; Node
+  24; verify per ledger §5.2 — non-empty NDJSON, grep for the changed
+  bytes), then
   `cargo test --workspace` with all differential env vars set — and re-run
   the new differentials by name so you SEE them pass rather than silently
   skip.
@@ -116,6 +126,13 @@ work is a commit of its own.
   versions), in the standard header format from `commit.md` §7 — the H4
   date + subject header and the `_Versions: …_` line, no commit hash. Status-log: the round record. Each order's **status header**:
   move landed items to Done, enumerate exactly what stays OPEN.
+- **Keep the drift ledger current** (`drift-ledger.md`): if this round
+  moves the oracle baseline, rewrite §1 (new baseline, fresh check of both
+  branches, the new regen rule), mark the absorbed §3 rows
+  `ABSORBED(<round>)` / `NO-PORT-RATIFIED(<round>)` and retire them to §6
+  as one-liners pointing at the round record. If v4 drifted DURING the
+  round, run `/driftcheck` now so the ledger's verdict is honest before
+  the next `/setupphase` reads it.
 - **Keep the phase plan current** (the `phase-*.md` decomposition): mark
   this round's items done and make sure what's next is legible — the next
   `/setupphase` reads the phase plan FIRST, so "what's next" must live

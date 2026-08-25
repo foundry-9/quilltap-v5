@@ -2070,23 +2070,19 @@ records THERE. Update this summary only when a phase or round completes.
   `is_image_moderation_error` with the pre-fix sentence as counter-example.
 - **Oracle baseline: `f6a10055` (2026-08-25, v4 main — "feat(wardrobe):
   moving or copying an outfit brings its components along"), adopted at
-  the f6a10055-round unification (2026-08-25).** ⚠ v4 HEAD moved TWO
-  commits past it DURING the round (`44a8137e` — the in-chat scene
-  change — and `8018c487` — bug 99, a character-gallery download fix on
-  the surfaces this round just ported), and the tree is STILL dirty (the
-  Aurora/Prospero headers): **the catch-up is the top next candidate
-  after the owed dogfood pass; pin a detached worktree at `f6a10055` for
-  EVERY regen until it lands.** The round's pin worktree is removed;
-  build a fresh lane-unique pin per lane whenever v4 HEAD moves past the
-  baseline or the checkout is dirty. **Drift-check BOTH development
-  branches every round** (`git log <baseline>..main` AND
-  `git diff main bugfix -- lib/ app/ packages/` — measure bugfix with
-  `diff`, never the commit list; its only unabsorbed content today is the
-  tests-only `009c49b2`; note WHICH branch the checkout occupies
-  before any regen, and pin a detached worktree whenever v4 HEAD is past
-  the baseline — ALL THREE symlink classes: root node_modules,
-  `packages/quilltap/node_modules`, the `plugins/dist/*/node_modules`
-  dirs). The sweep driver remains the sanctioned per-family regen path —
+  the f6a10055-round unification (2026-08-25).** **Drift state, the
+  drift-check method, and the pinned-worktree regen recipe now live in
+  `docs/developer/porting/drift-ledger.md`** — maintained by
+  `/driftcheck` and by `/unify` at baseline moves; the other porting
+  commands run the ledger's §2 freshness probe instead of re-deriving
+  drift, and lanes never write it. As of the ledger's 2026-08-25
+  seeding: v4 main is FIVE commits past the baseline (four on ported
+  surfaces, one NO-PORT candidate — the catch-up is the top next
+  candidate), the checkout is clean on `main`, bugfix has no unabsorbed
+  content, and the regen rule is **pin-required** (a lane-unique
+  detached worktree at `f6a10055` for every regen until a catch-up
+  round moves the baseline — recipe in the ledger's §5.1). The sweep
+  driver remains the sanctioned per-family regen path —
   never run two sweeps concurrently; since P4.53 it refuses empty-stage
   families by name and `--self-test` guards recipe headers against
   cross-alias defaults. The distill-transitive TZ pins, the
