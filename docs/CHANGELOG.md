@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — docs(porting): the E6/E7/G6 follow-up rows and finding #104's record
+
+_Docs-only change._
+
+The walk doc's three deferred rows resolved (avatar-preview download both arms,
+Generate Image download, the candid story-background arm measured at 4,255
+UTF-16 units) and the finding #104 row with its commit hash.
+
 #### 2026-08-25 — fix(images): a provider's own error reaches the operator (dogfood finding #104)
 
 _Versions: core 0.0.660._
