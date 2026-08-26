@@ -289,13 +289,27 @@ async fn m2_chat_send_end_to_end() {
         }
     }
 
-    // The trace: every frame chat-scoped; content + done present with the
-    // streamed reply.
-    assert!(frames
+    // P4.D124: the stream now also carries realtime INVALIDATION HINTS — the
+    // turn's own activity spans and post-turn enqueues publish them — and a
+    // hint is deliberately unscoped (`{v, topic, at}`, no `chatId`). So this
+    // trace first discriminates hints from chat frames exactly as a client
+    // does (§Shared contract §B.5: a frame is a hint iff it carries BOTH
+    // `topic` and `v`), then asserts the chat-scoping of what remains.
+    let is_hint = |f: &Value| f.get("topic").is_some() && f.get("v").is_some();
+    let (hints, chat_frames): (Vec<&Value>, Vec<&Value>) = frames.iter().partition(|f| is_hint(f));
+
+    // Every hint is unscoped, and every non-hint frame is chat-scoped.
+    assert!(
+        hints
+            .iter()
+            .all(|f| f.get("chatId").is_none() && f.get("topic").is_some()),
+        "a realtime hint carries no chat scope: {hints:#?}"
+    );
+    assert!(chat_frames
         .iter()
         .all(|f| f.get("chatId").and_then(Value::as_str) == Some(SMOKE_CHAT_ID)));
     assert!(
-        frames
+        chat_frames
             .iter()
             .any(|f| f.get("content").and_then(Value::as_str) == Some(SMOKE_REPLY)),
         "no content frame: {frames:#?}"

@@ -89146,3 +89146,21 @@ first, per the order, and its §8 "what shipped, and where it diverged" is what
 settled the upgrade-auth dispositions above).
 
 **P4.D124 is CLOSED**: tiers 1 and 2 landed in full; tier 3 is the bank row.
+
+### P4.D124 — the gate's own catch
+
+The unified workspace run failed `quilltap-web::chat_send_smoke`, and it was a
+REAL consequence of the lane rather than a flake: that test asserted **every**
+frame on `/api/events` is chat-scoped, and hints are deliberately unscoped
+(`{v, topic, at}` — §Shared contract §B.2). A live turn now publishes several,
+because its own activity spans and post-turn enqueues do.
+
+Fixed by giving the test the client's own discrimination rule (§B.5 — a frame is
+a hint iff it carries BOTH `topic` and `v`), then asserting both halves: hints
+carry no chat scope, every remaining frame carries `SMOKE_CHAT_ID`. That is
+strictly MORE than the test asserted before. Its two sibling stream tests
+(`contract`, `chat_create_end_to_end`) were checked for the same premise and
+have it not; both green.
+
+Worth naming: nothing about this was visible to inspection, and no differential
+could have seen it — it took running the whole workspace with the wiring live.

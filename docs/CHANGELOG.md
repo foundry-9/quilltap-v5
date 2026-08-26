@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — test(chat): discriminate hints from chat frames in the send smoke
+
+_Versions: web 0.0.96._
+
+`chat_send_smoke` asserted that EVERY frame on the event stream is chat-scoped.
+That premise stopped holding the moment the turn's own activity spans and
+post-turn enqueues began publishing invalidation hints, which are deliberately
+unscoped. The trace now partitions the stream the way a client does — a frame is
+a hint iff it carries both `topic` and `v` — then asserts hints carry no chat
+scope and every remaining frame does.
+
+Caught by the workspace gate, not by inspection.
+
 #### 2026-08-26 — test(realtime): the hint end to end, and the SSE exposure survey
 
 _Versions: web 0.0.95._
