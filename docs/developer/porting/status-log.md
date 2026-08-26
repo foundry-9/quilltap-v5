@@ -88272,3 +88272,151 @@ nothing else. `ui_search_equivalence` is its only consumer, and it is the one
 family whose oracle must be regenerated with it. No committed `.db` fixture was
 touched, and `doc_mount_points_tier2` is unaffected (the new mount-point read is
 purely additive — no shape moved).
+
+---
+
+## P4.D121 — the `b86bb1a5` + `d25dacc1` CLIENT halves (2026-08-26, lane branch `claude/p4-work-orders-archive-spa-19f650`)
+
+**CLOSED for every Tier-1 and Tier-2 deliverable; the one Tier-3 item is a
+recorded no-op with its survey evidence.** Baseline `8f910137`; the drift
+ledger's §2 freshness probe PASSED at lane start (v4 on `main`, tree clean,
+both logs empty), so §1's verdict and the pin-required regen rule stood — this
+lane runs no jest/tsx oracle, and every v4 source read used
+`git show <feature-sha>:<path>`, never the checkout HEAD.
+
+Six commits: `e462408a` (contract + hint), `c4ba54df` (the shared picker + the
+Salon control), `1c48d52b` (the scenario managers + the character edit form),
+`54e6960a` (New Chat), `3316bfb5` (the wardrobe surfaces + Dressing
+Instructions), `90754a2d` (three gated e2e beats).
+
+### What landed
+
+**Unit 1 — the contract surface (Tier 1 item 2).** The eight
+`*WardrobeInstructions{Get,Set}` verbs + `WardrobeInstructionsDto` (Shared
+contract A1/A2); `includeArchived?: boolean` on the nine list verbs;
+`archived?` on both scenario bags (the update one tri-state, its rule spelled
+out); `archived: boolean` — always present — on `ScenarioDto`; `description?`
+and `archived?` on the canonical `CharacterScenario`. The field hint
+transcribed byte-for-byte from `git show b86bb1a5:components/prompt-fields/
+field-hints.ts` into v4's slot, with the parity spec's independent second
+transcription, its key count (12 → 13) and its typographic-apostrophe count
+(5 → 6).
+
+**Unit 2 — Dressing Instructions (Tier 1 item 1).** New
+`wardrobe-instructions.api.ts` (the container → verb router + load/save) and
+`wardrobe-instructions-section.ts`, mounted in the dialog between the container
+selector and the item grid (v4 `:1139`) and on the Aurora Wardrobe tab under
+"Open wardrobe for …" (v4 `:330-335`). 13 specs pin the state table v4 spells
+out: collapsed by default, the status ternary, the TRIMMED-draft-vs-UNTRIMMED-
+stored dirty rule, the UNTRIMMED send for a non-blank draft and `null` for a
+blank one, echo adoption, the three toast sentences, the null-container render,
+the container-switch re-read, and the chevron's `-rotate-90`.
+
+**Unit 3 — the archive surface across all nine hosting surfaces (Tier 1
+item 3).** ScenarioSelect's suffix; the Salon control's `showArchived` with the
+flag in every query key; the scenarios mutator + manager + row; the character
+edit form's per-row Archive/Restore; New Chat's flag, seeds and memo pair; the
+wardrobe dialog, item row, project wardrobe card and their mutators. Every
+quirk from Shared contract B7 is reproduced and spec-pinned.
+
+**Unit 4 — the deleted client-side filter (Tier 1 item 4).**
+`wardrobe-control-dialog.ts:907`'s `if (i.archivedAt) return false` is GONE, in
+favour of the fetch flag on both loaders. The dialog spec proves both halves
+together over a route that honours `includeArchived` the way a server would: an
+archived garment the fetch returned RENDERS, badged. Either half alone would
+mask the other.
+
+### Ruled, refuted, and recorded
+
+- **The commit prose is wrong in the place the order predicted.** The character
+  default-scenario seed is UNGUARDED in the shipped hunks — only the PROJECT and
+  GENERAL lookups gained `&& !s.archived`. Reproduced, not fixed, and named in
+  `NewChatState.seedFromCharacter`'s doc comment; the keep-the-selection-visible
+  exception is what makes the auto-selected archived row still render.
+- **Tier 3 item 9 — the outfit-selector pane: a recorded NO-OP.** v4 deleted an
+  archived filter in `outfit-selector.tsx`'s per-character garment pane. v5 has
+  no such pane: `screens/new-chat/outfit-selector.ts` is the Starting-Outfit
+  MODE picker only, and a tree-wide `archivedAt` grep finds exactly two client
+  filters — the dialog's (deleted this lane) and
+  `wardrobe/equipped-slots.ts:175`, which is the DIFFERENT untouched
+  default-outfit filter the order warned not to conflate. Nothing to port; no
+  pane built.
+- **Tier 2 item 8 — the New-Chat group optgroup gap: SHARED, and now closed.**
+  v5 had ported v4's always-broken shape faithfully (the reason was already in
+  `new-chat-form.ts`'s class header: the prop existed, neither caller passed
+  it). `d25dacc1` connected v4's page; v5's form now binds
+  `core().groupScenarios()`, which also makes the group arms of the preset
+  preview and the selection chain reachable for the first time — both added and
+  spec-pinned.
+- **Recorded mechanism divergence — the mutate-response relist.** v4 threads
+  `?includeArchived=true` onto the scenario MUTATE urls, so a PUT answers a list
+  that still holds the row it changed. Shared contract B1 puts `includeArchived`
+  on the LIST verbs only, and a dispatch verb silently ignores an unknown field,
+  so sending it on a mutate verb would answer an archived-free list while the
+  checkbox claimed otherwise. With the toggle on, the mutate body is DISCARDED
+  and the list re-read through the one verb that honours the flag. Pinned in
+  both directions in `scenarios.api.spec.ts`. **If P4.D120 turns out to have
+  wired the flag onto the mutate verbs as v4 does, the unifier can collapse this
+  to v4's shape** — the spec names the arm.
+- **Recorded mechanism divergence — `canArchive`.** v4's `onToggleArchived` is
+  an OPTIONAL prop: omit it and the kebab entry does not render (the outfit
+  composer's case). An Angular `output` is always present, so the gate is an
+  explicit boolean input defaulting to FALSE — absence, not presence, is what
+  the two spellings share.
+- **Recorded mechanism divergence — the New-Chat checkbox gate.** v4 renders it
+  only when its change-callback prop is supplied, so `NewChatModal` stays a pure
+  consumer. v5 never ported that modal and this form reads `NewChatState`
+  directly, so no caller can withhold the setter; the checkbox always renders,
+  which is what v4's page — the one caller v5 has — does.
+- **Recorded mechanism divergence — the remount key.** v4 bumps it on every
+  fetched load because Lexical reads `value` only at mount. v5's `RichEditor`
+  absorbs an external `value` change (`rich-editor.ts:139-142`), so the hack is
+  unnecessary for the async load; v4's composite key is transcribed anyway
+  because it is also what re-seeds the field on a CONTAINER switch.
+- **A latent v5 wart found in passing, NOT touched (out of this order's
+  scope):** `terminal/terminal-embed.ts:53` rotates a chevron with
+  `[class.-rotate-90]` on a `qt-icon`. `qt-icon`'s host is `display: contents`
+  and `class` is an aliased INPUT, so a class token bound on the host lands on a
+  box-less element where `transform` has nothing to act on — almost certainly
+  inert. This lane's own chevron therefore rides the `[class]` input instead
+  (spec-pinned on the rendered span). Worth its own small order.
+
+### Verification
+
+- SPA `npm test`: **350 files / 5,263 tests / 0 failed** (the qt-class guard ran
+  ahead of the suite: 934 classes, every guarded reference resolves). The suite
+  grew 347 → 350 files and 5,196 → 5,263 tests with three new spec files
+  (`wardrobe-instructions-section.spec.ts`, `scenario-row.spec.ts`,
+  `scenarios.api.spec.ts`) and the additions to eight existing ones.
+- SPA `npm run build`: clean, bundle generated.
+- `npx playwright test --list`: **248 tests in 66 files**, the three new beats
+  registered (suite 245 → 248); all three gated, so the live suite is unchanged
+  until unification flips the constants.
+- No Rust gate: this lane touches no crate. `git status` against the ownership
+  table is clean — every changed path is under `apps/web/src/app/**` or
+  `apps/web/e2e/**`, none under `search/**` or P4.D122's document files.
+- ⚠ **Honest note on gate granularity.** The SPA gate was run on the lane's
+  COMPLETED tree, green, rather than after each of the six commits: making
+  `ScenarioDto.archived` required (Shared contract B3) couples the contract
+  commit to every scenario surface, so the intermediate commits are not
+  independently buildable. The branch tip — what `/unify` consumes — is the
+  gated tree.
+
+### Owed at unification
+
+1. Flip `P4D120_SERVER_LANDED` (both `salon-scenario-flow.spec.ts` and
+   `wardrobe-flow.spec.ts`) and `P4D119_INSTRUCTIONS_LANDED`
+   (`wardrobe-flow.spec.ts`) to `true`, then run those two specs live. ⚠ Port
+   4319 is repo-wide — do not run Playwright concurrently with a sibling lane.
+2. Diff this lane's `core-contract.ts` additions name-for-name against
+   P4.D119/P4.D120's `api/types.rs` (the standing §1 reconciliation).
+3. Recount the SPA version: this lane took 0.5.566 → **0.5.572**, and P4.D122
+   also bumps the SPA (the standing silent-auto-merge trap).
+4. Consider collapsing the mutate-response relist divergence if P4.D120 wired
+   `includeArchived` onto the scenario mutate verbs as v4 does.
+
+💸 The dogfood queue gains: the Dressing Instructions round trip on a real
+container (and the cascade actually reaching a "Let character choose" turn), an
+archived scenario disappearing from the Salon picker and coming back suffixed,
+an archived garment absent from the Green Room's candidate pool, and the
+character edit form's Archive/Restore against a real vault file.

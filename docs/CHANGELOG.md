@@ -358,6 +358,17 @@ inside the helper, then wraps `%…%`). Callers pair it with
 
 v4's five unit cases ported one for one, plus a sixth pinning the escape set as
 exactly those three characters.
+#### 2026-08-26 — docs(porting): the P4.D121 lane record
+
+_Docs-only change._
+
+The lane record for the `b86bb1a5` + `d25dacc1` client halves: what landed per
+tier, the four recorded mechanism divergences (the eight verbs for
+`?action=instructions`, the mutate-response relist, `canArchive` for v4's
+optional prop, the New-Chat checkbox gate), the Tier-3 no-op with its survey
+evidence, the group-optgroup gap resolution, the gate numbers, and the four
+items owed at unification.
+
 #### 2026-08-26 — test(e2e): three gated beats for the archive walk and the dressing-instructions round trip
 
 _Versions: SPA 0.5.572._
