@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, effect, inject, OnInit } from '@angular/core';
 
 import { CoreClient } from './core/core-client';
+import { RealtimeService } from './core/realtime.service';
 import { SetupWizard } from './screens/setup/setup-wizard';
 import { StartupScreen } from './screens/startup/startup-screen';
 import { Unlock } from './screens/unlock/unlock';
@@ -57,6 +58,12 @@ export class App implements OnInit {
     // only applies localStorage + the system preference, which is exactly
     // v4's pre-auth behavior.
     inject(ThemeService);
+    // Wire the realtime hub (v4 mounts `RealtimeProvider` inside its
+    // `QueryProvider`). It is a root service, so nothing constructs it on its
+    // own; injecting it here is what starts the frame subscription and the
+    // reconnect catch-up sweep. It must exist BEFORE the stream opens below, or
+    // the first frames land with nobody listening.
+    inject(RealtimeService);
     // Open the one global event stream as soon as the vault is operational.
     effect(() => {
       if (this.startup.state().kind === 'operational') {

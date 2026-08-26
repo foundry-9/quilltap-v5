@@ -3,6 +3,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { coreStreamStub } from '../../../core/core-client.testing';
 import { ToastService } from '../../../ui/toast.service';
 import { ConversationSummaryRegenerateCard } from './conversation-summary-regenerate-card';
 
@@ -27,10 +28,11 @@ function stubClient(opts: {
   return {
     regen,
     client: {
+      ...coreStreamStub(),
       conversationSummariesStatus: (opts.status ??
         (async () => 0)) as unknown as CoreClient['conversationSummariesStatus'],
       regenerateConversationSummaries: regen as unknown as CoreClient['regenerateConversationSummaries'],
-    },
+    } as unknown as Partial<CoreClient>,
   };
 }
 

@@ -89311,3 +89311,212 @@ Left alone (they already have their own consts, and are sub-keys of `detail`):
 Guard: `chat/chat-keys.spec.ts` (4 cases) pins the two spellings, the
 singular/plural split, the sub-key prefix relationship, and the nullable arm.
 Gate: build clean, `npm test` 354 files / 5,321 / 0.
+
+### P4.D125 units 3–7 — the realtime hub, the chips rework, and the polling-site migrations
+
+One commit, because the pieces are not separable in a way that would leave a
+gateable tree: the hub is dead code without a consumer, and every migrated site
+reads it.
+
+#### Unit 3 — the hub, the types, and the topic map
+
+`core/realtime.types.ts` carries v4's `REALTIME_TOPICS` verbatim (the six
+topics, closed for this round) plus `realtimeHintFromFrame`, which implements
+§B.5's discrimination (a frame is a hint iff it carries BOTH `topic` and `v`)
+and then v4's `RealtimeEventSchema.safeParse` shape — a frame that discriminates
+but fails the shape is DROPPED, exactly as v4 drops it, never thrown from inside
+a stream handler.
+
+`core/realtime.service.ts` folds v4's `lib/realtime/client.ts` +
+`hooks/useRealtime.ts` + `components/providers/realtime-provider.tsx` into one
+root service, because v5 already owns the connection those three shared. **The
+mechanism divergence (§B.1) is recorded in the module doc as a per-leg table:**
+
+| v4 leg | v5 |
+|---|---|
+| 1 s → 30 s jittered backoff | **NO-PORT** — `EventSource` reconnects itself; the Tauri pump is in-process |
+| 30 s ping/pong | **NO-PORT** — a WS-protocol liveness leg SSE and IPC do not need |
+| hidden-tab retry suppression | **NO-PORT** — the browser owns `EventSource` retry scheduling |
+| `connected` status | **PORTED** (`RealtimeService.connected`, read by every gate) |
+| Zod-parsed frames, malformed dropped | **PORTED** |
+| unknown-topic tolerance | **PORTED** (`queryKeysForTopic` → `[]`) |
+| catch-up sweep on every (re)connect | **PORTED**, and additionally on an SSE reopen-after-error or a `quilltap://resync` — precisely the missed-frame signal §B.4 asks clients to tolerate |
+
+The SSE `id`-gap leg the order names is covered by that last row rather than by
+id tracking: v5's HTTP transport already bumps `resyncCounter` when the
+`EventSource` reopens after an error, which is the same "you may have missed
+frames" signal. **One design point worth the note:** the sweep reads BOTH
+`connection()` and `resyncCounter()` in ONE effect, so an HTTP reconnect — which
+flips the connection to `open` AND bumps the counter in the same turn — sweeps
+once, not twice (mutation-proven by splitting it into two effects).
+
+`RealtimeService.fallbackPoll(pollMs, tick, armed?)` is a v5-shaped helper with
+no single v4 counterpart: v4 writes the same `useEffect` out at four sites (the
+two memory cards, the Salon avatar watch, the conversations tab) — `if
+(connected || !armed) return; const i = setInterval(…); return () =>
+clearInterval(i)`. One helper so the v5 twins cannot drift.
+
+The topic map (`core/realtime-topic-map.ts`) is v4's switch with v5's targets,
+each row carrying its own note where the shape differs:
+
+| topic | v4 | v5 |
+|---|---|---|
+| `jobs` | `system.jobs` + `system.tasksQueue` | same, over the NEW `systemJobsKeys.all` + `tasksQueueKeys.all` |
+| `autonomousRooms` | `system.autonomousRooms` | `['systemAutonomousRooms']`, v5's raw spelling at its two live sites (no const exists; the map exports one) |
+| `chats` | detail / state / background | ONE `['chat', id]` prefix — v5's per-chat keys are singular with every sub-key beneath it, so one entry reaches all three AND still cannot touch the plural collection key |
+| `projects` | detail / state / background | detail + background; **v5 has no project `state` key** (its state editor fetches outside TanStack Query) — recorded, not invented |
+| `characters` | detail / prompts / photos | identical |
+| `mountPoints` | `mountPoints.all` | ⚠ **NO v5 TARGET.** v5 has no document-store query key at all (the same gap `workspace/core/tab-refetch.ts` already records for its `scriptorium` row). The row exists so the topic is RECOGNISED rather than logged unknown; it resolves to `[]` until a store vertical grows a key. |
+
+Wired at bootstrap by `app.ts` injecting the service before it opens the
+stream (v4 mounts `RealtimeProvider` inside `QueryProvider`).
+
+#### Unit 4 — the chips, final state
+
+`layout/activity-kinds.ts` transcribes v4's client-needed half of
+`lib/background-jobs/activity-kinds.ts`: `ACTIVITY_KINDS` in §A.2's key order,
+`ACTIVITY_CHIPS` byte-for-byte (the five new titles, and the `image` →
+`qt-queue-badge-story` badgeClass quirk), `emptyActivityCounts`, `coerceCounts`,
+`hasActivity`, plus `blippedKinds` — v4's pulse rule extracted so it is
+unit-testable on its own. **`JOB_TYPE_ACTIVITY` is deliberately NOT
+transcribed:** in v5 that table lives in Rust (the P4.D123 lane), the five kind
+ids are the whole server↔client join (§A.4), and a second copy could only drift.
+
+`layout/system-jobs.api.ts` adds `systemJobsKeys.all` and the fetcher on the REST
+route §A pins (never a dispatch verb, and never `?includeByType`).
+
+`queue-status-badges.ts` is rewritten onto a TanStack query with `staleTime: 0`,
+`retry: false`, and the adaptive heartbeat in `refetchInterval`'s function form
+reading `query.state.data` — gated `false` while connected. The pulse compares
+`startedByKind` to the previous read: first read is a delta base, a DECREASE is a
+server restart, an advance pulses for `PULSE_DURATION = 1_200` with per-kind
+timers cleared on destroy.
+
+**Deliberate deviation from the order's prose, on the evidence:** the order says
+to retire `notifyQueueChange` and the `QUEUE_CHANGE_EVENT` machinery. **v4 keeps
+both** at `f3892158d` — its rewritten component still exports
+`notifyQueueChange()` and still listens for the window event, with a doc comment
+saying so in as many words ("`notifyQueueChange()` remains as an instant same-tab
+kick after a known-enqueuing action, but nothing depends on it any more"). Only
+its MEANING changed: the listener invalidates the jobs key instead of driving a
+bespoke re-poll. Retiring it would be a v5 invention, which the order forbids in
+the same breath ("port what the code does, not the prose"). So the event stays,
+the listener now invalidates, and all four v5 caller sites are untouched. What
+DID go is v5's own invention on top of it — the `NavigationEnd` stop-and-refire,
+which existed only because the poller was a hand-rolled `setInterval`.
+
+CSS: `.qt-queue-badge-pulse` + `@keyframes qt-queue-badge-blip` transcribed from
+`664cfca84`'s `_content.css` hunk; `check-qt-classes` clean at 935 classes.
+
+#### Units 5–7 — the site migrations
+
+| site | what landed |
+|---|---|
+| tasks queue | `refetchInterval` through the gate; **the toggle relabeled to v4's exact "Fallback polling (5s)"** with v4's exact tooltip; `TaskItem` + `TaskDetailsModal` take the shared minute clock |
+| memory backfill card | `jobs` topic as the live path; the 4 s interval gated |
+| memory regenerate card | `jobs` topic **only while a sweep is in flight** (v4 keeps the old poll's scope); the 5 s interval gated on flight AND channel |
+| conversation-summary regenerate card | same shape |
+| autonomous room badges | `autonomousRooms` topic + gated 5 s fallback; the bespoke 1 s `setNowMs` tick replaced by the shared clock with v4's `enabled` flag — a second hand ONLY while a running, time-budgeted room is on screen |
+| autonomous rooms list | `autonomousRooms` topic + gated 5 s fallback |
+| Salon story background | the 30 s passive sweep gated; the active 3-minute watch keeps its own stop, and its change CALLBACK moves to the shared transition effect ("which sees the same transition whether it arrived by poll or by push") — which also retires an armed watch the moment a push lands |
+| merge picker | the shared minute clock |
+| character conversation card | the shared DAY clock (v4's `ChatCard` twin) |
+
+`shared/format-date.ts` gained the three `nowMs`-taking formatters in unit 1.
+
+#### Tier-3 deferrals — LOUD, and all three are "no v5 surface to migrate"
+
+The order's item 9 said "expected candidates: none known; verify". Verified —
+there are three, each a PRE-EXISTING v5 divergence this lane does not create and
+deliberately does not close (closing one would be porting a v4 feature v5 never
+had, which is outside a drift order's mandate):
+
+1. **The Salon's avatar watch.** v5 has no avatar poll at all —
+   `onRegenerateAvatar` toasts and invalidates `['chat', id]` once, where v4 ran
+   a 24-poll loop. There is no poller to make declarative. **It does gain the
+   push benefit for free:** a `chats:<id>` hint invalidates `['chat', id]`
+   through the topic map, which is exactly the effect v4's rewritten watch
+   produces. What is missing is v4's "Avatar updated" info toast, which v5 never
+   had.
+2. **The character conversations tab's Scriptorium watch.** v5 has no watch —
+   the standing P4.9H2B documented divergence (v5 toasts and lets the badge
+   update on the next natural load). Nothing to make declarative, and no
+   five-minute expiry to add to a watch that does not exist.
+3. **`StartupProgress`'s event ages.** v5's `qt-startup-screen` is the "just
+   getting our bearings" card; v4's per-step event list with relative ages has
+   never been ported. `formatRelativeAge` landed anyway (unit 1) because it is
+   the module's v4 contract, but it has **no v5 consumer**.
+
+Also recorded, not changed: the SALON list's `chat-card.ts` renders a plain
+`toLocaleDateString()` rather than `formatChatListDate` (v4's
+`useRelative: false` branch), so the day-granularity tick does not apply there.
+
+#### Specs and mutation proofs
+
+New spec families: `core/realtime-topic-map.spec.ts` (the map's switch + the
+frame discrimination, 17 cases), `core/realtime.service.spec.ts` (the hub, 16),
+`layout/activity-kinds.spec.ts` (the transcription + the pulse rule, 14),
+`layout/queue-status-badges.spec.ts` REWRITTEN to the new cadence (13),
+`autonomous/autonomous-room-badges.spec.ts` (5),
+`screens/settings/memory/memory-cards-realtime.spec.ts` (5),
+`screens/settings/system/tasks-queue-realtime.spec.ts` (5),
+`screens/characters/view/tabs/character-conversation-card.spec.ts` (2), plus new
+describes in `screens/salon/salon-conversation.spec.ts` (4).
+
+**The retired-poller rule was honoured, not weakened.** The old badge family
+covered an event-driven `setInterval` that woke on `notifyQueueChange()` and
+stopped itself at zero. Every assertion has a successor at equal or greater
+strength — the adaptive cadence AND its gating (which the old poller had no
+notion of), the same-tab kick still forcing a re-read, the five chips dimmed at
+zero with the tooltip shape, and the failed-read behavior pinned in its NEW form
+(keep the last good snapshot, rather than collapsing to `{}`).
+
+**Twenty-seven mutation proofs, each verified applied and each reddening exactly
+the right cases.** The three that had to be EARNED are worth recording, because
+the first attempt at each was vacuous:
+
+- The Salon's transition-effect assertion was **blinded**: it drove the change
+  with a `chats:<id>` hint, and the hub invalidates `['chat', id]` for that hint
+  itself — so the assertion could not tell the effect from the hub. Rewritten to
+  drive the move by invalidating ONLY the background key.
+- The salon's 30 s sweep gating had no covering case at all; it took a
+  fake-timer render (with `scrollTo`/`scrollIntoView` stubbed, since advancing
+  the clock lets the auto-scroll's deferred passes actually run).
+- The day-rollover case was written on a WRONG premise — that a message from
+  earlier the same evening reads "Yesterday" after local midnight. It does not:
+  v4's ladder floors ELAPSED MILLISECONDS (`Math.floor(diffMs / 86_400_000)`),
+  a quirk this port carries and the formatter's own spec pins, so the rollover
+  lands at the midnight tick AFTER 24 h have elapsed. The case now walks two
+  ticks and says why.
+
+#### Spec-support fallout (worth a memory note)
+
+Making the hub a root service that reads `CoreClient.events$` / `connection` /
+`resyncCounter` on construction meant every spec providing a partial
+`CoreClient` and mounting a component that touches the hub blew up inside the
+hub's constructor with an unrelated-looking error. `core/core-client.testing.ts`
+(`coreStreamStub()`) is the one-line fix, spread into nine spec files.
+
+**The gate also surfaced a latent, pre-existing bug of the
+`vitest-sharding-exposes-global-pollution` class:** `screens/photos/photos.spec.ts`
+defined `navigator.clipboard` with `configurable: true` and NO `writable`, which
+defaults to `writable: false` — leaving the next spec to touch it throwing
+"Cannot assign to read only property". `chat/tool-message.spec.ts` already
+records the rule in a comment; this lane's new spec files reshuffled the shards
+and made it fire against `chat/courier-bubble.spec.ts`. Fixed at the source with
+the rule quoted.
+
+#### e2e
+
+`e2e/page-toolbar-flow.spec.ts`: the queue beat reworked onto
+`activeByKind`/`startedByKind` and v4's new title string, a NEW pulse beat
+(delta base does not pulse → an advance pulses while the count stays zero → it
+clears), and a THIRD beat driving a real `jobs` hint off the live event stream,
+committed **gated ACTIVATE-AT-UNIFY behind `P4D124_HINTS_LANDED = false`** (the
+hint is the P4.D124 server lane's; until it lands nothing on the wire carries
+`{v, topic}`). Flip the constant at unification.
+
+#### Gate
+
+`check-qt-classes` 935 classes clean; `npm run build` clean; `npm test` **361
+files / 5,395 tests / 0 failed**. SPA → 0.5.580.

@@ -373,6 +373,14 @@ describe('PhotosPage detail-modal Download + Copy (v4 af1bc479)', () => {
     };
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
+      // `writable` matters: specs share a worker environment, and a
+      // defineProperty default of writable:false leaves the NEXT spec to touch
+      // `navigator.clipboard` throwing "Cannot assign to read only property" —
+      // an ordering-dependent break that surfaces only when vitest happens to
+      // shard the two files together (the rule `chat/tool-message.spec.ts`
+      // already records; P4.D125's new spec files reshuffled the shards and
+      // made this one fire against `chat/courier-bubble.spec.ts`).
+      writable: true,
       value: {
         write: (items: unknown[]) => {
           if (clipboardFails) return Promise.reject(new Error('denied'));

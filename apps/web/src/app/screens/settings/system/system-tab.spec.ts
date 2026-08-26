@@ -3,6 +3,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { coreStreamStub } from '../../../core/core-client.testing';
 import { SystemTab } from './system-tab';
 
 /** A permissive CoreClient stub — the tab mounts every card, several of which fetch. */
@@ -14,7 +15,7 @@ function coreStub(): Partial<CoreClient> {
     return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
   }) as unknown as CoreClient['dispatchExpect'];
   const dispatchData = (async () => ({ logs: [], jobs: [], stats: {}, processorStatus: {}, maxConcurrentJobs: 4 })) as unknown as CoreClient['dispatchData'];
-  return { dispatchExpect, dispatchData };
+  return { ...coreStreamStub(), dispatchExpect, dispatchData } as unknown as Partial<CoreClient>;
 }
 
 async function mount(): Promise<ComponentFixture<SystemTab>> {

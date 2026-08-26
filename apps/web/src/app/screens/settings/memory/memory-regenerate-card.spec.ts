@@ -3,6 +3,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { coreStreamStub } from '../../../core/core-client.testing';
 import { MemoryRegenerateCard } from './memory-regenerate-card';
 
 interface DispatchReq {
@@ -13,7 +14,10 @@ interface DispatchReq {
 function render(
   dispatch: (req: DispatchReq) => Promise<Record<string, unknown>>,
 ): ComponentFixture<MemoryRegenerateCard> {
-  const client: Partial<CoreClient> = { dispatchData: dispatch as CoreClient['dispatchData'] };
+  const client = {
+    ...coreStreamStub(),
+    dispatchData: dispatch as CoreClient['dispatchData'],
+  } as unknown as Partial<CoreClient>;
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [MemoryRegenerateCard],

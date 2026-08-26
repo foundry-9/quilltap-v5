@@ -1,94 +1,31 @@
 /**
- * Pure logic for the queue-status badges (v4
- * `components/layout/queue-status-badges.tsx:22-84,175-179`) — the bucket
- * table, the zero check, and the per-queue sum, extracted for unit tests (the
- * `autonomous.logic.ts` precedent).
+ * The same-tab kick for the toolbar chips (v4
+ * `components/layout/queue-status-badges.tsx`, `f3892158d`'s rewrite).
+ *
+ * Optional since the realtime hints landed — the chips are pushed to by the
+ * server and fall back to their own heartbeat, and will notice the work
+ * regardless. Call this after an action you know enqueues something, purely so
+ * the chip lights within this tab's next frame instead of within a round trip.
+ *
+ * **Kept, not retired.** v4's `f3892158d` rewrite explicitly holds on to this
+ * ("`notifyQueueChange()` remains as an instant same-tab kick after a
+ * known-enqueuing action, but nothing depends on it any more") — only its
+ * MEANING changed: the listener now invalidates the jobs query key instead of
+ * driving a bespoke re-poll. A window event is still the right mechanism for
+ * the same reason it was in v4: any code can fire it without a dependency on
+ * the badges. What DID go with the rewrite is v5's own invention on top of it —
+ * the `NavigationEnd` stop-and-refire, which existed only because the poller
+ * was a hand-rolled `setInterval`.
+ *
+ * @module layout/queue-status.logic
  */
 
-/** v4 `QUEUE_CHANGE_EVENT` — the same DOM CustomEvent name, kept deliberately
- *  (v4's mechanism is a window event so ANY code can fire it without a
- *  dependency on the badges; the same holds in v5, so the mechanism carries —
- *  recorded as the order's "match v4's mechanism unless Angular idiom forbids"
- *  decision). */
+/** v4 `QUEUE_CHANGE_EVENT` — the same DOM CustomEvent name. */
 export const QUEUE_CHANGE_EVENT = 'quilltap:queue-change';
 
-/**
- * v4 `notifyQueueChange()` — call after any action that enqueues background
- * jobs; the badges wake up and poll until every count is zero again.
- */
+/** v4 `notifyQueueChange()`. */
 export function notifyQueueChange(): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(QUEUE_CHANGE_EVENT));
   }
-}
-
-export interface QueueType {
-  key: string;
-  label: string;
-  title: string;
-  jobTypes: readonly string[];
-  badgeClass: string;
-}
-
-/** v4 `QUEUE_TYPES` (:37-73) — five buckets, these exact job-type keys. */
-export const QUEUE_TYPES: readonly QueueType[] = [
-  {
-    key: 'memory',
-    label: 'Mem',
-    title: 'Memory extraction queue',
-    jobTypes: [
-      'MEMORY_EXTRACTION',
-      'INTER_CHARACTER_MEMORY',
-      'MEMORY_REGENERATE_CHAT',
-      'MEMORY_REGENERATE_ALL',
-    ],
-    badgeClass: 'qt-queue-badge-memory',
-  },
-  {
-    key: 'embedding',
-    label: 'Emb',
-    title: 'Embedding queue',
-    jobTypes: ['EMBEDDING_GENERATE', 'EMBEDDING_REFIT', 'EMBEDDING_REINDEX_ALL'],
-    badgeClass: 'qt-queue-badge-embedding',
-  },
-  {
-    key: 'summary',
-    label: 'Sum',
-    title: 'Post-turn processing queue (summaries, titles, scene state, rendering)',
-    jobTypes: [
-      'CONTEXT_SUMMARY',
-      'TITLE_UPDATE',
-      'SCENE_STATE_TRACKING',
-      'CONVERSATION_RENDER',
-      'REGENERATE_CONVERSATION_SUMMARIES',
-    ],
-    badgeClass: 'qt-queue-badge-summary',
-  },
-  {
-    key: 'danger',
-    label: 'Dgr',
-    title: 'Danger classification queue',
-    jobTypes: ['CHAT_DANGER_CLASSIFICATION'],
-    badgeClass: 'qt-queue-badge-danger',
-  },
-  {
-    key: 'story',
-    label: 'Img',
-    title: 'Image generation queue (story backgrounds, character avatars)',
-    jobTypes: ['STORY_BACKGROUND_GENERATION', 'CHARACTER_AVATAR_GENERATION'],
-    badgeClass: 'qt-queue-badge-story',
-  },
-];
-
-/** v4 `hasActiveJobs` (:82-84). */
-export function hasActiveJobs(activeByType: Record<string, number>): boolean {
-  return Object.values(activeByType).some((count) => count > 0);
-}
-
-/** v4 `getQueueCount` (:175-179). */
-export function getQueueCount(
-  activeByType: Record<string, number>,
-  jobTypes: readonly string[],
-): number {
-  return jobTypes.reduce((sum, type) => sum + (activeByType[type] || 0), 0);
 }

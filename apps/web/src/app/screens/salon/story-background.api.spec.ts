@@ -99,22 +99,19 @@ describe('StoryBackgroundPoller (v4 useStoryBackground startPolling, :95-128)', 
     }
   }
 
-  it('polls every 5s and stops the moment the value changes, firing onChanged once', async () => {
+  it('polls every 5s and stops the moment the value changes', async () => {
     let current: string | null = "url('/api/v1/files/old')";
     const refetch = vi.fn(async () => current);
-    const onChanged = vi.fn();
     const poller = new StoryBackgroundPoller();
 
-    poller.start(current, refetch, onChanged);
+    poller.start(current, refetch);
     await tick(3);
     expect(refetch).toHaveBeenCalledTimes(3);
-    expect(onChanged).not.toHaveBeenCalled();
     expect(poller.polling).toBe(true);
 
     current = "url('/api/v1/files/new')";
     await tick(1);
 
-    expect(onChanged).toHaveBeenCalledTimes(1);
     expect(poller.polling).toBe(false);
 
     // Stopped means stopped — no further refetches.
@@ -124,29 +121,26 @@ describe('StoryBackgroundPoller (v4 useStoryBackground startPolling, :95-128)', 
 
   it('detects a background APPEARING where there was none (null → a URL)', async () => {
     let current: string | null = null;
-    const onChanged = vi.fn();
     const poller = new StoryBackgroundPoller();
 
-    poller.start(null, async () => current, onChanged);
+    poller.start(null, async () => current);
     await tick(1);
-    expect(onChanged).not.toHaveBeenCalled();
+    expect(poller.polling).toBe(true);
 
     current = "url('/api/v1/files/fresh')";
     await tick(1);
-    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(poller.polling).toBe(false);
   });
 
-  it('gives up after 36 polls (3 minutes) without firing onChanged', async () => {
+  it('gives up after 36 polls (3 minutes)', async () => {
     const refetch = vi.fn(async () => "url('/api/v1/files/same')");
-    const onChanged = vi.fn();
     const poller = new StoryBackgroundPoller();
 
-    poller.start("url('/api/v1/files/same')", refetch, onChanged);
+    poller.start("url('/api/v1/files/same')", refetch);
     await tick(ACTIVE_POLL_MAX);
 
     expect(refetch).toHaveBeenCalledTimes(ACTIVE_POLL_MAX);
     expect(poller.polling).toBe(false);
-    expect(onChanged).not.toHaveBeenCalled();
 
     await tick(3);
     expect(refetch).toHaveBeenCalledTimes(ACTIVE_POLL_MAX);
@@ -156,7 +150,7 @@ describe('StoryBackgroundPoller (v4 useStoryBackground startPolling, :95-128)', 
     const refetch = vi.fn(async () => "url('/api/v1/files/same')");
     const poller = new StoryBackgroundPoller();
 
-    poller.start("url('/api/v1/files/same')", refetch, vi.fn());
+    poller.start("url('/api/v1/files/same')", refetch);
     await tick(2);
     poller.stop();
     await tick(5);
@@ -171,24 +165,30 @@ describe('StoryBackgroundPoller (v4 useStoryBackground startPolling, :95-128)', 
     // the budget or the interval. Ported exactly.
     let current = "url('/api/v1/files/a')";
     const refetch = vi.fn(async () => current);
-    const onChanged = vi.fn();
     const poller = new StoryBackgroundPoller();
 
-    poller.start(current, refetch, onChanged);
+    poller.start(current, refetch);
     await tick(1);
 
     // The backdrop moves, and the user presses regenerate again BEFORE the next
     // tick — the new value becomes the baseline, so it no longer counts as a change.
     current = "url('/api/v1/files/b')";
-    poller.start(current, refetch, onChanged);
+    poller.start(current, refetch);
     await tick(1);
-    expect(onChanged).not.toHaveBeenCalled();
     expect(poller.polling).toBe(true);
 
     // Only a move away from the NEW baseline settles it.
     current = "url('/api/v1/files/c')";
     await tick(1);
-    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(poller.polling).toBe(false);
+  });
+
+  it('takes NO change callback — that moved to the caller\'s shared transition effect', () => {
+    // v4 `f3892158d` removed `onBackgroundChangedRef.current?.()` from this loop
+    // because a `chats:<id>` hint can now land the new value without the loop
+    // being the one that noticed; the caller's effect sees the transition either
+    // way. A third argument would mean the old, duplicable path came back.
+    expect(StoryBackgroundPoller.prototype.start.length).toBe(2);
   });
 
   it('pins v4 cadence constants', () => {

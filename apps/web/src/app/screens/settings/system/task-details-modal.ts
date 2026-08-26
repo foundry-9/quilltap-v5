@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 
 import { Icon } from '../../../ui/icon';
 import { Modal } from '../../../ui/modal';
 import { formatRelativeDate } from '../../../shared/format-date';
+import { NowService } from '../../../shared/now.service';
 import { type FullJobDetail } from './tasks-queue.api';
 
 /**
@@ -83,6 +84,13 @@ export class TaskDetailsModal {
   readonly job = input.required<FullJobDetail>();
   readonly busy = input(false);
 
+  /**
+   * The shared minute clock (v4 `TaskItem`'s own `useNow(60_000)`): a queued
+   * task's "3m ago" actually becomes "4m ago" instead of waiting for the next
+   * unrelated re-render. One timer serves every row on screen.
+   */
+  private readonly nowMs = inject(NowService).now(60_000);
+
   readonly close = output<void>();
   readonly delete = output<string>();
 
@@ -101,6 +109,6 @@ export class TaskDetailsModal {
     }
   });
 
-  protected readonly scheduled = computed(() => formatRelativeDate(this.job().scheduledAt));
+  protected readonly scheduled = computed(() => formatRelativeDate(this.job().scheduledAt, this.nowMs()));
   protected readonly payloadJson = computed(() => JSON.stringify(this.job().payload, null, 2));
 }

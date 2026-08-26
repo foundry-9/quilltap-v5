@@ -3,6 +3,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { coreStreamStub } from '../../../core/core-client.testing';
 import { TasksQueueCard } from './tasks-queue-card';
 import type { JobDetail, QueueData } from './tasks-queue.api';
 
@@ -52,7 +53,13 @@ function stub(data: QueueData): Stub {
         return {};
     }
   });
-  return { calls, client: { dispatchData: dispatchData as unknown as CoreClient['dispatchData'] } };
+  return {
+    calls,
+    client: {
+      ...coreStreamStub(),
+      dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+    } as unknown as Partial<CoreClient>,
+  };
 }
 
 async function mount(s: Stub): Promise<ComponentFixture<TasksQueueCard>> {

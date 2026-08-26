@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
@@ -21,6 +22,8 @@ beforeAll(() => {
 });
 
 import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
+import type { ConnectionState } from '../../core/core-transport';
 import type {
   ChatDetail,
   ChatStreamFrame,
@@ -160,6 +163,8 @@ function stubClient(
   const dispatchData = vi.fn(async () => background ?? { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null });
   return {
     events$: events$.asObservable(),
+    connection: signal<ConnectionState>('idle'),
+    resyncCounter: signal(0),
     dispatch,
     dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
     dispatchExpect: (async (req: CoreRequest, expect: string) => {
@@ -477,6 +482,8 @@ describe('SalonConversation — story-background regeneration (v4 useChatControl
       calls,
       client: {
         events$: new Subject<ScopedEvent>().asObservable(),
+        connection: signal<ConnectionState>('idle'),
+        resyncCounter: signal(0),
         dispatch,
         dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
         dispatchExpect: (async (req: CoreRequest, expected: string) => {
@@ -630,6 +637,8 @@ describe('SalonConversation — the LLM Inspector (v4 useLLMLogs.ts + SalonView.
       listCalls: () => calls.filter((c) => (c as { type: string }).type === 'llmLogsList'),
       client: {
         events$: new Subject<ScopedEvent>().asObservable(),
+        connection: signal<ConnectionState>('idle'),
+        resyncCounter: signal(0),
         dispatch,
         dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
         dispatchExpect: (async (req: CoreRequest, expected: string) => {
@@ -1377,6 +1386,8 @@ describe('SalonConversation — the persisted impersonation overlay is seeded, n
     );
     return {
       events$: new Subject<ScopedEvent>().asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
       dispatch,
       dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
       dispatchExpect: (async (req: CoreRequest, expect: string) => {
@@ -1898,6 +1909,8 @@ describe('SalonConversation — the roleplay template reaches the rendered rows 
     });
     const client: Partial<CoreClient> = {
       events$: events$.asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
       dispatch,
       dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
       dispatchExpect: (async (req: CoreRequest, expected: string) => {
@@ -2462,5 +2475,248 @@ describe('SalonConversation attachment-failure warning (Bug 94)', () => {
       'An attachment was not sent to the model: dropped once',
       'An attachment was not sent to the model: dropped twice',
     ]);
+  });
+});
+
+/**
+ * The story-background loops after `f3892158d` (P4.D125): both are the FALLBACK
+ * now, gated on channel health, and the change callback belongs to the shared
+ * transition effect — which sees the move whether it arrived by poll or by a
+ * `chats:<id>` hint invalidating the background key.
+ */
+describe('SalonConversation — the story-background loops are the fallback now', () => {
+  function backgroundClient(opts: { enabled: boolean; fileId: () => string | null }) {
+    const stream = coreStreamStub();
+    const chat = chatDetail();
+    const calls: string[] = [];
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat } };
+      if (req.type === 'chatSettings') {
+        return {
+          type: 'chatSettings',
+          data: {
+            avatarDisplayMode: 'ALWAYS',
+            avatarDisplayStyle: 'CIRCULAR',
+            storyBackgroundsSettings: { enabled: opts.enabled, defaultImageProfileId: null },
+          },
+        };
+      }
+      return { type: 'ack', data: {} };
+    });
+    const dispatchData = vi.fn(async (req: { type: string }) => {
+      calls.push(req.type);
+      if (req.type === 'chatRegenerateBackground') {
+        return { message: 'Story background regeneration queued', queued: true, jobId: 'job-1' };
+      }
+      return {
+        backgroundUrl: null,
+        fileId: opts.fileId(),
+        filename: null,
+        sha256: null,
+        linkSummary: null,
+      };
+    });
+    return {
+      stream,
+      calls,
+      client: {
+        ...stream,
+        dispatch,
+        dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+        dispatchExpect: (async (req: CoreRequest, expected: string) => {
+          const resp = await dispatch(req);
+          if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+          return resp;
+        }) as CoreClient['dispatchExpect'],
+      } as unknown as Partial<CoreClient>,
+    };
+  }
+
+  async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  it('a `chats:<id>` hint re-reads the background without any timer', async () => {
+    const s = backgroundClient({ enabled: true, fileId: () => null });
+    const fixture = await render(s.client);
+    s.stream.connection.set('open');
+    await settle(fixture);
+    const before = s.calls.filter((c) => c === 'chatGetBackground').length;
+    s.stream.frames.next({
+      v: 1,
+      topic: 'chats',
+      id: 'chat-1',
+      at: 1,
+    } as unknown as ScopedEvent);
+    await settle(fixture);
+    const after = s.calls.filter((c) => c === 'chatGetBackground').length;
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it('a hint for ANOTHER chat leaves this one alone (the row-scoped narrowing)', async () => {
+    const s = backgroundClient({ enabled: true, fileId: () => null });
+    const fixture = await render(s.client);
+    s.stream.connection.set('open');
+    await settle(fixture);
+    const before = s.calls.filter((c) => c === 'chatGetBackground').length;
+    s.stream.frames.next({
+      v: 1,
+      topic: 'chats',
+      id: 'some-other-chat',
+      at: 1,
+    } as unknown as ScopedEvent);
+    await settle(fixture);
+    expect(s.calls.filter((c) => c === 'chatGetBackground').length).toBe(before);
+  });
+
+  it('the transition effect fires the change callback however the value arrived', async () => {
+    // Seeded with no background; the next read finds one — the transition the
+    // active watch used to be the only thing that could notice.
+    //
+    // The move is driven by invalidating ONLY the background key, never by a
+    // `chats:<id>` hint: a hint invalidates `['chat', id]` itself through the
+    // topic map, which would make this assertion vacuous (the hub, not the
+    // effect, would be the one that produced the key).
+    let fileId: string | null = null;
+    const s = backgroundClient({ enabled: true, fileId: () => fileId });
+    const fixture = await render(s.client);
+    await settle(fixture);
+
+    const queryClient = TestBed.inject(QueryClient);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    fileId = 'bg-9';
+    await queryClient.invalidateQueries({ queryKey: ['chat', 'chat-1', 'background'] });
+    await settle(fixture);
+
+    // `onBackgroundChanged` invalidates the chat detail so the Lantern
+    // announcement posted alongside the new backdrop lands.
+    const keys = invalidate.mock.calls.map((c) =>
+      JSON.stringify((c[0] as { queryKey: readonly unknown[] }).queryKey),
+    );
+    expect(keys).toContain(JSON.stringify(['chat', 'chat-1']));
+    invalidate.mockRestore();
+  });
+
+  it('a transition RETIRES an armed active watch, without waiting out its next tick', async () => {
+    vi.useFakeTimers();
+    const proto = globalThis.HTMLElement.prototype as unknown as Record<string, unknown>;
+    const added = (['scrollTo', 'scrollIntoView'] as const).filter((k) => !(k in proto));
+    for (const k of added) proto[k] = () => {};
+    try {
+      let fileId: string | null = null;
+      const s = backgroundClient({ enabled: true, fileId: () => fileId });
+      localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+      TestBed.configureTestingModule({
+        imports: [SalonConversation],
+        providers: [
+          provideRouter([]),
+          provideTanStackQuery(new QueryClient()),
+          { provide: CoreClient, useValue: s.client },
+          {
+            provide: ActivatedRoute,
+            useValue: { paramMap: of(convertToParamMap({ id: 'chat-1' })) },
+          },
+        ],
+      });
+      const fixture = TestBed.createComponent(SalonConversation);
+      fixture.detectChanges();
+      const flush = async () => {
+        for (let i = 0; i < 8; i++) {
+          await vi.advanceTimersByTimeAsync(0);
+          fixture.detectChanges();
+        }
+      };
+      await flush();
+      // Channel up, so the 30 s passive sweep is off and the only remaining
+      // repeat timer would be the active watch.
+      s.stream.connection.set('open');
+      fixture.detectChanges();
+      await flush();
+
+      // Arm the watch through the surface the user uses.
+      const headers = Array.from(
+        fixture.nativeElement.querySelectorAll('.qt-collapsible-card-header'),
+      ) as HTMLButtonElement[];
+      headers.find((h) => h.textContent?.trim().startsWith('Chat'))?.click();
+      fixture.detectChanges();
+      const button = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+        (b) => (b as HTMLButtonElement).textContent?.trim() === 'Regenerate Background',
+      ) as HTMLButtonElement;
+      expect(button).toBeTruthy();
+      button.click();
+      await flush();
+
+      // The backdrop lands and a hint invalidates the key — the effect sees the
+      // transition first. Without its `poller.stop()` the watch would still fire
+      // its own 5 s tick before noticing.
+      fileId = 'bg-9';
+      s.stream.frames.next({
+        v: 1,
+        topic: 'chats',
+        id: 'chat-1',
+        at: 3,
+      } as unknown as ScopedEvent);
+      await flush();
+
+      const reads = () => s.calls.filter((c) => c === 'chatGetBackground').length;
+      const settled = reads();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(reads()).toBe(settled);
+    } finally {
+      for (const k of added) delete proto[k];
+      vi.useRealTimers();
+    }
+  });
+
+  it('the 30 s passive sweep runs while the channel is down and NOT while it is up', async () => {
+    vi.useFakeTimers();
+    // Advancing the clock lets the auto-scroll's deferred passes actually run,
+    // and JSDOM elements have neither `scrollTo` nor `scrollIntoView`.
+    const proto = globalThis.HTMLElement.prototype as unknown as Record<string, unknown>;
+    const added = (['scrollTo', 'scrollIntoView'] as const).filter((k) => !(k in proto));
+    for (const k of added) proto[k] = () => {};
+    try {
+      const s = backgroundClient({ enabled: true, fileId: () => null });
+      localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+      TestBed.configureTestingModule({
+        imports: [SalonConversation],
+        providers: [
+          provideRouter([]),
+          provideTanStackQuery(new QueryClient()),
+          { provide: CoreClient, useValue: s.client },
+          {
+            provide: ActivatedRoute,
+            useValue: { paramMap: of(convertToParamMap({ id: 'chat-1' })) },
+          },
+        ],
+      });
+      const fixture = TestBed.createComponent(SalonConversation);
+      fixture.detectChanges();
+      const flush = async () => {
+        for (let i = 0; i < 6; i++) {
+          await vi.advanceTimersByTimeAsync(0);
+          fixture.detectChanges();
+        }
+      };
+      await flush();
+
+      const reads = () => s.calls.filter((c) => c === 'chatGetBackground').length;
+      const down = reads();
+      await vi.advanceTimersByTimeAsync(30_100);
+      expect(reads()).toBeGreaterThan(down);
+
+      s.stream.connection.set('open');
+      fixture.detectChanges();
+      await flush();
+      const up = reads();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(reads()).toBe(up);
+    } finally {
+      for (const k of added) delete proto[k];
+      vi.useRealTimers();
+    }
   });
 });

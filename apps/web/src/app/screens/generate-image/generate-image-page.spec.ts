@@ -3,6 +3,7 @@ import { provideRouter } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
 import { GenerateImagePage, type GeneratedImage } from './generate-image-page';
 import { insertPlaceholderAt } from './placeholder-insert';
 import { ToastService } from '../../ui/toast.service';
@@ -42,9 +43,10 @@ function stubClient(opts: {
     return { type: 'ok', data: opts.generate ?? { data: [] } };
   };
   return {
+    ...coreStreamStub(),
     dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
     dispatch: dispatch as unknown as CoreClient['dispatch'],
-  };
+  } as unknown as Partial<CoreClient>;
 }
 
 async function render(

@@ -2,9 +2,11 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient, coreErrorMessage } from '../../../core/core-client';
+import { RealtimeService } from '../../../core/realtime.service';
 import { notifyQueueChange } from '../../../layout/queue-status.logic';
 import { ToastService } from '../../../ui/toast.service';
 
+/** Fallback poll cadence, used only while the realtime channel is down. */
 const POLL_INTERVAL_MS = 5000;
 const STATUS_KEY = ['conversation-summaries', 'status'] as const;
 
@@ -61,6 +63,7 @@ export class ConversationSummaryRegenerateCard {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
+  private readonly realtime = inject(RealtimeService);
 
   protected readonly submitting = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -70,12 +73,25 @@ export class ConversationSummaryRegenerateCard {
     // v4 swallows status failures ("the button still works"): a failed read
     // reports zero in flight rather than surfacing an error.
     queryFn: (): Promise<number> => this.core.conversationSummariesStatus().catch(() => 0),
-    // Poll only while a run is draining (v4 stops at zero).
+    // Fallback only, and only while a run is draining — v4's scope exactly,
+    // now gated on channel health as well (`f3892158d`).
     refetchInterval: (query): number | false => {
       const data = query.state.data as number | undefined;
-      return data && data > 0 ? POLL_INTERVAL_MS : false;
+      const draining = !!data && data > 0;
+      return this.realtime.refetchInterval(draining ? POLL_INTERVAL_MS : false);
     },
   }));
+
+  constructor() {
+    // The regeneration is a fan-out of background jobs, so it drains on the
+    // `jobs` topic — but only while something is in flight, matching the old
+    // poll's scope rather than re-reading on every unrelated job.
+    this.realtime.onTopic('jobs', () => {
+      if (this.inFlight() > 0) {
+        void this.queryClient.invalidateQueries({ queryKey: STATUS_KEY });
+      }
+    });
+  }
 
   protected readonly inFlight = computed(() => this.statusQuery.data() ?? 0);
 

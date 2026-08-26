@@ -5,6 +5,7 @@ import { CoreClient, coreErrorMessage } from '../../../../core/core-client';
 import type { CharacterChatSummary } from '../../../../core/core-contract';
 import { notifyQueueChange } from '../../../../layout/queue-status.logic';
 import { formatChatListDate } from '../../../../shared/format-date';
+import { DAY_GRANULARITY_MS, NowService } from '../../../../shared/now.service';
 import { normalizeAvatarSrc } from '../../../../ui/avatar-stack';
 import { Icon } from '../../../../ui/icon';
 import { ScriptoriumBadge } from '../../../../ui/scriptorium-badge';
@@ -132,8 +133,15 @@ export class CharacterConversationCard {
   );
   protected readonly tagNames = computed(() => (this.chat().tags ?? []).map((t) => t.tag.name));
 
+  /**
+   * A day-boundary tick — one timer, firing once at local midnight — is all
+   * this readout needs to roll "today" over to "Yesterday" on a list that has
+   * been open since last night (v4 `ChatCard`, `f3892158d`).
+   */
+  private readonly nowMs = inject(NowService).now(DAY_GRANULARITY_MS);
+
   protected readonly dateStr = computed(() =>
-    formatChatListDate(this.chat().lastMessageAt || this.chat().updatedAt),
+    formatChatListDate(this.chat().lastMessageAt || this.chat().updatedAt, this.nowMs()),
   );
 
   /**

@@ -3,10 +3,12 @@ import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experime
 
 import { CoreClient } from '../../../core/core-client';
 import type { RegenerateAllStatus } from '../../../core/core-contract';
+import { RealtimeService } from '../../../core/realtime.service';
 import { notifyQueueChange } from '../../../layout/queue-status.logic';
 import { fetchRegenerateStatus, memoryKeys, regenerateAllMemories } from '../../../memory/memory.api';
 import { ToastService } from '../../../ui/toast.service';
 
+/** Fallback poll cadence, used only while the realtime channel is down. */
 const POLL_INTERVAL_MS = 5000;
 
 /**
@@ -89,6 +91,7 @@ export class MemoryRegenerateCard {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
+  private readonly realtime = inject(RealtimeService);
 
   protected readonly confirming = signal(false);
   protected readonly submitting = signal(false);
@@ -97,12 +100,26 @@ export class MemoryRegenerateCard {
   protected readonly statusQuery = injectQuery(() => ({
     queryKey: memoryKeys.regenerateStatus(),
     queryFn: (): Promise<RegenerateAllStatus> => fetchRegenerateStatus(this.core),
-    // Poll only while a sweep is in flight (v4 stops polling when idle).
+    // Fallback only, and only while a sweep is in flight — v4's scope exactly,
+    // now gated on channel health as well (`f3892158d`).
     refetchInterval: (query): number | false => {
       const data = query.state.data as RegenerateAllStatus | undefined;
-      return data && data.inFlight > 0 ? POLL_INTERVAL_MS : false;
+      const inFlight = !!data && data.inFlight > 0;
+      return this.realtime.refetchInterval(inFlight ? POLL_INTERVAL_MS : false);
     },
   }));
+
+  constructor() {
+    // The sweep is a fan-out of background jobs, so it drains visibly on the
+    // `jobs` topic. Only while something is actually in flight, matching what
+    // the old poll did — an idle card has no reason to re-read on every
+    // unrelated job (v4's own comment).
+    this.realtime.onTopic('jobs', () => {
+      if (this.inFlight() > 0) {
+        void this.queryClient.invalidateQueries({ queryKey: memoryKeys.regenerateStatus() });
+      }
+    });
+  }
 
   protected readonly status = computed<RegenerateAllStatus>(
     () =>

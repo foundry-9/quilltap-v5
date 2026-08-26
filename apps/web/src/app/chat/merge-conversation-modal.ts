@@ -17,6 +17,7 @@ import {
 } from '../screens/new-chat/outfit-selector';
 import { chatKeys } from './chat-keys';
 import { formatRelativeDate } from '../shared/format-date';
+import { NowService } from '../shared/now.service';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 import { mergeConversation, readOutfitSummary } from './chat-admin.api';
@@ -235,6 +236,12 @@ export class MergeConversationModal {
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
+  /**
+   * The picker can sit open for a while; without the shared clock its "12m ago"
+   * column freezes at whatever it read when the list arrived (v4's own words).
+   */
+  private readonly nowMs = inject(NowService).now(60_000);
+
   /** The chat being merged INTO. */
   readonly targetChatId = input.required<string>();
   /** Character ids already present here, at any status. */
@@ -308,7 +315,7 @@ export class MergeConversationModal {
   });
 
   protected when(chat: EnrichedChatSummary): string {
-    return formatRelativeDate(chat.lastMessageAt ?? chat.updatedAt);
+    return formatRelativeDate(chat.lastMessageAt ?? chat.updatedAt, this.nowMs());
   }
 
   protected company(chat: EnrichedChatSummary): string {

@@ -116,10 +116,15 @@ export class StoryBackgroundPoller {
   /**
    * @param current  The resolved value now — the baseline a change is measured against.
    * @param refetch  Re-fetch and resolve to the CURRENT value.
-   * @param onChanged Fired once, when a change is detected (v4 refetches the chat
-   *                  so the Lantern announcement posted with the backdrop lands).
+   *
+   * v4 `f3892158d` moved the change CALLBACK out of this loop and into the
+   * caller's shared transition effect, "which sees the same transition whether
+   * it arrived by poll or by push": with the `chats:<id>` hint invalidating the
+   * background key, the new value can land without this loop being the one that
+   * noticed. The loop still stops itself on a change, and still gives up after
+   * {@link ACTIVE_POLL_MAX} tries.
    */
-  start(current: string | null, refetch: () => Promise<string | null>, onChanged: () => void): void {
+  start(current: string | null, refetch: () => Promise<string | null>): void {
     // v4 stores the baseline BEFORE the already-polling guard — see the class docs.
     this.initial = current;
     if (this.handle !== null) return;
@@ -130,7 +135,6 @@ export class StoryBackgroundPoller {
         this.count++;
         const next = await refetch();
         if (next !== this.initial) {
-          onChanged();
           this.stop();
           return;
         }

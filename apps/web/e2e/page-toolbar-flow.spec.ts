@@ -11,10 +11,14 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  *      fixture character's name into the toolbar bar, see the dropdown card,
  *      click it, land on the character screen (the `/aurora/{id}` →
  *      `/characters/{id}` mapping working end-to-end).
- *   3. Queue-badge beat: the deterministic variant (see the beat's comment —
+ *   3. Queue-chip beats (P4.D125 reworked them onto `activeByKind` /
+ *      `startedByKind`): the deterministic variant (see each beat's comment —
  *      no real job can HOLD a countable state on this server, by design), a
- *      browser-side interception of the jobs endpoint driving the Sum badge
- *      through light → poll → dim-at-zero.
+ *      browser-side interception of the jobs endpoint driving the Sum chip
+ *      through light → heartbeat → dim-at-zero, and the Dgr chip through the
+ *      startedByKind blip → pulse → clear. A third beat drives a REAL `jobs`
+ *      hint off the live event stream, gated ACTIVATE-AT-UNIFY on the P4.D124
+ *      server half.
  *   4. Width beat: the toggle flips `data-full-width` on <html> and the
  *      preference survives a reload (v4's exact localStorage key).
  *
@@ -124,42 +128,125 @@ test('global search round-trips: query → dropdown card → navigate to the cha
   await expect(page.getByPlaceholder('Search... (⌘K)')).toHaveValue('');
 });
 
-test('the queue badges light while jobs are active and dim back to idle', async ({ page }) => {
+test('the queue chips light from activeByKind and dim back to idle', async ({ page }) => {
   // THE DETERMINISTIC VARIANT (the order's "or"): no real job can HOLD a
-  // countable state — `activeByType` counts PENDING|PROCESSING only
-  // (v4-faithful), a handler-less probe is claimed and failed within
-  // milliseconds, a retrying job sits in FAILED between attempts, and every
-  // enqueue/resume path calls `pump.start()`, clearing any stop. So this beat
-  // intercepts `/api/v1/system/jobs` IN THE BROWSER and drives the counts,
-  // proving the live wiring (mount-fired check → render → 5s poll → dim at
-  // zero) end to end; the SERVER side of the endpoint is pinned by the
-  // P4.9G1/P4.9G3 differentials, and the first beat above already rendered
-  // the badges from a real un-intercepted fetch.
-  let activeByType: Record<string, number> = { SCENE_STATE_TRACKING: 2 };
+  // countable state — `activeByKind` counts PENDING|PROCESSING rows plus
+  // in-flight registry spans (v4-faithful), a handler-less probe is claimed and
+  // failed within milliseconds, and every enqueue/resume path calls
+  // `pump.start()`. So this beat intercepts `/api/v1/system/jobs` IN THE
+  // BROWSER and drives the counts, proving the live wiring (TanStack query →
+  // render → the adaptive fallback heartbeat → dim at zero) end to end; the
+  // SERVER side is pinned by the P4.D123 differentials, and the first beat
+  // above already rendered the chips from a real un-intercepted fetch.
+  let body = {
+    activeByKind: { memory: 0, embedding: 0, summary: 2, danger: 0, image: 0 },
+    startedByKind: { memory: 0, embedding: 0, summary: 0, danger: 0, image: 0 },
+  };
   await page.route('**/api/v1/system/jobs', (route) =>
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ activeByType }),
+      body: JSON.stringify(body),
     }),
   );
 
   await page.goto('/salon');
   await maybeUnlock(page);
-  const sumBadge = page.locator('.qt-queue-badge-summary');
-  await expect(sumBadge).toContainText('2');
-  await expect(sumBadge).not.toHaveClass(/qt-queue-badge-idle/);
-  await expect(sumBadge).toHaveAttribute(
+  const sumChip = page.locator('.qt-queue-badge-summary');
+  await expect(sumChip).toContainText('2');
+  await expect(sumChip).not.toHaveClass(/qt-queue-badge-idle/);
+  // v4's NEW title string, from `ACTIVITY_CHIPS`.
+  await expect(sumChip).toHaveAttribute(
     'title',
-    'Post-turn processing queue (summaries, titles, scene state, rendering): 2 active',
+    'Summarization and post-turn processing (summaries, titles, scene state, rendering): 2 active',
   );
-  // The other buckets stay idle.
+  // The other chips stay idle.
   await expect(page.locator('.qt-queue-badge-memory')).toHaveClass(/qt-queue-badge-idle/);
 
-  // The counts drain; the 5s poll notices and the badge dims to idle.
-  activeByType = {};
-  await expect(sumBadge).toContainText('0', { timeout: 10_000 });
-  await expect(sumBadge).toHaveClass(/qt-queue-badge-idle/);
+  // The counts drain; the busy heartbeat (1.5 s) notices and the chip dims.
+  body = {
+    activeByKind: { memory: 0, embedding: 0, summary: 0, danger: 0, image: 0 },
+    startedByKind: { memory: 0, embedding: 0, summary: 0, danger: 0, image: 0 },
+  };
+  await expect(sumChip).toContainText('0', { timeout: 10_000 });
+  await expect(sumChip).toHaveClass(/qt-queue-badge-idle/);
+
+  await page.unroute('**/api/v1/system/jobs');
+});
+
+test('a chip PULSES for work that started and finished between two reads', async ({ page }) => {
+  // The blip: `startedByKind` is monotonic, so a kind whose counter advanced
+  // did work even though its live count is back to zero. The first read is the
+  // delta base and must NOT pulse; the advance must.
+  let started = 0;
+  await page.route('**/api/v1/system/jobs', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        activeByKind: { memory: 0, embedding: 0, summary: 0, danger: 0, image: 0 },
+        startedByKind: { memory: 0, embedding: 0, summary: 0, danger: started, image: 0 },
+      }),
+    }),
+  );
+
+  await page.goto('/salon');
+  await maybeUnlock(page);
+  const dgrChip = page.locator('.qt-queue-badge-danger');
+  await expect(dgrChip).toHaveClass(/qt-queue-badge-idle/);
+  await expect(dgrChip).not.toHaveClass(/qt-queue-badge-pulse/);
+
+  // A span opens and closes between reads: the counter advances, the count
+  // does not.
+  started = 1;
+  await expect(dgrChip).toHaveClass(/qt-queue-badge-pulse/, { timeout: 10_000 });
+  // Still idle — the pulse says "something happened", not "something is here".
+  await expect(dgrChip).toHaveClass(/qt-queue-badge-idle/);
+  // …and it clears itself.
+  await expect(dgrChip).not.toHaveClass(/qt-queue-badge-pulse/, { timeout: 10_000 });
+
+  await page.unroute('**/api/v1/system/jobs');
+});
+
+/**
+ * ACTIVATE-AT-UNIFY. The `jobs` hint is emitted by the P4.D124 server lane; until
+ * it lands nothing on the wire carries `{v, topic}`, so the beat below would be
+ * asserting against a channel that never speaks. Flip to `true` at unification.
+ */
+const P4D124_HINTS_LANDED = false;
+
+test('a `jobs` hint invalidates the chips with the fallback heartbeat parked', async ({ page }) => {
+  test.skip(
+    !P4D124_HINTS_LANDED,
+    'the realtime hint rides the P4.D124 server lane; flip P4D124_HINTS_LANDED at unification',
+  );
+  // A REAL hint off the live event stream — no interception of the stream, and
+  // no timer doing the work: the chips are served a first snapshot, then the
+  // route starts answering differently, and only a hint can make them notice.
+  let body = {
+    activeByKind: { memory: 0, embedding: 0, summary: 0, danger: 0, image: 0 },
+    startedByKind: { memory: 0, embedding: 0, summary: 0, danger: 0, image: 0 },
+  };
+  await page.route('**/api/v1/system/jobs', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(body),
+    }),
+  );
+
+  await page.goto('/salon');
+  await maybeUnlock(page);
+  const embChip = page.locator('.qt-queue-badge-embedding');
+  await expect(embChip).toContainText('0');
+
+  // Enqueue real work: the server publishes a `jobs` hint, the hub invalidates.
+  body = {
+    activeByKind: { memory: 0, embedding: 3, summary: 0, danger: 0, image: 0 },
+    startedByKind: { memory: 0, embedding: 0, summary: 0, danger: 0, image: 0 },
+  };
+  await dispatch({ type: 'memoryBackfillStart', limit: 1 });
+  await expect(embChip).toContainText('3', { timeout: 5_000 });
 
   await page.unroute('**/api/v1/system/jobs');
 });

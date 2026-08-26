@@ -5,6 +5,7 @@ import { Subject, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
 import type {
   ChatDetail,
   CoreRequest,
@@ -202,7 +203,7 @@ function stubClient(
     dispatch,
     dispatchData,
     client: {
-      events$: new Subject<ScopedEvent>().asObservable(),
+      ...coreStreamStub(),
       dispatch,
       dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
       dispatchExpect: (async (req: CoreRequest, expect: string) => {

@@ -5,6 +5,7 @@ import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { coreStreamStub } from '../../../core/core-client.testing';
 import { ChatTab } from './chat-tab';
 
 /**
@@ -67,6 +68,7 @@ function mount(section: string | null = null) {
       {
         provide: CoreClient,
         useValue: {
+          ...coreStreamStub(),
           dispatchExpect: dispatchExpect as unknown as CoreClient['dispatchExpect'],
           dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
           getDataRetentionSettings: async () => ({ staleChatDays: 30 }),

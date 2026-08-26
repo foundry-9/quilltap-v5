@@ -1,8 +1,11 @@
-import { Component, TemplateRef, viewChild } from '@angular/core';
+import { Component, TemplateRef, signal, viewChild } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+import { Subject } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { CoreClient } from '../core/core-client';
 import { PageToolbar } from './page-toolbar';
 import { PageToolbarService } from './page-toolbar.service';
 
@@ -23,7 +26,9 @@ class Host {
 describe('PageToolbar (v4 page-toolbar.tsx)', () => {
   beforeEach(() => {
     // The occupants poll (autonomous rooms via CoreClient HTTP, queue badges
-    // via fetch) — stub the network so mounting is inert.
+    // via fetch) — stub the network so mounting is inert. The chips also sit on
+    // TanStack Query and the realtime hub now, so the module needs both a
+    // QueryClient and a CoreClient carrying the live-stream surface.
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })),
@@ -38,7 +43,19 @@ describe('PageToolbar (v4 page-toolbar.tsx)', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [Host],
-      providers: [provideRouter([])],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        {
+          provide: CoreClient,
+          useValue: {
+            events$: new Subject(),
+            connection: signal('idle'),
+            resyncCounter: signal(0),
+            listAutonomousRooms: async () => [],
+          },
+        },
+      ],
     });
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();

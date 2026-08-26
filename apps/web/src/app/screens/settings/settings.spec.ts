@@ -3,6 +3,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
 import { WORKSPACE_TAB_ID } from '../../workspace/workspace-contract';
 import { Settings } from './settings';
 
@@ -14,13 +15,14 @@ import { Settings } from './settings';
  * adaptation. `section` is accepted but unused (v4 `_section`).
  */
 describe('Settings (workspace-tab mode)', () => {
-  const coreStub: Partial<CoreClient> = {
+  const coreStub = {
+    ...coreStreamStub(),
     dispatchExpect: (async () => ({
       type: 'unlockState',
       data: { state: 'unlocked', hasUserPassphrase: false },
     })) as unknown as CoreClient['dispatchExpect'],
     dispatchData: (async () => ({})) as unknown as CoreClient['dispatchData'],
-  };
+  } as unknown as Partial<CoreClient>;
 
   async function render(tab: string): Promise<ComponentFixture<Settings>> {
     TestBed.configureTestingModule({

@@ -1,7 +1,6 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   OnInit,
   computed,
   inject,
@@ -9,6 +8,7 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
 import type { AutonomousRoomSummary } from '../core/core-contract';
 import { RouterLink } from '@angular/router';
 import { EditEnclaveModal } from './edit-enclave-modal';
@@ -16,6 +16,7 @@ import { filterManagementRooms, summarizeBudget } from './autonomous.logic';
 
 type ActionVerb = 'start' | 'pause' | 'stop' | 'resume';
 
+/** Fallback poll cadence, used only while the realtime channel is down. */
 const POLL_INTERVAL_MS = 5_000;
 
 function badgeClass(state: string | null): string {
@@ -48,12 +49,16 @@ function formatTimestamp(iso: string | null): string {
 
 /**
  * The Scheduled-Autonomous-Rooms management list (v4
- * `components/tools/autonomous-rooms-card.tsx`): a 5s poll of every autonomous
+ * `components/tools/autonomous-rooms-card.tsx`): every autonomous
  * room, filtered so cron rooms always appear and ad-hoc rooms appear only while
  * idle/running/paused. Each row shows the run state, cron/manual badge, last/next
  * run, the budget summary, and Start/Pause/Resume/Stop/Edit controls — the run
  * state is patched optimistically the instant a button is clicked (the server
- * flips it synchronously), then the poll reconciles.
+ * flips it synchronously), then the next read reconciles.
+ *
+ * Same reading as the toolbar badges: pushed by the `autonomousRooms` topic,
+ * with the original 5 s cadence held in reserve for a dropped channel (v4
+ * `f3892158d`).
  */
 @Component({
   selector: 'qt-autonomous-rooms-list',
@@ -148,7 +153,14 @@ function formatTimestamp(iso: string | null): string {
 })
 export class AutonomousRoomsList implements OnInit {
   private readonly core = inject(CoreClient);
-  private readonly destroyRef = inject(DestroyRef);
+  private readonly realtime = inject(RealtimeService);
+
+  constructor() {
+    // Live path: run-state transitions publish `autonomousRooms`.
+    this.realtime.onTopic('autonomousRooms', () => void this.refetch());
+    // Fallback: the original 5 s cadence, while the channel is down.
+    this.realtime.fallbackPoll(POLL_INTERVAL_MS, () => void this.refetch());
+  }
 
   protected readonly badgeClass = badgeClass;
   protected readonly formatTimestamp = formatTimestamp;
@@ -163,8 +175,6 @@ export class AutonomousRoomsList implements OnInit {
 
   ngOnInit(): void {
     void this.refetch();
-    const id = setInterval(() => void this.refetch(), POLL_INTERVAL_MS);
-    this.destroyRef.onDestroy(() => clearInterval(id));
   }
 
   protected summarize(room: AutonomousRoomSummary): string {

@@ -135,6 +135,7 @@ import {
   storyBackgroundKeys,
 } from './story-background.api';
 import { chatKeys } from '../../chat/chat-keys';
+import { RealtimeService } from '../../core/realtime.service';
 import { compileRules, type CompiledRules } from '../../editor/text-replacement';
 import { listTextReplacements } from '../settings/chat/text-replacements.api';
 import {
@@ -756,6 +757,7 @@ interface CascadePrompt {
 export class SalonConversation {
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly core = inject(CoreClient);
+  private readonly realtime = inject(RealtimeService);
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
   private readonly destroyRef = inject(DestroyRef);
@@ -1082,7 +1084,12 @@ export class SalonConversation {
     queryKey: storyBackgroundKeys.background(this.chatId() ?? ''),
     enabled: !!this.chatId(),
     queryFn: () => fetchChatBackgroundVar(this.core, this.chatId()!),
-    refetchInterval: this.storyBackgroundsEnabled() ? PASSIVE_POLL_INTERVAL_MS : false,
+    // Pushed: STORY_BACKGROUND_GENERATION completing publishes `chats:<id>`,
+    // which invalidates this key through the topic map. The 30 s sweep is
+    // what's left when the channel is down (v4 `f3892158d`).
+    refetchInterval: this.realtime.refetchInterval(
+      this.storyBackgroundsEnabled() ? PASSIVE_POLL_INTERVAL_MS : false,
+    ),
     // v4 `refetchOnReconnect: false`.
     refetchOnReconnect: false,
   }));
@@ -1128,7 +1135,13 @@ export class SalonConversation {
     const previous = this.previousBackgroundVar;
     this.previousBackgroundVar = next;
     if (previous === undefined) return;
-    if (previous !== next) this.onBackgroundChanged();
+    if (previous !== next) {
+      this.onBackgroundChanged();
+      // The one place a background change is noticed, however the new value
+      // arrived — a realtime invalidation, the passive sweep, or the active
+      // watch. Retire a watch that has now seen what it was waiting for.
+      this.poller.stop();
+    }
   });
 
   protected async onRegenerateBackground(): Promise<void> {
@@ -1143,10 +1156,8 @@ export class SalonConversation {
       // v4 `useChatControls` (:410) wakes the queue badges — the regeneration
       // rides the STORY_BACKGROUND_GENERATION queue.
       notifyQueueChange();
-      this.poller.start(
-        this.backgroundVar(),
-        async () => (await this.backgroundQuery.refetch()).data ?? null,
-        () => this.onBackgroundChanged(),
+      this.poller.start(this.backgroundVar(), async () =>
+        (await this.backgroundQuery.refetch()).data ?? null,
       );
     } catch (error) {
       // v4 surfaces the server's own message (`errorData.error`) — that is how

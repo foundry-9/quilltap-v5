@@ -11,6 +11,8 @@ import {
 import { RouterLink } from '@angular/router';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
+import { NowService } from '../shared/now.service';
 import type { AutonomousRoomSummary } from '../core/core-contract';
 import { Icon } from '../ui/icon';
 import {
@@ -76,11 +78,10 @@ const TICK_INTERVAL_MS = 1_000;
 })
 export class AutonomousRoomBadges implements OnInit {
   private readonly core = inject(CoreClient);
-  private readonly destroyRef = inject(DestroyRef);
+  private readonly realtime = inject(RealtimeService);
 
   private readonly allRooms = signal<AutonomousRoomSummary[]>([]);
   protected readonly busyChatId = signal<string | null>(null);
-  protected readonly nowMs = signal(Date.now());
 
   protected readonly badgeRooms = computed(() => filterBadgeRooms(this.allRooms()));
 
@@ -88,29 +89,25 @@ export class AutonomousRoomBadges implements OnInit {
     this.badgeRooms().some((r) => r.runState === 'running' && r.budgetMaxWallClockMs != null),
   );
 
-  private tickHandle: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Only a running, time-budgeted room needs a second hand; everything else
+   * reads a frozen snapshot and costs no re-renders at all (v4's `enabled`
+   * flag, added in `f3892158d` for exactly this).
+   */
+  protected readonly nowMs = inject(NowService).now(
+    TICK_INTERVAL_MS,
+    this.hasTimeBudgetedRunning,
+  );
 
   constructor() {
-    // Start / stop the 1s tick as time-budgeted running rooms come and go
-    // (client-side only — the readout refreshes between the 5s polls).
-    effect(() => {
-      const needsTick = this.hasTimeBudgetedRunning();
-      if (needsTick && this.tickHandle === null) {
-        this.tickHandle = setInterval(() => this.nowMs.set(Date.now()), TICK_INTERVAL_MS);
-      } else if (!needsTick && this.tickHandle !== null) {
-        clearInterval(this.tickHandle);
-        this.tickHandle = null;
-      }
-    });
+    // Live path: run-state transitions publish `autonomousRooms`.
+    this.realtime.onTopic('autonomousRooms', () => void this.refetch());
+    // Fallback: the original 5 s cadence, while the channel is down.
+    this.realtime.fallbackPoll(POLL_INTERVAL_MS, () => void this.refetch());
   }
 
   ngOnInit(): void {
     void this.refetch();
-    const pollId = setInterval(() => void this.refetch(), POLL_INTERVAL_MS);
-    this.destroyRef.onDestroy(() => {
-      clearInterval(pollId);
-      if (this.tickHandle !== null) clearInterval(this.tickHandle);
-    });
   }
 
   protected label(room: AutonomousRoomSummary): string {

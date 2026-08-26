@@ -2,15 +2,23 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
+import { RealtimeService } from '../../../core/realtime.service';
 import type { BackfillProgress } from '../../../core/core-contract';
 import { fetchBackfillProgress, memoryKeys, startBackfill } from '../../../memory/memory.api';
 import { ToastService } from '../../../ui/toast.service';
 
 /**
  * The Repair Missing Embeddings card (v4 `components/tools/memory-backfill-card.tsx`):
- * polls the instance-wide backfill progress (`memoryBackfillProgress`) every 4s
- * and enqueues up to 500 embedding jobs on demand (`memoryBackfillStart`).
+ * reads the instance-wide backfill progress (`memoryBackfillProgress`) and
+ * enqueues up to 500 embedding jobs on demand (`memoryBackfillStart`).
+ *
+ * The backfill runs as background jobs, so every completion moves the `jobs`
+ * topic and re-reads progress the moment it changes. The 4 s poll survives as
+ * the fallback for a dropped channel (v4 `f3892158d`).
  */
+/** Fallback poll cadence, used only while the realtime channel is down. */
+const FALLBACK_POLL_INTERVAL_MS = 4_000;
+
 @Component({
   selector: 'qt-memory-backfill-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -64,6 +72,7 @@ import { ToastService } from '../../../ui/toast.service';
 })
 export class MemoryBackfillCard {
   private readonly core = inject(CoreClient);
+  private readonly realtime = inject(RealtimeService);
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();
 
@@ -73,9 +82,17 @@ export class MemoryBackfillCard {
   protected readonly progressQuery = injectQuery(() => ({
     queryKey: memoryKeys.backfill(),
     queryFn: (): Promise<BackfillProgress> => fetchBackfillProgress(this.core),
-    // v4 polls every 4s so the counts drain live.
-    refetchInterval: 4000,
+    // Fallback only: v4's 4 s cadence, gated on channel health.
+    refetchInterval: this.realtime.refetchInterval(FALLBACK_POLL_INTERVAL_MS),
   }));
+
+  constructor() {
+    // Live path: the backfill runs as background jobs, so every completion
+    // moves the `jobs` topic (v4 `useRealtimeTopic('jobs', fetchProgress)`).
+    this.realtime.onTopic('jobs', () => {
+      void this.queryClient.invalidateQueries({ queryKey: memoryKeys.backfill() });
+    });
+  }
 
   protected readonly remaining = computed(() => this.progressQuery.data()?.remaining ?? 0);
   protected readonly inFlight = computed(() => this.progressQuery.data()?.inFlight ?? 0);

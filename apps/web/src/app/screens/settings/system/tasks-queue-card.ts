@@ -3,6 +3,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
 import { CoreDispatchError } from '../../../core/core-contract';
+import { RealtimeService } from '../../../core/realtime.service';
 import { Icon } from '../../../ui/icon';
 import { TaskDetailsModal } from './task-details-modal';
 import { TaskItem } from './task-item';
@@ -22,6 +23,10 @@ import {
 const MIN_CONCURRENCY = 1;
 const MAX_CONCURRENCY = 32;
 const DEFAULT_CONCURRENCY = 4;
+/**
+ * Fallback poll cadence, used only while the realtime channel is down (v4
+ * `FALLBACK_POLL_INTERVAL_MS`).
+ */
 const POLL_MS = 5000;
 
 function errText(err: unknown, fallback: string): string {
@@ -34,7 +39,7 @@ function errText(err: unknown, fallback: string): string {
  * The Tasks Queue card (v4 `components/tools/tasks-queue/index.tsx` + its hook):
  * the background-job queue for memory extraction and other LLM tasks. Summary
  * stats + a detailed breakdown, per-job rows with pause/resume/view/delete, a
- * processor start/stop control, a 5 s auto-refresh poll (off by default), and
+ * processor start/stop control, a 5 s FALLBACK poll (off by default), and
  * the "Simultaneous Labours" concurrency slider (1–32, default 4 — the house
  * register kept verbatim).
  *
@@ -109,14 +114,21 @@ function errText(err: unknown, fallback: string): string {
           <qt-icon name="stop" class="w-4 h-4" />
           Stop Queue
         </button>
-        <label class="flex items-center gap-2 qt-text-small cursor-pointer">
+<!--
+          The queue keeps itself current over the live channel; this switch
+          governs the fallback poll, which only runs when that channel is down.
+        -->
+        <label
+          class="flex items-center gap-2 qt-text-small cursor-pointer"
+          title="Should the ledger be re-read every five seconds whenever the live wire is down?"
+        >
           <input
             type="checkbox"
             class="rounded qt-border-default text-primary focus:ring-ring"
             [checked]="autoRefresh()"
             (change)="autoRefresh.set($any($event.target).checked)"
           />
-          Auto-refresh (5s)
+          Fallback polling (5s)
         </label>
         @if (data(); as d) {
           <span
@@ -204,6 +216,7 @@ function errText(err: unknown, fallback: string): string {
 })
 export class TasksQueueCard {
   private readonly core = inject(CoreClient);
+  private readonly realtime = inject(RealtimeService);
 
   protected readonly min = MIN_CONCURRENCY;
   protected readonly max = MAX_CONCURRENCY;
@@ -218,7 +231,12 @@ export class TasksQueueCard {
   protected readonly query = injectQuery(() => ({
     queryKey: tasksQueueKeys.all,
     queryFn: () => fetchTasksQueue(this.core),
-    refetchInterval: this.autoRefresh() ? POLL_MS : (false as const),
+    // The queue is pushed: the server's `jobs` topic fires on every enqueue,
+    // claim, completion, failure and cancellation, and the realtime hub
+    // invalidates this key. `autoRefresh` is therefore no longer the thing that
+    // keeps the list current — it is the fallback-poll switch, and only does
+    // anything while the channel is down.
+    refetchInterval: this.realtime.refetchInterval(this.autoRefresh() ? POLL_MS : false),
   }));
 
   protected readonly data = computed<QueueData | undefined>(() => this.query.data());

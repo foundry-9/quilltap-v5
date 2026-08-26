@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 
 import { Icon } from '../../../ui/icon';
 import { formatRelativeDate } from '../../../shared/format-date';
+import { NowService } from '../../../shared/now.service';
 import { formatTokens, type JobDetail } from './tasks-queue.api';
 
 /**
@@ -117,6 +118,13 @@ export class TaskItem {
   /** True while THIS job has an action in flight (v4 `jobActionLoading === id`). */
   readonly busy = input(false);
 
+  /**
+   * The shared minute clock (v4 `TaskItem`'s own `useNow(60_000)`): a queued
+   * task's "3m ago" actually becomes "4m ago" instead of waiting for the next
+   * unrelated re-render. One timer serves every row on screen.
+   */
+  private readonly nowMs = inject(NowService).now(60_000);
+
   readonly view = output<string>();
   readonly pause = output<string>();
   readonly resume = output<string>();
@@ -139,5 +147,5 @@ export class TaskItem {
   });
 
   protected readonly tokens = computed(() => formatTokens(this.job().estimatedTokens));
-  protected readonly scheduled = computed(() => formatRelativeDate(this.job().scheduledAt));
+  protected readonly scheduled = computed(() => formatRelativeDate(this.job().scheduledAt, this.nowMs()));
 }

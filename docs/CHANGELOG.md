@@ -235,6 +235,53 @@ New differential `activity_tables_equivalence` diffs both tables — entry order
 included — plus `ACTIVITY_KINDS` and v4's real `BackgroundJobTypeEnum.options`,
 against v4's exports. `ACTIVITY_CHIPS` is client-only display metadata and does
 not port here.
+#### 2026-08-26 — feat(spa): the realtime hub over the existing event stream, the reworked queue chips, and the polling-site migrations
+
+_Versions: SPA 0.5.580._
+
+The bulk of P4.D125 — the client half of v4 `664cfca84` + `f3892158d`.
+
+**The hub.** `core/realtime.service.ts` is v5's twin of v4's
+`lib/realtime/client.ts` + `hooks/useRealtime.ts` + `RealtimeProvider`, folded
+into one root service because v5 already owns the connection those three shared.
+v4 opens a second WebSocket; v5 does not — hints ride the EXISTING event channel
+`CoreClient` already owns (SSE `GET /api/events` in HTTP mode,
+`quilltap://event` in the Tauri shell), which is the locked transport-agnostic
+boundary meeting v4's own "one socket per tab". The ping keepalive and the
+hand-rolled 1 s → 30 s jittered backoff are WS-protocol legs with nothing to do
+here and are recorded NO-PORT per leg; everything observable carries — a
+`connected` status the fallback gating reads, `{topic, v}` frame discrimination
+on the shared stream, unknown-topic tolerance, and the catch-up sweep on every
+(re)connect, SSE reopen-after-error, and `quilltap://resync`.
+
+**The topic map** (`core/realtime-topic-map.ts`) targets v5's actual per-feature
+key consts, row by row, with each divergence from v4's targets recorded beside
+it. `mountPoints` is recognised but resolves to nothing: v5 has no
+document-store query key at all.
+
+**The chips** are a TanStack query on the new `systemJobsKeys.all`, reading
+`activeByKind`/`startedByKind` (never `activeByType`), with v4's adaptive
+heartbeat moved into `refetchInterval`'s function form (1.5 s busy / 8 s idle,
+gated on the channel) and the `startedByKind` pulse — first read is a delta base,
+a decrease is a server restart, an advance pulses for 1.2 s. `ACTIVITY_CHIPS` is
+transcribed from v4 including the `image` → `qt-queue-badge-story` quirk, and
+`.qt-queue-badge-pulse` + `@keyframes qt-queue-badge-blip` land in
+`_content.css`. `notifyQueueChange()` stays — v4 keeps it too, as the instant
+same-tab kick — but now invalidates the jobs key instead of driving a bespoke
+re-poll; v5's own `NavigationEnd` stop-and-refire is gone with the hand-rolled
+poller.
+
+**Migrated sites**, each keeping its original cadence as a gated fallback: the
+tasks queue (with v4's "Auto-refresh (5s)" → "Fallback polling (5s)" relabel and
+its tooltip), the three memory housekeeping cards, the autonomous badges and
+management list, the Salon's story-background sweep and active watch (whose
+change callback moves to the shared transition effect), the merge picker's ages,
+and the character conversation card's day-boundary rollover.
+
+Parity specs throughout, twenty-seven mutation proofs, and the toolbar e2e beats
+reworked onto the new shape plus a gated `jobs`-hint beat awaiting the P4.D124
+server half.
+
 #### 2026-08-26 — refactor(spa): the chat query keys get a const, so the realtime topic map can name them
 
 _Versions: SPA 0.5.579._

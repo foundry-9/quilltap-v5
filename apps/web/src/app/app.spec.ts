@@ -1,23 +1,41 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 
 import { App } from './app';
 import { CoreClient } from './core/core-client';
 import type { HealthStatus } from './core/core-client';
 
-/** A CoreClient stub that lets a test pin the initial health result. */
+/**
+ * A CoreClient stub that lets a test pin the initial health result.
+ *
+ * It also carries the live-stream surface (`events$` / `connection` /
+ * `resyncCounter`), because the App now injects the realtime hub at bootstrap
+ * (P4.D125) and the hub subscribes to that stream on construction.
+ */
 function stubClient(health: HealthStatus | Promise<HealthStatus>): Partial<CoreClient> {
   return {
     fetchHealth: () => Promise.resolve(health),
     connect: vi.fn(),
     disconnect: vi.fn(),
-  } as Partial<CoreClient>;
+    events$: new Subject(),
+    connection: signal('idle'),
+    resyncCounter: signal(0),
+  } as unknown as Partial<CoreClient>;
 }
 
 async function render(client: Partial<CoreClient>): Promise<ComponentFixture<App>> {
   TestBed.configureTestingModule({
     imports: [App],
-    providers: [{ provide: CoreClient, useValue: client }],
+    // The realtime hub the App bootstraps needs a QueryClient, which the real
+    // `appConfig` always provides (v4 mounts its RealtimeProvider inside
+    // QueryProvider for the same reason).
+    providers: [
+      provideTanStackQuery(new QueryClient()),
+      { provide: CoreClient, useValue: client },
+    ],
   });
   const fixture = TestBed.createComponent(App);
   fixture.detectChanges();
