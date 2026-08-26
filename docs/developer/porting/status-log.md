@@ -503,6 +503,43 @@ mutation-proven.
   nullable strings, the booleans) and v5 reads each key ad hoc — a named
   maintenance candidate, recorded at the source.
 
+### The stacked lane's gate (P4.D119 + P4.D120, run ONCE after P4.D120)
+
+- **Drift-ledger §2 freshness probe re-run at lane end:** still PASS — v4 on
+  `main`, tree clean, `b220999da..main` and `3a76b17df..bugfix` both empty. Every
+  regen in this lane ran from `/tmp/qt-v4-pin-p4d119-d25dacc1` regardless (the
+  ledger's pin-required rule), through `recipe_sweep.py --v4 "$PIN"`.
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets`
+  clean; the same clippy with `--features quilltap-core/native-transport` clean.
+- `cargo test --workspace` with the round's 30-variable env block: **461 test
+  binaries / 2,393 tests / 0 failed**, exit 0. **All twenty of the round's
+  families positively confirmed to have RUN inside the workspace pass** (each
+  one's `test result:` line located under its own `Running tests/…` header, zero
+  `SKIP` markers, non-zero durations): `wardrobe_instructions_tier2`,
+  `wardrobe_instructions_routes` (harness) + `wardrobe_instructions_routes`
+  (web wire), `outfit_instructions_wiring_guard`, `archived_wearer_read_guard`,
+  `vault_wardrobe_write`, `vault_wardrobe_read`, `vault_character_write`,
+  `vault_string_leaves`, `outfit_llm_choose_tier3`, `scenarios_routes`,
+  `characters_arrays_tier2`, `characters_subresources`, `characters_mutations`,
+  `group_wardrobe_routes`, `projects_routes`, `almanack_tier2`,
+  `almanack_render`, `system_prompt`, `wardrobe_routes`.
+- **Changed-bytes grep on every regenerated NDJSON** (drift-ledger §5.2): the
+  cascade's `You wear tweed` ×2, the routes' 409 sentence ×2,
+  `Dressing Instructions` ×3 in the tier-3 prompt rows, `Instructions-1.md` in
+  the projection dump, `archived` ×44 in scenarios-routes,
+  `Group wardrobe item not found` ×4, `Project wardrobe item not found` ×1, the
+  `| Tier | Scenarios | Archived |` header ×6, and the system prompt's
+  `the first ACTIVE body`.
+- **Neutrality regens explicitly re-run and green at the pin:**
+  `vault_character_write` (P4.D119's four non-passing projection call sites),
+  `vault_legacy_wardrobe`, `vault_wardrobe_public`, `wardrobe_public_read`,
+  `scenario_resolvers`, `chat_scenario_routes`, `outfit_hash`, `wardrobe_tier2`,
+  `wardrobe_transfers_tier2`, `chats_outfits_tier2`, `almanack_render`.
+- `apps/web/**` **untouched** by this lane (P4.D121 owns the whole client half);
+  no P4.D122-owned file touched. Verified by `git diff --name-only main...HEAD`.
+- Versions: core 0.0.672, harness 0.0.584, web 0.0.91; host/cli/tauri/SPA
+  unchanged.
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start

@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): the P4.D119 + P4.D120 stacked lane's gate record
+
+_No crate versions bumped._
+
+The gate for the stacked dressing-instructions + archive-entries lane, run once
+after both orders: fmt clean, clippy clean on both feature sets, and
+`cargo test --workspace` at 461 test binaries / 2,393 tests / 0 failed with all
+twenty of the round's families positively confirmed to have run rather than
+skipped. Every regenerated oracle grepped for the bytes the change added.
+
 #### 2026-08-26 — feat(almanack,wardrobe): the scenario archived column and the archive pin suites (v4 `d25dacc1`)
 
 _Versions: core 0.0.672, harness 0.0.584, web 0.0.91._
