@@ -88904,3 +88904,17 @@ the census; hard-coding the cheap-LLM kind reds both; mis-kinding each of the
 other six sites reds the census by name; and appending a `character_wizard`
 mention anywhere under `crates/` reds the no-surface arm. Core lib suite 1,755
 passing after the wraps, unchanged.
+
+### P4.D123 — deferrals, loud
+
+- **`help/system-tasks-queue.md` (+29 lines at `664cfca84`) → the `p4.9i2`
+  bank.** v5 has no help-content surface for it; nothing ported, nothing
+  stubbed. The same commit's `docs/developer/API.md`,
+  `BACKGROUND_JOBS_CHILD.md`, README and theme-storybook packaging edits are
+  v4-repo docs/packaging — NO-PORT (the `qt-queue-badge` CSS content reaches v5
+  through P4.D125, not here).
+- **`ACTIVITY_CHIPS`** — client-only; P4.D125's, including the `image` chip's
+  historical `qt-queue-badge-story` class.
+
+**P4.D123 is CLOSED**: tiers 1 and 2 landed in full; tier 3 is the bank row
+above.
