@@ -21,6 +21,8 @@ use crate::clock::now_iso;
 use crate::db::background_jobs::{BjCreate, CreateOptions, QueueStats};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::services::activity_kinds::{ActivityCounts, ACTIVITY_KINDS};
+use crate::services::activity_registry::{activity_counts, activity_start_totals};
 
 // ============================================================================
 // The wake hook (v4 `ensureProcessorRunning`)
@@ -944,6 +946,45 @@ pub async fn get_active_counts_by_type(
     })
 }
 
+/// v4 `getActivitySnapshot(userId?)` (`664cfca84`) — active (PENDING+PROCESSING)
+/// job counts grouped by activity kind, MERGED with the non-job work currently
+/// registered in [`crate::services::activity_registry`].
+///
+/// This is what the toolbar chips read: a chip stays lit for the whole span of
+/// the work it names, whether that work is a queued job or something running
+/// inline in a request. `started` is the registry's monotonic per-kind blip
+/// totals since process boot — a delta base for the client, never an absolute.
+pub async fn get_activity_snapshot(
+    db: &Db,
+    user_id: Option<&str>,
+) -> Result<ActivitySnapshot, DbError> {
+    let uid = user_id.map(str::to_string);
+    let job_counts = db.read_main(|conn| {
+        crate::db::background_jobs::BackgroundJobsRepository::new(conn)
+            .get_active_counts_by_kind(uid.as_deref())
+    })?;
+    let inline = activity_counts();
+
+    let mut active = ActivityCounts::default();
+    for kind in ACTIVITY_KINDS {
+        active.set(kind, job_counts.get(kind) + inline.get(kind));
+    }
+
+    Ok(ActivitySnapshot {
+        active,
+        started: activity_start_totals(),
+    })
+}
+
+/// v4's `{ active, started }` activity snapshot.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ActivitySnapshot {
+    /// Job rows mapped through the kind table PLUS in-flight registry counts.
+    pub active: ActivityCounts,
+    /// Monotonic per-kind totals of ended spans that outlived the blip threshold.
+    pub started: ActivityCounts,
+}
+
 /// v4 `cancelJob(jobId)` — cancel a PENDING|FAILED job (→ DEAD). Returns whether a
 /// row was cancelled.
 pub async fn cancel_job(db: &Db, job_id: &str) -> Result<bool, DbError> {
@@ -1254,5 +1295,160 @@ mod scheduled_cleanup_tests {
         let payload = cleanup_payload("u", 0.5);
         assert_eq!(payload["retentionDays"].as_f64(), Some(0.5));
         assert!(payload.to_string().contains("0.5"));
+    }
+}
+
+#[cfg(test)]
+mod activity_snapshot_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::services::activity_kinds::ActivityKind;
+    use crate::services::activity_registry::{begin_activity, ActivityTestGuard};
+
+    /// A temp `Db` carrying just the `background_jobs` columns these reads touch.
+    async fn test_db(tag: &str) -> Db {
+        let path = std::env::temp_dir().join(format!(
+            "qt-activity-snapshot-{tag}-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(
+            DbPaths {
+                main: path,
+                mount_index: None,
+                llm_logs: None,
+            },
+            "dGVzdC1wZXBwZXItZm9yLWFjdGl2aXR5LXNuYXBzaG90",
+        )
+        .expect("open test db");
+        db.write(|ws| {
+            ws.main()
+                .connection()
+                .execute_batch(
+                    "CREATE TABLE IF NOT EXISTS background_jobs (
+                       id TEXT PRIMARY KEY, userId TEXT, type TEXT, status TEXT,
+                       payload TEXT, priority REAL, attempts REAL, maxAttempts REAL,
+                       error TEXT, scheduledAt TEXT, startedAt TEXT, completedAt TEXT,
+                       createdAt TEXT, updatedAt TEXT);",
+                )
+                .map_err(Into::into)
+        })
+        .await
+        .expect("create tables");
+        db
+    }
+
+    async fn seed_job(db: &Db, id: &str, user: &str, job_type: &str, status: &str) {
+        let (id, user, job_type, status) = (
+            id.to_string(),
+            user.to_string(),
+            job_type.to_string(),
+            status.to_string(),
+        );
+        db.write(move |ws| {
+            ws.main()
+                .connection()
+                .execute(
+                    "INSERT INTO background_jobs \
+                     (id, userId, type, status, payload, priority, attempts, maxAttempts, \
+                      scheduledAt, createdAt, updatedAt) \
+                     VALUES (?1, ?2, ?3, ?4, '{}', 5, 0, 3, \
+                             '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z', \
+                             '2020-01-01T00:00:00.000Z')",
+                    rusqlite::params![id, user, job_type, status],
+                )
+                .map_err(Into::into)
+                .map(|_| ())
+        })
+        .await
+        .expect("seed job");
+    }
+
+    /// The repo leg alone: PENDING+PROCESSING rows folded through the kind table,
+    /// with unclaimed types (v4's explicit `null`s) contributing nothing and
+    /// terminal statuses excluded.
+    #[tokio::test]
+    async fn active_counts_by_kind_folds_types_and_skips_the_uncounted() {
+        let _g = ActivityTestGuard::new();
+        let db = test_db("bykind").await;
+        seed_job(&db, "j1", "u1", "MEMORY_EXTRACTION", "PENDING").await;
+        seed_job(&db, "j2", "u1", "MEMORY_HOUSEKEEPING", "PROCESSING").await;
+        seed_job(&db, "j3", "u1", "EMBEDDING_GENERATE", "PENDING").await;
+        // Deliberately uncounted (v4's `null`) — must not land on any chip.
+        seed_job(&db, "j4", "u1", "AUTONOMOUS_ROOM_TURN", "PENDING").await;
+        seed_job(&db, "j5", "u1", "LLM_LOG_CLEANUP", "PROCESSING").await;
+        // Terminal — not active.
+        seed_job(&db, "j6", "u1", "MEMORY_EXTRACTION", "COMPLETED").await;
+        // Another user — excluded when scoped.
+        seed_job(&db, "j7", "u2", "MEMORY_EXTRACTION", "PENDING").await;
+
+        let snap = get_activity_snapshot(&db, Some("u1")).await.unwrap();
+        assert_eq!(snap.active.memory, 2);
+        assert_eq!(snap.active.embedding, 1);
+        assert_eq!(snap.active.summary, 0);
+        assert_eq!(snap.active.danger, 0);
+        assert_eq!(snap.active.image, 0);
+
+        // Unscoped picks up the other user's row too.
+        let all = get_activity_snapshot(&db, None).await.unwrap();
+        assert_eq!(all.active.memory, 3);
+    }
+
+    /// The MERGE is what no DB state can see: an inline span adds to the job
+    /// rows' count for the same kind, and the monotonic totals ride along.
+    #[tokio::test]
+    async fn the_snapshot_merges_inline_registry_counts_with_job_rows() {
+        let _g = ActivityTestGuard::new();
+        let db = test_db("merge").await;
+        seed_job(&db, "j1", "u1", "EMBEDDING_GENERATE", "PENDING").await;
+
+        let before = get_activity_snapshot(&db, Some("u1")).await.unwrap();
+        assert_eq!(before.active.embedding, 1);
+        assert_eq!(before.active.image, 0);
+
+        let embedding_span = begin_activity(ActivityKind::Embedding);
+        let image_span = begin_activity(ActivityKind::Image);
+        let during = get_activity_snapshot(&db, Some("u1")).await.unwrap();
+        assert_eq!(during.active.embedding, 2, "job row + inline span");
+        assert_eq!(
+            during.active.image, 1,
+            "inline-only work still lights a chip"
+        );
+
+        embedding_span.end();
+        image_span.end();
+        let after = get_activity_snapshot(&db, Some("u1")).await.unwrap();
+        assert_eq!(after.active.embedding, 1, "the job row survives the span");
+        assert_eq!(after.active.image, 0);
+    }
+
+    /// `started` is the registry's totals verbatim — a delta base, never derived
+    /// from job rows.
+    #[tokio::test(start_paused = true)]
+    async fn the_snapshot_started_totals_come_from_the_registry() {
+        let _g = ActivityTestGuard::new();
+        let db = test_db("started").await;
+        seed_job(&db, "j1", "u1", "TITLE_UPDATE", "PENDING").await;
+
+        assert_eq!(
+            get_activity_snapshot(&db, Some("u1"))
+                .await
+                .unwrap()
+                .started,
+            ActivityCounts::default(),
+            "a fresh process answers zeros however many job rows exist"
+        );
+
+        crate::services::activity_registry::track_activity(ActivityKind::Danger, async {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        })
+        .await;
+
+        let snap = get_activity_snapshot(&db, Some("u1")).await.unwrap();
+        assert_eq!(snap.started.danger, 1);
+        assert_eq!(
+            snap.active.summary, 1,
+            "the TITLE_UPDATE row is summary work"
+        );
     }
 }

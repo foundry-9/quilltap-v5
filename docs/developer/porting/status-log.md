@@ -88770,3 +88770,33 @@ see it, because the floor absorbs the second decrement — 1 → 0 → max(0, �
 **v4's own test has the same blind spot.** Two cases that do see it were added: a
 duplicated end must not steal a *concurrent* same-kind span's count, and a long
 span must record ONE blip, not two. The mutation now reds exactly those two.
+
+### P4.D123 unit 3 — `get_active_counts_by_kind` + `get_activity_snapshot`
+
+`BackgroundJobsRepository::get_active_counts_by_kind` folds the existing
+by-type GROUP-BY through the kind table; `queue_service::get_activity_snapshot`
+merges that with `activity_registry::activity_counts()` and carries
+`activity_start_totals()` as `started`. New `ActivitySnapshot` struct.
+
+**v4's `getStats` change is a NO-OP for v5, recorded.** `664cfca84` rewrote v4's
+`getStats` from "read + Zod-validate every row in the table, count in JS" to one
+indexed `COUNT(*)` per status. **v5 has been there since Phase 2** —
+`db/background_jobs.rs:857` runs one aggregating GROUP-BY pass, with the doc note
+at `:854-856` already recording the divergence and asserting the totals are
+identical. v4 has converged onto v5's shape from the other direction; no v5 edit,
+and the existing families keep pinning the totals.
+
+Same story for the new by-kind read: v4 runs one `COUNT(*)` per kind; v5 reuses
+the single by-type GROUP-BY and folds it. The order sanctions this ("acceptable
+if the totals are identical"), and a type no kind claims is skipped exactly as
+v4's per-kind `type IN (…)` filter skips it.
+
+**The merge is differential-blind** (in-flight counters never touch DB state), so
+it is unit-pinned: the repo leg over a seeded temp DB (both `null`-kind types and
+a terminal status contributing nothing; user scoping both ways), the merge itself
+(a job row + an inline span reading 2 for one kind while an inline-only span
+lights another), and `started` coming from the registry verbatim.
+
+**Mutation-proven, two:** defaulting an unmapped type to a kind instead of
+skipping it reds the fold case; dropping the `+ inline.get(kind)` term reds the
+merge case.

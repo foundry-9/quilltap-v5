@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(jobs): active counts by activity kind, merged with in-flight work
+
+_Versions: core 0.0.680._
+
+Adds `BackgroundJobsRepository::get_active_counts_by_kind` (v4
+`getActiveCountsByKind`) and `queue_service::get_activity_snapshot` (v4
+`getActivitySnapshot`): PENDING+PROCESSING job rows folded through the kind
+table, merged with whatever the activity registry currently has in flight, plus
+the registry's monotonic started totals.
+
+v4 runs one indexed `COUNT(*)` per kind; v5 gets the same totals from one
+aggregating GROUP-BY pass mapped through the table — the same deliberate
+divergence `get_stats` already carries, which v4 has now converged onto from the
+other direction (its `getStats` became per-status `COUNT(*)`s this commit, so
+that side is a no-op for v5).
+
+Three unit tests, two mutation proofs. The merge itself is invisible to any DB
+diff — in-flight counters never touch a row — so it is pinned here rather than
+in the jobs differential.
+
 #### 2026-08-26 — feat(jobs): the in-flight activity registry
 
 _Versions: core 0.0.679._

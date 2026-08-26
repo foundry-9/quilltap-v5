@@ -80,6 +80,7 @@ use rusqlite::{params, Connection};
 
 use super::DbError;
 use crate::clock::now_iso as now_iso_fn;
+use crate::services::activity_kinds::{activity_kind_for_job_type, ActivityCounts};
 
 /// The retry-eligible statuses a claim/scan considers, and the cancellable set,
 /// kept as `&str` consts so the enum strings match v4 byte-for-byte.
@@ -922,6 +923,32 @@ impl<'c> BackgroundJobsRepository<'c> {
             stmt.query_map([], collect)?.collect::<Result<_, _>>()?
         };
         Ok(rows)
+    }
+
+    /// Active (PENDING|PROCESSING) job counts grouped by **activity kind** — the
+    /// toolbar-chip grouping from [`crate::services::activity_kinds`] (v4
+    /// `getActiveCountsByKind`, `664cfca84`), optionally scoped to a user.
+    ///
+    /// This is the hot path: the toolbar polls it continuously. v4 runs one
+    /// indexed `COUNT(*)` per kind rather than hauling every active row (payload
+    /// JSON and all) out the way [`Self::get_active_counts_by_type`] does, which
+    /// matters when a mount-point scan has fanned out thousands of
+    /// `EMBEDDING_GENERATE` jobs. v5 gets the same totals from ONE aggregating
+    /// GROUP-BY pass mapped through the kind table — the same deliberate
+    /// divergence [`Self::get_stats`] already carries, and cheaper still. A type
+    /// no kind claims (v4's explicit `null`s, and any row written by a newer
+    /// build) is skipped, exactly as v4's per-kind `type IN (…)` filter skips it.
+    pub fn get_active_counts_by_kind(
+        &self,
+        user_id: Option<&str>,
+    ) -> Result<ActivityCounts, DbError> {
+        let mut counts = ActivityCounts::default();
+        for (job_type, n) in self.get_active_counts_by_type(user_id)? {
+            if let Some(kind) = activity_kind_for_job_type(&job_type) {
+                counts.set(kind, counts.get(kind) + n);
+            }
+        }
+        Ok(counts)
     }
 
     // -- private ------------------------------------------------------------
