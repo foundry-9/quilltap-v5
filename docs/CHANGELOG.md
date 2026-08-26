@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(wardrobe): dressing instructions reach the outfit-selection prompt (v4 `b86bb1a5`)
+
+_Versions: core 0.0.668, harness 0.0.580._
+
+`OUTFIT_SELECTION_PROMPT` gains its fourth bullet, unconditionally — every
+`llm_choose` consult now carries it. `build_outfit_messages` gains the
+`Dressing Instructions` block, byte-exact, LAST in the note chain (after the
+scenario note, immediately before `Available Wardrobe Items:`); null, empty and
+whitespace-only all produce a user message byte-identical to the pre-commit one.
+
+v4 resolves the cascade in one place; v5 split that entrance in two, so
+`choose_llm_outfit` takes the resolution as a closure invoked exactly where v4
+resolves — after `wardrobe_start`, once the character, the non-empty pool and
+the profile guard all hold. Both entrances (`resolve_llm_choose` for chat
+create, `run_llm_choose_via_db` for add-participant and merge) pass one. v4's
+redundant second `sharedWardrobeTiersForCharacter` call and its
+outer-`projectMountPointIds` quirk are carried; its two `.catch()` arms have no
+analogue in v5's infallible resolvers and are recorded rather than invented.
+
+`outfit_llm_choose_tier3_equivalence` grows four cases with a per-case seeded
+`Wardrobe/instructions.md` (the committed fixture is untouched): the note on
+both entrances, a general-tier file reaching a character with none — which is
+what proves the production path invokes the CASCADE rather than a vault read —
+and the blank-file arm. Dropping the bullet or nulling the runner's resolver
+reddens it. The note guard's blank arm is unreachable from production (the
+cascade already answers `None` for a blank file), so it is pinned the way v4
+pins it: a direct unit call. A new `outfit_instructions_wiring_guard` walks the
+source, because no differential reaches the create entrance's consult.
+
 #### 2026-08-26 — feat(wardrobe): the projection preserve list and the shared reader's instructions skip (v4 `b86bb1a5`)
 
 _Versions: core 0.0.667, harness 0.0.579._

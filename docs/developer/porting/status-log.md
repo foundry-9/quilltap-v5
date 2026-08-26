@@ -124,6 +124,57 @@ candidate for a maintenance lane, not fixed here.
 cases), `vault_wardrobe_public_equivalence` (7 ops),
 `wardrobe_public_read_equivalence` (5 cases).
 
+### P4.D119 unit 3 — the outfit-selection thread
+
+The fourth system-prompt bullet (UNCONDITIONAL — it moves every existing tier-3
+row), the `instructions_note` byte-exact with v4's guard
+(`truthy && trim().length > 0`), and the new parameter on
+`build_outfit_messages`.
+
+**The two-entrance decision, recorded.** v4 resolves the cascade at the
+`applyOutfitSelections` layer, AFTER `progress.wardrobeStart` and only once
+`character && pool.length > 0 && defaultProfile` all hold — three conditions
+that live INSIDE `choose_llm_outfit` in v5, because v5 split v4's one entrance
+into `resolve_llm_choose` (create) and `run_llm_choose_via_db` (add-participant
++ merge). Resolving eagerly at both call sites would have probed up to four
+vault files on an instance with no connection profiles and narrated the consult
+AFTER the reads. So the resolution is threaded as a `FnOnce` closure invoked at
+exactly v4's point; v5's `build_cheap_llm_selection` returns `None` only for an
+EMPTY profile list, which is exactly v4's `defaultProfile` falsiness, so the
+guard is reproduced rather than approximated.
+
+v4 quirks carried in `resolve_dressing_instructions_conn`: the REDUNDANT second
+`sharedWardrobeTiersForCharacter(characterId, [])` whose project half is thrown
+away (the project ids come from the OUTER `projectMountPointIds`), and the
+recorded absence of v4's two `.catch()` arms — `shared_wardrobe_tiers_for_
+character` is sync + infallible in v5 and the cascade never fails.
+
+**Differential.** `outfit_llm_choose_tier3_equivalence` 11 → 15 cases. The four
+new ones seed `Wardrobe/instructions.md` PER CASE on the fresh copy through the
+raw document-store write — the committed `chat-dialogs-{main,mount}.db` pair is
+NOT rebuilt (that would mint fresh ids and invalidate every sibling
+`chat-dialogs-*` family). `add_llm_choose_with_general_instructions` is the one
+that matters most: the character has no file, so only a real CASCADE finds the
+General tier.
+
+Mutations reddening the family: dropping the fourth bullet (every row);
+`|| None` at the runner's entrance (the three instructed rows); moving the note
+before the scenario note.
+
+⚠ **A mutation that does NOT redden it, and why.** Widening the note's guard so
+a blank string emits a header survives, because the cascade's
+`read_wardrobe_instructions_file` already answers `None` for a file that trims
+empty — no production path can hand `build_outfit_messages` a whitespace-only
+string. v4 pins that byte-identity with a direct unit call and so does v5:
+`dressing_instructions_note_is_byte_exact_and_omitted_when_blank`
+(mutation-proven).
+
+**NEW `outfit_instructions_wiring_guard`.** No differential drives the CREATE
+entrance's consult (no oracle case reaches `resolve_llm_choose` with a mocked
+model), so its wiring could rot in silence. The guard walks
+`services/outfit_selections.rs` and holds both call sites to a real resolver;
+nulling the create entrance reddens it.
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start

@@ -263,6 +263,11 @@ fn outfit_llm_choose_matches_oracle() {
         /// The character joining / merging. PIP unless the case is about a
         /// character with no wardrobe of their own (P4.D39's guard fix).
         character: &'a str,
+        /// [P4.D119 / v4 `b86bb1a5`] Seed `Wardrobe/instructions.md` on the
+        /// fresh per-case copy through the RAW document-store write (never the
+        /// helper under test). `("character", …)` uses the joining character's
+        /// vault; `("general", …)` uses Quilltap General.
+        seed_instructions: Option<(&'a str, &'a str)>,
     }
     let cases = [
         Case {
@@ -271,6 +276,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: Some("pipPick"),
             throws: false,
             character: PIP,
+            seed_instructions: None,
         },
         Case {
             name: "add_llm_choose_invalid_ids",
@@ -278,6 +284,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: Some("pipInvalidIds"),
             throws: false,
             character: PIP,
+            seed_instructions: None,
         },
         Case {
             name: "add_llm_choose_provider_fails",
@@ -285,6 +292,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: None,
             throws: true,
             character: PIP,
+            seed_instructions: None,
         },
         Case {
             name: "merge_llm_choose_pick",
@@ -292,6 +300,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: Some("pipPick"),
             throws: false,
             character: PIP,
+            seed_instructions: None,
         },
         Case {
             name: "merge_llm_choose_provider_fails",
@@ -299,6 +308,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: None,
             throws: true,
             character: PIP,
+            seed_instructions: None,
         },
         // ── P4.D39 / v4 `8bb1a958` ────────────────────────────────────────
         // THE GUARD FIX: Wren owns no wardrobe. Before the fix the candidate
@@ -311,6 +321,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: Some("wrenPicksShared"),
             throws: false,
             character: WREN,
+            seed_instructions: None,
         },
         // ── P4.D71 / v4 `8600c83f` ────────────────────────────────────────
         // THE GROUP TIER AT CHAT START. Wren is a Lamplighter with an empty
@@ -327,6 +338,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: None,
             throws: true,
             character: WREN,
+            seed_instructions: None,
         },
         // The validator used to drop any id outside the character's own vault,
         // so a pick from the shared tier evaporated.
@@ -336,6 +348,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: Some("pipPicksShared"),
             throws: false,
             character: PIP,
+            seed_instructions: None,
         },
         // Naked on purpose — honoured, no default fallback.
         Case {
@@ -344,6 +357,7 @@ fn outfit_llm_choose_matches_oracle() {
             reply: Some("deliberatelyBare"),
             throws: false,
             character: PIP,
+            seed_instructions: None,
         },
         // The same empty answer with no flag reads as a failure to choose.
         Case {
@@ -352,6 +366,57 @@ fn outfit_llm_choose_matches_oracle() {
             reply: Some("unflaggedEmpty"),
             throws: false,
             character: PIP,
+            seed_instructions: None,
+        },
+        // ── P4.D119 / v4 `b86bb1a5` ───────────────────────────────────────
+        // Dressing instructions reach the outfit-selection prompt. The system
+        // message's fourth bullet is UNCONDITIONAL, so it moves every row above
+        // too; these four add the user message's `Dressing Instructions` block
+        // and prove the production path invokes the CASCADE (a general-tier file
+        // reaches a character who has none) rather than a direct vault read.
+        Case {
+            name: "add_llm_choose_with_character_instructions",
+            add: true,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: Some((
+                "character",
+                "  You keep to oilskins on the quay, whatever the hour.  \n",
+            )),
+        },
+        // The merge entrance, same seed.
+        Case {
+            name: "merge_llm_choose_with_character_instructions",
+            add: false,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: Some((
+                "character",
+                "You keep to oilskins on the quay, whatever the hour.",
+            )),
+        },
+        Case {
+            name: "add_llm_choose_with_general_instructions",
+            add: true,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: Some((
+                "general",
+                "The house dresses for the weather, not the occasion.",
+            )),
+        },
+        // A whitespace-only file counts as absent: the user message must be
+        // BYTE-IDENTICAL to `add_llm_choose_pick`'s.
+        Case {
+            name: "add_llm_choose_blank_instructions_emits_no_block",
+            add: true,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: Some(("character", "   \n  ")),
         },
         // Only a real boolean counts.
         Case {
@@ -360,11 +425,15 @@ fn outfit_llm_choose_matches_oracle() {
             reply: Some("stringyDeliberate"),
             throws: false,
             character: PIP,
+            seed_instructions: None,
         },
     ];
 
     for c in cases {
         let db = fresh_db(&spec, c.name);
+        if let Some((scope, content)) = c.seed_instructions {
+            seed_instructions_file(&db, scope, c.character, content);
+        }
         let provider = Arc::new(CannedOutfitProvider {
             reply: c.reply.map(|k| spec.canned_outfits[k].clone()),
             throws: c.throws,
@@ -497,4 +566,37 @@ fn outfit_llm_choose_matches_oracle() {
         failed.is_empty(),
         "llm-choose tier-3 mismatches: {failed:?}"
     );
+}
+
+/// [P4.D119 / v4 `b86bb1a5`] Seed one `Wardrobe/instructions.md` on a fresh
+/// per-case copy, through the RAW document-store write — the helper under test
+/// (`write_wardrobe_instructions_file`) never touches the seeding, and the
+/// COMMITTED `chat-dialogs-*` fixture pair is not modified (a rebuild would mint
+/// fresh ids and invalidate every sibling family reading it).
+fn seed_instructions_file(db: &Db, scope: &str, character_id: &str, content: &str) {
+    let scope = scope.to_string();
+    let character_id = character_id.to_string();
+    let content = content.to_string();
+    db.write_blocking(move |w| {
+        let mount_point_id: Option<String> = match scope.as_str() {
+            "character" => w.main().connection().query_row(
+                "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+                [&character_id],
+                |r| r.get::<_, Option<String>>(0),
+            )?,
+            "general" => quilltap_core::db::instance_settings::get_general_mount_point_id(
+                w.main().connection(),
+            )?,
+            other => panic!("unknown seed_instructions scope {other}"),
+        };
+        let mp = mount_point_id.expect("no mount for the seeded instructions scope");
+        let links = w
+            .mount_index()
+            .expect("mount writer")
+            .doc_mount_file_links();
+        links.ensure_folder_path(&mp, "Wardrobe")?;
+        links.write_database_document(&mp, "Wardrobe/instructions.md", &content)?;
+        Ok(())
+    })
+    .expect("seed instructions");
 }

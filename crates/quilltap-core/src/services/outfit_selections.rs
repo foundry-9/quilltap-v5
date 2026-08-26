@@ -59,6 +59,7 @@ use crate::services::creation_progress::{
 use crate::services::image_job_common::build_cheap_llm_selection;
 use crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values;
 use crate::wardrobe::{sort_for_default_outfit, Slots, WARDROBE_SLOT_TYPES};
+use crate::wardrobe_instructions::resolve_wardrobe_instructions;
 use crate::wardrobe_tiers::{shared_wardrobe_tiers_for_character, SharedWardrobeTiers};
 use crate::wearable_pool::{is_archived_truthy, merge_wearable_pool};
 
@@ -67,6 +68,7 @@ const OUTFIT_SELECTION_PROMPT: &str = "You are a wardrobe assistant for a rolepl
 - The character's available wardrobe items
 - The scenario/setting description
 - The character's personality
+- The character's own dressing instructions, when provided — these describe what the character prefers to wear and under what circumstances; weigh them heavily, above general appropriateness guesses
 
 Choose items that are contextually appropriate. For example, formal wear for a business meeting, casual clothes for relaxing at home, or era-appropriate costume for a historical setting.
 
@@ -290,6 +292,7 @@ fn build_outfit_messages(
     character: &Value,
     wardrobe_items: &[Value],
     scenario_text: Option<&str>,
+    dressing_instructions: Option<&str>,
 ) -> Vec<CompletionMessage> {
     let character_name = s(character, "name").unwrap_or_default();
     let note = |label: &str, field: &str| -> String {
@@ -307,6 +310,18 @@ fn build_outfit_messages(
     let scenario_note = match scenario_text {
         Some(sc) if !sc.is_empty() => format!("\nScenario: {sc}"),
         _ => "\nScenario: (general conversation, no specific setting)".to_string(),
+    };
+
+    // v4 `b86bb1a5`: the note is emitted only for a truthy, non-blank string —
+    // null, `''` and whitespace-only all produce a user message BYTE-IDENTICAL
+    // to the pre-commit one (v4 pins that byte-identity). Straight quotes around
+    // `"you"`, an em dash before it, and the name interpolated twice.
+    let instructions_note = match dressing_instructions {
+        Some(instr) if !crate::jsstr::js_trim(instr).is_empty() => format!(
+            "\nDressing Instructions (addressed to {character_name} in the second person — \"you\" is {character_name}):\n{}",
+            crate::jsstr::js_trim(instr)
+        ),
+        _ => String::new(),
     };
 
     let wardrobe_section = wardrobe_items
@@ -351,7 +366,7 @@ fn build_outfit_messages(
         .join("\n");
 
     let user_content = format!(
-        "Character: {character_name}{manifesto_note}{description_note}{personality_note}{scenario_note}\n\nAvailable Wardrobe Items:\n{wardrobe_section}\n\nChoose what {character_name} should wear for this scene:"
+        "Character: {character_name}{manifesto_note}{description_note}{personality_note}{scenario_note}{instructions_note}\n\nAvailable Wardrobe Items:\n{wardrobe_section}\n\nChoose what {character_name} should wear for this scene:"
     );
 
     vec![
@@ -751,8 +766,19 @@ pub enum LlmChooseOutcome {
 /// three entrances (create, add-participant, merge) funnel through this one
 /// function, and the observable result is the same either way — a timeout falls
 /// back to the default outfit with the consult still counted as announced.
+///
+/// `resolve_dressing_instructions` is v4's 7th positional `dressingInstructions`
+/// parameter turned inside out. v4 resolves the cascade at the
+/// `applyOutfitSelections` layer, immediately AFTER `progress.wardrobeStart` and
+/// only once `character && pool.length > 0 && defaultProfile` all hold — the
+/// three conditions that live INSIDE this function in v5, because v5 split v4's
+/// single entrance into two (`resolve_llm_choose` and `run_llm_choose_via_db`).
+/// Passing the resolution as a closure invoked here keeps v4's exact ordering
+/// and read count at both entrances instead of resolving eagerly (which would
+/// probe up to four vault files on an instance with no connection profiles, and
+/// would narrate the consult after the reads rather than before them).
 #[allow(clippy::too_many_arguments)]
-pub async fn choose_llm_outfit<C: CompletionProvider>(
+pub async fn choose_llm_outfit<C: CompletionProvider, F: FnOnce() -> Option<String>>(
     completion: &C,
     executor: &CheapLlmTaskExecutor,
     character: Option<&Value>,
@@ -760,6 +786,7 @@ pub async fn choose_llm_outfit<C: CompletionProvider>(
     all_profiles: &[Value],
     cheap_settings: Option<&Value>,
     scenario_text: Option<&str>,
+    resolve_dressing_instructions: F,
     character_id: &str,
     emitter: Option<&CreationProgressEmitter>,
 ) -> LlmChooseOutcome {
@@ -780,7 +807,17 @@ pub async fn choose_llm_outfit<C: CompletionProvider>(
         emitter.wardrobe_start(character_id, &character_name);
     }
 
-    let messages = build_outfit_messages(character, wardrobe_items, scenario_text);
+    // Optional dressing instructions: nearest tier's `Wardrobe/instructions.md`
+    // wins (character > group > project > general) and the search stops there.
+    // Soft-fails to None — instructions never block the outfit choice.
+    let dressing_instructions = resolve_dressing_instructions();
+
+    let messages = build_outfit_messages(
+        character,
+        wardrobe_items,
+        scenario_text,
+        dressing_instructions.as_deref(),
+    );
     let items_for_parse = wardrobe_items.to_vec();
     let consult = executor.execute(
         completion,
@@ -840,6 +877,71 @@ fn accept_llm_choice(choice: Option<&LlmOutfitChoice>) -> Option<(Slots, bool)> 
     } else {
         None
     }
+}
+
+/// v4's dressing-instructions block from `applyOutfitSelections`' `llm_choose`
+/// arm (`b86bb1a5`), over connections the caller already holds.
+///
+/// Two quirks carried verbatim:
+///   * v4 re-runs `sharedWardrobeTiersForCharacter(characterId, [])` here even
+///     though the pool build already ran it with the REAL project ids — a second,
+///     redundant resolve whose project half is thrown away. Only its
+///     `groupMountPointIds` is used, and the PROJECT ids come from the OUTER
+///     `projectMountPointIds`, not from this call.
+///   * v4 wraps both calls in `.catch(...)`. v5's
+///     [`shared_wardrobe_tiers_for_character`] is sync + infallible and
+///     [`resolve_wardrobe_instructions`] never fails, so there is no analogue to
+///     port — recorded, not silently dropped.
+fn resolve_dressing_instructions_conn(
+    main: &Connection,
+    mount: &Connection,
+    character: Option<&Value>,
+    chat_id: Option<&str>,
+    character_id: &str,
+    project_mount_point_ids: &[String],
+) -> Option<String> {
+    let character_mount_point_id = character.and_then(|c| s(c, "characterDocumentMountPointId"));
+    let tiers = shared_wardrobe_tiers_for_character(main, mount, character_id, &[]);
+    let resolved = resolve_wardrobe_instructions(
+        main,
+        mount,
+        character_mount_point_id.as_deref(),
+        &tiers.group_mount_point_ids,
+        project_mount_point_ids,
+    )?;
+    tracing::debug!(
+        chat_id,
+        character_id,
+        tier = resolved.tier.as_str(),
+        mount_point_id = resolved.mount_point_id,
+        "[applyOutfitSelections] Dressing instructions in play"
+    );
+    Some(resolved.content)
+}
+
+/// [`resolve_dressing_instructions_conn`] for the out-of-create entrances, which
+/// hold a [`Db`](crate::db::runtime::Db) rather than open connections.
+fn resolve_dressing_instructions_for(
+    db: &crate::db::runtime::Db,
+    character: Option<&Value>,
+    chat_id: Option<&str>,
+    character_id: &str,
+    project_mount_point_ids: &[String],
+) -> Option<String> {
+    db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            Ok(resolve_dressing_instructions_conn(
+                main,
+                mount,
+                character,
+                chat_id,
+                character_id,
+                project_mount_point_ids,
+            ))
+        })
+    })
+    .ok()
+    .flatten()
 }
 
 /// The host-seam contract for one out-of-create `llm_choose` pick (P4.9E3B):
@@ -913,6 +1015,7 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
         &profiles,
         cheap_settings,
         scenario_text,
+        || resolve_dressing_instructions_for(db, character.as_ref(), None, character_id, &mounts),
         character_id,
         None,
     )
@@ -965,6 +1068,16 @@ async fn resolve_llm_choose<C: CompletionProvider>(
         &all_profiles,
         ctx.cheap_settings,
         ctx.scenario_text,
+        || {
+            resolve_dressing_instructions_conn(
+                main,
+                mount,
+                character.as_ref(),
+                Some(chat_id),
+                character_id,
+                ctx.project_mount_point_ids,
+            )
+        },
         character_id,
         emitter,
     )
@@ -1275,6 +1388,7 @@ mod tests {
             &profiles,
             None,
             None,
+            || None,
             "c1",
             None,
         )
@@ -1324,6 +1438,7 @@ mod tests {
             &profiles,
             None,
             None,
+            || None,
             "c1",
             None,
         )
@@ -1359,6 +1474,7 @@ mod tests {
                 &profiles,
                 None,
                 None,
+                || None,
                 "c1",
                 None,
             )
@@ -1396,7 +1512,7 @@ mod tests {
             json!({ "id": "a1", "title": "Cloak", "types": ["top"], "componentItemIds": [] }),
             json!({ "id": "a2", "title": "Set", "types": ["top", "bottom"], "componentItemIds": ["x", "y"], "description": "a bundle" }),
         ];
-        let msgs = build_outfit_messages(&character, &items, Some("A keep."));
+        let msgs = build_outfit_messages(&character, &items, Some("A keep."), None);
         assert_eq!(msgs[0].content, OUTFIT_SELECTION_PROMPT);
         let u = &msgs[1].content;
         assert!(
@@ -1409,5 +1525,38 @@ mod tests {
         assert!(u.contains("  - ID: a1 | \"Cloak\" (covers: top)"));
         assert!(u.contains("  - ID: a2 | \"Set\" [composite — bundles 2 other items] (covers: top, bottom) — a bundle"));
         assert!(u.ends_with("Choose what Aria should wear for this scene:"));
+    }
+
+    /// v4 `b86bb1a5`'s two `chooseLLMOutfit` unit arms, over
+    /// [`build_outfit_messages`] directly.
+    ///
+    /// The blank-instructions arm is UNREACHABLE from production — the cascade's
+    /// [`read_wardrobe_instructions_file`](crate::wardrobe_instructions::read_wardrobe_instructions_file)
+    /// already answers `None` for a file that trims empty, so no caller ever
+    /// hands this function a whitespace-only string. v4 pins the byte-identity
+    /// the same way (a direct call), and so does this: the guard is the reason a
+    /// caller who DOES pass `""` cannot slip an empty header into the prompt.
+    #[test]
+    fn dressing_instructions_note_is_byte_exact_and_omitted_when_blank() {
+        let character = json!({ "name": "Aria", "description": "", "personality": "" });
+        let items =
+            vec![json!({ "id": "a1", "title": "Cloak", "types": ["top"], "componentItemIds": [] })];
+        let user = |instr: Option<&str>| {
+            build_outfit_messages(&character, &items, Some("A keep."), instr)[1]
+                .content
+                .clone()
+        };
+
+        let with = user(Some("  You wear tweed.  "));
+        assert!(with.contains(
+            "\nDressing Instructions (addressed to Aria in the second person — \"you\" is Aria):\nYou wear tweed.\n\nAvailable Wardrobe Items:"
+        ));
+
+        // null / empty / whitespace-only all produce the SAME message, and it is
+        // the one the pre-`b86bb1a5` builder produced.
+        let none = user(None);
+        assert_eq!(none, user(Some("")));
+        assert_eq!(none, user(Some("   \n  ")));
+        assert!(!none.contains("Dressing Instructions"));
     }
 }

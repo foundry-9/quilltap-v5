@@ -176,6 +176,14 @@ interface CaseSpec {
   body: unknown;
   reply?: string; // key into spec.cannedOutfits
   throws?: boolean;
+  /** [P4.D119 / v4 `b86bb1a5`] Seed `Wardrobe/instructions.md` on the fresh
+   * per-case copy before the route runs. Written through the RAW document-store
+   * write (never `writeWardrobeInstructionsFile`), so the helper under test
+   * stays out of the seeding. `scope: 'character'` uses the joining character's
+   * own vault; `'general'` uses Quilltap General. The committed fixture is NOT
+   * touched — a rebuild would mint fresh ids and invalidate every sibling
+   * `chat-dialogs-*` family. */
+  seedInstructions?: { scope: 'character' | 'general'; characterId?: string; content: string };
 }
 
 async function runCase(
@@ -203,6 +211,26 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+
+  if (c.seedInstructions) {
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    const { getGeneralMountPointId } = await import('@/lib/instance-settings');
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+    const seed = c.seedInstructions;
+    let mp: string | null = null;
+    if (seed.scope === 'character') {
+      const row = await getRepositories().characters.findByIdRaw(
+        seed.characterId ?? (c.body as { characterId?: string }).characterId ?? '',
+      );
+      mp = (row?.characterDocumentMountPointId as string) ?? null;
+    } else {
+      mp = await getGeneralMountPointId();
+    }
+    if (!mp) throw new Error(`no mount for seedInstructions scope ${seed.scope}`);
+    await ensureFolderPath(mp, 'Wardrobe');
+    await writeDatabaseDocument(mp, 'Wardrobe/instructions.md', seed.content);
+  }
 
   let tick = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -424,6 +452,77 @@ async function main(): Promise<void> {
         outfitSelection: { characterId: PIP, mode: 'llm_choose' },
       },
       reply: 'unflaggedEmpty',
+    },
+
+    // ── P4.D119 / v4 `b86bb1a5` ───────────────────────────────────────────
+    // Dressing instructions reach the outfit-selection prompt. The system
+    // message's fourth bullet is UNCONDITIONAL (it moves every row above too);
+    // what these four add is the user message's `Dressing Instructions` block
+    // and the proof that the CASCADE — not a direct vault read — is what the
+    // production path invokes.
+    {
+      name: 'add_llm_choose_with_character_instructions',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPick',
+      seedInstructions: {
+        scope: 'character',
+        characterId: PIP,
+        content: '  You keep to oilskins on the quay, whatever the hour.  \n',
+      },
+    },
+    // The merge entrance, same seed: v5 routes both through one runner, so this
+    // is what proves the note is not an add-participant-only accident.
+    {
+      name: 'merge_llm_choose_with_character_instructions',
+      action: 'merge-conversation',
+      chatId: MERGE_TARGET,
+      body: {
+        sourceChatId: MERGE_SOURCE,
+        outfitSelections: [{ characterId: PIP, mode: 'llm_choose' }],
+      },
+      reply: 'pipPick',
+      seedInstructions: {
+        scope: 'character',
+        characterId: PIP,
+        content: 'You keep to oilskins on the quay, whatever the hour.',
+      },
+    },
+    // No character file: the GENERAL tier wins the cascade. A character-vault
+    // read would find nothing and emit no block at all.
+    {
+      name: 'add_llm_choose_with_general_instructions',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPick',
+      seedInstructions: {
+        scope: 'general',
+        content: 'The house dresses for the weather, not the occasion.',
+      },
+    },
+    // A whitespace-only file counts as absent: the user message must be
+    // BYTE-IDENTICAL to `add_llm_choose_pick`'s (v4 pins that byte-identity).
+    {
+      name: 'add_llm_choose_blank_instructions_emits_no_block',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPick',
+      seedInstructions: { scope: 'character', characterId: PIP, content: '   \n  ' },
     },
     // Only a real boolean counts: a stringy "true" is not the deliberate claim,
     // so this falls back too.
