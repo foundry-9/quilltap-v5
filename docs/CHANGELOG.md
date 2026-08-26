@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(realtime): the job-type and write-batch topic computation
+
+_Versions: core 0.0.684, harness 0.0.590._
+
+Ports v4 `f3892158d`'s pure `job-topics.ts`: which entity topics a finished job
+announces, and which a committed write batch does. An id that cannot be read
+still yields a collection-wide hint — coarser than ideal, never wrong — and the
+batch legs dedupe by `topic:id`, order-preserving.
+
+New tier-1 differential `realtime_topics_equivalence` drives v4's real module
+over 73 cases. The corpus lives once, in the oracle: each row carries its input
+alongside v4's output, and the Rust side reads that input back, so the two
+sides cannot drift. The work order's expectation that the write-batch leg would
+need a paired corpus is refuted — v5's buffered writes are v4's `{method,
+args}` verbatim, because the Phase-2 partition port kept that representation
+deliberately.
+
+Five mutation proofs.
+
 #### 2026-08-26 — feat(realtime): the invalidation hint and its coalescing bus
 
 _Versions: core 0.0.683._

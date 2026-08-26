@@ -88967,3 +88967,42 @@ inside the timer, so a coalesced burst reports the flush).
 keying by topic alone reds the per-id case; never clearing the pending key reds
 the re-arm case (and the no-listener case, which also asserts re-arm); stamping
 `at` at publish time reds the flush-time case.
+
+### P4.D124 unit 3 — the topic computation + `realtime_topics_equivalence`
+
+`realtime/job_topics.rs`: `topics_for_completed_job` (v4's switch, incl. the
+story-background chat-beats-project probe order and the "an unreadable id still
+emits, collection-wide" rule) and `topics_for_write_batch` (namespace table, the
+`TOPIC_ID_FIELDS` object probe, order-preserving dedup by `topic:id`).
+
+**AN ORDER PREMISE REFUTED BY MEASUREMENT.** The order warned: "⚠ v5 has no
+`method` strings — its buffered writes are typed (`write_partition.rs` /
+`write_apply.rs:150`). The v5 twin maps v5's OWN write representation onto the
+same topics… the differential is a PAIRED corpus." **It is not.**
+`write_partition::ChildWritePayload` is `{ method: String, args: Vec<Value> }` —
+v4's shape verbatim, because the Phase-2 partition port kept that representation
+on purpose (its header: the partition/remap logic "ports directly — it is a
+correctness property, not a Node workaround"). So the port reads exactly the
+strings v4 reads, and **one corpus drives both sides with no pairing table and
+no blinded-comparand risk at all.**
+
+**NEW tier-1 family `realtime_topics_equivalence`** (73 cases; oracle
+`harness/oracle/cases/realtime-topics.ts`, recipe self-contained in the `.rs`
+header, run through the sweep driver at the lane pin). The corpus lives ONCE:
+each NDJSON row carries the case INPUT beside v4's hints, and the Rust side
+reads that input back and runs its own functions on it — nothing is transcribed.
+Coverage: every one of the 23 job types twice (full payload + no payload at
+all), the story-background probe order across five falsy shapes
+(empty/non-string/null/both-empty/empty-object), unreadable ids on the avatar,
+title, render and autonomous arms, the undefined-jobType and unknown-type arms;
+and for batches — every mapped namespace by string id, object ids through each
+`TOPIC_ID_FIELDS` row with the preferred field winning and the `id` fallback,
+unreadable ids going collection-wide, empty-string and numeric first args, the
+unmapped namespaces (incl. `__finalizeFile` and the three mount-index
+namespaces v4's table deliberately omits), dedup + order across a mixed batch,
+two namespaces sharing one topic, a dotless method, and the empty batch.
+
+**Mutation-proven, five**, each reddening exactly the arms it should: swapping
+the story-background probe order (1 case); dropping the non-empty-string filter
+(3); dropping the batch dedup (2); probing `id` before the preferred field (1);
+and dropping — rather than widening — a hint whose id cannot be read (4).
