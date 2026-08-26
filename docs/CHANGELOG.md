@@ -232,6 +232,18 @@ dedupe-then-sort is made observable instead — two mounts in one tier both carr
 file and the sort decides which content comes back. Six mutations proven to
 redden; a seventh (dropping the folder ensure) provably does not, because the
 write primitive find-or-creates folder segments itself — recorded at the source.
+#### 2026-08-26 — feat(search): the LIKE-escape helper for user-supplied substring search
+
+_Versions: core 0.0.666._
+
+Ports v4 `lib/database/repositories/like-escape.ts` (new at `b220999d`) as
+`db::like_escape`: `LIKE_ESCAPE_CHAR`, `escape_like_literal` (escapes exactly
+`\\`, `%`, `_`, each with one backslash), and `like_contains_pattern` (lower-cases
+inside the helper, then wraps `%…%`). Callers pair it with
+`WHERE LOWER(col) LIKE ? ESCAPE '\\'` — SQLite's bare `LIKE` folds ASCII only.
+
+v4's five unit cases ported one for one, plus a sixth pinning the escape set as
+exactly those three characters.
 
 #### 2026-08-25 — docs(porting): the `b220999d`-round work orders — four lanes over the five-commit drift
 

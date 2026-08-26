@@ -73,6 +73,7 @@ pub mod help_docs;
 pub mod help_search;
 pub mod image_profiles;
 pub mod instance_settings;
+pub mod like_escape;
 pub mod llm_logs;
 pub mod memories;
 pub mod memories_read;

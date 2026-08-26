@@ -87788,3 +87788,38 @@ the owed pass is phase-4.md candidate 1. The port-4319 collision the orders
 warned about actually fired in P4.D117 (Playwright global setup silently
 runs against a sibling lane's server — the lane record carries the tell);
 banked into the round memory note.
+
+---
+
+## P4.D122 — the `b220999d` Documents-search drift, whole vertical
+
+**Lane branch:** `claude/documents-search-vertical-port-4b10af`. **v4 baseline
+for the round:** `8f910137`; **lane pin:** `b220999d` (the feature commit
+itself — it contains the baseline plus this feature, so one pinned worktree
+serves both the changed and the untouched surfaces this lane's families
+import). Drift-ledger §2 freshness probe at lane start: **PASS** (v4 on
+`main`, tree clean, `b220999da..main` and `3a76b17df..bugfix` both empty).
+Pinned worktree: `/tmp/qt-v4-pin-p4d122-b220999d` (all three symlink classes).
+
+### Unit 1 — the LIKE-escape helper (`db::like_escape`)
+
+v4 `lib/database/repositories/like-escape.ts`, NEW at `b220999d`, ported
+whole:
+
+- `LIKE_ESCAPE_CHAR = '\'`; `escape_like_literal` escapes exactly `\ % _`,
+  each with a single backslash; `like_contains_pattern` lower-cases INSIDE the
+  helper (so callers compare against `LOWER(col)` — SQLite's built-in `LIKE`
+  folds ASCII only) and wraps `%…%`.
+- v4's five unit cases ported one for one, plus a sixth that pins the escape
+  set as exactly those three characters (a widened set would be a different
+  query and no differential over the route can see it — the SQL-level quirks
+  are Rust-unit-tier by the order's own split).
+- `str::to_lowercase` is byte-identical to JS `toLowerCase` (the Phase-1
+  ICU/Unicode cluster), so the lower-casing needs no JS-fidelity helper.
+
+**Mechanical registration outside the ownership list** (flagged for the
+unifier): `crates/quilltap-core/src/db/mod.rs` gains one alphabetized
+`pub mod like_escape;` line. The lane cannot compile without it; it is a
+single-line insertion into a sorted list and union-merges trivially.
+
+Gate: `cargo test -p quilltap-core --lib db::like_escape` 6/6.
