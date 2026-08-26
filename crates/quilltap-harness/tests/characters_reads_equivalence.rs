@@ -274,11 +274,13 @@ fn characters_reads_match_oracle() {
     );
     push(
         "scenarios",
-        response_data(&characters::character_scenario_list(&db, uid, ARIA)),
+        response_data(&characters::character_scenario_list(&db, uid, ARIA, false)),
     );
     push(
         "wardrobe",
-        response_data(&characters::character_wardrobe_list(&db, uid, ARIA, None)),
+        response_data(&characters::character_wardrobe_list(
+            &db, uid, ARIA, None, false,
+        )),
     );
     push(
         "plugin_data_map",

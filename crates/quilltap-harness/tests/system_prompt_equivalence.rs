@@ -43,6 +43,10 @@ struct WireSystemPrompt {
 #[derive(Deserialize)]
 struct WireScenario {
     content: String,
+    /// [P4.D120 / v4 `d25dacc1`] an archived scenario can never be the implicit
+    /// scene (`firstActiveScenarioContent`).
+    #[serde(default)]
+    archived: bool,
 }
 
 #[derive(Deserialize)]
@@ -263,6 +267,7 @@ fn to_char(w: &WireCharacter) -> Character {
             .iter()
             .map(|s| ScenarioEntry {
                 content: s.content.clone(),
+                archived: s.archived,
             })
             .collect(),
         system_prompts: w

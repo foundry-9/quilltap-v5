@@ -144,6 +144,7 @@ fn to_sys_character(c: &Value) -> Character {
                 a.iter()
                     .map(|sc| ScenarioEntry {
                         content: s(sc, "content").unwrap_or_default(),
+                        archived: sc.get("archived") == Some(&Value::Bool(true)),
                     })
                     .collect()
             })

@@ -1640,10 +1640,15 @@ pub fn render_almanack_markdown(data: &AlmanackReportData) -> String {
         if s.scenarios.iter().all(|row| row.count == 0.0) {
             push!("*No scenarios*", "");
         } else {
-            push!("| Tier | Scenarios |");
-            push!("|------|-----------|");
+            push!("| Tier | Scenarios | Archived |");
+            push!("|------|-----------|----------|");
             for row in &s.scenarios {
-                push!(format!("| {} | {} |", cell(&row.tier), js_num(row.count)));
+                push!(format!(
+                    "| {} | {} | {} |",
+                    cell(&row.tier),
+                    js_num(row.count),
+                    js_num(row.archived)
+                ));
             }
             push!("");
         }

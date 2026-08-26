@@ -629,6 +629,10 @@ pub fn collect_scriptorium(
         .map(|(tier, ids)| ScenarioTierRow {
             tier: (*tier).to_string(),
             count: count_links_in_folder(db, ids, SCENARIOS_FOLDER),
+            // The same LIKE match the wardrobe tally uses — the flag is
+            // frontmatter, so an archived scenario is one whose file body
+            // contains `archived: true`.
+            archived: count_links_matching_content(db, ids, SCENARIOS_FOLDER, "%archived: true%"),
         })
         .collect();
 

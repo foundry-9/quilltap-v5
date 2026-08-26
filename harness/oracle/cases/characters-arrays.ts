@@ -135,6 +135,8 @@ async function main(): Promise<void> {
         await repos.characters.addScenario(characterId, {
           title: op.title as string,
           content: op.content as string,
+          // [P4.D120 / v4 `d25dacc1`] the optional `archived` flag.
+          ...(op.archived !== undefined && { archived: op.archived as boolean }),
         });
         break;
       case 'updateScenario': {

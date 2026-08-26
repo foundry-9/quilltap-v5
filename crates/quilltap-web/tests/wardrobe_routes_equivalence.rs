@@ -63,6 +63,9 @@ struct CaseEntry {
     character_id: Option<String>,
     #[serde(default)]
     scope: Option<String>,
+    /// [P4.D120 / v4 `d25dacc1`] `?includeArchived=true` on a collection GET.
+    #[serde(default)]
+    include_archived: Option<bool>,
     #[serde(default)]
     then_outfit: Option<String>,
     /// The chained group-tier read (v4 `8600c83f`): after this case, re-read
@@ -395,7 +398,7 @@ async fn wardrobe_routes_equivalence() {
         let db = fresh_db(&case.name);
         let body = case.body.clone().unwrap_or(Value::Null);
         let resp = match case.kind.as_str() {
-            "wardrobeList" => wardrobe_list(&db),
+            "wardrobeList" => wardrobe_list(&db, case.include_archived.unwrap_or(false)),
             "wardrobeCreate" => wardrobe_create(&db, body).await,
             "wardrobeItemGet" => wardrobe_item_get(&db, case.item_id.as_deref().unwrap()),
             "wardrobeUpdate" => wardrobe_update(&db, case.item_id.as_deref().unwrap(), body).await,
@@ -413,6 +416,7 @@ async fn wardrobe_routes_equivalence() {
                 user,
                 case.character_id.as_deref().unwrap(),
                 case.scope.as_deref(),
+                case.include_archived.unwrap_or(false),
             ),
             other => panic!("unknown case kind: {other}"),
         };
@@ -426,7 +430,7 @@ async fn wardrobe_routes_equivalence() {
         }
 
         if let Some(character_id) = &case.then_group_wardrobe {
-            let follow = character_wardrobe_list(&db, user, character_id, Some("group"));
+            let follow = character_wardrobe_list(&db, user, character_id, Some("group"), false);
             check(
                 &oracle,
                 &format!("{}__group", case.name),

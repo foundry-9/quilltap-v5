@@ -1289,3 +1289,71 @@ mod tests {
         );
     }
 }
+
+/// v4 `archivedPatch` (`lib/wardrobe/archived-patch.ts`, `d25dacc1`) — the ONE
+/// place `archived: boolean` (what the API accepts) becomes
+/// `archivedAt: string | null` (what a wardrobe item stores).
+///
+/// All four item endpoints — character, General, project, group — take the
+/// boolean and route it through here so the semantics cannot drift:
+///
+///   * archiving is **idempotent**: re-archiving an already-archived item keeps
+///     its ORIGINAL `archivedAt` rather than resetting the clock;
+///   * restoring clears the stamp outright.
+///
+/// `None` means the item is already in the requested state, so callers can skip
+/// a pointless vault rewrite. v4 reads "already archived" as `Boolean(current)`
+/// — an empty string counts as NOT archived, which is JS truthiness, not
+/// null-ness.
+pub fn archived_patch(
+    current_archived_at: Option<&str>,
+    archived: bool,
+    now: &str,
+) -> Option<Option<String>> {
+    let is_archived = current_archived_at.is_some_and(|s| !s.is_empty());
+    if is_archived == archived {
+        return None;
+    }
+    Some(if archived {
+        Some(now.to_string())
+    } else {
+        None
+    })
+}
+
+#[cfg(test)]
+mod archived_patch_tests {
+    use super::archived_patch;
+
+    const NOW: &str = "2026-08-26T00:00:00.000Z";
+    const THEN: &str = "2026-01-01T00:00:00.000Z";
+
+    #[test]
+    fn archiving_an_active_item_stamps_now() {
+        assert_eq!(archived_patch(None, true, NOW), Some(Some(NOW.to_string())));
+    }
+
+    #[test]
+    fn re_archiving_is_a_no_op_so_the_original_stamp_survives() {
+        assert_eq!(archived_patch(Some(THEN), true, NOW), None);
+    }
+
+    #[test]
+    fn restoring_an_archived_item_clears_the_stamp() {
+        assert_eq!(archived_patch(Some(THEN), false, NOW), Some(None));
+    }
+
+    #[test]
+    fn re_restoring_is_a_no_op() {
+        assert_eq!(archived_patch(None, false, NOW), None);
+    }
+
+    #[test]
+    fn an_empty_stamp_is_not_archived_js_truthiness_not_null_ness() {
+        assert_eq!(
+            archived_patch(Some(""), true, NOW),
+            Some(Some(NOW.to_string()))
+        );
+        assert_eq!(archived_patch(Some(""), false, NOW), None);
+    }
+}

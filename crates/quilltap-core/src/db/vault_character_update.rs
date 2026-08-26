@@ -295,7 +295,7 @@ pub fn apply_document_store_write_overlay(
             |s| {
                 (
                     format!("{}.md", sanitize_file_name(&s.title)),
-                    build_scenario_file(&s.title, &s.content),
+                    build_scenario_file(&s.title, &s.content, s.description.as_deref(), s.archived),
                 )
             },
             // v4 passes no `preserveFileNames` here: the managed-fields

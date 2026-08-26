@@ -1348,6 +1348,7 @@ fn to_sys_char(c: &Value) -> crate::system_prompt::Character {
             a.iter()
                 .map(|s| ScenarioEntry {
                     content: json_str(s, "content").unwrap_or_default(),
+                    archived: s.get("archived") == Some(&serde_json::Value::Bool(true)),
                 })
                 .collect()
         })

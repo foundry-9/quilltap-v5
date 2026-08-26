@@ -275,6 +275,96 @@ the standing `p4.9i2` help-doc bank with their names and hit counts.
 **`docs/developer/API.md` got NO v4 update for this commit** — a recorded gap on
 v4's side, nothing to mirror.
 
+### P4.D120 units 1–2 + 5 — the scenario half of archive-instead-of-delete
+
+**The chokepoint** (`db/scenarios.rs`): `ParsedScenario.archived`,
+`is_archived_frontmatter` (real `true` OR the string `"true"` — the shape v4
+reads `isDefault` with), the exported `is_scenario_content_archived`,
+`list_scenarios_in_folder(…, include_archived)` with BOTH filter arms exactly
+placed (excluded before default resolution; and when listed, forced
+`isDefault: false` + `continue` so it can be neither the winner nor an
+`offender` in the warning — `raw_is_default` untouched), and
+`build_scenario_file_content`'s fourth flag with v4's key order
+`name, description, isDefault, archived` and the omission-means-active rule.
+`resolve_scenario_body` carries v4's new deliberately-ignorant doc-comment and
+NO logic change.
+
+**`includeArchived`** as `#[serde(default)] include_archived: bool` on the seven
+scenario list verbs, the item-level scenario mutations (whose fresh-list return
+honours it in v4), the union, and the four wardrobe list verbs. ⚠ **The
+item-level verbs are a superset of §Shared-contract §B.1's list** — the contract
+names only the LIST verbs, but v4's PUT/POST/DELETE routes all read the query
+param for their fresh list, so v5's verbs carry it too; absent = false, which is
+exactly an untouched client. Recorded, not silently widened.
+
+The two hard-coded `true`s (`api/projects.rs` `project_wardrobe_list`,
+`api/groups.rs` `group_wardrobe_list`) are replaced by the parameter — v4's
+"server-side filtering replaces the client-side pass".
+
+**The collection-POST quirk is reproduced:** the file-backed creates refresh
+their returned list with `fields.archived == Some(true)` — the BODY, not the
+query param — so creating an ACTIVE scenario with "Show archived" ticked returns
+an archived-free list.
+
+**Character scenarios:** `CharacterScenario.archived: Option<bool>` in v4's
+object-literal position (between `description` and `createdAt`) with
+skip-when-none, `parse_scenario_file`'s absent-when-false spread,
+`add_scenario`/`update_scenario`'s tri-state TRANSCRIBED rather than reasoned
+about (drop the key, compute `data.archived ?? existing.archived`, apply the
+patch, re-add only for `true`), and the GET's RESPONSE filter with v4's
+eight-line why-comment: `character.scenarios` must KEEP archived entries or the
+projection sweep deletes their files.
+
+**`build_scenario_file` rewritten** — description-first frontmatter, emitted only
+when there is something to put in it, `escape_yaml`'d, no rename. **v5
+measurably had v4's bug**: reverting to the one-line form reddens
+`vault_character_write_equivalence`, as does dropping the description alone.
+
+**System prompt:** `ScenarioEntry.archived` + `active_scenarios` /
+`first_active_scenario_content`. v4 converted THREE sites; v5's
+`stack_template_context` is ONE home serving both of v4's prompt-builder sites,
+and v4's third (the help-chat builder) **has never been ported** — the standing
+`p4.9i2` bank. v4's three UNCONVERTED sites (scene-state-tracking, Carina's
+`resolveDefaultScenario`, the SillyTavern export) are left alone in v5 too, as
+v4-side filing candidates.
+
+**Almanack:** `ScenarioTierRow.archived` + the `%archived: true%` LIKE count +
+the `| Tier | Scenarios | Archived |` column. The `*No scenarios*` empty state
+still tests `count == 0` only (v4 unchanged).
+
+### The differentials (P4.D120, scenario half)
+
+* **`scenarios_routes_equivalence` 41 → 64 cases.** Every archived case seeds
+  its own `Scenarios/*.md` on the FRESH per-case copy through the RAW
+  document-store write; the committed `groups-projects-*` pair is untouched, so
+  no sibling family is disturbed. Writes are pinned through the FILE BYTES (a new
+  `fileBytes` comparand — frontmatter key order included), not just the response.
+  Mutations reddening it: no list filter (8 cases); archived wins the default (1);
+  the `"true"` string not coerced (1); `archived: false` written (1 — bytes);
+  the update not preserving the flag (6); the create refreshing from the query
+  param instead of the body (1).
+  ⚠ **One arm has no v5 analogue and is recorded at the assertion:** the bare
+  `?includeArchived` and the rejected `=1` spellings live in v4's URL reader.
+  v5's scenario surfaces are dispatch verbs, so the SPELLING is unreachable
+  there; the resolved boolean is driven directly, and the spelling itself is
+  pinned at the two wardrobe REST edges that exist
+  (`quilltap-web::wardrobe_routes::read_include_archived`).
+* **`vault_character_write_equivalence`** gains a described scenario, an archived
+  one, and a third op that OMITS the archived entry — v4's failure shape: the
+  file IS swept. Two mutations redden it.
+* **`vault_string_leaves_equivalence`** 24 → 34 rows over the rewritten
+  `build_scenario_file` (blank description, YAML-ish description, newline
+  description, archived, `archived: false`, both).
+* **Character scenarios are pinned at TWO tiers, because neither alone can see
+  the whole thing.** A vault-linked character's `scenarios` DB column is `[]` and
+  `build_scenario_file` never emits `archived: false`, so an intermediate `false`
+  is invisible on disk: `characters_arrays_tier2_equivalence` (+6 ops) sees the
+  FILE BYTES, and `characters_subresources_equivalence` (+5 cases, with a new
+  `preBody` pre-call so "update an ALREADY-archived scenario" is reachable) sees
+  the RETURNED OBJECT — where v4 genuinely echoes `archived: false` on a restore.
+  Three mutations redden the subresources arm; the two that survive the ARRAYS
+  arm are the same fact stated twice, and are why the second tier exists.
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start

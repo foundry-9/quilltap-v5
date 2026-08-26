@@ -1179,6 +1179,7 @@ fn to_carina_character(c: &Value) -> crate::system_prompt::Character {
             a.iter()
                 .map(|sc| crate::system_prompt::ScenarioEntry {
                     content: s(sc, "content").unwrap_or_default(),
+                    archived: sc.get("archived") == Some(&Value::Bool(true)),
                 })
                 .collect()
         })

@@ -692,10 +692,41 @@ pub fn build_system_prompt_file(name: &str, is_default: bool, content: &str) -> 
     format!("{frontmatter}{content}")
 }
 
-/// Build a `Scenarios/*.md` file — v4 `buildScenarioFile` (`character-vault.ts:199`):
-/// a plain `# title` heading + the body, NO frontmatter at all.
-pub fn build_scenario_file(title: &str, content: &str) -> String {
-    format!("# {title}\n\n{content}")
+/// Build a `Scenarios/*.md` file — v4 `buildScenarioFile` (`character-vault.ts`,
+/// rewritten by `d25dacc1`).
+///
+/// The heading carries the title, as it always has. A frontmatter block is
+/// emitted ONLY when there is something to put in it — a `description` and/or
+/// `archived: true`, in that order — so files using neither don't churn on every
+/// projection. **Before `d25dacc1`, `description` was parsed on read but never
+/// written back, so the next vault projection silently dropped it; v5 measurably
+/// had that bug too.** The scenario's `id` is a stable UUID hashed from the file
+/// PATH, so archiving must never rename the file.
+///
+/// Hand-built frontmatter (v4's own `escapeYaml`, not the YAML emitter) — the
+/// same shape [`build_system_prompt_file`] uses.
+pub fn build_scenario_file(
+    title: &str,
+    content: &str,
+    description: Option<&str>,
+    archived: bool,
+) -> String {
+    let mut frontmatter: Vec<String> = Vec::new();
+    if let Some(d) = description {
+        let t = crate::jsstr::js_trim(d);
+        if !t.is_empty() {
+            frontmatter.push(format!("description: {}", escape_yaml(t)));
+        }
+    }
+    if archived {
+        frontmatter.push("archived: true".to_string());
+    }
+    let fm_block = if frontmatter.is_empty() {
+        String::new()
+    } else {
+        format!("---\n{}\n---\n\n", frontmatter.join("\n"))
+    };
+    format!("{fm_block}# {title}\n\n{content}")
 }
 
 /// Coerce a raw `componentItems:` value into a clean `Vec<String>` — v4
@@ -849,6 +880,12 @@ pub struct CharacterScenario {
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// v4 `d25dacc1`: `...(archived && { archived: true })` — the key is ABSENT
+    /// for an active scenario and only ever carries `true`. (v4's own API.md
+    /// example claiming `"archived": false` is a doc/behavior mismatch; the code
+    /// is what ships.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived: Option<bool>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "updatedAt")]
@@ -933,6 +970,17 @@ pub fn parse_scenario_file(doc: &VaultDoc) -> Option<CharacterScenario> {
             }
         }
     }
+    // Absence means active — matches the file-backed scenario scopes.
+    let archived = matches!(
+        fm.data.as_ref().and_then(|d| d.get("archived")),
+        Some(Value::Bool(true))
+    ) || matches!(
+        fm.data
+            .as_ref()
+            .and_then(|d| d.get("archived"))
+            .and_then(Value::as_str),
+        Some("true")
+    );
 
     let after = crate::markdown::body_after(content, &fm);
     let lines: Vec<&str> = after.split('\n').collect();
@@ -975,6 +1023,7 @@ pub fn parse_scenario_file(doc: &VaultDoc) -> Option<CharacterScenario> {
         title: crate::jsstr::utf16_truncate(&title, 200),
         content: body,
         description: frontmatter_description,
+        archived: if archived { Some(true) } else { None },
         created_at: doc.created_at.to_string(),
         updated_at: doc.updated_at.to_string(),
     })

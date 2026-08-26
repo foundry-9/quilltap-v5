@@ -69,6 +69,9 @@ struct Op {
     target_name: Option<String>,
     #[serde(default)]
     target_title: Option<String>,
+    /// [P4.D120 / v4 `d25dacc1`] `addScenario`'s optional `archived` flag.
+    #[serde(default)]
+    archived: Option<bool>,
     #[serde(default)]
     data: Option<Map<String, Value>>,
     #[serde(default)]
@@ -273,6 +276,7 @@ fn run_op(main: &Writer, mount: &Writer, character_id: &str, op: &Op) {
                 cid,
                 op.title.as_deref().expect("title"),
                 op.content.as_deref().expect("content"),
+                op.archived,
             )
             .expect("add_scenario");
         }
@@ -444,5 +448,8 @@ fn characters_arrays_tier2_matches_oracle() {
         );
     }
 
-    eprintln!("OK: characters arrays tier-2 matched oracle (6 tables, 2 DBs, 13 ops).");
+    eprintln!(
+        "OK: characters arrays tier-2 matched oracle (6 tables, 2 DBs, {} ops).",
+        spec.ops.len()
+    );
 }

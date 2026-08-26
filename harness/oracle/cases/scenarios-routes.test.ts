@@ -47,6 +47,12 @@ const GAMMA = 'a2000000-0000-4000-8000-000000000001';
 const IOTA = 'a3000000-0000-4000-8000-000000000001';
 const BOGUS = 'a1000000-0000-4000-8000-0000000000ff';
 
+/** [P4.D120] The archived-scenario seed every archived case starts from. */
+/** ARIA's group — the participant-union's only hit. */
+const BEACON = 'a2000000-0000-4000-8000-000000000003';
+
+const ARCHIVED_FILE = '---\nname: Mothballed\narchived: true\n---\n\nA scene put away.';
+
 function mockRequest(url: string, body?: unknown): unknown {
   return {
     method: 'GET',
@@ -100,6 +106,62 @@ interface CaseSpec {
   /** Runs after initializeDatabase, before `run` — e.g. to unprovision the
    *  general mount (delete instance_settings.generalMountPointId). */
   prep?: () => Promise<void>;
+  /** [P4.D120] After `run`, emit the RAW content of `<scope>/Scenarios/<file>`
+   *  so a write is proven through the file BYTES (frontmatter key order
+   *  included), not just the response body. `null` when the file is gone. */
+  readBack?: { scope: 'group' | 'project' | 'general' | 'beacon'; file: string };
+}
+
+/** [P4.D120] The mount id behind each scenario scope, resolved at run time. */
+async function scopeMount(scope: 'group' | 'project' | 'general' | 'beacon'): Promise<string> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  if (scope === 'general') {
+    const { getGeneralMountPointId } = await import('@/lib/instance-settings');
+    const mp = await getGeneralMountPointId();
+    if (!mp) throw new Error('general mount unprovisioned');
+    return mp;
+  }
+  const repos = getRepositories();
+  const row =
+    scope === 'group'
+      ? await repos.groups.findByIdRaw(GAMMA)
+      : scope === 'beacon'
+        ? await repos.groups.findByIdRaw(BEACON)
+        : await repos.projects.findByIdRaw(IOTA);
+  const mp = row?.officialMountPointId as string;
+  if (!mp) throw new Error(`no official store for ${scope}`);
+  return mp;
+}
+
+/**
+ * [P4.D120] Seed one `Scenarios/*.md` file on the fresh per-case copy through
+ * the RAW document-store write — never through the route under test. The
+ * committed `groups-projects-*` fixture pair is NOT rebuilt (that would mint
+ * fresh ids and invalidate every sibling family reading it).
+ */
+async function seedScenario(
+  scope: 'group' | 'project' | 'general' | 'beacon',
+  file: string,
+  content: string,
+): Promise<void> {
+  const mp = await scopeMount(scope);
+  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+  await ensureFolderPath(mp, 'Scenarios');
+  await writeDatabaseDocument(mp, `Scenarios/${file}`, content);
+}
+
+async function readScenarioBytes(
+  scope: 'group' | 'project' | 'general' | 'beacon',
+  file: string,
+): Promise<string | null> {
+  const mp = await scopeMount(scope);
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const doc = (await getRepositories().docMountDocuments.findByMountPointAndPath(
+    mp,
+    `Scenarios/${file}`,
+  )) as { content?: string } | null;
+  return doc?.content ?? null;
 }
 
 /** Delete the general mount pointer to exercise the pre-provision race arms. */
@@ -145,7 +207,15 @@ async function runCase(
   try {
     if (c.prep) await c.prep();
     const out = await c.run();
-    return { name: c.name, status: out.status, body: out.body };
+    const payload: Record<string, unknown> = {
+      name: c.name,
+      status: out.status,
+      body: out.body,
+    };
+    if (c.readBack) {
+      payload.fileBytes = await readScenarioBytes(c.readBack.scope, c.readBack.file);
+    }
+    return payload;
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
@@ -156,9 +226,14 @@ async function runCase(
 // Route loaders (thin wrappers so cases read cleanly).
 const B = 'http://localhost/api/v1';
 
-async function groupCollection(method: 'GET' | 'POST', id: string, body?: unknown) {
+async function groupCollection(
+  method: 'GET' | 'POST',
+  id: string,
+  body?: unknown,
+  query = '',
+) {
   const route = await loadRoute('@/app/api/v1/groups/[id]/scenarios/route');
-  const req = mockRequest(`${B}/groups/${id}/scenarios`, body);
+  const req = mockRequest(`${B}/groups/${id}/scenarios${query}`, body);
   const ctx = { params: Promise.resolve({ id }) };
   return respond(await route[method](req, ctx));
 }
@@ -174,14 +249,19 @@ async function groupItem(
   const ctx = { params: Promise.resolve({ id, scenarioPath }) };
   return respond(await route[method](req, ctx));
 }
-async function groupsUnion(characterIds: string) {
+async function groupsUnion(characterIds: string, query = '') {
   const route = await loadRoute('@/app/api/v1/groups/scenarios/route');
-  const req = mockRequest(`${B}/groups/scenarios?characterIds=${characterIds}`);
+  const req = mockRequest(`${B}/groups/scenarios?characterIds=${characterIds}${query}`);
   return respond(await route.GET(req));
 }
-async function projectCollection(method: 'GET' | 'POST', id: string, body?: unknown) {
+async function projectCollection(
+  method: 'GET' | 'POST',
+  id: string,
+  body?: unknown,
+  query = '',
+) {
   const route = await loadRoute('@/app/api/v1/projects/[id]/scenarios/route');
-  const req = mockRequest(`${B}/projects/${id}/scenarios`, body);
+  const req = mockRequest(`${B}/projects/${id}/scenarios${query}`, body);
   const ctx = { params: Promise.resolve({ id }) };
   return respond(await route[method](req, ctx));
 }
@@ -197,9 +277,9 @@ async function projectItem(
   const ctx = { params: Promise.resolve({ id, scenarioPath }) };
   return respond(await route[method](req, ctx));
 }
-async function generalCollection(method: 'GET' | 'POST', body?: unknown) {
+async function generalCollection(method: 'GET' | 'POST', body?: unknown, query = '') {
   const route = await loadRoute('@/app/api/v1/scenarios/route');
-  const req = mockRequest(`${B}/scenarios`, body);
+  const req = mockRequest(`${B}/scenarios${query}`, body);
   return respond(await route[method](req));
 }
 async function generalItem(
@@ -337,6 +417,198 @@ async function main(): Promise<void> {
     },
     { name: 'project_delete', run: () => projectItem('DELETE', IOTA, 'climax.md') },
     { name: 'project_delete_missing', run: () => projectItem('DELETE', IOTA, 'ghost.md') },
+    // ── P4.D120 / v4 `d25dacc1` — archived scenarios ─────────────────────
+    // Every case seeds its own file on the fresh copy through the RAW
+    // document-store write; the committed fixture pair is untouched.
+    {
+      name: 'group_list_hides_archived',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () => groupCollection('GET', GAMMA),
+    },
+    {
+      name: 'group_list_shows_archived_with_the_flag',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () => groupCollection('GET', GAMMA, undefined, '?includeArchived=true'),
+    },
+    {
+      name: 'group_list_bare_include_archived_spelling',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () => groupCollection('GET', GAMMA, undefined, '?includeArchived'),
+    },
+    {
+      name: 'group_list_rejects_other_include_archived_spellings',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () => groupCollection('GET', GAMMA, undefined, '?includeArchived=1'),
+    },
+    {
+      name: 'group_list_string_true_frontmatter_is_archived',
+      prep: () =>
+        seedScenario('group', 'stringy.md', '---\nname: Stringy\narchived: "true"\n---\n\nA quoted flag.'),
+      run: () => groupCollection('GET', GAMMA),
+    },
+    {
+      name: 'group_list_other_archived_values_are_active',
+      prep: () =>
+        seedScenario('group', 'yesish.md', '---\nname: Yesish\narchived: yes\n---\n\nNot the flag.'),
+      run: () => groupCollection('GET', GAMMA),
+    },
+    {
+      // `aardvark.md` sorts FIRST, claims the default AND is archived: it must
+      // neither win nor be named as the warning's winner, listed or not.
+      name: 'group_list_archived_cannot_win_the_default',
+      prep: () =>
+        seedScenario(
+          'group',
+          'aardvark.md',
+          '---\nname: Aardvark\nisDefault: true\narchived: true\n---\n\nFirst alphabetically.',
+        ),
+      run: () => groupCollection('GET', GAMMA, undefined, '?includeArchived=true'),
+    },
+    {
+      name: 'group_create_archived_writes_the_flag',
+      run: () =>
+        groupCollection('POST', GAMMA, {
+          filename: 'Put Away',
+          name: 'Put Away',
+          description: 'Filed for later.',
+          archived: true,
+          body: 'Stored.',
+        }),
+      readBack: { scope: 'group', file: 'Put Away.md' },
+    },
+    {
+      // ⚠ The collection-POST quirk: the fresh list is refreshed with
+      // `{includeArchived: validated.archived === true}` — the BODY, not the
+      // query param. Creating an ACTIVE scenario with "Show archived" ticked
+      // returns an archived-free list.
+      name: 'group_create_active_ignores_the_query_flag',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () =>
+        groupCollection(
+          'POST',
+          GAMMA,
+          { filename: 'Still Here', body: 'Active.' },
+          '?includeArchived=true',
+        ),
+    },
+    {
+      name: 'group_update_omitting_archived_preserves_it',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () =>
+        groupItem(
+          'PUT',
+          GAMMA,
+          'mothballed.md',
+          { name: 'Mothballed', body: 'Edited while archived.' },
+          '?includeArchived=true',
+        ),
+      readBack: { scope: 'group', file: 'mothballed.md' },
+    },
+    {
+      name: 'group_update_restoring_deletes_the_key',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () =>
+        groupItem('PUT', GAMMA, 'mothballed.md', {
+          name: 'Mothballed',
+          archived: false,
+          body: 'Back in play.',
+        }),
+      readBack: { scope: 'group', file: 'mothballed.md' },
+    },
+    {
+      name: 'group_update_archiving_an_active_scenario',
+      run: () =>
+        groupItem('PUT', GAMMA, 'interlude.md', {
+          name: 'Interlude',
+          archived: true,
+          body: 'Put away.',
+        }),
+      readBack: { scope: 'group', file: 'interlude.md' },
+    },
+    {
+      name: 'group_delete_fresh_list_honours_the_flag',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () => groupItem('DELETE', GAMMA, 'interlude.md', undefined, '?includeArchived=true'),
+    },
+    {
+      name: 'group_rename_fresh_list_honours_the_flag',
+      prep: () => seedScenario('group', 'mothballed.md', ARCHIVED_FILE),
+      run: () =>
+        groupItem(
+          'POST',
+          GAMMA,
+          'interlude.md',
+          { newFilename: 'interlude-3' },
+          '?action=rename&includeArchived=true',
+        ),
+    },
+    {
+      name: 'union_honours_the_flag',
+      prep: () => seedScenario('beacon', 'mothballed.md', ARCHIVED_FILE),
+      run: () => groupsUnion(ARIA, '&includeArchived=true'),
+    },
+    {
+      name: 'union_hides_archived_by_default',
+      prep: () => seedScenario('beacon', 'mothballed.md', ARCHIVED_FILE),
+      run: () => groupsUnion(ARIA),
+    },
+    {
+      name: 'project_list_hides_archived',
+      prep: () => seedScenario('project', 'mothballed.md', ARCHIVED_FILE),
+      run: () => projectCollection('GET', IOTA),
+    },
+    {
+      name: 'project_list_shows_archived_with_the_flag',
+      prep: () => seedScenario('project', 'mothballed.md', ARCHIVED_FILE),
+      run: () => projectCollection('GET', IOTA, undefined, '?includeArchived=true'),
+    },
+    {
+      name: 'project_update_omitting_archived_preserves_it',
+      prep: () => seedScenario('project', 'mothballed.md', ARCHIVED_FILE),
+      run: () =>
+        projectItem(
+          'PUT',
+          IOTA,
+          'mothballed.md',
+          { name: 'Mothballed', body: 'Edited while archived.' },
+          '?includeArchived=true',
+        ),
+      readBack: { scope: 'project', file: 'mothballed.md' },
+    },
+    {
+      name: 'general_list_hides_archived',
+      prep: () => seedScenario('general', 'mothballed.md', ARCHIVED_FILE),
+      run: () => generalCollection('GET'),
+    },
+    {
+      name: 'general_list_shows_archived_with_the_flag',
+      prep: () => seedScenario('general', 'mothballed.md', ARCHIVED_FILE),
+      run: () => generalCollection('GET', undefined, '?includeArchived=true'),
+    },
+    {
+      name: 'general_create_archived_writes_the_flag',
+      run: () =>
+        generalCollection('POST', {
+          filename: 'Put Away',
+          name: 'Put Away',
+          archived: true,
+          body: 'Stored.',
+        }),
+      readBack: { scope: 'general', file: 'Put Away.md' },
+    },
+    {
+      name: 'general_update_omitting_archived_preserves_it',
+      prep: () => seedScenario('general', 'mothballed.md', ARCHIVED_FILE),
+      run: () =>
+        generalItem(
+          'PUT',
+          'mothballed.md',
+          { name: 'Mothballed', body: 'Edited while archived.' },
+          '?includeArchived=true',
+        ),
+      readBack: { scope: 'general', file: 'mothballed.md' },
+    },
+
     // --- General (aurora[default] + dusk[default] → the default-conflict) ---
     { name: 'general_list', run: () => generalCollection('GET') },
     { name: 'general_get', run: () => generalItem('GET', 'aurora.md') },

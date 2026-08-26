@@ -71,8 +71,15 @@
     "title": "the scholar",
     "firstMessage": "Well met, traveller.",
     "talkativeness": 0.7,
-    "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
-    "aliases": ["Eva", "The Scholar"],
+    "pronouns": {
+      "subject": "she",
+      "object": "her",
+      "possessive": "hers"
+    },
+    "aliases": [
+      "Eva",
+      "The Scholar"
+    ],
     "physicalDescription": null,
     "systemPrompts": [
       {
@@ -114,24 +121,121 @@
     "coreWhisperEnabled": null,
     "canBeCarina": null,
     "partnerLinks": [
-      { "partnerId": "b0000000-0000-4000-8000-000000000001", "isDefault": true }
+      {
+        "partnerId": "b0000000-0000-4000-8000-000000000001",
+        "isDefault": true
+      }
     ],
-    "tags": ["7a000000-0000-4000-8000-0000000000a1"],
+    "tags": [
+      "7a000000-0000-4000-8000-0000000000a1"
+    ],
     "avatarOverrides": []
   },
   "ops": [
-    { "op": "addSystemPrompt", "name": "Combat", "content": "Fight with wit, not fists.", "isDefault": true },
-    { "op": "addSystemPrompt", "name": "Sleuth", "content": "Deduce quietly; reveal nothing.", "isDefault": false },
-    { "op": "updateSystemPrompt", "targetName": "Combat", "data": { "name": "Tactician", "content": "Plan three moves ahead." } },
-    { "op": "setDefaultSystemPrompt", "targetName": "Sleuth" },
-    { "op": "deleteSystemPrompt", "targetName": "Sleuth" },
-    { "op": "addScenario", "title": "Rooftop Chase", "content": "Across slick tiles under a bruised sky." },
-    { "op": "updateScenario", "targetTitle": "The Dim Tavern", "data": { "content": "Now with thunder rattling the casements." } },
-    { "op": "removeScenario", "targetTitle": "Rooftop Chase" },
-    { "op": "addPartnerLink", "partnerId": "b0000000-0000-4000-8000-000000000002", "isDefault": false },
-    { "op": "removePartnerLink", "partnerId": "b0000000-0000-4000-8000-000000000001" },
-    { "op": "setFavorite", "value": false },
-    { "op": "setControlledBy", "value": "user" },
-    { "op": "setCanBeCarina", "value": true }
+    {
+      "op": "addSystemPrompt",
+      "name": "Combat",
+      "content": "Fight with wit, not fists.",
+      "isDefault": true
+    },
+    {
+      "op": "addSystemPrompt",
+      "name": "Sleuth",
+      "content": "Deduce quietly; reveal nothing.",
+      "isDefault": false
+    },
+    {
+      "op": "updateSystemPrompt",
+      "targetName": "Combat",
+      "data": {
+        "name": "Tactician",
+        "content": "Plan three moves ahead."
+      }
+    },
+    {
+      "op": "setDefaultSystemPrompt",
+      "targetName": "Sleuth"
+    },
+    {
+      "op": "deleteSystemPrompt",
+      "targetName": "Sleuth"
+    },
+    {
+      "op": "addScenario",
+      "title": "Rooftop Chase",
+      "content": "Across slick tiles under a bruised sky."
+    },
+    {
+      "op": "updateScenario",
+      "targetTitle": "The Dim Tavern",
+      "data": {
+        "content": "Now with thunder rattling the casements."
+      }
+    },
+    {
+      "op": "addScenario",
+      "title": "Mothballed",
+      "content": "A scene put away.",
+      "archived": true
+    },
+    {
+      "op": "addScenario",
+      "title": "Explicitly Active",
+      "content": "Not archived.",
+      "archived": false
+    },
+    {
+      "op": "updateScenario",
+      "targetTitle": "The Dim Tavern",
+      "data": {
+        "archived": true
+      }
+    },
+    {
+      "op": "updateScenario",
+      "targetTitle": "The Dim Tavern",
+      "data": {
+        "content": "Edited while archived."
+      }
+    },
+    {
+      "op": "updateScenario",
+      "targetTitle": "The Dim Tavern",
+      "data": {
+        "archived": false
+      }
+    },
+    {
+      "op": "updateScenario",
+      "targetTitle": "Mothballed",
+      "data": {
+        "title": "Mothballed II"
+      }
+    },
+    {
+      "op": "removeScenario",
+      "targetTitle": "Rooftop Chase"
+    },
+    {
+      "op": "addPartnerLink",
+      "partnerId": "b0000000-0000-4000-8000-000000000002",
+      "isDefault": false
+    },
+    {
+      "op": "removePartnerLink",
+      "partnerId": "b0000000-0000-4000-8000-000000000001"
+    },
+    {
+      "op": "setFavorite",
+      "value": false
+    },
+    {
+      "op": "setControlledBy",
+      "value": "user"
+    },
+    {
+      "op": "setCanBeCarina",
+      "value": true
+    }
   ]
 }

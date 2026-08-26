@@ -96,6 +96,9 @@ struct ArchetypeBody {
     is_default: Option<bool>,
     component_item_ids: Option<Vec<String>>,
     replace: Option<bool>,
+    /// v4 `d25dacc1`'s `archived: z.boolean().optional()` — archive (`true`) or
+    /// restore (`false`); omitting it leaves the current state alone.
+    archived: Option<bool>,
 }
 
 /// Zod PASS/FAIL port of v4 `createArchetypeSchema` (`require_all = true`) and
@@ -171,6 +174,14 @@ fn parse_archetype_body(body: &Value, require_all: bool) -> Result<ArchetypeBody
     };
     let is_default = boolean("isDefault")?;
     let replace = boolean("replace")?;
+    // v4 `d25dacc1` added `archived` to the UPDATE schema only; the CREATE
+    // schema never gained it, so an `archived` key on a create is a stripped
+    // unknown key (Zod's default object mode), not a refusal.
+    let archived = if require_all {
+        None
+    } else {
+        boolean("archived")?
+    };
 
     let component_item_ids = match obj.get("componentItemIds") {
         None => None,
@@ -196,6 +207,7 @@ fn parse_archetype_body(body: &Value, require_all: bool) -> Result<ArchetypeBody
         is_default,
         component_item_ids,
         replace,
+        archived,
     })
 }
 
@@ -205,10 +217,15 @@ fn parse_archetype_body(body: &Value, require_all: bool) -> Result<ArchetypeBody
 
 /// v4 `GET /api/v1/wardrobe` — `repos.wardrobe.findArchetypes()` (non-archived,
 /// General only — the route has no project context) → `{wardrobeItems}`.
-pub fn wardrobe_list(db: &Db) -> Response {
+pub fn wardrobe_list(db: &Db, include_archived: bool) -> Response {
     let out = read_main_mount(db, |main, mount| {
         let docs = DocMountDocumentsRepository::new(mount);
-        archetype_wardrobe::find_archetypes(main, &docs, false, &SharedWardrobeTiers::none())
+        archetype_wardrobe::find_archetypes(
+            main,
+            &docs,
+            include_archived,
+            &SharedWardrobeTiers::none(),
+        )
     });
     match out {
         Ok(items) => Response::Wardrobe(json!({ "wardrobeItems": items })),
@@ -305,7 +322,7 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
         Ok(p) => p,
         Err(()) => return bad_request("Validation error"),
     };
-    let patch = WardrobePatch {
+    let mut patch = WardrobePatch {
         title: parsed.title,
         types: parsed.types,
         component_item_ids: parsed.component_item_ids,
@@ -316,6 +333,7 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
         replace: parsed.replace,
         archived_at: None,
     };
+    let archived = parsed.archived;
 
     let out = with_both_conns(db, move |main, mount| {
         let docs = DocMountDocumentsRepository::new(mount);
@@ -333,6 +351,19 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
         );
         if !exists {
             return Ok(Err(not_found("Archetype wardrobe item")));
+        }
+        // v4 `d25dacc1`: the General route reads the ALREADY-LOADED `existing`.
+        if let Some(a) = archived {
+            if let Some(v) = crate::wardrobe::archived_patch(
+                existing
+                    .as_ref()
+                    .and_then(|i| i.get("archivedAt"))
+                    .and_then(Value::as_str),
+                a,
+                &crate::clock::now_iso(),
+            ) {
+                patch.archived_at = Some(v);
+            }
         }
         let links = DocMountFileLinksRepository::new(mount);
         match update_vault_wardrobe_item(main, &links, &docs, &iid, &patch, None) {

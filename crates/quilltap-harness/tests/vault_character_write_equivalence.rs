@@ -13,6 +13,17 @@
 //! id-map (so document.fileId, link.fileId/folderId/mountPointId, folder.parentId
 //! verify by relationship). The store `mountPointId` is the one pinned id.
 //!
+//! [P4.D120 / v4 `d25dacc1`] The scenario corpus now carries a DESCRIBED
+//! scenario and an ARCHIVED one, and a third op omits the archived entry:
+//!   * the description round-trip — v5 measurably HAD v4's bug (parsed on read,
+//!     never written back, silently dropped by the next projection); reverting
+//!     `build_scenario_file` to its one-line form reddens this family;
+//!   * `archived: true` rides the array so the projection sweep does NOT delete
+//!     the file (op 2);
+//!   * the FAILURE shape (op 3): a pre-filtered array and the file IS swept —
+//!     which is why `character.scenarios` must keep archived entries and the
+//!     filtering must live at the API boundary.
+//!
 //! Banks: a full create (properties.json, the five markdown files,
 //! physical-description.md + physical-prompts.json, a Prompts/ filename collision
 //! `Default Voice.md`/`Default Voice-1.md`, two Scenarios), then a reproject that

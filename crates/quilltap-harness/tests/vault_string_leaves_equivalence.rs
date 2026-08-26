@@ -62,6 +62,11 @@ enum Row {
         id: String,
         title: String,
         content: String,
+        /// [P4.D120 / v4 `d25dacc1`] the frontmatter inputs.
+        #[serde(default)]
+        description: Option<String>,
+        #[serde(default)]
+        archived: Option<bool>,
         out: String,
     },
 }
@@ -108,10 +113,17 @@ fn vault_string_leaves_match_oracle() {
                 id,
                 title,
                 content,
+                description,
+                archived,
                 out,
             } => {
                 assert_eq!(
-                    build_scenario_file(&title, &content),
+                    build_scenario_file(
+                        &title,
+                        &content,
+                        description.as_deref(),
+                        archived.unwrap_or(false)
+                    ),
                     out,
                     "[{id}] scenario file"
                 );
@@ -119,6 +131,6 @@ fn vault_string_leaves_match_oracle() {
         }
         n += 1;
     }
-    assert!(n >= 24, "expected the full corpus, saw {n} rows");
+    assert!(n >= 31, "expected the full corpus, saw {n} rows");
     eprintln!("OK: vault string leaves matched oracle on {n} cases.");
 }

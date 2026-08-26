@@ -47,6 +47,10 @@ interface CaseSpec {
   params?: (id: string) => Record<string, string>;
   query?: (id: string) => string;
   body: unknown;
+  /** [P4.D120] A first call with this body, on the SAME copy, before `body` —
+   *  the only way to reach "update an ALREADY-archived scenario" when every
+   *  case starts from a fresh fixture. */
+  preBody?: unknown;
 }
 
 function mockRequest(url: string, method: string, body: unknown): unknown {
@@ -129,6 +133,9 @@ async function runCase(
     const params = c.params ? c.params(targetId) : { id: ARIA };
     const mod = (await import(c.module)) as Record<string, (...a: unknown[]) => Promise<unknown>>;
     const handler = mod[c.method];
+    if (c.preBody !== undefined) {
+      await handler(mockRequest(url, c.method, c.preBody), { params: Promise.resolve(params) });
+    }
     const response = (await handler(mockRequest(url, c.method, c.body), {
       params: Promise.resolve(params),
     })) as { status: number; json: () => Promise<unknown> };
@@ -175,6 +182,18 @@ async function main(): Promise<void> {
     { name: 'scenario_create', module: SCENARIOS, method: 'POST', body: { title: 'Epilogue', content: 'The voyage ends.' } },
     { name: 'scenario_update', module: SCENARIOS, method: 'PUT', target: { kind: 'scenario', byName: 'Prologue' }, query: (id) => `scenarioId=${id}`, body: { content: 'A revised prologue.' } },
     { name: 'scenario_delete', module: SCENARIOS, method: 'DELETE', target: { kind: 'scenario', byName: 'Interlude' }, query: (id) => `scenarioId=${id}`, body: {} },
+    // ── P4.D120 / v4 `d25dacc1` — the archived tri-state on the RETURNED
+    //    object. The DB-level dump can't see it (a vault-linked character keeps
+    //    an empty `scenarios` column and `buildScenarioFile` never emits
+    //    `archived: false`), so the RESPONSE is where the key's presence lives.
+    { name: 'scenario_create_archived', module: SCENARIOS, method: 'POST', body: { title: 'Mothballed', content: 'A scene put away.', archived: true } },
+    { name: 'scenario_create_explicitly_active', module: SCENARIOS, method: 'POST', body: { title: 'Explicit', content: 'Not archived.', archived: false } },
+    { name: 'scenario_update_archives', module: SCENARIOS, method: 'PUT', target: { kind: 'scenario', byName: 'Prologue' }, query: (id) => `scenarioId=${id}`, body: { archived: true } },
+    { name: 'scenario_update_restores', module: SCENARIOS, method: 'PUT', target: { kind: 'scenario', byName: 'Prologue' }, query: (id) => `scenarioId=${id}`, body: { archived: false } },
+    // Archive FIRST, then edit without mentioning `archived`: the flag must
+    // survive. Without the pre-call every case starts from an ACTIVE Prologue,
+    // so "preserve" and "default to false" are indistinguishable.
+    { name: 'scenario_update_omitting_archived', module: SCENARIOS, method: 'PUT', target: { kind: 'scenario', byName: 'Prologue' }, query: (id) => `scenarioId=${id}`, preBody: { archived: true }, body: { content: 'Untouched flag.' } },
     { name: 'plugin_upsert_existing', module: PLUGIN, method: 'POST', body: { pluginName: 'com.example.notes', data: { color: 'crimson' } } },
     { name: 'plugin_upsert_new', module: PLUGIN, method: 'POST', body: { pluginName: 'com.example.flags', data: { beta: true } } },
     { name: 'plugin_delete', module: PLUGIN_ITEM, method: 'DELETE', target: { kind: 'plugin', byName: 'com.example.notes' }, params: (id) => ({ id: ARIA, pluginName: id }), body: {} },

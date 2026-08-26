@@ -100,6 +100,14 @@ pub struct SystemPromptWrite {
 pub struct ScenarioWrite {
     pub title: String,
     pub content: String,
+    /// v4 `d25dacc1` round-trips the `description` frontmatter — it was parsed on
+    /// read but never written back, so the next projection dropped it.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// `archived: true` rides the projection so the sweep does not delete the
+    /// file (the array IS the folder). Omission means active.
+    #[serde(default)]
+    pub archived: bool,
 }
 
 /// The managed-field inputs `writeCharacterVaultManagedFields` reads off the raw
@@ -347,7 +355,7 @@ pub fn write_character_vault_managed_fields(
         |s| {
             (
                 format!("{}.md", sanitize_file_name(&s.title)),
-                build_scenario_file(&s.title, &s.content),
+                build_scenario_file(&s.title, &s.content, s.description.as_deref(), s.archived),
             )
         },
         // v4 passes no `preserveFileNames` here: the managed-fields

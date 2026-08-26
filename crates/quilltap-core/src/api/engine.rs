@@ -1809,21 +1809,29 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::CharacterScenarioList { character_id } => match self.ready_db() {
-                Ok(db) => {
-                    super::characters::character_scenario_list(&db, SINGLE_USER_ID, &character_id)
-                }
+            Request::CharacterScenarioList {
+                character_id,
+                include_archived,
+            } => match self.ready_db() {
+                Ok(db) => super::characters::character_scenario_list(
+                    &db,
+                    SINGLE_USER_ID,
+                    &character_id,
+                    include_archived,
+                ),
                 Err(r) => r,
             },
             Request::CharacterWardrobeList {
                 character_id,
                 scope,
+                include_archived,
             } => match self.ready_db() {
                 Ok(db) => super::characters::character_wardrobe_list(
                     &db,
                     SINGLE_USER_ID,
                     &character_id,
                     scope.as_deref(),
+                    include_archived,
                 ),
                 Err(r) => r,
             },
@@ -2115,6 +2123,7 @@ impl CoreEngine {
                 character_id,
                 title,
                 content,
+                archived,
             } => match self.ready_db() {
                 Ok(db) => {
                     super::characters::character_scenario_create(
@@ -2123,6 +2132,7 @@ impl CoreEngine {
                         &character_id,
                         &title,
                         &content,
+                        archived,
                     )
                     .await
                 }
@@ -2133,6 +2143,7 @@ impl CoreEngine {
                 scenario_id,
                 title,
                 content,
+                archived,
             } => match self.ready_db() {
                 Ok(db) => {
                     super::characters::character_scenario_update(
@@ -2142,6 +2153,7 @@ impl CoreEngine {
                         &scenario_id,
                         title.as_deref(),
                         content.as_deref(),
+                        archived,
                     )
                     .await
                 }
@@ -2429,8 +2441,13 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // --- Groups scenarios (P4.6n) -----------------------------------
-            Request::GroupScenarioList { group_id } => match self.ready_db() {
-                Ok(db) => super::groups::group_scenario_list(&db, &group_id).await,
+            Request::GroupScenarioList {
+                group_id,
+                include_archived,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_scenario_list(&db, &group_id, include_archived).await
+                }
                 Err(r) => r,
             },
             Request::GroupScenarioCreate { group_id, scenario } => match self.ready_db() {
@@ -2448,10 +2465,17 @@ impl CoreEngine {
                 group_id,
                 scenario_path,
                 scenario,
+                include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::groups::group_scenario_update(&db, &group_id, &scenario_path, scenario)
-                        .await
+                    super::groups::group_scenario_update(
+                        &db,
+                        &group_id,
+                        &scenario_path,
+                        scenario,
+                        include_archived,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -2459,6 +2483,7 @@ impl CoreEngine {
                 group_id,
                 scenario_path,
                 new_filename,
+                include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
                     super::groups::group_scenario_rename(
@@ -2466,6 +2491,7 @@ impl CoreEngine {
                         &group_id,
                         &scenario_path,
                         &new_filename,
+                        include_archived,
                     )
                     .await
                 }
@@ -2474,19 +2500,34 @@ impl CoreEngine {
             Request::GroupScenarioDelete {
                 group_id,
                 scenario_path,
+                include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::groups::group_scenario_delete(&db, &group_id, &scenario_path).await
+                    super::groups::group_scenario_delete(
+                        &db,
+                        &group_id,
+                        &scenario_path,
+                        include_archived,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
-            Request::GroupScenariosUnion { character_ids } => match self.ready_db() {
-                Ok(db) => super::groups::group_scenarios_union(&db, character_ids).await,
+            Request::GroupScenariosUnion {
+                character_ids,
+                include_archived,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_scenarios_union(&db, character_ids, include_archived).await
+                }
                 Err(r) => r,
             },
             // --- Group wardrobe CRUD (P4.D112) ------------------------------
-            Request::GroupWardrobeList { group_id } => match self.ready_db() {
-                Ok(db) => super::groups::group_wardrobe_list(&db, &group_id),
+            Request::GroupWardrobeList {
+                group_id,
+                include_archived,
+            } => match self.ready_db() {
+                Ok(db) => super::groups::group_wardrobe_list(&db, &group_id, include_archived),
                 Err(r) => r,
             },
             Request::GroupWardrobeInstructionsGet { group_id } => match self.ready_db() {
@@ -2527,8 +2568,8 @@ impl CoreEngine {
             },
 
             // --- General (instance-wide) scenarios (P4.6n) -------------------
-            Request::ScenarioList => match self.ready_db() {
-                Ok(db) => super::scenarios::scenario_list(&db).await,
+            Request::ScenarioList { include_archived } => match self.ready_db() {
+                Ok(db) => super::scenarios::scenario_list(&db, include_archived).await,
                 Err(r) => r,
             },
             Request::ScenarioCreate { scenario } => match self.ready_db() {
@@ -2542,19 +2583,42 @@ impl CoreEngine {
             Request::ScenarioUpdate {
                 scenario_path,
                 scenario,
+                include_archived,
             } => match self.ready_db() {
-                Ok(db) => super::scenarios::scenario_update(&db, scenario_path, scenario).await,
+                Ok(db) => {
+                    super::scenarios::scenario_update(
+                        &db,
+                        scenario_path,
+                        scenario,
+                        include_archived,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::ScenarioRename {
                 scenario_path,
                 new_filename,
+                include_archived,
             } => match self.ready_db() {
-                Ok(db) => super::scenarios::scenario_rename(&db, scenario_path, new_filename).await,
+                Ok(db) => {
+                    super::scenarios::scenario_rename(
+                        &db,
+                        scenario_path,
+                        new_filename,
+                        include_archived,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
-            Request::ScenarioDelete { scenario_path } => match self.ready_db() {
-                Ok(db) => super::scenarios::scenario_delete(&db, scenario_path).await,
+            Request::ScenarioDelete {
+                scenario_path,
+                include_archived,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::scenarios::scenario_delete(&db, scenario_path, include_archived).await
+                }
                 Err(r) => r,
             },
 
@@ -3027,8 +3091,13 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::ProjectScenarioList { project_id } => match self.ready_db() {
-                Ok(db) => super::projects::project_scenario_list(&db, &project_id).await,
+            Request::ProjectScenarioList {
+                project_id,
+                include_archived,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_scenario_list(&db, &project_id, include_archived).await
+                }
                 Err(r) => r,
             },
             Request::ProjectScenarioCreate {
@@ -3053,6 +3122,7 @@ impl CoreEngine {
                 project_id,
                 scenario_path,
                 scenario,
+                include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
                     super::projects::project_scenario_update(
@@ -3060,6 +3130,7 @@ impl CoreEngine {
                         &project_id,
                         &scenario_path,
                         scenario,
+                        include_archived,
                     )
                     .await
                 }
@@ -3069,6 +3140,7 @@ impl CoreEngine {
                 project_id,
                 scenario_path,
                 new_filename,
+                include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
                     super::projects::project_scenario_rename(
@@ -3076,6 +3148,7 @@ impl CoreEngine {
                         &project_id,
                         &scenario_path,
                         &new_filename,
+                        include_archived,
                     )
                     .await
                 }
@@ -3084,14 +3157,26 @@ impl CoreEngine {
             Request::ProjectScenarioDelete {
                 project_id,
                 scenario_path,
+                include_archived,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::projects::project_scenario_delete(&db, &project_id, &scenario_path).await
+                    super::projects::project_scenario_delete(
+                        &db,
+                        &project_id,
+                        &scenario_path,
+                        include_archived,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
-            Request::ProjectWardrobeList { project_id } => match self.ready_db() {
-                Ok(db) => super::projects::project_wardrobe_list(&db, &project_id),
+            Request::ProjectWardrobeList {
+                project_id,
+                include_archived,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_wardrobe_list(&db, &project_id, include_archived)
+                }
                 Err(r) => r,
             },
             Request::ProjectWardrobeInstructionsGet { project_id } => match self.ready_db() {
@@ -4603,8 +4688,8 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::WardrobeList => match self.ready_db() {
-                Ok(db) => super::wardrobe::wardrobe_list(&db),
+            Request::WardrobeList { include_archived } => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_list(&db, include_archived),
                 Err(r) => r,
             },
             Request::WardrobeInstructionsGet => match self.ready_db() {

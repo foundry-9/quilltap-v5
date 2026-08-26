@@ -54,6 +54,19 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
     }
 }
 
+/// v4 `readIncludeArchived` (`lib/api/query-params.ts`, `d25dacc1`): the
+/// `?includeArchived` opt-in, accepted ONLY as the literal `true` or the bare
+/// valueless spelling. `1`, `TRUE`, `yes` all mean "no" — one reader so the
+/// accepted spelling cannot drift between the routes that honour it, and it
+/// falls CLOSED on anything else (hiding archived entries is always the safe
+/// answer to "were we asked?").
+pub(crate) fn read_include_archived(query: &HashMap<String, String>) -> bool {
+    matches!(
+        query.get("includeArchived").map(String::as_str),
+        Some("true") | Some("")
+    )
+}
+
 /// Parse a JSON body, mapping a failure to the route-specific v4 arm.
 fn parse_body(body: &str, on_bad_json: &str) -> Result<Value, Box<AxumResponse>> {
     serde_json::from_str::<Value>(body)
@@ -74,7 +87,9 @@ pub async fn wardrobe_get(
     let req = if query.get("action").map(String::as_str) == Some("instructions") {
         CoreRequest::WardrobeInstructionsGet
     } else {
-        CoreRequest::WardrobeList
+        CoreRequest::WardrobeList {
+            include_archived: read_include_archived(&query),
+        }
     };
     match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),

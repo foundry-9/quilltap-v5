@@ -368,6 +368,7 @@ pub async fn characters_wardrobe_get(
         quilltap_core::api::Request::CharacterWardrobeList {
             character_id: id,
             scope: query.get("scope").cloned(),
+            include_archived: crate::wardrobe_routes::read_include_archived(&query),
         }
     };
     match crate::text_replacements_routes::dispatch_core(&state, req).await {

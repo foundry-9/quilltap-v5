@@ -41,6 +41,9 @@ use crate::markdown::{body_after, parse_frontmatter};
 /// `'Scenarios'` in v4).
 pub const SCENARIOS_FOLDER: &str = "Scenarios";
 
+/// **Deliberately ignores `archived`** (v4 `d25dacc1`) — archiving hides a
+/// scenario from the menus, it does not break the chats that already chose it.
+///
 /// v4 `resolveScenarioBody` (`scenarios-common.ts:195`): resolve a scenario's
 /// body by `<folderName>/<filename>.md` path. Accepts a bare filename or a full
 /// relative path. Returns `None` when the file is missing or has no usable body.
@@ -140,6 +143,10 @@ pub struct ParsedScenario {
     pub is_default: bool,
     /// True when the file's own frontmatter set `isDefault: true`.
     pub raw_is_default: bool,
+    /// True when the file's frontmatter set `archived: true` (v4 `d25dacc1`).
+    /// Absence means active — an archived file is written with `archived: true`,
+    /// an active one omits the key entirely.
+    pub archived: bool,
     /// Scenario body — content after frontmatter, trimmed.
     pub body: String,
     pub last_modified: String,
@@ -192,6 +199,29 @@ impl std::fmt::Display for ScenarioWriteError {
 /// file. Returns `None` when the file has no usable body (empty bodies are
 /// dropped). `rawIsDefault` reflects the file's own frontmatter; `isDefault` is
 /// set to `rawIsDefault` here and resolved against siblings by the caller.
+/// Coerce a frontmatter `archived` value (v4 `isArchivedFrontmatter`). Truthy
+/// ONLY for a real `true` or the string `"true"` — the same shape v4 reads
+/// `isDefault` with. Absence means active.
+fn is_archived_frontmatter(data: Option<&Value>) -> bool {
+    let Some(Value::Object(map)) = data else {
+        return false;
+    };
+    match map.get("archived") {
+        Some(Value::Bool(true)) => true,
+        Some(Value::String(s)) => s == "true",
+        _ => false,
+    }
+}
+
+/// v4 `isScenarioContentArchived` — read the `archived` flag straight off raw
+/// file content. The PUT handlers use this to PRESERVE the flag when the request
+/// body doesn't mention `archived`: the serializer rewrites the whole file, so
+/// an unmentioned flag would otherwise be silently dropped and the scenario
+/// would un-archive itself on the next edit.
+pub fn is_scenario_content_archived(content: &str) -> bool {
+    is_archived_frontmatter(parse_frontmatter(content).data.as_ref())
+}
+
 pub fn parse_scenario_doc(doc: &VaultFolderDoc) -> Option<ParsedScenario> {
     let parsed = parse_frontmatter(&doc.content);
 
@@ -218,6 +248,7 @@ pub fn parse_scenario_doc(doc: &VaultFolderDoc) -> Option<ParsedScenario> {
         // like a bug in the picker and is not one.
         raw_is_default = data.get("isDefault") == Some(&Value::Bool(true));
     }
+    let archived = is_archived_frontmatter(parsed.data.as_ref());
 
     // v4 `content.slice(parsed.bodyStartOffset).trim()`.
     let body = js_trim(body_after(&doc.content, &parsed)).to_string();
@@ -240,6 +271,7 @@ pub fn parse_scenario_doc(doc: &VaultFolderDoc) -> Option<ParsedScenario> {
         description: frontmatter_description,
         is_default: raw_is_default,
         raw_is_default,
+        archived,
         body,
         last_modified: doc.last_modified.clone(),
         created_at: doc.created_at.clone(),
@@ -257,6 +289,7 @@ pub fn list_scenarios_in_folder(
     mount: &Connection,
     mount_point_id: &str,
     folder_name: &str,
+    include_archived: bool,
 ) -> Result<ListScenariosResult, DbError> {
     let repo = DocMountDocumentsRepository::new(mount);
     let mut docs = repo.find_many_by_mount_points_in_folder(
@@ -271,6 +304,11 @@ pub fn list_scenarios_in_folder(
     let mut scenarios: Vec<ParsedScenario> = Vec::new();
     for doc in &docs {
         if let Some(s) = parse_scenario_doc(doc) {
+            // v4 `d25dacc1`: archived files are excluded from the list unless
+            // the caller opts in.
+            if s.archived && !include_archived {
+                continue;
+            }
             scenarios.push(s);
         }
     }
@@ -279,6 +317,14 @@ pub fn list_scenarios_in_folder(
     let mut default_claimed = false;
     let mut offenders: Vec<String> = Vec::new();
     for s in &mut scenarios {
+        // An archived scenario never wins — not even when it IS being listed.
+        // `raw_is_default` is untouched (the file's own claim still surfaces),
+        // and it never joins `offenders`, so it cannot be named in the warning
+        // either.
+        if s.archived {
+            s.is_default = false;
+            continue;
+        }
         if s.raw_is_default {
             if !default_claimed {
                 default_claimed = true;
@@ -398,6 +444,7 @@ pub fn build_scenario_file_content(
     name: Option<&str>,
     description: Option<&str>,
     is_default: bool,
+    archived: bool,
     body: &str,
 ) -> String {
     let mut frontmatter: Map<String, Value> = Map::new();
@@ -415,6 +462,11 @@ pub fn build_scenario_file_content(
     }
     if is_default {
         frontmatter.insert("isDefault".into(), Value::Bool(true));
+    }
+    // v4 `d25dacc1`: omission means active — NEVER write `archived: false`.
+    // The emitted key order is `name, description, isDefault, archived`.
+    if archived {
+        frontmatter.insert("archived".into(), Value::Bool(true));
     }
 
     if frontmatter.is_empty() {
@@ -568,12 +620,12 @@ mod tests {
     fn build_content_bare_body_when_no_frontmatter() {
         // Empty name/description + isDefault false → bare body, no `---`.
         assert_eq!(
-            build_scenario_file_content(None, None, false, "The tale begins."),
+            build_scenario_file_content(None, None, false, false, "The tale begins."),
             "The tale begins."
         );
         // Whitespace-only name is treated as empty (js_trim).
         assert_eq!(
-            build_scenario_file_content(Some("   "), None, false, "body"),
+            build_scenario_file_content(Some("   "), None, false, false, "body"),
             "body"
         );
     }
@@ -584,6 +636,7 @@ mod tests {
             Some("Prologue"),
             Some("Opening"),
             true,
+            false,
             "The tale begins.",
         );
         assert_eq!(

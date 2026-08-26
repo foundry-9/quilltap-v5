@@ -234,6 +234,7 @@ fn characters_subresources_match_oracle() {
             ARIA,
             "Epilogue",
             "The voyage ends.",
+            None,
         ));
         check("scenario_create", r, &mut failed);
     }
@@ -247,6 +248,7 @@ fn characters_subresources_match_oracle() {
             &id,
             None,
             Some("A revised prologue."),
+            None,
         ));
         check("scenario_update", r, &mut failed);
     }
@@ -289,6 +291,89 @@ fn characters_subresources_match_oracle() {
         check("plugin_delete", r, &mut failed);
     }
 
+    // ── P4.D120 / v4 `d25dacc1` — the archived tri-state on the RETURNED object.
+    // `characters_arrays_tier2` cannot see it: a vault-linked character keeps an
+    // EMPTY `scenarios` DB column and `build_scenario_file` never emits
+    // `archived: false`, so an intermediate `false` is invisible on disk. The
+    // RESPONSE is the only place the key's presence and value are observable —
+    // and v4's `updateScenario` genuinely DOES echo `archived: false` on a
+    // restore (measured, not reasoned about).
+    {
+        let db = fresh_db(&spec, "sc_arch");
+        let r = rt.block_on(characters::character_scenario_create(
+            &db,
+            &uid,
+            ARIA,
+            "Mothballed",
+            "A scene put away.",
+            Some(true),
+        ));
+        check("scenario_create_archived", r, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "sc_act");
+        let r = rt.block_on(characters::character_scenario_create(
+            &db,
+            &uid,
+            ARIA,
+            "Explicit",
+            "Not archived.",
+            Some(false),
+        ));
+        check("scenario_create_explicitly_active", r, &mut failed);
+    }
+    for (name, tag, pre_archived, archived, content) in [
+        (
+            "scenario_update_archives",
+            "su_arch",
+            None,
+            Some(true),
+            None,
+        ),
+        (
+            "scenario_update_restores",
+            "su_rest",
+            None,
+            Some(false),
+            None,
+        ),
+        // Archive FIRST, then edit without mentioning `archived`: without the
+        // pre-call the target is ACTIVE and "preserve" is indistinguishable from
+        // "default to false".
+        (
+            "scenario_update_omitting_archived",
+            "su_omit",
+            Some(true),
+            None,
+            Some("Untouched flag."),
+        ),
+    ] {
+        let db = fresh_db(&spec, tag);
+        let id = resolve_sub_id(&db, "scenarios", "title", "Prologue");
+        if let Some(pre) = pre_archived {
+            let _ = rt.block_on(characters::character_scenario_update(
+                &db,
+                &uid,
+                ARIA,
+                &id,
+                None,
+                None,
+                Some(pre),
+            ));
+        }
+        let r = rt.block_on(characters::character_scenario_update(
+            &db, &uid, ARIA, &id, None, content, archived,
+        ));
+        check(name, r, &mut failed);
+    }
+
+    // Every oracle row must have been DRIVEN — a case added to the corpus and
+    // not to this list would otherwise pass in silence.
+    assert_eq!(
+        oracle.len(),
+        14,
+        "the shared corpus grew; add the new case(s) to this list"
+    );
     assert!(
         failed.is_empty(),
         "characters-subresources FAILED: {failed:?}"

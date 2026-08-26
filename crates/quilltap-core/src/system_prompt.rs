@@ -60,11 +60,36 @@ pub struct SystemPromptEntry {
     pub is_default: bool,
 }
 
-/// A named scenario on a character (`character.scenarios[]`), only the `content`
-/// field the builder consumes (via `scenarios?.[0]?.content`).
+/// A named scenario on a character (`character.scenarios[]`), only the fields the
+/// builder consumes (v4 `firstActiveScenarioContent(character.scenarios)`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ScenarioEntry {
     pub content: String,
+    /// v4 `d25dacc1`: an archived scenario sitting at index 0 must not become the
+    /// scene by accident — the same rule as "an archived file can't be the
+    /// folder's default". Absence means active.
+    pub archived: bool,
+}
+
+/// v4 `activeScenarios` (`lib/characters/active-scenarios.ts`, `d25dacc1`) — the
+/// scenarios a picker or an implicit default may draw from.
+///
+/// `character.scenarios` deliberately CARRIES archived entries: the vault write
+/// overlay projects that array back over the `Scenarios/` folder and deletes
+/// every file the array doesn't contain, so a pre-filtered array would delete the
+/// archived files. Filtering happens at the point of use — here — and never at
+/// the vault read.
+pub fn active_scenarios(scenarios: &[ScenarioEntry]) -> impl Iterator<Item = &ScenarioEntry> {
+    scenarios.iter().filter(|s| !s.archived)
+}
+
+/// v4 `firstActiveScenarioContent` — the content of the character's first
+/// NON-archived scenario, or `""`.
+pub fn first_active_scenario_content(scenarios: &[ScenarioEntry]) -> String {
+    active_scenarios(scenarios)
+        .next()
+        .map(|s| s.content.clone())
+        .unwrap_or_default()
 }
 
 /// The subset of `character.physicalDescription` the identity stack reads.
@@ -148,7 +173,7 @@ pub struct UserCharacter {
 
 /// Build the template context v4's `buildIdentityStack`/`buildSystemPrompt`
 /// construct inline (six keys). `user` defaults to `"User"`; `scenario` is the
-/// caller override then `character.scenarios?.[0]?.content` then `''`.
+/// caller override then `firstActiveScenarioContent(character.scenarios)` then `''`.
 fn stack_template_context(
     character: &Character,
     user_character: Option<&UserCharacter>,
@@ -164,16 +189,16 @@ fn stack_template_context(
     ctx.set("user", user);
     ctx.set("description", or_empty(&character.description));
     ctx.set("personality", or_empty(&character.personality));
-    // scenarioText || character.scenarios?.[0]?.content || ''
+    // v4 `d25dacc1`: `scenarioText || firstActiveScenarioContent(character.scenarios)`
+    // — this ONE helper covers BOTH of v4's converted sites (`buildIdentityStack`
+    // and `buildSystemPrompt` build the same six-key context inline). v4's third
+    // converted site is the help-chat builder, which v5 has never ported (the
+    // standing `p4.9i2` bank).
     let scenario = scenario_text
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .or_else(|| {
-            character
-                .scenarios
-                .first()
-                .map(|s| s.content.clone())
-                .filter(|c| !c.is_empty())
+            Some(first_active_scenario_content(&character.scenarios)).filter(|c| !c.is_empty())
         })
         .unwrap_or_default();
     ctx.set("scenario", scenario);

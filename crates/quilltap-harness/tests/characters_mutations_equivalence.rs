@@ -1158,18 +1158,20 @@ fn characters_mutations_match_oracle() {
                 )
             })
             .expect("wardrobe write");
-        let titles = response_data(&characters::character_wardrobe_list(&db, &uid, FENN, None))
-            .get("wardrobeItems")
-            .and_then(Value::as_array)
-            .map(|a| {
-                let mut t: Vec<Value> = a
-                    .iter()
-                    .map(|i| i.get("title").cloned().unwrap_or(Value::Null))
-                    .collect();
-                t.sort_by_key(|v| v.as_str().unwrap_or("").to_string());
-                Value::Array(t)
-            })
-            .unwrap_or_else(|| Value::Array(vec![]));
+        let titles = response_data(&characters::character_wardrobe_list(
+            &db, &uid, FENN, None, false,
+        ))
+        .get("wardrobeItems")
+        .and_then(Value::as_array)
+        .map(|a| {
+            let mut t: Vec<Value> = a
+                .iter()
+                .map(|i| i.get("title").cloned().unwrap_or(Value::Null))
+                .collect();
+            t.sort_by_key(|v| v.as_str().unwrap_or("").to_string());
+            Value::Array(t)
+        })
+        .unwrap_or_else(|| Value::Array(vec![]));
         let got = norm(&json!({ "outcome": outcome, "titles": titles }));
         let wnt = norm(&oracle["archive_guard_wardrobe_write"]["body"]);
         if got != wnt {

@@ -627,14 +627,14 @@ fn load_group_scenarios_store(
 }
 
 /// v4 `GET /api/v1/groups/[id]/scenarios`.
-pub async fn group_scenario_list(db: &Db, group_id: &str) -> Response {
+pub async fn group_scenario_list(db: &Db, group_id: &str, include_archived: bool) -> Response {
     let gid = group_id.to_string();
     let out = with_both_conns(db, move |main, mount| {
         let mp = match ensure_group_scenarios_store(main, mount, &gid)? {
             Ok(mp) => mp,
             Err(r) => return Ok(Err(r)),
         };
-        Ok(Ok(scenarios_api::list_body(mount, &mp)?))
+        Ok(Ok(scenarios_api::list_body(mount, &mp, include_archived)?))
     })
     .await;
     match out {
@@ -696,6 +696,7 @@ pub async fn group_scenario_update(
     group_id: &str,
     scenario_path: &str,
     bag: Value,
+    include_archived: bool,
 ) -> Response {
     let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
         Ok(p) => p,
@@ -708,7 +709,7 @@ pub async fn group_scenario_update(
             Err(r) => return Ok(Err(r)),
         };
         Ok(
-            match scenarios_api::update_op(mount, &mp, &resolved, &bag) {
+            match scenarios_api::update_op(mount, &mp, &resolved, &bag, include_archived) {
                 Ok(inner) => inner,
                 Err(e) => Err(scenarios_api::write_err(e)),
             },
@@ -728,6 +729,7 @@ pub async fn group_scenario_rename(
     group_id: &str,
     scenario_path: &str,
     new_filename: &str,
+    include_archived: bool,
 ) -> Response {
     let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
         Ok(p) => p,
@@ -740,10 +742,12 @@ pub async fn group_scenario_rename(
             Ok(mp) => mp,
             Err(r) => return Ok(Err(r)),
         };
-        Ok(match scenarios_api::rename_op(mount, &mp, &resolved, &nf) {
-            Ok(inner) => inner,
-            Err(e) => Err(scenarios_api::write_err(e)),
-        })
+        Ok(
+            match scenarios_api::rename_op(mount, &mp, &resolved, &nf, include_archived) {
+                Ok(inner) => inner,
+                Err(e) => Err(scenarios_api::write_err(e)),
+            },
+        )
     })
     .await;
     match out {
@@ -754,7 +758,12 @@ pub async fn group_scenario_rename(
 }
 
 /// v4 `DELETE /api/v1/groups/[id]/scenarios/[scenarioPath]`.
-pub async fn group_scenario_delete(db: &Db, group_id: &str, scenario_path: &str) -> Response {
+pub async fn group_scenario_delete(
+    db: &Db,
+    group_id: &str,
+    scenario_path: &str,
+    include_archived: bool,
+) -> Response {
     let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
         Ok(p) => p,
         Err(r) => return r,
@@ -765,10 +774,12 @@ pub async fn group_scenario_delete(db: &Db, group_id: &str, scenario_path: &str)
             Ok(mp) => mp,
             Err(r) => return Ok(Err(r)),
         };
-        Ok(match scenarios_api::delete_op(mount, &mp, &resolved) {
-            Ok(inner) => inner,
-            Err(e) => Err(scenarios_api::write_err(e)),
-        })
+        Ok(
+            match scenarios_api::delete_op(mount, &mp, &resolved, include_archived) {
+                Ok(inner) => inner,
+                Err(e) => Err(scenarios_api::write_err(e)),
+            },
+        )
     })
     .await;
     match out {
@@ -784,7 +795,11 @@ pub async fn group_scenario_delete(db: &Db, group_id: &str, scenario_path: &str)
 /// (ICU4X en-US). Zero-scenario groups are skipped; per-group failures are
 /// caught + skipped (not fatal). The ONE sanctioned exception to Groups'
 /// per-responding-character isolation — chat-creation menu only.
-pub async fn group_scenarios_union(db: &Db, character_ids: Vec<String>) -> Response {
+pub async fn group_scenarios_union(
+    db: &Db,
+    character_ids: Vec<String>,
+    include_archived: bool,
+) -> Response {
     // Trim/drop empties (the query is comma-split upstream, but be faithful).
     let requested: Vec<String> = character_ids
         .into_iter()
@@ -837,6 +852,7 @@ pub async fn group_scenarios_union(db: &Db, character_ids: Vec<String>) -> Respo
                     mount,
                     &ensured.mount_point_id,
                     GROUP_SCENARIOS_FOLDER,
+                    include_archived,
                 )?;
                 if listed.scenarios.is_empty() {
                     return Ok(None);
@@ -994,6 +1010,10 @@ struct WardrobeFields {
     is_default: Option<bool>,
     component_item_ids: Option<Vec<String>>,
     replace: Option<bool>,
+    /// v4 `d25dacc1` extended `updateWardrobeSchema` (project + group) with
+    /// `archived: z.boolean().optional()`. `createWardrobeSchema` did NOT gain
+    /// it, so on a create the key is a stripped unknown, not a refusal.
+    archived: Option<bool>,
 }
 
 /// Parse the shared field bag. `partial` = the update schema (every field
@@ -1058,6 +1078,7 @@ fn parse_wardrobe_fields(body: &Value, partial: bool) -> Result<WardrobeFields, 
     };
     let is_default = boolean("isDefault")?;
     let replace = boolean("replace")?;
+    let archived = if partial { boolean("archived")? } else { None };
 
     // componentItemIds: z.array(z.string()).optional().
     let component_item_ids = match get("componentItemIds") {
@@ -1084,6 +1105,7 @@ fn parse_wardrobe_fields(body: &Value, partial: bool) -> Result<WardrobeFields, 
         is_default,
         component_item_ids,
         replace,
+        archived,
     })
 }
 
@@ -1155,7 +1177,7 @@ fn resolve_group_wardrobe_mount(
 
 /// v4 GET `/groups/[id]/wardrobe`: `{ mountPointId, wardrobeItems }` (include
 /// archived).
-pub fn group_wardrobe_list(db: &Db, group_id: &str) -> Response {
+pub fn group_wardrobe_list(db: &Db, group_id: &str, include_archived: bool) -> Response {
     let gid = group_id.to_string();
     let out = read_both(db, move |main, mount| {
         let mp = match ensure_group_wardrobe_mount(main, mount, &gid)? {
@@ -1163,7 +1185,10 @@ pub fn group_wardrobe_list(db: &Db, group_id: &str) -> Response {
             Err(r) => return Ok(Err(r)),
         };
         let docs = DocMountDocumentsRepository::new(mount);
-        let items = archetype_wardrobe::read_group_wardrobe(&docs, &mp, true)?;
+        // v4 `d25dacc1` replaced this route's hard-coded `true` with the
+        // query param: the archived filter is SERVER-side now, and the client
+        // pass it used to rely on is gone.
+        let items = archetype_wardrobe::read_group_wardrobe(&docs, &mp, include_archived)?;
         Ok(Ok((mp, items)))
     });
     match out {
@@ -1281,7 +1306,7 @@ pub async fn group_wardrobe_update(
         let Ok(fields) = parse_wardrobe_fields(&body, true) else {
             return Ok(Err(bad_request(VALIDATION_ERROR)));
         };
-        let patch = WardrobePatch {
+        let mut patch = WardrobePatch {
             title: fields.title,
             types: fields.types,
             component_item_ids: fields.component_item_ids,
@@ -1294,6 +1319,25 @@ pub async fn group_wardrobe_update(
         };
         let links = DocMountFileLinksRepository::new(mount);
         let docs = DocMountDocumentsRepository::new(mount);
+        // v4 `d25dacc1`: an EXTRA O(folder) read, but ONLY when `archived` is in
+        // the body — which is why the new `Group wardrobe item not found` 404 is
+        // unreachable without the key.
+        if let Some(a) = fields.archived {
+            let items = archetype_wardrobe::read_group_wardrobe(&docs, &mp, true)?;
+            let Some(current) = items
+                .iter()
+                .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
+            else {
+                return Ok(Err(not_found("Group wardrobe item")));
+            };
+            if let Some(v) = crate::wardrobe::archived_patch(
+                current.get("archivedAt").and_then(Value::as_str),
+                a,
+                &crate::clock::now_iso(),
+            ) {
+                patch.archived_at = Some(v);
+            }
+        }
         match update_project_wardrobe_item(main, &links, &docs, &mp, &iid, &patch) {
             // Re-read through the overlay so the echo carries the full
             // null-inclusive shape v4's JS object emits (the WardrobeItem

@@ -1262,7 +1262,7 @@ fn ensure_project_store_mount(
 }
 
 /// v4 GET `/wardrobe`: `{ mountPointId, wardrobeItems }` (include archived).
-pub fn project_wardrobe_list(db: &Db, project_id: &str) -> Response {
+pub fn project_wardrobe_list(db: &Db, project_id: &str, include_archived: bool) -> Response {
     let pid = project_id.to_string();
     let out = read_both(db, move |main, mount| {
         let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
@@ -1270,7 +1270,9 @@ pub fn project_wardrobe_list(db: &Db, project_id: &str) -> Response {
             Err(r) => return Ok(Err(r)),
         };
         let docs = DocMountDocumentsRepository::new(mount);
-        let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
+        // v4 `d25dacc1` replaced this route's hard-coded `true` with the
+        // query param: the archived filter is SERVER-side now.
+        let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, include_archived)?;
         Ok(Ok((mp, items)))
     });
     match out {
@@ -1406,7 +1408,8 @@ pub async fn project_wardrobe_update(
 ) -> Response {
     let pid = project_id.to_string();
     let iid = item_id.to_string();
-    let patch = build_wardrobe_patch(&body);
+    let mut patch = build_wardrobe_patch(&body);
+    let archived = body.get("archived").and_then(Value::as_bool);
     let out = with_both_conns(db, move |main, mount| {
         let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
             Ok(mp) => mp,
@@ -1414,6 +1417,26 @@ pub async fn project_wardrobe_update(
         };
         let links = DocMountFileLinksRepository::new(mount);
         let docs = DocMountDocumentsRepository::new(mount);
+        // v4 `d25dacc1`: the project/group routes hold no already-loaded item, so
+        // they pay for an EXTRA O(folder) read — but ONLY when `archived` is in
+        // the body. That is where the new `Project wardrobe item not found` 404
+        // lives: it is unreachable without the key.
+        if let Some(a) = archived {
+            let items = archetype_wardrobe::read_project_wardrobe(&docs, &mp, true)?;
+            let Some(current) = items
+                .iter()
+                .find(|i| i.get("id").and_then(Value::as_str) == Some(iid.as_str()))
+            else {
+                return Ok(Err(not_found("Project wardrobe item")));
+            };
+            if let Some(v) = crate::wardrobe::archived_patch(
+                current.get("archivedAt").and_then(Value::as_str),
+                a,
+                &crate::clock::now_iso(),
+            ) {
+                patch.archived_at = Some(v);
+            }
+        }
         match update_project_wardrobe_item(main, &links, &docs, &mp, &iid, &patch) {
             // Re-read through the overlay so the echo carries the full null-inclusive
             // shape v4's JS object emits (the WardrobeItem struct serialize skips
@@ -1546,14 +1569,14 @@ fn load_project_scenarios_store(
 }
 
 /// v4 `GET /api/v1/projects/[id]/scenarios`.
-pub async fn project_scenario_list(db: &Db, project_id: &str) -> Response {
+pub async fn project_scenario_list(db: &Db, project_id: &str, include_archived: bool) -> Response {
     let pid = project_id.to_string();
     let out = with_both_conns(db, move |main, mount| {
         let mp = match ensure_project_scenarios_store(main, mount, &pid)? {
             Ok(mp) => mp,
             Err(r) => return Ok(Err(r)),
         };
-        Ok(Ok(scenarios_api::list_body(mount, &mp)?))
+        Ok(Ok(scenarios_api::list_body(mount, &mp, include_archived)?))
     })
     .await;
     match out {
@@ -1615,6 +1638,7 @@ pub async fn project_scenario_update(
     project_id: &str,
     scenario_path: &str,
     bag: Value,
+    include_archived: bool,
 ) -> Response {
     let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
         Ok(p) => p,
@@ -1627,7 +1651,7 @@ pub async fn project_scenario_update(
             Err(r) => return Ok(Err(r)),
         };
         Ok(
-            match scenarios_api::update_op(mount, &mp, &resolved, &bag) {
+            match scenarios_api::update_op(mount, &mp, &resolved, &bag, include_archived) {
                 Ok(inner) => inner,
                 Err(e) => Err(scenarios_api::write_err(e)),
             },
@@ -1647,6 +1671,7 @@ pub async fn project_scenario_rename(
     project_id: &str,
     scenario_path: &str,
     new_filename: &str,
+    include_archived: bool,
 ) -> Response {
     let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
         Ok(p) => p,
@@ -1659,10 +1684,12 @@ pub async fn project_scenario_rename(
             Ok(mp) => mp,
             Err(r) => return Ok(Err(r)),
         };
-        Ok(match scenarios_api::rename_op(mount, &mp, &resolved, &nf) {
-            Ok(inner) => inner,
-            Err(e) => Err(scenarios_api::write_err(e)),
-        })
+        Ok(
+            match scenarios_api::rename_op(mount, &mp, &resolved, &nf, include_archived) {
+                Ok(inner) => inner,
+                Err(e) => Err(scenarios_api::write_err(e)),
+            },
+        )
     })
     .await;
     match out {
@@ -1673,7 +1700,12 @@ pub async fn project_scenario_rename(
 }
 
 /// v4 `DELETE /api/v1/projects/[id]/scenarios/[scenarioPath]`.
-pub async fn project_scenario_delete(db: &Db, project_id: &str, scenario_path: &str) -> Response {
+pub async fn project_scenario_delete(
+    db: &Db,
+    project_id: &str,
+    scenario_path: &str,
+    include_archived: bool,
+) -> Response {
     let resolved = match scenarios_api::resolve_path_or_400(scenario_path) {
         Ok(p) => p,
         Err(r) => return r,
@@ -1684,10 +1716,12 @@ pub async fn project_scenario_delete(db: &Db, project_id: &str, scenario_path: &
             Ok(mp) => mp,
             Err(r) => return Ok(Err(r)),
         };
-        Ok(match scenarios_api::delete_op(mount, &mp, &resolved) {
-            Ok(inner) => inner,
-            Err(e) => Err(scenarios_api::write_err(e)),
-        })
+        Ok(
+            match scenarios_api::delete_op(mount, &mp, &resolved, include_archived) {
+                Ok(inner) => inner,
+                Err(e) => Err(scenarios_api::write_err(e)),
+            },
+        )
     })
     .await;
     match out {

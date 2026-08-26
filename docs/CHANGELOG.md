@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(scenarios): archive entries instead of deleting them — the scenario half (v4 `d25dacc1`)
+
+_Versions: core 0.0.670, harness 0.0.582, web 0.0.89._
+
+`archived: true` frontmatter across all four scenario scopes. The chokepoint
+(`db::scenarios`) gains the `"true"`-string coercion v4 reads `isDefault` with,
+`is_scenario_content_archived` (so a PUT that doesn't mention `archived`
+preserves it through the whole-file rewrite), the list filter, the rule that an
+archived scenario can never win default resolution — nor be named as the
+warning's winner — even when it IS listed, and an emitter that omits the key
+entirely for an active scenario. `resolve_scenario_body` deliberately ignores
+the flag: archiving hides a scenario from the menus, it does not break the chats
+that already chose it.
+
+`includeArchived` reaches the seven scenario list verbs, the item-level
+mutations' fresh-list returns, and the four wardrobe list verbs; the two
+hard-coded `true` reads (project and group wardrobe) are replaced, so the
+filtering is server-side and a picker that never passes the parameter is safe by
+construction. v4's collection-POST quirk is reproduced: the three file-backed
+creates refresh their list from the BODY's `archived`, not the query param.
+
+Character scenarios: the `absent-when-false` spread on read, the tri-state on
+add/update (a restore genuinely echoes `archived: false` — measured, not
+reasoned about), the GET response filter (the array itself must keep archived
+entries or the projection sweep deletes their files), and **v4's `description`
+round-trip fix, which v5 measurably needed too** — it was parsed on read and
+never written back, so the next projection silently dropped it.
+
+`ScenarioEntry` gains `archived` and the system-prompt builder's implicit
+scenario becomes `first_active_scenario_content`. The Almanack's Scriptorium
+table splits scenario counts into total and archived.
+
+The scenarios-routes corpus grows 41 → 64 cases (writes pinned through the file
+BYTES, frontmatter key order included); six mutations redden it. The
+vault-character-write corpus gains a described scenario, an archived one, and
+the FAILURE shape — a pre-filtered array and the file is swept. Character
+scenarios are pinned at two tiers because a vault-linked character's DB column
+is empty: the arrays family sees the file bytes, the subresources family sees
+the returned object.
+
 #### 2026-08-26 — feat(wardrobe): the four `?action=instructions` surfaces as dispatch verbs (v4 `b86bb1a5`)
 
 _Versions: core 0.0.669, harness 0.0.581, web 0.0.88._

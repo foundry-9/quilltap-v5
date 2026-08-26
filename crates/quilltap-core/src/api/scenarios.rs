@@ -26,9 +26,9 @@ use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::instance_settings::get_general_mount_point_id;
 use crate::db::runtime::Db;
 use crate::db::scenarios::{
-    build_scenario_file_content, list_scenarios_in_folder, read_scenario_by_path,
-    resolve_scenario_path, set_scenario_default_in_folder, ListScenariosResult,
-    ScenarioPathResolution, ScenarioWriteError, SCENARIOS_FOLDER,
+    build_scenario_file_content, is_scenario_content_archived, list_scenarios_in_folder,
+    read_scenario_by_path, resolve_scenario_path, set_scenario_default_in_folder,
+    ListScenariosResult, ScenarioPathResolution, ScenarioWriteError, SCENARIOS_FOLDER,
 };
 use crate::db::DbError;
 use crate::jsstr::utf16_len;
@@ -66,6 +66,11 @@ struct ScenarioFields {
     name: Option<String>,
     description: Option<String>,
     is_default: Option<bool>,
+    /// v4 `d25dacc1`'s `archived: z.boolean().optional()` — a TRI-STATE on the
+    /// update path: omitted PRESERVES the file's current flag (the serializer
+    /// rewrites the whole file, so an unmentioned flag would be dropped), `true`
+    /// archives, `false` restores.
+    archived: Option<bool>,
     body: String,
 }
 
@@ -111,6 +116,12 @@ fn collect_bag_issues(bag: &Value, include_filename: bool) -> Vec<String> {
             issues.push("Invalid isDefault".to_string());
         }
     }
+    // archived?: boolean when present (v4 `d25dacc1`).
+    if let Some(v) = obj.get("archived") {
+        if !v.is_null() && !v.is_boolean() {
+            issues.push("Invalid archived".to_string());
+        }
+    }
     // body: string min 1 — the custom message is byte-faithful (tested).
     match obj.get("body") {
         Some(Value::String(s)) if !s.is_empty() => {}
@@ -129,6 +140,7 @@ fn extract_fields(bag: &Value) -> ScenarioFields {
             .and_then(Value::as_str)
             .map(str::to_string),
         is_default: bag.get("isDefault").and_then(Value::as_bool),
+        archived: bag.get("archived").and_then(Value::as_bool),
         body: bag
             .get("body")
             .and_then(Value::as_str)
@@ -163,8 +175,12 @@ fn scenarios_value(listed: &ListScenariosResult) -> Value {
 // ===========================================================================
 
 /// list body `{ mountPointId, scenarios, warnings }` (v4 the collection GET).
-pub(crate) fn list_body(mount: &Connection, mp: &str) -> Result<Value, DbError> {
-    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER)?;
+pub(crate) fn list_body(
+    mount: &Connection,
+    mp: &str,
+    include_archived: bool,
+) -> Result<Value, DbError> {
+    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER, include_archived)?;
     let mut body = scenarios_value(&listed);
     body.as_object_mut()
         .unwrap()
@@ -216,6 +232,7 @@ pub(crate) fn create_op(
         fields.name.as_deref(),
         fields.description.as_deref(),
         fields.is_default.unwrap_or(false),
+        fields.archived.unwrap_or(false),
         &fields.body,
     );
     write_database_document(mount, mp, &relative_path, &content)?;
@@ -223,7 +240,12 @@ pub(crate) fn create_op(
         set_scenario_default_in_folder(mount, mp, &relative_path, SCENARIOS_FOLDER)?;
     }
 
-    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER)?;
+    // ⚠ v4 `d25dacc1` quirk, reproduced: the three file-backed collection POSTs
+    // refresh their returned list with `{includeArchived: validated.archived ===
+    // true}` — the BODY, not the query param. So creating an ACTIVE scenario
+    // with "Show archived" ticked returns an archived-free list.
+    let listed =
+        list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER, fields.archived == Some(true))?;
     let mut body = scenarios_value(&listed);
     let obj = body.as_object_mut().unwrap();
     obj.insert("mountPointId".into(), json!(mp));
@@ -251,6 +273,7 @@ pub(crate) fn update_op(
     mp: &str,
     resolved_path: &str,
     bag: &Value,
+    include_archived: bool,
 ) -> Result<Result<Value, Response>, ScenarioWriteError> {
     let issues = collect_bag_issues(bag, false);
     if !issues.is_empty() {
@@ -262,17 +285,19 @@ pub(crate) fn update_op(
     let fields = extract_fields(bag);
 
     let docs = DocMountDocumentsRepository::new(mount);
-    if docs
-        .find_by_mount_point_and_path(mp, resolved_path)?
-        .is_none()
-    {
+    let Some(existing) = docs.find_by_mount_point_and_path(mp, resolved_path)? else {
         return Ok(Err(not_found("Scenario")));
-    }
+    };
 
     let content = build_scenario_file_content(
         fields.name.as_deref(),
         fields.description.as_deref(),
         fields.is_default.unwrap_or(false),
+        // v4: `validated.archived ?? isScenarioContentArchived(existing.content)`
+        // — omitting the key PRESERVES the flag through the whole-file rewrite.
+        fields
+            .archived
+            .unwrap_or_else(|| is_scenario_content_archived(&existing)),
         &fields.body,
     );
     write_database_document(mount, mp, resolved_path, &content)?;
@@ -280,7 +305,7 @@ pub(crate) fn update_op(
         set_scenario_default_in_folder(mount, mp, resolved_path, SCENARIOS_FOLDER)?;
     }
 
-    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER)?;
+    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER, include_archived)?;
     Ok(Ok(scenarios_value(&listed)))
 }
 
@@ -291,6 +316,7 @@ pub(crate) fn rename_op(
     mp: &str,
     resolved_path: &str,
     new_filename: &str,
+    include_archived: bool,
 ) -> Result<Result<Value, Response>, ScenarioWriteError> {
     let cleaned = strip_md(&sanitize_file_name(new_filename));
     if cleaned.is_empty() {
@@ -303,7 +329,7 @@ pub(crate) fn rename_op(
     let docs = DocMountDocumentsRepository::new(mount);
     if new_path == resolved_path {
         // No-op rename — return current state.
-        let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER)?;
+        let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER, include_archived)?;
         let mut body = scenarios_value(&listed);
         body.as_object_mut()
             .unwrap()
@@ -324,7 +350,7 @@ pub(crate) fn rename_op(
 
     move_database_document(mount, mp, resolved_path, &new_path)?;
 
-    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER)?;
+    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER, include_archived)?;
     let mut body = scenarios_value(&listed);
     body.as_object_mut()
         .unwrap()
@@ -337,12 +363,13 @@ pub(crate) fn delete_op(
     mount: &Connection,
     mp: &str,
     resolved_path: &str,
+    include_archived: bool,
 ) -> Result<Result<Value, Response>, ScenarioWriteError> {
     let deleted = delete_database_document(mount, mp, resolved_path)?;
     if !deleted {
         return Ok(Err(not_found("Scenario")));
     }
-    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER)?;
+    let listed = list_scenarios_in_folder(mount, mp, SCENARIOS_FOLDER, include_archived)?;
     Ok(Ok(scenarios_value(&listed)))
 }
 
@@ -397,14 +424,14 @@ fn lift(
 
 /// v4 `GET /api/v1/scenarios`: the pre-provision race returns
 /// `{ mountPointId: null, scenarios: [], warnings: [] }`; otherwise the list.
-pub async fn scenario_list(db: &Db) -> Response {
+pub async fn scenario_list(db: &Db, include_archived: bool) -> Response {
     let out = with_both_conns(db, move |main, mount| {
         let Some(mp) = general_mount_id(main, mount)? else {
             return Ok(Ok(
                 json!({ "mountPointId": null, "scenarios": [], "warnings": [] }),
             ));
         };
-        Ok(Ok(list_body(mount, &mp)?))
+        Ok(Ok(list_body(mount, &mp, include_archived)?))
     })
     .await;
     finish(out)
@@ -444,7 +471,12 @@ pub async fn scenario_get(db: &Db, scenario_path: String) -> Response {
 }
 
 /// v4 `PUT /api/v1/scenarios/[scenarioPath]`.
-pub async fn scenario_update(db: &Db, scenario_path: String, bag: Value) -> Response {
+pub async fn scenario_update(
+    db: &Db,
+    scenario_path: String,
+    bag: Value,
+    include_archived: bool,
+) -> Response {
     let resolved = match resolve_path_or_400(&scenario_path) {
         Ok(p) => p,
         Err(r) => return r,
@@ -455,14 +487,19 @@ pub async fn scenario_update(db: &Db, scenario_path: String, bag: Value) -> Resp
                 "Quilltap General mount has not been provisioned yet",
             )));
         };
-        lift(update_op(mount, &mp, &resolved, &bag))
+        lift(update_op(mount, &mp, &resolved, &bag, include_archived))
     })
     .await;
     finish(out)
 }
 
 /// v4 `POST /api/v1/scenarios/[scenarioPath]?action=rename`.
-pub async fn scenario_rename(db: &Db, scenario_path: String, new_filename: String) -> Response {
+pub async fn scenario_rename(
+    db: &Db,
+    scenario_path: String,
+    new_filename: String,
+    include_archived: bool,
+) -> Response {
     let resolved = match resolve_path_or_400(&scenario_path) {
         Ok(p) => p,
         Err(r) => return r,
@@ -473,14 +510,20 @@ pub async fn scenario_rename(db: &Db, scenario_path: String, new_filename: Strin
                 "Quilltap General mount has not been provisioned yet",
             )));
         };
-        lift(rename_op(mount, &mp, &resolved, &new_filename))
+        lift(rename_op(
+            mount,
+            &mp,
+            &resolved,
+            &new_filename,
+            include_archived,
+        ))
     })
     .await;
     finish(out)
 }
 
 /// v4 `DELETE /api/v1/scenarios/[scenarioPath]`.
-pub async fn scenario_delete(db: &Db, scenario_path: String) -> Response {
+pub async fn scenario_delete(db: &Db, scenario_path: String, include_archived: bool) -> Response {
     let resolved = match resolve_path_or_400(&scenario_path) {
         Ok(p) => p,
         Err(r) => return r,
@@ -491,7 +534,7 @@ pub async fn scenario_delete(db: &Db, scenario_path: String) -> Response {
                 "Quilltap General mount has not been provisioned yet",
             )));
         };
-        lift(delete_op(mount, &mp, &resolved))
+        lift(delete_op(mount, &mp, &resolved, include_archived))
     })
     .await;
     finish(out)

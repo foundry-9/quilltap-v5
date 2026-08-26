@@ -546,12 +546,20 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     CharacterScenarioList {
         character_id: String,
+        /// v4 `d25dacc1`'s `?includeArchived=true`: archived entries are hidden
+        /// at every listing surface unless the caller opts in. Absent = false.
+        #[serde(default)]
+        include_archived: bool,
     },
     #[serde(rename_all = "camelCase")]
     CharacterScenarioCreate {
         character_id: String,
         title: String,
         content: String,
+        /// v4 `d25dacc1`'s `archived: z.boolean().optional()`. Omission means
+        /// active — an explicit `false` is never persisted.
+        #[serde(default)]
+        archived: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
     CharacterScenarioUpdate {
@@ -561,6 +569,10 @@ pub enum Request {
         title: Option<String>,
         #[serde(default)]
         content: Option<String>,
+        /// Tri-state (v4 `d25dacc1`): omitted PRESERVES the current flag, `true`
+        /// archives, `false` restores — and a restore DELETES the key.
+        #[serde(default)]
+        archived: Option<bool>,
     },
     #[serde(rename_all = "camelCase")]
     CharacterScenarioDelete {
@@ -599,6 +611,8 @@ pub enum Request {
         /// client-side tier merge). Absent = today's behaviour.
         #[serde(default)]
         scope: Option<String>,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `GET /api/v1/characters/[id]/wardrobe?action=instructions`
     /// (`b86bb1a5`) — the vault's `Wardrobe/instructions.md`, `null` when absent
@@ -777,6 +791,8 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     GroupScenarioList {
         group_id: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `POST /api/v1/groups/[id]/scenarios` (`createScenarioSchema`).
     #[serde(rename_all = "camelCase")]
@@ -796,6 +812,8 @@ pub enum Request {
         group_id: String,
         scenario_path: String,
         scenario: serde_json::Value,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `POST /api/v1/groups/[id]/scenarios/[scenarioPath]?action=rename`.
     #[serde(rename_all = "camelCase")]
@@ -803,12 +821,16 @@ pub enum Request {
         group_id: String,
         scenario_path: String,
         new_filename: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `DELETE /api/v1/groups/[id]/scenarios/[scenarioPath]`.
     #[serde(rename_all = "camelCase")]
     GroupScenarioDelete {
         group_id: String,
         scenario_path: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     // --- Group wardrobe CRUD (P4.D112, v4 `d7263f39`) — the group tier of the
     //     four-tier wardrobe model; mirrors the `ProjectWardrobe*` five. ---
@@ -816,6 +838,8 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     GroupWardrobeList {
         group_id: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `GET /api/v1/groups/[id]/wardrobe?action=instructions` (`b86bb1a5`).
     #[serde(rename_all = "camelCase")]
@@ -858,11 +882,17 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     GroupScenariosUnion {
         character_ids: Vec<String>,
+        #[serde(default)]
+        include_archived: bool,
     },
     // --- General (instance-wide "Quilltap General") scenarios (P4.6n) ---
     /// v4 `GET /api/v1/scenarios` — the instance-wide scenario list (race arm:
     /// `mountPointId: null` + empty arrays when unprovisioned).
-    ScenarioList,
+    #[serde(rename_all = "camelCase")]
+    ScenarioList {
+        #[serde(default)]
+        include_archived: bool,
+    },
     /// v4 `POST /api/v1/scenarios` (race arm: 400 when unprovisioned).
     ScenarioCreate {
         scenario: serde_json::Value,
@@ -877,17 +907,23 @@ pub enum Request {
     ScenarioUpdate {
         scenario_path: String,
         scenario: serde_json::Value,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `POST /api/v1/scenarios/[scenarioPath]?action=rename`.
     #[serde(rename_all = "camelCase")]
     ScenarioRename {
         scenario_path: String,
         new_filename: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `DELETE /api/v1/scenarios/[scenarioPath]`.
     #[serde(rename_all = "camelCase")]
     ScenarioDelete {
         scenario_path: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     // --- Roleplay templates (P4.6p) ---
     /// v4 `GET /api/v1/roleplay-templates` — a BARE JSON array (built-in-first,
@@ -1298,6 +1334,8 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     ProjectScenarioList {
         project_id: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `POST /api/v1/projects/[id]/scenarios`.
     #[serde(rename_all = "camelCase")]
@@ -1317,6 +1355,8 @@ pub enum Request {
         project_id: String,
         scenario_path: String,
         scenario: serde_json::Value,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `POST /api/v1/projects/[id]/scenarios/[scenarioPath]?action=rename`.
     #[serde(rename_all = "camelCase")]
@@ -1324,17 +1364,23 @@ pub enum Request {
         project_id: String,
         scenario_path: String,
         new_filename: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `DELETE /api/v1/projects/[id]/scenarios/[scenarioPath]`.
     #[serde(rename_all = "camelCase")]
     ProjectScenarioDelete {
         project_id: String,
         scenario_path: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `GET /api/v1/projects/[id]/wardrobe`.
     #[serde(rename_all = "camelCase")]
     ProjectWardrobeList {
         project_id: String,
+        #[serde(default)]
+        include_archived: bool,
     },
     /// v4 `GET /api/v1/projects/[id]/wardrobe?action=instructions` (`b86bb1a5`).
     #[serde(rename_all = "camelCase")]
@@ -2451,7 +2497,12 @@ pub enum Request {
         body: serde_json::Value,
     },
     /// v4 `GET /api/v1/wardrobe` — the GLOBAL archetype tier listing.
-    WardrobeList,
+    #[serde(rename_all = "camelCase")]
+    WardrobeList {
+        #[serde(default)]
+        include_archived: bool,
+    },
+
     /// v4 `GET /api/v1/wardrobe?action=instructions` (`b86bb1a5`) — the
     /// Quilltap General `Wardrobe/instructions.md`. No 404 arm: an
     /// unprovisioned General answers `{instructions: null}`.

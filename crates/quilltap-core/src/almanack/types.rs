@@ -803,6 +803,9 @@ pub struct PhotosInfo {
 pub struct ScenarioTierRow {
     pub tier: String,
     pub count: f64,
+    /// v4 `d25dacc1`: the subset of `count` carrying `archived: true`. Matches
+    /// the wardrobe row's own `archived` figure.
+    pub archived: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

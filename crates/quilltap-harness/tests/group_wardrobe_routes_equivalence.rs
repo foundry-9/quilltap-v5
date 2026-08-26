@@ -475,7 +475,13 @@ fn group_wardrobe_routes_match_oracle() {
             )
             .expect("open db");
             match kind {
-                "list" => groups::group_wardrobe_list(&db, &gid),
+                "list" => groups::group_wardrobe_list(
+                    &db,
+                    &gid,
+                    case.get("includeArchived")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                ),
                 "create" => rt.block_on(groups::group_wardrobe_create(&db, &gid, body)),
                 "get" => groups::group_wardrobe_get(&db, &gid, &iid),
                 "update" => rt.block_on(groups::group_wardrobe_update(&db, &gid, &iid, body)),

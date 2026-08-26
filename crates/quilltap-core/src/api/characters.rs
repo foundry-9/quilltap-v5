@@ -778,8 +778,31 @@ pub fn character_prompt_list(db: &Db, _user_id: &str, character_id: &str) -> Res
 }
 
 /// v4 `GET /characters/[id]/scenarios` — ownership → `{ scenarios }`.
-pub fn character_scenario_list(db: &Db, _user_id: &str, character_id: &str) -> Response {
-    sub_array_read(db, character_id, "scenarios", "scenarios")
+///
+/// ⚠ The archived filter here is a **RESPONSE filter only** (v4 `d25dacc1`).
+/// `character.scenarios` itself always carries the archived entries, because the
+/// vault write overlay projects that array back over the `Scenarios/` folder and
+/// deletes any file missing from it — a pre-filtered array would delete the
+/// archived files. Filtering belongs at the API boundary, never at the read.
+pub fn character_scenario_list(
+    db: &Db,
+    _user_id: &str,
+    character_id: &str,
+    include_archived: bool,
+) -> Response {
+    let out = sub_array_read(db, character_id, "scenarios", "scenarios");
+    if include_archived {
+        return out;
+    }
+    match out {
+        Response::Character(mut body) => {
+            if let Some(Value::Array(arr)) = body.get_mut("scenarios") {
+                arr.retain(|s| s.get("archived") != Some(&Value::Bool(true)));
+            }
+            Response::Character(body)
+        }
+        other => other,
+    }
 }
 
 /// Shared body for the two "ownership → `{ key: character.field || [] }`" reads.
@@ -818,6 +841,7 @@ pub fn character_wardrobe_list(
     _user_id: &str,
     character_id: &str,
     scope: Option<&str>,
+    include_archived: bool,
 ) -> Response {
     let character_id = character_id.to_string();
     let group_scope = scope == Some("group");
@@ -836,7 +860,7 @@ pub fn character_wardrobe_list(
             let items = crate::db::archetype_wardrobe::find_archetypes_in_mounts(
                 &docs,
                 &group_mount_point_ids,
-                false,
+                include_archived,
             )?;
             tracing::debug!(
                 character_id = character_id.as_str(),
@@ -847,7 +871,8 @@ pub fn character_wardrobe_list(
             );
             return Ok(Ok(items));
         }
-        let items = wardrobe_read::find_by_character_id(main, &docs, &character_id, false)?;
+        let items =
+            wardrobe_read::find_by_character_id(main, &docs, &character_id, include_archived)?;
         Ok(Ok(items))
     });
     match result {
@@ -2075,6 +2100,7 @@ pub async fn character_scenario_create(
     character_id: &str,
     title: &str,
     content: &str,
+    archived: Option<bool>,
 ) -> Response {
     let (cid, title, content) = (
         character_id.to_string(),
@@ -2085,7 +2111,7 @@ pub async fn character_scenario_create(
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }
-        match vault_character_arrays::add_scenario(main, mount, &cid, &title, &content)? {
+        match vault_character_arrays::add_scenario(main, mount, &cid, &title, &content, archived)? {
             Some(s) => Ok(Ok(s)),
             None => Ok(Err(internal("Failed to add scenario"))),
         }
@@ -2103,6 +2129,7 @@ pub async fn character_scenario_update(
     scenario_id: &str,
     title: Option<&str>,
     content: Option<&str>,
+    archived: Option<bool>,
 ) -> Response {
     let (cid, sid) = (character_id.to_string(), scenario_id.to_string());
     let (title, content) = (title.map(str::to_string), content.map(str::to_string));
@@ -2116,6 +2143,9 @@ pub async fn character_scenario_update(
         }
         if let Some(c) = &content {
             patch.insert("content".into(), json!(c));
+        }
+        if let Some(a) = archived {
+            patch.insert("archived".into(), json!(a));
         }
         match vault_character_arrays::update_scenario(main, mount, &cid, &sid, &patch)? {
             Some(s) => Ok(Ok(s)),
@@ -2376,17 +2406,16 @@ pub async fn character_wardrobe_update(
         }
         let docs = DocMountDocumentsRepository::new(mount);
         // v4 pre-checks existence before update (findByIdForCharacter).
-        if wardrobe_read::find_by_id_for_character(
+        let Some(existing) = wardrobe_read::find_by_id_for_character(
             main,
             &docs,
             &cid,
             &iid,
             &SharedWardrobeTiers::none(),
         )?
-        .is_none()
-        {
+        else {
             return Ok(Err(not_found("Wardrobe item")));
-        }
+        };
         let mut patch = WardrobePatch::default();
         if let Some(t) = body.get("title").and_then(Value::as_str) {
             patch.title = Some(t.to_string());
@@ -2413,6 +2442,20 @@ pub async fn character_wardrobe_update(
         }
         if let Some(v) = body.get("replace").and_then(Value::as_bool) {
             patch.replace = Some(v);
+        }
+        // v4 `d25dacc1`: `archived` is a request-shaped boolean; the item stores
+        // a timestamp. Archiving is idempotent, so an already-archived item keeps
+        // its stamp. The character route reads the ALREADY-LOADED `existing`.
+        let archive_patch = match body.get("archived").and_then(Value::as_bool) {
+            Some(archived) => crate::wardrobe::archived_patch(
+                existing.get("archivedAt").and_then(Value::as_str),
+                archived,
+                &crate::clock::now_iso(),
+            ),
+            None => None,
+        };
+        if let Some(v) = archive_patch.clone() {
+            patch.archived_at = Some(v);
         }
         let links = DocMountFileLinksRepository::new(mount);
         match update_vault_wardrobe_item(main, &links, &docs, &iid, &patch, Some(&cid)) {

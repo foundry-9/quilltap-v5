@@ -254,6 +254,7 @@ pub fn add_scenario(
     character_id: &str,
     title: &str,
     content: &str,
+    archived: Option<bool>,
 ) -> Result<Option<Value>, DbError> {
     let Some(character) = find_by_id(main, mount, character_id)? else {
         return Ok(None);
@@ -261,13 +262,19 @@ pub fn add_scenario(
     let mut items = array_of(&character, "scenarios");
 
     let now = crate::clock::now_iso();
-    let new_item = json!({
+    // v4 `d25dacc1`'s object-literal order, with the conditional spread:
+    // `{id, title, content, ...(archived === true && {archived: true}), createdAt,
+    // updatedAt}`. Omission means active — an explicit `false` is NEVER persisted.
+    let mut new_item = json!({
         "id": uuid::Uuid::new_v4().to_string(),
         "title": title,
         "content": content,
-        "createdAt": now,
-        "updatedAt": now,
     });
+    if archived == Some(true) {
+        new_item["archived"] = Value::Bool(true);
+    }
+    new_item["createdAt"] = Value::String(now.clone());
+    new_item["updatedAt"] = Value::String(now);
     items.push(new_item.clone());
 
     project_array(main, mount, character_id, "scenarios", items)?;
@@ -297,9 +304,30 @@ pub fn update_scenario(
 
     let existing = items[index].clone();
     let now = crate::clock::now_iso();
+    // v4 `d25dacc1` rebuilds the object as
+    //   `{...rest, ...data, ...(archived === true ? {archived: true} : {}),
+    //     id, createdAt, updatedAt}`
+    // where `rest` is `existing` MINUS `archived` and
+    // `archived = data.archived ?? existing.archived`. Transcribed rather than
+    // reasoned about: dropping the key first is what makes a RESTORE delete it
+    // instead of leaving a stale `true`, and the conditional re-add is what
+    // stops an explicit `false` from being re-affirmed by the existing value.
+    // (`...data` still carries a literal `archived: false` through — the
+    // differential is what settles whether that reaches disk; `build_scenario_
+    // file` emits nothing for it.)
     let mut updated = existing.clone();
+    if let Some(obj) = updated.as_object_mut() {
+        obj.shift_remove("archived");
+    }
+    let effective_archived = patch
+        .get("archived")
+        .and_then(Value::as_bool)
+        .or_else(|| existing.get("archived").and_then(Value::as_bool));
     for (k, v) in patch {
         updated[k.as_str()] = v.clone();
+    }
+    if effective_archived == Some(true) {
+        updated["archived"] = Value::Bool(true);
     }
     updated["id"] = existing["id"].clone();
     updated["createdAt"] = existing["createdAt"].clone();

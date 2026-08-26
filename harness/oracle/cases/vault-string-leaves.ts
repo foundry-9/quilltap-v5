@@ -100,19 +100,47 @@ for (const c of [
   });
 }
 
-function runScenario(title: string, content: string): string {
-  return buildScenarioFile({ title, content } as unknown as CharacterScenario);
+function runScenario(
+  title: string,
+  content: string,
+  description?: string,
+  archived?: boolean,
+): string {
+  return buildScenarioFile({
+    title,
+    content,
+    ...(description !== undefined && { description }),
+    ...(archived !== undefined && { archived }),
+  } as unknown as CharacterScenario);
 }
+// [P4.D120 / v4 `d25dacc1`] `buildScenarioFile` now emits a frontmatter block —
+// `description` first (trimmed + escapeYaml'd), then `archived: true` — and ONLY
+// when there is something to put in it.
 for (const c of [
   { id: 'sf-basic', title: 'First Meeting', content: 'They meet at dawn.' },
   { id: 'sf-empty-body', title: 'Untitled', content: '' },
+  { id: 'sf-desc', title: 'Described', content: 'Body.', description: 'A subtitle.' },
+  { id: 'sf-desc-blank', title: 'Blank Desc', content: 'Body.', description: '   ' },
+  { id: 'sf-desc-yaml', title: 'Yamlish', content: 'Body.', description: 'a: b #c "q" \'s\'' },
+  { id: 'sf-desc-newline', title: 'Multiline Desc', content: 'Body.', description: 'L1\nL2' },
+  { id: 'sf-archived', title: 'Mothballed', content: 'Body.', archived: true },
+  { id: 'sf-archived-false', title: 'Active', content: 'Body.', archived: false },
+  {
+    id: 'sf-both',
+    title: 'Both',
+    content: 'Body.',
+    description: 'Subtitle.',
+    archived: true,
+  },
 ]) {
   rows.push({
     kind: 'scenarioFile',
     id: c.id,
     title: c.title,
     content: c.content,
-    out: runScenario(c.title, c.content),
+    description: c.description ?? null,
+    archived: c.archived ?? null,
+    out: runScenario(c.title, c.content, c.description, c.archived),
   });
 }
 

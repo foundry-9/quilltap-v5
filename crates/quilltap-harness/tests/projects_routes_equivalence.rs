@@ -755,7 +755,7 @@ fn projects_routes_match_oracle() {
         let db = fresh_db(&spec, "wl");
         check(
             "wardrobe_list",
-            &response_data(&projects::project_wardrobe_list(&db, IOTA)),
+            &response_data(&projects::project_wardrobe_list(&db, IOTA, false)),
             false,
             &mut failed,
         );
@@ -794,20 +794,21 @@ fn projects_routes_match_oracle() {
         let db = fresh_db(&spec, "wd");
         let resp = rt.block_on(projects::project_wardrobe_delete(&db, IOTA, ENSEMBLE));
         let mut body = response_data(&resp);
-        let remaining: Vec<Value> = response_data(&projects::project_wardrobe_list(&db, IOTA))
-            .get("wardrobeItems")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .map(|i| {
-                        json!({
-                            "id": i.get("id").cloned().unwrap_or(Value::Null),
-                            "title": i.get("title").cloned().unwrap_or(Value::Null),
+        let remaining: Vec<Value> =
+            response_data(&projects::project_wardrobe_list(&db, IOTA, false))
+                .get("wardrobeItems")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .map(|i| {
+                            json!({
+                                "id": i.get("id").cloned().unwrap_or(Value::Null),
+                                "title": i.get("title").cloned().unwrap_or(Value::Null),
+                            })
                         })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+                        .collect()
+                })
+                .unwrap_or_default();
         if let Value::Object(o) = &mut body {
             o.insert("remaining".into(), Value::Array(remaining));
         }

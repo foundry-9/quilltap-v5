@@ -251,7 +251,7 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "g_list");
         ok(
             "group_list",
-            &rt.block_on(groups::group_scenario_list(&db, GAMMA)),
+            &rt.block_on(groups::group_scenario_list(&db, GAMMA, false)),
             false,
             &mut failed,
         );
@@ -308,6 +308,7 @@ fn scenarios_routes_match_oracle() {
             GAMMA,
             "interlude.md",
             json!({ "name": "Interlude II", "body": "Changed." }),
+            false,
         ));
         ok("group_update", &resp, true, &mut failed);
     }
@@ -318,6 +319,7 @@ fn scenarios_routes_match_oracle() {
             GAMMA,
             "interlude.md",
             json!({ "body": "" }),
+            false,
         ));
         err("group_update_emptybody", &resp, &mut failed);
     }
@@ -328,6 +330,7 @@ fn scenarios_routes_match_oracle() {
             GAMMA,
             "ghost.md",
             json!({ "body": "x" }),
+            false,
         ));
         err("group_update_missing", &resp, &mut failed);
     }
@@ -339,6 +342,7 @@ fn scenarios_routes_match_oracle() {
             GAMMA,
             "interlude.md",
             "interlude-2",
+            false,
         ));
         ok("group_rename", &resp, false, &mut failed);
     }
@@ -349,6 +353,7 @@ fn scenarios_routes_match_oracle() {
             GAMMA,
             "interlude.md",
             "interlude",
+            false,
         ));
         ok("group_rename_noop", &resp, false, &mut failed);
     }
@@ -359,39 +364,57 @@ fn scenarios_routes_match_oracle() {
             GAMMA,
             "interlude.md",
             "prologue",
+            false,
         ));
         err("group_rename_conflict", &resp, &mut failed);
     }
     // --- Groups delete ---
     {
         let db = fresh_db(&spec, "g_delete");
-        let resp = rt.block_on(groups::group_scenario_delete(&db, GAMMA, "interlude.md"));
+        let resp = rt.block_on(groups::group_scenario_delete(
+            &db,
+            GAMMA,
+            "interlude.md",
+            false,
+        ));
         ok("group_delete", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "g_delete_miss");
-        let resp = rt.block_on(groups::group_scenario_delete(&db, GAMMA, "ghost.md"));
+        let resp = rt.block_on(groups::group_scenario_delete(&db, GAMMA, "ghost.md", false));
         err("group_delete_missing", &resp, &mut failed);
     }
     // --- Participant-union ---
     {
         let db = fresh_db(&spec, "u_aria");
-        let resp = rt.block_on(groups::group_scenarios_union(&db, vec![ARIA.to_string()]));
+        let resp = rt.block_on(groups::group_scenarios_union(
+            &db,
+            vec![ARIA.to_string()],
+            false,
+        ));
         ok("union_aria", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "u_bram");
-        let resp = rt.block_on(groups::group_scenarios_union(&db, vec![BRAM.to_string()]));
+        let resp = rt.block_on(groups::group_scenarios_union(
+            &db,
+            vec![BRAM.to_string()],
+            false,
+        ));
         ok("union_bram", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "u_empty");
-        let resp = rt.block_on(groups::group_scenarios_union(&db, vec![]));
+        let resp = rt.block_on(groups::group_scenarios_union(&db, vec![], false));
         ok("union_empty", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "u_unknown");
-        let resp = rt.block_on(groups::group_scenarios_union(&db, vec![BOGUS.to_string()]));
+        let resp = rt.block_on(groups::group_scenarios_union(
+            &db,
+            vec![BOGUS.to_string()],
+            false,
+        ));
         ok("union_unknown", &resp, false, &mut failed);
     }
 
@@ -400,7 +423,7 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "p_list");
         ok(
             "project_list",
-            &rt.block_on(projects::project_scenario_list(&db, IOTA)),
+            &rt.block_on(projects::project_scenario_list(&db, IOTA, false)),
             false,
             &mut failed,
         );
@@ -455,6 +478,7 @@ fn scenarios_routes_match_oracle() {
             IOTA,
             "climax.md",
             json!({ "name": "Climax!", "body": "Peak." }),
+            false,
         ));
         ok("project_update", &resp, true, &mut failed);
     }
@@ -465,6 +489,7 @@ fn scenarios_routes_match_oracle() {
             IOTA,
             "climax.md",
             json!({ "body": "" }),
+            false,
         ));
         err("project_update_emptybody", &resp, &mut failed);
     }
@@ -475,6 +500,7 @@ fn scenarios_routes_match_oracle() {
             IOTA,
             "climax.md",
             "climax-2",
+            false,
         ));
         ok("project_rename", &resp, false, &mut failed);
     }
@@ -485,17 +511,25 @@ fn scenarios_routes_match_oracle() {
             IOTA,
             "climax.md",
             "opening",
+            false,
         ));
         err("project_rename_conflict", &resp, &mut failed);
     }
     {
         let db = fresh_db(&spec, "p_delete");
-        let resp = rt.block_on(projects::project_scenario_delete(&db, IOTA, "climax.md"));
+        let resp = rt.block_on(projects::project_scenario_delete(
+            &db,
+            IOTA,
+            "climax.md",
+            false,
+        ));
         ok("project_delete", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "p_delete_miss");
-        let resp = rt.block_on(projects::project_scenario_delete(&db, IOTA, "ghost.md"));
+        let resp = rt.block_on(projects::project_scenario_delete(
+            &db, IOTA, "ghost.md", false,
+        ));
         err("project_delete_missing", &resp, &mut failed);
     }
 
@@ -504,7 +538,7 @@ fn scenarios_routes_match_oracle() {
         let db = fresh_db(&spec, "gen_list");
         ok(
             "general_list",
-            &rt.block_on(scenarios::scenario_list(&db)),
+            &rt.block_on(scenarios::scenario_list(&db, false)),
             false,
             &mut failed,
         );
@@ -548,6 +582,7 @@ fn scenarios_routes_match_oracle() {
             &db,
             "aurora.md".into(),
             json!({ "name": "Aurora II", "body": "Brighter." }),
+            false,
         ));
         ok("general_update", &resp, true, &mut failed);
     }
@@ -557,12 +592,13 @@ fn scenarios_routes_match_oracle() {
             &db,
             "dusk.md".into(),
             "evening".into(),
+            false,
         ));
         ok("general_rename", &resp, false, &mut failed);
     }
     {
         let db = fresh_db(&spec, "gen_delete");
-        let resp = rt.block_on(scenarios::scenario_delete(&db, "dusk.md".into()));
+        let resp = rt.block_on(scenarios::scenario_delete(&db, "dusk.md".into(), false));
         ok("general_delete", &resp, false, &mut failed);
     }
     // --- General: pre-provision race arms ---
@@ -571,7 +607,7 @@ fn scenarios_routes_match_oracle() {
         unprovision_general(&db);
         ok(
             "general_list_unprov",
-            &rt.block_on(scenarios::scenario_list(&db)),
+            &rt.block_on(scenarios::scenario_list(&db, false)),
             false,
             &mut failed,
         );
@@ -590,6 +626,387 @@ fn scenarios_routes_match_oracle() {
         unprovision_general(&db);
         let resp = rt.block_on(scenarios::scenario_get(&db, "aurora.md".into()));
         err("general_get_unprov", &resp, &mut failed);
+    }
+
+    // ── P4.D120 / v4 `d25dacc1` — archived scenarios ─────────────────────────
+    // Every case seeds its own file on the FRESH copy through the RAW
+    // document-store write (never the route under test); the committed
+    // `groups-projects-*` pair is untouched, so no sibling family is disturbed.
+    const BEACON: &str = "a2000000-0000-4000-8000-000000000003";
+    const ARCHIVED_FILE: &str = "---\nname: Mothballed\narchived: true\n---\n\nA scene put away.";
+
+    /// label → the store the case seeds into, resolved exactly as the oracle does.
+    fn scope_mount(db: &Db, scope: &str) -> String {
+        db.read_main(|conn| {
+            let one = |sql: &str, id: &str| -> Option<String> {
+                conn.query_row(sql, [id], |r| r.get::<_, Option<String>>(0))
+                    .ok()
+                    .flatten()
+            };
+            Ok(match scope {
+                "general" => {
+                    quilltap_core::db::instance_settings::get_general_mount_point_id(conn)?
+                        .expect("general mount unprovisioned")
+                }
+                "group" => one(
+                    "SELECT officialMountPointId FROM groups WHERE id = ?1",
+                    GAMMA,
+                )
+                .expect("no official store for group"),
+                "beacon" => one(
+                    "SELECT officialMountPointId FROM groups WHERE id = ?1",
+                    BEACON,
+                )
+                .expect("no official store for beacon"),
+                "project" => one(
+                    "SELECT officialMountPointId FROM projects WHERE id = ?1",
+                    IOTA,
+                )
+                .expect("no official store for project"),
+                other => panic!("unknown seed scope {other}"),
+            })
+        })
+        .expect("resolve scope mount")
+    }
+
+    fn seed_scenario(db: &Db, scope: &str, file: &str, content: &str) {
+        let mp = scope_mount(db, scope);
+        let rel = format!("Scenarios/{file}");
+        let content = content.to_string();
+        db.write_blocking(move |w| {
+            let links = w
+                .mount_index()
+                .expect("mount writer")
+                .doc_mount_file_links();
+            links.ensure_folder_path(&mp, "Scenarios")?;
+            links.write_database_document(&mp, &rel, &content)?;
+            Ok(())
+        })
+        .expect("seed scenario");
+    }
+
+    // The BYTES on disk after the case — v4 emits them as `fileBytes`, so a
+    // write is pinned by its frontmatter key order, not just by the body.
+    let bytes_match = |name: &str, db: &Db, scope: &str, file: &str, failed: &mut Vec<String>| {
+        let Some(want) = oracle.get(name).and_then(|c| c.get("fileBytes")) else {
+            return;
+        };
+        let mp = scope_mount(db, scope);
+        let rel = format!("Scenarios/{file}");
+        let got = db
+            .read_mount_index(|conn| {
+                quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository::new(conn)
+                    .find_by_mount_point_and_path(&mp, &rel)
+            })
+            .expect("read back");
+        let got = match got {
+            Some(c) => Value::String(c),
+            None => Value::Null,
+        };
+        if &got != want {
+            eprintln!("[{name}] FILE BYTES MISMATCH:\n  rust:   {got}\n  oracle: {want}");
+            failed.push(format!("{name}(bytes)"));
+        } else {
+            eprintln!("[{name}] file bytes OK.");
+        }
+    };
+
+    // group list arms
+    for (name, include_archived, seed) in [
+        ("group_list_hides_archived", false, ("group", "mothballed.md", ARCHIVED_FILE)),
+        ("group_list_shows_archived_with_the_flag", true, ("group", "mothballed.md", ARCHIVED_FILE)),
+        // ⚠ The bare `?includeArchived` spelling and the rejected `=1` spelling
+        // live at v4's URL reader. v5's scenario surfaces are dispatch verbs, so
+        // the SPELLING is not reachable here; what IS ported is the resolved
+        // boolean, and the two rows below drive it directly. The spelling itself
+        // is pinned at the two wardrobe REST edges that exist
+        // (`quilltap-web::wardrobe_routes::read_include_archived`).
+        ("group_list_bare_include_archived_spelling", true, ("group", "mothballed.md", ARCHIVED_FILE)),
+        ("group_list_rejects_other_include_archived_spellings", false, ("group", "mothballed.md", ARCHIVED_FILE)),
+        (
+            "group_list_string_true_frontmatter_is_archived",
+            false,
+            ("group", "stringy.md", "---\nname: Stringy\narchived: \"true\"\n---\n\nA quoted flag."),
+        ),
+        (
+            "group_list_other_archived_values_are_active",
+            false,
+            ("group", "yesish.md", "---\nname: Yesish\narchived: yes\n---\n\nNot the flag."),
+        ),
+        (
+            "group_list_archived_cannot_win_the_default",
+            true,
+            (
+                "group",
+                "aardvark.md",
+                "---\nname: Aardvark\nisDefault: true\narchived: true\n---\n\nFirst alphabetically.",
+            ),
+        ),
+    ] {
+        let db = fresh_db(&spec, name);
+        seed_scenario(&db, seed.0, seed.1, seed.2);
+        ok(
+            name,
+            &rt.block_on(groups::group_scenario_list(&db, GAMMA, include_archived)),
+            true,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "g_create_archived");
+        let resp = rt.block_on(groups::group_scenario_create(
+            &db,
+            GAMMA,
+            json!({
+                "filename": "Put Away", "name": "Put Away",
+                "description": "Filed for later.", "archived": true, "body": "Stored."
+            }),
+        ));
+        ok(
+            "group_create_archived_writes_the_flag",
+            &resp,
+            true,
+            &mut failed,
+        );
+        bytes_match(
+            "group_create_archived_writes_the_flag",
+            &db,
+            "group",
+            "Put Away.md",
+            &mut failed,
+        );
+    }
+    {
+        // The collection-POST quirk: the fresh list is refreshed with the BODY's
+        // `archived`, not the query param — so an ACTIVE create returns an
+        // archived-free list even with "Show archived" ticked.
+        let db = fresh_db(&spec, "g_create_active_flag");
+        seed_scenario(&db, "group", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(groups::group_scenario_create(
+            &db,
+            GAMMA,
+            json!({ "filename": "Still Here", "body": "Active." }),
+        ));
+        ok(
+            "group_create_active_ignores_the_query_flag",
+            &resp,
+            true,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "g_update_preserve");
+        seed_scenario(&db, "group", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(groups::group_scenario_update(
+            &db,
+            GAMMA,
+            "mothballed.md",
+            json!({ "name": "Mothballed", "body": "Edited while archived." }),
+            true,
+        ));
+        ok(
+            "group_update_omitting_archived_preserves_it",
+            &resp,
+            true,
+            &mut failed,
+        );
+        bytes_match(
+            "group_update_omitting_archived_preserves_it",
+            &db,
+            "group",
+            "mothballed.md",
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "g_update_restore");
+        seed_scenario(&db, "group", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(groups::group_scenario_update(
+            &db,
+            GAMMA,
+            "mothballed.md",
+            json!({ "name": "Mothballed", "archived": false, "body": "Back in play." }),
+            false,
+        ));
+        ok(
+            "group_update_restoring_deletes_the_key",
+            &resp,
+            true,
+            &mut failed,
+        );
+        bytes_match(
+            "group_update_restoring_deletes_the_key",
+            &db,
+            "group",
+            "mothballed.md",
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "g_update_archive");
+        let resp = rt.block_on(groups::group_scenario_update(
+            &db,
+            GAMMA,
+            "interlude.md",
+            json!({ "name": "Interlude", "archived": true, "body": "Put away." }),
+            false,
+        ));
+        ok(
+            "group_update_archiving_an_active_scenario",
+            &resp,
+            true,
+            &mut failed,
+        );
+        bytes_match(
+            "group_update_archiving_an_active_scenario",
+            &db,
+            "group",
+            "interlude.md",
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "g_delete_flag");
+        seed_scenario(&db, "group", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(groups::group_scenario_delete(
+            &db,
+            GAMMA,
+            "interlude.md",
+            true,
+        ));
+        ok(
+            "group_delete_fresh_list_honours_the_flag",
+            &resp,
+            true,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "g_rename_flag");
+        seed_scenario(&db, "group", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(groups::group_scenario_rename(
+            &db,
+            GAMMA,
+            "interlude.md",
+            "interlude-3",
+            true,
+        ));
+        ok(
+            "group_rename_fresh_list_honours_the_flag",
+            &resp,
+            true,
+            &mut failed,
+        );
+    }
+    for (name, include_archived) in [
+        ("union_honours_the_flag", true),
+        ("union_hides_archived_by_default", false),
+    ] {
+        let db = fresh_db(&spec, name);
+        seed_scenario(&db, "beacon", "mothballed.md", ARCHIVED_FILE);
+        ok(
+            name,
+            &rt.block_on(groups::group_scenarios_union(
+                &db,
+                vec![ARIA.to_string()],
+                include_archived,
+            )),
+            true,
+            &mut failed,
+        );
+    }
+    for (name, include_archived) in [
+        ("project_list_hides_archived", false),
+        ("project_list_shows_archived_with_the_flag", true),
+    ] {
+        let db = fresh_db(&spec, name);
+        seed_scenario(&db, "project", "mothballed.md", ARCHIVED_FILE);
+        ok(
+            name,
+            &rt.block_on(projects::project_scenario_list(&db, IOTA, include_archived)),
+            true,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "p_update_preserve");
+        seed_scenario(&db, "project", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(projects::project_scenario_update(
+            &db,
+            IOTA,
+            "mothballed.md",
+            json!({ "name": "Mothballed", "body": "Edited while archived." }),
+            true,
+        ));
+        ok(
+            "project_update_omitting_archived_preserves_it",
+            &resp,
+            true,
+            &mut failed,
+        );
+        bytes_match(
+            "project_update_omitting_archived_preserves_it",
+            &db,
+            "project",
+            "mothballed.md",
+            &mut failed,
+        );
+    }
+    for (name, include_archived) in [
+        ("general_list_hides_archived", false),
+        ("general_list_shows_archived_with_the_flag", true),
+    ] {
+        let db = fresh_db(&spec, name);
+        seed_scenario(&db, "general", "mothballed.md", ARCHIVED_FILE);
+        ok(
+            name,
+            &rt.block_on(scenarios::scenario_list(&db, include_archived)),
+            true,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "gen_create_archived");
+        let resp = rt.block_on(scenarios::scenario_create(
+            &db,
+            json!({ "filename": "Put Away", "name": "Put Away", "archived": true, "body": "Stored." }),
+        ));
+        ok(
+            "general_create_archived_writes_the_flag",
+            &resp,
+            true,
+            &mut failed,
+        );
+        bytes_match(
+            "general_create_archived_writes_the_flag",
+            &db,
+            "general",
+            "Put Away.md",
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "gen_update_preserve");
+        seed_scenario(&db, "general", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(scenarios::scenario_update(
+            &db,
+            "mothballed.md".into(),
+            json!({ "name": "Mothballed", "body": "Edited while archived." }),
+            true,
+        ));
+        ok(
+            "general_update_omitting_archived_preserves_it",
+            &resp,
+            true,
+            &mut failed,
+        );
+        bytes_match(
+            "general_update_omitting_archived_preserves_it",
+            &db,
+            "general",
+            "mothballed.md",
+            &mut failed,
+        );
     }
 
     assert!(failed.is_empty(), "scenarios-routes FAILED: {failed:?}");
