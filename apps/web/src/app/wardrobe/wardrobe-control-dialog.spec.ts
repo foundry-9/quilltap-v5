@@ -64,6 +64,14 @@ function defaultRoute(req: AnyRequest): Record<string, unknown> | Error {
       return { equippedOutfit: { c1: WORN } };
     case 'chatEquip':
       return { equippedSlots: WORN };
+    // P4.D121: the dressing-instructions section reads its container's file on
+    // every open. Answering here keeps unrelated beats from tripping its
+    // fail-soft warn arm.
+    case 'characterWardrobeInstructionsGet':
+    case 'groupWardrobeInstructionsGet':
+    case 'projectWardrobeInstructionsGet':
+    case 'wardrobeInstructionsGet':
+      return { instructions: null };
     default:
       return new Error(`unexpected ${req.type}`);
   }
@@ -141,7 +149,10 @@ function inner(component: WardrobeControlDialogInner): {
   pickContainer: (value: string) => void;
   handleDuplicate: (item: WardrobeItemDto) => Promise<void>;
   handleToggleDefault: (item: WardrobeItemDto) => Promise<void>;
+  handleToggleArchived: (item: WardrobeItemDto) => Promise<void>;
   handleDelete: (item: WardrobeItemDto) => Promise<void>;
+  showArchived: { (): boolean; set(v: boolean): void };
+  filteredItems: () => WardrobeItemDto[];
   transferringItem: { (): WardrobeItemDto | null; set(v: WardrobeItemDto | null): void };
 } {
   return component as unknown as ReturnType<typeof inner>;
@@ -306,6 +317,9 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
           'groupList',
           'characterWardrobeList',
           'wardrobeList',
+          // P4.D121: the dressing-instructions section reads on open. A READ,
+          // and the point of this assertion is that no MUTATION fires.
+          'characterWardrobeInstructionsGet',
         ].includes(r.type as string),
       ),
     ).toBe(true);
@@ -543,6 +557,9 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
           'groupList',
           'characterWardrobeList',
           'wardrobeList',
+          // P4.D121: the dressing-instructions section reads on open. A READ,
+          // and the point of this assertion is that no MUTATION fires.
+          'characterWardrobeInstructionsGet',
         ].includes(r.type as string),
       ),
     ).toBe(true);
@@ -689,5 +706,100 @@ describe('WardrobeControlDialogInner — bundles dissolve as they go on', () => 
 
     expect(c.fittingSlots().top).toEqual(['leaf-top']);
     expect(c.fittingSlots().footwear).toEqual(['leaf-shoe']);
+  });
+});
+
+/**
+ * P4.D121 — the archive surface in the dialog (v4 `d25dacc1`), plus the
+ * dressing-instructions section's mount (v4 `b86bb1a5` `:1139`).
+ *
+ * The load-bearing claim is that the hiding is SERVER-side: v5's own
+ * client-side `if (i.archivedAt) return false` is gone, so an archived garment
+ * that comes back from a fetch RENDERS. Without the fetch flag AND the deleted
+ * filter, one of those two halves would silently mask the other.
+ */
+describe('WardrobeControlDialogInner — archived garments (v4 d25dacc1)', () => {
+  const ARCHIVED_AT = '2026-02-01T00:00:00.000Z';
+  const RETIRED = dto({ id: 'retired', title: 'Retired Cloak', archivedAt: ARCHIVED_AT });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  /** Answers every wardrobe list, honouring `includeArchived` the way a server would. */
+  function archiveRoute(req: AnyRequest): Record<string, unknown> | Error {
+    if ((req.type as string) === 'characterWardrobeList') {
+      if ((req as { characterId?: string }).characterId !== 'c1') return { wardrobeItems: [] };
+      const include = (req as { includeArchived?: boolean }).includeArchived === true;
+      return { wardrobeItems: include ? [SHIRT, HAT, RETIRED] : [SHIRT, HAT] };
+    }
+    return defaultRoute(req);
+  }
+
+  it('every tier read carries includeArchived, and the flip is a NEW fetch', async () => {
+    const { fixture, component, seen } = await renderInner(null, archiveRoute);
+    const lists = () => seen.filter((r) => (r.type as string) === 'characterWardrobeList');
+    expect(lists().length).toBeGreaterThan(0);
+    expect(lists().every((r) => r['includeArchived'] === false)).toBe(true);
+    expect(seen.filter((r) => (r.type as string) === 'wardrobeList').every((r) => r['includeArchived'] === false)).toBe(true);
+    const before = lists().length;
+
+    inner(component).showArchived.set(true);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    expect(lists().length).toBeGreaterThan(before);
+    expect(lists().slice(before).every((r) => r['includeArchived'] === true)).toBe(true);
+  });
+
+  it('an archived garment the fetch returned RENDERS — no client-side filter survives', async () => {
+    const { fixture, component } = await renderInner(null, archiveRoute);
+    expect(inner(component).filteredItems().some((i) => i.id === 'retired')).toBe(false);
+
+    inner(component).showArchived.set(true);
+    fixture.detectChanges();
+    await settle(fixture);
+
+    expect(inner(component).filteredItems().some((i) => i.id === 'retired')).toBe(true);
+    const rows = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('qt-wardrobe-item-row'),
+    ).map((r) => r.textContent ?? '');
+    expect(rows.some((t) => t.includes('Retired Cloak') && t.includes('archived'))).toBe(true);
+  });
+
+  it('the resolution pool ALWAYS asks for archived archetypes (v4 :71-77)', async () => {
+    const { component, fixture, seen } = await renderInner(null, archiveRoute);
+    inner(component).selectedContainer.set({ scope: 'project', id: 'p1' });
+    fixture.detectChanges();
+    await settle(fixture);
+    const generalReads = seen.filter((r) => (r.type as string) === 'wardrobeList');
+    // The container's own list follows the checkbox; the archetype pool does not.
+    expect(generalReads.some((r) => r['includeArchived'] === true)).toBe(true);
+  });
+
+  it('archiving routes to the item’s own tier and re-reads, with no confirm', async () => {
+    const { component, seen } = await renderInner(null, archiveRoute);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await inner(component).handleToggleArchived(HAT);
+    const update = seen.find((r) => (r.type as string) === 'characterWardrobeUpdate');
+    expect(update).toBeTruthy();
+    expect(update!['itemId']).toBe('hat');
+    expect(update!['item']).toEqual({ archived: true });
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('restoring sends archived:false (v4’s `!item.archivedAt`)', async () => {
+    const { component, seen } = await renderInner(null, archiveRoute);
+    await inner(component).handleToggleArchived(RETIRED);
+    const update = seen.find((r) => (r.type as string) === 'characterWardrobeUpdate');
+    expect(update!['item']).toEqual({ archived: false });
+  });
+
+  it('mounts the dressing-instructions section for the browsed container (v4 b86bb1a5 :1139)', async () => {
+    const { fixture, seen } = await renderInner(null, archiveRoute);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('qt-wardrobe-instructions-section'),
+    ).toBeTruthy();
+    expect(
+      seen.some((r) => (r.type as string) === 'characterWardrobeInstructionsGet'),
+    ).toBe(true);
   });
 });

@@ -43,6 +43,36 @@ describe('CharacterWardrobeTab (v4 CharacterDetailView.tsx 8bf3cb5f)', () => {
     expect(service.context()).toEqual({ characterId: 'c1' });
   });
 
+  it('mounts the dressing-instructions section for this character (v4 b86bb1a5 :330-335)', () => {
+    const seen: { type: string; [k: string]: unknown }[] = [];
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [CharacterWardrobeTab],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        {
+          provide: CoreClient,
+          useValue: {
+            dispatchData: async (req: { type: string }) => {
+              seen.push(req);
+              return {};
+            },
+          } as unknown as CoreClient,
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(CharacterWardrobeTab);
+    fixture.componentRef.setInput('characterId', 'c1');
+    fixture.detectChanges();
+
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('qt-wardrobe-instructions-section')).not.toBeNull();
+    expect(el.textContent).toContain('Dressing Instructions');
+    // It reads THIS character's own file — the section takes the container, so
+    // a wrong id here would silently edit somebody else's instructions.
+    expect(seen).toContainEqual({ type: 'characterWardrobeInstructionsGet', characterId: 'c1' });
+  });
+
   it('renders the canChooseOutfit checkbox reflecting the input (v4 8bf3cb5f)', () => {
     const fixture = render();
     fixture.componentRef.setInput('characterId', 'c1');

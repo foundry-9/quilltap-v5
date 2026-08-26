@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import {
+  booleanAttribute,
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { WARDROBE_SLOT_META } from './slot-meta';
@@ -14,14 +22,22 @@ import { WARDROBE_SLOT_META } from './slot-meta';
  *  - `[+]` icon that adds the item to a slot. Single-slot items target their
  *    only slot directly; multi-slot items open a small popover picker.
  *  - `⋮` kebab menu with secondary actions: Edit, toggle the default-outfit
- *    flag, Duplicate, Move, Copy, and Delete. Which of these appear is
- *    governed by the `canManage` predicate: items living in the container
- *    being browsed get the full set, items merged in from another shared
- *    tier keep only Move and Copy.
+ *    flag, Duplicate, Archive/Restore, Move, Copy, and Delete. Which of these
+ *    appear is governed by the `canManage` predicate: items living in the
+ *    container being browsed get the full set, items merged in from another
+ *    shared tier keep only Move and Copy — one character must not be able to
+ *    retire a coat the whole household shares.
  *
  * Composite items keep a `▶/▼` expander so the user can peek at the
  * components without entering the editor (nested rows are read-only browse:
  * `inChat=false`, v4 `:397`).
+ *
+ * **Recorded mechanism divergence — {@link canArchive}.** v4's
+ * `onToggleArchived` is an OPTIONAL prop: a surface that must never archive
+ * (the outfit composer, which does the same job the outfit-selection LLM does)
+ * simply omits it and the entry does not render. An Angular `output` is always
+ * present, so the same gate is an explicit boolean input, defaulting to FALSE —
+ * absence, not presence, is what the two spellings share.
  */
 @Component({
   selector: 'qt-wardrobe-item-row',
@@ -63,6 +79,9 @@ import { WARDROBE_SLOT_META } from './slot-meta';
             }
             @if (item().isDefault) {
               <span class="qt-text-xs qt-text-secondary">· default</span>
+            }
+            @if (item().archivedAt) {
+              <span class="qt-badge qt-badge-secondary">archived</span>
             }
             @for (t of item().types; track t) {
               <span class="qt-badge" [class]="slotMeta[t].badgeClass">{{ t }}</span>
@@ -180,6 +199,18 @@ import { WARDROBE_SLOT_META } from './slot-meta';
                         Duplicate
                       </button>
                     </li>
+                    @if (canArchive()) {
+                      <li>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          (click)="menuAction(toggleArchived)"
+                          class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
+                        >
+                          {{ item().archivedAt ? 'Restore from archive' : 'Archive' }}
+                        </button>
+                      </li>
+                    }
                   }
                   <li>
                     <button
@@ -271,6 +302,13 @@ export class WardrobeItemRow {
    *  tooltip only (v4 `:33-37`). */
   readonly addAction = input<'layer' | 'add'>('layer');
   readonly isUpdatingDefault = input(false);
+  /**
+   * Whether this surface may archive at all — v4's optional `onToggleArchived`
+   * prop, expressed as a gate (see the class header). Default false so a new
+   * host offers nothing until it says otherwise; the entry additionally rides
+   * inside `canManage`, alongside Edit and Duplicate.
+   */
+  readonly canArchive = input(false, { transform: booleanAttribute });
   /** Nesting depth for composite components — indentation. */
   readonly depth = input(0);
 
@@ -280,6 +318,8 @@ export class WardrobeItemRow {
   readonly move = output<WardrobeItemDto>();
   readonly copyItem = output<WardrobeItemDto>();
   readonly delete = output<WardrobeItemDto>();
+  /** Archive an active garment, or restore an archived one (v4 `d25dacc1`). */
+  readonly toggleArchived = output<WardrobeItemDto>();
   readonly equip = output<WardrobeItemDto>();
   readonly addToSlot = output<{ item: WardrobeItemDto; slot: WardrobeSlotType }>();
 

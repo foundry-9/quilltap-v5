@@ -33,7 +33,10 @@ export interface WardrobeCreateInput {
   replace?: boolean;
 }
 
-export type WardrobeUpdateInput = Partial<WardrobeCreateInput>;
+export type WardrobeUpdateInput = Partial<WardrobeCreateInput> & {
+  /** Archive (true) or restore (false). Maps to `archivedAt` server-side. */
+  archived?: boolean;
+};
 
 /** The uniform result the manager branches on. */
 export type WardrobeResult<T = unknown> = ({ ok: true } & T) | { ok: false; error: string };
@@ -42,12 +45,23 @@ export interface WardrobeMutator {
   readonly items: Signal<WardrobeItemDto[]>;
   readonly loading: Signal<boolean>;
   readonly error: Signal<string | null>;
+  /**
+   * "Show archived" state (v4 `d25dacc1`). Flipping it re-fetches with
+   * `includeArchived` rather than filtering `items` client-side — the project
+   * and group lists used to return archived items unconditionally and filter on
+   * the client, which is exactly the second place for the rule to drift that
+   * v4 removed.
+   */
+  readonly showArchived: Signal<boolean>;
+  setShowArchived(next: boolean): void;
   refresh(): Promise<void>;
   createItem(
     input: WardrobeCreateInput,
   ): Promise<WardrobeResult<{ item: WardrobeItemDto | undefined }>>;
   updateItem(id: string, patch: WardrobeUpdateInput): Promise<WardrobeResult>;
   deleteItem(id: string): Promise<WardrobeResult>;
+  /** Archive an active garment, or restore an archived one. */
+  setItemArchived(id: string, archived: boolean): Promise<WardrobeResult>;
 }
 
 function errorMessage(err: unknown): string {
@@ -59,12 +73,17 @@ export function projectWardrobeMutator(core: CoreClient, projectId: string): War
   const items = signal<WardrobeItemDto[]>([]);
   const loading = signal(true);
   const error = signal<string | null>(null);
+  const showArchived = signal(false);
 
   async function refresh(): Promise<void> {
     loading.set(true);
     error.set(null);
     try {
-      const data = await core.dispatchData({ type: 'projectWardrobeList', projectId });
+      const data = await core.dispatchData({
+        type: 'projectWardrobeList',
+        projectId,
+        includeArchived: showArchived(),
+      });
       items.set((data['wardrobeItems'] as WardrobeItemDto[]) ?? []);
     } catch (err) {
       error.set(errorMessage(err));
@@ -118,5 +137,28 @@ export function projectWardrobeMutator(core: CoreClient, projectId: string): War
     }
   }
 
-  return { items, loading, error, refresh, createItem, updateItem, deleteItem };
+  /** v4 `setItemArchived` — one line over `updateItem`, so the archive flag
+   *  travels the same PUT every other field does. */
+  async function setItemArchived(id: string, archived: boolean): Promise<WardrobeResult> {
+    return updateItem(id, { archived });
+  }
+
+  /** v4's checkbox handler: the flip IS a new request, not a client filter. */
+  function setShowArchived(next: boolean): void {
+    showArchived.set(next);
+    void refresh();
+  }
+
+  return {
+    items,
+    loading,
+    error,
+    showArchived,
+    setShowArchived,
+    refresh,
+    createItem,
+    updateItem,
+    deleteItem,
+    setItemArchived,
+  };
 }

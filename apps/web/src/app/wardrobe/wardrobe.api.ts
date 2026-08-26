@@ -190,17 +190,28 @@ export type WardrobeContainerRequest =
   | WardrobeUpdateRequest
   | WardrobeDeleteRequest;
 
-/** v4 `wardrobeCollectionUrl(container)` read with GET. */
-export function containerListRequest(container: WardrobeContainer): WardrobeContainerRequest {
+/**
+ * v4 `wardrobeCollectionUrl(container, { includeArchived })` read with GET.
+ *
+ * `includeArchived` is v4's `?includeArchived=true` (`d25dacc1`): building it
+ * here — the one place the container → endpoint routing is spelled — is what
+ * keeps the flag from drifting, and means a caller that simply does not ask
+ * gets the archived-free list by construction.
+ */
+export function containerListRequest(
+  container: WardrobeContainer,
+  opts?: { includeArchived?: boolean },
+): WardrobeContainerRequest {
+  const includeArchived = opts?.includeArchived === true;
   switch (container.scope) {
     case 'character':
-      return { type: 'characterWardrobeList', characterId: containerId(container) };
+      return { type: 'characterWardrobeList', characterId: containerId(container), includeArchived };
     case 'project':
-      return { type: 'projectWardrobeList', projectId: containerId(container) };
+      return { type: 'projectWardrobeList', projectId: containerId(container), includeArchived };
     case 'group':
-      return { type: 'groupWardrobeList', groupId: containerId(container) };
+      return { type: 'groupWardrobeList', groupId: containerId(container), includeArchived };
     case 'general':
-      return { type: 'wardrobeList' };
+      return { type: 'wardrobeList', includeArchived };
   }
 }
 
@@ -293,6 +304,7 @@ export interface WardrobeContainerLoadResult {
 export async function loadWardrobeContainerItems(
   core: CoreClient,
   container: WardrobeContainer | null,
+  opts?: { includeArchived?: boolean },
 ): Promise<WardrobeContainerLoadResult> {
   if (!container || container.scope === 'character') {
     return { items: [], resolutionItems: [] };
@@ -301,10 +313,16 @@ export async function loadWardrobeContainerItems(
     // v4 `:66-70` — the container read and (unless it IS General) the
     // archetype read, in parallel.
     const [containerData, generalData] = await Promise.all([
-      dispatchWardrobe(core, containerListRequest(container)),
+      dispatchWardrobe(core, containerListRequest(container, opts)),
       container.scope === 'general'
         ? Promise.resolve(null)
-        : dispatchWardrobe(core, { type: 'wardrobeList' }).catch(() => null),
+        : // The resolution pool ALWAYS includes archived archetypes (v4
+          // `:71-77`): a composite may bundle one, and an unresolvable
+          // component would render as a gap. This is the one place the flag is
+          // not the caller's to choose.
+          dispatchWardrobe(core, { type: 'wardrobeList', includeArchived: true }).catch(
+            () => null,
+          ),
     ]);
     const own = (containerData['wardrobeItems'] as WardrobeItemDto[] | undefined) ?? [];
     const pool = [...own];
@@ -359,7 +377,17 @@ export interface CharacterWardrobeLoadResult {
 export async function loadCharacterWardrobeItems(
   core: CoreClient,
   characterId: string | null,
-  opts?: { projectId?: string | null; chatId?: string | null },
+  opts?: {
+    projectId?: string | null;
+    chatId?: string | null;
+    /**
+     * Fold archived garments into the result, flagged rather than hidden. Every
+     * tier honours it; flipping it re-reads all four. Default false, so a
+     * caller that does not ask cannot accidentally surface archived items
+     * (v4 `use-character-wardrobe-items.ts:57-62`).
+     */
+    includeArchived?: boolean;
+  },
 ): Promise<CharacterWardrobeLoadResult> {
   if (!characterId) {
     return { items: [], projectId: opts?.projectId ?? null };
@@ -376,20 +404,31 @@ export async function loadCharacterWardrobeItems(
     }
   }
 
-  // The four tier reads, in parallel (v4 :93-100); each fails soft.
+  // The four tier reads, in parallel (v4 :93-100); each fails soft. Every one
+  // carries the archived opt-in, so the toggle is one fetch, not a filter.
+  const includeArchived = opts?.includeArchived === true;
   const [personal, group, project, archetype] = await Promise.all([
     core
-      .dispatchData({ type: 'characterWardrobeList', characterId })
+      .dispatchData({ type: 'characterWardrobeList', characterId, includeArchived })
       .catch(() => null),
     core
-      .dispatchData({ type: 'characterWardrobeList', characterId, scope: 'group' })
+      .dispatchData({
+        type: 'characterWardrobeList',
+        characterId,
+        scope: 'group',
+        includeArchived,
+      })
       .catch(() => null),
     projectTierId
       ? core
-          .dispatchData({ type: 'projectWardrobeList', projectId: projectTierId })
+          .dispatchData({
+            type: 'projectWardrobeList',
+            projectId: projectTierId,
+            includeArchived,
+          })
           .catch(() => null)
       : Promise.resolve(null),
-    dispatchWardrobe(core, { type: 'wardrobeList' }).catch(() => null),
+    dispatchWardrobe(core, { type: 'wardrobeList', includeArchived }).catch(() => null),
   ]);
 
   // Merge with precedence: personal > group > project > general (v4 :102-124).
@@ -430,6 +469,39 @@ export async function toggleItemDefault(
   container: WardrobeContainer,
 ): Promise<void> {
   const body = { isDefault: !item.isDefault };
+  if (container.scope !== 'character') {
+    await dispatchWardrobe(core, containerUpdateRequest(container, item.id, body));
+    return;
+  }
+  if (item.characterId) {
+    await core.dispatchData({
+      type: 'characterWardrobeUpdate',
+      characterId: item.characterId,
+      itemId: item.id,
+      item: body,
+    });
+  } else {
+    await dispatchWardrobe(core, { type: 'wardrobeUpdate', itemId: item.id, item: body });
+  }
+}
+
+/**
+ * Archive an active garment, or restore an archived one, over the SAME two arms
+ * `toggleItemDefault` uses (v4 `handleToggleArchived`,
+ * `wardrobe-control-dialog.tsx:508-534` at `d25dacc1`). Archiving hides the
+ * garment from the pickers and bars it from the outfit-selection LLM's
+ * candidate list; it does NOT strip it off a character already wearing it, and
+ * does not forbid a human who has ticked "Show archived" from putting it back
+ * on. The `archived` boolean is what the item routes translate into
+ * `archivedAt` (Shared contract B2), which is why this sends a flag and not a
+ * timestamp.
+ */
+export async function setWardrobeItemArchived(
+  core: CoreClient,
+  item: WardrobeItemDto,
+  container: WardrobeContainer,
+): Promise<void> {
+  const body = { archived: !item.archivedAt };
   if (container.scope !== 'character') {
     await dispatchWardrobe(core, containerUpdateRequest(container, item.id, body));
     return;

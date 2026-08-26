@@ -54,6 +54,12 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
  * The Description is a `qt-markdown-field` (v4 `wardrobe-item-editor.tsx:674`,
  * its `minHeight="10rem"`). v4 passes no `remountKey` there, so neither do we —
  * the draft form is seeded per open.
+ *
+ * "Show archived" flips the mutator's FETCH, not a client-side filter (v4
+ * `d25dacc1`): the project and group lists used to return archived items
+ * unconditionally and hide them here, and that second copy of the rule is what
+ * v4 removed. Archive/Restore is an INLINE button on this surface, not a kebab
+ * entry — the row here has no kebab.
  */
 @Component({
   selector: 'qt-project-wardrobe-manager',
@@ -69,7 +75,16 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
       }
 
       @if (!formOpen()) {
-        <div class="flex justify-end">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <label class="flex items-center gap-2 qt-text-small">
+            <input
+              type="checkbox"
+              class="qt-checkbox"
+              [checked]="mutator().showArchived()"
+              (change)="onShowArchived($event)"
+            />
+            Show archived
+          </label>
           <button
             type="button"
             class="qt-button qt-button-primary qt-button-sm"
@@ -251,6 +266,18 @@ function draftFromItem(item: WardrobeItemDto): DraftState {
                 </button>
                 <button
                   type="button"
+                  class="qt-button qt-button-ghost qt-button-sm"
+                  [title]="
+                    item.archivedAt
+                      ? 'Restore this garment to the wardrobe pickers'
+                      : 'Hide this garment from the wardrobe pickers'
+                  "
+                  (click)="handleToggleArchived(item)"
+                >
+                  {{ item.archivedAt ? 'Restore' : 'Archive' }}
+                </button>
+                <button
+                  type="button"
                   class="qt-button qt-button-ghost qt-button-sm qt-text-destructive"
                   title="Delete item"
                   (click)="handleDelete(item)"
@@ -368,6 +395,19 @@ export class ProjectWardrobeManager {
       return;
     }
     this.closeForm();
+  }
+
+  protected onShowArchived(event: Event): void {
+    this.mutator().setShowArchived((event.target as HTMLInputElement).checked);
+  }
+
+  /** v4 `handleToggleArchived` — single-click, no confirm; nothing is destroyed. */
+  protected async handleToggleArchived(item: WardrobeItemDto): Promise<void> {
+    this.actionError.set(null);
+    const result = await this.mutator().setItemArchived(item.id, !item.archivedAt);
+    if (!result.ok) {
+      this.actionError.set(result.error);
+    }
   }
 
   protected async handleDelete(item: WardrobeItemDto): Promise<void> {

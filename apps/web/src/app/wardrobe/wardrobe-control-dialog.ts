@@ -54,8 +54,10 @@ import {
   duplicateWardrobeItem,
   loadCharacterWardrobeItems,
   loadWardrobeContainerItems,
+  setWardrobeItemArchived,
   toggleItemDefault,
 } from './wardrobe.api';
+import { WardrobeInstructionsSection } from './wardrobe-instructions-section';
 import { ToastService } from '../ui/toast.service';
 import { onTabActivated } from '../workspace/workspace-contract';
 
@@ -118,6 +120,7 @@ type EditorIntent = 'create-single' | 'create-bundle';
     NgTemplateOutlet,
     AvatarGenerationPane,
     OutfitComposer,
+    WardrobeInstructionsSection,
     WardrobeItemEditor,
     WardrobeItemRow,
     WardrobeTransferDialog,
@@ -259,6 +262,11 @@ type EditorIntent = 'create-single' | 'create-bundle';
             }
           </div>
 
+          <!-- Optional dressing instructions for this container — consulted when
+               a character chooses their own opening outfit; nearest tier wins
+               (v4 :1139-1142). -->
+          <qt-wardrobe-instructions-section [container]="selectedContainer()" />
+
           <div class="grid md:grid-cols-2 gap-4">
             <!-- LEFT: Wardrobe list (v4 :920-1032) -->
             <section class="flex flex-col min-h-0 relative">
@@ -305,6 +313,15 @@ type EditorIntent = 'create-single' | 'create-bundle';
                     </button>
                   }
                 </div>
+                <label class="flex items-center gap-2 qt-text-xs qt-text-secondary">
+                  <input
+                    type="checkbox"
+                    class="qt-checkbox"
+                    [checked]="showArchived()"
+                    (change)="onShowArchived($event)"
+                  />
+                  Show archived
+                </label>
               </div>
 
               <div class="flex-1 overflow-y-auto space-y-1 max-h-[55vh] pb-12">
@@ -332,6 +349,8 @@ type EditorIntent = 'create-single' | 'create-bundle';
                       [equipLabel]="useFittingActions() ? 'Try on' : 'Wear'"
                       [addAction]="useFittingActions() ? 'add' : 'layer'"
                       [isUpdatingDefault]="updatingDefaultId() === item.id"
+                      canArchive
+                      (toggleArchived)="handleToggleArchived($event)"
                       (toggleDefault)="handleToggleDefault($event)"
                       (edit)="editingItem.set($event)"
                       (duplicate)="handleDuplicate($event)"
@@ -612,6 +631,12 @@ export class WardrobeControlDialogInner {
   protected readonly createBundleComponents = signal<string[]>([]);
   protected readonly slotFilter = signal<SlotFilter>('all');
   protected readonly kindFilter = signal<ItemKind>('items');
+  /**
+   * "Show archived" (v4 `:203-207`). Flipping it re-fetches every tier with
+   * `includeArchived` rather than filtering what is already loaded — the server
+   * owns the hiding, so this list can never disagree with the API.
+   */
+  protected readonly showArchived = signal(false);
   protected readonly titleFilter = signal('');
   protected readonly updatingDefaultId = signal<string | null>(null);
 
@@ -685,6 +710,10 @@ export class WardrobeControlDialogInner {
     // or the single shared container's own list).
     effect(() => {
       const container = this.selectedContainer();
+      // Tracked deliberately: flipping "Show archived" is a NEW REQUEST on
+      // every tier, exactly as v4's two hooks refire on their `includeArchived`
+      // dep — never a client-side pass over what is already loaded.
+      this.showArchived();
       untracked(() => void this.reloadForContainer(container));
     });
 
@@ -832,6 +861,7 @@ export class WardrobeControlDialogInner {
     try {
       const result = await loadCharacterWardrobeItems(this.core, characterId, {
         chatId: this.chatId(),
+        includeArchived: this.showArchived(),
       });
       this.items.set(result.items);
       this.dialogProjectId.set(result.projectId);
@@ -843,7 +873,9 @@ export class WardrobeControlDialogInner {
   private async reloadContainerItems(container: WardrobeContainer | null): Promise<void> {
     this.containerItemsLoading.set(true);
     try {
-      const result = await loadWardrobeContainerItems(this.core, container);
+      const result = await loadWardrobeContainerItems(this.core, container, {
+        includeArchived: this.showArchived(),
+      });
       this.containerItems.set(result.items);
       this.containerResolutionItems.set(result.resolutionItems);
     } finally {
@@ -904,7 +936,9 @@ export class WardrobeControlDialogInner {
     const kindFilter = this.kindFilter();
     const slotFilter = this.slotFilter();
     return sorted.filter((i) => {
-      if (i.archivedAt) return false;
+      // No archived filter here on purpose: the fetch already omitted them
+      // unless "Show archived" is ticked, and a second client-side pass would
+      // be a place for the two rules to drift apart (v4 `:463-465`).
       const isComposite = (i.componentItemIds ?? []).length > 0;
       if (kindFilter === 'items' && isComposite) return false;
       if (kindFilter === 'outfits' && !isComposite) return false;
@@ -963,6 +997,27 @@ export class WardrobeControlDialogInner {
     } finally {
       this.updatingDefaultId.set(null);
     }
+  }
+
+  protected onShowArchived(event: Event): void {
+    this.showArchived.set((event.target as HTMLInputElement).checked);
+  }
+
+  /**
+   * v4 `handleToggleArchived` (`:508-534`). Single-click, no confirm: archiving
+   * hides a garment, it does not destroy one. A failed write toasts v4's fixed
+   * sentence and leaves the list alone.
+   */
+  protected async handleToggleArchived(item: WardrobeItemDto): Promise<void> {
+    const container = this.selectedContainer();
+    if (!container) return;
+    try {
+      await setWardrobeItemArchived(this.core, item, container);
+    } catch (err) {
+      this.toasts.showError(err instanceof Error ? err.message : 'Failed to update item');
+      return;
+    }
+    await this.reloadCurrentItems();
   }
 
   protected async handleDelete(item: WardrobeItemDto): Promise<void> {

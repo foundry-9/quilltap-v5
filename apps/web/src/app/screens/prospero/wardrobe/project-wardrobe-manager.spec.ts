@@ -37,7 +37,10 @@ interface MockHandle {
     create: unknown[];
     update: [string, unknown][];
     delete: string[];
+    archived: [string, boolean][];
+    showArchived: boolean[];
   };
+  showArchived: ReturnType<typeof signal<boolean>>;
   items: ReturnType<typeof signal<WardrobeItemDto[]>>;
   results: {
     create: WardrobeResult<{ item: WardrobeItemDto | undefined }>;
@@ -50,7 +53,14 @@ function mockMutator(initial: WardrobeItemDto[] = []): MockHandle {
   const items = signal<WardrobeItemDto[]>(initial);
   const loading = signal(false);
   const error = signal<string | null>(null);
-  const calls: MockHandle['calls'] = { create: [], update: [], delete: [] };
+  const showArchived = signal(false);
+  const calls: MockHandle['calls'] = {
+    create: [],
+    update: [],
+    delete: [],
+    archived: [],
+    showArchived: [],
+  };
   const results: MockHandle['results'] = {
     create: { ok: true, item: item() },
     update: { ok: true },
@@ -60,6 +70,11 @@ function mockMutator(initial: WardrobeItemDto[] = []): MockHandle {
     items,
     loading,
     error,
+    showArchived,
+    setShowArchived: (next) => {
+      calls.showArchived.push(next);
+      showArchived.set(next);
+    },
     refresh: async () => undefined,
     createItem: async (input) => {
       calls.create.push(input);
@@ -73,8 +88,12 @@ function mockMutator(initial: WardrobeItemDto[] = []): MockHandle {
       calls.delete.push(id);
       return results.delete;
     },
+    setItemArchived: async (id, archived) => {
+      calls.archived.push([id, archived]);
+      return results.update;
+    },
   };
-  return { mutator, calls, items, results };
+  return { mutator, calls, items, results, showArchived };
 }
 
 async function settle(fixture: ComponentFixture<unknown>, ticks = 4): Promise<void> {
@@ -251,6 +270,61 @@ describe('ProjectWardrobeManager', () => {
       (fixture.nativeElement as HTMLElement).querySelectorAll('.max-h-40 label'),
     ).map((l) => (l.textContent ?? '').trim());
     expect(pickerLabels).toEqual(['Trousers']);
+  });
+
+  /**
+   * P4.D121 — the archive surface (v4 `d25dacc1`). INLINE buttons here, not a
+   * kebab; a "Show archived" checkbox that flips the mutator's FETCH; and no
+   * confirm, because archiving destroys nothing.
+   */
+  it('archives an active garment and restores an archived one, with v4’s titles', async () => {
+    const handle = mockMutator([item({ id: 'w1', title: 'Jacket' })]);
+    const fixture = await render(handle);
+
+    expect(text(fixture)).not.toContain('Archived');
+    const archive = byText(fixture, 'Archive');
+    expect(archive.title).toBe('Hide this garment from the wardrobe pickers');
+    archive.click();
+    await settle(fixture);
+    expect(handle.calls.archived).toEqual([['w1', true]]);
+    // No confirm dialog was consulted at all.
+    expect(vi.mocked(window.confirm).mock?.calls ?? []).toEqual([]);
+
+    handle.items.set([item({ id: 'w1', title: 'Jacket', archivedAt: '2026-02-01T00:00:00.000Z' })]);
+    await settle(fixture);
+    expect(text(fixture)).toContain('Archived');
+    const restore = byText(fixture, 'Restore');
+    expect(restore.title).toBe('Restore this garment to the wardrobe pickers');
+    restore.click();
+    await settle(fixture);
+    expect(handle.calls.archived).toEqual([
+      ['w1', true],
+      ['w1', false],
+    ]);
+  });
+
+  it('surfaces an archive failure in the action-error banner', async () => {
+    const handle = mockMutator([item({ id: 'w1', title: 'Jacket' })]);
+    handle.results.update = { ok: false, error: 'Project wardrobe item not found' };
+    const fixture = await render(handle);
+    byText(fixture, 'Archive').click();
+    await settle(fixture);
+    expect(text(fixture)).toContain('Project wardrobe item not found');
+  });
+
+  it('“Show archived” flips the mutator’s fetch, never a client-side filter', async () => {
+    const handle = mockMutator([item({ id: 'w1', title: 'Jacket' })]);
+    const fixture = await render(handle);
+    const box = (fixture.nativeElement as HTMLElement).querySelector(
+      'input[type="checkbox"].qt-checkbox',
+    ) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(handle.calls.showArchived).toEqual([true]);
+    // The list itself is untouched — the mutator re-fetches, nothing filters here.
+    expect(handle.items()).toHaveLength(1);
   });
 
   it('deletes only after confirm; surfaces failures', async () => {

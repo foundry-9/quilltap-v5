@@ -11,6 +11,7 @@ import {
   duplicateWardrobeItem,
   loadCharacterWardrobeItems,
   loadWardrobeContainerItems,
+  setWardrobeItemArchived,
   toggleItemDefault,
 } from './wardrobe.api';
 import { GENERAL_CONTAINER, type WardrobeContainer } from './wardrobe-container';
@@ -228,16 +229,51 @@ describe('the container -> verb router (v4 wardrobeCollectionUrl / wardrobeItemU
     expect(containerListRequest(CHAR_CONTAINER)).toEqual({
       type: 'characterWardrobeList',
       characterId: 'c1',
+      includeArchived: false,
     });
     expect(containerListRequest(PROJECT_CONTAINER)).toEqual({
       type: 'projectWardrobeList',
       projectId: 'p1',
+      includeArchived: false,
     });
     expect(containerListRequest(GROUP_CONTAINER)).toEqual({
       type: 'groupWardrobeList',
       groupId: 'g1',
+      includeArchived: false,
     });
-    expect(containerListRequest(GENERAL_CONTAINER)).toEqual({ type: 'wardrobeList' });
+    expect(containerListRequest(GENERAL_CONTAINER)).toEqual({
+      type: 'wardrobeList',
+      includeArchived: false,
+    });
+  });
+
+  /**
+   * P4.D121 — the archived opt-in (v4 `wardrobeCollectionUrl`'s
+   * `{ includeArchived }` arg at `d25dacc1`). Built HERE, the one place these
+   * endpoints are spelled, so the flag cannot drift; a caller that does not ask
+   * gets the archived-free list by construction.
+   */
+  it('carries includeArchived into all four list verbs', () => {
+    const opts = { includeArchived: true };
+    expect(containerListRequest(CHAR_CONTAINER, opts)).toEqual({
+      type: 'characterWardrobeList',
+      characterId: 'c1',
+      includeArchived: true,
+    });
+    expect(containerListRequest(PROJECT_CONTAINER, opts)).toEqual({
+      type: 'projectWardrobeList',
+      projectId: 'p1',
+      includeArchived: true,
+    });
+    expect(containerListRequest(GROUP_CONTAINER, opts)).toEqual({
+      type: 'groupWardrobeList',
+      groupId: 'g1',
+      includeArchived: true,
+    });
+    expect(containerListRequest(GENERAL_CONTAINER, opts)).toEqual({
+      type: 'wardrobeList',
+      includeArchived: true,
+    });
   });
 
   it('creates into each container (the POST arm of v4 wardrobeCollectionUrl)', () => {
@@ -331,9 +367,29 @@ describe('loadWardrobeContainerItems (v4 use-wardrobe-container-items.ts:46-97)'
   it('General is its own resolution pool — no second read fires (v4 :69)', async () => {
     const { core, seen } = stubCore(() => ({ wardrobeItems: [dto({ id: 'g1' })] }));
     const result = await loadWardrobeContainerItems(core, GENERAL_CONTAINER);
-    expect(seen).toEqual([{ type: 'wardrobeList' }]);
+    expect(seen).toEqual([{ type: 'wardrobeList', includeArchived: false }]);
     expect(result.items.map((i) => i.id)).toEqual(['g1']);
     expect(result.resolutionItems.map((i) => i.id)).toEqual(['g1']);
+  });
+
+  /**
+   * P4.D121 — the resolution-pool asymmetry (v4 `d25dacc1` `:71-77`, Shared
+   * contract B7). The container's own list follows the caller; the General
+   * archetype pool ALWAYS asks for archived, because a composite may bundle
+   * one and an unresolvable component would render as a gap.
+   */
+  it('the resolution pool always asks for archived archetypes, whatever the caller asked', async () => {
+    const { core, seen } = stubCore(() => ({ wardrobeItems: [] }));
+    await loadWardrobeContainerItems(core, PROJECT_CONTAINER);
+    expect(seen.find((r) => r.type === 'projectWardrobeList')!['includeArchived']).toBe(false);
+    expect(seen.find((r) => r.type === 'wardrobeList')!['includeArchived']).toBe(true);
+
+    const second = stubCore(() => ({ wardrobeItems: [] }));
+    await loadWardrobeContainerItems(second.core, PROJECT_CONTAINER, { includeArchived: true });
+    expect(second.seen.find((r) => r.type === 'projectWardrobeList')!['includeArchived']).toBe(
+      true,
+    );
+    expect(second.seen.find((r) => r.type === 'wardrobeList')!['includeArchived']).toBe(true);
   });
 
   it('a group container reads the group verb (§Shared contract item 1)', async () => {
@@ -341,7 +397,11 @@ describe('loadWardrobeContainerItems (v4 use-wardrobe-container-items.ts:46-97)'
       (req.type as string) === 'groupWardrobeList' ? { wardrobeItems: [dto({ id: 'liv' })] } : { wardrobeItems: [] },
     );
     const result = await loadWardrobeContainerItems(core, GROUP_CONTAINER);
-    expect(seen[0]).toEqual({ type: 'groupWardrobeList', groupId: 'g1' });
+    expect(seen[0]).toEqual({
+      type: 'groupWardrobeList',
+      groupId: 'g1',
+      includeArchived: false,
+    });
     expect(result.items.map((i) => i.id)).toEqual(['liv']);
   });
 
@@ -484,5 +544,74 @@ describe('the tier-routed row mutations (v4 wardrobe-control-dialog.tsx at d7263
       'imagePrompt',
       null,
     );
+  });
+});
+
+/**
+ * P4.D121 — the four-tier loader's archived opt-in (v4
+ * `use-character-wardrobe-items.ts:98-142`) and the tier-routed archive write
+ * (v4 `handleToggleArchived`).
+ */
+describe('the archived opt-in and the archive write (v4 d25dacc1)', () => {
+  it('every one of the four tier reads carries the flag', async () => {
+    const { core, seen } = stubCore(() => ({ wardrobeItems: [] }));
+    await loadCharacterWardrobeItems(core, 'c1', {
+      projectId: 'p1',
+      includeArchived: true,
+    });
+    const lists = seen.filter((r) => (r.type as string).endsWith('WardrobeList') || r.type === 'wardrobeList');
+    expect(lists).toHaveLength(4);
+    expect(lists.every((r) => r['includeArchived'] === true)).toBe(true);
+    // …and the group-tier read still names its scope.
+    expect(lists.some((r) => r['scope'] === 'group')).toBe(true);
+  });
+
+  it('defaults to false, so a caller that does not ask cannot surface archived items', async () => {
+    const { core, seen } = stubCore(() => ({ wardrobeItems: [] }));
+    await loadCharacterWardrobeItems(core, 'c1', { projectId: 'p1' });
+    const lists = seen.filter((r) => (r.type as string).endsWith('WardrobeList') || r.type === 'wardrobeList');
+    expect(lists.every((r) => r['includeArchived'] === false)).toBe(true);
+  });
+
+  it('setWardrobeItemArchived routes over the same two arms toggleItemDefault does', async () => {
+    // Character view, character-owned item → the character route.
+    const owned = stubCore(() => ({}));
+    await setWardrobeItemArchived(owned.core, dto({ id: 'i1', characterId: 'c1' }), CHAR_CONTAINER);
+    expect(owned.seen).toEqual([
+      {
+        type: 'characterWardrobeUpdate',
+        characterId: 'c1',
+        itemId: 'i1',
+        item: { archived: true },
+      },
+    ]);
+
+    // Character view, shared archetype → the global route.
+    const shared = stubCore(() => ({}));
+    await setWardrobeItemArchived(
+      shared.core,
+      dto({ id: 'i2', characterId: null }),
+      CHAR_CONTAINER,
+    );
+    expect(shared.seen).toEqual([
+      { type: 'wardrobeUpdate', itemId: 'i2', item: { archived: true } },
+    ]);
+
+    // Browsing a shared container → that container's own route.
+    const group = stubCore(() => ({}));
+    await setWardrobeItemArchived(group.core, dto({ id: 'i3' }), GROUP_CONTAINER);
+    expect(group.seen).toEqual([
+      { type: 'groupWardrobeUpdate', groupId: 'g1', itemId: 'i3', item: { archived: true } },
+    ]);
+  });
+
+  it('sends archived:false for an already-archived garment (v4 `!item.archivedAt`)', async () => {
+    const { core, seen } = stubCore(() => ({}));
+    await setWardrobeItemArchived(
+      core,
+      dto({ id: 'i1', characterId: 'c1', archivedAt: '2026-02-01T00:00:00.000Z' }),
+      CHAR_CONTAINER,
+    );
+    expect((seen[0] as { item: Record<string, unknown> }).item).toEqual({ archived: false });
   });
 });

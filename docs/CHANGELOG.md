@@ -358,6 +358,45 @@ inside the helper, then wraps `%…%`). Callers pair it with
 
 v4's five unit cases ported one for one, plus a sixth pinning the escape set as
 exactly those three characters.
+#### 2026-08-26 — feat(wardrobe): the Dressing Instructions section, and archive/restore with server-side hiding
+
+_Versions: SPA 0.5.571._
+
+Both wardrobe halves of the round.
+
+**Dressing Instructions** (v4 `b86bb1a5`). A collapsible section that edits the
+browsed container's optional `Wardrobe/instructions.md` — the second-person
+guidance consulted when a character chooses their own opening outfit. Mounted in
+the wardrobe dialog between the container selector and the item grid, and on the
+Aurora Wardrobe tab under "Open wardrobe for …". Collapsed by default;
+`Consulting…` / `On file` / `None on file`; the dirty rule compares TRIMMED draft
+against UNTRIMMED stored (sound because the server stores trimmed); a non-blank
+save sends the UNTRIMMED draft and a blank one sends `null`; the echo is adopted,
+so the field goes clean against what persisted. Toasts and strings are v4's.
+
+Two recorded mechanism divergences: the eight verbs replace v4's
+`?action=instructions`; and v4's remount key is a Lexical workaround v5 does not
+need (`RichEditor` absorbs an external `value` change), so v4's composite key is
+transcribed for the container-switch re-seed it also performs, not for the async
+load.
+
+**Archive/restore** (v4 `d25dacc1`). The dialog gains "Show archived" — threaded
+into BOTH loaders, so the flip is a new fetch on every tier — and
+`handleToggleArchived`, routed over the same two arms `toggleItemDefault` uses.
+**v5's own client-side `if (i.archivedAt) return false` is DELETED**: keeping it
+would be a second place for the rule to drift from the server's. The row gains the
+lowercase `archived` badge and an `Archive` / `Restore from archive` kebab entry
+behind BOTH `canManage` and a `canArchive` gate — Angular outputs are always
+present, so v4's optional `onToggleArchived` prop becomes an explicit boolean
+input defaulting to false, and the outfit composer (which does the same job the
+outfit-selection LLM does) keeps offering nothing.
+
+The container resolution pool ALWAYS asks for archived archetypes, whatever the
+caller asked: a composite may bundle one, and an unresolvable component would
+render as a gap. The project wardrobe card gains the checkbox and INLINE
+Archive/Restore buttons (that surface has no kebab), and its mutator gains
+`showArchived` / `setShowArchived` / `setItemArchived`.
+
 #### 2026-08-26 — feat(new-chat): Show archived, the keep-the-selection exception, and the group optgroup v4 finally connected
 
 _Versions: SPA 0.5.570._
