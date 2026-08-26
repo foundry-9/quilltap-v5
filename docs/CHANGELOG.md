@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — test(realtime): the hint end to end, and the SSE exposure survey
+
+_Versions: web 0.0.95._
+
+A wire test drives an enqueue through the real route and reads the resulting
+hint off `GET /api/events`, pinning the three things the core's capture tests
+cannot see: that the host actually arms the bus at boot (nothing else fails if
+it does not — every publish just becomes the documented no-op, silently), that
+the event reaches the SSE stream, and that the bytes are the contract's
+`{"v":1,"topic":"jobs","at":<ms>}` with no scope tag and no `id`.
+
+The SSE exposure survey rides in it as an assertion rather than prose: v4's
+origin worry is WebSocket-specific, but hints ride an EventSource here, which
+is CORS-governed. This router installs no CORS layer at all, so the stream
+carries no `Access-Control-Allow-Origin` and a cross-origin reader is blocked.
+The test now fails if a permissive layer ever appears.
+
 #### 2026-08-26 — feat(terminal): the WebSocket same-origin gate
 
 _Versions: web 0.0.94._
