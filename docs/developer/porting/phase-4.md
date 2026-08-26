@@ -6040,3 +6040,27 @@ clean).
    "…after scenario change" — to its inventory).
 
 PB1 stays parked by the standing rule.
+
+**The `b220999d` drift catch-up round (P4.D119 → P4.D120 stacked ∥
+P4.D121 ∥ P4.D122) — PLANNED 2026-08-25 (/setupphase).** v4 shipped five
+commits past `8f910137` in one day, all three features landing on
+just-ported surfaces (drift-ledger §3, rows now ORDERED): `b86bb1a5`
+per-tier dressing instructions (hits the tri-tier cascade, the vault
+projection sweep, the four wardrobe routes, the outfit-selection prompt),
+`d25dacc1` archive-instead-of-delete for scenarios + wardrobe (84 files —
+hits the P4.D115/D116 scenario feature unified the day before, the
+character-vault round-trip where **v5 replicates v4's description-drop bug
+verbatim**, the two hard-coded-`true` wardrobe reads, the Green Room
+pins), and `b220999d` the Documents search chip (hits the P4.9P `uiSearch`
+verb + chip reorder, the doc-mount repos, the qtap-uri producers, the SPA
+search dialog). The two docs-only specs (`a47d3e03`, `2417cbed1`) ride
+their implementing lanes for NO-PORT ratification at unify. **Three lanes:**
+the server halves of the two wardrobe/scenario commits run as ONE stacked
+lane (P4.D119 then P4.D120 — v4 names the first the second's prerequisite,
+and v5's vault overlay shares files between them), the SPA halves of both
+as P4.D121, and the search feature whole as P4.D122. Ownership + the
+two-part shared contract are pinned identically across the four orders. At
+unification the oracle baseline MOVES to `b220999d`; until then **pin per
+the ledger** (feature-lane pins at `d25dacc1` / `b220999d`; unrelated
+families at `8f910137`). Port-4319: only one lane runs Playwright at a
+time — cross-lane beats are authored gated.

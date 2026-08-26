@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — docs(porting): the `b220999d`-round work orders — four lanes over the five-commit drift
+
+_Docs-only change._
+
+`/setupphase` over the drift ledger's five UNPROCESSED rows (probe passed:
+v4 clean on `main` at `b220999d`, `bugfix` unmoved). Four work orders
+committed, each with a fresh hunk-level v4 survey dated 2026-08-25:
+`p4.d119-wardrobe-instructions-server.md` (the per-tier dressing
+instructions server half — the cascade module, `preserve_file_names`, the
+reader skip, the outfit-prompt thread at BOTH of v5's `llm_choose`
+entrances, the four `?action=instructions` surfaces as dispatch verbs) and
+`p4.d120-archive-entries-server.md` (the archive feature server half —
+scenario `archived` frontmatter across all four scopes with the
+default-suppression rule, the wardrobe `archivedPatch` semantics,
+`includeArchived` end-to-end, the Green Room pins, and v4's
+`buildScenarioFile` description-round-trip fix, a bug v5 replicates
+verbatim today) run STACKED in one lane in v4's own prerequisite order;
+`p4.d121-instructions-archive-spa.md` carries both features' client halves
+against a two-part pinned contract; `p4.d122-documents-search-vertical.md`
+carries the Documents-search feature whole (the LIKE-based text-search
+engine with its fail-closed archived-vault exclusion, the two repo scans,
+the `uiSearch` sixth type + chip reorder, the ref resolver, and the SPA
+chip/card/open-choreography — flagging the two v5-specific hazards the
+survey found: `DmpRow` carries no `storeType`, and the results component's
+click handler would break v4's modified-click passthrough). Ledger §3 rows
+marked ORDERED; a planning block appended to `phase-4.md`. The surveys also
+recorded upstream-filing candidates (v4's startup-migration dedupe hole,
+the three unconverted `scenarios[0]` sites, the unguarded archived-default
+seed) for the lanes to carry into their records.
+
 #### 2026-08-26 — docs(porting): drift check — five v4 commits, three features on just-ported surfaces
 
 _Docs-only change._
