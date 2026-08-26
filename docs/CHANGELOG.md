@@ -235,6 +235,25 @@ New differential `activity_tables_equivalence` diffs both tables — entry order
 included — plus `ACTIVITY_KINDS` and v4's real `BackgroundJobTypeEnum.options`,
 against v4's exports. `ACTIVITY_CHIPS` is client-only display metadata and does
 not port here.
+#### 2026-08-26 — fix(e2e): a healthy live channel parks the chips' fallback poll, so the beat must take the channel down
+
+_Versions: SPA 0.5.581._
+
+The two reworked queue-chip beats failed on their first live run against the
+real Playwright server, and correctly: since P4.D125 the chips return `false`
+from `refetchInterval` while the live channel is up, and that server's SSE
+stream is healthy. A beat that intercepts `/api/v1/system/jobs` and then waits
+for the chips to notice a changed body waits forever.
+
+Both beats now abort `GET /api/events` for their page, which puts the transport
+in `reconnecting` — the dropped-connection state the heartbeat exists for — and
+unroute it at the end. Nothing was weakened: the beats test the FALLBACK, and
+they are now the thing that removes the channel rather than assuming it was
+never there.
+
+Full suite: 251 passed, 0 failed, 2 skipped (the gated `jobs`-hint beat awaiting
+P4.D124, and the standing P4.D112 store-probe park).
+
 #### 2026-08-26 — feat(spa): the realtime hub over the existing event stream, the reworked queue chips, and the polling-site migrations
 
 _Versions: SPA 0.5.580._

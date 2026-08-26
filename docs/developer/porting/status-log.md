@@ -89520,3 +89520,33 @@ hint is the P4.D124 server lane's; until it lands nothing on the wire carries
 
 `check-qt-classes` 935 classes clean; `npm run build` clean; `npm test` **361
 files / 5,395 tests / 0 failed**. SPA → 0.5.580.
+
+#### P4.D125 — the e2e beats' first live run, and what it caught
+
+The two reworked chip beats went RED on their first run against the real
+Playwright server — correctly, and for a reason worth writing down.
+
+Since this lane, every migrated site returns `false` from `refetchInterval`
+while the live channel is up, and the e2e server's SSE stream **is** up. A beat
+that intercepts `/api/v1/system/jobs` and then waits for the chips to notice a
+changed body waits forever, because nothing is polling and nothing is pushing
+(the hint is the P4.D124 server half).
+
+The fix is one line per beat, and it is the honest one rather than a
+workaround: a beat about the FALLBACK must be the thing that removes the
+channel. `await page.route('**/api/events', (route) => route.abort())` puts the
+transport in `reconnecting` (`core-transport.ts`'s `es.onerror`), which is
+exactly the dropped-connection state the heartbeat exists for; both beats
+unroute it at the end. No assertion weakened. The PUSH path stays where it
+belongs — the gated `P4D124_HINTS_LANDED` beat.
+
+**Lane gate of record:** `check-qt-classes` 935 clean; `npm run build` clean;
+`npm test` 361 files / 5,395 tests / 0 failed; full Playwright **251 passed / 0
+failed / 2 skipped** — both skips documented (`page-toolbar-flow.spec.ts:218`,
+the ACTIVATE-AT-UNIFY hint beat, and `wardrobe-flow.spec.ts:641`, the standing
+P4.D112 store-probe park). SPA → 0.5.581.
+
+**The Playwright run reused main's `target/release/{quilltap-web,quilltap}`
+via symlinks** — this lane touches ZERO Rust and main sat at the lane's own base
+commit (`52577996`), with the binaries built after the last Rust change. The
+symlinks were removed at cleanup; no `target/` was built in the worktree.

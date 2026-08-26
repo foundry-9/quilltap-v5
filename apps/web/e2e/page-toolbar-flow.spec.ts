@@ -128,6 +128,20 @@ test('global search round-trips: query → dropdown card → navigate to the cha
   await expect(page.getByPlaceholder('Search... (⌘K)')).toHaveValue('');
 });
 
+/**
+ * Take the live channel DOWN for this page, so the chips fall back to their
+ * heartbeat.
+ *
+ * The e2e server's SSE stream is healthy, which means the chips correctly stop
+ * polling — that is the whole point of the gating. A beat that wants to observe
+ * the FALLBACK has to be the thing that removes the channel; aborting
+ * `GET /api/events` puts the transport in `reconnecting`, which is exactly the
+ * dropped-connection state the heartbeat exists for.
+ */
+async function withChannelDown(page: Page): Promise<void> {
+  await page.route('**/api/events', (route) => route.abort());
+}
+
 test('the queue chips light from activeByKind and dim back to idle', async ({ page }) => {
   // THE DETERMINISTIC VARIANT (the order's "or"): no real job can HOLD a
   // countable state — `activeByKind` counts PENDING|PROCESSING rows plus
@@ -149,6 +163,7 @@ test('the queue chips light from activeByKind and dim back to idle', async ({ pa
       body: JSON.stringify(body),
     }),
   );
+  await withChannelDown(page);
 
   await page.goto('/salon');
   await maybeUnlock(page);
@@ -172,6 +187,7 @@ test('the queue chips light from activeByKind and dim back to idle', async ({ pa
   await expect(sumChip).toHaveClass(/qt-queue-badge-idle/);
 
   await page.unroute('**/api/v1/system/jobs');
+  await page.unroute('**/api/events');
 });
 
 test('a chip PULSES for work that started and finished between two reads', async ({ page }) => {
@@ -189,6 +205,7 @@ test('a chip PULSES for work that started and finished between two reads', async
       }),
     }),
   );
+  await withChannelDown(page);
 
   await page.goto('/salon');
   await maybeUnlock(page);
@@ -206,6 +223,7 @@ test('a chip PULSES for work that started and finished between two reads', async
   await expect(dgrChip).not.toHaveClass(/qt-queue-badge-pulse/, { timeout: 10_000 });
 
   await page.unroute('**/api/v1/system/jobs');
+  await page.unroute('**/api/events');
 });
 
 /**
