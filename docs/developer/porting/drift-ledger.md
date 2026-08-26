@@ -23,19 +23,23 @@ probe verifies against._
   searches every document store" (v4 main, 2026-08-25), adopted at the
   `b220999d`-round unification (2026-08-26, the P4.D119→P4.D120 ∥ P4.D121 ∥
   P4.D122 drift catch-up).
-- **Checked:** 2026-08-26 (`/unify`, main-checkout session, at the baseline
-  move).
-- **v4 `main` HEAD at check:** `b220999da` — **EQUALS the baseline.**
+- **Checked:** 2026-08-26 (`/driftcheck`, main-checkout session, evening —
+  after the `b220999d`-round dogfood pass).
+- **v4 `main` HEAD at check:** `f3892158d` — **TWO commits past the
+  baseline** (`664cfca84`, `f3892158d`, both 2026-08-26).
 - **v4 `bugfix` tip at check:** `3a76b17df` — "bugfix: started 4.8.4 bug
-  branch" (**unmoved**; the fork marker). No unabsorbed bugfix-side
-  content.
+  branch" (**unmoved** since the last check; the fork marker). No unabsorbed
+  bugfix-side content: the content diff against main is main-forward only
+  (`git diff --stat main bugfix -- lib/ app/ packages/ plugins/` = 2,711
+  insertions / 32,517 deletions, i.e. bugfix *lacking* main's newer work).
 - **Checkout at check:** branch `main`, tree **clean**.
-- **Verdict: NO DRIFT.** Every commit through `b220999da` is absorbed or
-  ratified (§6).
-- **Regen rule in force: PIN-FREE.** v4 HEAD sits at the baseline and the
-  checkout is clean — regenerate straight from the checkout until v4 moves
-  or the tree dirties, then pin a lane-unique detached worktree at
-  `b220999da` (recipe in §5.1; `recipe_sweep.py --v4 "$PIN"`).
+- **Verdict: DRIFT PENDING — 2 commits.** Both land on already-ported
+  surfaces; both are substantial (a jobs/activity-accounting rework and a
+  whole new realtime subsystem). See §3.
+- **Regen rule in force: PIN REQUIRED.** v4 HEAD is past the baseline —
+  every oracle regeneration must run from a lane-unique detached worktree
+  pinned at `b220999da` (recipe in §5.1; `recipe_sweep.py --v4 "$PIN"`),
+  until a catch-up round moves the baseline.
 
 ## §2 The freshness probe
 
@@ -74,6 +78,52 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `664cfca84` | 2026-08-26 | fix(jobs): toolbar chips count whole operations, not just job rows | **PORT** | the jobs verb + `background_jobs` repo (Phase 2/3, P4.9G1 unit 1) — `GET /api/v1/system/jobs` changes wire shape; the SPA toolbar chips (P4.9P); the memory family, embeddings, the memory gate, cheap-LLM tasks, the Concierge gatekeeper, the image-generation tool handler, the wardrobe image analyzer + preview-avatar route, the character wizard, and the describe-fallback (P4.D106) each gain a span; `qt-queue-badge` CSS (P4.9P) | UNPROCESSED |
+| `f3892158d` | 2026-08-26 | feat(realtime): push interface updates over a WebSocket, tick clocks locally | **PORT-NEW** | a whole new `lib/realtime/**` subsystem with publish points inside ported code (queue-service enqueue/cancel/claim/markCompleted/markFailed, the job dispatcher's post-commit `dispatchInvalidations`, the activity registry, autonomous-room run-state transitions); the terminal WS handler's auth (`lib/terminal/ws.ts` → `quilltap-web::terminal_routes`); `lib/format-time.ts` (v5 twin in `tasks-queue.api.ts`, P4.9G1); and roughly a dozen SPA polling sites across the Salon, characters, chat cards, the tasks queue, autonomous rooms, the memory cards, and story background | UNPROCESSED |
+
+**Row notes** (delineation detail for `/setupphase`; classified from the
+shipped hunks, not the messages):
+
+- `664cfca84` is **not just a chip fix** — it reworks how work is counted.
+  `JOB_TYPE_ACTIVITY` becomes a total `Record<BackgroundJobType,
+  ActivityKind | null>` (nine previously unassigned job types gain chips), a
+  new in-flight **activity registry** counts non-job work (the three inline
+  image paths, `classifyContent`, `generateEmbeddingForUser`, `runMemoryGate`,
+  `executeCheapLLMTask`, and four vision call sites), counting is re-entrant
+  by kind, and the route's response changes: `activeByKind` +
+  `startedByKind` are always present while **`activeByType` becomes opt-in**
+  behind `?includeByType=true`. v5's `system_data.rs` jobs verb answers
+  `activeByType` unconditionally and the SPA badges read exactly that key, so
+  both ends move. Also in scope: `getStats` and the active-count query become
+  indexed `COUNT(*)`s (a v5 repo change, since v5 mirrors v4's queries), the
+  child→parent IPC activity mirror (v5's job runner is **in-process** — the
+  IPC leg is a standing non-port, the *accounting* is not), and a poll that
+  becomes a 1.5 s/8 s heartbeat instead of firing only after
+  `notifyQueueChange()`. `help/system-tasks-queue.md` banks to `p4.9i2`.
+- `f3892158d` is architectural. v4 adds a multiplexed WebSocket at
+  `/api/v1/system/realtime/stream` carrying ~40-byte invalidation hints
+  (`{v, topic, id?, at}`), never data, with a 250 ms trailing-edge debounce
+  per `topic+id`; polling becomes the **fallback** everywhere, gated on
+  socket health. v5 already owns a transport-agnostic `Event` channel (SSE in
+  `quilltap-web`, Tauri events in the shell) — the port question is whether
+  the hints ride that existing channel rather than a second socket, which is
+  a round-planning decision, not one this ledger makes. Two further legs:
+  (a) **auth hardening** — `lib/realtime/upgrade-auth.ts` becomes the single
+  gate for BOTH WS handlers (live session, not locked, same origin) and
+  replaces the terminal handler's worthless cookie test; v5 has **no session
+  auth by design (D2)**, so the session leg is a likely non-port while the
+  **same-origin** leg still applies to `terminal_routes.rs`, which today
+  gates only on readiness; (b) **`useNow`** — a shared boundary-aligned
+  ticker, with `formatRelativeDate`/`formatChatListDate` taking an optional
+  `nowMs` and `formatRelativeAge` moving into `lib/format-time.ts` (v5's
+  twins live in `tasks-queue.api.ts`). `server.ts`,
+  `build-standalone-overlay.mjs`, and the Next HMR upgrade branch are
+  v4-infra with no v5 analog. `docs/developer/features/complete/
+  realtime-updates.md` (230 lines) ships inside this same commit and is the
+  feature spec to read first.
+- **No convergence rows:** `docs/developer/bugs.md` is unchanged since the
+  baseline, so neither commit is v4 adopting a fix this port filed; no
+  both-directions pin should trip on these by design.
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

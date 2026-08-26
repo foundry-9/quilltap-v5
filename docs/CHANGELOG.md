@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): v4 drifted two commits — the jobs-activity rework and the realtime subsystem
+
+_Docs-only change._
+
+`/driftcheck` against the `b220999da` oracle baseline: v4 `main` is **two
+commits ahead**, both landed 2026-08-26, both on already-ported surfaces.
+`bugfix` is unmoved at `3a76b17df` with no unabsorbed content, and the
+checkout is clean on `main`.
+
+`664cfca84` ("toolbar chips count whole operations") reworks activity
+accounting rather than the chips alone: a total `JOB_TYPE_ACTIVITY` map, a new
+in-flight activity registry counting non-job work (inline image paths, the
+Concierge classifier, inline embeddings, the memory gate, cheap-LLM tasks, four
+vision call sites), re-entrant counting by kind, indexed `COUNT(*)` stats
+queries, a heartbeat poll — and a wire change: `GET /api/v1/system/jobs` always
+returns `activeByKind`/`startedByKind` while `activeByType`, the key v5's jobs
+verb and SPA badges both read today, becomes opt-in behind `?includeByType=true`.
+
+`f3892158d` ("push interface updates over a WebSocket") adds a whole
+`lib/realtime/**` subsystem: a multiplexed socket carrying ~40-byte
+invalidation hints with a 250 ms per-topic debounce, publish points inside
+already-ported queue/dispatcher/autonomous-room code, polling demoted to a
+socket-health-gated fallback across a dozen client sites, shared WS upgrade auth
+that also replaces the terminal handler's cookie test, and a `useNow` ticker
+with `nowMs` threaded through `lib/format-time.ts`.
+
+The ledger's §1 flips to **DRIFT PENDING — 2 commits** and the regen rule to
+**PIN REQUIRED**: every oracle regeneration now runs from a lane-unique
+detached worktree pinned at `b220999da` until a catch-up round moves the
+baseline. Neither commit is a convergence — `docs/developer/bugs.md` is
+unchanged since the baseline.
+
 #### 2026-08-26 — docs(porting): the systemHome dashboard cost, recorded as a candidate for a coding phase
 
 _Docs-only change._
