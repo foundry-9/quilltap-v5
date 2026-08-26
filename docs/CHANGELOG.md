@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): the `f3892158d` drift catch-up round ordered — three work orders across two lanes
+
+_Docs-only change._
+
+`/setupphase` for the two-commit drift block (`664cfca84` jobs/activity,
+`f3892158d` realtime). Three orders: `p4.d123-jobs-activity-server.md` (the
+total kind map, the in-flight activity registry, the ten span sites, the
+`activeByKind`/`startedByKind` jobs verb) and `p4.d124-realtime-server.md`
+(the invalidation bus, the topic computation with its tier-1 differential,
+the publish points, the terminal same-origin gate) run STACKED as one server
+lane; `p4.d125-activity-realtime-spa.md` (the chips rework, the realtime hub,
+the topic map, the shared clock, the poller migrations) runs in parallel.
+The round's settled transport decision, binding in all three §Shared
+contracts: the invalidation hints ride v5's EXISTING Event channel (the
+engine broadcast → SSE `/api/events` → the Tauri pump) — no second
+WebSocket, per the locked transport-agnostic-boundary invariant. Both
+drift-ledger rows marked ORDERED; regen rule stays pin-required at
+`b220999da` (lane regens for moved families pin at `f3892158d`).
+
 #### 2026-08-26 — docs(porting): v4 drifted two commits — the jobs-activity rework and the realtime subsystem
 
 _Docs-only change._
