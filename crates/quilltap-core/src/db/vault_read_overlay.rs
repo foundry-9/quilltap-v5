@@ -35,6 +35,7 @@ use crate::vault_overlay::{
     stable_uuid_from_string, CharacterScenario, CharacterSystemPrompt, SeedArchetype, VaultDoc,
     WardrobeItemFromFile,
 };
+use crate::wardrobe_instructions::is_wardrobe_instructions_file_name;
 
 /// The nine single-file overlay paths (v4 `SINGLE_FILE_OVERLAY_PATHS`), in order.
 /// `metadata.json` sits SECOND (v4 `schema.ts:109`), the fact sheet beside the
@@ -444,7 +445,15 @@ pub fn read_character_vault_wardrobe(
     fetch_archetypes: &dyn Fn() -> Result<Vec<SeedArchetype>, DbError>,
 ) -> Result<Option<Value>, DbError> {
     let mount = [mount_point_id.to_string()];
-    let mut item_docs = repo.find_many_by_mount_points_in_folder(&mount, WARDROBE_FOLDER, ".md")?;
+    let all_docs = repo.find_many_by_mount_points_in_folder(&mount, WARDROBE_FOLDER, ".md")?;
+    // `Wardrobe/instructions.md` is dressing guidance, never a garment (v4
+    // `b86bb1a5`). Filter before the length check so a folder holding only the
+    // instructions file still falls through to the legacy `wardrobe.json` branch
+    // below — and so the read no longer warns "no valid types list" on it.
+    let mut item_docs: Vec<_> = all_docs
+        .into_iter()
+        .filter(|doc| !is_wardrobe_instructions_file_name(&doc.file_name))
+        .collect();
 
     if !item_docs.is_empty() {
         // Decision-B code-unit sort by relativePath, then parse, then drop the

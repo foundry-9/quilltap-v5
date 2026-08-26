@@ -24,6 +24,9 @@ interface Spec {
   testPepperBase64: string;
   store: { id: string };
   seedWardrobeJson?: string;
+  /** P4.D119: hand-kept files seeded into the folder before any projection, so
+   * the `preserveFileNames` sweep exemption has something real to preserve. */
+  seedFolderFiles?: Array<{ relativePath: string; content: string }>;
 }
 
 async function main(): Promise<void> {
@@ -148,6 +151,20 @@ async function main(): Promise<void> {
       plainTextLength: content.length,
       fileSizeBytes: Buffer.byteLength(content, 'utf-8'),
     });
+  }
+
+  // [P4.D119 / v4 b86bb1a5] Hand-kept folder files (the dressing-instructions
+  // file, deliberately mis-cased) seeded through the raw document-store write,
+  // so the projection's `preserveFileNames` exemption is tested against a file
+  // the projection never wrote.
+  if (spec.seedFolderFiles?.length) {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+    for (const f of spec.seedFolderFiles) {
+      const folder = f.relativePath.slice(0, f.relativePath.lastIndexOf('/'));
+      if (folder) await ensureFolderPath(spec.store.id, folder);
+      await writeDatabaseDocument(spec.store.id, f.relativePath, f.content);
+    }
   }
 
   closeMountIndexSQLiteClient();

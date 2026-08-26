@@ -278,6 +278,9 @@ pub fn apply_document_store_write_overlay(
                     build_system_prompt_file(&p.name, p.is_default, &p.content),
                 )
             },
+            // v4 passes no `preserveFileNames` here: the managed-fields
+            // projections sweep normally.
+            &[],
         )?;
         db_patch.remove("systemPrompts");
     }
@@ -295,6 +298,9 @@ pub fn apply_document_store_write_overlay(
                     build_scenario_file(&s.title, &s.content),
                 )
             },
+            // v4 passes no `preserveFileNames` here: the managed-fields
+            // projections sweep normally.
+            &[],
         )?;
         db_patch.remove("scenarios");
     }

@@ -1,14 +1,40 @@
 {
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "stores": [
-    { "id": "57a4d40b-0000-4000-8000-00000000000a", "name": "Character Files: Folder Vault" },
-    { "id": "57a4d40b-0000-4000-8000-00000000000b", "name": "Character Files: Legacy Vault" },
-    { "id": "57a4d40b-0000-4000-8000-00000000000c", "name": "Character Files: Empty Vault" }
+    {
+      "id": "57a4d40b-0000-4000-8000-00000000000a",
+      "name": "Character Files: Folder Vault"
+    },
+    {
+      "id": "57a4d40b-0000-4000-8000-00000000000b",
+      "name": "Character Files: Legacy Vault"
+    },
+    {
+      "id": "57a4d40b-0000-4000-8000-00000000000c",
+      "name": "Character Files: Empty Vault"
+    },
+    {
+      "id": "57a4d40b-0000-4000-8000-00000000000d",
+      "name": "Character Files: Instructions-Only Vault"
+    }
   ],
   "cases": [
-    { "mountPointId": "57a4d40b-0000-4000-8000-00000000000a", "characterId": "char-folder" },
-    { "mountPointId": "57a4d40b-0000-4000-8000-00000000000b", "characterId": "char-legacy" },
-    { "mountPointId": "57a4d40b-0000-4000-8000-00000000000c", "characterId": "char-empty" }
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "characterId": "char-folder"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000b",
+      "characterId": "char-legacy"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000c",
+      "characterId": "char-empty"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000d",
+      "characterId": "char-instructions-only"
+    }
   ],
   "files": [
     {
@@ -60,6 +86,16 @@
       "mountPointId": "57a4d40b-0000-4000-8000-00000000000b",
       "relativePath": "wardrobe.json",
       "content": "{\n  \"items\": [\n    {\n      \"id\": \"12121212-1212-4212-8212-121212121212\",\n      \"title\": \"Legacy Tee\",\n      \"types\": [\"top\"],\n      \"createdAt\": \"2026-01-01T00:00:00.000Z\",\n      \"updatedAt\": \"2026-01-01T00:00:00.000Z\"\n    }\n  ],\n  \"presets\": [\"ignored-by-read\"]\n}\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000a",
+      "relativePath": "Wardrobe/Instructions.MD",
+      "content": "---\ntitle: Instructions\ntypes:\n  - accessories\n---\nYou prefer tweeds for fieldwork.\n"
+    },
+    {
+      "mountPointId": "57a4d40b-0000-4000-8000-00000000000d",
+      "relativePath": "Wardrobe/instructions.md",
+      "content": "You dress for the weather, not the occasion.\n"
     }
   ]
 }

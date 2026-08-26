@@ -13,6 +13,12 @@
 //! id-map (so document.fileId, link.fileId/folderId/mountPointId, folder.parentId
 //! verify by relationship). The store `mountPointId` is the one pinned id.
 //!
+//! [P4.D119 / v4 `b86bb1a5`] The fixture now seeds a hand-kept
+//! `Wardrobe/Instructions.MD` before any projection, and a fourth op adds an item
+//! TITLED "Instructions": the `preserveFileNames` list must shield the file from
+//! the sweep (case-insensitively) and pre-claim the name so the garment lands on
+//! `Wardrobe/Instructions-1.md`.
+//!
 //! Banks: the initial projection (5 items, a filename collision Hat.md/Hat-1.md, a
 //! composite emitting componentItems slugs), then a rename (Blue→Navy Shirt: old
 //! file swept + new written, slug recomputed in the composite), a removal sweep
@@ -295,6 +301,20 @@ fn vault_wardrobe_write_matches_oracle() {
     assert!(
         !link_paths.iter().any(|p| p == "wardrobe.json"),
         "legacy wardrobe.json should be cleaned up; links: {link_paths:?}"
+    );
+
+    // [P4.D119 / v4 `b86bb1a5`] The `preserveFileNames` exemption, both halves:
+    // the hand-kept `Wardrobe/Instructions.MD` survives FOUR projections that
+    // never wrote it (and would have swept it before the commit), and the fourth
+    // op's item titled "Instructions" lands on a `-1` suffix rather than
+    // overwriting it. Both are case-insensitive matches against `instructions.md`.
+    assert!(
+        link_paths.iter().any(|p| p == "Wardrobe/Instructions.MD"),
+        "the preserved dressing-instructions file was swept; links: {link_paths:?}"
+    );
+    assert!(
+        link_paths.iter().any(|p| p == "Wardrobe/Instructions-1.md"),
+        "an item titled Instructions must disambiguate onto a suffix; links: {link_paths:?}"
     );
 
     eprintln!("OK: vault wardrobe write projection matched oracle (5 tables).");

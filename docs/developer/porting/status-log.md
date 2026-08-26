@@ -80,6 +80,50 @@ catch arms: `a_non_not_found_delete_failure_is_not_swallowed` drops
 `doc_mount_file_links` on a scratch copy and asserts the failure reaches the
 caller.
 
+### P4.D119 unit 2 — the projection preserve list + the shared reader's skip
+
+`project_array_into_vault_folder` gained `preserve_file_names: &[&str]` (v5 has
+no `opts` bag): lowercased preserved set, `seen` SEEDED with it, sweep skip on
+the last path segment (v4 slices at the last `/`, so a root-level name still
+matches). ALL FIVE call sites updated — only `project_vault_wardrobe` passes
+`&[WARDROBE_INSTRUCTIONS_FILENAME]`; the four managed-fields sites
+(`vault_character_write.rs` ×2, `vault_character_update.rs` ×2) pass `&[]`.
+
+`read_character_vault_wardrobe` filters on `doc.file_name` (v5's folder-doc row
+already carries it — no derivation needed) BEFORE the emptiness branch.
+
+**Differential.** `vault_wardrobe_write_equivalence`: the fixture builder gained
+`seedFolderFiles`, seeding a hand-kept `Wardrobe/Instructions.MD` through the
+RAW document-store write before any projection; a fourth op
+(`instructions-titled-item`) adds an item titled "Instructions". v4's fresh
+oracle at the pin shows both: `Instructions.MD` survives four projections and the
+garment lands on `Instructions-1.md`. Two new assertions pin them by name.
+Mutations reddening it: no preserve list at the call site; `seen` not seeded;
+the sweep skip removed; the swept segment not lowercased. **A fifth mutation
+survives and is a FACT** — lowercasing the preserve LIST is unobservable while
+the only entry is already lowercase (the const is pinned lowercase by the
+module's own unit test).
+
+`vault_wardrobe_read_equivalence`: a fourth store holds ONLY
+`Wardrobe/instructions.md` (the legacy-json fallthrough — v4 answers `null`), and
+the existing folder vault gained a mis-cased `Wardrobe/Instructions.MD`. ⚠ Its
+content is deliberately VALID garment frontmatter: with a bare body the skip is
+invisible in the item list (the parser drops a no-`types` file anyway) and only
+v4's suppressed `logger.warn` would tell the difference. With valid frontmatter
+the case-insensitive skip reddens on removal.
+
+**Banked finding (pre-existing, NOT this lane's):** v5's
+`parse_wardrobe_item_file` never ported v4's
+`Wardrobe/*.md frontmatter has no valid `types` list; skipping` warn
+(`parsers.ts:286`). v4's new test asserts that warn is NOT emitted after the
+skip; v5 has nothing to suppress. A log-only gap on a shared parser — a named
+candidate for a maintenance lane, not fixed here.
+
+**Neutrality regens (all green at the pin):** `vault_character_write_equivalence`
+(the four non-passing call sites), `vault_legacy_wardrobe_equivalence` (39
+cases), `vault_wardrobe_public_equivalence` (7 ops),
+`wardrobe_public_read_equivalence` (5 cases).
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start

@@ -332,6 +332,9 @@ pub fn write_character_vault_managed_fields(
                 build_system_prompt_file(&p.name, p.is_default, &p.content),
             )
         },
+        // v4 passes no `preserveFileNames` here: the managed-fields
+        // projections sweep normally.
+        &[],
     )?;
     result.system_prompts_written = character.system_prompts.len();
 
@@ -347,6 +350,9 @@ pub fn write_character_vault_managed_fields(
                 build_scenario_file(&s.title, &s.content),
             )
         },
+        // v4 passes no `preserveFileNames` here: the managed-fields
+        // projections sweep normally.
+        &[],
     )?;
     result.scenarios_written = character.scenarios.len();
 

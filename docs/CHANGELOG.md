@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(wardrobe): the projection preserve list and the shared reader's instructions skip (v4 `b86bb1a5`)
+
+_Versions: core 0.0.667, harness 0.0.579._
+
+`project_array_into_vault_folder` gains `preserve_file_names` (v4's
+`opts.preserveFileNames`): the preserved names are lowercased, the `seen` set is
+SEEDED with them so a garment titled "Instructions" disambiguates onto
+`Instructions-1.md`, and the sweep skips a file whose last path segment matches.
+Only `project_vault_wardrobe` passes it; the four managed-fields call sites
+(Prompts and Scenarios, in both the create and update writers) pass an empty
+list, so their behavior is byte-identical to before.
+
+`read_character_vault_wardrobe` filters `instructions.md` (any casing) BEFORE the
+emptiness branch, so a folder holding only the instructions file still falls
+through to the legacy `wardrobe.json` branch.
+
+`vault_wardrobe_write_equivalence` grows a seeded, deliberately mis-cased
+`Wardrobe/Instructions.MD` and a fourth op whose item is TITLED "Instructions";
+four mutations redden it. `vault_wardrobe_read_equivalence` grows a fourth store
+holding only the instructions file, plus a mis-cased instructions file carrying
+VALID garment frontmatter in the existing folder vault — without which the
+case-insensitive skip is invisible in the item list. The four non-passing call
+sites are proven neutral by regenerating `vault_character_write_equivalence`.
+
 #### 2026-08-26 — feat(wardrobe): the per-tier dressing-instructions module (v4 `b86bb1a5`)
 
 _Versions: core 0.0.666, harness 0.0.578._

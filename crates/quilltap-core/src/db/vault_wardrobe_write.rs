@@ -26,6 +26,7 @@ use super::DbError;
 use crate::vault_overlay::{
     build_slug_by_item_id_map, build_wardrobe_item_file, sanitize_file_name, WardrobeItem,
 };
+use crate::wardrobe_instructions::WARDROBE_INSTRUCTIONS_FILENAME;
 
 const WARDROBE_FOLDER: &str = "Wardrobe";
 const WARDROBE_JSON_PATH: &str = "wardrobe.json";
@@ -34,6 +35,14 @@ const WARDROBE_JSON_PATH: &str = "wardrobe.json";
 /// (v4 `projectArrayIntoVaultFolder`). `mapper` turns each item into its
 /// `(fileName, content)`; filename collisions (case-insensitive) get `-1`/`-2`/…
 /// suffixes. Files present in the folder but not produced this pass are swept.
+///
+/// `preserve_file_names` (v4 `opts.preserveFileNames`, `b86bb1a5`) exempts
+/// specific root-level file names (case-insensitive) from both the sweep and the
+/// projected name pool, so a hand-kept file like `Wardrobe/instructions.md`
+/// survives every projection and an item whose title maps to the same name lands
+/// on a `-1` suffix instead of overwriting it. An empty list is byte-identical
+/// to the pre-`b86bb1a5` behaviour (v4 pins that omitting the option still
+/// sweeps `instructions.md`).
 pub fn project_array_into_vault_folder<T>(
     links: &DocMountFileLinksRepository,
     docs: &DocMountDocumentsRepository,
@@ -41,6 +50,7 @@ pub fn project_array_into_vault_folder<T>(
     folder: &str,
     items: &[T],
     mapper: impl Fn(&T) -> (String, String),
+    preserve_file_names: &[&str],
 ) -> Result<(), DbError> {
     let existing =
         docs.find_many_by_mount_points_in_folder(&[mount_point_id.to_string()], folder, ".md")?;
@@ -51,8 +61,15 @@ pub fn project_array_into_vault_folder<T>(
     // find-or-creates the folder segments on each write, so an explicit ensure is
     // redundant (and an empty list correctly creates no folder). Match: write-only.
 
+    let preserved: HashSet<String> = preserve_file_names
+        .iter()
+        .map(|n| n.to_lowercase())
+        .collect();
+
     let mut written_paths: HashSet<String> = HashSet::new();
-    let mut seen: HashSet<String> = HashSet::new(); // lowercased candidate file names
+    // Seeded with the preserved names so a garment titled "Instructions"
+    // disambiguates to `instructions-1.md` rather than overwriting the file.
+    let mut seen: HashSet<String> = preserved.clone(); // lowercased candidate file names
     for item in items {
         let (file_name, content) = mapper(item);
         // Disambiguate: while the lowercased candidate is taken, append `-n` before
@@ -75,6 +92,16 @@ pub fn project_array_into_vault_folder<T>(
 
     for rel_path in &existing_paths {
         if written_paths.contains(rel_path) {
+            continue;
+        }
+        // v4 slices at the LAST `/` — with no slash the whole path is the
+        // segment, so a root-level file name still matches.
+        let file_segment = match rel_path.rfind('/') {
+            Some(i) => &rel_path[i + 1..],
+            None => rel_path.as_str(),
+        }
+        .to_lowercase();
+        if preserved.contains(&file_segment) {
             continue;
         }
         links.delete_database_document(mount_point_id, rel_path)?;
@@ -111,6 +138,9 @@ pub fn project_vault_wardrobe(
                 build_wardrobe_item_file(item, &slug_by_item_id),
             )
         },
+        // The dressing-instructions file is not a garment: the sweep must never
+        // delete it, and an item titled "Instructions" must land on a suffix.
+        &[WARDROBE_INSTRUCTIONS_FILENAME],
     )?;
 
     // Clean up the legacy single-JSON file (NOT_FOUND tolerated → false).
