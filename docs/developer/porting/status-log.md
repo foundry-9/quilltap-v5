@@ -89006,3 +89006,143 @@ two namespaces sharing one topic, a dotless method, and the empty batch.
 the story-background probe order (1 case); dropping the non-empty-string filter
 (3); dropping the batch dedup (2); probing `id` before the preferred field (1);
 and dropping — rather than widening — a hint whose id cannot be read (4).
+
+### P4.D124 unit 4 — the publish points
+
+Wired 1:1 with v4, each behaviourally pinned by a capturing subscriber on the
+real broadcast channel (`realtime/publish_sites.rs` + siblings in
+`enclave/lifecycle.rs` and `write_apply.rs`):
+
+| v4 site | v5 |
+|---|---|
+| `enqueueJob` | **THREE** v5 sites — `enqueue_job`, `enqueue_job_with_priority` (v4's one function, split here), and `enqueue_conversation_render_blocking`, which mints its row inside the caller's transaction for the boot reconcile rather than going through either |
+| `enqueueMemoryExtractionBatch` | the batch, under v4's `jobIds.length > 0` guard (v5's early return makes it structural) |
+| `cancelJob` | only `if cancelled` |
+| successful `claimNextJob` | `pump_claim`'s claim leg |
+| `markCompleted` + `topicsForCompletedJob` | `run_one`'s Completed arm |
+| `markFailed` ×3 (child-unavailable / handler failure / apply-writes failure) | ONE arm — v5 has no child and applies in-process |
+| `dispatchInvalidations` + `topicsForWriteBatch` | `write_apply::dispatch_invalidations`, published ABOVE v5's empty-key early return (v4 publishes before its own collection pass) |
+| the two activity-span edges | both |
+| `applyChildActivityDelta` / `resetChildActivity` | **NO-PORT** — the child mirror (unit 2's evidence) |
+| the seven autonomous run-state transitions | all seven, in `enclave/lifecycle.rs` |
+
+**Arming lives in the HOST, not the engine — a recorded deviation from the
+order.** See unit 1–2's record: the core has no scheduler, so the composition
+root supplies both the sender and the spawner.
+
+⚠ **The write-batch hook is DORMANT in production, and that is recorded, not
+hidden.** v5's job handlers write directly rather than buffering
+(`job_runner.rs`'s header: no W4.8 handler currently batches), so `apply_writes`
+runs only from the batch-mode path the autonomous turn reserves. The hook is
+wired 1:1 anyway and driven synthetically, so it is correct the day a handler
+batches.
+
+**⚠ THE TEST SEAM THIS UNIT HAD TO GROW —
+`arm_realtime_bus_for_current_thread`.** The bus is a process-global (v4's
+design, ported), which makes capture tests inherently racy: `quilltap-core` runs
+~1,800 tests across threads and eight of them now reach an activity span or a
+job enqueue. Worse than noise — a publish from a plain `#[test]` thread tried to
+spawn the coalescing task with no reactor in scope and **panicked a sibling test
+that had nothing to do with this lane** (`write_apply::tests::
+idempotent_orders_secondaries_before_main`). Scoping the test arming to the
+publishing thread removes both: a test's own publishes see its own bus, every
+other thread sees the unarmed global and stays silent, and the flush task holds
+its `Arc<Bus>` so it still delivers after moving threads. Production is
+untouched (the host arms the global).
+
+**Mutation proofs — fourteen, and the first pass exposed FOUR gaps rather than
+confirming the wiring:**
+
+1. The **batch enqueue** publish deleted cleanly — no test covered it. Added.
+2. The **blocking render enqueue** likewise: the test written for it was
+   driving the ASYNC twin, which routes through `enqueue_job_with_priority` and
+   so pinned a different site. Added a real one (and the async test now
+   honestly says what it pins: the dedupe arm's silence).
+3. The **claim** and **failure** legs both deleted cleanly, because each
+   coalesces with a sibling `jobs` publish inside the same window. Fixed by
+   separating the windows with a handler slower than the debounce and draining
+   mid-flight.
+4. **`resume_publishes` was pinning `begin`**: resume falls back to a fresh
+   start unless the row is `paused` AND owns a live `currentRunId`, so a naive
+   "seed paused" case never reached resume's own code. Re-seeded, with the
+   premise asserted (`the SAME run continued`).
+
+**One site cannot be isolated behaviourally and is censused instead**:
+`begin_autonomous_run`'s enqueue-failure rollback always coalesces with the
+start patch's publish microseconds earlier — the bus working as designed. NEW
+`realtime_publish_sites_guard` holds the counts (7 / 5 / 3 / 2 across the four
+files), which also catches an ADDED publish (a double-publish), proven both
+directions.
+
+### P4.D124 unit 5 — the terminal same-origin gate
+
+`quilltap-web/src/upgrade_auth.rs` + the gate in `terminal_stream`/`handle_ws`.
+
+**v4's three checks, dispositioned:** the live-session leg **NO-PORT** (no
+session auth in v5 by design, D2 — and v4's own spec §8 records that its check
+was thin there too: Quilltap sets no session cookie); the locked leg **ALREADY
+COVERED, verified not duplicated** (`manager_and_db` answers 503 *before* the
+upgrade, one step earlier than v4's post-upgrade refusal); the **same-origin**
+leg is the real port, and v5's terminal WS had no origin check at all.
+
+**Framing measured, then chosen:** v4 completes the upgrade and closes 1008
+(`ws.close(WS_CLOSE_POLICY_VIOLATION, 'Unauthorized')` — read from the shipped
+`ws.ts` hunk, not the spec). v5 reproduces that observable shape rather than
+refusing the HTTP upgrade. **Order, also measured:** v4's gate fires AFTER the
+session-exists check, so an unknown session still gets its `session_not_found`
+frame + 1000 even cross-origin; v5 matches, pinned by a live wire case and
+mutation-proven by inverting it.
+
+**NEW tier-1 family `terminal_ws_origin_equivalence`** (19 cases) drives v4's
+REAL `authenticateUpgrade` with its session and locked legs `jest.doMock`ed away
+(the DB-free route-guard oracle idiom) — verdicts AND refusal sentences.
+
+**It caught a real divergence on its first run:** v4's `if (!origin)` is a JS
+truthiness test, so an **EMPTY `Origin` header is ALLOWED**; v5's `Option<&str>`
+read it as present and refused it as unparseable. Fixed and pinned. (The
+`is_some()`-vs-JS-truthiness class again.) The corpus also pins the
+default-port normalization — `https://x:443` and `https://x` are the SAME
+origin — which is why `check_origin` uses a real WHATWG parser (`url`, already
+in the lock via reqwest) instead of string surgery.
+
+Live wire test `terminal_ws_origin`: cross-origin refused 1008, a different port
+refused, missing Origin accepted, same origin accepted, and the session check
+still first. Two mutations (gate removed; gate moved ahead of the session
+check), each red.
+
+### P4.D124 tier 2 + deferrals
+
+- **Item 6 — the SSE exposure survey: DONE, and held mechanically.** v4's origin
+  worry is WS-specific (no CORS on upgrades), but v5's hints ride
+  `GET /api/events`, and EventSource IS CORS-governed. **Finding: quilltap-web
+  installs NO CORS layer at all** — the router's only layers are
+  `TraceLayer` and `DefaultBodyLimit` — so the stream sends no
+  `Access-Control-Allow-Origin` and a cross-origin EventSource is blocked by the
+  browser. Nothing to fix and no policy invented; the finding is now an
+  assertion in `realtime_hint_wire`, so a future permissive layer fails a test
+  instead of quietly opening the stream.
+- **Item 7 — the Tauri pump: verified by read, recorded.**
+  `events_pump.rs:53-64` forwards with `app.emit(EVENT_CHANNEL, &ev)` over the
+  whole `Event`, with no match on the payload and no filtering, so the new
+  variant rides untouched. There is no test module in that file to extend, and
+  the order permits recording the read; `quilltap-tauri` is therefore untouched
+  and unbumped.
+- **Item 8 — the end-to-end wire test: DONE** (`realtime_hint_wire`), and its
+  most valuable arm is that the HOST ARMS THE BUS: nothing else in the workspace
+  fails if it does not, because every publish then becomes the documented no-op,
+  silently and forever. Mutation-proven by deleting the arming block.
+- **Item 9 (tier 3) — `help/system-tasks-queue.md` → the `p4.9i2` bank**, the
+  shared row with P4.D123's.
+- **Item 10 — no publish point was found without a v5 surface.** All seven
+  autonomous transitions exist in `enclave/lifecycle.rs`; nothing was wired
+  silently and nothing is owed.
+
+**NO-PORT, ratified with evidence** (v4-infra with no v5 analogue): `server.ts`'s
+upgrade dispatcher + the Next HMR fall-through, `build-standalone-overlay.mjs`,
+`lib/realtime/ws.ts` (the WS handler itself), `RealtimeClientMessageSchema` and
+`REALTIME_STREAM_PATH` (§B.1's mechanism divergence), and
+`docs/developer/features/complete/realtime-updates.md` (v4's spec doc — read
+first, per the order, and its §8 "what shipped, and where it diverged" is what
+settled the upgrade-auth dispositions above).
+
+**P4.D124 is CLOSED**: tiers 1 and 2 landed in full; tier 3 is the bank row.
