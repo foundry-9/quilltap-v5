@@ -131,25 +131,6 @@ function usedClasses(sources, selectors) {
   return used
 }
 
-/**
- * Sites this lane (P4.D117) measurably found inert and was forbidden to touch:
- * `src/app/screens/new-chat/**` belongs to the parallel P4.D116 lane, and the
- * round's ownership table is binding. Every entry is `qt-text-tertiary`, whose
- * v4 rewrite is `qt-text-secondary` (`309aaa97`).
- *
- * This is a tripwire, not an allowlist: an entry that no longer resolves to
- * nothing is an ERROR, so the block cannot outlive the fix. **The unifier
- * applies the rewrite in those files and deletes this block.**
- */
-const PENDING_CROSS_LANE_SITES = [
-  ['qt-text-tertiary', 'src/app/screens/new-chat/green-room-dialog.ts'],
-  ['qt-text-tertiary', 'src/app/screens/new-chat/outfit-slots-preview.ts'],
-  ['qt-text-tertiary', 'src/app/screens/new-chat/outfit-slots-preview.spec.ts'],
-]
-
-const isPending = (token, site) =>
-  PENDING_CROSS_LANE_SITES.some(([t, file]) => t === token && site.startsWith(`${file}:`))
-
 const sources = tracked(SOURCE_GLOBS)
   .filter((file) => !SKIPPED_PREFIXES.some((p) => file.startsWith(p)))
   .map((file) => [file, readFileSync(path.join(SPA_ROOT, file), 'utf8')])
@@ -159,29 +140,11 @@ const unresolved = [...usedClasses(sources, componentSelectors(sources)).entries
   ([token]) => !defined.has(token)
 )
 
-const stale = PENDING_CROSS_LANE_SITES.filter(
-  ([token, file]) => !unresolved.some(([t, sites]) => t === token && sites.some((s) => s.startsWith(`${file}:`)))
-)
-if (stale.length > 0) {
-  console.error(
-    `\ncheck-qt-classes: PENDING_CROSS_LANE_SITES is stale — ${stale.length} entr(y/ies) name a site\n` +
-      `that now resolves (or no longer exists). The cross-lane hand-off is done: delete them.\n`
-  )
-  for (const [token, file] of stale) console.error(`  ${token}  ${file}`)
-  console.error('')
-  process.exit(1)
-}
-
-const missing = unresolved
-  .map(([token, sites]) => [token, sites.filter((site) => !isPending(token, site))])
-  .filter(([, sites]) => sites.length > 0)
-  .sort((a, b) => b[1].length - a[1].length)
+const missing = unresolved.sort((a, b) => b[1].length - a[1].length)
 
 if (missing.length === 0) {
-  const held = PENDING_CROSS_LANE_SITES.length
   console.log(
-    `check-qt-classes: ${defined.size} qt-* classes defined, every guarded reference resolves` +
-      (held > 0 ? ` (${held} cross-lane site(s) held — see PENDING_CROSS_LANE_SITES).` : '.')
+    `check-qt-classes: ${defined.size} qt-* classes defined, every guarded reference resolves.`
   )
   process.exit(0)
 }

@@ -59,7 +59,7 @@ import { OutfitSlotsPreview } from './outfit-slots-preview';
                         <span class="qt-text-primary text-sm font-semibold">{{
                           panel.characterName
                         }}</span>
-                        <span class="qt-text-tertiary text-xs">{{
+                        <span class="qt-text-secondary text-xs">{{
                           panel.slots === null ? 'consulting the wardrobe…' : 'is wearing'
                         }}</span>
                       </div>
@@ -74,12 +74,12 @@ import { OutfitSlotsPreview } from './outfit-slots-preview';
               <!-- Scrolling activity log -->
               @if (state().logs.length > 0) {
                 <div class="qt-divider mt-1 border-t pt-3">
-                  <div class="qt-text-tertiary mb-2 text-xs uppercase tracking-wide">Activity</div>
+                  <div class="qt-text-secondary mb-2 text-xs uppercase tracking-wide">Activity</div>
                   <div class="max-h-40 overflow-y-auto pr-1">
                     <ul class="flex flex-col gap-1 text-sm">
                       @for (entry of state().logs; track $index) {
                         <li [class]="logColor(entry.level)">
-                          <span class="qt-text-tertiary mr-2 tabular-nums">{{
+                          <span class="qt-text-secondary mr-2 tabular-nums">{{
                             time(entry.ts)
                           }}</span>
                           {{ entry.message }}

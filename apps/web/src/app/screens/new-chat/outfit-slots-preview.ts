@@ -35,7 +35,7 @@ const SLOTS: { key: keyof OutfitPreviewSlots; label: string; badge: string }[] =
     <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
       @for (slot of rows(); track slot.key) {
         <div class="qt-card p-2">
-          <div class="qt-text-tertiary mb-1 text-xs uppercase tracking-wide">{{ slot.label }}</div>
+          <div class="qt-text-secondary mb-1 text-xs uppercase tracking-wide">{{ slot.label }}</div>
           @if (slot.entries.length === 0) {
             <div class="qt-text-muted text-xs italic">nothing</div>
           } @else {

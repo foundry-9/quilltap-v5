@@ -36,7 +36,7 @@ describe('OutfitSlotsPreview (v4 OutfitSlotsPreview.tsx)', () => {
   it('renders one card per slot, in canonical order with Hair last', () => {
     const fixture = render(EMPTY);
     const labels = Array.from(
-      (fixture.nativeElement as HTMLElement).querySelectorAll('.qt-text-tertiary'),
+      (fixture.nativeElement as HTMLElement).querySelectorAll('.qt-text-secondary'),
     ).map((el) => el.textContent?.trim());
     expect(labels).toEqual(['Top', 'Bottom', 'Footwear', 'Accessories', 'Hair']);
   });

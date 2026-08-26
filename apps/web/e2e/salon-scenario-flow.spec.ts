@@ -33,7 +33,7 @@ import {
  * `dispatch-verb-ignores-unknown-fields`), and the reds would say nothing about
  * this lane. The unifier flips {@link P4D115_SERVER_LANDED} to `true`.
  */
-const P4D115_SERVER_LANDED = false;
+const P4D115_SERVER_LANDED = true;
 
 const SCENE_PORT = 4330;
 const SCENE_BASE_URL = `http://127.0.0.1:${SCENE_PORT}`;
