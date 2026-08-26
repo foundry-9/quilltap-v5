@@ -2112,19 +2112,69 @@ records THERE. Update this summary only when a phase or round completes.
   gains the in-chat scenario picker, the gallery download, the restyled
   qt-* surfaces, and a real `docs --instance <TAB>` completion. Round
   record: `status-log.md`.
-- **Oracle baseline: `8f910137` (2026-08-25, v4 main — "fix(ci): the zsh
-  completion check no longer fails where zsh isn't installed"), adopted at
-  the 8f910137-round unification (2026-08-25).** **Drift state, the
+- **The `b220999d` drift catch-up round (P4.D119→P4.D120 stacked ∥ P4.D121
+  ∥ P4.D122): UNIFIED on main (2026-08-26) — ALL FOUR ORDERS CLOSED; the
+  oracle baseline MOVES to `b220999d` and the drift debt is CLEARED.**
+  v4's three-feature day absorbed whole: per-tier dressing instructions
+  end-to-end (the cascade module + `preserve_file_names` + the reader skip
+  + the outfit-prompt thread at BOTH v5 `llm_choose` entrances + the four
+  instructions verb pairs with the `double_option` tri-state + the SPA
+  Section in both hosts), archive-instead-of-delete whole (the scenarios
+  chokepoint with default suppression; the character-vault
+  `build_scenario_file` rewrite — **v5's description-drop bug proven
+  red-first**; `includeArchived` on every list verb AND the nine scenario
+  mutate verbs' fresh-list returns, the two formerly-hard-coded-`true`
+  wardrobe reads red-first; `archived_patch` idempotence; the Green Room
+  never-auditions pins; the nine SPA hosts with the B7 quirks reproduced
+  AND spec-pinned), and the Documents-search vertical (the LIKE engine
+  with the fail-closed archived-vault exclusion, the two repo scans on the
+  bare-column MIN rule, the `uiSearch` sixth type + chip reorder over the
+  re-baselined 28-case corpus gate, the Documents card with the
+  modified-click passthrough, the open-from-search choreography, the
+  ACTIVE walk). **The §3 review (three parallel reviewers, verdict owned
+  at the unify) caught three would-have-shipped findings, fixed
+  red-first:** the three scoped instructions SET handlers parsed BEFORE
+  the 404 gate (the `a6870c5a` guard-order class AGAIN — doc comments
+  stated v4's order while the code inverted it; and v4 is inconsistent:
+  the character-scenario routes parse FIRST, both now faithful), the
+  scenario `archived: null` silent-keep (the present-but-null class
+  AGAIN; Zod-4 sentences measured on v4; the sibling
+  name/description/isDefault arms' null-tolerance recorded as a
+  pre-existing LEAD), and the wardrobe REST edges' unknown-`?action=`
+  fallthrough (`POST ?action=bogus` could CREATE — now v4's dispatcher
+  envelope, wire-tested). The wires: the P4.D122 `PENDING_CROSS_LANE`
+  document-opened listener discharged into `document-mode.ts`
+  (spec-pinned, gate mutation-proven); the SPA's interim mutate-relist
+  divergence RETIRED to v4's shape (the mutate verbs carry the flag;
+  create stays flagless per v4's body-not-param quirk); the three gated
+  beats flipped live — **their first live runs caught three gesture
+  defects** (all-archived hides the WHOLE dropdown; Create needs a Type;
+  the dialog + tab both mount the Section), fixed spec-side. Gate: the
+  31-family sweep from the pinned worktree 31/31 ok zero SKIP
+  (changed-bytes grepped); 461 test binaries / 2,426 / 0 with the 60-var
+  env block, zero SKIP lines; clippy both feature sets; release build; ng
+  351 files / 5,292; full Playwright **249/0/1** (the standing
+  store-probe park; suite 245 → 250). New follow-ups recorded in
+  phase-4.md: the duplicate "Quilltap General" e2e-fixture store
+  (`builtin_mounts.rs` suspect), the present-but-null lead, four v4-side
+  filing candidates. 💸 the dogfood queue gains the round's surfaces
+  (the cascade on a real "Let character choose" turn, the archive walk,
+  the Documents chip over real Friday stores). Versions: core 0.0.677,
+  harness 0.0.586, web 0.0.92, SPA 0.5.576; host/cli/tauri unchanged.
+  Round record: `status-log.md`.
+- **Oracle baseline: `b220999d` (2026-08-25, v4 main — "feat(search): a
+  Documents chip that searches every document store"), adopted at the
+  b220999d-round unification (2026-08-26).** **Drift state, the
   drift-check method, and the pinned-worktree regen recipe now live in
   `docs/developer/porting/drift-ledger.md`** — maintained by
   `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
-  drift, and lanes never write it. As of the 8f910137-round unification
-  check (2026-08-25): v4 main HEAD EQUALS the baseline, the checkout is
+  drift, and lanes never write it. As of the b220999d-round unification
+  check (2026-08-26): v4 main HEAD EQUALS the baseline, the checkout is
   clean on `main`, bugfix has no unabsorbed content, and the regen rule
   is **pin-free** (regen straight from the checkout until v4 moves or
   the tree dirties — then pin a lane-unique detached worktree at
-  `8f910137`, recipe in the ledger's §5.1). The sweep
+  `b220999da`, recipe in the ledger's §5.1). The sweep
   driver remains the sanctioned per-family regen path —
   never run two sweeps concurrently; since P4.53 it refuses empty-stage
   families by name and `--self-test` guards recipe headers against

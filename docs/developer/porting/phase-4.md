@@ -6064,3 +6064,69 @@ unification the oracle baseline MOVES to `b220999d`; until then **pin per
 the ledger** (feature-lane pins at `d25dacc1` / `b220999d`; unrelated
 families at `8f910137`). Port-4319: only one lane runs Playwright at a
 time — cross-lane beats are authored gated.
+
+**The `b220999d` drift catch-up round (P4.D119→P4.D120 stacked ∥ P4.D121 ∥
+P4.D122): UNIFIED on main (2026-08-26) — ALL FOUR ORDERS CLOSED; the oracle
+baseline MOVES to `b220999d` and the drift debt is CLEARED.** The per-tier
+dressing instructions end-to-end (the cascade module, `preserve_file_names`,
+the reader skip, the outfit-prompt thread at BOTH v5 `llm_choose` entrances,
+the four instructions verb pairs + the Section in both SPA hosts),
+archive-instead-of-delete whole (scenario `archived` frontmatter across all
+four scopes with default suppression, the character-vault
+`build_scenario_file` rewrite — **v5's description-drop bug proven
+red-first** — `includeArchived` end-to-end incl. the nine mutate verbs'
+fresh-list returns, the wardrobe `archivedPatch` semantics, the Green Room
+pins, the nine SPA hosts with the B7 quirks reproduced), and the
+Documents-search vertical (the LIKE engine with the fail-closed
+archived-vault exclusion, the two repo scans, the `uiSearch` sixth type +
+chip reorder, the Documents card with the modified-click passthrough, the
+open-from-search choreography, the ACTIVE walk). The §3 review's headline:
+the three scoped instructions SET handlers parsed BEFORE the 404 gate
+(would have shipped 400-where-v4-404s), the scenario `archived: null`
+silent-keep, and the REST edges' unknown-`?action=` fallthrough (a bogus
+POST could CREATE) — all fixed on the unify branch with red-first pins.
+Round record: `status-log.md`; drift state: `drift-ledger.md` (baseline
+`b220999da`, regen rule pin-free while HEAD sits at the baseline).
+
+**Next candidates, in rough value order** (updated at the `b220999d`-round
+unification, 2026-08-26):
+
+1. **The owed 💸 dogfood queue** — gains this round's live surfaces: the
+   Dressing Instructions round trip on a real container (and the cascade
+   reaching a real "Let character choose" turn), an archived scenario
+   vanishing from the Salon picker and coming back suffixed, an archived
+   garment absent from the Green Room pool, the Documents chip over the
+   real Friday stores (name/content/vault arms + the standalone open), and
+   the character edit form's Archive/Restore on a real vault file.
+   Standing items carried: Pascal's other three write paths, the Brahma
+   deep-query budget, dedup/summaries (human), the NanoGPT caching smoke,
+   the #101 cache-read cost question.
+2. **The duplicate "Quilltap General" store collision** (P4.D122's e2e
+   find): the committed e2e fixture serves TWO enabled stores with the
+   name; the suspected cause is `services/builtin_mounts.rs` (the
+   ensure-or-adopt creating a second row after the boot repair has run) —
+   needs its own small order; the beat derives its expected ref so it
+   stays green either way.
+3. **The present-but-null validation lead** (the §3 review's recorded
+   class): the scenario bags' name/description/isDefault arms still
+   tolerate explicit null where v4's Zod refuses — same class as the
+   `archived` fix this round; needs its own measured corpus pass (and a
+   sweep for other bag validators with the pattern).
+4. **Widen the committed `characters-*` e2e fixture with a Quilltap
+   General store** (pre-existing; still parks the component-transfer beat
+   and the "Shared — everywhere" create-scope beat).
+5. **The next wrong-type-collapse order**: `system_data_routes.rs`'s 13
+   sites, then `files_routes.rs`'s 5 (P4.60's census).
+6. **`p4.9i2` — help/HelpChat as a dedicated round** (the bank grew ten
+   help-file rows this round: the three instructions files + the seven
+   archive files, and `help/search.md`).
+7. The handler-logging sweep (P4.61's deferral; this round added the
+   group/project instructions handlers' info/debug lines and v4's
+   unknown-action warn to its inventory).
+8. The v4-side filing candidates from this round: the startup-migration
+   dedupe hole (one line), the three unconverted `scenarios[0]` sites, the
+   unguarded scenario default-SET write path, and the `qt-icon`
+   `[class.-rotate-90]` inert-transform wart at `terminal-embed.ts:53`.
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json` file
+port remains a NAMED standalone flag (v5 has never shipped the file).

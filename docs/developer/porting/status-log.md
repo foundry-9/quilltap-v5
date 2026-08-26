@@ -88420,3 +88420,181 @@ container (and the cascade actually reaching a "Let character choose" turn), an
 archived scenario disappearing from the Salon picker and coming back suffixed,
 an archived garment absent from the Green Room's candidate pool, and the
 character edit form's Archive/Restore against a real vault file.
+
+---
+
+## The `b220999d` drift catch-up round (P4.D119→P4.D120 stacked ∥ P4.D121 ∥ P4.D122) — UNIFIED (2026-08-26)
+
+**All four orders CLOSED; the oracle baseline MOVES `8f910137` → `b220999da`
+and the drift debt is CLEARED** (the five ledger rows absorbed/ratified —
+`drift-ledger.md` §6; the two docs-only specs NO-PORT-RATIFIED on the
+implementing lanes' hunk surveys). Branch `unify/b220999d-round`,
+cherry-picked in dependency order (the stacked server lane → the search
+vertical → the SPA lane); the only conflicts were version files (accumulated
+by recount — the SPA lane's first two commits had flattened one bump exactly
+as the silent-auto-merge trap predicts; recounted from base + per-commit
+bumps) and the union-merged append-only docs. No source-level conflict —
+Ownership held; each lane's owned-file diff against the unify tip verified
+EMPTY before review.
+
+### The §3 unification review (three parallel reviewers over the whole diff, verdict owned here)
+
+**Three findings that would have shipped, all fixed on the unify branch
+(`73fa6ea8` + `ac0dfd75`), most severe first:**
+
+1. **The three scoped `?action=instructions` SET handlers parsed the body
+   BEFORE the 404 existence check** — v4 gates existence first, so a missing
+   character/group/project with an invalid body answered 400 where v4
+   answers 404. Corpus-blind (the corpus had missing+valid and
+   present+invalid, never missing+invalid), and the handlers' own doc
+   comments stated v4's order while the code inverted it. The exact class
+   the `a6870c5a` round's review caught on `group_update`. Fixed by moving
+   the parse inside the connection closure after the gate; pinned by three
+   new `*_post_missing_and_invalid_404` corpus arms (the fresh oracle
+   answers 404 on all three) and a mutation re-hoisting the parse in ONE
+   handler — exactly that scope's arm reddened.
+2. **A scenario bag's explicit `archived: null` was silently treated as
+   omitted** (200 + preserve) where v4's `z.boolean().optional()` refuses —
+   the recurring present-but-null class (Taboo, P4.55 B2, D57). Fixed with
+   Zod 4's sentences MEASURED on v4's zod 4.4.3 (`Invalid input: expected
+   boolean, received null/string/…`) on the file-backed bag arm, and a
+   doubled Option on the two character-scenario dispatch verbs (flat
+   `Validation error`, parse-before-404 as v4 orders it THERE — the
+   opposite guard order from the wardrobe routes, both now faithful).
+   Pinned by two new oracle arms per corpus (four total), writes-nothing
+   legs included. ⚠ **Recorded LEAD, not fixed:** the sibling
+   name/description/isDefault arms carry the same pre-existing
+   null-tolerance — phase-4.md candidate 3.
+3. **The three registered wardrobe REST edges fell through on an unknown
+   `?action=`** — `POST /api/v1/wardrobe?action=bogus` with a valid body
+   CREATED an archetype where v4's dispatcher answers the 400
+   `Unknown action:` envelope. Fixed with v4's two-key envelope + warn
+   (the present-but-EMPTY action staying falsy per v4's truthiness gate,
+   measured in `withActionDispatch`); wire-tested including the
+   nothing-was-created leg.
+
+**Also fixed from the reviews:** the search engine's enabled-stores read
+was the module's one silent swallow (v4's `safeQuery` logs; now
+`tracing::error!` with v4's sentence); two stale ambiguity-arm comments in
+the ui-search corpus rewrote to the healed-"Logbook (2)" reality; the
+open-from-search pathname reads are fragment-safe (v4's `usePathname`
+never carries one); P4.D121's B7 seed guards were reproduced but UNPINNED
+(now three state-level specs — project/general guarded, the character seed
+deliberately unguarded, the flag threading + union-once — with three
+mutations each reddening exactly one); `setShowArchivedScenarios`
+double-fetched the group union under a factually wrong comment; and the
+salon beat's restore gesture matched ANY checkbox (now scoped by the
+"Show archived" label, the wardrobe beat's spelling).
+
+**The gate's own catches (red-first working as designed):** the fresh
+oracle showed v4's flat `Validation error` envelope carries a Zod `details`
+array — the subresources family's new error arms now compare the `error`
+KEY only (the sibling families' convention; v5's flat dispatch envelope
+deliberately omits details per the standing Zod-format-validator deferral);
+my fixture-comment rewrite had broken the ui-search JSON (trailing comma);
+and the Angular compiler rejected the seed spec's scenario literal against
+the list DTO's narrower shape (vitest's transpile-only standalone run
+cannot see type errors — the npm harness is the check of record). The
+listener spec's third arm initially over-claimed ("leaves the focus
+alone" — the reconcile's own add path focuses, correctly) and was reworked
+to pin exactly v4's gated focus step, mutation-proven through the npm
+harness with a name filter.
+
+**Reviewer notes accepted without change (recorded):** the dialog
+archive-failure toast surfaces `err.message` where v4 prefers the server's
+`error` body — equivalent under the house `CoreDispatchError` pattern; the
+`ScenarioWrite.archived: bool` typed field vs v4's truthiness read (only
+reachable via data that bypassed Zod); the group/project instructions GET
+handlers extend the pre-existing ensure-through-read-connections pattern
+(inherited from `group_wardrobe_list`, store-less-group shape unreached);
+the surrogate-split snippet lossiness (the standing repo convention); and
+`chat-scenario-control.spec`'s union re-fetch enumeration gap (the union
+flag is pinned at the state level instead).
+
+### The unification wires (`22a55d5a`)
+
+- **The P4.D122 `PENDING_CROSS_LANE` hand-off DISCHARGED:**
+  `DocumentModeController` listens for `quilltap:document-opened`
+  (v4 `useDocumentMode.ts:725-742` — reconcile, then focus only after the
+  reconcile resolves and only when the event names a `chatDocumentId`);
+  spec-pinned three ways (match/ignore/the gated focus), the gate
+  mutation-proven. An external open into an already-split Salon no longer
+  waits for a reload.
+- **The mutate-relist divergence RETIRED to v4's shape:** the server's
+  scenario Update/Rename/Delete verbs carry `includeArchived` (measured —
+  P4.D120 threaded it to `list_scenarios_in_folder` at every fresh-list
+  return), so the SPA sends the flag on the mutate verbs and applies each
+  response directly; CREATE stays flagless, faithfully reproducing v4's
+  body-not-param refresh quirk (survey §E.4) client-side too. Spec arms
+  rewritten; the six contract request types gained the field.
+- **The three gated beats FLIPPED live** (`P4D120_SERVER_LANDED` ×2,
+  `P4D119_INSTRUCTIONS_LANDED`).
+- **The §Shared contract diffed name-for-name:** the eight instructions
+  verbs, the nine `includeArchived` list fields, and the archive bag fields
+  agree between `api/types.rs` and `core-contract.ts` exactly; the
+  `double_option` on the SET arms decodes the absent/null/value tri-state
+  through the Request enum on both sides of the wire.
+
+### The unified gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets; `cargo build --release`
+  clean.
+- **The 31-family regen+run sweep** through the driver from the pinned
+  worktree `/tmp/qt-v4-pin-unify-b220999d` (built at `b220999da` = the new
+  baseline; the only v4 delta from the server lane's `d25dacc1` pin on its
+  surfaces is the search commit's pure addition to `character-vault.ts`,
+  verified by diff): **31/31 ok** after the two gate-caught repairs above,
+  zero SKIP. Changed-bytes greps on the fresh NDJSONs match: the three
+  missing+invalid 404 rows, the null/string Zod sentences in both corpora,
+  `"type":"documents"` ×11 + `document-standalone` ×11 in ui-search, the
+  409 sentence ×2 in the instructions oracle.
+- `cargo test --workspace` with the round's 60-variable env block
+  (`QT_ORACLE_OUT`/`QT_FIXTURE_OUT` generation-side vars excluded; the
+  `QT_FIXTURE_WTR_*` name collision between `wardrobe_transfers_tier2` and
+  `group_wardrobe_routes` resolved by running the latter by name in the
+  sweep and letting its workspace copy skip): **461 test binaries / 2,426
+  tests / 0 failed**, exit 0, **zero `SKIP:` lines in the whole log** —
+  the round's families confirmed RUN under their own `Running` headers
+  with non-zero durations.
+- SPA: `npm test` **351 files / 5,292 tests / 0 failed** (the qt-class
+  guard ran ahead: 934 classes, every reference resolves; the suite grew
+  347 → 351 files across the round); `npm run build` clean.
+- Full Playwright: **249 passed / 0 failed / 1 skipped (5.5 m)**, exit 0 —
+  the suite grew 245 → 250 with the round's five beats (P4.D121's three +
+  P4.D122's two); the one skip is the pre-existing P4.D112 component-
+  transfer store-probe park (phase-4.md candidate 4). **The three
+  activated beats' FIRST live runs caught three gesture defects** (the
+  playbook's write-the-beat warning firing again, all fixed spec-side
+  with no product assertion weakened, committed as their own repair):
+  the salon archive beat expected an option-less select where v5 —
+  faithfully to v4's `hasAnyScenarioOptions` rule — hides the WHOLE
+  dropdown when the project's only scenario is archived (the checkbox
+  deliberately outside the `@if` is what reveals it; hidden-entirely is
+  the stronger hiding); the wardrobe archive beat never ticked a Type, so
+  Create stayed disabled (v4's own `isSaveDisabled`); and the
+  instructions beat's section locators were unscoped while the character
+  view's wardrobe TAB mounts a second section behind the dialog. The two
+  mid-run `wardrobe-flow` reds on Brass Goggles were worker-restart
+  CASCADES of those failures (the restart re-runs `beforeAll`, wiping the
+  first beat's creation later beats depend on), not defects — green in
+  the file re-run and the final full run.
+
+### Versions at unification
+
+core 0.0.677, harness 0.0.586, web 0.0.92, SPA 0.5.576;
+host/cli/tauri/fixture-sanitizer/sqlite3mc-sys unchanged.
+
+### Standing after the round
+
+The 💸 dogfood queue gains the round's live surfaces (phase-4.md candidate
+1: the Dressing Instructions round trip + the cascade on a real
+"Let character choose" turn, the archive walk on real data, the Documents
+chip over the real Friday stores). New follow-up candidates recorded in
+phase-4.md: the duplicate "Quilltap General" store collision the search
+beat surfaced (cause suspected in `services/builtin_mounts.rs`), the
+present-but-null validation lead, and the round's v4-side filing
+candidates (the startup-migration dedupe hole, the three unconverted
+`scenarios[0]` sites, the unguarded default-SET write, the `qt-icon`
+class-binding wart). The `qtap-export.schema.json` file port remains a
+named standalone flag.

@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): the b220999d-round unification — all four orders land whole; the baseline moves
+
+_Docs-only change (the round's code landed in the preceding commits; final
+versions: core 0.0.677, harness 0.0.586, web 0.0.92, SPA 0.5.576)._
+
+The `b220999d` drift catch-up round unifies: the per-tier dressing
+instructions and archive-instead-of-delete features whole (server + SPA, the
+stacked P4.D119→P4.D120 lane and P4.D121), and the Documents-search vertical
+(P4.D122). The oracle baseline moves `8f910137` → `b220999da` and the drift
+debt is cleared; the two docs-only feature specs are NO-PORT-ratified. The
+§3 review's three would-have-shipped findings (the instructions handlers'
+guard order, the scenario `archived: null` silent-keep, the REST edges'
+unknown-action fallthrough) were fixed red-first on the unify branch. Gate:
+the 31-family regen+run sweep from the pinned worktree 31/31 ok zero SKIP
+with changed-bytes greps; `cargo test --workspace` 461 binaries / 2,426 / 0
+with the round's 60-variable env block and zero SKIP lines; clippy clean on
+both feature sets; release build clean; SPA `npm test` 351 files / 5,292 /
+0 and `npm run build` clean; full Playwright 249 passed / 0 failed / 1
+skipped (the standing store-probe park) with the round's five beats live —
+the three activated beats' first live runs caught three gesture defects,
+all repaired spec-side. Round record: `status-log.md`; the next candidates:
+`phase-4.md`.
+
 #### 2026-08-26 — feat(spa): the b220999d-round unification wires
 
 _Versions: SPA 0.5.576._
