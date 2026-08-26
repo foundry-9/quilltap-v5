@@ -254,6 +254,28 @@ function phys(overrides: Record<string, any>): any {
       undefined,
       undefined,
     ],
+    // [P4.D120 / v4 `d25dacc1`] An ARCHIVED scenario at index 0 must not become
+    // the implicit scene — `firstActiveScenarioContent`, the same rule as "an
+    // archived file can't be the folder's default".
+    [
+      'scenario-array-skips-archived',
+      ch({ name: 'Ada', personality: 'Scene: {{scenario}}', scenarios: [
+        { id: 's0', title: 'Shelved', content: 'archived body', archived: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+        { id: 's1', title: 'T', content: 'the first ACTIVE body', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      ] as any }),
+      null,
+      undefined,
+      undefined,
+    ],
+    [
+      'scenario-array-all-archived-is-empty',
+      ch({ name: 'Ada', personality: 'Scene: [{{scenario}}]', scenarios: [
+        { id: 's0', title: 'Shelved', content: 'archived body', archived: true, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' },
+      ] as any }),
+      null,
+      undefined,
+      undefined,
+    ],
     [
       'scenario-override-beats-array',
       ch({ name: 'Ada', personality: 'Scene: {{scenario}}', scenarios: [{ id: 's1', title: 'T', content: 'array body', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }] as any }),

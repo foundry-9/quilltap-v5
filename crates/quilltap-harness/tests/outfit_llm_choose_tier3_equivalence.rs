@@ -268,6 +268,11 @@ fn outfit_llm_choose_matches_oracle() {
         /// helper under test). `("character", …)` uses the joining character's
         /// vault; `("general", …)` uses Quilltap General.
         seed_instructions: Option<(&'a str, &'a str)>,
+        /// [P4.D120 / v4 `d25dacc1`] Archive every garment in the named tier on
+        /// the fresh copy, so "archived garments never audition" is proven END
+        /// TO END through the recorded prompt rather than by a pool unit test.
+        /// `"all"` is v4's "hands the LLM nothing at all" case.
+        archive_tier: Option<&'a str>,
     }
     let cases = [
         Case {
@@ -277,6 +282,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
         },
         Case {
             name: "add_llm_choose_invalid_ids",
@@ -285,6 +291,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
         },
         Case {
             name: "add_llm_choose_provider_fails",
@@ -293,6 +300,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: true,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
         },
         Case {
             name: "merge_llm_choose_pick",
@@ -301,6 +309,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
         },
         Case {
             name: "merge_llm_choose_provider_fails",
@@ -309,6 +318,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: true,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
         },
         // ── P4.D39 / v4 `8bb1a958` ────────────────────────────────────────
         // THE GUARD FIX: Wren owns no wardrobe. Before the fix the candidate
@@ -322,6 +332,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: WREN,
             seed_instructions: None,
+            archive_tier: None,
         },
         // ── P4.D71 / v4 `8600c83f` ────────────────────────────────────────
         // THE GROUP TIER AT CHAT START. Wren is a Lamplighter with an empty
@@ -339,6 +350,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: true,
             character: WREN,
             seed_instructions: None,
+            archive_tier: None,
         },
         // The validator used to drop any id outside the character's own vault,
         // so a pick from the shared tier evaporated.
@@ -349,6 +361,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
         },
         // Naked on purpose — honoured, no default fallback.
         Case {
@@ -358,6 +371,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
         },
         // The same empty answer with no flag reads as a failure to choose.
         Case {
@@ -367,6 +381,51 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
+        },
+        // ── P4.D120 / v4 `d25dacc1` ───────────────────────────────────────
+        // ARCHIVED GARMENTS NEVER AUDITION, in any tier, with no parameter and
+        // no override. The pool filter already existed in v5
+        // (`wearable_pool::merge_wearable_pool`); what this adds is the
+        // END-TO-END pin v4's own 237-line suite asks for — the archived items
+        // simply are not in the wardrobe listing the model is shown.
+        Case {
+            name: "add_llm_choose_archived_character_tier_never_auditions",
+            add: true,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: Some("character"),
+        },
+        Case {
+            name: "add_llm_choose_archived_general_tier_never_auditions",
+            add: true,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: Some("general"),
+        },
+        Case {
+            name: "add_llm_choose_archived_group_tier_never_auditions",
+            add: true,
+            reply: Some("wrenPicksShared"),
+            throws: false,
+            character: WREN,
+            seed_instructions: None,
+            archive_tier: Some("group"),
+        },
+        Case {
+            // Every tier archived: the pool is empty, so the consult never
+            // happens and the recorded messages are EMPTY.
+            name: "add_llm_choose_every_tier_archived_never_consults",
+            add: true,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: Some("all"),
         },
         // ── P4.D119 / v4 `b86bb1a5` ───────────────────────────────────────
         // Dressing instructions reach the outfit-selection prompt. The system
@@ -384,6 +443,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "character",
                 "  You keep to oilskins on the quay, whatever the hour.  \n",
             )),
+            archive_tier: None,
         },
         // The merge entrance, same seed.
         Case {
@@ -396,6 +456,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "character",
                 "You keep to oilskins on the quay, whatever the hour.",
             )),
+            archive_tier: None,
         },
         Case {
             name: "add_llm_choose_with_general_instructions",
@@ -407,6 +468,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "general",
                 "The house dresses for the weather, not the occasion.",
             )),
+            archive_tier: None,
         },
         // A whitespace-only file counts as absent: the user message must be
         // BYTE-IDENTICAL to `add_llm_choose_pick`'s.
@@ -417,6 +479,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: PIP,
             seed_instructions: Some(("character", "   \n  ")),
+            archive_tier: None,
         },
         // Only a real boolean counts.
         Case {
@@ -426,6 +489,7 @@ fn outfit_llm_choose_matches_oracle() {
             throws: false,
             character: PIP,
             seed_instructions: None,
+            archive_tier: None,
         },
     ];
 
@@ -433,6 +497,9 @@ fn outfit_llm_choose_matches_oracle() {
         let db = fresh_db(&spec, c.name);
         if let Some((scope, content)) = c.seed_instructions {
             seed_instructions_file(&db, scope, c.character, content);
+        }
+        if let Some(tier) = c.archive_tier {
+            archive_tier_garments(&db, tier, c.character);
         }
         let provider = Arc::new(CannedOutfitProvider {
             reply: c.reply.map(|k| spec.canned_outfits[k].clone()),
@@ -599,4 +666,71 @@ fn seed_instructions_file(db: &Db, scope: &str, character_id: &str, content: &st
         Ok(())
     })
     .expect("seed instructions");
+}
+
+/// [P4.D120] Stamp `archivedAt` into every `Wardrobe/*.md` frontmatter in the
+/// named tier's mounts, by RAW content rewrite — the archiving machinery under
+/// test never does the seeding, and the committed fixture is untouched.
+fn archive_tier_garments(db: &Db, tier: &str, character_id: &str) {
+    const STAMP: &str = "2026-02-01T00:00:00.000Z";
+    let tier = tier.to_string();
+    let cid = character_id.to_string();
+    db.write_blocking(move |w| {
+        let mut mounts: Vec<String> = Vec::new();
+        {
+            let main = w.main().connection();
+            if tier == "character" || tier == "all" {
+                if let Ok(Some(mp)) = main.query_row(
+                    "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+                    [&cid],
+                    |r| r.get::<_, Option<String>>(0),
+                ) {
+                    mounts.push(mp);
+                }
+            }
+            if tier == "general" || tier == "all" {
+                if let Some(mp) =
+                    quilltap_core::db::instance_settings::get_general_mount_point_id(main)?
+                {
+                    mounts.push(mp);
+                }
+            }
+        }
+        if tier == "group" || tier == "all" {
+            // The group tier needs BOTH partitions; take it in its own step so
+            // the two writer connections are never borrowed at once.
+            let main_ids: Vec<String> = {
+                let main = w.main().connection();
+                let mount = w.mount_index().expect("mount writer").connection();
+                quilltap_core::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character(
+                    main, mount, &cid,
+                )
+            };
+            mounts.extend(main_ids);
+        }
+        let mount = w.mount_index().expect("mount writer").connection();
+        for mp in &mounts {
+            let rows: Vec<(String, String)> = {
+                let mut st = mount.prepare(
+                    "SELECT d.id, d.content FROM doc_mount_file_links l \
+                     JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                     WHERE l.mountPointId = ?1 AND lower(l.relativePath) LIKE 'wardrobe/%'",
+                )?;
+                let mapped = st.query_map([mp], |r| Ok((r.get(0)?, r.get(1)?)))?;
+                mapped.collect::<Result<_, _>>()?
+            };
+            for (id, content) in rows {
+                if !content.starts_with("---") {
+                    continue;
+                }
+                let next = content.replacen("---\n", &format!("---\narchivedAt: {STAMP}\n"), 1);
+                mount.execute(
+                    "UPDATE doc_mount_documents SET content = ?1 WHERE id = ?2",
+                    rusqlite::params![next, id],
+                )?;
+            }
+        }
+        Ok(())
+    })
+    .expect("archive tier garments");
 }

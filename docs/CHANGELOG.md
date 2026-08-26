@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(almanack,wardrobe): the scenario archived column and the archive pin suites (v4 `d25dacc1`)
+
+_Versions: core 0.0.672, harness 0.0.584, web 0.0.91._
+
+The Almanack's Scriptorium table gains `| Tier | Scenarios | Archived |`, and
+the fixture gains one archived scenario so the column is measurable; the
+`*No scenarios*` empty state still tests `count === 0` only, as v4 leaves it.
+With the P4.D119 seed the same fixture now proves both halves of v4's
+asymmetry in one run: the character tier's garment count is 2 (the
+instructions file excluded) while its archived count is 2 (the same file,
+because its body says `archived: true` and the sibling LIKE-count got no
+exclusion).
+
+The pin suites v4 wrote as unit tests land where v5 can actually reach them.
+"Archived garments never audition" becomes four end-to-end tier-3 rows: each
+tier's garments vanish from the RECORDED PROMPT when archived, and with every
+tier archived the consult never happens at all. The opposite-direction rule —
+a garment archived mid-chat stays worn — is pinned in the source, because no
+oracle case reaches the title-resolving read: `archived_wearer_read_guard`
+holds the pool's two excluding reads and the equipped set's including read
+apart, and flipping either fails. The `?includeArchived` spelling rule gets its
+own unit arms at the two REST edges that speak URLs. The export projection is
+pinned where a loss could occur — a scenario's `archived` rides inside the
+scenarios array and a wardrobe item is not templated at all.
+
 #### 2026-08-26 — feat(wardrobe): `archived` → `archivedAt` on all four item routes (v4 `d25dacc1`)
 
 _Versions: core 0.0.671, harness 0.0.583, web 0.0.90._

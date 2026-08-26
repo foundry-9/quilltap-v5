@@ -184,6 +184,12 @@ interface CaseSpec {
    * touched — a rebuild would mint fresh ids and invalidate every sibling
    * `chat-dialogs-*` family. */
   seedInstructions?: { scope: 'character' | 'general'; characterId?: string; content: string };
+  /** [P4.D120 / v4 `d25dacc1`] Archive every garment in the named tier on the
+   *  fresh per-case copy, so the "archived garments never audition" rule is
+   *  proven END-TO-END through the recorded prompt rather than by a unit test on
+   *  the pool. `'all'` archives every tier at once (v4's "hands the LLM nothing
+   *  at all" case — no consult happens, so `llmMessages` is EMPTY). */
+  archiveTier?: 'character' | 'general' | 'group' | 'all';
 }
 
 async function runCase(
@@ -230,6 +236,49 @@ async function runCase(
     if (!mp) throw new Error(`no mount for seedInstructions scope ${seed.scope}`);
     await ensureFolderPath(mp, 'Wardrobe');
     await writeDatabaseDocument(mp, 'Wardrobe/instructions.md', seed.content);
+  }
+
+  if (c.archiveTier) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    const { getGeneralMountPointId } = await import('@/lib/instance-settings');
+    const STAMP = '2026-02-01T00:00:00.000Z';
+    const mounts: string[] = [];
+    const charId = (c.body as { characterId?: string }).characterId ?? '';
+    if (c.archiveTier === 'character' || c.archiveTier === 'all') {
+      const row = await getRepositories().characters.findByIdRaw(charId);
+      if (row?.characterDocumentMountPointId) mounts.push(row.characterDocumentMountPointId as string);
+    }
+    if (c.archiveTier === 'general' || c.archiveTier === 'all') {
+      const mp = await getGeneralMountPointId();
+      if (mp) mounts.push(mp);
+    }
+    if (c.archiveTier === 'group' || c.archiveTier === 'all') {
+      const { resolveGroupMountPointIdsForCharacter } = await import(
+        '@/lib/mount-index/tiered-mount-pool'
+      );
+      mounts.push(...(await resolveGroupMountPointIdsForCharacter(charId)));
+    }
+    // Stamp `archived: true` into every `Wardrobe/*.md` frontmatter in those
+    // mounts. A raw content rewrite (not a route) so the archiving machinery
+    // under test never does the seeding.
+    const midb = (await import('@/lib/database/backends/sqlite/mount-index-client')).getRawMountIndexDatabase();
+    const main = getRawDatabase();
+    if (!midb || !main) throw new Error('db handles unavailable');
+    for (const mp of mounts) {
+      const rows = midb
+        .prepare(
+          `SELECT d.id AS did, d.content AS content FROM doc_mount_file_links l
+             JOIN doc_mount_documents d ON d.fileId = l.fileId
+            WHERE l.mountPointId = ? AND lower(l.relativePath) LIKE 'wardrobe/%'`,
+        )
+        .all(mp) as Array<{ did: string; content: string }>;
+      for (const r of rows) {
+        if (!r.content.startsWith('---')) continue;
+        const next = r.content.replace(/^---\n/, `---\narchivedAt: ${STAMP}\n`);
+        midb.prepare('UPDATE doc_mount_documents SET content = ? WHERE id = ?').run(next, r.did);
+      }
+    }
   }
 
   let tick = 0;
@@ -452,6 +501,62 @@ async function main(): Promise<void> {
         outfitSelection: { characterId: PIP, mode: 'llm_choose' },
       },
       reply: 'unflaggedEmpty',
+    },
+
+    // ── P4.D120 / v4 `d25dacc1` ───────────────────────────────────────────
+    // ARCHIVED GARMENTS NEVER AUDITION — in any tier, with no parameter and no
+    // override. Proven end to end through the RECORDED PROMPT: the archived
+    // items simply are not in the wardrobe listing the model sees.
+    {
+      name: 'add_llm_choose_archived_character_tier_never_auditions',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPick',
+      archiveTier: 'character',
+    },
+    {
+      name: 'add_llm_choose_archived_general_tier_never_auditions',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPick',
+      archiveTier: 'general',
+    },
+    {
+      name: 'add_llm_choose_archived_group_tier_never_auditions',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: WREN,
+        outfitSelection: { characterId: WREN, mode: 'llm_choose' },
+      },
+      reply: 'wrenPicksShared',
+      archiveTier: 'group',
+    },
+    {
+      // v4: "hands the LLM nothing at all when every garment in every tier is
+      // archived" — the pool is empty, so the consult never happens and
+      // `llmMessages` comes back EMPTY.
+      name: 'add_llm_choose_every_tier_archived_never_consults',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPick',
+      archiveTier: 'all',
     },
 
     // ── P4.D119 / v4 `b86bb1a5` ───────────────────────────────────────────

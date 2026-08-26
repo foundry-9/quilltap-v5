@@ -106,6 +106,47 @@ mod tests {
         assert!(template("wardrobe_item").is_none());
     }
 
+    /// [P4.D120 / v4 `d25dacc1`] The archived flags survive the export
+    /// projection.
+    ///
+    /// v4 changed NO writer or reader code for this: both fields already rode
+    /// along structurally, and `d25dacc1` only DECLARED them in
+    /// `public/schemas/qtap-export.schema.json` (which v5 has never shipped —
+    /// a named standalone deferral). What could still lose them on v5's side is
+    /// this reorder: a scenario's `archived` lives INSIDE the `scenarios` array
+    /// value (untouched by key ordering), and a wardrobe item is not templated
+    /// at all. Both facts are pinned here, because the P4.D63 lesson is that a
+    /// stale `schema-key-order.json` silently relocates — or drops — exactly
+    /// this kind of key.
+    #[test]
+    fn the_archived_flags_survive_the_export_projection() {
+        let character: Value = serde_json::from_str(
+            r#"{
+                 "name": "Bertie",
+                 "id": "c-1",
+                 "scenarios": [
+                   {"id": "s-1", "title": "Active", "content": "A."},
+                   {"id": "s-2", "title": "Mothballed", "content": "B.", "archived": true}
+                 ]
+               }"#,
+        )
+        .unwrap();
+        let out = reorder("character", character.clone());
+        assert_eq!(
+            out.get("scenarios"),
+            character.get("scenarios"),
+            "the scenarios array — `archived` included — must pass through verbatim"
+        );
+
+        // A wardrobe item has no template, so `reorder` is the identity on it and
+        // `archivedAt` cannot be relocated or dropped.
+        let item: Value = serde_json::from_str(
+            r#"{"id":"w-1","title":"Retired breeches","archivedAt":"2026-02-01T00:00:00.000Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(reorder("wardrobe_item", item.clone()), item);
+    }
+
     #[test]
     fn reorder_is_non_lossy_and_appends_unknown_keys() {
         let v: Value =

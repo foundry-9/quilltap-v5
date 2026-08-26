@@ -31,7 +31,7 @@
  *     `metadata.json`), project + group official stores, the Field Library, the
  *     Quilltap Uploads + General mounts, `Wardrobe/` (one archived, plus a
  *     dressing-`instructions.md` whose body says `archived: true`) /
- *     `Scenarios/` / `Mail/` (one `alerted: false`) / `photos/` /
+ *     `Scenarios/` (one archived) / `Mail/` (one `alerted: false`) / `photos/` /
  *     `Tools/*.tool.json` (one llm-consult+effects+gated, one plain, one BROKEN
  *     for the parse-failure arm, one `.settings.json` preset), `state.json` in
  *     project/group/general stores, link-policy denials, a hard-link group,
@@ -1306,6 +1306,14 @@ async function main(): Promise<void> {
   await store(projectStore, 'Scenarios/harbour-watch.md', '# Harbour Watch\n');
   await store(groupStore, 'Scenarios/mess-night.md', '# Mess Night\n');
   await store(GENERAL_MOUNT, 'Scenarios/open-house.md', '# Open House\n');
+  // [P4.D120 / v4 `d25dacc1`] One ARCHIVED scenario, so the Scriptorium row's
+  // new `Archived` column is measurable (the same `%archived: true%` LIKE the
+  // wardrobe tally uses).
+  await store(
+    lorianVault,
+    'Scenarios/mothballed.md',
+    '---\nname: Mothballed\narchived: true\n---\n\nA scene put away.\n',
+  );
 
   // The Post Office — letters in two vaults; one unannounced.
   await store(

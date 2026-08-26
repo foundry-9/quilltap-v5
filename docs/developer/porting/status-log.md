@@ -417,6 +417,92 @@ had no `nextUrl`, which `withActionDispatch` reads — after the instructions
 wrapper landed, EVERY collection case answered 500. Fixed with a comment naming
 the cause.
 
+### P4.D120 units 6–7 — the Almanack column and the pin suites
+
+**Almanack.** `ScenarioTierRow.archived` + the `%archived: true%` LIKE +
+`| Tier | Scenarios | Archived |`. The fixture gains one archived scenario in
+Lorian's vault, and — with P4.D119's seed in the same rebuild — the family now
+measures BOTH halves of v4's asymmetry at once: character wardrobe
+`items: 2, archived: 2` (the instructions file is excluded from `items` and
+STILL counted by `archived`, because its body carries the literal
+`archived: true` and v4 gave that count no exclusion), scenarios
+`count: 2, archived: 1`. Three mutations redden it: the instructions exclusion
+removed; the exclusion ALSO applied to the archived sibling; the scenario
+archived count zeroed. `almanack_render_equivalence` regenerated over v4's own
+renderer with the new column.
+
+**Never-auditions, END TO END.** `outfit_llm_choose_tier3_equivalence` 15 → 19:
+a per-case raw content rewrite stamps `archivedAt` into every `Wardrobe/*.md`
+frontmatter in one tier, and the archived garments simply are not in the
+wardrobe listing the model is shown. `archive_tier: "all"` is v4's "hands the
+LLM nothing at all" row — the pool is empty, so `llmMessages` comes back EMPTY.
+
+⚠ **A mutation that does NOT redden it, and what that taught.** Removing
+`merge_wearable_pool`'s `retain(!is_archived_truthy)` survives: on this path v5
+already filtered EARLIER, at the tier reads
+(`find_wearable_pool_for_character`'s two `include_archived: false` calls) —
+mutating THOSE reddens three of the four rows. Both guards are v4-faithful (v4
+filters at both levels too); v5's pool retain is the redundant second one, and
+the load-bearing site is now named at the source.
+
+**The opposite direction** (v4's `resolve-equipped` pin — a garment archived
+mid-chat stays worn) has NO reachable differential: `handleGetOutfit` returns
+ids only and the title-resolving summary surface has no oracle case. Pinned in
+the source instead, the `db_error_key_guard` way: the NEW
+`archived_wearer_read_guard` holds the pool's two EXCLUDING reads and the
+equipped-set INCLUDING read apart, counts each spelling so a new read cannot
+quietly join the wrong side, and reddens when either flag flips. The census
+found a SECOND deliberate including read (`find_by_id_for_character` — the
+detail GET and the update pre-check, which must find an archived item rather
+than 404 on it); it is classified in the guard.
+
+**The `?includeArchived` spelling** (v4's `readIncludeArchived`: literal `true`
+OR the bare valueless form; `1`/`TRUE`/`yes` all mean no) is v5's
+`quilltap-web::wardrobe_routes::read_include_archived`, with nine unit arms —
+the two wardrobe REST edges are the only v5 surfaces that speak the URL, the
+rest being dispatch verbs that carry the resolved boolean.
+
+**Export round-trip.** v4 changed no writer or reader code — both fields already
+rode along structurally, and `d25dacc1` only DECLARED them in
+`public/schemas/qtap-export.schema.json`. **v5 has never shipped that schema
+file: a named standalone deferral, NOT invented here.** What could still lose
+them on v5's side is the key-order reorder, so that is where the pin went: a
+scenario's `archived` lives inside the `scenarios` array value (untouched) and a
+wardrobe item is not templated at all. The P4.D63 lesson — a stale
+`schema-key-order.json` silently relocating exactly this kind of key — is why
+it is a test and not a comment.
+
+**Neutrality regens, all green at the pin:** `scenario_resolvers`,
+`chat_scenario_routes` (archived scenarios still resolve — v4 changed no logic
+there), `outfit_hash`, `wardrobe_tier2`, `wardrobe_transfers_tier2` (an
+`archivedAt` survives a transfer), `chats_outfits_tier2`,
+`wardrobe_public_read`, `almanack_render`. `system_prompt_equivalence` 73 → 75
+rows with an archived scenario at index 0 and an all-archived character;
+mutation-proven.
+
+### P4.D120 Tier 2/3 — recorded dispositions
+
+* **The `?includeArchived` URL reader** landed on the two existing wardrobe REST
+  edges (`wardrobe_get`, `characters_wardrobe_get`). **Dispatch-only, recorded:**
+  every scenario surface, the project/group wardrobe collections, and the
+  character wardrobe POST — none has a v5 REST edge, and the SPA rides dispatch.
+* **v4-side filing candidates** (v4 did NOT convert them; v5 leaves them alone
+  to match): `scene-state-tracking.ts:220`, Carina's `resolveDefaultScenario`
+  (`:119`, which also honours an archived `defaultScenarioId`), and the
+  SillyTavern export — all three still read `scenarios[0]` rather than the first
+  ACTIVE one. Plus the **unguarded default-SET write path**: nothing server-side
+  stops `isDefault: true` being written onto an archived file; the READ path
+  neutralizes it.
+* **`public/schemas/qtap-export.schema.json`** — v5 has never shipped it; a
+  named standalone flag for a future order, deliberately not invented here.
+* **The seven help-file deltas** bank to `p4.9i2`; `docs/developer/API.md` is
+  v4-side documentation.
+* **Banked, PRE-EXISTING and wider than this lane:** v5's
+  `character_wardrobe_update` validates only the key this lane added. v4 runs the
+  whole `updateWardrobeItemSchema` there (title `.min(1)`, the types enum, the
+  nullable strings, the booleans) and v5 reads each key ad hoc — a named
+  maintenance candidate, recorded at the source.
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start

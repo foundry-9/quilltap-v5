@@ -351,3 +351,33 @@ pub async fn chat_action_post(
         Err(r) => r,
     }
 }
+
+#[cfg(test)]
+mod include_archived_tests {
+    use super::read_include_archived;
+    use std::collections::HashMap;
+
+    fn q(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    /// v4 `readIncludeArchived`: `raw === 'true' || raw === ''`. The bare
+    /// valueless spelling counts; everything else — `1`, `TRUE`, `yes`, absent —
+    /// does not. These are the SPELLINGS; the resolved boolean is what the
+    /// dispatch-only surfaces are driven with in the differentials.
+    #[test]
+    fn only_literal_true_and_the_bare_spelling_opt_in() {
+        assert!(read_include_archived(&q(&[("includeArchived", "true")])));
+        assert!(read_include_archived(&q(&[("includeArchived", "")])));
+        assert!(!read_include_archived(&q(&[("includeArchived", "1")])));
+        assert!(!read_include_archived(&q(&[("includeArchived", "TRUE")])));
+        assert!(!read_include_archived(&q(&[("includeArchived", "True")])));
+        assert!(!read_include_archived(&q(&[("includeArchived", "yes")])));
+        assert!(!read_include_archived(&q(&[("includeArchived", "false")])));
+        assert!(!read_include_archived(&q(&[])));
+        assert!(!read_include_archived(&q(&[("includearchived", "true")])));
+    }
+}

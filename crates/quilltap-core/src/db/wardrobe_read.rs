@@ -150,6 +150,11 @@ pub fn find_by_ids_for_character(
     }
     let want: std::collections::HashSet<&str> = ids.iter().map(String::as_str).collect();
 
+    // ⚠ `include_archived: true`, and it must stay that way (v4 `d25dacc1`'s
+    // `resolve-equipped` pin, the OPPOSITE direction from the candidate pool):
+    // a garment archived MID-CHAT is still worn, and an archived-excluding read
+    // here would lose its title from the outfit. The pool reads (line ~130) pass
+    // `false` precisely because they are the audition; this is the wearer.
     let items = find_by_character_id(main, docs, character_id, true)?;
     let mut ordered: Vec<Value> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
