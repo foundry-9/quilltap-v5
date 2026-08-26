@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — fix(search): a Documents result opened from inside a chat threw NG0201 and did nothing
+
+_Versions: SPA 0.5.577._
+
+Dogfood finding #105, on the `b220999d` round's own new surface. Clicking a
+Documents search result with a Salon focused should split the document into
+that conversation; instead it threw `NG0201` and the dialog just sat there.
+
+`OpenDocumentFromSearch` is `providedIn: 'root'`, so its `inject(Injector)` is
+the root injector — which never sees `salon-conversation.ts`'s component
+`providers: [… DocumentApi]`. The lane had already hit NG0201 at render time
+and moved the lookup to a lazy `injector.get(DocumentApi)`; that relocated the
+crash from render to click without fixing it.
+
+`DocumentApi` is a stateless wrapper over the root `CoreClient`, so the fix
+builds our own instance in the root injection context
+(`runInInjectionContext`), memoized. It is deliberately not registered
+globally: `document-picker.ts` injects `DocumentApi` `{optional: true}` and
+relies on it being absent outside a chat to fall back to
+`StandaloneDocumentApi`.
+
+Guards: three TestBed specs that resolve the service the way the app does (the
+existing hand-built harness stubs the injector with one that always answers,
+which is exactly why this was invisible), and a third e2e beat that clicks the
+card with a Salon focused — the gesture neither existing beat makes.
+
 #### 2026-08-26 — docs(porting): the b220999d-round unification — all four orders land whole; the baseline moves
 
 _Docs-only change (the round's code landed in the preceding commits; final

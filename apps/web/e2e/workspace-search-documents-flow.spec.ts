@@ -204,3 +204,41 @@ test('clicking the card opens a standalone tab — no chat is told', async ({ pa
     ),
   ).toHaveCount(0);
 });
+
+test('with a Salon focused the card opens IN the chat — the arm dogfood #105 broke', async ({
+  page,
+}) => {
+  // The two beats above both run with Home focused, so both take the SILENT
+  // standalone arm. The in-chat arm was never gestured — and it was broken:
+  // `OpenDocumentFromSearch` is `providedIn: 'root'`, so its injector could not
+  // see the Salon's component-provided `DocumentApi` and every in-chat open
+  // threw NG0201 and did nothing at all (dogfood finding #105).
+  await openWorkspace(page);
+
+  // Get a real conversation focused, the way a reader would.
+  await page.locator('.qt-nav-rail a[href="/salon"], a[href="/salon"]').first().click();
+  const soloCard = page.locator('.chat-card-stack a.qt-entity-card').first();
+  await expect(soloCard).toBeVisible({ timeout: 15_000 });
+  await soloCard.click();
+  await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+
+  const failures: string[] = [];
+  page.on('pageerror', (err) => failures.push(String(err)));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error' && /NG0201/.test(msg.text())) failures.push(msg.text());
+  });
+
+  const dialog = await openDialog(page);
+  const card = dialog.locator(`a[href*="${encodeURIComponent(docPath!)}"]`).first();
+  await expect(card).toBeVisible({ timeout: 15_000 });
+  await card.click();
+
+  // The in-chat open splits the document in beside the conversation — the
+  // chat is still there, and the document pane came up with it.
+  await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.locator('qt-document-pane, .qt-document-pane, .qt-document-mode').first(),
+  ).toBeVisible({ timeout: 15_000 });
+  // And nothing threw on the way.
+  expect(failures, `errors during the in-chat open: ${failures.join(' | ')}`).toEqual([]);
+});

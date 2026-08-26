@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   isModifiedClick,
@@ -7,6 +9,7 @@ import {
   type ActiveSalon,
 } from './open-document-from-search';
 import { DOCUMENT_OPENED_EVENT, openDocumentInChat } from './open-document-in-chat';
+import { DocumentApi as DocumentApiClass } from './document-api';
 import type { DocumentApi } from './document-api';
 import type { DocumentSearchResultItem } from '../search/search.types';
 import type { WorkspaceState, WorkspaceTab } from '../workspace/workspace-contract';
@@ -143,9 +146,15 @@ function harness(opts: {
   Object.assign(svc, {
     workspace: { state: () => opts.workspaceState ?? null, openTab },
     router: { url: opts.url, navigateByUrl },
-    injector: { get: () => ({ openDocument }) as unknown as DocumentApi },
+    injector: null,
     toasts: { showError },
   });
+  // The service builds its own `DocumentApi` in the root injection context
+  // (see `chatDocumentApi`); the hand-built harness has no injector, so stub
+  // the accessor. The REAL resolution is guarded by the TestBed spec below —
+  // that separation is exactly what let dogfood #105 through.
+  (svc as unknown as { chatDocumentApi(): DocumentApi }).chatDocumentApi = () =>
+    ({ openDocument }) as unknown as DocumentApi;
   // The flag reader is module-level; stub the private predicate instead so the
   // spec doesn't have to reach into localStorage.
   (svc as unknown as { inWorkspace(): boolean }).inWorkspace = () =>
@@ -327,5 +336,41 @@ describe('openDocumentInChat (v4 open-document-in-chat.ts:57-83)', () => {
       mode: 'focus',
     });
     expect(seen).toHaveLength(1);
+  });
+});
+
+/**
+ * Dogfood finding #105 — the in-chat arm could not resolve its `DocumentApi`.
+ *
+ * `OpenDocumentFromSearch` is `providedIn: 'root'`, so its `inject(Injector)`
+ * is the ROOT injector, which never sees `salon-conversation.ts`'s component
+ * `providers: [… DocumentApi]`. The original lazy `injector.get(DocumentApi)`
+ * therefore threw **NG0201** on every click with a Salon focused — clicking a
+ * Documents search result in a chat did nothing at all, and the harness above
+ * could not see it because it stubs the injector with one that always answers.
+ *
+ * This spec resolves the service the way the app does and forces the one path
+ * that needs the client, so the guard reads the REAL injector topology.
+ */
+describe('OpenDocumentFromSearch: the chat document client resolves from root (dogfood #105)', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  it('builds a DocumentApi without NG0201', () => {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const svc = TestBed.inject(OpenDocumentFromSearch);
+    const api = (svc as unknown as { chatDocumentApi(): DocumentApi }).chatDocumentApi();
+    expect(api).toBeInstanceOf(DocumentApiClass);
+  });
+
+  it('memoizes the client across opens', () => {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const svc = TestBed.inject(OpenDocumentFromSearch);
+    const reach = svc as unknown as { chatDocumentApi(): DocumentApi };
+    expect(reach.chatDocumentApi()).toBe(reach.chatDocumentApi());
+  });
+
+  it('is NOT registered globally — the picker must still fall back to standalone', () => {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    expect(TestBed.inject(DocumentApiClass, null, { optional: true })).toBeNull();
   });
 });

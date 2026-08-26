@@ -21,7 +21,7 @@
  * @module documents/open-document-from-search
  */
 
-import { inject, Injectable, Injector } from '@angular/core';
+import { inject, Injectable, Injector, runInInjectionContext } from '@angular/core';
 import { Router } from '@angular/router';
 
 import { ToastService } from '../ui/toast.service';
@@ -105,13 +105,32 @@ export class OpenDocumentFromSearch {
   private readonly toasts = inject(ToastService);
   /**
    * `DocumentApi` is `@Injectable()` WITHOUT `providedIn: 'root'` — it is
-   * provided by the Salon/Document hosts that own a chat. Resolving it in a
-   * field initializer would make merely RENDERING a search result list demand a
-   * provider that the search surface has no business requiring (and it did:
-   * every existing `SearchResults` spec went NG0201 on the first attempt).
-   * It is fetched lazily, on the one path that needs it.
+   * provided by the Salon conversation that owns a chat
+   * (`salon-conversation.ts:219`). Resolving it in a field initializer would
+   * make merely RENDERING a search result list demand a provider the search
+   * surface has no business requiring (and it did: every existing
+   * `SearchResults` spec went NG0201 on the first attempt).
+   *
+   * ⚠ Nor can it simply be `get()` off this injector: THIS service is
+   * `providedIn: 'root'`, so `inject(Injector)` hands back the ROOT injector,
+   * which never sees a component's `providers`. A lazy `injector.get(DocumentApi)`
+   * therefore threw NG0201 on every in-chat open — dogfood finding #105, where
+   * clicking a Documents search result with a Salon focused did nothing at all.
+   *
+   * `DocumentApi` is a stateless wrapper over the root `CoreClient`, so the fix
+   * is to build our OWN instance in the root injection context, memoized. It is
+   * deliberately NOT registered globally: `document-picker.ts:335` injects
+   * `DocumentApi` `{optional: true}` and relies on it being ABSENT outside a
+   * chat to fall back to `StandaloneDocumentApi`.
    */
   private readonly injector = inject(Injector);
+  private documentApi: DocumentApi | null = null;
+
+  /** The chat-side document client, built on first in-chat open. */
+  private chatDocumentApi(): DocumentApi {
+    this.documentApi ??= runInInjectionContext(this.injector, () => new DocumentApi());
+    return this.documentApi;
+  }
 
   /**
    * v4's `inWorkspace = ws !== null && pathname === '/workspace'`. v5's
@@ -144,7 +163,7 @@ export class OpenDocumentFromSearch {
 
     if (activeSalon) {
       void openDocumentInChat(
-        this.injector.get(DocumentApi),
+        this.chatDocumentApi(),
         activeSalon.chatId,
         {
           filePath: result.relativePath,
