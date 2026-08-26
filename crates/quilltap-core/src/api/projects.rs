@@ -34,6 +34,9 @@ use crate::db::{archetype_wardrobe, characters_read, chats_read, tags, DbError};
 use crate::services::character_enrichment::enrich_with_default_image;
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
+use crate::wardrobe_instructions::{
+    read_wardrobe_instructions_file, write_wardrobe_instructions_file,
+};
 
 use super::scenarios as scenarios_api;
 use super::types::{db_error_response, ErrorKind, Response};
@@ -1229,6 +1232,23 @@ fn ensure_project_wardrobe_mount(
     mount: &rusqlite::Connection,
     project_id: &str,
 ) -> Result<Result<String, Response>, DbError> {
+    let mount_point_id = match ensure_project_store_mount(main, mount, project_id)? {
+        Ok(mp) => mp,
+        Err(r) => return Ok(Err(r)),
+    };
+    let links = DocMountFileLinksRepository::new(mount);
+    let _ = links.ensure_folder_path(&mount_point_id, "Wardrobe");
+    Ok(Ok(mount_point_id))
+}
+
+/// The store-ensure half of [`ensure_project_wardrobe_mount`] with NO
+/// `Wardrobe/` folder ensure — v4's `?action=instructions` GET calls
+/// `ensureProjectOfficialStore` alone (only its POST adds the folder ensure).
+fn ensure_project_store_mount(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    project_id: &str,
+) -> Result<Result<String, Response>, DbError> {
     let repo = ProjectsRepository::new(main, mount);
     let Some(project) = repo.find_by_id(project_id).map_err(overlay_to_db)? else {
         return Ok(Err(not_found("Project")));
@@ -1238,8 +1258,6 @@ fn ensure_project_wardrobe_mount(
     else {
         return Ok(Err(internal("Failed to ensure project document store")));
     };
-    let links = DocMountFileLinksRepository::new(mount);
-    let _ = links.ensure_folder_path(&ensured.mount_point_id, "Wardrobe");
     Ok(Ok(ensured.mount_point_id))
 }
 
@@ -1878,6 +1896,83 @@ pub async fn project_file_remove(db: &Db, project_id: &str, file_id: &str) -> Re
     .await;
     match out {
         Ok(Ok(())) => Response::Project(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
+}
+
+// ===========================================================================
+// `?action=instructions` — the project store's dressing instructions
+// (v4 `b86bb1a5`, `app/api/v1/projects/[id]/wardrobe/route.ts` — a byte-copy of
+// the group file with Project spellings)
+// ===========================================================================
+
+/// v4 `GET /api/v1/projects/[id]/wardrobe?action=instructions`.
+pub fn project_wardrobe_instructions_get(db: &Db, project_id: &str) -> Response {
+    let pid = project_id.to_string();
+    let out = read_both(db, move |main, mount| {
+        let mp = match ensure_project_store_mount(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        let instructions = read_wardrobe_instructions_file(mount, &mp);
+        Ok(Ok((mp, instructions)))
+    });
+    match out {
+        Ok(Ok((mount_point_id, instructions))) => {
+            tracing::debug!(
+                project_id,
+                mount_point_id,
+                present = instructions.is_some(),
+                context = "wardrobe",
+                "[Projects v1] Read project dressing instructions"
+            );
+            Response::Project(json!({ "instructions": instructions }))
+        }
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 `POST /api/v1/projects/[id]/wardrobe?action=instructions`.
+pub async fn project_wardrobe_instructions_set(
+    db: &Db,
+    project_id: &str,
+    instructions: &Option<Option<Value>>,
+) -> Response {
+    let pid = project_id.to_string();
+    let instructions = match super::wardrobe::parse_instructions_body(instructions) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
+    let out = with_both_conns(db, move |main, mount| {
+        {
+            let repo = ProjectsRepository::new(main, mount);
+            if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
+                return Ok(Err(not_found("Project")));
+            }
+        }
+        let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
+        Ok(Ok(mp))
+    })
+    .await;
+    match out {
+        Ok(Ok(mount_point_id)) => {
+            tracing::info!(
+                project_id,
+                mount_point_id,
+                cleared,
+                context = "wardrobe",
+                "[Projects v1] Project dressing instructions updated"
+            );
+            Response::Project(json!({ "instructions": echo }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }

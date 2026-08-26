@@ -29,7 +29,8 @@
  *   - `almanack-mount.db`           — the mount-index sibling: 3 character
  *     vaults (2 linked; the REAL create writes `properties.json` +
  *     `metadata.json`), project + group official stores, the Field Library, the
- *     Quilltap Uploads + General mounts, `Wardrobe/` (one archived) /
+ *     Quilltap Uploads + General mounts, `Wardrobe/` (one archived, plus a
+ *     dressing-`instructions.md` whose body says `archived: true`) /
  *     `Scenarios/` / `Mail/` (one `alerted: false`) / `photos/` /
  *     `Tools/*.tool.json` (one llm-consult+effects+gated, one plain, one BROKEN
  *     for the parse-failure arm, one `.settings.json` preset), `state.json` in
@@ -1287,6 +1288,17 @@ async function main(): Promise<void> {
     GENERAL_MOUNT,
     'Wardrobe/plain-apron.md',
     '---\ntitle: Plain Apron\narchived: false\n---\nAnyone may borrow it.\n',
+  );
+  // [P4.D119 / v4 `b86bb1a5`] The dressing-instructions file lives in the
+  // Wardrobe folder but is NOT a garment: the `items` count excludes it by
+  // exact path. Its body deliberately contains the literal `archived: true`,
+  // because v4 gave the sibling `archived` LIKE-count NO exclusion — the file
+  // still counts as an archived garment there, and that asymmetry is what this
+  // seed pins.
+  await store(
+    lorianVault,
+    'Wardrobe/instructions.md',
+    'You prefer tweeds for fieldwork.\n\nNever anything archived: true.\n',
   );
 
   // Scenarios by tier.

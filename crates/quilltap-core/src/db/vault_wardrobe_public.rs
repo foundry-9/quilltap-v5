@@ -219,6 +219,18 @@ fn resolve_wardrobe_mount(
     }
 }
 
+/// [`resolve_wardrobe_mount`] for the dressing-instructions route (v4
+/// `b86bb1a5` calls the same resolver from `?action=instructions`): the
+/// character's vault mount id, `None` when no vault is available, and
+/// [`DbError::CharacterArchived`] for the tombstone — which the route turns into
+/// its OWN 409 sentence, not this error's message.
+pub fn resolve_character_wardrobe_mount_point(
+    main: &Connection,
+    character_id: &str,
+) -> Result<Option<String>, DbError> {
+    Ok(resolve_wardrobe_mount(main, Some(character_id))?.map(|loc| loc.mount_point_id))
+}
+
 /// v4 `projectWardrobeLocation` — a project-store wardrobe location for an
 /// explicit project mount.
 fn project_wardrobe_location(mount_point_id: &str) -> WardrobeLocation {

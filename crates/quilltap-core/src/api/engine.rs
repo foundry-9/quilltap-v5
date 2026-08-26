@@ -1827,6 +1827,26 @@ impl CoreEngine {
                 ),
                 Err(r) => r,
             },
+            Request::CharacterWardrobeInstructionsGet { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_wardrobe_instructions_get(&db, &character_id)
+                }
+                Err(r) => r,
+            },
+            Request::CharacterWardrobeInstructionsSet {
+                character_id,
+                instructions,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::characters::character_wardrobe_instructions_set(
+                        &db,
+                        &character_id,
+                        &instructions,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::CharacterPluginDataMap { character_id } => match self.ready_db() {
                 Ok(db) => {
                     super::characters::character_plugin_data_map(&db, SINGLE_USER_ID, &character_id)
@@ -2469,6 +2489,20 @@ impl CoreEngine {
                 Ok(db) => super::groups::group_wardrobe_list(&db, &group_id),
                 Err(r) => r,
             },
+            Request::GroupWardrobeInstructionsGet { group_id } => match self.ready_db() {
+                Ok(db) => super::groups::group_wardrobe_instructions_get(&db, &group_id),
+                Err(r) => r,
+            },
+            Request::GroupWardrobeInstructionsSet {
+                group_id,
+                instructions,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::groups::group_wardrobe_instructions_set(&db, &group_id, &instructions)
+                        .await
+                }
+                Err(r) => r,
+            },
             Request::GroupWardrobeCreate { group_id, item } => match self.ready_db() {
                 Ok(db) => super::groups::group_wardrobe_create(&db, &group_id, item).await,
                 Err(r) => r,
@@ -3058,6 +3092,24 @@ impl CoreEngine {
             },
             Request::ProjectWardrobeList { project_id } => match self.ready_db() {
                 Ok(db) => super::projects::project_wardrobe_list(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectWardrobeInstructionsGet { project_id } => match self.ready_db() {
+                Ok(db) => super::projects::project_wardrobe_instructions_get(&db, &project_id),
+                Err(r) => r,
+            },
+            Request::ProjectWardrobeInstructionsSet {
+                project_id,
+                instructions,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::projects::project_wardrobe_instructions_set(
+                        &db,
+                        &project_id,
+                        &instructions,
+                    )
+                    .await
+                }
                 Err(r) => r,
             },
             Request::ProjectWardrobeCreate { project_id, item } => match self.ready_db() {
@@ -4553,6 +4605,14 @@ impl CoreEngine {
             },
             Request::WardrobeList => match self.ready_db() {
                 Ok(db) => super::wardrobe::wardrobe_list(&db),
+                Err(r) => r,
+            },
+            Request::WardrobeInstructionsGet => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_instructions_get(&db),
+                Err(r) => r,
+            },
+            Request::WardrobeInstructionsSet { instructions } => match self.ready_db() {
+                Ok(db) => super::wardrobe::wardrobe_instructions_set(&db, &instructions).await,
                 Err(r) => r,
             },
             Request::WardrobeCreate { item } => match self.ready_db() {

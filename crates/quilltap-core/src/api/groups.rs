@@ -40,6 +40,9 @@ use crate::db::vault_wardrobe_public::{
 use crate::db::{archetype_wardrobe, characters_read, DbError};
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
+use crate::wardrobe_instructions::{
+    read_wardrobe_instructions_file, write_wardrobe_instructions_file,
+};
 
 use super::scenarios as scenarios_api;
 use super::types::{db_error_response, ErrorKind, Response};
@@ -1103,6 +1106,23 @@ fn ensure_group_wardrobe_mount(
     mount: &rusqlite::Connection,
     group_id: &str,
 ) -> Result<Result<String, Response>, DbError> {
+    let mount_point_id = match ensure_group_store_mount(main, mount, group_id)? {
+        Ok(mp) => mp,
+        Err(r) => return Ok(Err(r)),
+    };
+    let links = DocMountFileLinksRepository::new(mount);
+    archetype_wardrobe::ensure_group_wardrobe_folder(&links, &mount_point_id)?;
+    Ok(Ok(mount_point_id))
+}
+
+/// The store-ensure half of [`ensure_group_wardrobe_mount`] with NO `Wardrobe/`
+/// folder ensure — v4's `?action=instructions` GET calls
+/// `ensureGroupOfficialStore` alone (only its POST adds the folder ensure).
+fn ensure_group_store_mount(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    group_id: &str,
+) -> Result<Result<String, Response>, DbError> {
     let repo = GroupsRepository::new(main, mount);
     let Some(group) = repo.find_by_id(group_id).map_err(overlay_to_db)? else {
         return Ok(Err(not_found("Group")));
@@ -1111,8 +1131,6 @@ fn ensure_group_wardrobe_mount(
     let Some(ensured) = ensure_official_store::<GroupEntity>(main, mount, group_id, name)? else {
         return Ok(Err(internal("Failed to ensure group document store")));
     };
-    let links = DocMountFileLinksRepository::new(mount);
-    archetype_wardrobe::ensure_group_wardrobe_folder(&links, &ensured.mount_point_id)?;
     Ok(Ok(ensured.mount_point_id))
 }
 
@@ -1323,6 +1341,87 @@ pub async fn group_wardrobe_delete(db: &Db, group_id: &str, item_id: &str) -> Re
     .await;
     match out {
         Ok(Ok(())) => Response::Group(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
+}
+
+// ===========================================================================
+// `?action=instructions` — the group store's dressing instructions
+// (v4 `b86bb1a5`, `app/api/v1/groups/[id]/wardrobe/route.ts`)
+// ===========================================================================
+
+/// v4 `GET /api/v1/groups/[id]/wardrobe?action=instructions`. Guard order:
+/// find the group (404 `Group not found`) → `ensureGroupOfficialStore`
+/// (500 `Failed to ensure group document store`) → read. No folder ensure here.
+pub fn group_wardrobe_instructions_get(db: &Db, group_id: &str) -> Response {
+    let gid = group_id.to_string();
+    let out = read_both(db, move |main, mount| {
+        let mp = match ensure_group_store_mount(main, mount, &gid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        let instructions = read_wardrobe_instructions_file(mount, &mp);
+        Ok(Ok((mp, instructions)))
+    });
+    match out {
+        Ok(Ok((mount_point_id, instructions))) => {
+            tracing::debug!(
+                group_id,
+                mount_point_id,
+                present = instructions.is_some(),
+                context = "wardrobe",
+                "[Groups v1] Read group dressing instructions"
+            );
+            Response::Group(json!({ "instructions": instructions }))
+        }
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 `POST /api/v1/groups/[id]/wardrobe?action=instructions`. Guard order:
+/// find the group (404) → parse the body (`Validation error`) →
+/// `ensureGroupOfficialStore` (500) → `ensureGroupWardrobeFolder` (redundant
+/// with the write helper's own ensure; carried) → write.
+pub async fn group_wardrobe_instructions_set(
+    db: &Db,
+    group_id: &str,
+    instructions: &Option<Option<Value>>,
+) -> Response {
+    let gid = group_id.to_string();
+    let instructions = match super::wardrobe::parse_instructions_body(instructions) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
+    let out = with_both_conns(db, move |main, mount| {
+        {
+            let repo = GroupsRepository::new(main, mount);
+            if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
+                return Ok(Err(not_found("Group")));
+            }
+        }
+        let mp = match ensure_group_wardrobe_mount(main, mount, &gid)? {
+            Ok(mp) => mp,
+            Err(r) => return Ok(Err(r)),
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
+        Ok(Ok(mp))
+    })
+    .await;
+    match out {
+        Ok(Ok(mount_point_id)) => {
+            tracing::info!(
+                group_id,
+                mount_point_id,
+                cleared,
+                context = "wardrobe",
+                "[Groups v1] Group dressing instructions updated"
+            );
+            Response::Group(json!({ "instructions": echo }))
+        }
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }

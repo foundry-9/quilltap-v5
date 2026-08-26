@@ -357,9 +357,18 @@ pub async fn characters_wardrobe_get(
     Path(id): Path<String>,
     Query(query): Query<HashMap<String, String>>,
 ) -> AxumResponse {
-    let req = quilltap_core::api::Request::CharacterWardrobeList {
-        character_id: id,
-        scope: query.get("scope").cloned(),
+    // v4 `b86bb1a5` puts the dressing-instructions read on the SAME collection
+    // route behind `?action=instructions` (`withActionDispatch`). The POST half
+    // has no REST edge here because v5 never registered `.post` on this path —
+    // it rides `POST /api/dispatch` as `characterWardrobeInstructionsSet`
+    // (recorded, the P4.D112 dispatch-only precedent).
+    let req = if query.get("action").map(String::as_str) == Some("instructions") {
+        quilltap_core::api::Request::CharacterWardrobeInstructionsGet { character_id: id }
+    } else {
+        quilltap_core::api::Request::CharacterWardrobeList {
+            character_id: id,
+            scope: query.get("scope").cloned(),
+        }
     };
     match crate::text_replacements_routes::dispatch_core(&state, req).await {
         Ok(Response::Character(v)) => (

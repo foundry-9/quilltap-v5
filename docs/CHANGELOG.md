@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(wardrobe): the four `?action=instructions` surfaces as dispatch verbs (v4 `b86bb1a5`)
+
+_Versions: core 0.0.669, harness 0.0.581, web 0.0.88._
+
+Eight verbs — `characterWardrobeInstructions{Get,Set}`,
+`groupWardrobeInstructions{Get,Set}`, `projectWardrobeInstructions{Get,Set}`,
+`wardrobeInstructions{Get,Set}` — with v4's guard orders, sentences and status
+codes: the character GET is deliberately NOT tombstoned (an archived character
+answers 200 while the SET 409s), a vault-less character clears as a 200 no-op
+and refuses a write with 500, an unprovisioned Quilltap General does the same,
+and the group/project GETs ensure the store but NOT the `Wardrobe/` folder
+(only their POSTs do). `instructions` is v4's `z.string().nullable()` — required
+but nullable — so it rides a `double_option` and an absent key is the flat
+`Validation error` 400.
+
+REST edges are extended only where a consumer already speaks the URL: the
+General GET and POST, and the character GET. The character POST and the
+group/project collection routes have no edges in v5 and ride
+`POST /api/dispatch`, recorded per surface.
+
+New `wardrobe_instructions_routes_equivalence` drives v4's four real route
+handlers through the real middleware over 43 shared cases, comparing status,
+body and a whole-table dump of the mount index; six mutations redden it. A
+`quilltap-web` wire test proves the three registered URLs resolve, decode the
+tri-state, and do not swallow the collection reads.
+
+The Almanack's `count_links_in_folder` gains v4's `exclude_relative_path`
+parameter, passed for the `items` figure only — the sibling `archived`
+LIKE-count keeps counting an instructions file whose body says `archived: true`,
+exactly as v4 ships it. The almanack fixture gains that file; the family is
+regenerated once, with P4.D120's scenario column.
+
 #### 2026-08-26 — feat(wardrobe): dressing instructions reach the outfit-selection prompt (v4 `b86bb1a5`)
 
 _Versions: core 0.0.668, harness 0.0.580._

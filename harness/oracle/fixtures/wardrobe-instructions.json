@@ -351,5 +351,355 @@
       "mount": "sM",
       "instructions": ""
     }
+  ],
+  "routeCases": [
+    {
+      "name": "char_get_absent",
+      "scope": "character",
+      "method": "GET"
+    },
+    {
+      "name": "char_get_present",
+      "scope": "character",
+      "method": "GET",
+      "seed": {
+        "charA": "You prefer tweeds for fieldwork."
+      }
+    },
+    {
+      "name": "char_get_blank_file_is_null",
+      "scope": "character",
+      "method": "GET",
+      "seed": {
+        "charA": "   \n  "
+      }
+    },
+    {
+      "name": "char_get_no_vault_reads_nothing",
+      "scope": "character",
+      "method": "GET",
+      "target": "vaultless"
+    },
+    {
+      "name": "char_get_archived_is_not_tombstoned",
+      "scope": "character",
+      "method": "GET",
+      "target": "archived",
+      "seed": {
+        "charC": "An archived closet still answers."
+      }
+    },
+    {
+      "name": "char_get_missing_404",
+      "scope": "character",
+      "method": "GET",
+      "target": "missing"
+    },
+    {
+      "name": "char_post_writes_trimmed",
+      "scope": "character",
+      "method": "POST",
+      "body": {
+        "instructions": "  You keep to tweeds on the moor, whatever the season.  "
+      }
+    },
+    {
+      "name": "char_post_overwrites",
+      "scope": "character",
+      "method": "POST",
+      "seed": {
+        "charA": "the old guidance"
+      },
+      "body": {
+        "instructions": "the new guidance"
+      }
+    },
+    {
+      "name": "char_post_clear_by_null",
+      "scope": "character",
+      "method": "POST",
+      "seed": {
+        "charA": "something to clear"
+      },
+      "body": {
+        "instructions": null
+      }
+    },
+    {
+      "name": "char_post_clear_by_empty_string",
+      "scope": "character",
+      "method": "POST",
+      "seed": {
+        "charA": "something to clear"
+      },
+      "body": {
+        "instructions": ""
+      }
+    },
+    {
+      "name": "char_post_clear_by_whitespace",
+      "scope": "character",
+      "method": "POST",
+      "seed": {
+        "charA": "something to clear"
+      },
+      "body": {
+        "instructions": "   \n "
+      }
+    },
+    {
+      "name": "char_post_clear_when_absent",
+      "scope": "character",
+      "method": "POST",
+      "body": {
+        "instructions": null
+      }
+    },
+    {
+      "name": "char_post_missing_key_400",
+      "scope": "character",
+      "method": "POST",
+      "body": {}
+    },
+    {
+      "name": "char_post_wrong_type_400",
+      "scope": "character",
+      "method": "POST",
+      "body": {
+        "instructions": 42
+      }
+    },
+    {
+      "name": "char_post_array_400",
+      "scope": "character",
+      "method": "POST",
+      "body": {
+        "instructions": [
+          "a"
+        ]
+      }
+    },
+    {
+      "name": "char_post_missing_404",
+      "scope": "character",
+      "method": "POST",
+      "target": "missing",
+      "body": {
+        "instructions": "x"
+      }
+    },
+    {
+      "name": "char_post_archived_409",
+      "scope": "character",
+      "method": "POST",
+      "target": "archived",
+      "body": {
+        "instructions": "x"
+      }
+    },
+    {
+      "name": "char_post_archived_409_even_when_clearing",
+      "scope": "character",
+      "method": "POST",
+      "target": "archived",
+      "body": {
+        "instructions": null
+      }
+    },
+    {
+      "name": "char_post_no_vault_clear_is_a_noop",
+      "scope": "character",
+      "method": "POST",
+      "target": "vaultless",
+      "body": {
+        "instructions": null
+      }
+    },
+    {
+      "name": "char_post_no_vault_write_500",
+      "scope": "character",
+      "method": "POST",
+      "target": "vaultless",
+      "body": {
+        "instructions": "x"
+      }
+    },
+    {
+      "name": "char_unknown_action_400",
+      "scope": "character",
+      "method": "GET",
+      "action": "wardrobe-instructions"
+    },
+    {
+      "name": "group_get_absent",
+      "scope": "group",
+      "method": "GET"
+    },
+    {
+      "name": "group_get_present",
+      "scope": "group",
+      "method": "GET",
+      "seed": {
+        "group": "The household livery, always."
+      }
+    },
+    {
+      "name": "group_get_missing_404",
+      "scope": "group",
+      "method": "GET",
+      "target": "missing"
+    },
+    {
+      "name": "group_post_writes_trimmed",
+      "scope": "group",
+      "method": "POST",
+      "body": {
+        "instructions": "  You keep to tweeds on the moor, whatever the season.  "
+      }
+    },
+    {
+      "name": "group_post_clear_by_null",
+      "scope": "group",
+      "method": "POST",
+      "seed": {
+        "group": "clear me"
+      },
+      "body": {
+        "instructions": null
+      }
+    },
+    {
+      "name": "group_post_missing_key_400",
+      "scope": "group",
+      "method": "POST",
+      "body": {}
+    },
+    {
+      "name": "group_post_missing_404",
+      "scope": "group",
+      "method": "POST",
+      "target": "missing",
+      "body": {
+        "instructions": "x"
+      }
+    },
+    {
+      "name": "project_get_absent",
+      "scope": "project",
+      "method": "GET"
+    },
+    {
+      "name": "project_get_present",
+      "scope": "project",
+      "method": "GET",
+      "seed": {
+        "project": "The expedition dresses for mud."
+      }
+    },
+    {
+      "name": "project_get_missing_404",
+      "scope": "project",
+      "method": "GET",
+      "target": "missing"
+    },
+    {
+      "name": "project_post_writes_trimmed",
+      "scope": "project",
+      "method": "POST",
+      "body": {
+        "instructions": "  You keep to tweeds on the moor, whatever the season.  "
+      }
+    },
+    {
+      "name": "project_post_clear_by_null",
+      "scope": "project",
+      "method": "POST",
+      "seed": {
+        "project": "clear me"
+      },
+      "body": {
+        "instructions": null
+      }
+    },
+    {
+      "name": "project_post_missing_key_400",
+      "scope": "project",
+      "method": "POST",
+      "body": {}
+    },
+    {
+      "name": "project_post_missing_404",
+      "scope": "project",
+      "method": "POST",
+      "target": "missing",
+      "body": {
+        "instructions": "x"
+      }
+    },
+    {
+      "name": "general_get_absent",
+      "scope": "general",
+      "method": "GET"
+    },
+    {
+      "name": "general_get_present",
+      "scope": "general",
+      "method": "GET",
+      "seed": {
+        "general": "The house dresses for the weather."
+      }
+    },
+    {
+      "name": "general_get_unprovisioned_is_null",
+      "scope": "general",
+      "method": "GET",
+      "unprovisionGeneral": true,
+      "seed": {
+        "general": "should never be read"
+      }
+    },
+    {
+      "name": "general_post_writes_trimmed",
+      "scope": "general",
+      "method": "POST",
+      "body": {
+        "instructions": "  You keep to tweeds on the moor, whatever the season.  "
+      }
+    },
+    {
+      "name": "general_post_clear_by_null",
+      "scope": "general",
+      "method": "POST",
+      "seed": {
+        "general": "clear me"
+      },
+      "body": {
+        "instructions": null
+      }
+    },
+    {
+      "name": "general_post_missing_key_400",
+      "scope": "general",
+      "method": "POST",
+      "body": {}
+    },
+    {
+      "name": "general_post_unprovisioned_clear_is_a_noop",
+      "scope": "general",
+      "method": "POST",
+      "unprovisionGeneral": true,
+      "body": {
+        "instructions": null
+      }
+    },
+    {
+      "name": "general_post_unprovisioned_write_500",
+      "scope": "general",
+      "method": "POST",
+      "unprovisionGeneral": true,
+      "body": {
+        "instructions": "x"
+      }
+    }
   ]
 }

@@ -175,6 +175,79 @@ model), so its wiring could rot in silence. The guard walks
 `services/outfit_selections.rs` and holds both call sites to a real resolver;
 nulling the create entrance reddens it.
 
+### P4.D119 units 4–6 — the four `?action=instructions` surfaces + the Almanack exclusion
+
+**Eight verbs** per the order's §Shared contract, with v4's guard orders
+verbatim. Per scope:
+
+* **character** — GET through the OVERLAID `findById` (404 `Character not
+  found`), the vault mount read `?? null`, and NOTHING read when there is no
+  vault. **Deliberately NOT tombstoned:** an archived character's GET answers
+  200 while the SET 409s through `resolveWardrobeMount`. The 409 sentence is
+  ROUTE-local (`Character is archived; dressing instructions cannot be edited`),
+  not `DbError::CharacterArchived`'s own message — a new
+  `resolve_character_wardrobe_mount_point` exposes the private resolver without
+  leaking its text.
+* **group / project** — the GET ensures the STORE only; only the POST adds the
+  `Wardrobe/` folder ensure (redundant with the write helper's own — carried).
+  `ensure_{group,project}_wardrobe_mount` was split so the store half is
+  reusable; behavior-neutral. Mutating the GET to use the folder-ensuring twin
+  reddens the differential — v5's GET runs on a READ connection, so the ensure
+  is not merely redundant there, it fails.
+* **General** — no 404 arm; an unprovisioned store reads `null`, clears as a
+  200 no-op, and refuses a write with the fixed 500.
+
+`instructions` is `z.string().nullable()` — REQUIRED but nullable — so the verbs
+carry `Option<Option<Value>>` behind `double_option` and `parse_instructions_
+body` answers the flat `Validation error` for an absent key, a non-string value
+or a non-object body. `wardrobe_instructions_set_request` is the ONE decoder the
+REST edges use (the `settings_update_request` idiom), so no edge re-derives the
+tri-state by hand.
+
+**REST edges (Tier 2), decided per surface.** Extended: `GET/POST
+/api/v1/wardrobe?action=instructions` (both verbs already registered) and `GET
+/api/v1/characters/{id}/wardrobe?action=instructions` (the edge existed for
+`?scope=`). **Dispatch-only, recorded:** the character POST (v5 never registered
+`.post` on that path — an edge means porting the whole item-create route) and
+the group/project collection routes (no edges at all). The P4.D112/P4.D115
+precedent.
+
+**Differential — NEW `wardrobe_instructions_routes_equivalence`,** 43 shared
+cases over the committed fixture pair, driving v4's four REAL route handlers
+through the REAL middleware (the `Validation error` 400 and the unknown-action
+envelope come out of THAT layer). Comparands: status via the `ErrorKind`
+mapping, body, and a whole-table mount-index dump — which is what proves an
+error arm wrote nothing and a clear removed the file. Zod's `details` array is
+the standing project-wide deferral and is not compared.
+
+Mutations reddening it: absent key accepted as null; the echo not trimmed; the
+group GET ensuring the folder; the character GET honouring the tombstone; the
+vault-less write answering 200; the unprovisioned-General clear answering 500.
+⚠ One of those "survived" on the first attempt and did NOT — the python replace
+had not matched. A mutation must be verified to have APPLIED before its verdict
+means anything.
+
+**One arm has no v5 analogue, recorded not skipped:** v4's unknown-`?action=`
+400 comes from its DISPATCHER. v5's verbs are named, so an unknown verb never
+reaches a wardrobe handler; the corpus row is asserted to be v4's 400 and the
+case is documented at the assertion.
+
+**NEW `quilltap-web` wire test `wardrobe_instructions_routes`** — the P4.D65
+cross-lane blind spot's remedy: the three registered URLs resolve, round-trip a
+write, refuse `{}` with `Validation error`, clear by `null`, and do NOT swallow
+the collection listings on the same paths.
+
+**Almanack.** `count_links_in_folder` gained v4's `exclude_relative_path` third
+parameter (as `count_links_in_folder_excluding`, with the old name delegating so
+the four other call sites are untouched); only the `items` figure passes
+`WARDROBE_INSTRUCTIONS_PATH`. The sibling `archived` LIKE-count gets NO
+exclusion — v4's asymmetry, carried with its comment. The almanack fixture
+builder seeds `Wardrobe/instructions.md` into Lorian's vault with a body that
+deliberately contains the literal `archived: true`, so the asymmetry is
+measurable. **The almanack fixture rebuild + oracle regen is deferred to
+P4.D120's almanack unit** — the order's regenerate-each-family-ONCE rule, since
+P4.D120 moves the same collector.
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start

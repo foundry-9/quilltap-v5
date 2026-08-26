@@ -23,6 +23,7 @@ use crate::pascal::custom_tool_types::TOOLS_FOLDER;
 use crate::pascal::roster::list_all_custom_tools;
 use crate::photos::photos_paths::PHOTOS_FOLDER;
 use crate::post_office::mailbox::MAIL_FOLDER;
+use crate::wardrobe_instructions::WARDROBE_INSTRUCTIONS_PATH;
 
 use super::db::{
     in_clause, is_mount_index_available, main_rows, mount_row, mount_rows, num_col, opt_text, text,
@@ -117,12 +118,32 @@ fn sql_values(ids: &[String]) -> Vec<SqlValue> {
 
 /// v4 `countLinksInFolder` — links whose path sits under `folder/`.
 fn count_links_in_folder(db: &Db, mount_ids: &[String], folder: &str) -> f64 {
+    count_links_in_folder_excluding(db, mount_ids, folder, None)
+}
+
+/// v4 `countLinksInFolder(mountIds, folder, excludeRelativePath?)` (`b86bb1a5`).
+/// `exclude_relative_path` drops one exact (lowercased) path from the count —
+/// used to keep `Wardrobe/instructions.md` out of the garment figures.
+fn count_links_in_folder_excluding(
+    db: &Db,
+    mount_ids: &[String],
+    folder: &str,
+    exclude_relative_path: Option<&str>,
+) -> f64 {
     let ids = sql_values(mount_ids);
-    let extra = [SqlValue::Text(format!("{}/%", folder.to_lowercase()))];
+    let mut extra = vec![SqlValue::Text(format!("{}/%", folder.to_lowercase()))];
+    let exclusion = match exclude_relative_path {
+        Some(path) => {
+            extra.push(SqlValue::Text(path.to_lowercase()));
+            r#" AND lower("relativePath") != ?"#
+        }
+        None => "",
+    };
     let sql = format!(
         r#"SELECT COUNT(*) AS n FROM "doc_mount_file_links"
-     WHERE "mountPointId" IN {} AND lower("relativePath") LIKE ?"#,
-        in_clause(mount_ids)
+     WHERE "mountPointId" IN {} AND lower("relativePath") LIKE ?{}"#,
+        in_clause(mount_ids),
+        exclusion
     );
     mount_row(
         db,
@@ -557,7 +578,17 @@ pub fn collect_scriptorium(
         .iter()
         .map(|(tier, ids)| WardrobeTierRow {
             tier: (*tier).to_string(),
-            items: count_links_in_folder(db, ids, WARDROBE_FOLDER),
+            // The dressing-instructions file lives in the folder but is not a
+            // garment.
+            items: count_links_in_folder_excluding(
+                db,
+                ids,
+                WARDROBE_FOLDER,
+                Some(WARDROBE_INSTRUCTIONS_PATH),
+            ),
+            // v4 `b86bb1a5` gave the sibling `archived` LIKE-count NO exclusion:
+            // an instructions file containing the literal `archived: true` still
+            // counts as an archived garment. Carried, asymmetry and all.
             archived: count_links_matching_content(db, ids, WARDROBE_FOLDER, "%archived: true%"),
         })
         .collect();

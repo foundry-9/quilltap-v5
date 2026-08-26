@@ -600,6 +600,24 @@ pub enum Request {
         #[serde(default)]
         scope: Option<String>,
     },
+    /// v4 `GET /api/v1/characters/[id]/wardrobe?action=instructions`
+    /// (`b86bb1a5`) — the vault's `Wardrobe/instructions.md`, `null` when absent
+    /// or when the character has no vault. NOT tombstoned: an archived
+    /// character's GET still answers 200 (v4's asymmetry; the SET refuses).
+    #[serde(rename_all = "camelCase")]
+    CharacterWardrobeInstructionsGet {
+        character_id: String,
+    },
+    /// v4 `POST /api/v1/characters/[id]/wardrobe?action=instructions` — write
+    /// (or clear, with `null`/blank) the vault's dressing instructions.
+    /// `instructions` is `z.string().nullable()`: REQUIRED but nullable, so an
+    /// absent key is a `Validation error` — hence the double option.
+    #[serde(rename_all = "camelCase")]
+    CharacterWardrobeInstructionsSet {
+        character_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        instructions: Option<Option<serde_json::Value>>,
+    },
     #[serde(rename_all = "camelCase")]
     CharacterWardrobeCreate {
         character_id: String,
@@ -798,6 +816,18 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     GroupWardrobeList {
         group_id: String,
+    },
+    /// v4 `GET /api/v1/groups/[id]/wardrobe?action=instructions` (`b86bb1a5`).
+    #[serde(rename_all = "camelCase")]
+    GroupWardrobeInstructionsGet {
+        group_id: String,
+    },
+    /// v4 `POST /api/v1/groups/[id]/wardrobe?action=instructions`.
+    #[serde(rename_all = "camelCase")]
+    GroupWardrobeInstructionsSet {
+        group_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        instructions: Option<Option<serde_json::Value>>,
     },
     /// v4 `POST /api/v1/groups/[id]/wardrobe`.
     #[serde(rename_all = "camelCase")]
@@ -1305,6 +1335,18 @@ pub enum Request {
     #[serde(rename_all = "camelCase")]
     ProjectWardrobeList {
         project_id: String,
+    },
+    /// v4 `GET /api/v1/projects/[id]/wardrobe?action=instructions` (`b86bb1a5`).
+    #[serde(rename_all = "camelCase")]
+    ProjectWardrobeInstructionsGet {
+        project_id: String,
+    },
+    /// v4 `POST /api/v1/projects/[id]/wardrobe?action=instructions`.
+    #[serde(rename_all = "camelCase")]
+    ProjectWardrobeInstructionsSet {
+        project_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        instructions: Option<Option<serde_json::Value>>,
     },
     /// v4 `POST /api/v1/projects/[id]/wardrobe`.
     #[serde(rename_all = "camelCase")]
@@ -2410,6 +2452,17 @@ pub enum Request {
     },
     /// v4 `GET /api/v1/wardrobe` — the GLOBAL archetype tier listing.
     WardrobeList,
+    /// v4 `GET /api/v1/wardrobe?action=instructions` (`b86bb1a5`) — the
+    /// Quilltap General `Wardrobe/instructions.md`. No 404 arm: an
+    /// unprovisioned General answers `{instructions: null}`.
+    WardrobeInstructionsGet,
+    /// v4 `POST /api/v1/wardrobe?action=instructions`. An unprovisioned General
+    /// clears as a harmless no-op and refuses a write with 500.
+    #[serde(rename_all = "camelCase")]
+    WardrobeInstructionsSet {
+        #[serde(default, deserialize_with = "double_option")]
+        instructions: Option<Option<serde_json::Value>>,
+    },
     /// v4 `POST /api/v1/wardrobe` — create a shared archetype (201).
     WardrobeCreate {
         item: serde_json::Value,
@@ -3160,6 +3213,37 @@ fn settings_update_request(body: &serde_json::Value, key: &str, type_tag: &str) 
         _ => serde_json::Map::new(),
     };
     map.retain(|k, _| k == key);
+    map.insert(
+        "type".into(),
+        serde_json::Value::String(type_tag.to_string()),
+    );
+    serde_json::from_value::<Request>(serde_json::Value::Object(map)).ok()
+}
+
+/// v4's `?action=instructions` POST body → the scope's `…InstructionsSet`
+/// variant, decoded through this enum's own serde (the [`settings_update_request`]
+/// idiom) so the required-but-nullable `instructions` key keeps its
+/// absent / explicit-`null` / value tri-state all the way to the handler. A
+/// hand-built variant at the REST edge would collapse absent into null and make
+/// v4's `{}` → flat `Validation error` arm unreachable.
+///
+/// `scope` names the variant's id field (`characterId` / `groupId` /
+/// `projectId`); Quilltap General passes `None`. A non-object body contributes
+/// no `instructions` key, so it decodes as the key-absent arm — which is the
+/// refusal v4's `.parse` makes for it too.
+pub fn wardrobe_instructions_set_request(
+    body: &serde_json::Value,
+    type_tag: &str,
+    scope: Option<(&str, &str)>,
+) -> Option<Request> {
+    let mut map = match body {
+        serde_json::Value::Object(o) => o.clone(),
+        _ => serde_json::Map::new(),
+    };
+    map.retain(|k, _| k == "instructions");
+    if let Some((key, id)) = scope {
+        map.insert(key.into(), serde_json::Value::String(id.to_string()));
+    }
     map.insert(
         "type".into(),
         serde_json::Value::String(type_tag.to_string()),

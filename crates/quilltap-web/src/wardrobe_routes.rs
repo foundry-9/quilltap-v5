@@ -64,14 +64,48 @@ fn parse_body(body: &str, on_bad_json: &str) -> Result<Value, Box<AxumResponse>>
 // /api/v1/wardrobe
 // ===========================================================================
 
-pub async fn wardrobe_get(State(state): State<SharedState>) -> AxumResponse {
-    match dispatch_core(&state, CoreRequest::WardrobeList).await {
+/// v4 `b86bb1a5` puts the General dressing-instructions read on this collection
+/// route behind `?action=instructions` (`withCollectionActionDispatch`);
+/// everything else is the archetype listing.
+pub async fn wardrobe_get(
+    State(state): State<SharedState>,
+    Query(query): Query<HashMap<String, String>>,
+) -> AxumResponse {
+    let req = if query.get("action").map(String::as_str) == Some("instructions") {
+        CoreRequest::WardrobeInstructionsGet
+    } else {
+        CoreRequest::WardrobeList
+    };
+    match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }
 }
 
-pub async fn wardrobe_post(State(state): State<SharedState>, body: String) -> AxumResponse {
+pub async fn wardrobe_post(
+    State(state): State<SharedState>,
+    Query(query): Query<HashMap<String, String>>,
+    body: String,
+) -> AxumResponse {
+    if query.get("action").map(String::as_str) == Some("instructions") {
+        let body = match parse_body(&body, "Internal server error") {
+            Ok(v) => v,
+            Err(r) => return *r,
+        };
+        // Decoded THROUGH the Request enum so the required-but-nullable
+        // `instructions` key keeps its absent / null / value tri-state.
+        let Some(req) = quilltap_core::api::types::wardrobe_instructions_set_request(
+            &body,
+            "wardrobeInstructionsSet",
+            None,
+        ) else {
+            return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error");
+        };
+        return match dispatch_core(&state, req).await {
+            Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+            Err(r) => r,
+        };
+    }
     let item = match parse_body(&body, "Internal server error") {
         Ok(v) => v,
         Err(r) => return *r,

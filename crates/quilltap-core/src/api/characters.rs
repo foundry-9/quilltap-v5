@@ -40,6 +40,9 @@ use crate::services::aesthetics::DEPICTION_GUIDELINES_FILENAME;
 use crate::services::character_enrichment;
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
+use crate::wardrobe_instructions::{
+    read_wardrobe_instructions_file, write_wardrobe_instructions_file,
+};
 use crate::wardrobe_tiers::SharedWardrobeTiers;
 
 use super::types::{db_error_response, ErrorKind, Response};
@@ -2835,5 +2838,111 @@ pub async fn character_rehydrate(
             );
             Response::error(ErrorKind::Internal, e.to_string())
         }
+    }
+}
+
+// ===========================================================================
+// `?action=instructions` — the character vault's dressing instructions
+// (v4 `b86bb1a5`, `app/api/v1/characters/[id]/wardrobe/route.ts`)
+// ===========================================================================
+
+/// v4 `GET /api/v1/characters/[id]/wardrobe?action=instructions` — the vault's
+/// `Wardrobe/instructions.md`, `null` when absent OR when the character has no
+/// vault (in which case nothing is read at all).
+///
+/// ⚠ **Deliberately NOT tombstoned.** v4 reads through
+/// `repos.characters.findById`, not `resolveWardrobeMount`, so an ARCHIVED
+/// character's instructions still answer 200 while the SET refuses with 409.
+/// The asymmetry looks deliberate (a tombstone is readable, not writable) but is
+/// untested in v4; reproduced as shipped.
+pub fn character_wardrobe_instructions_get(db: &Db, character_id: &str) -> Response {
+    let cid = character_id.to_string();
+    let out = read_main_mount(db, move |main, mount| {
+        let character = match require_character(main, mount, &cid) {
+            Ok(c) => c,
+            Err(r) => return Ok(Err(r)),
+        };
+        let mount_point_id = character
+            .get("characterDocumentMountPointId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let instructions = mount_point_id
+            .as_deref()
+            .and_then(|mp| read_wardrobe_instructions_file(mount, mp));
+        Ok(Ok((mount_point_id, instructions)))
+    });
+    match out {
+        Ok(Ok((mount_point_id, instructions))) => {
+            tracing::debug!(
+                character_id,
+                mount_point_id,
+                present = instructions.is_some(),
+                "[Wardrobe v1] Read character dressing instructions"
+            );
+            Response::Character(json!({ "instructions": instructions }))
+        }
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 `POST /api/v1/characters/[id]/wardrobe?action=instructions`. Guard order,
+/// verbatim: find the character (404) → parse the body (`Validation error`) →
+/// `resolveWardrobeMount` (409 for an archived character, with the sentence the
+/// ROUTE owns — not `CharacterArchivedError`'s own message) → no vault: a clear
+/// is a 200 no-op, a write is a 500.
+pub async fn character_wardrobe_instructions_set(
+    db: &Db,
+    character_id: &str,
+    instructions: &Option<Option<Value>>,
+) -> Response {
+    let cid = character_id.to_string();
+    let instructions = match super::wardrobe::parse_instructions_body(instructions) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
+    let out = with_both_conns(db, move |main, mount| {
+        if let Err(r) = require_character(main, mount, &cid) {
+            return Ok(Err(r));
+        }
+        let loc = match crate::db::vault_wardrobe_public::resolve_character_wardrobe_mount_point(
+            main, &cid,
+        ) {
+            Ok(v) => v,
+            Err(DbError::CharacterArchived { .. }) => {
+                return Ok(Err(Response::error(
+                    ErrorKind::Conflict,
+                    "Character is archived; dressing instructions cannot be edited",
+                )))
+            }
+            Err(e) => return Err(e),
+        };
+        let Some(mp) = loc else {
+            if cleared {
+                return Ok(Err(Response::Character(json!({ "instructions": null }))));
+            }
+            return Ok(Err(internal(
+                "Character has no vault to hold dressing instructions",
+            )));
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
+        Ok(Ok(mp))
+    })
+    .await;
+    match out {
+        Ok(Ok(mount_point_id)) => {
+            tracing::info!(
+                character_id,
+                mount_point_id,
+                cleared,
+                "[Wardrobe v1] Character dressing instructions updated"
+            );
+            Response::Character(json!({ "instructions": echo }))
+        }
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
     }
 }

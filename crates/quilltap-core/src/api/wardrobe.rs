@@ -48,7 +48,11 @@ use crate::services::wardrobe_transfers::{
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_tiers::SharedWardrobeTiers;
 
-use super::types::{ErrorKind, Response};
+use crate::wardrobe_instructions::{
+    read_wardrobe_instructions_file, write_wardrobe_instructions_file,
+};
+
+use super::types::{db_error_response, ErrorKind, Response};
 
 /// The coverage slots (v4 `WardrobeItemTypeEnum` / `WARDROBE_SLOT_TYPES`) —
 /// read from the ONE registry (`4423ad10`'s consolidation).
@@ -1103,4 +1107,111 @@ pub fn wardrobe_analyze_image() -> Response {
          image-analysis subsystem (a vision-LLM path) is not ported — \
          a P4.9f1 tier-3 deferral (§4: no new provider path this round)",
     )
+}
+
+// ===========================================================================
+// `?action=instructions` — the per-tier dressing instructions (v4 `b86bb1a5`)
+// ===========================================================================
+
+/// v4's `instructionsBodySchema`, defined identically in all four route files:
+/// `z.object({ instructions: z.string().nullable() })`. REQUIRED and nullable —
+/// `{}` FAILS. The routes do not catch the `ZodError`, so a failure surfaces as
+/// the middleware's flat `Validation error` 400.
+///
+/// The tri-state reaches here intact (absent / explicit `null` / value): a
+/// hand-built variant would collapse absent into null and make the `{}` arm
+/// untestable (memory: `edge-must-decode-through-the-request-enum.md`).
+pub(super) fn parse_instructions_body(
+    instructions: &Option<Option<Value>>,
+) -> Result<Option<String>, Response> {
+    match instructions {
+        // The key was absent — Zod's `.nullable()` is not `.optional()`.
+        None => Err(bad_request("Validation error")),
+        Some(None) => Ok(None),
+        Some(Some(Value::String(s))) => Ok(Some(s.clone())),
+        Some(Some(Value::Null)) => Ok(None),
+        Some(Some(_)) => Err(bad_request("Validation error")),
+    }
+}
+
+/// v4's shared post-write echo: `cleared = !instructions ||
+/// instructions.trim().length === 0` (JS truthiness — `''` clears like `null`),
+/// and the response carries `cleared ? null : instructions.trim()`.
+pub(super) fn instructions_echo(instructions: Option<&str>) -> (bool, Value) {
+    let cleared = instructions.is_none_or(|s| crate::jsstr::js_trim(s).is_empty());
+    if cleared {
+        (true, Value::Null)
+    } else {
+        (
+            false,
+            Value::String(crate::jsstr::js_trim(instructions.unwrap()).to_string()),
+        )
+    }
+}
+
+/// v4 `GET /api/v1/wardrobe?action=instructions` — the Quilltap General file.
+/// No 404 arm: an unprovisioned General reads as `{instructions: null}` without
+/// touching the mount index.
+pub fn wardrobe_instructions_get(db: &Db) -> Response {
+    let out = read_main_mount(db, |main, mount| {
+        let mount_point_id = crate::db::instance_settings::get_general_mount_point_id(main)?;
+        Ok(match mount_point_id.as_deref().filter(|s| !s.is_empty()) {
+            Some(mp) => (
+                Some(mp.to_string()),
+                read_wardrobe_instructions_file(mount, mp),
+            ),
+            None => (None, None),
+        })
+    });
+    match out {
+        Ok((mount_point_id, instructions)) => {
+            tracing::debug!(
+                mount_point_id,
+                present = instructions.is_some(),
+                "[Wardrobe Archetypes v1] Read General dressing instructions"
+            );
+            Response::Wardrobe(json!({ "instructions": instructions }))
+        }
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// v4 `POST /api/v1/wardrobe?action=instructions`. `ensureGeneralWardrobeFolder`
+/// first: an unprovisioned General clears as a harmless no-op and refuses a
+/// write with the fixed 500 sentence.
+pub async fn wardrobe_instructions_set(db: &Db, instructions: &Option<Option<Value>>) -> Response {
+    let instructions = match parse_instructions_body(instructions) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let (cleared, echo) = instructions_echo(instructions.as_deref());
+    let out = with_both_conns(db, move |main, mount| {
+        let links = DocMountFileLinksRepository::new(mount);
+        let (mount_point_id, _folder_id) =
+            archetype_wardrobe::ensure_general_wardrobe_folder(main, &links)?;
+        let Some(mp) = mount_point_id.filter(|s| !s.is_empty()) else {
+            // Clearing instructions that can't exist yet is a harmless no-op.
+            if cleared {
+                return Ok(Err(Response::Wardrobe(json!({ "instructions": null }))));
+            }
+            return Ok(Err(internal(
+                "Quilltap General store is not provisioned yet",
+            )));
+        };
+        write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
+        Ok(Ok(mp))
+    })
+    .await;
+    match out {
+        Ok(Ok(mount_point_id)) => {
+            tracing::info!(
+                mount_point_id,
+                cleared,
+                "[Wardrobe Archetypes v1] General dressing instructions updated"
+            );
+            Response::Wardrobe(json!({ "instructions": echo }))
+        }
+        Ok(Err(r)) => r,
+        Err(e) => db_error_response(e),
+    }
 }
