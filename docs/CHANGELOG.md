@@ -358,6 +358,27 @@ inside the helper, then wraps `%…%`). Callers pair it with
 
 v4's five unit cases ported one for one, plus a sixth pinning the escape set as
 exactly those three characters.
+#### 2026-08-26 — feat(scenario): the archived marker in the shared picker, and Show archived in the Salon sidebar
+
+_Versions: SPA 0.5.568._
+
+v4 `d25dacc1`'s picker half. `ARCHIVED_OPTION_SUFFIX = ' (archived)'` lands beside
+`CUSTOM_SCENARIO_VALUE`, and all four option shapes gain `archived?: boolean`. A
+native `<option>` cannot hold a badge element, so the marker is text — appended
+after the default marker and before the ` — description`, giving v4's
+`Tavern (project default) (archived) — a cozy inn`. Archived entries only reach
+the component when the surface asked the server for them, and when they do they
+stay selectable: archiving hides an entry from the default view, it does not
+forbid one a human has deliberately gone looking for.
+
+`ChatScenarioControl` gains "Show archived". The flip re-fetches all four tiers
+rather than filtering what is loaded, and `includeArchived` is part of every
+TanStack key (`scenarioKeys.general(flag)` and friends), so the archived-free
+answer and the archived-inclusive one cannot overwrite each other. The scenario
+fetchers thread the flag; `toScenarioOption` narrows the wire value with v4's
+`=== true`, so a server that predates the field reads as active rather than
+leaking `undefined` into the label's truthiness test.
+
 #### 2026-08-26 — feat(spa): the P4.D121 contract surface — eight dressing-instructions verbs, the archive fields, and the field hint
 
 _Versions: SPA 0.5.567._

@@ -56,6 +56,10 @@ interface ScenarioDraft {
  * finish loading without ever fighting a choice the user has since made; a save
  * drops the draft so the refetched chat is the authority on what the scene now
  * is.
+ *
+ * "Show archived" (v4 `d25dacc1`) re-fetches all four tiers with
+ * `includeArchived`; the flag is part of each query key, so the two answers
+ * cache separately instead of one overwriting the other.
  */
 @Component({
   selector: 'qt-chat-scenario-control',
@@ -79,6 +83,16 @@ interface ScenarioDraft {
           ariaLabel="Scenario"
         />
       }
+      <label class="flex items-center gap-2 mb-2 qt-text-secondary text-xs font-normal">
+        <input
+          type="checkbox"
+          class="qt-checkbox"
+          [checked]="showArchived()"
+          [disabled]="saving()"
+          (change)="setShowArchived($event)"
+        />
+        Show archived
+      </label>
       @if (selection().kind === 'custom') {
         <textarea
           class="qt-textarea text-sm"
@@ -134,34 +148,41 @@ export class ChatScenarioControl {
 
   private readonly draft = signal<ScenarioDraft | null>(null);
   protected readonly saving = signal(false);
+  /**
+   * v4 `:80`. Flipping it re-fetches every tier rather than filtering what is
+   * already loaded — the server owns the hiding, so this list can never
+   * disagree with the API.
+   */
+  protected readonly showArchived = signal(false);
 
   /** v4's `characterIdsKey`: the comma-joined, SORTED ids the group tier keys on. */
   private readonly characterIdsKey = computed(() => [...this.llmCharacterIds()].sort().join(','));
 
   private readonly generalQuery = injectQuery(() => ({
-    queryKey: scenarioKeys.general,
-    queryFn: (): Promise<GeneralScenarioOption[]> => fetchGeneralScenarios(this.core),
+    queryKey: scenarioKeys.general(this.showArchived()),
+    queryFn: (): Promise<GeneralScenarioOption[]> =>
+      fetchGeneralScenarios(this.core, this.showArchived()),
     enabled: this.enabled(),
   }));
 
   private readonly projectQuery = injectQuery(() => ({
-    queryKey: scenarioKeys.project(this.projectId() ?? ''),
+    queryKey: scenarioKeys.project(this.projectId() ?? '', this.showArchived()),
     queryFn: (): Promise<ProjectScenarioOption[]> =>
-      fetchProjectScenarios(this.core, this.projectId()!),
+      fetchProjectScenarios(this.core, this.projectId()!, this.showArchived()),
     enabled: this.enabled() && Boolean(this.projectId()),
   }));
 
   private readonly groupQuery = injectQuery(() => ({
-    queryKey: scenarioKeys.group(this.characterIdsKey()),
+    queryKey: scenarioKeys.group(this.characterIdsKey(), this.showArchived()),
     queryFn: (): Promise<GroupScenarioOption[]> =>
-      fetchGroupScenarios(this.core, [...this.llmCharacterIds()].sort()),
+      fetchGroupScenarios(this.core, [...this.llmCharacterIds()].sort(), this.showArchived()),
     enabled: this.enabled() && this.characterIdsKey().length > 0,
   }));
 
   private readonly characterQuery = injectQuery(() => ({
-    queryKey: scenarioKeys.character(this.singleLlmCharacterId() ?? ''),
+    queryKey: scenarioKeys.character(this.singleLlmCharacterId() ?? '', this.showArchived()),
     queryFn: (): Promise<CharacterScenario[]> =>
-      fetchCharacterScenarios(this.core, this.singleLlmCharacterId()!),
+      fetchCharacterScenarios(this.core, this.singleLlmCharacterId()!, this.showArchived()),
     enabled: this.enabled() && Boolean(this.singleLlmCharacterId()),
   }));
 
@@ -263,6 +284,10 @@ export class ChatScenarioControl {
         return null;
     }
   });
+
+  protected setShowArchived(event: Event): void {
+    this.showArchived.set((event.target as HTMLInputElement).checked);
+  }
 
   protected setSelection(next: ScenarioSelection): void {
     this.draft.set({ selection: next, customText: this.customText() });

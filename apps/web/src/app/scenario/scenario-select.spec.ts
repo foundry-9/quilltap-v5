@@ -188,6 +188,56 @@ describe('ScenarioSelect (v4 components/scenario/ScenarioSelect.tsx @ 44a8137e)'
     ]);
   });
 
+  /**
+   * P4.D121 — the archived marker (v4 `d25dacc1`). A native `<option>` cannot
+   * hold a badge, so the marker is text, and it lands AFTER the default marker
+   * and BEFORE the ` — description`.
+   */
+  it('marks an archived file option after the default marker, before the description', () => {
+    const fixture = mount();
+    fixture.componentInstance.projectScenarios.set([
+      projectScenario({
+        isDefault: true,
+        archived: true,
+        description: 'a cozy inn',
+      }),
+      projectScenario({ path: 'Scenarios/ship.md', name: 'The Ship', archived: true }),
+      projectScenario({ path: 'Scenarios/keep.md', name: 'The Keep' }),
+    ]);
+    fixture.componentInstance.generalScenarios.set([generalScenario({ archived: true })]);
+    fixture.componentInstance.groupScenarios.set([groupScenario({ archived: true })]);
+    fixture.detectChanges();
+
+    expect(optionTexts(fixture)).toEqual([
+      'Custom...',
+      'The Inn (project default) (archived) — a cozy inn',
+      'The Ship (archived)',
+      'The Keep',
+      'The Road (archived)',
+      'The Den (archived)',
+    ]);
+  });
+
+  it('marks an archived character option, and an archived option stays selectable', () => {
+    const fixture = mount();
+    fixture.componentInstance.characterScenarios.set([
+      { id: 'c1', title: 'A Duel', content: 'x', description: 'at dawn', archived: true },
+      { id: 'c2', title: 'A Wake', content: 'y' },
+    ]);
+    fixture.componentInstance.characterDefaultScenarioId.set('c1');
+    fixture.componentInstance.selection.set({ kind: 'character', scenarioId: 'c1' });
+    fixture.detectChanges();
+
+    expect(optionTexts(fixture)).toEqual([
+      'Custom...',
+      'A Duel (character default) (archived) — at dawn',
+      'A Wake',
+    ]);
+    // Archiving hides an entry from the default view; it does not forbid one a
+    // human has deliberately gone looking for.
+    expect(select(fixture).value).toBe('c1');
+  });
+
   it('labels a character option title + character default + description', () => {
     const fixture = mount();
     fixture.componentInstance.characterScenarios.set([

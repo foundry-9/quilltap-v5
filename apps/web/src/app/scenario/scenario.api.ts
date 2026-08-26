@@ -26,13 +26,20 @@ import type {
  * v4 `queryKeys.scenarios`. `all` is the family root (invalidate everything);
  * the group key is the comma-joined, SORTED character ids the groups derive
  * from, so the same cast in a different order hits the same cache row.
+ *
+ * `includeArchived` is part of every key since v4 `d25dacc1`: the two lists are
+ * different server ANSWERS, not one list filtered two ways, so they must not
+ * share a cache entry. Prefix invalidation on `all` still sweeps both.
  */
 export const scenarioKeys = {
   all: ['scenarios'] as const,
-  general: ['scenarios', 'general'] as const,
-  project: (projectId: string) => ['scenarios', 'project', projectId] as const,
-  group: (characterIdsKey: string) => ['scenarios', 'group', characterIdsKey] as const,
-  character: (characterId: string) => ['scenarios', 'character', characterId] as const,
+  general: (includeArchived = false) => ['scenarios', 'general', { includeArchived }] as const,
+  project: (projectId: string, includeArchived = false) =>
+    ['scenarios', 'project', projectId, { includeArchived }] as const,
+  group: (characterIdsKey: string, includeArchived = false) =>
+    ['scenarios', 'group', characterIdsKey, { includeArchived }] as const,
+  character: (characterId: string, includeArchived = false) =>
+    ['scenarios', 'character', characterId, { includeArchived }] as const,
 };
 
 /** The group-union envelope's per-group entry (v4 `GroupScenarioGroup`). */
@@ -54,13 +61,26 @@ export function toScenarioOption(s: ScenarioDto): ProjectScenarioOption {
     name: s.name,
     ...(s.description !== undefined && { description: s.description }),
     isDefault: s.isDefault,
+    // v4 `useNewChat` narrows the wire value with `=== true`, so a server that
+    // predates `d25dacc1` (and omits the key) reads as active rather than as
+    // `undefined` leaking into the option label's truthiness test.
+    archived: s.archived === true,
     body: s.body,
   };
 }
 
-/** v4 `GET /api/v1/scenarios` — the instance-wide "Quilltap General" tier. */
-export async function fetchGeneralScenarios(core: CoreClient): Promise<GeneralScenarioOption[]> {
-  const data = await core.dispatchData({ type: 'scenarioList' });
+/**
+ * v4 `GET /api/v1/scenarios` — the instance-wide "Quilltap General" tier.
+ *
+ * `includeArchived` is v4's `?includeArchived=true`: the SERVER decides what is
+ * hidden, so a surface that never asks is archived-free by construction and no
+ * client-side pass exists to drift from the rule.
+ */
+export async function fetchGeneralScenarios(
+  core: CoreClient,
+  includeArchived = false,
+): Promise<GeneralScenarioOption[]> {
+  const data = await core.dispatchData({ type: 'scenarioList', includeArchived });
   return ((data as unknown as ScenarioListDto).scenarios ?? []).map(toScenarioOption);
 }
 
@@ -68,8 +88,13 @@ export async function fetchGeneralScenarios(core: CoreClient): Promise<GeneralSc
 export async function fetchProjectScenarios(
   core: CoreClient,
   projectId: string,
+  includeArchived = false,
 ): Promise<ProjectScenarioOption[]> {
-  const data = await core.dispatchData({ type: 'projectScenarioList', projectId });
+  const data = await core.dispatchData({
+    type: 'projectScenarioList',
+    projectId,
+    includeArchived,
+  });
   return ((data as unknown as ScenarioListDto).scenarios ?? []).map(toScenarioOption);
 }
 
@@ -81,8 +106,13 @@ export async function fetchProjectScenarios(
 export async function fetchGroupScenarios(
   core: CoreClient,
   characterIds: string[],
+  includeArchived = false,
 ): Promise<GroupScenarioOption[]> {
-  const data = await core.dispatchData({ type: 'groupScenariosUnion', characterIds });
+  const data = await core.dispatchData({
+    type: 'groupScenariosUnion',
+    characterIds,
+    includeArchived,
+  });
   const groups = (data['groupScenarios'] as GroupScenarioGroup[] | undefined) ?? [];
   const flat: GroupScenarioOption[] = [];
   for (const group of groups) {
@@ -101,7 +131,12 @@ export async function fetchGroupScenarios(
 export async function fetchCharacterScenarios(
   core: CoreClient,
   characterId: string,
+  includeArchived = false,
 ): Promise<CharacterScenario[]> {
-  const data = await core.dispatchData({ type: 'characterScenarioList', characterId });
+  const data = await core.dispatchData({
+    type: 'characterScenarioList',
+    characterId,
+    includeArchived,
+  });
   return (data['scenarios'] as CharacterScenario[] | undefined) ?? [];
 }

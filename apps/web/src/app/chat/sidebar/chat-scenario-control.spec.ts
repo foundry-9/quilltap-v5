@@ -439,6 +439,38 @@ describe('ChatScenarioControl (v4 components/chat/ChatScenarioControl.tsx @ 44a8
   });
 
   /** The host must be a real box: an inline custom element loses the stack's gap. */
+  /**
+   * P4.D121 — "Show archived" (v4 `d25dacc1`). The flip is a NEW request on
+   * every tier, and the flag is part of each cache key, so the archived-free
+   * answer and the archived-inclusive one never overwrite each other.
+   */
+  it('renders the Show archived checkbox and re-fetches all four tiers on the flip', async () => {
+    const fixture = await render();
+    const box = (fixture.nativeElement as HTMLElement).querySelector(
+      'input[type="checkbox"].qt-checkbox',
+    ) as HTMLInputElement;
+    expect(box).toBeTruthy();
+    expect(box.checked).toBe(false);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Show archived');
+
+    const listTypes = ['scenarioList', 'projectScenarioList', 'characterScenarioList'];
+    for (const t of listTypes) {
+      expect(sent.filter((r) => r['type'] === t).every((r) => r['includeArchived'] === false)).toBe(
+        true,
+      );
+    }
+    const before = sent.filter((r) => listTypes.includes(r['type'] as string)).length;
+
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    await settle(fixture);
+
+    const after = sent.filter((r) => listTypes.includes(r['type'] as string));
+    expect(after.length).toBeGreaterThan(before);
+    expect(after.slice(before).every((r) => r['includeArchived'] === true)).toBe(true);
+  });
+
   it('gives its host a block display', async () => {
     const fixture = await render();
     const host = fixture.nativeElement.querySelector('qt-chat-scenario-control') as HTMLElement;

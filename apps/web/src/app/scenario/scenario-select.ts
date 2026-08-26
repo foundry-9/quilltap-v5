@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 
 import {
+  ARCHIVED_OPTION_SUFFIX,
   CUSTOM_SCENARIO_VALUE,
   GENERAL_SCENARIO_PREFIX,
   GROUP_SCENARIO_PREFIX,
@@ -59,6 +60,11 @@ export function hasAnyScenarioOptions(props: {
  * selection, and reports a new selection. What the surrounding surface does
  * with free text (New Chat layers notes beneath a preset; the sidebar swaps in
  * a textarea only for "Custom…") is the surface's own business.
+ *
+ * Archived entries only reach this component when the surface asked the server
+ * for them; when they do, they're marked "(archived)" and remain selectable —
+ * archiving hides an entry from the default view, it does not forbid a human
+ * who has deliberately gone looking for it (v4 `d25dacc1`).
  *
  * ## Three Angular-port notes
  *
@@ -199,16 +205,17 @@ export class ScenarioSelect {
     });
   }
 
+  /** v4 `:104-113` — name, default marker, ARCHIVED marker, then the description. */
   protected fileOptionLabel(
     s: ProjectScenarioOption | GeneralScenarioOption | GroupScenarioOption,
     defaultSuffix: string,
   ): string {
-    return `${s.name}${s.isDefault ? defaultSuffix : ''}${s.description ? ` — ${s.description}` : ''}`;
+    return `${s.name}${s.isDefault ? defaultSuffix : ''}${s.archived ? ARCHIVED_OPTION_SUFFIX : ''}${s.description ? ` — ${s.description}` : ''}`;
   }
 
   protected characterOptionLabel(s: CharacterScenario): string {
     const isDefault = this.characterDefaultScenarioId() === s.id;
-    return `${s.title}${isDefault ? ' (character default)' : ''}${s.description ? ` — ${s.description}` : ''}`;
+    return `${s.title}${isDefault ? ' (character default)' : ''}${s.archived ? ARCHIVED_OPTION_SUFFIX : ''}${s.description ? ` — ${s.description}` : ''}`;
   }
 
   protected onChange(event: Event): void {

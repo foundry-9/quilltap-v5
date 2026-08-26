@@ -18,6 +18,8 @@ export interface CharacterScenario {
   title: string;
   content: string;
   description?: string;
+  /** Hidden from the picker unless the surface asked for archived entries. */
+  archived?: boolean;
 }
 
 /**
@@ -31,6 +33,8 @@ export interface ProjectScenarioOption {
   name: string;
   description?: string;
   isDefault: boolean;
+  /** Hidden from the picker unless the surface asked for archived entries. */
+  archived?: boolean;
   body: string;
 }
 
@@ -45,6 +49,8 @@ export interface GeneralScenarioOption {
   name: string;
   description?: string;
   isDefault: boolean;
+  /** Hidden from the picker unless the surface asked for archived entries. */
+  archived?: boolean;
   body: string;
 }
 
@@ -62,8 +68,16 @@ export interface GroupScenarioOption {
   name: string;
   description?: string;
   isDefault: boolean;
+  /** Hidden from the picker unless the surface asked for archived entries. */
+  archived?: boolean;
   body: string;
 }
+
+/**
+ * Suffix appended to a dropdown option for an archived entry (v4 `d25dacc1`). A
+ * native `<option>` cannot hold a badge element, so the marker has to be text.
+ */
+export const ARCHIVED_OPTION_SUFFIX = ' (archived)';
 
 export const CUSTOM_SCENARIO_VALUE = '__custom__';
 /**
