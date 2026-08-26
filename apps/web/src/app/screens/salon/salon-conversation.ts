@@ -134,6 +134,7 @@ import {
   regenerateChatBackground,
   storyBackgroundKeys,
 } from './story-background.api';
+import { chatKeys } from '../../chat/chat-keys';
 import { compileRules, type CompiledRules } from '../../editor/text-replacement';
 import { listTextReplacements } from '../settings/chat/text-replacements.api';
 import {
@@ -825,7 +826,7 @@ export class SalonConversation {
       // server-side; refetch so the collapsed Librarian chip appears (the
       // announcement-asymmetry lesson — no bespoke append path).
       this.documentMode.configure(chatId, () => {
-        void this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+        void this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
       });
 
       // React to the LLM's document tools on the live stream (v4 SalonView
@@ -908,7 +909,7 @@ export class SalonConversation {
     const onTerminalChatUpdate = (event: Event) => {
       const detail = (event as CustomEvent<{ chatId?: string }>).detail;
       if (detail?.chatId && detail.chatId === this.chatId()) {
-        void this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+        void this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
       }
     };
     // Cmd/Ctrl+Shift+T toggles the terminal pane; Escape exits focus back to split (v4).
@@ -987,7 +988,7 @@ export class SalonConversation {
   private readonly composer = viewChild(ChatComposer);
 
   protected readonly chatQuery = injectQuery(() => ({
-    queryKey: ['chat', this.chatId()],
+    queryKey: chatKeys.detail(this.chatId()),
     enabled: !!this.chatId(),
     queryFn: async (): Promise<ChatDetail> => {
       const resp = await this.core.dispatchExpect(
@@ -1112,7 +1113,7 @@ export class SalonConversation {
   private onBackgroundChanged(): void {
     const chatId = this.chatId();
     if (!chatId) return;
-    void this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    void this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   /**
@@ -1179,7 +1180,7 @@ export class SalonConversation {
     if (!chatId) return;
     this.compositionOverride.set({ chatId, value });
     await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { documentEditingMode: value } });
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   /**
@@ -1395,7 +1396,7 @@ export class SalonConversation {
     const chatId = this.chatId();
     if (!chatId) return;
     await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { isPaused: true } });
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   /** v4 `handleAllLLMTakeOver` — start impersonating the chosen character. */
@@ -1604,7 +1605,7 @@ export class SalonConversation {
       console.error('Failed to send whisper:', error);
       return;
     }
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   /**
@@ -1622,17 +1623,17 @@ export class SalonConversation {
    * — so this only refetches the chat, exactly as v4's `fetchChat()` does.
    */
   protected async onLibraryMountFileAttached(): Promise<void> {
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   /** A posted announcement is a real message — refetch (v4 `onPosted` → `fetchChat`). */
   protected async onAnnouncementPosted(): Promise<void> {
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   /** The dialog raises v4's delivery notice itself (`ComposeMailDialog.tsx:143`). */
   protected async onMailPosted(): Promise<void> {
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   /**
@@ -2052,7 +2053,7 @@ export class SalonConversation {
       this.toasts.showError('Failed to skip turn. Please try again.');
       return;
     }
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
     // v4 `handleSkipUserTurn`: if the skip hands the turn to an LLM, generate.
     const turn = resp.type === 'turnAction' ? (resp.data as { turn?: TurnInfo }).turn : undefined;
     if (turn?.nextSpeakerId && turn.nextSpeakerControlledBy !== 'user') {
@@ -2140,7 +2141,7 @@ export class SalonConversation {
 
   /** Any sidebar write landed → refetch the chat record (v4 `onChatUpdated`). */
   protected async onChatUpdated(): Promise<void> {
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   // -------------------------------------------------------------------------
@@ -2491,7 +2492,7 @@ export class SalonConversation {
     if (!this.busy()) {
       this.turnOverride.set({ nextSpeakerId: participantId, reason: 'queue', cycleComplete: false });
     }
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   /**
@@ -2620,7 +2621,7 @@ export class SalonConversation {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to stop impersonation');
       return;
     }
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   /** v4 `handleConfirmStopImpersonation` (`useImpersonation.ts:115-142`). */
@@ -2645,7 +2646,7 @@ export class SalonConversation {
       return;
     }
     this.toasts.showSuccess(`${name} is now controlled by AI`);
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   /** v4 `handleRegenerateAvatar` (`SalonView.tsx:256-276`) — the card's camera button. */
@@ -2661,7 +2662,7 @@ export class SalonConversation {
       return;
     }
     this.toasts.showInfo(`Avatar regeneration queued for ${name}`);
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   /** v4 `togglePause` (`useChatControls.ts:194-201`). */
@@ -2672,7 +2673,7 @@ export class SalonConversation {
     const paused = !chat.isPaused;
     await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { isPaused: paused } });
     this.toasts.showInfo(paused ? 'Auto-responses paused' : 'Auto-responses resumed');
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   protected onNudge(): void {
@@ -2789,7 +2790,7 @@ export class SalonConversation {
 
     // Reconcile: refetch the canonical chat (v4 `fetchChat()` on done), then clear
     // the optimistic overlays so the streamed bubbles hand off without duplication.
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
     // Wake the queue badges — the turn just enqueued post-turn jobs (v4 fires
     // notifyQueueChange at all four useSSEStreaming completion callbacks
     // (:771/:827/:1018/:1038); v5's single reconcile point covers them).
@@ -3076,7 +3077,7 @@ export class SalonConversation {
 
   /** A courier turn settled (resolved/cancelled) → refetch (v4 `onCourierTurnSettled`). */
   protected async onCourierSettled(): Promise<void> {
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   /**
@@ -3088,7 +3089,7 @@ export class SalonConversation {
     const chatId = this.chatId();
     if (!chatId) return;
     await Promise.all([
-      this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] }),
+      this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) }),
       this.queryClient.invalidateQueries({ queryKey: customToolsKeys.byChat(chatId) }),
     ]);
   }
@@ -3096,13 +3097,13 @@ export class SalonConversation {
   /** The Edit-Enclave modal saved → refetch the chat (v4 SalonView `onSaved`). */
   protected async onEnclaveSaved(): Promise<void> {
     this.showEditEnclave.set(false);
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   /** The lightbox deleted an image → refetch so the thumbnail disappears (v4 `onDelete`). */
   protected async onImageDeleted(): Promise<void> {
     this.modalImage.set(null);
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   /** Generated images → record the tool result and refetch (v4 `onImagesGenerated`). */
@@ -3121,7 +3122,7 @@ export class SalonConversation {
       prompt: event.prompt,
       images: event.images.map((img) => ({ id: img.id, filename: img.filename })),
     });
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', chatId] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
   protected onEdit(message: MessageDto): void {
@@ -3140,7 +3141,7 @@ export class SalonConversation {
       this.toasts.showError(resp.data.message || 'Failed to update message');
       return;
     }
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   protected onSwipe(message: MessageDto, direction: -1 | 1): void {
@@ -3159,7 +3160,7 @@ export class SalonConversation {
       this.toasts.showError(resp.data.message || 'Failed to generate alternative response');
       return;
     }
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
     // v4 `useMessageActions.generateSwipe` (:327) wakes the queue badges after
     // the swipe lands (the regeneration enqueues post-turn jobs).
     notifyQueueChange();
@@ -3189,7 +3190,7 @@ export class SalonConversation {
       this.toasts.showError(resp.data.message || 'Failed to delete message');
       return;
     }
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   protected async onCascadeConfirm(action: MemoryCascadeAction): Promise<void> {
@@ -3217,7 +3218,7 @@ export class SalonConversation {
         `Deleted message and ${deleted} ${deleted === 1 ? 'memory' : 'memories'}`,
       );
     }
-    await this.queryClient.invalidateQueries({ queryKey: ['chat', this.chatId()] });
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(this.chatId()) });
   }
 
   protected errorMessage(): string {

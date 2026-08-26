@@ -235,6 +235,26 @@ New differential `activity_tables_equivalence` diffs both tables — entry order
 included — plus `ACTIVITY_KINDS` and v4's real `BackgroundJobTypeEnum.options`,
 against v4's exports. `ACTIVITY_CHIPS` is client-only display metadata and does
 not port here.
+#### 2026-08-26 — refactor(spa): the chat query keys get a const, so the realtime topic map can name them
+
+_Versions: SPA 0.5.579._
+
+`chat/chat-keys.ts` (P4.D125 unit 2). v5 has no central key module; keys live
+beside their feature. The chat family had no const at all — only the raw
+spellings `['chats']` and `['chat', id]` typed out at every call site, the Salon
+alone carrying twenty-seven. The realtime topic map has to name both, and a
+table quoting a spelling nobody else imports is a drift waiting to happen.
+
+Swept, with the spellings unchanged: `screens/salon/salon-conversation.ts` (27
+sites), `chat/merge-conversation-modal.ts` (2), `screens/salon/salon-list.ts`
+(1), `workspace/core/tab-refetch.ts` (the `CHAT_LISTS` const). `detail` takes a
+nullable id because several Salon handlers pass `this.chatId()` straight
+through, and `['chat', null]` is the key those sites already produced.
+
+No behavior change; the guard spec pins the two spellings, the singular/plural
+split the tab-refetch prefix rule leans on, and the prefix relationship to
+`['chat', id, 'background' | 'outfit-summary' | 'cost']`.
+
 #### 2026-08-26 — feat(spa): the shared clock, and the relative formatters take a `nowMs`
 
 _Versions: SPA 0.5.578._

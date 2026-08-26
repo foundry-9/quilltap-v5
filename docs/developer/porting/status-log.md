@@ -89275,3 +89275,39 @@ subscribing anyway (2 red), `HIDDEN_TAB_PAUSE_BELOW_MS = 0` (1 red),
 
 Gate at this unit: `npm run build` clean, `check-qt-classes` clean (934
 classes), `npm test` 353 files / 5,317 tests / 0 failed. SPA → 0.5.578.
+
+### P4.D125 unit 2 — the chat query-key sweep (`chat/chat-keys.ts`)
+
+The order's prerequisite for the topic map: "for the `chats` topic first SWEEP
+the raw spellings into a small exported const so the map and the call sites
+cannot drift". v5 has no central `lib/query/keys.ts`; the chat family had no
+const at all, only `['chats']` and `['chat', id]` typed out at each site.
+
+`chatKeys.all = ['chats']` / `chatKeys.detail(id) = ['chat', id]`. **The
+spellings do not move** — that is the point: existing cache entries and the
+workspace tab-refetch map's prefix reasoning (v5's per-chat keys are SINGULAR,
+so the plural collection prefix is detail-safe by construction) both survive
+untouched.
+
+**Swept sites (the order asks for the list):**
+`screens/salon/salon-conversation.ts` — 27 sites (`:828 :911 :990 :1115 :1182
+:1398 :1607 :1625 :1630 :1635 :2055 :2143 :2494 :2623 :2648 :2664 :2675 :2792
+:3079 :3091 :3099 :3105 :3124 :3143 :3162 :3192 :3220`, pre-sweep numbering);
+`chat/merge-conversation-modal.ts` — the `['chats', {includeAutonomous:false}]`
+picker query and the post-merge invalidate; `screens/salon/salon-list.ts` — the
+`['chats', {includeAutonomous}]` list query; `workspace/core/tab-refetch.ts` —
+the `CHAT_LISTS` const.
+
+`detail` takes `string | null | undefined` deliberately: several Salon handlers
+pass `this.chatId()` straight through and `['chat', null]` is the key those
+sites already produced. Narrowing would be a behavior change wearing a type
+change's clothes.
+
+Left alone (they already have their own consts, and are sub-keys of `detail`):
+`storyBackgroundKeys.background` (`['chat', id, 'background']`),
+`chatCostKeys` (`['chat', id, 'cost', …]`), the merge modal's
+`['chat', id, 'outfit-summary']`.
+
+Guard: `chat/chat-keys.spec.ts` (4 cases) pins the two spellings, the
+singular/plural split, the sub-key prefix relationship, and the nullable arm.
+Gate: build clean, `npm test` 354 files / 5,321 / 0.

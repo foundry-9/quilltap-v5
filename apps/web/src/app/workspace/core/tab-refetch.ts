@@ -62,6 +62,7 @@
  */
 
 import type { CharacterViewTabPayload, WorkspaceTab } from '../workspace-contract';
+import { chatKeys } from '../../chat/chat-keys';
 import { characterKeys, tagKeys } from '../../screens/characters/characters.api';
 import { groupKeys } from '../../screens/groups/groups.api';
 import { homeKeys } from '../../screens/home/home.api';
@@ -82,7 +83,7 @@ type QueryKeyPrefix = readonly unknown[];
  * `['chatPhotoAlbums', id]`), so the bare `['chats']` prefix already reaches
  * only the collection reads and is detail/state-safe by construction.
  */
-const CHAT_LISTS: QueryKeyPrefix = ['chats'];
+const CHAT_LISTS: QueryKeyPrefix = chatKeys.all;
 
 /** Both live spellings of the connection-profile key (see the module doc). */
 const CONNECTION_PROFILES: QueryKeyPrefix[] = [['connectionProfiles'], ['connection-profiles']];

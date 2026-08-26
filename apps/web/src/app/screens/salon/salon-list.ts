@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { RouterLink } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
+import { chatKeys } from '../../chat/chat-keys';
 import { CoreClient } from '../../core/core-client';
 import type { ChatSettingsDto, EnrichedChatSummary } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
@@ -125,7 +126,7 @@ export class SalonList {
 
   protected readonly chats = injectQuery(() => ({
     // The flag rides the query key so flipping the toggle refetches.
-    queryKey: ['chats', { includeAutonomous: this.effectiveIncludeAutonomous() }],
+    queryKey: [...chatKeys.all, { includeAutonomous: this.effectiveIncludeAutonomous() }],
     queryFn: async (): Promise<EnrichedChatSummary[]> => {
       const resp = await this.core.dispatchExpect(
         this.effectiveIncludeAutonomous()

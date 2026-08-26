@@ -15,6 +15,7 @@ import {
   OutfitSelector,
   type PreviousOutfitSummary,
 } from '../screens/new-chat/outfit-selector';
+import { chatKeys } from './chat-keys';
 import { formatRelativeDate } from '../shared/format-date';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
@@ -256,7 +257,7 @@ export class MergeConversationModal {
 
   /** v4's list query — the same one the Salon list uses, excluding autonomous. */
   protected readonly chatsQuery = injectQuery(() => ({
-    queryKey: ['chats', { includeAutonomous: false }],
+    queryKey: [...chatKeys.all, { includeAutonomous: false }],
     queryFn: async (): Promise<EnrichedChatSummary[]> => {
       const resp = await this.core.dispatchExpect({ type: 'listChats' }, 'chats');
       return resp.data;
@@ -368,7 +369,7 @@ export class MergeConversationModal {
           : `Merged ${merged} characters from “${src.title}”`,
       );
       this.merged.emit();
-      await this.queryClient.invalidateQueries({ queryKey: ['chats'] });
+      await this.queryClient.invalidateQueries({ queryKey: chatKeys.all });
       this.close.emit();
     } catch (err) {
       this.toasts.showError(err instanceof Error ? err.message : 'Failed to merge conversation');
