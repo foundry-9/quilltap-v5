@@ -232,6 +232,32 @@ dedupe-then-sort is made observable instead — two mounts in one tier both carr
 file and the sort decides which content comes back. Six mutations proven to
 redden; a seventh (dropping the folder ensure) provably does not, because the
 write primitive find-or-creates folder segments itself — recorded at the source.
+#### 2026-08-26 — feat(search): the Documents chip and the open-from-search choreography
+
+_Versions: SPA 0.5.567._
+
+The SPA half of v4 `b220999d`. `search.types.ts` gains the sixth `SearchType`,
+the shared `ALL_SEARCH_TYPES` constant (which the dialog's chips now read
+instead of a local copy), `DocumentSearchResultItem`, and the three map entries.
+The dialog's placeholder and empty-state line gain `documents` in v4's exact
+positions.
+
+`SearchResults` gains the documents row: the store-name `·` path subtitle, the
+Document badge, a conditional Vault badge for a character-vault document, and
+the standalone deep link as its href. Its click routes through the new
+`OpenDocumentFromSearch` service and emits `resultClick` only when the service
+actually handled the click — so a middle-click or ⌘-click falls through to the
+browser, opens the silent standalone link in a new tab, and leaves the search UI
+open. The other five cards keep v5's existing unconditional intercept; their v4
+counterparts have no passthrough either.
+
+Two new client files under `documents/`: `open-document-in-chat.ts` (the
+three-step in-chat choreography — open the row, open the workspace tab,
+announce) and `open-document-from-search.ts` (`resolveActiveSalon`,
+`isModifiedClick`, and the service that picks between the in-chat open, a silent
+standalone tab, and plain navigation). Three v5-source mutations each redden
+exactly one parity spec.
+
 #### 2026-08-26 — feat(search): the document text-search engine and the uiSearch documents branch
 
 _Versions: core 0.0.669, harness 0.0.578._

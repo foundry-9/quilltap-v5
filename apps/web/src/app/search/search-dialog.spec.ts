@@ -86,7 +86,8 @@ describe('SearchDialog (v4 search-dialog.tsx)', () => {
     // reset the query to the initial one, and re-fire the initial search).
     const searchCalls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(searchCalls.length).toBe(2);
-    expect(searchCalls[1]).toContain('types=characters,messages,tags,memories');
+    // The sixth type (P4.D122) joins the CSV in ALL_SEARCH_TYPES order.
+    expect(searchCalls[1]).toContain('types=characters,messages,documents,tags,memories');
     expect(chats.className).toBe('qt-filter-chip');
   });
 
@@ -104,5 +105,47 @@ describe('SearchDialog (v4 search-dialog.tsx)', () => {
     const searchCalls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(searchCalls.length).toBe(2);
     expect(searchCalls[1]).toContain('types=characters,memories');
+  });
+});
+
+/**
+ * The P4.D122 chip list + copy strings (v4 `search-dialog.tsx`, `b220999d`).
+ * v4 stopped keeping a local `ALL_TYPES` copy and reads the shared constant, so
+ * the chips and the route's accepted `types` can't drift; the two copy strings
+ * gained `documents` in v4's exact positions.
+ */
+describe('SearchDialog — the Documents chip (v4 b220999d)', () => {
+  it('renders every type chip in ALL_SEARCH_TYPES order, with the new copy', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [SearchDialog],
+      providers: [provideRouter([])],
+    });
+    const fixture = TestBed.createComponent(SearchDialog);
+    fixture.componentRef.setInput('isOpen', true);
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    const chips = Array.from(
+      host.querySelectorAll('button.qt-filter-chip, button.qt-filter-chip-active'),
+    ).map((b) => (b.textContent ?? '').trim());
+    // chats, characters, messages, documents, tags, memories — the order v4's
+    // constant declares, which is NOT the server's fan-out order.
+    expect(chips).toEqual([
+      'Chats',
+      'Characters',
+      'Messages',
+      'Documents',
+      'Tags',
+      'Memories',
+    ]);
+
+    const input = host.querySelector('input[type="text"]') as HTMLInputElement;
+    expect(input.getAttribute('placeholder')).toBe(
+      'Search chats, characters, messages, documents, tags, memories...',
+    );
+    expect(host.textContent).toContain(
+      'Search across your chats, characters, messages, documents, tags, and memories',
+    );
   });
 });

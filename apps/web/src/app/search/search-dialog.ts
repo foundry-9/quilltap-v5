@@ -15,9 +15,15 @@ import { Icon } from '../ui/icon';
 import { SearchResults } from './search-results';
 import { searchPaged } from './search.api';
 import { appendDeduped } from './search.logic';
+import { ALL_SEARCH_TYPES } from './search.types';
 import type { SearchResult, SearchType } from './search.types';
 
-const ALL_TYPES: SearchType[] = ['chats', 'characters', 'messages', 'tags', 'memories'];
+/**
+ * v4's dialog reads the shared constant rather than keeping its own copy
+ * (`b220999d`) — the chip order and the default `types=` CSV both come from it,
+ * so a new type can't be half-added.
+ */
+const ALL_TYPES = ALL_SEARCH_TYPES;
 /** v4 `PAGE_SIZE`. */
 const PAGE_SIZE = 20;
 /** v4 300ms debounce. */
@@ -66,7 +72,7 @@ const DEBOUNCE_MS = 300;
                 [value]="query()"
                 (input)="onInput($event)"
                 (keydown.enter)="onEnter()"
-                placeholder="Search chats, characters, messages, tags, memories..."
+                placeholder="Search chats, characters, messages, documents, tags, memories..."
                 class="w-full pl-10 pr-4 py-3 text-lg border-0 bg-transparent text-foreground placeholder-muted-foreground focus:outline-none focus:ring-0"
               />
               @if (query()) {
@@ -120,7 +126,7 @@ const DEBOUNCE_MS = 300;
               <div class="p-6 text-center qt-text-small">
                 <p>Type at least 2 characters to search</p>
                 <p class="qt-text-xs mt-1">
-                  Search across your chats, characters, messages, tags, and memories
+                  Search across your chats, characters, messages, documents, tags, and memories
                 </p>
               </div>
             }

@@ -88037,3 +88037,92 @@ Gate: `ui_search_equivalence` **28/28** over an oracle regenerated fresh at the
 lane pin; `qtap_uri_equivalence` 1/0; `cargo test -p quilltap-core --lib
 services::mount_index::document_text_search` 13/0; clippy clean on core +
 harness.
+
+### Unit 5 — the SPA half: the Documents chip, the result card, the open choreography
+
+- **`search.types.ts`**: the sixth `SearchType`; the shared `ALL_SEARCH_TYPES`
+  in v4's exact new order (chats, characters, messages, documents, tags,
+  memories) with a header note that it is NOT the fan-out order;
+  `DocumentSearchResultItem`; `📄` / `Document` / `Documents`.
+- **`search-dialog.ts`**: `ALL_TYPES` now reads the shared constant (v4 deleted
+  its local copy at `b220999d`); the placeholder and the empty-state line gain
+  `documents` byte-for-byte.
+- **`search-bar.ts`: NO-OP, as the order predicted.** v4's diff deletes a DEAD
+  local `ALL_TYPES` from it; v5 never ported that const. Recorded, nothing
+  changed. (Its SPEC did move — see the re-baselining below.)
+- **`search-results.ts`**: the documents row — highlighted name, the `Document`
+  badge, the conditional `Vault` badge on `storeType === 'character'`, the
+  `line-clamp-2` snippet, and the `{store} · {path}` subtitle built in TS rather
+  than the template so the U+00B7 and its two spaces are pinnable (Angular
+  collapses template whitespace). The empty-state line gains `documents`.
+  **Hazard 2, decided:** `go()` branches on `result.type === 'documents'` —
+  those rows call the open service and emit `resultClick` only
+  `if (event.defaultPrevented)`, so a modified click falls through to the
+  browser and the search UI stays open. The other five keep v5's unconditional
+  `preventDefault` + `navigateByUrl`; their v4 counterparts have no passthrough,
+  and this port does not invent one. Also documented at the source: a documents
+  URL passes through `mapResultUrl` untouched (its pass-through arm), which is
+  right — the href IS v5's standalone deep link.
+- **NEW `documents/open-document-in-chat.ts`**: v4's three-step choreography
+  (`chatDocumentOpen` → `openTab('document', …, {focus, parentTabId})` →
+  dispatch). v4's `standaloneTabPayload()` export is **deliberately NOT ported**
+  — it is dead in `b220999d` itself (the hook builds its payload inline), and
+  inventing a caller would be inventing behaviour. The event is spelled
+  `quilltap:document-opened`, not v4's `qtap-document-opened`: it is private to
+  the app (no bytes cross the wire) and every other v5 window event carries the
+  `quilltap:` prefix. A recorded NAMING divergence.
+- **NEW `documents/open-document-from-search.ts`**: `resolveActiveSalon` (the
+  focused pane's active tab only; `kind === 'salon'` with a non-empty string
+  `chatId`; **no** fall-through to the pathname when workspace state exists; the
+  `/^\/salon\/([^/?#]+)$/` arm rejecting `''`/`'new'`), `isModifiedClick`
+  (returns WITHOUT `preventDefault`), and the `OpenDocumentFromSearch` service
+  with v4's priority — active Salon → in-chat split open (toast `error.message
+  ?? 'Failed to open document'`) → workspace standalone tab (`standaloneDocKey`)
+  → `router.navigateByUrl(result.url)`.
+  **`DocumentApi` is fetched through the `Injector`, lazily.** It is
+  `@Injectable()` without `providedIn: 'root'`, so a field initializer made
+  merely RENDERING a result list demand a provider the search surface has no
+  business requiring — every pre-existing `SearchResults`/`SearchBar` spec went
+  NG0201 on the first run. Recorded at the source.
+
+**⛔ PENDING_CROSS_LANE — one edit this lane may not make.** The in-chat open
+dispatches `quilltap:document-opened`; **nothing listens for it yet in v5.**
+v4's listener is in `app/salon/[id]/hooks/useDocumentMode.ts:725-742` and is
+**PRE-EXISTING** (it arrived with `d973a849`, the standalone-Document-Mode
+commit, not with `b220999d`) — v5 never ported it because v5 has no
+`QtapLinkProvider` twin, so until now nothing external opened a chat document.
+Its v5 home is `apps/web/src/app/documents/document-mode.ts` (the
+`useDocumentMode` twin), which **P4.D121 owns this round**. The ordered edit,
+for the unifier or a follow-up lane:
+
+> In `DocumentMode` (or `SalonConversation`'s listener block beside
+> `quilltap:chat-update`), listen for `DOCUMENT_OPENED_EVENT` from
+> `documents/open-document-in-chat`; when `detail.chatId === this.chatId`, run
+> `reconcileOpenDocuments()` and then `focusedDocId.set(detail.chatDocumentId)`.
+
+**Consequence while it is missing, measured not guessed:** the server DOES
+persist `chat_documents` + flips the chat's `documentMode` to `split`, and the
+document-open response's Librarian message already invalidates the `['chat',
+id]` query — so `DocumentMode.hydrate` reconciles whenever the mode CHANGES
+(`normal` → `split`). The gap is the already-split case: opening a second
+document into a Salon that is already in split mode leaves the new pane
+unreconciled until the next reload. The workspace `document` tab still opens
+(this lane's helper opens it directly), so the loss is the Salon's own pane
+list, not the tab.
+
+**Two pre-existing specs re-baselined for the sixth type** (the same
+by-design break as the harness corpus gate): `search-bar.spec.ts`'s placeholder
+selector, and `search-dialog.spec.ts`'s `types=` CSV assertion.
+
+New specs: `open-document-from-search.spec.ts` (v4's own 10-case table 1:1 plus
+three: the unusable-`chatId` payload shapes, the explicit no-fall-through arm,
+and `openDocumentInChat`'s own two cases incl. the `mountPoint: null →
+undefined` and `mode` default), and three `SearchResults` documents-row cases.
+
+**Three v5-source mutations, each reddening exactly one spec:** the
+modified-click early return removed ("leaves modified clicks to the browser"),
+`resolveActiveSalon`'s state-arm `return null` removed so it falls through to
+the pathname ("does NOT fall through…"), and the card's `defaultPrevented` gate
+removed ("emits only when it handled it").
+
+Gate: `npm test` **348 files / 5,217 tests / 0 failed**; `npm run build` clean.

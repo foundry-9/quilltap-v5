@@ -141,7 +141,7 @@ describe('SearchBar (v4 search-bar.tsx)', () => {
     // `backdrop-filter` containing block (dogfood #45).
     expect(
       document.querySelector(
-        'input[placeholder="Search chats, characters, messages, tags, memories..."]',
+        'input[placeholder="Search chats, characters, messages, documents, tags, memories..."]',
       ),
     ).not.toBeNull();
   });

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { OpenDocumentFromSearch } from '../documents/open-document-from-search';
 import { HighlightedText } from './highlighted-text';
 import { groupResultsByType, mapResultUrl } from './search.logic';
 import {
@@ -9,6 +10,7 @@ import {
   TYPE_LABELS_PLURAL,
   type CharacterSearchResult,
   type ChatSearchResult,
+  type DocumentSearchResultItem,
   type MemorySearchResult,
   type MessageSearchResult,
   type SearchResult,
@@ -25,7 +27,10 @@ import {
  *
  * Navigation: each row is an `<a>` whose href is the SERVER's URL mapped onto
  * the v5 route space (`mapResultUrl` — the documented divergences live there);
- * the click intercepts into `router.navigateByUrl` so query strings survive.
+ * the click intercepts into `router.navigateByUrl` so query strings survive. A
+ * documents row's `/workspace?open=document-standalone&…` URL passes through
+ * `mapResultUrl` untouched (its pass-through arm), which is exactly right: the
+ * href IS v5's standalone deep link, and it is what a middle-click follows.
  *
  * OMITTED (dead in v4 itself): the `matchedTag` / `matchedViaCharacter` card
  * arms and the character card's `avatarUrl` image arm — v4's
@@ -46,7 +51,9 @@ import {
     } @else if (results().length === 0) {
       <div class="p-6 text-center">
         <p class="qt-text-small">No results found for "{{ query() }}"</p>
-        <p class="qt-text-xs mt-1">Try searching for characters, chats, messages, tags, or memories</p>
+        <p class="qt-text-xs mt-1">
+          Try searching for characters, chats, messages, documents, tags, or memories
+        </p>
       </div>
     } @else {
       <div class="divide-y divide-border">
@@ -200,6 +207,34 @@ import {
                         </div>
                       </div>
                     }
+                    @case ('documents') {
+                      <div class="flex items-start gap-3">
+                        <div
+                          class="w-10 h-10 rounded-full qt-bg-primary/10 flex items-center justify-center flex-shrink-0"
+                        >
+                          <span class="text-lg">{{ icon('documents') }}</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <span class="qt-text-primary truncate">
+                              <qt-highlighted-text [text]="result.name" [query]="query()" />
+                            </span>
+                            <span class="text-xs px-1.5 py-0.5 rounded qt-badge-info">
+                              {{ label('documents') }}
+                            </span>
+                            @if (asDocument(result).storeType === 'character') {
+                              <span class="text-xs px-1.5 py-0.5 rounded qt-badge-character">
+                                Vault
+                              </span>
+                            }
+                          </div>
+                          <p class="qt-text-xs truncate">{{ subtitle(asDocument(result)) }}</p>
+                          <p class="qt-text-small mt-1 line-clamp-2">
+                            <qt-highlighted-text [text]="result.snippet" [query]="query()" />
+                          </p>
+                        </div>
+                      </div>
+                    }
                     @case ('messages') {
                       <div class="flex items-start gap-3">
                         <div
@@ -242,6 +277,7 @@ import {
 })
 export class SearchResults {
   private readonly router = inject(Router);
+  private readonly openDocument = inject(OpenDocumentFromSearch);
 
   readonly results = input.required<SearchResult[]>();
   readonly query = input.required<string>();
@@ -273,7 +309,25 @@ export class SearchResults {
     return mapResultUrl(result.url);
   }
 
+  /**
+   * A result row's click.
+   *
+   * **Documents diverge from the other five, faithfully.** v4's
+   * `DocumentResultCard` is a plain `<a href={result.url}>` whose handler calls
+   * the open hook and then `if (!e.defaultPrevented) return` before notifying
+   * the dialog — so a MODIFIED click (⌘/ctrl/shift/alt, middle button) falls
+   * through to the browser, opens the silent standalone deep link in a new tab,
+   * and leaves the search UI open. The other five cards have no such passthrough
+   * in v4 either, so v5's existing unconditional `preventDefault` stays exactly
+   * as it was for them — this port does not invent one.
+   */
   protected go(event: MouseEvent, result: SearchResult): void {
+    if (result.type === 'documents') {
+      this.openDocument.open(result as DocumentSearchResultItem, event);
+      if (!event.defaultPrevented) return;
+      this.resultClick.emit();
+      return;
+    }
     event.preventDefault();
     this.resultClick.emit();
     void this.router.navigateByUrl(mapResultUrl(result.url));
@@ -293,5 +347,17 @@ export class SearchResults {
   }
   protected asMessage(r: SearchResult): MessageSearchResult {
     return r as MessageSearchResult;
+  }
+  protected asDocument(r: SearchResult): DocumentSearchResultItem {
+    return r as DocumentSearchResultItem;
+  }
+
+  /**
+   * v4's store-name, middle-dot, relative-path subtitle — a U+00B7 with one
+   * space on each side. Built here rather than in the template so the exact
+   * bytes are pinnable and no Angular whitespace collapsing can move them.
+   */
+  protected subtitle(r: DocumentSearchResultItem): string {
+    return `${r.mountPointName} \u00B7 ${r.relativePath}`;
   }
 }
