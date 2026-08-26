@@ -1,0 +1,355 @@
+{
+  "$comment": [
+    "P4.D119 — the per-tier dressing-instructions family (v4 b86bb1a5).",
+    "ONE committed fixture pair (wardrobe-instructions-{main,mount}.db) drives TWO",
+    "differentials, both reading THIS file's case lists so neither side can",
+    "silently partial-pass:",
+    "  - harness/oracle/cases/wardrobe-instructions-cascade.ts (tsx, tier 2) vs",
+    "    crates/quilltap-harness/tests/wardrobe_instructions_tier2_equivalence.rs",
+    "  - harness/oracle/cases/wardrobe-instructions-routes.test.ts (jest, real",
+    "    route handlers) vs .../wardrobe_instructions_routes_equivalence.rs",
+    "Mount ids are MINTED by the vault/store provisioning, so both sides resolve",
+    "them to the symbolic labels below rather than comparing UUIDs."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "a0000000-0000-4000-8000-000000000001",
+  "user": {
+    "id": "a0000000-0000-4000-8000-000000000001",
+    "username": "instructions-owner",
+    "name": "Instructions Owner"
+  },
+  "characterId": "c9000000-0000-4000-8000-000000000001",
+  "vaultlessCharacterId": "c9000000-0000-4000-8000-000000000002",
+  "archivedCharacterId": "c9000000-0000-4000-8000-000000000003",
+  "missingCharacterId": "c9000000-0000-4000-8000-0000000000ff",
+  "projectId": "b3000000-0000-4000-8000-000000000001",
+  "groupId": "b4000000-0000-4000-8000-000000000001",
+  "groupMemberId": "b4000000-0000-4000-8000-000000000002",
+  "missingProjectId": "b3000000-0000-4000-8000-0000000000ff",
+  "missingGroupId": "b4000000-0000-4000-8000-0000000000ff",
+  "generalMountPointId": "d8000000-0000-4000-8000-000000000001",
+  "generalStore": {
+    "id": "d8000000-0000-4000-8000-000000000001",
+    "name": "Quilltap General"
+  },
+  "extraStores": [
+    {
+      "label": "sA",
+      "id": "11000000-0000-4000-8000-000000000001",
+      "name": "Shared Store A"
+    },
+    {
+      "label": "sB",
+      "id": "22000000-0000-4000-8000-000000000001",
+      "name": "Shared Store B"
+    },
+    {
+      "label": "sY",
+      "id": "88000000-0000-4000-8000-000000000001",
+      "name": "Shared Store Y"
+    },
+    {
+      "label": "sZ",
+      "id": "99000000-0000-4000-8000-000000000001",
+      "name": "Shared Store Z"
+    },
+    {
+      "label": "sN",
+      "id": "55000000-0000-4000-8000-000000000001",
+      "name": "Shared Store N (never seeded)"
+    },
+    {
+      "label": "sM",
+      "id": "66000000-0000-4000-8000-000000000001",
+      "name": "Shared Store M (never seeded)"
+    }
+  ],
+  "character": {
+    "id": "c9000000-0000-4000-8000-000000000001",
+    "userId": "a0000000-0000-4000-8000-000000000001",
+    "name": "Bertie",
+    "identity": "A gentleman with opinions about tweed.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5
+  },
+  "vaultlessCharacter": {
+    "id": "c9000000-0000-4000-8000-000000000002",
+    "userId": "a0000000-0000-4000-8000-000000000001",
+    "name": "Jeeves",
+    "identity": "A gentleman's gentleman with no closet of his own.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5
+  },
+  "archivedCharacter": {
+    "id": "c9000000-0000-4000-8000-000000000003",
+    "userId": "a0000000-0000-4000-8000-000000000001",
+    "name": "Archie",
+    "identity": "Filed away in the archive.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5
+  },
+  "characterItem": {
+    "id": "e9000000-0000-4000-8000-0000000000a1",
+    "title": "Tweed Jacket",
+    "types": [
+      "top"
+    ],
+    "description": "Heather-flecked, elbow-patched."
+  },
+  "cascadeCases": [
+    {
+      "name": "character_tier_wins_and_stops",
+      "kind": "resolve",
+      "seed": {
+        "charA": "You wear tweed.",
+        "group": "group text",
+        "project": "project text",
+        "general": "general text"
+      },
+      "character": "charA",
+      "groups": [
+        "group"
+      ],
+      "projects": [
+        "project"
+      ]
+    },
+    {
+      "name": "blank_character_file_continues_to_group",
+      "kind": "resolve",
+      "seed": {
+        "charA": "   \n",
+        "group": "The household livery, always."
+      },
+      "character": "charA",
+      "groups": [
+        "group"
+      ],
+      "projects": [
+        "project"
+      ]
+    },
+    {
+      "name": "missing_group_continues_to_project",
+      "kind": "resolve",
+      "seed": {
+        "charA": "   \n",
+        "project": "  You dress plainly.  "
+      },
+      "character": "charA",
+      "groups": [
+        "group"
+      ],
+      "projects": [
+        "project"
+      ]
+    },
+    {
+      "name": "falls_through_to_general",
+      "kind": "resolve",
+      "seed": {
+        "general": "General guidance."
+      },
+      "character": "charA",
+      "groups": [
+        "group"
+      ],
+      "projects": [
+        "project"
+      ]
+    },
+    {
+      "name": "nothing_anywhere_is_null",
+      "kind": "resolve",
+      "seed": {},
+      "character": "charA",
+      "groups": [
+        "group"
+      ],
+      "projects": [
+        "project"
+      ]
+    },
+    {
+      "name": "empty_string_character_mount_is_skipped",
+      "kind": "resolve",
+      "seed": {
+        "general": "General guidance."
+      },
+      "character": "",
+      "groups": [],
+      "projects": []
+    },
+    {
+      "name": "null_character_mount_is_skipped",
+      "kind": "resolve",
+      "seed": {
+        "charA": "never read",
+        "general": "General guidance."
+      },
+      "character": null,
+      "groups": [],
+      "projects": []
+    },
+    {
+      "name": "general_unprovisioned_skips_the_tier",
+      "kind": "resolve",
+      "unprovisionGeneral": true,
+      "seed": {
+        "general": "should never be read"
+      },
+      "character": null,
+      "groups": [],
+      "projects": []
+    },
+    {
+      "name": "group_tier_deduped_and_sorted",
+      "kind": "resolve",
+      "seed": {
+        "sA": "from sA",
+        "sB": "from sB"
+      },
+      "character": null,
+      "groups": [
+        "sB",
+        "sA",
+        "sB"
+      ],
+      "projects": []
+    },
+    {
+      "name": "project_tier_deduped_and_sorted",
+      "kind": "resolve",
+      "seed": {
+        "sY": "from sY",
+        "sZ": "from sZ"
+      },
+      "character": null,
+      "groups": [],
+      "projects": [
+        "sZ",
+        "sY",
+        "sZ"
+      ]
+    },
+    {
+      "name": "group_tier_shadows_project_tier",
+      "kind": "resolve",
+      "seed": {
+        "sB": "from sB",
+        "sY": "from sY"
+      },
+      "character": null,
+      "groups": [
+        "sB"
+      ],
+      "projects": [
+        "sY"
+      ]
+    },
+    {
+      "name": "blank_in_every_tier_is_null",
+      "kind": "resolve",
+      "seed": {
+        "charA": "  ",
+        "group": "\t\n",
+        "project": "   ",
+        "general": "\n\n"
+      },
+      "character": "charA",
+      "groups": [
+        "group"
+      ],
+      "projects": [
+        "project"
+      ]
+    },
+    {
+      "name": "read_returns_trimmed_content",
+      "kind": "read",
+      "seed": {
+        "charA": "  hello  "
+      },
+      "mount": "charA"
+    },
+    {
+      "name": "read_blank_is_null",
+      "kind": "read",
+      "seed": {
+        "charA": "   "
+      },
+      "mount": "charA"
+    },
+    {
+      "name": "read_missing_is_null",
+      "kind": "read",
+      "seed": {},
+      "mount": "charA"
+    }
+  ],
+  "writeOps": [
+    {
+      "name": "write_trims_and_creates_the_file",
+      "kind": "write",
+      "mount": "charA",
+      "instructions": "  You wear tweed.  "
+    },
+    {
+      "name": "write_overwrites_in_place",
+      "kind": "write",
+      "mount": "charA",
+      "instructions": "You wear serge now."
+    },
+    {
+      "name": "read_back_after_write",
+      "kind": "read",
+      "mount": "charA"
+    },
+    {
+      "name": "clear_by_null_deletes_the_file",
+      "kind": "write",
+      "mount": "charA",
+      "instructions": null
+    },
+    {
+      "name": "clear_when_already_absent_is_a_noop",
+      "kind": "write",
+      "mount": "charA",
+      "instructions": null
+    },
+    {
+      "name": "clear_by_whitespace_deletes_the_file",
+      "kind": "write",
+      "mount": "charA",
+      "instructions": "   \n  ",
+      "preSeed": "Something to clear."
+    },
+    {
+      "name": "write_into_a_store_with_no_wardrobe_folder",
+      "kind": "write",
+      "mount": "sN",
+      "instructions": "Shared-store guidance."
+    },
+    {
+      "name": "clear_in_a_store_with_no_wardrobe_folder",
+      "kind": "write",
+      "mount": "sM",
+      "instructions": ""
+    }
+  ]
+}

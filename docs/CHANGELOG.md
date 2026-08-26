@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(wardrobe): the per-tier dressing-instructions module (v4 `b86bb1a5`)
+
+_Versions: core 0.0.666, harness 0.0.578._
+
+The new `quilltap-core::wardrobe_instructions` module ports v4's
+`lib/wardrobe/wardrobe-instructions.ts`: the `Wardrobe/instructions.md`
+constants and the case-insensitive filename predicate, the four-tier cascade
+(`resolve_wardrobe_instructions` — character vault, then group, then project,
+then Quilltap General; first non-blank file wins), and the per-container
+read/write helpers. Every quirk is carried: the General mount id is read
+unconditionally and first, the character tier is skipped on JS truthiness, the
+group and project tiers are deduped then sorted by UTF-16 code unit, a file that
+trims empty CONTINUES to the next tier, the write path trims and ensures the
+folder while the clear path deletes and ensures nothing, and only a NOT_FOUND
+delete failure is swallowed.
+
+`read_vault_text_file` gains a `_conn` sibling so the cascade probes up to four
+tiers inside one mount-index read.
+
+New differential `wardrobe_instructions_tier2_equivalence` drives v4's real
+resolver and helpers over a new committed `wardrobe-instructions-{main,mount}.db`
+fixture pair: 15 resolve/read cases and 8 ordered write ops with the five
+mount-index tables dumped after each. v4's own unit suite pins the probe ORDER
+through a mocked reader, which a real-DB oracle cannot see, so the
+dedupe-then-sort is made observable instead — two mounts in one tier both carry a
+file and the sort decides which content comes back. Six mutations proven to
+redden; a seventh (dropping the folder ensure) provably does not, because the
+write primitive find-or-creates folder segments itself — recorded at the source.
+
 #### 2026-08-25 — docs(porting): the `b220999d`-round work orders — four lanes over the five-commit drift
 
 _Docs-only change._

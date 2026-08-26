@@ -71,12 +71,24 @@ const OTHERS_FOLDER: &str = "Others";
 /// document's content off the mount-index partition, `None` on NOT_FOUND —
 /// and on any other failure too (v4 warns and returns null, never throws).
 pub fn read_vault_text_file(db: &Db, mount_point_id: &str, path: &str) -> Option<String> {
+    db.read_mount_index(|conn| Ok(read_vault_text_file_conn(conn, mount_point_id, path)))
+        .ok()
+        .flatten()
+}
+
+/// [`read_vault_text_file`] over a mount-index connection the caller already
+/// holds (the wardrobe-instructions cascade probes up to four tiers inside one
+/// read). Same contract: `None` on NOT_FOUND and on any other failure.
+pub fn read_vault_text_file_conn(
+    mount: &rusqlite::Connection,
+    mount_point_id: &str,
+    path: &str,
+) -> Option<String> {
     let rel = normalise_relative_path(path).ok()?;
-    db.read_mount_index(|conn| {
-        DocMountDocumentsRepository::new(conn).find_by_mount_point_and_path(mount_point_id, &rel)
-    })
-    .ok()
-    .flatten()
+    DocMountDocumentsRepository::new(mount)
+        .find_by_mount_point_and_path(mount_point_id, &rel)
+        .ok()
+        .flatten()
 }
 
 /// A subject of the OTHER pass, pre-resolution (v4's inline `Subject` type).

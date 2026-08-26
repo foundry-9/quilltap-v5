@@ -237,6 +237,7 @@ pub mod turn_order;
 pub mod turn_state;
 pub mod vault_overlay;
 pub mod wardrobe;
+pub mod wardrobe_instructions;
 pub mod wardrobe_tiers;
 pub mod wearable_pool;
 pub mod write_apply;

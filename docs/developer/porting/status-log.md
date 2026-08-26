@@ -9,6 +9,77 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D119 + P4.D120 (the `b86bb1a5` dressing instructions + the `d25dacc1` archive-instead-of-delete, server halves) — one stacked lane
+
+Ordered against round baseline **`8f910137`**. **Drift-ledger §2 freshness probe
+at lane start (2026-08-26):** PASS — v4 checkout on `main`, tree clean,
+`git log b220999da..main` empty, `git log 3a76b17df..bugfix` empty. §1's
+verdict (5 commits pending, PIN REQUIRED) stands; the lane never wrote the
+ledger.
+
+**Pin:** one lane-unique detached worktree at
+`/tmp/qt-v4-pin-p4d119-d25dacc1`, all three symlink classes, per drift-ledger
+§5.1. `d25dacc1` contains everything in `b86bb1a5` plus the archive feature, so
+one pin serves both stacked orders; spec reads for P4.D119 come from
+`git show b86bb1a5:<path>` / `git show b86bb1a5 -- <path>` so the two features'
+deltas stay attributable. Every regen ran through
+`recipe_sweep.py --v4 "$PIN"`.
+
+### P4.D119 unit 1 — the cascade module (`quilltap-core::wardrobe_instructions`)
+
+v4's whole `lib/wardrobe/wardrobe-instructions.ts` (129 lines) ported: the three
+constants + `is_wardrobe_instructions_file_name`, `resolve_wardrobe_instructions`,
+`read_wardrobe_instructions_file`, `write_wardrobe_instructions_file`. The
+constants live ONCE here and are `use`d by the projection, the reader and the
+Almanack — v5's five separate `WARDROBE_FOLDER` consts are NOT consolidated in
+this lane (out of scope, recorded).
+
+Quirks carried, each with its v4 why-comment: the General mount id read
+UNCONDITIONALLY and FIRST; the character tier skipped on JS truthiness (`''`
+like `null`); group/project deduped then sorted by UTF-16 code unit
+(`deterministic_mounts`); sequential probes; a file that TRIMS EMPTY continues
+to the next tier; trimmed content in the result; the write path trims,
+ensures the folder and writes a bare Markdown body (no frontmatter, no trailing
+newline); the clear path deletes, ensures nothing, and swallows ONLY NOT_FOUND.
+
+`services::memory_processor::read_vault_text_file` gained a `_conn` sibling (the
+`&Db` twin now delegates) so the cascade probes up to four tiers inside one
+mount-index read.
+
+**Differential — NEW `wardrobe_instructions_tier2_equivalence`** over a NEW
+committed `wardrobe-instructions-{main,mount}.db` pair
+(`build-wardrobe-instructions-fixture.ts`): Bertie (vault + one garment),
+Jeeves (vault link NULLed), Archie (`archivedAt` set), a group with Bertie as
+member, a project, Quilltap General, and six plain document stores whose pinned
+ids sort `sA < sB < sY < sZ` (plus `sN`/`sM`, never seeded, so the
+no-`Wardrobe/`-folder write arms are real). 15 resolve/read cases + 8 ordered
+write ops, the five mount-index tables dumped after every write op.
+
+⚠ v4's own 179-line unit suite asserts the PROBE ORDER through a mocked
+`readVaultTextFile`; a real-DB oracle cannot see that. The
+dedupe-then-code-unit-sort is made observable instead — two mounts in the SAME
+tier both carry a file and the sort decides which content comes back
+(`group_tier_deduped_and_sorted`, `project_tier_deduped_and_sorted`).
+
+**Mutation proof (v5 source, one side only).** Reddened: no `out.sort()` →
+`group_tier_deduped_and_sorted`; no trim in the cascade → 
+`blank_character_file_continues_to_group`; untrimmed write bytes →
+`write_trims_and_creates_the_file/doc_mount_files`; never probe General →
+`falls_through_to_general`; group-before-character probe order →
+`character_tier_wins_and_stops`; read helper without the trim →
+`read_returns_trimmed_content`. **SURVIVED, and that is a FACT, not a gap:**
+deleting the write path's `ensure_folder_path` leaves `doc_mount_folders`
+byte-identical, because `write_database_document` find-or-creates every folder
+segment itself (the same note `project_array_into_vault_folder` already
+carries). The ensure is kept — v4 calls it — and the redundancy is recorded at
+the source.
+
+v4's third write-helper unit arm (only NOT_FOUND is swallowed) has no reachable
+input over a real DB, so it is pinned the way this repo pins other unreachable
+catch arms: `a_non_not_found_delete_failure_is_not_swallowed` drops
+`doc_mount_file_links` on a scratch copy and asserts the failure reaches the
+caller.
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start
