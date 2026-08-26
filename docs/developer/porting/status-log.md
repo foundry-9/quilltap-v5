@@ -88195,3 +88195,80 @@ formatting jam, the components hold dead `ALL_TYPES`/`router` bindings, and tag
 cards render a hardcoded "Used 0 times"; (6)
 `/workspace?open=document&chatId=X` deep links are dead. Two of them are already
 standing v5 deferrals recorded in `search.logic.ts` (`?msg=` and `/photos?tag=`).
+
+### P4.D122 — lane gate (all green)
+
+Freshness probe re-run at the end of the lane: v4 still on `main`, tree still
+clean, `b220999da..main` and `3a76b17df..bugfix` both empty — the checkout did
+not move or dirty during the lane, so every regen here is honestly pinned.
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, **and** with
+  `--features quilltap-core/native-transport` (both exit 0).
+- `cargo test --workspace` with the lane's env block: **456 test binaries /
+  2,409 tests / 0 failed**, exit 0, **zero SKIP lines**. The delta reconciles
+  exactly against the `8f910137` round's 456 / 2,376: +33 tests, no new binary
+  (6 like-escape + 3 authority/ref-resolver + 11 repo scans + 13 engine). Both
+  of the lane's families are positively confirmed to have RUN
+  (`ui_search_matches_oracle`, `qtap_uri_matches_oracle`).
+- `ui_search_equivalence` **28/28** and `qtap_uri_equivalence` **1/0**, over
+  oracles regenerated FRESH from the lane's pinned `b220999d` worktree; the
+  fixture was rebuilt from scratch in the same batch (`rm -f` first, so a failed
+  build could not hide behind a stale file).
+- **Changed-bytes greps on the regenerated NDJSON** (a green regen is not
+  coverage): `"type":"documents"` ×11 rows, `document-standalone` ×11 rows, the
+  seeded file names present, the brass total measured at 67, and the all-types
+  case's `types` reading
+  `["characters","chats","messages","memories","documents","tags"]`.
+- SPA: `npm test` **348 files / 5,217 tests / 0 failed**; `npm run build` clean
+  (the qt-class guard runs ahead of the suite and passed).
+- Full Playwright: **246 passed / 0 failed / 1 skipped (22.0 m)**. The suite grew
+  245 → 247 with the lane's two beats, both green. The one skip is the
+  pre-existing P4.D112 wardrobe component-transfer store-probe park.
+
+**Regen recipes (both verbatim-runnable).**
+
+`ui_search_equivalence` — the fixture and the oracle travel together:
+
+```
+PIN=/tmp/qt-v4-pin-p4d122-b220999d      # per drift-ledger §5.1
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+TMPO=/tmp/qt-ui-search-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/ui-search.test.ts" "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/ui-search.json" "$TMPO/fixtures/"
+rm -f /tmp/qt-ui-search-fixture/main.db /tmp/qt-ui-search-fixture/mount.db \
+      /tmp/oracle-ui-search.ndjson
+cd "$PIN"
+QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
+QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
+  $N/node --import tsx "$V5W/harness/oracle/fixtures/build-ui-search-fixture.ts"
+QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
+QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
+QT_ORACLE_OUT=/tmp/oracle-ui-search.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "ui-search"
+cd "$V5W"
+QT_ORACLE_UI_SEARCH=/tmp/oracle-ui-search.ndjson \
+QT_FIXTURE_UI_SEARCH_MAIN=/tmp/qt-ui-search-fixture/main.db \
+QT_FIXTURE_UI_SEARCH_MOUNT=/tmp/qt-ui-search-fixture/mount.db \
+  cargo test -p quilltap-harness --test ui_search_equivalence -- --nocapture
+```
+
+`qtap_uri_equivalence` (unchanged recipe, run from the pin):
+
+```
+cd "$PIN"
+LOG_LEVEL=error $N/npx tsx "$V5W/harness/oracle/cases/qtap-uri.ts" \
+  > /tmp/oracle-qtap-uri.ndjson
+cd "$V5W"
+QT_ORACLE_QTAP_URI=/tmp/oracle-qtap-uri.ndjson \
+  cargo test -p quilltap-harness --test qtap_uri_equivalence
+```
+
+**Fixtures changed, and what that invalidates.** Only the /tmp-built ui-search
+pair (`build-ui-search-fixture.ts` + `ui-search.json`) — NOT committed, used by
+nothing else. `ui_search_equivalence` is its only consumer, and it is the one
+family whose oracle must be regenerated with it. No committed `.db` fixture was
+touched, and `doc_mount_points_tier2` is unaffected (the new mount-point read is
+purely additive — no shape moved).
