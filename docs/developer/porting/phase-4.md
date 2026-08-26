@@ -6091,39 +6091,67 @@ Round record: `status-log.md`; drift state: `drift-ledger.md` (baseline
 **Next candidates, in rough value order** (updated at the `b220999d`-round
 unification, 2026-08-26):
 
-1. **The owed 💸 dogfood queue** — gains this round's live surfaces: the
-   Dressing Instructions round trip on a real container (and the cascade
-   reaching a real "Let character choose" turn), an archived scenario
-   vanishing from the Salon picker and coming back suffixed, an archived
-   garment absent from the Green Room pool, the Documents chip over the
-   real Friday stores (name/content/vault arms + the standalone open), and
-   the character edit form's Archive/Restore on a real vault file.
-   Standing items carried: Pascal's other three write paths, the Brahma
-   deep-query budget, dedup/summaries (human), the NanoGPT caching smoke,
-   the #101 cache-read cost question.
-2. **The duplicate "Quilltap General" store collision** (P4.D122's e2e
+1. **The owed 💸 dogfood queue — RAN 2026-08-26** (41 rows, 37 PASS, finding
+   #105 found and fixed; walk doc
+   `dogfood-walks/2026-08-26-instructions-archive-search-pass.md`). Every
+   surface this round added is discharged — the Dressing Instructions round
+   trip and the cascade on a real "Let character choose" turn (character AND
+   project tiers), the archive walk at every scope, an archived garment absent
+   from the Green Room pool, the Documents chip over the real stores — as are
+   the carried `8f910137` items (the in-chat scenario picker, the gallery
+   download, the qt-* restyle, a real `docs --instance <TAB>`) and **two of
+   Pascal's three write paths** (chat + project). **What is still owed:**
+   Pascal's **group** tier — now precisely characterized, it needs a chat whose
+   participants resolve to exactly one group (`groupTier.status == "single"`),
+   which real Friday has none of because its two groups overlap on Charlie — and
+   the three human cost calls: the Brahma deep-query budget, dedup/summaries,
+   and the NanoGPT caching smoke / the #101 cache-read question.
+2. **`systemHome` — the landing dashboard — costs a steady 7.5 s on a real
+   instance** (dogfood 2026-08-26: 7.50 s and 7.70 s on back-to-back *warm*
+   dispatches against the Friday copy; 859 chats, 32 live characters, 8
+   projects, 45 vaults). Correct output, no panic, and **no v4 comparison was
+   run — so this is NOT filed as a divergence**; it is the app's front door
+   costing seven and a half seconds of server time, which deserves its own
+   look. Starting point from reading the handler (a hypothesis, not a profile —
+   nothing here was measured per-query): `services::home::get_home_data` loads
+   the world to render a handful of cards — `chats_read::find_by_user_id` (all
+   859), `ProjectsRepository::find_all()`, `characters_read::find_by_user_id`,
+   `FilesRepository::find_all()` — and the projects and characters reads both
+   take the **mount-index connection**, so each entity hydrates through the
+   document-store / vault overlay before the in-memory stats pass trims to 12
+   recent chats, 8 projects and a few characters. **First step for whoever
+   takes this: profile it** (per-repo timings around the four loads), then
+   decide whether the fix is v5-local (narrower projections, a batched overlay
+   read) or whether v4 pays the same cost and the answer is to leave it alone
+   and say so. ⚠ v4 composes the same `findAll` shape, so a "fix" that changes
+   what the dashboard *shows* would be a divergence — the target is the cost of
+   producing the same payload.
+3. **The duplicate "Quilltap General" store collision** (P4.D122's e2e
    find): the committed e2e fixture serves TWO enabled stores with the
    name; the suspected cause is `services/builtin_mounts.rs` (the
    ensure-or-adopt creating a second row after the boot repair has run) —
    needs its own small order; the beat derives its expected ref so it
-   stays green either way.
-3. **The present-but-null validation lead** (the §3 review's recorded
+   stays green either way. **Narrowed by the 2026-08-26 dogfood pass:** the
+   real instance has exactly ONE store by that name and **no duplicate store
+   names at all**, so this is a property of the committed fixture, not of
+   instances in the wild.
+4. **The present-but-null validation lead** (the §3 review's recorded
    class): the scenario bags' name/description/isDefault arms still
    tolerate explicit null where v4's Zod refuses — same class as the
    `archived` fix this round; needs its own measured corpus pass (and a
    sweep for other bag validators with the pattern).
-4. **Widen the committed `characters-*` e2e fixture with a Quilltap
+5. **Widen the committed `characters-*` e2e fixture with a Quilltap
    General store** (pre-existing; still parks the component-transfer beat
    and the "Shared — everywhere" create-scope beat).
-5. **The next wrong-type-collapse order**: `system_data_routes.rs`'s 13
+6. **The next wrong-type-collapse order**: `system_data_routes.rs`'s 13
    sites, then `files_routes.rs`'s 5 (P4.60's census).
-6. **`p4.9i2` — help/HelpChat as a dedicated round** (the bank grew ten
+7. **`p4.9i2` — help/HelpChat as a dedicated round** (the bank grew ten
    help-file rows this round: the three instructions files + the seven
    archive files, and `help/search.md`).
-7. The handler-logging sweep (P4.61's deferral; this round added the
+8. The handler-logging sweep (P4.61's deferral; this round added the
    group/project instructions handlers' info/debug lines and v4's
    unknown-action warn to its inventory).
-8. The v4-side filing candidates from this round: the startup-migration
+9. The v4-side filing candidates from this round: the startup-migration
    dedupe hole (one line), the three unconverted `scenarios[0]` sites, the
    unguarded scenario default-SET write path, and the `qt-icon`
    `[class.-rotate-90]` inert-transform wart at `terminal-embed.ts:53`.

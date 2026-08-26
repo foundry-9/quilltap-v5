@@ -587,6 +587,23 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **`systemHome` — the landing dashboard — costs a steady 7.5 s on a real
+  instance** (measured 2026-08-26 on the Friday copy: **7.50 s and 7.70 s** on
+  back-to-back *warm* dispatches; 859 chats, 32 live characters, 8 projects, 45
+  vaults). The first page load *felt* like ~30 s only because it also raced the
+  boot embedding backfill — the steady cost is the 7.5 s. **Deliberately NOT
+  filed as a finding:** the payload is correct, nothing panicked, and no v4
+  comparison was run, so there is no evidence of a divergence. It is recorded
+  because the app's front door taking seven and a half seconds of server time on
+  real data is worth someone's attention. Ordered as **phase-4.md candidate 2**,
+  which carries the starting point: `services::home::get_home_data` loads all
+  chats, all projects, all characters and all files — the projects and
+  characters reads both through the mount-index overlay — before trimming in
+  memory to 12 recent chats, 8 projects and a few characters. That is a
+  hypothesis from reading the handler, **not a profile**; profiling the four
+  loads is step one, and ⚠ v4 composes the same `findAll` shape, so the target
+  is the cost of producing the payload, never what the dashboard shows.
+
 - **The browser pane's `Cmd+Shift+R` does not reload the page** (measured
   2026-08-23). `performance.getEntriesByType('navigation')` still reports
   `"navigate"`, so the tab keeps its loaded chunks *and* its query cache. A

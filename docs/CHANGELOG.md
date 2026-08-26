@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): the systemHome dashboard cost, recorded as a candidate for a coding phase
+
+_Docs-only change._
+
+The 2026-08-26 dogfood pass measured `systemHome` — the one dispatch behind the
+landing dashboard — at a steady **7.50 s / 7.70 s** on back-to-back warm calls
+against the real Friday copy (859 chats, 32 live characters, 8 projects, 45
+vaults). Correct payload, no panic, and no v4 comparison was run, so it is
+explicitly not filed as a divergence.
+
+Recorded as **phase-4.md candidate 2** with a starting point read off the
+handler: `services::home::get_home_data` loads all chats, all projects, all
+characters and all files — projects and characters both through the mount-index
+overlay — before trimming in memory to 12 recent chats, 8 projects and a few
+characters. That is a hypothesis, not a profile; profiling the four loads is
+step one, and v4 composes the same `findAll` shape, so the target is the cost of
+producing the payload rather than what the dashboard shows. A pointer note also
+lands in `dogfood-findings.md`'s standing notes.
+
+Candidate 1 is marked RAN with what the pass discharged and what it left owed
+(Pascal's group tier, now characterized as needing a single-group chat, plus the
+three human cost calls), and candidate 3's duplicate-store collision is narrowed
+to the committed e2e fixture — the real instance has no duplicate store names at
+all.
+
 #### 2026-08-26 — docs(dogfood): the b220999d-round pass — 41 rows, 37 PASS, finding #105 fixed
 
 _Docs-only change._
