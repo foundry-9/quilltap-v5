@@ -608,6 +608,34 @@ async function main(): Promise<void> {
         ),
       readBack: { scope: 'general', file: 'mothballed.md' },
     },
+    {
+      // The explicit-null refusal (unify §3): `z.boolean().optional()` accepts
+      // an ABSENT key, never null — v4 answers 400 with Zod 4's own sentence
+      // through the route's ZodError catch, and WRITES NOTHING. Pre-fix v5
+      // silently preserved the stored flag and answered 200.
+      name: 'general_update_null_archived_refuses',
+      prep: () => seedScenario('general', 'mothballed.md', ARCHIVED_FILE),
+      run: () =>
+        generalItem('PUT', 'mothballed.md', {
+          name: 'Mothballed',
+          body: 'Never lands.',
+          archived: null,
+        }),
+      readBack: { scope: 'general', file: 'mothballed.md' },
+    },
+    {
+      // The wrong-type sibling: the arm's sentence must be Zod 4's
+      // (`…received string`), not an invented spelling.
+      name: 'general_update_string_archived_refuses',
+      prep: () => seedScenario('general', 'mothballed.md', ARCHIVED_FILE),
+      run: () =>
+        generalItem('PUT', 'mothballed.md', {
+          name: 'Mothballed',
+          body: 'Never lands.',
+          archived: 'yes',
+        }),
+      readBack: { scope: 'general', file: 'mothballed.md' },
+    },
 
     // --- General (aurora[default] + dusk[default] → the default-conflict) ---
     { name: 'general_list', run: () => generalCollection('GET') },

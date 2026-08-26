@@ -1008,6 +1008,46 @@ fn scenarios_routes_match_oracle() {
             &mut failed,
         );
     }
+    // ── The explicit-null / wrong-type `archived` refusals (unify §3): Zod's
+    // `.optional()` accepts an ABSENT key, never null — both answer v4's 400
+    // with Zod 4's own sentence and WRITE NOTHING (the bytes leg pins the
+    // pre-fix silent-keep, which answered 200 and preserved the stored flag).
+    {
+        let db = fresh_db(&spec, "gen_update_null_arch");
+        seed_scenario(&db, "general", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(scenarios::scenario_update(
+            &db,
+            "mothballed.md".into(),
+            json!({ "name": "Mothballed", "body": "Never lands.", "archived": null }),
+            false,
+        ));
+        err("general_update_null_archived_refuses", &resp, &mut failed);
+        bytes_match(
+            "general_update_null_archived_refuses",
+            &db,
+            "general",
+            "mothballed.md",
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "gen_update_str_arch");
+        seed_scenario(&db, "general", "mothballed.md", ARCHIVED_FILE);
+        let resp = rt.block_on(scenarios::scenario_update(
+            &db,
+            "mothballed.md".into(),
+            json!({ "name": "Mothballed", "body": "Never lands.", "archived": "yes" }),
+            false,
+        ));
+        err("general_update_string_archived_refuses", &resp, &mut failed);
+        bytes_match(
+            "general_update_string_archived_refuses",
+            &db,
+            "general",
+            "mothballed.md",
+            &mut failed,
+        );
+    }
 
     assert!(failed.is_empty(), "scenarios-routes FAILED: {failed:?}");
 }
