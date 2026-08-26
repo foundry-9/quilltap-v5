@@ -463,7 +463,17 @@ describe('NewChatState archived-scenario seeding (v4 d25dacc1 §B7)', () => {
   it('the CHARACTER default seed is deliberately UNGUARDED — an archived default auto-selects (v4-faithful; a guard here is a divergence, not a fix)', async () => {
     const aria = char('c1', 'Aria', {
       defaultScenarioId: 'sc-arch',
-      scenarios: [{ id: 'sc-arch', title: 'Mothballed', content: 'x', archived: true }],
+      // `archived` rides past the list DTO's narrower inline scenario shape —
+      // the wire DOES carry it (absent-when-false); the seed is what must
+      // ignore it, which is the whole point of this pin.
+      scenarios: [
+        {
+          id: 'sc-arch',
+          title: 'Mothballed',
+          content: 'x',
+          archived: true,
+        } as unknown as CharacterListItem['scenarios'][number],
+      ],
     });
     const { core } = recordingCore({ character: aria });
     const state = new NewChatState(core, { initialCharacterId: 'c1' });

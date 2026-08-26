@@ -332,16 +332,18 @@ describe('DocumentModeController external-open reconcile', () => {
     expect(ctrl.focusedDocId()).toBeNull();
   });
 
-  it('an event without a chatDocumentId reconciles but leaves the focus alone (v4 gates the focus, not the reconcile)', async () => {
+  it('an event without a chatDocumentId still reconciles; the gated focus step never overwrites with undefined', async () => {
     const { ctrl, api } = build();
-    api.openDocsResult = [record({ id: 'd8' })];
-    window.dispatchEvent(
-      new CustomEvent('quilltap:document-opened', { detail: { chatId: 'c1' } }),
-    );
+    api.openDocsResult = [record({ id: 'd8' }), record({ id: 'd9', filePath: 'b.md' })];
+    window.dispatchEvent(new CustomEvent('quilltap:document-opened', { detail: { chatId: 'c1' } }));
     await flush();
     expect(api.fetchOpenDocuments).toHaveBeenCalledTimes(1);
-    expect(ctrl.focusedDocId()).not.toBe('d8');
-    // The reconcile still ADDED the row; only the explicit focus is gated.
-    expect(ctrl.openDocs().map((e) => e.document.id)).toEqual(['d8']);
+    expect(ctrl.openDocs().map((e) => e.document.id)).toEqual(['d8', 'd9']);
+    // v4 gates the event's focus on `detail.chatDocumentId`; the focus is
+    // whatever the RECONCILE itself chose (its add path focuses — that part
+    // is the reconcile's own behavior, not the event's), never an undefined
+    // overwrite. Deleting the gate sets focus to undefined and reddens both.
+    expect(ctrl.focusedDocId()).not.toBeUndefined();
+    expect(['d8', 'd9']).toContain(ctrl.focusedDocId());
   });
 });
