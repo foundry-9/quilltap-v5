@@ -19,26 +19,25 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline:** `f6a10055d` — "feat(wardrobe): moving or copying an
-  outfit brings its components along" (v4 main, 2026-08-25), adopted at the
-  f6a10055-round unification (2026-08-25).
-- **Checked:** 2026-08-25, from a `/driftcheck`-seeding session.
-- **v4 `main` HEAD at check:** `8f9101370` — "fix(ci): the zsh completion
-  check no longer fails where zsh isn't installed".
+- **Oracle baseline:** `8f9101370` — "fix(ci): the zsh completion check no
+  longer fails where zsh isn't installed" (v4 main, 2026-08-25), adopted at
+  the `8f910137`-round unification (2026-08-25, the P4.D115–P4.D118 drift
+  catch-up).
+- **Checked:** 2026-08-25, at the `8f910137`-round unification.
+- **v4 `main` HEAD at check:** `8f9101370` — **equal to the baseline**.
 - **v4 `bugfix` tip at check:** `3a76b17df` — "bugfix: started 4.8.4 bug
   branch" (the fork marker; **no unabsorbed bugfix-side content** — measured
   by `git log main..bugfix --oneline -- lib/ app/ packages/`, which lists
   only pre-4.8.4 history already squashed onto main, plus the tests-only
   `009c49b26`).
-- **Checkout at check:** branch `main`, tree **clean** (the Aurora/Prospero
-  dirty headers CLAUDE.md flagged have since been committed as part of the
-  five commits below).
-- **Verdict: DRIFT PENDING — 5 commits on `main` past the baseline** (see
-  §3). Four intersect ported surfaces; one is a NO-PORT candidate.
-- **Regen rule in force:** v4 HEAD is past the baseline ⇒ **every oracle
-  regen and fixture build pins a detached worktree at `f6a10055d`** (recipe
-  in §5.1; `recipe_sweep.py --v4 <pin>` for sweep runs) until a catch-up
-  round moves the baseline.
+- **Checkout at check:** branch `main`, tree **clean**.
+- **Verdict: NO DRIFT — v4 HEAD equals the baseline.** The §3 table is
+  empty; the five previously-pending rows were absorbed/ratified this round
+  (§6).
+- **Regen rule in force: pin-free.** The checkout at `main` HEAD IS the
+  baseline, so oracles may regenerate straight from the checkout — until v4
+  moves or the tree dirties, at which point every regen pins a detached
+  worktree at `8f9101370` (recipe in §5.1; `recipe_sweep.py --v4 <pin>`).
 
 ## §2 The freshness probe
 
@@ -77,11 +76,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `44a8137e9` | 2026-08-25 | feat(salon): the scene can be changed without leaving the conversation | PORT-NEW | New verb surface on ported ground: `app/api/v1/chats/[id]/actions/scenario.ts` + schemas (v5's chat dispatch + routes families), a large `NewChatForm.tsx`/`new-chat/types.ts` refactor extracting `ScenarioSelect` (the ported New-Chat vertical — P4.D44's template picker lives there), `ChatSidebar`/`SalonView` riders (ported Salon SPA), `ChatScenarioControl.tsx` new. `help/` changes → the `p4.9i2` bank. | ORDERED(p4.d115 server ∥ p4.d116 SPA) |
-| `8018c487a` | 2026-08-25 | fix(images): a character's photo gallery can download a picture again (bug 99) | PORT | Client-only. The embedded-gallery download + `ImageDetailModal` portal fix. Direct intersection with P4.D114's four download surfaces and the tabbed-workspace stacking context (v5's workspace also isolates panes — the bug's mechanism note says any such shell inherits it, so v5 likely HAS this bug; measure, don't assume). | ORDERED(p4.d117) |
-| `6afacb187` | 2026-08-25 | fix(cli): shell completion survives flags on the line (bug 101) | PORT | `packages/quilltap/lib/completion/{bash,fish,zsh}.template` rewritten wholesale — v5 byte-copied these at P4.D68/P4.D97 (Tier R). New `completion-behavior.test.js` drives bash for real. | ORDERED(p4.d118) |
-| `309aaa97a` | 2026-08-25 | fix(themes): hover and opacity qt-* classes actually style something (bugs 100, 102) | PORT | `_utilities.css` +490 lines (missing opacity steps, STATE VARIANTS section, `qt-text-on-*` family) + ~24 component call-site class rewrites across ported SPA surfaces + the new `scripts/check-qt-classes.mjs` lint guard. v5 ported the qt-* utility sheet at P4.D34 and likely inherits the inert names (bug 100/102's own notes say so — CONFIRMED at P4.D117 planning: 20+ v5 template files carry `hover:qt-*`/`qt-text-on-*` names the sheet never defines). | ORDERED(p4.d117) |
-| `8f9101370` | 2026-08-25 | fix(ci): the zsh completion check no longer fails where zsh isn't installed | NO-PORT? | `.github/workflows/ci.yml` + a tests-only tweak to `completion-behavior.test.js`. v5 has no zsh CI check. Ratify at absorption. | ORDERED(p4.d118 gathers the evidence; `/unify` ratifies) |
+| _(empty — no drift past the `8f9101370` baseline as of the 2026-08-25 unification check)_ | | | | | |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -238,6 +233,14 @@ don't silently swap it in.
 Absorbed drift blocks get one line each here when `/unify` moves the
 baseline; the full story lives in the round record in `status-log.md`.
 
-- (none yet — this ledger was seeded 2026-08-25 with the baseline at
-  `f6a10055d`. Drift older than that baseline is recorded in CLAUDE.md's
-  round bullets and `claude-md-status-history.md`.)
+- **`8f910137`-round (2026-08-25, baseline `f6a10055d` → `8f9101370`):**
+  `44a8137e9` ABSORBED(p4.d115 ∥ p4.d116 — the scenario-change feature whole),
+  `8018c487a` ABSORBED(p4.d117 — bug 99, measured-then-ported),
+  `309aaa97a` ABSORBED(p4.d117 — bugs 100/102 + the check-qt-classes guard),
+  `6afacb187` ABSORBED(p4.d118 — bug 101, Tier R red-first),
+  `8f9101370` NO-PORT-RATIFIED(p4.d118 — CI + tests-only; the +18 test lines
+  absorbed by `completion_behavior.rs`). Round record: `status-log.md` →
+  "The `8f910137` drift catch-up round".
+- (This ledger was seeded 2026-08-25 with the baseline at `f6a10055d`. Drift
+  older than that baseline is recorded in CLAUDE.md's round bullets and
+  `claude-md-status-history.md`.)

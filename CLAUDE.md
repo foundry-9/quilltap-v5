@@ -2068,20 +2068,63 @@ records THERE. Update this summary only when a phase or round completes.
   was never affected (its SDK throws that message), so there is nothing to
   file upstream; a sixth test pins the message through
   `is_image_moderation_error` with the pre-fix sentence as counter-example.
-- **Oracle baseline: `f6a10055` (2026-08-25, v4 main — "feat(wardrobe):
-  moving or copying an outfit brings its components along"), adopted at
-  the f6a10055-round unification (2026-08-25).** **Drift state, the
+- **The `8f910137` drift catch-up round (P4.D115 ∥ P4.D116 ∥ P4.D117 ∥
+  P4.D118): UNIFIED on main (2026-08-25) — ALL FOUR CLOSED; the oracle
+  baseline MOVES to `8f910137` and the drift debt is CLEARED.** v4's five
+  commits past `f6a10055` absorbed whole. The scenario-change feature
+  end-to-end (the extracted `scenario_selection` resolver — a latent v5
+  JS-truthiness divergence closed, empty pointers now fall through as v4's
+  falsy test does, pinned by table-less-connection unit tests; the
+  `chatSetScenario` verb with the MEASURED composite guard order [404
+  beats 400 — the route layer gates before the handler], the chat-GET
+  `scenarioText` projection, the Host revision announcement byte-exact +
+  the cross-module `HOST_LINK_KINDS` pin, the transcript carry; the 50-case
+  `chat_scenario_routes_equivalence` family over the NEW committed
+  `chat-scenario-{main,mount}.db` fixture; SPA: the shared ScenarioSelect
+  [the controlled-select `afterRenderEffect` idiom; the character tier's
+  dropped ` — description` suffix restored — a pre-existing v5 divergence],
+  the in-chat control in v4's slot, the raw-`controlledBy` cast read RULED
+  an ownership read, and the `salon-scenario-flow` walk ACTIVATED at
+  unification, green first run) ∥ bugs 100/102 (the census REFUTED the
+  order's floor upward: **69 inert qt-* names over 364 call sites**; the
+  sheet took v4's 490-line diff with zero fuzz, 37 files swept, and the
+  `check-qt-classes` guard now runs in `npm run lint` AND ahead of
+  `npm test` — component selectors subtracted mechanically, the cross-lane
+  tripwire discharged at unification, 934 classes with every reference
+  resolving) ∥ bug 99 measured-then-ported (the gallery tab had NO download
+  control; v5 measurably HAD the stacking trap — the beat ran RED first,
+  `elementFromPoint` returning the toolbar's queue badges; the fix is the
+  body-reparent idiom moved to `afterNextRender`, a constructor reparent
+  being silently undone under `@if`) ∥ bug 101 (templates byte-copied,
+  Tier R red-first exactly the three completion cases → 188/0, the
+  bash-driving `completion_behavior` guard red-proven against the pre-fix
+  templates — v5 measurably HAD the bash half). `8f910137` itself
+  NO-PORT-RATIFIED (CI + tests-only; its +18 test lines absorbed by the
+  guard). **The §3 review caught one log-only fidelity gap, fixed at
+  unification:** `source_label` used `is_some()` where v4's cascade uses JS
+  truthiness (the audit shape: every `is_some()` transcribing a JS
+  `x ? …` over a string). Gate: 456 test binaries / 2,376 / 0 with the
+  round's env block, both families confirmed RUN; oracles fresh at the new
+  baseline with changed-bytes greps matching the lane records; Tier R
+  188/0; clippy both feature sets; release build; ng 347 files / 5,196;
+  full Playwright green (numbers in the round record). Versions: core
+  0.0.665, harness 0.0.577, cli 0.0.12, SPA 0.5.566. 💸 the dogfood queue
+  gains the in-chat scenario picker, the gallery download, the restyled
+  qt-* surfaces, and a real `docs --instance <TAB>` completion. Round
+  record: `status-log.md`.
+- **Oracle baseline: `8f910137` (2026-08-25, v4 main — "fix(ci): the zsh
+  completion check no longer fails where zsh isn't installed"), adopted at
+  the 8f910137-round unification (2026-08-25).** **Drift state, the
   drift-check method, and the pinned-worktree regen recipe now live in
   `docs/developer/porting/drift-ledger.md`** — maintained by
   `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
-  drift, and lanes never write it. As of the ledger's 2026-08-25
-  seeding: v4 main is FIVE commits past the baseline (four on ported
-  surfaces, one NO-PORT candidate — the catch-up is the top next
-  candidate), the checkout is clean on `main`, bugfix has no unabsorbed
-  content, and the regen rule is **pin-required** (a lane-unique
-  detached worktree at `f6a10055` for every regen until a catch-up
-  round moves the baseline — recipe in the ledger's §5.1). The sweep
+  drift, and lanes never write it. As of the 8f910137-round unification
+  check (2026-08-25): v4 main HEAD EQUALS the baseline, the checkout is
+  clean on `main`, bugfix has no unabsorbed content, and the regen rule
+  is **pin-free** (regen straight from the checkout until v4 moves or
+  the tree dirties — then pin a lane-unique detached worktree at
+  `8f910137`, recipe in the ledger's §5.1). The sweep
   driver remains the sanctioned per-family regen path —
   never run two sweeps concurrently; since P4.53 it refuses empty-stage
   families by name and `--self-test` guards recipe headers against

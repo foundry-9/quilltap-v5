@@ -87132,3 +87132,128 @@ harness version does not move for this lane.
   macOS), so no arm went unexercised.
 
 No SPA gate: the lane touches no `apps/web` file.
+
+---
+
+## The `8f910137` drift catch-up round (P4.D115 ∥ P4.D116 ∥ P4.D117 ∥ P4.D118) — UNIFIED (2026-08-25)
+
+**All four orders CLOSED; the oracle baseline MOVES `f6a10055` → `8f910137`
+and the drift debt is CLEARED** (the five pending ledger rows absorbed/
+ratified — `drift-ledger.md` §6). Branch `unify/8f910137-round`,
+cherry-picked in dependency order (D115 server → D116 SPA → D117 → D118);
+the only conflicts were the SPA version file (accumulated by recount:
+0.5.556 + 5 + 3 = 0.5.564, + the wire commit → 0.5.565) and the union-merged
+append-only docs. No source-level conflict — Ownership held; the only
+cross-lane file overlap was `apps/web/package.json` + the two append-only
+docs.
+
+### The §3 unification review (the whole combined diff, read against v4)
+
+**One finding, FIXED on the unify branch (`04d1696e`):** `source_label` — the
+`source` field of the scenario verb's `Scenario changed` info log — tested
+`is_some()` where v4's ternary cascade tests JS truthiness, so an
+empty-string path (which `z.string().max(500).nullish()` admits) would have
+claimed its tier's label where v4 logs `custom`. Log-only — no differential
+can see the field — pinned by `source_label_treats_empty_strings_as_falsy`.
+The shape to remember: **audit every `is_some()` that transcribes a JS
+`x ? …` over a string.**
+
+**Recorded, not fixed:** the verb's recompile failure warns through the
+shared `compile_all_stacks_best_effort`, whose one generic sentence
+(`[Chats v1] Failed to recompile identity stacks`) replaces v4's
+site-specific "…after scenario change" suffix — added to the
+handler-logging sweep inventory (phase-4.md candidate 5). And a
+review-process note: the reviewer's first "fixture path discrepancy" flag
+was a misreading of a `--stat`-elided path — the committed
+`chat-scenario-*.db` pair lives in `crates/quilltap-web/tests/fixtures/`
+exactly as the lane record says; verify with `--name-only` before calling a
+lane record wrong.
+
+**Fidelity spot-proofs run at unification** (beyond the lanes' own):
+the three completion templates byte-identical to
+`git show 6afacb18:packages/quilltap/lib/completion/*`; the expanded
+`_utilities.css` diffs against v4's post-`309aaa97` sheet with only the
+three known comment blocks differing (two pre-existing convergence notes +
+the new guard header); the gallery download button's class string is v4
+HEAD's post-`309aaa97` bytes (`hover:qt-text-on-primary`); the
+scenario-revision strings byte-exact; the resolver read line-by-line against
+`lib/chat/scenario-selection.ts` (the truthiness model, the five warn
+payloads, the post-extraction `character?.id ?? null` payload shape all
+verified).
+
+### The unification wires (`55152c25`)
+
+- **The `PENDING_CROSS_LANE_SITES` hand-off discharged:** P4.D117's
+  `qt-text-tertiary` → `qt-text-secondary` rewrite applied in P4.D116's
+  three named files (`green-room-dialog.ts` ×3, `outfit-slots-preview.ts`,
+  `outfit-slots-preview.spec.ts`), the tripwire block deleted, and the guard
+  run over the UNION of both SPA lanes' files: **934 qt-* classes defined,
+  every guarded reference resolves** — P4.D116's new scenario components
+  introduced no inert names.
+- **The gated walk activated — and its FIRST live run caught three gesture
+  defects** (the playbook's "write the beat a lane skipped" warning firing
+  exactly as written; its lane could never run it): `waitForHealth` accepted
+  only `res.ok` where a fresh fixture server boots LOCKED and answers 423
+  (sibling own-server specs' spelling adopted + a server-side `unlock`
+  dispatch before the API seeding), the seeding sent the RESPONSE tag
+  (`chats`) as a request verb (`listChats` is the verb — the error envelope's
+  object `data` made `.find` throw), and the revision-body assertion's
+  unscoped `getByText` matched both the Host bubble and the picker's preset
+  preview (now scoped to the transcript). All three fixed spec-side with no
+  product assertion weakened (`test(salon): the scenario walk's first live
+  run`); the walk then passed WHOLE — seeded scene → picker opens on it →
+  preset change → revision bubble → reload opens on the PRESET → no-op →
+  clear → the cleared sentence. **No product defect: the server verb, the
+  projection, and both announcement arms behaved exactly as the
+  differentials said they would.**
+- **The §Shared contract diffed name-for-name:** the SPA's
+  `ChatSetScenarioRequest` fields match the Rust variant's camelCase wire
+  spellings exactly, and the differential itself decodes the literal
+  `{"type":"chatSetScenario", …}` wire shape through the `Request` enum — the
+  contract is pinned by a test, not a reading.
+
+### The unified gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets; `cargo build --release` clean.
+- Oracles regenerated FRESH from the v4 checkout at `8f910137` (= the new
+  baseline; verified equal to each lane's pin on the ported surfaces —
+  `git diff 44a8137e 8f910137 -- lib/ app/api/` and
+  `git diff 6afacb18 8f910137 -- packages/quilltap/lib/completion/` both
+  empty): `chat-scenario` 50 rows, `chat-create-capstone` 19 rows;
+  changed-bytes greps on the fresh NDJSON match the lane record exactly
+  (`The Host revises the scene` ×14, `Scenario unchanged` ×3,
+  `scenario-change` ×18, `draws the previous scene aside` ×6).
+- The differentials by name, zero SKIP: `chat_scenario_routes_equivalence`
+  3/0 (50 cases), `chat_create_capstone_equivalence` 1/0 (the refactor's
+  neutrality), Tier R `cli_differential` **188 cases / 0 failures** against
+  v4's REAL launcher (295 s), `completion_behavior` 4/0 (both shells
+  answered — no skip).
+- `cargo test --workspace` with the round's env block: **456 test binaries /
+  2,376 tests / 0 failed**, exit 0; both round families positively confirmed
+  to have RUN inside the workspace run. The binary/test delta reconciles
+  exactly: 454 + D115's `chat_scenario_routes_equivalence` + D118's
+  `completion_behavior`; 2,361 + 10 (D115) + 4 (D118) + 1 (the §3 pin).
+- SPA: `npm test` **347 files / 5,196 tests / 0 failed** (the guard runs
+  ahead of the suite and passed); `npm run build` clean.
+- Full Playwright: **244 passed / 0 failed / 1 skipped (6.0 m)** — the one
+  skip is the pre-existing `wardrobe-flow` component-transfer store-probe
+  park (P4.D112's recorded row; phase-4.md candidate 2). The suite grew
+  242 → 245 with the round's three beats (the scenario walk + P4.D117's
+  two), and the first full run's only red was the scenario walk's own
+  gesture defects, repaired above and re-run green.
+
+### Versions at unification
+
+core 0.0.665, harness 0.0.577, cli 0.0.12, SPA 0.5.566;
+host/web/tauri/fixture-sanitizer/sqlite3mc-sys unchanged.
+
+### Standing after the round
+
+The 💸 dogfood queue gains the in-chat scenario picker, the gallery
+download + detail-modal controls, the restyled qt-* surfaces (69 names /
+364 sites formerly inert), and a real `docs --instance <TAB>` completion —
+the owed pass is phase-4.md candidate 1. The port-4319 collision the orders
+warned about actually fired in P4.D117 (Playwright global setup silently
+runs against a sibling lane's server — the lane record carries the tell);
+banked into the round memory note.

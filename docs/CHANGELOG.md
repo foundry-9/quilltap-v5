@@ -48,13 +48,14 @@ by name zero SKIP (`chat_scenario_routes_equivalence` 50 cases, the capstone
 neutrality, Tier R 188/0 vs v4's real launcher, `completion_behavior` 4/0);
 `cargo test --workspace` 456 binaries / 2,376 / 0 with the delta reconciled
 exactly; SPA 347 files / 5,196 / 0 with the qt-class guard green over the
-union (934 classes); `npm run build` clean; full Playwright
-PLAYWRIGHT_NUMBERS_PLACEHOLDER.
+union (934 classes); `npm run build` clean; full Playwright 244 passed / 0 failed / 1 skipped
+(the pre-existing wardrobe store-probe park; the suite grew 242 → 245 with
+the round's three beats).
 
 The §3 review caught one log-only fidelity gap (fixed, see the entry below);
 the wires applied the cross-lane qt rewrite, activated the walk, and diffed
 the shared contract name-for-name. Final versions: core 0.0.665, harness
-0.0.577, cli 0.0.12, SPA 0.5.565.
+0.0.577, cli 0.0.12, SPA 0.5.566.
 
 #### 2026-08-25 — fix(chat): the scenario verb's `source` log label follows JS truthiness
 

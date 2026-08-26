@@ -5993,3 +5993,50 @@ alongside it); pin `f6a10055` for every regen until it lands, and
 re-survey bug 99 against P4.D114's surfaces at planning — v5 may or may
 not share it, since v5's photo galleries got their download buttons from
 `af1bc479`'s port, not v4's older gallery code.
+
+**The `8f910137` drift catch-up round (P4.D115 ∥ P4.D116 ∥ P4.D117 ∥
+P4.D118): UNIFIED on main (2026-08-25) — ALL FOUR CLOSED; the oracle
+baseline MOVES to `8f910137` and the drift debt is CLEARED.** The
+scenario-change feature end-to-end (the extracted resolver + the
+`chatSetScenario` verb + the GET projection + the Host revision writer +
+the transcript carry server-side; the shared ScenarioSelect + the in-chat
+control + the activated `salon-scenario-flow` walk client-side), the
+client-fixes pair (bugs 100/102 — the qt-* sheet made real over a
+69-name/364-site census, the 37-file sweep, and the `check-qt-classes`
+guard now wired into `npm run lint` and ahead of `npm test`; bug 99 —
+the gallery download and the modal's body-reparent out of the workspace
+stacking trap, measured red-first), and bug 101's completion templates
+(byte-copied, Tier R red-first 188/0, plus the bash-driving
+`completion_behavior` guard). `8f910137` NO-PORT-RATIFIED (CI +
+tests-only). Round record: `status-log.md` → "The `8f910137` drift
+catch-up round"; drift state: `drift-ledger.md` (baseline `8f910137`,
+regen rule pin-free while HEAD sits at the baseline and the checkout is
+clean).
+
+**Next candidates, in rough value order** (updated at the
+`8f910137`-round unification, 2026-08-25):
+
+1. **The owed 💸 dogfood queue** — gains this round's live surfaces: the
+   in-chat scenario picker on real Friday data (seed → preset → revision
+   bubble → no-op → clear), the gallery download + detail-modal controls
+   on a real character gallery, the restyled qt-* surfaces at a glance
+   (the 364 formerly-inert sites now style), and a real
+   `quilltap docs --instance Friday <TAB>` completion. Standing items
+   carried: Pascal's other three write paths (recipe in the 2026-08-25
+   walk doc), the Brahma deep-query budget, dedup/summaries (human), the
+   NanoGPT caching smoke, and the #101 cache-read cost question.
+2. **Widen the committed `characters-*` e2e fixture with a Quilltap
+   General store** so the armed component-transfer beat and the
+   container-browser write half stop self-parking (pre-existing; also
+   blocks the "Shared — everywhere" create-scope beat).
+3. **The next wrong-type-collapse order**: `system_data_routes.rs`'s 13
+   sites, then `files_routes.rs`'s 5 (P4.60's census).
+4. **`p4.9i2` — help/HelpChat as a dedicated round** (the bank grew
+   this round: the three scenario help rewrites + the gallery-download
+   bullet).
+5. The handler-logging sweep (P4.61's deferral; this round added the
+   scenario handler's shared-helper recompile warn — v5 logs the generic
+   `[Chats v1] Failed to recompile identity stacks` where v4's site says
+   "…after scenario change" — to its inventory).
+
+PB1 stays parked by the standing rule.
