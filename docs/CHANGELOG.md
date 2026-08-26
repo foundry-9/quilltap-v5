@@ -358,6 +358,29 @@ inside the helper, then wraps `%…%`). Callers pair it with
 
 v4's five unit cases ported one for one, plus a sixth pinning the escape set as
 exactly those three characters.
+#### 2026-08-26 — test(e2e): three gated beats for the archive walk and the dressing-instructions round trip
+
+_Versions: SPA 0.5.572._
+
+`salon-scenario-flow` gains the archive walk: archive a project scenario in the
+ScenariosManager → it is gone from the Salon picker (the FETCH, not a filter, is
+what hides it) → "Show archived" reveals it suffixed `(archived)` and still
+selectable → restore it in the manager, where the archived row is badged and its
+default radio disabled.
+
+`wardrobe-flow` gains two: archive a garment from the kebab → it vanishes because
+the fetch omitted it → the checkbox reveals it badged → "Restore from archive"
+brings it back; and the dressing-instructions round trip (collapsed with
+`None on file` → expand, type, save → `On file` → reopen the dialog and the file
+came back from the server → a blank save clears it).
+
+All three are authored GATED (ACTIVATE-AT-UNIFY by named constant):
+`P4D120_SERVER_LANDED` for the archive write + `includeArchived` read, and
+`P4D119_INSTRUCTIONS_LANDED` for the eight instructions verbs. Until those land a
+dispatch verb silently ignores the unknown field, so an ungated beat would fail
+for a reason that says nothing about this lane. The suite lists 248 tests in 66
+files with all three registered.
+
 #### 2026-08-26 — feat(wardrobe): the Dressing Instructions section, and archive/restore with server-side hiding
 
 _Versions: SPA 0.5.571._

@@ -35,6 +35,16 @@ import {
  */
 const P4D115_SERVER_LANDED = true;
 
+/**
+ * P4.D121's archive walk needs the sibling server lane's `archived` write
+ * (`projectScenarioUpdate`) and `includeArchived` read (`projectScenarioList`)
+ * — P4.D120. Until those are on the branch a dispatch verb silently IGNORES the
+ * unknown field (memory: `dispatch-verb-ignores-unknown-fields`), so every
+ * archive would answer 200 with nothing written and the reds would say nothing
+ * about THIS lane. ACTIVATE-AT-UNIFY: the unifier flips this to `true`.
+ */
+const P4D120_SERVER_LANDED = false;
+
 const SCENE_PORT = 4330;
 const SCENE_BASE_URL = `http://127.0.0.1:${SCENE_PORT}`;
 const SCENE_INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'scenario-instance');
@@ -229,7 +239,130 @@ test.describe('P4.D116 — the in-chat scenario picker', () => {
     await scenarioChips(page).last().click();
     await expect(page.getByText(CLEARED_SENTENCE)).toBeVisible({ timeout: 10_000 });
   });
+
+  /**
+   * P4.D121 — the archive walk across the manager and the in-chat picker (v4
+   * `d25dacc1`).
+   *
+   * Archive a project scenario in the ScenariosManager → it is gone from the
+   * Salon picker (the fetch, not a filter, is what hides it) → "Show archived"
+   * reveals it, suffixed "(archived)" and still selectable → restore it in the
+   * manager and it comes back unsuffixed.
+   */
+  test('archiving a scenario hides it from the picker until Show archived reveals it (ACTIVATE-AT-UNIFY, lane P4.D120)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D120_SERVER_LANDED,
+      'awaits P4.D120’s `archived` write + `includeArchived` read (wired at unification)',
+    );
+    test.setTimeout(120_000);
+    const ctx = page.request;
+    await dispatch(ctx, { type: 'unlock', passphrase: E2E_PASSPHRASE });
+
+    const created = await dispatch(ctx, {
+      type: 'projectCreate',
+      project: { name: 'The Archive Shop' },
+    });
+    const projectId = (created.data?.['project'] as { id: string }).id;
+    const chats = await dispatch(ctx, { type: 'listChats' });
+    const chatId = ((chats.data as unknown as { id: string; title: string }[]) ?? []).find(
+      (c) => c.title === 'Solo Voyage',
+    )!.id;
+    await dispatch(ctx, { type: 'chatUpdate', chatId, chat: { projectId } });
+    await dispatch(ctx, {
+      type: 'projectScenarioCreate',
+      projectId,
+      scenario: { filename: 'attic.md', name: ARCHIVE_SCENARIO, body: 'A dusty attic.' },
+    });
+
+    // --- Archive it in the manager (the client half under test).
+    await page.goto(`${SCENE_BASE_URL}/prospero/${projectId}`);
+    await unlockOnProjectPage(page);
+    const card = page.locator('qt-project-scenarios-card');
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    const newButton = card.getByRole('button', { name: '+ New scenario' });
+    if (!(await newButton.isVisible().catch(() => false))) {
+      await card.getByRole('button', { name: /^Scenarios \(/ }).click();
+      await expect(newButton).toBeVisible({ timeout: 10_000 });
+    }
+    const row = card.locator('qt-scenario-row', { hasText: ARCHIVE_SCENARIO });
+    await expect(row).toBeVisible({ timeout: 10_000 });
+    await rowAction(row, 'Archive');
+    // Default hidden: the manager re-fetched WITHOUT the flag, so the row is gone.
+    await expect(card.locator('qt-scenario-row', { hasText: ARCHIVE_SCENARIO })).toHaveCount(0, {
+      timeout: 10_000,
+    });
+
+    // --- Gone from the in-chat picker, revealed (suffixed) by the checkbox.
+    await page.goto(`${SCENE_BASE_URL}/salon/${chatId}`);
+    await unlockIfLocked(page);
+    await openChatDrawer(page);
+    const control = page.locator('qt-chat-scenario-control');
+    await expect(control).toBeVisible({ timeout: 15_000 });
+    const picker = control.locator('select');
+    await expect(picker).toBeVisible({ timeout: 15_000 });
+    await expect(picker.locator('option', { hasText: ARCHIVE_SCENARIO })).toHaveCount(0);
+
+    await control.getByRole('checkbox').check();
+    await expect(
+      picker.locator('option', { hasText: `${ARCHIVE_SCENARIO} (archived)` }),
+    ).toHaveCount(1, { timeout: 10_000 });
+    // Archiving hides; it does not forbid — the option is selectable.
+    await picker.selectOption({ label: `${ARCHIVE_SCENARIO} (archived)` });
+    await expect(picker).toHaveValue(/^project:/);
+
+    // --- Restore it in the manager: it comes back unsuffixed.
+    await page.goto(`${SCENE_BASE_URL}/prospero/${projectId}`);
+    await unlockOnProjectPage(page);
+    const card2 = page.locator('qt-project-scenarios-card');
+    const newButton2 = card2.getByRole('button', { name: '+ New scenario' });
+    if (!(await newButton2.isVisible().catch(() => false))) {
+      await card2.getByRole('button', { name: /^Scenarios \(/ }).click();
+      await expect(newButton2).toBeVisible({ timeout: 10_000 });
+    }
+    await card2.getByRole('checkbox', { name: '' }).first().check();
+    const archivedRow = card2.locator('qt-scenario-row', { hasText: ARCHIVE_SCENARIO });
+    await expect(archivedRow).toBeVisible({ timeout: 10_000 });
+    await expect(archivedRow).toContainText('Archived');
+    // The default radio is disabled while archived — it can never win.
+    await expect(archivedRow.locator('input[type="radio"]')).toBeDisabled();
+    await rowAction(archivedRow, 'Restore');
+    await expect(
+      card2.locator('qt-scenario-row', { hasText: ARCHIVE_SCENARIO }),
+    ).not.toContainText('Archived', { timeout: 10_000 });
+  });
 });
+
+/** The scenario this lane's archive walk creates, archives, and restores. */
+const ARCHIVE_SCENARIO = 'The Attic';
+
+/**
+ * Click a row action whichever layout the row is in: the row is
+ * container-query adaptive, so inside the dense project card it renders the
+ * narrow `⋮` kebab instead of inline buttons.
+ */
+async function rowAction(row: ReturnType<Page['locator']>, name: string): Promise<void> {
+  const inline = row.getByRole('button', { name, exact: true });
+  if (await inline.isVisible().catch(() => false)) {
+    await inline.click();
+    return;
+  }
+  await row.getByRole('button', { name: /^More actions for / }).click();
+  await row.getByRole('menuitem', { name, exact: true }).click();
+}
+
+/** The project page has no chat transcript, so it needs its own unlock gate. */
+async function unlockOnProjectPage(page: Page): Promise<void> {
+  const passphrase = page.locator('#qt-passphrase');
+  const card = page.locator('qt-project-scenarios-card');
+  await expect(passphrase.or(card).first()).toBeVisible({ timeout: 15_000 });
+  if (await passphrase.count()) {
+    await passphrase.fill(E2E_PASSPHRASE);
+    await page.getByRole('button', { name: 'Unlock' }).click();
+  }
+  await expect(card).toBeVisible({ timeout: 15_000 });
+}
 
 /** The collapsed Host chips this walk creates, by their kind label. */
 function scenarioChips(page: Page) {

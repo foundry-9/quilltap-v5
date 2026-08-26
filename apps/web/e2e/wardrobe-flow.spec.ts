@@ -46,6 +46,12 @@ import {
  */
 const SEEDED_ACCESSORY = 'Aether Scarf';
 
+/** The garment P4.D121's archive beat creates, archives, and restores. */
+const ARCHIVE_GARMENT = 'Retired Cloak';
+
+/** The second-person guidance P4.D121's instructions beat writes and clears. */
+const DRESSING_TEXT = 'You favour practical tweeds, and save the frock coat for an audience.';
+
 /**
  * ACTIVATE-AT-UNIFY (P4.D88 → P4.D87). The hair beat round-trips a `types:
  * ['hair']` item through the server, which only accepts the fifth slot once the
@@ -68,6 +74,24 @@ const P4D87_HAIR_SLOT_LANDED = true;
 // follow-up; the component-travel semantics are tier-2-proven in
 // `wardrobe_transfers_tier2_equivalence` meanwhile).
 const P4D112_TRANSFER_COMPONENTS_LANDED = true;
+
+/**
+ * ACTIVATE-AT-UNIFY (P4.D121 → P4.D120). The archive beat writes
+ * `{ archived: true }` through `characterWardrobeUpdate` and re-reads with
+ * `includeArchived`; until the sibling server lane is on the branch a dispatch
+ * verb silently IGNORES both unknown fields (memory:
+ * `dispatch-verb-ignores-unknown-fields`), so the beat would fail for a reason
+ * that says nothing about this lane. Flip to `true` at unification.
+ */
+const P4D120_SERVER_LANDED = false;
+
+/**
+ * ACTIVATE-AT-UNIFY (P4.D121 → P4.D119). The dressing-instructions round trip
+ * needs the eight `*WardrobeInstructions{Get,Set}` verbs. Until they exist the
+ * dispatch answers `unknown variant` and the section reads "None on file"
+ * forever. Flip to `true` at unification.
+ */
+const P4D119_INSTRUCTIONS_LANDED = false;
 
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;
@@ -253,6 +277,114 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
    * run. It is covered at component level by
    * `screens/new-chat/outfit-slots-preview.spec.ts`.
    */
+  /**
+   * P4.D121 — the wardrobe archive surface (v4 `d25dacc1`).
+   *
+   * Archive a garment from the row's kebab → it vanishes from the list because
+   * the FETCH omitted it (v5's own client-side `archivedAt` filter is gone, so
+   * this beat proves the server half is what hides it) → "Show archived"
+   * reveals it, badged → "Restore from archive" brings it back.
+   */
+  test('archives a garment, hides it by fetch, reveals it badged, and restores it (ACTIVATE-AT-UNIFY, lane P4.D120)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D120_SERVER_LANDED,
+      'awaits P4.D120’s `archived` write + `includeArchived` read (wired at unification)',
+    );
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    // Create the garment this beat retires.
+    await page.getByRole('button', { name: '+ New Item' }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeVisible();
+    await page.locator('#wardrobe-title').fill(ARCHIVE_GARMENT);
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    const row = () =>
+      page.locator('.qt-card-interactive').filter({ hasText: ARCHIVE_GARMENT }).first();
+    await expect(row()).toBeVisible({ timeout: 10_000 });
+
+    // Archive it from the kebab — single click, no confirm.
+    await row().getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
+    await expect(
+      page.locator('.qt-card-interactive').filter({ hasText: ARCHIVE_GARMENT }),
+    ).toHaveCount(0, { timeout: 10_000 });
+
+    // "Show archived" re-fetches and the garment returns, badged.
+    const showArchived = page
+      .getByRole('dialog')
+      .locator('label', { hasText: 'Show archived' })
+      .locator('input[type="checkbox"]');
+    await showArchived.check();
+    await expect(row()).toBeVisible({ timeout: 10_000 });
+    await expect(row()).toContainText('archived');
+
+    // Restore it, then untick: it is a live garment again.
+    await row().getByRole('button', { name: 'More actions' }).click();
+    await page.getByRole('menuitem', { name: 'Restore from archive' }).click();
+    await expect(row()).not.toContainText('archived', { timeout: 10_000 });
+    await showArchived.uncheck();
+    await expect(row()).toBeVisible({ timeout: 10_000 });
+
+    await page.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /**
+   * P4.D121 — the Dressing Instructions section (v4 `b86bb1a5`): collapsed by
+   * default with a status note, save round-trips the file, and a blank save
+   * clears it.
+   */
+  test('the dressing-instructions section saves, reloads and clears (ACTIVATE-AT-UNIFY, lane P4.D119)', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D119_INSTRUCTIONS_LANDED,
+      'awaits P4.D119’s wardrobe-instructions verbs (wired at unification)',
+    );
+    test.setTimeout(90_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    const section = page.locator('qt-wardrobe-instructions-section');
+    await expect(section).toBeVisible({ timeout: 10_000 });
+    // Collapsed, and nothing on file yet.
+    await expect(section).toContainText('None on file', { timeout: 10_000 });
+    await expect(section.locator('qt-markdown-field')).toHaveCount(0);
+
+    await section.getByRole('button', { name: /Dressing Instructions/ }).click();
+    const editor = section.locator('.qt-rich-editor-content');
+    await expect(editor).toBeVisible();
+    await editor.click();
+    await page.keyboard.type(DRESSING_TEXT);
+    await section.getByRole('button', { name: 'Save Instructions' }).click();
+    await expect(page.getByText('Dressing instructions saved')).toBeVisible({ timeout: 10_000 });
+    await expect(section).toContainText('On file', { timeout: 10_000 });
+
+    // Reopen the dialog: the file came back from the server.
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.getByRole('button', { name: 'Open wardrobe for Aria' }).click();
+    const reopened = page.locator('qt-wardrobe-instructions-section');
+    await expect(reopened).toContainText('On file', { timeout: 10_000 });
+    await reopened.getByRole('button', { name: /Dressing Instructions/ }).click();
+    await expect(reopened.locator('.qt-rich-editor-content')).toContainText(DRESSING_TEXT);
+
+    // A blank draft CLEARS the file.
+    await reopened.locator('.qt-rich-editor-content').click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.press('Backspace');
+    await reopened.getByRole('button', { name: 'Save Instructions' }).click();
+    await expect(page.getByText('Dressing instructions cleared')).toBeVisible({ timeout: 10_000 });
+    await expect(reopened).toContainText('None on file', { timeout: 10_000 });
+
+    await page.getByRole('button', { name: 'Done' }).click();
+  });
+
   test('creates a hairdo, badges it, and composes it into the Hair slot (ACTIVATE-AT-UNIFY, lane P4.D87)', async ({
     page,
   }) => {
