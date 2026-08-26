@@ -8,11 +8,15 @@
 
 [package]
 name = "quilltap-web"
-version = "0.0.93"
+version = "0.0.94"
 edition = "2021"
 publish = false
 
 [dependencies]
+# The WHATWG URL parser — `check_origin` needs `new URL(origin).host` exactly
+# (default ports dropped), which is not a thing to hand-roll. Already in the
+# lock via reqwest, so this adds no compile.
+url = "2"
 quilltap-core = { path = "../quilltap-core", features = ["native-transport"] }
 quilltap-host = { path = "../quilltap-host" }
 axum = { version = "0.8", features = ["ws", "multipart"] }

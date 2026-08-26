@@ -306,16 +306,34 @@ pub async fn terminal_delete(
 pub async fn terminal_stream(
     State(state): State<SharedState>,
     Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
 ) -> AxumResponse {
     let (manager, _db) = match manager_and_db(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
     };
-    ws.on_upgrade(move |socket| handle_ws(socket, manager, id))
+    // P4.D124: v4's `authenticateUpgrade` runs on the RAW upgrade request, so
+    // the headers have to be read here and carried into the handler. The gate
+    // itself fires AFTER the session-exists check, exactly where v4's does.
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string)
+    };
+    let origin = header("origin");
+    let host = header("host");
+    ws.on_upgrade(move |socket| handle_ws(socket, manager, id, origin, host))
 }
 
-async fn handle_ws(mut socket: WebSocket, manager: Arc<TerminalManager>, id: String) {
+async fn handle_ws(
+    mut socket: WebSocket,
+    manager: Arc<TerminalManager>,
+    id: String,
+    origin: Option<String>,
+    host: Option<String>,
+) {
     // v4 ws.ts: unknown session → send the exit frame, close 1000.
     if !manager.contains(&id) {
         let frame = serde_json::to_string(&WsServerMessage::Exit {
@@ -332,6 +350,30 @@ async fn handle_ws(mut socket: WebSocket, manager: Arc<TerminalManager>, id: Str
             .await;
         return;
     }
+    // P4.D124 — the same-origin gate (v4 `lib/realtime/upgrade-auth.ts`,
+    // `f3892158d`). Browsers do not apply CORS to WebSocket upgrades, so
+    // without this any page on any origin could open a socket against a
+    // localhost instance. v4 completes the upgrade and then closes 1008; that
+    // observable behavior is reproduced here rather than refusing the HTTP
+    // upgrade, so a client sees the same close code v4's does. v4's other two
+    // checks do not apply: no session auth exists in v5 (D2), and `locked` is
+    // already answered 503 before the upgrade by `manager_and_db`.
+    if let Some(reason) = crate::upgrade_auth::check_origin(origin.as_deref(), host.as_deref()) {
+        tracing::warn!(
+            target: "quilltap::terminal",
+            session_id = %id,
+            reason = %reason,
+            "Rejecting WebSocket upgrade",
+        );
+        let _ = socket
+            .send(Message::Close(Some(CloseFrame {
+                code: crate::upgrade_auth::WS_CLOSE_POLICY_VIOLATION,
+                reason: "Unauthorized".into(),
+            })))
+            .await;
+        return;
+    }
+
     let Some(mut sub) = manager.subscribe(&id) else {
         let _ = socket
             .send(Message::Close(Some(CloseFrame {

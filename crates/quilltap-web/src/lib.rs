@@ -56,6 +56,7 @@ pub mod state;
 pub mod static_serve;
 // === P4.6au: the home-dashboard REST edge ===
 pub mod system_routes;
+pub mod upgrade_auth;
 // === end P4.6au ===
 // === P4.9G1: the Data & System server surface REST edges ===
 pub mod system_data_routes;

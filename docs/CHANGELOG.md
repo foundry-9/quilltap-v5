@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(terminal): the WebSocket same-origin gate
+
+_Versions: web 0.0.94._
+
+Ports the one leg of v4 `f3892158d`'s `upgrade-auth.ts` that applies here.
+Browsers do not apply CORS to WebSocket upgrades, so v5's terminal socket — which
+had no origin check at all — could be opened by a page on any origin. A
+mismatched `Origin` now closes with 1008, after the session-exists check, which
+is where v4's gate sits.
+
+v4's other two checks do not port: v5 has no session auth by design (D2), and a
+locked instance is already answered 503 before the upgrade.
+
+New tier-1 differential `terminal_ws_origin_equivalence` drives v4's real
+`authenticateUpgrade` over 19 (origin, host) pairs with its session and locked
+legs mocked away, comparing verdicts and refusal sentences. It immediately
+caught a real divergence: v4's `if (!origin)` is a truthiness test, so an EMPTY
+`Origin` header is allowed rather than refused as unparseable. A live wire test
+covers the plumbing — cross-origin refused, a different port refused, missing
+and same origin accepted, and the session check still running first.
+
 #### 2026-08-26 — feat(realtime): publish invalidation hints from every chokepoint
 
 _Versions: core 0.0.685, harness 0.0.591, host 0.0.83._
