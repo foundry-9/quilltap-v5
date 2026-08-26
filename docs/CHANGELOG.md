@@ -232,6 +232,30 @@ dedupe-then-sort is made observable instead — two mounts in one tier both carr
 file and the sort decides which content comes back. Six mutations proven to
 redden; a seventh (dropping the folder ensure) provably does not, because the
 write primitive find-or-creates folder segments itself — recorded at the source.
+#### 2026-08-26 — refactor(doc-edit): extract docStoreAuthority and add the bare store-ref resolver
+
+_Versions: core 0.0.667._
+
+Ports v4 `b220999d`'s `qtap-uri.ts` / `uri-producers.ts` refactor.
+`doc_store_authority(name, id, name_is_ambiguous)` is now the one place that
+picks a document store's addressable reference — the name, or the UUID when the
+name is ambiguous or collides with a reserved authority (`self`/`project`/
+`general`). `format_doc_store_uri` delegates to it; the emitted `qtap://` bytes
+are unchanged (`qtap_uri_equivalence` green over an oracle regenerated at the
+pin, and v4's own oracle output is byte-identical between `8f910137` and
+`b220999d`).
+
+New `DocStoreRefResolver` (v4 `buildDocStoreRefResolver`): a precomputed
+ambiguity set plus a synchronous `ref_for_mount`, with the empty-name guard and
+deliberately **no** self-vault shorthand — `self` only means anything inside a
+character's own prompt, and these references are handed to operator surfaces.
+The ambiguity precompute is now a shared `collect_ambiguous_store_names`.
+
+v4's commit also fixed a bug in that extraction (a self-vault throw used to
+empty the ambiguity set). v5 never had it — `DocStoreUriResolver::build` has
+always computed the two independently — so only the new resolver is ported; the
+no-port is recorded at the source.
+
 #### 2026-08-26 — feat(search): the LIKE-escape helper for user-supplied substring search
 
 _Versions: core 0.0.666._

@@ -436,10 +436,40 @@ impl ScopedAuthority {
     }
 }
 
+/// Pick the addressable reference for a document store: its **name** when that
+/// reads unambiguously, else its **UUID** (v4 `docStoreAuthority`, extracted from
+/// `formatDocStoreUri` at `b220999d`). The UUID wins when the caller says the
+/// name is ambiguous (two enabled stores share it) OR when the name collides
+/// with a reserved authority (`self`/`project`/`general`), since a store so
+/// named is only reachable by UUID.
+///
+/// Every producer of a store reference goes through this — `qtap://` URIs via
+/// [`format_doc_store_uri`], and the global search bar's document results via
+/// [`super::uri_producers::DocStoreRefResolver`] — so a name that's safe in one
+/// is safe in both. Both forms are accepted by the path resolver.
+///
+/// The returned name is the **untrimmed original**: only the collision test
+/// trims and lower-cases.
+pub fn doc_store_authority<'a>(
+    mount_point_name: &'a str,
+    mount_point_id: &'a str,
+    name_is_ambiguous: bool,
+) -> &'a str {
+    let name_collides =
+        RESERVED_AUTHORITIES.contains(&mount_point_name.trim().to_lowercase().as_str());
+    // v4's `args.nameIsAmbiguous === true` is a STRICT compare against a
+    // `boolean | undefined`; a Rust `bool` models exactly that domain.
+    let use_id = name_is_ambiguous || name_collides;
+    if use_id {
+        mount_point_id
+    } else {
+        mount_point_name
+    }
+}
+
 /// Build a human-facing `qtap://` URI for a `document_store` document (v4
-/// `formatDocStoreUri`). Prefers the store **name**; falls back to the **UUID**
-/// when `name_is_ambiguous` OR when the trimmed, lower-cased name collides with a
-/// reserved authority (`self`/`project`/`general`).
+/// `formatDocStoreUri`). The authority is chosen by [`doc_store_authority`]: the
+/// store name, or its UUID when the name is ambiguous or reserved.
 pub fn format_doc_store_uri(
     mount_point_name: &str,
     mount_point_id: &str,
@@ -448,14 +478,7 @@ pub fn format_doc_store_uri(
     heading: Option<&str>,
     level: Option<u8>,
 ) -> String {
-    let name_collides =
-        RESERVED_AUTHORITIES.contains(&mount_point_name.trim().to_lowercase().as_str());
-    let use_id = name_is_ambiguous || name_collides;
-    let mp = if use_id {
-        mount_point_id
-    } else {
-        mount_point_name
-    };
+    let mp = doc_store_authority(mount_point_name, mount_point_id, name_is_ambiguous);
     format_qtap_uri(&QtapUriParts {
         scope: DocEditScope::DocumentStore,
         mount_point: Some(mp.to_string()),
@@ -506,6 +529,34 @@ mod tests {
             "qtap://self/Knowledge/My%20File.md"
         );
         assert_eq!(format_self_uri("", None, None), "qtap://self/");
+    }
+
+    /// v4 `docStoreAuthority`'s three arms + the untrimmed-name return
+    /// (`b220999d`). The extraction must be neutral for `format_doc_store_uri`
+    /// (pinned by `qtap_uri_equivalence`), and correct on its own for the
+    /// search bar's `mountPointRef`.
+    #[test]
+    fn doc_store_authority_picks_name_or_uuid() {
+        // Unambiguous, unreserved → the name, VERBATIM (untrimmed).
+        assert_eq!(
+            doc_store_authority("Quilltap General", "mp-1", false),
+            "Quilltap General"
+        );
+        assert_eq!(
+            doc_store_authority("  Padded  ", "mp-1", false),
+            "  Padded  "
+        );
+        // Reserved authority (trimmed + lower-cased compare) → the UUID.
+        assert_eq!(doc_store_authority("Project", "mp-2", false), "mp-2");
+        assert_eq!(doc_store_authority(" SELF ", "mp-2", false), "mp-2");
+        assert_eq!(doc_store_authority("general", "mp-2", false), "mp-2");
+        // Caller-declared ambiguity → the UUID.
+        assert_eq!(doc_store_authority("Dupe", "mp-3", true), "mp-3");
+        // A name that merely CONTAINS a reserved word is not reserved.
+        assert_eq!(
+            doc_store_authority("Project Notes", "mp-4", false),
+            "Project Notes"
+        );
     }
 
     #[test]

@@ -87823,3 +87823,41 @@ unifier): `crates/quilltap-core/src/db/mod.rs` gains one alphabetized
 single-line insertion into a sorted list and union-merges trivially.
 
 Gate: `cargo test -p quilltap-core --lib db::like_escape` 6/6.
+
+### Unit 2 — `doc_store_authority` + the bare store-ref resolver
+
+v4 `b220999d`'s `qtap-uri.ts` / `uri-producers.ts` refactor:
+
+- **`doc_store_authority(name, id, name_is_ambiguous) -> &str`** extracted from
+  `format_doc_store_uri`, which now delegates. Returns the **untrimmed original
+  name** when unambiguous and unreserved; the UUID when the caller declares the
+  name ambiguous OR the trimmed lower-cased name is in `RESERVED_AUTHORITIES`.
+  v4's `nameIsAmbiguous === true` STRICT compare over `boolean | undefined` is
+  exactly a Rust `bool`, so no tri-state modelling is needed.
+- **Neutrality proved on BOTH sides.** v5: `qtap_uri_equivalence` green over an
+  oracle regenerated at the lane pin. v4: the same oracle regenerated from a
+  throwaway `8f910137` pin is **byte-identical** to the `b220999d` one (54
+  rows, `diff` empty) — so the refactor moved no `qtap://` bytes upstream
+  either. (The baseline pin was removed immediately after; only the lane pin
+  remains.)
+- **`DocStoreRefResolver`** (v4 `buildDocStoreRefResolver`, NEW): precomputed
+  ambiguity set + synchronous `ref_for_mount`, with the empty-name guard
+  (`!mountPointName` → UUID) and **no self-vault shorthand**. v4's `try/catch →
+  id` is unreachable in Rust (`doc_store_authority` cannot fail); recorded at
+  the source.
+- **`collect_ambiguous_store_names`** extracted and shared by both resolvers.
+- **NO-PORT with evidence:** v4 also fixed a real bug in this extraction — the
+  old `buildDocStoreUriResolver` computed the ambiguity set inside the same
+  `try` as the self-vault resolution, so a throw emptied the set. **v5 never
+  had it**: `DocStoreUriResolver::build` has always computed the two
+  independently and `resolve_self_vault_mount_point_id` returns `Option` rather
+  than throwing. The evidence note lives on
+  `collect_ambiguous_store_names` in `uri_producers.rs`.
+
+Unit pins: `doc_store_authority_picks_name_or_uuid` (six arms incl. the
+untrimmed return and "a name that merely CONTAINS a reserved word is not
+reserved"), `ref_for_mount_arms` (all three arms + the empty-name guard + the
+trim/fold compare), `ref_resolver_has_no_self_vault_shorthand`.
+
+Gate: `cargo test -p quilltap-core --lib doc_edit::` 32/0; `qtap_uri_equivalence`
+1/0 at the pin; clippy `-p quilltap-core --all-targets` clean.
