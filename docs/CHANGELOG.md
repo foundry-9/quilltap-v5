@@ -232,6 +232,33 @@ dedupe-then-sort is made observable instead — two mounts in one tier both carr
 file and the sort decides which content comes back. Six mutations proven to
 redden; a seventh (dropping the folder ensure) provably does not, because the
 write primitive find-or-creates folder segments itself — recorded at the source.
+#### 2026-08-26 — feat(search): the document text-search engine and the uiSearch documents branch
+
+_Versions: core 0.0.669, harness 0.0.578._
+
+Ports v4 `b220999d`'s `lib/mount-index/document-text-search.ts` whole, plus the
+sixth `documents` type on `GET /api/v1/ui/search`.
+
+The engine merges the two scans one-result-per-document: name/path hits go in
+first and shadow a content hit on the same link; `matchPriority` is 0 only when
+the whole lowercased file name equals the whole query, 1 for any other name or
+path hit, 2 for a content hit; results sort by priority then recency, and
+`totalCount` is the merged size — bounded by the 200-row scan cap, knowingly.
+Archived characters' vaults are excluded, and the lookup FAILS CLOSED: if the
+archived set can't be resolved, every store with `storeType === 'character'` is
+dropped while ordinary stores still search (a NULL `storeType` survives the
+strict compare, as in v4). Snippets lead by one THIRD of the remaining window,
+trim before they ellipsize, and take their heading prefix with an em dash.
+
+The route pushes documents between memories and tags, with v4's exact key order
+and the `/workspace?open=document-standalone&…` deep link. `VALID_TYPES` is now
+v4's `ALL_SEARCH_TYPES` — six entries, reordered.
+
+`ui_search_equivalence` grows 23 → 28 cases over a fixture extended with five
+document stores, a seventh archived character, and twelve pinned documents; its
+corpus-shape gate is re-baselined and gains five non-vacuity assertions. Seven
+v5-source mutations each redden exactly the expected cases.
+
 #### 2026-08-26 — feat(search): the two document-store scans behind the Documents chip
 
 _Versions: core 0.0.668._

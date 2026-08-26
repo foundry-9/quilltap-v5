@@ -28,10 +28,20 @@
 //!    ORIGINAL content — faithful to v4, including the (non-BMP/locale) index
 //!    skew that implies.
 //!
+//! 5. **Documents carry no page quota.** The `documents` branch (`b220999d`)
+//!    competes with every other type for the 20/50 page slots, and
+//!    `countsByType` is computed over the whole pre-pagination array. Its
+//!    `matchPriority` comes from the search engine, NOT `getMatchPriority` — a
+//!    whole-file-name equality is 0, any other name/path hit is 1, a content
+//!    hit is 2.
+//!
 //! Sort: stable by `matchPriority` asc, then `new Date(updatedAt)` desc (an
 //! unparseable date is NaN → the comparator's arithmetic is NaN → V8 treats it
 //! as equal; `js_date_parse_ms` returning `None` maps to `Ordering::Equal`).
-//! Ties keep insertion order: characters → chats → messages → memories → tags.
+//! Ties keep insertion order: characters → chats → messages → memories →
+//! documents → tags. (`b220999d` inserted the documents branch at v4's
+//! `route.ts:253`, BETWEEN memories and tags, so a documents row and a tags row
+//! with the same priority and timestamp still land documents-first.)
 //! `countsByType` is computed AFTER the sort and BEFORE pagination, so its key
 //! order is first-encounter order in the sorted results (v4 object-literal
 //! insertion semantics; `serde_json`'s `preserve_order` keeps it).
@@ -45,14 +55,37 @@ use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, memories_read, tags, DbError};
 use crate::episodic::js_date_parse_ms;
 use crate::jsstr::{js_index_of, js_trim, utf16_len, utf16_truncate};
+use crate::services::mount_index::document_text_search::{
+    search_document_text, DocumentTextSearchOptions,
+};
 
 use super::llm_logs::{js_min, js_parse_int_10};
 use super::types::{ErrorKind, Response};
 
-/// v4 `VALID_TYPES` — exactly these five, this order (the default fan-out order
-/// is NOT this array's order; the search sections run characters → chats →
-/// messages → memories → tags regardless).
-const VALID_TYPES: [&str; 5] = ["chats", "characters", "tags", "memories", "messages"];
+/// v4 `VALID_TYPES`, which since `b220999d` IS `ALL_SEARCH_TYPES`
+/// (`components/search/types.ts:10`) — one exported constant the dialog's chips
+/// and the route's accepted values both read, so the two can't drift.
+///
+/// The `b220999d` change was a REORDER as well as an addition: `documents`
+/// joined, and the list became chats → characters → messages → documents → tags
+/// → memories. Server-side the order is inert (the array is only an
+/// `includes()` membership test and the all-types default), but it is carried
+/// literally because the SPA renders its chips from the same list. The default
+/// fan-out order is NOT this array's order — the search sections run
+/// characters → chats → messages → memories → **documents** → tags regardless.
+const VALID_TYPES: [&str; 6] = [
+    "chats",
+    "characters",
+    "messages",
+    "documents",
+    "tags",
+    "memories",
+];
+
+/// Documents matched before the scan short-circuits (v4
+/// `DOCUMENT_SEARCH_LIMIT`). Matches the message branch's cap; the route
+/// paginates over the merged result set.
+const DOCUMENT_SEARCH_LIMIT: usize = 100;
 
 /// The route's query params as the transport hands them over — all RAW strings,
 /// because v4 parses them inside the handler and the NaN quirks must survive.
@@ -248,8 +281,8 @@ fn search_body(
     let uid = user_id.to_string();
     let q = query.to_string();
     let req: Vec<String> = requested.iter().map(|s| s.to_string()).collect();
-    let (characters, chats, message_matches, memories_by_char, tag_rows) =
-        db.read_main(move |main| {
+    let (characters, chats, message_matches, memories_by_char, tag_rows, document_matches) = db
+        .read_main(move |main| {
             db.read_mount_index(move |mount| {
                 let want = |t: &str| req.iter().any(|r| r == t);
                 // Characters are fetched EITHER WAY — the else-branch comment in
@@ -292,12 +325,33 @@ fn search_body(
                 } else {
                     Vec::new()
                 };
+                // The documents fan-out. v4 calls `searchDocumentText` at the
+                // branch site (`route.ts:253`); v5 hoists every read into this
+                // one main+mount block — the engine needs BOTH connections (the
+                // archived-character sweep is a main read, the scans are mount
+                // reads) and the row set is identical either way. The results
+                // are pushed in v4's source position below.
+                let document_matches = if want("documents") {
+                    search_document_text(
+                        main,
+                        mount,
+                        &q,
+                        &DocumentTextSearchOptions {
+                            limit: Some(DOCUMENT_SEARCH_LIMIT),
+                            exclude_mount_point_ids: Vec::new(),
+                        },
+                    )
+                    .0
+                } else {
+                    Vec::new()
+                };
                 Ok((
                     characters,
                     chats,
                     message_matches,
                     memories_by_char,
                     tag_rows,
+                    document_matches,
                 ))
             })
         })?;
@@ -506,6 +560,53 @@ fn search_body(
             });
             found("memories", &mut types_found);
         }
+    }
+
+    // ── Documents ───────────────────────────────────────────────────────────
+    // v4 `route.ts:253-287` — between the memories loop and the tags block.
+    // The `if (requestedTypes.includes('documents'))` guard is already spent on
+    // the hoisted read above; an unrequested type yields no rows either way.
+    for doc in &document_matches {
+        // The standalone deep link is the safe default: a middle-click or a
+        // no-JS open lands in chat-less Document Mode, which notifies no
+        // conversation of the open or of any later edit. The search UI's click
+        // handler upgrades to an in-chat open when a Salon is focused.
+        let url = format!(
+            "/workspace?open=document-standalone&scope=document_store\
+             &mountPoint={}&filePath={}",
+            encode_uri_component(&doc.mount_point_ref),
+            encode_uri_component(&doc.relative_path),
+        );
+        all_results.push(SearchHit {
+            kind: "documents",
+            priority: doc.match_priority,
+            updated_at: doc.updated_at.clone(),
+            // KEY ORDER IS LOAD-BEARING — the differential diffs raw key order.
+            body: json!({
+                "id": doc.link_id,
+                "type": "documents",
+                "name": doc.file_name,
+                "matchedField": doc.matched_field.as_str(),
+                // Re-truncated AT THE ROUTE (v4 `.substring(0, 200)`), on top of
+                // the engine's own 200-unit cut for content hits — a long file
+                // name or path is only cut here.
+                "matchedValue": utf16_substring(&doc.matched_value, 0, 200),
+                "snippet": doc.snippet,
+                "url": url,
+                "matchPriority": doc.match_priority,
+                // v4 emits the SAME timestamp for both — a link row has no
+                // separate createdAt on this projection.
+                "createdAt": doc.updated_at,
+                "updatedAt": doc.updated_at,
+                "mountPointId": doc.mount_point_id,
+                "mountPointName": doc.mount_point_name,
+                "mountPointRef": doc.mount_point_ref,
+                "storeType": doc.store_type,
+                "relativePath": doc.relative_path,
+            }),
+        });
+        // v4 adds INSIDE the loop, so zero matches omit the type from `types`.
+        found("documents", &mut types_found);
     }
 
     // ── Tags ────────────────────────────────────────────────────────────────

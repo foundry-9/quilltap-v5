@@ -7,7 +7,8 @@
  * diff byte-for-byte (including key ORDER: `countsByType`'s insertion order and
  * every result object's literal field order).
  *
- * Case coverage (23): the all-types fan-out (five types + the sort + the
+ * Case coverage (28): the all-types fan-out (SIX types since `b220999d` + the
+ * sort + the
  * broken-`participant.id` characterNames quirk in BOTH directions + the
  * Untitled-Chat message enrichment), each single-type filter, unknown-type
  * filtering + the all-unknown fallback-to-all, the three validation arms
@@ -18,7 +19,15 @@
  * empty-string limit (JS-falsy → default 20), the exact-match priority-0 arm,
  * an uppercase query, the trimmed-query echo, and an over-long query (the
  * repo's MAX_SEARCH_QUERY_LENGTH guard empties messages+memories while the
- * in-handler filters still run).
+ * in-handler filters still run). Plus the five P4.D122 documents cases: the
+ * `types=documents` fan-out over the whole seeded corpus (priority 0 vs 1, the
+ * name-shadows-content overwrite, a path-only `matchedField`, the pdf and
+ * disabled-store exclusions, the archived vault swept out, and the
+ * ambiguous / reserved store refs falling back to UUIDs), the content-hit
+ * snippet arms, a query that matches a tag but NO document (so `types` omits
+ * `documents` and `countsByType` has no such key), the cross-type tie
+ * (memories → documents → tags at equal priority and timestamp), and the
+ * LIKE-escape arm (a literal `%` and its decoy).
  *
  * Run (Node 24 — cp to a /tmp mirror; jest ignores .claude/ paths). The
  * fixture is /tmp-built, never committed, so the build stage is part of this
@@ -173,6 +182,34 @@ function buildCases(): CaseSpec[] {
     // return [] while the in-handler substring filters still run (and match
     // nothing).
     { name: 'overlong_q', run: () => search(`?q=${'x'.repeat(1001)}`) },
+    // ── The documents chip (P4.D122 / v4 `b220999d`) ──
+    // The whole name/path half over the seeded corpus + all seven character
+    // vaults' own `manifesto.md`: priority 0 (the bare `manifesto` file, whose
+    // WHOLE lowercased name equals the whole query) above every priority-1
+    // substring hit; `Notes/manifesto.md`'s name hit SHADOWING its content
+    // chunk; `Manifesto/loose-ends.md` reported as a `relativePath` match;
+    // `manifesto-scan.pdf` and the disabled store's copy absent; the ARCHIVED
+    // character's vault swept out while the other six vaults answer with
+    // `storeType: 'character'`; `manifesto-copy.md`'s ambiguous "Logbook" and
+    // `manifesto-self.md`'s reserved `self` both addressing by UUID; and
+    // `Notes/manifesto & co.md` exercising `encodeURIComponent` on both URL
+    // params.
+    { name: 'documents_only', run: () => search('?q=manifesto&types=documents') },
+    // The content half: the lowest MATCHING chunk (index 2, not 0 or 5), the
+    // one-THIRD lead, the `.trim()` BEFORE the ellipses, the heading prefix,
+    // and `matchedValue` cut to 200 — plus a short vault chunk that takes
+    // neither ellipsis and carries no heading.
+    { name: 'documents_content_snippet', run: () => search('?q=airship&types=documents') },
+    // A tag matches, no document does: `typesFound.add('documents')` lives
+    // INSIDE the loop, so `types` omits it and `countsByType` has no key.
+    { name: 'documents_zero_matches', run: () => search('?q=goggles&types=documents,tags') },
+    // One memory, one document and one tag, all priority 1 with the SAME
+    // updatedAt — only the fan-out's insertion order can separate them, and
+    // documents sits between memories and tags (v4 `route.ts:253`).
+    { name: 'documents_cross_type_tie', run: () => search('?q=tie-token') },
+    // `%` is escaped, so `Notes/50%-plans.md` matches and its decoy
+    // `Notes/50-plans.md` does not. An unescaped `%50%%` would match both.
+    { name: 'documents_like_wildcard', run: () => search('?q=50%25&types=documents') },
   ];
 }
 

@@ -1,7 +1,13 @@
 //! P4.9P UI-SEARCH route differential: `api::ui_search::ui_search` vs v4's REAL
 //! `GET /api/v1/ui/search` handler. Both sides read the SAME /tmp-built fixture
 //! (`build-ui-search-fixture.ts` — the order's choice over a committed pair: no
-//! existing committed family carries all five search types richly enough).
+//! existing committed family carries all six search types richly enough).
+//!
+//! P4.D122 (v4 `b220999d`) added the sixth type, `documents`, and with it five
+//! cases and a documents corpus in the fixture. The three corpus-shape
+//! assertions below moved with it BY DESIGN — the case count, the all-types
+//! type list (five → six), and the brass total (66 → 67, the one document whose
+//! chunk text carries "brass fittings").
 //!
 //! Success cases diff status + body, PLUS the raw key ORDER of every object
 //! (countsByType's insertion order — first-encounter order in the SORTED
@@ -10,8 +16,20 @@
 //!
 //! A corpus-shape gate runs before the diff (the P4.11/D24 lesson — a
 //! truncated fixture must not pass silently): the oracle must carry EXACTLY the
-//! 23 case names, the all-types case must have found all five types, and the
-//! brass cap case must total 66.
+//! 28 case names, the all-types case must have found all six types, the brass
+//! cap case must total 67, and the documents cases must be non-vacuous (the
+//! `documents_only` fan-out must carry both name-hit `matchedField` spellings
+//! and both `storeType`s, and the zero-match case must omit the type entirely).
+//!
+//! ⚠ One arm is deliberately NOT here: the store-name **ambiguity** fallback to
+//! the UUID. v4's `repairMountPointNameCollisions` runs inside the lazy
+//! doc-mount-points table init that the search's own `findEnabled()` triggers,
+//! and it keys on the IDENTICAL `name.trim().toLowerCase()` as
+//! `collectAmbiguousStoreNames` — so v4 renames any collision before the
+//! resolver can see it, and `nameIsAmbiguous` is unreachable for store names at
+//! `b220999d`. (Recorded as a v4-side filing candidate.) The arm is pinned at
+//! unit tier in `doc_edit::uri_producers::tests::ref_for_mount_arms`; the
+//! RESERVED-name arm (`self`), which no repair touches, IS exercised here.
 //!
 //! Build fixture + generate the oracle (Node 24 — see the .ts headers), then:
 //!   QT_ORACLE_UI_SEARCH=/tmp/oracle-ui-search.ndjson \
@@ -128,7 +146,7 @@ fn key_paths(v: &Value, path: &str, out: &mut Vec<String>) {
     }
 }
 
-/// The 23 oracle cases, name → the same raw query params the oracle's URLs
+/// The 28 oracle cases, name → the same raw query params the oracle's URLs
 /// decode to. (`%20` decodes to a space before `searchParams.get` hands it to
 /// the handler, so the Rust side passes the decoded strings.)
 fn case_params(name: &str) -> UiSearchParams<'static> {
@@ -168,11 +186,19 @@ fn case_params(name: &str) -> UiSearchParams<'static> {
             let q: &'static str = Box::leak("x".repeat(1001).into_boxed_str());
             p(Some(q), None, None, None)
         }
+        // ── The documents chip (P4.D122) ──
+        "documents_only" => p(Some("manifesto"), Some("documents"), None, None),
+        "documents_content_snippet" => p(Some("airship"), Some("documents"), None, None),
+        "documents_zero_matches" => p(Some("goggles"), Some("documents,tags"), None, None),
+        "documents_cross_type_tie" => p(Some("tie-token"), None, None, None),
+        // The oracle's URL is `?q=50%25`; `searchParams.get` decodes it before
+        // the handler sees it, so the Rust side passes the decoded `50%`.
+        "documents_like_wildcard" => p(Some("50%"), Some("documents"), None, None),
         other => panic!("unknown oracle case {other:?} — regenerate both sides together"),
     }
 }
 
-const EXPECTED_CASES: [&str; 23] = [
+const EXPECTED_CASES: [&str; 28] = [
     "all_types_default",
     "characters_only",
     "chats_and_messages",
@@ -196,6 +222,11 @@ const EXPECTED_CASES: [&str; 23] = [
     "uppercase_q",
     "trimmed_q_echo",
     "overlong_q",
+    "documents_only",
+    "documents_content_snippet",
+    "documents_zero_matches",
+    "documents_cross_type_tie",
+    "documents_like_wildcard",
 ];
 
 #[test]
@@ -239,15 +270,26 @@ fn ui_search_matches_oracle() {
         .collect();
     assert_eq!(
         types_found,
-        ["characters", "chats", "messages", "memories", "tags"],
+        // The fan-out order, which `b220999d` did NOT change: the documents
+        // branch sits between memories and tags.
+        [
+            "characters",
+            "chats",
+            "messages",
+            "memories",
+            "documents",
+            "tags"
+        ],
         "the all-types case must find every type (fixture richness gate)"
     );
     assert_eq!(
         oracle["limit_cap_50"]["body"]["totalCount"].as_i64(),
-        Some(66),
-        "the brass corpus must total 66 (61 messages — the 60 generated rows \
+        Some(67),
+        "the brass corpus must total 67 (61 messages — the 60 generated rows \
          plus CH1's long message, whose 'brass fittings' also match — + \
-         1 character + 1 chat + 1 memory + 2 tags)"
+         1 character + 1 chat + 1 memory + 2 tags + 1 DOCUMENT, Bertram's \
+         vault `description.md`, whose projected chunk text is that same \
+         'brass fittings' sentence)"
     );
     assert_eq!(
         oracle["limit_cap_50"]["body"]["results"]
@@ -255,6 +297,59 @@ fn ui_search_matches_oracle() {
             .map(Vec::len),
         Some(50),
         "limit=999 must cap at 50"
+    );
+
+    // ── The documents corpus must not be vacuous (P4.D122) ──────────────────
+    // A green regen is not coverage: assert the SHAPES each documents case
+    // exists to discriminate, so a fixture that silently lost its doc stores
+    // reddens here rather than agreeing with an equally empty oracle.
+    let docs = oracle["documents_only"]["body"]["results"]
+        .as_array()
+        .expect("documents_only.results");
+    let field_of = |k: &str| docs.iter().any(|r| r["matchedField"].as_str() == Some(k));
+    assert!(
+        field_of("fileName") && field_of("relativePath"),
+        "documents_only must carry BOTH name-hit spellings (the twice-bound \
+         LIKE pattern is what makes a path-only hit reachable)"
+    );
+    assert!(
+        docs.iter().any(|r| r["storeType"] == "character")
+            && docs.iter().any(|r| r["storeType"] == "documents"),
+        "documents_only must span an ordinary store AND a character vault"
+    );
+    assert!(
+        docs.iter().any(|r| r["matchPriority"] == 0)
+            && docs.iter().any(|r| r["matchPriority"] == 1),
+        "documents_only must carry the whole-name priority-0 arm AND a \
+         substring priority-1 arm"
+    );
+    assert!(
+        oracle["documents_content_snippet"]["body"]["results"]
+            .as_array()
+            .expect("documents_content_snippet.results")
+            .iter()
+            .any(|r| r["matchedField"] == "content"),
+        "documents_content_snippet must carry at least one CONTENT hit"
+    );
+    let zero_types: Vec<&str> = oracle["documents_zero_matches"]["body"]["types"]
+        .as_array()
+        .expect("documents_zero_matches.types")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert_eq!(
+        zero_types,
+        ["tags"],
+        "documents_zero_matches must find a TAG and no document (typesFound \
+         .add lives inside the loop)"
+    );
+    assert_eq!(
+        oracle["documents_like_wildcard"]["body"]["results"]
+            .as_array()
+            .map(Vec::len),
+        Some(1),
+        "the LIKE-escape arm must match the literal `50%` file and NOT its \
+         `50-plans.md` decoy"
     );
 
     let db = fresh_db(&main_src, &mount_src);

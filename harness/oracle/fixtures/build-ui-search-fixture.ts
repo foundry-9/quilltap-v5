@@ -31,6 +31,23 @@
  *   - Memories: importance 0 (the `|| 5` falsy arm), a >50-char summary (the
  *     name truncation + '...'), and a CONTENT-only match (M3 — matchedField
  *     stays 'summary' and the snippet takes createSnippet's no-match branch).
+ *   - Documents (P4.D122): five explicit stores — an AMBIGUOUS name pair (two
+ *     enabled "Logbook" stores), one named `self` (a reserved authority), one
+ *     DISABLED — plus twelve pinned links covering the whole-name priority-0
+ *     arm, the name-shadows-content overwrite, a path-only hit, a content hit
+ *     whose lowest MATCHING chunk is neither the first nor the last, a `pdf`
+ *     outside `EDITABLE_TEXT_FILE_TYPES`, a literal `%` with its unescaped
+ *     decoy, a path needing `encodeURIComponent`, and the cross-type tie. The
+ *     second "Logbook" lands as "Logbook (2)" and a raw collision cannot be
+ *     planted either — `repairMountPointNameCollisions` runs inside the lazy
+ *     table init the search's own `findEnabled()` triggers, keyed on the same
+ *     `name.trim().toLowerCase()` as `collectAmbiguousStoreNames`, so v4 heals
+ *     the collision before it can be observed. The store-name AMBIGUITY arm is
+ *     pinned at unit tier instead; the RESERVED-name arm (`self`) is exercised
+ *     here. Every
+ *     character create mints a vault, so all SEVEN vaults already carry a
+ *     `manifesto.md` — including the seventh character's, who is ARCHIVED and
+ *     whose vault must therefore be swept out.
  *   - Tags: an exact match ("brass", priority 0), a name needing
  *     encodeURIComponent ("Brass & Goggles", quickHide true), a fresh
  *     priority-1 row ("airship-fittings", the newest updatedAt in the airship
@@ -58,6 +75,8 @@ interface CharacterSpec {
   isFavorite: boolean;
   updatedAt: string;
   user: 'primary' | 'other';
+  /** Set on the ONE archived character, re-pinned by the step-6 raw UPDATE. */
+  archivedAt?: string;
 }
 interface MessageSpec {
   id: string;
@@ -91,6 +110,29 @@ interface TagSpec {
   updatedAt: string;
   user: 'primary' | 'other';
 }
+interface DocStoreSpec {
+  id: string;
+  name: string;
+  storeType: 'documents' | 'character';
+  enabled: boolean;
+}
+interface DocChunkSpec {
+  id: string;
+  chunkIndex: number;
+  content: string;
+  headingContext: string | null;
+}
+interface DocLinkSpec {
+  id: string;
+  fileId: string;
+  /** A `docStores` id. */
+  store: string;
+  relativePath: string;
+  fileType: 'markdown' | 'txt' | 'json' | 'jsonl' | 'pdf' | 'docx' | 'blob';
+  updatedAt: string;
+  chunks: DocChunkSpec[];
+  why: string;
+}
 interface Spec {
   testPepperBase64: string;
   seedTimestamp: string;
@@ -103,6 +145,9 @@ interface Spec {
   chats: ChatSpec[];
   memories: MemorySpec[];
   tags: TagSpec[];
+  docLinkPinBase: string;
+  docStores: DocStoreSpec[];
+  docLinks: DocLinkSpec[];
 }
 
 async function main(): Promise<void> {
@@ -306,6 +351,15 @@ async function main(): Promise<void> {
       c.updatedAt,
       c.id,
     ]);
+    // The archive tombstone. `characters.create` has no archive path (v4 gates
+    // archiving behind its own service), so the column is pinned raw — all the
+    // documents search reads is `archivedAt` + `characterDocumentMountPointId`.
+    if (c.archivedAt) {
+      await rawQuery('UPDATE "characters" SET "archivedAt" = ? WHERE "id" = ?', [
+        c.archivedAt,
+        c.id,
+      ]);
+    }
   }
 
   // 7. Memories (main partition; the route searches per-character content OR
@@ -336,6 +390,126 @@ async function main(): Promise<void> {
     );
   }
 
+  // 8. The documents corpus (P4.D122).
+  //
+  //    8a. Every character create minted a vault whose nine links carry LIVE
+  //        timestamps — and `l.updatedAt` is the search's sort key AND part of
+  //        the emitted body. Re-pin them deterministically by rowid so a
+  //        rebuild reproduces the same ordering. (Ids stay minted; the
+  //        differential regenerates fixture and oracle together, so ids never
+  //        need to be stable across rebuilds — the ORDER does.)
+  const pinBase = Date.parse(spec.docLinkPinBase);
+  const rowids = midb
+    .prepare('SELECT rowid AS rid FROM doc_mount_file_links ORDER BY rowid')
+    .all() as Array<{ rid: number }>;
+  const pinStmt = midb.prepare(
+    'UPDATE doc_mount_file_links SET createdAt = ?, updatedAt = ? WHERE rowid = ?',
+  );
+  rowids.forEach((r, i) => {
+    const ts = new Date(pinBase + i * 1000).toISOString();
+    pinStmt.run(ts, ts, r.rid);
+  });
+
+  //    8b. The explicit document stores.
+  for (const store of spec.docStores) {
+    await repos.docMountPoints.create(
+      {
+        name: store.name,
+        basePath: '',
+        mountType: 'database',
+        storeType: store.storeType,
+        includePatterns: ['*.md', '*.txt', '*.pdf', '*.docx'],
+        excludePatterns: ['.git', 'node_modules', '.obsidian', '.trash'],
+        enabled: store.enabled,
+        lastScannedAt: null,
+        scanStatus: 'idle',
+        lastScanError: null,
+        conversionStatus: 'idle',
+        conversionError: null,
+        fileCount: 0,
+        chunkCount: 0,
+        totalSizeBytes: 0,
+      } as never,
+      { id: store.id, createdAt: TS, updatedAt: TS } as never,
+    );
+  }
+
+  //    8b2. Land the stores in the state a REAL instance is in. `create` writes
+  //         the name it is given, but v4 repairs mount-point name collisions
+  //         lazily — `repairMountPointNameCollisions` runs inside the
+  //         doc-mount-points table init, i.e. on the first read of a process —
+  //         so an instance never SERVES two stores with the same trimmed
+  //         lower-cased name. One read here triggers that repair, so the second
+  //         "Logbook" persists as "Logbook (2)" exactly as it would in
+  //         production. Without it the fixture would carry a collision that v4
+  //         heals inside the search's own `findEnabled()` while v5 (which runs
+  //         the same repair at BOOT, `services::builtin_mounts`) does not —
+  //         a difference of repair TIMING, not of behaviour, that only a
+  //         tampered file can expose.
+  //
+  //         The repair is called DIRECTLY, not via a read: it is once-per-process
+  //         and the character-vault creates already spent it, long before these
+  //         stores existed.
+  const { repairMountPointNameCollisions } = await import(
+    '@/lib/database/repositories/mount-index-case-repair'
+  );
+  repairMountPointNameCollisions(midb as never);
+
+  //    8c. Files + links + chunks, every id and timestamp pinned by the spec.
+  const { createHash } = await import('node:crypto');
+  for (const l of spec.docLinks) {
+    const body = l.chunks.map((c) => c.content).join('\n\n');
+    await repos.docMountFiles.create(
+      {
+        sha256: createHash('sha256').update(`${l.id}:${body}`).digest('hex'),
+        fileSizeBytes: Buffer.byteLength(body, 'utf8'),
+        fileType: l.fileType,
+        source: 'database',
+      } as never,
+      { id: l.fileId, createdAt: TS, updatedAt: l.updatedAt } as never,
+    );
+    await repos.docMountFileLinks.create(
+      {
+        fileId: l.fileId,
+        mountPointId: l.store,
+        relativePath: l.relativePath,
+        fileName: l.relativePath.split('/').pop(),
+        folderId: null,
+        description: '',
+        conversionStatus: 'converted',
+        extractionStatus: 'none',
+        chunkCount: l.chunks.length,
+        allowEmbed: true,
+        allowCharacterRead: true,
+        allowCharacterWrite: true,
+        lastModified: l.updatedAt,
+      } as never,
+      { id: l.id, createdAt: TS, updatedAt: l.updatedAt } as never,
+    );
+    for (const c of l.chunks) {
+      await repos.docMountChunks.create(
+        {
+          linkId: l.id,
+          mountPointId: l.store,
+          chunkIndex: c.chunkIndex,
+          content: c.content,
+          tokenCount: Math.ceil(c.content.length / 4),
+          headingContext: c.headingContext,
+          embedding: null,
+        } as never,
+        { id: c.id, createdAt: TS, updatedAt: l.updatedAt } as never,
+      );
+    }
+  }
+
+  //    8d. `create` mints live timestamps on some paths regardless of the opts
+  //        (the characters lesson at step 6) — re-pin the seeded rows by id.
+  for (const l of spec.docLinks) {
+    midb
+      .prepare('UPDATE doc_mount_file_links SET createdAt = ?, updatedAt = ? WHERE id = ?')
+      .run(TS, l.updatedAt, l.id);
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
@@ -349,7 +523,8 @@ async function main(): Promise<void> {
     `built ui-search fixture: ${mainOut} (+${mountOut}) — 2 users, ` +
       `${spec.characters.length} characters, ${spec.chats.length} chats ` +
       `(+${spec.brassMessageCount} brass messages), ${spec.memories.length} memories, ` +
-      `${spec.tags.length} tags\n`,
+      `${spec.tags.length} tags, ${spec.docStores.length} doc stores, ` +
+      `${spec.docLinks.length} seeded documents\n`,
   );
   process.exit(0);
 }

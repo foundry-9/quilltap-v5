@@ -87917,3 +87917,123 @@ twice-bound pattern), and widening the escape set with `[`.
 
 Gate: `cargo test -p quilltap-core --lib db::doc_mount` 17/0, `db::like_escape`
 6/0; clippy `-p quilltap-core --all-targets` clean.
+
+### Unit 4 — the document text-search engine + the `uiSearch` documents branch
+
+The whole of v4's `lib/mount-index/document-text-search.ts` (NEW at
+`b220999d`) as `services::mount_index::document_text_search`, plus the sixth
+type on the route. Every merge/ranking/snippet quirk carried:
+
+- Name/path hits inserted FIRST and unconditionally, so they shadow a content
+  hit on the same link; content hits then `continue` past an already-claimed
+  link. `matchedField` is `fileName` when the lowercased NAME contains the
+  query, else `relativePath`; a name/path hit's snippet IS the relative path.
+- `matchPriority` 0 **only** when the WHOLE lowercased file name equals the
+  WHOLE lowercased query (so `manifesto` against `manifesto.md` is 1, not 0);
+  1 for any other name/path hit; 2 for content.
+- `matchedValue` for a content hit is `content.slice(0, 200)` — a hard-coded
+  200 in v4, NOT `SNIPPET_LENGTH`; kept separate at the source so a change to
+  one can't silently move the other.
+- Sort: priority asc then `new Date(updatedAt)` desc, with `js_date_parse_ms`
+  → `Ordering::Equal` for an unparseable date (V8's NaN comparator).
+  `total_count = merged.len()` — **bounded by `SCAN_CAP`, knowingly** (v4's own
+  doc comment); the port does not "fix" it.
+- `build_content_snippet`: `lead = floor((200 − query.length) / 3)` — one
+  THIRD, not centred; indices from the LOWERCASED string slicing the ORIGINAL
+  (the same case-fold skew `api::ui_search`'s header documents); `.trim()`
+  BEFORE the `...` ellipses; heading joined as `` `${heading} — ${snippet}` ``
+  with an EMPTY heading JS-falsy (no prefix).
+- The archived-character sweep built on the existing
+  `characters_read::find_all_raw` (the raw-read-suffices pattern), with v4's
+  JS-truthy filter on BOTH columns, and **FAIL CLOSED** on a read error: every
+  `storeType == Some("character")` store dropped, ordinary stores still
+  searched, v4's `logger.error` sentence carried. The STRICT compare means a
+  NULL-`storeType` vault SURVIVES the sweep — carried, and pinned.
+- `describe()`'s `?? 'documents'` default; a hit whose store isn't in scope is
+  silently dropped; the debug logs carry `queryLength`, never the query text.
+
+Route (`api::ui_search`): `VALID_TYPES` is now v4's `ALL_SEARCH_TYPES` — six
+entries in the new order (chats, characters, messages, documents, tags,
+memories). The reorder is inert server-side (membership test + all-types
+default) and carried literally because the SPA renders its chips from the same
+list. The branch sits between memories and tags, with `DOCUMENT_SEARCH_LIMIT =
+100`, v4's exact 15-key push object, and the `/workspace?open=document-
+standalone&scope=document_store&mountPoint=…&filePath=…` deep link (both params
+`encodeURIComponent`'d). `typesFound.add('documents')` is INSIDE the loop, so
+zero matches omit the type. The header's tie-order sentence is updated in the
+same edit. **`quilltap-web/src/ui_search_routes.rs` needed nothing** — it hands
+all four params over raw (verified, not assumed).
+
+**Hoisting note.** v4 calls `searchDocumentText` at the branch site
+(`route.ts:253`); v5's `search_body` hoists every read into one main+mount
+block, and the engine needs BOTH connections. The rows are identical either
+way; the results are pushed in v4's source position.
+
+#### The differential
+
+`ui_search_equivalence` 23 → **28 cases**. The fixture gained: five explicit
+doc stores (an auto-suffixed "Logbook (2)", a store named `self`, a DISABLED
+store), a **seventh, ARCHIVED character**, and twelve pinned files/links/chunks.
+Every character create mints a vault carrying its own `manifesto.md`, so the
+archived-vault exclusion is measurable at zero extra seeding cost.
+
+New cases: `documents_only` (12 results — priority 0 vs 1, the shadowing
+overwrite, a path-only `relativePath` match, the pdf and disabled-store
+exclusions, six live vaults answering `storeType: 'character'` with the archived
+one absent, the reserved-`self` UUID ref, and `Notes/manifesto & co.md`
+exercising `encodeURIComponent` on both URL params), `documents_content_snippet`
+(the lowest MATCHING chunk — index 2, not 0 or 5 — the one-third lead, the trim
+before the ellipses, the heading prefix, `matchedValue` at exactly 200, plus a
+short vault chunk that takes neither ellipsis), `documents_zero_matches` (a tag
+matches, no document does → `types: ["tags"]`, no `documents` key in
+`countsByType`), `documents_cross_type_tie` (one memory, one document and one
+tag at identical priority AND timestamp — only insertion order separates them,
+and documents lands between memories and tags), and `documents_like_wildcard`
+(a literal `%` matches its file and NOT the `50-plans.md` decoy).
+
+The corpus-shape gate moved BY DESIGN and was re-baselined in the same change:
+28 case names, the all-types list five → six, and the brass total **66 → 67**
+(Bertram's vault `description.md`, whose projected chunk text is that same
+"brass fittings" sentence). Five NON-VACUITY assertions were added on top — the
+`documents_only` fan-out must carry both name-hit `matchedField` spellings, both
+`storeType`s and both priorities; the content case must carry a content hit; the
+zero case must find a tag and no document; the wildcard case must return exactly
+one row.
+
+**Seven v5-source mutations, each reddening exactly the right cases:** the
+fail-closed sweep neutered (both fail-closed unit tests), the
+content-hits-skip-existing guard removed so content overwrites names
+(`documents_only`), priority 0 on `starts_with` instead of whole-name equality
+(`documents_only` + two more), the snippet lead `/3` → `/2` (the lead unit test
++ 7 differential cases), the archived filter's JS truthiness → `is_some()` (the
+truthiness unit test), the route's 200-unit `matchedValue` re-truncation removed
+(7 cases), and the whole documents branch moved AFTER tags (13 cases, incl. the
+tie). **One of those mutations exposed a vacuous assertion in the lead test —
+it counted a length that was constant in the lead — and it was rewritten to
+count the run of filler before the match.**
+
+#### Two findings the fixture work forced out (both v4-side, no v5 action)
+
+1. **The store-name AMBIGUITY arm is unreachable in v4 at `b220999d`.**
+   `docStoreAuthority`'s `nameIsAmbiguous` fallback (and
+   `collectAmbiguousStoreNames` that feeds it) keys on
+   `name.trim().toLowerCase()` — the IDENTICAL key
+   `repairMountPointNameCollisions` uses, and that repair runs inside the
+   doc-mount-points lazy table init, i.e. inside the very `findEnabled()` the
+   search calls. v4 renames a collision before any resolver can observe it. The
+   only surviving window is an external raw write landing after a process's
+   first mount-points read. A **candidate v4-side filing**; the arm stays ported
+   and is pinned at unit tier (`ref_for_mount_arms`). The RESERVED-name arm
+   (`self`), which no repair touches, IS exercised at route tier.
+2. **v4 repairs mount-point name collisions LAZILY (first read of a process);
+   v5 repairs at BOOT** (`services::builtin_mounts`). Identical on a healed
+   instance; on a file tampered with underneath a running server they differ in
+   timing only. Measured — the differential's first run reddened
+   `documents_only` on exactly this (v4 healed the copy, v5 did not), and the
+   fixture builder now calls `repairMountPointNameCollisions` directly so the
+   .db lands in the state a real instance is in. Recorded, no action ordered.
+
+Gate: `ui_search_equivalence` **28/28** over an oracle regenerated fresh at the
+lane pin; `qtap_uri_equivalence` 1/0; `cargo test -p quilltap-core --lib
+services::mount_index::document_text_search` 13/0; clippy clean on core +
+harness.
