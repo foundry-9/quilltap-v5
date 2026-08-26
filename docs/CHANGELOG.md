@@ -232,6 +232,19 @@ dedupe-then-sort is made observable instead — two mounts in one tier both carr
 file and the sort decides which content comes back. Six mutations proven to
 redden; a seventh (dropping the folder ensure) provably does not, because the
 write primitive find-or-creates folder segments itself — recorded at the source.
+#### 2026-08-26 — test(search): a live walk over the Documents chip and its standalone open
+
+_Versions: SPA 0.5.568._
+
+`workspace-search-documents-flow.spec.ts` seeds a document into a real
+database-backed store through the standalone verbs, then walks the toolbar
+search bar → "See all results →" → the six filter chips in `ALL_SEARCH_TYPES`
+order → narrow to Documents → the result card (Document badge, `store · path`
+subtitle, the standalone deep link as its href) → click → a
+`document-standalone` tab opens in place with no chat told.
+
+Both beats are ACTIVE and green on their first full run.
+
 #### 2026-08-26 — feat(search): the Documents chip and the open-from-search choreography
 
 _Versions: SPA 0.5.567._

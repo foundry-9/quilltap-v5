@@ -88126,3 +88126,72 @@ the pathname ("does NOT fall through…"), and the card's `defaultPrevented` gat
 removed ("emits only when it handled it").
 
 Gate: `npm test` **348 files / 5,217 tests / 0 failed**; `npm run build` clean.
+
+### Unit 6 — the e2e beat (Tier 2 item 8), and the two Tier-2/3 dispositions
+
+**`apps/web/e2e/workspace-search-documents-flow.spec.ts` — ACTIVE, green on its
+first full run (2 passed).** It seeds a document into a real database-backed
+store through the standalone verbs (`documentOpen` with no `filePath` mints
+`Untitled Document.md` — the `title` field names a CHAT document, not a
+standalone one — then `documentRename` gives it the search token; the rename is
+made idempotent because Playwright restarts the worker after a failure and
+re-runs `beforeAll`), then walks: toolbar bar → "See all results →" → the six
+chips in `ALL_SEARCH_TYPES` order → narrow to Documents → the card (Document
+badge, `store · path` subtitle, and the `/workspace?open=document-standalone&…`
+href) → click → a `document-standalone` tab in place, dialog closed.
+
+It imports the BASE `@playwright/test` (flag ON) so the click takes the richest
+arm — the in-place standalone tab — rather than the legacy navigation; the file
+is named `workspace-…` so it sorts in with the other flag-ON specs.
+
+Two traps this beat re-proved, both already in the memory notes:
+`qt-search-dialog` is an Angular custom-element HOST (`display: inline`, no box)
+and never reports "visible" — scope THROUGH it and assert on an inner element;
+and `WorkspaceIntent` CONSUMES `?open=…` and strips the query, so an
+"after the click the URL still carries the intent" assertion is unwinnable —
+assert the tab instead.
+
+**⚠ A pre-existing finding the beat surfaced, outside this lane's ownership.**
+The beat derives the expected store reference from the live mount list rather
+than assuming it, and prints which arm fired. It reports:
+
+    [p4d122] store "Quilltap General" → ref "5a6ac7b9-…" (sameName=2, reserved=false)
+
+The e2e fixture instance carries **TWO enabled stores named "Quilltap
+General"**, so v5 addresses documents in it by UUID — the AMBIGUITY arm, live.
+That is the unit-4 timing finding made concrete on a REAL instance rather than
+a tampered file: v4 opening the same DB would rename the loser at its first
+`docMountPoints` read and address by name. The collision predates this lane
+(committed fixture + global setup, neither touched here) and its cause lives in
+`services/builtin_mounts.rs`, which P4.D119/D120 own this round — most likely
+the built-in ensure-or-adopt creating a second row AFTER
+`ensure_mount_index_tables` has already run the repair. **Recorded for the
+unifier / a follow-up order; nothing changed here.** (One silver lining: the
+`nameIsAmbiguous` arm the route differential cannot reach is exercised live.)
+
+**Tier 2 item 7 — the shared-home extraction is MOOT, measured.** v4 extracted
+`openDocumentInChat` because it had TWO copies of the choreography (the
+`qtap://` link provider and the new search hook). v5 has **no `QtapLinkProvider`
+twin at all** (`ggrep -rln qtap apps/web/src/app` — the hits are the markdown
+linkifier, the URI helpers and the export card, none of them an opener), and its
+one in-chat open (`DocumentMode.openDocument`, via the composer's picker) is the
+Salon-internal path that v4 does NOT route through the helper either. So the new
+helper has exactly one caller today, which is correct; there was no duplication
+to collapse.
+
+**Tier 3 item 9 — `p4.9i2` BANK ROW.** v4's `help/search.md` gained 36 lines at
+`b220999d` (the Documents chip's user-facing help). Ported: NOTHING. It joins
+the standing help-content bank at `p4.9i2` with the rest of v4's `help/**`.
+
+**Tier 3 item 10 — the six pre-existing v4 search defects: NOT fixed, exactly as
+v4 scoped them.** Catalogued verbatim from the spec's own list, as v4-side
+filing candidates: (1) tag results link to `/gallery?tag=…`, a route that does
+not exist; (2) message results' `?msg=` deep link is dropped by
+`parseHrefToIntent`; (3) `/aurora/{id}` character and memory URLs have no tab
+intent, so clicking remounts the workspace; (4) memory search is a sequential
+per-character repo loop on every debounced query; (5) the `MatchPriority` doc
+comment contradicts `getMatchPriority`, `route.ts:99` carries a `}const`
+formatting jam, the components hold dead `ALL_TYPES`/`router` bindings, and tag
+cards render a hardcoded "Used 0 times"; (6)
+`/workspace?open=document&chatId=X` deep links are dead. Two of them are already
+standing v5 deferrals recorded in `search.logic.ts` (`?msg=` and `/photos?tag=`).
