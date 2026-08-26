@@ -35,6 +35,21 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   }
 }
 
+/** The Archive / Restore button for row `index`. */
+function archiveButton(
+  fixture: ComponentFixture<ScenarioEditor>,
+  index: number,
+): HTMLButtonElement {
+  const rows = Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll('.qt-card'),
+  ) as HTMLElement[];
+  const btn = Array.from(rows[index].querySelectorAll('button')).find((b) =>
+    /^(Archive|Restore)$/.test((b.textContent ?? '').trim()),
+  );
+  if (!btn) throw new Error(`no archive button on row ${index}`);
+  return btn as HTMLButtonElement;
+}
+
 /** The content editor handle for row `index`. */
 function contentEditor(fixture: ComponentFixture<ScenarioEditor>, index = 0): RichEditor {
   return fixture.debugElement.queryAll(By.directive(RichEditor))[index]
@@ -120,6 +135,83 @@ describe('ScenarioEditor', () => {
     expect(emitted![1].updatedAt).not.toBe('2024-01-01T00:00:00.000Z');
     // The untouched row rides through byte-identical.
     expect(emitted![0].content).toBe('The drawing room, past midnight.');
+  });
+
+  /**
+   * P4.D121 — archiving from the character edit form (v4 `d25dacc1`
+   * `CharacterBasicInfo.tsx:455-486`). Two rules the vault depends on:
+   * restoring DELETES the key (omission is what "active" means), and every
+   * other field — including ones this editor never renders — rides through, or
+   * the next projection sweep would drop it from the file.
+   */
+  it('archives a row by SETTING the key, and bumps only that row’s updatedAt', async () => {
+    const fixture = await render([scenario({ id: 'a' }), scenario({ id: 'b' })]);
+    let emitted: CharacterScenario[] | null = null;
+    fixture.componentInstance.scenariosChange.subscribe((v) => (emitted = v));
+
+    archiveButton(fixture, 0).click();
+    await settle(fixture);
+
+    expect(emitted![0].archived).toBe(true);
+    expect(emitted![0].updatedAt).not.toBe('2024-01-01T00:00:00.000Z');
+    expect('archived' in emitted![1]).toBe(false);
+    expect(emitted![1].updatedAt).toBe('2024-01-01T00:00:00.000Z');
+  });
+
+  it('restoring DELETES the key rather than writing `archived: false`', async () => {
+    const fixture = await render([scenario({ id: 'a', archived: true })]);
+    let emitted: CharacterScenario[] | null = null;
+    fixture.componentInstance.scenariosChange.subscribe((v) => (emitted = v));
+
+    expect(archiveButton(fixture, 0).textContent!.trim()).toBe('Restore');
+    archiveButton(fixture, 0).click();
+    await settle(fixture);
+
+    // The KEY is gone — not present-and-false. `archived: false` in the vault
+    // file would be a dead flag v4 deliberately never writes.
+    expect('archived' in emitted![0]).toBe(false);
+    expect(JSON.stringify(emitted![0])).not.toContain('archived');
+  });
+
+  it('carries unrendered fields (description) through an archive toggle', async () => {
+    const fixture = await render([scenario({ id: 'a', description: 'at dawn' })]);
+    let emitted: CharacterScenario[] | null = null;
+    fixture.componentInstance.scenariosChange.subscribe((v) => (emitted = v));
+    archiveButton(fixture, 0).click();
+    await settle(fixture);
+    expect(emitted![0].description).toBe('at dawn');
+  });
+
+  it('badges an archived row and carries v4’s two button titles', async () => {
+    const active = await render([scenario({ id: 'a' })]);
+    expect((active.nativeElement as HTMLElement).textContent).not.toContain('Archived');
+    expect(archiveButton(active, 0).textContent!.trim()).toBe('Archive');
+    expect(archiveButton(active, 0).title).toBe('Hide this scenario from the chat pickers');
+
+    const archived = await render([scenario({ id: 'a', archived: true })]);
+    expect((archived.nativeElement as HTMLElement).textContent).toContain('Archived');
+    expect(archiveButton(archived, 0).title).toBe('Restore this scenario to the chat pickers');
+  });
+
+  it('carries v4’s archiving help paragraph', async () => {
+    const fixture = await render([scenario()]);
+    const text = (fixture.nativeElement as HTMLElement).textContent!.replace(/\s+/g, ' ');
+    expect(text).toContain(
+      'Archiving a scenario keeps it here but hides it from the chat pickers unless “Show archived” is ticked there. Chats already using it are unaffected.',
+    );
+  });
+
+  it('shows ALL scenarios, with no "Show archived" toggle of its own (by design)', async () => {
+    const fixture = await render([
+      scenario({ id: 'a', title: 'Active one' }),
+      scenario({ id: 'b', title: 'Retired one', archived: true }),
+    ]);
+    const text = (fixture.nativeElement as HTMLElement).textContent!;
+    expect(text).toContain('Archived');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('input[type="checkbox"]'),
+    ).toBeNull();
+    expect(fixture.debugElement.queryAll(By.directive(RichEditor))).toHaveLength(2);
   });
 
   it('does not emit on load (the textarea contract the field replaces)', async () => {

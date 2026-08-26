@@ -42,6 +42,14 @@ export interface ScenarioMutator {
   readonly loading: Signal<boolean>;
   readonly error: Signal<string | null>;
   readonly mountPointId: Signal<string | null>;
+  /**
+   * "Show archived" state (v4 `d25dacc1`). Flipping it REFETCHES with
+   * `includeArchived` rather than filtering `scenarios` client-side — the
+   * server is the single source of truth for what is hidden, so a surface that
+   * never asks is safe by construction.
+   */
+  readonly showArchived: Signal<boolean>;
+  setShowArchived(next: boolean): void;
   /** `silent` refreshes in place without flipping `loading` (tab re-activation). */
   refresh(opts?: { silent?: boolean }): Promise<void>;
   createScenario(input: ScenarioCreateInput): Promise<ScenarioResult<{ path: string }>>;
@@ -52,6 +60,13 @@ export interface ScenarioMutator {
   ): Promise<ScenarioResult<{ path: string }>>;
   deleteScenario(scenarioPath: string): Promise<ScenarioResult>;
   setDefaultScenario(scenarioPath: string): Promise<ScenarioResult>;
+  /**
+   * Archive or restore one scenario (v4 `setScenarioArchived`). Archiving hides
+   * it from every list and picker; it does not forbid the human from choosing
+   * it with "Show archived" ticked, and it never breaks a chat that already
+   * resolved its body.
+   */
+  setScenarioArchived(scenarioPath: string, archived: boolean): Promise<ScenarioResult>;
 }
 
 /** A create/mutate response body (the list + warnings, plus the fresh path on create/rename). */
@@ -64,7 +79,7 @@ interface MutateBody {
 
 /** The scope-specific dispatch closures the generic mutator drives. */
 interface ScenarioOps {
-  list(): Promise<ScenarioListDto>;
+  list(includeArchived: boolean): Promise<ScenarioListDto>;
   create(scenario: ScenarioCreateBag): Promise<MutateBody>;
   update(scenarioPath: string, scenario: ScenarioUpdateBag): Promise<MutateBody>;
   rename(scenarioPath: string, newFilename: string): Promise<MutateBody>;
@@ -87,10 +102,31 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
   const loading = signal(true);
   const error = signal<string | null>(null);
   const mountPointId = signal<string | null>(null);
+  const showArchived = signal(false);
 
   function applyMutate(body: MutateBody): void {
     scenarios.set(body.scenarios ?? []);
     warnings.set(body.warnings ?? []);
+  }
+
+  /**
+   * ⚠ **Recorded mechanism divergence.** v4 threads `?includeArchived=true`
+   * onto the mutate URLs too, so a PUT/POST/DELETE answers a freshly listed
+   * set that still contains the row it just changed. The P4.D119/P4.D121
+   * Shared contract B1 puts `includeArchived` on the LIST verbs ONLY, and a
+   * dispatch verb silently IGNORES an unknown field (memory:
+   * `dispatch-verb-ignores-unknown-fields`) — sending it on a mutate verb
+   * would answer an archived-free list while the checkbox claimed otherwise.
+   * So with the toggle on, the mutate body is discarded and the list is
+   * re-read through the one verb that honours the flag. Same final list, no
+   * intermediate paint (the mutate body is never applied on that path).
+   */
+  async function applyMutateOrRelist(body: MutateBody): Promise<void> {
+    if (showArchived()) {
+      await refresh({ silent: true });
+      return;
+    }
+    applyMutate(body);
   }
 
   async function refresh(opts?: { silent?: boolean }): Promise<void> {
@@ -101,7 +137,7 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
     }
     error.set(null);
     try {
-      const data = await ops.list();
+      const data = await ops.list(showArchived());
       scenarios.set(data.scenarios ?? []);
       warnings.set(data.warnings ?? []);
       mountPointId.set(data.mountPointId ?? null);
@@ -117,7 +153,7 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
   ): Promise<ScenarioResult<{ path: string }>> {
     try {
       const body = await ops.create(input);
-      applyMutate(body);
+      await applyMutateOrRelist(body);
       return { ok: true, path: body.path ?? '' };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
@@ -129,7 +165,7 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
     input: ScenarioUpdateInput,
   ): Promise<ScenarioResult> {
     try {
-      applyMutate(await ops.update(scenarioPath, input));
+      await applyMutateOrRelist(await ops.update(scenarioPath, input));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
@@ -142,7 +178,7 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
   ): Promise<ScenarioResult<{ path: string }>> {
     try {
       const body = await ops.rename(scenarioPath, newFilename);
-      applyMutate(body);
+      await applyMutateOrRelist(body);
       return { ok: true, path: body.path ?? '' };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
@@ -151,7 +187,7 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
 
   async function deleteScenario(scenarioPath: string): Promise<ScenarioResult> {
     try {
-      applyMutate(await ops.remove(scenarioPath));
+      await applyMutateOrRelist(await ops.remove(scenarioPath));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
@@ -172,18 +208,49 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
     });
   }
 
+  /**
+   * v4 `setScenarioArchived`. Re-sends the row's current fields with the flag;
+   * an archived scenario can never be the default, so the claim is dropped on
+   * the way in rather than left as a dead `isDefault: true` in the file.
+   */
+  async function setScenarioArchived(
+    scenarioPath: string,
+    archived: boolean,
+  ): Promise<ScenarioResult> {
+    const current = scenarios().find((s) => s.path === scenarioPath);
+    if (!current) {
+      return { ok: false, error: 'Scenario not found in current list' };
+    }
+    return updateScenario(scenarioPath, {
+      name: current.name,
+      ...(current.description !== undefined && { description: current.description }),
+      isDefault: archived ? false : current.isDefault,
+      archived,
+      body: current.body,
+    });
+  }
+
+  /** v4's checkbox handler: the flip IS a new request, not a client filter. */
+  function setShowArchived(next: boolean): void {
+    showArchived.set(next);
+    void refresh();
+  }
+
   return {
     scenarios,
     warnings,
     loading,
     error,
     mountPointId,
+    showArchived,
+    setShowArchived,
     refresh,
     createScenario,
     updateScenario,
     renameScenario,
     deleteScenario,
     setDefaultScenario,
+    setScenarioArchived,
   };
 }
 
@@ -194,8 +261,12 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
 /** The project-scoped mutator (v4 `useProjectScenarios`), base `projectScenario*`. */
 export function projectScenarioMutator(core: CoreClient, projectId: string): ScenarioMutator {
   return makeScenarioMutator({
-    list: async () =>
-      (await core.dispatchData({ type: 'projectScenarioList', projectId })) as unknown as ScenarioListDto,
+    list: async (includeArchived) =>
+      (await core.dispatchData({
+        type: 'projectScenarioList',
+        projectId,
+        includeArchived,
+      })) as unknown as ScenarioListDto,
     create: async (scenario) =>
       (await core.dispatchData({
         type: 'projectScenarioCreate',
@@ -228,7 +299,11 @@ export function projectScenarioMutator(core: CoreClient, projectId: string): Sce
 /** The instance-wide mutator (v4 `useGeneralScenarios`), base `scenario*`. */
 export function generalScenarioMutator(core: CoreClient): ScenarioMutator {
   return makeScenarioMutator({
-    list: async () => (await core.dispatchData({ type: 'scenarioList' })) as unknown as ScenarioListDto,
+    list: async (includeArchived) =>
+      (await core.dispatchData({
+        type: 'scenarioList',
+        includeArchived,
+      })) as unknown as ScenarioListDto,
     create: async (scenario) =>
       (await core.dispatchData({ type: 'scenarioCreate', scenario })) as MutateBody,
     update: async (scenarioPath, scenario) =>

@@ -358,6 +358,42 @@ inside the helper, then wraps `%…%`). Callers pair it with
 
 v4's five unit cases ported one for one, plus a sixth pinning the escape set as
 exactly those three characters.
+#### 2026-08-26 — feat(scenarios): archive and restore across the managers and the character edit form
+
+_Versions: SPA 0.5.569._
+
+The scenario management half of v4 `d25dacc1`.
+
+`ScenarioMutator` gains `showArchived` / `setShowArchived` / `setScenarioArchived`,
+and the list op takes the flag. Flipping the checkbox is a NEW request, never a
+client-side pass — the server is the single source of truth for what is hidden,
+so a surface that never asks is safe by construction. `setScenarioArchived`
+re-sends the row's own fields with the flag and drops an `isDefault` claim on the
+way in, since an archived scenario can never win default resolution and a dead
+`isDefault: true` would sit in the file. A path no longer in the list answers
+v4's `Scenario not found in current list`.
+
+⚠ One recorded mechanism divergence: v4 threads `?includeArchived=true` onto the
+MUTATE urls too, so a PUT answers a freshly listed set that still contains the row
+it just changed. The Shared contract puts `includeArchived` on the LIST verbs
+only, and a dispatch verb silently ignores an unknown field — so with the toggle
+on, the mutate body is discarded and the list is re-read through the one verb that
+honours the flag. Same final list, no intermediate paint. Pinned in
+`scenarios.api.spec.ts` in both directions.
+
+`ScenariosManager` gains the checkbox in a `justify-between` row with
+`+ New scenario` and a no-confirm `handleToggleArchived` (archiving destroys
+nothing). `ScenarioRow` goes three → four actions in BOTH layouts, badges an
+archived row, and disables the default radio with v4's
+`Archived scenarios cannot be the default`. New spec file, transcribed from v4's
+own `ScenarioRow.test.tsx`.
+
+The character edit form's scenario array gains per-row Archive / Restore against
+LOCAL form data, plus v4's archiving help paragraph. Restoring DELETES the key
+rather than writing `archived: false`; every mutation spreads the existing object,
+so `description` and anything else this editor never renders survives a save — the
+rebuilt-bag trap v4 retyped its local interface to avoid.
+
 #### 2026-08-26 — feat(scenario): the archived marker in the shared picker, and Show archived in the Salon sidebar
 
 _Versions: SPA 0.5.568._

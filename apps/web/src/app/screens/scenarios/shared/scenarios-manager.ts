@@ -16,6 +16,11 @@ import { ScenarioRow } from './scenario-row';
  * Surfaces soft warnings (e.g. multiple default files) above the list; routes
  * save to create-or-update; delete confirms; rename prompts on the FILENAME;
  * set-default re-sends update with `isDefault: true` (no dedicated verb).
+ *
+ * "Show archived" flips the mutator's FETCH, not a client-side filter: the
+ * server decides what is hidden, so the list can never disagree with the API
+ * (v4 `d25dacc1`). Archive/restore is single-click — deliberately no confirm,
+ * because nothing is destroyed.
  */
 @Component({
   selector: 'qt-scenarios-manager',
@@ -39,7 +44,16 @@ import { ScenarioRow } from './scenario-row';
         <div class="qt-alert-error" role="alert">{{ msg }}</div>
       }
 
-      <div class="flex justify-end">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <label class="flex items-center gap-2 qt-text-small">
+          <input
+            type="checkbox"
+            class="qt-checkbox"
+            [checked]="mutator().showArchived()"
+            (change)="onShowArchived($event)"
+          />
+          Show archived
+        </label>
         <button type="button" class="qt-button qt-button-primary qt-button-sm" (click)="openCreate()">
           + New scenario
         </button>
@@ -59,6 +73,7 @@ import { ScenarioRow } from './scenario-row';
               (edit)="openEdit($event)"
               (rename)="handleRename($event)"
               (delete)="handleDelete($event)"
+              (toggleArchived)="handleToggleArchived($event)"
             />
           }
         </ul>
@@ -144,6 +159,19 @@ export class ScenariosManager {
     }
     this.actionError.set(null);
     const result = await this.mutator().renameScenario(scenario.path, trimmed);
+    if (!result.ok) {
+      this.actionError.set(result.error);
+    }
+  }
+
+  protected onShowArchived(event: Event): void {
+    this.mutator().setShowArchived((event.target as HTMLInputElement).checked);
+  }
+
+  /** v4 `handleToggleArchived` — no confirm; archiving hides, it does not destroy. */
+  protected async handleToggleArchived(scenario: ScenarioDto): Promise<void> {
+    this.actionError.set(null);
+    const result = await this.mutator().setScenarioArchived(scenario.path, !scenario.archived);
     if (!result.ok) {
       this.actionError.set(result.error);
     }

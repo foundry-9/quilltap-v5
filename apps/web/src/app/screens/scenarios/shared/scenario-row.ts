@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   ElementRef,
   OnDestroy,
   inject,
@@ -17,9 +18,9 @@ import type { ScenarioDto } from '../../../core/core-contract';
  * lives in the manager (which owns the confirm/prompt/error flow).
  *
  * Container-query adaptive (Tailwind `@container`/`@lg`): a wide container shows
- * inline Edit / Rename / Delete buttons; a narrow one collapses them into a
- * single `⋮` kebab (closes on outside mousedown + capture-phase Escape,
- * mirroring the house wardrobe-row pattern).
+ * inline Edit / Rename / Archive / Delete buttons; a narrow one collapses the
+ * four into a single `⋮` kebab (closes on outside mousedown + capture-phase
+ * Escape, mirroring the house wardrobe-row pattern).
  */
 @Component({
   selector: 'qt-scenario-row',
@@ -31,7 +32,8 @@ import type { ScenarioDto } from '../../../core/core-contract';
         class="qt-radio mt-1"
         [checked]="scenario().isDefault"
         (change)="setDefault.emit(scenario())"
-        [title]="scenario().isDefault ? scopeLabel() + ' default' : 'Set as ' + scopeLabel() + ' default'"
+        [disabled]="scenario().archived"
+        [title]="radioTitle()"
         [attr.aria-label]="'Set ' + scenario().name + ' as ' + scopeLabel() + ' default'"
       />
 
@@ -41,6 +43,9 @@ import type { ScenarioDto } from '../../../core/core-contract';
           <span class="qt-text-xs qt-text-secondary truncate">{{ scenario().filename }}.md</span>
           @if (scenario().isDefault) {
             <span class="qt-badge qt-badge-primary">Default</span>
+          }
+          @if (scenario().archived) {
+            <span class="qt-badge qt-badge-secondary">Archived</span>
           }
         </div>
         @if (scenario().description) {
@@ -68,6 +73,14 @@ import type { ScenarioDto } from '../../../core/core-contract';
         </button>
         <button
           type="button"
+          class="qt-button qt-button-ghost qt-button-sm"
+          [title]="archiveTitle()"
+          (click)="toggleArchived.emit(scenario())"
+        >
+          {{ archiveLabel() }}
+        </button>
+        <button
+          type="button"
           class="qt-button qt-button-ghost qt-button-sm qt-text-destructive"
           title="Delete scenario"
           (click)="delete.emit(scenario())"
@@ -76,7 +89,7 @@ import type { ScenarioDto } from '../../../core/core-contract';
         </button>
       </div>
 
-      <!-- Narrow container: kebab menu holding the same three actions. -->
+      <!-- Narrow container: kebab menu holding the same four actions. -->
       <div class="relative @lg:hidden shrink-0">
         <button
           type="button"
@@ -110,6 +123,14 @@ import type { ScenarioDto } from '../../../core/core-contract';
             <button
               type="button"
               role="menuitem"
+              class="qt-dropdown-item w-full text-left"
+              (click)="pick(toggleArchived)"
+            >
+              {{ archiveLabel() }}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
               class="qt-dropdown-item w-full text-left qt-text-destructive"
               (click)="pick(delete)"
             >
@@ -129,6 +150,30 @@ export class ScenarioRow implements OnDestroy {
   readonly edit = output<ScenarioDto>();
   readonly rename = output<ScenarioDto>();
   readonly delete = output<ScenarioDto>();
+  /** Archive an active scenario, or restore an archived one. */
+  readonly toggleArchived = output<ScenarioDto>();
+
+  /** v4 `archiveLabel` (`:52`). */
+  protected readonly archiveLabel = computed(() =>
+    this.scenario().archived ? 'Restore' : 'Archive',
+  );
+
+  protected readonly archiveTitle = computed(() =>
+    this.scenario().archived
+      ? 'Restore this scenario to the pickers'
+      : 'Hide this scenario from the pickers',
+  );
+
+  /**
+   * v4 `:87-94`. An archived scenario is barred from default resolution
+   * server-side, so the radio is disabled and says why — offering it would be a
+   * control that quietly does nothing.
+   */
+  protected readonly radioTitle = computed(() => {
+    const s = this.scenario();
+    if (s.archived) return 'Archived scenarios cannot be the default';
+    return s.isDefault ? `${this.scopeLabel()} default` : `Set as ${this.scopeLabel()} default`;
+  });
 
   private readonly host = inject(ElementRef<HTMLElement>);
   protected readonly kebabOpen = signal(false);

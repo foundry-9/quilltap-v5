@@ -318,6 +318,11 @@ describe('the a6870c5a prompt-field migration', () => {
     expect(paragraphs[0]).toBe(
       'Named settings and contexts for conversations — the stage, never the actor. Each scenario can be selected when starting a chat. Stored in the vault’s Scenarios/ folder.',
     );
-    expect(paragraphs[1]).toBe(`${WRITTEN_AS}${PROMPT_FIELD_HINTS.scenario.example}`);
+    // P4.D121 slotted v4's archiving note between the helper and the example
+    // (v4 `CharacterBasicInfo.tsx:409-412`).
+    expect(paragraphs[1]).toBe(
+      'Archiving a scenario keeps it here but hides it from the chat pickers unless “Show archived” is ticked there. Chats already using it are unaffected.',
+    );
+    expect(paragraphs[2]).toBe(`${WRITTEN_AS}${PROMPT_FIELD_HINTS.scenario.example}`);
   });
 });

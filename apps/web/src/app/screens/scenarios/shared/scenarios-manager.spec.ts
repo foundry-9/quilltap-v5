@@ -16,6 +16,7 @@ function scenario(over: Partial<ScenarioDto> = {}): ScenarioDto {
     description: 'A summer evening.',
     isDefault: false,
     rawIsDefault: false,
+    archived: false,
     body: 'The gates swing wide for {{user}}.',
     lastModified: '2024-01-01T00:00:00.000Z',
     createdAt: '2024-01-01T00:00:00.000Z',
@@ -32,8 +33,11 @@ interface MockHandle {
     rename: [string, string][];
     delete: string[];
     setDefault: string[];
+    archived: [string, boolean][];
+    showArchived: boolean[];
   };
   scenarios: ReturnType<typeof signal<ScenarioDto[]>>;
+  showArchived: ReturnType<typeof signal<boolean>>;
   results: {
     create: ScenarioResult<{ path: string }>;
     update: ScenarioResult;
@@ -49,12 +53,15 @@ function mockMutator(init: Partial<Record<'scenarios' | 'warnings', unknown>> = 
   const loading = signal(false);
   const error = signal<string | null>(null);
   const mountPointId = signal<string | null>('mount-1');
+  const showArchived = signal(false);
   const calls: MockHandle['calls'] = {
     create: [],
     update: [],
     rename: [],
     delete: [],
     setDefault: [],
+    archived: [],
+    showArchived: [],
   };
   const results: MockHandle['results'] = {
     create: { ok: true, path: 'Scenarios/x.md' },
@@ -69,6 +76,11 @@ function mockMutator(init: Partial<Record<'scenarios' | 'warnings', unknown>> = 
     loading,
     error,
     mountPointId,
+    showArchived,
+    setShowArchived: (next) => {
+      calls.showArchived.push(next);
+      showArchived.set(next);
+    },
     refresh: async () => undefined,
     createScenario: async (input) => {
       calls.create.push(input);
@@ -90,8 +102,12 @@ function mockMutator(init: Partial<Record<'scenarios' | 'warnings', unknown>> = 
       calls.setDefault.push(path);
       return results.setDefault;
     },
+    setScenarioArchived: async (path, archived) => {
+      calls.archived.push([path, archived]);
+      return results.update;
+    },
   };
-  return { mutator, calls, scenarios, results };
+  return { mutator, calls, scenarios, results, showArchived };
 }
 
 async function settle(fixture: ComponentFixture<unknown>, ticks = 4): Promise<void> {
@@ -343,6 +359,54 @@ describe('ScenariosManager', () => {
     radios[1].dispatchEvent(new Event('change'));
     await settle(fixture);
     expect(handle.calls.setDefault).toEqual(['Scenarios/duel.md']);
+  });
+
+  /**
+   * P4.D121 — the archive surface (v4 `d25dacc1`): the "Show archived" checkbox
+   * flips the mutator's FETCH; Archive/Restore is single-click with NO confirm;
+   * a failure lands in the action-error banner like every other mutation.
+   */
+  it('“Show archived” flips the mutator’s fetch, never a client-side filter', async () => {
+    const handle = mockMutator({ scenarios: [scenario()] });
+    const fixture = await render(handle);
+    const box = (fixture.nativeElement as HTMLElement).querySelector(
+      'input[type="checkbox"].qt-checkbox',
+    ) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(handle.calls.showArchived).toEqual([true]);
+    expect(handle.scenarios()).toHaveLength(1);
+  });
+
+  it('archives and restores without a confirm dialog', async () => {
+    const handle = mockMutator({ scenarios: [scenario()] });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const fixture = await render(handle);
+
+    byText(fixture, 'Archive').click();
+    await settle(fixture);
+    expect(handle.calls.archived).toEqual([['Scenarios/welcome.md', true]]);
+    expect(confirm).not.toHaveBeenCalled();
+
+    handle.scenarios.set([scenario({ archived: true })]);
+    await settle(fixture);
+    byText(fixture, 'Restore').click();
+    await settle(fixture);
+    expect(handle.calls.archived).toEqual([
+      ['Scenarios/welcome.md', true],
+      ['Scenarios/welcome.md', false],
+    ]);
+  });
+
+  it('surfaces a failed archive as an action error', async () => {
+    const handle = mockMutator({ scenarios: [scenario()] });
+    handle.results.update = { ok: false, error: 'Scenario not found in current list' };
+    const fixture = await render(handle);
+    byText(fixture, 'Archive').click();
+    await settle(fixture);
+    expect(text(fixture)).toContain('Scenario not found in current list');
   });
 
   it('surfaces a failed mutation as an action error', async () => {

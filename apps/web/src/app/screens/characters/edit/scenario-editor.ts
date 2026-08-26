@@ -28,6 +28,25 @@ import { newScenario } from './character-form';
  * Fixed on the way: v5's helper had dropped v4's "Stored in the vault's
  * Scenarios/ folder." clause (a pre-existing transcription gap; v5 does store
  * them there, `db::scenarios::SCENARIOS_FOLDER`).
+ *
+ * ## Archiving (v4 `d25dacc1`)
+ *
+ * Each row gains an Archive / Restore control that mutates the LOCAL form data
+ * — persistence still rides the parent's Save, as everything in this editor
+ * does. Two rules the shape depends on:
+ *
+ *  - **Restore DROPS the key.** Omission means active; writing
+ *    `archived: false` would put a dead flag in the vault file.
+ *  - **The whole scenario object is round-tripped**, so nothing here may
+ *    rebuild a row from a narrower shape: `description` (which v4 only started
+ *    writing back at this commit) and `archived` both survive a save only
+ *    because every mutation spreads the existing object (memory:
+ *    `form-rebuilt-json-bag-drops-unrendered-keys`; v4 retyped its local
+ *    `CharacterScenario` onto the schema type for exactly this reason, which
+ *    in v5 is the shared `core-contract` shape this file already imports).
+ *
+ * This surface shows ALL scenarios always — no "Show archived" toggle — by
+ * design: it is where you go to un-archive one.
  */
 @Component({
   selector: 'qt-scenario-editor',
@@ -45,6 +64,10 @@ import { newScenario } from './character-form';
         Named settings and contexts for conversations &mdash; the stage, never the actor. Each
         scenario can be selected when starting a chat. Stored in the vault&rsquo;s Scenarios/
         folder.
+      </p>
+      <p class="text-xs qt-text-secondary mb-1">
+        Archiving a scenario keeps it here but hides it from the chat pickers unless
+        &ldquo;Show archived&rdquo; is ticked there. Chats already using it are unaffected.
       </p>
       <p class="text-xs qt-text-secondary mb-3">Written as: <em>{{ scenarioExample }}</em></p>
 
@@ -69,6 +92,21 @@ import { newScenario } from './character-form';
                   [value]="scenario.title"
                   (input)="setTitle(i, $any($event.target).value)"
                 />
+                @if (scenario.archived) {
+                  <span class="qt-badge qt-badge-secondary shrink-0">Archived</span>
+                }
+                <button
+                  type="button"
+                  class="qt-button-ghost qt-button-sm shrink-0"
+                  [title]="
+                    scenario.archived
+                      ? 'Restore this scenario to the chat pickers'
+                      : 'Hide this scenario from the chat pickers'
+                  "
+                  (click)="toggleArchived(i)"
+                >
+                  {{ scenario.archived ? 'Restore' : 'Archive' }}
+                </button>
                 <button
                   type="button"
                   class="qt-button-icon qt-button-ghost hover:qt-text-destructive"
@@ -105,6 +143,26 @@ export class ScenarioEditor {
 
   protected remove(index: number): void {
     this.scenariosChange.emit(this.scenarios().filter((_, i) => i !== index));
+  }
+
+  /**
+   * v4 `:458-483`. Archiving SETS `archived: true`; restoring DELETES the key
+   * rather than writing `false`, because omission is what "active" means in the
+   * vault file. Every other field rides through untouched — including ones this
+   * editor never renders.
+   */
+  protected toggleArchived(index: number): void {
+    this.scenariosChange.emit(
+      this.scenarios().map((s, i) => {
+        if (i !== index) return s;
+        const { archived: _was, ...rest } = s;
+        return {
+          ...rest,
+          ...(s.archived ? {} : { archived: true }),
+          updatedAt: new Date().toISOString(),
+        };
+      }),
+    );
   }
 
   protected setTitle(index: number, title: string): void {
