@@ -364,15 +364,22 @@ pub async fn chat_set_scenario(db: &Db, chat_id: &str, body: SetScenarioBody) ->
     )
 }
 
-/// v4's first-match cascade for the `source` log field.
+/// v4's first-match cascade for the `source` log field. JS truthiness, like the
+/// resolver's tiers: v4 tests `validatedData.projectScenarioPath ? …`, so an
+/// EMPTY string (which `z.string().max(500).nullish()` admits) is falsy and the
+/// cascade falls through — a bare `is_some()` would label an empty-path body
+/// `"project"` where v4 logs `"custom"`. Log-only either way (the differential
+/// cannot see it), so it is pinned by unit test below. (`scenario_id` cannot be
+/// `Some("")` — `z.uuid()` refuses it — but reads the same way for symmetry.)
 fn source_label(v: &ValidatedScenarioBody) -> &'static str {
-    if v.scenario_id.is_some() {
+    let truthy = |s: &Option<String>| s.as_deref().is_some_and(|s| !s.is_empty());
+    if truthy(&v.scenario_id) {
         "character"
-    } else if v.project_scenario_path.is_some() {
+    } else if truthy(&v.project_scenario_path) {
         "project"
-    } else if v.group_scenario_path.is_some() {
+    } else if truthy(&v.group_scenario_path) {
         "group"
-    } else if v.general_scenario_path.is_some() {
+    } else if truthy(&v.general_scenario_path) {
         "general"
     } else {
         "custom"
@@ -389,4 +396,38 @@ fn ok_body(scenario_text: Option<&str>, changed: bool, message: &str) -> Respons
     out.insert("changed".into(), json!(changed));
     out.insert("message".into(), json!(message));
     Response::ChatAdmin(Value::Object(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `source` log cascade follows JS truthiness (the §3 unification
+    /// review's catch): an empty-string path is FALSY in v4's ternary chain, so
+    /// it must fall through rather than claim the label. Log-only — no
+    /// differential can see the `source` field — hence this pin.
+    #[test]
+    fn source_label_treats_empty_strings_as_falsy() {
+        let empty_project_path = ValidatedScenarioBody {
+            project_scenario_path: Some(String::new()),
+            ..Default::default()
+        };
+        assert_eq!(source_label(&empty_project_path), "custom");
+
+        let empty_beats_nothing = ValidatedScenarioBody {
+            project_scenario_path: Some(String::new()),
+            general_scenario_path: Some("Scenarios/g.md".into()),
+            ..Default::default()
+        };
+        assert_eq!(source_label(&empty_beats_nothing), "general");
+
+        let cascade = ValidatedScenarioBody {
+            project_scenario_path: Some("Scenarios/p.md".into()),
+            general_scenario_path: Some("Scenarios/g.md".into()),
+            ..Default::default()
+        };
+        assert_eq!(source_label(&cascade), "project");
+
+        assert_eq!(source_label(&ValidatedScenarioBody::default()), "custom");
+    }
 }

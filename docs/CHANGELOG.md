@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — fix(chat): the scenario verb's `source` log label follows JS truthiness
+
+_Versions: core 0.0.665._
+
+The §3 unification review's catch on the `8f910137` round: `source_label` (the
+`source` field of the verb's `Scenario changed` info log) tested `is_some()`
+where v4's ternary cascade tests JS truthiness, so an empty-string path — which
+`z.string().max(500).nullish()` admits — would have been labelled by its tier
+where v4 logs `custom`. Log-only (no differential can see the field), so it is
+pinned by a new unit test (`source_label_treats_empty_strings_as_falsy`).
+
+#### 2026-08-25 — chore(porting): the 8f910137-round unification wires
+
+_Versions: SPA 0.5.565._
+
+The cross-lane hand-offs no single lane could do: P4.D117's
+`qt-text-tertiary` → `qt-text-secondary` rewrite applied in the three
+P4.D116-owned `new-chat` files and the guard's `PENDING_CROSS_LANE_SITES`
+tripwire block deleted (the guard now reports 934 defined classes with every
+guarded reference resolving, over BOTH SPA lanes' files); P4.D116's
+`salon-scenario-flow` e2e beat activated (`P4D115_SERVER_LANDED` → true) now
+the `chatSetScenario` verb is on the branch; and the §Shared contract diffed
+name-for-name across sides — the SPA's `ChatSetScenarioRequest` fields match
+the Rust variant's wire spellings exactly, and the differential already decodes
+the literal `{"type":"chatSetScenario", …}` wire shape through the `Request`
+enum.
+
 #### 2026-08-25 — feat(chat): the scene can be changed without leaving the conversation (server)
 
 _Versions: core 0.0.664, harness 0.0.577._
