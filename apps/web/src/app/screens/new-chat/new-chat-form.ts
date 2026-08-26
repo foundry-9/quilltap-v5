@@ -22,6 +22,7 @@ import { applyPlayAs, scenarioSelectionPatch } from './new-chat.logic';
 import { NewChatState } from './new-chat.state';
 import {
   type CharacterScenarioOption,
+  type GroupScenarioOption,
   type NewChatSelectedCharacter,
   type ScenarioOption,
 } from './new-chat.types';
@@ -40,15 +41,24 @@ interface PlayAsOption {
  * avatar toggle, the Reality-Injection timestamp card, and the project row.
  * Autonomous mode is a loud disabled-with-title deferral.
  *
- * The group-scenario optgroup is intentionally absent. v4's `NewChatForm`
- * declares a `groupScenarios` prop and (since `44a8137e`) hands it to the
- * shared `<ScenarioSelect>`, but NEITHER of its two callers —
- * `app/salon/new/NewChatPageClient.tsx` and `components/new-chat/NewChatModal.tsx`
- * — ever passes it, so the prop always defaults to `[]` and v4 renders no group
- * optgroup either. `useNewChat` fetches the union regardless, and v5's
- * `NewChatState` mirrors that fetch: dead UI, ported faithfully. The binding is
- * therefore omitted here rather than wired to `core().groupScenarios()`, which
- * would render optgroups v4 does not.
+ * ## The group optgroup, and "Show archived" (v4 `d25dacc1`)
+ *
+ * The group-scenario optgroup used to be absent here, faithfully: v4's
+ * `NewChatForm` declared a `groupScenarios` prop and (since `44a8137e`) handed
+ * it to the shared `<ScenarioSelect>`, but NEITHER caller ever passed it, so
+ * the prop defaulted to `[]` and v4 rendered no group optgroup either.
+ * `d25dacc1` connected `NewChatPageClient` to it, so the tier is now WIRED —
+ * which also makes the group arms of the preset preview and the selection
+ * chain reachable for the first time.
+ *
+ * **Recorded mechanism divergence — the "Show archived" checkbox.** v4 renders
+ * it only when its change-callback prop is supplied, so the second caller
+ * (`NewChatModal`) is a pure consumer of whatever tiers it was handed. v5 never
+ * ported that modal (the standing no-modal divergence — this screen IS the
+ * `salon-new` tab), and v5's form reads {@link NewChatState} directly rather
+ * than taking scenario props, so there is no caller that could withhold the
+ * setter. The checkbox therefore always renders — which is exactly what v4's
+ * page, the one caller v5 has, does.
  */
 @Component({
   selector: 'qt-new-chat-form',
@@ -176,11 +186,23 @@ interface PlayAsOption {
               (selectionChange)="onScenarioSelect($event)"
               [projectScenarios]="projectScenarios()"
               [generalScenarios]="generalScenarios()"
+              [groupScenarios]="groupScenarios()"
               [characterScenarios]="characterScenarios()"
               [characterDefaultScenarioId]="singleLlm()?.character?.defaultScenarioId ?? null"
               [disabled]="creating()"
             />
           }
+
+          <label class="mb-2 flex items-center gap-2 text-xs qt-text-muted">
+            <input
+              type="checkbox"
+              class="qt-checkbox"
+              [checked]="showArchivedScenarios()"
+              [disabled]="creating()"
+              (change)="onShowArchivedScenarios($event)"
+            />
+            Show archived
+          </label>
 
           @if (overrideNote(); as note) {
             <p class="mb-2 text-xs qt-text-muted">
@@ -323,6 +345,8 @@ export class NewChatForm {
   protected creating = computed(() => this.core().creating());
   protected projectScenarios = computed(() => this.core().projectScenarios());
   protected generalScenarios = computed(() => this.core().generalScenarios());
+  protected groupScenarios = computed(() => this.core().groupScenarios());
+  protected showArchivedScenarios = computed(() => this.core().showArchivedScenarios());
   protected availableProjects = computed(() => this.core().availableProjects());
   protected selectedProjectId = computed(() => this.core().selectedProjectId());
   protected project = computed(() => this.core().project());
@@ -375,16 +399,38 @@ export class NewChatForm {
     };
   });
 
+  /**
+   * Every scenario on the single LLM character, archived ones included (v4
+   * `allCharacterScenarios`). The character record always carries them — the
+   * vault projection sweeps files missing from the array — so the hiding
+   * happens here, not at the vault read.
+   */
+  protected readonly allCharacterScenarios = computed<CharacterScenarioOption[]>(
+    () => this.singleLlm()?.character.scenarios ?? [],
+  );
+
+  /**
+   * What the dropdown offers (v4 `singleCharacterScenarios`). Archived
+   * scenarios are hidden unless "Show archived" is ticked — with ONE exception:
+   * whatever is currently selected always stays in the list, so an archived
+   * pick made a moment ago does not blank the select out from under the user.
+   * (That exception is also what keeps the UNGUARDED character default seed
+   * visible; see `NewChatState.seedFromCharacter`.)
+   */
   protected readonly characterScenarios = computed<CharacterScenarioOption[]>(() => {
-    const s = this.singleLlm()?.character.scenarios;
-    return s && s.length > 0 ? s : [];
+    if (!this.singleLlm()) return [];
+    const showArchived = this.showArchivedScenarios();
+    const selectedId = this.form().scenarioId;
+    return this.allCharacterScenarios().filter(
+      (s) => showArchived || s.archived !== true || s.id === selectedId,
+    );
   });
 
   protected readonly showScenarioDropdown = computed(() =>
     hasAnyScenarioOptions({
       projectScenarios: this.projectScenarios(),
       generalScenarios: this.generalScenarios(),
-      // Group scenarios are deliberately absent — see the class header.
+      groupScenarios: this.groupScenarios(),
       characterScenarios: this.characterScenarios(),
     }),
   );
@@ -399,15 +445,29 @@ export class NewChatForm {
       ? this.generalScenarios().find((s) => s.path === this.form().generalScenarioPath)
       : undefined,
   );
+  private readonly selectedGroupScenario = computed<GroupScenarioOption | undefined>(() =>
+    this.form().groupScenarioPath
+      ? this.groupScenarios().find(
+          (s) =>
+            s.path === this.form().groupScenarioPath &&
+            s.groupId === this.form().groupScenarioGroupId,
+        )
+      : undefined,
+  );
+  /**
+   * Looked up against the UNFILTERED list (v4 `:191-194`): a scenario the form
+   * already points at keeps previewing even after it has been archived.
+   */
   private readonly selectedCharacterScenario = computed<CharacterScenarioOption | undefined>(() =>
     this.form().scenarioId
-      ? this.characterScenarios().find((s) => s.id === this.form().scenarioId)
+      ? this.allCharacterScenarios().find((s) => s.id === this.form().scenarioId)
       : undefined,
   );
 
   protected readonly presetContent = computed<string | null>(() => {
     if (this.selectedProjectScenario()) return this.selectedProjectScenario()!.body;
     if (this.selectedGeneralScenario()) return this.selectedGeneralScenario()!.body;
+    if (this.selectedGroupScenario()) return this.selectedGroupScenario()!.body;
     if (this.selectedCharacterScenario()) return this.selectedCharacterScenario()!.content;
     return null;
   });
@@ -422,6 +482,8 @@ export class NewChatForm {
     if (project) return { kind: 'project', path: project.path };
     const general = this.selectedGeneralScenario();
     if (general) return { kind: 'general', path: general.path };
+    const group = this.selectedGroupScenario();
+    if (group) return { kind: 'group', groupId: group.groupId, path: group.path };
     const character = this.selectedCharacterScenario();
     if (character) return { kind: 'character', scenarioId: character.id };
     return { kind: 'custom' };
@@ -520,6 +582,10 @@ export class NewChatForm {
       groupScenarioGroupId: null,
       scenario: '',
     });
+  }
+
+  protected onShowArchivedScenarios(event: Event): void {
+    void this.core().setShowArchivedScenarios((event.target as HTMLInputElement).checked);
   }
 
   protected onScenarioNotes(value: string): void {

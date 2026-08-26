@@ -93,8 +93,18 @@ export class NewChatState {
   readonly project = signal<NewChatProject | null>(null);
   readonly projectScenarios = signal<ScenarioOption[]>([]);
   readonly generalScenarios = signal<ScenarioOption[]>([]);
-  /** Fetched faithfully (participant union) but never rendered — dead UI in v4. */
+  /**
+   * The participant-union group tier. v4 fetched it and `NewChatForm` accepted
+   * it, but nothing connected the two until `d25dacc1` — so the Group Scenarios
+   * optgroup never appeared, in v4 or in this faithful port of it. Now wired.
+   */
   readonly groupScenarios = signal<GroupScenarioOption[]>([]);
+  /**
+   * "Show archived" for the scenario picker (v4 `d25dacc1`). Flipping it
+   * REFETCHES every scenario tier with `includeArchived` rather than filtering
+   * what is already loaded — the server owns the hiding.
+   */
+  readonly showArchivedScenarios = signal(false);
   readonly availableProjects = signal<ProjectListEntry[]>([]);
   /** Every roleplay template available to the user, for the in-form picker. */
   readonly roleplayTemplates = signal<RoleplayTemplateOption[]>([]);
@@ -172,7 +182,10 @@ export class NewChatState {
       const [charsData, profilesList, generalData, projectListData] = await Promise.all([
         this.core.dispatchData({ type: 'characterList' }),
         this.core.dispatchExpect({ type: 'connectionProfileList' }, 'connectionProfiles'),
-        this.core.dispatchData({ type: 'scenarioList' }),
+        this.core.dispatchData({
+          type: 'scenarioList',
+          includeArchived: this.showArchivedScenarios(),
+        }),
         this.core.dispatchData({ type: 'projectList' }),
       ]);
 
@@ -206,7 +219,13 @@ export class NewChatState {
       if (projectId) {
         const [projRes, projScenRes] = await Promise.all([
           settled(this.core.dispatchData({ type: 'projectGet', projectId })),
-          settled(this.core.dispatchData({ type: 'projectScenarioList', projectId })),
+          settled(
+            this.core.dispatchData({
+              type: 'projectScenarioList',
+              projectId,
+              includeArchived: this.showArchivedScenarios(),
+            }),
+          ),
         ]);
         projectOk = projRes.ok;
         if (projRes.ok) {
@@ -311,8 +330,15 @@ export class NewChatState {
             : null,
       }));
 
-      const projectDefaultPath = loadedProjectScenarios.find((s) => s.isDefault)?.path ?? null;
-      const generalDefaultPath = loadedGeneral.find((s) => s.isDefault)?.path ?? null;
+      // `!s.archived` is belt-and-braces (v4 `:470-473`): the server already
+      // refuses to let an archived file win default resolution, but with "Show
+      // archived" ticked an archived row carrying a stale `isDefault: true`
+      // would otherwise be a candidate for auto-selection here. The CHARACTER
+      // default seed is deliberately NOT guarded — see `seedFromCharacter`.
+      const projectDefaultPath =
+        loadedProjectScenarios.find((s) => s.isDefault && !s.archived)?.path ?? null;
+      const generalDefaultPath =
+        loadedGeneral.find((s) => s.isDefault && !s.archived)?.path ?? null;
       const seededGeneralPath = projectDefaultPath ? null : generalDefaultPath;
 
       if (initialCharacterId && seededChar && !this.seeded) {
@@ -338,7 +364,8 @@ export class NewChatState {
         this.form.update((prev) => ({ ...prev, generalScenarioPath: generalDefaultPath }));
       }
 
-      // Faithful participant-union fetch (dead UI — never rendered).
+      // The participant-union tier, now rendered as its own optgroup (v4
+      // `d25dacc1` finally connected it).
       void this.refreshGroupScenarios();
     } catch (err) {
       this.toasts?.showError('Failed to load chat creation data');
@@ -349,7 +376,16 @@ export class NewChatState {
     }
   }
 
-  /** Seed the cast + form from a `?characterId=` character (v4's seed branch). */
+  /**
+   * Seed the cast + form from a `?characterId=` character (v4's seed branch).
+   *
+   * ⚠ **v4-faithful quirk, reproduced not fixed** (`d25dacc1` §B7): the
+   * character's own `defaultScenarioId` is seeded UNGUARDED. v4 added
+   * `&& !s.archived` to the PROJECT and GENERAL default lookups only, so a
+   * character whose default scenario has since been archived still auto-selects
+   * it — and it still renders, because the form's keep-the-selection-visible
+   * exception holds it in the list (suffixed "(archived)").
+   */
   private seedFromCharacter(
     char: CharacterListItem,
     seededPartnerId: string | null,
@@ -402,6 +438,16 @@ export class NewChatState {
     await this.load();
   }
 
+  /**
+   * v4 `:664` — `showArchivedScenarios` sits in the fetch effect's deps, so
+   * flipping it refetches ALL tiers. v5's group union lives outside `load()`,
+   * so both are re-run here to reach the same four lists.
+   */
+  async setShowArchivedScenarios(next: boolean): Promise<void> {
+    this.showArchivedScenarios.set(next);
+    await Promise.all([this.load(), this.refreshGroupScenarios()]);
+  }
+
   private async refreshGroupScenarios(): Promise<void> {
     const characterIds = this.llmSelected().map((sc) => sc.character.id);
     if (characterIds.length === 0) {
@@ -409,7 +455,11 @@ export class NewChatState {
       return;
     }
     try {
-      const data = await this.core.dispatchData({ type: 'groupScenariosUnion', characterIds });
+      const data = await this.core.dispatchData({
+        type: 'groupScenariosUnion',
+        characterIds,
+        includeArchived: this.showArchivedScenarios(),
+      });
       const groups =
         (data['groupScenarios'] as Array<{
           groupId: string;

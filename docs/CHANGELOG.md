@@ -358,6 +358,44 @@ inside the helper, then wraps `%…%`). Callers pair it with
 
 v4's five unit cases ported one for one, plus a sixth pinning the escape set as
 exactly those three characters.
+#### 2026-08-26 — feat(new-chat): Show archived, the keep-the-selection exception, and the group optgroup v4 finally connected
+
+_Versions: SPA 0.5.570._
+
+The New Chat half of v4 `d25dacc1`.
+
+`showArchivedScenarios` joins the reference-data load: the flag rides
+`scenarioList`, `projectScenarioList` and `groupScenariosUnion`, and flipping it
+re-runs both the batched load and the participant union — v4 has the flag in its
+fetch effect's deps, and v5's group union lives outside `load()`, so both are
+re-run to reach the same four lists. The three loaded lists carry `archived`.
+
+The default-seed guards gain `&& !s.archived` on the PROJECT and GENERAL lookups
+only. The character seed is UNGUARDED — v4-faithful and REPRODUCED, not fixed
+(the commit prose says otherwise; the shipped hunks are the spec). A character
+whose default scenario has since been archived still auto-selects it, and it
+still renders, because the form's keep-the-selection-visible exception holds it
+in the list, suffixed.
+
+`NewChatForm` splits `allCharacterScenarios` (unfiltered) from what the dropdown
+offers (filtered, with the currently-selected id ALWAYS kept, so an archived pick
+made a moment ago does not blank the select out from under the user). The
+selected-scenario preview is looked up against the UNFILTERED list, so a chat
+already pointing at an archived scenario keeps previewing it.
+
+**The group optgroup gap is closed.** v4's form declared a `groupScenarios` prop
+and — since `44a8137e` — handed it to the shared picker, but neither caller ever
+passed it, so the Group Scenarios optgroup never appeared; v5 had ported that
+always-broken shape faithfully, with the reason in its class header. `d25dacc1`
+connected it, so the tier is now wired here too — which also makes the group arms
+of the preset preview and the selection chain reachable for the first time.
+
+One recorded mechanism divergence: v4 renders the checkbox only when its
+change-callback prop is supplied, so `NewChatModal` stays a pure consumer. v5
+never ported that modal, and this form reads `NewChatState` directly rather than
+taking scenario props, so there is no caller that could withhold the setter — the
+checkbox always renders, which is what v4's page (the one caller v5 has) does.
+
 #### 2026-08-26 — feat(scenarios): archive and restore across the managers and the character edit form
 
 _Versions: SPA 0.5.569._

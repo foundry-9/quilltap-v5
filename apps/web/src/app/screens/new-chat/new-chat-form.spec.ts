@@ -247,3 +247,134 @@ describe('NewChatForm roleplay template picker', () => {
     expect(state.form().roleplayTemplateTouched).toBe(true);
   });
 });
+
+/**
+ * P4.D121 — the archive behavior set in the New Chat form (v4 `d25dacc1`),
+ * plus the group optgroup that commit finally connected.
+ */
+describe('NewChatForm — archived scenarios and the group tier', () => {
+  const DUEL = { id: 'cs-1', title: 'A Duel', content: 'Pistols at dawn.' };
+  const WAKE = { id: 'cs-2', title: 'A Wake', content: 'Rain on the glass.', archived: true };
+
+  function withCharacter(
+    state: NewChatState,
+    scenarios: { id: string; title: string; content: string; archived?: boolean }[],
+  ): void {
+    const c = char('c1', 'Aria', { scenarios });
+    const cast: NewChatSelectedCharacter[] = [
+      { character: c, connectionProfileId: 'p1', selectedSystemPromptId: null, controlledBy: 'llm' },
+    ];
+    state.selectedCharacters.set(cast);
+  }
+
+  function optionTexts(fixture: ComponentFixture<NewChatForm>): string[] {
+    const select = (fixture.nativeElement as HTMLElement).querySelector(
+      '#new-chat-scenario-select',
+    ) as HTMLSelectElement | null;
+    return select ? [...select.querySelectorAll('option')].map((o) => o.textContent!.trim()) : [];
+  }
+
+  /**
+   * The "Show archived" box specifically — the form has other checkboxes (the
+   * autonomous toggle above it), so scope by the label's own text.
+   */
+  function archivedBox(fixture: ComponentFixture<NewChatForm>): HTMLInputElement {
+    const label = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
+    ).find((l) => (l.textContent ?? '').trim() === 'Show archived');
+    if (!label) throw new Error('no "Show archived" label rendered');
+    return label.querySelector('input[type="checkbox"]') as HTMLInputElement;
+  }
+
+  it('hides an archived character scenario until "Show archived" is ticked', () => {
+    const state = makeState();
+    withCharacter(state, [DUEL, WAKE]);
+    const fixture = render(state);
+    expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel']);
+
+    state.showArchivedScenarios.set(true);
+    fixture.detectChanges();
+    expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel', 'A Wake (archived)']);
+  });
+
+  it('keeps the CURRENT selection visible even when archived and hidden', () => {
+    const state = makeState();
+    withCharacter(state, [DUEL, WAKE]);
+    state.patchForm({ scenarioId: WAKE.id });
+    const fixture = render(state);
+    // The archived row stays — suffixed — because blanking the select out from
+    // under a pick made a moment ago is worse than showing it (v4 `:160-170`).
+    expect(optionTexts(fixture)).toEqual(['Custom...', 'A Duel', 'A Wake (archived)']);
+    const select = (fixture.nativeElement as HTMLElement).querySelector(
+      '#new-chat-scenario-select',
+    ) as HTMLSelectElement;
+    expect(select.value).toBe(WAKE.id);
+  });
+
+  it('previews an archived selection against the UNFILTERED list', () => {
+    const state = makeState();
+    withCharacter(state, [DUEL, WAKE]);
+    state.patchForm({ scenarioId: WAKE.id });
+    const fixture = render(state);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Rain on the glass.');
+  });
+
+  it('renders the Group Scenarios optgroup now that the tier is wired (v4 d25dacc1)', () => {
+    const state = makeState();
+    withCharacter(state, [DUEL]);
+    state.groupScenarios.set([
+      {
+        groupId: 'g1',
+        groupName: 'The Irregulars',
+        path: 'Scenarios/den.md',
+        filename: 'den.md',
+        name: 'The Den',
+        isDefault: false,
+        archived: false,
+        body: 'A cellar.',
+      },
+    ]);
+    const fixture = render(state);
+    const groups = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('#new-chat-scenario-select optgroup'),
+    ].map((g) => g.getAttribute('label'));
+    expect(groups).toContain('Group Scenarios: The Irregulars');
+    expect(optionTexts(fixture)).toContain('The Den');
+  });
+
+  it('a picked group scenario previews its body and holds the select', () => {
+    const state = makeState();
+    withCharacter(state, [DUEL]);
+    state.groupScenarios.set([
+      {
+        groupId: 'g1',
+        groupName: 'The Irregulars',
+        path: 'Scenarios/den.md',
+        filename: 'den.md',
+        name: 'The Den',
+        isDefault: false,
+        archived: false,
+        body: 'A cellar.',
+      },
+    ]);
+    state.patchForm({ groupScenarioPath: 'Scenarios/den.md', groupScenarioGroupId: 'g1' });
+    const fixture = render(state);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('A cellar.');
+    const select = (fixture.nativeElement as HTMLElement).querySelector(
+      '#new-chat-scenario-select',
+    ) as HTMLSelectElement;
+    expect(select.value).toBe('group:g1:Scenarios/den.md');
+  });
+
+  it('the "Show archived" checkbox drives the state setter, which refetches', async () => {
+    const state = makeState();
+    withCharacter(state, [DUEL]);
+    const fixture = render(state);
+    const box = archivedBox(fixture);
+    expect(box.checked).toBe(false);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(state.showArchivedScenarios()).toBe(true);
+  });
+});
