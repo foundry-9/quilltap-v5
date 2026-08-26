@@ -64,8 +64,10 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 
+use super::like_escape::{like_contains_pattern, LIKE_ESCAPE_CHAR};
 use super::DbError;
 use crate::clock::now_iso;
+use crate::services::mount_index::document_text_search::EDITABLE_TEXT_FILE_TYPES;
 
 /// One row of the joined `doc_mount_file_links l JOIN doc_mount_files f` view — v4
 /// `DocMountFileLinkWithContent` (`queryJoined`, `doc-mount-file-links.repository
@@ -565,6 +567,18 @@ fn map_existing_link(row: &rusqlite::Row<'_>) -> rusqlite::Result<ExistingLink> 
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
+/// A link row matched by [`DocMountFileLinksRepository::search_by_name_or_path`]
+/// (v4 `DocMountLinkTextMatch`). Deliberately narrow — the global search only
+/// needs identity, location and a sort key, not the joined content columns.
+#[derive(Clone, Debug)]
+pub struct DocMountLinkTextMatch {
+    pub id: String,
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    pub updated_at: String,
+}
+
 pub struct DocMountFileLinksRepository<'c> {
     conn: &'c Connection,
 }
@@ -1213,6 +1227,107 @@ impl<'c> DocMountFileLinksRepository<'c> {
         };
         self.delete_with_gc(&link_id)?;
         Ok(true)
+    }
+
+    /// v4 `searchByNameOrPath` (`doc-mount-file-links.repository.ts:612`, NEW at
+    /// `b220999d`): substring-search link rows by file name or relative path
+    /// across a set of mount points. Powers the global search bar's Documents
+    /// chip; the companion content search lives on the chunks repository.
+    ///
+    /// Scoped to [`EDITABLE_TEXT_FILE_TYPES`] — the search surface only offers
+    /// documents Document Mode can actually open, so PDFs, DOCX and blobs are
+    /// out. Matching is case-insensitive via `LOWER()` (SQLite's bare `LIKE`
+    /// only folds ASCII), and `%`/`_` in the user's query are escaped so they
+    /// match literally.
+    ///
+    /// **The SAME pattern is bound TWICE** (once per `LIKE` arm). v4's bind
+    /// order is `ids…, the four file types, pattern, pattern, limit`, and this
+    /// port keeps it literally.
+    ///
+    /// v4 wraps the body in `safeQuery(…, 'Error searching file links by name or
+    /// path', {…}, [])`, so ANY failure answers `[]` after a log; that is why
+    /// this port returns `Vec`, not `Result`.
+    ///
+    /// **The degraded-index asymmetry is real but behaviourally neutral.** The
+    /// chunks scan opens with `isMountIndexDegraded() → []`; this one does not.
+    /// It doesn't need to: under a degraded index v4's `getCollection()` throws
+    /// and the same `safeQuery` fallback answers `[]`. In v5 both collapse
+    /// further still — callers reach these only inside `Db::read_mount_index`,
+    /// which errors with `PartitionUnavailable` when the sibling DB isn't open
+    /// (v4's `getRawMountIndexDatabase() === null` guard).
+    pub fn search_by_name_or_path(
+        &self,
+        query: &str,
+        mount_point_ids: &[String],
+        limit: i64,
+    ) -> Vec<DocMountLinkTextMatch> {
+        if mount_point_ids.is_empty() || query.is_empty() {
+            return Vec::new();
+        }
+        match self.search_by_name_or_path_inner(query, mount_point_ids, limit) {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::doc_mount_file_links",
+                    collection = "doc_mount_file_links",
+                    mount_point_id_count = mount_point_ids.len(),
+                    query_length = crate::jsstr::utf16_len(query),
+                    error = %e,
+                    "Error searching file links by name or path",
+                );
+                Vec::new()
+            }
+        }
+    }
+
+    fn search_by_name_or_path_inner(
+        &self,
+        query: &str,
+        mount_point_ids: &[String],
+        limit: i64,
+    ) -> Result<Vec<DocMountLinkTextMatch>, DbError> {
+        let placeholders = vec!["?"; mount_point_ids.len()].join(",");
+        let type_placeholders = vec!["?"; EDITABLE_TEXT_FILE_TYPES.len()].join(",");
+        let pattern = like_contains_pattern(query);
+
+        let sql = format!(
+            "SELECT l.id, l.mountPointId, l.relativePath, l.fileName, l.updatedAt \
+               FROM doc_mount_file_links l \
+               JOIN doc_mount_files f ON f.id = l.fileId \
+              WHERE l.mountPointId IN ({placeholders}) \
+                AND f.fileType IN ({type_placeholders}) \
+                AND (LOWER(l.fileName) LIKE ? ESCAPE '{LIKE_ESCAPE_CHAR}' \
+                  OR LOWER(l.relativePath) LIKE ? ESCAPE '{LIKE_ESCAPE_CHAR}') \
+              ORDER BY l.updatedAt DESC \
+              LIMIT ?"
+        );
+
+        let mut binds: Vec<Box<dyn ToSql>> = Vec::new();
+        for id in mount_point_ids {
+            binds.push(Box::new(id.clone()));
+        }
+        for t in EDITABLE_TEXT_FILE_TYPES {
+            binds.push(Box::new(t.to_string()));
+        }
+        // The same pattern, TWICE (fileName then relativePath).
+        binds.push(Box::new(pattern.clone()));
+        binds.push(Box::new(pattern));
+        binds.push(Box::new(limit));
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let params: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt
+            .query_map(params.as_slice(), |row| {
+                Ok(DocMountLinkTextMatch {
+                    id: row.get::<_, String>(0)?,
+                    mount_point_id: row.get::<_, String>(1)?,
+                    relative_path: row.get::<_, String>(2)?,
+                    file_name: row.get::<_, String>(3)?,
+                    updated_at: row.get::<_, String>(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     // ========================================================================
@@ -2771,5 +2886,215 @@ mod store_children_gate_tests {
             .query_row("SELECT COUNT(*) FROM doc_mount_folders", [], |r| r.get(0))
             .unwrap();
         assert_eq!(folders, 1, "a declined pass must not delete anything");
+    }
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+
+    /// The three mount-index tables the name/path scan joins, in the shapes
+    /// `generateDDL` emits for them (only the columns this SQL names).
+    fn scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL, fileType TEXT);
+             CREATE TABLE doc_mount_file_links (
+                id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL,
+                mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL,
+                fileName TEXT NOT NULL, updatedAt TEXT NOT NULL);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn file(conn: &Connection, id: &str, file_type: &str) {
+        conn.execute(
+            "INSERT INTO doc_mount_files (id, fileType) VALUES (?1, ?2)",
+            params![id, file_type],
+        )
+        .unwrap();
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn link(conn: &Connection, id: &str, file_id: &str, mp: &str, path: &str, updated: &str) {
+        let name = path.rsplit('/').next().unwrap();
+        conn.execute(
+            "INSERT INTO doc_mount_file_links \
+             (id, fileId, mountPointId, relativePath, fileName, updatedAt) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, file_id, mp, path, name, updated],
+        )
+        .unwrap();
+    }
+
+    fn ids(v: &[DocMountLinkTextMatch]) -> Vec<&str> {
+        v.iter().map(|r| r.id.as_str()).collect()
+    }
+
+    fn mps(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// v4's guards: an empty id list or an empty query answers `[]` without
+    /// touching the DB (the engine trims before it calls, so `''` is reachable
+    /// only through a direct caller).
+    #[test]
+    fn empty_scope_or_query_short_circuits() {
+        let conn = scratch();
+        let repo = DocMountFileLinksRepository::new(&conn);
+        assert!(repo
+            .search_by_name_or_path("manifesto", &[], 200)
+            .is_empty());
+        assert!(repo
+            .search_by_name_or_path("", &mps(&["mp-1"]), 200)
+            .is_empty());
+    }
+
+    /// Name hits, path-only hits, the mount-point scope, the file-type scope,
+    /// `ORDER BY updatedAt DESC`, and the LIMIT.
+    #[test]
+    fn matches_name_or_path_within_scope_and_types() {
+        let conn = scratch();
+        file(&conn, "f-md", "markdown");
+        file(&conn, "f-pdf", "pdf");
+        // A file-name hit.
+        link(
+            &conn,
+            "l-name",
+            "f-md",
+            "mp-1",
+            "Notes/manifesto.md",
+            "2026-08-03T00:00:00.000Z",
+        );
+        // A PATH-only hit: the folder carries the needle, the file name doesn't.
+        // Only reachable because the SAME pattern is bound to BOTH LIKE arms.
+        link(
+            &conn,
+            "l-path",
+            "f-md",
+            "mp-1",
+            "Manifesto/loose-ends.md",
+            "2026-08-04T00:00:00.000Z",
+        );
+        // Right name, wrong store.
+        link(
+            &conn,
+            "l-other",
+            "f-md",
+            "mp-9",
+            "manifesto.md",
+            "2026-08-05T00:00:00.000Z",
+        );
+        // Right name, un-openable file type.
+        link(
+            &conn,
+            "l-pdf",
+            "f-pdf",
+            "mp-1",
+            "manifesto.pdf",
+            "2026-08-06T00:00:00.000Z",
+        );
+        // No hit at all.
+        link(
+            &conn,
+            "l-miss",
+            "f-md",
+            "mp-1",
+            "grocery.md",
+            "2026-08-07T00:00:00.000Z",
+        );
+
+        let repo = DocMountFileLinksRepository::new(&conn);
+        let hits = repo.search_by_name_or_path("manifesto", &mps(&["mp-1"]), 200);
+        // Newest first.
+        assert_eq!(ids(&hits), ["l-path", "l-name"]);
+        assert_eq!(hits[0].relative_path, "Manifesto/loose-ends.md");
+        assert_eq!(hits[0].file_name, "loose-ends.md");
+
+        // The LIMIT caps the scan.
+        let capped = repo.search_by_name_or_path("manifesto", &mps(&["mp-1"]), 1);
+        assert_eq!(ids(&capped), ["l-path"]);
+
+        // Widening the scope picks up the other store's row.
+        let wide = repo.search_by_name_or_path("manifesto", &mps(&["mp-1", "mp-9"]), 200);
+        assert_eq!(ids(&wide), ["l-other", "l-path", "l-name"]);
+    }
+
+    /// Matching folds ASCII case via `LOWER()` on BOTH sides (the pattern is
+    /// lower-cased inside `like_contains_pattern`).
+    #[test]
+    fn matching_is_case_insensitive() {
+        let conn = scratch();
+        file(&conn, "f", "txt");
+        link(
+            &conn,
+            "l",
+            "f",
+            "mp-1",
+            "MANIFESTO.TXT",
+            "2026-08-03T00:00:00.000Z",
+        );
+        let repo = DocMountFileLinksRepository::new(&conn);
+        assert_eq!(
+            ids(&repo.search_by_name_or_path("mAnIfEsTo", &mps(&["mp-1"]), 200)),
+            ["l"]
+        );
+    }
+
+    /// A `%` or `_` typed into the search bar matches itself — the `ESCAPE '\'`
+    /// clause plus `escape_like_literal`. Without them `50%off` would match
+    /// every file and `a_b` would match `axb`.
+    #[test]
+    fn like_metacharacters_match_literally() {
+        let conn = scratch();
+        file(&conn, "f", "markdown");
+        link(
+            &conn,
+            "l-pct",
+            "f",
+            "mp-1",
+            "50%off.md",
+            "2026-08-03T00:00:00.000Z",
+        );
+        link(
+            &conn,
+            "l-us",
+            "f",
+            "mp-1",
+            "a_b.md",
+            "2026-08-03T00:00:00.000Z",
+        );
+        link(
+            &conn,
+            "l-plain",
+            "f",
+            "mp-1",
+            "axb.md",
+            "2026-08-03T00:00:00.000Z",
+        );
+        let repo = DocMountFileLinksRepository::new(&conn);
+        assert_eq!(
+            ids(&repo.search_by_name_or_path("50%", &mps(&["mp-1"]), 200)),
+            ["l-pct"]
+        );
+        // `a_b` must NOT match `axb`.
+        assert_eq!(
+            ids(&repo.search_by_name_or_path("a_b", &mps(&["mp-1"]), 200)),
+            ["l-us"]
+        );
+    }
+
+    /// v4's `safeQuery(..., [])` fallback: no input can reach the catch arm, so
+    /// the table is broken instead (the standing "force a swallowed catch by
+    /// breaking the table" recipe). The scan must answer `[]`, not propagate.
+    #[test]
+    fn a_broken_table_answers_empty_not_an_error() {
+        let conn = scratch();
+        conn.execute_batch("DROP TABLE doc_mount_files;").unwrap();
+        let repo = DocMountFileLinksRepository::new(&conn);
+        assert!(repo
+            .search_by_name_or_path("manifesto", &mps(&["mp-1"]), 200)
+            .is_empty());
     }
 }

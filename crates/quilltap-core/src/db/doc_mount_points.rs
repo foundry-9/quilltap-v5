@@ -698,6 +698,41 @@ impl<'c> DocMountPointsRepository<'c> {
         Ok(rows)
     }
 
+    /// v4 `findEnabled()` as the **global document search** consumes it (P4.D122):
+    /// every enabled mount point with its `storeType` carried.
+    ///
+    /// **Why a second scoped read rather than widening [`DmpRow`]** (the order's
+    /// Hazard 1): `find_enabled_for_docedit`'s `DmpRow` has no `storeType`, and
+    /// widening it reaches `DocStoreUriResolver::build`, the path resolver, and
+    /// the `doc_mount_points_tier2` family. `find_by_name` above already
+    /// selects `storeType` in its own scoped shape — the precedent this follows.
+    ///
+    /// `storeType` is `Option<String>`: the column is `TEXT DEFAULT 'documents'`
+    /// with **no NOT NULL**, so a NULL is representable. v4 reads it through the
+    /// collection and the search engine defaults it with `?? 'documents'` in
+    /// `describe()` — while the fail-closed sweep uses a STRICT
+    /// `storeType === 'character'`, under which a NULL-`storeType` vault
+    /// SURVIVES the sweep. Both halves need the un-defaulted value, so it stays
+    /// `Option` here and each caller applies v4's own rule.
+    ///
+    /// No `ORDER BY`: v4's `findByFilter({enabled:true})` yields rowid order, and
+    /// the engine's `storeById` map and `mountPointIds` list both ride on it.
+    pub fn find_enabled_for_search(&self) -> Result<Vec<EnabledStoreRow>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, storeType FROM doc_mount_points WHERE enabled = 1")?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(EnabledStoreRow {
+                    id: row.get::<_, String>(0)?,
+                    name: row.get::<_, String>(1)?,
+                    store_type: row.get::<_, Option<String>>(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// v4 `countByName` = `findByName(name).length` — the number of ENABLED mount
     /// points whose `name.trim().toLowerCase()` matches (NOT a literal SQL count).
     /// Used by the URI producers to decide whether a store name is ambiguous
@@ -795,6 +830,17 @@ impl MountServiceInfo {
     pub fn is_filesystem_mount(&self) -> bool {
         self.mount_type == "filesystem" || self.mount_type == "obsidian"
     }
+}
+
+/// The scoped mount-point row the global document search consumes (P4.D122) —
+/// identity, display name, and the raw `storeType` (see
+/// [`DocMountPointsRepository::find_enabled_for_search`] for why it stays
+/// `Option`).
+#[derive(Debug, Clone)]
+pub struct EnabledStoreRow {
+    pub id: String,
+    pub name: String,
+    pub store_type: Option<String>,
 }
 
 /// The scoped mount-point row the doc-edit path resolver + URI producers consume.

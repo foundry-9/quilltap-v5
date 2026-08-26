@@ -232,6 +232,30 @@ dedupe-then-sort is made observable instead — two mounts in one tier both carr
 file and the sort decides which content comes back. Six mutations proven to
 redden; a seventh (dropping the folder ensure) provably does not, because the
 write primitive find-or-creates folder segments itself — recorded at the source.
+#### 2026-08-26 — feat(search): the two document-store scans behind the Documents chip
+
+_Versions: core 0.0.668._
+
+Ports v4 `b220999d`'s two repository queries. `docMountFileLinks
+.searchByNameOrPath` becomes `DocMountFileLinksRepository::search_by_name_or_path`
+(the same LIKE pattern bound TWICE, once per arm, so a folder-only hit still
+lands); `docMountChunks.searchContent` becomes
+`DocMountChunksRepository::search_content` (`GROUP BY c.linkId` +
+`MIN(c.chunkIndex)` on SQLite's bare-column rule, so the text returned is the
+lowest MATCHING chunk's — and the scope filter is the chunk's own denormalized
+`mountPointId`, not the link's). Both are scoped to the new
+`EDITABLE_TEXT_FILE_TYPES`, both escape LIKE metacharacters, and both swallow
+failures into `[]` after a log, as v4's `safeQuery` fallback does.
+
+`DocMountPointsRepository::find_enabled_for_search` is a new scoped read that
+carries `storeType` (as `Option`, since the column is nullable and v4's
+fail-closed sweep uses a strict `=== 'character'` compare) without widening the
+doc-edit `DmpRow`.
+
+Eleven unit tests cover the SQL-level quirks no route-level differential can
+discriminate; three v5-source mutations (MIN→MAX, dropping the second LIKE bind,
+widening the escape set) each redden exactly one of them.
+
 #### 2026-08-26 — refactor(doc-edit): extract docStoreAuthority and add the bare store-ref resolver
 
 _Versions: core 0.0.667._

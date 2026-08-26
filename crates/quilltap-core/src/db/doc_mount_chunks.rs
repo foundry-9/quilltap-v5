@@ -76,8 +76,10 @@
 use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
+use super::like_escape::{like_contains_pattern, LIKE_ESCAPE_CHAR};
 use super::DbError;
 use crate::embedding_blob::float32_to_blob;
+use crate::services::mount_index::document_text_search::EDITABLE_TEXT_FILE_TYPES;
 
 /// Fields for creating a doc mount chunk (the `Omit<DocMountChunk,'id'|
 /// timestamps>` shape). `embedding` is the BLOB column (`None`/empty → SQL NULL,
@@ -182,6 +184,22 @@ fn marshal_chunk_row(row: &rusqlite::Row) -> rusqlite::Result<ChunkRow> {
 }
 
 /// Repository over a borrowed connection (held by the [`super::Writer`]).
+/// A chunk matched by [`DocMountChunksRepository::search_content`] (v4
+/// `DocMountChunkTextMatch`), already joined to its link row so the caller can
+/// render the document's location without a second lookup. **One row per
+/// document**, not per chunk.
+#[derive(Clone, Debug)]
+pub struct DocMountChunkTextMatch {
+    pub link_id: String,
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    pub updated_at: String,
+    pub chunk_index: f64,
+    pub content: String,
+    pub heading_context: Option<String>,
+}
+
 pub struct DocMountChunksRepository<'c> {
     conn: &'c Connection,
 }
@@ -294,6 +312,116 @@ impl<'c> DocMountChunksRepository<'c> {
             .prepare(&format!("{CHUNK_ROW_SELECT} WHERE mountPointId = ?1"))?;
         let rows = stmt
             .query_map(params![mount_point_id], marshal_chunk_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// v4 `searchContent` (`doc-mount-chunks.repository.ts:197`, NEW at
+    /// `b220999d`): substring-search chunk text across a set of mount points,
+    /// returning one row per matching document (the lowest-index matching
+    /// chunk). Powers the content half of the global search bar's Documents chip
+    /// ([`crate::services::mount_index::document_text_search`]).
+    ///
+    /// The `GROUP BY c.linkId` with `MIN(c.chunkIndex)` relies on **SQLite's
+    /// documented bare-column rule**: when a query has a single `min()`/`max()`
+    /// aggregate, the bare columns come from the row that produced it — so
+    /// `content` and `headingContext` belong to the earliest MATCHING chunk, not
+    /// an arbitrary one. `l.*` columns are constant within a group (the join is
+    /// 1:1 on linkId). v5 runs on the same engine and inherits the rule; do NOT
+    /// rewrite this as a window function or a subquery without preserving
+    /// "lowest chunkIndex among MATCHING chunks".
+    ///
+    /// The scope filter is **`c.mountPointId`** — the chunk's own denormalized
+    /// column, not `l.mountPointId`. Keep the asymmetry with the link scan.
+    ///
+    /// Scoped to [`EDITABLE_TEXT_FILE_TYPES`] to match `searchByNameOrPath`;
+    /// `%`/`_` in the user's query are escaped so they match literally, and
+    /// `LIMIT` caps the scan. v4's `safeQuery(…, 'Error searching chunk content',
+    /// {…}, [])` swallows every failure into `[]`, which is why this returns
+    /// `Vec` rather than `Result`.
+    pub fn search_content(
+        &self,
+        query: &str,
+        mount_point_ids: &[String],
+        limit: i64,
+    ) -> Vec<DocMountChunkTextMatch> {
+        if mount_point_ids.is_empty() || query.is_empty() {
+            return Vec::new();
+        }
+        match self.search_content_inner(query, mount_point_ids, limit) {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::doc_mount_chunks",
+                    collection = "doc_mount_chunks",
+                    mount_point_id_count = mount_point_ids.len(),
+                    query_length = crate::jsstr::utf16_len(query),
+                    error = %e,
+                    "Error searching chunk content",
+                );
+                Vec::new()
+            }
+        }
+    }
+
+    fn search_content_inner(
+        &self,
+        query: &str,
+        mount_point_ids: &[String],
+        limit: i64,
+    ) -> Result<Vec<DocMountChunkTextMatch>, DbError> {
+        let placeholders = vec!["?"; mount_point_ids.len()].join(",");
+        let type_placeholders = vec!["?"; EDITABLE_TEXT_FILE_TYPES.len()].join(",");
+        let pattern = like_contains_pattern(query);
+
+        let sql = format!(
+            "SELECT c.linkId AS linkId, \
+                    MIN(c.chunkIndex) AS chunkIndex, \
+                    c.content AS content, \
+                    c.headingContext AS headingContext, \
+                    l.mountPointId AS mountPointId, \
+                    l.relativePath AS relativePath, \
+                    l.fileName AS fileName, \
+                    l.updatedAt AS updatedAt \
+               FROM doc_mount_chunks c \
+               JOIN doc_mount_file_links l ON l.id = c.linkId \
+               JOIN doc_mount_files f ON f.id = l.fileId \
+              WHERE c.mountPointId IN ({placeholders}) \
+                AND f.fileType IN ({type_placeholders}) \
+                AND LOWER(c.content) LIKE ? ESCAPE '{LIKE_ESCAPE_CHAR}' \
+              GROUP BY c.linkId \
+              ORDER BY l.updatedAt DESC \
+              LIMIT ?"
+        );
+
+        let mut binds: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        for id in mount_point_ids {
+            binds.push(Box::new(id.clone()));
+        }
+        for t in EDITABLE_TEXT_FILE_TYPES {
+            binds.push(Box::new(t.to_string()));
+        }
+        binds.push(Box::new(pattern));
+        binds.push(Box::new(limit));
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let params: Vec<&dyn rusqlite::ToSql> = binds.iter().map(|b| b.as_ref()).collect();
+        let rows = stmt
+            .query_map(params.as_slice(), |row| {
+                Ok(DocMountChunkTextMatch {
+                    link_id: row.get::<_, String>(0)?,
+                    // `chunkIndex` is REAL-affinity (a Zod `.int().min(0)` with
+                    // no max lowers to REAL) — read it as f64 the way the rest
+                    // of this repo does.
+                    chunk_index: row.get::<_, f64>(1)?,
+                    content: row.get::<_, String>(2)?,
+                    heading_context: row.get::<_, Option<String>>(3)?,
+                    mount_point_id: row.get::<_, String>(4)?,
+                    relative_path: row.get::<_, String>(5)?,
+                    file_name: row.get::<_, String>(6)?,
+                    updated_at: row.get::<_, String>(7)?,
+                })
+            })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -441,4 +569,265 @@ pub fn count_nonempty_embeddings_by_mount_point_id(
         |r| r.get::<_, i64>(0),
     )?;
     Ok(n)
+}
+
+#[cfg(test)]
+mod search_tests {
+    use super::*;
+
+    fn scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL, fileType TEXT);
+             CREATE TABLE doc_mount_file_links (
+                id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL,
+                mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL,
+                fileName TEXT NOT NULL, updatedAt TEXT NOT NULL);
+             CREATE TABLE doc_mount_chunks (
+                id TEXT PRIMARY KEY NOT NULL, linkId TEXT NOT NULL,
+                mountPointId TEXT NOT NULL, chunkIndex REAL NOT NULL,
+                content TEXT NOT NULL, headingContext TEXT);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO doc_mount_files (id, fileType) VALUES ('f-md', 'markdown')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO doc_mount_files (id, fileType) VALUES ('f-pdf', 'pdf')",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    fn link(conn: &Connection, id: &str, file_id: &str, mp: &str, path: &str, updated: &str) {
+        let name = path.rsplit('/').next().unwrap();
+        conn.execute(
+            "INSERT INTO doc_mount_file_links \
+             (id, fileId, mountPointId, relativePath, fileName, updatedAt) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, file_id, mp, path, name, updated],
+        )
+        .unwrap();
+    }
+
+    fn chunk(
+        conn: &Connection,
+        id: &str,
+        link_id: &str,
+        mp: &str,
+        index: f64,
+        content: &str,
+        heading: Option<&str>,
+    ) {
+        conn.execute(
+            "INSERT INTO doc_mount_chunks \
+             (id, linkId, mountPointId, chunkIndex, content, headingContext) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, link_id, mp, index, content, heading],
+        )
+        .unwrap();
+    }
+
+    fn mps(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn empty_scope_or_query_short_circuits() {
+        let conn = scratch();
+        let repo = DocMountChunksRepository::new(&conn);
+        assert!(repo.search_content("airship", &[], 200).is_empty());
+        assert!(repo.search_content("", &mps(&["mp-1"]), 200).is_empty());
+    }
+
+    /// **The bare-column rule.** `GROUP BY c.linkId` with a single
+    /// `MIN(c.chunkIndex)` makes the bare `content`/`headingContext` come from
+    /// the row that produced the minimum — and the minimum is taken over the
+    /// MATCHING chunks only, because the `WHERE` runs first. Chunk 0 doesn't
+    /// match here, so the answer must be chunk 2's text, not chunk 0's and not
+    /// chunk 5's.
+    #[test]
+    fn one_row_per_document_from_the_lowest_matching_chunk() {
+        let conn = scratch();
+        link(
+            &conn,
+            "l-1",
+            "f-md",
+            "mp-1",
+            "Notes/log.md",
+            "2026-08-03T00:00:00.000Z",
+        );
+        chunk(
+            &conn,
+            "c-0",
+            "l-1",
+            "mp-1",
+            0.0,
+            "nothing of interest here",
+            None,
+        );
+        chunk(
+            &conn,
+            "c-5",
+            "l-1",
+            "mp-1",
+            5.0,
+            "the airship, later",
+            Some("Chapter V"),
+        );
+        chunk(
+            &conn,
+            "c-2",
+            "l-1",
+            "mp-1",
+            2.0,
+            "the airship, first",
+            Some("Chapter II"),
+        );
+
+        let repo = DocMountChunksRepository::new(&conn);
+        let hits = repo.search_content("airship", &mps(&["mp-1"]), 200);
+        assert_eq!(hits.len(), 1, "one row per document");
+        assert_eq!(hits[0].chunk_index, 2.0);
+        assert_eq!(hits[0].content, "the airship, first");
+        assert_eq!(hits[0].heading_context.as_deref(), Some("Chapter II"));
+        assert_eq!(hits[0].link_id, "l-1");
+        assert_eq!(hits[0].relative_path, "Notes/log.md");
+        assert_eq!(hits[0].file_name, "log.md");
+        assert_eq!(hits[0].updated_at, "2026-08-03T00:00:00.000Z");
+    }
+
+    /// The scope filter is the CHUNK's own denormalized `mountPointId`, not the
+    /// link's — v4's asymmetry with the name/path scan. A chunk whose column
+    /// disagrees with its link's is judged by the chunk's.
+    #[test]
+    fn scope_filters_on_the_chunks_own_mount_point_column() {
+        let conn = scratch();
+        link(
+            &conn,
+            "l-1",
+            "f-md",
+            "mp-1",
+            "log.md",
+            "2026-08-03T00:00:00.000Z",
+        );
+        // The link lives in mp-1; the chunk row says mp-9.
+        chunk(&conn, "c-1", "l-1", "mp-9", 0.0, "the airship hummed", None);
+
+        let repo = DocMountChunksRepository::new(&conn);
+        assert!(repo
+            .search_content("airship", &mps(&["mp-1"]), 200)
+            .is_empty());
+        assert_eq!(
+            repo.search_content("airship", &mps(&["mp-9"]), 200).len(),
+            1
+        );
+    }
+
+    /// Scoped to the openable file types, ordered newest-first, and capped by
+    /// the LIMIT.
+    #[test]
+    fn file_type_scope_order_and_limit() {
+        let conn = scratch();
+        link(
+            &conn,
+            "l-old",
+            "f-md",
+            "mp-1",
+            "old.md",
+            "2026-08-01T00:00:00.000Z",
+        );
+        link(
+            &conn,
+            "l-new",
+            "f-md",
+            "mp-1",
+            "new.md",
+            "2026-08-09T00:00:00.000Z",
+        );
+        link(
+            &conn,
+            "l-pdf",
+            "f-pdf",
+            "mp-1",
+            "scan.pdf",
+            "2026-08-10T00:00:00.000Z",
+        );
+        chunk(&conn, "c-old", "l-old", "mp-1", 0.0, "the airship", None);
+        chunk(&conn, "c-new", "l-new", "mp-1", 0.0, "the airship", None);
+        chunk(&conn, "c-pdf", "l-pdf", "mp-1", 0.0, "the airship", None);
+
+        let repo = DocMountChunksRepository::new(&conn);
+        let hits = repo.search_content("airship", &mps(&["mp-1"]), 200);
+        assert_eq!(
+            hits.iter().map(|h| h.link_id.as_str()).collect::<Vec<_>>(),
+            ["l-new", "l-old"],
+            "the PDF's extracted text is out of scope"
+        );
+        let capped = repo.search_content("airship", &mps(&["mp-1"]), 1);
+        assert_eq!(capped.len(), 1);
+        assert_eq!(capped[0].link_id, "l-new");
+    }
+
+    /// `%`/`_` in the query match themselves inside chunk text too.
+    #[test]
+    fn like_metacharacters_match_literally() {
+        let conn = scratch();
+        link(
+            &conn,
+            "l-pct",
+            "f-md",
+            "mp-1",
+            "a.md",
+            "2026-08-03T00:00:00.000Z",
+        );
+        link(
+            &conn,
+            "l-plain",
+            "f-md",
+            "mp-1",
+            "b.md",
+            "2026-08-02T00:00:00.000Z",
+        );
+        chunk(
+            &conn,
+            "c-pct",
+            "l-pct",
+            "mp-1",
+            0.0,
+            "fully 50% off today",
+            None,
+        );
+        chunk(
+            &conn,
+            "c-plain",
+            "l-plain",
+            "mp-1",
+            0.0,
+            "fully 50 off today",
+            None,
+        );
+
+        let repo = DocMountChunksRepository::new(&conn);
+        let hits = repo.search_content("50%", &mps(&["mp-1"]), 200);
+        assert_eq!(
+            hits.iter().map(|h| h.link_id.as_str()).collect::<Vec<_>>(),
+            ["l-pct"]
+        );
+    }
+
+    /// v4's `safeQuery(..., [])` fallback — forced by breaking the table.
+    #[test]
+    fn a_broken_table_answers_empty_not_an_error() {
+        let conn = scratch();
+        conn.execute_batch("DROP TABLE doc_mount_file_links;")
+            .unwrap();
+        let repo = DocMountChunksRepository::new(&conn);
+        assert!(repo
+            .search_content("airship", &mps(&["mp-1"]), 200)
+            .is_empty());
+    }
 }

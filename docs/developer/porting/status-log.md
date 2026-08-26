@@ -87861,3 +87861,59 @@ trim/fold compare), `ref_resolver_has_no_self_vault_shorthand`.
 
 Gate: `cargo test -p quilltap-core --lib doc_edit::` 32/0; `qtap_uri_equivalence`
 1/0 at the pin; clippy `-p quilltap-core --all-targets` clean.
+
+### Unit 3 — the two repo scans + the storeType-carrying enabled read
+
+- **`EDITABLE_TEXT_FILE_TYPES`** (v4's NEW third constant, `mount-index.types
+  .ts:97`) lands in the new `services::mount_index::document_text_search`
+  module, per the order; the two `db::doc_mount_*` scans import it back. v5's
+  two pre-existing same-valued constants (`character_archive::service::
+  TEXT_DOCUMENT_FILE_TYPES`, `mount_index::reindex::TEXT_NATIVE`) are left
+  alone, as ordered. The home decision is documented at the constant.
+- **`DocMountFileLinksRepository::search_by_name_or_path`** — v4's SQL to the
+  letter: bind order `ids…, the four types, pattern, pattern, limit`, the
+  **same pattern bound TWICE** (fileName then relativePath), `ORDER BY
+  l.updatedAt DESC`, `LIMIT ?`. Returns the narrow `DocMountLinkTextMatch`.
+- **`DocMountChunksRepository::search_content`** — `GROUP BY c.linkId` with
+  `MIN(c.chunkIndex)`, riding SQLite's documented bare-column rule so
+  `content`/`headingContext` come from the lowest **matching** chunk; the scope
+  filter is `c.mountPointId` (the chunk's own denormalized column), NOT
+  `l.mountPointId`. `chunk_index` is read as `f64` (REAL affinity — the Zod
+  `.int().min(0)` with no max lowers to REAL, this repo's standing rule).
+- **Both return `Vec`, not `Result`** — that is v4's `safeQuery(…, fallback [])`
+  modelled honestly, with v4's two message strings (`Error searching file links
+  by name or path` / `Error searching chunk content`) and its context keys
+  (`mountPointIdCount`, `queryLength`) on the `tracing::error!`.
+- **Survey premise refined by measurement (the degraded-index asymmetry).** The
+  order flagged that the links scan lacks the chunks scan's
+  `isMountIndexDegraded()` check and told the port to carry both. It does — but
+  the asymmetry is **behaviourally neutral in v4 itself**: under a degraded
+  index v4's `getCollection()` throws (its own doc comment at
+  `mount-index-client.ts:197-202` says so) and the same `safeQuery` fallback
+  answers `[]`. In v5 both guards collapse further, into
+  `Db::read_mount_index`'s `PartitionUnavailable`. Recorded at the source rather
+  than modelled as a live quirk.
+- **`DocMountPointsRepository::find_enabled_for_search`** (Hazard 1, decided):
+  a NEW scoped read returning `EnabledStoreRow { id, name, store_type:
+  Option<String> }` rather than widening `DmpRow` — whose blast radius reaches
+  `DocStoreUriResolver::build`, the path resolver, and the
+  `doc_mount_points_tier2` family. `find_by_name` (`:503`) is the precedent.
+  `store_type` stays `Option` because the column is `TEXT DEFAULT 'documents'`
+  with **no NOT NULL**, and v4's two consumers disagree about the default: the
+  fail-closed sweep's strict `=== 'character'` lets a NULL-`storeType` vault
+  SURVIVE, while `describe()` defaults it with `?? 'documents'`. Additive — no
+  fixture or family shape moved, so `doc_mount_points_tier2` is untouched.
+
+Pins: 11 unit tests over in-memory scratch DBs (the quirks the route cannot
+discriminate — the order's own split): the empty-scope/empty-query
+short-circuits, name vs path-only hits, mount + file-type scope, ASCII case
+folding, `%`/`_` matching literally in both scans, one-row-per-document from the
+lowest MATCHING chunk, the `c.mountPointId` asymmetry, order + limit, and the
+swallowed-error `[]` forced by `DROP TABLE` (the standing "force a swallowed
+catch by breaking the table" recipe). **Three v5-source mutations, each
+reddening exactly one test:** `MIN`→`MAX` (the bare-column rule),
+`OR LOWER(l.relativePath) LIKE ?` → `OR 0` with the second bind removed (the
+twice-bound pattern), and widening the escape set with `[`.
+
+Gate: `cargo test -p quilltap-core --lib db::doc_mount` 17/0, `db::like_escape`
+6/0; clippy `-p quilltap-core --all-targets` clean.

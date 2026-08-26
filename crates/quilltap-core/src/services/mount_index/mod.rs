@@ -9,6 +9,7 @@ pub mod base_path_availability;
 pub mod blob_transcode;
 pub mod chunker;
 pub mod converters;
+pub mod document_text_search;
 pub mod embedding_scheduler;
 pub mod file_op_error;
 pub mod file_op_status;
