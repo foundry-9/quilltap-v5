@@ -70,6 +70,8 @@ use std::task::{Context, Poll};
 
 use tokio::time::{Duration, Instant};
 
+use crate::realtime::bus::publish_realtime;
+use crate::realtime::types::RealtimeTopic;
 use crate::services::activity_kinds::{ActivityCounts, ActivityKind, ACTIVITY_KINDS};
 
 /// A span shorter than this is not worth telling the user about — a cached
@@ -154,6 +156,7 @@ impl ActivitySpan {
         if self.started_at.elapsed() >= Duration::from_millis(BLIP_THRESHOLD_MS) {
             STARTED[self.kind.index()].fetch_add(1, Ordering::SeqCst);
         }
+        publish_realtime(RealtimeTopic::Jobs, None);
     }
 }
 
@@ -170,6 +173,11 @@ impl Drop for ActivitySpan {
 /// unless the start and end genuinely live in different scopes.
 pub fn begin_activity(kind: ActivityKind) -> ActivitySpan {
     LOCAL[kind.index()].fetch_add(1, Ordering::SeqCst);
+    // Both edges of the span move a chip, so both are worth a hint (v4
+    // `activity-registry.ts:112`, `f3892158d`). v4 additionally republishes
+    // from `applyChildActivityDelta`/`resetChildActivity`, which are the
+    // child-mirror legs v5 has no analogue for.
+    publish_realtime(RealtimeTopic::Jobs, None);
     ActivitySpan {
         kind,
         started_at: Instant::now(),

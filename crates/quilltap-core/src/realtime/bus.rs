@@ -80,11 +80,21 @@ struct Bus {
 
 static BUS: OnceLock<Mutex<Option<Arc<Bus>>>> = OnceLock::new();
 
+std::thread_local! {
+    /// A THREAD-SCOPED bus that shadows the process-global one. See
+    /// [`arm_realtime_bus_for_current_thread`].
+    static THREAD_BUS: std::cell::RefCell<Option<Arc<Bus>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 fn slot() -> &'static Mutex<Option<Arc<Bus>>> {
     BUS.get_or_init(|| Mutex::new(None))
 }
 
 fn current() -> Option<Arc<Bus>> {
+    if let Some(bus) = THREAD_BUS.with(|b| b.borrow().clone()) {
+        return Some(bus);
+    }
     slot().lock().unwrap_or_else(|p| p.into_inner()).clone()
 }
 
@@ -116,6 +126,45 @@ pub fn arm_realtime_bus_with_clock(
 /// again. (Tests; and a host tearing an instance down.)
 pub fn disarm_realtime_bus() {
     *slot().lock().unwrap_or_else(|p| p.into_inner()) = None;
+}
+
+/// **The test seam.** Arm a bus visible only to the CURRENT THREAD, shadowing
+/// whatever the process-global one holds.
+///
+/// The bus is deliberately a process-global (v4's design, ported): services
+/// publish without threading a handle through their signatures. That makes a
+/// capture-based test inherently racy — `quilltap-core`'s ~1,800 tests run
+/// across threads, and eight of them reach an activity span or a job enqueue,
+/// so a globally-armed bus in one test collects hints published by another. It
+/// is worse than noise: a publish from a plain `#[test]` thread would try to
+/// spawn the coalescing task with no reactor in scope and PANIC that sibling
+/// test, which is exactly how this seam came to exist.
+///
+/// Scoping the arming to the publishing thread removes both. Every
+/// `#[tokio::test]` is current-thread by default, so a test's own publishes see
+/// its own bus while every other thread's see the (unarmed) global and stay
+/// silent. The flush task holds its `Arc<Bus>` directly, so it still delivers
+/// after moving threads.
+///
+/// Production never calls this — the composition root arms the global.
+pub fn arm_realtime_bus_for_current_thread(
+    events: broadcast::Sender<Event>,
+    spawn: BusSpawner,
+    now_ms: NowMs,
+) {
+    let bus = Arc::new(Bus {
+        events,
+        spawn,
+        now_ms,
+        pending: Mutex::new(HashMap::new()),
+    });
+    THREAD_BUS.with(|b| *b.borrow_mut() = Some(bus));
+}
+
+/// Drop the current thread's shadowing bus (the companion to
+/// [`arm_realtime_bus_for_current_thread`]).
+pub fn disarm_realtime_bus_for_current_thread() {
+    THREAD_BUS.with(|b| *b.borrow_mut() = None);
 }
 
 fn pending_key(topic: RealtimeTopic, id: Option<&str>) -> String {
@@ -204,7 +253,7 @@ mod tests {
 
     impl Drop for BusTestGuard {
         fn drop(&mut self) {
-            disarm_realtime_bus();
+            disarm_realtime_bus_for_current_thread();
             let _ = &self.0;
         }
     }
@@ -224,9 +273,9 @@ mod tests {
             0
         }
         if now == 0 {
-            arm_realtime_bus_with_clock(tx, spawn, zero);
+            arm_realtime_bus_for_current_thread(tx, spawn, zero);
         } else {
-            arm_realtime_bus_with_clock(tx, spawn, crate::clock::now_unix_ms);
+            arm_realtime_bus_for_current_thread(tx, spawn, crate::clock::now_unix_ms);
         }
         (rx, guard)
     }
@@ -334,7 +383,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn publishing_before_arming_is_a_silent_noop() {
         let _g = BusTestGuard(TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner()));
-        disarm_realtime_bus();
+        disarm_realtime_bus_for_current_thread();
         publish_realtime(RealtimeTopic::Jobs, None);
         publish_realtime(RealtimeTopic::Chats, Some("c-1"));
         tokio::time::sleep(std::time::Duration::from_millis(COALESCE_WINDOW_MS + 5)).await;
@@ -343,7 +392,7 @@ mod tests {
         let spawn: BusSpawner = Arc::new(|fut| {
             tokio::spawn(fut);
         });
-        arm_realtime_bus(tx, spawn);
+        arm_realtime_bus_for_current_thread(tx, spawn, crate::clock::now_unix_ms);
         tokio::time::sleep(std::time::Duration::from_millis(COALESCE_WINDOW_MS + 5)).await;
         assert!(rx.try_recv().is_err(), "a pre-arming publish is dropped");
     }

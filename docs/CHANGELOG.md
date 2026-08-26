@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(realtime): publish invalidation hints from every chokepoint
+
+_Versions: core 0.0.685, harness 0.0.591, host 0.0.83._
+
+Wires v4 `f3892158d`'s publish points: the enqueue funnels, a cancel that
+actually took, the claim transition, completion (plus the entity hints its type
+and payload name) and failure, both edges of an activity span, the post-commit
+write-batch hook, and all seven autonomous run-state transitions. The host arms
+the bus at boot with the engine's sender and a spawner.
+
+v4 has three queue-service publishes; v5 needs five sites for them, because v4's
+one `enqueueJob` is two functions here plus a render enqueue that mints its row
+inside the caller's transaction. v4's three `markFailed` publish arms collapse
+into v5's one, since there is no child and the apply is in-process.
+
+A hint is not DB state, so no differential can see any of this. Sixteen capture
+tests drive the real entry points with a subscriber on the broadcast channel;
+they arm a thread-scoped bus, because a globally-armed one collects hints from
+every concurrent test and makes a publish from a plain `#[test]` thread panic
+for want of a reactor. Fourteen mutation proofs. The rollback publish inside
+`begin_autonomous_run` cannot be isolated behaviourally — it always coalesces
+with the start patch's — so a census holds the count instead.
+
 #### 2026-08-26 — feat(realtime): the job-type and write-batch topic computation
 
 _Versions: core 0.0.684, harness 0.0.590._

@@ -65,6 +65,9 @@ use crate::db::background_jobs::{BackgroundJob, BackgroundJobsRepository};
 use crate::db::instance_settings;
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::realtime::bus::publish_realtime;
+use crate::realtime::job_topics::topics_for_completed_job;
+use crate::realtime::types::RealtimeTopic;
 use crate::services::activity_kinds::activity_kind_for_job_type;
 use crate::services::activity_registry::run_attributed_to_job;
 
@@ -361,6 +364,11 @@ impl JobRunner {
                 }
             };
 
+            // PENDING → PROCESSING: the chips and the tasks queue both read
+            // this transition, so it earns a hint of its own (v4
+            // `job-dispatcher.ts:174`, `f3892158d` — v4 publishes on a
+            // successful claim, before dispatching).
+            publish_realtime(RealtimeTopic::Jobs, None);
             self.run_one(&job).await;
             dispatched += 1;
         }
@@ -458,6 +466,22 @@ impl JobRunner {
                         "Job completed",
                     );
                 }
+                // The queue moved (v4 `job-dispatcher.ts:248`, `f3892158d`).
+                // v4 publishes this INSIDE the try, after markCompleted; a
+                // failure to record the terminal transition takes v4 to its
+                // catch, which publishes too — so both v5 arms publish, as
+                // both v4 arms do.
+                publish_realtime(RealtimeTopic::Jobs, None);
+                // …then the entity hints for the state this job's work just
+                // changed (v4 `:249-253`). In v4 the handler ran in the child,
+                // which owns no sockets, so this was "the first parent-side
+                // moment at which the change is actually committed and
+                // visible"; in-process it is simply the moment after the
+                // terminal transition.
+                let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
+                for hint in topics_for_completed_job(Some(&job.job_type), Some(&payload)) {
+                    publish_realtime(hint.topic, hint.id.as_deref());
+                }
             }
             JobOutcome::Failed(message) => {
                 // v4 job-dispatcher.ts:226 `log.warn('Job failed in child', …)`.
@@ -488,6 +512,12 @@ impl JobRunner {
                         "Failed to record job failure",
                     );
                 }
+                // v4 publishes `jobs` on every markFailed path it has —
+                // the child-unavailable arm (`:204`), the handler-failure arm
+                // (`:239`) and the apply-writes-failed arm (`:265`). v5 has no
+                // child and applies in-process, so this ONE arm is the twin of
+                // all three.
+                publish_realtime(RealtimeTopic::Jobs, None);
                 // v4 job-dispatcher.ts:230/248 (`reconcileFailedAutonomousTurnIfNeeded`):
                 // on the failure of an AUTONOMOUS_ROOM_TURN job, nudge its room out
                 // of a silent `running` wedge — the single-attempt turn job going

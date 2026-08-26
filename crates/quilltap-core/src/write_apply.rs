@@ -497,6 +497,17 @@ fn collect_invalidations(writes: &[ChildWritePayload]) -> (Vec<String>, Vec<Stri
 /// Post-commit: fire the deduped cache invalidations (v4's `dispatchInvalidations`).
 /// A no-op when nothing is invalidated (v4's early return).
 fn dispatch_invalidations(host: &mut dyn ApplyHost, writes: &[ChildWritePayload]) {
+    // Realtime hints for whatever entities this batch touched (v4
+    // `job-dispatcher.ts:525`, `f3892158d`). Separate from the cache
+    // invalidation below — that one is about THIS process's in-memory caches,
+    // this one about every open client's query cache — but they belong at the
+    // same moment: the writes have committed and are readable. Published
+    // BEFORE the early return below, as v4 publishes before its own collection
+    // pass: a batch with no vector/mount keys can still have moved a chat.
+    for hint in crate::realtime::job_topics::topics_for_write_batch(writes) {
+        crate::realtime::bus::publish_realtime(hint.topic, hint.id.as_deref());
+    }
+
     let (vector_keys, mount_keys) = collect_invalidations(writes);
     if vector_keys.is_empty() && mount_keys.is_empty() {
         return;
@@ -583,6 +594,85 @@ mod tests {
             method: FINALIZE_FILE.to_string(),
             args: vec![json!({ "stagingPath": staging, "finalPath": final_path })],
         }
+    }
+
+    // ── P4.D124: the post-commit realtime hook ───────────────────────────
+    //
+    // `dispatch_invalidations` is v4's `dispatchInvalidations` twin, and
+    // `f3892158d` put the realtime publish at the TOP of it — before its own
+    // collection pass, so a batch that moves no vector-store or mount-point
+    // cache key can still announce the chat it touched. v5's version early-
+    // returns when both key lists are empty, which is exactly why the publish
+    // has to sit above it.
+    //
+    // ⚠ **Dormant in production today, and that is recorded not hidden.** v5's
+    // job handlers write directly rather than buffering (see
+    // `services::job_runner`'s header: no W4.8 handler currently batches), so
+    // `apply_writes` runs only from the batch-mode path the autonomous turn
+    // reserves. The hook is wired 1:1 with v4 anyway, and driven here
+    // synthetically, so it is correct the day a handler batches.
+
+    #[tokio::test]
+    async fn a_committed_batch_publishes_its_entity_hints() {
+        let mut cap = crate::realtime::publish_sites::HintCapture::start();
+        let mut host = OkHost::default();
+        let writes = vec![
+            ChildWritePayload {
+                method: "chats.update".into(),
+                args: vec![json!("c-1"), json!({ "title": "x" })],
+            },
+            ChildWritePayload {
+                method: "characters.update".into(),
+                args: vec![json!("ch-1")],
+            },
+        ];
+        apply_writes(&mut host, "j", &writes, Some("EMBEDDING_GENERATE")).unwrap();
+
+        assert_eq!(
+            cap.drain_sorted().await,
+            vec![
+                ("characters".to_string(), Some("ch-1".to_string())),
+                ("chats".to_string(), Some("c-1".to_string())),
+            ]
+        );
+    }
+
+    /// A batch whose writes move no CACHE key still publishes — the arm v5's
+    /// early return would swallow if the publish sat below it.
+    #[tokio::test]
+    async fn a_batch_with_no_cache_keys_still_publishes() {
+        let mut cap = crate::realtime::publish_sites::HintCapture::start();
+        let mut host = OkHost::default();
+        let writes = vec![ChildWritePayload {
+            method: "chats.update".into(),
+            args: vec![json!("c-1")],
+        }];
+        apply_writes(&mut host, "j", &writes, Some("EMBEDDING_GENERATE")).unwrap();
+        assert!(
+            host.invalidations.is_empty(),
+            "the premise: this batch moves no cache key"
+        );
+        assert_eq!(
+            cap.drain().await,
+            vec![("chats".to_string(), Some("c-1".to_string()))]
+        );
+    }
+
+    /// A FAILED batch publishes nothing: `apply_writes` short-circuits before
+    /// the post-commit side effects, exactly as v4 does.
+    #[tokio::test]
+    async fn a_failed_batch_publishes_nothing() {
+        let mut cap = crate::realtime::publish_sites::HintCapture::start();
+        let mut host = OkHost {
+            fail_on: Some("chats.update".into()),
+            ..Default::default()
+        };
+        let writes = vec![ChildWritePayload {
+            method: "chats.update".into(),
+            args: vec![json!("c-1")],
+        }];
+        assert!(apply_writes(&mut host, "j", &writes, Some("EMBEDDING_GENERATE")).is_err());
+        assert_eq!(cap.drain().await, vec![]);
     }
 
     #[test]

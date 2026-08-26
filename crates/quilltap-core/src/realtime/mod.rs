@@ -35,4 +35,6 @@
 
 pub mod bus;
 pub mod job_topics;
+#[cfg(test)]
+pub mod publish_sites;
 pub mod types;

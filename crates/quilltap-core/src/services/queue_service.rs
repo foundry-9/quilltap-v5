@@ -21,6 +21,8 @@ use crate::clock::now_iso;
 use crate::db::background_jobs::{BjCreate, CreateOptions, QueueStats};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::realtime::bus::publish_realtime;
+use crate::realtime::types::RealtimeTopic;
 use crate::services::activity_kinds::{ActivityCounts, ACTIVITY_KINDS};
 use crate::services::activity_registry::{activity_counts, activity_start_totals};
 
@@ -92,6 +94,12 @@ pub async fn enqueue_job(
     };
     db.write(move |writers| writers.main().background_jobs().create(&create, &opts))
         .await?;
+    // Tell every open client the queue moved (v4 `queue-service.ts:455`,
+    // `f3892158d`). The bus coalesces, so a batch of enqueues arrives as one
+    // hint rather than one per job. ⚠ v4 has ONE `enqueueJob`; v5 split it into
+    // this and `enqueue_job_with_priority`, so v4's single publish site is TWO
+    // here — both are the same v4 line.
+    publish_realtime(RealtimeTopic::Jobs, None);
     // v4 `enqueueJob` calls `ensureProcessorRunning()` after every create — wake
     // the (already-running) runner so it pumps immediately (see [`set_wake_hook`]).
     ensure_processor_running();
@@ -274,6 +282,8 @@ pub async fn enqueue_job_with_priority(
     };
     db.write(move |writers| writers.main().background_jobs().create(&create, &opts))
         .await?;
+    // The second half of v4's one `enqueueJob` publish site — see [`enqueue_job`].
+    publish_realtime(RealtimeTopic::Jobs, None);
     ensure_processor_running();
     Ok(id)
 }
@@ -414,7 +424,10 @@ pub async fn enqueue_memory_extraction_batch(
             .map(|_| ())
     })
     .await?;
-    // v4 fires the processor only when something was actually enqueued.
+    // v4 fires the processor only when something was actually enqueued — and
+    // publishes under the same guard (`queue-service.ts:1094`, `f3892158d`).
+    // The empty case returned early above, so reaching here means jobs landed.
+    publish_realtime(RealtimeTopic::Jobs, None);
     ensure_processor_running();
     Ok(ids)
 }
@@ -995,11 +1008,18 @@ pub struct ActivitySnapshot {
 /// row was cancelled.
 pub async fn cancel_job(db: &Db, job_id: &str) -> Result<bool, DbError> {
     let id = job_id.to_string();
-    db.write(move |writers| {
-        crate::db::background_jobs::BackgroundJobsRepository::new(writers.main().connection())
-            .cancel(&id)
-    })
-    .await
+    let cancelled = db
+        .write(move |writers| {
+            crate::db::background_jobs::BackgroundJobsRepository::new(writers.main().connection())
+                .cancel(&id)
+        })
+        .await?;
+    // Only when the cancel actually took (v4 `queue-service.ts:1154`,
+    // `f3892158d`: `if (cancelled) publishRealtime('jobs')`).
+    if cancelled {
+        publish_realtime(RealtimeTopic::Jobs, None);
+    }
+    Ok(cancelled)
 }
 
 /// v4 `getPendingJobsForChat(chatId)` — PENDING+PROCESSING jobs whose payload
@@ -1276,6 +1296,11 @@ pub fn enqueue_conversation_render_blocking(
         updated_at: now,
     };
     repo.create(&create, &opts)?;
+    // A third v5 site for v4's one `enqueueJob` publish: this render enqueue
+    // mints its row inside the caller's transaction rather than going through
+    // `enqueue_job`, so it would otherwise be the one enqueue no client hears
+    // about.
+    publish_realtime(RealtimeTopic::Jobs, None);
     ensure_processor_running();
     Ok((id, true))
 }

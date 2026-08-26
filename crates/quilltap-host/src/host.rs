@@ -45,6 +45,7 @@ use quilltap_core::db::background_jobs::BackgroundJobsRepository;
 use quilltap_core::db::chat_settings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::enclave::step::AutonomousRoomScheduleTickHandler;
+use quilltap_core::realtime::bus::BusSpawner;
 use quilltap_core::services::aurora_notifications::WardrobeOutfitAnnouncementHandler;
 use quilltap_core::services::conversation_render_job::ConversationRenderHandler;
 use quilltap_core::services::creation_progress::CreationProgressBus;
@@ -215,6 +216,7 @@ impl Host {
     /// drivers start on unlock).
     pub fn start(config: HostConfig) -> Result<Host, HostError> {
         let rt = tokio::runtime::Handle::try_current().map_err(|_| HostError::NoRuntime)?;
+        let rt_handle = rt.clone();
 
         let instances: Arc<dyn InstanceDirectory> = Arc::new(match &config.instances_path {
             Some(p) => InstanceRegistry::at(p.clone()),
@@ -263,6 +265,25 @@ impl Host {
             instances,
         )
         .map_err(HostError::Boot)?;
+
+        // Arm the realtime invalidation bus (P4.D124). The composition root is
+        // the right place and the only possible one: the bus needs BOTH the
+        // engine's event sender and a way to schedule its 250 ms coalescing
+        // window, and `quilltap-core` deliberately ships no tokio scheduler
+        // (the same STOP rule `services::job_runner` states — the core decides
+        // *when*, the host *schedules*). Publishing before this point is a
+        // silent no-op by design, which is what the CLI's direct-core mode and
+        // every unit test rely on.
+        //
+        // The task is detached: a pending hint must never hold the process open
+        // (v4's `timer.unref?.()`), and the runtime drops it at shutdown.
+        {
+            let rt = rt_handle.clone();
+            let spawner: BusSpawner = Arc::new(move |fut| {
+                rt.spawn(fut);
+            });
+            quilltap_core::realtime::bus::arm_realtime_bus(core.event_sender().clone(), spawner);
+        }
 
         Ok(Host {
             core,

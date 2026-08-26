@@ -44,6 +44,8 @@ use crate::db::runtime::Db;
 use crate::db::{chat_settings, chats_read, DbError};
 use crate::enclave::announce::{post_run_start_announcement, run_start_patch, MintUuidFn, NowMsFn};
 use crate::jsstr::{js_trim, utf16_truncate};
+use crate::realtime::bus::publish_realtime;
+use crate::realtime::types::RealtimeTopic;
 use crate::services::queue_service::enqueue_autonomous_room_turn;
 
 /// v4 `DEFAULT_FRESHNESS_WINDOW_MS` — 12 hours.
@@ -190,6 +192,13 @@ pub async fn begin_autonomous_run(
         })
         .await?;
     }
+    // Every run-state transition in this core announces itself, so the
+    // toolbar's room badges reflect the flip without waiting out their
+    // fallback poll (v4 `f3892158d`). v4's comment notes that in the
+    // scheduled path this runs in the job child and is a no-op, with the
+    // parent republishing on commit; v5 has ONE process, so each
+    // transition publishes directly, once.
+    publish_realtime(RealtimeTopic::AutonomousRooms, None);
 
     let job_id =
         match enqueue_autonomous_room_turn(db, &input.user_id, &input.chat_id, &input.run_id).await
@@ -213,6 +222,7 @@ pub async fn begin_autonomous_run(
                     ChatsRepository::new(writers.main().connection()).update(&chat_id, &rollback)
                 })
                 .await?;
+                publish_realtime(RealtimeTopic::AutonomousRooms, None);
                 return Ok(BeginAutonomousRunResult::Failed {
                     reason: BeginFailReason::EnqueueFailed,
                     message: run_state_message.to_string(),
@@ -463,6 +473,7 @@ pub async fn pause_autonomous_room(
     let cid = chat_id.to_string();
     db.write(move |writers| ChatsRepository::new(writers.main().connection()).update(&cid, &patch))
         .await?;
+    publish_realtime(RealtimeTopic::AutonomousRooms, None);
     Ok(SimpleOpResult::ok())
 }
 
@@ -496,6 +507,7 @@ pub async fn stop_autonomous_room(
     let cid = chat_id.to_string();
     db.write(move |writers| ChatsRepository::new(writers.main().connection()).update(&cid, &patch))
         .await?;
+    publish_realtime(RealtimeTopic::AutonomousRooms, None);
     Ok(SimpleOpResult::ok())
 }
 
@@ -582,6 +594,7 @@ pub async fn resume_autonomous_room(
 
     let job_id = enqueue_autonomous_room_turn(db, user_id, chat_id, &run_id).await?;
 
+    publish_realtime(RealtimeTopic::AutonomousRooms, None);
     Ok(StartManualRunResult::Ok { run_id, job_id })
 }
 
@@ -780,6 +793,7 @@ pub async fn update_autonomous_room_settings(
     })
     .await?;
 
+    publish_realtime(RealtimeTopic::AutonomousRooms, None);
     Ok(UpdateAutonomousRoomSettingsResult::Ok {
         clamped_destructive,
     })
@@ -917,6 +931,7 @@ pub async fn reconcile_failed_autonomous_turn(
             ChatsRepository::new(writers.main().connection()).update(&cid, &patch)
         })
         .await;
+    publish_realtime(RealtimeTopic::AutonomousRooms, None);
 }
 
 #[cfg(test)]
@@ -1121,6 +1136,242 @@ mod tests {
         assert_eq!(chat["runTurnsConsumed"], 0.0);
         // updatedAt never minted.
         assert_eq!(chat["updatedAt"], "2020-01-01T00:00:00.000Z");
+    }
+
+    // ── P4.D124: every run-state transition announces itself ────────────────
+    //
+    // Hints are not DB state, so nothing else in the workspace can see these.
+    // Driven through the REAL transitions with a capturing subscriber; the
+    // capture arms a THREAD-scoped bus, so concurrent tests neither pollute it
+    // nor get published at.
+
+    /// `make_db_without_jobs_table` plus a real `background_jobs` table, so the
+    /// turn enqueue SUCCEEDS — which is the only way to reach the publishes that
+    /// sit after it (begin's success path, resume's).
+    async fn make_db_with_jobs_table(seed_run_state: &str) -> (tempfile::TempDir, Db) {
+        let (dir, db) = make_db_without_jobs_table(seed_run_state).await;
+        db.write(|ws| {
+            ws.main()
+                .connection()
+                .execute_batch(
+                    "CREATE TABLE background_jobs (\
+                       id TEXT PRIMARY KEY, userId TEXT NOT NULL, type TEXT NOT NULL, \
+                       status TEXT NOT NULL, payload TEXT NOT NULL, priority REAL NOT NULL, \
+                       attempts REAL NOT NULL, maxAttempts REAL NOT NULL, lastError TEXT, \
+                       scheduledAt TEXT NOT NULL, startedAt TEXT, completedAt TEXT, \
+                       createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);",
+                )
+                .map_err(Into::into)
+        })
+        .await
+        .unwrap();
+        (dir, db)
+    }
+
+    async fn autonomous_hints_with_jobs(
+        seed_run_state: &'static str,
+        op: impl AsyncFnOnce(&Db, &LifecycleDeps<'_>),
+    ) -> Vec<(String, Option<String>)> {
+        let mut cap = crate::realtime::publish_sites::HintCapture::start();
+        let (_dir, db) = make_db_with_jobs_table(seed_run_state).await;
+        let (_c, now_ms) = stepped_clock(1_925_000_000_000);
+        let mint = seq_uuids("uuid");
+        let cron: NextOccurrenceFn = &|_, _| Ok(None);
+        let deps = LifecycleDeps {
+            now_ms: &now_ms,
+            mint_uuid: &mint,
+            next_occurrence: cron,
+        };
+        op(&db, &deps).await;
+        cap.drain_sorted().await
+    }
+
+    async fn autonomous_hints(
+        seed_run_state: &'static str,
+        op: impl AsyncFnOnce(&Db, &LifecycleDeps<'_>),
+    ) -> Vec<(String, Option<String>)> {
+        let mut cap = crate::realtime::publish_sites::HintCapture::start();
+        let (_dir, db) = make_db_without_jobs_table(seed_run_state).await;
+        let (_c, now_ms) = stepped_clock(1_925_000_000_000);
+        let mint = seq_uuids("uuid");
+        let cron: NextOccurrenceFn = &|_, _| Ok(None);
+        let deps = LifecycleDeps {
+            now_ms: &now_ms,
+            mint_uuid: &mint,
+            next_occurrence: cron,
+        };
+        op(&db, &deps).await;
+        cap.drain().await
+    }
+
+    fn rooms() -> Vec<(String, Option<String>)> {
+        vec![("autonomousRooms".to_string(), None)]
+    }
+
+    /// The run-start patch publishes — isolated by letting the turn enqueue
+    /// SUCCEED, so the rollback publish never fires and this hint can only have
+    /// come from the start patch. (The enqueue publishes `jobs` of its own.)
+    #[tokio::test]
+    async fn begin_publishes_on_the_start_patch() {
+        let hints = autonomous_hints_with_jobs("idle", async |db, deps| {
+            // The run-begun ANNOUNCEMENT needs a mount-index partition this
+            // main-only fixture has not got, so the call errors after the
+            // enqueue. That is past both publishes and past the rollback arm —
+            // the row below proves the run stayed live.
+            let _ = start_autonomous_room_manually(db, deps, "chat-1", "user-1").await;
+            assert_eq!(
+                chat_row(db)["runState"],
+                "running",
+                "the premise: the enqueue succeeded, so the rollback never ran"
+            );
+        })
+        .await;
+        assert_eq!(
+            hints,
+            vec![
+                ("autonomousRooms".to_string(), None),
+                ("jobs".to_string(), None)
+            ]
+        );
+    }
+
+    /// The enqueue-FAILURE path still announces the room — v4 publishes on the
+    /// rollback too. ⚠ This case cannot tell the rollback's publish from the
+    /// start patch's: both fire inside one coalescing window, which is the
+    /// point of coalescing. The rollback site is held by the census in
+    /// `quilltap-harness/tests/realtime_publish_sites_guard.rs`.
+    #[tokio::test]
+    async fn a_failed_begin_still_announces_the_room() {
+        let hints = autonomous_hints("idle", async |db, deps| {
+            let _ = start_autonomous_room_manually(db, deps, "chat-1", "user-1").await;
+        })
+        .await;
+        assert_eq!(hints, rooms());
+    }
+
+    #[tokio::test]
+    async fn pause_publishes() {
+        let hints = autonomous_hints("running", async |db, deps| {
+            pause_autonomous_room(db, deps, "chat-1").await.unwrap();
+        })
+        .await;
+        assert_eq!(hints, rooms());
+    }
+
+    #[tokio::test]
+    async fn stop_publishes() {
+        let hints = autonomous_hints("running", async |db, deps| {
+            stop_autonomous_room(db, deps, "chat-1").await.unwrap();
+        })
+        .await;
+        assert_eq!(hints, rooms());
+    }
+
+    /// ⚠ Resume falls back to a FRESH start unless the row is `paused` AND owns
+    /// a live `currentRunId` — so a naive "seed paused" case pins begin, not
+    /// resume. This one seeds the run id, and lets the enqueue succeed, so the
+    /// publish it observes is resume's own (which sits after the enqueue, as
+    /// v4's does).
+    #[tokio::test]
+    async fn resume_publishes() {
+        let hints = autonomous_hints_with_jobs("paused", async |db, deps| {
+            db.write(|ws| {
+                ws.main()
+                    .connection()
+                    .execute("UPDATE chats SET currentRunId = 'run-x'", [])?;
+                Ok::<(), DbError>(())
+            })
+            .await
+            .unwrap();
+            let out = resume_autonomous_room(db, deps, "chat-1", "user-1")
+                .await
+                .unwrap();
+            assert!(
+                matches!(out, StartManualRunResult::Ok { ref run_id, .. } if run_id == "run-x"),
+                "the premise: the SAME run continued, not a fresh start"
+            );
+        })
+        .await;
+        assert_eq!(
+            hints,
+            vec![
+                ("autonomousRooms".to_string(), None),
+                ("jobs".to_string(), None)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn updating_settings_publishes() {
+        let hints = autonomous_hints("idle", async |db, deps| {
+            let patch = AutonomousRoomSettingsPatch {
+                budget_max_turns: Some(Some(9.0)),
+                ..Default::default()
+            };
+            update_autonomous_room_settings(db, deps, "chat-1", "user-1", &patch)
+                .await
+                .unwrap();
+        })
+        .await;
+        assert_eq!(hints, rooms());
+    }
+
+    /// …but a settings call that writes NOTHING publishes nothing: v4's publish
+    /// sits after the `fields_set === 0` early return.
+    #[tokio::test]
+    async fn an_empty_settings_patch_publishes_nothing() {
+        let hints = autonomous_hints("idle", async |db, deps| {
+            update_autonomous_room_settings(
+                db,
+                deps,
+                "chat-1",
+                "user-1",
+                &AutonomousRoomSettingsPatch::default(),
+            )
+            .await
+            .unwrap();
+        })
+        .await;
+        assert_eq!(hints, vec![]);
+    }
+
+    #[tokio::test]
+    async fn reconcile_after_a_failed_turn_publishes() {
+        let hints = autonomous_hints("running", async |db, deps| {
+            // The reconcile only acts on the LIVE run, so give the row one.
+            db.write(|ws| {
+                ws.main()
+                    .connection()
+                    .execute("UPDATE chats SET currentRunId = 'run-x'", [])?;
+                Ok::<(), DbError>(())
+            })
+            .await
+            .unwrap();
+            reconcile_failed_autonomous_turn(db, deps, Some("chat-1"), Some("run-x"), "boom").await;
+        })
+        .await;
+        assert_eq!(hints, rooms());
+    }
+
+    /// …and the reconcile's guard arms publish nothing, because they write
+    /// nothing (the chat is not in a reconcilable state).
+    #[tokio::test]
+    async fn a_guarded_reconcile_publishes_nothing() {
+        // `stopped` is not a reconcilable state, so the guard returns before any
+        // write — and therefore before any hint.
+        let hints = autonomous_hints("stopped", async |db, deps| {
+            db.write(|ws| {
+                ws.main()
+                    .connection()
+                    .execute("UPDATE chats SET currentRunId = 'run-x'", [])?;
+                Ok::<(), DbError>(())
+            })
+            .await
+            .unwrap();
+            reconcile_failed_autonomous_turn(db, deps, Some("chat-1"), Some("run-x"), "boom").await;
+        })
+        .await;
+        assert_eq!(hints, vec![]);
     }
 
     /// The scheduled entry rolls back to `idle` + `schedule:enqueue_failed` and
