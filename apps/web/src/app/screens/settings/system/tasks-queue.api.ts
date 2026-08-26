@@ -71,25 +71,6 @@ export function formatTokens(t: number): string {
   return t.toString();
 }
 
-/** v4 `formatRelativeDate` (`lib/format-time.ts:93-114`) — for `scheduledAt`. */
-export function formatRelativeDate(dateString: string): string {
-  if (!dateString) return '';
-  try {
-    const diffMins = Math.floor((Date.now() - new Date(dateString).getTime()) / 60000);
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
-    return new Date(dateString).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return String(dateString);
-  }
-}
-
 export const tasksQueueKeys = {
   all: ['tasksQueue'] as const,
 };

@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { Icon } from '../../../ui/icon';
-import { formatRelativeDate, formatTokens, type JobDetail } from './tasks-queue.api';
+import { formatRelativeDate } from '../../../shared/format-date';
+import { formatTokens, type JobDetail } from './tasks-queue.api';
 
 /**
  * One background-job row (v4 `components/tools/tasks-queue/TaskItem.tsx`): a

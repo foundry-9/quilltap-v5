@@ -75,3 +75,113 @@ export function formatDateTime(
 export function formatProfileDate(dateString: string | null | undefined): string {
   return formatDateTime(dateString, { monthStyle: 'long' }) || 'Never';
 }
+
+// ---------------------------------------------------------------------------
+// The relative formatters (P4.D125 — v4 `f3892158d`'s `nowMs` parameterization)
+//
+// v4 keeps these in the SAME `lib/format-time.ts` as the two above; v5's twins
+// had been transcribed where their first consumer lived (`formatRelativeDate`
+// in `screens/settings/system/tasks-queue.api.ts`, `formatChatListDate` in
+// `screens/characters/view/tabs/character-conversation-card.ts`). They move
+// here for v4's own reason: `f3892158d` consolidated StartupProgress's private
+// `formatRelativeAge` into that one module "now that the shared clock gave both
+// readouts one home", and the shared clock is the point of the `nowMs` argument
+// all three now take.
+// ---------------------------------------------------------------------------
+
+/**
+ * v4 `lib/format-time.ts:93-116` — a relative timestamp ("Just now", "12m ago",
+ * "3h ago") for the first day, then a short date+time. Falls back to the raw
+ * string if parsing fails, and returns `''` for null/undefined.
+ *
+ * Pass `nowMs` from `NowService.now(60_000)` in a component so the readout
+ * actually advances; the `Date.now()` default keeps non-reactive callers
+ * working (v4's own wording).
+ */
+export function formatRelativeDate(
+  dateString: string | null | undefined,
+  nowMs: number = Date.now(),
+): string {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    const now = new Date(nowMs);
+    const diffMs = nowMs - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+    });
+  } catch {
+    return String(dateString);
+  }
+}
+
+/**
+ * v4 `lib/format-time.ts:121-149` — chat-list date: today→time,
+ * yesterday→'Yesterday', <7d→weekday, else→date (year only when different from
+ * now).
+ *
+ * **Pre-existing v5 narrowing, carried:** v4's signature is
+ * `(dateString, useRelative, nowMs)`; v5's only consumer always passes
+ * `useRelative` true, so the flag was never transcribed and the plain
+ * `toLocaleDateString()` branch has no v5 analogue. The `nowMs` parameter is
+ * the one thing `f3892158d` adds here.
+ *
+ * Pass `nowMs` from `NowService.now(DAY_GRANULARITY_MS)` so the
+ * "Yesterday"/weekday rollover happens at midnight rather than whenever the
+ * card next re-renders.
+ */
+export function formatChatListDate(dateString: string, nowMs: number = Date.now()): string {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return String(dateString);
+  }
+  const now = new Date(nowMs);
+  const diffMs = nowMs - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays === 0) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  if (diffDays === 1) {
+    return 'Yesterday';
+  }
+  if (diffDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: 'short' });
+  }
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+  });
+}
+
+/**
+ * v4 `lib/format-time.ts:161-167` — second-resolution relative age ("just now",
+ * "42s ago", "3m ago") for a raw epoch-millisecond timestamp.
+ *
+ * Distinct from {@link formatRelativeDate}, which takes a date *string* and only
+ * resolves to the minute — too coarse for the startup screen, where the whole
+ * point is watching each step land. This lived as a private helper in v4's
+ * `StartupProgress` until the shared clock gave both readouts one home.
+ *
+ * ⚠ **No v5 consumer yet.** v5's `qt-startup-screen` is the "just getting our
+ * bearings" card, not v4's per-step event list with ages — that list has never
+ * been ported (see the P4.D125 lane record). The function lands here anyway
+ * because it is the module's contract in v4 and the pair of formatters above
+ * now share its `nowMs` shape; its parity spec drives it directly.
+ */
+export function formatRelativeAge(ts: number, nowMs: number = Date.now()): string {
+  const seconds = Math.max(0, Math.round((nowMs - ts) / 1000));
+  if (seconds < 2) return 'just now';
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ago`;
+}

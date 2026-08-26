@@ -15,7 +15,7 @@ import {
   OutfitSelector,
   type PreviousOutfitSummary,
 } from '../screens/new-chat/outfit-selector';
-import { formatRelativeDate } from '../screens/settings/system/tasks-queue.api';
+import { formatRelativeDate } from '../shared/format-date';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 import { mergeConversation, readOutfitSummary } from './chat-admin.api';

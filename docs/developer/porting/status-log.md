@@ -89202,3 +89202,76 @@ ported** — `git diff --stat f3892158d..main` over `lib/realtime/`,
 span sites and both schema files is EMPTY — and every oracle in this lane was
 generated from the pinned worktree, so the port and the gate are unaffected.
 **`/driftcheck` is owed before the next round.**
+## Lane record — P4.D125 (the `664cfca84` + `f3892158d` CLIENT half: chips, the realtime hub over v5's event stream, the topic map, the shared clock, the polling-site migrations)
+
+Ordered against round baseline **`b220999da`**. **Drift-ledger §2 freshness
+probe at lane start (2026-08-26):** PASS — v4 checkout on `main`, tree clean,
+`git log f3892158d..main` empty, `git log 3a76b17df..bugfix` empty. §1's
+verdict (2 commits pending, PIN REQUIRED) stands; the lane never wrote the
+ledger. **No oracle regen ran** — this is a client lane whose oracle is v4's
+client source at the pin, read with `git show 664cfca84:<path>` /
+`git show f3892158d:<path>` (the established v4-client parity pattern, P4.D96 /
+P4.D57).
+
+### P4.D125 unit 1 — the shared clock + the relative formatters' `nowMs`
+
+v4's `hooks/useNow.ts` (207 lines) ported as `shared/now.service.ts`
+(`NowService.now(granularityMs, enabled)` → a `Signal<number>`), with v4's
+mechanism preserved exactly: a module-level `tickers` map keyed by granularity,
+ONE `setTimeout` chain and one subscriber set per granularity however many
+consumers, `nextBoundaryDelay` transcribed verbatim
+(`granularityMs - (from % granularityMs) + 1`, and `setHours(24,0,0,0)` at
+`DAY_GRANULARITY_MS = 86_400_000` so a day tick lands at LOCAL midnight),
+`HIDDEN_TAB_PAUSE_BELOW_MS = 60_000` parking sub-minute tickers while
+`document.hidden` with `resyncAll()` on the way back, the `firstSubscriber`
+refresh-before-arming branch, and the last-subscriber timer teardown.
+
+**Two recorded mechanism divergences, both forced by the platform:**
+
+1. **SSR inertness has no v5 analogue.** v4 leans on `useSyncExternalStore`,
+   whose `subscribe` never runs on the server. The SPA never renders on a
+   server; what replaces the leg is Angular's own lifecycle — `now()` must be
+   called in an injection context and the subscription is released by that
+   context's `DestroyRef`.
+2. **A disabled consumer needs an explicit freeze.** v4 gets "disabled ⇒ does
+   not advance" for free: a component that doesn't subscribe simply doesn't
+   re-render, even though its `getSnapshot` reads the shared ticker. A signal
+   read propagates regardless, so `now()` returns a LOCAL mirror signal that
+   follows the shared ticker only while enabled. Observable semantics are
+   identical (proven both ways by the enable/disable spec).
+
+`shared/format-date.ts` — v5's home for v4 `lib/format-time.ts` — absorbs the
+two relative formatters that had been transcribed into their first consumers
+(`formatRelativeDate` in `screens/settings/system/tasks-queue.api.ts`,
+`formatChatListDate` in
+`screens/characters/view/tabs/character-conversation-card.ts`) and gains
+`formatRelativeAge`. All three now take v4's optional
+`nowMs: number = Date.now()`. Import sites repointed: `task-details-modal.ts`,
+`task-item.ts`, `chat/merge-conversation-modal.ts`,
+`character-conversation-card.ts`.
+
+**Carried narrowing, re-recorded:** v4's `formatChatListDate(dateString,
+useRelative, nowMs)` has a `useRelative` flag v5 never transcribed (its one
+consumer always passes `true`), so v5's signature is `(dateString, nowMs)` and
+the plain `toLocaleDateString()` branch has no v5 analogue. Unchanged by this
+lane.
+
+**`formatRelativeAge` lands WITHOUT a v5 consumer, deliberately and loudly.**
+v4's only caller is `StartupProgress`'s per-step event list, which v5 has never
+carried — `qt-startup-screen` is the "just getting our bearings" card and
+nothing else. The function is ported because it is the module's v4 contract and
+because the `nowMs` shape is now shared by all three; its parity spec drives it
+directly.
+
+**Parity specs** (`shared/now.service.spec.ts`, 11 cases, ported from v4's own
+`__tests__/unit/hooks/useNow.test.tsx` semantics;
+`shared/format-date.relative.spec.ts`, 11 cases over the branch boundaries).
+**Seven mutation proofs, each verified applied and each reddening exactly the
+right cases:** drop the `+1` boundary epsilon (3 red), day granularity as
+`DAY_GRANULARITY_MS` instead of local midnight (1 red), the disabled arm
+subscribing anyway (2 red), `HIDDEN_TAB_PAUSE_BELOW_MS = 0` (1 red),
+`Math.floor` for `Math.round` in `formatRelativeAge` (1 red), and both
+`nowMs` threads reverted to `Date.now()` (3 and 2 red).
+
+Gate at this unit: `npm run build` clean, `check-qt-classes` clean (934
+classes), `npm test` 353 files / 5,317 tests / 0 failed. SPA → 0.5.578.

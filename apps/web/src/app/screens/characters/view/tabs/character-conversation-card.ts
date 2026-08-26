@@ -4,40 +4,11 @@ import { RouterLink } from '@angular/router';
 import { CoreClient, coreErrorMessage } from '../../../../core/core-client';
 import type { CharacterChatSummary } from '../../../../core/core-contract';
 import { notifyQueueChange } from '../../../../layout/queue-status.logic';
+import { formatChatListDate } from '../../../../shared/format-date';
 import { normalizeAvatarSrc } from '../../../../ui/avatar-stack';
 import { Icon } from '../../../../ui/icon';
 import { ScriptoriumBadge } from '../../../../ui/scriptorium-badge';
 import { ToastService } from '../../../../ui/toast.service';
-
-/**
- * Chat-list date (v4 `lib/format-time.ts` `formatChatListDate`, `useRelative`
- * always true here): today→time, yesterday→'Yesterday', <7d→weekday, else→date
- * (year only when different from now).
- */
-export function formatChatListDate(dateString: string): string {
-  const date = new Date(dateString);
-  if (Number.isNaN(date.getTime())) {
-    return String(dateString);
-  }
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  }
-  if (diffDays === 1) {
-    return 'Yesterday';
-  }
-  if (diffDays < 7) {
-    return date.toLocaleDateString([], { weekday: 'long' });
-  }
-  return date.toLocaleDateString([], {
-    month: 'short',
-    day: 'numeric',
-    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-  });
-}
 
 /** The preview text (v4 `lib/chat-utils.ts` `getCharacterChatPreview`): the LAST
  *  element of the recent-first ≤3 array (i.e. the oldest of the recent three),

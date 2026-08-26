@@ -2,7 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 
 import { Icon } from '../../../ui/icon';
 import { Modal } from '../../../ui/modal';
-import { formatRelativeDate, type FullJobDetail } from './tasks-queue.api';
+import { formatRelativeDate } from '../../../shared/format-date';
+import { type FullJobDetail } from './tasks-queue.api';
 
 /**
  * The job-detail modal (v4 `components/tools/tasks-queue/TaskDetails.tsx`):

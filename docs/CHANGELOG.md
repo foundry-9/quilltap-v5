@@ -235,6 +235,29 @@ New differential `activity_tables_equivalence` diffs both tables — entry order
 included — plus `ACTIVITY_KINDS` and v4's real `BackgroundJobTypeEnum.options`,
 against v4's exports. `ACTIVITY_CHIPS` is client-only display metadata and does
 not port here.
+#### 2026-08-26 — feat(spa): the shared clock, and the relative formatters take a `nowMs`
+
+_Versions: SPA 0.5.578._
+
+The client half of v4 `f3892158d`'s Phase 0 (P4.D125 unit 1). `NowService`
+(`shared/now.service.ts`) is the Angular twin of v4's `hooks/useNow.ts`: one
+`setTimeout` chain per granularity however many consumers subscribe, ticks
+aligned just past each boundary (`granularity - (now % granularity) + 1` ms, and
+local midnight at day granularity) so every "4m ago" on screen flips together,
+sub-minute tickers parked while the tab is hidden and resynced on the way back,
+and an `enabled` flag that neither subscribes nor advances when false.
+
+`formatRelativeDate` and `formatChatListDate` move from the two feature files
+they were transcribed into (`tasks-queue.api.ts`, `character-conversation-card.ts`)
+to `shared/format-date.ts` — v5's home for `lib/format-time.ts` — and both gain
+v4's optional `nowMs` parameter. `formatRelativeAge` lands beside them, byte-
+faithful to v4's version; it has no v5 consumer yet, because v5's startup screen
+has never carried v4's per-step event list.
+
+Parity specs against v4's own `__tests__/unit/hooks/useNow.test.tsx` semantics
+plus the formatters' branch boundaries; seven mutation proofs (the boundary
+epsilon, local-midnight alignment, the disabled path, the hidden-tab pause,
+`Math.round` vs floor in `formatRelativeAge`, and both `nowMs` threads).
 
 #### 2026-08-26 — docs(porting): the `f3892158d` drift catch-up round ordered — three work orders across two lanes
 
