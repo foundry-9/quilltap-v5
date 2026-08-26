@@ -88918,3 +88918,52 @@ passing after the wraps, unchanged.
 
 **P4.D123 is CLOSED**: tiers 1 and 2 landed in full; tier 3 is the bank row
 above.
+
+### P4.D124 units 1–2 — the hint type + the coalescing bus (v4 `f3892158d`)
+
+New `crates/quilltap-core/src/realtime/{mod,types,bus}.rs`.
+
+**§Shared contract §B.1's mechanism divergence, implemented and documented at
+source.** v4 multiplexes hints over a NEW WebSocket. v5 adds
+`EventPayload::Realtime(RealtimeHint)` to the EXISTING event channel — engine
+broadcast → SSE `/api/events` → `quilltap://event`. The rationale is the locked
+boundary ("streaming only ever on the `Event` channel"), and it is carried in
+`realtime/mod.rs`'s header, not just here. Consequently NO-PORT, with evidence:
+`RealtimeClientMessageSchema` (`{type:'ping'}`→`pong` — SSE keep-alives every
+15 s and the Tauri pump is in-process), `REALTIME_STREAM_PATH`,
+`attachRealtimeSocket`/`realtimeListenerCount` and the per-socket send-failure
+drop legs (the broadcast channel owns delivery, lag, and teardown).
+
+**Wire bytes pinned** (§B.2): `{"v":1,"topic":"jobs","at":…}`, with `"id"`
+present only when scoped — omitted, never null, matching v4's object spread —
+and NO `chatId`/`roomId`/`progressId`. §B.5's discrimination rule is pinned in
+both directions: a test asserts no other event family carries `topic` or `v`,
+and that the two pre-existing families' bytes are unmoved by the new untagged
+variant. (`Event` is Serialize-only — nothing in the workspace deserializes it —
+so untagged ambiguity cannot arise server-side; the pin is for the client's
+rule.)
+
+**The bus.** 250 ms trailing-edge coalescing keyed `topic` / `topic:id`, one
+hint per key per window, `at` stamped at FLUSH time (v4 calls `Date.now()`
+inside the timer, so a coalesced burst reports the flush).
+
+⚠ **Two deliberate v5 shapes:**
+
+1. **A spawn seam, and the host arms the bus — not the engine.** The order said
+   "armed by the engine at boot", but a trailing-edge debounce needs a timer and
+   `quilltap-core`'s default build has NO tokio scheduler (`default-features =
+   false, features = ["sync","time"]`; `tokio::spawn` is behind `rt`). That is
+   the same STOP rule `services::job_runner` states in its own header — the core
+   decides *when*, the host *schedules*. So `arm_realtime_bus(sender, spawner)`
+   is called from the composition root, which is the only place a runtime
+   exists. v4's `timer.unref?.()` ("a pending hint never holds the process
+   open") carries as a property of that spawner.
+2. **No-op before arming.** v4's guard is `IS_JOB_CHILD`; v5 has no child, so
+   the remaining shape is "not armed yet" — unit tests, the CLI's direct-core
+   mode, anything built before boot. Pinned, including that arming later does
+   NOT deliver publishes dropped before it.
+
+**Mutation-proven, four:** removing the debounce reds the trailing-edge case;
+keying by topic alone reds the per-id case; never clearing the pending key reds
+the re-arm case (and the no-listener case, which also asserts re-arm); stamping
+`at` at publish time reds the flush-time case.

@@ -17,6 +17,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::realtime::types::RealtimeHint;
 use crate::services::chat_events::ChatEvent;
 use crate::services::creation_progress::CreationProgressFrame;
 
@@ -4109,6 +4110,16 @@ pub enum EventPayload {
     /// to v4's `{kind, …, ts}` frame shape; the [`Event`] envelope adds the
     /// `progressId` tag.
     CreationProgress(CreationProgressFrame),
+    /// A realtime INVALIDATION HINT (P4.D124, v4 `f3892158d`) — "this slice of
+    /// server state changed", never what it changed to.
+    ///
+    /// v4 carries these on a second WebSocket; v5 rides this existing channel
+    /// instead, because the locked boundary says streaming only ever happens
+    /// here (`crate::realtime`'s module header carries the full rationale).
+    /// Serializes to `{"v":1,"topic":"…"[,"id":"…"],"at":…}` with none of the
+    /// three scope tags — a hint is recognizable by carrying BOTH `topic` and
+    /// `v`, which no other family does.
+    Realtime(RealtimeHint),
 }
 
 /// v4 `encodeErrorEvent(encoder, error, errorType, details)`.
@@ -4139,6 +4150,17 @@ impl Event {
             room_id: None,
             progress_id: None,
             payload: EventPayload::ChatError(payload),
+        }
+    }
+
+    /// A realtime invalidation hint (P4.D124). Carries no scope tag: hints are
+    /// broadcast to every client, which each decide whether they care.
+    pub fn realtime(hint: RealtimeHint) -> Event {
+        Event {
+            chat_id: None,
+            room_id: None,
+            progress_id: None,
+            payload: EventPayload::Realtime(hint),
         }
     }
 

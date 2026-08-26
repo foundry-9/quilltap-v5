@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(realtime): the invalidation hint and its coalescing bus
+
+_Versions: core 0.0.683._
+
+Ports v4 `f3892158d`'s realtime bus onto v5's own transport. A hint says which
+slice of server state changed, never what it changed to:
+`{"v":1,"topic":"…"[,"id":"…"],"at":…}`. `publish_realtime` collapses repeats
+per `topic`/`topic:id` behind a 250 ms trailing-edge debounce and emits one
+hint, stamped at flush time.
+
+**The one mechanism divergence:** v4 adds a second WebSocket at
+`/api/v1/system/realtime/stream`. v5 does not, and will not — hints ride the
+existing `Event` channel (SSE in `quilltap-web`, the pump in `quilltap-tauri`),
+because the locked transport-agnostic boundary says streaming only ever happens
+there. v4's WS-protocol legs (the ping/pong message, the stream path, the
+per-socket fan-out bookkeeping) have no twin: the broadcast channel owns
+delivery.
+
+The bus is armed by the composition root with the engine's sender AND a
+spawner, because a trailing-edge debounce needs a timer and this core
+deliberately has no tokio scheduler — the same rule the job runner states.
+Publishing before arming is a silent no-op, which is the shape v4's job-child
+guard takes here.
+
+Thirteen unit tests, four mutation proofs.
+
 #### 2026-08-26 — feat(jobs): activity spans at every v5 twin of v4's instrumented paths
 
 _Versions: core 0.0.682, harness 0.0.589._
