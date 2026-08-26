@@ -89164,3 +89164,41 @@ have it not; both green.
 
 Worth naming: nothing about this was visible to inspection, and no differential
 could have seen it — it took running the whole workspace with the wiring live.
+
+### The P4.D123 + P4.D124 lane gate (run once for the stacked lane)
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean, **both**
+  feature sets (default and `quilltap-core/native-transport`).
+- `cargo test --workspace` with the lane's four oracle env vars:
+  **469 test binaries / 2,512 tests / 0 failed**, and **zero `SKIP:` notices in
+  the whole run** — every family that could skip for a missing env var either
+  ran or does not exist. The lane's nine new/grown tests confirmed RUN by name
+  in the log (`activity_tables_match_oracle`, `realtime_topics_match_oracle`,
+  `system_jobs_collection_matches_oracle`, `upgrade_origin_matches_oracle`,
+  `every_activity_span_site_is_wired`, `every_realtime_publish_site_is_present`,
+  `an_enqueue_puts_a_jobs_hint_on_the_event_stream`, `system_jobs_query_decoding`,
+  `terminal_ws_same_origin_gate`).
+- `cargo build --workspace --release` — clean.
+- All four oracles regenerated FRESH from the pinned `f3892158d` worktree through
+  `recipe_sweep.py --run-all` (4/4 ok), and each NDJSON grepped for the CHANGED
+  bytes rather than trusted green (`green-regen-is-not-coverage`): the two kind
+  maps + the three explicit-`null` job types; `autonomousRooms` topics;
+  `activeByKind`/`startedByKind` in all seven GET rows **and three rows with no
+  `activeByType` at all** (the actual behavior change); the origin refusal
+  sentences.
+- `harness/tools/check_spelling.py` — clean.
+- Playwright NOT run (this lane owns no `apps/web` file; the SPA is P4.D125's,
+  and only it and the unifier run the suite).
+
+⚠ **v4 DRIFTED MID-LANE — two commits past the pin, ledger NOT updated (lanes
+never write it).** `487ae57fe` (regression tests for bugs 77/83/94/99 + five
+uncovered modules) and `561466cfe` (a knip dead-code sweep: 11 unused exports,
+and `HAIR_PHYSICAL_*` deduplicated with the strings verified byte-identical).
+Classified read-only, not ported. **Neither touches any surface this lane
+ported** — `git diff --stat f3892158d..main` over `lib/realtime/`,
+`lib/background-jobs/`, the background-jobs repository, the jobs route,
+`lib/terminal/`, the cheap-LLM/memory-gate/gatekeeper/embedding/image/fallback
+span sites and both schema files is EMPTY — and every oracle in this lane was
+generated from the pinned worktree, so the port and the gate are unaffected.
+**`/driftcheck` is owed before the next round.**
