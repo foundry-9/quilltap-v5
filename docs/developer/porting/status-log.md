@@ -248,6 +248,33 @@ measurable. **The almanack fixture rebuild + oracle regen is deferred to
 P4.D120's almanack unit** — the order's regenerate-each-family-ONCE rule, since
 P4.D120 moves the same collector.
 
+### P4.D119 Tier 2/3 — the migration check, and the help-doc bank
+
+**Tier 2 item 9 — the startup-migration clobber, checked and CLOSED as
+unreachable in v5.** v4's `lib/startup/move-shared-wardrobe-to-general.ts`
+seeds its dedupe set (`seenFileNames`) EMPTY, so a legacy shared archetype
+titled "Instructions" would write `Quilltap General/Wardrobe/instructions.md`
+and clobber the dressing-instructions page at first start — `b86bb1a5` did not
+close that hole. **v5 has not ported that migration at all** (the migration
+runner is a standing Phase-4 deferral; `ggrep` over `crates/` finds no
+counterpart), so there is nothing in v5 to reproduce or guard. Recorded as a
+**v4-side filing candidate**: the fix is one line — seed the set with
+`WARDROBE_INSTRUCTIONS_FILENAME`, exactly as `projectArrayIntoVaultFolder` now
+seeds its own.
+
+**Tier 3 item 10 — the three help files BANKED for `p4.9i2`, not ported.** v4
+`b86bb1a5` touched `help/wardrobe.md` (+14: the new
+`### Dressing Instructions (a Standing Word with the Valet)` section — the
+nearest-copy-wins rule, the curtain-up-only rule, the optionality, and the
+`instructions.md` archival note), `help/groups.md` (+6/−2: the group shelf's
+optional page, cross-linked to the new wardrobe section) and
+`help/project-wardrobe.md` (+2: the same for the project tier, naming the
+collapsible panel). v5 ships no help surface for any of them, so all three join
+the standing `p4.9i2` help-doc bank with their names and hit counts.
+
+**`docs/developer/API.md` got NO v4 update for this commit** — a recorded gap on
+v4's side, nothing to mirror.
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start
