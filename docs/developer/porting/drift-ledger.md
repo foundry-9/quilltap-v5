@@ -19,34 +19,23 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline:** `8f9101370` — "fix(ci): the zsh completion check no
-  longer fails where zsh isn't installed" (v4 main, 2026-08-25), adopted at
-  the `8f910137`-round unification (2026-08-25, the P4.D115–P4.D118 drift
-  catch-up).
-- **Checked:** 2026-08-26 (`/driftcheck`, main-checkout session).
-- **v4 `main` HEAD at check:** `b220999da` — "feat(search): a Documents chip
-  that searches every document store" (2026-08-25). **Five commits past the
-  baseline.**
+- **Oracle baseline:** `b220999da` — "feat(search): a Documents chip that
+  searches every document store" (v4 main, 2026-08-25), adopted at the
+  `b220999d`-round unification (2026-08-26, the P4.D119→P4.D120 ∥ P4.D121 ∥
+  P4.D122 drift catch-up).
+- **Checked:** 2026-08-26 (`/unify`, main-checkout session, at the baseline
+  move).
+- **v4 `main` HEAD at check:** `b220999da` — **EQUALS the baseline.**
 - **v4 `bugfix` tip at check:** `3a76b17df` — "bugfix: started 4.8.4 bug
-  branch" (**unmoved** since the last check; the fork marker). No unabsorbed
-  bugfix-side content: the tip is byte-identical to the previously measured
-  state, and `git log main..bugfix --oneline -- lib/ app/ packages/` still
-  lists only pre-4.8.4 history already squashed onto main.
+  branch" (**unmoved**; the fork marker). No unabsorbed bugfix-side
+  content.
 - **Checkout at check:** branch `main`, tree **clean**.
-- **Verdict: DRIFT PENDING — 5 commits** (2 feature commits + 1 combined
-  feature commit + 2 docs-only specs; see §3). Three v4 features in one day,
-  **all three landing on surfaces this port finished in the last two
-  rounds** — the wardrobe tiers (P4.D39/P4.D112/P4.D113), the scenario
-  feature (P4.D115/P4.D116, unified the previous day), and the `uiSearch`
-  verb + search dialog (P4.9P). **No SQL DDL moved** — no D23 re-dump is
-  implied (the one `schema.ts` hunk is the vault-overlay's TS constant
-  re-export, not `generateDDL`).
-- **Regen rule in force: PIN REQUIRED.** v4 `main` HEAD is past the
-  baseline, so every oracle regeneration must run from a lane-unique
-  detached worktree pinned at `8f9101370` (recipe in §5.1;
-  `recipe_sweep.py --v4 "$PIN"`). Regenerating from the checkout would pull
-  in the wardrobe-instructions / archived-entries / documents-search
-  behavior and silently redden or (worse) greenwash unrelated families.
+- **Verdict: NO DRIFT.** Every commit through `b220999da` is absorbed or
+  ratified (§6).
+- **Regen rule in force: PIN-FREE.** v4 HEAD sits at the baseline and the
+  checkout is clean — regenerate straight from the checkout until v4 moves
+  or the tree dirties, then pin a lane-unique detached worktree at
+  `b220999da` (recipe in §5.1; `recipe_sweep.py --v4 "$PIN"`).
 
 ## §2 The freshness probe
 
@@ -85,11 +74,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `b86bb1a58` | 2026-08-25 | feat(wardrobe): per-tier dressing instructions for characters who dress themselves | **PORT-NEW** (+ PORT) | New `lib/wardrobe/wardrobe-instructions.ts` (no v5 counterpart) feeding the outfit-selection prompt — hits the tri-tier dressing cascade (P4.D39), `outfit-selection.ts` + `apply-outfit-selections.ts` (services::outfit_selections), the vault projection sweep (**behavior change**: `projectArrayIntoVaultFolder` gains `preserveFileNames`, and the shared wardrobe reader now skips a file by name), `character-vault.ts`, the four wardrobe collection routes (`?action=instructions` GET/POST; P4.D112's `GroupWardrobe*` verbs + the wardrobe/project/character routes), the Almanack Scriptorium garment counts (P4.37/P4.D50), `field-hints.ts` (P4.D103's hints table), and the SPA wardrobe dialog + Aurora Wardrobe tab (P4.D113). Archived-character refusal rides the P4.D62–D65 tombstone. | ORDERED(p4.d119 server ∥ p4.d121 SPA) |
-| `2417cbed1` | 2026-08-25 | docs(search): plan a Documents chip that searches all document stores | **NO-PORT?** | Docs-only (`docs/CHANGELOG.md` + a 402-line feature spec). Superseded in-place by `b220999da`, which moved the spec to `features/complete/`. Its "pre-existing search defects catalogued for separate filing" paragraph is worth reading when ordering the search lane. | ORDERED(p4.d122 — ratification at unify; the defects paragraph is quoted in that order's survey) |
-| `a47d3e034` | 2026-08-25 | docs(wardrobe): plan archivable scenarios and wardrobe items | **NO-PORT?** | Docs-only (`docs/CHANGELOG.md` + a 126-line feature spec). Implemented by `d25dacc1d`. | ORDERED(p4.d120 — ratification at unify; the spec informed the order's split) |
-| `d25dacc1d` | 2026-08-25 | feat(scenarios,wardrobe): archive entries instead of deleting them | **PORT-NEW** (+ PORT) | 84 files. An `archived: true` frontmatter key across all four scenario scopes + `archived: boolean` → `archivedAt` on the four wardrobe item routes + `?includeArchived=true` on the four collection routes. **Behavior changes on just-landed surfaces**: the scenario feature unified the day before (P4.D115/P4.D116 — `ScenarioSelect`, `ChatScenarioControl`, the `scenario_selection` resolver, default-conflict resolution, New Chat auto-select), `scenarios-common`/general/group/project (P4.6n), the character-vault scenario round-trip (**v4 bug fixed in passing**: `description` frontmatter was parsed but never written back), project/group wardrobe lists (**server-side filtering replaces the client-side pass**), the Green Room candidate pool + outfit-selection LLM (archived garments never audition, no override), `system-prompt-builder.ts`, the Almanack Scriptorium row, `qtap-export.schema.json` (export/import, P4.D46), and the New Chat group-scenarios optgroup (never connected in v4 until now). | ORDERED(p4.d120 server ∥ p4.d121 SPA) |
-| `b220999da` | 2026-08-25 | feat(search): a Documents chip that searches every document store | **PORT** + **PORT-NEW** | New `lib/mount-index/document-text-search.ts` + two repo queries (`docMountFileLinks.searchByNameOrPath`, `docMountChunks.searchContent`) + a shared LIKE-escape helper, over the doc-mount repos (Phase 2 + P4.D41 link groups). **Behavior change on the ported `uiSearch` verb** (`GET /api/v1/ui/search`, P4.9P): a sixth `documents` type, and `ALL_SEARCH_TYPES` **reorders the chips/groups** to chats, characters, messages, documents, tags, memories. Also hits `qtap-uri.ts` + `uri-producers.ts` (the `docStoreAuthority` extraction) and the in-chat document-open choreography (Document Mode / P4.9L2), the archived-character vault exclusion (fails closed — P4.D62–D65), and the SPA search bar/dialog/results (P4.9P). No schema changes. | ORDERED(p4.d122) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -245,6 +229,16 @@ don't silently swap it in.
 
 Absorbed drift blocks get one line each here when `/unify` moves the
 baseline; the full story lives in the round record in `status-log.md`.
+
+- **`b220999d`-round (2026-08-26, baseline `8f9101370` → `b220999da`):**
+  `b86bb1a58` ABSORBED(p4.d119 server ∥ p4.d121 SPA — the per-tier
+  dressing instructions whole), `d25dacc1d` ABSORBED(p4.d120 ∥ p4.d121 —
+  archive-instead-of-delete whole), `b220999da` ABSORBED(p4.d122 — the
+  Documents-search vertical whole), `a47d3e034` + `2417cbed1`
+  NO-PORT-RATIFIED(the two feature specs — docs-only, confirmed by the
+  implementing lanes' hunk surveys; the search spec's defects paragraph is
+  quoted in the p4.d122 order). Round record: `status-log.md` → "The
+  `b220999d` drift catch-up round".
 
 - **`8f910137`-round (2026-08-25, baseline `f6a10055d` → `8f9101370`):**
   `44a8137e9` ABSORBED(p4.d115 ∥ p4.d116 — the scenario-change feature whole),

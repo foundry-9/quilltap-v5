@@ -178,13 +178,22 @@ fn characters_subresources_match_oracle() {
     let mut failed: Vec<String> = Vec::new();
 
     let check = |name: &str, resp: Response, failed: &mut Vec<String>| {
-        // A refusal diffs as v4's `{error}` body (the web edge's own mapping);
-        // the status leg rides the ErrorKind→HTTP table pinned elsewhere.
+        // A refusal compares the `error` KEY only (the sibling families'
+        // convention — scenarios_routes' `err` helper does the same): v4's
+        // middleware envelope also carries a Zod `details` array, which v5's
+        // flat dispatch envelope deliberately does not reproduce (the
+        // standing Zod-format-validator deferral). The status leg rides the
+        // ErrorKind→HTTP table pinned elsewhere.
+        let is_err = matches!(&resp, Response::Error(_));
         let mut got = match &resp {
             Response::Error(e) => json!({ "error": e.message }),
             _ => response_data(&resp),
         };
-        let mut want = oracle[name]["body"].clone();
+        let mut want = if is_err {
+            json!({ "error": oracle[name]["body"]["error"] })
+        } else {
+            oracle[name]["body"].clone()
+        };
         strip_subitem_ts(&mut got);
         strip_subitem_ts(&mut want);
         if norm(&got) != norm(&want) {
