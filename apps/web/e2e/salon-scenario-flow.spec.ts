@@ -140,11 +140,19 @@ test.describe('P4.D116 — the in-chat scenario picker', () => {
     test.setTimeout(120_000);
     const ctx = page.request;
 
+    // --- The instance boots LOCKED (the server spawn passes no passphrase),
+    // and every dispatch below needs it open — unlock server-side first, the
+    // same verb the UI gate sends. Idempotent when already unlocked.
+    await dispatch(ctx, { type: 'unlock', passphrase: E2E_PASSPHRASE });
+
     // --- Seed through the API. A scenario FILE lives in a document store, so it
     // cannot be planted with SQL (memory:
     // `store-overlay-properties-cannot-be-sql-seeded`) — the project and its
     // Scenarios/ entry are both created the way the app creates them.
-    const chats = await dispatch(ctx, { type: 'chats' });
+    // `listChats` is the REQUEST verb; `chats` is the RESPONSE tag — sending
+    // the response tag answers `unknown variant` (caught on this beat's first
+    // live run).
+    const chats = await dispatch(ctx, { type: 'listChats' });
     const chatId = ((chats.data as unknown as { id: string; title: string }[]) ?? []).find(
       (c) => c.title === 'Solo Voyage',
     )!.id;
@@ -197,7 +205,9 @@ test.describe('P4.D116 — the in-chat scenario picker', () => {
     const chip = scenarioChips(page).last();
     await chip.click();
     await expect(page.getByText(REVISION_LEAD)).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(PRESET_BODY)).toBeVisible();
+    // Scoped to the transcript: the same body is (correctly) also visible in
+    // the picker's preset preview, so a bare getByText matches twice.
+    await expect(page.locator('.qt-chat-messages-list').getByText(PRESET_BODY)).toBeVisible();
 
     // --- Re-picking the scene already in force writes nothing and says so.
     await page.reload();
@@ -285,7 +295,13 @@ async function waitForHealth(): Promise<void> {
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`${SCENE_BASE_URL}/health`);
-      if (res.ok) return;
+      // 423 is "server up, instance locked" — the normal state of a fresh
+      // fixture boot (the server gets no passphrase env); the walk unlocks
+      // through the dispatch verb / the UI gate. The sibling own-server specs
+      // (wardrobe-flow &c.) treat it the same way. Caught by this beat's FIRST
+      // live run at the 8f910137-round unification: `res.ok` alone can never
+      // pass on a locked fixture.
+      if (res.status === 423 || res.status === 200) return;
       lastErr = `status ${res.status}`;
     } catch (err) {
       lastErr = String(err);

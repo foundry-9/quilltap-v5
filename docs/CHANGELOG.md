@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-25 — test(salon): the scenario walk's first live run — three gesture repairs
+
+_Versions: SPA 0.5.566._
+
+The `salon-scenario-flow` beat was authored gated (its lane could never run
+it) and failed its FIRST live run at unification on three spec-side defects,
+each fixed with no product assertion weakened: `waitForHealth` accepted only
+`res.ok`, but a fresh fixture server boots LOCKED and answers 423 (the
+sibling own-server specs' spelling adopted, plus a server-side `unlock`
+dispatch before the API seeding); the seeding sent the RESPONSE tag
+(`chats`) as a request verb where the request verb is `listChats`; and the
+revision-body assertion used an unscoped `getByText` that (correctly)
+matched both the Host bubble and the picker's preset preview — now scoped to
+the transcript. The walk then passed whole: seeded scene → picker opens on
+it → preset change → revision bubble → reload opens on the preset → no-op →
+clear → the cleared sentence.
+
+#### 2026-08-25 — docs(porting): the 8f910137-round unification — P4.D115–P4.D118 land whole; the baseline moves
+
+_Docs-only change._
+
+The four-lane `8f910137` drift catch-up round unifies: the scenario-change
+feature end-to-end (server verb + SPA control + the activated
+`salon-scenario-flow` walk), the client-fixes pair (bugs 100/102 — the qt-*
+sheet made real + the `check-qt-classes` guard; bug 99 — the gallery download
++ the modal's escape from the workspace stacking trap), and bug 101's
+completion templates with the bash-driving guard. The oracle baseline moves
+`f6a10055` → `8f910137` and the drift debt is cleared (`8f910137` itself
+NO-PORT-RATIFIED: CI + tests-only).
+
+Gate: fmt/clippy (both feature sets)/release clean; oracles regenerated fresh
+at the new baseline (50 + 19 rows, changed-bytes verified); the differentials
+by name zero SKIP (`chat_scenario_routes_equivalence` 50 cases, the capstone
+neutrality, Tier R 188/0 vs v4's real launcher, `completion_behavior` 4/0);
+`cargo test --workspace` 456 binaries / 2,376 / 0 with the delta reconciled
+exactly; SPA 347 files / 5,196 / 0 with the qt-class guard green over the
+union (934 classes); `npm run build` clean; full Playwright
+PLAYWRIGHT_NUMBERS_PLACEHOLDER.
+
+The §3 review caught one log-only fidelity gap (fixed, see the entry below);
+the wires applied the cross-lane qt rewrite, activated the walk, and diffed
+the shared contract name-for-name. Final versions: core 0.0.665, harness
+0.0.577, cli 0.0.12, SPA 0.5.565.
+
 #### 2026-08-25 — fix(chat): the scenario verb's `source` log label follows JS truthiness
 
 _Versions: core 0.0.665._
