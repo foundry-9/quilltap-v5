@@ -358,6 +358,35 @@ inside the helper, then wraps `%…%`). Callers pair it with
 
 v4's five unit cases ported one for one, plus a sixth pinning the escape set as
 exactly those three characters.
+#### 2026-08-26 — feat(spa): the P4.D121 contract surface — eight dressing-instructions verbs, the archive fields, and the field hint
+
+_Versions: SPA 0.5.567._
+
+The client-side contract for v4 `b86bb1a5` + `d25dacc1`, ahead of the surfaces
+that consume it.
+
+`core-contract.ts` gains the eight `*WardrobeInstructions{Get,Set}` verbs and
+their `{ instructions: string | null }` body (Shared contract A1/A2). v4
+expresses these as `?action=instructions` on the four wardrobe collection
+routes; v5 has no URLs, so the four containers x two directions become eight
+verbs — recorded as a mechanism divergence in the type's doc comment.
+`instructions` is REQUIRED and nullable on every SET, matching v4's
+`z.string().nullable()`.
+
+The archive fields (Shared contract B1-B3): `includeArchived?: boolean` on the
+nine list verbs; `archived?: boolean` on `ScenarioCreateBag` and (tri-state, with
+its rule spelled out) `ScenarioUpdateBag`; `archived: boolean` — always present —
+on `ScenarioDto`; and `description?` + `archived?` on the character-scenario
+shape, the second only ever `true` (omission is what "active" means in the vault
+file). `description` is on the canonical shape rather than a listing projection
+because the character edit form round-trips whole scenario objects.
+
+`prompt-field-hints.ts` gains `wardrobeInstructions`, transcribed byte-for-byte
+from `git show b86bb1a5:components/prompt-fields/field-hints.ts` (curly quotes,
+curly apostrophes and the em dash included) into v4's slot between
+`groupInstructions` and `roleplayTemplatePrompt`. The parity spec's independent
+second transcription and its key-count and typographic-apostrophe guards move
+with it.
 
 #### 2026-08-25 — docs(porting): the `b220999d`-round work orders — four lanes over the five-commit drift
 

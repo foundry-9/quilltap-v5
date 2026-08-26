@@ -86,6 +86,12 @@ const V4_HINTS: Row[] = [
     'You have known the others here for years; you do not explain yourselves to each other.',
   ],
   [
+    'wardrobeInstructions',
+    'Dressing Instructions',
+    'Standing guidance for a character choosing their own opening outfit, addressed to the character in the second person. Consulted only when a chat begins with “Let character choose” — the nearest copy wins (a character’s own over their group’s, a group’s over the project’s, the project’s over Quilltap General) and the search stops there.',
+    'You prefer practical tweeds for fieldwork, and reserve the brass-buttoned frock coat for occasions with an audience.',
+  ],
+  [
     'roleplayTemplatePrompt',
     'LLM Prompt',
     'Formatting instructions delivered with every character’s prompt in chats using this template.',
@@ -94,7 +100,7 @@ const V4_HINTS: Row[] = [
 ];
 
 describe('PROMPT_FIELD_HINTS — v4 parity', () => {
-  it('carries exactly v4’s twelve keys, in v4’s order', () => {
+  it('carries exactly v4’s thirteen keys, in v4’s order', () => {
     expect(Object.keys(PROMPT_FIELD_HINTS)).toEqual(V4_HINTS.map(([key]) => key));
   });
 
@@ -118,7 +124,7 @@ describe('PROMPT_FIELD_HINTS — v4 parity', () => {
       (h as { example?: string }).example ?? '',
     ]);
     expect(all.filter((s) => s.includes("'"))).toEqual([]);
-    // …and the five strings that DO carry one carry the typographic form.
-    expect(all.filter((s) => s.includes('’')).length).toBe(5);
+    // …and the six strings that DO carry one carry the typographic form.
+    expect(all.filter((s) => s.includes('’')).length).toBe(6);
   });
 });

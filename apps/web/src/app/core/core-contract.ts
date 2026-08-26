@@ -1114,6 +1114,12 @@ export interface CharacterPromptSetDefaultRequest {
 export interface CharacterScenarioListRequest {
   type: 'characterScenarioList';
   characterId: string;
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 export interface CharacterScenarioCreateRequest {
   type: 'characterScenarioCreate';
@@ -1168,6 +1174,12 @@ export interface CharacterWardrobeListRequest {
    * shared wardrobe of every group the character belongs to.
    */
   scope?: 'group';
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 export interface CharacterWardrobeCreateRequest {
   type: 'characterWardrobeCreate';
@@ -1364,6 +1376,8 @@ export interface ScenarioCreateBag {
   name?: string;
   description?: string;
   isDefault?: boolean;
+  /** Create the file already archived (v4 `d25dacc1`); omitted = active. */
+  archived?: boolean;
   body: string;
 }
 
@@ -1372,6 +1386,13 @@ export interface ScenarioUpdateBag {
   name?: string;
   description?: string;
   isDefault?: boolean;
+  /**
+   * Tri-state (v4 `d25dacc1`): OMITTED preserves the file's current archived
+   * state, `true` archives, `false` restores — and restoring DELETES the key
+   * from the frontmatter rather than writing `archived: false`. The serializer
+   * rewrites the whole file, so an unmentioned flag would otherwise be lost.
+   */
+  archived?: boolean;
   body: string;
 }
 
@@ -1379,6 +1400,12 @@ export interface ScenarioUpdateBag {
 export interface GroupScenarioListRequest {
   type: 'groupScenarioList';
   groupId: string;
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 export interface GroupScenarioCreateRequest {
   type: 'groupScenarioCreate';
@@ -1412,6 +1439,12 @@ export interface GroupScenarioDeleteRequest {
 export interface GroupScenariosUnionRequest {
   type: 'groupScenariosUnion';
   characterIds: string[];
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 
 /** List projects with `_count` (v4 GET `/projects`, createdAt desc). */
@@ -1664,6 +1697,12 @@ export interface ProjectMountPointUnlinkRequest {
 export interface ProjectScenarioListRequest {
   type: 'projectScenarioList';
   projectId: string;
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 export interface ProjectScenarioCreateRequest {
   type: 'projectScenarioCreate';
@@ -1700,6 +1739,12 @@ export interface ProjectScenarioDeleteRequest {
  */
 export interface ScenarioListRequest {
   type: 'scenarioList';
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 export interface ScenarioCreateRequest {
   type: 'scenarioCreate';
@@ -1728,6 +1773,12 @@ export interface ScenarioDeleteRequest {
 export interface ProjectWardrobeListRequest {
   type: 'projectWardrobeList';
   projectId: string;
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 export interface ProjectWardrobeCreateRequest {
   type: 'projectWardrobeCreate';
@@ -1757,6 +1808,12 @@ export interface ProjectWardrobeDeleteRequest {
 export interface GroupWardrobeListRequest {
   type: 'groupWardrobeList';
   groupId: string;
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 export interface GroupWardrobeCreateRequest {
   type: 'groupWardrobeCreate';
@@ -1778,6 +1835,66 @@ export interface GroupWardrobeDeleteRequest {
   type: 'groupWardrobeDelete';
   groupId: string;
   itemId: string;
+}
+
+/**
+ * Per-container dressing instructions (v4 `b86bb1a5`,
+ * `?action=instructions` GET/POST on the four wardrobe collection routes) —
+ * the optional `Wardrobe/instructions.md` a character consults when they
+ * choose their own opening outfit.
+ *
+ * ⚠ **Recorded mechanism divergence.** v4 expresses these as a query action on
+ * the collection endpoint; v5's transport has no URLs, so the four containers
+ * × two directions become the eight verbs below (named after the existing
+ * per-scope wardrobe verb families — the P4.D119/P4.D121 Shared contract A1).
+ * The cascade (character > group > project > general) is applied SERVER-side
+ * at outfit time only: each verb reads and writes exactly its own container's
+ * file, with no tier merging.
+ *
+ * `instructions` is REQUIRED and nullable on every SET (v4's
+ * `z.string().nullable()`, not `.optional()` — an absent key fails validation,
+ * which is why it is `string | null` here and not `?:`). The SET echo is the
+ * TRIMMED string, or `null` when cleared.
+ */
+export interface CharacterWardrobeInstructionsGetRequest {
+  type: 'characterWardrobeInstructionsGet';
+  characterId: string;
+}
+export interface CharacterWardrobeInstructionsSetRequest {
+  type: 'characterWardrobeInstructionsSet';
+  characterId: string;
+  instructions: string | null;
+}
+export interface GroupWardrobeInstructionsGetRequest {
+  type: 'groupWardrobeInstructionsGet';
+  groupId: string;
+}
+export interface GroupWardrobeInstructionsSetRequest {
+  type: 'groupWardrobeInstructionsSet';
+  groupId: string;
+  instructions: string | null;
+}
+export interface ProjectWardrobeInstructionsGetRequest {
+  type: 'projectWardrobeInstructionsGet';
+  projectId: string;
+}
+export interface ProjectWardrobeInstructionsSetRequest {
+  type: 'projectWardrobeInstructionsSet';
+  projectId: string;
+  instructions: string | null;
+}
+/** The singleton Quilltap General container (no scope id). */
+export interface WardrobeInstructionsGetRequest {
+  type: 'wardrobeInstructionsGet';
+}
+export interface WardrobeInstructionsSetRequest {
+  type: 'wardrobeInstructionsSet';
+  instructions: string | null;
+}
+
+/** The success body of every instructions arm (Shared contract A2). */
+export interface WardrobeInstructionsDto {
+  instructions: string | null;
 }
 
 // ===========================================================================
@@ -2297,6 +2414,16 @@ export type CoreRequest =
   | GroupWardrobeGetRequest
   | GroupWardrobeUpdateRequest
   | GroupWardrobeDeleteRequest
+  // The P4.D119/P4.D121 Shared contract A1 — dressing instructions, one pair
+  // of verbs per wardrobe container (v4 `?action=instructions`).
+  | CharacterWardrobeInstructionsGetRequest
+  | CharacterWardrobeInstructionsSetRequest
+  | GroupWardrobeInstructionsGetRequest
+  | GroupWardrobeInstructionsSetRequest
+  | ProjectWardrobeInstructionsGetRequest
+  | ProjectWardrobeInstructionsSetRequest
+  | WardrobeInstructionsGetRequest
+  | WardrobeInstructionsSetRequest
   | ScenarioListRequest
   | ScenarioCreateRequest
   | ScenarioGetRequest
@@ -2814,6 +2941,20 @@ export interface CharacterScenario {
   id: string;
   title: string;
   content: string;
+  /**
+   * The vault file's `description` frontmatter. v4 parsed it on read but never
+   * wrote it back until `d25dacc1`, so every projection sweep dropped it; the
+   * edit form round-trips whole scenario objects, which is why this belongs on
+   * the canonical shape rather than on a listing-only projection.
+   */
+  description?: string;
+  /**
+   * Hidden from every picker unless the surface asked for archived entries
+   * (v4 `d25dacc1`). Present as `true` ONLY when archived — the key is omitted
+   * entirely for an active scenario, and RESTORING deletes it rather than
+   * writing `false`.
+   */
+  archived?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -3468,6 +3609,13 @@ export interface ScenarioDto {
   description?: string;
   isDefault: boolean;
   rawIsDefault: boolean;
+  /**
+   * True when the file carries `archived: true` (v4 `d25dacc1`); ALWAYS present
+   * on a file-backed row, absence of the frontmatter key meaning active. An
+   * archived scenario is never `isDefault` in a list response, though its
+   * `rawIsDefault` may still be true.
+   */
+  archived: boolean;
   body: string;
   lastModified: string;
   createdAt: string;
@@ -6070,6 +6218,12 @@ export interface WardrobeTransferApplyRequest {
 /** v4 `GET /api/v1/wardrobe` (the global archetype tier). */
 export interface WardrobeListRequest {
   type: 'wardrobeList';
+  /**
+   * Fold archived entries into the answer, flagged rather than hidden (v4
+   * `?includeArchived=true`, `d25dacc1`). Absent = false server-side, so a
+   * surface that never asks is archived-free by construction.
+   */
+  includeArchived?: boolean;
 }
 
 /** v4 `POST /api/v1/wardrobe` — the `item` bag mirrors `projectWardrobeCreate`. */
