@@ -236,6 +236,23 @@ pub fn activity_start_totals() -> ActivityCounts {
     out
 }
 
+/// The kinds the CURRENT span is attributed to, in kind order — v4's
+/// `attributed.getStore()`, made readable.
+///
+/// This is the introspection the span-site pins use. Unlike the counters, which
+/// are process-global and therefore visible to (and polluted by) every other
+/// test running in the same binary, the attribution set is a thread-local scoped
+/// to this future's polls: reading it from inside an injected provider stub
+/// proves *which* span the caller opened, with no dependence on what any other
+/// test is doing at the time.
+pub fn attributed_kinds() -> Vec<ActivityKind> {
+    let mask = current_attribution();
+    ACTIVITY_KINDS
+        .into_iter()
+        .filter(|k| mask & bit(*k) != 0)
+        .collect()
+}
+
 /// Test hook: drop all counters (v4 `__resetActivityRegistryForTests`).
 ///
 /// The registry is process-global, so tests that touch it must also serialize —
@@ -482,6 +499,23 @@ mod tests {
         })
         .await;
         assert_eq!(after, 1);
+    }
+
+    #[tokio::test]
+    async fn attributed_kinds_reports_the_enclosing_spans() {
+        let _g = ActivityTestGuard::new();
+        assert_eq!(attributed_kinds(), vec![]);
+        let mut inner = vec![];
+        track_activity(ActivityKind::Image, async {
+            track_activity(ActivityKind::Danger, async {
+                inner = attributed_kinds();
+            })
+            .await;
+        })
+        .await;
+        // Kind order, not insertion order.
+        assert_eq!(inner, vec![ActivityKind::Danger, ActivityKind::Image]);
+        assert_eq!(attributed_kinds(), vec![], "and it unwinds");
     }
 
     // ── blip detection ───────────────────────────────────────────────────────

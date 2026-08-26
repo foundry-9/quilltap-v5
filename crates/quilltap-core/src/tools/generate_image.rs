@@ -60,6 +60,8 @@ use crate::image_gen::{resolve_orientation, ModelInfo, Orientation};
 use crate::model::completion::CompletionProvider;
 use crate::model::image::{ImageGenParams, ImageProvider, ImageTranscoder, TranscodeInput};
 use crate::pronoun_gender::gender_from_pronouns;
+use crate::services::activity_kinds::ActivityKind;
+use crate::services::activity_registry::track_activity;
 use crate::services::appearance_resolution::{
     resolve_character_appearances, sanitize_appearances_if_needed, AppearanceResolutionInput,
     PhysicalDescription, ResolvedCharacterAppearance, SceneStateCharacter, WardrobeItemInput,
@@ -1512,8 +1514,36 @@ fn output_error(error: &str, message: &str) -> ImageGenerationToolOutput {
 }
 
 /// v4 `executeImageGenerationTool`. The async spine composing steps 1–8.
+///
+/// Runs inline in the turn rather than as a queued job, so it registers itself
+/// with the activity registry: the "Img" chip is lit from the first token of
+/// prompt crafting, through the Concierge check and the provider wait, until the
+/// image has landed (or failed). v4 `image-generation-handler.ts:1209`
+/// (`664cfca84`).
 #[allow(clippy::too_many_arguments)]
 pub async fn execute_image_generation_tool<I, C, M, A, T, L>(
+    db: &Db,
+    deps: &ImageGenDeps<'_, I, C, M, A, T, L>,
+    input: &ImageGenerationToolInput,
+    ctx: &ImageToolExecutionContext,
+) -> ImageGenerationToolOutput
+where
+    I: ImageProvider,
+    C: CompletionProvider,
+    M: ModerationProvider,
+    A: ApiKeyResolver,
+    T: ImageTranscoder,
+    L: LanternNotificationSink,
+{
+    track_activity(
+        ActivityKind::Image,
+        run_image_generation_tool(db, deps, input, ctx),
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_image_generation_tool<I, C, M, A, T, L>(
     db: &Db,
     deps: &ImageGenDeps<'_, I, C, M, A, T, L>,
     input: &ImageGenerationToolInput,

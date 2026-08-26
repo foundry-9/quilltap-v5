@@ -690,8 +690,45 @@ impl CheapLlmTaskExecutor {
     /// v4 `executeCheapLLMTask`: send, maybe retry on the uncensored provider
     /// for an empty response, parse, and wrap — any error becomes
     /// `{ success: false, error }`.
+    ///
+    /// Registers the call with the activity registry for its whole duration, so
+    /// a cheap-LLM task lights its chip whether it was queued as a job or run
+    /// inline in a request. Re-entrant by kind: a task running inside a job of
+    /// the same kind collapses into that job's count instead of doubling it. v4
+    /// `core-execution.ts:366` (`664cfca84`). Every cheap-LLM task funnels
+    /// through here, which is why [`TASK_TYPE_ACTIVITY`] is the one place that
+    /// has to know which chip each task lights.
     #[allow(clippy::too_many_arguments)]
     pub async fn execute<C: CompletionProvider, T>(
+        &self,
+        completion: &C,
+        selection: &CheapLlmSelection,
+        messages: Vec<CompletionMessage>,
+        parse_response: impl Fn(&str) -> T,
+        uncensored_fallback: Option<&UncensoredFallbackOptions<'_>>,
+        max_tokens: Option<f64>,
+        character_id: Option<&str>,
+        task_type: Option<&str>,
+    ) -> CheapLlmTaskResult<T> {
+        crate::services::activity_registry::track_activity(
+            activity_kind_for_task(task_type),
+            self.run(
+                completion,
+                selection,
+                messages,
+                parse_response,
+                uncensored_fallback,
+                max_tokens,
+                character_id,
+                task_type,
+            ),
+        )
+        .await
+    }
+
+    /// v4 `runCheapLLMTask` — the unwrapped body.
+    #[allow(clippy::too_many_arguments)]
+    async fn run<C: CompletionProvider, T>(
         &self,
         completion: &C,
         selection: &CheapLlmSelection,
@@ -1026,6 +1063,91 @@ mod tests {
         assert_eq!(
             cheap_llm_timeout_message(45_000, Some("")),
             "Cheap LLM task exceeded its 45000ms budget"
+        );
+    }
+
+    // ── P4.D123 site 3: the executor is wrapped, and the KIND is COMPUTED ────
+    //
+    // Driven for real (rather than census-only) because the kind comes from
+    // `activity_kind_for_task`: a mis-wired lookup would light the wrong chip
+    // and nothing else in the workspace would notice. The provider stub reports
+    // the ATTRIBUTION SET rather than the global counters, so the assertion is
+    // immune to whatever else this test binary is running concurrently.
+
+    struct AttributionProvider {
+        seen: std::sync::Arc<Mutex<Option<Vec<crate::services::activity_kinds::ActivityKind>>>>,
+    }
+
+    impl CompletionProvider for AttributionProvider {
+        fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &CompletionParams,
+        ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+        {
+            let seen = self.seen.clone();
+            async move {
+                *seen.lock().unwrap() =
+                    Some(crate::services::activity_registry::attributed_kinds());
+                Ok(CompletionResponse {
+                    content: "ok".to_string(),
+                    usage: None,
+                    finish_reason: None,
+                    attachment_results: None,
+                })
+            }
+        }
+    }
+
+    async fn attribution_for_task(
+        task_type: Option<&str>,
+    ) -> Vec<crate::services::activity_kinds::ActivityKind> {
+        let seen = std::sync::Arc::new(Mutex::new(None));
+        let out = CheapLlmTaskExecutor::new()
+            .execute(
+                &AttributionProvider { seen: seen.clone() },
+                &selection("DEEPSEEK", "m"),
+                vec![CompletionMessage::user("hi")],
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                task_type,
+            )
+            .await;
+        assert!(out.success, "the stub provider answers");
+        let seen = seen.lock().unwrap().take().expect("provider was called");
+        seen
+    }
+
+    #[tokio::test]
+    async fn a_cheap_llm_task_lights_the_chip_its_task_type_names() {
+        use crate::services::activity_kinds::ActivityKind;
+        // An image-pipeline task lights "Img".
+        assert_eq!(
+            attribution_for_task(Some("craft-image-prompt")).await,
+            vec![ActivityKind::Image]
+        );
+        // A Commonplace-Book task lights "Mem".
+        assert_eq!(
+            attribution_for_task(Some("fold-episode-extraction")).await,
+            vec![ActivityKind::Memory]
+        );
+        // A summarization task lights "Sum".
+        assert_eq!(
+            attribution_for_task(Some("update-context-summary")).await,
+            vec![ActivityKind::Summary]
+        );
+        // An unmapped task type — and a MISSING one — fall back to "Sum" (v4's
+        // rule: a chip that is slightly generous beats one that quietly lies).
+        assert_eq!(
+            attribution_for_task(Some("some-future-task")).await,
+            vec![ActivityKind::Summary]
+        );
+        assert_eq!(
+            attribution_for_task(None).await,
+            vec![ActivityKind::Summary]
         );
     }
 

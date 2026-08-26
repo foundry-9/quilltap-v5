@@ -55,6 +55,8 @@ use crate::memory_gate::{
     calculate_reinforced_importance, extract_novel_details, occasions_are_distinct,
 };
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+use crate::services::activity_kinds::ActivityKind;
+use crate::services::activity_registry::track_activity;
 
 use crate::db::runtime::Db;
 
@@ -352,8 +354,42 @@ pub async fn create_memory_with_gate<P: EmbeddingProvider>(
 
 /// Run the gate (v4 `runMemoryGate`): embed the candidate (one retry), search the
 /// vector store, and decide the band.
+///
+/// Memories formed from a tool call rather than the extraction job have no job
+/// row to count them, so the gate registers itself. Re-entrant by kind, so the
+/// extraction job's own row is not double-counted; the embedding it mints inside
+/// still counts separately under "Emb". v4 `memory-gate.ts:138` (`664cfca84`),
+/// which wraps this same function.
 #[allow(clippy::too_many_arguments)] // mirrors v4 runMemoryGate's 8-arg shape
 async fn run_memory_gate<P: EmbeddingProvider>(
+    db: &Db,
+    provider: &P,
+    character_id: &str,
+    content: &str,
+    summary: &str,
+    user_id: &str,
+    embedding_profile_id: Option<&str>,
+    anchors: &EpisodicAnchorView,
+) -> Result<GateResult, DbError> {
+    track_activity(
+        ActivityKind::Memory,
+        run_memory_gate_inner(
+            db,
+            provider,
+            character_id,
+            content,
+            summary,
+            user_id,
+            embedding_profile_id,
+            anchors,
+        ),
+    )
+    .await
+}
+
+/// v4 `runMemoryGateInner`.
+#[allow(clippy::too_many_arguments)]
+async fn run_memory_gate_inner<P: EmbeddingProvider>(
     db: &Db,
     provider: &P,
     character_id: &str,

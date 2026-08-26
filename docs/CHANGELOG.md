@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(jobs): activity spans at every v5 twin of v4's instrumented paths
+
+_Versions: core 0.0.682, harness 0.0.589._
+
+Wires v4 `664cfca84`'s eight applicable span sites: the job runner attributes
+each handler to its own chip kind without adding a count, and `track_activity`
+wraps the cheap-LLM executor (kind computed from the task type), the memory
+gate, the Concierge gatekeeper, the real embedding provider, the image
+generation tool, the vision describe-fallback, and the avatar preview. v4's
+why-comments come with them.
+
+Two of v4's sites have no v5 surface: the child-IPC mirror (v5's runner is
+in-process) and `POST /api/v1/images?action=generate` (v5 serves only
+`/api/v1/images/{id}`; its Generate Image path goes through image-profiles into
+the already-wrapped tool). The character wizard and the wardrobe image analyzer
+are likewise unported or refusal arms.
+
+No differential can see any of this — an in-flight counter never touches a row.
+New `activity_span_sites_guard` holds all ten rows mechanically, asserting the
+absent ones stay absent; three sites are additionally driven for real, observing
+the attribution set from inside an injected stub, which is a thread-local and so
+immune to the global counters other tests in the binary move. Nine mutations
+run, one per site plus the no-surface arm.
+
 #### 2026-08-26 — fix(jobs): the jobs verb answers activeByKind, and activeByType becomes opt-in
 
 _Versions: core 0.0.681, harness 0.0.588, web 0.0.93._

@@ -40,6 +40,8 @@ use crate::db::vault_wardrobe_public::{
     WardrobePatch,
 };
 use crate::db::DbError;
+use crate::services::activity_kinds::ActivityKind;
+use crate::services::activity_registry::track_activity;
 use crate::services::image_job_common::with_both_conns;
 use crate::services::wardrobe_transfers::{
     self, ComponentMode, DestinationScope, ExplicitSource, SourceScope, TransferAction,
@@ -904,7 +906,26 @@ fn parse_preview_body(body: &Value) -> Result<PreviewBody, String> {
 /// vault write) but NEVER onto `avatarOverrides` or any chat — v4's header
 /// isolation note, preserved. `now` stamps the `files` row (injected);
 /// `file_id` is minted here (normalized in the differential).
+///
+/// Avatar previews generate synchronously rather than through the job queue, so
+/// the handler registers with the activity registry — the toolbar's "Img" chip
+/// stays lit for the whole preview, prompt build and provider wait included. v4
+/// `preview-avatar/route.ts:222` (`664cfca84`), which wraps at the route.
 pub async fn wardrobe_preview_avatar(
+    db: &Db,
+    renderer: &ErasedAvatarPreview,
+    user_id: &str,
+    body: Value,
+    now: &str,
+) -> Response {
+    track_activity(
+        ActivityKind::Image,
+        run_wardrobe_preview_avatar(db, renderer, user_id, body, now),
+    )
+    .await
+}
+
+async fn run_wardrobe_preview_avatar(
     db: &Db,
     renderer: &ErasedAvatarPreview,
     user_id: &str,

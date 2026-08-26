@@ -32,6 +32,8 @@ use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{
     CompletionMessage, CompletionParams, CompletionProvider, CompletionUsage,
 };
+use crate::services::activity_kinds::ActivityKind;
+use crate::services::activity_registry::track_activity;
 use crate::services::llm_logging::{
     log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
     LogResponse, LogUsage,
@@ -422,15 +424,23 @@ where
     M: ModerationProvider,
     C: CompletionProvider,
 {
-    match classify_inner(
-        db,
-        moderation,
-        completion,
-        content,
-        cheap_llm_selection,
-        user_id,
-        settings,
-        chat_id,
+    // Every Concierge classification — the per-message one in the send path, the
+    // chat-level job, the ones the image pipelines run — lights the "Dgr" chip
+    // for as long as it takes. Re-entrant by kind, so the classification job's
+    // own row is not double-counted. v4 `gatekeeper.service.ts:336`
+    // (`664cfca84`).
+    match track_activity(
+        ActivityKind::Danger,
+        classify_inner(
+            db,
+            moderation,
+            completion,
+            content,
+            cheap_llm_selection,
+            user_id,
+            settings,
+            chat_id,
+        ),
     )
     .await
     {

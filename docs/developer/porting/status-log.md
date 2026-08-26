@@ -88844,3 +88844,63 @@ quirk cases; making `activeByType` unconditional reds the three withholding
 cases; swapping the two kind maps' insertion order reds every GET's key-order
 arm; and decoding any PRESENT `includeByType` as true reds the web test's junk
 arm (and nothing in the differential — which is the point).
+
+### P4.D123 unit 5 — the span sites (v4's ten instrumented paths)
+
+**Wired (8):** the job runner's handler invocation
+(`run_attributed_to_job(activity_kind_for_job_type(...))` — v4 site 1, at
+`child-entry.ts` in v4 because its handlers run in a forked child; v5's is
+`run_one`), the cheap-LLM executor (site 3, kind computed through
+`activity_kind_for_task`, with v4's `runCheapLLMTask` split preserved), the
+memory gate (site 4 — wrapped at `run_memory_gate`, which is v4's own site;
+the order pointed at `create_memory_with_gate`, but v4 wraps `runMemoryGate`
+and v5 has the same function, whose only caller is the same one v4's has), the
+Concierge gatekeeper (5), the real embedding provider (6), the image-generation
+tool (7), the vision describe-fallback (8), and the avatar preview (10). v4's
+why-comment rides with each.
+
+**Not wired, each recorded IN the guard's census so the obligation survives:**
+
+- **Site 2** (`processor-host.ts`'s child mirror + reset) — NO-PORT, unit 2's
+  evidence.
+- **Site 9** (`POST /api/v1/images?action=generate`) — **v5 has no twin route.**
+  Measured, not assumed: v5's web router serves only `/api/v1/images/{id}`
+  (GET + DELETE), and v5's Generate Image surface goes through
+  `POST /api/v1/image-profiles/[id]?action=generate` →
+  `execute_image_generation_tool`, which site 7 already wraps. v4's
+  `handleGenerateImage` is a separate route-level implementation, NOT a caller
+  of that tool, so there is no shared code the site-7 wrap covers for it.
+- **The character wizard** — v5 has no twin at all.
+- **The wardrobe image analyzer** — v5's `wardrobe_analyze_image` is a refusal
+  arm (its module header's tier-3 deferral).
+
+**How they are pinned — and how strongly.** No differential can see a span
+(`differential-blind-to-a-log-only-fix.md`). Two mechanisms:
+
+1. **`activity_span_sites_guard` (harness, no oracle)** — a source census over
+   all eight wired rows: file + the function the wrap must sit INSIDE + the exact
+   wrap text including the kind. It also asserts the four no-surface rows stay
+   absent, so the day a `character_wizard` or `handle_generate_image` appears in
+   `crates/`, this test fails and hands the next lane the span obligation.
+2. **Three behavioural drives**, beside their subjects, covering all three
+   shapes: `run_attributed_to_job` at the job seam, `track_activity` with a
+   COMPUTED kind, and `track_activity` inside a trait impl.
+
+⚠ **The drives observe the ATTRIBUTION SET, not the counters — and the first
+attempt at them was wrong.** Counting-based assertions went red immediately: the
+registry statics are process-global, and other tests in the same binary open
+spans concurrently (`(1, 3, 1)` where `(1, 0, 0)` was expected). `ActivityTestGuard`
+only serializes tests that take it, and ~50 core files reach a wrapped path, so
+guarding them all is neither achievable nor stable. The attribution set is a
+THREAD-LOCAL scoped to the future's own polls, so reading it from inside an
+injected stub is immune to every other test — and it is a strictly better probe
+for a *wiring* claim anyway, since it reports which span the caller opened and
+with which kind. The counting semantics are proven once, generically and
+serialized, by the registry's own unit tests. `attributed_kinds()` was added for
+this (v4's `attributed.getStore()`, made readable) with its own unit pin.
+
+**Mutation-proven, nine:** deleting the job-runner wrap reds both the drive and
+the census; hard-coding the cheap-LLM kind reds both; mis-kinding each of the
+other six sites reds the census by name; and appending a `character_wizard`
+mention anywhere under `crates/` reds the no-surface arm. Core lib suite 1,755
+passing after the wraps, unchanged.

@@ -65,6 +65,8 @@ use crate::db::background_jobs::{BackgroundJob, BackgroundJobsRepository};
 use crate::db::instance_settings;
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::services::activity_kinds::activity_kind_for_job_type;
+use crate::services::activity_registry::run_attributed_to_job;
 
 use super::job_scheduler::clamp_wake_delay;
 
@@ -407,7 +409,20 @@ impl JobRunner {
             "Dispatching job",
         );
         let outcome = match self.inner.registry.get(&job.job_type) {
-            Some(handler) => handler.handle(&self.inner.db, job).await,
+            // Attribute the handler to its own chip kind without adding a count
+            // — the job row already IS the count. Inline work of the *same* kind
+            // inside the handler collapses into it; inline work of another kind
+            // (a Concierge classification during scene tracking, say) still
+            // counts. v4 `child-entry.ts:168` (`664cfca84`), where the child
+            // additionally mirrors the deltas up to the parent — v5 is
+            // in-process, so there is nothing to mirror.
+            Some(handler) => {
+                run_attributed_to_job(
+                    activity_kind_for_job_type(&job.job_type),
+                    handler.handle(&self.inner.db, job),
+                )
+                .await
+            }
             None => JobOutcome::Failed(HandlerRegistry::unregistered_error(&job.job_type)),
         };
 
@@ -774,6 +789,78 @@ mod tests {
         // The behavior is unchanged — the row still goes FAILED; the event is
         // additive.
         assert_eq!(status_of(&db, "boom1"), "FAILED");
+    }
+
+    // ── P4.D123 site 1: the handler runs ATTRIBUTED to its own chip kind ─────
+    //
+    // No differential can see this (an in-flight counter never touches a row).
+    // The handler therefore reports the ATTRIBUTION SET it is running under —
+    // a thread-local scoped to this future's polls, so unlike the global
+    // counters it cannot be polluted by whatever else the test binary is
+    // running concurrently. What it proves is exactly the wiring claim: that
+    // `run_one` wraps the handler in `run_attributed_to_job` keyed by
+    // `activity_kind_for_job_type`. That attribution then COLLAPSES same-kind
+    // inline work without adding a count — proven generically, and serialized,
+    // by the registry's own unit tests.
+
+    /// Reports the attribution set the handler runs under.
+    struct AttributionHandler {
+        seen: Arc<Mutex<Option<Vec<crate::services::activity_kinds::ActivityKind>>>>,
+    }
+    impl JobHandler for AttributionHandler {
+        fn handle<'a>(&'a self, _db: &'a Db, _job: &'a BackgroundJob) -> JobFuture<'a> {
+            let seen = self.seen.clone();
+            Box::pin(async move {
+                *seen.lock().unwrap() =
+                    Some(crate::services::activity_registry::attributed_kinds());
+                JobOutcome::Completed(None)
+            })
+        }
+    }
+
+    async fn attribution_for_job_type(
+        job_type: &'static str,
+    ) -> Vec<crate::services::activity_kinds::ActivityKind> {
+        let (_dir, db) = make_db();
+        enqueue(&db, "j1", job_type, 0.0, "2020-01-01T00:00:01.000Z").await;
+        let seen = Arc::new(Mutex::new(None));
+        let mut reg = HandlerRegistry::new();
+        reg.register(
+            job_type,
+            Box::new(AttributionHandler { seen: seen.clone() }),
+        );
+        JobRunner::new(db.clone(), reg).pump_claim().await;
+        assert_eq!(status_of(&db, "j1"), "COMPLETED");
+        let out = seen.lock().unwrap().take().expect("handler ran");
+        out
+    }
+
+    #[tokio::test]
+    async fn a_job_handler_runs_attributed_to_its_own_kind() {
+        use crate::services::activity_kinds::ActivityKind;
+        assert_eq!(
+            attribution_for_job_type("CHARACTER_AVATAR_GENERATION").await,
+            vec![ActivityKind::Image],
+        );
+        assert_eq!(
+            attribution_for_job_type("MEMORY_HOUSEKEEPING").await,
+            vec![ActivityKind::Memory],
+        );
+        assert_eq!(
+            attribution_for_job_type("CHAT_DANGER_CLASSIFICATION").await,
+            vec![ActivityKind::Danger],
+        );
+    }
+
+    /// An explicitly uncounted job type (v4's `null`) attributes NOTHING, so
+    /// inline work inside it counts on its own.
+    #[tokio::test]
+    async fn an_uncounted_job_type_attributes_nothing() {
+        assert_eq!(attribution_for_job_type("LLM_LOG_CLEANUP").await, vec![]);
+        assert_eq!(
+            attribution_for_job_type("AUTONOMOUS_ROOM_TURN").await,
+            vec![]
+        );
     }
 
     /// Priority DESC, then createdAt ASC — the ported claim order — is observed

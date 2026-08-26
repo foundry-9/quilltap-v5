@@ -614,7 +614,18 @@ impl<T: WireTransport> EmbeddingProvider for ApiEmbeddingProvider<T> {
         profile_id: Option<&str>,
         _priority: EmbeddingPriority,
     ) -> impl std::future::Future<Output = Result<EmbeddingResult, EmbeddingError>> + Send {
-        self.generate_for_user(text, user_id, profile_id)
+        // Lights the "Emb" chip for the whole call, including the wait for
+        // interactive quiet — an embedding minted to answer a search counts as
+        // much as one minted by an indexing job. Re-entrant by kind, so an
+        // embedding job is not counted twice. v4 `embedding-service.ts:284`
+        // (`664cfca84`), which wraps `generateEmbeddingForUser` itself; v5's
+        // twin of that function is THIS trait impl — the one real provider. The
+        // canned/none providers are test doubles and stay unwrapped, so no
+        // fixture-driven differential silently starts counting.
+        crate::services::activity_registry::track_activity(
+            crate::services::activity_kinds::ActivityKind::Embedding,
+            self.generate_for_user(text, user_id, profile_id),
+        )
     }
 }
 
@@ -623,6 +634,7 @@ mod tests {
     use super::*;
     use crate::db::runtime::{Db, DbPaths};
     use crate::model::wire::CannedWireTransport;
+    use crate::services::activity_kinds::ActivityKind;
 
     /// An in-memory-style Db over a temp file with the tables the provider
     /// reads, seeded through the writer.
@@ -753,6 +765,71 @@ mod tests {
         // normalizeL2 default → unit vector.
         assert_eq!(r.embedding, vec![0.6, 0.8]);
         assert_eq!(r.dimensions, 2);
+    }
+
+    // ── P4.D123 site 6: the REAL embedding provider is wrapped ──────────────
+    //
+    // v4 wraps `generateEmbeddingForUser` itself. v5's twin of that function is
+    // the `EmbeddingProvider` impl on THIS provider — the one that actually
+    // talks to a model. The transport stub reports the attribution set (a
+    // thread-local, so no other test in the binary can perturb it), which proves
+    // both that the trait method opened a span and that the span is "embedding".
+    //
+    // The canned/none providers are deliberately NOT wrapped: they are test
+    // doubles, and wrapping them would make every fixture-driven differential
+    // start counting embeddings that never happened.
+
+    struct AttributionTransport {
+        seen: std::sync::Arc<std::sync::Mutex<Option<Vec<ActivityKind>>>>,
+        body: String,
+    }
+
+    impl WireTransport for AttributionTransport {
+        fn send(
+            &self,
+            _method: &str,
+            _url: &str,
+            _headers: &[(String, String)],
+            _body: &str,
+        ) -> impl std::future::Future<Output = Result<WireResponse, String>> + Send {
+            let seen = self.seen.clone();
+            let body = self.body.clone();
+            async move {
+                *seen.lock().unwrap() =
+                    Some(crate::services::activity_registry::attributed_kinds());
+                Ok(WireResponse::new(200, &body))
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn the_real_embedding_provider_lights_the_embedding_chip() {
+        use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
+        let db = test_db("activity-span").await;
+        seed_profile(&db, "ep-default", "u1", "OPENAI", Some("ak-1"), None, true).await;
+        seed_api_key(&db, "ak-1", "u1", "sk-test").await;
+
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let provider = ApiEmbeddingProvider::new(
+            db,
+            AttributionTransport {
+                seen: seen.clone(),
+                body: "{\"data\":[{\"embedding\":[3.0,4.0]}],\"usage\":{\"prompt_tokens\":1,\"total_tokens\":1}}"
+                    .to_string(),
+            },
+        );
+
+        // Through the TRAIT method — the wrapped entry point, not
+        // `generate_for_user` (which is the unwrapped body).
+        provider
+            .generate_embedding_for_user("hi", "u1", None, EmbeddingPriority::Interactive)
+            .await
+            .expect("embedding");
+
+        assert_eq!(
+            seen.lock().unwrap().take().expect("transport was called"),
+            vec![ActivityKind::Embedding],
+        );
     }
 
     #[tokio::test]

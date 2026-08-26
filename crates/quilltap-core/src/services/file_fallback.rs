@@ -30,6 +30,8 @@ use crate::files::image_processing::{
 use crate::model::completion::{
     CompletionAttachment, CompletionMessage, CompletionParams, CompletionProvider,
 };
+use crate::services::activity_kinds::ActivityKind;
+use crate::services::activity_registry::track_activity;
 use crate::services::llm_logging::{
     log_llm_call, log_type, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage,
     LogResponse, LogUsage,
@@ -800,7 +802,23 @@ async fn log_description_failure<CMP: CompletionProvider>(
 }
 
 /// v4 `generateImageDescription(file, repos, userId)` — the three tiers in order.
+///
+/// Reading an image with a vision model is image work — it lights "Img" for as
+/// long as the call takes, the same as generating one. The persisted-description
+/// shortcut in tier 1 returns fast enough not to register as a blip. v4
+/// `file-attachment-fallback.ts:540` (`664cfca84`).
 pub async fn generate_image_description<CMP: CompletionProvider>(
+    deps: &FallbackDeps<'_, CMP>,
+    file: &FallbackFile,
+) -> FallbackResult {
+    track_activity(
+        ActivityKind::Image,
+        run_generate_image_description(deps, file),
+    )
+    .await
+}
+
+async fn run_generate_image_description<CMP: CompletionProvider>(
     deps: &FallbackDeps<'_, CMP>,
     file: &FallbackFile,
 ) -> FallbackResult {
