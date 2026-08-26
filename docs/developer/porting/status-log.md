@@ -88598,3 +88598,80 @@ candidates (the startup-migration dedupe hole, the three unconverted
 `scenarios[0]` sites, the unguarded default-SET write, the `qt-icon`
 class-binding wart). The `qtap-export.schema.json` file port remains a
 named standalone flag.
+
+## Dogfood pass — the `b220999d` round (instructions ∥ archive ∥ Documents search) + the carried `8f910137` queue (2026-08-26)
+
+**Agent-driven, on the Friday copy. 41 rows: 37 PASS, ONE finding found and
+fixed, 3 deferred to the human. Nine 💸 items discharged; no v4 bugs to file.**
+Walk doc: `dogfood-walks/2026-08-26-instructions-archive-search-pass.md`.
+Drift-ledger §2 probe passed at planning (v4 on `main`, clean, HEAD == the
+`b220999da` baseline), so nothing on this walk could be v4 having moved.
+
+**The pre-walk measurement found the pass its best proof.** v4 had run the
+brand-new dressing-instructions feature on this instance *hours before the copy
+was taken* — `Wardrobe/instructions.md` on **four** characters (Abigail, Amy,
+Friday, Jackie), written 04:04–04:12 that morning — and had already archived
+**17 wardrobe items** across all four container tiers. So the round's two
+headline features arrived with a real v4-written population to read.
+
+**FIXED: finding #105** (commit `599f6be9`, SPA 0.5.577) — *clicking a Documents
+search result while a chat is focused did nothing at all.* NG0201 out of
+`OpenDocumentFromSearch.open` → `injector.get(DocumentApi)`: the service is
+`providedIn: 'root'`, so its injector is the ROOT injector, which never sees
+`salon-conversation.ts`'s component `providers: [… DocumentApi]`. The lane had
+already met NG0201 at *render* time and moved the lookup to a lazy
+`injector.get`, which relocated the crash to click time without fixing it. Both
+e2e beats run with Home focused (the standalone arm), and the unit harness stubs
+the injector with one that always answers — so nothing could see it. Fixed by
+building the stateless client in the root injection context
+(`runInInjectionContext`), memoized and deliberately **not** registered globally
+(`document-picker.ts:335` relies on its absence outside a chat). Three TestBed
+guards, mutation-proven, plus a **third e2e beat** that clicks the card with a
+Salon focused — red against the pre-fix bundle, green after. Gate: ng 351/5,295,
+ng build, Playwright **250 passed / 1 skipped** (suite 249 → 250).
+
+**Free cross-implementation proof:** v5 reads all four v4-written instruction
+files **byte-identically** (339 / 491 / 376 / 389 chars), and the whole
+dressing cascade reaches a real turn — the `outfit-selection` request on a new
+Abigail chat carries v4's 4th system-prompt bullet in its exact slot and the
+`Dressing Instructions (addressed to Abigail in the second person — "you" is
+Abigail):` note last in the chain, holding v4's own bytes. A second chat proved
+the **fall-through**: Ariel (no vault instructions) in Wardrobe Design got the
+**project**-tier text, addressed to *her*.
+
+**Also proven live:** archived garments hidden by default and revealed with the
+lowercase badge (33 → 44 rows, +11 = Abigail's ten plus General's, so the flag
+reaches *both* loaders) and absent from the Green Room pool; archive/restore
+writing `archived: true` + `archivedAt` and **dropping both keys** on restore at
+every scope; **P4.D119's `preserve_file_names`** proven by consequence — an
+archive write projected the whole General wardrobe and `Wardrobe/instructions.md`
+survived the sweep; **P4.D120's `build_scenario_file` description fix** proven
+both directions on a real General scenario that carries one, and the
+character-vault file returning byte-identical after a restore; the
+`archived: null` Zod refusal with nothing written; `POST /api/v1/wardrobe?action=bogus`
+answering v4's two-key envelope with the archetype count **13 before, 13 after**;
+the missing-character-plus-invalid-body **404** (the §3 unification fix); the
+archived-character GET/SET **200/409** asymmetry; the Documents chip over 4,924
+links and 7,402 chunks with the `Vault` badge and the **fail-closed archived-vault
+exclusion** (zero rows from any of the ten archived vault ids, checked by mount
+id); the in-chat scenario picker's full cycle with both Host sentences byte-exact
+against `writer.ts:438`/`:453` and a no-op that writes nothing; the gallery
+detail modal body-reparented and hit-testable; a real
+`docs --instance Dogfood --mount <TAB>` completion quoting hostile store names;
+and **two of Pascal's three remaining write paths** (chat tier with no
+`previous`, project tier with `previous: 7` and the chat's own state untouched).
+
+**One order premise refuted, cheaply:** the Workbench *does* list broken
+definitions with `valid: false` — they live under the response's `errors` array,
+not `tools`. Reading only `tools` manufactured a finding that did not exist.
+
+**Measured, not filed:** exactly **one** enabled store named `Quilltap General`
+on real data — and no duplicate store names at all — so the P4.D122 e2e-fixture
+collision (phase-4.md candidate 2) is a fixture property, not an instance one.
+And **`systemHome` takes a steady 7.5 s** on this instance (859 chats); the app's
+front door is worth its own look at the next `/setupphase`.
+
+**Still owed:** Pascal's **group** tier (now precisely characterized — it needs a
+chat whose participants resolve to exactly one group), the Brahma budget on a
+deep query, memory dedup + conversation-summaries, and the NanoGPT caching smoke
+/ the #101 cost question.

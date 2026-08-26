@@ -2162,6 +2162,39 @@ records THERE. Update this summary only when a phase or round completes.
   the Documents chip over real Friday stores). Versions: core 0.0.677,
   harness 0.0.586, web 0.0.92, SPA 0.5.576; host/cli/tauri unchanged.
   Round record: `status-log.md`.
+- **The `b220999d`-round dogfood pass RAN (2026-08-26, agent-driven, on the
+  Friday copy) — 41 rows, 37 PASS, ONE finding found and FIXED, nine 💸 items
+  discharged, no v4 bugs to file.** Walk doc:
+  `dogfood-walks/2026-08-26-instructions-archive-search-pass.md`; record in
+  `status-log.md`. **The pre-walk measurement handed the pass its best proof:**
+  v4 had run the brand-new dressing-instructions feature on this instance hours
+  before the copy was taken (`Wardrobe/instructions.md` on four characters) and
+  had already archived 17 wardrobe items across all four tiers — so v5 read
+  **v4's own bytes back byte-identically**, and the cascade reached a real
+  "Let character choose" turn carrying them (plus a second chat proving the
+  **project-tier fall-through**). **FIXED: finding #105** (`599f6be9`, SPA
+  0.5.577) — clicking a Documents search result *with a chat focused* threw
+  NG0201 and did nothing: `OpenDocumentFromSearch` is `providedIn: 'root'`, so
+  its injector never sees the Salon's component-provided `DocumentApi`; the lane
+  had moved the lookup from render to click without fixing it, and both e2e
+  beats run Home-focused while the unit harness stubs an injector that always
+  answers. Fixed via `runInInjectionContext` (memoized, deliberately not
+  registered globally), three mutation-proven TestBed guards, and a third e2e
+  beat that ran RED against the pre-fix bundle. **Also proven live:** the
+  archive surface end-to-end at every scope (incl. `preserve_file_names` proven
+  by consequence — `instructions.md` survived a projection sweep — and
+  P4.D120's `description` round-trip both directions), archived garments absent
+  from the Green Room pool, the `archived: null` refusal and the unknown-action
+  envelope writing nothing, the missing+invalid **404** and the archived
+  200/409 asymmetry, the Documents chip over 4,924 links / 7,402 chunks with the
+  fail-closed archived-vault exclusion, the in-chat scenario picker with both
+  Host sentences byte-exact, the gallery modal's reparent, a real
+  `docs --instance <TAB>`, and **two of Pascal's three remaining write paths**.
+  **Measured, not filed:** exactly ONE `Quilltap General` on real data (the
+  P4.D122 duplicate is a fixture property), and `systemHome` costs a steady
+  **7.5 s** — the front door deserves its own look. **Still owed:** Pascal's
+  **group** tier (needs a single-group chat), the Brahma deep-query budget,
+  dedup/summaries, and the NanoGPT caching smoke / #101 cost question.
 - **Oracle baseline: `b220999d` (2026-08-25, v4 main — "feat(search): a
   Documents chip that searches every document store"), adopted at the
   b220999d-round unification (2026-08-26).** **Drift state, the

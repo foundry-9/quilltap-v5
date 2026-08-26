@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(dogfood): the b220999d-round pass — 41 rows, 37 PASS, finding #105 fixed
+
+_Docs-only change._
+
+The walk record for the 2026-08-26 dogfood pass over the `b220999d` round
+(per-tier dressing instructions, archive-instead-of-delete, the Documents search
+chip) plus the carried `8f910137` queue, and its findings/status-log/CLAUDE.md
+rows.
+
+v4 had run the dressing-instructions feature on this instance hours before the
+copy was taken, so v5 read v4's own `Wardrobe/instructions.md` bytes back
+byte-identically and the cascade reached a real "Let character choose" turn
+carrying them. Nine standing live-proof items discharged, including two of
+Pascal's three remaining side-effect write paths. The one defect (#105) was
+fixed and committed separately as `599f6be9`.
+
 #### 2026-08-26 — fix(search): a Documents result opened from inside a chat threw NG0201 and did nothing
 
 _Versions: SPA 0.5.577._
