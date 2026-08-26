@@ -548,21 +548,37 @@ pub async fn job_delete(db: &Db, id: &str) -> Response {
 
 // ── jobs collection GET / POST (v4 `system/jobs/route.ts`) ───────────────────
 
-/// v4 `GET /api/v1/system/jobs` — stats + activeByType + processor, plus the
-/// optional `jobs` (50 newest) and `pendingForChat` legs.
+/// v4 `GET /api/v1/system/jobs` — stats + activeByKind + startedByKind +
+/// processor (always), plus the optional `activeByType`, `jobs` (50 newest) and
+/// `pendingForChat` legs.
+///
+/// `include_by_type` is the RAW `includeByType=true` query flag: v4 widens it in
+/// the route body — `includeByType = param === 'true' || includeJobs` — so
+/// asking for the job list implies the per-type breakdown even when the caller
+/// never asked for it. That quirk lives here, inside the ported unit, so the
+/// differential can prove it (v4 `664cfca84`).
+///
+/// The per-type breakdown reads every active row, which is why `664cfca84` made
+/// it opt-in; `activeByKind` is the cheap thing the toolbar chips poll.
 pub fn jobs_list(
     db: &Db,
     user_id: &str,
     include_jobs: bool,
+    include_by_type: bool,
     chat_id: Option<&str>,
     processor_status: &ProcessorStatus,
 ) -> Response {
     let user_id = user_id.to_string();
     let chat_id = chat_id.map(str::to_string);
+    // v4 route body: `includeByType = searchParams.get('includeByType') === 'true'
+    // || includeJobs`.
+    let include_by_type = include_by_type || include_jobs;
     let built: Result<Value, DbError> = db.read_main(|main| {
         let repo = BackgroundJobsRepository::new(main);
         let stats = repo.get_stats(Some(&user_id))?;
-        let active_by_type = repo.get_active_counts_by_type(Some(&user_id))?;
+        let snapshot = crate::services::queue_service::merge_activity_snapshot(
+            repo.get_active_counts_by_kind(Some(&user_id))?,
+        );
 
         let mut stats_m = Map::new();
         stats_m.insert("pending".into(), Value::from(stats.pending));
@@ -572,15 +588,20 @@ pub fn jobs_list(
         stats_m.insert("dead".into(), Value::from(stats.dead));
         stats_m.insert("paused".into(), Value::from(stats.paused));
 
-        let mut by_type_m = Map::new();
-        for (t, c) in active_by_type {
-            by_type_m.insert(t, Value::from(c));
-        }
-
+        // Key ORDER is v4's insertion order: the four always-present keys, then
+        // activeByType, then jobs, then pendingForChat.
         let mut root = Map::new();
         root.insert("stats".into(), Value::Object(stats_m));
-        root.insert("activeByType".into(), Value::Object(by_type_m));
+        root.insert("activeByKind".into(), snapshot.active.to_json());
+        root.insert("startedByKind".into(), snapshot.started.to_json());
         root.insert("processor".into(), processor_status.to_json());
+        if include_by_type {
+            let mut by_type_m = Map::new();
+            for (t, c) in repo.get_active_counts_by_type(Some(&user_id))? {
+                by_type_m.insert(t, Value::from(c));
+            }
+            root.insert("activeByType".into(), Value::Object(by_type_m));
+        }
         if include_jobs {
             let jobs: Vec<Value> = repo
                 .find_by_user_id(&user_id, None)?

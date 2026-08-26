@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — fix(jobs): the jobs verb answers activeByKind, and activeByType becomes opt-in
+
+_Versions: core 0.0.681, harness 0.0.588, web 0.0.93._
+
+`GET /api/v1/system/jobs` now always answers `activeByKind` and `startedByKind`
+alongside `stats` and `processor`, and withholds `activeByType` unless
+`includeByType=true` — or `includeJobs=true`, which implies it (v4's
+`param === 'true' || includeJobs`; that widening lives inside `jobs_list` so the
+differential can prove it). The per-type breakdown reads every active row, which
+is why v4 `664cfca84` made it opt-in; the by-kind snapshot is what the toolbar
+polls.
+
+`system_jobs_collection_equivalence` grows 8 cases to 11 and now pins the key
+ORDER of every GET, so a leaked unconditional `activeByType` cannot hide behind
+a reordering. It was regenerated red-first: the four pre-existing GET cases
+failed before the port. New `system_jobs_web_routes` drives the real query
+string over a live server, because the differential can only assume how the edge
+decodes `?includeByType=1`.
+
 #### 2026-08-26 — feat(jobs): active counts by activity kind, merged with in-flight work
 
 _Versions: core 0.0.680._

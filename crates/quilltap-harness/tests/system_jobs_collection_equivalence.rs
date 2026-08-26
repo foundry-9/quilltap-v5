@@ -165,32 +165,58 @@ fn system_jobs_collection_matches_oracle() {
         eprintln!("OK {name}");
     };
 
-    // --- the four read shapes share one db (no mutation) ---
+    // --- the seven read shapes share one db (no mutation) ---
+    //
+    // The registry is quiet on BOTH sides here (see the .test.ts header), so
+    // `activeByKind` is purely job-derived and `startedByKind` is all zeros.
+    // What these prove is the DB leg, the opt-in gating, and the response shape
+    // — key ORDER included, via each case's `extra.keys`.
     {
         let db = fresh_db("reads");
-        let (s, b) = outcome(
-            &system_data::jobs_list(&db, USER, false, None, &PINNED),
-            false,
-        );
-        check("jobs_collection_get", s, b, None);
-
-        let (s, b) = outcome(
-            &system_data::jobs_list(&db, USER, true, None, &PINNED),
-            false,
-        );
-        check("jobs_collection_get_include_jobs", s, b, None);
-
-        let (s, b) = outcome(
-            &system_data::jobs_list(&db, USER, false, Some(CHAT_1), &PINNED),
-            false,
-        );
-        check("jobs_collection_get_chat", s, b, None);
-
-        let (s, b) = outcome(
-            &system_data::jobs_list(&db, USER, true, Some(CHAT_1), &PINNED),
-            false,
-        );
-        check("jobs_collection_get_both", s, b, None);
+        // (include_jobs, include_by_type, chat_id)
+        let shapes: &[(&str, bool, bool, Option<&str>)] = &[
+            ("jobs_collection_get", false, false, None),
+            ("jobs_collection_get_include_by_type", false, true, None),
+            // v4 gates on the literal 'true'; the edge decodes `?includeByType=1`
+            // to `false`, so this drives the same `false`.
+            (
+                "jobs_collection_get_include_by_type_junk",
+                false,
+                false,
+                None,
+            ),
+            // THE QUIRK: includeJobs implies includeByType (the raw flag is
+            // false here — the widening is inside `jobs_list`).
+            ("jobs_collection_get_include_jobs", true, false, None),
+            // …one-directional: byType does not imply jobs.
+            (
+                "jobs_collection_get_by_type_does_not_imply_jobs",
+                false,
+                true,
+                None,
+            ),
+            ("jobs_collection_get_chat", false, false, Some(CHAT_1)),
+            ("jobs_collection_get_both", true, false, Some(CHAT_1)),
+        ];
+        for (name, include_jobs, include_by_type, chat_id) in shapes {
+            let (s, b) = outcome(
+                &system_data::jobs_list(
+                    &db,
+                    USER,
+                    *include_jobs,
+                    *include_by_type,
+                    *chat_id,
+                    &PINNED,
+                ),
+                false,
+            );
+            let keys: Vec<&str> = b
+                .as_object()
+                .map(|o| o.keys().map(String::as_str).collect())
+                .unwrap_or_default();
+            let extra = json!({ "keys": keys });
+            check(name, s, b, Some(extra));
+        }
     }
 
     // --- enqueue (mutates; the minted id + timestamps normalized) ---
@@ -213,7 +239,7 @@ fn system_jobs_collection_matches_oracle() {
 
         // Read the row back through the same listing leg the oracle used.
         let (_, after) = outcome(
-            &system_data::jobs_list(&db, USER, true, None, &PINNED),
+            &system_data::jobs_list(&db, USER, true, false, None, &PINNED),
             false,
         );
         let jobs = after
@@ -286,5 +312,5 @@ fn system_jobs_collection_matches_oracle() {
         failed.len(),
         failed.join("\n")
     );
-    assert_eq!(ran, 8, "expected 8 cases to run, ran {ran}");
+    assert_eq!(ran, 11, "expected 11 cases to run, ran {ran}");
 }

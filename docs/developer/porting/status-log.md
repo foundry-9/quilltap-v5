@@ -88800,3 +88800,47 @@ lights another), and `started` coming from the registry verbatim.
 **Mutation-proven, two:** defaulting an unmapped type to a kind instead of
 skipping it reds the fold case; dropping the `+ inline.get(kind)` term reds the
 merge case.
+
+### P4.D123 unit 4 — the jobs verb + web edge (§Shared contract §A)
+
+`jobs_list` gains an `include_by_type` parameter and answers `stats`,
+`activeByKind`, `startedByKind`, `processor` ALWAYS — `activeByType` only under
+the flag. **The quirk lives inside the ported unit**: v4 computes
+`includeByType = searchParams.get('includeByType') === 'true' || includeJobs` in
+the route body, so `jobs_list` takes the RAW flag and does the widening itself,
+which is what lets the differential prove it. Key insertion order follows v4's
+(`stats, activeByKind, startedByKind, processor` then `activeByType`, `jobs`,
+`pendingForChat`). One read transaction serves all of it; the per-type read now
+only runs when asked.
+
+**There is no dispatch verb behind this route** — the jobs collection is
+web-edge-only (recorded in the family's own header since P4.9G3), so §Shared
+contract §A's "and the dispatch verb behind it" has no v5 referent here; the
+edge threads the new param straight into the core fn.
+
+**`system_jobs_collection_equivalence` regenerated RED-FIRST at the lane pin**
+(the four pre-existing GET cases failed on body mismatch before the port — v4 now
+answers the two kind maps and withholds `activeByType`), then grown 8 → 11 cases:
+`includeByType=true`, `includeByType` absent, the junk value, the quirk arm, and
+its one-directionality. Every GET case now also compares `extra.keys` — the key
+ORDER — so a leaked unconditional `activeByType` reds even if the set were
+somehow reordered.
+
+⚠ **The registry merge is NOT in this diff, and the case header now says so.** In
+an oracle run no inline work is in flight on either side, so `activeByKind` is
+purely job-derived and `startedByKind` is all zeros on both. Unit 3's tests are
+what pin the merge.
+
+**NEW web test `system_jobs_web_routes`** closes the paired-corpus gap the
+differential leaves: the `…_junk` differential case passes `false` because the
+edge is *supposed* to decode `?includeByType=1` that way — reasoning about the
+edge rather than driving it. This one drives the real query string over a live
+server (three junk spellings, the opt-in, the quirk and its one-directionality),
+and also asserts §A.2's contract on the wire: both kind maps carry exactly the
+five keys in order, integers ≥ 0, with a fresh process answering zeros.
+
+**Mutation-proven, four:** dropping the `|| include_jobs` widening reds the two
+quirk cases; making `activeByType` unconditional reds the three withholding
+cases; swapping the two kind maps' insertion order reds every GET's key-order
+arm; and decoding any PRESENT `includeByType` as true reds the web test's junk
+arm (and nothing in the differential — which is the point).

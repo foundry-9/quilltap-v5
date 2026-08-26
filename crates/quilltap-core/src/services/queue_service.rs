@@ -963,17 +963,23 @@ pub async fn get_activity_snapshot(
         crate::db::background_jobs::BackgroundJobsRepository::new(conn)
             .get_active_counts_by_kind(uid.as_deref())
     })?;
-    let inline = activity_counts();
+    Ok(merge_activity_snapshot(job_counts))
+}
 
+/// The merge half of [`get_activity_snapshot`], separated so the jobs verb can
+/// read the job counts inside its own single read transaction and still fold
+/// them through exactly this code (v4 does two reads; the merge is the part that
+/// must not diverge).
+pub fn merge_activity_snapshot(job_counts: ActivityCounts) -> ActivitySnapshot {
+    let inline = activity_counts();
     let mut active = ActivityCounts::default();
     for kind in ACTIVITY_KINDS {
         active.set(kind, job_counts.get(kind) + inline.get(kind));
     }
-
-    Ok(ActivitySnapshot {
+    ActivitySnapshot {
         active,
         started: activity_start_totals(),
-    })
+    }
 }
 
 /// v4's `{ active, started }` activity snapshot.

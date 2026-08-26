@@ -449,8 +449,9 @@ fn db_and_pump(state: &SharedState) -> Result<(Db, Arc<dyn JobPumpControl>), Box
 }
 
 /// v4 `GET /api/v1/system/jobs` (`system/jobs/route.ts:23`) — queue stats +
-/// per-type active counts + the processor snapshot, with the optional
-/// `includeJobs=true` (50 newest) and `chatId` (pending-for-chat) legs. v4 calls
+/// the by-kind activity snapshot + the processor snapshot, with the optional
+/// `includeByType=true` (per-type active counts), `includeJobs=true` (50 newest)
+/// and `chatId` (pending-for-chat) legs. v4 calls
 /// `ensureProcessorRunning()` first; here that is the pump's idempotent `start`.
 pub async fn system_jobs_collection_get(
     State(state): State<SharedState>,
@@ -462,6 +463,8 @@ pub async fn system_jobs_collection_get(
     };
     pump.start();
     let include_jobs = q.get("includeJobs").map(String::as_str) == Some("true");
+    // The raw flag; v4's `|| includeJobs` widening lives in the core fn.
+    let include_by_type = q.get("includeByType").map(String::as_str) == Some("true");
     let chat_id = q.get("chatId").filter(|s| !s.is_empty()).cloned();
     let status: ProcessorStatus = pump.status();
     system_body(
@@ -469,6 +472,7 @@ pub async fn system_jobs_collection_get(
             &db,
             SINGLE_USER_ID,
             include_jobs,
+            include_by_type,
             chat_id.as_deref(),
             &status,
         ),

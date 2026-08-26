@@ -19,6 +19,15 @@
  * no-op; the Rust side pins the SAME status. The diff therefore proves the
  * DB-derived fields, not the pump snapshot.
  *
+ * ── THE REGISTRY IS NOT IN THIS DIFF ─────────────────────────────────────────
+ * `activeByKind` merges active job ROWS with the in-flight activity registry,
+ * and `startedByKind` is the registry's monotonic blip totals. In an oracle run
+ * no inline work is in flight on EITHER side, so `activeByKind` here is purely
+ * job-derived and `startedByKind` is all zeros. This family therefore proves the
+ * DB leg, the opt-in gating, and the response shape — NOT the merge. The merge
+ * and every span site are pinned by unit tests (P4.D123), since in-flight
+ * counters never touch DB state.
+ *
  * ── THE ENQUEUE CASE ─────────────────────────────────────────────────────────
  * The created job's id and its three timestamps are minted at call time, so the
  * case normalizes them: the body's `jobId` and, in `extra`, the read-back row's
@@ -26,7 +35,8 @@
  * (type, status, payload, priority, attempts, maxAttempts) is diffed verbatim.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
+ *   V5W=${V5W:-$HOME/source/quilltap-v5}
+ *   N=~/.nvm/versions/node/v24.13.1/bin
  *   TMPO=/tmp/qt-sysjobscoll-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/system-jobs-collection.test.ts" "$TMPO/cases/"
@@ -128,12 +138,20 @@ async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
 const JOBS_ROUTE = '@/app/api/v1/system/jobs/route';
 const B = 'http://localhost/api/v1';
 
-async function jobsGet(query: string): Promise<{ status: number; body: unknown }> {
+async function jobsGet(
+  query: string,
+): Promise<{ status: number; body: unknown; extra: unknown }> {
   const route = (await import(JOBS_ROUTE)) as never as Record<
     string,
     (...a: unknown[]) => Promise<unknown>
   >;
-  return respond(await route.GET(mockRequest(`${B}/system/jobs${query}`, 'GET', {})));
+  const out = await respond(await route.GET(mockRequest(`${B}/system/jobs${query}`, 'GET', {})));
+  // The key ORDER is part of the contract (§Shared contract §A): v4 builds
+  // `{stats, activeByKind, startedByKind, processor}` and then appends
+  // activeByType / jobs / pendingForChat in that order. Object equality alone
+  // proves the key SET; this proves the sequence, so a leaked unconditional
+  // `activeByType` cannot hide behind a reordering.
+  return { ...out, extra: { keys: Object.keys(out.body as Record<string, unknown>) } };
 }
 
 async function jobsPost(body: unknown): Promise<{ status: number; body: unknown }> {
@@ -153,8 +171,22 @@ interface CaseSpec {
 
 function buildCases(): CaseSpec[] {
   return [
+    // `includeByType` absent — the toolbar's own poll shape. `activeByType` is
+    // withheld (664cfca84 made it opt-in); `activeByKind`/`startedByKind` are
+    // always present.
     { name: 'jobs_collection_get', run: () => jobsGet('') },
+    // Explicitly opted in.
+    { name: 'jobs_collection_get_include_by_type', run: () => jobsGet('?includeByType=true') },
+    // Anything but the literal 'true' is not an opt-in.
+    { name: 'jobs_collection_get_include_by_type_junk', run: () => jobsGet('?includeByType=1') },
+    // THE QUIRK: `includeJobs=true` implies `includeByType` even when the latter
+    // is absent (v4: `param === 'true' || includeJobs`).
     { name: 'jobs_collection_get_include_jobs', run: () => jobsGet('?includeJobs=true') },
+    // …and the quirk is one-directional: byType does NOT imply jobs.
+    {
+      name: 'jobs_collection_get_by_type_does_not_imply_jobs',
+      run: () => jobsGet('?includeByType=true&includeJobs=false'),
+    },
     { name: 'jobs_collection_get_chat', run: () => jobsGet(`?chatId=${CHAT_1}`) },
     {
       name: 'jobs_collection_get_both',
