@@ -190,8 +190,10 @@ function buildCases(): CaseSpec[] {
     // chunk; `Manifesto/loose-ends.md` reported as a `relativePath` match;
     // `manifesto-scan.pdf` and the disabled store's copy absent; the ARCHIVED
     // character's vault swept out while the other six vaults answer with
-    // `storeType: 'character'`; `manifesto-copy.md`'s ambiguous "Logbook" and
-    // `manifesto-self.md`'s reserved `self` both addressing by UUID; and
+    // `storeType: 'character'`; `manifesto-copy.md`'s home healed to
+    // "Logbook (2)" by the boot repair (so it addresses by NAME — the
+    // route-tier ambiguity arm is unreachable and unit-tier-pinned) while
+    // `manifesto-self.md`'s reserved `self` addresses by UUID; and
     // `Notes/manifesto & co.md` exercising `encodeURIComponent` on both URL
     // params.
     { name: 'documents_only', run: () => search('?q=manifesto&types=documents') },

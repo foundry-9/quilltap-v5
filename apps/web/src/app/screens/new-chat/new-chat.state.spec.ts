@@ -388,3 +388,102 @@ describe('NewChatState roleplayTemplateId omit-on-failed-fetch', () => {
     expect(sink.body).not.toHaveProperty('roleplayTemplateId');
   });
 });
+
+// --- Archived-scenario seeding (v4 `d25dacc1` §B7 — the unify-§3 pins) -------
+
+/** A CoreClient that records every dispatched request and answers per verb. */
+function recordingCore(over: {
+  general?: unknown[];
+  project?: unknown[];
+  character?: CharacterListItem | null;
+}): { core: CoreClient; requests: Record<string, unknown>[] } {
+  const requests: Record<string, unknown>[] = [];
+  const core = {
+    dispatchData: async (req: Record<string, unknown>) => {
+      requests.push(req);
+      switch (req['type']) {
+        case 'characterList':
+          return { characters: over.character ? [over.character] : [] };
+        case 'characterGet':
+          return { character: over.character ?? null };
+        case 'characterDefaultPartner':
+          return { partnerId: null };
+        case 'scenarioList':
+          return { scenarios: over.general ?? [] };
+        case 'projectScenarioList':
+          return { scenarios: over.project ?? [] };
+        case 'projectGet':
+          return { project: { id: 'pr1', name: 'A Project' } };
+        case 'projectList':
+          return { projects: [] };
+        case 'groupScenariosUnion':
+          return { groupScenarios: [] };
+        case 'roleplayTemplateList':
+          return [];
+        default:
+          return {};
+      }
+    },
+    dispatchExpect: async (req: { type: string }) => {
+      requests.push(req as unknown as Record<string, unknown>);
+      if (req.type === 'chatSettings') return { type: 'chatSettings', data: {} };
+      return { type: 'connectionProfiles', data: { profiles: [] } };
+    },
+  } as unknown as CoreClient;
+  return { core, requests };
+}
+
+function scen(path: string, over: Record<string, unknown> = {}): Record<string, unknown> {
+  return { path, name: path, description: null, isDefault: false, archived: false, ...over };
+}
+
+describe('NewChatState archived-scenario seeding (v4 d25dacc1 §B7)', () => {
+  it('the project and general default seeds SKIP an archived default', async () => {
+    const { core } = recordingCore({
+      general: [scen('g-arch.md', { isDefault: true, archived: true })],
+      project: [scen('p-arch.md', { isDefault: true, archived: true })],
+      character: char('c1', 'Aria'),
+    });
+    const state = new NewChatState(core, { initialCharacterId: 'c1', projectId: 'pr1' });
+    await state.load();
+    expect(state.form().projectScenarioPath).toBeNull();
+    expect(state.form().generalScenarioPath).toBeNull();
+  });
+
+  it('an ACTIVE default still seeds — the guard is the flag, not the seeding', async () => {
+    const { core } = recordingCore({
+      general: [scen('g-live.md', { isDefault: true })],
+      character: char('c1', 'Aria'),
+    });
+    const state = new NewChatState(core, { initialCharacterId: 'c1' });
+    await state.load();
+    expect(state.form().generalScenarioPath).toBe('g-live.md');
+  });
+
+  it('the CHARACTER default seed is deliberately UNGUARDED — an archived default auto-selects (v4-faithful; a guard here is a divergence, not a fix)', async () => {
+    const aria = char('c1', 'Aria', {
+      defaultScenarioId: 'sc-arch',
+      scenarios: [{ id: 'sc-arch', title: 'Mothballed', content: 'x', archived: true }],
+    });
+    const { core } = recordingCore({ character: aria });
+    const state = new NewChatState(core, { initialCharacterId: 'c1' });
+    await state.load();
+    expect(state.form().scenarioId).toBe('sc-arch');
+  });
+
+  it('flipping Show archived threads the flag onto all three list verbs and fires the union exactly ONCE', async () => {
+    const { core, requests } = recordingCore({ character: char('c1', 'Aria') });
+    const state = new NewChatState(core, { projectId: 'pr1' });
+    await state.load();
+    state.selectedCharacters.set([selected(char('c1', 'Aria'))]);
+    requests.length = 0;
+    await state.setShowArchivedScenarios(true);
+    const of = (type: string) => requests.filter((r) => r['type'] === type);
+    expect(of('scenarioList')[0]).toMatchObject({ includeArchived: true });
+    expect(of('projectScenarioList')[0]).toMatchObject({ includeArchived: true });
+    // The double-fetch fix (unify §3): one flip, ONE union request — load()'s
+    // tail is the only firer.
+    expect(of('groupScenariosUnion')).toHaveLength(1);
+    expect(of('groupScenariosUnion')[0]).toMatchObject({ includeArchived: true });
+  });
+});

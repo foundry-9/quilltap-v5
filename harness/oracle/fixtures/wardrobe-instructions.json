@@ -489,6 +489,14 @@
       }
     },
     {
+      "$comment": "The guard-order pin (unify §3): v4 runs findById → notFound BEFORE the schema parse, so a missing character with an invalid body answers 404, never 400.",
+      "name": "char_post_missing_and_invalid_404",
+      "scope": "character",
+      "method": "POST",
+      "target": "missing",
+      "body": {}
+    },
+    {
       "name": "char_post_archived_409",
       "scope": "character",
       "method": "POST",
@@ -584,6 +592,14 @@
       }
     },
     {
+      "$comment": "The guard-order pin (unify §3) — 404 beats the parse.",
+      "name": "group_post_missing_and_invalid_404",
+      "scope": "group",
+      "method": "POST",
+      "target": "missing",
+      "body": {}
+    },
+    {
       "name": "project_get_absent",
       "scope": "project",
       "method": "GET"
@@ -635,6 +651,14 @@
       "body": {
         "instructions": "x"
       }
+    },
+    {
+      "$comment": "The guard-order pin (unify §3) — 404 beats the parse.",
+      "name": "project_post_missing_and_invalid_404",
+      "scope": "project",
+      "method": "POST",
+      "target": "missing",
+      "body": {}
     },
     {
       "name": "general_get_absent",

@@ -385,7 +385,7 @@
       "fileType": "markdown",
       "updatedAt": "2026-02-05T00:00:00.000Z",
       "chunks": [],
-      "why": "AMBIGUOUS store name (two enabled stores are called Logbook) — mountPointRef must be the UUID"
+      "why": "lives in the second-created Logbook, which the boot repair renames to Logbook (2) — so it addresses by NAME; the route-tier ambiguity arm is unreachable (the healed name is unique) and lives in the unit tests instead",
     },
     {
       "id": "ef000000-0000-4000-8000-000000000008",

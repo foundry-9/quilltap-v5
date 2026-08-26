@@ -1975,11 +1975,7 @@ pub async fn project_wardrobe_instructions_set(
     instructions: &Option<Option<Value>>,
 ) -> Response {
     let pid = project_id.to_string();
-    let instructions = match super::wardrobe::parse_instructions_body(instructions) {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
+    let raw = instructions.clone();
     let out = with_both_conns(db, move |main, mount| {
         {
             let repo = ProjectsRepository::new(main, mount);
@@ -1987,17 +1983,25 @@ pub async fn project_wardrobe_instructions_set(
                 return Ok(Err(not_found("Project")));
             }
         }
+        // Parsed only AFTER the 404 gate: v4 runs `findById → notFound` before
+        // `instructionsBodySchema.parse`, so a missing project with an invalid
+        // body answers 404, not 400.
+        let instructions = match super::wardrobe::parse_instructions_body(&raw) {
+            Ok(v) => v,
+            Err(r) => return Ok(Err(r)),
+        };
+        let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
         let mp = match ensure_project_wardrobe_mount(main, mount, &pid)? {
             Ok(mp) => mp,
             Err(r) => return Ok(Err(r)),
         };
         let links = DocMountFileLinksRepository::new(mount);
         write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
-        Ok(Ok(mp))
+        Ok(Ok((mp, cleared, echo)))
     })
     .await;
     match out {
-        Ok(Ok(mount_point_id)) => {
+        Ok(Ok((mount_point_id, cleared, echo))) => {
             tracing::info!(
                 project_id,
                 mount_point_id,

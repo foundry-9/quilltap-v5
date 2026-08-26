@@ -321,7 +321,12 @@ test.describe('P4.D116 — the in-chat scenario picker', () => {
       await card2.getByRole('button', { name: /^Scenarios \(/ }).click();
       await expect(newButton2).toBeVisible({ timeout: 10_000 });
     }
-    await card2.getByRole('checkbox', { name: '' }).first().check();
+    // Scoped by the label (unify §3): an empty `name` filter matches ANY
+    // checkbox — the wardrobe beat's spelling, adopted here.
+    await card2
+      .locator('label', { hasText: 'Show archived' })
+      .locator('input[type="checkbox"]')
+      .check();
     const archivedRow = card2.locator('qt-scenario-row', { hasText: ARCHIVE_SCENARIO });
     await expect(archivedRow).toBeVisible({ timeout: 10_000 });
     await expect(archivedRow).toContainText('Archived');

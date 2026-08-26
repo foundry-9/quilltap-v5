@@ -116,10 +116,18 @@ fn collect_bag_issues(bag: &Value, include_filename: bool) -> Vec<String> {
             issues.push("Invalid isDefault".to_string());
         }
     }
-    // archived?: boolean when present (v4 `d25dacc1`).
+    // archived?: boolean when present (v4 `d25dacc1`). Zod's `.optional()`
+    // accepts an ABSENT key, never an explicit null — a present non-boolean
+    // (null included) refuses with Zod 4's own sentence, measured on v4's
+    // zod 4.4.3 (unify §3). ⚠ The sibling name/description/isDefault arms
+    // keep their older null-tolerant spelling — a recorded pre-existing LEAD
+    // of the same class, not this round's field.
     if let Some(v) = obj.get("archived") {
-        if !v.is_null() && !v.is_boolean() {
-            issues.push("Invalid archived".to_string());
+        if !v.is_boolean() {
+            issues.push(format!(
+                "Invalid input: expected boolean, received {}",
+                zod_type_name(v)
+            ));
         }
     }
     // body: string min 1 — the custom message is byte-faithful (tested).
@@ -129,6 +137,19 @@ fn collect_bag_issues(bag: &Value, include_filename: bool) -> Vec<String> {
         _ => issues.push("Required".to_string()),
     }
     issues
+}
+
+/// Zod 4's received-type word for its `Invalid input: expected …, received …`
+/// sentences (measured on v4's zod 4.4.3).
+fn zod_type_name(v: &Value) -> &'static str {
+    match v {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
 }
 
 /// Extract the validated fields (call only after `collect_bag_issues` is empty).

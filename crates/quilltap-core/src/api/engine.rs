@@ -2132,7 +2132,7 @@ impl CoreEngine {
                         &character_id,
                         &title,
                         &content,
-                        archived,
+                        &archived,
                     )
                     .await
                 }
@@ -2153,7 +2153,7 @@ impl CoreEngine {
                         &scenario_id,
                         title.as_deref(),
                         content.as_deref(),
-                        archived,
+                        &archived,
                     )
                     .await
                 }

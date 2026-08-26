@@ -184,4 +184,68 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
         body["wardrobeItems"].is_array(),
         "the no-action arm must still be the archetype listing: {body}"
     );
+
+    // --- the unknown-action refusal (unify §3) ------------------------------
+    // v4's `withActionDispatch` answers 400 with the two-key envelope for a
+    // present, non-empty, unknown action. Before the fix these edges FELL
+    // THROUGH to the collection verb — `POST ?action=bogus` CREATED an
+    // archetype where v4 refuses.
+    let unknown = json!({
+        "error": "Unknown action: bogus",
+        "availableActions": ["instructions"],
+    });
+    for url in [
+        format!("http://{addr}/api/v1/wardrobe?action=bogus"),
+        format!("http://{addr}/api/v1/characters/{ARIA}/wardrobe?action=bogus"),
+    ] {
+        let resp = client.get(&url).send().await.unwrap();
+        assert_eq!(resp.status(), 400, "unknown-action GET must refuse: {url}");
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body, unknown, "v4's dispatcher envelope, byte-shaped");
+    }
+    let before: Value = client
+        .get(format!("http://{addr}/api/v1/wardrobe"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let resp = client
+        .post(format!("http://{addr}/api/v1/wardrobe?action=bogus"))
+        .json(&json!({ "title": "Sneaky Coat", "slot": "top" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "unknown-action POST must refuse");
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body, unknown);
+    let after: Value = client
+        .get(format!("http://{addr}/api/v1/wardrobe"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        after["wardrobeItems"].as_array().map(Vec::len),
+        before["wardrobeItems"].as_array().map(Vec::len),
+        "a refused action must not have created anything"
+    );
+
+    // v4's `if (action)` gate is JS truthiness: a PRESENT-but-empty
+    // `?action=` serves the default (collection) arm, not a refusal.
+    let body: Value = client
+        .get(format!("http://{addr}/api/v1/wardrobe?action="))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        body["wardrobeItems"].is_array(),
+        "an empty action is falsy in v4 and serves the listing: {body}"
+    );
 }

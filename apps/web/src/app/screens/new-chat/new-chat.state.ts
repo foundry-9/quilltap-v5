@@ -440,12 +440,14 @@ export class NewChatState {
 
   /**
    * v4 `:664` — `showArchivedScenarios` sits in the fetch effect's deps, so
-   * flipping it refetches ALL tiers. v5's group union lives outside `load()`,
-   * so both are re-run here to reach the same four lists.
+   * flipping it refetches ALL tiers. One `load()` IS the whole refetch: its
+   * tail re-fires the group union too (unify §3 — this used to also await
+   * `refreshGroupScenarios()`, double-fetching the union concurrently, under
+   * a comment wrongly claiming the union lived outside `load()`).
    */
   async setShowArchivedScenarios(next: boolean): Promise<void> {
     this.showArchivedScenarios.set(next);
-    await Promise.all([this.load(), this.refreshGroupScenarios()]);
+    await this.load();
   }
 
   private async refreshGroupScenarios(): Promise<void> {

@@ -244,7 +244,14 @@ pub fn search_document_text(
 
     let enabled = DocMountPointsRepository::new(mount)
         .find_enabled_for_search()
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // v4's `findEnabled` is a `safeQuery` — same `[]` fallback, but it
+            // LOGS the failure (unify §3: this read was the one silent swallow
+            // in the module; a broken mount-points table should reach
+            // `combined.log`, not just the no-stores debug line).
+            tracing::error!(error = %e, "Error finding enabled mount points");
+            Vec::new()
+        });
 
     // v4's `excluded` is a `Set`, so duplicates collapse — both on insert and in
     // the `excluded.size` the no-stores debug log carries.

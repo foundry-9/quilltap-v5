@@ -557,9 +557,11 @@ pub enum Request {
         title: String,
         content: String,
         /// v4 `d25dacc1`'s `archived: z.boolean().optional()`. Omission means
-        /// active — an explicit `false` is never persisted.
-        #[serde(default)]
-        archived: Option<bool>,
+        /// active — an explicit `false` is never persisted. Double-optioned so
+        /// an explicit `null` refuses as v4's Zod does instead of collapsing
+        /// into "absent" (unify §3; the D57 lesson).
+        #[serde(default, deserialize_with = "double_option")]
+        archived: Option<Option<bool>>,
     },
     #[serde(rename_all = "camelCase")]
     CharacterScenarioUpdate {
@@ -570,9 +572,10 @@ pub enum Request {
         #[serde(default)]
         content: Option<String>,
         /// Tri-state (v4 `d25dacc1`): omitted PRESERVES the current flag, `true`
-        /// archives, `false` restores — and a restore DELETES the key.
-        #[serde(default)]
-        archived: Option<bool>,
+        /// archives, `false` restores — and a restore DELETES the key. Double-
+        /// optioned so an explicit `null` refuses as v4's Zod does (unify §3).
+        #[serde(default, deserialize_with = "double_option")]
+        archived: Option<Option<bool>>,
     },
     #[serde(rename_all = "camelCase")]
     CharacterScenarioDelete {

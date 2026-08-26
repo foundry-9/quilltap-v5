@@ -194,6 +194,12 @@ async function main(): Promise<void> {
     // survive. Without the pre-call every case starts from an ACTIVE Prologue,
     // so "preserve" and "default to false" are indistinguishable.
     { name: 'scenario_update_omitting_archived', module: SCENARIOS, method: 'PUT', target: { kind: 'scenario', byName: 'Prologue' }, query: (id) => `scenarioId=${id}`, preBody: { archived: true }, body: { content: 'Untouched flag.' } },
+    // ── The explicit-null refusal (unify §3): `z.boolean().optional()` accepts
+    //    an ABSENT key, never null — `archived: null` is the middleware's flat
+    //    `Validation error` 400 (the schema parse runs BEFORE `findById` on
+    //    these routes, so no character read happens either).
+    { name: 'scenario_create_null_archived', module: SCENARIOS, method: 'POST', body: { title: 'Nulled', content: 'Never lands.', archived: null } },
+    { name: 'scenario_update_null_archived', module: SCENARIOS, method: 'PUT', target: { kind: 'scenario', byName: 'Prologue' }, query: (id) => `scenarioId=${id}`, body: { archived: null } },
     { name: 'plugin_upsert_existing', module: PLUGIN, method: 'POST', body: { pluginName: 'com.example.notes', data: { color: 'crimson' } } },
     { name: 'plugin_upsert_new', module: PLUGIN, method: 'POST', body: { pluginName: 'com.example.flags', data: { beta: true } } },
     { name: 'plugin_delete', module: PLUGIN_ITEM, method: 'DELETE', target: { kind: 'plugin', byName: 'com.example.notes' }, params: (id) => ({ id: ARIA, pluginName: id }), body: {} },

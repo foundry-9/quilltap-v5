@@ -1434,11 +1434,7 @@ pub async fn group_wardrobe_instructions_set(
     instructions: &Option<Option<Value>>,
 ) -> Response {
     let gid = group_id.to_string();
-    let instructions = match super::wardrobe::parse_instructions_body(instructions) {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
+    let raw = instructions.clone();
     let out = with_both_conns(db, move |main, mount| {
         {
             let repo = GroupsRepository::new(main, mount);
@@ -1446,17 +1442,25 @@ pub async fn group_wardrobe_instructions_set(
                 return Ok(Err(not_found("Group")));
             }
         }
+        // Parsed only AFTER the 404 gate: v4 runs `findById → notFound` before
+        // `instructionsBodySchema.parse`, so a missing group with an invalid
+        // body answers 404, not 400.
+        let instructions = match super::wardrobe::parse_instructions_body(&raw) {
+            Ok(v) => v,
+            Err(r) => return Ok(Err(r)),
+        };
+        let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
         let mp = match ensure_group_wardrobe_mount(main, mount, &gid)? {
             Ok(mp) => mp,
             Err(r) => return Ok(Err(r)),
         };
         let links = DocMountFileLinksRepository::new(mount);
         write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
-        Ok(Ok(mp))
+        Ok(Ok((mp, cleared, echo)))
     })
     .await;
     match out {
-        Ok(Ok(mount_point_id)) => {
+        Ok(Ok((mount_point_id, cleared, echo))) => {
             tracing::info!(
                 group_id,
                 mount_point_id,

@@ -55,6 +55,15 @@ export interface ActiveSalon {
  *
  * Pure — the service is a thin wrapper so this stays directly testable.
  */
+/**
+ * The path half of `Router.url`. v4 reads `usePathname()`, which never carries
+ * a query OR a fragment — `router.url` can carry both, so both are stripped
+ * (a `/salon/abc#x` URL must still match the salon arm; unify §3).
+ */
+function pathnameOf(url: string): string {
+  return url.split('?')[0].split('#')[0];
+}
+
 export function resolveActiveSalon(
   state: WorkspaceState | null | undefined,
   pathname: string | null,
@@ -110,7 +119,7 @@ export class OpenDocumentFromSearch {
    * same pair `documents-rail-entry` uses.
    */
   private inWorkspace(): boolean {
-    return isWorkspaceTabsEnabled() && this.router.url.split('?')[0] === '/workspace';
+    return isWorkspaceTabsEnabled() && pathnameOf(this.router.url) === '/workspace';
   }
 
   /** The Salon an in-chat open would land in, if any. */
@@ -118,7 +127,7 @@ export class OpenDocumentFromSearch {
     const inWorkspace = this.inWorkspace();
     return resolveActiveSalon(
       inWorkspace ? this.workspace.state() : null,
-      this.router.url.split('?')[0],
+      pathnameOf(this.router.url),
     );
   }
 

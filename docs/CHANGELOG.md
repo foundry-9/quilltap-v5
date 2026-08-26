@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — fix(api,search,spa): the b220999d-round §3 review findings
+
+_Versions: core 0.0.677, harness 0.0.586, web 0.0.92, SPA 0.5.575 (the
+lane-accumulation recount + this fix; base was core 0.0.665, harness 0.0.577,
+web 0.0.87, SPA 0.5.566)._
+
+The unification review's findings, fixed on the unify branch. The three
+scoped `?action=instructions` SET handlers parsed the body BEFORE the 404
+existence check where v4 gates existence first — a missing character/group/
+project with an invalid body answered 400 where v4 answers 404 (corpus-blind;
+three new `*_post_missing_and_invalid_404` corpus cases pin it). A scenario
+bag's explicit `archived: null` was silently treated as omitted (200 +
+preserve) where v4's `z.boolean().optional()` refuses — fixed with Zod 4's
+measured sentence (`Invalid input: expected boolean, received null`) on the
+file-backed scopes, and with a doubled Option on the two character-scenario
+dispatch verbs (flat `Validation error`, parse-before-404 as v4 orders it
+there); the sibling name/description/isDefault arms' older null-tolerance is
+a recorded pre-existing lead, not this round's field. The three registered
+wardrobe REST edges fell through on an unknown `?action=` — `POST
+?action=bogus` could CREATE an archetype — and now answer v4's dispatcher
+envelope (`Unknown action: …` + `availableActions`), with the
+present-but-empty action staying falsy as v4's truthiness gate has it;
+wire-tested including the nothing-was-created leg. Search lane: the
+enabled-stores read's error is now logged (v4's `safeQuery` sentence), two
+stale ambiguity-arm comments in the ui-search corpus were rewritten to match
+the healed-name reality, and the open-from-search pathname read strips URL
+fragments v4's `usePathname` never carries. SPA lane: the B7 seed-guard
+quirks are now spec-pinned (project/general guarded, the character seed
+deliberately UNGUARDED — three mutations each redden exactly one spec), the
+Show-archived flip no longer double-fetches the group union (its comment was
+also wrong), and the salon beat's restore gesture scopes its checkbox by the
+"Show archived" label instead of matching any checkbox.
+
 #### 2026-08-26 — docs(porting): the P4.D119 + P4.D120 stacked lane's gate record
 
 _No crate versions bumped._

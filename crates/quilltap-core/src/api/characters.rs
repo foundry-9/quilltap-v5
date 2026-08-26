@@ -2100,8 +2100,16 @@ pub async fn character_scenario_create(
     character_id: &str,
     title: &str,
     content: &str,
-    archived: Option<bool>,
+    archived: &Option<Option<bool>>,
 ) -> Response {
+    // v4 parses BEFORE `findById` on this route (`createScenarioSchema.parse`
+    // is the first line), so an explicit-null `archived` refuses ahead of the
+    // 404 — Zod's `.optional()` accepts an absent key, never null (unify §3).
+    let archived = match archived {
+        None => None,
+        Some(Some(b)) => Some(*b),
+        Some(None) => return bad_request("Validation error"),
+    };
     let (cid, title, content) = (
         character_id.to_string(),
         title.to_string(),
@@ -2129,8 +2137,15 @@ pub async fn character_scenario_update(
     scenario_id: &str,
     title: Option<&str>,
     content: Option<&str>,
-    archived: Option<bool>,
+    archived: &Option<Option<bool>>,
 ) -> Response {
+    // v4 parses BEFORE `findById` here too — explicit null refuses first
+    // (unify §3; see `character_scenario_create`).
+    let archived = match archived {
+        None => None,
+        Some(Some(b)) => Some(*b),
+        Some(None) => return bad_request("Validation error"),
+    };
     let (cid, sid) = (character_id.to_string(), scenario_id.to_string());
     let (title, content) = (title.map(str::to_string), content.map(str::to_string));
     let out = with_both_conns(db, move |main, mount| {
@@ -2954,15 +2969,19 @@ pub async fn character_wardrobe_instructions_set(
     instructions: &Option<Option<Value>>,
 ) -> Response {
     let cid = character_id.to_string();
-    let instructions = match super::wardrobe::parse_instructions_body(instructions) {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
+    let raw = instructions.clone();
     let out = with_both_conns(db, move |main, mount| {
         if let Err(r) = require_character(main, mount, &cid) {
             return Ok(Err(r));
         }
+        // Parsed only AFTER the 404 gate: v4 runs `findById → notFound` before
+        // `instructionsBodySchema.parse`, so a missing character with an
+        // invalid body answers 404, not 400.
+        let instructions = match super::wardrobe::parse_instructions_body(&raw) {
+            Ok(v) => v,
+            Err(r) => return Ok(Err(r)),
+        };
+        let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
         let loc = match crate::db::vault_wardrobe_public::resolve_character_wardrobe_mount_point(
             main, &cid,
         ) {
@@ -2985,11 +3004,11 @@ pub async fn character_wardrobe_instructions_set(
         };
         let links = DocMountFileLinksRepository::new(mount);
         write_wardrobe_instructions_file(&links, &mp, instructions.as_deref())?;
-        Ok(Ok(mp))
+        Ok(Ok((mp, cleared, echo)))
     })
     .await;
     match out {
-        Ok(Ok(mount_point_id)) => {
+        Ok(Ok((mount_point_id, cleared, echo))) => {
             tracing::info!(
                 character_id,
                 mount_point_id,

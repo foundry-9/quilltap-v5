@@ -178,7 +178,12 @@ fn characters_subresources_match_oracle() {
     let mut failed: Vec<String> = Vec::new();
 
     let check = |name: &str, resp: Response, failed: &mut Vec<String>| {
-        let mut got = response_data(&resp);
+        // A refusal diffs as v4's `{error}` body (the web edge's own mapping);
+        // the status leg rides the ErrorKind→HTTP table pinned elsewhere.
+        let mut got = match &resp {
+            Response::Error(e) => json!({ "error": e.message }),
+            _ => response_data(&resp),
+        };
         let mut want = oracle[name]["body"].clone();
         strip_subitem_ts(&mut got);
         strip_subitem_ts(&mut want);
@@ -234,7 +239,7 @@ fn characters_subresources_match_oracle() {
             ARIA,
             "Epilogue",
             "The voyage ends.",
-            None,
+            &None,
         ));
         check("scenario_create", r, &mut failed);
     }
@@ -248,7 +253,7 @@ fn characters_subresources_match_oracle() {
             &id,
             None,
             Some("A revised prologue."),
-            None,
+            &None,
         ));
         check("scenario_update", r, &mut failed);
     }
@@ -306,7 +311,7 @@ fn characters_subresources_match_oracle() {
             ARIA,
             "Mothballed",
             "A scene put away.",
-            Some(true),
+            &Some(Some(true)),
         ));
         check("scenario_create_archived", r, &mut failed);
     }
@@ -318,7 +323,7 @@ fn characters_subresources_match_oracle() {
             ARIA,
             "Explicit",
             "Not archived.",
-            Some(false),
+            &Some(Some(false)),
         ));
         check("scenario_create_explicitly_active", r, &mut failed);
     }
@@ -327,14 +332,14 @@ fn characters_subresources_match_oracle() {
             "scenario_update_archives",
             "su_arch",
             None,
-            Some(true),
+            Some(Some(true)),
             None,
         ),
         (
             "scenario_update_restores",
             "su_rest",
             None,
-            Some(false),
+            Some(Some(false)),
             None,
         ),
         // Archive FIRST, then edit without mentioning `archived`: without the
@@ -358,20 +363,52 @@ fn characters_subresources_match_oracle() {
                 &id,
                 None,
                 None,
-                Some(pre),
+                &Some(Some(pre)),
             ));
         }
         let r = rt.block_on(characters::character_scenario_update(
-            &db, &uid, ARIA, &id, None, content, archived,
+            &db, &uid, ARIA, &id, None, content, &archived,
         ));
         check(name, r, &mut failed);
+    }
+
+    // ── The explicit-null refusal (unify §3): v4's `z.boolean().optional()`
+    // accepts an ABSENT key, never null — `archived: null` is a flat
+    // `Validation error` 400, parsed BEFORE the character lookup. The doubled
+    // Option is what lets the Rust side even EXPRESS this arm (a plain
+    // `Option<bool>` collapses null into "absent" and silently preserves).
+    {
+        let db = fresh_db(&spec, "sc_null");
+        let r = rt.block_on(characters::character_scenario_create(
+            &db,
+            &uid,
+            ARIA,
+            "Nulled",
+            "Never lands.",
+            &Some(None),
+        ));
+        check("scenario_create_null_archived", r, &mut failed);
+    }
+    {
+        let db = fresh_db(&spec, "su_null");
+        let id = resolve_sub_id(&db, "scenarios", "title", "Prologue");
+        let r = rt.block_on(characters::character_scenario_update(
+            &db,
+            &uid,
+            ARIA,
+            &id,
+            None,
+            None,
+            &Some(None),
+        ));
+        check("scenario_update_null_archived", r, &mut failed);
     }
 
     // Every oracle row must have been DRIVEN — a case added to the corpus and
     // not to this list would otherwise pass in silence.
     assert_eq!(
         oracle.len(),
-        14,
+        16,
         "the shared corpus grew; add the new case(s) to this list"
     );
     assert!(
