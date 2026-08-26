@@ -72,6 +72,14 @@ interface Case {
   itemId?: string;
   body?: unknown;
   normalize?: string[];
+  /** [P4.D120 / v4 `d25dacc1`] `?includeArchived=true` on the collection GET. */
+  includeArchived?: boolean;
+  /** [P4.D120] Paths CLASSIFIED rather than blanked (see the .rs header). */
+  classify?: string[];
+  /** [P4.D120] Archive `itemId` with a first PUT before the case runs — the only
+   *  way to reach "list a group store that HOLDS an archived garment" when every
+   *  case starts from a fresh fixture that has none. */
+  preArchive?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -97,6 +105,10 @@ function mockRequest(url: string, method: string, body?: unknown): unknown {
   return {
     method,
     url,
+    // [P4.D119 / v4 `b86bb1a5`] The collection route is now wrapped in
+    // `withActionDispatch`, which reads `request.nextUrl.searchParams` — a mock
+    // without it throws and every collection case answers a 500.
+    nextUrl: new URL(url),
     headers: new Headers({ 'Content-Type': 'application/json' }),
     json: jest.fn().mockResolvedValue(body),
   };
@@ -186,10 +198,17 @@ async function runCase(
     const collCtx = { params: Promise.resolve({ id: gid }) };
     const itemCtx = { params: Promise.resolve({ id: gid, itemId: iid }) };
 
+    if (c.preArchive) {
+      await detail.PUT(mockRequest(`${B}/${iid}`, 'PUT', { archived: true }), itemCtx);
+    }
+
     let response: { status: number; json(): Promise<unknown> };
     switch (c.kind) {
       case 'list':
-        response = await collection.GET(mockRequest(B, 'GET'), collCtx);
+        response = await collection.GET(
+          mockRequest(c.includeArchived ? `${B}?includeArchived=true` : B, 'GET'),
+          collCtx,
+        );
         break;
       case 'create':
         response = await collection.POST(mockRequest(B, 'POST', c.body), collCtx);

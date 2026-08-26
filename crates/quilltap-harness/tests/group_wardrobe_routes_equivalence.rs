@@ -81,6 +81,33 @@ fn response_data(r: &Response) -> Value {
 }
 
 /// Blank one dot-path (array indices are numeric segments) to `"<norm>"`.
+/// [P4.D120] `<stamped>` for a non-empty string; `null` and absent untouched —
+/// blanking an `archivedAt` would erase the very distinction the archive arms
+/// exist to prove.
+fn classify_path(v: &mut Value, path: &str) {
+    let mut cur = v;
+    let segs: Vec<&str> = path.split('.').collect();
+    for (i, seg) in segs.iter().enumerate() {
+        if i + 1 == segs.len() {
+            let Some(obj) = cur.as_object_mut() else {
+                return;
+            };
+            if obj
+                .get(*seg)
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.is_empty())
+            {
+                obj.insert((*seg).to_string(), Value::String("<stamped>".into()));
+            }
+            return;
+        }
+        let Some(next) = cur.get_mut(*seg) else {
+            return;
+        };
+        cur = next;
+    }
+}
+
 fn blank_path(v: &mut Value, path: &str) {
     let mut cur = v;
     let segs: Vec<&str> = path.split('.').collect();
@@ -474,6 +501,22 @@ fn group_wardrobe_routes_match_oracle() {
                 &spec.test_pepper_base64,
             )
             .expect("open db");
+            if case
+                .get("preArchive")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                // [P4.D120] Archive the item first — a fresh fixture holds no
+                // archived garment, so without this the `includeArchived` flag
+                // cannot discriminate and the formerly-hard-coded `true` would
+                // pass either way.
+                let _ = rt.block_on(groups::group_wardrobe_update(
+                    &db,
+                    &gid,
+                    &iid,
+                    serde_json::json!({ "archived": true }),
+                ));
+            }
             match kind {
                 "list" => groups::group_wardrobe_list(
                     &db,
@@ -516,6 +559,12 @@ fn group_wardrobe_routes_match_oracle() {
                     for p in paths.iter().filter_map(Value::as_str) {
                         blank_path(&mut got_body, p);
                         blank_path(&mut want_body, p);
+                    }
+                }
+                if let Some(paths) = case.get("classify").and_then(Value::as_array) {
+                    for p in paths.iter().filter_map(Value::as_str) {
+                        classify_path(&mut got_body, p);
+                        classify_path(&mut want_body, p);
                     }
                 }
                 assert_eq!(

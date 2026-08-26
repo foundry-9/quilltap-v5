@@ -482,6 +482,36 @@ async function main(): Promise<void> {
     { name: 'wardrobe_get', run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}`), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) })) },
     { name: 'wardrobe_create', run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/route')).POST(mockRequest(`${B}/${IOTA}/wardrobe`, { title: 'Rain Boots', description: 'For puddles.', imagePrompt: 'yellow rubber boots', types: ['footwear'], isDefault: false }), p(IOTA))) },
     { name: 'wardrobe_update', run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).PUT(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}`, { title: 'Weathered Cloak', description: null }), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) })) },
+    // ── P4.D120 / v4 `d25dacc1` ────────────────────────────────────────
+    // The project wardrobe list used to pass a hard-coded `true` and let the
+    // client filter; the flag is server-side now. A fresh fixture holds no
+    // archived garment, so each of these archives the Cloak with a first PUT.
+    {
+      name: 'wardrobe_list_hides_an_archived_garment',
+      run: async () => {
+        const item = await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route');
+        await item.PUT(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}`, { archived: true }), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) });
+        return respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe`), p(IOTA)));
+      },
+    },
+    {
+      name: 'wardrobe_list_shows_an_archived_garment_with_the_flag',
+      run: async () => {
+        const item = await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route');
+        await item.PUT(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}`, { archived: true }), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) });
+        return respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/route')).GET(mockRequest(`${B}/${IOTA}/wardrobe?includeArchived=true`), p(IOTA)));
+      },
+    },
+    {
+      name: 'wardrobe_update_archives',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).PUT(mockRequest(`${B}/${IOTA}/wardrobe/${CLOAK}`, { archived: true }), { params: Promise.resolve({ id: IOTA, itemId: CLOAK }) })),
+    },
+    {
+      // The NEW 404, reachable only with `archived` in the body: without it the
+      // route never does the extra O(folder) read that finds nothing.
+      name: 'wardrobe_update_archived_missing_item_404',
+      run: async () => respond(await (await loadRoute('@/app/api/v1/projects/[id]/wardrobe/[itemId]/route')).PUT(mockRequest(`${B}/${IOTA}/wardrobe/eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01`, { archived: true }), { params: Promise.resolve({ id: IOTA, itemId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01' }) })),
+    },
     {
       name: 'wardrobe_delete',
       run: async () => {

@@ -65,6 +65,12 @@ interface CaseEntry {
   thenOutfit?: string;
   thenGroupWardrobe?: string;
   groupNormalize?: string[];
+  /** [P4.D120 / v4 `d25dacc1`] `?includeArchived=true` on a collection GET. */
+  includeArchived?: boolean;
+  /** [P4.D120] Paths whose value is CLASSIFIED rather than blanked: a non-empty
+   *  string becomes `<stamped>`, `null` stays `null`. Blanking an `archivedAt`
+   *  would erase the very distinction the archive arms exist to prove. */
+  classify?: string[];
   emitBytes?: boolean;
 }
 
@@ -176,7 +182,9 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
       const mod = (await import('@/app/api/v1/wardrobe/route')) as {
         GET: (...a: unknown[]) => Promise<unknown>;
       };
-      return respond(await mod.GET(mockRequest(`${B}/wardrobe`)));
+      // [P4.D120 / v4 `d25dacc1`] `?includeArchived=true` on the collection GET.
+      const qs = c.includeArchived ? '?includeArchived=true' : '';
+      return respond(await mod.GET(mockRequest(`${B}/wardrobe${qs}`)));
     }
     case 'wardrobeCreate': {
       const mod = (await import('@/app/api/v1/wardrobe/route')) as {
@@ -268,7 +276,10 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
       const mod = (await import('@/app/api/v1/characters/[id]/wardrobe/route')) as {
         GET: (...a: unknown[]) => Promise<unknown>;
       };
-      const qs = c.scope ? `?scope=${c.scope}` : '';
+      const params = new URLSearchParams();
+      if (c.scope) params.set('scope', c.scope);
+      if (c.includeArchived) params.set('includeArchived', 'true');
+      const qs = params.toString() ? `?${params.toString()}` : '';
       return respond(
         await mod.GET(mockRequest(`${B}/characters/${c.characterId}/wardrobe${qs}`), {
           params: Promise.resolve({ id: c.characterId }),

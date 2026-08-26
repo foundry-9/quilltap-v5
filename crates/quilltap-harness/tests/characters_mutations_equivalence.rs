@@ -105,6 +105,15 @@ fn blank_minted(v: &mut Value) {
                     o.insert(k.to_string(), Value::String(format!("<{k}>")));
                 }
             }
+            // [P4.D120] `archivedAt` is CLASSIFIED, not blanked: a fresh stamp
+            // differs between runs, but `null` vs stamped is exactly what the
+            // archive arms exist to prove.
+            if o.get("archivedAt")
+                .and_then(Value::as_str)
+                .is_some_and(|x| !x.is_empty())
+            {
+                o.insert("archivedAt".to_string(), Value::String("<stamped>".into()));
+            }
             o.iter_mut().for_each(|(_, x)| blank_minted(x));
         }
         Value::Array(a) => a.iter_mut().for_each(blank_minted),
@@ -695,6 +704,51 @@ fn characters_mutations_match_oracle() {
             wardrobe_update_body(),
         ));
         run("wardrobe_update", r);
+    }
+    // ── P4.D120 / v4 `d25dacc1` — the character item route's `archived` ──
+    for (name, tag, body) in [
+        (
+            "wardrobe_update_archives",
+            "wu_arch",
+            json!({ "archived": true }),
+        ),
+        (
+            "wardrobe_update_restore_of_an_active_item_is_a_noop",
+            "wu_rest",
+            json!({ "archived": false }),
+        ),
+    ] {
+        let db = fresh_db(&spec, tag);
+        let iid = discover_item_id(&db, ARIA, "Flight Jacket");
+        let r = rt.block_on(characters::character_wardrobe_update(
+            &db, &uid, ARIA, &iid, body,
+        ));
+        run(name, r);
+    }
+    {
+        // A present non-boolean `archived` fails v4's Zod parse, which the route
+        // does NOT catch → the middleware's flat `Validation error` 400.
+        let name = "wardrobe_update_archived_null_is_a_validation_error";
+        let db = fresh_db(&spec, "wu_null");
+        let iid = discover_item_id(&db, ARIA, "Flight Jacket");
+        let r = rt.block_on(characters::character_wardrobe_update(
+            &db,
+            &uid,
+            ARIA,
+            &iid,
+            json!({ "archived": Value::Null }),
+        ));
+        let want_msg = oracle[name]["body"]["error"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        match &r {
+            Response::Error(e) if e.message == want_msg => eprintln!("[{name}] OK (400)."),
+            other => {
+                eprintln!("[{name}] expected v4's 400 '{want_msg}', got {other:?}");
+                extra.push(name.to_string());
+            }
+        }
     }
     {
         let db = fresh_db(&spec, "wd");

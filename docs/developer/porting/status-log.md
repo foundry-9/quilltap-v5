@@ -365,6 +365,58 @@ still tests `count == 0` only (v4 unchanged).
   Three mutations redden the subresources arm; the two that survive the ARRAYS
   arm are the same fact stated twice, and are why the second tier exists.
 
+### P4.D120 unit 4 — the wardrobe `archived` → `archivedAt` half
+
+`crate::wardrobe::archived_patch` ports v4's `lib/wardrobe/archived-patch.ts`
+verbatim, incl. the JS-truthiness reading of "already archived" (an EMPTY string
+counts as active) — five unit arms. All four item PUTs route through it:
+
+| scope | how `current` is found | the new 404 |
+|---|---|---|
+| character | the already-loaded `existing` | — |
+| General | the already-loaded `existing` | — |
+| project | an EXTRA O(folder) read, only when `archived` is present | `Project wardrobe item not found` |
+| group | ditto | `Group wardrobe item not found` |
+
+Both new 404s are **unreachable without the key** — the pre-read that finds
+nothing is only taken when `archived` is in the body. Pinned by name.
+
+Collection GETs honour the flag; **the two hard-coded `true` reads are gone**
+(`api/projects.rs` and `api/groups.rs`) — v4's "server-side filtering replaces
+the client-side pass".
+
+**A real v5 gap, found by the differential and fixed in scope:** v5's
+`character_wardrobe_update` accepted a present-but-non-boolean `archived` where
+v4's `updateWardrobeItemSchema.parse` refuses (the route doesn't catch, so the
+middleware answers the flat `Validation error`). **That route validates NOTHING
+else either** — v4 runs the whole schema there and v5 reads each key ad hoc.
+Only the key this commit ADDS is guarded; the wider gap is banked at the source
+as a named maintenance candidate.
+
+**Differentials.** `wardrobe-routes` +10 (General list flag; archive; the
+idempotence arm proving the ORIGINAL `2026-02-01` stamp survives a re-archive;
+restore; restore-of-active no-op; archive-with-fields; the 404; the `null`
+refusal; two character-list flag arms). `group-wardrobe` +7 and
+`projects-routes` +4 — each with a **pre-archive step**, because a fresh fixture
+holds no archived garment and without one the `includeArchived` flag cannot
+discriminate and the formerly-hard-coded `true` would pass either way.
+`characters-mutations` +3.
+
+⚠ **`archivedAt` is CLASSIFIED, not blanked** (a new `classify` normalizer on
+three families): a freshly minted stamp differs between the two runs, but
+stamped-vs-`null` is exactly what the archive arms exist to prove — blanking it
+would have made every one of them vacuous (the
+`blinded-comparand-hides-the-new-arm` trap).
+
+Mutations reddening them: idempotence removed; `archived` ignored at each of the
+four routes; the General list ignoring the flag; the group and project
+hard-coded `true`s restored; the character null-guard removed.
+
+**A P4.D119 consequence caught here:** `group-wardrobe.test.ts`'s `mockRequest`
+had no `nextUrl`, which `withActionDispatch` reads — after the instructions
+wrapper landed, EVERY collection case answered 500. Fixed with a comment naming
+the cause.
+
 ## Lane record — P4.D110 (the title-verdict parser + the checkpoint-burned warn) — v4 `3c041e46`
 
 Ordered against round baseline **`0ba942b1`**. **Drift check at lane start

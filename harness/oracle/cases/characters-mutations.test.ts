@@ -868,6 +868,25 @@ async function main(): Promise<void> {
       itemTitle: 'Flight Jacket',
       body: { title: 'Weathered Flight Jacket', description: null, isDefault: false },
     },
+    // ── P4.D120 / v4 `d25dacc1` — the character item route's `archived` ──
+    {
+      name: 'wardrobe_update_archives',
+      kind: 'wardrobe-update',
+      itemTitle: 'Flight Jacket',
+      body: { archived: true },
+    },
+    {
+      name: 'wardrobe_update_restore_of_an_active_item_is_a_noop',
+      kind: 'wardrobe-update',
+      itemTitle: 'Flight Jacket',
+      body: { archived: false },
+    },
+    {
+      name: 'wardrobe_update_archived_null_is_a_validation_error',
+      kind: 'wardrobe-update',
+      itemTitle: 'Flight Jacket',
+      body: { archived: null },
+    },
     { name: 'wardrobe_delete', kind: 'wardrobe-delete', itemTitle: 'Goggles' },
     { name: 'tag_list', kind: 'tag-list' },
     { name: 'tag_get', kind: 'tag-get', id: ADVENTURE },

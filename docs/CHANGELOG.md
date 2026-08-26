@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(wardrobe): `archived` → `archivedAt` on all four item routes (v4 `d25dacc1`)
+
+_Versions: core 0.0.671, harness 0.0.583, web 0.0.90._
+
+`archived_patch` is the one place the API's boolean becomes the item's
+timestamp: archiving is idempotent (re-archiving keeps the ORIGINAL stamp),
+restoring clears it, and an already-in-state request returns `None` so the
+caller can skip a pointless vault rewrite. All four item PUTs route through it —
+the character and General routes off their already-loaded item, the project and
+group routes off an extra O(folder) read taken ONLY when `archived` is in the
+body, which is exactly why the two new 404 sentences (`Project wardrobe item not
+found` / `Group wardrobe item not found`) are unreachable without it.
+
+The collection GETs honour `?includeArchived`: General, the character route and
+its `?scope=group` arm, and — the behavior change — project and group, whose
+hard-coded `true` reads are replaced so the filter is server-side.
+
+Found on the way and fixed in scope: v5's character item PUT accepted a
+present-but-non-boolean `archived` where v4's Zod parse refuses with the flat
+`Validation error`. That route validates NOTHING else either — a pre-existing
+gap wider than this lane, banked at the source with its named remedy.
+
+Four corpora grow: `wardrobe-routes` (+10, the General half), `group-wardrobe`
+(+7, incl. the new 404 and a pre-archive step so the flag can discriminate),
+`projects-routes` (+4) and `characters-mutations` (+3). `archivedAt` is
+CLASSIFIED rather than blanked — a fresh stamp differs between runs, but
+stamped-vs-null is the whole point. Nine mutations redden them.
+
+Also fixed: the group-wardrobe oracle's mock request lacked `nextUrl`, which
+P4.D119's `withActionDispatch` wrapper now reads — every collection case was
+answering 500.
+
 #### 2026-08-26 — feat(scenarios): archive entries instead of deleting them — the scenario half (v4 `d25dacc1`)
 
 _Versions: core 0.0.670, harness 0.0.582, web 0.0.89._

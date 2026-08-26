@@ -2400,6 +2400,19 @@ pub async fn character_wardrobe_update(
 ) -> Response {
     let cid = character_id.to_string();
     let iid = item_id.to_string();
+    // v4 `d25dacc1`'s `archived: z.boolean().optional()` — a PRESENT non-boolean
+    // (including `null`) fails the parse, which the route does NOT catch, so the
+    // middleware answers the flat `Validation error` 400.
+    //
+    // ⚠ Banked, PRE-EXISTING and wider than this lane: v5's character item PUT
+    // validates NOTHING else — v4 runs the whole `updateWardrobeItemSchema` here
+    // (title `.min(1)`, the types enum, the nullable strings, the booleans) and
+    // v5 reads each key ad hoc. Only the key this commit ADDS is guarded; the
+    // rest is a named candidate for a maintenance lane.
+    match body.get("archived") {
+        None | Some(Value::Bool(_)) => {}
+        Some(_) => return bad_request("Validation error"),
+    }
     let out = with_both_conns(db, move |main, mount| {
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));

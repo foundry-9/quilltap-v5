@@ -66,6 +66,11 @@ struct CaseEntry {
     /// [P4.D120 / v4 `d25dacc1`] `?includeArchived=true` on a collection GET.
     #[serde(default)]
     include_archived: Option<bool>,
+    /// [P4.D120] Paths whose value is CLASSIFIED rather than blanked: a
+    /// non-empty string becomes `<stamped>`, `null` stays `null`. Blanking an
+    /// `archivedAt` would erase the very distinction the archive arms prove.
+    #[serde(default)]
+    classify: Vec<String>,
     #[serde(default)]
     then_outfit: Option<String>,
     /// The chained group-tier read (v4 `8600c83f`): after this case, re-read
@@ -206,6 +211,47 @@ fn success_body(r: &Response) -> Option<Value> {
 }
 
 /// Blank the corpus-declared dot-paths (minted ids/timestamps) on a body.
+/// [P4.D120] `<stamped>` for a non-empty string; `null` and absent untouched.
+fn classify_paths(v: &Value, paths: &[String]) -> Value {
+    fn one(v: &mut Value, segments: &[&str]) {
+        let Some((first, rest)) = segments.split_first() else {
+            return;
+        };
+        if let Ok(idx) = first.parse::<usize>() {
+            let Some(arr) = v.as_array_mut() else { return };
+            let Some(next) = arr.get_mut(idx) else { return };
+            if rest.is_empty() {
+                if next.as_str().is_some_and(|s| !s.is_empty()) {
+                    *next = Value::String("<stamped>".into());
+                }
+            } else {
+                one(next, rest);
+            }
+            return;
+        }
+        let Some(obj) = v.as_object_mut() else { return };
+        if rest.is_empty() {
+            if obj
+                .get(*first)
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.is_empty())
+            {
+                obj.insert((*first).to_string(), Value::String("<stamped>".into()));
+            }
+            return;
+        }
+        if let Some(next) = obj.get_mut(*first) {
+            one(next, rest);
+        }
+    }
+    let mut out = v.clone();
+    for p in paths {
+        let segs: Vec<&str> = p.split('.').collect();
+        one(&mut out, &segs);
+    }
+    out
+}
+
 fn blank_paths(v: &Value, paths: &[String]) -> Value {
     fn blank_one(v: &mut Value, segments: &[&str]) {
         let Some((first, rest)) = segments.split_first() else {
@@ -245,6 +291,7 @@ fn check(
     name: &str,
     resp: &Response,
     normalize: &[String],
+    classify: &[String],
     failed: &mut Vec<String>,
 ) {
     let want = oracle
@@ -254,8 +301,8 @@ fn check(
     if (200..300).contains(&want_status) {
         match success_body(resp) {
             Some(body) => {
-                let got = blank_paths(&body, normalize);
-                let expect = blank_paths(&want["body"], normalize);
+                let got = classify_paths(&blank_paths(&body, normalize), classify);
+                let expect = classify_paths(&blank_paths(&want["body"], normalize), classify);
                 if norm(&got) != norm(&expect) {
                     eprintln!(
                         "[{name}] BODY MISMATCH:\n got {}\n want {}",
@@ -420,7 +467,14 @@ async fn wardrobe_routes_equivalence() {
             ),
             other => panic!("unknown case kind: {other}"),
         };
-        check(&oracle, &case.name, &resp, &case.normalize, &mut failed);
+        check(
+            &oracle,
+            &case.name,
+            &resp,
+            &case.normalize,
+            &case.classify,
+            &mut failed,
+        );
         checks += 1;
 
         // The two raw key-order claims (the richest read + the equip echo).
@@ -436,6 +490,7 @@ async fn wardrobe_routes_equivalence() {
                 &format!("{}__group", case.name),
                 &follow,
                 &case.group_normalize,
+                &[],
                 &mut failed,
             );
             checks += 1;
@@ -447,6 +502,7 @@ async fn wardrobe_routes_equivalence() {
                 &oracle,
                 &format!("{}__outfit", case.name),
                 &follow,
+                &[],
                 &[],
                 &mut failed,
             );

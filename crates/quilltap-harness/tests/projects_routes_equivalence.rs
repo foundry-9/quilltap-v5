@@ -113,6 +113,15 @@ fn blank_minted(v: &mut Value) {
                 o.insert(k.to_string(), Value::String(format!("<{k}>")));
             }
         }
+        // [P4.D120] `archivedAt` is CLASSIFIED, not blanked: a fresh stamp
+        // differs between the two runs, but `null` vs stamped is the whole
+        // point of the archive arms and must survive normalization.
+        if o.get("archivedAt")
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.is_empty())
+        {
+            o.insert("archivedAt".to_string(), Value::String("<stamped>".into()));
+        }
         o.iter_mut().for_each(|(_, x)| blank_minted(x));
     } else if let Value::Array(a) = v {
         a.iter_mut().for_each(blank_minted);
@@ -789,6 +798,65 @@ fn projects_routes_match_oracle() {
             json!({ "title": "Weathered Cloak", "description": null }),
         ));
         check("wardrobe_update", &response_data(&resp), true, &mut failed);
+    }
+    // ── P4.D120 / v4 `d25dacc1` ──────────────────────────────────────────
+    // The list's hard-coded `true` is gone; each of these archives the Cloak
+    // first, because a fresh fixture holds no archived garment and the flag
+    // could not otherwise discriminate.
+    for (name, include_archived) in [
+        ("wardrobe_list_hides_an_archived_garment", false),
+        (
+            "wardrobe_list_shows_an_archived_garment_with_the_flag",
+            true,
+        ),
+    ] {
+        let db = fresh_db(&spec, name);
+        let _ = rt.block_on(projects::project_wardrobe_update(
+            &db,
+            IOTA,
+            CLOAK,
+            json!({ "archived": true }),
+        ));
+        check(
+            name,
+            &response_data(&projects::project_wardrobe_list(
+                &db,
+                IOTA,
+                include_archived,
+            )),
+            true,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "w_arch");
+        let resp = rt.block_on(projects::project_wardrobe_update(
+            &db,
+            IOTA,
+            CLOAK,
+            json!({ "archived": true }),
+        ));
+        check(
+            "wardrobe_update_archives",
+            &response_data(&resp),
+            true,
+            &mut failed,
+        );
+    }
+    {
+        // The NEW 404, reachable only with `archived` in the body.
+        let db = fresh_db(&spec, "w_arch_miss");
+        let resp = rt.block_on(projects::project_wardrobe_update(
+            &db,
+            IOTA,
+            "eeeeeeee-eeee-4eee-8eee-eeeeeeeeee01",
+            json!({ "archived": true }),
+        ));
+        check_error(
+            "wardrobe_update_archived_missing_item_404",
+            &resp,
+            &mut failed,
+        );
     }
     {
         let db = fresh_db(&spec, "wd");
