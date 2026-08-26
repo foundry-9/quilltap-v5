@@ -301,10 +301,16 @@ test.describe('P4.D116 — the in-chat scenario picker', () => {
     const control = page.locator('qt-chat-scenario-control');
     await expect(control).toBeVisible({ timeout: 15_000 });
     const picker = control.locator('select');
-    await expect(picker).toBeVisible({ timeout: 15_000 });
-    await expect(picker.locator('option', { hasText: ARCHIVE_SCENARIO })).toHaveCount(0);
+    // The archived scenario is this project's ONLY one, so with the toggle off
+    // there is NOTHING to offer and v4's `hasAnyScenarioOptions` rule hides
+    // the whole dropdown (the checkbox deliberately sits OUTSIDE that @if so
+    // it stays reachable in exactly this state — the first live run's catch:
+    // hidden-entirely is a STRONGER hiding than an option-less select).
+    await expect(control.getByRole('checkbox')).toBeVisible({ timeout: 15_000 });
+    await expect(picker).toHaveCount(0);
 
     await control.getByRole('checkbox').check();
+    await expect(picker).toBeVisible({ timeout: 15_000 });
     await expect(
       picker.locator('option', { hasText: `${ARCHIVE_SCENARIO} (archived)` }),
     ).toHaveCount(1, { timeout: 10_000 });

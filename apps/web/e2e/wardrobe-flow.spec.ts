@@ -302,6 +302,13 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await page.getByRole('button', { name: '+ New Item' }).click();
     await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeVisible();
     await page.locator('#wardrobe-title').fill(ARCHIVE_GARMENT);
+    // Create is disabled until a Type is ticked (v4's own isSaveDisabled rule
+    // — the first live run's catch; the sibling beats' gesture adopted).
+    await page
+      .locator('label')
+      .filter({ hasText: 'accessories' })
+      .locator('input[type="checkbox"]')
+      .click();
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     const row = () =>
       page.locator('.qt-card-interactive').filter({ hasText: ARCHIVE_GARMENT }).first();
@@ -351,7 +358,11 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await openAriaDetail(page);
     await openWardrobeDialog(page);
 
-    const section = page.locator('qt-wardrobe-instructions-section');
+    // Scoped to the DIALOG's section: the character detail behind it mounts
+    // the Aurora wardrobe TAB, which hosts its own section (v4 has both
+    // mounts too) — an unscoped locator strict-mode-fails on the pair (the
+    // first live run's catch).
+    const section = page.getByRole('dialog').locator('qt-wardrobe-instructions-section');
     await expect(section).toBeVisible({ timeout: 10_000 });
     // Collapsed, and nothing on file yet.
     await expect(section).toContainText('None on file', { timeout: 10_000 });
@@ -369,7 +380,10 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     // Reopen the dialog: the file came back from the server.
     await page.getByRole('button', { name: 'Done' }).click();
     await page.getByRole('button', { name: 'Open wardrobe for Aria' }).click();
-    const reopened = page.locator('qt-wardrobe-instructions-section');
+    // Dialog-scoped like `section` above — the tab's own section is still
+    // mounted behind the dialog (and still reads "None on file": it loaded
+    // before the save and does not refetch, in v4 as here).
+    const reopened = page.getByRole('dialog').locator('qt-wardrobe-instructions-section');
     await expect(reopened).toContainText('On file', { timeout: 10_000 });
     await reopened.getByRole('button', { name: /Dressing Instructions/ }).click();
     await expect(reopened.locator('.qt-rich-editor-content')).toContainText(DRESSING_TEXT);
