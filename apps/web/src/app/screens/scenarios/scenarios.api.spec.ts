@@ -19,9 +19,12 @@ import {
  *  2. `setScenarioArchived` re-sends the row's fields with the flag, dropping
  *     an `isDefault` claim on the way in — an archived scenario can never be
  *     the default, and a dead `isDefault: true` would sit in the file.
- *  3. The RELIST divergence: because the Shared contract puts `includeArchived`
- *     on the list verbs ONLY, a mutation made with the toggle on re-reads the
- *     list instead of trusting the mutate body (which would be archived-free).
+ *  3. The mutate verbs CARRY `includeArchived` (v4 threads it onto the mutate
+ *     URLs; the server's Update/Rename/Delete honour it on their fresh-list
+ *     returns), so the mutate body is applied directly in BOTH toggle states —
+ *     the lane's interim relist divergence was retired at unification. CREATE
+ *     is the exception: v4's create route reads the BODY's `archived`, not the
+ *     param (the survey-§E.4 quirk), so its response is applied as-is.
  */
 
 interface Req {
@@ -153,7 +156,7 @@ describe('makeScenarioMutator — the archive half (v4 d25dacc1)', () => {
     expect(h.sent.some((r) => r.type === 'scenarioUpdate')).toBe(false);
   });
 
-  it('with the toggle OFF, a mutation applies the mutate body (no extra read)', async () => {
+  it('a mutation applies its own body and fires NO extra list read (both toggle states)', async () => {
     const h = harness((core) => generalScenarioMutator(core), {
       mutateList: [dto({ path: 'Scenarios/after.md', name: 'After' })],
     });
@@ -165,21 +168,33 @@ describe('makeScenarioMutator — the archive half (v4 d25dacc1)', () => {
     expect(h.mutator.warnings()).toEqual(['from mutate']);
   });
 
-  it('with the toggle ON, a mutation RE-READS the list instead (the recorded divergence)', async () => {
+  it('with the toggle ON, the mutate verbs CARRY includeArchived — v4 threads it onto the mutate URLs and the server honours it (the interim relist divergence, retired at unification)', async () => {
     const h = harness((core) => generalScenarioMutator(core), {
-      mutateList: [dto({ path: 'Scenarios/blind.md', name: 'Archived-free answer' })],
+      mutateList: [dto({ name: 'Tavern', archived: true })],
     });
     h.mutator.setShowArchived(true);
     await settle();
-    h.listRows = [dto({ name: 'Tavern', archived: true })];
     const before = h.sent.filter((r) => r.type === 'scenarioList').length;
 
     await h.mutator.updateScenario('Scenarios/tavern.md', { body: 'x' });
 
-    expect(h.sent.filter((r) => r.type === 'scenarioList').length).toBe(before + 1);
-    // The mutate body — which cannot honour the flag — never reaches the list.
-    expect(h.mutator.scenarios().map((s) => s.name)).toEqual(['Tavern']);
+    // No relist — the mutate response IS the list, and it asked for archived.
+    expect(h.sent.filter((r) => r.type === 'scenarioList').length).toBe(before);
+    const update = h.sent.find((r) => r.type === 'scenarioUpdate');
+    expect(update).toMatchObject({ includeArchived: true });
     expect(h.mutator.scenarios()[0].archived).toBe(true);
-    expect(h.mutator.warnings()).toEqual(['from list']);
+    expect(h.mutator.warnings()).toEqual(['from mutate']);
+  });
+
+  it('with the toggle OFF, the mutate verbs carry includeArchived: false; CREATE never carries it (v4 reads the BODY there)', async () => {
+    const h = harness((core) => generalScenarioMutator(core));
+    await h.mutator.deleteScenario('Scenarios/tavern.md');
+    expect(h.sent.find((r) => r.type === 'scenarioDelete')).toMatchObject({
+      includeArchived: false,
+    });
+    await h.mutator.createScenario({ name: 'N', body: 'b', filename: 'n' });
+    const create = h.sent.find((r) => r.type === 'scenarioCreate');
+    expect(create).toBeDefined();
+    expect(create).not.toHaveProperty('includeArchived');
   });
 });

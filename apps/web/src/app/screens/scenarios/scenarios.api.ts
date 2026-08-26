@@ -81,9 +81,13 @@ interface MutateBody {
 interface ScenarioOps {
   list(includeArchived: boolean): Promise<ScenarioListDto>;
   create(scenario: ScenarioCreateBag): Promise<MutateBody>;
-  update(scenarioPath: string, scenario: ScenarioUpdateBag): Promise<MutateBody>;
-  rename(scenarioPath: string, newFilename: string): Promise<MutateBody>;
-  remove(scenarioPath: string): Promise<MutateBody>;
+  update(
+    scenarioPath: string,
+    scenario: ScenarioUpdateBag,
+    includeArchived: boolean,
+  ): Promise<MutateBody>;
+  rename(scenarioPath: string, newFilename: string, includeArchived: boolean): Promise<MutateBody>;
+  remove(scenarioPath: string, includeArchived: boolean): Promise<MutateBody>;
 }
 
 function errorMessage(err: unknown): string {
@@ -109,25 +113,15 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
     warnings.set(body.warnings ?? []);
   }
 
-  /**
-   * ⚠ **Recorded mechanism divergence.** v4 threads `?includeArchived=true`
-   * onto the mutate URLs too, so a PUT/POST/DELETE answers a freshly listed
-   * set that still contains the row it just changed. The P4.D119/P4.D121
-   * Shared contract B1 puts `includeArchived` on the LIST verbs ONLY, and a
-   * dispatch verb silently IGNORES an unknown field (memory:
-   * `dispatch-verb-ignores-unknown-fields`) — sending it on a mutate verb
-   * would answer an archived-free list while the checkbox claimed otherwise.
-   * So with the toggle on, the mutate body is discarded and the list is
-   * re-read through the one verb that honours the flag. Same final list, no
-   * intermediate paint (the mutate body is never applied on that path).
-   */
-  async function applyMutateOrRelist(body: MutateBody): Promise<void> {
-    if (showArchived()) {
-      await refresh({ silent: true });
-      return;
-    }
-    applyMutate(body);
-  }
+  // v4's shape, restored at unification: the server's Update/Rename/Delete
+  // verbs DO carry `includeArchived` (P4.D120 threaded it to their fresh-list
+  // returns), so a mutation's own response is the authoritative list and no
+  // re-read is needed — the lane-recorded relist divergence is retired.
+  // ⚠ CREATE deliberately does NOT carry the flag: v4's create route refreshes
+  // its returned list from the BODY's `archived`, not the query param (the
+  // survey-§E.4 quirk, reproduced server-side) — so creating an ACTIVE
+  // scenario with "Show archived" ticked answers an archived-free list, in v4
+  // as here, until the next refresh.
 
   async function refresh(opts?: { silent?: boolean }): Promise<void> {
     // A silent refresh (workspace tab re-activation) keeps the current list on
@@ -153,7 +147,7 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
   ): Promise<ScenarioResult<{ path: string }>> {
     try {
       const body = await ops.create(input);
-      await applyMutateOrRelist(body);
+      applyMutate(body);
       return { ok: true, path: body.path ?? '' };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
@@ -165,7 +159,7 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
     input: ScenarioUpdateInput,
   ): Promise<ScenarioResult> {
     try {
-      await applyMutateOrRelist(await ops.update(scenarioPath, input));
+      applyMutate(await ops.update(scenarioPath, input, showArchived()));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
@@ -177,8 +171,8 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
     newFilename: string,
   ): Promise<ScenarioResult<{ path: string }>> {
     try {
-      const body = await ops.rename(scenarioPath, newFilename);
-      await applyMutateOrRelist(body);
+      const body = await ops.rename(scenarioPath, newFilename, showArchived());
+      applyMutate(body);
       return { ok: true, path: body.path ?? '' };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
@@ -187,7 +181,7 @@ export function makeScenarioMutator(ops: ScenarioOps): ScenarioMutator {
 
   async function deleteScenario(scenarioPath: string): Promise<ScenarioResult> {
     try {
-      await applyMutateOrRelist(await ops.remove(scenarioPath));
+      applyMutate(await ops.remove(scenarioPath, showArchived()));
       return { ok: true };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
@@ -273,25 +267,28 @@ export function projectScenarioMutator(core: CoreClient, projectId: string): Sce
         projectId,
         scenario,
       })) as MutateBody,
-    update: async (scenarioPath, scenario) =>
+    update: async (scenarioPath, scenario, includeArchived) =>
       (await core.dispatchData({
         type: 'projectScenarioUpdate',
         projectId,
         scenarioPath,
         scenario,
+        includeArchived,
       })) as MutateBody,
-    rename: async (scenarioPath, newFilename) =>
+    rename: async (scenarioPath, newFilename, includeArchived) =>
       (await core.dispatchData({
         type: 'projectScenarioRename',
         projectId,
         scenarioPath,
         newFilename,
+        includeArchived,
       })) as MutateBody,
-    remove: async (scenarioPath) =>
+    remove: async (scenarioPath, includeArchived) =>
       (await core.dispatchData({
         type: 'projectScenarioDelete',
         projectId,
         scenarioPath,
+        includeArchived,
       })) as MutateBody,
   });
 }
@@ -306,15 +303,25 @@ export function generalScenarioMutator(core: CoreClient): ScenarioMutator {
       })) as unknown as ScenarioListDto,
     create: async (scenario) =>
       (await core.dispatchData({ type: 'scenarioCreate', scenario })) as MutateBody,
-    update: async (scenarioPath, scenario) =>
-      (await core.dispatchData({ type: 'scenarioUpdate', scenarioPath, scenario })) as MutateBody,
-    rename: async (scenarioPath, newFilename) =>
+    update: async (scenarioPath, scenario, includeArchived) =>
+      (await core.dispatchData({
+        type: 'scenarioUpdate',
+        scenarioPath,
+        scenario,
+        includeArchived,
+      })) as MutateBody,
+    rename: async (scenarioPath, newFilename, includeArchived) =>
       (await core.dispatchData({
         type: 'scenarioRename',
         scenarioPath,
         newFilename,
+        includeArchived,
       })) as MutateBody,
-    remove: async (scenarioPath) =>
-      (await core.dispatchData({ type: 'scenarioDelete', scenarioPath })) as MutateBody,
+    remove: async (scenarioPath, includeArchived) =>
+      (await core.dispatchData({
+        type: 'scenarioDelete',
+        scenarioPath,
+        includeArchived,
+      })) as MutateBody,
   });
 }

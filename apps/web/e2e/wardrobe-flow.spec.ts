@@ -83,7 +83,7 @@ const P4D112_TRANSFER_COMPONENTS_LANDED = true;
  * `dispatch-verb-ignores-unknown-fields`), so the beat would fail for a reason
  * that says nothing about this lane. Flip to `true` at unification.
  */
-const P4D120_SERVER_LANDED = false;
+const P4D120_SERVER_LANDED = true;
 
 /**
  * ACTIVATE-AT-UNIFY (P4.D121 → P4.D119). The dressing-instructions round trip
@@ -91,7 +91,7 @@ const P4D120_SERVER_LANDED = false;
  * dispatch answers `unknown variant` and the section reads "None on file"
  * forever. Flip to `true` at unification.
  */
-const P4D119_INSTRUCTIONS_LANDED = false;
+const P4D119_INSTRUCTIONS_LANDED = true;
 
 const WARDROBE_PORT = 4329;
 const BASE_URL = `http://127.0.0.1:${WARDROBE_PORT}`;

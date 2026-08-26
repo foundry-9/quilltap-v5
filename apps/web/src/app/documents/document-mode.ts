@@ -2,6 +2,7 @@ import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core'
 
 import type { MessageDto } from '../core/core-contract';
 import { DocumentApi, type ActiveDocument } from './document-api';
+import { DOCUMENT_OPENED_EVENT, type DocumentOpenedDetail } from './open-document-in-chat';
 import { isMarkdownFile } from './frontmatter';
 import { formatAutosaveNotification } from './unified-diff';
 import { ToastService } from '../ui/toast.service';
@@ -168,7 +169,25 @@ export class DocumentModeController {
   private lastHydratedKey: string | null = null;
 
   constructor() {
+    // External opens (the search results, or any non-Salon surface) resolve
+    // through the API and announce themselves on the window; when one lands in
+    // THIS chat, reconcile the open-document set and focus the new row so the
+    // pane appears without a manual reload (v4 `useDocumentMode.ts:725-742`;
+    // the P4.D122 PENDING_CROSS_LANE hand-off, discharged at unification).
+    // v4 focuses only AFTER the reconcile resolves, and only when the event
+    // carries a `chatDocumentId`.
+    const onDocumentOpened = (event: Event) => {
+      const detail = (event as CustomEvent<DocumentOpenedDetail>).detail;
+      if (!detail || detail.chatId !== this.chatId) return;
+      void this.reconcileOpenDocuments().then(() => {
+        if (detail.chatDocumentId) {
+          this.focusedDocId.set(detail.chatDocumentId);
+        }
+      });
+    };
+    window.addEventListener(DOCUMENT_OPENED_EVENT, onDocumentOpened);
     this.destroyRef.onDestroy(() => {
+      window.removeEventListener(DOCUMENT_OPENED_EVENT, onDocumentOpened);
       for (const t of this.autosaveTimers.values()) clearTimeout(t);
       this.autosaveTimers.clear();
     });

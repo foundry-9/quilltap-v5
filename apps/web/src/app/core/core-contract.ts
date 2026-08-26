@@ -1719,17 +1719,26 @@ export interface ProjectScenarioUpdateRequest {
   projectId: string;
   scenarioPath: string;
   scenario: ScenarioUpdateBag;
+  /** The fresh list in the response honours the flag (v4 threads
+   * `?includeArchived` onto the mutate URLs too; `d25dacc1`). */
+  includeArchived?: boolean;
 }
 export interface ProjectScenarioRenameRequest {
   type: 'projectScenarioRename';
   projectId: string;
   scenarioPath: string;
   newFilename: string;
+  /** The fresh list in the response honours the flag (v4 threads
+   * `?includeArchived` onto the mutate URLs too; `d25dacc1`). */
+  includeArchived?: boolean;
 }
 export interface ProjectScenarioDeleteRequest {
   type: 'projectScenarioDelete';
   projectId: string;
   scenarioPath: string;
+  /** The fresh list in the response honours the flag (v4 threads
+   * `?includeArchived` onto the mutate URLs too; `d25dacc1`). */
+  includeArchived?: boolean;
 }
 
 /**
@@ -1758,15 +1767,24 @@ export interface ScenarioUpdateRequest {
   type: 'scenarioUpdate';
   scenarioPath: string;
   scenario: ScenarioUpdateBag;
+  /** The fresh list in the response honours the flag (v4 threads
+   * `?includeArchived` onto the mutate URLs too; `d25dacc1`). */
+  includeArchived?: boolean;
 }
 export interface ScenarioRenameRequest {
   type: 'scenarioRename';
   scenarioPath: string;
   newFilename: string;
+  /** The fresh list in the response honours the flag (v4 threads
+   * `?includeArchived` onto the mutate URLs too; `d25dacc1`). */
+  includeArchived?: boolean;
 }
 export interface ScenarioDeleteRequest {
   type: 'scenarioDelete';
   scenarioPath: string;
+  /** The fresh list in the response honours the flag (v4 threads
+   * `?includeArchived` onto the mutate URLs too; `d25dacc1`). */
+  includeArchived?: boolean;
 }
 
 /** Project wardrobe (v4 `/projects/:id/wardrobe`) — reuses the character wardrobe machinery. */

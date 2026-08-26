@@ -302,3 +302,46 @@ describe('DocumentModeController (v4 useDocumentMode)', () => {
 async function flush(): Promise<void> {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 }
+
+// --- The external-open listener (v4 useDocumentMode:725-742; the P4.D122
+// PENDING_CROSS_LANE hand-off, discharged at unification) -------------------
+describe('DocumentModeController external-open reconcile', () => {
+  it('a quilltap:document-opened event for THIS chat reconciles and focuses the new row', async () => {
+    const { ctrl, api } = build();
+    api.openDocsResult = [record({ id: 'd7', filePath: 'opened-elsewhere.md' })];
+    window.dispatchEvent(
+      new CustomEvent('quilltap:document-opened', {
+        detail: { chatId: 'c1', chatDocumentId: 'd7' },
+      }),
+    );
+    await flush();
+    expect(api.fetchOpenDocuments).toHaveBeenCalledWith('c1');
+    expect(ctrl.openDocs().map((e) => e.document.id)).toEqual(['d7']);
+    expect(ctrl.focusedDocId()).toBe('d7');
+  });
+
+  it("another chat's event is ignored — no reconcile, no focus", async () => {
+    const { ctrl, api } = build();
+    window.dispatchEvent(
+      new CustomEvent('quilltap:document-opened', {
+        detail: { chatId: 'someone-else', chatDocumentId: 'd7' },
+      }),
+    );
+    await flush();
+    expect(api.fetchOpenDocuments).not.toHaveBeenCalled();
+    expect(ctrl.focusedDocId()).toBeNull();
+  });
+
+  it('an event without a chatDocumentId reconciles but leaves the focus alone (v4 gates the focus, not the reconcile)', async () => {
+    const { ctrl, api } = build();
+    api.openDocsResult = [record({ id: 'd8' })];
+    window.dispatchEvent(
+      new CustomEvent('quilltap:document-opened', { detail: { chatId: 'c1' } }),
+    );
+    await flush();
+    expect(api.fetchOpenDocuments).toHaveBeenCalledTimes(1);
+    expect(ctrl.focusedDocId()).not.toBe('d8');
+    // The reconcile still ADDED the row; only the explicit focus is gated.
+    expect(ctrl.openDocs().map((e) => e.document.id)).toEqual(['d8']);
+  });
+});

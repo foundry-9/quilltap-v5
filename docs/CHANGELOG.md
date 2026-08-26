@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(spa): the b220999d-round unification wires
+
+_Versions: SPA 0.5.576._
+
+The cross-lane obligations no single lane could discharge. The P4.D122
+`PENDING_CROSS_LANE` hand-off: `DocumentModeController` now listens for
+`quilltap:document-opened` (v4 `useDocumentMode.ts:725-742`) and, for its own
+chat, reconciles the open-document set and focuses the new row only after the
+reconcile resolves and only when the event names a `chatDocumentId` — three
+specs pin the match, the ignore, and the focus gate; an external open into an
+already-split Salon no longer waits for a reload. The scenario mutator's
+interim relist divergence is RETIRED to v4's shape: the server's scenario
+Update/Rename/Delete verbs carry `includeArchived` (P4.D120 threaded it to
+their fresh-list returns), so the SPA now sends the flag on the mutate verbs
+and applies each response directly — create stays flagless, faithfully
+reproducing v4's body-not-param refresh quirk — with the spec arms rewritten
+to pin the new shape and the six contract request types gaining the field.
+The three gated e2e beats (`P4D120_SERVER_LANDED` ×2,
+`P4D119_INSTRUCTIONS_LANDED`) are flipped live now that the server lane is on
+the branch.
+
 #### 2026-08-26 — fix(api,search,spa): the b220999d-round §3 review findings
 
 _Versions: core 0.0.677, harness 0.0.586, web 0.0.92, SPA 0.5.575 (the

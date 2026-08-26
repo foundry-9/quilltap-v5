@@ -43,7 +43,7 @@ const P4D115_SERVER_LANDED = true;
  * archive would answer 200 with nothing written and the reds would say nothing
  * about THIS lane. ACTIVATE-AT-UNIFY: the unifier flips this to `true`.
  */
-const P4D120_SERVER_LANDED = false;
+const P4D120_SERVER_LANDED = true;
 
 const SCENE_PORT = 4330;
 const SCENE_BASE_URL = `http://127.0.0.1:${SCENE_PORT}`;
