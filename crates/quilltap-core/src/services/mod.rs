@@ -27,6 +27,7 @@
 //!   injected; verified by a plain tier-2 differential.
 
 pub mod activity_kinds;
+pub mod activity_registry;
 pub mod aesthetics;
 pub mod agent_mode;
 pub mod annotations;

@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(jobs): the in-flight activity registry
+
+_Versions: core 0.0.679._
+
+Ports v4 `664cfca84`'s activity registry: the other half of the toolbar chips,
+counting work that never becomes a `background_jobs` row. `track_activity`
+counts a kind for the whole span including failures, re-entrant by kind so a
+shared chokepoint can be wrapped without inflating the chip when a job of the
+same kind calls it; `run_attributed_to_job` attributes a handler without adding
+a count; `begin_activity` returns an idempotent guard; the monotonic
+`startedByKind` totals gate on a 250 ms threshold so a cache hit never makes a
+chip flicker.
+
+Two deliberate v5 shapes. v4's child-IPC mirror does not port — v5's job runner
+is in-process, so `local` is the whole truth and there is no crash mirror to
+zero. And attribution is a hand-rolled poll-scoped thread-local rather than
+`tokio::task_local!`, because that lives behind tokio's `rt` feature and the
+default core build has no scheduler; the guard also ends on `Drop`, which v4
+does not need because JavaScript futures cannot be cancelled.
+
+Eighteen unit tests mirror v4's own suite. Five mutations were run; the first
+pass caught a vacuous idempotence case — the floor at zero absorbs a missing
+latch, in v4's test as much as ours — so two cases that actually see it were
+added.
+
 #### 2026-08-26 — feat(jobs): the activity-kind tables behind the toolbar chips
 
 _Versions: core 0.0.678, harness 0.0.587._

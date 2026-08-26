@@ -88723,3 +88723,50 @@ shape it does not recognize throws rather than emitting a partial table.
 `WARDROBE_OUTFIT_ANNOUNCEMENT` summary→memory (job table), `outfit-selection`
 image→summary (task table), and swapping `Danger`/`Image` in `ACTIVITY_KINDS`
 (the wire order arm).
+
+### P4.D123 unit 2 — the in-flight activity registry (v4 `664cfca84`)
+
+`services/activity_registry.rs`: `track_activity` / `run_attributed_to_job` /
+`begin_activity` + the `ActivitySpan` guard, `activity_counts()`,
+`activity_start_totals()`, `BLIP_THRESHOLD_MS = 250`, and the
+`ActivityTestGuard` other crates use to serialize against the process-global
+statics.
+
+**NO-PORT, with evidence — the child-IPC mirror.** v4's
+`applyChildActivityDelta` / `resetChildActivity` / `mirrorToParent` /
+`isJobChild` exist only because v4's job handlers run in a forked child, so the
+child must mirror its spans to the parent and the parent must zero them on child
+death. v5's runner is in-process (`job_runner.rs`'s header records why the whole
+fork/IPC apparatus dissolved), so `local` IS `getActivityCounts()` and there is
+no crash mirror. The **accounting** semantics all ported.
+
+**Two deliberate v5 shapes, both recorded in the module header:**
+
+1. **Attribution is hand-rolled, not `tokio::task_local!`.** That macro is inside
+   tokio's `cfg_rt!`, and the default `quilltap-core` build has
+   `default-features = false, features = ["sync", "time"]` — no scheduler at all
+   until `native-transport`. So `Attributed<F>` installs a thread-local bitmask
+   for the duration of each `poll` and restores it after, which is the mechanism
+   `TaskLocalFuture` itself uses and works under any executor, or none. ⚠ It does
+   not cross `tokio::spawn`; surveyed at all ten wrapped sites this round, none
+   spawns same-kind work (`join_all` resolves are polled inside the caller's own
+   poll and DO inherit). A future wrapped path that spawns must record the
+   divergence rather than silently double-count.
+2. **`ActivitySpan` also ends on `Drop`.** v4 relies on `finally`, which in
+   JavaScript always runs — there is no cancellation. A Rust future dropped
+   mid-await would strand the count exactly the way v4's child crash used to.
+   Every ported call site still ends explicitly, so the drop leg only fires on
+   cancellation.
+
+**Eighteen unit tests** mirror v4's own
+`__tests__/unit/background-jobs/activity-registry.test.ts` semantic for
+semantic (its four `child mirror` cases have no v5 analogue).
+
+**Mutation proofs — five run, and the first pass FOUND A VACUOUS CASE.** Dropping
+the re-entrancy check reds 3 cases; blip threshold 250 → 0 reds 2; removing the
+floor at zero reds 1; emptying `Drop` reds 5. But **removing the idempotence latch
+stayed GREEN**: v4's test shape (`end(); end();` on a lone span, assert 0) cannot
+see it, because the floor absorbs the second decrement — 1 → 0 → max(0, −1) = 0.
+**v4's own test has the same blind spot.** Two cases that do see it were added: a
+duplicated end must not steal a *concurrent* same-kind span's count, and a long
+span must record ONE blip, not two. The mutation now reds exactly those two.
