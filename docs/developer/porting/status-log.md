@@ -88675,3 +88675,51 @@ front door is worth its own look at the next `/setupphase`.
 chat whose participants resolve to exactly one group), the Brahma budget on a
 deep query, memory dedup + conversation-summaries, and the NanoGPT caching smoke
 / the #101 cost question.
+
+---
+
+## The `f3892158d` drift catch-up round — lane P4.D123 + P4.D124 (server, stacked)
+
+**Branch:** `claude/p4-jobs-realtime-porting-28b6fb`. **v4 baseline for the
+round:** `b220999da`; **lane pin:** `/tmp/qt-v4-pin-p4d123-f3892158d` (detached
+at `f3892158d`, the direct child of `664cfca84`, so one pin serves both stacked
+orders). Drift-ledger §2 freshness probe run at lane start: **PASS** (checkout
+on `main`, tree clean, both logs empty).
+
+### P4.D123 unit 1 — the activity-kind tables (v4 `664cfca84`)
+
+`services/activity_kinds.rs` is new: `ActivityKind` (a five-variant enum, whose
+variant order IS the wire key order of `activeByKind`/`startedByKind`),
+`ACTIVITY_KINDS`, the total `JOB_TYPE_ACTIVITY` table, the tolerant
+`activity_kind_for_job_type`, and `ActivityCounts` (v4's
+`Record<ActivityKind, number>`, whose `to_json()` emits exactly the five keys in
+kind order). `TASK_TYPE_ACTIVITY` + `activity_kind_for_task` land beside their
+one call site in `services/cheap_llm_exec.rs`, as they do in v4.
+
+**v4's totality property is type-level; v5's is mechanical.** v4 spells the map
+`Record<BackgroundJobType, ActivityKind | null>`, so a new job type without a
+chip is a compile error. v5's job types are strings (the enqueue gate
+`api::system_data::JOB_TYPES`, which this unit makes `pub`), so the twin is a
+unit test asserting the table's key set equals that gate list in BOTH directions
+— plus, in the differential, the same assertion against v4's REAL
+`BackgroundJobTypeEnum.options`, which catches a drift in either list.
+
+**NOT ported here, recorded:** `ACTIVITY_CHIPS` (labels, titles, `badgeClass`,
+render order) is client-only display metadata — the Angular half (P4.D125)
+transcribes it, including the `image` chip's historical
+`qt-queue-badge-story` badgeClass. The five kind ids are the whole server↔client
+join.
+
+**Differential — NEW tier-1 family `activity_tables_equivalence`** (oracle
+`harness/oracle/cases/activity-tables.ts`, recipe self-contained in the `.rs`
+header, run through the sweep driver at the lane pin). Four arms: `ACTIVITY_KINDS`
+in order; `JOB_TYPE_ACTIVITY` with entry order; the totality re-derivation against
+v4's real enum and v5's gate; `TASK_TYPE_ACTIVITY` with entry order. ⚠ v4's
+`TASK_TYPE_ACTIVITY` is module-private, so the oracle reads it out of
+`core-execution.ts`'s source with a deliberately STRICT parser — any literal
+shape it does not recognize throws rather than emitting a partial table.
+
+**Mutation-proven, three, each reddening exactly its own arm:**
+`WARDROBE_OUTFIT_ANNOUNCEMENT` summary→memory (job table), `outfit-selection`
+image→summary (task table), and swapping `Danger`/`Image` in `ACTIVITY_KINDS`
+(the wire order arm).

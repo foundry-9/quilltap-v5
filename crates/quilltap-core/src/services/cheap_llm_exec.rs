@@ -41,6 +41,7 @@ use crate::model::completion::{
     CompletionError, CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
     CompletionUsage,
 };
+use crate::services::activity_kinds::ActivityKind;
 use crate::services::llm_logging::{
     log_llm_call, map_task_type_to_log_type, LogContext, LogLlmCallParams, LogRequest,
     LogRequestMessage, LogResponse, LogUsage,
@@ -763,6 +764,57 @@ impl CheapLlmTaskExecutor {
             },
         }
     }
+}
+
+/// Which toolbar chip each cheap-LLM task lights (v4 `TASK_TYPE_ACTIVITY`,
+/// `664cfca84:lib/memory/cheap-llm-tasks/core-execution.ts`).
+///
+/// Every cheap-LLM task funnels through [`CheapLlmExecutor::execute`], so this
+/// is the one place that has to know. A task type absent from the map falls
+/// back to `summary` rather than going uncounted — v4's rule verbatim: "a chip
+/// that is slightly generous is better than a chip that quietly lies".
+///
+/// Transcribed from v4's source; pinned by `activity_tables_equivalence`.
+pub const TASK_TYPE_ACTIVITY: &[(&str, ActivityKind)] = &[
+    // Image pipelines — prompt crafting and appearance work is part of the
+    // image the user is waiting on, so it belongs inside the same span.
+    ("craft-image-prompt", ActivityKind::Image),
+    ("craft-story-background-prompt", ActivityKind::Image),
+    ("derive-scene-context", ActivityKind::Image),
+    ("resolve-character-appearances", ActivityKind::Image),
+    ("sanitize-appearance", ActivityKind::Image),
+    ("describe-attachment", ActivityKind::Image),
+    ("outfit-selection", ActivityKind::Image),
+    // the Commonplace Book
+    ("memory-extraction-self", ActivityKind::Memory),
+    ("memory-extraction-other", ActivityKind::Memory),
+    ("batch-memory-extraction", ActivityKind::Memory),
+    ("fold-episode-extraction", ActivityKind::Memory),
+    ("memory-keyword-extraction", ActivityKind::Memory),
+    ("memory-recap-summarization", ActivityKind::Memory),
+    // Summarization and post-turn processing
+    ("fold-chat-summary", ActivityKind::Summary),
+    ("summarize-chat", ActivityKind::Summary),
+    ("update-context-summary", ActivityKind::Summary),
+    ("consider-title-update", ActivityKind::Summary),
+    ("consider-help-chat-title-update", ActivityKind::Summary),
+    ("scene-state-tracking", ActivityKind::Summary),
+    ("compress-conversation-history", ActivityKind::Summary),
+    ("compress-memories", ActivityKind::Summary),
+    ("compress-system-prompt", ActivityKind::Summary),
+];
+
+/// v4 `activityKindForTask`: the map, or `summary` for anything absent (a
+/// missing `taskType` included — v4's `(taskType && MAP[taskType]) || 'summary'`).
+pub fn activity_kind_for_task(task_type: Option<&str>) -> ActivityKind {
+    task_type
+        .and_then(|t| {
+            TASK_TYPE_ACTIVITY
+                .iter()
+                .find(|(k, _)| *k == t)
+                .map(|(_, kind)| *kind)
+        })
+        .unwrap_or(ActivityKind::Summary)
 }
 
 #[cfg(test)]

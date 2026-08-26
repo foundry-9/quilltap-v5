@@ -26,6 +26,7 @@
 //!   chain *driver* `executeTurnChain` is a later wave); RNG + wall clock
 //!   injected; verified by a plain tier-2 differential.
 
+pub mod activity_kinds;
 pub mod aesthetics;
 pub mod agent_mode;
 pub mod annotations;

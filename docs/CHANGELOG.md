@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(jobs): the activity-kind tables behind the toolbar chips
+
+_Versions: core 0.0.678, harness 0.0.587._
+
+Ports the two static tables v4 `664cfca84` introduced. `JOB_TYPE_ACTIVITY`
+maps every one of the 23 background-job types to one of five activity kinds
+(memory, embedding, summary, danger, image) or to an explicit `None`; v4 gets
+its totality from `Record<BackgroundJobType, …>`, and since v5's job types are
+strings, a unit test asserts the table's key set equals the enqueue gate's list
+in both directions. `TASK_TYPE_ACTIVITY` maps the 22 cheap-LLM task types, with
+v4's fall-back-to-summary rule for anything absent.
+
+New differential `activity_tables_equivalence` diffs both tables — entry order
+included — plus `ACTIVITY_KINDS` and v4's real `BackgroundJobTypeEnum.options`,
+against v4's exports. `ACTIVITY_CHIPS` is client-only display metadata and does
+not port here.
+
 #### 2026-08-26 — docs(porting): the `f3892158d` drift catch-up round ordered — three work orders across two lanes
 
 _Docs-only change._

@@ -607,7 +607,7 @@ pub fn jobs_list(
 }
 
 /// v4's `BackgroundJobTypeEnum` (23 values) — the enqueue type gate.
-const JOB_TYPES: &[&str] = &[
+pub const JOB_TYPES: &[&str] = &[
     "MEMORY_EXTRACTION",
     "INTER_CHARACTER_MEMORY",
     "CONTEXT_SUMMARY",
