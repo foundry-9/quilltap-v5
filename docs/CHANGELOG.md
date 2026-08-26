@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): drift check — five v4 commits, three features on just-ported surfaces
+
+_Docs-only change._
+
+`/driftcheck` against the `8f9101370` baseline. v4 `main` has moved five
+commits (all dated 2026-08-25); `bugfix` is unmoved at `3a76b17df` with no
+unabsorbed content; the checkout is clean on `main`.
+
+Three features, two docs-only specs. `b86bb1a58` adds a per-tier
+`Wardrobe/instructions.md` read when a character dresses themselves —
+landing on the tri-tier cascade (P4.D39), the vault projection sweep (which
+gains a `preserveFileNames` exemption), the four wardrobe collection routes
+(P4.D112/P4.D113), the Almanack garment counts, and the prompt-field hints
+table. `d25dacc1d` makes scenarios and wardrobe items archivable across all
+four scopes — 84 files, landing squarely on the scenario feature unified the
+day before (P4.D115/P4.D116) and on the Green Room candidate pool, with
+server-side filtering replacing two client-side passes. `b220999da` adds a
+`documents` type to the global search: a new document-text-search module
+over the doc-mount repos, plus a behavior change on the ported `uiSearch`
+verb (P4.9P) whose ordered type list also reorders the existing chips and
+result groups. The two docs commits are the specs for the latter two.
+
+No SQL DDL moved, so no D23 re-dump is implied — the one `schema.ts` hunk is
+the vault overlay's TS constant re-export. No bug-doc changes in the range,
+so no convergence rows.
+
+**The regen rule flips to PIN REQUIRED**: v4 HEAD is past the baseline, so
+every oracle regeneration now runs from a lane-unique detached worktree
+pinned at `8f9101370` (§5.1).
+
 #### 2026-08-25 — test(salon): the scenario walk's first live run — three gesture repairs
 
 _Versions: SPA 0.5.566._
