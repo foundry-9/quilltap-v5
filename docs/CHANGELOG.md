@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
+
+_Docs-only change._
+
+Four work orders for the next round, planned from fresh v4 surveys (the
+freshness probe passed; the ledger's four UNPROCESSED rows are marked
+ORDERED in the same commit). P4.D131 retires the bug-105 divergence arm to
+a plain equality now that v4 converged at `679e450e3` — measurement-led per
+ledger §5.4, zero production-source change expected. P4.D132 ports v4's
+Tooltip primitive (`0bd841394`) with its action-bar adoption and the
+answer-confirmation badge — which the survey found v5 never ported at all
+(only its CSS was transcribed, and the stream→bubble mapper drops
+`confirmationOriginalContent`) — plus the `1b0ce9eba` deletion rider.
+P4.D133 ports the CLI `instances restore-key` verb (`b121ac77f`) Tier R
+red-first; the ledger's flagged human decision is resolved in the order —
+the write is sandbox-provable through the existing `reset_live` fixture
+mechanism, and only the real-pepper recovery walk stays human-only,
+banked 💸. P4.65 ports v4's `ChatListPreloaded` batching into the Salon
+chat list (P4.64's measured 8.6–12.2 s deferral), payload-identity
+disciplined, with the drop-vs-503 unavailable-vault convergence named and
+pinned rather than landed silently. CLAUDE.md's stale drift restatement
+(three commits / `1b0ce9eba`) was trimmed to defer to the ledger, which
+already recorded four.
+
 #### 2026-08-27 — docs(drift): v4 adds a CLI `.dbkey` rebuild — DRIFT PENDING at four commits
 
 _Docs-only change._

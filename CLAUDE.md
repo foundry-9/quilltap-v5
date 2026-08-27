@@ -2350,11 +2350,11 @@ records THERE. Update this summary only when a phase or round completes.
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
   drift, and lanes never write it. **Never restate the drift count here —
-  read the ledger's §1.** As of the unification (2026-08-27), v4 main
-  HEAD is `1b0ce9eba` — three portable commits past the baseline (the
-  bug-105 convergence + the Tooltip PORT-NEW + the hidden-actions
-  cleanup; ledger §3), the checkout is clean on `main`, bugfix is an
-  inert fork marker, and the regen rule is **PIN REQUIRED** at
+  read the ledger's §1** (this bullet's own restatement went stale within
+  hours of the unification — a fourth portable commit landed — which is
+  the rule's whole point; the ledger's §1/§3 carry the current picture,
+  and as of 2026-08-27 the four UNPROCESSED rows are ORDERED as
+  P4.D131/P4.D132/P4.D133). The regen rule is **PIN REQUIRED** at
   `aec86a613` until the baseline moves again. Still no `release: 4.9.0`
   squash — re-probe BOTH branches at the next check. The sweep driver
   remains the
