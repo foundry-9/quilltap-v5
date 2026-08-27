@@ -38,6 +38,25 @@ directions. The `profiles.rs` divergence doc block is rewritten as a
 convergence record. No v5 production behavior changed; the core bump is
 doc-comment-only. The one v4-side line this commit does not port —
 `help/system-import-export.md`'s new sentence — banks to `p4.9i2`.
+#### 2026-08-27 — port(core): the .dbkey restore-key seams — raw read, tryDecrypt, carry-preserving write
+
+_Versions: core 0.0.699._
+
+`quilltap-core::dbkey` gains the three public seams v4's new CLI
+`packages/quilltap/lib/dbkey.js` needs (v4 `b121ac77f`), with no duplicated
+crypto: `read_dbkey_raw` (v4 `readDbKeyFile` — strips the legacy
+`hasPassphrase` flag and rewrites the file), `try_decrypt_pepper` (v4
+`tryDecryptDbKey` — any failure is None), and `save_dbkey_preserving` (v4
+`preserveExtraFields` + `writeDbKeyFile` — the ten fresh wrapper fields first,
+carried extras appended in the existing file's order; deliberately a different
+key-order shape from `rewrap_dbkey_json`'s in-place server re-wrap, because
+the two v4 sites build the object differently). The `rewrap_dbkey_json` doc
+comment's recorded v4-drop divergence is rescoped to v4's SERVER re-wrap
+explicitly — v4's new CLI restore path DOES preserve, so the old wording
+over-claimed. Four new unit pins: extras survive and land appended (order
+asserted both ways), the `hasPassphrase` strip rewrites the file, the
+try-decrypt edges, and the fresh-write arm.
+
 #### 2026-08-27 — port(cli): the instances restore-key completion templates + help text, red-first
 
 _Versions: cli 0.0.15._

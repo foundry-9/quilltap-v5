@@ -285,12 +285,17 @@ pub fn save_dbkey(data_dir: &Path, pepper: &str, passphrase: &str) -> Result<(),
 /// writes it, so a passphrase change that dropped it would remove the floor
 /// permanently from a v4-authored instance.
 ///
-/// **A deliberate divergence from v4, measured** (`verify-dbkey-crosscompat.ts`
-/// pins it from v4's own code): v4's `changePassphrase` hands `writeDbKeyFile`
-/// a freshly built `encryptPepper` object, so it DROPS `minServerVersion` too.
-/// In v4 the loss self-heals — `storeCurrentVersion()` rewrites the field on
-/// the next startup — and in v5 nothing ever would. Preserving is the only
-/// behavior that is correct on both sides of the fence.
+/// **A deliberate divergence from v4's SERVER re-wrap, measured**
+/// (`verify-dbkey-crosscompat.ts` pins it from v4's own code): v4's server
+/// `changePassphrase` (`lib/startup/dbkey.ts`) hands `writeDbKeyFile` a freshly
+/// built `encryptPepper` object, so it DROPS `minServerVersion` too. In v4 the
+/// loss self-heals — `storeCurrentVersion()` rewrites the field on the next
+/// startup — and in v5 nothing ever would. Preserving is the only behavior that
+/// is correct on both sides of the fence. The scope is the server re-wrap ONLY:
+/// v4's CLI `instances restore-key` path (`b121ac77f`,
+/// `packages/quilltap/lib/dbkey.js` `preserveExtraFields`) DOES preserve
+/// unknown fields, exactly as [`save_dbkey_preserving`] below does — do not
+/// read this note as "v4 never preserves".
 fn rewrap_dbkey_json(
     existing: &str,
     pepper: &str,
@@ -436,6 +441,114 @@ pub fn change_passphrase(
     let content = rewrap_dbkey_json(&raw, &pepper, actual_new)?;
     write_dbkey_file(&path, &content)?;
     Ok(pepper)
+}
+
+// ============================================================================
+// The CLI restore-key seams (v4 `packages/quilltap/lib/dbkey.js`, `b121ac77f`)
+// ============================================================================
+
+/// The ten fields that make up the wrapped key itself (v4 `KEY_WRAPPER_FIELDS`).
+/// Anything else in the file was put there by another subsystem
+/// (`minServerVersion`, written by v4's `lib/startup/version-guard.ts`) and
+/// belongs to the instance rather than to this wrapping, so a rewrap must carry
+/// it across.
+const KEY_WRAPPER_FIELDS: [&str; 10] = [
+    "version",
+    "algorithm",
+    "kdf",
+    "kdfIterations",
+    "kdfDigest",
+    "salt",
+    "iv",
+    "ciphertext",
+    "authTag",
+    "pepperHash",
+];
+
+/// v4 CLI `readDbKeyFile` (`packages/quilltap/lib/dbkey.js`): read and parse
+/// `<data_dir>/quilltap.dbkey`, returning `None` when absent. Strips the legacy
+/// `hasPassphrase` flag in passing (it leaked whether a user passphrase was
+/// set), rewriting the file the same way the server does — 2-space-pretty JSON
+/// at mode 0600.
+///
+/// Returns the file's JSON text (the re-serialized form when the strip fired,
+/// the raw bytes otherwise) so callers can feed it to [`try_decrypt_pepper`] /
+/// [`save_dbkey_preserving`] without re-reading. A malformed file is
+/// `DbKeyError::Parse` where v4's bare `JSON.parse` throws Node's
+/// `SyntaxError` — different bytes on an arm no fixture drives.
+pub fn read_dbkey_raw(data_dir: &Path) -> Result<Option<String>, DbKeyError> {
+    let path = data_dir.join("quilltap.dbkey");
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path).map_err(DbKeyError::Io)?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| DbKeyError::Parse(e.to_string()))?;
+    let serde_json::Value::Object(mut obj) = parsed else {
+        return Err(DbKeyError::Parse("expected a JSON object".to_string()));
+    };
+    if obj.remove("hasPassphrase").is_some() {
+        let content = serde_json::to_string_pretty(&serde_json::Value::Object(obj))
+            .map_err(|e| DbKeyError::Parse(e.to_string()))?;
+        write_dbkey_file(&path, &content)?;
+        return Ok(Some(content));
+    }
+    Ok(Some(raw))
+}
+
+/// v4 `tryDecryptDbKey`: unwrap the pepper from `.dbkey` JSON text, `None`
+/// instead of any error (wrong passphrase, tampered file, malformed JSON,
+/// unsupported crypto — v4's bare `catch` swallows them all).
+pub fn try_decrypt_pepper(raw: &str, passphrase: &str) -> Option<String> {
+    let file: DbKeyFile = serde_json::from_str(raw).ok()?;
+    try_decrypt(&file, passphrase).ok().flatten()
+}
+
+/// v4 restore-key's write:
+/// `writeDbKeyFile(dataDir, preserveExtraFields(existing, encryptDbKey(...)))`.
+///
+/// Wraps `pepper` freshly (empty `passphrase` → the internal sentinel, as
+/// [`save_dbkey`]) and carries every field the wrapping does not own across
+/// from `existing_raw`. Key order matches v4's `preserveExtraFields` exactly:
+/// the ten wrapper fields first (fresh order), then the carried extras appended
+/// in the existing file's own order — NOT [`rewrap_dbkey_json`]'s in-place
+/// shape, which keeps extras at their original positions (the server re-wrap's
+/// read-modify-write idiom).
+pub fn save_dbkey_preserving(
+    data_dir: &Path,
+    existing_raw: Option<&str>,
+    pepper: &str,
+    passphrase: &str,
+) -> Result<(), DbKeyError> {
+    let actual_pass = if passphrase.is_empty() {
+        INTERNAL_PASSPHRASE
+    } else {
+        passphrase
+    };
+    let fresh_str = encrypt_dbkey_json(pepper, actual_pass)?;
+    let content = match existing_raw {
+        Some(raw) => {
+            let mut fresh: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&fresh_str).map_err(|e| DbKeyError::Parse(e.to_string()))?;
+            // v4 `preserveExtraFields(existing, fresh)` — a non-object existing
+            // cannot reach here from the CLI (it parsed upstream), so it simply
+            // contributes nothing, matching v4's `if (!existing) return fresh`.
+            if let Ok(serde_json::Value::Object(existing)) =
+                serde_json::from_str::<serde_json::Value>(raw)
+            {
+                for (key, value) in existing {
+                    if !KEY_WRAPPER_FIELDS.contains(&key.as_str()) {
+                        fresh.insert(key, value);
+                    }
+                }
+            }
+            serde_json::to_string_pretty(&serde_json::Value::Object(fresh))
+                .map_err(|e| DbKeyError::Parse(e.to_string()))?
+        }
+        None => fresh_str,
+    };
+    std::fs::create_dir_all(data_dir).map_err(DbKeyError::Io)?;
+    write_dbkey_file(&data_dir.join("quilltap.dbkey"), &content)
 }
 
 /// Convert the base64 pepper into the lowercase hex string used in the raw-key
@@ -661,5 +774,127 @@ mod tests {
             let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
             assert_eq!(mode, 0o600);
         }
+    }
+
+    /// P4.D133: an unknown field survives a restore-key rewrap, and the output
+    /// key order is v4 `preserveExtraFields`' — the ten wrapper fields first
+    /// (fresh order), the carried extras APPENDED after, in the existing file's
+    /// own order. This deliberately differs from `change_passphrase`'s in-place
+    /// shape (extras keep their original positions), because the two v4 sites
+    /// build the object differently.
+    #[test]
+    fn save_dbkey_preserving_carries_unknown_fields_appended() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "old-pass").unwrap();
+        let path = dir.path().join("quilltap.dbkey");
+
+        // Plant an extra field in the MIDDLE of the file (the way a
+        // read-modify-write author could leave it) plus one at the end.
+        let planted: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let mut reordered = serde_json::Map::new();
+        for (k, v) in planted {
+            let key = k.clone();
+            reordered.insert(k, v);
+            if key == "kdfDigest" {
+                reordered.insert("minServerVersion".into(), serde_json::json!("4.9.0-dev.0"));
+            }
+        }
+        reordered.insert("trailingExtra".into(), serde_json::json!(true));
+        let existing_raw =
+            serde_json::to_string_pretty(&serde_json::Value::Object(reordered)).unwrap();
+        std::fs::write(&path, &existing_raw).unwrap();
+
+        save_dbkey_preserving(dir.path(), Some(&existing_raw), &pepper, "new-pass").unwrap();
+
+        let after: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            after.keys().cloned().collect::<Vec<String>>(),
+            [
+                "version",
+                "algorithm",
+                "kdf",
+                "kdfIterations",
+                "kdfDigest",
+                "salt",
+                "iv",
+                "ciphertext",
+                "authTag",
+                "pepperHash",
+                "minServerVersion",
+                "trailingExtra",
+            ],
+            "extras must append AFTER the fresh wrapper fields, in existing order"
+        );
+        assert_eq!(
+            after.get("minServerVersion"),
+            Some(&serde_json::json!("4.9.0-dev.0"))
+        );
+        assert_eq!(after.get("trailingExtra"), Some(&serde_json::json!(true)));
+        // The rewrap is real: new passphrase unlocks, old does not.
+        assert_eq!(load_pepper(dir.path(), Some("new-pass")).unwrap(), pepper);
+        assert!(load_pepper(dir.path(), Some("old-pass")).is_err());
+    }
+
+    /// `save_dbkey_preserving` with no existing file is a fresh `save_dbkey`
+    /// (empty passphrase → the internal sentinel).
+    #[test]
+    fn save_dbkey_preserving_without_existing_writes_fresh() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey_preserving(dir.path(), None, &pepper, "").unwrap();
+        assert_eq!(load_pepper(dir.path(), None).unwrap(), pepper);
+    }
+
+    /// v4 CLI `readDbKeyFile`: the legacy `hasPassphrase` flag is stripped on
+    /// read and the FILE is rewritten without it (it leaked whether a user
+    /// passphrase was set); the returned text matches the rewritten file.
+    #[test]
+    fn read_dbkey_raw_strips_legacy_has_passphrase() {
+        let dir = tempdir().unwrap();
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "pw").unwrap();
+        let path = dir.path().join("quilltap.dbkey");
+        let mut obj: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        obj.insert("hasPassphrase".into(), serde_json::json!(true));
+        std::fs::write(
+            &path,
+            serde_json::to_string_pretty(&serde_json::Value::Object(obj)).unwrap(),
+        )
+        .unwrap();
+
+        let raw = read_dbkey_raw(dir.path()).unwrap().expect("file present");
+        assert!(
+            !raw.contains("hasPassphrase"),
+            "returned text keeps the flag"
+        );
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(raw, on_disk, "the strip must rewrite the file");
+        assert!(!on_disk.contains("hasPassphrase"));
+
+        // The stripped text still decrypts.
+        assert_eq!(try_decrypt_pepper(&raw, "pw"), Some(pepper.clone()));
+        // And a clean file comes back verbatim (no rewrite).
+        let again = read_dbkey_raw(dir.path()).unwrap().unwrap();
+        assert_eq!(again, on_disk);
+    }
+
+    /// `read_dbkey_raw` on an absent file is `None`; `try_decrypt_pepper`
+    /// answers `None` for a wrong passphrase or malformed text (v4's
+    /// swallow-everything `tryDecryptDbKey`).
+    #[test]
+    fn read_dbkey_raw_and_try_decrypt_edges() {
+        let dir = tempdir().unwrap();
+        assert!(read_dbkey_raw(dir.path()).unwrap().is_none());
+
+        let pepper = generate_pepper().unwrap();
+        save_dbkey(dir.path(), &pepper, "pw").unwrap();
+        let raw = read_dbkey_raw(dir.path()).unwrap().unwrap();
+        assert_eq!(try_decrypt_pepper(&raw, "wrong"), None);
+        assert_eq!(try_decrypt_pepper("not json", "pw"), None);
+        assert_eq!(try_decrypt_pepper(&raw, "pw"), Some(pepper));
     }
 }
