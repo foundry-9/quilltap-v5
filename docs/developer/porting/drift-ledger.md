@@ -23,29 +23,36 @@ probe verifies against._
   updates over a WebSocket, tick clocks locally" (v4 main, 2026-08-26),
   adopted at the `f3892158d`-round unification (2026-08-26, the
   P4.D123→P4.D124 ∥ P4.D125 drift catch-up).
-- **Checked:** 2026-08-26 (the `f3892158d`-round unification — v4 drifted
-  DURING the round; the two post-baseline commits are recorded in §3).
-- **v4 `main` HEAD at check:** `964ffb959` — **THIRTEEN commits past the
-  (new) baseline**: `487ae57fe` + `561466cfe` (classified NO-PORT?, §3)
-  plus ELEVEN commits that landed during this round's unification gate
-  (`7509c5cfb` `21f573039` `c0352fdba` `97d0b8f8e` `57e7b1bc2`
-  `e000d6bfc` `8440b6391` `dcab791c2` `914b59e13` `805ef12bf`
-  `964ffb959` — the 4.9.0 release push: bugs 103/104, release notes,
-  refactor sweeps, and ⚠ at least one on a JUST-ported surface —
-  `21f573039` drops the per-publish realtime coalesce trace inside the
-  code this round absorbed).
-- **v4 `bugfix` tip at check:** `3a76b17df` (**unmoved**; the fork
-  marker). Bugfix content not re-measured at this check.
+- **Checked:** 2026-08-26 (full `/driftcheck` — the fourteen post-baseline
+  commits classified from their shipped hunks, superseding the
+  unification's honest count-only entry).
+- **v4 `main` HEAD at check:** `8872d7efc` — **FOURTEEN commits past the
+  baseline**, all dated 2026-08-26: v4's 4.9.0 release push. Eight are
+  **PORT** rows on already-ported surfaces (§3); six are **NO-PORT?**
+  candidates, one of which (`dcab791c2`) is a 155-file
+  claimed-behavior-neutral dedup sweep whose ratification is a
+  P4.D31-class neutrality proof, not a reading.
+- **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** since the last
+  check, and re-measured this time: it is the bare
+  `bugfix: started 4.8.4 bug branch` fork marker (2026-08-13) with **no
+  fixes landed on it since**, so bugfix carries **no unabsorbed content**.
 - **Checkout at check:** branch `main`, tree **clean**.
-- **Verdict: DRIFT PENDING — 13 commits, ELEVEN UNCLASSIFIED.** A full
-  `/driftcheck` is OWED before the next `/setupphase` plans anything —
-  this entry records the count and shas only, honestly, from the
-  unification's closing probe; nothing here classifies the eleven.
-- **Regen rule in force: PIN REQUIRED.** v4 HEAD is past the baseline —
-  every oracle regeneration must run from a lane-unique detached worktree
-  pinned at `f3892158d` (recipe in §5.1; `recipe_sweep.py --v4 "$PIN"`),
-  until the two rows are ratified NO-PORT (which moves the baseline
-  without a port) or a catch-up round absorbs them.
+- **Verdict: DRIFT PENDING — 14 commits (8 PORT, 6 NO-PORT?).** A catch-up
+  round is owed; three of the PORT rows are v4 bugs v5 measurably
+  reproduces (bug 103 restore defaults, bug 104 the Z.AI vision list, the
+  SQLite variable-limit ceiling — all confirmed present in v5 source at
+  this check, see §3).
+- **Regen rule in force: PIN REQUIRED.** v4 HEAD is fourteen commits past
+  the baseline — every oracle regeneration must run from a lane-unique
+  detached worktree pinned at `f3892158d` (recipe in §5.1;
+  `recipe_sweep.py --v4 "$PIN"`), until a catch-up round absorbs the rows
+  and moves the baseline.
+- **💸 One banked live proof EXPIRES here (§5.5):** the standing dogfood
+  item "the Z.AI refusal sentence" (banked at the `a14a1811` round) is
+  killed by `964ffb959` — v4 **deletes** that refusal path, so the
+  sentence can no longer be provoked once the row is ported. Retire the
+  item rather than carrying it; the replacement proof is a `glm-5.3-*`
+  attachment reaching the wire.
 
 ## §2 The freshness probe
 
@@ -86,12 +93,47 @@ when absorbed/ratified.
 |---|---|---|---|---|---|
 | `487ae57fe` | 2026-08-26 | test(coverage): regression tests for bugs 77, 83, 94, 99 and five uncovered modules | **NO-PORT?** | nine test files + docs; the ONLY lib/app hunks are a stated behaviour-neutral extraction on a ported surface (`useSSEStreaming.ts` → `useToolExecutionStatus.ts`, the bug-77 notice — v5 ported that notice as its own single-door surface in the `979652a9` round, so a v4-internal hook extraction has no v5 move). Ratify by verifying the extraction hunks are structure-only. One note to carry: the new `help-doc-chunks.repository` test pins the registerBlobColumns-re-assert trap — check v5's `help_doc_chunks` twin carries an equivalent pin | UNPROCESSED |
 | `561466cfe` | 2026-08-26 | chore(dead-code): knip sweep — remove 11 unused exports, dedup hair guidance | **NO-PORT?** | pure deletions of unused v4 exports + a byte-identical HAIR-guidance dedup (v4 verified no prompt-text change, no IDENTITY_STACK_BUILDER_VERSION bump). No v5 behavior moves. Follow-up candidate, not a port: check whether v5 carries live twins of the deleted exports (`GROUP_WARDROBE_FOLDER`/`PROJECT_WARDROBE_FOLDER`, `resolveSharedWardrobeTiersForProject`, `noSharedWardrobeTiers` — P4.D71-era) that are now vestigial (`v5-refactor-vestigial-v4-cruft`) | UNPROCESSED |
+| `7509c5cfb` | 2026-08-26 | Add missing @quilltap/plugin-types dependency to openai-compatible (#39) | **NO-PORT?** | dependency metadata only (`package.json` + a manifest version bump to plugin 1.0.42) + CHANGELOG; v4 states the bundle is unchanged. v5's hand-maintained `provider_manifest/manifests/*.json` carry no plugin version field, so nothing here reaches a generated manifest. Ratify by confirming the manifest hunk is the version line alone | UNPROCESSED |
+| `21f573039` | 2026-08-26 | chore(logging): drop the per-publish realtime coalesce trace (#40) | **PORT** | one deleted line in `lib/realtime/bus.ts` — the `Realtime publish coalesced` debug print. v5 ported that bus **this round** (P4.D124): the trace is live at `crates/quilltap-core/src/realtime/bus.rs:202-203`. Delete the emit, KEEP the `coalesced` counter (the flush line reads it — v5's flush at `bus.rs:238` already does). A log-only change: no differential can see it (`differential-blind-to-a-log-only-fix`) — the pin is a capturing tracing layer asserting silence, the idiom P4.61 used | UNPROCESSED |
+| `c0352fdba` | 2026-08-26 | docs(changelog): record the checklist item 9 package audit (#41) | **NO-PORT?** | `docs/CHANGELOG.md` only (+23/-0), an audit record; the package/manifest edits it originally carried dropped out in the rebase onto `7509c5cfb` | UNPROCESSED |
+| `97d0b8f8e` | 2026-08-26 | refactor(themes): convert release-window Tailwind to qt-* utilities (checklist 7) (#42) | **PORT** | the P4.D117 (bugs 100/102) class again, on 15 v4 components: 20 sites to `qt-bg-*`, both `memory-recall-card` checkboxes to `qt-checkbox`, plus **two new utilities** — `.hover\:qt-bg-primary` and `.hover\:qt-bg-success`, the missing solid-fill siblings of the destructive one. v5's `apps/web/src/styles/qt-components/_utilities.css` defines only the fractional forms (`/5`, `/10`, `/15`), so the solid pair is absent and any v5 template using it is inert (the same "unwritten hover form" trap v4 names). TWO sites shift visibly and must be carried, not swept: `CharacterHeader.tsx:139` (avatar placeholder → `qt-bg-muted`) and `image-gallery.tsx:176` (overlay → `qt-bg-overlay-medium`, dropping a redundant `bg-opacity` pair). Also mirrors into `packages/theme-storybook` 1.0.65 (no v5 analog). Re-run `check-qt-classes` after | UNPROCESSED |
+| `57e7b1bc2` | 2026-08-26 | Add comprehensive flag coverage tests for CLI completions (#43) | **PORT** | the `8f910137`/P4.D118 (bug 101) class: four documented flags tab-completion never offered — `docs docker-mounts --format` (all three shells, **and** bash's `vf_docs` value-flag list, or `--format json <TAB>` reads `json` as the verb — bug 101's exact failure mode) and `docs --uri`/`--base64` (fish). v5 byte-copies these templates at `crates/quilltap-cli/src/help/completion/{bash,zsh,fish}.template`; Tier R red-first, then `completion_behavior.rs`. v4's new `completion-coverage.test.js` also cross-checks bash `vf_*` against zsh `:value:` — worth mirroring as a v5 guard. `help/cli-completion.md` + `packages/quilltap/README.md` prose → the `p4.9i2` bank | UNPROCESSED |
+| `e000d6bfc` | 2026-08-26 | fix(backup): seed the profile columns an older archive predates (bug 103) (#45) | **PORT** | **v5 measurably HAS this, on both columns.** v4's new `lib/llm/connection-profile-legacy-fields.ts` (`seedLegacyConnectionProfileFields`) is called from BOTH `restore.ts` and `import-profiles.ts` so the two paths land the same row: `supportsImageUpload` from the frozen historic provider map, `multiCharacterPrefill` as an explicit `null` ("never chosen"). v5's restore builds the row at `services/backup/restore/orchestrator.rs:275-300` — `supports_image_upload: b(p, "supportsImageUpload", false)` and `multi_character_prefill: ob(p, …)` (whose own comment correctly names the DDL-default mechanism it reproduces). v5's `.qtap` import already seeds half of it (`services/quilltap_import/profiles.rs:249` — `LEGACY_IMAGE_CAPABLE_PROVIDERS`), so the port is one shared helper + the restore call site, which also closes v5's own import/restore disagreement. Ported surfaces: the restore family (P4.9G/P4.D46) and the qtap import profiles (P4.D65-era). Bug 103 is v4's own release-checklist find, NOT a convergence | UNPROCESSED |
+| `8440b6391` | 2026-08-26 | docs: 4.9.0 release notes and a documentation-freshness sweep (checklist item 13) (#44) | **NO-PORT?** + one tiny **PORT** | docs (release notes, API.md, DEVELOPMENT.md, README, v4's own CLAUDE.md) — all NO-PORT — **except** `app/about/AboutView.tsx`, whose provider list gains DeepSeek, Z.AI and NanoGPT. v5's `apps/web/src/app/screens/about/about-page.ts:398` still reads the old seven-provider sentence, so that string needs the same edit (the About vertical, `p4.9`-era). API.md's three corrected paths are documentation of routes v5 already implements — read them as a cross-check, not a port | UNPROCESSED |
+| `dcab791c2` | 2026-08-26 | refactor: dedup sweep over everything touched since 4.8.0 (checklist item 3) | **NO-PORT?** (ratify by NEUTRALITY PROOF, not by reading) | the P4.D31/P4.D44 release-refactor class, and the round's largest risk: 155 files, ~2,800 lines removed, across route factories, hooks, tool handlers, the data layer, components, **and the provider wire** (`@quilltap/plugin-utils` 2.5.0 shares one `buildRequestBody` between send/stream; nanogpt 1.1.1 single-sources base URL + image MIME list; ollama 1.0.46 dedups the think-retry and request build). v4 claims "same strings, status codes, wire bodies, and log lines" and even pins the byte order explicitly (the `stream`/`stream_options` keys are SPREAD mid-literal to keep their historical position between `stop` and `user`) — which is the tell that this is exactly where a claimed-neutral sweep can move a byte. **Ratification = regenerate the affected families at the new pin and prove them byte-identical** (`request-envelopes`, the ollama/nanogpt/OAC wire corpora, the wardrobe + scenario route families, the title/`cleanTitle` families). Two hunks are NOT neutral and need their own answer: the scenarios POST "latent crash — `repos` referenced without destructuring" (a JS-only defect; confirm v5 has no analog) and the collapsed twins (`resolveDefaultOutfit` → `buildDefaultOutfit`, the help/normal chat-title pair) — collapsing twins is only neutral if the twins agreed, which is a measurement | UNPROCESSED |
+| `914b59e13` | 2026-08-26 | refactor(backup): route full-wipe memory deletion through the memory-gate chokepoint | **PORT** | the replace-mode restore / delete-all path deleted memories with per-row `repos.memories.delete` calls — the last bypass of `deleteMemoriesWithUnlinkBatch`. It now collects all doomed ids and makes ONE batch call (in the full-wipe case the neighbour scrub is a no-op, every neighbour being doomed too), with a regression test asserting the direct repository delete is never hit. v5's twins: `db/memories.rs` (`bulk_delete` at :332, the unlink batch at ~:560-630) and the restore/delete-all service ported in P4.30/P4.31. Stacks with `805ef12bf` — port them together, chokepoint first | UNPROCESSED |
+| `805ef12bf` | 2026-08-26 | fix(memory): chunk batch memory deletion under the SQLite variable limit | **PORT** | **v5 measurably HAS this, at both sites.** v4 chunks ids 900 at a time through a new `lib/utils/chunk.ts` in `deleteMemoriesWithUnlinkBatch`'s id→character resolve and in the repository's `bulkDelete`. v5 builds one `IN (…)` with one bind per id at `db/memories.rs:336-345` (`bulk_delete`) and again at `:607-617` (the doomed-set resolve) — the same `SQLITE_MAX_VARIABLE_NUMBER` ceiling, and SQLite3MC is the same engine. Bites full-wipe restores and large character cascades on instances with tens of thousands of memories (Friday's scale). The pin is v4's shape: 2,000-id batches asserting the chunked query shapes | UNPROCESSED |
+| `964ffb959` | 2026-08-26 | fix(z-ai): drop the plugin's private vision list so GLM 5.3 receives images (bug 104) | **PORT** | **v5 measurably HAS this.** Bug 91's shape, third instance: the Z.AI plugin's own `VISION_MODEL_PATTERNS` (`/^glm-\d+(\.\d+)?v/i`) failed `glm-5.3-flash`, so attachments were dropped before the wire with "Selected Z.AI model does not support image input" **while `supportsImageUpload` had already suppressed the describe-fallback** — the character never saw the Lantern background, and bug 94's warning toast fired every following turn. v4 DELETES `VISION_MODEL_PATTERNS`/`isVisionModel` and the vision branch of `buildUserContent` (MIME check + missing-data check remain), dropping `formatMessages`' now-unused `model` param. v5's transcription is `model/request_builder/chat_completions.rs:54-57` (`is_zai_vision_model`), the sentence at `:106`, the branch at `:864` — all three go. Restores bug 91's rule (host answers *does the model read images*, plugin answers *can the transport send them*) and matches the shape NanoGPT took at P4.D106. v4's own find (live Friday, 2026-08-26), NOT a convergence. **See §1: this row expires a banked 💸 proof** | UNPROCESSED |
+| `8872d7efc` | 2026-08-26 | perf(cheap-llm): give compression its own budget, and log cheap-task failures | **PORT** | the P4.D42 bounded-request surface moves: the three compression task types get **75 s**, every other cheap task keeps 45 s, and local providers keep 180 s **checked first**, so a per-task override can never shrink the local budget. `providerBudgetFor` now threads the task type too (staying 5 s inside whichever deadline applies), and `runCheapLLMTask`'s duplicate local `deadlineFor` closure is deleted. Plus a new warn on a failed cheap task naming task type / provider / model / chat / character — previously a provider giving up on its own budget arrived as an ordinary provider error, invisible to a server-log grep. v5's twins are flat constants: `services/cheap_llm_exec.rs:143` (`CHEAP_LLM_TASK_TIMEOUT_MS = 45_000`), `:149` (local 180 s), `cheap_llm_deadline_for` at `:160` and `provider_budget_for` at `:176` — both take only the selection, so the signature grows a task-type argument. Watch the timeout MESSAGE bytes (`cheap_llm_timeout_message`, pinned at `:1056-1065`): a compression timeout now reads 75000ms | UNPROCESSED |
 
 **Row notes** (delineation detail for `/setupphase`; classified from the
 shipped hunks, not the messages):
 
-- **No convergence rows:** `docs/developer/bugs.md` is unchanged, so neither
-  remaining commit is v4 adopting a fix this port filed.
+- **No convergence rows in this block.** `docs/developer/bugs.md` moved twice
+  (bugs 103 and 104), but both are v4's OWN finds — 103 from release checklist
+  item 10, 104 from a live Friday chat on 2026-08-26 — not v4 adopting a fix
+  this port filed. No both-directions pin should trip at the baseline move on
+  their account.
+- **Three rows are bugs v5 REPRODUCES**, confirmed by reading v5 source at this
+  check, not inferred: `e000d6bfc` (bug 103, `restore/orchestrator.rs:291`),
+  `964ffb959` (bug 104, `chat_completions.rs:57`), `805ef12bf` (the SQLite
+  variable ceiling, `db/memories.rs:336` and `:607`). Each is red-first
+  portable: measure v5 failing before fixing it.
+- **The 4.9.0 release shape.** All fourteen rows are one day's release push
+  (v4 `package.json` is `4.9.0-dev.*` throughout; `docs/releases/4.9.0.md` is
+  drafted but flagged for the human's review). Expect a `release: 4.9.0`
+  squash and a `bugfix: started 4.9.0 bug branch` fork soon after — re-probe
+  BOTH branches at the next check rather than assuming bugfix is still inert.
+- **Two rows stack:** `914b59e13` (route full-wipe deletion through the
+  memory-gate batch chokepoint) and `805ef12bf` (chunk that batch under the
+  variable limit) are the same code path, landed in that order. Port the
+  chokepoint first, or the chunking lands on a call site that is about to move.
+- **Suggested lane shape** (for `/setupphase`, not a commitment): a memory /
+  backup lane (`914b59e13` + `805ef12bf` + `e000d6bfc`); a provider lane
+  (`964ffb959` + `8872d7efc` + the `21f573039` trace); a client/CLI lane
+  (`97d0b8f8e` + `57e7b1bc2` + the AboutView string from `8440b6391`); and
+  `dcab791c2`'s neutrality proof as its own lane, since it is a sweep over
+  everything the other three touch.
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

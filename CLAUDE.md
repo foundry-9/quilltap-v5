@@ -2257,13 +2257,15 @@ records THERE. Update this summary only when a phase or round completes.
   `docs/developer/porting/drift-ledger.md`** — maintained by
   `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
-  drift, and lanes never write it. As of the f3892158d-round unification
-  (2026-08-26): v4 main HEAD is TWO commits past the baseline
-  (`487ae57fe` + `561466cfe`, both NO-PORT? candidates awaiting
-  ratification — ledger §3), the checkout is clean on `main`, bugfix has
-  no unabsorbed content, and the regen rule is **PIN REQUIRED** (a
-  lane-unique detached worktree at `f3892158d`, recipe in the ledger's
-  §5.1, until the two rows are ratified). The sweep
+  drift, and lanes never write it. **Never restate the drift count here —
+  read the ledger's §1.** As of the 2026-08-26 `/driftcheck`, v4 main HEAD
+  is fourteen commits past the baseline (v4's 4.9.0 release push: eight
+  PORT rows incl. bugs 103/104, six NO-PORT? candidates incl. a 155-file
+  neutrality sweep — ledger §3), the checkout is clean on `main`, bugfix
+  is an inert fork marker with no unabsorbed content, and the regen rule
+  is **PIN REQUIRED** (a lane-unique detached worktree at `f3892158d`,
+  recipe in the ledger's §5.1, until a catch-up round moves the
+  baseline). The sweep
   driver remains the sanctioned per-family regen path —
   never run two sweeps concurrently; since P4.53 it refuses empty-stage
   families by name and `--self-test` guards recipe headers against

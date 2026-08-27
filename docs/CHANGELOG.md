@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): the 4.9.0-push drift check — fourteen commits classified, eight PORT
+
+_Docs-only change._
+
+A full `/driftcheck` over the fourteen commits v4 landed past the
+`f3892158d` baseline — its whole 4.9.0 release push, all on 2026-08-26 —
+replacing the previous entry's honest count-only record. Every row is
+classified from its shipped hunks: **eight PORT**, six **NO-PORT?**.
+
+Three of the PORT rows are v4 bugs this port measurably reproduces, each
+confirmed by reading v5 source rather than inferred from the commit
+message. Bug 103 (restore lets the table DEFAULT answer for a column the
+archive predates) is live in `restore/orchestrator.rs:275-300`, on both
+`supportsImageUpload` and `multiCharacterPrefill` — and v5's `.qtap`
+import already seeds half of it, so the two paths disagree exactly as
+v4's did. Bug 104 (the Z.AI plugin's private vision list, which
+`glm-5.3-flash` outgrew) is transcribed at `chat_completions.rs:54-57`
+with its refusal sentence at `:106`. The SQLite variable-limit ceiling
+`805ef12bf` fixes is present at two sites in `db/memories.rs` — the
+`bulk_delete` `IN (…)` at `:336` and the doomed-set resolve at `:607` —
+and bites full-wipe restores at Friday's memory count.
+
+The largest row is not a bug at all: `dcab791c2` is a 155-file,
+~2,800-line dedup sweep claiming byte-neutrality across routes, hooks,
+tool handlers, the data layer, and the provider wire. It is the
+P4.D31/P4.D44 class, and it ratifies by regenerating the affected
+families at the pin and proving them identical — not by reading. v4's own
+diff underlines why: the OpenAI-compatible builder spreads `stream` /
+`stream_options` mid-literal specifically to keep those keys between
+`stop` and `user` so the serialized body stays byte-identical.
+
+Also recorded: `bugfix` was re-measured and is an inert `4.8.4` fork
+marker with nothing unabsorbed; the regen rule stays **PIN REQUIRED**;
+and one banked live proof expires under §5.5 — the standing "Z.AI refusal
+sentence" dogfood item, which bug 104 deletes the path for. CLAUDE.md's
+baseline paragraph no longer restates a drift count that can go stale; it
+points at the ledger's §1 and says so.
+
 #### 2026-08-26 — docs(porting): v4 moved eleven more commits during the unification gate — recorded, /driftcheck owed
 
 _Docs-only change._
