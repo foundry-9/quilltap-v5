@@ -90925,3 +90925,124 @@ character-identical), ollama's think-retry dedup (the guard is still
 plugin-utils' `stream`/`stream_options` spread mid-literal between `stop`
 and `user`. The provider wire's BYTE proof belongs to P4.D127's
 request-envelopes regen (§A).
+
+---
+
+## The 4.9.0-push drift catch-up round (P4.D126 ∥ P4.D127 ∥ P4.D128 ∥ P4.D129) — UNIFIED on main (2026-08-27)
+
+**All four orders CLOSED; the oracle baseline MOVES `f3892158d` → `8872d7efc`;
+the fourteen-commit drift debt is CLEARED** (dispositions in the drift
+ledger's §6; the per-lane stories in the four lane records above). Branch
+`unify/4.9.0-push-round`, cherry-picked in dependency order
+(D126 → D127 → D128 → D129), version/docs conflicts union-merged, source
+conflicts NONE (ownership held).
+
+### The §3 unification review
+
+Four parallel reviewers (one per lane, each reading the shipped hunks against
+v4's real code at the pin) + the unifier's own reads of the load-bearing
+hunks. **Verdict: ZERO blocking findings** — the fourth such round. Fixed on
+the unify branch (`fix(review)` commit):
+
+- **The census's two unrecorded hover gaps** (the one real minor): v4 styles
+  both destructive-confirm buttons with `hover:qt-bg-destructive/90`
+  (`FileDeleteConfirmation.tsx:50`, `OrphanCleanupModal.tsx:60`); v5's twins
+  lacked it and P4.D128's census marked the rows plain PORTED — the same
+  pre-existing hover-gap class the lane itself closed at
+  `file-preview-modal.ts:106`. Both closed.
+- `restore_vintage_state`'s swapped row comments (values were correct) + a
+  flattened multi-line assert literal; the stale NanoGPT
+  no-vision-arm-difference comment in `chat_completions.rs`; the
+  `data-dir-paths` pair's finished-round "PINNED worktree — dirty checkout"
+  prose; the two stale v4 cross-references D129 flagged out-of-ownership
+  (`salon-conversation.ts` → `useToolExecutionStatus.ts`;
+  `folder_utils.rs`'s settled "yet").
+
+Reviewer notes recorded, not fixed (named in phase-4 candidates): the
+`a_fired_deadline_warns…` prefix-match target assert; the
+`embedding_blob_binding_guard`'s whole-file REGISTRY_ALLOWED exemption and
+comment-vacuity edge; `completion_behavior`'s lowercase-only-vs-alnum
+boundary (fails loud, never false-green).
+
+### The unification wires (`port(wires)` commit)
+
+1. **The `dcab791c2` non-neutral hunk landed in v5** (D129's escalation 1 —
+   the round's headline): v4's dedup sweep collapsed the four inline
+   title-generation cleaners onto `cleanTitle`, which trims a SECOND time
+   after the quote strip (10/76 vectors diverge; the cap moves too). v5's
+   `clean_title` + `clean_generated_title` carried the pre-sweep spelling —
+   fixed RED-FIRST (two unit arms failed against the pre-fix cleaners), and
+   the `chat_regenerate_title_tier3` family grew
+   `regen_title_quoted_padded_inside` on BOTH sides — v4's fresh oracle
+   stores `A Padded Title` unpadded, and the mutation proof (reverting the
+   second trim) reddened exactly that case's body + chat comparands.
+2. **The finding-#47 web-edge tripwire RETIRED to a plain equality** (D129's
+   escalation 4): v4 converged at `13ddc5ee`; the corpus arm retired at the
+   `f4955e0e` round but `store_unavailable_envelope`'s twin was missed
+   (SKIPs without its env var) and fired at D129's sweep. Arm 2 now
+   equality-compares status/error/body-shape against the recorded oracle —
+   regenerated fresh at the pin: v4 answers `Character vault unavailable`
+   503 on BOTH arms. **CLAUDE.md's standing "the v4-side fix remains URGENT
+   with the human" note is DISCHARGED** — v4 landed it weeks ago.
+3. **The splice regression pin** (D129's own review standard applied to
+   it): `recipe_sweep.py`'s `--nocapture` splice extracted to a testable
+   `splice_nocapture` helper; `--self-test` grew four arms (flat, continued
+   — the P4.D129 bug shape asserted not to recur — and already-spliced).
+   Self-test 0 failures.
+4. **The `backup_uuid_remap` neutrality gap CLOSED by a baseline-vs-target
+   sandwich**: corpus + NDJSON regenerated at BOTH `f3892158d` and
+   `8872d7efc` pins — byte-identical, so the drift block (dcab791c2
+   included) is neutral on this surface. The committed corpus's 7-line
+   delta is pre-existing staleness (4.8.2's
+   `composerEmoji`/`composerUnicode`/`smartTypographySettings` defaults,
+   post-dating the P4.D62 regen) — refreshed and committed with the fresh
+   oracle per the family's hash pin.
+
+### v4-side filing
+
+**Bug 105 FILED upstream** (v4 commit `b6c6d7793`, pushed):
+`e000d6bfc`'s seeding helper sits outside `importConnectionProfiles`' 
+per-item try and `(seeded.provider ?? '').toUpperCase()` throws on a
+non-string provider — one malformed profile aborts a whole v4 import where
+the pre-4.9 code named it and continued. Found by D126's corpus regen
+(`system_import_state` red for a non-port reason). v5 unaffected (parses
+before seeding), pinned by
+`a_non_string_provider_is_named_and_does_not_abort_the_import`; the
+oracle-side divergence-aware arm is a named follow-up.
+
+### The unified gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, both plain and with
+  `--features quilltap-core/native-transport`; release build clean.
+- The 15-family sweep (`recipe_sweep.py --run-all --families … --v4
+  /tmp/qt-v4-pin-unify-8872d7efc`): **15/15 ok, zero SKIP** (0 `SKIP` lines
+  over 15 nonzero `test result: ok` lines), oracles fresh from the pin.
+  Changed bytes grepped, not trusted: the refusal sentence at 0 hits in the
+  envelope corpus (was 2), `image-attachment-glm-5-3` at 2,
+  `regen_title_quoted_padded_inside` present in oracle + run. The driver's
+  tracked-fixture warnings on every family were the unifier's own staged
+  uuid-remap corpus refresh, committed before the workspace run.
+- `cargo test --workspace` with the round's env block (28 variables, Tier R
+  included via `QT_V4_CHECKOUT` at the pin): **471 test binaries / 2,554
+  passed / 0 failed** (cargo exit 0), zero explicit SKIP lines — the
+  retired #47 arm (`store_unavailable_envelope` 2/2 over the fresh
+  oracle), `backup_uuid_remap_equivalence` over the refreshed corpus,
+  Tier R (`cli_differential` — 188/0 per the P4.D128 by-name run with
+  `--nocapture`; green again here), and all fifteen sweep families
+  re-ran green inside the suite, verified per-binary from the log.
+- SPA: `npm run lint` — check-qt-classes **937 defined, every guarded
+  reference resolves**; `npm test` **361 files / 5,399 / 0 failed**;
+  `npm run build` clean; full Playwright **252 passed / 0 failed / 1 skipped (6.3 m)** — the one skip is the standing store-probe park, by design.
+
+Versions: core 0.0.696, harness 0.0.598, web 0.0.97, cli 0.0.14,
+SPA 0.5.586; host/tauri/fixture-sanitizer/sqlite3mc-sys unchanged.
+
+### 💸 the dogfood queue gains (details in phase-4 candidate 1)
+
+The bug-103 seeding on a real pre-4.9 archive + its `combined.log` debug
+line; the `glm-5.3-*` attachment on the real Z.AI wire (REPLACES the
+retired refusal-sentence item — the sentence no longer exists on either
+side); the 75 s compression fold + the `[CheapLLM] Task failed` line; the
+About strings on screen; live three-shell completion; the two solid hover
+fills.

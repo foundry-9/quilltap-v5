@@ -2250,29 +2250,77 @@ records THERE. Update this summary only when a phase or round completes.
   invalidation with polling parked, the terminal origin refusal, and the
   relabeled toggle. Versions: core 0.0.688, harness 0.0.592, web 0.0.96,
   host 0.0.83, SPA 0.5.583. Round record: `status-log.md`.
-- **Oracle baseline: `f3892158d` (2026-08-26, v4 main — "feat(realtime):
-  push interface updates over a WebSocket, tick clocks locally"), adopted
-  at the f3892158d-round unification (2026-08-26).** **Drift state, the
-  drift-check method, and the pinned-worktree regen recipe now live in
+- **The 4.9.0-push drift catch-up round (P4.D126 ∥ P4.D127 ∥ P4.D128 ∥
+  P4.D129): UNIFIED on main (2026-08-27) — ALL FOUR CLOSED; the oracle
+  baseline MOVES to `8872d7efc` and the fourteen-commit drift debt is
+  CLEARED.** v4's whole 4.9.0 release push absorbed. The memory/backup
+  trio red-first (the full-wipe chokepoint with its neighbour-scrub
+  behavioural pin; the 900-id chunking at both `db/memories.rs` sites —
+  a 40,000-id "too many SQL variables" failure measured pre-fix; bug
+  103's shared legacy-column seeding with the NEW committed
+  `restore-archive-legacy-profiles.zip` + the 306-case tier-1 family —
+  which also fixed a pre-existing v5 `courierDeltaMode` default bug and
+  found **a v4 REGRESSION inside `e000d6bfc` itself, FILED as v4 bug
+  105** (v4 `b6c6d7793`): the seeding helper sits outside the per-item
+  try, one malformed profile aborts a whole v4 import; v5 unaffected,
+  pinned) ∥ the provider trio (bug 104's Z.AI vision-list drop
+  red-first — corpus 341 → 343 with 339 rows byte-identical + the
+  `glm-5.3-flash` rows; the 75 s compression budget with local-first +
+  the `[CheapLLM] Task failed` warn under thread-scoped capture; the
+  coalesce-trace silence pin) ∥ the client/CLI trio (the two solid
+  hover utilities + the 20-site census with one pre-existing hover gap
+  closed; the four completion flags Tier R red-first 3-by-name →
+  188/0 + the token-level coverage guard mirrored; the About provider
+  sentence + Live-interface bullet spec-pinned) ∥ the neutrality lane
+  (415-family sweep, 410 green, 4 reds all dispositioned by pin
+  sandwich, **NOT ONE attributable to `dcab791c2` — EXCEPT the
+  measured 10/76 title-cleaner divergence no family could see**, landed
+  at the unification wires: both v5 cleaners second-trim, red-first +
+  a mutation-proven tier-3 arm; five NO-PORT ratifications; the
+  blob-registry claim made executable; one vestigial wardrobe twin
+  removed; nine recipe repairs + the `--nocapture` splice root-fix,
+  regression-pinned at the wires). Also at unification: the
+  finding-#47 web-edge tripwire RETIRED to a plain equality (v4
+  converged at `13ddc5ee`; the standing "URGENT with the human" note
+  is DISCHARGED), and the `backup_uuid_remap` neutrality gap closed by
+  a byte-identical baseline-vs-target sandwich (corpus refreshed for
+  pre-existing 4.8.2 staleness). **The §3 review: ZERO blocking
+  findings** (four parallel reviewers + the unifier's reads; the one
+  real minor — the census's two unrecorded sibling hover gaps — fixed
+  at unification). Gate: 471 test binaries / 2,554 / 0 with the
+  round's env block; the 15-family pinned sweep 15/15 zero SKIP with
+  changed-bytes greps; clippy both feature sets; release build; ng 361
+  files / 5,399; full Playwright **252 passed / 0 failed / 1 skipped**
+  (the standing store-probe park). 💸 the dogfood queue gains the
+  bug-103 seeding on a real pre-4.9 archive, the glm-5.3 wire proof
+  (REPLACING the retired Z.AI refusal-sentence item), the 75 s
+  compression fold + warn line, the About strings, live three-shell
+  completion, and the two hover fills. Versions: core 0.0.696, harness
+  0.0.598, web 0.0.97, cli 0.0.14, SPA 0.5.586. Round record:
+  `status-log.md`.
+- **Oracle baseline: `8872d7efc` (2026-08-26, v4 main — "perf(cheap-llm):
+  give compression its own budget, and log cheap-task failures", the last
+  commit of the 4.9.0 release push), adopted at the 4.9.0-push round
+  unification (2026-08-27).** **Drift state, the drift-check method, and
+  the pinned-worktree regen recipe live in
   `docs/developer/porting/drift-ledger.md`** — maintained by
   `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
   drift, and lanes never write it. **Never restate the drift count here —
-  read the ledger's §1.** As of the 2026-08-26 `/driftcheck`, v4 main HEAD
-  is fourteen commits past the baseline (v4's 4.9.0 release push: eight
-  PORT rows incl. bugs 103/104, six NO-PORT? candidates incl. a 155-file
-  neutrality sweep — ledger §3), the checkout is clean on `main`, bugfix
-  is an inert fork marker with no unabsorbed content, and the regen rule
-  is **PIN REQUIRED** (a lane-unique detached worktree at `f3892158d`,
-  recipe in the ledger's §5.1, until a catch-up round moves the
-  baseline). The sweep
-  driver remains the sanctioned per-family regen path —
-  never run two sweeps concurrently; since P4.53 it refuses empty-stage
-  families by name and `--self-test` guards recipe headers against
-  cross-alias defaults. The distill-transitive TZ pins, the
-  committed-fixture rule, and the venue/staging rules stand unchanged.
-  (The superseded baseline paragraphs formerly kept here "for history"
-  are archived verbatim in
+  read the ledger's §1.** As of the unification (2026-08-27), v4 main
+  HEAD is `b6c6d7793` — ONE docs-only commit past the baseline, and it is
+  this port's own bug-105 filing (recorded in the ledger's §1 so the
+  probe doesn't re-alarm); the checkout is clean on `main`, bugfix is an
+  inert fork marker, and the regen rule is **PIN NOT REQUIRED** — but
+  expect v4's `release: 4.9.0` squash + a new bugfix fork imminently and
+  re-probe BOTH branches at the next check. The sweep driver remains the
+  sanctioned per-family regen path — never run two sweeps concurrently;
+  since P4.53 it refuses empty-stage families by name, `--self-test`
+  guards recipe headers against cross-alias defaults, and since this
+  round it pins the `--nocapture` splice against the continued-command
+  regression. The distill-transitive TZ pins, the committed-fixture rule,
+  and the venue/staging rules stand unchanged. (The superseded baseline
+  paragraphs formerly kept here "for history" are archived verbatim in
   `docs/developer/porting/claude-md-status-history.md`.)
 - **Standing deferrals + gotchas:** tracked in the work orders, the
   status log, and the memory notes — not here.

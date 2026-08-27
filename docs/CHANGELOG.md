@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(porting): the 4.9.0-push round unification — baseline → 8872d7efc, drift debt cleared
+
+_Versions at round close: core 0.0.696, harness 0.0.598, web 0.0.97, cli 0.0.14, SPA 0.5.586 (bumped across the round's commits; this commit is docs-only)._
+
+The four-lane 4.9.0-push drift catch-up (P4.D126 memory/backup, P4.D127
+provider/cheap-LLM, P4.D128 client/CLI, P4.D129 dedup-neutrality +
+ratifications) unified onto main with the review-fixes and wires commits.
+The oracle baseline moves `f3892158d` → `8872d7efc`; all fourteen drift
+rows are absorbed or NO-PORT-ratified (drift-ledger §6). Headlines: the
+`dcab791c2` dedup sweep proven neutral everywhere EXCEPT the measured
+title-cleaner second-trim, which landed at the wires red-first; v4 bug
+105 filed upstream (the bug-103 fix's own regression); the finding-#47
+web-edge tripwire retired to a plain equality; the SQLite variable-limit
+chunking, bug 103's seeding, bug 104's vision-list drop, the compression
+budget, the completion flags, and the About strings all landed red-first
+with their differentials.
+
+Gate: fmt/clippy both feature sets/release build clean; the 15-family
+pinned sweep 15/15 zero SKIP; `cargo test --workspace` 471 binaries /
+2,554 / 0 with the round's env block; SPA lint (937 classes resolving) /
+test (361 files, 5,399) / build clean; full Playwright 252 passed / 0
+failed / 1 skipped (the standing store-probe park). Round record:
+`docs/developer/porting/status-log.md`.
+
 #### 2026-08-27 — chore(harness): refresh the uuid-remap corpus at the 4.9.0 baseline
 
 _No crate versions bumped._

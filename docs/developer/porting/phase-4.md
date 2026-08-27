@@ -6211,3 +6211,47 @@ unification review". The chronic `ng` hang gained a root fix on the way:
 
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
+
+**Next candidates, in rough value order** (updated at the 4.9.0-push round
+unification, 2026-08-27 — the fourteen-commit drift block is fully absorbed,
+baseline `8872d7efc`, drift debt CLEARED):
+
+1. **The owed dogfood pass over this round's live surfaces + the standing
+   💸 queue.** This round adds: a real pre-4.9 archive restored on the
+   Friday copy (bug 103's seeding + the `Seeded connection-profile
+   columns…` debug line in `combined.log`); a `glm-5.3-*` attachment
+   reaching the real Z.AI wire as `image_url` (replaces the RETIRED
+   refusal-sentence item); a real compression fold living past 45 s /
+   abandoned at 75 s + the `[CheapLLM] Task failed` line; the About
+   page's new bullet + provider sentence on screen; live shell
+   completion (`docs docker-mounts --format <TAB>` in all three shells,
+   `--uri`/`--base64` in fish); the two solid hover fills on a real
+   hover. Carried from before: Pascal's group-tier write path, the
+   Brahma deep-query budget, dedup/summaries (human), the NanoGPT
+   caching smoke / #101 cost question.
+2. **Watch for v4's `release: 4.9.0` squash + the new bugfix fork** —
+   the ledger's §1 expects both; `/driftcheck` on arrival (probe BOTH
+   branches).
+3. Named follow-ups from this round's lanes: an oracle-side
+   divergence-aware case kind for the bug-105 v4-regression tripwire
+   (the arm belongs to `system_import_state` — v5's pin is unit-side
+   only); the `attach_mount_file_equivalence` pre-existing red (oracle
+   yields zero canned vision calls — needs its own diagnosis); the
+   `a_fired_deadline_warns…` prefix-match target assert (one-line
+   tightening); the `embedding_blob_binding_guard` notes (whole-file
+   REGISTRY_ALLOWED exemption; comment-vacuity in the census).
+4. `systemHome` — the 7.5 s landing dashboard (carried).
+5. The present-but-null validation lead (carried).
+6. Widen the committed `characters-*` e2e fixture with a Quilltap
+   General store (carried; still parks the component-transfer beat).
+7. The next wrong-type-collapse order (`system_data_routes.rs` 13 sites,
+   `files_routes.rs` 5 — P4.60's census, carried).
+8. `p4.9i2` — help/HelpChat as a dedicated round (the bank gained this
+   round's rows: `help/system-backup-restore.md` "Restoring an Older
+   Backup", `help/connection-profiles.md`, `help/cli-completion.md`,
+   `packages/quilltap/README.md`).
+9. The handler-logging sweep + the duplicate "Quilltap General"
+   e2e-fixture store (carried).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json`
+file port remains a NAMED standalone flag.
