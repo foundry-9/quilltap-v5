@@ -15,6 +15,7 @@ import { Tooltip } from '../ui/tooltip';
 import { thumbnailUrl, fileUrl } from '../images/image-urls';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { resolveWhisperTargetLabel } from './whisper-visibility';
+import { ConfirmationBadge } from './confirmation-badge';
 import { CourierBubble } from './courier-bubble';
 import { MessageContent } from './message-content';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
@@ -49,7 +50,7 @@ export interface ImageClickEvent {
 @Component({
   selector: 'qt-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, Tooltip, CourierBubble, MessageContent, ThinkingBlock, TokenBadge, ToolMessage],
+  imports: [Avatar, Icon, Tooltip, ConfirmationBadge, CourierBubble, MessageContent, ThinkingBlock, TokenBadge, ToolMessage],
   template: `
     <!-- v4 stamps message-<id> on the row (MessageRow.tsx:222,263); it is how
          handleReattributed scrolls a moved line back into view. -->
@@ -313,6 +314,11 @@ export interface ImageClickEvent {
                   </button>
                 </qt-tooltip>
               }
+              <!-- Answer-confirmation verdict (only present when a check ran) —
+                   v4 mounts it between the LLM-logs and Resend buttons
+                   (MessageActionBar.tsx:190); v5 has no Resend, and Delete
+                   follows per the recorded order divergence above. -->
+              <qt-confirmation-badge [message]="message()" />
               <qt-tooltip content="Delete message">
                 <button
                   type="button"

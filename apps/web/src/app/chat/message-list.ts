@@ -367,6 +367,10 @@ function streamMessageToMessageDto(sm: StreamMessage): MessageDto {
     confirmationChecked: sm.confirmationChecked,
     confirmationRevised: sm.confirmationRevised,
     confirmationNotes: sm.confirmationNotes,
+    // Absent on every live frame (v4's confirmationResult never carries the
+    // pre-revision text — it arrives with the canonical refetch); mapped so the
+    // badge's five-field family survives the stream→bubble hop whole (P4.D132).
+    confirmationOriginalContent: sm.confirmationOriginalContent,
   };
 }
 

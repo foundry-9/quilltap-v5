@@ -89,6 +89,14 @@ export type StreamMessage =
       confirmationChecked?: boolean;
       confirmationRevised?: boolean;
       confirmationNotes?: string | null;
+      /**
+       * Never set by the live patch: v4's `applyConfirmationResult` carries
+       * confirmed/revised/notes/content only — the pre-revision text arrives
+       * with the post-turn canonical refetch. Declared so the stream→bubble
+       * mapper carries the whole five-field family rather than silently
+       * dropping this one (P4.D132; the badge reads it).
+       */
+      confirmationOriginalContent?: string | null;
     }
   | { kind: 'carina'; id: string; message: PostedMessage }
   | { kind: 'host'; id: string; message: PostedMessage }

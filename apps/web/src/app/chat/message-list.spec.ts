@@ -441,3 +441,41 @@ describe('MessageList — the chat template threads into every rendered row (P4.
     expect(html(empty)).toContain('qt-chat-narration');
   });
 });
+
+describe('streamMessageToMessageDto — the confirmation family (P4.D132)', () => {
+  it('carries all five confirmation fields through the stream→bubble hop', () => {
+    // `confirmationOriginalContent` is absent on every LIVE frame (v4's
+    // confirmationResult never carries the pre-revision text), so this pin
+    // hand-builds the StreamMessage: what it guards is the MAPPER — the badge
+    // reads a uniform five-field family whichever flow produced the row.
+    const state: ChatStreamState = {
+      ...initialChatStreamState(),
+      messages: [
+        {
+          kind: 'assistant',
+          id: 'm-conf',
+          content: 'Altitude is reported in feet.',
+          participantId: 'p1',
+          provider: null,
+          modelName: null,
+          reasoningContent: null,
+          reasoningSegments: null,
+          intermediate: false,
+          confirmed: true,
+          confirmationChecked: true,
+          confirmationRevised: true,
+          confirmationNotes: 'The ledger excerpt shows a metric column.',
+          confirmationOriginalContent: 'Altitude is reported in metres.',
+        },
+      ],
+    };
+    const items = buildStreamRenderItems(state, []);
+    expect(items).toHaveLength(1);
+    const msg = items[0].type === 'message' ? items[0].message : null;
+    expect(msg!.confirmed).toBe(true);
+    expect(msg!.confirmationChecked).toBe(true);
+    expect(msg!.confirmationRevised).toBe(true);
+    expect(msg!.confirmationNotes).toBe('The ledger excerpt shows a metric column.');
+    expect(msg!.confirmationOriginalContent).toBe('Altitude is reported in metres.');
+  });
+});

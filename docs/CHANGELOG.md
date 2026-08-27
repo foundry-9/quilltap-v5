@@ -167,6 +167,31 @@ proof per site; un-chunking all five sites reddened exactly those five
 proofs.
 
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
+#### 2026-08-27 — port(spa): the answer-confirmation badge — a real pinnable button
+
+_Versions: SPA 0.5.593._
+
+The ConfirmationBadge lands in v5 for the first time (only its CSS had ever
+been transcribed): v4 `ConfirmationBadge.tsx` in its post-`0bd841394` form —
+a real `type="button"` that takes keyboard focus, wrapped in a pinnable /
+interactive `qt-tooltip` gated on `hasDetail` (notes or original present),
+with the four verdict states (vouched ✓ / amended ✎ / stood-by ! /
+unvetted —), the structured bubble (title, summary, "What looked off",
+"Originally written", the pin hint), and the `spoken` aria-label join — all
+strings byte-for-byte from the emitted table. Mounted in the action bar
+after the LLM-logs entry (v4 puts it before Resend, which v5 lacks). The
+`_chat.css` base rule gains v4's button-reset + transition and the new
+hover/focus-visible/state/user-bubble rules in v4's order; the section
+banner no longer claims the title holds the notes. Data plumbing: the
+stream→bubble mapper now carries `confirmationOriginalContent` (the fifth
+family field it used to drop — absent on every live frame, v4-faithfully,
+since `confirmationResult` never carries the pre-revision text; the reducer
+leg was re-measured against v4's `applyConfirmationResult` and is already
+faithful). Eleven new specs: the six mirrors of v4's badge tests, the
+emitted state-tuple and bubble-structure pins, and the mapper-thread pin.
+Mutation-proven: the checked gate, the revised branch, the pin gate, and
+the mapper line each redden the right specs.
+
 #### 2026-08-27 — port(spa): the action bar adopts qt-tooltip on all nine buttons
 
 _Versions: SPA 0.5.592._
