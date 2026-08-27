@@ -7,8 +7,11 @@
 //! dangerous one — v4's Zod schemas refuse it with a 400, while a collapsing
 //! edge silently reads it as "the caller didn't say" and carries on.
 //!
-//! P4.57's tier-2 survey enumerated the sites; P4.60 adjudicated them one by
-//! one against v4's real routes. This test is what keeps the verdicts honest:
+//! P4.57's tier-2 survey enumerated the sites; P4.60 adjudicated its own set
+//! against v4's real routes and named three pockets it did not reach; P4.62
+//! adjudicated those (`system_data_routes.rs`'s 13, `files_routes.rs`'s 7, and
+//! `llm_logs_routes.rs`'s 1), so every count below is now a measured verdict and
+//! not one is deferred. This test is what keeps the verdicts honest:
 //!
 //! - [`PARSER_WIRING`] pins that each ADJUDICATED-DIVERGENT route still routes
 //!   its body through the ported Zod parser. A differential over the parser
@@ -66,6 +69,29 @@ const PARSER_WIRING: &[(&str, &str, &str)] = &[
          exactly as `null` is",
     ),
     (
+        "crates/quilltap-web/src/system_data_routes.rs",
+        "parse_job_concurrency(&body_or_null)",
+        "POST /api/v1/system/tools?action=job-concurrency — v4's \
+         `jobConcurrencySchema.safeParse` → `validationError`, i.e. the two-key \
+         `{error:'Validation error', details:[…]}` envelope; reading \
+         `as_i64` answered an invented flat sentence with no `details`",
+    ),
+    (
+        "crates/quilltap-web/src/system_data_routes.rs",
+        "js_truthy(raw)",
+        "POST /api/v1/system/tools?action=capabilities-report-delete — v4's \
+         `if (!reportId)` is JS falsiness, so a TRUTHY non-string passes the \
+         gate and answers 404 from the `===` lookup, not 400",
+    ),
+    (
+        "crates/quilltap-web/src/files_routes.rs",
+        "parse_mount_write_body(&body)",
+        "PUT /api/v1/mount-points/{id}/files/{path} (JSON leg) — v4's \
+         `writeBodySchema.safeParse`, whose joined issue messages are wire \
+         payload; the four keys read raw also let an unknown `encoding`, a \
+         negative/fractional `expected_mtime` and a string `force` through",
+    ),
+    (
         "crates/quilltap-core/src/api/engine.rs",
         "brahma::brahma_send_prepare(",
         "POST /api/v1/brahma-console/{id}/messages — `verifyBrahmaChat` FIRST, \
@@ -82,9 +108,22 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
     (
         "crates/quilltap-web/src/system_data_routes.rs",
         13,
-        "NOT adjudicated by P4.60 (outside its enumerated sites) — the \
-         jobs/maintenance control bodies. Tier-2 fodder for a future order; \
-         listed so the sweep does not re-flag them as new.",
+        "ADJUDICATED site by site (P4.62), and every arm is driven by \
+         `system_body_guards_equivalence` over v4's real handlers. ELEVEN are \
+         FAITHFUL: the almanack download's `content`/`filename` read the \
+         server's OWN response entity; `action` (tasks-queue) lands every shape \
+         on v4's one `!action || !includes(action)` sentence; `confirm` fails \
+         `!== 'DELETE_ALL_MY_DATA'` identically and \
+         `keepArchivedCharacterBundles` is v4's `!== false`, where None means \
+         KEEP; `threshold` is v4's own `typeof === 'number' ? … : 0.80`; `type` \
+         is refused for every non-member by one enum sentence and \
+         `priority`/`maxAttempts` are literally `typeof === 'number' ? … : \
+         undefined`; the `str_field` passphrase reads are v4's `typeof x === \
+         'string' ? x : ''`; and `progressId` is deliberately collapsed to \
+         'untracked' by v4's `if (parsed.success)` — though its GATE was not \
+         faithful and now runs Zod's own uuid regex (`zod_uuid`). TWO were \
+         DIVERGENT and are fixed: `reportId` and `concurrency`, both wired \
+         above.",
     ),
     (
         "crates/quilltap-web/src/characters_routes.rs",
@@ -113,8 +152,13 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
     (
         "crates/quilltap-web/src/llm_logs_routes.rs",
         1,
-        "NOT adjudicated by P4.60 — the request-preview `content` projection. \
-         Named so a future sweep does not re-flag it.",
+        "FAITHFUL, measured (P4.62). ⚠ P4.60's prose called this a \
+         'request-preview `content` projection'; it is not. It is the \
+         image-aesthetics PUT's `content`, and it IS caller input — but v4 is \
+         `aestheticContentSchema.safeParse(await req.json().catch(() => ({}))) \
+         .data?.content ?? ''`, which coalesces a malformed body, an absent key \
+         AND a wrong-typed value to `''` — and `''` DELETES the file. All three \
+         must collapse; the handler defaults `None` to `''`.",
     ),
     (
         "crates/quilltap-web/src/custom_tools_routes.rs",
@@ -135,14 +179,23 @@ const CLOSURE_NEEDLE: &str = ".as_str())";
 /// `(routes file, expected closure-form sites, the adjudication)`.
 const CLOSURE_CENSUS: &[(&str, usize, &str)] = &[(
     "crates/quilltap-web/src/files_routes.rs",
-    7,
-    "NOT adjudicated by P4.60 (outside its enumerated sites) — FIVE are caller \
-     input (`content` and `encoding` on the mount-file write, the `str_field` \
-     chat-attach reads, `fileId` on the link leg, and the multipart `tags` \
-     part's parsed `tagId`s), and TWO read the server's OWN response entity to \
-     pick 201 vs 200. Named tier-2 fodder for a future order: the five want \
-     v4's `mount-points/**` and `chats/[id]/files/**` routes read first, \
-     exactly as this lane read its own.",
+    5,
+    "ADJUDICATED (P4.62), down from SEVEN: `content` and `encoding` on the \
+     mount-file write left the needle entirely when they moved into \
+     `parse_mount_write_body` (wired above). Of the five that remain, TWO are \
+     the 201-vs-200 `createdAt`/`updatedAt` pick — FAITHFUL entity reads off \
+     the server's own `Files` response, never a request body. The \
+     `attach-mount-file` `str_field` is FAITHFUL: v4's `!v || typeof v !== \
+     'string'` refuses absent, null, wrong-typed and empty alike, and the core \
+     reproduces both sentences AFTER v4's chat-404. `fileId` on the link leg \
+     WAS divergent twice over (an empty string rode through, and the 400 \
+     preceded v4's chat-404) and is fixed — the collapse stays because the \
+     coerced `\"\"` is what carries the guard past the 404. `tags[].tagId` is \
+     SPLIT: the truthy-non-array 500 is fixed, while a wrong-typed tagId is a \
+     DIVERGENT-RECORDED escalation (v4 carries the raw value into `linkedTo`; \
+     closing it needs `Request::FileUpload.tags` widened past `Vec<String>` in \
+     `quilltap-core/src/api/types.rs`). Arms: \
+     `files_body_guards_equivalence`.",
 )];
 
 fn repo_root() -> PathBuf {

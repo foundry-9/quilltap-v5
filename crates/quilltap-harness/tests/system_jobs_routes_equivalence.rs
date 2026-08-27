@@ -220,6 +220,16 @@ fn system_jobs_routes_matches_oracle() {
         check("job_concurrency_set_8", s, b, Some(extra));
     }
     {
+        // The oracle case is `statusOnly` — and that mask is now NAMED rather
+        // than merely inherited (P4.62). v4's refusal here is
+        // `validationError(...)`, the two-key `{error:'Validation error',
+        // details:[…]}` envelope; this comparand direct-drives the CORE
+        // function, whose `validate_concurrency` answers v5's own flat sentence.
+        // That is correct, because after P4.62 the core check is reachable only
+        // from the `/api/dispatch` verb — a v5-internal transport with no v4
+        // analog. The v4-URL edge validates FIRST and answers v4's envelope
+        // byte-for-byte; its arms are `system_body_guards_equivalence`'s
+        // `concurrency_*`.
         let db = fresh_db("conc0");
         let (s, b) = outcome(&rt.block_on(system_data::job_concurrency_set(&db, 0)));
         check("job_concurrency_set_out_of_range", s, b, None);

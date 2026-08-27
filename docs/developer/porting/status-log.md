@@ -91046,3 +91046,263 @@ retired refusal-sentence item — the sentence no longer exists on either
 side); the 75 s compression fold + the `[CheapLLM] Task failed` line; the
 About strings on screen; live three-shell completion; the two solid hover
 fills.
+
+---
+
+## P4.62 — the wrong-type-collapse pockets (2026-08-27, lane `claude/p4-62-collapse-pockets-6cfffd`)
+
+**CLOSED.** The three pockets P4.60 deferred loud are adjudicated site by site
+against v4's real routes: `system_data_routes.rs`'s 13
+`and_then(Value::as_*)` sites, `files_routes.rs`'s 7 closure-form sites, and
+`llm_logs_routes.rs`'s 1. **Zero rows remain "NOT adjudicated"**, and the
+census guard's counts and prose are the ledger. Versions: harness 0.0.599,
+web 0.0.98.
+
+### ⚠ The drift ledger went STALE mid-lane — the round must `/driftcheck` before unifying
+
+The §2 freshness probe PASSED at lane start (main, clean, nothing past
+`aec86a613` / `3a76b17df`). Re-run after the lane's final regen batch it
+**FAILED, two ways at once**:
+
+- v4 main gained `679e450e3` `fix(import): one malformed connection profile no
+  longer aborts a whole .qtap import (bug 105)` — **v4 fixing this port's own
+  P4.D126 filing**, touching `lib/import/quilltap-import/import-profiles.ts`
+  and `lib/llm/connection-profile-legacy-fields.ts`.
+- the checkout went DIRTY in `app/`: `ConfirmationBadge.tsx`,
+  `MessageActionBar.tsx`, `_chat.css`, `_surfaces.css`, plus an untracked
+  `components/ui/Tooltip.tsx`.
+
+**This lane is unaffected, by construction rather than by argument.** Every
+oracle regen — including the closing sweep — ran from the lane-unique detached
+worktree `/tmp/qt-v4-pin-p462-8872d7efc`, whose HEAD was `git rev-parse`-verified
+as `8872d7efca48ad03f9205eeb0f99781a06676814` immediately after the last run. And
+the drift does not reach a single surface this lane touched: `679e450e3` is the
+import/restore family, and the dirty files are salon SPA components and CSS.
+Neither goes near `system/tools`, `system/jobs`, `system/unlock`,
+`mount-points/**`, `files?action=upload`, `chats/[id]/files`, or
+`system/image-aesthetics`. The lane did NOT write the ledger (lanes never do).
+
+### The adjudication table
+
+`system_data_routes.rs` — 13 sites, **11 FAITHFUL / 2 DIVERGENT-FIXED**:
+
+| site | key | verdict |
+|---|---|---|
+| `:149`,`:154` | `content`, `filename` | FAITHFUL — the almanack download reads the server's OWN `System` response entity, never a request body |
+| `:239` | `action` (tasks-queue) | FAITHFUL — v4's `!action \|\| !['start','stop'].includes(action)` sends absent, null and every wrong-typed shape to one sentence |
+| `:264` | `progressId` | FAITHFUL *collapse*, **divergent GATE, fixed** — see below |
+| `:277` | `reportId` | **DIVERGENT-FIXED** — v4's `!reportId` is JS falsiness; a truthy non-string passes and answers 404 |
+| `:294` | `concurrency` | **DIVERGENT-FIXED** — v4's `validationError` envelope, not a flat sentence |
+| `:322` | `confirm` | FAITHFUL — `confirm !== 'DELETE_ALL_MY_DATA'` refuses every non-matching shape identically |
+| `:333` | `keepArchivedCharacterBundles` | FAITHFUL — v4 is `!== false`, so absent/null/wrong-typed all KEEP; `Option<bool>` + "None keeps" is exactly that |
+| `:342` | `threshold` | FAITHFUL — v4's own coercion `typeof x === 'number' ? x : 0.80` |
+| `:497` | `type` | FAITHFUL — `BackgroundJobTypeEnum.safeParse` refuses every non-member with one sentence (the roster is compared byte-for-byte: v5's `JOB_TYPES` and v4's enum agree, 23 for 23) |
+| `:502`,`:503` | `priority`, `maxAttempts` | FAITHFUL — v4 is literally `typeof x === 'number' ? x : undefined`, which is `as_f64()` |
+| `:544` | the passphrase `str_field` | FAITHFUL — v4 is literally `typeof body.x === 'string' ? body.x : ''` |
+
+`files_routes.rs` — 7 sites, **3 FAITHFUL / 3 DIVERGENT-FIXED / 1 SPLIT**
+(needle count 7 → 5, because `content` and `encoding` left the closure form
+when they moved into `parse_mount_write_body`):
+
+| site | key | verdict |
+|---|---|---|
+| `:668`,`:677` | `content`, `encoding` | **DIVERGENT-FIXED** — v4's whole `writeBodySchema` |
+| `:826` | `tags[].tagId` | **SPLIT** — the truthy-non-array 500 FIXED; the wrong-typed element ESCALATED |
+| `:854`,`:857` | `createdAt`, `updatedAt` | FAITHFUL — entity reads off the server's own `Files` response (the 201-vs-200 pick) |
+| `:893` | the attach `str_field` | FAITHFUL — v4's `!v \|\| typeof v !== 'string'` collapses identically, and the core reproduces both sentences AFTER v4's chat-404 |
+| `:914` | `fileId` | **DIVERGENT-FIXED** — twice over: an empty string rode through, and the 400 preceded v4's chat-404 |
+
+`llm_logs_routes.rs:127` — **FAITHFUL**, and **P4.60's prose was a
+misattribution**: it is not a "request-preview `content` projection", it is the
+image-aesthetics PUT's `content`, which IS caller input. v4 is
+`aestheticContentSchema.safeParse(await req.json().catch(() => ({}))).data?.content ?? ''`
+— a malformed body, an absent key and a wrong-typed value all coalesce to `''`,
+and `''` DELETES the file. All three MUST collapse.
+
+### What the measurements refuted
+
+- **The progressId gate.** The site's own comment claimed the 36-char +
+  `Uuid::parse_str` filter mirrored Zod's uuid regex. It does not:
+  `parse_str` ignores the RFC 9562 **version** (`[1-8]`) and **variant**
+  (`[89abAB]`) nibbles that Zod 4 enforces, so v5 tracked progress for ids v4
+  refuses. The oracle's 15 `progressid_gate_*` arms measure Zod's whole
+  accept-set — including that it accepts the **nil** and **max** UUIDs by
+  literal escape hatch, and that those literals are LOWERCASE, so an uppercase
+  max UUID is refused while the lowercase one is accepted. `zod_uuid()` is the
+  regex transcribed from `zod/v4/core/regexes.cjs`.
+- **The `keepArchivedCharacterBundles` load-bearing tri-state.** The order
+  flagged the `d553f72a` absent-vs-explicit-false semantics as possibly exactly
+  wrong. Measured: v4 is `!== false`, so the collapse lands on it exactly.
+- **`payload: []` on the jobs enqueue.** `typeof [] === 'object'` and `![]` is
+  false, so v4 **ACCEPTS** an array payload (201) where v5's
+  `!payload.is_object()` refuses. Escalated (see below).
+
+### Neighbours found by reading (Tier 2), all fixed
+
+- **The malformed-body answer, per action.** v4 reads the body with
+  `await req.json()` INSIDE each handler's own try, so a malformed body is not
+  a 400 — it escapes to that handler's catch as a **500** carrying the leg's own
+  sentence (`Failed to control queue` / `Failed to delete report` /
+  `Failed to delete data` / `Failed to deduplicate memories`). `job-concurrency`
+  alone survives it as a 400, because its read is
+  `req.json().catch(() => ({}))`. v5 answered 400 everywhere. The edge now keeps
+  the parse failure distinct from a `null` body (`Option<Value>`, not
+  `unwrap_or(Value::Null)`), which is what lets each arm answer its own way.
+- **`POST /api/v1/system/unlock`.** No missing-action sentence (it answered
+  `Unknown action: ` with an empty name) and **no body gate at all** — a body of
+  `42` or `[]` rode straight through to a passphrase change with two empty
+  strings. v4's three-step order is now reproduced: absent action → its own long
+  sentence naming all five, unknown → `Unknown action: X`, then
+  `parseRequestBody`'s `Invalid JSON body` / `Request body must be a JSON
+  object`. The P4.9G3 scope narrowing (only `change-passphrase` is aliased) is
+  unchanged and re-recorded.
+
+### The differentials
+
+Two new families, both driving v4's REAL handlers and both reached over real
+HTTP against a served instance (the guards live at the transport edge, so a
+harness-level comparand cannot see them):
+
+- **`system_body_guards_equivalence`** — 55 route arms + 15 progressId arms,
+  from `harness/oracle/cases/system-body-guards.test.ts`.
+- **`files_body_guards_equivalence`** — 36 arms, from
+  `harness/oracle/cases/files-body-guards.test.ts`.
+
+Both oracles are DB-free (stubbed `users.findById`, `files.findByCategory`,
+`chats.findById`, the processor, `enqueueJob`, `setMaxConcurrentJobs`,
+`deduplicateAllMemories`, and `getDbKeyState: () => 'locked'`). **No arm may
+pass `delete-data`'s confirm gate and none does** — `deleteAllUserData` is not
+mocked, deliberately, so a careless arm would fail loudly rather than wipe.
+
+Venue note, measured not assumed: both families serve the committed
+`system-data-*` family, **not** the shared `chat-send` instance. chat-send
+carries neither a `files` table nor `instance_settings`, so on it every
+`?action=link` arm died as a 500 `no such table: files` and `concurrency_ok` as
+`no such table: instance_settings`. The materializer is duplicated into both
+test files rather than added to `tests/common`, which this lane does not own.
+
+Two comparands are normalized on BOTH sides, and only these two:
+`processorStatus` (v4's is a forked-child snapshot the oracle pins with a mock;
+in v5 the pump is a host seam and a `start` really starts it) and the dedup
+`result` (the oracle's stub echo vs a real sweep).
+
+**The unified gate caught this lane's would-have-shipped bug.** The
+`?action=link` fix first rewrote only a `File not found` answer to v4's 400 —
+and the PRE-EXISTING `files_write_routes` beat went red, 500 where it asserts
+400. The cause: on the chat-send venue the `files` table is missing, so the
+probe's lookup ERRORS instead of resolving nothing, and the 400 was lost. The
+reasoning was wrong, not just the venue — when the fileId is invalid v4 never
+reaches its file lookup at all, so the only two answers it can give are
+`Chat not found` and `fileId is required`. The edge now passes the chat-404
+through and turns EVERY other outcome into the 400, which is v4's truth table
+and makes the old beat green again. The one shape it cannot separate is a
+failure of the CHAT lookup itself (v4: 500) — named in the code.
+
+**Mutation proof: 15 mutations, each reddening exactly one family** — the
+truthy `reportId` gate, the concurrency envelope, both uuid nibble ranges, the
+unlock missing-action filter, the unlock body-object gate, two per-action 500
+sentences, the `encoding` enum, the `expected_mtime` nonnegative check, the
+`force` boolean check, the tags 500, the `fileId` empty-string filter, the
+link leg's chat-404 passthrough, and its invalid-fileId catch-all. **One
+(`m05`) survived its first run and the
+arm was wrong, not the fix**: axum hands an absent `?action` and an empty
+`?action=` the same `None`, so `unlock_action_missing` could not discriminate
+the `.filter(|a| !a.is_empty())`. A new `unlock_action_empty` arm (v4:
+`searchParams.get('action')` is `''`, which `!action` reads as ABSENT, not as
+an unknown action) reddens it.
+
+### Deferred loud
+
+1. **`files_routes.rs:826`, the wrong-typed `tagId`** — DIVERGENT-RECORDED,
+   escalated. v4 has no schema here: `tags.map(t => t.tagId)` carries the raw
+   value, so `[{"tagId": 5}]` puts a NUMBER into `linkedTo`/`tags` and `[{}]`
+   puts `undefined` (serialized `null`). v5 drops every non-string. **Ordered
+   shape:** widen `Request::FileUpload.tags` past `Vec<String>` in
+   `crates/quilltap-core/src/api/types.rs` (outside this lane's ownership) and
+   carry the raw values through; the arms need a DB-backed venue because they
+   reach `saveFileEntry`.
+2. **`payload: []` on `POST /api/v1/system/jobs`** — v4 accepts (201), v5
+   refuses 400. **Ordered shape:** `jobs_enqueue`'s `!payload.is_object()` in
+   `crates/quilltap-core/src/api/system_data.rs` becomes v4's `!payload ||
+   typeof payload !== 'object'`, i.e. reject only falsy-or-scalar. The natural
+   home for the arm is `system_jobs_collection_equivalence`, whose comparand is
+   the stored row.
+3. **`jobs_body_not_json`** — a RECORDED divergence with its reason on the arm:
+   v4 relays `getErrorMessage(error)`, i.e. **V8's own `JSON.parse` text**,
+   which no Rust port reproduces — and the oracle's own value is whatever its
+   mock throws, so even the oracle is not measuring production there. v5 keeps
+   its deterministic 400, asserted status AND body so it cannot drift unnoticed.
+4. **The `?action=link` guard order** is fixed at the edge by sending an invalid
+   `fileId` through as `""` purely to run the core's chat-404 gate, passing that
+   404 through and answering 400 for everything else. The tidier
+   shape is a three-line `fileId is required` guard in
+   `chat_media::chat_file_link` right after its chat-404 — that file is outside
+   this lane's ownership. Behaviour is identical either way; this is a
+   simplification, not an outstanding divergence.
+
+### Two v5-internal backstops, now named
+
+`validate_concurrency`'s `Validation error: maxConcurrentJobs must be an integer
+between 1 and 32` and `decode_write_content`'s `Invalid body: invalid encoding
+{other}` are both v5 inventions with no v4 analog. After this lane the v4-URL
+edges refuse first with v4's own bytes, so both are reachable only from the
+`/api/dispatch` verb — a v5-internal transport. `system_jobs_routes_equivalence`
+carries a `statusOnly` mask on `job_concurrency_set_out_of_range` for exactly
+this reason; the mask is now NAMED at the call site rather than merely
+inherited, and it points at the new family's `concurrency_*` arms.
+
+### Regen recipes
+
+Both live in their `.rs` headers and are driver-runnable
+(`recipe_sweep.py --show <family>` prints them; `--run-all --families
+system_body_guards_equivalence,files_body_guards_equivalence --v4 <pin>`
+regenerates and re-runs both — this lane's closing proof, `totals: {'ok': 2}`).
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+TMPO=/tmp/qt-sys-guards-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/system-body-guards.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server            # or a pinned worktree
+QT_ORACLE_OUT=/tmp/oracle-system-body-guards.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- system-body-guards
+```
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+TMPO=/tmp/qt-files-guards-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/files-body-guards.test.ts" "$TMPO/cases/"
+cd ~/source/quilltap-server
+QT_ORACLE_OUT=/tmp/oracle-files-body-guards.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- files-body-guards
+```
+
+```bash
+QT_ORACLE_SYSTEM_BODY_GUARDS=/tmp/oracle-system-body-guards.ndjson \
+QT_ORACLE_FILES_BODY_GUARDS=/tmp/oracle-files-body-guards.ndjson \
+  cargo test -p quilltap-web --test system_body_guards_equivalence \
+    --test files_body_guards_equivalence -- --nocapture
+```
+
+No committed fixture was created or mutated, so no sibling oracle is
+invalidated. Both families CONSUME the existing committed `system-data-*`
+family.
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-D warnings` clean on BOTH feature sets (the first pass found one real
+`result_large_err` on `parse_job_concurrency` — boxed, like
+`files_routes::db_and_backend`'s refusal already is); `cargo test --workspace`
+with the lane's two oracle env vars: **473 test binaries / 2,556 passed / 0
+failed / 1 ignored**, cargo exit 0, **zero SKIP lines**, with all four of the
+lane's tests confirmed to have RUN by name
+(`system_body_guards_match_oracle`, `files_body_guards_match_oracle`,
+`web_route_body_reads_match_the_census`,
+`adjudicated_edges_still_route_through_their_parser`). Both families were also
+regenerated and re-run through `recipe_sweep.py --run-all --v4 <pin>`,
+`totals: {'ok': 2}`. No Playwright in this lane (P4.D130 is the round's sole
+runner) and no `apps/web` change, so no SPA gate.

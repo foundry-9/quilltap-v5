@@ -25,6 +25,62 @@ round that absorbs it) and `0bd841394` (PORT-NEW — a body-portalled
 now-pinnable answer-confirmation badge), and the checkout went dirty in
 `app/salon/` with in-progress work continuing the same surface. Ledger §1
 and §3 updated; regen rule stays PIN REQUIRED.
+#### 2026-08-27 — fix(web): adjudicate the three wrong-type-collapse pockets — reportId's 404, the zod concurrency envelope, the mount-write schema
+
+_Versions: harness 0.0.599, web 0.0.98._
+
+P4.62 closes the census pockets P4.60 deferred: all thirteen
+`and_then(Value::as_*)` sites in `system_data_routes.rs`, the seven closure-form
+sites in `files_routes.rs`, and the one in `llm_logs_routes.rs`. Each was read
+against v4's real route first, then measured. Sixteen are FAITHFUL — v4 itself
+collapses those shapes, either through a coercion (`typeof x === 'number' ? x :
+0.80`) or by refusing every non-matching shape with one sentence. Five were
+divergent and are fixed.
+
+`?action=capabilities-report-delete`: v4's `if (!reportId)` is JS falsiness, so
+a truthy non-string (`true`, `123`, `{}`, `[]`) passes the gate and then fails
+the `f.id === reportId` lookup — v4 answers **404 Report not found**, where the
+collapse answered 400.
+
+`?action=job-concurrency`: v4 answers `validationError(...)`, the two-key
+`{error:'Validation error', details:[…zod issues]}` envelope. The edge answered
+an invented flat sentence with no `details`; it now reproduces Zod 4's issue
+objects arm for arm, and validates before the pump check the way v4 does.
+
+The `capabilities-report-generate` progressId gate accepted UUIDs Zod refuses:
+`Uuid::parse_str` ignores the RFC version and variant nibbles that Zod 4's
+`z.uuid()` enforces. It runs Zod's own regex now.
+
+The mount-file PUT's JSON leg gets v4's `writeBodySchema` whole: it had invented
+a `content is required` sentence and then silently accepted an unknown
+`encoding`, a negative or fractional `expected_mtime`, and a string `force` —
+all of which v4 refuses. The upload leg's `tags` part now splits v4's three
+outcomes (unparseable → 400, truthy non-array → the `.map` TypeError's 500,
+falsy → no tags). The `?action=link` leg refused an empty `fileId` too late and
+answered its 400 ahead of v4's chat-404.
+
+Neighbours found by reading and fixed with them: each tools action's malformed-
+body answer (a 500 with the leg's own sentence, except `job-concurrency`, whose
+`.catch(() => ({}))` makes it a 400), and `system/unlock`'s missing-action
+sentence plus its `Request body must be a JSON object` gate, which was absent
+entirely — a body of `42` rode through to a passphrase change.
+
+The link fix's first shape rewrote only a `File not found` answer, and the
+pre-existing `files_write_routes` beat caught it: where the file lookup errors
+rather than resolving nothing, the 400 was lost as a 500. When the fileId is
+invalid v4 never reaches its lookup, so the edge now passes the chat-404 through
+and answers 400 for everything else.
+
+Two new differentials over real HTTP against v4's real handlers:
+`system_body_guards_equivalence` (55 route arms + 15 progressId arms) and
+`files_body_guards_equivalence` (36 arms), both from oracles pinned at
+`8872d7efc`. Fifteen mutations, each reddening exactly one family. The census
+guard's counts and prose now carry every verdict; nothing in it is deferred.
+
+One escalation, recorded not fixed: a wrong-typed `tagId` (`[{"tagId": 5}]`) is
+carried by v4 into `linkedTo` as the raw value, where v5 drops it. Closing it
+needs `Request::FileUpload.tags` widened past `Vec<String>` in
+`quilltap-core/src/api/types.rs`, outside this lane's ownership.
 
 #### 2026-08-27 — docs(orders): the four-lane round — the `aec86a613` pull-down drift, the collapse pockets, the harness follow-ups, the systemHome profile
 

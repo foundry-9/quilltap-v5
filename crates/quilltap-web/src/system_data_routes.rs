@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use quilltap_core::api::{Request as CoreRequest, Response as CoreResponse};
 
@@ -67,6 +67,118 @@ fn unknown_action(action: &str) -> AxumResponse {
         StatusCode::BAD_REQUEST,
         &format!("Unknown action: {action}"),
     )
+}
+
+/// v4's `validationError(zodError)` — `{error:'Validation error', details:[…]}`
+/// at 400, with the RAW Zod issue objects as wire payload
+/// (`lib/api/responses.ts:108`). `error_json` cannot express the second key.
+fn validation_error(issues: Value) -> AxumResponse {
+    (
+        StatusCode::BAD_REQUEST,
+        [("content-type", "application/json")],
+        json!({ "error": "Validation error", "details": issues }).to_string(),
+    )
+        .into_response()
+}
+
+/// Zod 4's `received` label for a value that failed an `invalid_type` check.
+pub(crate) fn zod_received(v: Option<&Value>) -> &'static str {
+    match v {
+        None => "undefined",
+        Some(Value::Null) => "null",
+        Some(Value::Bool(_)) => "boolean",
+        Some(Value::Number(_)) => "number",
+        Some(Value::String(_)) => "string",
+        Some(Value::Array(_)) => "array",
+        Some(Value::Object(_)) => "object",
+    }
+}
+
+/// v4's `jobConcurrencySchema = z.object({ concurrency: z.number().int().min(1).max(32) })`,
+/// transcribed issue-for-issue from Zod 4's own output (the
+/// `system-body-guards` oracle's `concurrency_*` arms are the transcription's
+/// proof). Zod stops at the first failing check on the field, so at most one
+/// issue is ever produced.
+// `Box`ed like `files_routes::db_and_backend`'s refusal — an `AxumResponse` is
+// a 128-byte `Err` variant clippy rightly refuses to carry by value.
+fn parse_job_concurrency(body: &Value) -> Result<i64, Box<AxumResponse>> {
+    let raw = body.get("concurrency");
+    let Some(n) = raw.and_then(Value::as_f64) else {
+        return Err(Box::new(validation_error(json!([{
+            "expected": "number",
+            "code": "invalid_type",
+            "path": ["concurrency"],
+            "message": format!("Invalid input: expected number, received {}", zod_received(raw)),
+        }]))));
+    };
+    // `.int()` is Zod 4's `safeint` format check, reported as its own
+    // `invalid_type` with `expected: "int"`.
+    if n.fract() != 0.0 || !n.is_finite() || n.abs() > 9_007_199_254_740_991.0 {
+        return Err(Box::new(validation_error(json!([{
+            "expected": "int",
+            "format": "safeint",
+            "code": "invalid_type",
+            "path": ["concurrency"],
+            "message": "Invalid input: expected int, received number",
+        }]))));
+    }
+    if n < 1.0 {
+        return Err(Box::new(validation_error(json!([{
+            "origin": "number",
+            "code": "too_small",
+            "minimum": 1,
+            "inclusive": true,
+            "path": ["concurrency"],
+            "message": "Too small: expected number to be >=1",
+        }]))));
+    }
+    if n > 32.0 {
+        return Err(Box::new(validation_error(json!([{
+            "origin": "number",
+            "code": "too_big",
+            "maximum": 32,
+            "inclusive": true,
+            "path": ["concurrency"],
+            "message": "Too big: expected number to be <=32",
+        }]))));
+    }
+    Ok(n as i64)
+}
+
+/// Zod 4's `z.uuid()` regex, transcribed byte-for-byte from
+/// `zod/v4/core/regexes.cjs`:
+///
+/// ```text
+/// ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}
+///  |00000000-0000-0000-0000-000000000000
+///  |ffffffff-ffff-ffff-ffff-ffffffffffff)$
+/// ```
+///
+/// It is RFC 9562-strict about the version nibble (`[1-8]`) and the variant
+/// nibble (`[89abAB]`) where `Uuid::parse_str` is not, and its nil/max escape
+/// hatches are LOWERCASE literals — so an uppercase max UUID is refused while
+/// the lowercase one is accepted. The `progressid_gate_*` arms measure the
+/// whole accept-set against Zod itself.
+pub fn zod_uuid(s: &str) -> bool {
+    if s == "00000000-0000-0000-0000-000000000000" || s == "ffffffff-ffff-ffff-ffff-ffffffffffff" {
+        return true;
+    }
+    let b = s.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    for (i, ch) in b.iter().enumerate() {
+        let ok = match i {
+            8 | 13 | 18 | 23 => *ch == b'-',
+            14 => (b'1'..=b'8').contains(ch),
+            19 => matches!(ch, b'8' | b'9' | b'a' | b'b' | b'A' | b'B'),
+            _ => ch.is_ascii_hexdigit(),
+        };
+        if !ok {
+            return false;
+        }
+    }
+    true
 }
 
 /// Unwrap a `Response::MemoryMaintenance(Value)` (the memory-dedup carrier) to
@@ -233,9 +345,19 @@ pub async fn system_tools_post(
     body: axum::body::Bytes,
 ) -> AxumResponse {
     let action = q.get("action").map(String::as_str).unwrap_or("");
-    let parsed: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    // v4 reads the body with `await req.json()` INSIDE each handler's own try,
+    // so a malformed body is not a 400 — it escapes to that handler's catch as
+    // a 500 carrying the leg's own sentence. `job-concurrency` alone survives
+    // it, because its read is `req.json().catch(() => ({}))`. Keeping the parse
+    // failure distinct from a `null` body is what lets each arm answer its own
+    // way; `Value::Null` would have collapsed the two.
+    let parsed: Option<Value> = serde_json::from_slice(&body).ok();
+    let body_or_null = parsed.clone().unwrap_or(Value::Null);
     match action {
         "tasks-queue" => {
+            let Some(parsed) = parsed.as_ref() else {
+                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to control queue");
+            };
             let Some(control) = parsed.get("action").and_then(Value::as_str) else {
                 return error_json(
                     StatusCode::BAD_REQUEST,
@@ -256,13 +378,18 @@ pub async fn system_tools_post(
             // v4 zod-parses `{progressId?: uuid}` and treats a missing/invalid
             // body as "untracked" rather than an error (the card only sends one
             // when it is watching) — so a non-UUID progressId must fall back to
-            // untracked too, not ride through (§3 review, 2026-08-06).
-            // (36-char gate: `Uuid::parse_str` also accepts simple/braced/urn
-            // forms Zod's uuid regex refuses.)
-            let progress_id = parsed
+            // untracked too, not ride through (§3 review, 2026-08-06). The
+            // malformed-body arm lands here as well: v4's `req.json()` for this
+            // action sits in its OWN inner try whose catch leaves progressId null.
+            //
+            // [P4.62] The gate used to be `len() == 36 && Uuid::parse_str(..).is_ok()`,
+            // which accepts UUIDs whose version/variant nibbles Zod 4 refuses —
+            // measured, not reasoned about (`progressid_gate_bad_version` /
+            // `_bad_variant`). It is Zod's own regex now.
+            let progress_id = body_or_null
                 .get("progressId")
                 .and_then(Value::as_str)
-                .filter(|s| s.len() == 36 && uuid::Uuid::parse_str(s).is_ok())
+                .filter(|s| zod_uuid(s))
                 .map(str::to_string);
             dispatch_system(
                 &state,
@@ -272,18 +399,28 @@ pub async fn system_tools_post(
             .await
         }
         "capabilities-report-delete" => {
-            let Some(report_id) = parsed
-                .get("reportId")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-            else {
-                return error_json(StatusCode::BAD_REQUEST, "Missing reportId");
+            let Some(parsed) = parsed.as_ref() else {
+                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to delete report");
             };
+            // [P4.62] v4's gate is `if (!reportId)` — JS FALSINESS, not
+            // "is it a string". So `0`, `''` and `false` are missing exactly as
+            // `null` and an absent key are, while a TRUTHY non-string (`true`,
+            // `123`, `{}`, `[]`) passes it and then fails `f.id === reportId`,
+            // which no string id can ever satisfy — v4 answers **404 Report not
+            // found**, not 400. Collapsing on `as_str` answered 400 for all of
+            // them.
+            //
+            // A truthy non-string is forwarded as `""`, which reaches the same
+            // `find_report_entry` read (so a DB failure still surfaces as v4's
+            // 500) and cannot match a minted id — v4's `===` outcome exactly.
+            let raw = parsed.get("reportId");
+            if !quilltap_core::api::system_qtap::js_truthy(raw) {
+                return error_json(StatusCode::BAD_REQUEST, "Missing reportId");
+            }
+            let report_id = raw.and_then(Value::as_str).unwrap_or("").to_string();
             dispatch_system(
                 &state,
-                CoreRequest::SystemAlmanackDelete {
-                    report_id: report_id.to_string(),
-                },
+                CoreRequest::SystemAlmanackDelete { report_id },
                 StatusCode::OK,
             )
             .await
@@ -291,12 +428,18 @@ pub async fn system_tools_post(
         // === end P4.37 ===
         "job-concurrency" => {
             // v4 body `{concurrency}`; the verb field is `maxConcurrentJobs`.
-            let value = parsed.get("concurrency").and_then(Value::as_i64);
-            let Some(value) = value else {
-                return error_json(
-                    StatusCode::BAD_REQUEST,
-                    "Validation error: concurrency must be an integer between 1 and 32",
-                );
+            //
+            // [P4.62] This is the one leg whose body read is
+            // `req.json().catch(() => ({}))`, so a malformed body is an empty
+            // object and answers the SAME 400 an absent key does. And the 400 is
+            // `validationError(parsed.error)` — v4's two-key envelope carrying
+            // the raw Zod issues — not the flat invented sentence this used to
+            // answer. Validating here (rather than leaning on the core's
+            // `validate_concurrency`, which the dispatch verb still uses) also
+            // puts the refusal ahead of the pump-readiness check, where v4 has it.
+            let value = match parse_job_concurrency(&body_or_null) {
+                Ok(v) => v,
+                Err(resp) => return *resp,
             };
             dispatch_system(
                 &state,
@@ -317,6 +460,9 @@ pub async fn system_tools_post(
         }
         // ── end P4.9G4 ──
         "delete-data" => {
+            let Some(parsed) = parsed.as_ref() else {
+                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to delete data");
+            };
             let confirm = parsed
                 .get("confirm")
                 .and_then(Value::as_str)
@@ -338,7 +484,16 @@ pub async fn system_tools_post(
         }
         // === P4.43: memory-dedup apply (v4's `?action=memory-dedup`) ===
         "memory-dedup" => {
-            // v4: `typeof thresholdParam === 'number' ? thresholdParam : 0.80`.
+            let Some(parsed) = parsed.as_ref() else {
+                return error_json(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to deduplicate memories",
+                );
+            };
+            // v4: `typeof thresholdParam === 'number' ? thresholdParam : 0.80`
+            // — v4's OWN coercion, so the collapse is faithful: absent, null and
+            // every wrong-typed value become the default, and only a real number
+            // reaches the range gate.
             let threshold = parsed.get("threshold").and_then(Value::as_f64);
             dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupRun { threshold }).await
         }
@@ -533,11 +688,43 @@ pub async fn system_unlock_post(
     Query(q): Query<HashMap<String, String>>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let action = q.get("action").map(String::as_str).unwrap_or("");
+    // [P4.62] v4's POST gates in three steps, in this order
+    // (`system/unlock/route.ts:75-119`): an ABSENT action gets its own long
+    // sentence naming all five, an unrecognized one gets `Unknown action: X`,
+    // and only then is the body read — by `parseRequestBody`, which refuses a
+    // malformed body and any JSON that is not a plain object. v5 had neither the
+    // absent-action sentence (it answered `Unknown action: ` with an empty name)
+    // nor the body gate at all, so a body of `42` or `[]` rode straight through
+    // to a passphrase change with two empty strings.
+    let Some(action) = q
+        .get("action")
+        .map(String::as_str)
+        .filter(|a| !a.is_empty())
+    else {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "Missing action parameter. Use ?action=setup, ?action=unlock, \
+             ?action=store, ?action=change-passphrase, or ?action=lock",
+        );
+    };
+    // Scope, unchanged from P4.9G3: only `change-passphrase` is aliased here, so
+    // v4's four siblings answer `unknown_action` — a RECORDED narrowing (they
+    // all have dispatch verbs the SPA uses), not this lane's doing.
     if action != "change-passphrase" {
         return unknown_action(action);
     }
-    let parsed: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let Ok(parsed) = serde_json::from_slice::<Value>(&body) else {
+        return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body");
+    };
+    // v4: `!body || typeof body !== 'object' || Array.isArray(body)`.
+    if !parsed.is_object() {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            "Request body must be a JSON object",
+        );
+    }
+    // v4 `typeof body.oldPassphrase === 'string' ? body.oldPassphrase : ''` — the
+    // collapse IS v4's coercion, so absent / null / wrong-typed all mean "".
     let str_field = |key: &str| {
         parsed
             .get(key)

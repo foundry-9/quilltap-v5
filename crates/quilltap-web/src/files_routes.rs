@@ -39,7 +39,7 @@ use quilltap_core::services::file_storage::{
 };
 use quilltap_core::services::mount_index::path_utils::mime_for_extension;
 use quilltap_host::{HostImageCodec, LocalStorageBackend};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::multipart::FormData;
 use crate::state::SharedState;
@@ -605,6 +605,111 @@ async fn dispatch_core(
     Ok(host.core().dispatch(req).await)
 }
 
+/// v4's `writeBodySchema` for the mount-file PUT's JSON leg
+/// (`mount-points/[id]/files/[...path]/route.ts:125`):
+///
+/// ```ts
+/// z.object({
+///   content: z.string(),
+///   encoding: z.enum(['utf-8', 'base64']).default('utf-8'),
+///   expected_mtime: z.number().int().nonnegative().optional(),
+///   force: z.boolean().optional(),
+/// })
+/// ```
+///
+/// [P4.62] Reading the four keys with `and_then(as_str)` / `as_i64` / `as_bool`
+/// was NOT faithful: it invented its own `content is required` sentence, and it
+/// silently ACCEPTED an unknown `encoding`, a negative or fractional
+/// `expected_mtime`, and a string `force` — every one of which v4 refuses with a
+/// 400. The refusal is `Invalid body: ` + the failing issues' messages joined
+/// by `', '` **in schema key order**, transcribed from Zod 4's own output (the
+/// `files-body-guards` oracle's `write_*` arms are the transcription's proof).
+///
+/// Zod reports at most one issue per field (the checks are sequential), and an
+/// absent optional/defaulted key produces none — so `write_two_issues` carries
+/// exactly three.
+struct MountWriteBody {
+    content: String,
+    encoding: String,
+    expected_mtime: Option<i64>,
+    force: Option<bool>,
+}
+
+/// `Err` is the joined issue text, WITHOUT v4's `Invalid body: ` prefix.
+fn parse_mount_write_body(body: &Value) -> Result<MountWriteBody, String> {
+    use crate::system_data_routes::zod_received;
+    if !body.is_object() {
+        return Err(format!(
+            "Invalid input: expected object, received {}",
+            zod_received(Some(body))
+        ));
+    }
+    let mut issues: Vec<String> = Vec::new();
+
+    let content = match body.get("content") {
+        Some(Value::String(s)) => s.clone(),
+        other => {
+            issues.push(format!(
+                "Invalid input: expected string, received {}",
+                zod_received(other)
+            ));
+            String::new()
+        }
+    };
+    // `.default('utf-8')` fires only for an ABSENT key; an explicit `null` still
+    // goes through the enum check, and Zod's enum issue names no received value.
+    let encoding = match body.get("encoding") {
+        None => "utf-8".to_string(),
+        Some(Value::String(s)) if s == "utf-8" || s == "base64" => s.clone(),
+        Some(_) => {
+            issues.push("Invalid option: expected one of \"utf-8\"|\"base64\"".to_string());
+            "utf-8".to_string()
+        }
+    };
+    let expected_mtime = match body.get("expected_mtime") {
+        None => None,
+        Some(v) => match v.as_f64() {
+            None => {
+                issues.push(format!(
+                    "Invalid input: expected number, received {}",
+                    zod_received(Some(v))
+                ));
+                None
+            }
+            Some(n) if !n.is_finite() || n.fract() != 0.0 || n.abs() > 9_007_199_254_740_991.0 => {
+                issues.push("Invalid input: expected int, received number".to_string());
+                None
+            }
+            Some(n) if n < 0.0 => {
+                issues.push("Too small: expected number to be >=0".to_string());
+                None
+            }
+            Some(n) => Some(n as i64),
+        },
+    };
+    let force = match body.get("force") {
+        None => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(v) => {
+            issues.push(format!(
+                "Invalid input: expected boolean, received {}",
+                zod_received(Some(v))
+            ));
+            None
+        }
+    };
+
+    if !issues.is_empty() {
+        return Err(issues.join(", "));
+    }
+    Ok(MountWriteBody {
+        content,
+        encoding,
+        expected_mtime,
+        force,
+    })
+}
+
 /// v4 item-route PUT — the `storeMountFile` ingest (JSON body or multipart
 /// `file` + `expected_mtime` + `force`), mapped onto `MountFileWrite`.
 pub async fn mount_file_put(
@@ -661,23 +766,24 @@ pub async fn mount_file_put(
             Ok(b) => b,
             Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid request body"),
         };
-        let body: serde_json::Value = match serde_json::from_slice(&bytes) {
-            Ok(v) => v,
-            Err(e) => return error_json(StatusCode::BAD_REQUEST, &format!("Invalid body: {e}")),
-        };
-        let Some(content) = body.get("content").and_then(|c| c.as_str()) else {
-            return error_json(StatusCode::BAD_REQUEST, "Invalid body: content is required");
+        // v4's read is `req.json().catch(() => null)`, so a malformed body is
+        // `null` and fails the schema's own object check — the same 400 an
+        // explicit `null` body gets, not a serde message.
+        let body: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        let parsed = match parse_mount_write_body(&body) {
+            Ok(p) => p,
+            Err(issues) => {
+                return error_json(StatusCode::BAD_REQUEST, &format!("Invalid body: {issues}"))
+            }
         };
         CoreRequest::MountFileWrite {
             mount_point_id: id,
             path,
-            content: content.to_string(),
-            encoding: body
-                .get("encoding")
-                .and_then(|e| e.as_str())
-                .map(|s| s.to_string()),
-            expected_mtime: body.get("expected_mtime").and_then(|m| m.as_i64()),
-            force: body.get("force").and_then(|f| f.as_bool()),
+            content: parsed.content,
+            encoding: Some(parsed.encoding),
+            expected_mtime: parsed.expected_mtime,
+            force: parsed.force,
             original_mime_type: None,
             original_file_name: None,
         }
@@ -818,17 +924,33 @@ pub async fn files_upload_post(
         return error_json(StatusCode::BAD_REQUEST, "No file provided");
     };
     // tags: JSON string of `[{tagType, tagId}]` → the tagIds (v4 upload.ts:55).
+    //
+    // [P4.62] v4 has NO schema here — `JSON.parse` then `tags.map(t => t.tagId)`.
+    // So the shape space splits three ways, and reading straight into
+    // `Vec<Value>` collapsed the second into the first:
+    //   - unparseable      → `badRequest('Invalid tags JSON')`
+    //   - parses to a TRUTHY non-array → `.map` is not a function, and the
+    //     TypeError escapes to the route's outer catch as a **500**
+    //     `Failed to upload file`
+    //   - parses to a FALSY value (`null`, `0`, `false`) → `tags ? … : []`, i.e.
+    //     no tags at all, exactly as an absent field
+    //
+    // ⚠ DIVERGENT-RECORDED (escalated, P4.62): a present but wrong-typed
+    // `tagId` (`[{"tagId": 5}]`, `[{}]`) is carried by v4 into `linkedTo`/`tags`
+    // as the raw value, where this drops it. Closing that needs
+    // `Request::FileUpload.tags` widened past `Vec<String>` in
+    // `quilltap-core/src/api/types.rs`, which this lane does not own.
     let tags: Option<Vec<String>> = match form.text("tags") {
-        Some(raw) if !raw.is_empty() => {
-            match serde_json::from_str::<Vec<serde_json::Value>>(&raw) {
-                Ok(arr) => Some(
-                    arr.iter()
-                        .filter_map(|t| t.get("tagId").and_then(|v| v.as_str()).map(str::to_string))
-                        .collect(),
-                ),
-                Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid tags JSON"),
-            }
-        }
+        Some(raw) if !raw.is_empty() => match serde_json::from_str::<serde_json::Value>(&raw) {
+            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid tags JSON"),
+            Ok(v) if !quilltap_core::api::system_qtap::js_truthy(Some(&v)) => None,
+            Ok(serde_json::Value::Array(arr)) => Some(
+                arr.iter()
+                    .filter_map(|t| t.get("tagId").and_then(|v| v.as_str()).map(str::to_string))
+                    .collect(),
+            ),
+            Ok(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to upload file"),
+        },
         _ => None,
     };
     let project_id = form.text("projectId").filter(|s| !s.is_empty());
@@ -911,14 +1033,43 @@ pub async fn chat_files_post(
         };
         let body: serde_json::Value =
             serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
-        let Some(file_id) = body.get("fileId").and_then(|v| v.as_str()) else {
-            return error_json(StatusCode::BAD_REQUEST, "fileId is required");
-        };
+        // [P4.62] v4's guard is `!fileId || typeof fileId !== 'string'` — so an
+        // EMPTY STRING is refused too, which `and_then(as_str)` let through. And
+        // v4 resolves the CHAT before the action dispatch (`route.ts:34-38`), so
+        // on a missing chat the 404 comes FIRST and this 400 never happens.
+        //
+        // The chat lookup lives in the core handler, so an invalid `fileId` is
+        // sent through as `""` PURELY to run that 404 gate: when the fileId is
+        // invalid, the only two answers v4 can give are `Chat not found` and
+        // `fileId is required`, because v4 never reaches its file lookup at all.
+        // So the chat-404 is passed through and EVERY other outcome becomes the
+        // 400 — rewriting only `File not found` was wrong, and the pre-existing
+        // `files_write_routes` beat caught it: on a venue whose `files` table is
+        // missing the lookup ERRORS, and the 400 was lost as a 500. `""` writes
+        // nothing on the way.
+        //
+        // The one shape this cannot separate is a failure of the CHAT lookup
+        // itself, where v4 answers 500; the edge cannot tell it from the file
+        // lookup's. The tidier shape is a three-line `fileId is required` guard
+        // in `chat_media::chat_file_link` right after its chat-404 — that file
+        // is outside this lane's ownership, and it is recorded as the follow-up.
+        let valid = body
+            .get("fileId")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
         let core_req = CoreRequest::ChatFileLink {
             chat_id,
-            file_id: file_id.to_string(),
+            file_id: valid.unwrap_or("").to_string(),
         };
         return match dispatch_core(&state, core_req).await {
+            Ok(CoreResponse::Error(e))
+                if valid.is_none()
+                    && e.kind == ErrorKind::NotFound
+                    && e.message == "Chat not found" =>
+            {
+                core_response_to_http(CoreResponse::Error(e), StatusCode::OK)
+            }
+            Ok(_) if valid.is_none() => error_json(StatusCode::BAD_REQUEST, "fileId is required"),
             Ok(resp) => core_response_to_http(resp, StatusCode::OK),
             Err(r) => r,
         };
