@@ -23,10 +23,9 @@ probe verifies against._
   above the slot rows, garments only in the slot pickers" (v4 main,
   2026-08-27), adopted at the P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 round
   unification (2026-08-27).
-- **Checked:** 2026-08-27 (the round's unification — the mid-unify probe
-  had already recorded `679e450e3` + `0bd841394`; the gate's pin-list
-  guard then caught v4 committing ONCE more, classified below).
-- **v4 `main` HEAD at check:** `1b0ce9eba` — **THREE commits past the new
+- **Checked:** 2026-08-27 (a full `/driftcheck` from the main checkout, after
+  the P4.D130-round unification).
+- **v4 `main` HEAD at check:** `b121ac77f` — **FOUR commits past the
   baseline**, all in §3:
   - `679e450e3` (CONVERGENCE — v4's bug-105 fix; ⚠ absorbing it trips
     `system_import_state`'s `execute_bug105_seed_abort` BY DESIGN — retire
@@ -34,28 +33,34 @@ probe verifies against._
     alongside).
   - `0bd841394` (PORT-NEW — the Tooltip component + message-action-bar /
     verdict-badge adoption).
-  - `1b0ce9eba` (PORT, small — the dirty-tree work committed: deletes the
-    always-hidden `MessageDesktopActions` + its `display:none !important`
-    rules. v5 never ported the hidden component; what intersects is two
-    dead transcribed CSS rules and a stale doc-comment cite — a cleanup
-    rider for the absorbing round).
+  - `1b0ce9eba` (PORT, small — deletes the always-hidden
+    `MessageDesktopActions`; a cleanup rider for the absorbing round).
+  - `b121ac77f` (PORT-NEW, **the largest of the four** — the CLI
+    `instances restore-key` command: rebuild a lost or passphrase-locked
+    `.dbkey` from the pepper, with a new `packages/quilltap/lib/dbkey.js`
+    mirror and completion-template changes in all three shells).
 - **v4 `bugfix` tip at check:** `3a76b17df` — unmoved (the bare 4.8.4 fork
   marker; the long `main..bugfix` list is the documented squash-topology
-  lie, §4 step 2).
-- **Checkout at check:** branch `main`; the earlier salon dirt became
-  `1b0ce9eba`, and by the round's cleanup the tree had gone dirty AGAIN —
-  **docs-only** (`docs/CHANGELOG.md`, `docs/developer/CLI.md`,
-  `docs/developer/DATABASE_ENCRYPTION.md`): infra/docs dirt, recorded per
-  §2 so the next probe doesn't re-alarm; it does not by itself poison
-  regens, but the PIN REQUIRED rule below already covers them.
-- **Verdict: DRIFT PENDING — 3 unprocessed portable commits** (the
-  `679e450e3`+`0bd841394`+`1b0ce9eba` catch-up is the next round's top
-  candidate; phase-4 candidate 1).
+  lie, §4 step 2 — re-measured by content this check, nothing unabsorbed).
+- **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — fully
+  contained in `main` (`git log main..release` is empty).
+- **Checkout at check:** branch `main`, **tree CLEAN**. The docs-only dirt
+  recorded at the last check (`docs/CHANGELOG.md`, `docs/developer/CLI.md`,
+  `docs/developer/DATABASE_ENCRYPTION.md`) was the in-flight work that
+  became `b121ac77f`; nothing is outstanding.
+- **Verdict: DRIFT PENDING — 4 unprocessed portable commits** (the
+  `679e450e3` + `0bd841394` + `1b0ce9eba` + `b121ac77f` catch-up is the next
+  round's top candidate; phase-4 candidate 1). The four split cleanly into
+  three lanes' worth of work: the import convergence (small, measurement-led),
+  the Salon tooltip vertical + its cleanup rider (SPA), and the CLI
+  restore-key feature (Tier R red-first, and the one that needs a design
+  decision — see its §3 row).
 - **Regen rule in force: PIN REQUIRED** — v4 HEAD is past the baseline;
   lane-unique detached worktrees at `aec86a613` per §5.1 for **every**
   oracle regen and fixture build until the baseline moves again.
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
-  fork; v4 develops on `main` alone. Keep probing BOTH branches.
+  fork; v4 develops on `main` alone (`package.json` at `4.9.0-dev.93`).
+  Keep probing BOTH branches.
 
 ## §2 The freshness probe
 
@@ -97,6 +102,7 @@ when absorbed/ratified.
 | `679e450e3` | 2026-08-27 | fix(import): one malformed connection profile no longer aborts a whole .qtap import (bug 105) | CONVERGENCE | v5's `services/quilltap_import/profiles.rs` (never had the bug — the standing 2026-08-03 ruling; unit pin `a_non_string_provider_is_named_and_does_not_abort_the_import`) and **P4.63's new divergence-aware `system_import_state` oracle arm** (`import_aborts_on_non_string_provider` class — built to flip when v4 fixed this; retire by measurement at the round that moves the baseline past this commit, §5.4). v4 moved the seeding inside the per-item try + widened the guard past `??`. | UNPROCESSED |
 | `0bd841394` | 2026-08-27 | fix(salon): Quilltap's own tooltips for the message action bar and the verdict badge | PORT-NEW | a NEW `components/ui/Tooltip.tsx` (240 lines: body-portalled, 200 ms dwell / focus-immediate, flip + clamp, follows on scroll/resize, Escape, `pinnable`/`interactive`) + `MessageActionBar.tsx`'s eleven buttons with explicit aria-labels + the answer-confirmation badge as a real pinnable button with structured content — v5's salon message action bar (ported across the Salon rounds; the answer-confirmation badge from the P4.d drift re-ports). Style riders `_chat.css`/`_surfaces.css` + theme-storybook; `help/*` banks to `p4.9i2`. The dirty-tree follow-on landed as `1b0ce9eba` (next row). | UNPROCESSED |
 | `1b0ce9eba` | 2026-08-27 | refactor(salon): remove the hidden desktop message actions | PORT (small) | v5 never ported the hidden `MessageDesktopActions` (it was `display:none !important` in v4 since the icon bar); what intersects is two dead transcribed CSS rules (`apps/web/src/styles/qt-components/_chat.css:3487` `.qt-chat-desktop-hover-actions`, `:3495` `.qt-chat-desktop-timestamp`) and the stale doc-comment cite at `apps/web/src/app/chat/message-row.ts:538`. A cleanup rider for the absorbing round — v4's own commit says no behavior change (verified from the hunks: deletion-only + CSS rule removal). | UNPROCESSED |
+| `b121ac77f` | 2026-08-27 | feat(cli): rebuild a lost or passphrase-locked .dbkey from the pepper | PORT-NEW | The new `quilltap instances restore-key <name>` (alias `rebuild-key`) writes a `.dbkey` with the server down: pepper from `ENCRYPTION_MASTER_PEPPER` or a hidden prompt (**never a flag** — shell history + `ps`), **proved against every encrypted database on disk before anything is written** (`--force` only waives it for a fresh/plaintext instance), lock-gated, existing key file backed up to `quilltap.dbkey.bak-<timestamp>`, unknown fields (`minServerVersion`) carried across, and a registered instance's stored passphrase updated to match. Intersects: (a) **v5's CLI `instances` family** — `crates/quilltap-cli/src/instances_cmd.rs` ports every existing verb (`list/ls`, `show`, `path/where`, `add/create`, `remove/rm/delete`, `set-passphrase/passphrase`, `default`, `rename`) and this adds a ninth, plus the `instances --help` body the Tier R differential compares (`crates/quilltap-cli/tests/cli_differential.rs`, 188/0 vs v4's REAL launcher); (b) **the byte-copied completion templates** — all three shells changed (verb lists, the name-completing verb case, and five new flags `--passphrase`/`--no-passphrase`/`-d --data-dir`/`--force`/`-y --yes`), so `crates/quilltap-cli/src/help/completion/{bash,zsh,fish}.template` + the `completion_behavior.rs` guard are a **red-first Tier R item** exactly like bug 101 (P4.D118) and the four completion flags (P4.D128); (c) **`quilltap-core::dbkey`** — v5 already has the whole write side (`save_dbkey`, `change_passphrase`, `pepper_b64_to_key_hex`) and, from **P4.46**, the unknown-field preservation v4's new CLI path now also does; ⚠ the recorded v4-drop divergence at `crates/quilltap-core/src/dbkey.rs:290` is about v4's **server** re-wrap, which this commit does NOT touch — re-read that doc comment when absorbing so it doesn't over-claim; (d) the `db-helpers.loadDbKey` / `instances.verifyPassphrase` consolidation into the new `packages/quilltap/lib/dbkey.js` is **behavior-preserving** (verified from the hunks — the legacy `hasPassphrase` strip-and-rewrite is preserved in `readDbKeyFile`), so it is a v4-side DRY move with no v5 counterpart owed; (e) v5's CLI has **no `maintenance` command**, so v4's "lock-gated like `maintenance run`" precedent has no v5 twin — the lock helper to reuse is `crates/quilltap-host/src/lock.rs` (P4.D75 landed lock-before-any-partition-open). `help/database-protection.md` banks to `p4.9i2`; `README.md`, `docs/**`, `package.json`/`package-lock.json` and the two new test files are the NO-PORT remainder. ⚠ The order needs a **human decision on scope**: the command's whole point is a real-instance recovery path, and its proof step opens every encrypted DB with a candidate pepper — the Tier R differential can cover argument parsing, help text, completions, and refusals, but the write itself has no sandbox-safe live proof. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

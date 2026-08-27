@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(drift): v4 adds a CLI `.dbkey` rebuild — DRIFT PENDING at four commits
+
+_Docs-only change._
+
+A full drift check from the main checkout. v4 main moved once more, to
+`b121ac77f` — `quilltap instances restore-key <name>` (alias `rebuild-key`),
+which rebuilds a lost or passphrase-locked `.dbkey` from the pepper with the
+server down: pepper from `ENCRYPTION_MASTER_PEPPER` or a hidden prompt and
+never a flag, proved against every encrypted database on disk before anything
+is written, lock-gated, the old key file backed up, and unknown fields
+(`minServerVersion`) carried across. Classified PORT-NEW and the largest of
+the four pending commits.
+
+Its intersections are delineated in the ledger row: v5's ported
+`instances_cmd.rs` verb family and the Tier R help-text differential; the
+byte-copied completion templates in all three shells (a red-first item in the
+bug-101 / P4.D128 idiom, five new flags plus the verb lists); and
+`quilltap-core::dbkey`, which already has the whole write side and P4.46's
+unknown-field preservation — with the caveat that the recorded v4-drop
+divergence concerns v4's *server* re-wrap, untouched here. The
+`db-helpers.loadDbKey` / `instances.verifyPassphrase` consolidation into the
+new `packages/quilltap/lib/dbkey.js` was verified behavior-preserving from
+the hunks, so it owes v5 nothing. Flagged for the human: the write itself has
+no sandbox-safe live proof.
+
+Also re-measured this check: `bugfix` unmoved at `3a76b17df` (by content, per
+§4 step 2), `release` at `8736d7042` and fully contained in main, still no
+4.9.0 squash, and the checkout is now CLEAN — the docs-only dirt recorded at
+the last probe was the in-flight work that became `b121ac77f`. Verdict:
+DRIFT PENDING — 4 unprocessed portable commits; regen rule unchanged at PIN
+REQUIRED, `aec86a613`.
+
 #### 2026-08-27 — port(round): the P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 unification — the outfit pull-down, the collapse pockets closed whole, the home dashboard 22× faster
 
 _Versions: core 0.0.698, harness 0.0.602, web 0.0.98, SPA 0.5.590._
