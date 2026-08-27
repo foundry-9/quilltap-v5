@@ -1093,6 +1093,32 @@ def venue_is_worktree(v5w: Path) -> bool:
     return "/.claude/" in str(v5w.resolve()) + "/"
 
 
+def splice_nocapture(script: str) -> str:
+    """Append ` -- --nocapture` to the first `cargo test` command in a run
+    stage, so a family that silently SKIPs (missing env var) cannot masquerade
+    as a green proof.
+
+    `$` under re.M is END OF LINE, so a `cargo test` spelled across backslash
+    continuations used to take the flags after its FIRST line —
+    `cargo test -p quilltap-harness \\ -- --nocapture` — which ends the
+    continuation and hands cargo a bare `--nocapture` it rejects, then runs
+    the orphaned `--test <fam>` line as its own command. The family reported
+    `run_failed` for a reason that had nothing to do with the recipe (P4.D129
+    found it on `templates_equivalence`). Consume the continuation lines
+    first so the flags land at the end of the whole command. A script already
+    carrying `--nocapture` is left alone.
+    """
+    if "--nocapture" in script:
+        return script
+    return re.sub(
+        r"(cargo test(?:[^\n]*\\\n)*[^\n]*)$",
+        r"\1 -- --nocapture",
+        script,
+        count=1,
+        flags=re.M,
+    )
+
+
 def stages_to_run(r: Recipe) -> list[str]:
     """The stage labels `run_family` will actually EXECUTE.
 
@@ -1240,25 +1266,8 @@ def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict
     for label in stages_to_run(r):
         stage = staged[label]
         script = shield_fixture_envs(normalize(stage, v5w, family), v5w, family)
-        if label == "run" and "--nocapture" not in script:
-            # Make skip notices observable so a family that silently SKIPs
-            # (missing env var) cannot masquerade as a green proof.
-            # `$` under re.M is END OF LINE, so a `cargo test` spelled across
-            # backslash continuations used to take the flags after its FIRST
-            # line — `cargo test -p quilltap-harness \ -- --nocapture` — which
-            # ends the continuation and hands cargo a bare `--nocapture` it
-            # rejects, then runs the orphaned `--test <fam>` line as its own
-            # command. The family reported `run_failed` for a reason that had
-            # nothing to do with the recipe (P4.D129 found it on
-            # `templates_equivalence`). Consume the continuation lines first so
-            # the flags land at the end of the whole command.
-            script = re.sub(
-                r"(cargo test(?:[^\n]*\\\n)*[^\n]*)$",
-                r"\1 -- --nocapture",
-                script,
-                count=1,
-                flags=re.M,
-            )
+        if label == "run":
+            script = splice_nocapture(script)
         print(f"==== {family} {label} ====")
         print(script)
         proc = subprocess.run(
@@ -1526,6 +1535,31 @@ def cmd_self_test() -> int:
         shell_lines(doc)
         == ["N=~/.nvm/versions/node/v24.13.1/bin", "cd ~/source/quilltap-server"],
         f"shell_lines leaked prose: {shell_lines(doc)}",
+    )
+
+    # The --nocapture splice (the P4.D129 driver bug): the flags must land at
+    # the end of the WHOLE command, continuation lines included — the old
+    # end-of-first-line splice disarmed the SKIP-masquerade guard on every
+    # continued-recipe family.
+    flat = "X=1 cargo test -p quilltap-harness --test fam"
+    check(
+        splice_nocapture(flat) == flat + " -- --nocapture",
+        f"flat splice wrong: {splice_nocapture(flat)!r}",
+    )
+    continued = "cargo test -p quilltap-harness \\\n  --test fam"
+    check(
+        splice_nocapture(continued) == continued + " -- --nocapture",
+        f"continued splice wrong: {splice_nocapture(continued)!r}",
+    )
+    check(
+        "\\\n -- --nocapture" not in splice_nocapture(continued)
+        and "\\ -- --nocapture" not in splice_nocapture(continued),
+        "splice landed mid-continuation (the P4.D129 bug shape)",
+    )
+    already = "cargo test --test fam -- --nocapture"
+    check(
+        splice_nocapture(already) == already,
+        "an already-spliced script must be left alone",
     )
 
     # P4.45's indentation rule, both directions: at the prose margin these

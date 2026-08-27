@@ -95,6 +95,15 @@ function buildCases(spec: Spec): CaseSpec[] {
       chat: CHAT,
       reply: { content: '  \'The Ledger and the Lamp\'  ', promptTokens: 10, completionTokens: 6 },
     },
+    // Padding INSIDE the quotes: since `dcab791c2` collapsed the inline
+    // cleaners onto `cleanTitle`, a second trim runs after the quote strip,
+    // so the stored title carries no padding. (Before the sweep this case
+    // persisted ' A Padded Title ' verbatim.)
+    {
+      name: 'regen_title_quoted_padded_inside',
+      chat: CHAT,
+      reply: { content: '" A Padded Title "', promptTokens: 10, completionTokens: 6 },
+    },
     // An empty reply is falsy in JS → the serverError arm, and NO write.
     {
       name: 'regen_title_empty_reply',

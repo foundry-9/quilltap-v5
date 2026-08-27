@@ -40,12 +40,15 @@ pub struct ChatMessage {
     pub created_at: Option<String>,
 }
 
-/// v4's `parseResponse` for the title tasks: `content.trim()`, strip at most one
-/// leading and one trailing quote (`/^["']|["']$/g`), then cap to 60 UTF-16
-/// units (over-length → first 57 + `...`).
+/// v4's `parseResponse` for the title tasks — since `dcab791c2` (the 4.9.0
+/// dedup sweep) the four inline generator cleaners are collapsed onto
+/// `cleanTitle`: trim, strip at most one leading and one trailing quote, then
+/// trim AGAIN (padding tucked inside the quotes no longer survives), then cap
+/// to 60 UTF-16 units (over-length → first 57 + `...`). The cap is measured
+/// after the second trim, so a padded quoted title that used to truncate can
+/// now survive whole.
 fn clean_title(content: &str) -> String {
-    let mut title = js_trim(content).to_string();
-    title = strip_edge_quotes(&title);
+    let title = js_trim(&strip_edge_quotes(js_trim(content))).to_string();
     if utf16_len(&title) > 60 {
         format!("{}...", utf16_truncate(&title, 57))
     } else {
@@ -335,11 +338,12 @@ fn help_title_conversation_text(messages: &[ChatMessage]) -> String {
         .join("\n\n")
 }
 
-/// The MANUAL generators' cleaner: the same trim + [`strip_edge_quotes`] the
-/// evaluators use, but with the caller's clamp — `titleChat` caps at **50**
-/// (57/60 belongs to the evaluator and to `titleHelpChat`).
+/// The MANUAL generators' cleaner: the same trim + [`strip_edge_quotes`] +
+/// second trim (v4 `dcab791c2` — see [`clean_title`]) the evaluators use, but
+/// with the caller's clamp — `titleChat` caps at **50** (57/60 belongs to the
+/// evaluator and to `titleHelpChat`).
 fn clean_generated_title(content: &str, max: usize) -> String {
-    let title = strip_edge_quotes(js_trim(content));
+    let title = js_trim(&strip_edge_quotes(js_trim(content))).to_string();
     if utf16_len(&title) > max {
         format!("{}...", utf16_truncate(&title, max - 3))
     } else {
@@ -452,5 +456,27 @@ mod tests {
     fn clean_title_only_strips_one_each() {
         // Only one leading + one trailing quote removed.
         assert_eq!(clean_title("\"\"double\"\""), "\"double\"");
+    }
+
+    /// v4 `dcab791c2` collapsed the four inline generator cleaners onto
+    /// `cleanTitle`, which trims a SECOND time after stripping the wrapping
+    /// quote pair — padding tucked inside the quotes no longer survives into
+    /// the stored title.
+    #[test]
+    fn clean_title_trims_again_after_stripping_quotes() {
+        assert_eq!(clean_title("\" A Padded Title \""), "A Padded Title");
+        assert_eq!(clean_generated_title("' padded '", 50), "padded");
+    }
+
+    /// The length cap is measured AFTER the second trim, so a padded quoted
+    /// title that used to be truncated can now survive whole (v4's cap-60
+    /// vector from the `dcab791c2` neutrality measurement).
+    #[test]
+    fn clean_title_caps_after_the_second_trim() {
+        // 58 chars + a leading/trailing space inside the quotes = 60 before
+        // the second trim (would truncate), 58 after it (survives whole).
+        let inner = "b".repeat(58);
+        let raw = format!("\" {inner} \"");
+        assert_eq!(clean_title(&raw), inner);
     }
 }

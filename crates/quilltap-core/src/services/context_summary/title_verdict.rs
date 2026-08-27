@@ -118,8 +118,9 @@ fn read_title_key(record: &Map<String, Value>) -> Option<(&Value, String)> {
 /// Trim, strip a wrapping quote pair, and cap the length (v4 `normalizeTitle`).
 ///
 /// v4 spells it `raw.trim().replace(/^["']/, '').replace(/["']$/, '').trim()` —
-/// note the **second** trim, which the pre-fix inline parsers lacked, so
-/// padding tucked inside the quotes used to survive into the stored title.
+/// note the **second** trim, which the inline generator parsers lacked until
+/// v4 `dcab791c2` collapsed them onto this spelling (`cleanTitle`); v5's
+/// `tasks.rs` cleaners carry the second trim since the same round.
 pub(super) fn normalize_title(raw: &str) -> Option<String> {
     let cleaned = js_trim(&strip_edge_quotes(js_trim(raw))).to_string();
     if cleaned.is_empty() {

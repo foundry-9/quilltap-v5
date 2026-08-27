@@ -258,6 +258,13 @@ fn chat_regenerate_title_matches_oracle() {
         prompt_tokens: 10,
         completion_tokens: 6,
     };
+    // Padding INSIDE the quotes — the `dcab791c2` second-trim arm (see the
+    // oracle case's comment): the stored title must carry no padding.
+    let padded_inside = Canned {
+        content: "\" A Padded Title \"".to_string(),
+        prompt_tokens: 10,
+        completion_tokens: 6,
+    };
     let empty_reply = Canned {
         content: "   ".to_string(),
         prompt_tokens: 10,
@@ -274,6 +281,12 @@ fn chat_regenerate_title_matches_oracle() {
             false,
         ),
         ("regen_title_quoted", CHAT, Some(quoted.clone()), false),
+        (
+            "regen_title_quoted_padded_inside",
+            CHAT,
+            Some(padded_inside.clone()),
+            false,
+        ),
         (
             "regen_title_empty_reply",
             CHAT,

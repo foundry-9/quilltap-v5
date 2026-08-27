@@ -13,12 +13,12 @@
 //!     `context.ts:176-205`) recorded by
 //!     `harness/oracle/cases/store-unavailable-routes.test.ts`. An EQUALITY.
 //!   - `characterUpdate` on the corrupt vault → **503** with the same vault
-//!     envelope. **A DELIBERATE DIVERGENCE (dogfood finding #47):** v4 accepts
-//!     the patch and clobbers (its measured route answer is NOT the vault
-//!     envelope — asserted from the oracle, so this arm goes red the moment v4
-//!     lands its own #47 fix and starts answering the 503; reclassify to a
-//!     drift re-port then. The write-nothing/clobber post-state pins live in
-//!     the characters-update tier-2 corpus).
+//!     envelope. **A PLAIN EQUALITY** since the 4.9.0-push round: v4 adopted
+//!     the finding-#47 fix (`13ddc5ee`) and answers the identical envelope;
+//!     the old both-directions tripwire here fired at the P4.D129 neutrality
+//!     sweep (this twin was missed at the corpus retirement because the
+//!     family SKIPs without its env var). The write-nothing post-state pins
+//!     live in the characters-update tier-2 corpus.
 //!
 //! Generate the oracle (Node 24 — see the .ts header for the full recipe):
 //!   QT_FIXTURE_CHARACTERS_MAIN=<repo>/crates/quilltap-web/tests/fixtures/characters-main.db \
@@ -182,19 +182,31 @@ async fn vault_unavailable_envelope_matches_oracle() {
         "v4's envelope body shape moved"
     );
 
-    // ── Arm 2: the corrupt-vault WRITE refusal (A DELIBERATE DIVERGENCE) ──
-    // v5 refuses with the vault 503 envelope (P4.22's write refusal reaching
-    // the live edge); v4 TODAY accepts-and-clobbers, so its recorded answer is
-    // NOT the vault envelope. The moment v4 lands its own #47 fix its route
-    // answers the 503 envelope, the assertion below goes red — RECLASSIFY this
-    // arm (and P4.22's corpus arm, which pins the same tripwire on the repo
-    // surface) to an ordinary drift re-port.
+    // ── Arm 2: the corrupt-vault WRITE refusal (a PLAIN EQUALITY since the
+    // 4.9.0-push round) ── v4 adopted the finding-#47 fix (`13ddc5ee`; the
+    // characters-update tier-2 corpus arm retired then) and its route now
+    // answers the same vault 503 envelope v5 has refused with since P4.22.
+    // The old both-directions tripwire here fired at the P4.D129 neutrality
+    // sweep — this web-edge twin had been missed at the corpus retirement
+    // because the family SKIPs without its env var. Both sides now compare
+    // as equals against the recorded oracle answer.
     let v4 = &oracle["character_update_vault_corrupt"];
-    assert_ne!(
+    assert_eq!(
         v4["body"]["error"].as_str(),
         Some("Character vault unavailable"),
-        "v4 answered the vault envelope on the corrupt WRITE — v4 appears to \
-         have landed its finding-#47 fix; RECLASSIFY the divergence"
+        "v4's corrupt-vault WRITE answer moved off the vault envelope"
+    );
+    assert_eq!(
+        v4["status"].as_u64(),
+        Some(503),
+        "v4's corrupt-vault WRITE status moved"
+    );
+    assert_eq!(
+        v4["body"]
+            .as_object()
+            .map(|o| o.keys().map(|k| k.as_str()).collect::<Vec<_>>()),
+        Some(vec!["error", "characterId"]),
+        "v4's corrupt-vault envelope body shape moved"
     );
     let resp = client
         .post(&url)
