@@ -6178,10 +6178,13 @@ unification review". The chronic `ng` hang gained a root fix on the way:
 **Next candidates, in rough value order** (updated at the
 `f3892158d`-round unification, 2026-08-26):
 
-1. **Ratify the two post-baseline v4 commits** (`487ae57fe` tests +
+1. **Run `/driftcheck` FIRST** — v4 landed ELEVEN more commits during
+   this round's unification gate (the 4.9.0 release push; ledger §1
+   lists the shas with the verdict UNCLASSIFIED; at least one —
+   `21f573039` — touches the just-ported realtime code). Then ratify the
+   two already-classified post-baseline commits (`487ae57fe` tests +
    neutral extraction, `561466cfe` knip sweep — drift-ledger §3, both
-   NO-PORT? with ratification notes). Cheap; moves the baseline to
-   `561466cfe` without a port and returns the regen rule to pin-free.
+   NO-PORT? with ratification notes).
    Rider: check v5's `help_doc_chunks` twin pins the
    registerBlobColumns-re-assert trap the new v4 test pins, and whether
    v5 carries now-vestigial twins of the knip-deleted exports.

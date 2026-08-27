@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): v4 moved eleven more commits during the unification gate — recorded, /driftcheck owed
+
+_Docs-only change._
+
+The round's closing look at the v4 checkout found HEAD at `964ffb959` —
+eleven commits past the `561466cfe` the mid-round record captured, all
+landed while the unification gate ran (the 4.9.0 release push: bugs
+103/104, release notes, dedup/refactor sweeps — including `21f573039`,
+which drops the per-publish realtime coalesce trace inside the very code
+this round ported). The ledger's §1 now records the count and shas with
+the verdict marked ELEVEN UNCLASSIFIED; a full /driftcheck is owed before
+the next /setupphase. The regen rule stays pin-required at `f3892158d`.
+
+
 #### 2026-08-26 — fix(realtime): the collection POST's enqueue publishes its jobs hint — the activated beat's first-run catch
 
 _Versions: core 0.0.688, harness 0.0.592 (unchanged), SPA 0.5.583 (unchanged)._

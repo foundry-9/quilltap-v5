@@ -25,19 +25,22 @@ probe verifies against._
   P4.D123→P4.D124 ∥ P4.D125 drift catch-up).
 - **Checked:** 2026-08-26 (the `f3892158d`-round unification — v4 drifted
   DURING the round; the two post-baseline commits are recorded in §3).
-- **v4 `main` HEAD at check:** `561466cfe` — **TWO commits past the (new)
-  baseline** (`487ae57fe`, `561466cfe`, both 2026-08-26, both
-  release-checklist maintenance).
-- **v4 `bugfix` tip at check:** `3a76b17df` — "bugfix: started 4.8.4 bug
-  branch" (**unmoved**; the fork marker). No unabsorbed bugfix-side
-  content (the content diff against main is main-forward only).
+- **v4 `main` HEAD at check:** `964ffb959` — **THIRTEEN commits past the
+  (new) baseline**: `487ae57fe` + `561466cfe` (classified NO-PORT?, §3)
+  plus ELEVEN commits that landed during this round's unification gate
+  (`7509c5cfb` `21f573039` `c0352fdba` `97d0b8f8e` `57e7b1bc2`
+  `e000d6bfc` `8440b6391` `dcab791c2` `914b59e13` `805ef12bf`
+  `964ffb959` — the 4.9.0 release push: bugs 103/104, release notes,
+  refactor sweeps, and ⚠ at least one on a JUST-ported surface —
+  `21f573039` drops the per-publish realtime coalesce trace inside the
+  code this round absorbed).
+- **v4 `bugfix` tip at check:** `3a76b17df` (**unmoved**; the fork
+  marker). Bugfix content not re-measured at this check.
 - **Checkout at check:** branch `main`, tree **clean**.
-- **Verdict: DRIFT PENDING — 2 commits**, both NO-PORT? candidates
-  awaiting ratification with evidence (`487ae57fe` tests + a stated
-  behaviour-neutral extraction on the ported bug-77 notice surface;
-  `561466cfe` a knip dead-code sweep + a byte-identical HAIR dedup). See
-  §3; neither is believed to move any ported surface — ratifying them is
-  the next round's cheap first item.
+- **Verdict: DRIFT PENDING — 13 commits, ELEVEN UNCLASSIFIED.** A full
+  `/driftcheck` is OWED before the next `/setupphase` plans anything —
+  this entry records the count and shas only, honestly, from the
+  unification's closing probe; nothing here classifies the eleven.
 - **Regen rule in force: PIN REQUIRED.** v4 HEAD is past the baseline —
   every oracle regeneration must run from a lane-unique detached worktree
   pinned at `f3892158d` (recipe in §5.1; `recipe_sweep.py --v4 "$PIN"`),
