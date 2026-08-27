@@ -11,6 +11,7 @@ import {
 import type { ChatDetail, ChatSettingsDto, MessageAttachment, MessageDto } from '../core/core-contract';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
+import { Tooltip } from '../ui/tooltip';
 import { thumbnailUrl, fileUrl } from '../images/image-urls';
 import { resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { resolveWhisperTargetLabel } from './whisper-visibility';
@@ -48,7 +49,7 @@ export interface ImageClickEvent {
 @Component({
   selector: 'qt-message-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, CourierBubble, MessageContent, ThinkingBlock, TokenBadge, ToolMessage],
+  imports: [Avatar, Icon, Tooltip, CourierBubble, MessageContent, ThinkingBlock, TokenBadge, ToolMessage],
   template: `
     <!-- v4 stamps message-<id> on the row (MessageRow.tsx:222,263); it is how
          handleReattributed scrolls a moved line back into view. -->
@@ -224,112 +225,131 @@ export interface ImageClickEvent {
             </div>
           }
 
+          <!-- Every control names itself through qt-tooltip rather than the
+               native title attribute (v4 0bd841394 — the OS tooltip is
+               unreliable under the desktop shell), each with an explicit
+               aria-label: a tooltip is not an accessible name.
+               ORDER NOTE (pre-existing divergence, recorded not churned):
+               v4 orders …Edit · Delete · Regenerate · Re-attribute · LLM
+               logs · badge · Resend · swipes; v5 has carried Delete AFTER
+               the LLM-logs entry since the bar landed. -->
           <div class="qt-chat-message-action-bar">
             <div class="qt-chat-message-action-bar-icons">
-              <button
-                type="button"
-                class="qt-chat-message-action-icon"
-                title="Copy message"
-                aria-label="Copy message"
-                (click)="copyMessage.emit(message())"
-              >
-                <qt-icon name="copy" class="w-4 h-4" />
-              </button>
-              @if (imageAttachments().length > 0) {
+              <qt-tooltip content="Copy message">
                 <button
                   type="button"
                   class="qt-chat-message-action-icon"
-                  [title]="
+                  aria-label="Copy message"
+                  (click)="copyMessage.emit(message())"
+                >
+                  <qt-icon name="copy" class="w-4 h-4" />
+                </button>
+              </qt-tooltip>
+              @if (imageAttachments().length > 0) {
+                <qt-tooltip
+                  [content]="
                     imageAttachments().length > 1
                       ? 'Save an image to a photo album'
                       : 'Save image to a photo album'
                   "
-                  aria-label="Save image to a photo album"
-                  (click)="onSaveImage()"
                 >
-                  <qt-icon name="bookmark" class="w-4 h-4" />
-                </button>
+                  <button
+                    type="button"
+                    class="qt-chat-message-action-icon"
+                    aria-label="Save image to a photo album"
+                    (click)="onSaveImage()"
+                  >
+                    <qt-icon name="bookmark" class="w-4 h-4" />
+                  </button>
+                </qt-tooltip>
               }
               @if (message().role === 'USER') {
-                <button
-                  type="button"
-                  class="qt-chat-message-action-icon"
-                  title="Edit message"
-                  aria-label="Edit message"
-                  (click)="edit.emit(message())"
-                >
-                  <qt-icon name="pencil" class="w-4 h-4" />
-                </button>
+                <qt-tooltip content="Edit message">
+                  <button
+                    type="button"
+                    class="qt-chat-message-action-icon"
+                    aria-label="Edit message"
+                    (click)="edit.emit(message())"
+                  >
+                    <qt-icon name="pencil" class="w-4 h-4" />
+                  </button>
+                </qt-tooltip>
               }
               @if (message().role === 'ASSISTANT') {
-                <button
-                  type="button"
-                  class="qt-chat-message-action-icon"
-                  title="Regenerate response"
-                  aria-label="Regenerate response"
-                  (click)="regenerate.emit(message())"
-                >
-                  <qt-icon name="refresh" class="w-4 h-4" />
-                </button>
+                <qt-tooltip content="Regenerate response">
+                  <button
+                    type="button"
+                    class="qt-chat-message-action-icon"
+                    aria-label="Regenerate response"
+                    (click)="regenerate.emit(message())"
+                  >
+                    <qt-icon name="refresh" class="w-4 h-4" />
+                  </button>
+                </qt-tooltip>
               }
-              <!-- Re-attribute (v4 MessageActionBar.tsx:138-147) — shown only
+              <!-- Re-attribute (v4 MessageActionBar.tsx:164-175) — shown only
                    when the cast holds someone else to hand it to. -->
               @if (canReattribute()) {
-                <button
-                  type="button"
-                  class="qt-chat-message-action-icon"
-                  title="Re-attribute to different participant"
-                  aria-label="Re-attribute to different participant"
-                  (click)="reattribute.emit(message())"
-                >
-                  <qt-icon name="swap" class="w-4 h-4" />
-                </button>
+                <qt-tooltip content="Re-attribute to a different participant">
+                  <button
+                    type="button"
+                    class="qt-chat-message-action-icon"
+                    aria-label="Re-attribute to a different participant"
+                    (click)="reattribute.emit(message())"
+                  >
+                    <qt-icon name="swap" class="w-4 h-4" />
+                  </button>
+                </qt-tooltip>
               }
               @if (showLlmLogsAction()) {
+                <qt-tooltip content="View LLM request/response logs">
+                  <button
+                    type="button"
+                    class="qt-chat-message-action-icon"
+                    aria-label="View LLM request/response logs"
+                    (click)="viewLlmLogs.emit(message().id)"
+                  >
+                    <qt-icon name="cpu" class="w-4 h-4" />
+                  </button>
+                </qt-tooltip>
+              }
+              <qt-tooltip content="Delete message">
                 <button
                   type="button"
                   class="qt-chat-message-action-icon"
-                  title="View LLM request/response logs"
-                  aria-label="View LLM request/response logs"
-                  (click)="viewLlmLogs.emit(message().id)"
+                  aria-label="Delete message"
+                  (click)="delete.emit(message())"
                 >
-                  <qt-icon name="cpu" class="w-4 h-4" />
+                  <qt-icon name="trash" class="w-4 h-4" />
                 </button>
-              }
-              <button
-                type="button"
-                class="qt-chat-message-action-icon"
-                title="Delete message"
-                aria-label="Delete message"
-                (click)="delete.emit(message())"
-              >
-                <qt-icon name="trash" class="w-4 h-4" />
-              </button>
+              </qt-tooltip>
 
               @if (swipeState() && swipeState()!.total > 1) {
-                <button
-                  type="button"
-                  class="qt-chat-message-action-icon"
-                  title="Previous response"
-                  aria-label="Previous response"
-                  [disabled]="swipeState()!.current === 0"
-                  (click)="swipePrev.emit(message())"
-                >
-                  <qt-icon name="chevron-left" class="w-4 h-4" />
-                </button>
+                <qt-tooltip content="Previous response">
+                  <button
+                    type="button"
+                    class="qt-chat-message-action-icon"
+                    aria-label="Previous response"
+                    [disabled]="swipeState()!.current === 0"
+                    (click)="swipePrev.emit(message())"
+                  >
+                    <qt-icon name="chevron-left" class="w-4 h-4" />
+                  </button>
+                </qt-tooltip>
                 <span class="qt-text-xs px-1"
                   >{{ swipeState()!.current + 1 }} / {{ swipeState()!.total }}</span
                 >
-                <button
-                  type="button"
-                  class="qt-chat-message-action-icon"
-                  title="Next response"
-                  aria-label="Next response"
-                  [disabled]="swipeState()!.current === swipeState()!.total - 1"
-                  (click)="swipeNext.emit(message())"
-                >
-                  <qt-icon name="chevron-right" class="w-4 h-4" />
-                </button>
+                <qt-tooltip content="Next response">
+                  <button
+                    type="button"
+                    class="qt-chat-message-action-icon"
+                    aria-label="Next response"
+                    [disabled]="swipeState()!.current === swipeState()!.total - 1"
+                    (click)="swipeNext.emit(message())"
+                  >
+                    <qt-icon name="chevron-right" class="w-4 h-4" />
+                  </button>
+                </qt-tooltip>
               }
             </div>
             <!-- v4 MessageActionBar.tsx:195 — the timestamp row. The class already

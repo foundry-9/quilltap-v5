@@ -424,10 +424,18 @@ describe('MessageRow — the per-message LLM-logs entry (v4 MessageActionBar.tsx
     // v4 has TWO action bars whose titles for this one button DIFFER. v5 has a
     // single bar and it is MessageActionBar's — same qt-chat-message-action-bar /
     // qt-chat-message-action-icon classes, same hover-reveal placement — so it
-    // takes MessageActionBar's string.
+    // takes MessageActionBar's string. Since 0bd841394 the copy lives in the
+    // qt-tooltip content (no `title` — the native tooltip would double up on
+    // ours); focus opens the bubble immediately, so the pin reads it there.
     const fixture = renderWith(message({ role: 'ASSISTANT' }), true);
-    expect(entry(fixture)!.getAttribute('title')).toBe('View LLM request/response logs');
-    expect(entry(fixture)!.className).toBe('qt-chat-message-action-icon');
+    const button = entry(fixture)!;
+    expect(button.getAttribute('title')).toBeNull();
+    expect(button.className).toBe('qt-chat-message-action-icon');
+    button.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    fixture.detectChanges();
+    expect(document.querySelector('.qt-tooltip')!.textContent).toContain(
+      'View LLM request/response logs',
+    );
   });
 
   it('omits the entry when the message has no logs (v4 hasLLMLogs gate)', () => {
@@ -646,5 +654,121 @@ describe('MessageRow — a greeting that carries reasoning', () => {
   it('renders no fold when the greeting carries no reasoning', () => {
     const fixture = render(message({ id: 'greeting', role: 'ASSISTANT', content: 'Hello.' }));
     expect(fixture.nativeElement.querySelectorAll('qt-thinking-block').length).toBe(0);
+  });
+});
+
+describe('MessageRow — the action-bar tooltip copy (v4 MessageActionBar.tsx @ 0bd841394)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  /**
+   * The v4-client-oracle parity pin for the action bar's (tooltip content,
+   * aria-label) pairs. The expectation rows were EMITTED from v4's REAL
+   * MessageActionBar at the pinned worktree (`b121ac77f`): a jest recorder
+   * rendered the component, hovered every `.qt-tooltip-anchor` in DOM order,
+   * and printed each bubble's text beside its trigger's aria-label
+   * (`/tmp/p4d132-emit.json`). Nothing here is retyped from prose.
+   *
+   * Regen recipe: place `__tests__/unit/components/p4d132-emit.test.tsx` in
+   * the pinned v4 worktree and run
+   *   QT_EMIT_OUT=/tmp/p4d132-emit.json npx jest p4d132-emit
+   * with Node 24.
+   *
+   * v5 carries 9 of v4's 12 buttons — Collapse-this-message, View source /
+   * View rendered, and Resend are PRE-EXISTING v5 gaps (recorded in the
+   * P4.D132 lane record), so their emitted rows have no pin here. ORDER NOTE:
+   * v5's Delete sits after the LLM-logs entry (pre-existing, recorded).
+   */
+  function renderRow(
+    msg: MessageDto,
+    over: { hasLlmLogs?: boolean; participants?: ParticipantDetail[]; swipe?: boolean } = {},
+  ): ComponentFixture<MessageRow> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [MessageRow],
+      providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }],
+    });
+    const fixture = TestBed.createComponent(MessageRow);
+    fixture.componentRef.setInput('message', msg);
+    const chat = chatDetail();
+    if (over.participants) chat.participants = over.participants;
+    fixture.componentRef.setInput('chat', chat);
+    fixture.componentRef.setInput('hasLlmLogs', over.hasLlmLogs ?? false);
+    if (over.swipe) {
+      fixture.componentRef.setInput('swipeState', { current: 1, total: 3, messages: [] });
+    }
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  /** Focus each anchor's button in DOM order; record (bubble text, aria-label). */
+  function harvest(fixture: ComponentFixture<MessageRow>): Array<[string, string | null]> {
+    const rows: Array<[string, string | null]> = [];
+    const anchors = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.qt-chat-message-action-bar-icons qt-tooltip',
+    );
+    anchors.forEach((anchor) => {
+      const trigger = anchor.querySelector('button');
+      if (!trigger) return;
+      trigger.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      fixture.detectChanges();
+      const bubble = document.querySelector('.qt-tooltip');
+      rows.push([bubble?.textContent?.trim() ?? '(no bubble)', trigger.getAttribute('aria-label')]);
+      trigger.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+      fixture.detectChanges();
+    });
+    return rows;
+  }
+
+  const img = (id: string): MessageAttachment => ({
+    id,
+    filename: `${id}.png`,
+    filepath: `x/${id}.png`,
+    mimeType: 'image/png',
+  });
+
+  it('pins the assistant row: emitted content and aria-label on every button', () => {
+    const fixture = renderRow(
+      message({ role: 'ASSISTANT', attachments: [img('a1'), img('a2')], swipeGroupId: 'sg1' }),
+      {
+        hasLlmLogs: true,
+        participants: [participant({ id: 'p1' }), participant({ id: 'p2' })],
+        swipe: true,
+      },
+    );
+    expect(harvest(fixture)).toEqual([
+      ['Copy message', 'Copy message'],
+      // Two images → the plural content; the aria-label stays fixed (v4's split).
+      ['Save an image to a photo album', 'Save image to a photo album'],
+      ['Regenerate response', 'Regenerate response'],
+      ['Re-attribute to a different participant', 'Re-attribute to a different participant'],
+      ['View LLM request/response logs', 'View LLM request/response logs'],
+      ['Delete message', 'Delete message'],
+      ['Previous response', 'Previous response'],
+      ['Next response', 'Next response'],
+    ]);
+  });
+
+  it('pins the user row: Edit appears, one image reads singular', () => {
+    const fixture = renderRow(message({ role: 'USER', attachments: [img('a1')] }), {
+      participants: [participant({ id: 'p1' }), participant({ id: 'p2' })],
+    });
+    expect(harvest(fixture)).toEqual([
+      ['Copy message', 'Copy message'],
+      ['Save image to a photo album', 'Save image to a photo album'],
+      ['Edit message', 'Edit message'],
+      ['Re-attribute to a different participant', 'Re-attribute to a different participant'],
+      ['Delete message', 'Delete message'],
+    ]);
+  });
+
+  it('leaves no title attribute anywhere in the icons row (the native tooltip would double up)', () => {
+    const fixture = renderRow(
+      message({ role: 'ASSISTANT', attachments: [img('a1')], swipeGroupId: 'sg1' }),
+      { hasLlmLogs: true, swipe: true },
+    );
+    const titled = (fixture.nativeElement as HTMLElement).querySelectorAll(
+      '.qt-chat-message-action-bar-icons [title]',
+    );
+    expect(titled.length).toBe(0);
   });
 });

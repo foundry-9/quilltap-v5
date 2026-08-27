@@ -167,6 +167,26 @@ proof per site; un-chunking all five sites reddened exactly those five
 proofs.
 
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
+#### 2026-08-27 — port(spa): the action bar adopts qt-tooltip on all nine buttons
+
+_Versions: SPA 0.5.592._
+
+The v5 half of v4 `0bd841394`'s MessageActionBar adoption: every `title=`
+attribute in the salon message action bar is gone, each of v5's nine buttons
+is wrapped in `qt-tooltip` with v4's content string, and each keeps its
+explicit `aria-label` (a tooltip is not an accessible name). The
+re-attribute copy takes v4's new wording ("Re-attribute to **a** different
+participant" — v5 had carried the old string), and the Save-image content
+keeps v4's conditional plural against a fixed aria-label. The three v4
+buttons v5 never had (Collapse-this-message, View source/View rendered,
+Resend) are pre-existing gaps recorded in the lane record, not this
+commit's scope; v5's Delete-after-LLM-logs button order is likewise
+recorded, not churned. New parity specs pin the (content, aria-label)
+pairs for both roles against the table emitted from v4's REAL component at
+the pinned worktree, plus a no-`title`-anywhere pin; the LLM-logs
+copy-choice spec now reads the bubble. Mutation-proven: the old
+re-attribute wording and a reintroduced `title` each redden the specs.
+
 #### 2026-08-27 — port(spa): the Tooltip primitive — Quilltap draws its own tooltips
 
 _Versions: SPA 0.5.591._
