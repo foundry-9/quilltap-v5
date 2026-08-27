@@ -48,6 +48,24 @@ describe('formatRelativeDate (v4 lib/format-time.ts:93-116)', () => {
     expect(out).not.toBe('Just now');
   });
 
+  it('the tail carries NO year, even across a year boundary (v4 has no year key here)', () => {
+    // v4's tail branch is month/day/hour/minute only — the conditional `year`
+    // belongs to `formatChatListDate` alone. The §3 unification review caught a
+    // `year:` invented here during the hoist; a prior-year date is the input
+    // that sees it.
+    const when = new Date(now - 400 * DAY);
+    const out = formatRelativeDate(when.toISOString(), now);
+    expect(out).toBe(
+      when.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    );
+    expect(out).not.toContain(String(when.getFullYear()));
+  });
+
   it('nowMs is what moves the answer — the same input reads differently later', () => {
     const ts = at(0);
     expect(formatRelativeDate(ts, now)).toBe('Just now');
@@ -64,9 +82,14 @@ describe('formatChatListDate (v4 lib/format-time.ts:121-149)', () => {
     const now = Date.parse('2026-08-26T15:30:00.000Z');
     expect(formatChatListDate(new Date(now - HOUR).toISOString(), now)).toMatch(/\d/);
     expect(formatChatListDate(new Date(now - DAY).toISOString(), now)).toBe('Yesterday');
-    const weekday = formatChatListDate(new Date(now - 3 * DAY).toISOString(), now);
+    const when = new Date(now - 3 * DAY);
+    const weekday = formatChatListDate(when.toISOString(), now);
     expect(weekday).not.toBe('Yesterday');
-    expect(weekday.length).toBeLessThanOrEqual(4);
+    // v4 renders the LONG weekday name (`format-time.ts:144`). The §3
+    // unification review caught this spec pinning a 'short' divergence
+    // (`length <= 4`) that v4's own output would have failed.
+    expect(weekday).toBe(when.toLocaleDateString([], { weekday: 'long' }));
+    expect(weekday.length).toBeGreaterThan(4);
   });
 
   it('the diffDays ladder is a FLOOR of elapsed ms, not a calendar-day count', () => {

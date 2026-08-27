@@ -180,10 +180,13 @@ export class RealtimeService {
   /**
    * A gated fallback poll for a readout that is NOT a TanStack query.
    *
-   * v4 writes this out as a `useEffect` at four sites — the two memory cards,
-   * the Salon's avatar watch, the character conversations tab — always in the
-   * same shape: `if (connected || !armed) return; const i = setInterval(…);
-   * return () => clearInterval(i)`. One helper, so the four v5 twins cannot
+   * v4 writes this shape out as a `useEffect` at four sites (the two memory
+   * cards, the Salon's avatar watch, the character conversations tab):
+   * `if (connected || !armed) return; const i = setInterval(…); return () =>
+   * clearInterval(i)`. In v5 those four have no bespoke poller to gate — the
+   * memory cards went through gated TanStack queries and the two watches are
+   * pre-existing documented divergences — so the helper's actual consumers are
+   * the two autonomous-room components. One helper, so gated pollers cannot
    * drift from each other.
    *
    * **Must be called in an injection context**; the timer is released by the

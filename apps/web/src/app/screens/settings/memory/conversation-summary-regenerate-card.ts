@@ -74,12 +74,19 @@ export class ConversationSummaryRegenerateCard {
     // reports zero in flight rather than surfacing an error.
     queryFn: (): Promise<number> => this.core.conversationSummariesStatus().catch(() => 0),
     // Fallback only, and only while a run is draining — v4's scope exactly,
-    // now gated on channel health as well (`f3892158d`).
-    refetchInterval: (query): number | false => {
-      const data = query.state.data as number | undefined;
-      const draining = !!data && data > 0;
-      return this.realtime.refetchInterval(draining ? POLL_INTERVAL_MS : false);
-    },
+    // now gated on channel health as well (`f3892158d`). ⚠ The channel gate is
+    // read HERE, in the reactive options factory, not inside the function form:
+    // TanStack recomputes a function-form interval only on subscribe/options/
+    // cache changes, so a `connected()` read in there is untracked and a
+    // mid-drain channel drop would never re-arm the poll (the §3 unification
+    // review's catch; the badges' factory-level gate is the pattern).
+    refetchInterval: this.realtime.connected()
+      ? (false as const)
+      : (query): number | false => {
+          const data = query.state.data as number | undefined;
+          const draining = !!data && data > 0;
+          return draining ? POLL_INTERVAL_MS : false;
+        },
   }));
 
   constructor() {

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../../core/core-client';
 import { coreStreamStub, type CoreStreamStub } from '../../../core/core-client.testing';
 import type { ScopedEvent } from '../../../core/core-contract';
+import { ConversationSummaryRegenerateCard } from './conversation-summary-regenerate-card';
 import { MemoryBackfillCard } from './memory-backfill-card';
 import { MemoryRegenerateCard } from './memory-regenerate-card';
 import { ToastService } from '../../../ui/toast.service';
@@ -38,7 +39,15 @@ function mount<T>(cmp: new (...args: never[]) => T, reply: () => Record<string, 
       ),
       {
         provide: CoreClient,
-        useValue: { ...stream, dispatchData },
+        // The summary card reads its status through a dedicated client method
+        // rather than dispatchData; route it through the same counter so the
+        // interval assertions below work for all three cards.
+        useValue: {
+          ...stream,
+          dispatchData,
+          conversationSummariesStatus: () =>
+            (dispatchData as unknown as () => Promise<unknown>)().then((r) => r as number),
+        },
       },
       {
         provide: ToastService,
@@ -142,5 +151,58 @@ describe('MemoryRegenerateCard — the hint fires only while a sweep is in fligh
     const busyCalls = dispatchData.mock.calls.length;
     await vi.advanceTimersByTimeAsync(5_100);
     expect(dispatchData.mock.calls.length).toBeGreaterThan(busyCalls);
+  });
+
+  it('RESUMES the fallback poll when the channel drops mid-drain (the §3 catch)', async () => {
+    // The gate must be read in the reactive options factory: a `connected()`
+    // read inside the function-form interval is untracked, so with the channel
+    // down no hints arrive, no cache updates recompute the interval, and the
+    // poll would never re-arm — the frozen screen v4's `useEffect` on
+    // `connected` exists to prevent. This case runs the up→down direction the
+    // rest of the family does not.
+    const fixture = mount(MemoryRegenerateCard, () => ({
+      inFlightFanOut: 1,
+      inFlightWipes: 0,
+      inFlightExtractions: 0,
+      inFlight: 1,
+    }));
+    stream.connection.set('open');
+    fixture.detectChanges();
+    await settle();
+    const parked = dispatchData.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(dispatchData.mock.calls.length).toBe(parked);
+
+    stream.connection.set('reconnecting');
+    fixture.detectChanges();
+    await settle();
+    const dropped = dispatchData.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(5_100);
+    expect(dispatchData.mock.calls.length).toBeGreaterThan(dropped);
+  });
+});
+
+describe('ConversationSummaryRegenerateCard — the same gate, the same direction', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('RESUMES the fallback poll when the channel drops mid-drain (the §3 catch)', async () => {
+    const fixture = mount(
+      ConversationSummaryRegenerateCard,
+      () => 3 as unknown as Record<string, unknown>,
+    );
+    stream.connection.set('open');
+    fixture.detectChanges();
+    await settle();
+    const parked = dispatchData.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(dispatchData.mock.calls.length).toBe(parked);
+
+    stream.connection.set('reconnecting');
+    fixture.detectChanges();
+    await settle();
+    const dropped = dispatchData.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(5_100);
+    expect(dispatchData.mock.calls.length).toBeGreaterThan(dropped);
   });
 });

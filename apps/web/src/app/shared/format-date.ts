@@ -105,7 +105,10 @@ export function formatRelativeDate(
   if (!dateString) return '';
   try {
     const date = new Date(dateString);
-    const now = new Date(nowMs);
+    // v4 declares a `now` here and never reads it — its tail branch carries NO
+    // conditional `year` key (that belongs to `formatChatListDate` alone; the
+    // §3 unification review caught a `year:` invented here during the hoist,
+    // likely invited by that unused v4 binding, which v5 drops).
     const diffMs = nowMs - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
     if (diffMins < 1) return 'Just now';
@@ -116,7 +119,6 @@ export function formatRelativeDate(
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
     });
   } catch {
     return String(dateString);
@@ -154,9 +156,12 @@ export function formatChatListDate(dateString: string, nowMs: number = Date.now(
     return 'Yesterday';
   }
   if (diffDays < 7) {
-    return date.toLocaleDateString(undefined, { weekday: 'short' });
+    // v4 renders the LONG weekday ("Monday", `format-time.ts:144`); the §3
+    // unification review caught a 'short' introduced during the hoist (main's
+    // pre-round transcription was faithful).
+    return date.toLocaleDateString([], { weekday: 'long' });
   }
-  return date.toLocaleDateString(undefined, {
+  return date.toLocaleDateString([], {
     month: 'short',
     day: 'numeric',
     year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,

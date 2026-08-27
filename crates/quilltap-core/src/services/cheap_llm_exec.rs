@@ -806,7 +806,7 @@ impl CheapLlmTaskExecutor {
 /// Which toolbar chip each cheap-LLM task lights (v4 `TASK_TYPE_ACTIVITY`,
 /// `664cfca84:lib/memory/cheap-llm-tasks/core-execution.ts`).
 ///
-/// Every cheap-LLM task funnels through [`CheapLlmExecutor::execute`], so this
+/// Every cheap-LLM task funnels through [`CheapLlmTaskExecutor::execute`], so this
 /// is the one place that has to know. A task type absent from the map falls
 /// back to `summary` rather than going uncounted — v4's rule verbatim: "a chip
 /// that is slightly generous is better than a chip that quietly lies".

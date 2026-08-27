@@ -75,6 +75,15 @@ function markerFor(command) {
     // vitest's summary block. `Duration` is the last line and survives
     // colouring intact; the verdict comes from the `Test Files` line.
     return (text) => {
+      // A spec that fails to BUILD never reaches vitest: Angular prints its
+      // bundle marker and then hangs exactly as it does for `build`, and the
+      // vitest markers below never fire — measured 2026-08-26, when a broken
+      // spec turned `npm test` into a silent 30-minute timeout, twice in one
+      // gate. `failed` is terminal for `test` too; `complete` is NOT (the
+      // tests still have to run after a successful bundle).
+      if (/Application bundle generation failed\./.test(text)) {
+        return { done: true, ok: false };
+      }
       if (!/^\s*Duration\s/m.test(text)) return { done: false };
       const files = /^\s*Test Files\s+(.*)$/m.exec(text);
       const failed = files ? /\bfailed\b/.test(files[1]) : /\bfailed\b/.test(text);

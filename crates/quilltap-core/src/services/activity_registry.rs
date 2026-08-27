@@ -52,9 +52,9 @@
 //! which is exactly the mechanism `TaskLocalFuture` uses and works under any
 //! executor — including none.
 //!
-//! ⚠ **Attribution does not cross `tokio::spawn`**, for the same reason v4's
-//! `AsyncLocalStorage` does (it does, actually — Node propagates into
-//! `setImmediate` chains; a spawned Rust task starts with an empty mask). A
+//! ⚠ **Attribution does not cross `tokio::spawn` — and this is a place v5 is
+//! NARROWER than v4.** Node's `AsyncLocalStorage` does propagate across its
+//! async continuations; a spawned Rust task starts with an empty mask. A
 //! spawned same-kind span would therefore COUNT where v4 collapses it. Surveyed
 //! at the ten wrapped call sites for this round: none spawns same-kind work
 //! (the `join_all` resolves inside the wardrobe/appearance paths are polled

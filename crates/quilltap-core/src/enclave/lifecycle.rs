@@ -926,12 +926,17 @@ pub async fn reconcile_failed_autonomous_turn(
     let message = utf16_truncate(&format!("turn_failed:{failure_reason}"), 500);
     let patch = build_resumable_pause_patch(&chat, message, &now_iso, deps.mint_uuid);
     let cid = chat_id.to_string();
-    let _ = db
+    let wrote = db
         .write(move |writers| {
             ChatsRepository::new(writers.main().connection()).update(&cid, &patch)
         })
         .await;
-    publish_realtime(RealtimeTopic::AutonomousRooms, None);
+    // v4 publishes INSIDE the try, after the awaited update — a failed
+    // pause-patch write reaches its catch and announces nothing (the §3
+    // unification review's catch: v5 published unconditionally here).
+    if wrote.is_ok() {
+        publish_realtime(RealtimeTopic::AutonomousRooms, None);
+    }
 }
 
 #[cfg(test)]
@@ -1351,6 +1356,32 @@ mod tests {
         })
         .await;
         assert_eq!(hints, rooms());
+    }
+
+    /// A reconcile whose pause-patch WRITE fails announces nothing — v4
+    /// publishes inside the try, after the awaited update, so its catch
+    /// publishes nothing (`autonomous-room.service.ts:567`; the §3 unification
+    /// review caught v5 publishing unconditionally here). The read must
+    /// succeed for the arm to be reachable, so the failure is injected with an
+    /// UPDATE-only trigger rather than by breaking the table.
+    #[tokio::test]
+    async fn a_reconcile_whose_write_fails_publishes_nothing() {
+        let hints = autonomous_hints("running", async |db, deps| {
+            db.write(|ws| {
+                let conn = ws.main().connection();
+                conn.execute("UPDATE chats SET currentRunId = 'run-x'", [])?;
+                conn.execute_batch(
+                    "CREATE TRIGGER qt_test_fail_chat_update BEFORE UPDATE ON chats \
+                     BEGIN SELECT RAISE(ABORT, 'forced write failure'); END;",
+                )?;
+                Ok::<(), DbError>(())
+            })
+            .await
+            .unwrap();
+            reconcile_failed_autonomous_turn(db, deps, Some("chat-1"), Some("run-x"), "boom").await;
+        })
+        .await;
+        assert_eq!(hints, vec![]);
     }
 
     /// …and the reconcile's guard arms publish nothing, because they write

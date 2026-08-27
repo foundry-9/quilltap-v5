@@ -172,6 +172,19 @@ fn every_activity_span_site_is_wired() {
                 "{file}: the wrap sits BEFORE `{function}` — it is not this site's ({why})"
             ));
         }
+        // …and EXACTLY ONCE per file (the §3 unification review's hardening):
+        // presence alone would let a census function LOSE its wrap while an
+        // identical wrap elsewhere in the file satisfied `find`, and it would
+        // never see an added double-wrap (which double-counts a chip up to the
+        // registry's same-kind collapse). The publish-sites guard counts; so
+        // does this one.
+        let count = src.match_indices(wrap).count();
+        if count != 1 {
+            failures.push(format!(
+                "{file}: expected exactly one `{}`, found {count} ({why})",
+                wrap.replace('\n', " ")
+            ));
+        }
     }
 
     for (v4_site, v5_symbol, why) in NO_V5_SURFACE {

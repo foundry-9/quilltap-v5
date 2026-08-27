@@ -12,6 +12,48 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — fix(spa,core,tools): the f3892158d-round §3 review findings, and the ng-run spec-build-failure hang
+
+_Versions: core 0.0.686, harness 0.0.592, SPA 0.5.582._
+
+The unification review's three blocking findings, fixed with red-first pins:
+`formatRelativeDate` had grown a `year:` key v4's tail branch does not have
+(cross-contaminated from `formatChatListDate` during the hoist into
+`shared/format-date.ts`; a prior-year case now pins the exact v4 option set),
+`formatChatListDate` rendered the short weekday where v4 renders `'long'` —
+with the lane's spec pinning the divergent value — and the two memory
+regenerate cards read the realtime channel gate inside the function-form
+`refetchInterval`, where the signal read is untracked, so a mid-drain channel
+drop could never re-arm the fallback poll (hoisted to the reactive options
+factory, the badges' pattern; the spec family gained the up→down direction,
+one resume case per card, mutation-proven). Minors fixed alongside: the
+autonomous reconcile published its hint even when the pause-patch write
+failed (now gated, pinned by an UPDATE-trigger failed-write leg), the
+span-sites guard asserts exactly-one-wrap-per-file (was presence-only), a
+broken rustdoc link, the registry header's garbled spawn-propagation
+sentence, `fallbackPoll`'s overclaimed consumer list, and the two raw
+`['systemAutonomousRooms']` spellings now import `AUTONOMOUS_ROOMS_KEY`.
+
+Riding the round because the gate hit it twice: `tools/ng-run.mjs`'s `test`
+marker now treats `Application bundle generation failed.` as terminal — a
+spec that failed to BUILD never reaches vitest, so the wrapper's
+vitest-summary markers never fired and every spec build failure became a
+30-minute silent hang. Proven by reliving the failure: the same broken spec
+now exits 1 in ~10 s. Full record: `status-log.md` → "The `f3892158d`-round
+§3 unification review".
+
+#### 2026-08-26 — docs(porting): record the mid-round v4 drift — 487ae57fe and 561466cfe, both NO-PORT candidates
+
+_Docs-only change._
+
+(Entry added retroactively with the review-findings commit — the ledger
+update landed at the start of unification without one.) v4 landed two
+release-checklist commits while the round's lanes ran: `487ae57fe` (nine
+regression-test files; the only lib/app hunks are a stated behaviour-neutral
+hook extraction on the already-ported bug-77 notice surface) and `561466cfe`
+(a knip dead-code sweep + a byte-identical HAIR-guidance dedup). Recorded as
+UNPROCESSED NO-PORT? rows in the drift ledger with ratification notes.
+
 #### 2026-08-26 — test(chat): discriminate hints from chat frames in the send smoke
 
 _Versions: web 0.0.96._

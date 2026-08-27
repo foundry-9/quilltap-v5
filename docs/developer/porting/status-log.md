@@ -89550,3 +89550,73 @@ P4.D112 store-probe park). SPA → 0.5.581.
 via symlinks** — this lane touches ZERO Rust and main sat at the lane's own base
 commit (`52577996`), with the binaries built after the last Rust change. The
 symlinks were removed at cleanup; no `target/` was built in the worktree.
+
+---
+
+## The `f3892158d`-round §3 unification review — findings, fixes, and the ng-run hang
+
+Three parallel reviewers over the whole combined diff (harness/oracle
+deliverables; Rust server fidelity vs v4's real hunks; SPA client fidelity vs
+v4's client sources at the pin), verdict owned at the unify. **Three BLOCKING
+findings, all in the SPA half, all fixed on the unify branch with red-first
+pins:**
+
+1. **`formatRelativeDate` invented a `year:` key** in its past-a-day tail
+   (`shared/format-date.ts`) — v4's tail is month/day/hour/minute only (the
+   conditional `year` belongs to `formatChatListDate` alone; v4's own unused
+   `now` binding in that function likely invited the cross-contamination
+   during the hoist). Main's pre-round transcription in `tasks-queue.api.ts`
+   was faithful; the hoist regressed it. Fixed; a new spec case drives a
+   prior-year date through the tail and asserts the exact v4 option set
+   (mutation-proven — re-adding the key reds exactly that case).
+2. **`formatChatListDate` rendered the SHORT weekday** in its `<7d` branch
+   where v4 renders `weekday: 'long'` (`format-time.ts:144`) — and the lane's
+   spec PINNED the divergence (`length <= 4`), so v4's own output would have
+   failed it. Fixed both sides: the formatter renders long, the spec asserts
+   equality with the long form (mutation-proven).
+3. **The two regenerate cards' fallback poll could never re-arm on a mid-drain
+   channel drop.** Both read `connected()` inside the function-form
+   `refetchInterval`, where the signal read is untracked — TanStack recomputes
+   a function-form interval only on subscribe/options/cache changes, and with
+   the channel down there are no cache changes, so the interval stayed
+   parked at `false` forever (the frozen screen v4's `useEffect` on
+   `connected` exists to prevent; every sibling site was safe because it
+   reads the gate at options-factory level). Fixed to the badges' factory-
+   level pattern in both cards; the spec family gained the up→down direction
+   it lacked — one RESUMES case per card, each red against the pre-fix code
+   by construction (the drop leg is exactly what the old code could not do).
+
+**MINOR/NOTE findings, also fixed at the wire:** the autonomous reconcile
+published its `autonomousRooms` hint even when the pause-patch write failed
+(v4 publishes inside the try — fixed, pinned by a new failed-write leg using
+an UPDATE-only `RAISE(ABORT)` trigger so the read still succeeds, mutation-
+proven both ways); the span-sites guard asserted wrap PRESENCE only (hardened
+to exactly-once-per-file, closing both the lost-wrap-with-a-later-duplicate
+and added-double-wrap holes — mutation-proven with a compilable duplicated
+needle after a first, invalid-source mutation was caught NOT applying); a
+broken rustdoc link (`CheapLlmTaskExecutor`); the registry header's garbled
+spawn-propagation sentence (now states plainly that v5 is NARROWER than Node's
+`AsyncLocalStorage` there); `fallbackPoll`'s doc overclaiming four consumers
+(its real users are the two autonomous components); and the two raw
+`['systemAutonomousRooms']` spellings now import `AUTONOMOUS_ROOMS_KEY` (the
+drift shape `chat-keys.ts` was created to kill). Reviewer NOTEs recorded
+without action: the `>= 2 * 23` corpus floor, the junk-decode differential
+arm's reliance on the live web test (cross-referenced in both files), the
+unmocked v4 logger in the origin oracle, the name-heuristic NO_V5_SURFACE
+tripwires, `get_activity_snapshot` having no production caller (the
+one-transaction `merge_activity_snapshot` split is documented), and the v4
+`safeQuery`-vs-loud-refusal class on `get_active_counts_by_kind` (covered by
+the standing P4.48-era ruling).
+
+**The gate's own catch — the chronic `ng` hang, mechanically closed.** The
+first `npm test` of the review-fix loop was piped through `| tail` (the
+standing rule's exact mistake — it produced a zero-byte log and, once killed,
+a fake exit-0 notification) and the re-run then hung again for a REAL reason:
+finding 3's first spec draft called a `vi.fn()` mock directly (TS2348), the
+spec BUILD failed, and `tools/ng-run.mjs`'s `test` marker only watches for
+vitest's summary — which never comes when the bundle fails, so the wrapper
+sat on its 30-minute cap. That is the documented "ng-run hangs after a spec
+build failure" shape, now fixed at the root: `Application bundle generation
+failed.` is terminal for `test` too (`complete` is not — the tests still have
+to run). Proven by reliving the failure: the identical broken spec went from
+an indefinite hang to **exit 1 in 10.6 s**.

@@ -63,6 +63,7 @@
 
 import type { CharacterViewTabPayload, WorkspaceTab } from '../workspace-contract';
 import { chatKeys } from '../../chat/chat-keys';
+import { AUTONOMOUS_ROOMS_KEY } from '../../core/realtime-topic-map';
 import { characterKeys, tagKeys } from '../../screens/characters/characters.api';
 import { groupKeys } from '../../screens/groups/groups.api';
 import { homeKeys } from '../../screens/home/home.api';
@@ -108,7 +109,7 @@ export function tabActivationQueryKeys(tab: WorkspaceTab): QueryKeyPrefix[] {
         CHAT_LISTS,
         characterKeys.all,
         ...CONNECTION_PROFILES,
-        ['systemAutonomousRooms'],
+        AUTONOMOUS_ROOMS_KEY,
         ...CHAT_SETTINGS,
       ];
     case 'aurora':

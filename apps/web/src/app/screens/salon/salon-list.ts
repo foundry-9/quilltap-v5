@@ -4,6 +4,7 @@ import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { chatKeys } from '../../chat/chat-keys';
 import { CoreClient } from '../../core/core-client';
+import { AUTONOMOUS_ROOMS_KEY } from '../../core/realtime-topic-map';
 import type { ChatSettingsDto, EnrichedChatSummary } from '../../core/core-contract';
 import { ErrorAlert } from '../../ui/error-alert';
 import { Icon } from '../../ui/icon';
@@ -143,7 +144,7 @@ export class SalonList {
    * `/system/autonomous-rooms`), fired ONLY when excluding — for the hint.
    */
   private readonly autonomousRooms = injectQuery(() => ({
-    queryKey: ['systemAutonomousRooms'],
+    queryKey: AUTONOMOUS_ROOMS_KEY,
     enabled: !this.effectiveIncludeAutonomous(),
     queryFn: () => this.core.listAutonomousRooms(),
   }));
