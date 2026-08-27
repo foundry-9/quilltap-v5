@@ -91662,6 +91662,18 @@ this lane went through a lane-unique detached worktree at **`aec86a613`**
 (`/tmp/qt-v4-pin-p4d130-aec86a613`, three symlink classes, §5.1), because
 for a drift port the drift commit IS the spec.
 
+**⚠ v4 MOVED DURING THE LANE, and the regen was re-proven against it.** The
+probe passed clean at lane start; by the lane's end the checkout carried one new
+commit (`679e450e3`, v4's own fix for bug 105 — this port's upstream filing) and
+a DIRTY `app/` tree (salon message-row components + two style files, uncommitted
+work in progress). Neither can have reached this lane's output: every v4-side
+run went through the detached `aec86a613` pin, built before the drift and
+immutable after it. Per ledger §5.1 the cheap total proof was taken anyway
+rather than argued — a FRESH pin was built at `aec86a613` after the drift and
+the vectors re-recorded: **byte-identical to the committed file**, v4's own
+suite 7/7 alongside. The drift itself is the NEXT round's business; a lane never
+writes the ledger.
+
 **Zero crate source changed in this lane** (`git diff main...HEAD -- crates/`
 is empty) — the whole port is SPA + e2e, exactly as `aec86a613` is
 client-only. No core/harness/web/host/cli/tauri bump; SPA only.
