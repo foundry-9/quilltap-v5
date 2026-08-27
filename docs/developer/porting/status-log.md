@@ -90316,3 +90316,60 @@ v5 changed nothing there either.
 **Gate for this unit:** `npm run lint` clean (937); `npm test` **361 files /
 5,398 → 5,399 tests / 0 failed** (the +1 is unit 3's About spec, landed in the
 same lane); `npm run build` clean.
+
+### P4.D128 unit 2 — the four documented-but-uncompleted CLI flags (v4 `57e7b1bc2`)
+
+v4's release-checklist item 12: auditing each subcommand's `--help` against the
+three completion templates turned up four long flags tab-completion never
+offered. v5 byte-copies those templates (the P4.D118 precedent), so it carried
+all four gaps verbatim.
+
+**Pre-check.** All three v5 templates were byte-identical to v4's PRE-fix
+files: `diff` against `~/source/quilltap-server` returned exactly the commit's
+own hunks and nothing else. So the port is a byte-copy from the pinned
+worktree, not a hand-patch — and the post-copy `diff` against
+`/tmp/qt-v4-pin-p4d128-8872d7efc/packages/quilltap/lib/completion/*.template`
+is empty for all three.
+
+**The hunks** (v4's, unmodified): bash gets `--format` in `vf_docs` (the
+value-flag list the scanner reads as `$vf_global$vf_docs` — without it
+`--format json <TAB>` reads `json` as the verb, bug 101's exact failure mode),
+a new `--format)` case completing `args json`, and `--format` on a new
+continuation line of `docs_flags`; zsh gets
+`'--format[For docker-mounts: output shape]:format:(args json)'` in
+`_quilltap_docs`; fish gets `docs --uri`, `docs --base64`, and the
+`__quilltap_using_subverb docs docker-mounts` `--format` line with
+`-x -a 'args json'`.
+
+**Tier R, red-first — exactly the flipping set.** `cli_differential.rs` against
+v4's REAL launcher from the pinned `8872d7efc` worktree, BEFORE the copy:
+
+```
+CLI differential: 188 cases, 3 failures
+[completion bash] stdout differs
+[completion zsh] stdout differs
+[completion fish] stdout differs
+```
+
+Three failures out of 188, and the three are precisely the cases that print the
+changed templates. AFTER the copy: `test result: ok. 1 passed` (188 cases, 0
+failures, 346.76 s).
+
+**Regen recipe** (Tier R needs no oracle NDJSON and no DB — its venue is the
+pinned v4 worktree plus the built v5 binary):
+
+```bash
+QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d128-8872d7efc \
+QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node \
+  cargo test -p quilltap-cli --test cli_differential -- --nocapture
+```
+
+⚠ The `-- --nocapture` matters for the record: on a PASS cargo swallows the
+`CLI differential: N cases, M failures` line, so a green run without it cannot
+tell you how many cases actually ran.
+
+**Deferred loud to the `p4.9i2` help-docs bank:** v4's `help/cli-completion.md`
+rewrite (flag-anywhere parsing + positional store-name completion, superseding
+the pre-bug-101 description) and `packages/quilltap/README.md` (the
+`docs docker-mounts` verb, which shipped in 4.8.4 with no README entry, plus
+its "What gets completed" section). Neither has a v5 analog outside that bank.

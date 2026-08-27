@@ -183,6 +183,35 @@ worktree pinned at `8872d7efc`: the two `image-attachment-non-vision` rows
 flipped red-first (v5 produced the text-only body v4 no longer produces), a
 new `image-attachment-glm-5-3` pair records the model that named the bug, and
 all 339 other rows are byte-identical.
+#### 2026-08-26 — fix(cli): complete the four flags `--help` already documents (v4 `57e7b1bc2`)
+
+_Versions: cli 0.0.13._
+
+P4.D128 unit 2. v4's 4.9.0 release-checklist item 12 audited `--help` against
+the three completion templates and found four documented flags tab-completion
+never offered. v5 byte-copies those templates, so it had all four gaps.
+
+- **bash** (+9/−2): `--format` appended to `vf_docs`, the value-flag list —
+  without it `--format json <TAB>` reads `json` as the verb, bug 101's exact
+  failure mode; a new `--format)` case completing `args json`; and `--format`
+  appended to the `docs_flags` line-continuation block.
+- **zsh** (+1): `'--format[For docker-mounts: output shape]:format:(args json)'`
+  in `_quilltap_docs`.
+- **fish** (+3): `docs --uri`, `docs --base64`, and the docker-mounts
+  `--format` line gated on `__quilltap_using_subverb`.
+
+All three files were byte-identical to v4's pre-fix templates and are now
+byte-identical to v4's post-fix templates (`diff` against a worktree pinned at
+`8872d7efc`, empty).
+
+**Tier R, red-first.** Against the pinned v4 launcher the differential was
+**188 cases, 3 failures** — `completion bash`, `completion zsh`,
+`completion fish`, exactly the flipping set and nothing else. After the copy:
+188 cases, 0 failures.
+
+v4's `help/cli-completion.md` and `packages/quilltap/README.md` prose rewrites
+ride the `p4.9i2` help-docs bank; no v5 analog is touched here.
+
 #### 2026-08-26 — refactor(themes): the release-window qt-* utilities sweep (v4 `97d0b8f8e`)
 
 _Versions: SPA 0.5.584._

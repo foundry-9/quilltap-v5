@@ -9,7 +9,7 @@
 
 [package]
 name = "quilltap-cli"
-version = "0.0.12"
+version = "0.0.13"
 edition = "2021"
 publish = false
 
