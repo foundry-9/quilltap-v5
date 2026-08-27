@@ -91306,3 +91306,219 @@ lane's tests confirmed to have RUN by name
 regenerated and re-run through `recipe_sweep.py --run-all --v4 <pin>`,
 `totals: {'ok': 2}`. No Playwright in this lane (P4.D130 is the round's sole
 runner) and no `apps/web` change, so no SPA gate.
+## P4.63 — the harness/differential follow-ups from the 4.9.0-push round (2026-08-27, lane branch `claude/p4-63-harness-differential-e2ef56`)
+
+**All four ordered items CLOSED. Zero v5 production behavior changed** — the
+lane's only non-test edit is a doc comment, and even that stayed inside the
+guard files it belongs to. The oracle baseline stays `8872d7efc`; the drift
+ledger's §2 probe passed at lane start (branch `main`, clean tree, no commits
+past `aec86a613` / `3a76b17df`) and every regen ran from the lane-unique
+pinned worktree `/tmp/qt-v4-pin-p463-8872d7efc`.
+
+### Item 1 — the bug-105 oracle-side divergence arm (`system_import_state`)
+
+`execute_bug105_seed_abort`, an ADDITIVE case (nothing in the existing corpus
+moved). The payload is one connection profile with `provider: 42` and no
+`supportsImageUpload` — the exact branch v4's
+`seedLegacyConnectionProfileFields` reads — followed by **one sound IMAGE
+profile**. `executeImport` runs tags → connectionProfiles → imageProfiles, so
+reaching the image profile at all is the measurement of "the import
+continued":
+
+- **v4 (REAL `executeImport`, driven from the pin):** `success: false`,
+  every count 0, warnings exactly
+  `Import failed: (seeded.provider ?? "").toUpperCase is not a function`,
+  and **not one row written in any partition** — measured, not assumed.
+- **v5:** `success: true`, one warning starting
+  `Failed to import connection profile "Bug 105 Connection": `,
+  `connectionProfiles: 0`, `imageProfiles: 1`, and `main.image_profiles`
+  gains exactly `Bug 105 Survivor` and nothing else.
+
+`classify_bug105_seed_abort` asserts both legs, then blanks the result body
+(the whole envelope diverges — `success`, both count bags, the warnings) and
+SUBTRACTS `main.image_profiles` from the state comparands. `compare_execute`
+gained a `skip` parameter for that; the subtraction happens inside
+`normalize_side`'s walk, so the minted-id labels stay aligned across the two
+sides. **Every other table in all three partitions stays a plain equality**,
+`connection_profiles` included — neither engine writes one.
+
+Built to retire (ledger §5.4): when v4 fixes bug 105 the v4 leg fails saying
+so by name, with the instruction to regenerate, confirm the adoption, and
+retire the classifier for a plain equality.
+
+**Mutation proofs.**
+- **M1 (v5 regressing into v4's shape):** a v4-shaped guard added at the top
+  of `import_connection_profiles`' loop body, outside the per-item closure,
+  returning `DbError::Internal("(seeded.provider ?? \"\").toUpperCase is not
+  a function")`. Both v5 legs reddened — the body assert (`success`,
+  warnings, counts) and the state assert (`added []`). Reverted.
+- **M2 (v4 converging):** the fresh NDJSON edited to give v4 a named warning,
+  `success: true` and `imageProfiles: 1`. The v4 leg reddened with the
+  retirement instruction verbatim.
+
+Case count assert 36 → 37, plus a by-name presence assert so a dropped case
+fails saying WHAT went missing rather than failing the arithmetic.
+
+⚠ **A standing vacuity this arm surfaced, deferred loudly.** The committed
+`system-data-main.db` predates v4 4.9's
+`connection_profiles.multiCharacterPrefill`, so **every** connection-profile
+import in this family fails on BOTH sides with `table connection_profiles has
+no column named multiCharacterPrefill` — `execute_overwrite_all`,
+`execute_duplicate_all`, `execute_cross_instance_skip`,
+`execute_legacy_folds` all report `imported.connectionProfiles: 0` behind
+that sentence. The arms are green because the two engines fail identically
+(the migration-vintage class), and the connection-profile import has
+therefore measured nothing since v4 `aa464abf` (bug 68, 2026-08-15). That is
+why the arm's sound sibling is an image profile rather than a second
+connection profile. **Widening `system-data-*` is cross-lane** (the family is
+shared with the system-data routes differential, P4.62's), so P4.63 records
+it as a follow-up rather than doing it. Recorded in both the family header
+and the oracle case.
+
+⚠ **A stale comment this lane cannot fix under its ownership.**
+`crates/quilltap-core/src/services/quilltap_import/profiles.rs`'s
+`a_non_string_provider_is_named_and_does_not_abort_the_import` says
+"⚠ There is no oracle tripwire for this one … Named as a follow-up in the
+lane record." That is now false — this arm IS the tripwire. The order forbids
+touching v5 production source, so the one-line correction is left for the
+unifier.
+
+### Item 2 — `attach_mount_file_equivalence`: the pre-existing red, DIAGNOSED and FIXED
+
+**Root cause: corpus vintage, not the port.** Two-pin attribution had already
+recorded the family red at BOTH `f3892158d` and `8872d7efc`. The diagnosis:
+the fixture's four describer connection profiles were on
+**`OPENAI_COMPATIBLE`**, and v4 `a14a1811` (bug 91) put
+`providerCanTransportImages()` in front of every `describeImageWithProfile`
+attempt — the OpenAI-compatible plugin's shared base declares no attachment
+support, so from that commit on v4 refused before reaching the provider seam.
+The oracle recorded ZERO canned vision calls, `doc_mount_blobs.description`
+came back `''`, and the `IMAGE_DESCRIPTION` rows stopped being written.
+
+**v5 was never wrong here.** It ports the same predicate (P4.D106) and
+refuses identically — which is exactly why the state diff could not see the
+problem: both engines went dark together and compared equal. The only thing
+that noticed was the corpus-shape assert on the canned-call count.
+
+The repair is the corpus: the profiles moved to **`OPENAI`**, a provider BOTH
+transport tiers agree on (v4's static mirror, which is what answers under
+jest where the plugin registry is never initialized, and v5's baked manifest
+registry — checked entry by entry, and `OPENROUTER` deliberately avoided
+because bug 97's two sources disagreed there). `build-attach-file-fixture.ts`
++ `attach-file.json` changed; the three `attach-file-*.db` files and the
+`.meta.json` sidecar were rebuilt from the pin with the §5.2 delete-first
+discipline. The sidecar's link/blob ids are freshly minted — nothing outside
+this family reads them (grep-confirmed: `attach_mount_file_equivalence.rs` is
+the only Rust consumer, and no old id is transcribed anywhere in the tree).
+
+Result: **13/13 cases green**, the three vision rungs measuring again
+(4 canned calls recorded, was 0).
+
+Two guard additions so it cannot go dark silently again: the canned-count
+assert's message now names bug 91, the transport gate, and the both-tiers
+rule; and a new per-case pin asserts each vision rung LOGGED its call
+(`attach_vision` 1, `attach_refusal_retry` 2, `attach_reasoning` 1) — the
+only side of the diff that can tell, since two engines writing nothing
+compare equal. **Mutation-proven** by zeroing `attach_vision`'s `llmLogs` in
+a copy of the fresh NDJSON: reddens by name.
+
+### Item 3 — the `a_fired_deadline_warns_and_writes_the_ruled_error_row` assert
+
+`captured.contains("WARN quilltap::cheap_llm")` is a PREFIX match, and this
+test drives THREE events on `quilltap::cheap_llm` (the abandonment WARN,
+`Cheap-LLM call failed`, `[CheapLLM] Task failed`), all carrying
+`provider=`/`model=`/`character_id=` — so the field asserts, which ran
+against the whole capture, were loose too. Both are now bound to one line:
+the target is matched as a whole token (`starts_with("WARN
+quilltap::cheap_llm ")` — the trailing space ends it) on the line that also
+carries the abandonment message, and every field is asserted on THAT line.
+
+**Mutation-proven, with the vacuity measured rather than argued:** retarget
+the abandonment warn to `quilltap::cheap_llm_exec` and (a) the PRE-P4.63
+assert stays **GREEN** — measured, not reasoned — while (b) the tightened
+assert reddens.
+
+### Item 4 — `embedding_blob_binding_guard`'s two precision notes
+
+Both closed, in the `db_error_key_guard` idiom.
+
+- **The whole-file exemption is now per-site.** `REGISTRY_ALLOWED` was
+  `help_docs.rs` skipped ENTIRELY — so a real `register_blob_columns()`
+  could have grown inside the one module whose header explains why none may
+  exist. It is now `(path, needle, expected COMMENT count, why)` × 3, and the
+  rule that needs no census is that a **CODE** hit is refused everywhere,
+  help_docs.rs included.
+- **Comment vacuity closed.** Both censuses were bare
+  `text.matches(needle).count()`, so a mention in a doc comment counted as a
+  call site. A new `count_hits` splits CODE from COMMENT hits (`/* … */`
+  nesting counted; a `//` earlier on the line demotes the hit) and is itself
+  pinned by a 7-case table including nested blocks and a multi-byte line. Its
+  one failure direction is documented and deliberate: a `//` inside a string
+  literal before the needle under-counts CODE, which REDDENS the encode
+  census rather than passing it.
+  `ENCODE_CENSUS` and the one-definition census now count CODE only.
+
+**Mutation-proven, both notes, with the vacuity measured:**
+- **B1** a real `fn register_blob_columns(…)` added to `help_docs.rs`;
+  **B2** `memories.rs`'s two encodes respelled `float32_to_blob (v)` (legal
+  Rust, kills the needle) with a doc comment left naming `float32_to_blob(`.
+  Under the PRE-P4.63 guard both mutations were **GREEN** (3 tests passed);
+  under the new guard both redden by name.
+- **B3** a second prose mention of `register_blob` in `help_docs.rs` —
+  refused by the per-site count (`2 … census says 1`).
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean, both plain and with
+  `--features quilltap-core/native-transport`.
+- The two owned families by name with `--nocapture`, zero SKIP, over oracles
+  regenerated FRESH from the pinned `8872d7efc` worktree, changed bytes
+  grepped rather than trusted: `attach-mount-file` canned rows **0 → 4**
+  (the discriminator the red named), and the import oracle carrying
+  `execute_bug105_seed_abort` at 37 cases.
+- `cargo test --workspace` with the lane's two oracle variables.
+
+### Regen recipes (lane-unique pin `/tmp/qt-v4-pin-p463-8872d7efc`)
+
+Unchanged from the committed headers except the `cd` target; both run through
+`recipe_sweep.py --v4 <pin>` as well. The `attach-file-*` fixture rebuild:
+
+```
+TZ=UTC QT_FIXTURE_ATTACH_{MAIN,MOUNT,LLMLOGS}=$W/crates/quilltap-web/tests/fixtures/attach-file-{main,mount,llmlogs}.db \
+  node --import tsx $W/harness/oracle/fixtures/build-attach-file-fixture.ts
+```
+
+run from the pin, delete-first. Re-run `attach_mount_file_equivalence`
+afterwards — it is the family's only consumer.
+
+### ⚠ v4 DRIFTED mid-lane, and converged on the very bug this lane pinned
+
+The §2 probe passed at lane start and was re-run after the last regen. It
+**FAILS now**: v4 committed `679e450e3` *"fix(import): one malformed
+connection profile no longer aborts a whole .qtap import (bug 105)"* at
+13:20 CDT on 2026-08-27 — hours after `execute_bug105_seed_abort` was
+written — and the checkout has also gone dirty in `app/`
+(`ConfirmationBadge.tsx`, `MessageActionBar.tsx`, an untracked
+`components/ui/Tooltip.tsx`).
+
+**Nothing in this lane is contaminated.** Every oracle regen and the
+`attach-file-*` fixture rebuild ran from the lane-unique detached worktree
+`/tmp/qt-v4-pin-p463-8872d7efc`, which is exactly the precaution ledger §5.1
+exists for. No regen ever saw the moved or dirty tree.
+
+What the next `/driftcheck` and `/unify` need to know:
+
+- `679e450e3` is a **CONVERGENCE** row: v4 adopting this port's own filing
+  (bug 105, filed by P4.D126 as v4 `b6c6d7793`). It takes both halves —
+  `connection-profile-legacy-fields.ts` now `typeof`-tests the provider, and
+  `import-profiles.ts` moves the seeding call inside the per-item try — and
+  its own message says "No v5 change is owed."
+- **`execute_bug105_seed_abort` will trip at the baseline move past it, by
+  design.** Per ledger §5.4, measure the adoption rather than assuming it:
+  regenerate, dump v4's actual post-fix row, and expect the two engines to
+  agree outright (named warning, `success: true`, the image profile
+  imported), which retires `classify_bug105_seed_abort`, its `skip` insert,
+  and the blanked body together. The arm's v4 leg fails with that
+  instruction spelled out.
+- The lane did NOT touch the drift ledger (lane agents never do).

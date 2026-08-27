@@ -1202,6 +1202,87 @@ function malformedItemsPayload(): { manifest: unknown; data: Record<string, unkn
   };
 }
 
+/**
+ * [P4.63 → v4 bug 105] The DIVERGENCE payload: one connection profile whose
+ * `provider` is not a string, followed by one that is perfectly sound.
+ *
+ * v4 `e000d6bfc` calls `seedLegacyConnectionProfileFields(rawProfile)` at the
+ * TOP of `importConnectionProfiles`' loop body — **outside** the per-item
+ * `try` — and the helper does `(seeded.provider ?? '').toUpperCase()`, which
+ * `??` cannot guard against a number. The TypeError escapes the loop, escapes
+ * the importer, and lands in `executeImport`'s outer catch, so ONE malformed
+ * profile aborts the WHOLE import with
+ * `Import failed: (seeded.provider ?? "").toUpperCase is not a function` —
+ * where pre-4.9 v4 named the item and carried on. Filed upstream as v4 bug 105
+ * (v4 `b6c6d7793`).
+ *
+ * v5 does NOT reproduce it (the standing 2026-08-03 backup/restore/import ruling
+ * — v5 fixes v4's bugs on this family rather than matching them), so this arm is
+ * a both-directions divergence pin: `classify_bug105_seed_abort` on the Rust
+ * side asserts v4 ABORTS and v5 NAMES-AND-CONTINUES, and reddens the day either
+ * moves. ⚠ v4 committed that fix as `679e450e3` on 2026-08-27, hours after this
+ * arm was written — the arm is pinned against the `8872d7efc` BASELINE, which
+ * still carries the bug, so it stays a divergence until a round moves the
+ * baseline past `679e450e3`, and it WILL trip at that move by design.
+ *
+ * The guard only fires when `supportsImageUpload` is absent — that is the branch
+ * that reads the provider — so the broken item must not carry it.
+ *
+ * "Continued" is measured by a SOUND IMAGE PROFILE, because `executeImport`
+ * runs tags → connectionProfiles → **imageProfiles** → … : v4's abort inside
+ * `importConnectionProfiles` means the image profile is never reached, while
+ * v5 names the profile and marches on to write it. The divergence is therefore
+ * confined to `main.image_profiles`; everything else, `connection_profiles`
+ * included (neither engine writes one), compares as a plain equality.
+ *
+ * ⚠ Why NOT a second connection profile — a standing finding worth its own
+ * order. The committed `system-data-main.db` predates v4 4.9's
+ * `connection_profiles.multiCharacterPrefill` column, so EVERY connection
+ * profile in this family fails to import on both sides with
+ * `table connection_profiles has no column named multiCharacterPrefill`
+ * (see `execute_overwrite_all`, `execute_duplicate_all`,
+ * `execute_cross_instance_skip`, `execute_legacy_folds`). The arms stay green
+ * because the two engines fail identically — the migration-vintage class — but
+ * the connection-profile import has measured nothing since v4 `aa464abf`
+ * (bug 68, 2026-08-15). Widening that fixture is a cross-lane change (the
+ * `system-data-*` family is shared with the system-data routes differential),
+ * so P4.63 records it rather than doing it.
+ */
+function bug105SeedAbortPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [] },
+      counts: {},
+    },
+    data: {
+      connectionProfiles: [
+        {
+          id: 'dd105000-0000-4000-8000-000000000001',
+          name: 'Bug 105 Connection',
+          // NOT a string, and `supportsImageUpload` deliberately absent.
+          provider: 42,
+          modelName: 'a-model',
+        },
+      ],
+      // Imported AFTER connection profiles, so reaching it at all is the proof
+      // that the import continued.
+      imageProfiles: [
+        {
+          id: 'dd105000-0000-4000-8000-000000000002',
+          name: 'Bug 105 Survivor',
+          provider: 'OPENAI',
+          modelName: 'gpt-image-1',
+        },
+      ],
+    },
+  };
+}
+
 function executeCase(
   name: string,
   payload: (spec: Spec) => Promise<unknown> | unknown,
@@ -1884,6 +1965,13 @@ async function main(): Promise<void> {
     // [P4.D91 → bug 79] The five per-item arms that only LOGGED until v4
     // `275cd7bc`. Every item fails; the result must name each one.
     executeCase('execute_named_item_failures', () => malformedItemsPayload(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
+    // [P4.63 → v4 bug 105] The oracle-side tripwire for the seeding-helper
+    // abort — see `bug105SeedAbortPayload`.
+    executeCase('execute_bug105_seed_abort', () => bug105SeedAbortPayload(), {
       conflictStrategy: 'skip',
       includeMemories: false,
       includeRelatedEntities: false,

@@ -81,6 +81,42 @@ One escalation, recorded not fixed: a wrong-typed `tagId` (`[{"tagId": 5}]`) is
 carried by v4 into `linkedTo` as the raw value, where v5 drops it. Closing it
 needs `Request::FileUpload.tags` widened past `Vec<String>` in
 `quilltap-core/src/api/types.rs`, outside this lane's ownership.
+#### 2026-08-27 — test(harness): the bug-105 oracle divergence arm — v4 aborts a whole import, v5 names the item
+
+_Versions: harness 0.0.601._
+
+`system_import_state` gains `execute_bug105_seed_abort`, the oracle-side
+tripwire P4.D126 named as a follow-up. v4 `e000d6bfc` reads
+`(seeded.provider ?? '').toUpperCase()` at the top of
+`importConnectionProfiles`' loop body, outside the per-item try, so a
+non-string `provider` throws past the loop and aborts the entire import; v5
+names the item and carries on, under the standing 2026-08-03 import ruling.
+
+The payload is one malformed connection profile followed by one sound IMAGE
+profile — `executeImport` runs tags, connection profiles, then image
+profiles, so reaching the image profile at all is what "continued" means.
+v4 answers `success: false`, every count zero, one `Import failed: …`
+sentence, and not a row written anywhere; v5 answers `success: true`, one
+named warning, `imageProfiles: 1`, and exactly `Bug 105 Survivor` added.
+Both legs are asserted, then the result body is blanked and
+`main.image_profiles` subtracted from the comparands — inside the
+normalization walk, so the minted-id labels stay aligned. Every other table
+in all three partitions stays a plain equality. Additive: nothing in the
+existing corpus moved.
+
+Mutation-proven both ways: a v4-shaped guard in v5's importer reddens both
+v5 legs, and an oracle edited to show v4 adopting the fix reddens the v4 leg
+with its retirement instruction. That day is already scheduled — v4
+committed the fix as `679e450e3` hours later — so the arm will trip at the
+next baseline move past it, by design.
+
+Recorded, not fixed: the committed `system-data-main.db` predates v4 4.9's
+`connection_profiles.multiCharacterPrefill`, so every connection-profile
+import in this family fails on both sides with a "no such column" error and
+the arms stay green on matching failures. That import has measured nothing
+since v4 `aa464abf`. Widening the fixture is cross-lane, so it is a
+follow-up.
+
 #### 2026-08-27 — fix(harness): describe through a transporting provider — the attach-mount-file corpus went dark at bug 91
 
 _Versions: harness 0.0.600._
