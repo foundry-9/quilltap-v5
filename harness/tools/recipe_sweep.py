@@ -1243,8 +1243,21 @@ def run_family(v5w: Path, family: str, force: bool, quiet: bool = False) -> dict
         if label == "run" and "--nocapture" not in script:
             # Make skip notices observable so a family that silently SKIPs
             # (missing env var) cannot masquerade as a green proof.
+            # `$` under re.M is END OF LINE, so a `cargo test` spelled across
+            # backslash continuations used to take the flags after its FIRST
+            # line — `cargo test -p quilltap-harness \ -- --nocapture` — which
+            # ends the continuation and hands cargo a bare `--nocapture` it
+            # rejects, then runs the orphaned `--test <fam>` line as its own
+            # command. The family reported `run_failed` for a reason that had
+            # nothing to do with the recipe (P4.D129 found it on
+            # `templates_equivalence`). Consume the continuation lines first so
+            # the flags land at the end of the whole command.
             script = re.sub(
-                r"(cargo test[^\n]*)$", r"\1 -- --nocapture", script, count=1, flags=re.M
+                r"(cargo test(?:[^\n]*\\\n)*[^\n]*)$",
+                r"\1 -- --nocapture",
+                script,
+                count=1,
+                flags=re.M,
             )
         print(f"==== {family} {label} ====")
         print(script)

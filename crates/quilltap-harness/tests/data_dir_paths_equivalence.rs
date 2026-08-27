@@ -10,7 +10,7 @@
 //! disagreement can only be about the LOGIC.
 //!
 //! Generate the oracle (Node 24, from the PINNED v4 worktree — see the .ts):
-//!   cd /tmp/qt-v4-baseline
+//!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-data-dir.ndjson \
 //!     $N/node --import tsx $V5W/harness/oracle/cases/data-dir-paths.ts
 //! Run:

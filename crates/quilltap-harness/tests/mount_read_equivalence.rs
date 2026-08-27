@@ -5,10 +5,13 @@
 //! mtimes are normalized to 0 (nondeterministic copy time).
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see mount-read.ts header):
-//!   QT_FIXTURE_MOUNTS_MAIN=.../mounts-main.db \
-//!   QT_FIXTURE_MOUNTS_MOUNT=.../mounts-mount.db \
-//!   QT_MOUNTS_FS_TREE=.../mounts-fs-tree \
-//!     node --import tsx harness/oracle/cases/mount-read.ts > /tmp/oracle-mount-read.ndjson
+//!   V5W=<the v5 checkout>
+//!   N=~/.nvm/versions/node/v24.13.1/bin
+//!   cd ~/source/quilltap-server
+//!   QT_FIXTURE_MOUNTS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/mounts-main.db \
+//!   QT_FIXTURE_MOUNTS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/mounts-mount.db \
+//!   QT_MOUNTS_FS_TREE=$V5W/crates/quilltap-web/tests/fixtures/mounts-fs-tree \
+//!     $N/node --import tsx $V5W/harness/oracle/cases/mount-read.ts > /tmp/oracle-mount-read.ndjson
 //! Run:
 //!   QT_ORACLE_MOUNT_READ=/tmp/oracle-mount-read.ndjson \
 //!     cargo test -p quilltap-harness --test mount_read_equivalence

@@ -4,7 +4,10 @@
 //! input AND v4's output, so the corpus is single-sourced in the oracle case).
 //!
 //! Generate (Node 24, from the v4 checkout):
-//!   node --import tsx harness/oracle/cases/mount-md-convert.ts \
+//!   V5W=<the v5 checkout>
+//!   N=~/.nvm/versions/node/v24.13.1/bin
+//!   cd ~/source/quilltap-server
+//!   $N/node --import tsx $V5W/harness/oracle/cases/mount-md-convert.ts \
 //!     > /tmp/oracle-mount-md-convert.ndjson
 //! Run:
 //!   QT_ORACLE_MOUNT_MD_CONVERT=/tmp/oracle-mount-md-convert.ndjson \

@@ -344,6 +344,43 @@ either new utility makes the guard exit 1 and name the inert class and its
 call site (`hover:qt-bg-primary` → `gallery-tab.ts:198`; `hover:qt-bg-success`
 → `gallery-tab.ts:183`). v4's `packages/theme-storybook` mirror has no v5
 analog — recorded, not ported.
+#### 2026-08-27 — fix(harness): repair nine sweep recipes and the driver's --nocapture splice
+
+_Versions: harness 0.0.594._
+
+Fallout from P4.D129's bulk neutrality sweep: nine families failed for
+reasons with nothing to do with v4, and one of them was a defect in the
+sweep driver itself. All nine are green after the repair.
+
+The driver injects `-- --nocapture` into a family's run stage so a test
+that SKIPs (missing env var) says so out loud instead of masquerading as a
+green proof. It did that with `re.sub(r"(cargo test[^\n]*)$", …,
+flags=re.M)`, and `$` under `re.M` is end of LINE — so a `cargo test`
+spelled across backslash continuations took the flags after its first line,
+which ends the continuation, hands cargo a bare `--nocapture` it rejects,
+and runs the orphaned `--test <family>` line as a separate command. The
+family then reports `run_failed` for a reason the recipe never caused. Now
+the substitution consumes the continuation lines first, so the flags land
+at the end of the whole command; proven on both the continued and the flat
+shape, and `--self-test` still reports zero failures. This mattered beyond
+`templates_equivalence`: any continued-recipe family had been running
+without the SKIP-masquerade guard the injection exists to provide.
+
+The eight recipe repairs: `data_dir_paths_equivalence` and
+`profile_routes_equivalence` hard-coded `cd /tmp/qt-v4-baseline`, a lane pin
+from a finished round — the driver's `--v4` rewrite only substitutes
+`cd ~/source/quilltap-server`, so they escaped the pin and died on a missing
+directory (five references swept, including two the sweep never reached).
+`mount_case_moves_equivalence` and `mount_case_resolution_equivalence`
+carried a literal `<W>` placeholder that bash read as a redirect from a file
+named `W`. `memory_dedup_equivalence` had a parenthetical inside its `cd`
+line. `mount_read_equivalence` and `mount_md_convert_equivalence` used
+`.../fixture.db` ellipses and a bare `node --import tsx`, which ran from the
+v5 worktree and died on `Cannot find package 'tsx'`. And
+`roleplay_templates_tier2_equivalence`'s regen stage set the Rust test's
+`QT_FIXTURE_ROLEPLAY_TEMPLATES` where the TypeScript oracle case reads
+`QT_FIXTURE_RT`.
+
 #### 2026-08-27 — chore(ratify): the 4.9.0 knip/coverage riders — a blob-registry guard and one vestigial wardrobe twin
 
 _Versions: core 0.0.689, harness 0.0.593._

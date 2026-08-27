@@ -19,7 +19,7 @@
  *
  * Run (Node 24, from the v4 checkout), AFTER building the charupd fixtures:
  *   N=~/.nvm/versions/node/v24.13.1/bin
- *   cd ~/source/quilltap-server   # or /tmp/qt-v4-baseline (pinned)
+ *   cd ~/source/quilltap-server
  *   QT_FIXTURE_CHARUPD_MAIN=/tmp/qt-charupd-main.db \
  *   QT_FIXTURE_CHARUPD_MOUNT=/tmp/qt-charupd-mount.db \
  *     $N/node --import tsx ~/source/quilltap-v5/harness/oracle/cases/metadata-vault-roundtrip.ts \

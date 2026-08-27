@@ -13,9 +13,9 @@
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-dmfl-fixture.db \
-//!     $N/node --import tsx <W>/harness/oracle/fixtures/build-doc-mount-file-links-fixture.ts
+//!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-doc-mount-file-links-fixture.ts
 //!   QT_FIXTURE_MOUNT_CASE_RES=/tmp/qt-dmfl-fixture.db \
-//!     $N/node --import tsx <W>/harness/oracle/cases/mount-case-resolution.ts \
+//!     $N/node --import tsx $V5W/harness/oracle/cases/mount-case-resolution.ts \
 //!     > /tmp/oracle-mount-case-resolution.ndjson
 //! Run:
 //!   QT_ORACLE_MOUNT_CASE_RES=/tmp/oracle-mount-case-resolution.ndjson \

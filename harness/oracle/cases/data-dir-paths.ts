@@ -29,7 +29,7 @@
  *
  * Run (Node 24, from the PINNED v4 worktree — the checkout is dirty):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
- *   cd /tmp/qt-v4-baseline
+ *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-data-dir.ndjson \
  *     $N/node --import tsx $V5W/harness/oracle/cases/data-dir-paths.ts
  */

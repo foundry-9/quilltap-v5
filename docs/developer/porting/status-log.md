@@ -90692,7 +90692,112 @@ is not coverage.
 
 ### Unit 1.1 — the bulk neutrality sweep
 
-_(recorded below once run — §C holds it until lanes P4.D126–P4.D128 close.)_
+**Totals: 415 families requested, 410 GREEN, 1 refused-by-design, 4 red —
+and NOT ONE red attributable to `dcab791c2`.** Oracles regenerated from
+v4's REAL code at the `8872d7efc` pin and diffed against v5 unchanged;
+that is the neutrality proof for every surface those 410 families touch.
+
+**⚠ Scheduling deviation, recorded honestly.** §C holds this sweep until
+lanes P4.D126–P4.D128 close their branches; at run time all three were
+still open, so it ran under §C's "if forced to run earlier" clause. Two
+guards were established first: no sibling v4 pin worktree was live (none
+was mid-regen), and the §A families' `/tmp` staging was proven **disjoint**
+from every other family's — §A writes 11 distinct `/tmp` paths, the other
+405 write 761, **overlap 0** — so the run could not disturb a sibling's
+staging. **A second deviation:** the exclusion list carried the ten
+families named in §A's first two sentences and missed the two named in its
+third (`cli_differential`, `completion_behavior`). `completion_behavior` is
+classified `no_oracle` and never runs in a sweep, so the only consequence
+was that `cli_differential` ran; its red is P4.D128's expected one (v4
+added completion flags at `57e7b1bc2` that v5 has not ported yet) and is
+handed to that lane untouched.
+
+**SKIP audit: clean.** Zero explicit SKIP notices and zero zero-test
+passing runs across 405 `test result:` lines (439 tests). The driver's
+`-- --nocapture` injection is what makes a silent SKIP observable, and this
+lane had to repair that injection before it worked everywhere (below).
+
+**The four reds, each dispositioned by measurement.** The decisive
+instrument was a SECOND pinned worktree at the **baseline** `f3892158d`:
+a family red at both pins is drift-independent; one green at the baseline
+and red at the target was moved by this drift block.
+
+| family | baseline `f3892158d` | target `8872d7efc` | verdict |
+|---|---|---|---|
+| `system_import_state` | **ok** | red | **moved by the drift — `e000d6bfc` (bug 103), P4.D126's row** |
+| `store_unavailable_envelope` | red | red | pre-existing: the finding-#47 convergence, PREDATES this round |
+| `attach_mount_file_equivalence` | red | red | pre-existing: the oracle yields zero canned vision calls |
+| `cli_differential` | (not run) | red | §A P4.D128's, expected |
+
+- **`system_import_state` → handed to P4.D126.** v4's oracle now warns
+  `Import failed: (seeded.provider ?? "").toUpperCase is not a function`,
+  and v5's own coverage tripwire fires because *v4 no longer names* the
+  `Failed to import connection profile "Broken Connection": ` failure the
+  arm exists to measure. Attributed mechanically, not inferred:
+  `e000d6bfc`'s new `lib/llm/connection-profile-legacy-fields.ts:60` reads
+  `(seeded.provider ?? '').toUpperCase()`, and `??` guards only
+  null/undefined — a non-string `provider` reaches `.toUpperCase` and
+  throws, so **one malformed profile now aborts a whole v4 import** where
+  v4 used to name it and continue. That is the
+  `v4-helper-outside-the-per-item-try` class, it is P4.D126's commit to
+  port, and it is a **v4-side bug worth filing upstream**.
+- **`store_unavailable_envelope` → RECLASSIFY, an order candidate.** The
+  arm is P4.22's finding-#47 deliberate divergence, pinned in both
+  directions with the note that it "goes red the moment v4 lands its own
+  fix". v4 has landed it: its corrupt-vault UPDATE now answers
+  `503 {"error":"Character vault unavailable","characterId":…}` —
+  byte-identical to v5's. Red at the baseline too, so this converged at or
+  before `f3892158d` and simply went unnoticed, because the family SKIPs
+  without its oracle env var and no recent gate set it. CLAUDE.md still
+  carries "the v4-side fix remains URGENT with the human" — **it is done.**
+  Both this arm and P4.22's corpus arm want retiring to plain equalities.
+- **`attach_mount_file_equivalence`** fails a coverage floor ("the corpus
+  must carry all four vision calls; got 0") because the regenerated oracle
+  carries an empty `canned` set. Red at both pins, so drift-independent;
+  recorded as a named follow-up rather than chased inside this lane.
+- **`backup_uuid_remap_equivalence` — refused, by design, not a red.** Its
+  recipe is a declared `deliberate_repo_write` (the oracle authors the
+  committed hash-pinned `uuid-remap-corpus.json`), and the driver refuses
+  tracked-fixture writes. This lane must not touch committed corpora, so
+  **that family's neutrality is NOT proven here** — a named gap for the
+  owning lane or the unifier.
+
+**Nine families were recipe rot, not drift — repaired, re-run, all nine
+GREEN.** Every one failed for a reason with nothing to do with v4:
+
+- **retired `/tmp` pins** (`data_dir_paths_equivalence`,
+  `profile_routes_equivalence`): the recipes hard-coded
+  `cd /tmp/qt-v4-baseline`, a pin from a round that is over. The driver's
+  `--v4` rewrite only substitutes `cd ~/source/quilltap-server`, so these
+  escaped the pin AND died on a missing directory. The P4.D45 class,
+  returned; five references swept, including two the sweep never reached.
+- **a literal `<W>` placeholder** (`mount_case_moves_equivalence`,
+  `mount_case_resolution_equivalence`): bash read it as a redirect from a
+  file named `W` (`bash: line 3: W: No such file or directory`). Now
+  `$V5W`, which the driver already injects.
+- **prose inside a command** (`memory_dedup_equivalence`):
+  `cd ~/source/quilltap-server   (or a pinned worktree)` — a syntax error,
+  and it blocked the `--v4` rewrite besides.
+- **ellipsis placeholders with no `cd`** (`mount_read_equivalence`,
+  `mount_md_convert_equivalence`): `.../mounts-main.db` and a bare
+  `node --import tsx`, which ran from the v5 worktree and died on
+  `Cannot find package 'tsx'`. Both now carry real fixture paths and the
+  staged convention.
+- **an env-var name mismatch** (`roleplay_templates_tier2_equivalence`):
+  the REGEN stage set the RUST test's `QT_FIXTURE_ROLEPLAY_TEMPLATES`
+  where the TS oracle case reads `QT_FIXTURE_RT`.
+- **a DRIVER bug** (`templates_equivalence`): `recipe_sweep.py` injects
+  `-- --nocapture` with `re.sub(r"(cargo test[^\n]*)$", …, flags=re.M)`,
+  and `$` under `re.M` is END OF LINE — so a `cargo test` spelled across
+  backslash continuations took the flags after its FIRST line
+  (`cargo test -p quilltap-harness \ -- --nocapture`), ending the
+  continuation, handing cargo a bare `--nocapture` it rejects, and running
+  the orphaned `--test <fam>` line as its own command. Fixed at the root by
+  consuming the continuation lines before appending; proven on both the
+  continued and the flat shape; `--self-test` 0 failures. **This one
+  mattered beyond its family: the injection is what makes a silent SKIP
+  observable, so any continued-recipe family was running without the
+  SKIP-masquerade guard.**
 
 ### Unit 2 — the four hunk-read ratifications
 
@@ -90771,3 +90876,52 @@ _(recorded below once run — §C holds it until lanes P4.D126–P4.D128 close.)
   the latter is P4.D128's tree and was not touched), and v4's deletion
   now confirms both calls.
 
+
+### The lane's escalations (for the round report / the unifier)
+
+1. **`dcab791c2` is NOT behavior-neutral on the four title-generation
+   cleaners, and v5 carries the pre-sweep spelling.** Details in Unit 1.2
+   above. Two functions and a corpus arm; `title_verdict.rs`'s doc comment
+   already names the distinction. ⚠ The families cannot see it — measured,
+   not assumed.
+2. **`system_import_state` → P4.D126** (bug 103's helper aborts a whole
+   import on one malformed profile). Also a **v4-side filing candidate**.
+3. **`cli_differential` → P4.D128** (§A; expected until `57e7b1bc2` lands).
+4. **RECLASSIFY the finding-#47 divergence** — v4 has landed its fix; the
+   both-directions pins in `store_unavailable_envelope` and P4.22's corpus
+   arm should retire to plain equalities. CLAUDE.md's "URGENT with the
+   human" note is discharged.
+5. **`attach_mount_file_equivalence`** — pre-existing red, oracle yields
+   zero canned vision calls; needs its own diagnosis.
+6. **`backup_uuid_remap_equivalence`** — neutrality NOT proven (refused as
+   a tracked-fixture write, by design).
+7. **A stale doc-comment pointer, not touched** (out of ownership):
+   `salon-conversation.ts`'s notice comments cite v4 `useSSEStreaming.ts`
+   `:342-357` / `:333-340`, which `487ae57fe` moved to
+   `useToolExecutionStatus.ts`. `apps/web/**` is P4.D128's this round.
+   Likewise `folder_utils.rs:9` says `joinFolderPath` "has no v5 consumer
+   yet" — v4 has now deleted it, so the "yet" is settled.
+
+**Cross-check, no finding:** `8440b6391`'s three corrected API.md paths all
+match v5's implemented routes — `PATCH /api/v1/user/profile?action=set-avatar`
+with the Unknown-action 400 (`profile_routes.rs:128-133`), `GET/PUT
+/api/v1/settings/brahma-console` (`lib.rs:381`), and the embedding-profiles
+`?action=list-providers|list-models|fetch-models` trio
+(`embedding_profiles_routes.rs:88-92`). v4's docs were stale; the port was
+right. One note: v4 now documents `fetch-models` as working, while v5's arm
+is still the P4.9H2A loud refusal (`embedding_profile_fetch_models()`) — an
+open deferral that now has an upstream spec to build against.
+
+**Cipher safety, checked because the sweep touched it:** `dcab791c2`
+single-sources the key pragma as `applySqlcipherKey` across five sites. The
+extraction is byte-identical (same base64→hex, same
+`key = "x'<hex>'"`, same falsy-pepper skip, still first); `child-client`'s
+pepper is guaranteed by an earlier guard, and `llm-logs-client`'s
+`if (applySqlcipherKey(db))` reproduces its old `if (sqlcipherKey)` exactly.
+**The open sequence does not move.** Also read and found neutral: nanogpt's
+base-URL and MIME-list single-sourcing (both pre-collapse MIME lists were
+character-identical), ollama's think-retry dedup (the guard is still
+`'think' in requestBody` — key PRESENCE, what P4.D78 ported), and
+plugin-utils' `stream`/`stream_options` spread mid-literal between `stop`
+and `user`. The provider wire's BYTE proof belongs to P4.D127's
+request-envelopes regen (§A).

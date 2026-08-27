@@ -19,7 +19,7 @@
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-rt-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-roleplay-templates-fixture.ts
-//!   QT_FIXTURE_ROLEPLAY_TEMPLATES=/tmp/qt-rt-fixture.db \
+//!   QT_FIXTURE_RT=/tmp/qt-rt-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/roleplay-templates-tier2.ts \
 //!     > /tmp/oracle-rt.ndjson
 //! Run:

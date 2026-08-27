@@ -29,7 +29,7 @@
  * + re-copy the committed .db files:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   W=<this worktree>
- *   cd /tmp/qt-v4-baseline
+ *   cd ~/source/quilltap-server
  *   QT_FIXTURE_PROFILE_MAIN=$W/crates/quilltap-web/tests/fixtures/profile-main.db \
  *   QT_FIXTURE_PROFILE_MOUNT=$W/crates/quilltap-web/tests/fixtures/profile-mount.db \
  *     $N/node --import tsx $W/harness/oracle/fixtures/build-profile-fixture.ts

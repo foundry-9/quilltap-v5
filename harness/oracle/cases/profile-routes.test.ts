@@ -32,7 +32,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/profile-routes.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/profile-web.json" "$TMPO/fixtures/"
- *   cd /tmp/qt-v4-baseline
+ *   cd ~/source/quilltap-server
  *   QT_FIXTURE_PROFILE_MAIN=$V5W/crates/quilltap-web/tests/fixtures/profile-main.db \
  *   QT_FIXTURE_PROFILE_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/profile-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-profile.ndjson \

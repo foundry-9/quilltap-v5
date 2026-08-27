@@ -22,7 +22,7 @@
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   TMPO=/tmp/qt-dedup-oracle ; rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
  *   cp $V5W/harness/oracle/cases/memory-dedup.test.ts "$TMPO/cases/"
- *   cd ~/source/quilltap-server   (or a pinned worktree)
+ *   cd ~/source/quilltap-server
  *   QT_EP_MGMT_MAIN=$V5W/crates/quilltap-web/tests/fixtures/embedding-profiles-main.db \
  *   QT_EP_MGMT_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/embedding-profiles-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-memory-dedup.ndjson \
