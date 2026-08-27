@@ -669,10 +669,10 @@ describe('MessageRow — the action-bar tooltip copy (v4 MessageActionBar.tsx @ 
    * and printed each bubble's text beside its trigger's aria-label
    * (`/tmp/p4d132-emit.json`). Nothing here is retyped from prose.
    *
-   * Regen recipe: place `__tests__/unit/components/p4d132-emit.test.tsx` in
-   * the pinned v4 worktree and run
-   *   QT_EMIT_OUT=/tmp/p4d132-emit.json npx jest p4d132-emit
-   * with Node 24.
+   * Regen recipe: the committed recorder
+   * `harness/oracle/cases/tooltip-strings.test.tsx` — its header carries the
+   * /tmp-mirror jest invocation (Node 24; run from the v4 checkout, or from a
+   * pinned worktree while the regen rule is PIN REQUIRED).
    *
    * v5 carries 9 of v4's 12 buttons — Collapse-this-message, View source /
    * View rendered, and Resend are PRE-EXISTING v5 gaps (recorded in the

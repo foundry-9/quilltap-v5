@@ -115,7 +115,7 @@ test.describe('P4.9E3C — Re-attribute one message (destructive)', () => {
 
     const row = page.locator('.qt-chat-message-row').first();
     await row.hover();
-    await row.getByRole('button', { name: 'Re-attribute to different participant' }).click();
+    await row.getByRole('button', { name: 'Re-attribute to a different participant' }).click();
 
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByText('Re-attribute Message')).toBeVisible({ timeout: 10_000 });

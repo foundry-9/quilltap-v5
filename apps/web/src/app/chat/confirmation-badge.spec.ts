@@ -11,9 +11,9 @@ import { ConfirmationBadge } from './confirmation-badge';
  * block 1:1; the emitted-string pins compare every state tuple —
  * (state, glyph, label, spoken) — and the pinned bubble's structure against
  * the table EMITTED from v4's REAL component at the pinned worktree
- * (`/tmp/p4d132-emit.json`; jest recorder `p4d132-emit.test.tsx`, run with
- * `QT_EMIT_OUT=/tmp/p4d132-emit.json npx jest p4d132-emit`, Node 24).
- * Nothing here is retyped from prose.
+ * (`/tmp/p4d132-emit.json`; the committed recorder is
+ * `harness/oracle/cases/tooltip-strings.test.tsx` — its header carries the
+ * /tmp-mirror jest invocation, Node 24). Nothing here is retyped from prose.
  */
 
 function makeMessage(overrides: Partial<MessageDto> = {}): MessageDto {

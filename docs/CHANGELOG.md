@@ -167,6 +167,28 @@ proof per site; un-chunking all five sites reddened exactly those five
 proofs.
 
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
+#### 2026-08-27 — port(spa): the tooltip live beats + the committed emit recorder
+
+_Versions: SPA 0.5.595._
+
+The P4.D132 closing commit. A new `salon-tooltips-flow.spec.ts` walks the
+ported surface live: hovering an action-bar button grows the body-portalled
+bubble after the 200 ms dwell with v4's copy (and the icons row carries no
+`title` attribute anywhere), and the seeded AMENDED confirmation badge pins
+its structured note on click (`data-pinned`), survives the pointer leaving,
+and dismisses on Escape. The verdict is seeded as an UPDATE onto the
+existing tool-flow assistant row rather than a new message — Solo Voyage is
+shared by ~20 specs and a new bottom bubble would move the chat's last row
+under all of them. The parity-table emission recorder is committed as
+`harness/oracle/cases/tooltip-strings.test.tsx` (the `text-transforms`
+precedent: renders v4's REAL MessageActionBar/ConfirmationBadge/Tooltip
+under v4's own jest; the committed copy's emission re-proven byte-identical
+from the pinned worktree; note the `.tsx` twist — the /tmp mirror dir needs
+its own `node_modules` symlink for `react/jsx-runtime`), and the three v5
+parity-spec headers point at it. One downstream gesture fixed: the
+destructive re-attribute beat clicked its button by the old accessible
+name, which unit 2's copy fix changed.
+
 #### 2026-08-27 — port(spa): drop the dead desktop-actions CSS (v4 1b0ce9eba)
 
 _Versions: SPA 0.5.594._

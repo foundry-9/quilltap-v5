@@ -92464,3 +92464,156 @@ Playwright (P4.D132 is the round's sole Playwright runner).
 targeted units cover the contract); 💸 the Salon list's live
 before/after feel on the next dogfood pass (the md5/timing proof above
 is the lane's own).
+## P4.D132 — Quilltap's own tooltips (v4 `0bd841394`) + the desktop-actions cleanup (`1b0ce9eba`) — CLOSED (2026-08-27, lane branch `claude/salon-tooltips-spa-porting-58c0d3`)
+
+**Both target commits absorbed whole; SPA-only (ownership `apps/web/**` + one
+new committed recorder under `harness/oracle/cases/`, a path no sibling owns).
+Freshness probe PASSED at lane start (checkout `main`, tree clean, no commits
+past `b121ac77f`/`3a76b17df`); every emission ran from the lane-unique pinned
+worktree `/tmp/qt-v4-pin-p4d132-b121ac77f` (pin verified: `Tooltip.tsx`
+present, `MessageDesktopActions.tsx` absent).**
+
+### The units (one commit each)
+
+1. **The Tooltip primitive** (`app/ui/tooltip.ts`, SPA 0.5.591) — v4
+   `components/ui/Tooltip.tsx` ported to Angular: host-as-anchor
+   (`qt-tooltip-anchor`, whose `inline-flex` doubles as the
+   custom-element-display fix), the bubble under `@if` reparented onto
+   `document.body` by an `afterRenderEffect` (v4's `createPortal` +
+   `useLayoutEffect` pair), 200 ms dwell / `focusin`-immediate (React's
+   delegated `onFocus`), 120 ms close grace, flip + clamp with v4's margins,
+   rAF-coalesced capture-phase scroll + resize follow, Escape,
+   pinnable/interactive with outside-pointerdown dismissal of a pinned
+   bubble, identity-stable coords, `aria-hidden` bubble. Structured content
+   rides a `contentTemplate: TemplateRef` input (v4's ReactNode `content`).
+   The `_surfaces.css` `.qt-tooltip` rule REWRITTEN to v4's post-commit form
+   + the new `qt-tooltip-*` family in v4's order (the v4 CSS comment's
+   "fallback wrapper" claim corrected in place — v4 has no clone path).
+   **The lane's measured trap:** Angular tears an embedded view down against
+   the container it created the nodes in, so the reparented bubble OUTLIVES
+   its `@if` — closed bubbles accumulated on the body until the component
+   removed the moved node by hand (`portalledBubble`; memory note
+   `angular-reparented-node-outlives-its-view`). Ten specs: v4's five
+   Tooltip tests mirrored 1:1 + five emitted-constant behavioural pins.
+   Mutations: flip inversion, broken focus-immediate, ANCHOR_GAP nudge each
+   redden the right specs; the `closeSoon` inner pinned-guard mutation
+   SURVIVES — measured as v4's own defensive redundancy (every pinning path
+   also clears the timer, in v4 as in v5), recorded rather than vacuously
+   pinned.
+2. **The action-bar adoption** (SPA 0.5.592) — all NINE existing buttons
+   wrapped in `qt-tooltip`, every `title=` deleted, v4's content strings +
+   explicit aria-labels byte-exact incl. the conditional Save-image plural
+   against a fixed aria-label, and the re-attribute copy fix (v5 carried the
+   old `Re-attribute to different participant`; v4's new copy inserts "a").
+   Parity specs pin the (content, aria-label) pairs for both roles against
+   the EMITTED table + a no-`title`-anywhere pin; the LLM-logs copy-choice
+   spec reads the bubble now. Mutations: the old wording and a reintroduced
+   `title` each redden.
+3. **The ConfirmationBadge** (SPA 0.5.593) — net-NEW to v5 (only its CSS had
+   ever been transcribed): v4's post-commit form whole — the real
+   `type="button"`, four states, `data-has-detail`, pin-gated on detail, the
+   structured bubble tree, the `spoken` join — mounted after the LLM-logs
+   entry (v4 puts it before Resend, which v5 lacks). The stream→bubble
+   mapper now carries `confirmationOriginalContent` (the fifth family field
+   it dropped); **the reducer leg re-measured FAITHFUL** — v4's
+   `applyConfirmationResult` (`useSSEStreaming.ts:349-364`) never carries
+   the pre-revision text either (it arrives with the canonical refetch), so
+   v5's `applyConfirmation` needed nothing. The tri-state survey: v5's chat
+   GET already omits SQL-NULL confirmation fields exactly as v4's
+   `?? undefined` (`api/salon.rs`), so the `confirmed === undefined` gate
+   means the same thing on both sides; the mapper's live null→undefined
+   collapse lands in the same `unvetted` arm (documented in the component).
+   `_chat.css` gains v4's badge-as-button additions + hover/focus rules in
+   v4's order; the banner no longer claims the title holds the notes.
+   Eleven specs (six v4-test mirrors, emitted tuple/bubble pins, the
+   mapper-thread pin); four mutations each redden the right specs.
+4. **The `1b0ce9eba` deletions** (SPA 0.5.594) — the three dead
+   `display:none !important` rules out of `_chat.css` (all grep-confirmed
+   template-unused; the `.qt-chat-message-action-bar { display:flex }` rule
+   kept), the copy-choice docblock + spec name rewritten as history naming
+   the deleting sha, MessageActionBar cite moved to the post-commit `:178`.
+5. **The live beat + the committed recorder** (SPA 0.5.595) —
+   `salon-tooltips-flow.spec.ts`: hover Copy → the bubble after dwell with
+   v4's copy and no `title` anywhere in the row; the seeded AMENDED badge →
+   click pins (`data-pinned`), survives the pointer leaving, Escape
+   dismisses. The seed is an **UPDATE onto the existing
+   `d1…0100` assistant row** (Solo Voyage is shared by ~20 specs; a new
+   bottom bubble would move the chat's last row under all of them, while
+   the badge is additive UI inside that row's hover bar). The emission
+   recorder is COMMITTED as `harness/oracle/cases/tooltip-strings.test.tsx`
+   (the `text-transforms.test.ts` precedent: renders v4's REAL components
+   under v4's own jest, `.tsx` twist recorded — the mirror dir needs its own
+   `node_modules` symlink for `react/jsx-runtime`); re-run from the pin
+   proved the committed copy's emission byte-identical to the one the specs
+   were built from.
+
+### The emission (the differential requirement)
+
+`/tmp/p4d132-emit.json` — emitted from v4's REAL rendered components at the
+pin: the 12 (content, aria-label) pairs across three prop configurations
+(both Save-image variants, both source-toggle variants), the four badge
+state tuples + spoken joins + bubble structure, `badgeWhenUnchecked: ""`,
+and the five Tooltip constants grepped from the real source. Every string
+in the three v5 parity specs is pasted from it; regen recipe in the
+committed recorder's header.
+
+### Named gaps + deferrals (loud)
+
+- **Three v4 action-bar buttons v5 has never had** (pre-existing, NOT this
+  commit's scope, previously unrecorded — now recorded here with cites):
+  Collapse-this-message (v4 `MessageActionBar.tsx:65-77`, gated
+  `message.systemSender && onToggleSystemMessageExpanded`), View source /
+  View rendered (`:111-125`, the `viewSourceMessageIds` toggle), Resend
+  (`:191-203`, USER + `showResendButton`). They belong to whichever lane
+  ports those v4 features; their emitted copy rows are in the emit JSON
+  ready for it.
+- **The SPA-wide `title=`-as-tooltip sweep**: 191 template files still
+  carry `title=` (incl. `copy-chat-id-button.ts:23,34`,
+  `wardrobe-item-row.ts` ×2, `autonomous-room-badges.ts`,
+  `provider-model-badge.ts`, the formatting toolbar). v4 `0bd841394`
+  touched ONLY the action bar + badge — the sweep is a follow-up candidate
+  KEYED TO v4 adopting Tooltip elsewhere, not unilateral v5 restyling.
+- **v5's action-bar button order** differs from v4 (Delete after LLM logs;
+  v4: Edit · Delete · Regenerate · Re-attribute · LLM logs · badge ·
+  Resend · swipes). Surveyed: unrecorded anywhere — now recorded (template
+  comment + here), deliberately NOT churned.
+- **Help docs bank to `p4.9i2`**: v4's commit touched
+  `help/answer-confirmation.md` (1 line: "title tooltip" → the pinnable
+  bubble wording) and `help/chat-message-actions.md` (+6 lines documenting
+  hover/pin/Escape). The P4.D73 precedent applies — copy the NEW files when
+  the help family lands.
+- **`packages/theme-storybook/**` NO-PORT** — no v5 twin exists (the
+  standing disposition; v4's mirror of the qt-tooltip family + the Chat
+  badge row + Dialogs pinned sample live only there).
+- The `closeSoon` inner pinned-guard survivor (unit 1 above) — recorded,
+  not pinned.
+
+### Gate
+
+- `npm run lint` (check-qt-classes 941 after the dead-rule deletions, every
+  guarded reference resolves).
+- `npm test`: **366 files / 5,457 / 0** (was 364 / 5,435 — +2 files / +22
+  tests, exactly the lane's delta).
+- `npm run build` clean.
+- Full Playwright (this lane owns port 4319 for the round): run of record
+  **255 passed / 0 failed / 1 skipped (6.4 m)** — the suite grew 254 → 256
+  with the two new beats; the one skip is the standing component-transfer
+  store-probe park. The FIRST full run caught the copy fix's one downstream
+  gesture — `zz-bulk-replace-destructive.spec.ts:118` clicked the
+  re-attribute button by the OLD accessible name (`getByRole` reads
+  aria-label, which unit 2 changed to v4's new wording); updated, green.
+  **One suite-context intermittent observed and honestly unpinned:** the
+  SECOND full run failed `workspace-search-documents-flow.spec.ts:208` (the
+  dogfood-#105 in-chat arm) with `.qt-chat-messages-list` resolved-but-
+  HIDDEN after the card click — i.e. the SILENT standalone arm fired and
+  its tab backgrounded the salon, despite the beat having awaited the salon
+  visible first. Green in the first and third full runs with identical code
+  and green in isolation ×3, and NOT attributable to this lane (each
+  Playwright test gets a fresh page, and the lane touched no
+  documents/search/workspace code) — recorded for the next maintenance
+  pass with the breadcrumb: hidden ⇒ wrong arm ⇒ the focused-tab read in
+  `OpenDocumentFromSearch` raced.
+- Mutation proofs: 3 red + 1 recorded survivor (unit 1), 2 red (unit 2),
+  4 red (unit 3) — all reverted, spec-identical after.
+
+Versions: SPA 0.5.591 → 0.5.595 across the five commits; no crate touched.

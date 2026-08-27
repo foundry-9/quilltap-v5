@@ -16,12 +16,12 @@ import { Tooltip } from './tooltip';
  * the pin (`/tmp/p4d132-emit.json`): VIEWPORT_MARGIN 8 / ANCHOR_GAP 6 /
  * CLOSE_GRACE_MS 120 / default delay 200 / default placement 'top'.
  *
- * Regen recipe (the v4-client-oracle pattern): from the pinned v4 worktree,
- * place `__tests__/unit/components/p4d132-emit.test.tsx` (renders the REAL
+ * Regen recipe (the v4-client-oracle pattern): the committed recorder
+ * `harness/oracle/cases/tooltip-strings.test.tsx` renders the REAL
  * MessageActionBar/ConfirmationBadge/Tooltip and greps the Tooltip constants
- * from source) and run
- *   QT_EMIT_OUT=/tmp/p4d132-emit.json npx jest p4d132-emit
- * with Node 24. Nothing in this file is retyped from prose.
+ * from v4's source — its own header carries the /tmp-mirror jest invocation
+ * (run from the v4 checkout, or from a pinned worktree while the regen rule
+ * is PIN REQUIRED). Nothing in this file is retyped from prose.
  */
 
 @Component({

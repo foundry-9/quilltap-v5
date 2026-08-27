@@ -578,6 +578,21 @@ export default async function globalSetup(): Promise<void> {
       `'prospero', 'tool-run', '2026-02-01T00:02:00.000Z');`,
   );
 
+  // P4.D132: an ANSWER-CONFIRMATION verdict for the tooltip/badge beats
+  // (`salon-tooltips-flow.spec.ts`). Deliberately an UPDATE onto the assistant
+  // row seeded just above rather than a new row: Solo Voyage is shared by ~20
+  // specs, and a new bottom bubble would move the chat's last row under all of
+  // them, while the badge is purely additive UI inside that row's hover action
+  // bar. The amended shape (notes + original) is the one that arms the pinnable
+  // tooltip.
+  runCliWrite(
+    cli,
+    `UPDATE chat_messages SET confirmed = 1, confirmationChecked = 1, confirmationRevised = 1, ` +
+      `confirmationNotes = 'The ledger excerpt shows a metric column.', ` +
+      `confirmationOriginalContent = 'Altitude is reported in metres.' ` +
+      `WHERE id = 'd1000000-0000-4000-8000-000000000100';`,
+  );
+
   // Launch the real server (no env pepper → locked) serving the built SPA.
   // P4.42 + P4.59: the host builds the web-search provider at unlock because the
   // native Serper provider is REGISTERED (the site-plugins gate is unset here, as
