@@ -9,6 +9,156 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D133 (the `b121ac77f` CLI `instances restore-key`)
+
+Ordered against round baseline **`aec86a613`**; the lane's target commit is
+**`b121ac77f`** (v4 main HEAD at ordering — the largest of the four drift
+commits; the siblings absorb the other three). **Drift-ledger §2 freshness
+probe at lane start (2026-08-27):** PASS — v4 checkout on `main`, tree clean,
+`git log b121ac77f..main` empty, `git log 3a76b17df..bugfix` empty. §1's
+verdict (4 commits pending, PIN REQUIRED) stands; the lane never wrote the
+ledger.
+
+**Pin:** one lane-unique detached worktree at
+`/tmp/qt-v4-pin-p4d133-b121ac77f`, all three symlink classes per ledger §5.1
+(the CLI needs the `packages/quilltap/node_modules` symlink), verified by the
+presence of `packages/quilltap/lib/dbkey-restore.js`. The Tier R oracle is
+v4's REAL launcher run from this pin; the completion templates and help text
+are byte copies from it. **Regen recipe** (also the gate's differential leg):
+
+```
+QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d133-b121ac77f \
+QT_NODE=$HOME/.nvm/versions/node/v24.13.1/bin/node \
+  cargo test -p quilltap-cli --test cli_differential -- --nocapture
+```
+
+### Unit 1 — the completion templates + help text, red-first (cli 0.0.15)
+
+The P4.D118/P4.D128 signature reproduced exactly: Tier R against the pinned
+v4 with v5 unchanged went red on precisely the four predicted cases —
+`instances help` + `completion bash|zsh|fish` — **188 cases, 4 failures**.
+The three templates byte-copied from the pin (`cmp` clean);
+`instances_help.txt` replaced with output CAPTURED from v4's running launcher
+(`quilltap instances --help`) — a source-extraction of the template literal
+leaves `\\` unrendered — whose diff against the old file is exactly the new
+Verbs line + the `Rebuilding a .dbkey:` section (including the over-length
+line ending `…in ps output). It is`, v4's byte truth). Re-run: **188/0**.
+
+The P4.D128 coverage guard sees the new flags: red-proven by mutation —
+dropping `-l 'no-passphrase'` from the fish template reddens
+`completions_offer_every_flag_the_help_text_advertises` with
+`instances: fish template is missing ["--no-passphrase"]`; restored → green.
+⚠ Recorded coarseness (v4's own guard shape, not a v5 gap): the check is
+TEMPLATE-WIDE, so `--force` cannot discriminate — `docs` already carries
+`-l 'force'` in all three shells; a mutation dropping restore-key's `--force`
+alone stays green. The mutation proof used the one flag unique to this
+surface.
+
+### Unit 2 — the core `.dbkey` seams (core 0.0.699)
+
+`quilltap-core::dbkey` gains the three public seams v4's new
+`packages/quilltap/lib/dbkey.js` exposes to the restore path, with no
+duplicated crypto: `read_dbkey_raw` (v4 `readDbKeyFile` — absent → None;
+strips the legacy `hasPassphrase` flag and REWRITES the file, 2-space pretty
+at mode 0600, returning the post-strip JSON text), `try_decrypt_pepper` (v4
+`tryDecryptDbKey` — any failure → None), and `save_dbkey_preserving` (v4
+`preserveExtraFields(existing, encryptDbKey(…))` + `writeDbKeyFile`: the ten
+fresh wrapper fields FIRST, carried extras APPENDED in the existing file's
+order — deliberately a different key-order shape from `rewrap_dbkey_json`,
+whose server-re-wrap read-modify-write keeps extras at their original
+positions, because the two v4 sites build the object differently;
+unit-pinned in both directions). The `rewrap_dbkey_json` doc comment (P4.46's
+recorded v4-drop divergence) was RESCOPED to v4's SERVER re-wrap explicitly —
+`b121ac77f` does not touch the server path, but its new CLI path DOES
+preserve, so the old wording would have over-claimed. Four new unit pins
+(extras appended with order asserted; the strip rewrite; try-decrypt edges;
+the fresh-write arm).
+
+### Unit 3 — the verb end-to-end + the Tier R arms (cli 0.0.16)
+
+`crates/quilltap-cli/src/restore_key.rs` (v4 `dbkey-restore.js` 1:1, its own
+module as v4 keeps its own file): flag parse with v4's exact `Unknown flag:`
+/ `Specify one instance.` / usage-on-stderr arms; `resolveTarget` (name XOR
+`--data-dir`, the `data/`-basename acceptance, the registry scan by expanded
+parent path); the pre-lock `Instance:`/`Data dir:` prints; the write lock via
+`quilltap-host::lock::acquire_write_lock` with a Drop guard as v4's `finally`
+(errors surface as the instances handler's `Error: <msg>` + exit 1 — NOT
+`db --write`'s bare print); pepper from `ENCRYPTION_MASTER_PEPPER` or the
+hidden prompt (non-TTY refuses with db-helpers' exact sentence, quirk and
+all); the 44-char warning; the three-file proof in v4's order with
+`padEnd(28)` output and the composed `Cannot open <label>: <msg>` first line
+on failure; the unwaivable three-line refusal; the unproved-instance confirm
+gated by `--force`/`--yes`; the same-pepper rewrap / different-pepper
+WARNING+confirm (gated by `--yes`, NOT `--force`); the passphrase precedence
+chain (`--no-passphrase` → non-empty `--passphrase` → `--yes` →
+prompt+confirm); the timestamped backup (chmod 600 best-effort);
+`save_dbkey_preserving`; read-back verify with restore-on-mismatch; the
+success block; the registry stored-passphrase update; the four-line
+ARCHIVE-bundles note under v4's exact `passphraseChanged` predicate. Pure
+pieces unit-pinned: `database_state` header classification (absent /
+<16 bytes / magic / the 15-vs-16-byte edge), the backup-stamp shape, the
+`passphrase_changed` truth table (all 8 rows), the node path helpers.
+
+**Tier R arms — 24 new (22 output-diffed + 2 state-compared blocks), 188 →
+212 cases, 0 failures on the first full run:** happy path instA; the
+`rebuild-key` alias; wrong-pepper refusal (**the cross-engine byte risk
+verified** — rusqlite's `file is not a database` matches better-sqlite3's,
+inside v4's composed `Cannot open <label>:` first line); the not-a-pepper
+warning (`abc`); no pepper + non-TTY; unknown instance; name+data-dir;
+unknown flag; two positionals; bare usage; missing data dir; `--data-dir` in
+both spellings (the data-dir form recovers the registered name from the
+scan); unprovable declined (closed stdin = default no) / accepted (`y\n`) /
+`--force` alone; the plaintext two-line note; the stale-keyfile WARNING
+replaced (`--yes`) and declined (`n\n`); lock contention (its own 600 s node
+sleeper — the shared one is dead by this point in the run); instB set/clear
+passphrase (the archive note fires on the both-set arm — Tier 2 item 5
+landed). The two state blocks: (a) instB under a NEW passphrase — registry
+files byte-identical, written `.dbkey` key ORDER identical, both sides' files
+unwrap to the pepper under the new passphrase and refuse the old
+(decrypt-and-compare through the pinned v5 reader — the file can never
+byte-match across sides, fresh salt/IV per wrap); (b) the unknown-field
+carry — a planted `minServerVersion` survives on BOTH sides, appended after
+the ten wrapper fields, and the rebuilt file still unwraps. `CaseOpts` gained
+`normalize_bak` (the backup stamp is the one documented run-time truth) and
+the child env now scrubs `ENCRYPTION_MASTER_PEPPER`.
+
+### Deferred loud / recorded
+
+- 💸 **The real-instance recovery walk** (Tier 3 item 7): run
+  `instances restore-key` against a COPY of Friday with the REAL pepper —
+  human-driven; the pepper never goes to agents or in-sandbox. Banked to the
+  dogfood queue.
+- **NO-PORT remainder for the unifier's ratification:** `README.md`, v4's
+  `docs/CHANGELOG.md`, `docs/developer/CLI.md`,
+  `docs/developer/DATABASE_ENCRYPTION.md`, `help/database-protection.md`
+  (banks to `p4.9i2`), `package.json`/`package-lock.json`, and v4's two new
+  test files (`dbkey-cli-format.test.ts`, `dbkey-restore.test.js` — their
+  behavior is carried by the Tier R arms + the unit pins). The v4-side
+  `db-helpers.js`/`instances.js` → `lib/dbkey.js` consolidation is a v4 DRY
+  move, verified behavior-preserving — no v5 counterpart owed (v5's core
+  `dbkey` module already is the one home).
+- **Not driven (recorded divergent-bytes edges, none reachable from the
+  fixture):** a malformed existing `.dbkey` errors as v5's
+  `malformed .dbkey: …` where v4 surfaces Node's `SyntaxError` text; an
+  undecodable-base64 pepper (non-alphabet chars) fails the proof with v5's
+  `decryption/verification failed…` inside the composed line where Node's
+  lenient decoder would derive a garbage key first (the 44-char warning fires
+  either way); two stdin confirms fed from one pipe would hit v4's documented
+  readline slurp (the add-case note at the top of the instances section) — no
+  arm feeds two.
+
+### Gate (lane, at HEAD)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets`
+clean on BOTH feature sets (default + `quilltap-core/native-transport`);
+`cargo test --workspace` with the pin's env block: **473 test binaries /
+2,565 passed / 0 failed** (+8 over the round baseline — exactly this lane's
+eight new unit pins), the CLI differential positively confirmed RUN inside
+it: **212 cases, 0 failures** (`-- --nocapture`; ~342 s). Red-first evidence:
+the pre-copy run's 188/4 failure list (the four predicted cases) is in the
+lane log. Commits: `b31bba536` (unit 1), `4795c125a` (unit 2), the unit-3
+commit, + this record. Versions: core 0.0.699, cli 0.0.16.
+
 ## Lane record — P4.D119 + P4.D120 (the `b86bb1a5` dressing instructions + the `d25dacc1` archive-instead-of-delete, server halves) — one stacked lane
 
 Ordered against round baseline **`8f910137`**. **Drift-ledger §2 freshness probe

@@ -38,6 +38,19 @@ directions. The `profiles.rs` divergence doc block is rewritten as a
 convergence record. No v5 production behavior changed; the core bump is
 doc-comment-only. The one v4-side line this commit does not port —
 `help/system-import-export.md`'s new sentence — banks to `p4.9i2`.
+#### 2026-08-27 — docs(porting): the P4.D133 lane record — restore-key landed whole
+
+_Docs-only change._
+
+The lane record for P4.D133 appended to the status log: all Tier 1 and Tier 2
+deliverables landed (red-first completion/help copy, the core seams, the verb
+end-to-end, 24 Tier R arms taking the differential 188 → 212 / 0, the
+archive-note arm, the coverage-guard mutation proof). Deferred loud: the
+real-pepper recovery walk on a Friday copy (💸 dogfood queue) and the NO-PORT
+remainder for the unifier's ratification. Lane gate: fmt clean, clippy both
+feature sets, 473 test binaries / 2,565 / 0 with the differential confirmed
+run.
+
 #### 2026-08-27 — port(cli): the instances restore-key verb with its Tier R arms
 
 _Versions: cli 0.0.16._
