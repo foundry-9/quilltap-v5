@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — chore(harness): refresh the uuid-remap corpus at the 4.9.0 baseline
+
+_No crate versions bumped._
+
+The `backup_uuid_remap_equivalence` deliberate-write corpus, regenerated at
+the `8872d7efc` pin as the P4.D129 neutrality gap's closure: a
+baseline-vs-target sandwich proved corpus AND oracle byte-identical across
+the whole fourteen-commit drift block (so `dcab791c2` is neutral on this
+surface), and the seven-line delta against the committed file is
+pre-existing staleness — the `composerEmoji`/`composerUnicode`/
+`smartTypographySettings` default keys v4 grew at 4.8.2, after the corpus's
+last regeneration (P4.D62). Corpus and oracle move together per the
+family's hash pin.
+
 #### 2026-08-27 — port(wires): the dcab791c2 title second-trim, the #47 envelope retirement, the splice self-test pin
 
 _No crate versions bumped (accumulated in the sibling review-fixes commit)._

@@ -773,6 +773,8 @@
             "customTools": true,
             "compositionModeDefault": false,
             "composerSpellcheck": true,
+            "composerEmoji": true,
+            "composerUnicode": true,
             "textReplacementsEnabled": true,
             "autoScrollOnResponseComplete": false,
             "agentModeSettings": {
@@ -792,6 +794,11 @@
             },
             "answerConfirmationSettings": {
               "enabled": false
+            },
+            "smartTypographySettings": {
+              "displayQuotes": false,
+              "dashes": true,
+              "ellipsis": true
             },
             "storyBackgroundsSettings": {
               "enabled": false,
