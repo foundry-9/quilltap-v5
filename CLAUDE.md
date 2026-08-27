@@ -2195,19 +2195,75 @@ records THERE. Update this summary only when a phase or round completes.
   **7.5 s** — the front door deserves its own look. **Still owed:** Pascal's
   **group** tier (needs a single-group chat), the Brahma deep-query budget,
   dedup/summaries, and the NanoGPT caching smoke / #101 cost question.
-- **Oracle baseline: `b220999d` (2026-08-25, v4 main — "feat(search): a
-  Documents chip that searches every document store"), adopted at the
-  b220999d-round unification (2026-08-26).** **Drift state, the
+- **The `f3892158d` drift catch-up round (P4.D123→P4.D124 stacked ∥
+  P4.D125): UNIFIED on main (2026-08-26) — ALL THREE CLOSED; the oracle
+  baseline MOVES to `f3892158d`.** v4's jobs/activity-accounting rework +
+  the whole realtime subsystem absorbed, with the round's settled
+  mechanism divergence: the invalidation hints ride v5's EXISTING Event
+  channel (engine broadcast → SSE `/api/events` → the Tauri pump) — no
+  second WebSocket, per the locked boundary. Server: the total
+  `JOB_TYPE_ACTIVITY` kind map (totality mechanical against BOTH v5's
+  gate and v4's real enum), the in-flight activity registry (child-IPC
+  legs NO-PORT; poll-scoped attribution — recorded NARROWER than Node's
+  ALS across `tokio::spawn`; Drop-ends-the-span for cancellation), the
+  jobs verb per the §A contract (`activeByKind`/`startedByKind` always,
+  `activeByType` opt-in with the `|| includeJobs` quirk INSIDE the ported
+  unit), 8 of v4's 10 span sites wired (the four no-surface rows held by
+  an existence-tripwire census), the coalescing bus (host-armed — the
+  core has no scheduler; no-op unarmed), the pure topic computation
+  (73-case tier-1 family; an order premise REFUTED — `ChildWritePayload`
+  kept v4's `{method,args}` shape, so ONE corpus drives both sides), all
+  publish points 1:1 (the mutation pass exposed FOUR coverage gaps before
+  confirming), and the terminal WS same-origin gate (v4's post-upgrade
+  1008 framing measured then matched; the 19-case DB-free oracle caught
+  the empty-Origin JS-truthiness arm on its first run). SPA: the chips'
+  final state (adaptive 1.5 s/8 s factory-gated cadence, the
+  `startedByKind` pulse; `notifyQueueChange` KEPT because v4 keeps it —
+  the order's prose said retire, the code said keep), the realtime hub
+  over the existing stream (per-leg NO-PORT table for the WS machinery;
+  once-per-reconnect catch-up sweep), the topic map over v5's ACTUAL key
+  spellings (chatKeys swept from ~30 raw sites first; `mountPoints` → []
+  recorded), the shared clock + `nowMs` formatters, nine site migrations
+  incl. v4's exact "Fallback polling (5s)" relabel. **The §3 review
+  caught three would-have-shipped SPA findings, fixed red-first:** the
+  hoist-cross-contaminated `year:` key in `formatRelativeDate`, the
+  short-for-long weekday WITH the lane's spec pinning the divergence, and
+  the regenerate cards' channel gate read untracked inside the
+  function-form `refetchInterval` (the fallback could never re-arm on a
+  mid-drain drop). **The activated hint beat's first live run caught a
+  fourth enqueue site missing its publish** (v5's collection POST wrote
+  the row API-side, bypassing the queue service's hint — fixed +
+  census-pinned; the beat is its live wire proof). Riding the round: the
+  chronic `ng` hang root-fixed (`ng-run.mjs` treats a spec BUILD failure
+  as terminal for `test` — was a 30-min silent hang, now exit 1 in
+  ~10 s), and thirteen wrapped-path tests took `ActivityTestGuard`
+  (closing the structural counter race the one honestly-unreproduced
+  workspace intermittent exposed). Gate: 469 test binaries / 2,514 / 0
+  with the round's env block, zero SKIP; the four families fresh from the
+  `f3892158d` pin with changed-bytes greps; clippy both feature sets;
+  release build; ng 361 files / 5,398; full Playwright **252 passed / 0
+  failed / 1 skipped** (the standing store-probe park). ⚠ v4 drifted TWO
+  commits mid-round (`487ae57fe`, `561466cfe` — both NO-PORT? candidates
+  in the drift ledger; ratifying them is the next round's cheap first
+  item; pin `f3892158d` for every regen until then). 💸 the dogfood queue
+  gains the chips over a real inline generation, the pulse, pushed
+  invalidation with polling parked, the terminal origin refusal, and the
+  relabeled toggle. Versions: core 0.0.688, harness 0.0.592, web 0.0.96,
+  host 0.0.83, SPA 0.5.583. Round record: `status-log.md`.
+- **Oracle baseline: `f3892158d` (2026-08-26, v4 main — "feat(realtime):
+  push interface updates over a WebSocket, tick clocks locally"), adopted
+  at the f3892158d-round unification (2026-08-26).** **Drift state, the
   drift-check method, and the pinned-worktree regen recipe now live in
   `docs/developer/porting/drift-ledger.md`** — maintained by
   `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
-  drift, and lanes never write it. As of the b220999d-round unification
-  check (2026-08-26): v4 main HEAD EQUALS the baseline, the checkout is
-  clean on `main`, bugfix has no unabsorbed content, and the regen rule
-  is **pin-free** (regen straight from the checkout until v4 moves or
-  the tree dirties — then pin a lane-unique detached worktree at
-  `b220999da`, recipe in the ledger's §5.1). The sweep
+  drift, and lanes never write it. As of the f3892158d-round unification
+  (2026-08-26): v4 main HEAD is TWO commits past the baseline
+  (`487ae57fe` + `561466cfe`, both NO-PORT? candidates awaiting
+  ratification — ledger §3), the checkout is clean on `main`, bugfix has
+  no unabsorbed content, and the regen rule is **PIN REQUIRED** (a
+  lane-unique detached worktree at `f3892158d`, recipe in the ledger's
+  §5.1, until the two rows are ratified). The sweep
   driver remains the sanctioned per-family regen path —
   never run two sweeps concurrently; since P4.53 it refuses empty-stage
   families by name and `--self-test` guards recipe headers against

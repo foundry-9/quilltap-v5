@@ -89634,3 +89634,63 @@ round introduced: thirteen tests drive real spans through the newly wrapped
 paths without `ActivityTestGuard`, bumping the same process-global counters
 the registry's exact-count tests assert on. All thirteen now take the guard
 (test-only). The gate of record re-ran whole on the final tree.
+
+---
+
+## Round record — the `f3892158d` drift catch-up round (P4.D123→P4.D124 stacked ∥ P4.D125), UNIFIED 2026-08-26
+
+**All three orders CLOSED; the oracle baseline MOVES `b220999da` →
+`f3892158d`.** Two lanes cherry-picked onto `unify/f3892158d-round` in
+dependency order (18 commits, zero source conflicts; doc unions via
+`merge=union`, attributes file removed after). Versions recounted as base +
+total bumps: core 0.0.677 → 0.0.688, harness 0.0.586 → 0.0.592, web 0.0.92
+→ 0.0.96, host 0.0.82 → 0.0.83, SPA 0.5.577 → 0.5.583; cli/tauri unchanged
+(the Tauri pump was verified-by-read only).
+
+**The §3 review** (three parallel reviewers, verdict owned at the unify):
+three BLOCKING findings, all SPA-side, all fixed red-first — the full
+findings record is this file's "§3 unification review" section above.
+**The wires:** the shared contract diffed name-for-name across sides
+(topics, kind ids, jobs response key order — identical);
+`P4D124_HINTS_LANDED` flipped true. **The activated beat failed its FIRST
+live run and caught a real cross-lane gap** (the playbook's
+skipped-beat rule, again): v4's collection POST enqueues through
+`enqueueJob` — a publish site — while v5's `jobs_enqueue` wrote the row at
+the API layer and emitted no hint; a FOURTH enqueue site neither lane's
+survey table carried. Fixed + census row + capturing pin + mutation
+proofs; the beat's own red was a gesture defect (`memoryBackfillStart`
+needs the default embedding profile the committed fixture deliberately
+lacks) and now drives the collection POST, doubling as the new site's
+live wire proof. The gate also ran one intermittent to ground (the
+cheap-llm deadline test — honestly unreproduced 0-for-8, recorded as the
+capture-under-load class) and closed the structural race the diagnosis
+exposed (thirteen wrapped-path tests now take `ActivityTestGuard`); and
+the chronic `ng` hang got its root fix (`tools/ng-run.mjs`: a spec BUILD
+failure is terminal for `test`; hang → exit 1 in ~10 s, proven by
+reliving it).
+
+**The gate (all on the final tree):** `cargo fmt --check`; clippy default
+clean; clippy `native-transport` clean on the full-log run of record (the
+serial chain's leg exited 101 once with the diagnostic lost to the
+script's own per-stage tail — the standing rule's lesson, again — and the
+immediate identical re-run is clean with zero warnings; recorded as a
+compile-cache transient); release build; the four families regenerated
+FRESH from `/tmp/qt-v4-pin-unify-f3892158d` through
+`recipe_sweep.py --run-all --families …` (4/4 ok, zero SKIP) with
+changed-bytes greps on every NDJSON (the two kind maps + the explicit-null
+types; 5 `autonomousRooms` hints; 4 cross-origin refusal sentences; the
+jobs corpus's 11 rows — 7 carrying both kind maps, 3 with NO
+`activeByType`); **`cargo test --workspace` 469 binaries / 2,514 tests /
+0 failed** with the round's four-var env block (the summary's two
+"Failed…" hits are WARN lines — `gate-log-failed-grep-lies`); SPA
+`npm test` **361 files / 5,398 / 0**, `npm run build` clean,
+`check-qt-classes` 935; **full Playwright 252 passed / 0 failed / 1
+skipped** (the standing P4.D112 store-probe park), the hint beat live.
+
+**Mid-round v4 drift:** `487ae57fe` + `561466cfe` (release-checklist
+maintenance) recorded in the drift ledger as NO-PORT? UNPROCESSED with
+ratification notes; the regen rule stays PIN REQUIRED at `f3892158d`
+until they are ratified. **💸 the dogfood queue gains:** the chips
+counting a real inline generation, a `startedByKind` pulse, pushed
+invalidation with polling verified parked, the terminal same-origin
+refusal live, and the "Fallback polling (5s)" toggle.
