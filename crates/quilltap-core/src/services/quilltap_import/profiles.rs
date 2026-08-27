@@ -789,11 +789,13 @@ mod tests {
     /// `parse_connection_profile` with its own named warning and the remaining
     /// profiles still import.
     ///
-    /// ⚠ There is no oracle tripwire for this one: the arm that would carry it
-    /// belongs to `system_import_state`, a family this lane does not own, and
-    /// it needs its own divergence-aware case kind. Named as a follow-up in the
-    /// lane record. The corpus item that used to carry `provider: 42` was moved
-    /// to a wrong-typed `modelName` so the five-named-warnings arm keeps
+    /// The oracle tripwire lives in `system_import_state`'s
+    /// `execute_bug105_seed_abort` (P4.63): the same claim driven against v4's
+    /// REAL `executeImport`, pinned in both directions and built to retire when
+    /// a round moves the baseline past v4's own fix (`679e450e3`). This test
+    /// remains the within-importer half — the loop itself carrying on to the
+    /// next profile. The corpus item that used to carry `provider: 42` was
+    /// moved to a wrong-typed `modelName` so the five-named-warnings arm keeps
     /// measuring what it exists for on both sides.
     #[test]
     fn a_non_string_provider_is_named_and_does_not_abort_the_import() {
