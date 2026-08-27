@@ -90074,3 +90074,74 @@ dogfood item *"the Z.AI refusal sentence"* is RETIRED — the sentence no longer
 exists on either side and cannot be provoked. Its replacement, banked as a new
 queue row: **a `glm-5.3-*` attachment reaching the real Z.AI wire as
 `image_url`** (the live twin of the new corpus row).
+
+### Unit 2 — the per-task cheap-LLM budget + the failure warn (`8872d7efc`)
+
+v4 gives the three compression task types 75 s, keeps every other cheap task at
+45 s, and keeps local providers at 180 s **checked first**, so a per-task
+override can never *shrink* the local budget. `providerBudgetFor` threads the
+task type too; `runCheapLLMTask`'s duplicate local `deadlineFor` closure is
+deleted; and a failed cheap task now warns by name.
+
+**v5 twins, as ported.** `CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS` lands as a
+three-entry `&[(&str, u64)]` slice (the `TASK_TYPE_ACTIVITY` shape, for the same
+reason: v4's object literal is three keys and the lookup is on every cheap
+task's path), carrying v4's why-comment whole — the Friday measurement and the
+"kept short of doubling on purpose" rationale, because the uncached compression
+path is a synchronous inline wait. `cheap_llm_deadline_for` and
+`provider_budget_for` both grow an `Option<&str>` task type; the local check is
+the first statement, with a comment naming what reordering it would cost.
+v4's `OVERRIDES[taskType ?? '']` is reproduced as `task_type.unwrap_or("")` —
+absent and unknown fall through the same way, and so does the empty string.
+**An order premise checked and answered: v5 had NO duplicate closure twin to
+delete** — v5's `run` already called the module-level `cheap_llm_deadline_for`
+through `send_with_deadline` at both attempt sites, so the two threading sites
+are `send_with_deadline`'s `timeout_ms` and the `params` closure's
+`request_timeout_ms`. Both are pinned (mutations 4 and 5).
+
+The underflow `const _: () = assert!` pair grew a third arm — a `while` loop
+over the override table — so a future override below the 5 s headroom is a
+compile error rather than a wrap.
+
+**The message bytes flipped, as the order required.** `cheap_llm_timeout_message`
+is unchanged, but what feeds it is not: the pin now includes
+`cheap_llm_timeout_message(cheap_llm_deadline_for(remote, "compress-conversation-history"), …)`
+== `"Cheap LLM task (compress-conversation-history) exceeded its 75000ms budget"`,
+which reads `45000ms` before the fix.
+
+**v4's four test groups mirrored 1:1** (`__tests__/unit/lib/memory/
+cheap-llm-tasks/cheap-llm-deadlines.test.ts`): compression beats the default;
+all three compression tasks share ONE budget; the six named non-compression
+tasks are untouched (so the override cannot read as a global bump); unknown /
+absent / empty fall back; the local provider keeps 180 s for every task. Plus
+two arms v4 has no analog for, because v5 can drive the real path with a paused
+clock: a 60 s remote compression call now SUCCEEDS (it was abandoned at 45 s), a
+100 s one is abandoned at 75 s with the message bytes, and the same 60 s call on
+`summarize-chat` is still abandoned at 45 s. `the_provider_budget_sits_five_
+seconds_inside_the_deadline` gained a recorded `Some(70_000)` arm and a
+`provider_budget_for(local, "compress-memories") == 175_000` assertion.
+
+**The warn is log-only** (`differential-blind-to-a-log-only-fix`), so it is
+pinned by a capturing tracing layer over a provider that fails the way one
+giving up on its own budget does — asserting the line, the exact target, and
+every field (`task_type`, `chat_id`, `character_id`, `provider`, `model`,
+`error`) — with a companion asserting a SUCCESSFUL task stays silent.
+
+**Mutation pass — five, each reddening exactly the arms that name it:**
+
+| mutation | reddens |
+|---|---|
+| override key typo (`compress-conversation-histry`) | the two compression-budget arms, the message pin, the real-path arm, the recorded-budget arm (5) |
+| local check moved AFTER the override lookup | the local-exemption arm + the 175 000 assertion (2) |
+| the warn line deleted outright | the field-set pin (1) |
+| `params` closure passes `None` for the task type | the recorded-budget arm (1) |
+| `send_with_deadline` passes `None` for the task type | the real-path arm (1) |
+
+⚠ **A weak assertion the mutation pass caught, and fixed.** The first attempt at
+the warn mutation retargeted the event to `quilltap::cheap_llm_MUTED` and stayed
+GREEN — because `captured.contains("WARN quilltap::cheap_llm")` is satisfied by
+any target with that prefix. The assertion now matches the whole target token
+(`l.starts_with("WARN quilltap::cheap_llm ")`), and the mutation was redone as a
+true deletion. The same prefix weakness exists in the older
+`a_fired_deadline_warns_and_writes_the_ruled_error_row` pin; left alone as
+out-of-scope, recorded here as a small follow-up.

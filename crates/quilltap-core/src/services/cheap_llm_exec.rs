@@ -156,25 +156,77 @@ pub const CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS: u64 = 180_000;
 /// while an orphaned request runs on.
 const PROVIDER_BUDGET_HEADROOM_MS: u64 = 5_000;
 
-/// v4 `deadlineFor(selection)` — the caller-side deadline for one attempt.
-pub fn cheap_llm_deadline_for(selection: &CheapLlmSelection) -> u64 {
+/// v4 `CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS` (`8872d7efc`) — per-task deadline
+/// overrides, keyed by the granular task type.
+///
+/// v4's why-comment, carried whole: the default budget suits a cheap task whose
+/// prompt is a slice of a turn. Compression is not that shape: it carries the
+/// whole conversation history, so it is structurally the largest prompt any
+/// cheap task sends and it sits at the slow end of the distribution as a matter
+/// of course, not as a stall. Measured over three days on Friday, compression
+/// supplied 13 of the 34 calls that finished within five seconds of the old
+/// 40 s provider budget — more than any other task type — and its mean (24.4 s)
+/// ran roughly 2.5× the cheap-task mean. A ceiling that most of a task's
+/// healthy distribution can reach is a ceiling set for the wrong task.
+///
+/// Kept well short of doubling on purpose. Compression is pre-computed off the
+/// turn's critical path when a cached result is available, but falls back to a
+/// synchronous inline call when it isn't — and there the operator waits out the
+/// whole budget. This buys the real distribution room without letting one
+/// uncached turn stall for minutes.
+///
+/// A slice rather than a map: v4's object literal is three keys, and the lookup
+/// is on the hot-ish path of every cheap task (`TASK_TYPE_ACTIVITY` above takes
+/// the same shape for the same reason).
+const CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS: &[(&str, u64)] = &[
+    ("compress-conversation-history", 75_000),
+    ("compress-system-prompt", 75_000),
+    ("compress-memories", 75_000),
+];
+
+/// v4 `deadlineFor(selection, taskType?)` — the caller-side deadline for one
+/// attempt.
+///
+/// **Order is load-bearing.** The local check comes FIRST, exactly as v4 writes
+/// it: a local provider keeps its own (larger) budget regardless of task — a
+/// cold model load dwarfs any per-task difference — so a per-task override can
+/// never *shrink* the local budget. Reordering these two would silently cut a
+/// local compression call from 180 s to 75 s.
+///
+/// v4's `OVERRIDES[taskType ?? ''] ?? CHEAP_LLM_TASK_TIMEOUT_MS` — an absent
+/// task type looks up the empty string, which is never a key, so it falls
+/// through to the default just as an unknown one does.
+pub fn cheap_llm_deadline_for(selection: &CheapLlmSelection, task_type: Option<&str>) -> u64 {
     if selection.is_local {
-        CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS
-    } else {
-        CHEAP_LLM_TASK_TIMEOUT_MS
+        return CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS;
     }
+    let key = task_type.unwrap_or("");
+    CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map(|(_, ms)| *ms)
+        .unwrap_or(CHEAP_LLM_TASK_TIMEOUT_MS)
 }
 
-/// v4 `providerBudgetFor(selection)` — the hard per-request budget handed to the
-/// provider ([`CompletionParams::request_timeout_ms`]), five seconds inside the
-/// caller's own deadline: 40 000 ms remote / 175 000 ms local.
-// The subtraction below must never underflow: both are v4 literals today,
-// but if either ever moves, make it a compile error rather than a wrap.
+/// v4 `providerBudgetFor(selection, taskType?)` — the hard per-request budget
+/// handed to the provider ([`CompletionParams::request_timeout_ms`]), five
+/// seconds inside whichever deadline applies to this attempt: 40 000 ms remote /
+/// 70 000 ms remote compression / 175 000 ms local.
+// The subtraction below must never underflow. Both base constants are v4
+// literals today, and so is every override — but if any of them ever moves,
+// make it a compile error rather than a wrap.
 const _: () = assert!(CHEAP_LLM_TASK_TIMEOUT_MS > PROVIDER_BUDGET_HEADROOM_MS);
 const _: () = assert!(CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS > PROVIDER_BUDGET_HEADROOM_MS);
+const _: () = {
+    let mut i = 0;
+    while i < CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS.len() {
+        assert!(CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS[i].1 > PROVIDER_BUDGET_HEADROOM_MS);
+        i += 1;
+    }
+};
 
-pub fn provider_budget_for(selection: &CheapLlmSelection) -> i64 {
-    (cheap_llm_deadline_for(selection) - PROVIDER_BUDGET_HEADROOM_MS) as i64
+pub fn provider_budget_for(selection: &CheapLlmSelection, task_type: Option<&str>) -> i64 {
+    (cheap_llm_deadline_for(selection, task_type) - PROVIDER_BUDGET_HEADROOM_MS) as i64
 }
 
 /// The message bytes of v4's `CheapLLMTimeoutError`
@@ -443,7 +495,7 @@ impl CheapLlmTaskExecutor {
             // `send_with_deadline` remains the backstop for providers that
             // ignore it. (v4 `baseParams.requestTimeoutMs`, stamped ONCE and
             // spread into all three arms — the closure is v5's spread.)
-            request_timeout_ms: Some(provider_budget_for(selection)),
+            request_timeout_ms: Some(provider_budget_for(selection, task_type)),
         };
 
         let known_no_temp = self
@@ -637,7 +689,7 @@ impl CheapLlmTaskExecutor {
         character_id: Option<&str>,
         task_type: Option<&str>,
     ) -> Result<ProviderResponse, CompletionError> {
-        let timeout_ms = cheap_llm_deadline_for(selection);
+        let timeout_ms = cheap_llm_deadline_for(selection, task_type);
         // `tokio::time::Instant`, not `std::time::Instant`: it reads the same
         // clock the deadline does, so a paused-clock test measures the virtual
         // elapsed time the log reports.
@@ -793,12 +845,35 @@ impl CheapLlmTaskExecutor {
                 usage: response.usage,
             },
             // v4 `getErrorMessage(error)` — the thrown Error's message.
-            Err(error) => CheapLlmTaskResult {
-                success: false,
-                result: None,
-                error: Some(error.message),
-                usage: None,
-            },
+            Err(error) => {
+                // Say so in the server log (v4 `8872d7efc`). `send_with_deadline`
+                // already reports the case where *our* deadline fires, but a
+                // provider giving up on its own budget arrives here as an ordinary
+                // provider error — and the plugin's own log line names the
+                // provider without naming the task, so a timed-out extraction pass
+                // was legible only in the debug logs stored on the message. One
+                // line here ties the two together.
+                //
+                // v4 threads `chatId`/`characterId` as parameters; v5's `chat_id`
+                // comes from the attached log config, the same source the
+                // abandonment warn above reads.
+                tracing::warn!(
+                    target: "quilltap::cheap_llm",
+                    task_type = task_type.unwrap_or(""),
+                    chat_id = self.log.as_ref().and_then(|c| c.chat_id.as_deref()).unwrap_or(""),
+                    character_id = character_id.unwrap_or(""),
+                    provider = %selection.provider,
+                    model = %selection.model_name,
+                    error = %error.message,
+                    "[CheapLLM] Task failed",
+                );
+                CheapLlmTaskResult {
+                    success: false,
+                    result: None,
+                    error: Some(error.message),
+                    usage: None,
+                }
+            }
         }
     }
 }
@@ -1064,6 +1139,115 @@ mod tests {
             cheap_llm_timeout_message(45_000, Some("")),
             "Cheap LLM task exceeded its 45000ms budget"
         );
+        // P4.D127 (v4 `8872d7efc`): a compression timeout now reads 75000ms.
+        assert_eq!(
+            cheap_llm_timeout_message(
+                cheap_llm_deadline_for(
+                    &selection("DEEPSEEK", "m"),
+                    Some("compress-conversation-history")
+                ),
+                Some("compress-conversation-history")
+            ),
+            "Cheap LLM task (compress-conversation-history) exceeded its 75000ms budget"
+        );
+    }
+
+    // ── P4.D127 / v4 `8872d7efc` — the per-task deadline ────────────────────
+    //
+    // v4's four test groups, mirrored (`__tests__/unit/lib/memory/
+    // cheap-llm-tasks/cheap-llm-deadlines.test.ts`). `deadline_for` is pure, so
+    // no provider and no network are involved.
+
+    const COMPRESSION_TASKS: &[&str] = &[
+        "compress-conversation-history",
+        "compress-system-prompt",
+        "compress-memories",
+    ];
+
+    /// Compression's budget is genuinely LARGER than the shared default — the
+    /// thing that made the old arrangement wrong.
+    #[test]
+    fn every_compression_task_gets_more_room_than_the_shared_default() {
+        let remote = selection("DEEPSEEK", "m");
+        for task in COMPRESSION_TASKS {
+            assert!(
+                cheap_llm_deadline_for(&remote, Some(task)) > CHEAP_LLM_TASK_TIMEOUT_MS,
+                "{task} did not get more room than the default"
+            );
+        }
+    }
+
+    /// All three compression tasks share ONE budget (v4's `Set(...).size === 1`).
+    #[test]
+    fn all_three_compression_tasks_share_one_budget() {
+        let remote = selection("DEEPSEEK", "m");
+        let budgets: std::collections::HashSet<u64> = COMPRESSION_TASKS
+            .iter()
+            .map(|t| cheap_llm_deadline_for(&remote, Some(t)))
+            .collect();
+        assert_eq!(budgets.len(), 1);
+        assert_eq!(budgets.into_iter().next(), Some(75_000));
+    }
+
+    /// The override must not read as a GLOBAL bump: v4 names six task types
+    /// that shared the ceiling with compression and must not have moved.
+    #[test]
+    fn other_cheap_tasks_stay_on_the_shared_default() {
+        let remote = selection("DEEPSEEK", "m");
+        for task in [
+            "memory-extraction-self",
+            "memory-extraction-other",
+            "scene-state-tracking",
+            "answer-confirmation",
+            "summarize-chat",
+            "title-chat",
+        ] {
+            assert_eq!(
+                cheap_llm_deadline_for(&remote, Some(task)),
+                CHEAP_LLM_TASK_TIMEOUT_MS,
+                "{task} should still be on the shared default"
+            );
+        }
+    }
+
+    /// An unknown or absent task type falls back to the default. (v4 looks up
+    /// `taskType ?? ''`, and the empty string is never a key.)
+    #[test]
+    fn an_unknown_or_absent_task_type_falls_back_to_the_default() {
+        let remote = selection("DEEPSEEK", "m");
+        assert_eq!(
+            cheap_llm_deadline_for(&remote, Some("not-a-real-task")),
+            CHEAP_LLM_TASK_TIMEOUT_MS
+        );
+        assert_eq!(
+            cheap_llm_deadline_for(&remote, None),
+            CHEAP_LLM_TASK_TIMEOUT_MS
+        );
+        assert_eq!(
+            cheap_llm_deadline_for(&remote, Some("")),
+            CHEAP_LLM_TASK_TIMEOUT_MS
+        );
+    }
+
+    /// The local exemption, compression included — the reason v4's local check
+    /// comes FIRST. A cold model load dwarfs any per-task difference, and the
+    /// local budget is already the larger of the two: a per-task override must
+    /// never shrink it. (Reorder the two arms of `cheap_llm_deadline_for` and
+    /// this is the test that reddens.)
+    #[test]
+    fn a_local_provider_keeps_its_own_budget_whatever_the_task() {
+        let local = local_selection("OLLAMA", "qwen3");
+        assert_eq!(
+            cheap_llm_deadline_for(&local, None),
+            CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS
+        );
+        for task in COMPRESSION_TASKS {
+            assert_eq!(
+                cheap_llm_deadline_for(&local, Some(task)),
+                CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS,
+                "a per-task override shrank the local budget for {task}"
+            );
+        }
     }
 
     // ── P4.D123 site 3: the executor is wrapped, and the KIND is COMPUTED ────
@@ -1275,6 +1459,207 @@ mod tests {
         assert!(remote.error.as_deref().unwrap().contains("45000ms budget"));
     }
 
+    /// P4.D127 (v4 `8872d7efc`) — the override on the REAL path, both ways. A
+    /// 60 s remote compression call used to be abandoned at 45 s and now
+    /// succeeds; a 100 s one is still abandoned, but at 75 s, and the message
+    /// bytes say so. Pre-fix, the first half of this test was red.
+    #[tokio::test(start_paused = true)]
+    async fn a_remote_compression_call_lives_to_seventy_five_seconds() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let messages = vec![CompletionMessage::user("compress this")];
+
+        let survives = CheapLlmTaskExecutor::new()
+            .execute(
+                &SlowProvider {
+                    delay_ms: 60_000,
+                    content: "compressed".to_string(),
+                },
+                &selection("DEEPSEEK", "deepseek-v4-flash"),
+                messages.clone(),
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("compress-conversation-history"),
+            )
+            .await;
+        assert!(
+            survives.success,
+            "a 60 s compression call must now finish: {:?}",
+            survives.error
+        );
+        assert_eq!(survives.result.as_deref(), Some("compressed"));
+
+        let abandoned = CheapLlmTaskExecutor::new()
+            .execute(
+                &SlowProvider {
+                    delay_ms: 100_000,
+                    content: "too slow".to_string(),
+                },
+                &selection("DEEPSEEK", "deepseek-v4-flash"),
+                messages.clone(),
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("compress-memories"),
+            )
+            .await;
+        assert!(!abandoned.success);
+        assert!(
+            abandoned
+                .error
+                .as_deref()
+                .unwrap()
+                .contains("75000ms budget"),
+            "the abandonment message must name the compression budget: {:?}",
+            abandoned.error
+        );
+
+        // …and the override is not a global bump on the real path either: the
+        // same 60 s call on a non-compression task is still abandoned at 45 s.
+        let still_bounded = CheapLlmTaskExecutor::new()
+            .execute(
+                &SlowProvider {
+                    delay_ms: 60_000,
+                    content: "irrelevant".to_string(),
+                },
+                &selection("DEEPSEEK", "deepseek-v4-flash"),
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("summarize-chat"),
+            )
+            .await;
+        assert!(!still_bounded.success);
+        assert!(still_bounded
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("45000ms budget"));
+    }
+
+    /// P4.D127 (v4 `8872d7efc`) — a failed cheap task narrates itself. Log-only:
+    /// no differential can see a new `logger.warn`
+    /// (`differential-blind-to-a-log-only-fix`), so the pin is a capturing
+    /// tracing layer asserting the line AND its whole field set. v4's rationale:
+    /// a provider giving up on its OWN budget used to arrive as an ordinary
+    /// provider error, invisible to a server-log grep.
+    #[tokio::test]
+    async fn a_failed_cheap_task_warns_with_its_whole_field_set() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        use tracing_subscriber::layer::SubscriberExt;
+
+        /// Fails the way a provider that gave up on its own budget does: an
+        /// ordinary error, not our deadline firing.
+        struct FailingProvider;
+        impl CompletionProvider for FailingProvider {
+            fn send_message(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                _params: &CompletionParams,
+            ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+            {
+                // (Not an `async fn`: the trait's RPITIT signature is what the
+                // sibling stubs above use, and clippy's `manual_async_fn` only
+                // fires when the whole body is one bare async block.)
+                let error = CompletionError::new("Request timed out after 40000ms");
+                async move { Err(error) }
+            }
+        }
+
+        let logs = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let r = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            CheapLlmTaskExecutor::new()
+                .execute(
+                    &FailingProvider,
+                    &selection("DEEPSEEK", "deepseek-chat"),
+                    vec![CompletionMessage::user("extract")],
+                    |s| s.to_string(),
+                    None,
+                    None,
+                    Some("char-9"),
+                    Some("memory-extraction-self"),
+                )
+                .await
+        };
+        assert!(!r.success);
+
+        let captured = logs.lock().unwrap().join("\n");
+        assert!(
+            captured.contains("[CheapLLM] Task failed"),
+            "a failed cheap task must never be silent; captured:\n{captured}"
+        );
+        // The exact target, not a prefix: `contains("quilltap::cheap_llm")` also
+        // matches `quilltap::cheap_llm_anything`, which is how the mutation pass
+        // first found this assertion too weak to fail.
+        assert!(
+            captured
+                .lines()
+                .any(|l| l.starts_with("WARN quilltap::cheap_llm ")),
+            "the failure is a WARN on quilltap::cheap_llm; captured:\n{captured}"
+        );
+        for field in [
+            "task_type=memory-extraction-self",
+            "character_id=char-9",
+            "provider=DEEPSEEK",
+            "model=deepseek-chat",
+            "error=Request timed out after 40000ms",
+        ] {
+            assert!(
+                captured.contains(field),
+                "the failure warn is missing {field}; captured:\n{captured}"
+            );
+        }
+        // `chat_id` is present-but-empty on an executor with no log config —
+        // v4's parameter is `undefined` there and its logger drops nothing.
+        assert!(
+            captured.contains("chat_id="),
+            "the failure warn must carry chat_id; captured:\n{captured}"
+        );
+    }
+
+    /// A SUCCESSFUL cheap task must not warn — the silence half of the pin.
+    #[tokio::test]
+    async fn a_successful_cheap_task_is_silent() {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let logs = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let r = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            CheapLlmTaskExecutor::new()
+                .execute(
+                    &RecordingProvider::new(),
+                    &selection("DEEPSEEK", "deepseek-chat"),
+                    vec![CompletionMessage::user("extract")],
+                    |s| s.to_string(),
+                    None,
+                    None,
+                    None,
+                    Some("memory-extraction-self"),
+                )
+                .await
+        };
+        assert!(r.success);
+        let captured = logs.lock().unwrap().join("\n");
+        assert!(
+            !captured.contains("[CheapLLM] Task failed"),
+            "a successful task must not warn; captured:\n{captured}"
+        );
+    }
+
     /// v4 `providerBudgetFor`: the provider's own budget sits strictly inside
     /// the caller's deadline (40 s remote / 175 s local) and reaches
     /// `CompletionParams` on every arm.
@@ -1306,7 +1691,7 @@ mod tests {
             .execute(
                 &local_rec,
                 &local_selection("OLLAMA", "qwen3"),
-                messages,
+                messages.clone(),
                 |s| s.to_string(),
                 None,
                 None,
@@ -1316,15 +1701,41 @@ mod tests {
             .await;
         assert_eq!(local_rec.budgets(), vec![Some(175_000)]);
 
+        // P4.D127 (v4 `8872d7efc`): a REMOTE compression attempt hands the
+        // provider 70 s — five seconds inside its own 75 s deadline — so the
+        // per-task override reaches `CompletionParams`, not just `deadline_for`.
+        let compress_rec = RecordingProvider::new();
+        CheapLlmTaskExecutor::new()
+            .execute(
+                &compress_rec,
+                &selection("DEEPSEEK", "deepseek-v4-flash"),
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("compress-conversation-history"),
+            )
+            .await;
+        assert_eq!(compress_rec.budgets(), vec![Some(70_000)]);
+
         // v4's own two assertions, restated: strictly inside our deadline (so
         // the provider aborts its socket first), and the local budget outranks
         // the remote *deadline*.
         assert!(
-            provider_budget_for(&selection("DEEPSEEK", "m")) < CHEAP_LLM_TASK_TIMEOUT_MS as i64
+            provider_budget_for(&selection("DEEPSEEK", "m"), Some("title-chat"))
+                < CHEAP_LLM_TASK_TIMEOUT_MS as i64
         );
-        assert!(provider_budget_for(&selection("DEEPSEEK", "m")) > 0);
+        assert!(provider_budget_for(&selection("DEEPSEEK", "m"), Some("title-chat")) > 0);
         assert!(
-            provider_budget_for(&local_selection("OLLAMA", "m")) > CHEAP_LLM_TASK_TIMEOUT_MS as i64
+            provider_budget_for(&local_selection("OLLAMA", "m"), Some("title-chat"))
+                > CHEAP_LLM_TASK_TIMEOUT_MS as i64
+        );
+        // …and the local exemption reaches the provider budget too: a local
+        // compression attempt keeps 175 s, not the override's 70 s.
+        assert_eq!(
+            provider_budget_for(&local_selection("OLLAMA", "m"), Some("compress-memories")),
+            175_000
         );
     }
 

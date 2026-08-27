@@ -104,6 +104,41 @@ seeds a memory on a character the user does not own (so it survives the
 wipe) whose `relatedMemoryIds` points at a doomed row, and asserts the edge
 is scrubbed. That only happens through the chokepoint. Mutation-proven:
 restoring the per-row loop leaves the edge dangling and the test fails.
+#### 2026-08-27 — perf(cheap-llm): give compression its own budget, and log cheap-task failures
+
+_Versions: core 0.0.690._
+
+Ports v4 `8872d7efc`. Every cheap LLM task shared one 45 s deadline, 40 s of it
+handed to the provider. Compression does not fit that shape: it carries the whole
+conversation history, so it sends the largest prompt of any cheap task and sits at
+the slow end of the distribution as a matter of course rather than as a stall.
+Measured over three days on a live instance, compression supplied 13 of the 34
+cheap calls that finished within five seconds of the provider budget — more than
+any other task type — with a mean around 2.5x the cheap-task mean.
+
+The three compression task types now get 75 s through a new
+`CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS` table; every other task keeps 45 s, and
+local providers keep their 180 s regardless of task. The local check comes first,
+so a per-task override can never shrink the local budget.
+`cheap_llm_deadline_for` and `provider_budget_for` both take the task type now,
+and it is threaded through `send_to_provider`'s `request_timeout_ms` and
+`send_with_deadline` — so a remote compression attempt hands the provider 70 s and
+abandons at 75 s, and its timeout message says `75000ms`.
+
+A failed cheap-LLM task now warns with the task type, provider, model, chat and
+character. The deadline path already logged when our own timer fired, but a
+provider giving up on its own budget arrived as an ordinary provider error, and
+the plugin's log line names the provider without naming the task — so a timed-out
+extraction pass was invisible to a server-log grep.
+
+v4's four test groups are mirrored (the three 75 s budgets, six named
+non-compression tasks still on 45 s, the unknown/absent fallback, the local
+exemption), plus real-path arms driving a stalling provider at 60 s and 100 s and
+a capturing-layer pin on the warn. Five mutations — an override-key typo, the
+local check reordered after the override, the warn deleted, and the task type
+dropped at each of the two threading sites — each redden exactly the arms that
+name them.
+
 #### 2026-08-26 — fix(z-ai): drop the builder's private vision list so GLM 5.3 receives images (bug 104)
 
 _Versions: core 0.0.689, harness 0.0.593._
