@@ -21,6 +21,26 @@
 //! `resizeImageForProvider` early-returns before touching its codec, which is
 //! what makes the two sides equivalent here.
 //!
+//! ## ⚠ [P4.63] The corpus describes through OPENAI, and why that matters
+//!
+//! This family stood RED from v4 `a14a1811` (2026-08-23) until P4.63 found it,
+//! and the failure mode is worth remembering: the corpus's four describer
+//! profiles were on `OPENAI_COMPATIBLE`, and bug 91 put
+//! `providerCanTransportImages()` in front of every describe attempt — the
+//! OpenAI-compatible plugin's shared base declares no attachment support, so
+//! v4 began refusing before the provider seam. The oracle then recorded ZERO
+//! canned vision calls, `doc_mount_blobs.description` came back `''`, and the
+//! `IMAGE_DESCRIPTION` rows stopped being written.
+//!
+//! **v5 was never wrong here** — it ports the same predicate (P4.D106) and
+//! refuses identically, which is exactly why the state diff could not see the
+//! problem: both engines went dark together and compared equal. The only thing
+//! that noticed was the corpus-shape assert on the canned-call count. The
+//! repair is the corpus, not the port: the profiles moved to `OPENAI`, a
+//! provider BOTH transport tiers agree on (v4's static mirror, which is what
+//! answers under jest where the plugin registry is never initialized, and v5's
+//! baked manifest registry). Pick corpus providers that way.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-attach-mount-file.ndjson npx jest -- attach-mount-file
 //! Run:
@@ -370,9 +390,41 @@ fn attach_mount_file_matches_oracle() {
     assert!(
         canned_rows.len() == 4,
         "the corpus must carry all four vision calls (primary / refusal / \
-         uncensored retry / reasoning); got {}",
+         uncensored retry / reasoning); got {}.\n\
+         ⚠ Zero recorded calls means v4 refused every describe attempt BEFORE \
+         reaching the provider seam, and the whole vision half of this family \
+         is measuring nothing while every table still compares equal (both \
+         sides go dark together). That is what happened between v4 \
+         `a14a1811` (bug 91) and P4.63: the corpus described through an \
+         `OPENAI_COMPATIBLE` profile, and bug 91 put \
+         `providerCanTransportImages()` in front of `describeImageWithProfile`, \
+         where the OpenAI-compatible plugin declares no attachment support. If \
+         this fires again, check the corpus provider against BOTH transport \
+         tiers (v4's static mirror, which is what answers under jest, and v5's \
+         baked manifest registry) before suspecting the port.",
         canned_rows.len()
     );
+
+    // …and the same claim from the other end, so a corpus that stopped
+    // exercising the ladder cannot pass on the canned count alone: each vision
+    // rung must have LOGGED its call. Both engines writing nothing compares
+    // equal, so this is the only side of the diff that can tell.
+    for (case, want_rows) in [
+        ("attach_vision", 1usize),
+        ("attach_refusal_retry", 2),
+        ("attach_reasoning", 1),
+    ] {
+        let logs = oracle[case]["tables"]["llmLogs"]
+            .as_array()
+            .map(Vec::len)
+            .unwrap_or(0);
+        assert_eq!(
+            logs, want_rows,
+            "[{case}] the oracle carries {logs} IMAGE_DESCRIPTION row(s), the \
+             rung is defined by {want_rows} — v4 stopped describing, and the \
+             arm is vacuous (see the canned-call note above)"
+        );
+    }
     let mut completion = CannedCompletionProvider::new();
     for row in canned_rows {
         let messages = vec![CompletionMessage::user(IMAGE_DESCRIPTION_INSTRUCTION)];

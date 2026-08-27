@@ -5,7 +5,7 @@
   "seedTimestamp": "2026-06-01T00:00:00.000Z",
   "vision": [
     {
-      "provider": "OPENAI_COMPATIBLE",
+      "provider": "OPENAI",
       "modelName": "mock-vision",
       "filename": "undescribed.png",
       "content": "A brass diving bell suspended over a harbour at dusk, its rivets catching the last of the light while three figures in oilskins pay out the cable from a stone quay.",
@@ -13,7 +13,7 @@
       "usage": { "promptTokens": 812, "completionTokens": 41, "totalTokens": 853 }
     },
     {
-      "provider": "OPENAI_COMPATIBLE",
+      "provider": "OPENAI",
       "modelName": "mock-vision",
       "filename": "refuses.png",
       "content": "I cannot describe this image, as it appears to depict an identifiable person.",
@@ -21,7 +21,7 @@
       "usage": { "promptTokens": 790, "completionTokens": 15, "totalTokens": 805 }
     },
     {
-      "provider": "OPENAI_COMPATIBLE",
+      "provider": "OPENAI",
       "modelName": "mock-uncensored",
       "filename": "refuses.png",
       "content": "A daguerreotype portrait of a woman in a high collar, one gloved hand resting on a barometer, the plate scratched along its lower edge.",
@@ -29,7 +29,7 @@
       "usage": { "promptTokens": 771, "completionTokens": 33, "totalTokens": 804 }
     },
     {
-      "provider": "OPENAI_COMPATIBLE",
+      "provider": "OPENAI",
       "modelName": "gpt-5-vision-mock",
       "filename": "reasoning.png",
       "content": "An orrery of hammered copper, its planets frozen mid-orbit above a lacquered case whose drawers stand a hand's width open.",

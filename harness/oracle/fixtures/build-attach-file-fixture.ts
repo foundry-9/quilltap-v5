@@ -43,6 +43,11 @@
  *                              arm, unreachable otherwise.
  *
  * ── THE PROFILE CORPUS ───────────────────────────────────────────────────────
+ * Every profile is on **OPENAI** — see the comment at `mkConn`. It was
+ * `OPENAI_COMPATIBLE` until P4.63; v4 `a14a1811` (bug 91) made that provider
+ * un-sendable, which took the vision rungs dark without failing anything on
+ * v4's side.
+ *
  * The main user carries THREE vision-capable profiles: the CONFIGURED one
  * (`mock-vision`, NOT cheap), a CHEAP one (`mock-cheap-vision`), and the
  * uncensored fallback (`mock-uncensored`). The cheap profile exists so the
@@ -283,7 +288,7 @@ async function main(): Promise<void> {
       id: APIKEY,
       userId: spec.userId,
       label: 'mock-key',
-      provider: 'OPENAI_COMPATIBLE',
+      provider: 'OPENAI',
       key_value: 'sk-synthetic-mock-key',
       isActive: true,
       lastUsed: null,
@@ -302,7 +307,19 @@ async function main(): Promise<void> {
       {
         userId,
         name,
-        provider: 'OPENAI_COMPATIBLE',
+        // ⚠ [P4.63] OPENAI, not OPENAI_COMPATIBLE. v4 `a14a1811` (bug 91) put
+        // `providerCanTransportImages()` in front of every describe attempt,
+        // and the OpenAI-compatible plugin's shared base marks every attachment
+        // failed — so from that commit on, an OPENAI_COMPATIBLE describer is
+        // REFUSED before any vision call. This corpus was built before bug 91
+        // and kept that provider, which silently took the family's three vision
+        // rungs dark: the oracle recorded zero canned calls, `blob.description`
+        // came back `''`, and the llm-logs partition stayed empty. OPENAI is a
+        // provider BOTH transport tiers agree on (v4's static mirror under jest,
+        // where the plugin registry is never initialized, and v5's baked
+        // manifest registry), which is the standing rule for picking a corpus
+        // provider.
+        provider: 'OPENAI',
         modelName,
         baseUrl: 'http://127.0.0.1:1/v1',
         supportsImageUpload: true,

@@ -81,6 +81,38 @@ One escalation, recorded not fixed: a wrong-typed `tagId` (`[{"tagId": 5}]`) is
 carried by v4 into `linkedTo` as the raw value, where v5 drops it. Closing it
 needs `Request::FileUpload.tags` widened past `Vec<String>` in
 `quilltap-core/src/api/types.rs`, outside this lane's ownership.
+#### 2026-08-27 — fix(harness): describe through a transporting provider — the attach-mount-file corpus went dark at bug 91
+
+_Versions: harness 0.0.600._
+
+`attach_mount_file_equivalence` has been red at both pins since v4
+`a14a1811`, failing its corpus-shape assert with "the oracle yields zero
+canned vision calls". The cause is corpus vintage, not the port: the
+fixture's four describer profiles were on `OPENAI_COMPATIBLE`, and bug 91
+put `providerCanTransportImages()` in front of every
+`describeImageWithProfile` attempt — the OpenAI-compatible plugin's shared
+base declares no attachment support, so v4 began refusing before the
+provider seam. The oracle recorded no vision calls,
+`doc_mount_blobs.description` came back empty, and the `IMAGE_DESCRIPTION`
+rows stopped being written.
+
+v5 ports the same predicate (P4.D106) and refuses identically, which is why
+the state diff could not see it: both engines went dark together and
+compared equal. Only the canned-call count noticed.
+
+The profiles move to `OPENAI`, a provider both transport tiers agree on —
+v4's static mirror, which is what answers under jest where the plugin
+registry is never initialized, and v5's baked manifest registry.
+`OPENROUTER` was deliberately avoided (bug 97's two sources disagreed
+there). The three `attach-file-*.db` files and the `.meta.json` sidecar were
+rebuilt from the pinned baseline worktree; the family is their only
+consumer. 13/13 cases green, four canned vision calls recorded.
+
+Two additions so it cannot go dark quietly again: the canned-count assert
+now names bug 91 and the both-tiers rule, and a new per-case pin asserts each
+vision rung actually LOGGED its call — the only side of the diff that can
+tell, since two engines writing nothing compare equal.
+
 #### 2026-08-27 — test(harness): narrow the blob-registry exemption to per-site and make both censuses comment-aware
 
 _Versions: harness 0.0.599._
