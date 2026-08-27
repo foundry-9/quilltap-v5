@@ -47,6 +47,7 @@ pub fn run(args: &[String]) {
         "set-passphrase" | "passphrase" => cmd_set_passphrase(&rest),
         "default" => cmd_default(&rest),
         "rename" => cmd_rename(&rest),
+        "restore-key" | "rebuild-key" => crate::restore_key::cmd_restore_key(&rest),
         _ => {
             out::elog(&format!("Unknown instances verb: {verb}"));
             out::elog("Run \"quilltap instances --help\" for usage.");

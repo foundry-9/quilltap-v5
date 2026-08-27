@@ -38,6 +38,38 @@ directions. The `profiles.rs` divergence doc block is rewritten as a
 convergence record. No v5 production behavior changed; the core bump is
 doc-comment-only. The one v4-side line this commit does not port —
 `help/system-import-export.md`'s new sentence — banks to `p4.9i2`.
+#### 2026-08-27 — port(cli): the instances restore-key verb with its Tier R arms
+
+_Versions: cli 0.0.16._
+
+The `quilltap instances restore-key <name>` verb (alias `rebuild-key`) ported
+whole from v4 `b121ac77f`'s `dbkey-restore.js`, as its own module: pepper from
+`ENCRYPTION_MASTER_PEPPER` or the hidden prompt (never a flag), the 44-char
+warning, the three-database proof step before anything is written (the
+refusal is unwaivable while an encrypted database exists; `--force` only
+covers a fresh or still-plaintext instance), the write lock with a Drop guard
+as v4's `finally` (errors surface through the instances handler's
+`Error: <msg>` + exit 1, not `db --write`'s bare print), the same-pepper
+rewrap vs the different-pepper WARNING+confirm, the passphrase precedence
+chain, the timestamped backup, the unknown-field-preserving write, read-back
+verification with restore-on-mismatch, the registry stored-passphrase update,
+and the four-line ARCHIVE-bundles note under v4's exact predicate. Every
+user-facing string byte-exact against v4's real launcher.
+
+Tier R grew 188 → 212: 22 output-diffed arms (happy path, alias, wrong
+pepper — the cross-engine `file is not a database` byte risk verified — the
+non-TTY pepper refusal, both `--data-dir` spellings with the registry-scan
+name recovery, unprovable declined/accepted/forced, the plaintext note, the
+stale-keyfile pair, lock contention on a live sleeper, instB set/clear with
+the archive note) plus two state-compared blocks: the new-passphrase re-wrap
+(registry bytes identical, written key ORDER identical, both sides'
+files unwrap under the new passphrase and refuse the old — the file can never
+byte-match, fresh salt/IV per wrap) and the planted-`minServerVersion` carry.
+`CaseOpts` gained `normalize_bak` (the backup stamp is the one run-time
+truth) and the child env scrubs `ENCRYPTION_MASTER_PEPPER`. Pure pieces
+unit-pinned: header classification, the backup-stamp shape, the
+`passphrase_changed` truth table, the node path helpers.
+
 #### 2026-08-27 — port(core): the .dbkey restore-key seams — raw read, tryDecrypt, carry-preserving write
 
 _Versions: core 0.0.699._

@@ -28,6 +28,7 @@ mod nodefmt;
 mod out;
 mod recall_replay_cmd;
 mod resolve;
+mod restore_key;
 mod vtable;
 
 const MAIN_HELP: &str = include_str!("help/main_help.txt");

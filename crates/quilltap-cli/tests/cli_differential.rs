@@ -68,6 +68,10 @@ struct CaseOpts<'a> {
     /// resolves its output path against the cwd, so those cases run in a
     /// scratch dir instead of the crate root.
     cwd: Option<PathBuf>,
+    /// P4.D133 `instances restore-key`: the `.dbkey` backup filename embeds a
+    /// millisecond ISO stamp (`quilltap.dbkey.bak-<stamp>`), and the two sides
+    /// run at different instants — collapse the stamp, keep everything else.
+    normalize_bak: bool,
 }
 
 struct RunOut {
@@ -140,6 +144,26 @@ fn normalize_reach(text: &str) -> String {
             None => out.push_str(line),
         }
     }
+    out
+}
+
+/// Replace the timestamp run after every `.bak-` with `<STAMP>` (the stamp is
+/// `toISOString()` with `:`/`.` mapped to `-`, so its alphabet is digits,
+/// `-`, `T`, `Z`).
+fn normalize_bak(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(pos) = rest.find(".bak-") {
+        let after = pos + ".bak-".len();
+        out.push_str(&rest[..after]);
+        let tail = &rest[after..];
+        let end = tail
+            .find(|c: char| !(c.is_ascii_digit() || c == '-' || c == 'T' || c == 'Z'))
+            .unwrap_or(tail.len());
+        out.push_str("<STAMP>");
+        rest = &tail[end..];
+    }
+    out.push_str(rest);
     out
 }
 
@@ -366,6 +390,7 @@ impl Ctx {
             .env_remove("QUILLTAP_DATA_DIR")
             .env_remove("QUILLTAP_DB_PASSPHRASE")
             .env_remove("QUILLTAP_QUIET_HINTS")
+            .env_remove("ENCRYPTION_MASTER_PEPPER")
             .env("HOME", self.live.join("home"))
             .env("TZ", "UTC")
             .stdin(if opts.stdin.is_some() {
@@ -438,6 +463,9 @@ impl Ctx {
             }
             if opts.normalize_reach {
                 text = normalize_reach(&text);
+            }
+            if opts.normalize_bak {
+                text = normalize_bak(&text);
             }
             text.into_bytes()
         };
@@ -3105,6 +3133,428 @@ fn cli_differential() {
         &["instances", "rename", "instA", "instb"],
     );
     ctx.case("instances rename usage", &["instances", "rename", "instA"]);
+
+    // ---------------- instances restore-key (P4.D133, v4 b121ac77f) --------
+    // The pepper never arrives as a flag: every arm feeds it through
+    // `ENCRYPTION_MASTER_PEPPER` (the child's stdin is never a TTY, so the
+    // hidden-prompt path rejects — its own arm below). Destructive arms are
+    // safe by construction: `reset_live` restores the whole tree before each
+    // side of each case.
+    {
+        /// A valid 32-byte base64 pepper that is NOT the fixture's.
+        const WRONG_PEPPER: &str = "d3JvbmdwZXBwZXJ3cm9uZ3BlcHBlcndyb25ncGVwMDE=";
+        let pepper_env = |v: &str| vec![("ENCRYPTION_MASTER_PEPPER", v.to_string())];
+        let restore = |rest: &[&str]| -> Vec<String> {
+            let mut v = vec!["instances".to_string(), "restore-key".to_string()];
+            v.extend(rest.iter().map(|s| s.to_string()));
+            v
+        };
+
+        // Happy path: registered instance, all three DBs encrypted, existing
+        // .dbkey holds the same pepper → rewrap + backup + cleared registry
+        // passphrase (instA never had one stored).
+        ctx.case_with(
+            "restore-key happy instA",
+            &restore(&["instA", "--no-passphrase", "--yes"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                normalize_bak: true,
+                ..Default::default()
+            },
+        );
+        // The alias verb.
+        ctx.case_with(
+            "restore-key rebuild-key alias",
+            &[
+                "instances".to_string(),
+                "rebuild-key".to_string(),
+                "instA".to_string(),
+                "--no-passphrase".to_string(),
+                "--yes".to_string(),
+            ],
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                normalize_bak: true,
+                ..Default::default()
+            },
+        );
+        // A valid-shaped pepper that opens nothing: per-file DOES NOT OPEN
+        // lines (the cross-engine byte risk — better-sqlite3's `file is not a
+        // database` vs rusqlite's) + the three-line refusal, exit 1.
+        ctx.case_with(
+            "restore-key wrong pepper refused",
+            &restore(&["instA"]),
+            CaseOpts {
+                envs: pepper_env(WRONG_PEPPER),
+                ..Default::default()
+            },
+        );
+        // Not even pepper-shaped: the 44-char warning fires, then the proof
+        // fails the same way.
+        ctx.case_with(
+            "restore-key not-a-pepper warning",
+            &restore(&["instA"]),
+            CaseOpts {
+                envs: pepper_env("abc"),
+                ..Default::default()
+            },
+        );
+        // No env pepper + non-TTY stdin → the hidden prompt refuses with
+        // db-helpers' exact (quirky) sentence; the lock still releases.
+        ctx.case(
+            "restore-key no pepper non-tty",
+            &["instances", "restore-key", "instA"],
+        );
+        ctx.case_with(
+            "restore-key unknown instance",
+            &restore(&["Ghost"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                ..Default::default()
+            },
+        );
+        ctx.case_with(
+            "restore-key name and data-dir",
+            &restore(&["instA", "--data-dir", "/x"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                ..Default::default()
+            },
+        );
+        ctx.case(
+            "restore-key unknown flag",
+            &["instances", "restore-key", "instA", "--frob"],
+        );
+        ctx.case(
+            "restore-key two positionals",
+            &["instances", "restore-key", "instA", "instB"],
+        );
+        ctx.case("restore-key usage", &["instances", "restore-key"]);
+        ctx.case_with(
+            "restore-key missing data dir",
+            &restore(&["--data-dir", "/no/such/path"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                ..Default::default()
+            },
+        );
+        // --data-dir accepts the data directory itself AND recovers the
+        // registered name from the registry scan…
+        ctx.case_with(
+            "restore-key data-dir data form",
+            &restore(&[
+                "--data-dir",
+                &format!("{inst_a}/data"),
+                "--no-passphrase",
+                "--yes",
+            ]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                normalize_bak: true,
+                ..Default::default()
+            },
+        );
+        // …and the instance root spelling lands identically.
+        ctx.case_with(
+            "restore-key data-dir root form",
+            &restore(&["--data-dir", &inst_a, "--no-passphrase", "--yes"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                normalize_bak: true,
+                ..Default::default()
+            },
+        );
+
+        // A fresh (empty) unregistered instance: nothing to prove against.
+        let fresh_pre = |live: &Path| {
+            std::fs::create_dir_all(live.join("fresh/data")).unwrap();
+        };
+        let fresh_dir = format!("{live_s}/fresh");
+        // Declined confirm (closed stdin reads as the default no) → Aborted.
+        ctx.case_with(
+            "restore-key unprovable declined",
+            &restore(&["--data-dir", &fresh_dir]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                pre: Some(Box::new(fresh_pre)),
+                ..Default::default()
+            },
+        );
+        // Accepted via piped `y` (+ --no-passphrase so the passphrase step
+        // never prompts) → a fresh .dbkey, no backup line, no registry line.
+        ctx.case_with(
+            "restore-key unprovable accepted",
+            &restore(&["--data-dir", &fresh_dir, "--no-passphrase"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                pre: Some(Box::new(fresh_pre)),
+                stdin: Some(b"y\n".to_vec()),
+                ..Default::default()
+            },
+        );
+        // --force skips that confirm on its own (no --yes on the line).
+        ctx.case_with(
+            "restore-key unprovable forced",
+            &restore(&["--data-dir", &fresh_dir, "--force", "--no-passphrase"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                pre: Some(Box::new(fresh_pre)),
+                ..Default::default()
+            },
+        );
+        // A still-plaintext database adds the two-line will-encrypt note.
+        let plaintext_pre = |live: &Path| {
+            std::fs::create_dir_all(live.join("fresh/data")).unwrap();
+            let mut bytes = b"SQLite format 3\0".to_vec();
+            bytes.extend_from_slice(&[0u8; 96]);
+            std::fs::write(live.join("fresh/data/quilltap.db"), bytes).unwrap();
+        };
+        ctx.case_with(
+            "restore-key plaintext note",
+            &restore(&["--data-dir", &fresh_dir, "--force", "--no-passphrase"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                pre: Some(Box::new(plaintext_pre)),
+                ..Default::default()
+            },
+        );
+
+        // The existing .dbkey holds a DIFFERENT pepper while the databases
+        // open with the offered one — the stale-file warning pair, gated by
+        // --yes (NOT by --force).
+        let stale_key_pre = |live: &Path| {
+            dbkey::save_dbkey(&live.join("instA/data"), WRONG_PEPPER, "").unwrap();
+        };
+        ctx.case_with(
+            "restore-key stale keyfile replaced",
+            &restore(&["instA", "--no-passphrase", "--yes"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                pre: Some(Box::new(stale_key_pre)),
+                normalize_bak: true,
+                ..Default::default()
+            },
+        );
+        ctx.case_with(
+            "restore-key stale keyfile declined",
+            &restore(&["instA"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                pre: Some(Box::new(stale_key_pre)),
+                stdin: Some(b"n\n".to_vec()),
+                ..Default::default()
+            },
+        );
+
+        // Lock contention: a live Quilltap-shaped process holds the lock →
+        // the write-lock refusal through the instances handler's
+        // `Error: <msg>` shape (unlike `db --write`, which prints it bare).
+        // Its own sleeper: the shared `sleeper_node` (60 s) is long dead by
+        // the time this section runs.
+        let mut sleeper_restore = Command::new(&ctx.node)
+            .args(["-e", "setTimeout(() => {}, 600000)"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn restore-key node sleeper");
+        let restore_lock_pid = sleeper_restore.id();
+        let lock_pre = {
+            let host = host.clone();
+            move |live: &Path| {
+                std::fs::write(
+                    live.join("instA/data/quilltap.lock"),
+                    lock_json(
+                        restore_lock_pid,
+                        &host,
+                        "local",
+                        &iso_minus_secs(600),
+                        vec![],
+                    ),
+                )
+                .unwrap();
+            }
+        };
+        ctx.case_with(
+            "restore-key lock contention",
+            &restore(&["instA", "--no-passphrase", "--yes"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                pre: Some(Box::new(lock_pre)),
+                ..Default::default()
+            },
+        );
+        let _ = sleeper_restore.kill();
+        let _ = sleeper_restore.wait();
+
+        // instB: passphrase-wrapped .dbkey, stored registry passphrase. The
+        // archive-bundle note fires on the both-set arm, and clearing prints
+        // the cleared sentence.
+        ctx.case_with(
+            "restore-key instB set passphrase",
+            &restore(&["instB", "--passphrase", "swordfish", "--yes"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                normalize_bak: true,
+                ..Default::default()
+            },
+        );
+        ctx.case_with(
+            "restore-key instB clear passphrase",
+            &restore(&["instB", "--yes"]),
+            CaseOpts {
+                envs: pepper_env(PEPPER),
+                normalize_bak: true,
+                ..Default::default()
+            },
+        );
+
+        // The write compared as STATE (the registry-round-trip pattern): the
+        // written `.dbkey` can never byte-match across sides — every wrap
+        // draws a fresh salt and IV — so file assertions go through the
+        // pinned v5 reader (decrypt-and-compare) plus the key-ORDER list,
+        // and the registry file byte-diffs as usual.
+        #[cfg(target_os = "macos")]
+        let reg_rel = "home/Library/Application Support/Quilltap/instances.json";
+        #[cfg(not(target_os = "macos"))]
+        let reg_rel = "home/.quilltap/instances.json";
+        let json_keys = |raw: &str| -> Vec<String> {
+            serde_json::from_str::<serde_json::Value>(raw)
+                .ok()
+                .and_then(|v| {
+                    v.as_object()
+                        .map(|o| o.keys().cloned().collect::<Vec<String>>())
+                })
+                .unwrap_or_default()
+        };
+
+        // (a) Re-wrap instB under a NEW passphrase: identical registry bytes,
+        // same written key order, and both files unwrap to the pepper under
+        // the new passphrase (and no longer under the old one).
+        {
+            ctx.cases_run += 1;
+            let args = restore(&["instB", "--passphrase", "newpass", "--yes"]);
+            let mk_opts = || CaseOpts {
+                envs: pepper_env(PEPPER),
+                normalize_bak: true,
+                ..Default::default()
+            };
+            let run_one = |ctx: &Ctx, v5: bool| -> (RunOut, String, String) {
+                let o = mk_opts();
+                ctx.reset_live(&o);
+                let out = if v5 {
+                    ctx.run_v5(&args, &o)
+                } else {
+                    ctx.run_v4(&args, &o)
+                };
+                let reg = std::fs::read_to_string(ctx.live.join(reg_rel)).unwrap();
+                let key =
+                    std::fs::read_to_string(ctx.live.join("instB/data/quilltap.dbkey")).unwrap();
+                (out, reg, key)
+            };
+            let (a, v4_reg, v4_key) = run_one(&ctx, false);
+            let (b, v5_reg, v5_key) = run_one(&ctx, true);
+            ctx.compare("restore-key instB new passphrase", &a, &b, &mk_opts());
+            if v4_reg != v5_reg {
+                ctx.failures.push(format!(
+                    "[restore-key instB new passphrase] registry differs\n--- v4 ---\n{v4_reg}\n--- v5 ---\n{v5_reg}"
+                ));
+            }
+            if json_keys(&v4_key) != json_keys(&v5_key) {
+                ctx.failures.push(format!(
+                    "[restore-key instB new passphrase] written .dbkey key order differs\nv4: {:?}\nv5: {:?}",
+                    json_keys(&v4_key),
+                    json_keys(&v5_key)
+                ));
+            }
+            for (side, raw) in [("v4", &v4_key), ("v5", &v5_key)] {
+                if dbkey::try_decrypt_pepper(raw, "newpass").as_deref() != Some(PEPPER) {
+                    ctx.failures.push(format!(
+                        "[restore-key instB new passphrase] {side} file does not unwrap to the pepper under the new passphrase"
+                    ));
+                }
+                if dbkey::try_decrypt_pepper(raw, PASSPHRASE_B).is_some() {
+                    ctx.failures.push(format!(
+                        "[restore-key instB new passphrase] {side} file still unwraps under the OLD passphrase"
+                    ));
+                }
+            }
+        }
+
+        // (b) The unknown-field carry: a `minServerVersion` planted the way
+        // v4's version guard writes it must survive the rebuild on BOTH
+        // sides, appended after the ten wrapper fields (v4
+        // `preserveExtraFields` order), and the rebuilt file still unwraps.
+        {
+            ctx.cases_run += 1;
+            let plant_pre = |live: &Path| {
+                let path = live.join("instA/data/quilltap.dbkey");
+                let mut obj: serde_json::Map<String, serde_json::Value> =
+                    serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+                obj.insert("minServerVersion".into(), serde_json::json!("9.9.9-test"));
+                std::fs::write(
+                    &path,
+                    serde_json::to_string_pretty(&serde_json::Value::Object(obj)).unwrap(),
+                )
+                .unwrap();
+            };
+            let args = restore(&["instA", "--no-passphrase", "--yes"]);
+            let mk_opts = || CaseOpts {
+                envs: pepper_env(PEPPER),
+                normalize_bak: true,
+                pre: Some(Box::new(plant_pre)),
+                ..Default::default()
+            };
+            let run_one = |ctx: &Ctx, v5: bool| -> (RunOut, String) {
+                let o = mk_opts();
+                ctx.reset_live(&o);
+                let out = if v5 {
+                    ctx.run_v5(&args, &o)
+                } else {
+                    ctx.run_v4(&args, &o)
+                };
+                let key =
+                    std::fs::read_to_string(ctx.live.join("instA/data/quilltap.dbkey")).unwrap();
+                (out, key)
+            };
+            let (a, v4_key) = run_one(&ctx, false);
+            let (b, v5_key) = run_one(&ctx, true);
+            ctx.compare("restore-key carries unknown fields", &a, &b, &mk_opts());
+            let expected_keys = [
+                "version",
+                "algorithm",
+                "kdf",
+                "kdfIterations",
+                "kdfDigest",
+                "salt",
+                "iv",
+                "ciphertext",
+                "authTag",
+                "pepperHash",
+                "minServerVersion",
+            ];
+            for (side, raw) in [("v4", &v4_key), ("v5", &v5_key)] {
+                if json_keys(raw) != expected_keys {
+                    ctx.failures.push(format!(
+                        "[restore-key carries unknown fields] {side} key order: {:?}",
+                        json_keys(raw)
+                    ));
+                }
+                let parsed: serde_json::Value = serde_json::from_str(raw).unwrap();
+                if parsed.get("minServerVersion") != Some(&serde_json::json!("9.9.9-test")) {
+                    ctx.failures.push(format!(
+                        "[restore-key carries unknown fields] {side} dropped the planted field"
+                    ));
+                }
+                if dbkey::try_decrypt_pepper(raw, dbkey::INTERNAL_PASSPHRASE).as_deref()
+                    != Some(PEPPER)
+                {
+                    ctx.failures.push(format!(
+                        "[restore-key carries unknown fields] {side} file does not unwrap"
+                    ));
+                }
+            }
+        }
+    }
 
     // ---------------- completion ----------------
     ctx.case("completion no args", &["completion"]);
