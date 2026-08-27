@@ -24,37 +24,48 @@ probe verifies against._
   last commit of the 4.9.0 release push), adopted at the 4.9.0-push round
   unification (2026-08-27, P4.D126 ∥ P4.D127 ∥ P4.D128 ∥ P4.D129 + the
   unification wires).
-- **Checked:** 2026-08-27 (a full `/driftcheck` — both branches by the §4
-  procedure, every new commit classified from its shipped hunks).
-- **v4 `main` HEAD at check:** `aec86a613` — **TWO commits past the
-  baseline**, one of them portable:
-  - `b6c6d7793` `docs(bugs): file bug 105` — this port's own upstream
-    filing, docs-only (`docs/developer/bugs.md` + the bug file), zero
-    lib/app/packages/plugins content. Carried in §3 as a NO-PORT? row so
-    the next baseline move ratifies it explicitly.
-  - `aec86a613` `feat(wardrobe): an outfit pull-down above the slot rows,
-    garments only in the slot pickers` — a **PORT-NEW** landing on two
-    already-ported SPA components plus a new pure module. Row in §3.
-- **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** since the last
-  check (the bare `bugfix: started 4.8.4 bug branch` fork marker,
-  2026-08-13); nothing new can have landed there. Its `main..bugfix`
-  commit list still shows the whole 4.7/4.8 lineage — that is the
-  documented squash-topology lie (§4 step 2), not unabsorbed content.
-- **Checkout at check:** branch `main`, tree **clean**.
-- **Verdict: DRIFT PENDING — 1 portable commit** (2 past the baseline;
-  `b6c6d7793` is docs-only). The fourteen-commit 4.9.0 block remains fully
-  absorbed/ratified (§6).
-- **Regen rule in force: PIN REQUIRED** — v4 HEAD is past the baseline, so
-  a regen run from the checkout would import `aec86a613`'s tree. Build a
-  lane-unique detached worktree at `8872d7efc` per §5.1 for **every**
-  oracle regen and fixture build until the baseline moves. (The checkout
-  itself is clean and on `main`, so the pin is the only precaution
-  needed.)
-- **Release shape:** still no `release: 4.9.0` squash and no
-  `bugfix: started 4.9.0 bug branch` fork — v4 is at `4.9.0-dev.89` and
-  developing on `main` alone. The standing expectation from the last two
-  checks holds: re-probe BOTH branches next time rather than assuming
-  `bugfix` stays inert.
+- **Checked:** 2026-08-27 (the mid-unify probe of the P4.D130/P4.62/P4.63/
+  P4.64 round — the probe FAILED against the morning's check, so the new
+  state is recorded here; both new commits classified from their hunks).
+- **v4 `main` HEAD at check:** `0bd841394` — **FOUR commits past the
+  baseline**:
+  - `b6c6d7793` `docs(bugs): file bug 105` — docs-only, this port's own
+    filing. NO-PORT? row in §3 (unchanged).
+  - `aec86a613` `feat(wardrobe): an outfit pull-down…` — PORT-NEW,
+    ORDERED(p4.d130); **the lane is finished and unifying now**. The lane's
+    v4-side runs all went through a detached `aec86a613` pin; when this
+    drift arrived mid-lane, a fresh pin was built and the vectors
+    re-recorded byte-identical (lane record in `status-log.md`).
+  - `679e450e3` `fix(import): one malformed connection profile no longer
+    aborts a whole .qtap import (bug 105)` — **CONVERGENCE** (v4 fixing
+    this port's own filing). Row in §3. ⚠ It lands the very divergence the
+    P4.63 lane's new `system_import_state` oracle arm pins — that arm is
+    divergence-aware BY DESIGN and will flip at the first regen from a pin
+    past this commit; retire it by measurement (§5.4) in the round that
+    absorbs this.
+  - `0bd841394` `fix(salon): Quilltap's own tooltips for the message
+    action bar and the verdict badge` — **PORT-NEW** (a new
+    `components/ui/Tooltip.tsx` portal component + the action bar's eleven
+    buttons and the pinnable answer-confirmation badge adopting it, style
+    + storybook + help riders). Row in §3.
+- **v4 `bugfix` tip at check:** `3a76b17df` — unmoved (the bare 4.8.4 fork
+  marker; the long `main..bugfix` list is the documented squash-topology
+  lie, §4 step 2).
+- **Checkout at check:** branch `main`, tree **DIRTY in `app/`** —
+  `app/salon/[id]/components/MessageRow.tsx` (M),
+  `app/salon/[id]/components/message-row/MessageDesktopActions.tsx` (D),
+  `app/styles/qt-components/_chat.css` (M): uncommitted in-progress salon
+  work, continuing `0bd841394`'s surface. **Any regen from the checkout is
+  poisoned twice over** (HEAD past baseline + dirty app tree).
+- **Verdict: DRIFT PENDING — 2 unprocessed portable commits**
+  (`679e450e3` CONVERGENCE, `0bd841394` PORT-NEW), with `aec86a613`
+  ORDERED and mid-unification.
+- **Regen rule in force: PIN REQUIRED** — lane-unique detached worktrees
+  per §5.1 for **every** oracle regen and fixture build: at `8872d7efc`
+  for pre-existing families, at `aec86a613` only for the P4.D130 drift
+  family whose spec that commit is.
+- **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
+  fork; v4 develops on `main` alone. Keep probing BOTH branches.
 
 ## §2 The freshness probe
 
@@ -95,6 +106,8 @@ when absorbed/ratified.
 |---|---|---|---|---|---|
 | `b6c6d7793` | 2026-08-27 | docs(bugs): file bug 105 — the legacy-field seeding sits outside the per-item try | NO-PORT? | none — `docs/developer/bugs.md` + the bug file only, and it is **this port's own filing** (raised by P4.D126 while porting `e000d6bfc`) | UNPROCESSED |
 | `aec86a613` | 2026-08-27 | feat(wardrobe): an outfit pull-down above the slot rows, garments only in the slot pickers | PORT-NEW | the SPA composer surface — `apps/web/src/app/wardrobe/outfit-composer.ts` + `equipped-slot-row.ts` (ported P4.9f2 unit 3, 2026-07-19; since touched by the hair slot P4.D87 and the container rounds P4.D112/P4.D113), the client bundle rule `apps/web/src/app/wardrobe/dissolve-bundles.ts` (P4.D72 unit 3) it builds on, and the composer's two hosts — the wardrobe dialog and the chat-start Starting Outfit panel (`screens/new-chat/outfit-selector.ts`). `help/wardrobe.md` banks to `p4.9i2`. | ORDERED(p4.d130) |
+| `679e450e3` | 2026-08-27 | fix(import): one malformed connection profile no longer aborts a whole .qtap import (bug 105) | CONVERGENCE | v5's `services/quilltap_import/profiles.rs` (never had the bug — the standing 2026-08-03 ruling; unit pin `a_non_string_provider_is_named_and_does_not_abort_the_import`) and **P4.63's new divergence-aware `system_import_state` oracle arm** (`import_aborts_on_non_string_provider` class — built to flip when v4 fixed this; retire by measurement at the round that moves the baseline past this commit, §5.4). v4 moved the seeding inside the per-item try + widened the guard past `??`. | UNPROCESSED |
+| `0bd841394` | 2026-08-27 | fix(salon): Quilltap's own tooltips for the message action bar and the verdict badge | PORT-NEW | a NEW `components/ui/Tooltip.tsx` (240 lines: body-portalled, 200 ms dwell / focus-immediate, flip + clamp, follows on scroll/resize, Escape, `pinnable`/`interactive`) + `MessageActionBar.tsx`'s eleven buttons with explicit aria-labels + the answer-confirmation badge as a real pinnable button with structured content — v5's salon message action bar (ported across the Salon rounds; the answer-confirmation badge from the P4.d drift re-ports). Style riders `_chat.css`/`_surfaces.css` + theme-storybook; `help/*` banks to `p4.9i2`. ⚠ The checkout's DIRTY files continue this surface — expect a follow-on commit before the next round plans. | UNPROCESSED |
 
 **`aec86a613` — what the hunks actually ship** (§5.3: classified from the
 diff, not the message). Client-only; no server verb, no schema, no wire

@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(drift): the mid-unify probe — v4 moved twice more and the checkout is dirty
+
+_Docs-only change._
+
+The four-lane round's unification probe failed against the morning's
+check: v4 main picked up `679e450e3` (a CONVERGENCE — v4 fixing bug 105,
+this port's own filing; it lands the very divergence P4.63's new
+`system_import_state` oracle arm pins, so that arm flips by design at the
+round that absorbs it) and `0bd841394` (PORT-NEW — a body-portalled
+`Tooltip.tsx` adopted by the message action bar's eleven buttons and the
+now-pinnable answer-confirmation badge), and the checkout went dirty in
+`app/salon/` with in-progress work continuing the same surface. Ledger §1
+and §3 updated; regen rule stays PIN REQUIRED.
+
 #### 2026-08-27 — docs(orders): the four-lane round — the `aec86a613` pull-down drift, the collapse pockets, the harness follow-ups, the systemHome profile
 
 _Docs-only change._
