@@ -233,6 +233,32 @@ one thing this can no longer do is fail the whole dashboard because of an
 error raised by a conversation nobody was going to see — a case these reads
 do not produce, since every read made for a discarded conversation is also
 made for the twelve that are kept.
+#### 2026-08-27 — port(wardrobe): the pull-down goes live; the slot pickers list garments only
+
+_Versions: SPA 0.5.589._
+
+The composer mounts the `Wear an outfit…` pull-down above the bundle cards and
+slot rows, and the per-slot `+` pickers now run their candidates through
+`selectGarments` first. A three-slot ensemble used to appear once per slot it
+covered, pushing the garments actually meant for the slot down the list; it now
+appears exactly once, in the pull-down. Single-slot composites are listed there
+too — it is their only route on. A multi-slot leaf (a dress typed
+`["top","bottom"]`) is not a composite and stays in the slot pickers. The dead
+`· composite` suffix is gone with them.
+
+No new equip path: `(wear)` emits the composer's existing `addToSlot` output, so
+the flag-driven rule the slot pickers already ran applies unchanged — an
+additive bundle layers, one marked `replace` sweeps its slots first, and either
+way it dissolves into components as it lands.
+
+The slot row still receives `allItems` whole; only the candidates are filtered.
+That is load-bearing and had no test until now: `groupEquippedSlots` promotes a
+composite to a bundle card only at two-or-more occupied slots, so a *one*-slot
+composite stays in the slot row and renders as a chip whose title comes from the
+same list the picker draws from. Narrowing at the composer instead — the obvious
+simplification — leaves every other spec green and makes that chip read
+"unknown"; a new composer spec was written red against exactly that mutation.
+
 #### 2026-08-27 — port(wardrobe): the "Wear an outfit…" pull-down component
 
 _Versions: SPA 0.5.588._

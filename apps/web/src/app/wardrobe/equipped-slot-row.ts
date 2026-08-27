@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output, signal } f
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { WARDROBE_SLOT_META } from './slot-meta';
+import { selectGarments } from './composed-outfits';
 
 /**
  * One slot in the dialog's "Wearing now" column (v4
@@ -96,8 +97,7 @@ import { WARDROBE_SLOT_META } from './slot-meta';
                   >
                     <span class="truncate text-sm text-foreground">{{ c.title }}</span>
                     <span class="qt-text-xs qt-text-secondary">
-                      {{ c.types.join(', ')
-                      }}{{ (c.componentItemIds ?? []).length > 0 ? ' · composite' : '' }}
+                      {{ c.types.join(', ') }}
                     </span>
                   </button>
                 </li>
@@ -113,7 +113,11 @@ export class EquippedSlotRow {
   readonly slot = input.required<WardrobeSlotType>();
   /** IDs currently in this slot (may include composites). */
   readonly equippedIds = input.required<string[]>();
-  /** All wardrobe items for the selected character (incl. archetypes). */
+  /**
+   * All wardrobe items for the selected character (incl. archetypes). Passed
+   * whole — equipped chips resolve their labels from it, including labels for
+   * composites the picker itself won't offer.
+   */
   readonly allItems = input.required<WardrobeItemDto[]>();
 
   readonly add = output<{ slot: WardrobeSlotType; itemId: string }>();
@@ -129,9 +133,7 @@ export class EquippedSlotRow {
     WARDROBE_SLOT_META[this.slot()].label.toLowerCase(),
   );
 
-  private readonly itemsById = computed(
-    () => new Map(this.allItems().map((i) => [i.id, i])),
-  );
+  private readonly itemsById = computed(() => new Map(this.allItems().map((i) => [i.id, i])));
 
   protected readonly equippedItems = computed(() =>
     this.equippedIds().map((id) => {
@@ -140,11 +142,19 @@ export class EquippedSlotRow {
     }),
   );
 
-  /** v4 `:90-97` — same-slot, not-equipped, title-filtered candidates. */
+  /**
+   * v4 `:82-90` — GARMENTS ONLY, then same-slot, not-equipped, title-filtered.
+   *
+   * `selectGarments` runs FIRST (v4 `aec86a613`): a three-slot ensemble used to
+   * appear once per slot it covered, burying the garments actually meant for
+   * the slot. Composites now have exactly one route on — the composer's
+   * `Wear an outfit…` pull-down — so a composite absent from this list is not
+   * unreachable, it is elsewhere.
+   */
   protected readonly candidates = computed(() => {
     const equipped = new Set(this.equippedIds());
     const term = this.search().trim().toLowerCase();
-    return this.allItems()
+    return selectGarments(this.allItems())
       .filter((i) => i.types.includes(this.slot()))
       .filter((i) => !equipped.has(i.id))
       .filter((i) => (term ? i.title.toLowerCase().includes(term) : true));
