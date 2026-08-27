@@ -236,6 +236,16 @@ impl<'c> ProjectsRepository<'c> {
         self.inner.find_all()
     }
 
+    /// Find a batch by id, each hydrated — the store-backed base's `findByIds`
+    /// (v4 `store-backed.repository.ts:101`). A row whose store is unavailable is
+    /// **dropped**, exactly as [`Self::find_all`] drops it, so the result may be
+    /// shorter than the input for either reason. This is the chat-list preload's
+    /// project batch: one read for every project a listed chat belongs to, in
+    /// place of a `find_by_id` per chat.
+    pub fn find_by_ids(&self, ids: &[String]) -> Result<Vec<Value>, OverlayError> {
+        self.inner.find_by_ids(ids)
+    }
+
     /// Delete the slim row (the official store is orphaned).
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
         self.inner.delete(id)
@@ -368,4 +378,111 @@ fn roster_patch(roster: Vec<String>) -> Map<String, Value> {
         Value::Array(roster.into_iter().map(Value::String).collect()),
     );
     patch
+}
+
+#[cfg(test)]
+mod find_by_ids_tests {
+    use super::*;
+    use rusqlite::params;
+
+    /// The MAIN-db slim table (`projects`), five columns.
+    fn main_db(rows: &[(&str, &str, Option<&str>)]) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE projects (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, \
+             officialMountPointId TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);",
+        )
+        .unwrap();
+        for (id, name, mount_point_id) in rows {
+            conn.execute(
+                "INSERT INTO projects (id, name, officialMountPointId, createdAt, updatedAt) \
+                 VALUES (?1, ?2, ?3, '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+                params![id, name, mount_point_id],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    /// The MOUNT-INDEX side: the three-table join the overlay reads, seeded with
+    /// one `properties.json` per named store.
+    fn mount_db(stores: &[&str]) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL);
+             CREATE TABLE doc_mount_documents (id TEXT PRIMARY KEY NOT NULL, \
+                fileId TEXT NOT NULL, content TEXT);
+             CREATE TABLE doc_mount_file_links (id TEXT PRIMARY KEY NOT NULL, \
+                fileId TEXT NOT NULL, mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL);",
+        )
+        .unwrap();
+        for mp in stores {
+            conn.execute(
+                "INSERT INTO doc_mount_files (id) VALUES (?1 || '-f')",
+                params![mp],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_documents (id, fileId, content) \
+                 VALUES (?1 || '-d', ?1 || '-f', '{\"color\":\"red\"}')",
+                params![mp],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath) \
+                 VALUES (?1 || '-l', ?1 || '-f', ?1, 'properties.json')",
+                params![mp],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    fn sorted_ids(rows: &[Value]) -> Vec<String> {
+        let mut out: Vec<String> = rows
+            .iter()
+            .map(|r| r["id"].as_str().unwrap().to_string())
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// The batch comes back hydrated (the property bag overlaid), an absent id is
+    /// simply missing, and a project whose store is unavailable is **dropped**
+    /// rather than raised — `find_all`'s semantics, not `find_by_id`'s.
+    #[test]
+    fn returns_hydrated_projects_and_drops_an_unavailable_store() {
+        let main = main_db(&[
+            ("p1", "One", Some("mp-1")),
+            ("p2", "Two", Some("mp-2")),
+            ("p3", "Three", None),
+        ]);
+        let mount = mount_db(&["mp-1", "mp-2"]);
+        let repo = ProjectsRepository::new(&main, &mount);
+
+        let rows = repo.find_by_ids(&ids(&["p1", "p3", "ghost"])).unwrap();
+        assert_eq!(sorted_ids(&rows), vec!["p1".to_string()]);
+        assert_eq!(rows[0]["name"], Value::from("One"));
+        // The store's own bytes win: `color` comes from `properties.json`, and the
+        // schema defaults are materialized alongside it.
+        assert_eq!(rows[0]["color"], Value::from("red"));
+        assert_eq!(rows[0]["allowAnyCharacter"], Value::from(false));
+        assert_eq!(rows[0]["backgroundDisplayMode"], Value::from("theme"));
+        // …the same entity `find_by_id` hydrates one at a time.
+        assert_eq!(rows[0], repo.find_by_id("p1").unwrap().unwrap());
+    }
+
+    #[test]
+    fn empty_input_answers_empty() {
+        let main = main_db(&[("p1", "One", Some("mp-1"))]);
+        let mount = mount_db(&["mp-1"]);
+        assert!(ProjectsRepository::new(&main, &mount)
+            .find_by_ids(&[])
+            .unwrap()
+            .is_empty());
+    }
 }

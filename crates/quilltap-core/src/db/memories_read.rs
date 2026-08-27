@@ -49,6 +49,7 @@ use serde_json::{Map, Value};
 
 use super::js_number_to_json;
 use super::DbError;
+use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::embedding_blob::blob_to_float32;
 
 /// All `memories` columns in schema order (indices 0..=24 in [`marshal_row`]).
@@ -880,26 +881,34 @@ pub fn count_by_source_message_ids(conn: &Connection, ids: &[String]) -> Result<
 
 /// `countByChatIds` — single GROUP BY; returns `{ chatId: count }` (chats with
 /// zero memories absent), as a JSON object for differential comparison.
+///
+/// ⚠ v4 does **not** chunk this read (only its two memories-delete sites feed
+/// `lib/utils/chunk.ts`). The chunking is the P4.65 scale-safety measure taken
+/// after P4.D126 measured a 40,000-id batch failing with "too many SQL
+/// variables", and it is invisible in the output: [`chunk_array`] partitions the
+/// input, so **each chatId lands in exactly one chunk** and the per-chunk objects
+/// have disjoint keys. It matters now because this read is about to gain its
+/// first production caller — the chat-list preload, which passes every chat id on
+/// the instance (861+ on the real Friday data).
 pub fn count_by_chat_ids(conn: &Connection, chat_ids: &[String]) -> Result<Value, DbError> {
     let mut m = Map::new();
     if chat_ids.is_empty() {
         return Ok(Value::Object(m));
     }
-    let placeholders = (0..chat_ids.len())
-        .map(|_| "?")
-        .collect::<Vec<_>>()
-        .join(", ");
-    let params: Vec<&dyn ToSql> = chat_ids.iter().map(|s| s as &dyn ToSql).collect();
-    let sql = format!(
-        "SELECT chatId, COUNT(*) AS c FROM memories WHERE chatId IN ({placeholders}) GROUP BY chatId"
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params.as_slice(), |r| {
-        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
-    })?;
-    for r in rows {
-        let (chat, count) = r?;
-        m.insert(chat, Value::from(count));
+    for chunk in chunk_array(chat_ids, SQLITE_VARIABLE_CHUNK_SIZE) {
+        let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+        let params: Vec<&dyn ToSql> = chunk.iter().map(|s| s as &dyn ToSql).collect();
+        let sql = format!(
+            "SELECT chatId, COUNT(*) AS c FROM memories WHERE chatId IN ({placeholders}) GROUP BY chatId"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params.as_slice(), |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+        })?;
+        for r in rows {
+            let (chat, count) = r?;
+            m.insert(chat, Value::from(count));
+        }
     }
     Ok(Value::Object(m))
 }
@@ -988,5 +997,82 @@ mod tests {
         assert_eq!(utf16_len("abc"), 3);
         assert_eq!(utf16_len("é"), 1);
         assert_eq!(utf16_len("😀"), 2); // astral → surrogate pair
+    }
+
+    // ── `count_by_chat_ids` (P4.65: chunked) ────────────────────────────────
+
+    /// Only the two columns this GROUP BY names.
+    fn count_scratch(rows: &[(&str, &str)]) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("CREATE TABLE memories (id TEXT PRIMARY KEY, chatId TEXT);")
+            .unwrap();
+        for (id, chat_id) in rows {
+            conn.execute(
+                "INSERT INTO memories (id, chatId) VALUES (?1, ?2)",
+                rusqlite::params![id, chat_id],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn chat_ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    /// The counts are per chat, and a chat with no memories is **absent** from
+    /// the object (the GROUP BY emits no row for it) — as is an unknown id.
+    #[test]
+    fn count_by_chat_ids_counts_present_chats_only() {
+        let conn = count_scratch(&[
+            ("m1", "chatA"),
+            ("m2", "chatA"),
+            ("m3", "chatB"),
+            ("m4", "chatC"),
+        ]);
+        let out = count_by_chat_ids(&conn, &chat_ids(&["chatA", "chatB", "ghost"])).unwrap();
+        assert_eq!(out["chatA"], Value::from(2));
+        assert_eq!(out["chatB"], Value::from(1));
+        assert!(out.get("ghost").is_none(), "a chat with no rows is absent");
+        assert!(
+            out.get("chatC").is_none(),
+            "an unqueried chat is never counted"
+        );
+        assert_eq!(out.as_object().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn count_by_chat_ids_empty_input_is_an_empty_object() {
+        let conn = count_scratch(&[("m1", "chatA")]);
+        let out = count_by_chat_ids(&conn, &[]).unwrap();
+        assert_eq!(out, Value::Object(Map::new()));
+    }
+
+    /// The P4.65 chunking, in the P4.D126 idiom: 40,000 ids is past the engine's
+    /// 32,766 ceiling, so an un-chunked `IN (…)` fails with "too many SQL
+    /// variables". The three real chats sit in three different chunk regions, so
+    /// a port that only ran the first chunk would lose two of them — and because
+    /// the chunks partition the input, the merged object's keys are disjoint.
+    #[test]
+    fn count_by_chat_ids_chunks_past_the_variable_limit() {
+        let conn = count_scratch(&[
+            ("m1", "chatA"),
+            ("m2", "chatA"),
+            ("m3", "chatB"),
+            ("m4", "chatC"),
+            ("m5", "chatC"),
+            ("m6", "chatC"),
+        ]);
+        let mut batch: Vec<String> = (0..40_000).map(|i| format!("ghost-{i}")).collect();
+        batch[0] = "chatA".to_string();
+        batch[SQLITE_VARIABLE_CHUNK_SIZE] = "chatB".to_string();
+        batch[39_999] = "chatC".to_string();
+
+        let out = count_by_chat_ids(&conn, &batch)
+            .expect("a chunked count_by_chat_ids must not hit the variable limit");
+        assert_eq!(out["chatA"], Value::from(2));
+        assert_eq!(out["chatB"], Value::from(1));
+        assert_eq!(out["chatC"], Value::from(3));
+        assert_eq!(out.as_object().unwrap().len(), 3);
     }
 }

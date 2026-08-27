@@ -118,6 +118,23 @@ P4.D128 coverage guard now enforces the five new flags; a mutation dropping
 `--no-passphrase` from the fish template reddens it (proven, restored).
 `--force` cannot discriminate template-wide because `docs` already carries it —
 v4's own guard coarseness, recorded in the lane record.
+#### 2026-08-27 — port(db): the four batched read paths for the chat-list preload (P4.65)
+
+_Versions: core 0.0.699._
+
+The substrate for v4's `ChatListPreloaded` batching: `files::find_by_ids`,
+the generic store-backed `find_by_ids`/`find_by_ids_raw` (hydrated form
+drops unavailable-store rows, per v4) with `projects::find_by_ids` on top,
+`doc_mount_file_links::find_by_ids_with_content` (first-occurrence id
+dedup, per v4), and `conversation_chunks::count_by_chat_ids` (the GROUP BY
+twin of `count_stats_by_chat_id`). Every new `IN (…)` — plus the existing
+`memories_read::count_by_chat_ids`, which gains its first production
+caller — is chunked at the 900-id budget (`chunk::chunk_array`; v4 does
+not chunk these reads — a scale-safety measure invisible in output, after
+P4.D126's 40,000-id "too many SQL variables" failure). Twenty unit tests
+beside the twins, including a past-the-32,766-variable-ceiling chunking
+proof per site; un-chunking all five sites reddened exactly those five
+proofs.
 
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
 

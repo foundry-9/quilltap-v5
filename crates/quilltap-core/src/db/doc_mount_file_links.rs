@@ -66,6 +66,7 @@ use sha2::{Digest, Sha256};
 
 use super::like_escape::{like_contains_pattern, LIKE_ESCAPE_CHAR};
 use super::DbError;
+use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::clock::now_iso;
 use crate::services::mount_index::document_text_search::EDITABLE_TEXT_FILE_TYPES;
 
@@ -1850,6 +1851,49 @@ impl<'c> DocMountFileLinksRepository<'c> {
             })
     }
 
+    /// v4 `findByIdsWithContent(ids)` (`doc-mount-file-links.repository.ts:566`) —
+    /// the batched twin of [`Self::find_by_id_with_content`]. v4's own words
+    /// (`:562-565`): "Returns one query result per unique id — duplicates and
+    /// missing ids are squashed. Used by the chat-list enrichment hot path so we
+    /// don't fan out per-character avatar lookups across hundreds of chats."
+    ///
+    /// So the ids are **deduped first** (v4's `Array.from(new Set(ids))`, which
+    /// keeps first-occurrence order), and an id with no link is simply absent.
+    /// Empty input → `[]` without a statement. Result order is per-chunk
+    /// SQL-natural and unobservable — the caller keys the rows by link id.
+    ///
+    /// ⚠ v4 does **not** chunk this read (only its two memories-delete sites feed
+    /// `lib/utils/chunk.ts`). The chunking is the P4.65 scale-safety measure taken
+    /// after P4.D126 measured a 40,000-id batch failing with "too many SQL
+    /// variables"; it is invisible in the output.
+    pub fn find_by_ids_with_content(
+        &self,
+        ids: &[String],
+    ) -> Result<Vec<LinkWithContent>, DbError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // v4's `new Set` — first occurrence wins, later duplicates dropped.
+        let mut seen = std::collections::HashSet::new();
+        let unique: Vec<&String> = ids.iter().filter(|id| seen.insert(id.as_str())).collect();
+
+        let mut out = Vec::new();
+        for chunk in chunk_array(&unique, SQLITE_VARIABLE_CHUNK_SIZE) {
+            let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = LINK_WITH_CONTENT_SELECT.replace(
+                "WHERE l.id = ?1",
+                &format!("WHERE l.id IN ({placeholders})"),
+            );
+            let params: Vec<&dyn ToSql> = chunk.iter().map(|s| *s as &dyn ToSql).collect();
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params.as_slice(), map_link_with_content)?
+                .collect::<Result<Vec<_>, _>>()?;
+            out.extend(rows);
+        }
+        Ok(out)
+    }
+
     /// v4 `findByFileId(fileId)` in the with-content shape — every link whose
     /// `fileId` matches, joined with the file-row content fields. The W4.4b
     /// `loadMountFileAsAttachment` mount-fallback path reads `[0]` (v4 treats the
@@ -3096,5 +3140,131 @@ mod search_tests {
         assert!(repo
             .search_by_name_or_path("manifesto", &mps(&["mp-1"]), 200)
             .is_empty());
+    }
+}
+
+#[cfg(test)]
+mod find_by_ids_with_content_tests {
+    use super::*;
+
+    /// The two tables [`LINK_WITH_CONTENT_SELECT`] joins, in the shapes
+    /// `generateDDL` emits for them (only the columns that SELECT names).
+    fn scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL, sha256 TEXT NOT NULL,
+                fileSizeBytes REAL, fileType TEXT NOT NULL, source TEXT NOT NULL);
+             CREATE TABLE doc_mount_file_links (
+                id TEXT PRIMARY KEY NOT NULL, fileId TEXT NOT NULL,
+                mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL,
+                fileName TEXT NOT NULL, originalFileName TEXT, originalMimeType TEXT,
+                extractedText TEXT, createdAt TEXT NOT NULL, description TEXT,
+                conversionStatus TEXT NOT NULL, plainTextLength REAL, linkGroupId TEXT);",
+        )
+        .unwrap();
+        conn
+    }
+
+    /// One content row + one link pointing at it, keyed off the link id.
+    fn link(conn: &Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source) \
+             VALUES (?1 || '-f', ?1 || '-sha', 12, 'markdown', 'upload')",
+            params![id],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName, \
+             createdAt, conversionStatus) \
+             VALUES (?1, ?1 || '-f', 'mp-1', 'a/' || ?1 || '.md', ?1 || '.md', \
+             '2020-01-01T00:00:00.000Z', 'converted')",
+            params![id],
+        )
+        .unwrap();
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    fn sorted_ids(rows: &[LinkWithContent]) -> Vec<String> {
+        let mut out: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+        out.sort();
+        out
+    }
+
+    /// The present ids come back joined with their content fields; a missing id
+    /// is simply absent.
+    #[test]
+    fn returns_only_the_ids_that_exist() {
+        let conn = scratch();
+        link(&conn, "l1");
+        link(&conn, "l2");
+        link(&conn, "l3");
+        let repo = DocMountFileLinksRepository::new(&conn);
+
+        let rows = repo
+            .find_by_ids_with_content(&ids(&["l1", "ghost", "l3"]))
+            .unwrap();
+        assert_eq!(sorted_ids(&rows), vec!["l1".to_string(), "l3".to_string()]);
+        // …the same projection the single-row twin returns.
+        let one = repo.find_by_id_with_content("l1").unwrap().unwrap();
+        let batched = rows.iter().find(|r| r.id == "l1").unwrap();
+        assert_eq!(batched.sha256, one.sha256);
+        assert_eq!(batched.file_size_bytes, one.file_size_bytes);
+        assert_eq!(batched.file_type, one.file_type);
+        assert_eq!(batched.relative_path, one.relative_path);
+    }
+
+    /// v4's `Array.from(new Set(ids))` — "one query result per unique id", so a
+    /// repeated id yields exactly one row, not two.
+    #[test]
+    fn duplicate_ids_are_squashed() {
+        let conn = scratch();
+        link(&conn, "l1");
+        let rows = DocMountFileLinksRepository::new(&conn)
+            .find_by_ids_with_content(&ids(&["l1", "l1", "l1"]))
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, "l1");
+    }
+
+    /// v4's `if (ids.length === 0) return []` — answered without a statement.
+    #[test]
+    fn empty_input_answers_empty() {
+        let conn = scratch();
+        link(&conn, "l1");
+        assert!(DocMountFileLinksRepository::new(&conn)
+            .find_by_ids_with_content(&[])
+            .unwrap()
+            .is_empty());
+    }
+
+    /// The P4.65 chunking, in the P4.D126 idiom: 40,000 ids is past the engine's
+    /// 32,766 ceiling, so an un-chunked `IN (…)` fails with "too many SQL
+    /// variables". The real ids sit in three different chunk regions, so a port
+    /// that only ran the first chunk would miss two of them. (The dedup runs
+    /// first, so the chunk boundaries are the *unique* list's.)
+    #[test]
+    fn chunks_past_the_variable_limit() {
+        let conn = scratch();
+        link(&conn, "l1");
+        link(&conn, "l2");
+        link(&conn, "l3");
+        let repo = DocMountFileLinksRepository::new(&conn);
+
+        let mut batch: Vec<String> = (0..40_000).map(|i| format!("ghost-{i}")).collect();
+        batch[0] = "l1".to_string();
+        batch[SQLITE_VARIABLE_CHUNK_SIZE] = "l2".to_string();
+        batch[39_999] = "l3".to_string();
+
+        let rows = repo
+            .find_by_ids_with_content(&batch)
+            .expect("a chunked find_by_ids_with_content must not hit the variable limit");
+        assert_eq!(
+            sorted_ids(&rows),
+            vec!["l1".to_string(), "l2".to_string(), "l3".to_string()],
+            "every chunk's rows are concatenated into one result"
+        );
     }
 }

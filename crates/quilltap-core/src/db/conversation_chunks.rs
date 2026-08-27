@@ -64,6 +64,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
+use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::embedding_blob::{blob_to_float32, float32_to_blob};
 
 /// Fields for creating a conversation chunk (the `Omit<ConversationChunk,'id'|
@@ -218,7 +219,8 @@ impl<'c> ConversationChunksRepository<'c> {
     /// `conversationChunks.findByChatId(chatId)` then `chunks.length` /
     /// `chunks.filter(c => c.embedding != null).length`). One `COUNT` for the total
     /// plus a `COUNT WHERE embedding IS NOT NULL` for the embedded count — the same
-    /// numbers the batched `countByChatIds` GROUP BY yields. Read-only.
+    /// numbers its batched twin [`Self::count_by_chat_ids`] gets from one GROUP BY.
+    /// Read-only.
     pub fn count_stats_by_chat_id(&self, chat_id: &str) -> Result<(i64, i64), DbError> {
         let total: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM conversation_chunks WHERE chatId = ?1",
@@ -231,6 +233,58 @@ impl<'c> ConversationChunksRepository<'c> {
             |r| r.get(0),
         )?;
         Ok((total, embedded))
+    }
+
+    /// v4 `countByChatIds(chatIds)` (`conversation-chunks.repository.ts:75`) — the
+    /// `(total, embedded)` chunk counts for many chats in **one GROUP BY**, so the
+    /// chat-list enrichment derives Scriptorium status without an N+1 walk of
+    /// [`Self::count_stats_by_chat_id`]. Empty input → an empty map, and a chat
+    /// with **zero chunks is absent from the map** (a `GROUP BY` emits no row for
+    /// it) — exactly v4, whose callers read the miss as `{ total: 0, embedded: 0 }`.
+    ///
+    /// `embedded` is `SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END)`,
+    /// which SQL leaves NULL for an empty group; v4 carries that with
+    /// `Number(r.embedded ?? 0)`, so it is read here as an `Option<i64>` and
+    /// defaulted to 0 rather than assumed non-null.
+    ///
+    /// ⚠ v4 does **not** chunk this read (only its two memories-delete sites feed
+    /// `lib/utils/chunk.ts`). The chunking is the P4.65 scale-safety measure taken
+    /// after P4.D126 measured a 40,000-id batch failing with "too many SQL
+    /// variables". Merging the chunks is safe without any per-key arithmetic
+    /// because [`chunk_array`] partitions the input: **each chatId lands in
+    /// exactly one chunk**, so no key can be produced twice.
+    pub fn count_by_chat_ids(
+        &self,
+        chat_ids: &[String],
+    ) -> Result<std::collections::HashMap<String, (i64, i64)>, DbError> {
+        let mut out: std::collections::HashMap<String, (i64, i64)> =
+            std::collections::HashMap::new();
+        if chat_ids.is_empty() {
+            return Ok(out);
+        }
+        for chunk in chunk_array(chat_ids, SQLITE_VARIABLE_CHUNK_SIZE) {
+            let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = format!(
+                "SELECT chatId, COUNT(*) AS total, \
+                        SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) AS embedded \
+                 FROM conversation_chunks WHERE chatId IN ({placeholders}) GROUP BY chatId"
+            );
+            let params: Vec<&dyn ToSql> = chunk.iter().map(|s| s as &dyn ToSql).collect();
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt.query_map(params.as_slice(), |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    // v4's `r.embedded ?? 0` — the SUM is NULL for an empty group.
+                    r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+                ))
+            })?;
+            for row in rows {
+                let (chat_id, total, embedded) = row?;
+                out.insert(chat_id, (total, embedded));
+            }
+        }
+        Ok(out)
     }
 
     /// v4 `findAllWithEmbeddings` = `_findAll()` filtered to a non-null, non-empty
@@ -608,5 +662,102 @@ impl<'c> ConversationChunksRepository<'c> {
                 other => Err(other),
             })?;
         Ok(found.is_some())
+    }
+}
+
+#[cfg(test)]
+mod count_by_chat_ids_tests {
+    use super::*;
+
+    /// Only the columns this GROUP BY names, in their `generateDDL` affinities.
+    fn scratch(rows: &[(&str, &str, bool)]) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE conversation_chunks (id TEXT PRIMARY KEY, chatId TEXT, \
+             embedding BLOB);",
+        )
+        .unwrap();
+        for (id, chat_id, embedded) in rows {
+            let blob: Option<Vec<u8>> = embedded.then(|| float32_to_blob(&[0.5]));
+            conn.execute(
+                "INSERT INTO conversation_chunks (id, chatId, embedding) VALUES (?1, ?2, ?3)",
+                params![id, chat_id, blob],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    /// The `(total, embedded)` pair per chat; a chat with no chunks — queried or
+    /// not — is **absent** from the map, exactly as the GROUP BY leaves it.
+    #[test]
+    fn counts_totals_and_embedded_per_chat() {
+        let conn = scratch(&[
+            ("c1", "chatA", true),
+            ("c2", "chatA", false),
+            ("c3", "chatA", true),
+            ("c4", "chatB", false),
+            ("c5", "chatC", true),
+        ]);
+        let repo = ConversationChunksRepository::new(&conn);
+
+        let out = repo
+            .count_by_chat_ids(&ids(&["chatA", "chatB", "ghost"]))
+            .unwrap();
+        assert_eq!(out.get("chatA"), Some(&(3, 2)));
+        assert_eq!(
+            out.get("chatB"),
+            Some(&(1, 0)),
+            "a group with no embeddings sums to 0, never NULL"
+        );
+        assert_eq!(out.get("ghost"), None, "a chat with no chunks is absent");
+        assert_eq!(out.get("chatC"), None, "an unqueried chat is never counted");
+        assert_eq!(out.len(), 2);
+        // …and the batched numbers are the single-chat twin's numbers.
+        assert_eq!(repo.count_stats_by_chat_id("chatA").unwrap(), (3, 2));
+        assert_eq!(repo.count_stats_by_chat_id("chatB").unwrap(), (1, 0));
+    }
+
+    #[test]
+    fn empty_input_is_an_empty_map() {
+        let conn = scratch(&[("c1", "chatA", true)]);
+        assert!(ConversationChunksRepository::new(&conn)
+            .count_by_chat_ids(&[])
+            .unwrap()
+            .is_empty());
+    }
+
+    /// The P4.65 chunking, in the P4.D126 idiom: 40,000 ids is past the engine's
+    /// 32,766 ceiling, so an un-chunked `IN (…)` fails with "too many SQL
+    /// variables". The three seeded chats sit in three different chunk regions —
+    /// a port that only ran the first chunk would lose two of them — and since
+    /// the chunks partition the input, no chatId is counted twice.
+    #[test]
+    fn chunks_past_the_variable_limit() {
+        let conn = scratch(&[
+            ("c1", "chatA", true),
+            ("c2", "chatA", false),
+            ("c3", "chatB", false),
+            ("c4", "chatC", true),
+            ("c5", "chatC", true),
+        ]);
+        let repo = ConversationChunksRepository::new(&conn);
+
+        let mut batch: Vec<String> = (0..40_000).map(|i| format!("ghost-{i}")).collect();
+        batch[0] = "chatA".to_string();
+        batch[SQLITE_VARIABLE_CHUNK_SIZE] = "chatB".to_string();
+        batch[39_999] = "chatC".to_string();
+
+        let out = repo
+            .count_by_chat_ids(&batch)
+            .expect("a chunked count_by_chat_ids must not hit the variable limit");
+        assert_eq!(out.get("chatA"), Some(&(2, 1)));
+        assert_eq!(out.get("chatB"), Some(&(1, 0)));
+        assert_eq!(out.get("chatC"), Some(&(2, 2)));
+        assert_eq!(out.len(), 3);
     }
 }

@@ -10,7 +10,7 @@
 //! needs — `addLink` (attach an entity to a file) and `addTag` (the inherited
 //! `TaggableBaseRepository.addTag`, tagging a generated image with its character
 //! so it surfaces in the gallery). The remaining custom query helpers —
-//! `findByIds`, `findBySha256`, `findByCategory`, `findByFolder*`, `removeLink`,
+//! `findByCategory`, `findByFolder*`, `removeLink`,
 //! `removeTag`, etc. — are out of scope here. v4's `update` strips `id` and
 //! `createdAt` before `_update`, which is a no-op for this port since we preserve
 //! both anyway.
@@ -63,6 +63,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
+use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 
 /// Fields for creating a file entry (the `Omit<FileEntry,'id'|timestamps>`
 /// shape). `linkedTo`/`tags` are the two JSON array columns; `size` is the REAL
@@ -571,6 +572,40 @@ impl<'c> FilesRepository<'c> {
         Ok(row)
     }
 
+    /// v4 `findByIds(ids)` (`files.repository.ts:27`) — the batched twin of
+    /// [`Self::find_by_id`]: one `WHERE id IN (…)` read where the caller would
+    /// otherwise fan out a lookup per id. An empty input answers `[]` without
+    /// touching the DB, and an id with no row is simply absent from the result
+    /// (v4's "may be shorter than input if some IDs don't exist").
+    ///
+    /// Its consumer is the **chat-list enrichment preload**, which resolves every
+    /// listed chat's avatar/attachment file rows in one pass and immediately keys
+    /// them into a map — so the result **order is unobservable** and none is
+    /// promised: rows come back in each chunk's SQL-natural order.
+    ///
+    /// ⚠ v4 does **not** chunk this read (only its two memories-delete sites feed
+    /// `lib/utils/chunk.ts`). The chunking here is the scale-safety measure the
+    /// P4.65 order mandates after P4.D126 measured a 40,000-id batch failing with
+    /// "too many SQL variables"; because the rows are consumed as a map it is
+    /// invisible in the output.
+    pub fn find_by_ids(&self, ids: &[String]) -> Result<Vec<FileEntry>, DbError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut out = Vec::new();
+        for chunk in chunk_array(ids, SQLITE_VARIABLE_CHUNK_SIZE) {
+            let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = format!("{FILE_ENTRY_SELECT_ALL} WHERE id IN ({placeholders})");
+            let params: Vec<&dyn ToSql> = chunk.iter().map(|s| s as &dyn ToSql).collect();
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(params.as_slice(), map_file_entry)?
+                .collect::<Result<Vec<_>, _>>()?;
+            out.extend(rows);
+        }
+        Ok(out)
+    }
+
     /// v4 `findByStorageKey(storageKey)` — the file row at a storage key (the
     /// files-proxy route's lookup, `files/proxy/[...key]/route.ts:60`). `None`
     /// when absent.
@@ -1029,5 +1064,102 @@ mod file_entry_tests {
     fn select_columns_stay_in_lockstep() {
         assert!(FILE_ENTRY_SELECT.contains(FILE_ENTRY_COLUMNS));
         assert!(FILE_ENTRY_SELECT_ALL.contains(FILE_ENTRY_COLUMNS));
+    }
+}
+
+#[cfg(test)]
+mod find_by_ids_tests {
+    use super::*;
+
+    /// The [`FILE_ENTRY_COLUMNS`] projection only — the columns this read names,
+    /// in the affinities `generateDDL` gives them (`size`/`width`/`height` REAL).
+    fn scratch() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE files (id TEXT PRIMARY KEY, sha256 TEXT, originalFilename TEXT, \
+             mimeType TEXT, size REAL, width REAL, height REAL, category TEXT, \
+             generationPrompt TEXT, generationModel TEXT, generationRevisedPrompt TEXT, \
+             description TEXT, storageKey TEXT);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn seed(conn: &Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO files (id, sha256, originalFilename, mimeType, size, category, \
+             storageKey) VALUES (?1, ?1 || '-sha', ?1 || '.webp', 'image/webp', 3, 'IMAGE', \
+             'k/' || ?1)",
+            params![id],
+        )
+        .unwrap();
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| (*s).to_string()).collect()
+    }
+
+    fn sorted_ids(rows: &[FileEntry]) -> Vec<String> {
+        let mut out: Vec<String> = rows.iter().map(|r| r.id.clone()).collect();
+        out.sort();
+        out
+    }
+
+    /// The present ids come back hydrated; the absent one is simply missing
+    /// (v4's "may be shorter than input").
+    #[test]
+    fn returns_only_the_ids_that_exist() {
+        let conn = scratch();
+        seed(&conn, "f1");
+        seed(&conn, "f2");
+        seed(&conn, "f3");
+        let repo = FilesRepository::new(&conn);
+
+        let rows = repo.find_by_ids(&ids(&["f1", "ghost", "f3"])).unwrap();
+        assert_eq!(sorted_ids(&rows), vec!["f1".to_string(), "f3".to_string()]);
+        // …and each row carries the same projection the single-row twin returns.
+        let one = repo.find_by_id("f1").unwrap().unwrap();
+        let batched = rows.iter().find(|r| r.id == "f1").unwrap();
+        assert_eq!(batched.sha256, one.sha256);
+        assert_eq!(batched.storage_key, one.storage_key);
+        assert_eq!(batched.size, 3);
+    }
+
+    /// v4's `if (ids.length === 0) return []` — answered without a statement.
+    #[test]
+    fn empty_input_answers_empty() {
+        let conn = scratch();
+        seed(&conn, "f1");
+        assert!(FilesRepository::new(&conn)
+            .find_by_ids(&[])
+            .unwrap()
+            .is_empty());
+    }
+
+    /// The P4.65 chunking, in the P4.D126 idiom: 40,000 ids is past the engine's
+    /// 32,766 ceiling, so an un-chunked `IN (…)` fails with "too many SQL
+    /// variables". The real ids sit in three different chunk regions, so a port
+    /// that only ran the first chunk would miss two of them.
+    #[test]
+    fn chunks_past_the_variable_limit() {
+        let conn = scratch();
+        seed(&conn, "f1");
+        seed(&conn, "f2");
+        seed(&conn, "f3");
+        let repo = FilesRepository::new(&conn);
+
+        let mut batch: Vec<String> = (0..40_000).map(|i| format!("ghost-{i}")).collect();
+        batch[0] = "f1".to_string();
+        batch[SQLITE_VARIABLE_CHUNK_SIZE] = "f2".to_string();
+        batch[39_999] = "f3".to_string();
+
+        let rows = repo
+            .find_by_ids(&batch)
+            .expect("a chunked find_by_ids must not hit the variable limit");
+        assert_eq!(
+            sorted_ids(&rows),
+            vec!["f1".to_string(), "f2".to_string(), "f3".to_string()],
+            "every chunk's rows are concatenated into one result"
+        );
     }
 }
