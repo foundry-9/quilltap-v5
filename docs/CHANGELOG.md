@@ -104,6 +104,32 @@ seeds a memory on a character the user does not own (so it survives the
 wipe) whose `relatedMemoryIds` points at a doomed row, and asserts the edge
 is scrubbed. That only happens through the chokepoint. Mutation-proven:
 restoring the per-row loop leaves the edge dangling and the test fails.
+#### 2026-08-26 — fix(z-ai): drop the builder's private vision list so GLM 5.3 receives images (bug 104)
+
+_Versions: core 0.0.689, harness 0.0.593._
+
+Ports v4 `964ffb959` (Z.AI plugin 1.1.24). The Z.AI request builder kept its
+own list of which GLM models read pictures, matching only ids with a `v`
+immediately after the generation number (`glm-4.6v`, `glm-5v`). Z.AI's 5.3
+line reads images without one, so `glm-5.3-flash` failed the regex and every
+attachment was dropped before the wire with "Selected Z.AI model does not
+support image input" — while the connection profile's `supportsImageUpload`
+flag had already asserted the opposite and suppressed the describe-fallback.
+The character never saw the picture, and the attachment-failure warning fired
+on every turn that followed.
+
+`is_zai_vision_model` and the refusal branch of `zai_user_content` are gone,
+along with the now-unused model argument; the MIME check and the missing-data
+check are the only remaining ways an attachment can fail. This restores bug
+91's rule — whether the model reads images is the host's question, answered by
+`supportsImageUpload`; whether the transport can send them is the builder's,
+answered by the MIME list — and matches the shape NanoGPT took at P4.D106.
+
+The proof is the committed request-envelopes corpus, regenerated from a v4
+worktree pinned at `8872d7efc`: the two `image-attachment-non-vision` rows
+flipped red-first (v5 produced the text-only body v4 no longer produces), a
+new `image-attachment-glm-5-3` pair records the model that named the bug, and
+all 339 other rows are byte-identical.
 
 #### 2026-08-26 — docs(porting): four work orders for the 4.9.0-push catch-up round — all fourteen drift rows ordered
 

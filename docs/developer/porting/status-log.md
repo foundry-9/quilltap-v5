@@ -90021,3 +90021,56 @@ Versions: core 0.0.691, harness 0.0.594. No other crate touched; `apps/web` not
 touched, so no SPA gate.
 
 **Commits:** `732f785b` (unit 1), `f0b7223f` (unit 2), `c6dc3811` (unit 3).
+---
+
+## P4.D127 — the provider/cheap-LLM drift lane (`964ffb959` ∥ `8872d7efc` ∥ `21f573039`)
+
+Branch `claude/p4-d127-cheapllm-drift-f2bf46`. Baseline `f3892158d`; the
+round's target baseline (and this lane's pin) is **`8872d7efc`**. Drift-ledger
+§2 freshness probe run at lane start — PASS (branch `main`, tree clean, both
+logs empty). Pin: `/tmp/qt-v4-pin-p4d127-8872d7efc`, all three symlink classes.
+
+### Unit 1 — bug 104: the Z.AI builder sheds its private vision list (`964ffb959`)
+
+v4's plugin 1.1.24 deletes `VISION_MODEL_PATTERNS`, `isVisionModel`, and the
+`modelSupportsVision` refusal branch of `buildUserContent`; `formatMessages`
+loses its now-unused `model` parameter. **v5 measurably HAD the bug** —
+`is_zai_vision_model` at `chat_completions.rs:54-67`, the sentence at `:106`,
+the gate at `:864`.
+
+**Red-first, measured.** The corpus was regenerated from the pin BEFORE any v5
+source moved, and `request_builder_equivalence` failed on
+`Z_AI/image-attachment-non-vision[stream]`: v5 built a text-only parts array
+where v4 now builds `text` + `image_url`. The fix (the three deletions + v4's
+replacement why-comment, carried whole) turns it green.
+
+**The corpus diff — the lane's real proof, and the round's first slice of
+`dcab791c2` neutrality evidence.** The pin tree also carries `dcab791c2`'s
+claimed-neutral provider-wire dedup (`@quilltap/plugin-utils` 2.5.0 sharing one
+`buildRequestBody`, nanogpt 1.1.1, ollama 1.0.46), so every byte in this regen
+is evidence either way. Measured, row-keyed by (provider, mode, case):
+
+- **339 pre-existing rows byte-identical** (all nine providers, both modes) —
+  no other byte moved, so the dedup sweep is wire-neutral across this corpus.
+- **2 rows changed**, exactly the two `964ffb959` moves: `z-ai`
+  `image-attachment-non-vision` in both modes — `attachmentResults` goes from
+  `{sent: [], failed: [{… "Selected Z.AI model does not support image input…"}]}`
+  to `{sent: ["att-img-1"], failed: []}` and the `image_url` part appears.
+- **2 rows added**: `z-ai/image-attachment-glm-5-3` in both modes
+  (`glm-5.3-flash` + the same image attachment) — the model that named the bug.
+- Changed-bytes greps: the refusal sentence is now **absent from the whole
+  corpus** (0 hits, was 2); `image-attachment-glm-5-3` present twice. 341 → 343
+  rows.
+
+**Recorded non-changes.** v4 left the Z.AI manifest's
+`attachmentSupport.description` ("requires a vision model (e.g. glm-4.5v,
+glm-4.6v)") untouched in `964ffb959` — verified in the pin tree's `index.ts`
+and `index.js`. v5's generated manifest keeps those bytes; a v5-side "fix"
+would be an invention. The `zai_user_content` doc-comment says so, naming the
+sha.
+
+**💸 bookkeeping.** The drift ledger's §1 note is discharged: the banked
+dogfood item *"the Z.AI refusal sentence"* is RETIRED — the sentence no longer
+exists on either side and cannot be provoked. Its replacement, banked as a new
+queue row: **a `glm-5.3-*` attachment reaching the real Z.AI wire as
+`image_url`** (the live twin of the new corpus row).

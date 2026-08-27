@@ -51,30 +51,32 @@ const OPENROUTER_IMAGE_MIME_TYPES: &[&str] =
 /// same plugin object, so the pair cannot drift silently.
 const NANOGPT_IMAGE_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
 
-/// v4 Z.AI `isVisionModel` (`VISION_MODEL_PATTERNS`: `/^glm-\d+(\.\d+)?v/i`,
-/// `/^glm-5v/i`, `/^autoglm-phone/i` — the second is subsumed by the first;
-/// kept as written).
-fn is_zai_vision_model(model: &str) -> bool {
-    use std::sync::LazyLock;
-    static PATTERNS: LazyLock<Vec<regex::Regex>> = LazyLock::new(|| {
-        vec![
-            regex::Regex::new(r"(?i)^glm-\d+(\.\d+)?v").unwrap(),
-            regex::Regex::new(r"(?i)^glm-5v").unwrap(),
-            regex::Regex::new(r"(?i)^autoglm-phone").unwrap(),
-        ]
-    });
-    PATTERNS.iter().any(|re| re.is_match(model))
-}
-
 /// v4 Z.AI `buildUserContent`: no attachments → the plain string; otherwise a
 /// content-parts ARRAY (text + `image_url` parts), even when every attachment
-/// fails — the non-vision / no-data arms still switch the wire shape to an
-/// array (pinned by the `image-attachment-non-vision` vector).
-fn zai_user_content(
-    msg: &StreamMessage,
-    model_supports_vision: bool,
-    results: &mut StreamAttachmentResults,
-) -> Value {
+/// fails — the unsupported-MIME / no-data arms still switch the wire shape to
+/// an array (pinned by the `image-attachment-non-vision` vector, whose model id
+/// no longer decides anything; see below).
+///
+/// v4's why-comment, carried (plugin 1.1.24, `964ffb959`, bug 104): the plugin
+/// deliberately does NOT keep its own list of which GLM models read pictures.
+/// It kept one until 1.1.24, matching only ids with a `v` immediately after the
+/// generation (`glm-4.6v`, `glm-5v`) — and `glm-5.3-flash` reads images without
+/// one, so every attachment sent to it was dropped with "does not support image
+/// input" while the host had already asserted the opposite. That is bug 91's
+/// shape exactly, and the fix is bug 91's fix: one question, one answer. The
+/// host has already made the call — a connection profile only carries image
+/// attachments this far when its `supportsImageUpload` flag is set, and when it
+/// isn't, the describe-fallback has replaced the bytes with text long before
+/// the request is built. So an attachment arriving here means the operator has
+/// asserted this model reads images, and the plugin's job is to send it. The
+/// MIME check and the missing-data check are the only remaining failure arms —
+/// the shape NanoGPT's twin above has carried since P4.D106.
+///
+/// NB v4 left the Z.AI manifest's `attachmentSupport.description` ("requires a
+/// vision model (e.g. glm-4.5v, glm-4.6v)") untouched in `964ffb959`, so v5's
+/// generated manifest keeps those bytes too — stale prose in v4 itself, not a
+/// v5 transcription slip.
+fn zai_user_content(msg: &StreamMessage, results: &mut StreamAttachmentResults) -> Value {
     let atts = msg.attachments();
     if atts.is_empty() {
         return json!(msg.content());
@@ -96,14 +98,6 @@ fn zai_user_content(
                     "Unsupported file type: {mime}. Z.AI supports: {}",
                     Z_AI_SUPPORTED_MIME_TYPES.join(", ")
                 ),
-            );
-            continue;
-        }
-        if !model_supports_vision {
-            att_fail(
-                results,
-                a,
-                "Selected Z.AI model does not support image input. Use a vision model such as glm-4.5v or glm-4.6v.",
             );
             continue;
         }
@@ -861,9 +855,8 @@ fn zai_supports_reasoning_effort(model: &str) -> bool {
 }
 
 pub fn build_zai_body(input: &RequestInput, results: &mut StreamAttachmentResults) -> Value {
-    let vision = is_zai_vision_model(&input.model);
     let messages = chat_messages(&input.messages, true, true, &mut |m| {
-        zai_user_content(m, vision, results)
+        zai_user_content(m, results)
     });
     let mut b = base_body(input, messages);
     b.set_opt("stop", stop_value(input));

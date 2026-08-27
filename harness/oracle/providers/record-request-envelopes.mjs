@@ -341,15 +341,27 @@ function casesFor(provider) {
     add('profile-effort-unsupported-model', { ...base, model: 'glm-4.6', profileParameters: { reasoning_effort: 'high', thinking: 'disabled' } });
     add('profile-effort-supported-model', { ...base, model: 'glm-5.2', profileParameters: { reasoning_effort: 'low' } });
     add('profile-params-skips', { ...base, model: 'glm-5.2', profileParameters: { thinking: '', do_sample: null, reasoning_effort: 'medium', model: 'HIJACKED', messages: [], stream: false, tools: [] } });
-    // P4.21 — the vision-model gate: a vision model gets image_url parts; a
-    // non-vision model still switches to a parts ARRAY but reports the failure.
+    // P4.21 — the parts-array shape: an attachment switches the user content
+    // from a plain string to a parts ARRAY. (Until plugin 1.1.24 this pair was
+    // the vision-model GATE; v4 `964ffb959` deleted the plugin's private vision
+    // list — bug 104 — so the model id no longer decides anything here and both
+    // rows now carry image_url. See `image-attachment-non-vision` below.)
     add('image-attachment-vision', { ...base, model: 'glm-4.6v', messages: [SYS, USER_IMG] });
     // P4.D107 — `attachmentToImageUrl` prefers a remote `url` over inline data.
     // Found by mutation while porting NanoGPT's twin: no corpus bag carried a
     // `url` at all, so this arm was unpinned for EVERY image-serialising
     // provider (a swapped precedence stayed green tree-wide).
     add('image-attachment-url-wins', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'Look.', attachments: [IMG_ATT_URL_AND_DATA] }] });
+    // P4.D127 (v4 bug 104, `964ffb959`) — the FLIPPED row. `glm-4.6` has no `v`
+    // after its generation, so the plugin's old `VISION_MODEL_PATTERNS` refused
+    // it with "Selected Z.AI model does not support image input" while the
+    // host's `supportsImageUpload` had already suppressed the describe-fallback.
+    // Plugin 1.1.24 deletes the list: the bytes now reach the wire.
     add('image-attachment-non-vision', { ...base, model: 'glm-4.6', messages: [SYS, USER_IMG] });
+    // P4.D127 — the model that NAMED the bug. `glm-5.3-flash` reads images
+    // without a `v` in its id; this is the row whose live twin replaces the
+    // retired "Z.AI refusal sentence" dogfood proof.
+    add('image-attachment-glm-5-3', { ...base, model: 'glm-5.3-flash', messages: [SYS, USER_IMG] });
     add('attachment-no-data', { ...base, model: 'glm-4.6v', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }] });
   } else if (provider === 'openrouter') {
     add('tools', { ...base, model: 'openai/gpt-4o', tools: [TOOL] });
