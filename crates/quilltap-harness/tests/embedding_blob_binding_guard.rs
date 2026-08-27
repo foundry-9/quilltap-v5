@@ -24,8 +24,9 @@
 //! claim executable:
 //!
 //! 1. **No registry may grow back.** Nothing under `crates/` may name a
-//!    blob-column registration mechanism (the sole allowed hit is the doc
-//!    comment in `db/help_docs.rs` that quotes this very grep).
+//!    blob-column registration mechanism *in code* — anywhere, with no
+//!    exceptions — and the only place allowed to name it in PROSE is the
+//!    censused line of `db/help_docs.rs` that quotes this very grep.
 //! 2. **Every embedding-bearing module still encodes at the binding site.**
 //!    Each module owning a table with an `embedding` column references
 //!    `float32_to_blob(` — the needle carries its paren so that a module
@@ -34,6 +35,15 @@
 //!    the encode in any of them and this reddens.
 //! 3. **One encoder, not several.** `float32_to_blob` is defined exactly once,
 //!    so "the single source of truth" is a fact rather than a comment.
+//!
+//! ⚠ [P4.63] Both censuses used to be plain substring counts over the whole
+//! file, which made each of them looser than it read: the registry arm skipped
+//! `help_docs.rs` ENTIRELY (so a real registration mechanism could have grown
+//! inside the one module that explains why none may exist), and the encode arm
+//! counted a mention in a doc comment as a call site (so an encode could be
+//! deleted while a comment kept the census green). Both are now split by
+//! [`count_hits`] into CODE and COMMENT hits, and the file-wide skip is a
+//! per-site census with exact counts.
 //!
 //! Sibling pins: `embedding_blob`'s own round-trip tests (the byte format),
 //! `legacy_embedding_equivalence` (read-side recovery for genuinely old v4
@@ -49,9 +59,39 @@ use std::path::{Path, PathBuf};
 /// port of it would be called.
 const REGISTRY_NEEDLES: &[&str] = &["register_blob", "blob_columns", "BLOB_COLUMNS"];
 
-/// The one file allowed to name the mechanism: its header quotes the grep as
-/// part of recording why the bug has no v5 analog.
-const REGISTRY_ALLOWED: &str = "crates/quilltap-core/src/db/help_docs.rs";
+/// `(repo-relative path, needle, expected COMMENT occurrences, why)`.
+///
+/// ⚠ [P4.63] This was a whole-FILE exemption (`help_docs.rs` skipped entirely),
+/// which excused far more than the site it exists for: a real
+/// `register_blob_columns()` mechanism could have grown inside that very file —
+/// the one module whose header explains why no such mechanism may exist —
+/// and this guard would have said nothing. The allowance is now per SITE, in
+/// the `db_error_key_guard` idiom: an exact count, on an exact needle, in an
+/// exact file, and only ever in PROSE.
+///
+/// The rule that needs no census: **a CODE hit is refused everywhere**,
+/// help_docs.rs included. A comment may quote the grep; nothing may call it.
+const REGISTRY_ALLOWED: &[(&str, &str, usize, &str)] = &[
+    (
+        "crates/quilltap-core/src/db/help_docs.rs",
+        "register_blob",
+        1,
+        "the module header quotes this very grep as part of recording why v4's \
+         unregistered-blob-column bug has no v5 analog",
+    ),
+    (
+        "crates/quilltap-core/src/db/help_docs.rs",
+        "blob_columns",
+        1,
+        "same header line — the grep names all three spellings at once",
+    ),
+    (
+        "crates/quilltap-core/src/db/help_docs.rs",
+        "BLOB_COLUMNS",
+        1,
+        "same header line — the grep names all three spellings at once",
+    ),
+];
 
 /// `(module, minimum `float32_to_blob` references, which table it owns)`.
 ///
@@ -116,6 +156,77 @@ fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// A needle's occurrences, split by where they sit.
+#[derive(Default, PartialEq, Eq, Debug)]
+struct Hits {
+    code: usize,
+    comment: usize,
+}
+
+/// Count `needle` in `text`, separating CODE hits from COMMENT hits.
+///
+/// ⚠ [P4.63] The censuses used to be a bare `text.matches(needle).count()`, so
+/// a mention in a doc comment satisfied them — an encode site could be deleted
+/// and the census stay green as long as some comment still said the words. That
+/// is the vacuity this exists to close: `ENCODE_CENSUS` now counts CODE hits
+/// only, and `REGISTRY_ALLOWED` allows COMMENT hits only.
+///
+/// A hit is a COMMENT hit when it sits inside a `/* … */` block (nesting
+/// counted, as Rust allows) or when its own line carries a `//` at any earlier
+/// column. That second rule is deliberately syntactic rather than a full lexer:
+/// the one way it can be wrong is a `//` inside a string literal *before* the
+/// needle on the same line, which would demote a code hit to a comment hit —
+/// i.e. it under-counts CODE, which REDDENS the encode census rather than
+/// silently passing it. Failing loud is the direction this guard wants.
+fn count_hits(text: &str, needle: &str) -> Hits {
+    let mut hits = Hits::default();
+    let mut block_depth = 0usize;
+    for line in text.lines() {
+        let mut line_comment = false;
+        let mut i = 0usize;
+        while i < line.len() {
+            let rest = &line[i..];
+            if block_depth > 0 {
+                if rest.starts_with("*/") {
+                    block_depth -= 1;
+                    i += 2;
+                    continue;
+                }
+                if rest.starts_with("/*") {
+                    block_depth += 1;
+                    i += 2;
+                    continue;
+                }
+            } else if !line_comment {
+                if rest.starts_with("/*") {
+                    block_depth += 1;
+                    i += 2;
+                    continue;
+                }
+                if rest.starts_with("//") {
+                    line_comment = true;
+                    i += 2;
+                    continue;
+                }
+            }
+            if rest.starts_with(needle) {
+                if block_depth > 0 || line_comment {
+                    hits.comment += 1;
+                } else {
+                    hits.code += 1;
+                }
+                i += needle.len();
+                continue;
+            }
+            i += 1;
+            while i < line.len() && !line.is_char_boundary(i) {
+                i += 1;
+            }
+        }
+    }
+    hits
+}
+
 fn rel_of(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .expect("under the repo root")
@@ -139,24 +250,63 @@ fn all_sources(root: &Path) -> Vec<PathBuf> {
 fn no_blob_column_registry_grows_back() {
     let root = repo_root();
     let mut failures: Vec<String> = Vec::new();
+    let mut seen: Vec<(String, String, usize)> = Vec::new();
 
     for path in all_sources(&root) {
         let rel = rel_of(&root, &path);
-        if rel == SELF || rel == REGISTRY_ALLOWED {
+        if rel == SELF {
             continue;
         }
         let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
         for needle in REGISTRY_NEEDLES {
-            if text.contains(needle) {
+            let hits = count_hits(&text, needle);
+            // A CALL SITE is refused everywhere — there is no censused file for
+            // this arm, help_docs.rs included.
+            if hits.code > 0 {
                 failures.push(format!(
-                    "{rel}: names `{needle}`. v5 has no blob-column registry and \
-                     must not grow one — an embedding is encoded at its binding \
-                     site via `float32_to_blob`, which is why v4's \
-                     JSON-text-embedding bug (pinned v4-side by `487ae57fe`) has \
-                     no analog here. Do not add a registration mechanism in \
-                     order to have something to register."
+                    "{rel}: {} CODE site(s) naming `{needle}`. v5 has no \
+                     blob-column registry and must not grow one — an embedding \
+                     is encoded at its binding site via `float32_to_blob`, \
+                     which is why v4's JSON-text-embedding bug (pinned v4-side \
+                     by `487ae57fe`) has no analog here. Do not add a \
+                     registration mechanism in order to have something to \
+                     register.",
+                    hits.code
                 ));
             }
+            if hits.comment == 0 {
+                continue;
+            }
+            seen.push((rel.clone(), (*needle).to_string(), hits.comment));
+            match REGISTRY_ALLOWED
+                .iter()
+                .find(|(p, n, ..)| *p == rel && *n == *needle)
+            {
+                None => failures.push(format!(
+                    "{rel}: names `{needle}` in prose ({} hit(s)) outside the \
+                     census. Explaining the mechanism is allowed only where the \
+                     absence of it is being recorded; add the site here with its \
+                     reason, or drop the mention.",
+                    hits.comment
+                )),
+                Some((_, _, expected, why)) if hits.comment != *expected => failures.push(format!(
+                    "{rel}: {} prose mention(s) of `{needle}`, census says \
+                         {expected}. The allowance is per site, not per file \
+                         ({why}) — re-count it or drop the new mention.",
+                    hits.comment
+                )),
+                Some(_) => {}
+            }
+        }
+    }
+
+    for (rel, needle, expected, why) in REGISTRY_ALLOWED {
+        if !seen.iter().any(|(p, n, _)| p == rel && n == needle) {
+            failures.push(format!(
+                "{rel}: census expects {expected} prose mention(s) of \
+                 `{needle}`, found none. If the explanation moved, move the \
+                 census with it ({why})."
+            ));
         }
     }
 
@@ -180,10 +330,12 @@ fn every_embedding_table_encodes_at_the_binding_site() {
                  census with it"
             )
         });
-        let count = text.matches("float32_to_blob(").count();
+        // CODE hits only: a doc comment saying `float32_to_blob(` is not an
+        // encode, and before P4.63 it counted as one.
+        let count = count_hits(&text, "float32_to_blob(").code;
         if count < *minimum {
             failures.push(format!(
-                "{rel}: {count} `float32_to_blob(` call site(s), census expects at \
+                "{rel}: {count} `float32_to_blob(` CALL site(s), census expects at \
                  least {minimum}. `{table}` carries an `embedding` column; a \
                  write that does not encode through `float32_to_blob` is the \
                  shape v4's unregistered blob column used to persist."
@@ -210,11 +362,10 @@ fn float32_to_blob_has_exactly_one_definition() {
         }
         let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
         // `float32_to_blob_raw` is a distinct, deliberately-kept encoder (the
-        // headerless legacy format); only the canonical name is counted.
-        for line in text.lines() {
-            if line.contains("fn float32_to_blob(") {
-                sites.push(rel.clone());
-            }
+        // headerless legacy format); only the canonical name is counted — and
+        // only where it is DECLARED, never where a comment names it.
+        for _ in 0..count_hits(&text, "fn float32_to_blob(").code {
+            sites.push(rel.clone());
         }
     }
 
@@ -224,4 +375,69 @@ fn float32_to_blob_has_exactly_one_definition() {
         "`float32_to_blob` must have exactly one definition — it is the single \
          source of truth for the on-disk embedding encoding"
     );
+}
+
+/// The classifier is load-bearing for both censuses, so it is pinned rather
+/// than trusted: every shape the walk has to get right, in one place.
+#[test]
+fn the_hit_classifier_separates_code_from_comment() {
+    let cases: &[(&str, Hits)] = &[
+        (
+            "let x = float32_to_blob(v);",
+            Hits {
+                code: 1,
+                comment: 0,
+            },
+        ),
+        (
+            "// float32_to_blob(v) used to live here",
+            Hits {
+                code: 0,
+                comment: 1,
+            },
+        ),
+        (
+            "//! see float32_to_blob(",
+            Hits {
+                code: 0,
+                comment: 1,
+            },
+        ),
+        (
+            "let x = float32_to_blob(v); // float32_to_blob( again",
+            Hits {
+                code: 1,
+                comment: 1,
+            },
+        ),
+        (
+            "/* float32_to_blob(\n   float32_to_blob( */ float32_to_blob(v)",
+            Hits {
+                code: 1,
+                comment: 2,
+            },
+        ),
+        (
+            "/* outer /* inner float32_to_blob( */ still comment float32_to_blob( */ float32_to_blob(v)",
+            Hits {
+                code: 1,
+                comment: 2,
+            },
+        ),
+        // Multi-byte text on the line must not desync the byte walk.
+        (
+            "// ⚠ float32_to_blob( — banked\nlet y = float32_to_blob(w);",
+            Hits {
+                code: 1,
+                comment: 1,
+            },
+        ),
+    ];
+    for (text, want) in cases {
+        assert_eq!(
+            &count_hits(text, "float32_to_blob("),
+            want,
+            "input: {text:?}"
+        );
+    }
 }

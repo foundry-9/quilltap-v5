@@ -81,6 +81,34 @@ One escalation, recorded not fixed: a wrong-typed `tagId` (`[{"tagId": 5}]`) is
 carried by v4 into `linkedTo` as the raw value, where v5 drops it. Closing it
 needs `Request::FileUpload.tags` widened past `Vec<String>` in
 `quilltap-core/src/api/types.rs`, outside this lane's ownership.
+#### 2026-08-27 — test(harness): narrow the blob-registry exemption to per-site and make both censuses comment-aware
+
+_Versions: harness 0.0.599._
+
+Two precision gaps in `embedding_blob_binding_guard`, both of which made the
+guard looser than it read.
+
+`REGISTRY_ALLOWED` was a whole-FILE skip of `db/help_docs.rs`, so a real
+`register_blob_columns()` could have grown inside the one module whose header
+explains why no such mechanism may exist. It is now a per-site census —
+`(path, needle, expected COMMENT count, why)` — and a CODE hit is refused
+everywhere, help_docs.rs included: a comment may quote the grep, nothing may
+call it.
+
+Both censuses were bare `text.matches(needle).count()`, so a mention in a doc
+comment counted as a call site — an encode could be deleted while a comment
+kept the census green. A new `count_hits` splits CODE from COMMENT hits
+(`/* … */` nesting counted; a `//` earlier on the line demotes the hit) and is
+itself pinned by a seven-case table including nested blocks and a multi-byte
+line. Its one failure direction is deliberate and documented: it under-counts
+CODE, which reddens rather than passes.
+
+Mutation-proven with the vacuity measured, not argued: a real
+`fn register_blob_columns(…)` in help_docs.rs and a `memories.rs` whose two
+encodes are respelled `float32_to_blob (v)` beside a comment naming
+`float32_to_blob(` both pass the old guard and redden the new one; a second
+prose mention of `register_blob` is refused by the per-site count.
+
 #### 2026-08-27 — test(cheap-llm): bind the abandonment-warn assert to its own line and exact target
 
 _Versions: core 0.0.697._
