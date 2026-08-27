@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — refactor(backup): route the full-wipe memory deletion through the memory-gate chokepoint
+
+_Versions: core 0.0.689, harness 0.0.593._
+
+Ports v4 `914b59e13` (P4.D126 unit 1). `delete_user_data` deleted memories
+with a per-row `MemoriesRepository::delete` loop — the last direct bypass of
+the deletion chokepoint. It now collects every doomed id across the user's
+characters into one list and makes a single
+`delete_many_with_unlink` call. v4's why-comment is carried: with the whole
+corpus in one doomed set the neighbour scrub is a no-op (every candidate is
+itself doomed), so the batch degrades to per-character bulk deletes instead
+of N per-row statements.
+
+The tier-2 count-map differential is blind to the routing by design — both
+shapes delete exactly the same rows — so the pin is behavioural and lives
+beside the family: `delete_all_routes_memory_deletion_through_the_chokepoint`
+seeds a memory on a character the user does not own (so it survives the
+wipe) whose `relatedMemoryIds` points at a doomed row, and asserts the edge
+is scrubbed. That only happens through the chokepoint. Mutation-proven:
+restoring the per-row loop leaves the edge dangling and the test fails.
+
 #### 2026-08-26 — docs(porting): four work orders for the 4.9.0-push catch-up round — all fourteen drift rows ordered
 
 _Docs-only change._

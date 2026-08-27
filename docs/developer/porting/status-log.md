@@ -89694,3 +89694,51 @@ until they are ratified. **💸 the dogfood queue gains:** the chips
 counting a real inline generation, a `startedByKind` pulse, pushed
 invalidation with polling verified parked, the terminal same-origin
 refusal live, and the "Fallback polling (5s)" toggle.
+
+## Lane record — P4.D126 (the `8872d7efc` memory/backup drift: the full-wipe chokepoint, the SQLite variable-limit chunking, bug 103's legacy profile columns)
+
+**Order:** `docs/developer/porting/work-orders/p4.d126-memory-wipe-batch-bug103.md`.
+**Branch:** `claude/p4-memory-wipe-batch-bug-7e4c36`.
+**Baseline at lane start:** `f3892158d`; **regen pin:** `8872d7efc` (the
+round's target baseline), lane-unique detached worktree at
+`/tmp/qt-v4-pin-p4d126-8872d7efc`. Drift-ledger §2 freshness probe run at
+lane start: **PASS** (branch `main`, tree clean, no commits past
+`8872d7efc`, `bugfix` unmoved at `3a76b17df`).
+
+### Unit 1 — `914b59e13`, the full-wipe deletion chokepoint
+
+v4's `deleteUserData` collected each character's memories and deleted them
+one row at a time through `repos.memories.delete` — the last direct bypass
+of `deleteMemoriesWithUnlinkBatch`. `914b59e13` collects every doomed id
+into one `memoryIds` array and makes ONE batch call, with v4's why-comment:
+with the whole corpus in one doomed set the neighbour scrub is a no-op
+(every candidate is itself doomed), so the batch degrades to per-character
+bulk deletes instead of the per-row loop.
+
+v5's twin is `services/delete_all.rs`'s step 2, now
+`memories.delete_many_with_unlink(&memory_ids)` over ids accumulated across
+`characters`.
+
+**The differential is BLIND to this by design**, and the lane says so rather
+than pretending otherwise: `system_delete_data_equivalence` diffs a row-COUNT
+map, and both routings delete exactly the same rows. v4 pins the routing by
+mocking the repository and asserting the direct delete is never hit; Rust has
+no repository to mock, so the pin here is **behavioural**, over the one
+observable the chokepoint adds — the neighbour scrub.
+
+`delete_all_routes_memory_deletion_through_the_chokepoint` (unconditional, no
+env var, beside the family in `system_delete_data_equivalence.rs`) seeds two
+memories into a fresh copy of the committed `system-data-*` fixture: one on a
+character the test user owns (doomed) and one on a `characterId` no character
+row carries, so the wipe never collects it — it SURVIVES the wipe and is a
+neighbour, its `relatedMemoryIds` pointing at the doomed row. After
+`delete_data` the survivor must still be there with an EMPTY link array.
+
+**Mutation proof:** restoring the per-row `memories.delete(&memory_id)` loop
+leaves the survivor at `["dd000000-…-d1"]` and the test fails with that
+message; restoring the chokepoint call makes it green again.
+
+Family re-run at the pin: `system_delete_data_equivalence` 2/2 (9 oracle
+cases + the new wiring pin), oracle regenerated fresh from the pinned
+worktree through `harness/tools/recipe_sweep.py --run
+system_delete_data_equivalence --v4 /tmp/qt-v4-pin-p4d126-8872d7efc`.

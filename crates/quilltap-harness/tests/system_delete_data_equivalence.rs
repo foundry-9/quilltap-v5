@@ -316,3 +316,115 @@ fn system_delete_data_matches_oracle() {
     );
     assert_eq!(ran, 9, "expected 9 cases to run, ran {ran}");
 }
+
+// ── P4.D126 unit 1: the full-wipe deletion chokepoint (v4 `914b59e13`) ───────
+
+/// v4's full-wipe path used to delete memories with per-row
+/// `repos.memories.delete` calls — the last direct bypass of
+/// `deleteMemoriesWithUnlinkBatch`. `914b59e13` collects every doomed id and
+/// makes ONE batch call; v4's own regression test asserts the direct repository
+/// delete is never hit on this path.
+///
+/// **The count-map differential above is BLIND to this by design.** Both
+/// routings delete exactly the same rows, so `main.memories` lands on the same
+/// number either way and the oracle can never tell them apart. v4 pins the
+/// routing by mocking the repository; Rust has no repository to mock, so the pin
+/// here is BEHAVIOURAL, over the one observable the chokepoint adds:
+///
+/// **the neighbour scrub.** `delete_many_with_unlink` rewrites every SURVIVING
+/// row's `relatedMemoryIds` to drop the doomed ids. In the full-wipe case that
+/// is normally a no-op (every neighbour is itself doomed — v4's why-comment),
+/// but a memory whose `characterId` belongs to no character of this user is not
+/// collected, so it survives the wipe *and* is a neighbour. Under the old
+/// per-row loop its edge to a deleted memory is left dangling; under the
+/// chokepoint it is scrubbed.
+///
+/// Mutation-proven: reverting `delete_all.rs` to the per-row
+/// `memories.delete(&memory_id)` loop leaves the survivor's
+/// `relatedMemoryIds` at `["<doomed>"]` and this test fails.
+///
+/// Runs unconditionally — no env var, so it can never silently skip.
+#[test]
+fn delete_all_routes_memory_deletion_through_the_chokepoint() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let db = fresh_db("chokepoint");
+
+    // The fixture's own character (owned by USER) and a memory on it — doomed.
+    let doomed = "dd000000-0000-4000-8000-0000000000d1";
+    // A memory on a character this user does not own, so the wipe never collects
+    // it: it SURVIVES, and it links to the doomed row.
+    let survivor = "dd000000-0000-4000-8000-0000000000d2";
+    let foreign_character = "dc000000-0000-4000-8000-0000000000c9";
+
+    let owned_character: String = db
+        .read_main(|c| {
+            c.query_row(
+                "SELECT id FROM characters WHERE userId = ?1 LIMIT 1",
+                rusqlite::params![USER],
+                |r| r.get::<_, String>(0),
+            )
+            .map_err(DbError::from)
+        })
+        .expect("the fixture must carry a character for the test user");
+
+    let owned = owned_character.clone();
+    db.write_blocking(move |ws| {
+        let conn = ws.main().connection();
+        let insert = |id: &str, character: &str, related: &str| {
+            conn.execute(
+                "INSERT INTO memories \
+                   (id, characterId, content, summary, relatedMemoryIds, createdAt, updatedAt) \
+                 VALUES (?1, ?2, 'x', 'x', ?3, '2026-01-01T00:00:00.000Z', \
+                         '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![id, character, related],
+            )
+            .map(|_| ())
+        };
+        insert(doomed, &owned, "[]")?;
+        insert(survivor, foreign_character, &format!("[\"{doomed}\"]"))?;
+        Ok(())
+    })
+    .expect("seed the chokepoint rows");
+
+    let (status, body) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)));
+    assert_eq!(status, 200, "delete_data refused: {body}");
+
+    let (still_there, related): (i64, String) = db
+        .read_main(|c| {
+            let n: i64 = c.query_row(
+                "SELECT COUNT(*) FROM memories WHERE id = ?1",
+                rusqlite::params![survivor],
+                |r| r.get(0),
+            )?;
+            let related: String = c.query_row(
+                "SELECT relatedMemoryIds FROM memories WHERE id = ?1",
+                rusqlite::params![survivor],
+                |r| r.get(0),
+            )?;
+            Ok::<_, DbError>((n, related))
+        })
+        .expect("read the survivor back");
+
+    assert_eq!(still_there, 1, "the foreign-character memory must survive");
+    let doomed_gone: i64 = db
+        .read_main(|c| {
+            c.query_row(
+                "SELECT COUNT(*) FROM memories WHERE id = ?1",
+                rusqlite::params![doomed],
+                |r| r.get(0),
+            )
+            .map_err(DbError::from)
+        })
+        .expect("count the doomed row");
+    assert_eq!(doomed_gone, 0, "the user's own memory must be deleted");
+
+    let parsed: Vec<String> = serde_json::from_str(&related).unwrap_or_default();
+    assert!(
+        parsed.is_empty(),
+        "the wipe must run through delete_many_with_unlink, which scrubs the \
+         doomed id out of a surviving neighbour's relatedMemoryIds; found {related}"
+    );
+}

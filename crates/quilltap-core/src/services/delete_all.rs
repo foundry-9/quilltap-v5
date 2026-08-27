@@ -337,14 +337,21 @@ fn delete_user_data_on_writer(
         .unwrap_or_default();
     let wardrobe_items = wardrobe_rows(main);
 
-    // 2. Memories first, per character (v4 :118).
+    // 2. Memories first, per character, through the deletion chokepoint
+    //    (v4 `914b59e13`, :149). v4's why-comment, carried: with the whole
+    //    corpus in one doomed set the neighbour scrub is a no-op (every
+    //    candidate is itself doomed), so this degrades to per-character bulk
+    //    deletes instead of the old per-row loop. The direct per-row
+    //    `memories.delete` was the last bypass of the chokepoint on this path;
+    //    [`delete_all_routes_memory_deletion_through_the_chokepoint`] pins that
+    //    it is not reached from here, the shape of v4's own regression test.
     {
         let memories = MemoriesRepository::new(main);
+        let mut memory_ids: Vec<String> = Vec::new();
         for character_id in &characters {
-            for memory_id in memory_ids_for_character(main, character_id) {
-                memories.delete(&memory_id)?;
-            }
+            memory_ids.extend(memory_ids_for_character(main, character_id));
         }
+        memories.delete_many_with_unlink(&memory_ids)?;
     }
 
     // 3. The per-row entity deletes, in v4's `Promise.all` order (:126).
