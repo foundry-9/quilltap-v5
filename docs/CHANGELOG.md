@@ -81,6 +81,23 @@ One escalation, recorded not fixed: a wrong-typed `tagId` (`[{"tagId": 5}]`) is
 carried by v4 into `linkedTo` as the raw value, where v5 drops it. Closing it
 needs `Request::FileUpload.tags` widened past `Vec<String>` in
 `quilltap-core/src/api/types.rs`, outside this lane's ownership.
+#### 2026-08-27 — test(cheap-llm): bind the abandonment-warn assert to its own line and exact target
+
+_Versions: core 0.0.697._
+
+`a_fired_deadline_warns_and_writes_the_ruled_error_row` asserted the level and
+target with `captured.contains("WARN quilltap::cheap_llm")`, which is a prefix
+match — any sibling target (`quilltap::cheap_llm_exec`, …) satisfied it. The
+field asserts were looser still: they ran against the whole capture, and this
+test drives three events on `quilltap::cheap_llm` (the abandonment WARN,
+`Cheap-LLM call failed`, `[CheapLLM] Task failed`), all carrying
+`provider=`/`model=`/`character_id=`.
+
+The target is now matched as a whole token — the trailing space is what ends
+it — on the line that also carries the abandonment message, and every field is
+asserted on that line. Measured rather than argued: retargeting the
+abandonment warn to `quilltap::cheap_llm_exec` leaves the old assert GREEN and
+reddens the new one. Test-only; no production behavior changed.
 
 #### 2026-08-27 — docs(orders): the four-lane round — the `aec86a613` pull-down drift, the collapse pockets, the harness follow-ups, the systemHome profile
 

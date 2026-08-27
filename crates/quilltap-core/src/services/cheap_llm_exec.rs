@@ -1918,14 +1918,30 @@ mod tests {
         assert!(!r.success);
 
         let captured = logs.lock().unwrap().join("\n");
-        assert!(
-            captured.contains("Abandoned a stalled provider call"),
-            "a stall must never be silent again; captured:\n{captured}"
-        );
-        assert!(
-            captured.contains("WARN quilltap::cheap_llm"),
-            "the abandonment is a WARN on quilltap::cheap_llm; captured:\n{captured}"
-        );
+        // ⚠ [P4.63] The level+target assert used to be
+        // `captured.contains("WARN quilltap::cheap_llm")`, and the field asserts
+        // ran against the whole capture. Both were looser than they read:
+        // `contains` on a target is a PREFIX match (a sibling target such as
+        // `quilltap::cheap_llm_exec` satisfies it — the P4.D127 finding), and
+        // this very test drives THREE events on `quilltap::cheap_llm`
+        // (the abandonment WARN, `Cheap-LLM call failed`, `[CheapLLM] Task
+        // failed`), all of which carry `provider=`/`model=`/`character_id=`.
+        // So the target is matched as a whole token — the trailing space is
+        // what ends it — and every field is asserted on the abandonment's OWN
+        // line.
+        let abandonment = captured
+            .lines()
+            .find(|l| {
+                l.starts_with("WARN quilltap::cheap_llm ")
+                    && l.contains("Abandoned a stalled provider call")
+            })
+            .unwrap_or_else(|| {
+                panic!(
+                    "a stall must never be silent again: no line is a WARN on \
+                     exactly `quilltap::cheap_llm` carrying the abandonment \
+                     message; captured:\n{captured}"
+                )
+            });
         for field in [
             "chat_id=chat-7",
             "character_id=char-9",
@@ -1936,8 +1952,8 @@ mod tests {
             "elapsed=45000",
         ] {
             assert!(
-                captured.contains(field),
-                "the abandonment warn is missing {field}; captured:\n{captured}"
+                abandonment.contains(field),
+                "the abandonment warn is missing {field}; line:\n{abandonment}"
             );
         }
 
