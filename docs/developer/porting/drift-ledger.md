@@ -42,8 +42,12 @@ probe verifies against._
 - **v4 `bugfix` tip at check:** `3a76b17df` — unmoved (the bare 4.8.4 fork
   marker; the long `main..bugfix` list is the documented squash-topology
   lie, §4 step 2).
-- **Checkout at check:** branch `main`, tree **clean** (the earlier salon
-  dirt became `1b0ce9eba`).
+- **Checkout at check:** branch `main`; the earlier salon dirt became
+  `1b0ce9eba`, and by the round's cleanup the tree had gone dirty AGAIN —
+  **docs-only** (`docs/CHANGELOG.md`, `docs/developer/CLI.md`,
+  `docs/developer/DATABASE_ENCRYPTION.md`): infra/docs dirt, recorded per
+  §2 so the next probe doesn't re-alarm; it does not by itself poison
+  regens, but the PIN REQUIRED rule below already covers them.
 - **Verdict: DRIFT PENDING — 3 unprocessed portable commits** (the
   `679e450e3`+`0bd841394`+`1b0ce9eba` catch-up is the next round's top
   candidate; phase-4 candidate 1).
