@@ -183,6 +183,22 @@ worktree pinned at `8872d7efc`: the two `image-attachment-non-vision` rows
 flipped red-first (v5 produced the text-only body v4 no longer produces), a
 new `image-attachment-glm-5-3` pair records the model that named the bug, and
 all 339 other rows are byte-identical.
+#### 2026-08-26 — docs(porting): the P4.D128 lane gate record
+
+_Docs-only change._
+
+The lane's gate on its final tree, and its three loud deferrals. `cargo fmt`
+clean; clippy clean on both feature sets; `cargo test --workspace` 469 binaries
+/ 2,517 passed / 0 failed; `completion_behavior` 7/7; Tier R by name against
+the `8872d7efc` pin **188 cases, 0 failures**; `check-qt-classes` 937; `npm
+test` 361 files / 5,399 / 0; `npm run build` clean.
+
+Deferred loud: v4's `help/cli-completion.md` + `packages/quilltap/README.md`
+prose to the `p4.9i2` bank; `packages/theme-storybook` recorded NO-PORT (no v5
+analog); three 💸 dogfood rows named — a live `docs docker-mounts --format
+<TAB>` in all three shells, the About bullet on screen, and the two new solid
+hover fills on a real hover.
+
 #### 2026-08-26 — feat(about): the 4.9.0 provider list and the Live interface bullet (v4 `8440b6391`)
 
 _Versions: SPA 0.5.585._

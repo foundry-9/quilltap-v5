@@ -90504,3 +90504,74 @@ one new test); `npm run build` clean; `npm run lint` 937.
 **💸 dogfood row:** the About page's new bullet and provider sentence on
 screen — cheap, and the only proof that the strings render with the right
 punctuation rather than escapes.
+
+### The P4.D128 lane gate + deferrals
+
+**Branch:** `claude/qt-utilities-cli-docs-a3527c`. **Commits:** `b391db87`
+(unit 1, the qt-* sweep) → `f64ddb27` (unit 2, the templates) → `84bc0d54`
+(unit 2 tier 2, the coverage guard) → `436ab6a0` (unit 3, AboutView).
+**Versions:** cli 0.0.12 → **0.0.14**, SPA 0.5.583 → **0.5.585**. No other
+crate touched — the lane owns no `quilltap-core` source (P4.D126/P4.D127 own
+the moving files there), consumed and delivered no fixture, and regenerated no
+harness family.
+
+**Drift-ledger §2 freshness probe:** run at lane start AND again before the
+Tier R regen — PASS both times (branch `main`, tree clean, both logs empty,
+main HEAD `8872d7efc`, bugfix `3a76b17df`). `git worktree list` at the second
+probe showed three lane-unique pins (`p4d126`, `p4d127`, `p4d128`), none
+shared. The ledger was not written from this lane.
+
+**The gate, on the final tree:**
+
+| stage | result |
+|---|---|
+| `cargo fmt --all --check` | clean |
+| `cargo clippy --workspace --all-targets -- -D warnings` | clean |
+| the same with `--features quilltap-core/native-transport` | clean |
+| `cargo test --workspace` | **469 test binaries / 2,517 passed / 0 failed** (1 ignored) |
+| `cargo test -p quilltap-cli --test completion_behavior` | **7 / 7**, incl. `zsh_template_is_syntactically_valid` (zsh present, not skipped) |
+| Tier R by name against `/tmp/qt-v4-pin-p4d128-8872d7efc` | **`CLI differential: 188 cases, 0 failures`** (309.32 s) |
+| `npm run lint` (`check-qt-classes`) | **937 defined, every guarded reference resolves** |
+| `npm test` | **361 files / 5,399 / 0 failed** |
+| `npm run build` | clean |
+
+2,517 is exactly the previous round's 2,514 plus this lane's three new CLI
+guards; 5,399 is 5,398 plus unit 3's About spec. **Stated plainly:** the
+workspace run carried NO differential env vars, so the oracle-gated harness
+families skipped silently — correct for a lane that authored no oracle and
+touched no family. The lane's own equivalence test is Tier R, which ran by
+name against the pin.
+
+**One gate mechanic worth carrying.** The first attempt chained all six stages
+in one background script; the Tier R stage was SIGTERMed at the wall-clock
+limit (`TIERR_EXIT=143`) with the run half-finished. Re-run standalone, it
+passed. Also: `cli_differential` prints its `N cases, M failures` line from
+inside a single `#[test]`, so cargo **swallows it on a PASS** — a green run
+without `-- --nocapture` cannot tell you how many cases ran, while the red run
+before it looks fully informative. Memory note:
+`tier-r-case-count-hidden-on-pass`.
+
+**Deferrals, loud (order Tier 3):**
+
+1. **→ the `p4.9i2` help-docs bank**, both from `57e7b1bc2`:
+   `help/cli-completion.md` (rewritten for flag-anywhere parsing and
+   positional store-name completion — the shipped text still described
+   pre-bug-101 behaviour) and `packages/quilltap/README.md` (the
+   `docs docker-mounts` verb, shipped in 4.8.4 with no README entry, plus its
+   "What gets completed" section). Neither has a v5 analog outside that bank.
+2. **NO-PORT, recorded with evidence:** `packages/theme-storybook` (1.0.65),
+   which mirrors the two new hover utilities. v5 has no storybook.
+3. **💸 dogfood rows this lane adds:**
+   - a real `quilltap docs docker-mounts --format <TAB>` in **all three**
+     shells, plus `quilltap docs --uri`/`--base64` in fish — the templates are
+     byte-proven against v4's, but nothing here proves a live shell sources
+     them and offers `args json`;
+   - the About page's new bullet and provider sentence **on screen** — the one
+     proof that the em-dashes and curly quotes render as characters rather
+     than escapes;
+   - the two solid hover fills on a real hover (Set-as-avatar → success,
+     Download → primary in the character gallery), which were inert until now
+     on both sides.
+
+**Nothing is left OPEN under the order.** Tier 1 items 1–4 and Tier 2 items
+5–6 all landed; Tier 3 is the deferral list above.
