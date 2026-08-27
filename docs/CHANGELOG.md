@@ -233,6 +233,56 @@ one thing this can no longer do is fail the whole dashboard because of an
 error raised by a conversation nobody was going to see — a case these reads
 do not produce, since every read made for a discarded conversation is also
 made for the twelve that are kept.
+#### 2026-08-27 — test(wardrobe): the pull-down walked live, and the two carried e2e-fixture debts closed
+
+_Versions: SPA 0.5.590._
+
+A live beat for `aec86a613`'s whole contract: two garments in different
+slots bundled into one composite, then the Top picker offers the garment and
+not the composite, the pull-down lists it as `Top, Footwear`, and wearing it
+there dissolves it across both slot rows with no bundle card and no
+composite chip. Run RED first against a bundle built with the
+`selectGarments` filter reverted.
+
+Both carried wardrobe e2e-fixture debts are addressed with it, and neither
+needed a committed fixture byte.
+
+The "Shared — everywhere" create-scope beat parked because
+`characters-main.db` carries no `instance_settings` table at all, so
+`ensure_builtin_mounts` hit v4's own `sqliteTableExists` guard and skipped
+provisioning entirely — the instance had no Quilltap General to write into.
+`beforeAll` now materializes that empty table (the salon instance's own
+precedent) and v5's real provisioning path mints the built-in stores at boot;
+that beat's write half is live. Widening the committed pair instead would have
+invalidated six harness families, the `quilltap-web` test venue and two e2e
+specs; nothing was invalidated.
+
+Lifting that park exposed a second, independent, pre-existing blocker on the
+component-transfer beat, so it stays parked — but on the truth now.
+`characters-main.db` has no `projects` and no `groups` either,
+`enumerate_destinations` reads both, and one missing table fails the whole
+verb, so `wardrobeTransferDestinations` 500s and the Move dialog's destination
+select renders with no options at all. Measured server-side with no browser,
+with and without the General store: identical failure. Materializing those two
+tables does fix the verb, and then two beats written against the broken fetch
+start failing — one asserts a character-destination count of zero that becomes
+four once destinations actually load. That is its own scoped job; the beat now
+probes the destinations verb instead of the General store and says why.
+
+The duplicate "Quilltap General" P4.D122 recorded is not
+`builtin_mounts.rs`. Measured on an isolated instance, provision-or-adopt
+mints on the first boot and adopts on the second, leaving one store. The
+cause is `seedCourierImagesFixture`, which copies the courier fixture's
+whole `doc_mount_points` table — including its own Quilltap General and
+Quilltap Uploads — while copying mount-partition tables only, so the
+`instance_settings` pointers never arrive; provision-or-adopt is idempotent
+by the pointer, not by name, so boot minted rivals. `global-setup.ts` now
+reconciles each seeded built-in store by what it holds: unreferenced ones
+are dropped and boot mints its own, referenced ones get the pointer so boot
+adopts them. Measured: the courier General is referenced by nothing;
+Uploads holds the ingested courier image, and dropping it would orphan that
+image for the boot reaper.
+
 #### 2026-08-27 — port(wardrobe): the pull-down goes live; the slot pickers list garments only
 
 _Versions: SPA 0.5.589._

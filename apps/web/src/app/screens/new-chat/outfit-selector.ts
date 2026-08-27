@@ -43,6 +43,14 @@ export interface OutfitSelectorCharacter {
  * renders `manual` (Compose) loudly disabled — so they are not ported here; the
  * disabled Compose radio (with its "not yet available" title) is that
  * deferral's visible surface. See the work-order status header.
+ *
+ * ⚠ 2026-08-27, P4.D130: v4 `aec86a613` put a `Wear an outfit…` pull-down above
+ * the slot rows in `OutfitComposer`, which the chat-start Manual mode hosts as
+ * well as the wardrobe dialog. v5 ported the pull-down into the composer, so it
+ * arrives here FOR FREE the moment Compose is enabled — but the mode is
+ * disabled, so nothing renders it today. Whoever lands the wardrobe-composer
+ * family owns proving it in this host: the pull-down is part of that scope, not
+ * a separate follow-up.
  */
 export function computeSyncInitialMode(
   char: OutfitSelectorCharacter,

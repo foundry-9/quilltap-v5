@@ -237,6 +237,7 @@ export default async function globalSetup(): Promise<void> {
   // content and skip when absent). Runs BEFORE the userId rewrite below — the
   // courier fixture shares FIXTURE_USER, so the loop rewrites these rows too.
   seedCourierImagesFixture(cli);
+  reconcileSeededBuiltinStores(cli);
   // The d68638b4-round §4 wire: a Tools/ roster in Aria's vault, which lights
   // the composer's Custom-tools button and self-activates the probe-guarded
   // salon-custom-tools-flow beat (mount-partition rows only — the userId
@@ -603,6 +604,90 @@ export default async function globalSetup(): Promise<void> {
   writeFileSync(PID_FILE, String(child.pid));
 
   await waitForHealth();
+}
+
+/**
+ * P4.D130 — reconcile the built-in stores the courier seeding drags in, so boot
+ * neither duplicates them nor loses what they hold.
+ *
+ * `seedCourierImagesFixture` copies the courier fixture's whole
+ * `doc_mount_points` table, and that fixture carries its own "Quilltap General"
+ * and "Quilltap Uploads". It copies MOUNT-partition tables only, so the matching
+ * `instance_settings` pointers never arrive — and `ensure_builtin_mounts` is
+ * idempotent by the POINTER, not by name (v4's migrations are too; that is the
+ * contract, not a v5 quirk). With no pointer, boot minted a SECOND store of each
+ * name. That is the duplicate-"Quilltap General" collision P4.D122 recorded live
+ * (`sameName=2`), reproduced here running that one spec alone.
+ *
+ * It is NOT an ensure-or-adopt idempotence hole: measured on an isolated
+ * instance, the provisioner mints on the first boot and adopts on the second,
+ * leaving one store. So the fix belongs to the seeding, and it is decided per
+ * store by what the row actually holds rather than by a hard-coded list:
+ *
+ *   - nothing references it (no folders, links, chunks or project links) → it is
+ *     dead weight the seeder never meant to bring; DROP it and let boot mint its
+ *     own. Measured today: the courier "Quilltap General" is exactly this.
+ *   - something references it → ADOPT it by writing the pointer, so boot reuses
+ *     the row instead of minting a rival. Measured today: "Quilltap Uploads"
+ *     holds the ingested courier image (1 link, 1 folder); dropping it would
+ *     orphan that image and the boot reaper would sweep it.
+ *
+ * Dropping the empty one rather than adopting it also keeps boot's mint ORDER
+ * unchanged, so no other spec's "first enabled ordinary store" moves under it.
+ * Read by NAME: the seeder remaps pinned ids.
+ */
+function reconcileSeededBuiltinStores(cli: string): void {
+  const POINTERS: Array<[string, string]> = [
+    ['Quilltap General', 'generalMountPointId'],
+    ['Quilltap Uploads', 'userUploadsMountPointId'],
+    ['Lantern Backgrounds', 'lanternBackgroundsMountPointId'],
+  ];
+  for (const [name, key] of POINTERS) {
+    const rows = readMountRows(
+      cli,
+      `SELECT mp.id AS id, (` +
+        `(SELECT COUNT(*) FROM doc_mount_folders f WHERE f.mountPointId = mp.id) + ` +
+        `(SELECT COUNT(*) FROM doc_mount_file_links l WHERE l.mountPointId = mp.id) + ` +
+        `(SELECT COUNT(*) FROM doc_mount_chunks c WHERE c.mountPointId = mp.id) + ` +
+        `(SELECT COUNT(*) FROM project_doc_mount_links p WHERE p.mountPointId = mp.id)` +
+        `) AS refs FROM doc_mount_points mp WHERE mp.name = '${name}'`,
+    );
+    // More than one already would mean the collision reached the committed
+    // fixture itself — loud, not silently papered over.
+    if (rows.length > 1) {
+      throw new Error(`e2e fixture already carries ${rows.length} stores named ${name}`);
+    }
+    const row = rows[0];
+    if (!row?.id) continue;
+    if (Number(row.refs ?? 0) === 0) {
+      runCliWrite(cli, `DELETE FROM doc_mount_points WHERE id = '${row.id}';`, {
+        mountPoints: true,
+      });
+      console.log(`[e2e] dropped the seeded, unreferenced built-in store ${JSON.stringify(name)}`);
+    } else {
+      runCliWrite(
+        cli,
+        `INSERT INTO instance_settings ("key", "value") VALUES ('${key}', '${row.id}') ` +
+          `ON CONFLICT("key") DO UPDATE SET "value" = excluded."value";`,
+      );
+      console.log(
+        `[e2e] adopting the seeded built-in store ${JSON.stringify(name)} → ${row.id} ` +
+          `(${row.refs} references)`,
+      );
+    }
+  }
+}
+
+/** One `--json` raw-SQL read against the instance's MOUNT-INDEX partition. */
+function readMountRows(cli: string, sql: string): Array<Record<string, unknown>> {
+  const res = spawnSync(cli, ['db', '--data-dir', INSTANCE_DIR, '--mount-points', '--json', sql], {
+    env: { ...withoutPepper(), QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE, QUILLTAP_QUIET_HINTS: '1' },
+    encoding: 'utf8',
+  });
+  if (res.status !== 0) {
+    throw new Error(`mount-index read failed (${sql}):\n${res.stdout}\n${res.stderr}`);
+  }
+  return JSON.parse(res.stdout || '[]') as Array<Record<string, unknown>>;
 }
 
 function runCliWrite(

@@ -68,11 +68,11 @@ const P4D87_HAIR_SLOT_LANDED = true;
  * itself — is live in this lane and runs unconditionally.
  */
 // FLIPPED at the round's unification (2026-08-25): P4.D112's server half is on
-// main. The beat still carries the `hasGeneralStore` probe — the committed
-// characters-* fixture has no shared container to move into, so the beat
-// self-parks with that named reason until the fixture gains one (a recorded
-// follow-up; the component-travel semantics are tier-2-proven in
-// `wardrobe_transfers_tier2_equivalence` meanwhile).
+// main. P4.D130 gave this instance its Quilltap General store, which retired
+// the beat's old `hasGeneralStore` park — and immediately uncovered the REAL
+// blocker underneath it, so the beat now parks on `hasTransferDestinations`
+// instead (see that probe for the measurement). The component-travel semantics
+// stay tier-2-proven in `wardrobe_transfers_tier2_equivalence` meanwhile.
 const P4D112_TRANSFER_COMPONENTS_LANDED = true;
 
 /**
@@ -130,6 +130,27 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     );
 
     writeFileSync(resolve(DATA_DIR, 'quilltap.dbkey'), makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE));
+    // P4.D130 tier 2 — give this instance the three built-in stores, which is
+    // what un-parks the component-transfer and "Shared — everywhere" beats.
+    //
+    // MEASURED, not assumed: the committed `characters-main.db` carries no
+    // `instance_settings` table at all, and `ensure_builtin_mounts`' first act
+    // is v4's own `shouldRun` guard — `sqliteTableExists('instance_settings')`
+    // — so boot skipped the whole provisioning unit and the instance had no
+    // Quilltap General to write into.
+    //
+    // Creating the (empty) table here is instance MATERIALIZATION, not a
+    // fixture regen: the committed pair is untouched, so the six harness
+    // families and the `quilltap-web` test venue that read it keep the exact
+    // bytes they were pinned against, and v5's REAL provisioning path mints the
+    // stores at boot rather than a builder hand-writing rows. Verbatim the
+    // salon instance's own precedent (`global-setup.ts`, the `terminal_sessions`
+    // / `chat_documents` materializations alongside it).
+    runCliWrite(
+      cli,
+      'CREATE TABLE IF NOT EXISTS instance_settings (' +
+        '"key" TEXT PRIMARY KEY, "value" TEXT NOT NULL);',
+    );
     for (const table of USER_TABLES) {
       runCliWrite(
         cli,
@@ -457,19 +478,15 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
    * to dress, and the editor opened from there is PINNED — its "Add to" scope
    * radiogroup is replaced by a destination note.
    *
-   * ⚠ THE WRITE HALF IS SELF-ACTIVATING, NOT SKIPPED BY CHOICE. This spec runs
-   * on the committed `characters-*` fixture pair, which is a narrow hand-built
-   * DB: it has no `instance_settings` table, so `ensure_builtin_mounts` skips
-   * at boot and the instance has NO Quilltap General store to write into.
-   * (Measured: `wardrobeList` answers `[]` and `wardrobeCreate` answers
-   * `Internal server error` — `resolve_wardrobe_mount` finds no
-   * `generalMountPointId`.) That gap predates this lane — the character view's
-   * "Shared — everywhere" create scope has never been exercisable here either.
-   * The probe below asks the instance directly and the write half switches on
-   * the day the fixture gains a General store; until then the container
-   * routing is proven at unit level (`wardrobe.api.spec.ts`'s four routers and
-   * `wardrobe-item-editor.spec.ts`'s pinned-container arms, both
-   * mutation-proven).
+   * ⚠ THE WRITE HALF WAS SELF-ACTIVATING AND IS NOW LIVE (P4.D130). It used to
+   * park: the committed `characters-*` pair is a narrow hand-built DB with no
+   * `instance_settings` table, so `ensure_builtin_mounts`' first act — v4's own
+   * `shouldRun` guard, `sqliteTableExists('instance_settings')` — skipped the
+   * whole provisioning unit and the instance had NO Quilltap General store to
+   * write into. `beforeAll` now materializes that (empty) table, so v5's real
+   * provisioning path mints the three built-in stores at boot. The probe below
+   * still asks the instance directly rather than assuming, because the answer
+   * is a property of boot, not of this file.
    */
   test('the container selector browses Quilltap General, and pins the editor to it (P4.D113)', async ({
     page,
@@ -488,6 +505,20 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(selector.locator('optgroup[label="Characters"]')).toHaveCount(1);
     await expect(selector.locator('optgroup[label="General"]')).toHaveCount(1);
     await expect(selector.locator('option[value="general:"]')).toHaveText(/Quilltap General/);
+
+    // P4.D122 recorded a duplicate-"Quilltap General" collision on the SALON
+    // e2e instance and suspected `services/builtin_mounts.rs`. Measured here on
+    // a second instance that provisions through the same boot hook: exactly
+    // one, so the ensure-or-adopt is idempotent and the duplicate is a property
+    // of that other instance's history, not of the provisioner. Standing
+    // tripwire — if the provisioner ever does start duplicating, this reddens.
+    const enabledGeneral = (
+      ((await dispatch(page, { type: 'mountPointList' }))['mountPoints'] ?? []) as Array<{
+        name: string;
+        enabled?: boolean;
+      }>
+    ).filter((m) => m.enabled !== false && m.name === 'Quilltap General');
+    expect(enabledGeneral).toHaveLength(1);
     // The label is v4's new one.
     await expect(dialog.getByText('Wardrobe:', { exact: true })).toBeVisible();
 
@@ -649,8 +680,8 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await page.goto(`${BASE_URL}/characters`);
     await unlockIfLocked(page);
     test.skip(
-      !(await hasGeneralStore(page)),
-      'the committed characters-* fixture has no Quilltap General store to move into (see the container-selector beat)',
+      !(await hasTransferDestinations(page)),
+      'the committed characters-* fixture has no `projects`/`groups` tables, so `wardrobeTransferDestinations` 500s and the Move dialog can offer nothing (P4.D130 measured; see the probe)',
     );
     await openAriaDetail(page);
     await openWardrobeDialog(page);
@@ -690,6 +721,113 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       dialog.locator('.qt-card-interactive').filter({ hasText: 'Brass Goggles' }).first(),
     ).toBeVisible();
     await dialog.getByRole('button', { name: 'Done' }).click();
+  });
+
+  /**
+   * P4.D130 — the outfit pull-down (v4 `aec86a613`), end to end.
+   *
+   * The composer opens with a `Wear an outfit…` pull-down above the slot rows;
+   * the per-slot `+` pickers no longer offer composites. This walks the whole
+   * contract on a live instance: a composite is absent from the slot picker,
+   * present in the pull-down (with the slots it claims), and wearing it there
+   * dissolves it into its component garments across the slots their OWN types
+   * declare — through the pre-existing `addToSlot` path, since `aec86a613`
+   * added no equip path at all.
+   *
+   * Out of chat the composer is the Outfit Builder's, whose adds are pure
+   * client state (`fittingAdd` → `wearItemIntoSlots`), so nothing is equipped
+   * server-side and no other beat's state moves.
+   */
+  test('the outfit pull-down wears a composite, which dissolves into its slots — and the slot pickers no longer offer it (P4.D130)', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+
+    const dialog = page.getByRole('dialog');
+
+    /** Create a single-garment item in one slot. */
+    async function createGarment(title: string, slot: string): Promise<void> {
+      await dialog.getByRole('button', { name: '+ New Item' }).click();
+      await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeVisible();
+      await page.locator('#wardrobe-title').fill(title);
+      // hasText is a substring match; among the five Type(s) labels each of
+      // these names is unique (a regex would trip on un-normalized whitespace —
+      // the P4.9a memory).
+      await page
+        .locator('label')
+        .filter({ hasText: slot })
+        .locator('input[type="checkbox"]')
+        .click();
+      await page.getByRole('button', { name: 'Create', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeHidden();
+      await expect(
+        dialog.locator('.qt-card-interactive').filter({ hasText: title }).first(),
+      ).toBeVisible();
+    }
+
+    // Two garments in DIFFERENT slots, so the dissolution is observable as two
+    // separate rows filling rather than one id landing twice.
+    await createGarment('Oilskin Slicker', 'top');
+    await createGarment('Storm Boots', 'footwear');
+
+    // …bundled into one composite.
+    await dialog.getByRole('button', { name: '+ New Item' }).click();
+    await page.getByRole('tab', { name: 'Outfit bundle' }).click();
+    await page.locator('#wardrobe-title').fill('Squall Rig');
+    for (const component of ['Oilskin Slicker', 'Storm Boots']) {
+      await page
+        .locator('qt-wardrobe-component-picker label')
+        .filter({ hasText: component })
+        .first()
+        .locator('input[type="checkbox"]')
+        .click();
+    }
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeHidden();
+
+    // ── The composer (out of chat: the Outfit Builder's) ──
+    const composer = dialog.locator('qt-outfit-composer');
+    const slotRow = (slot: string) =>
+      composer
+        .locator('qt-equipped-slot-row')
+        .filter({ has: page.locator(`.qt-badge-wardrobe-${slot}`) });
+
+    // 1. The per-slot picker offers the GARMENT and not the composite, though
+    //    the composite covers this slot too. Pre-`aec86a613` it listed both.
+    const top = slotRow('top');
+    await top.getByRole('button', { name: '+', exact: true }).click();
+    await expect(top.getByRole('button', { name: /Oilskin Slicker/ })).toBeVisible();
+    await expect(top.getByRole('button', { name: /Squall Rig/ })).toHaveCount(0);
+    // Close the picker again so its rows can't be confused with the menu's.
+    await top.getByRole('button', { name: '+', exact: true }).click();
+
+    // 2. The pull-down lists it, naming the slots it claims.
+    const pullDown = composer.getByRole('button', { name: 'Wear an outfit…' });
+    await expect(pullDown).toBeVisible();
+    await pullDown.click();
+    const listbox = composer.locator('[role="listbox"]');
+    const squall = listbox.getByRole('option').filter({ hasText: 'Squall Rig' });
+    await expect(squall).toBeVisible();
+    // `WARDROBE_SLOT_META` labels, ', '-joined — the union of its components'
+    // slots, not the raw type strings.
+    await expect(squall).toContainText('Top, Footwear');
+
+    // 3. Wearing it dissolves it: the LEAVES land in the slots their own types
+    //    declare, and the composite's own id is never stored (no bundle card,
+    //    no "Squall Rig" chip anywhere in the composer).
+    await squall.click();
+    await expect(listbox).toBeHidden();
+    await expect(slotRow('top')).toContainText('Oilskin Slicker');
+    await expect(slotRow('footwear')).toContainText('Storm Boots');
+    await expect(composer.locator('qt-equipped-bundle-card')).toHaveCount(0);
+    await expect(composer).not.toContainText('Squall Rig');
+
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden();
   });
 
   test('out of chat: Preview reaches the no-API-key badRequest (P4.6bf; live render is a dogfood item)', async ({
@@ -761,7 +899,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     }
     test.skip(
       !equipReady,
-      "ACTIVATE-AT-UNIFY (lane P4.9f1): chatOutfitGet/chatEquip not live — the in-chat staging + Done flush walk self-activates when the wardrobe server half lands",
+      'ACTIVATE-AT-UNIFY (lane P4.9f1): chatOutfitGet/chatEquip not live — the in-chat staging + Done flush walk self-activates when the wardrobe server half lands',
     );
 
     // Ensure the item from the live beat exists (this file runs serially; the
@@ -1040,12 +1178,19 @@ async function dispatch(page: Page, req: unknown): Promise<Record<string, unknow
 }
 
 /**
- * Does this instance actually HAVE a Quilltap General store to write into? The
- * committed `characters-*` fixture pair does not (no `instance_settings` table
- * → `ensure_builtin_mounts` skips at boot), so the container browser's write
- * half self-activates rather than pretending. The probe writes a throwaway
- * archetype and removes it again; a `wardrobeCreate` that fails is the exact
- * signal (`resolve_wardrobe_mount` → `NoMount` → 500).
+ * Does this instance actually HAVE a Quilltap General store to write into?
+ *
+ * It does, as of P4.D130: `beforeAll` materializes the `instance_settings`
+ * table the committed `characters-*` pair lacks, so `ensure_builtin_mounts`
+ * clears v4's `sqliteTableExists` guard and provisions the three built-in
+ * stores at boot. The probe stays — it asks the instance rather than assuming,
+ * and it is what the container browser's write half switches on — but it is
+ * expected to answer true now, and the container-selector beat asserts the
+ * store's existence outright.
+ *
+ * The probe writes a throwaway archetype and removes it again; a
+ * `wardrobeCreate` that fails is the exact signal (`resolve_wardrobe_mount` →
+ * `NoMount` → 500).
  */
 async function hasGeneralStore(page: Page): Promise<boolean> {
   const created = (
@@ -1066,6 +1211,41 @@ async function hasGeneralStore(page: Page): Promise<boolean> {
   if (!created?.id) return false;
   await dispatch(page, { type: 'wardrobeDelete', itemId: created.id });
   return true;
+}
+
+/**
+ * Can the Move/Copy dialog offer anything at all?
+ *
+ * P4.D130, MEASURED server-side with no browser: `wardrobeTransferDestinations`
+ * answers `Failed to load transfer destinations` on this fixture — with AND
+ * without the General store — because `enumerate_destinations` reads `projects`
+ * and `groups`, and the committed `characters-main.db` has NEITHER table (nor
+ * `instance_settings`; only `characters`). One missing table fails the whole
+ * verb, so the destination `<select>` renders with no options and no
+ * destination can be chosen.
+ *
+ * That is the SECOND, independent blocker on the component-transfer beat, and
+ * it was hidden behind the General-store park until P4.D130 lifted it. It is a
+ * pre-existing fixture-vintage gap, not something this lane introduced.
+ *
+ * DELIBERATELY NOT CLOSED HERE. Materializing empty `projects`/`groups` does
+ * make the verb succeed — and then two more things surface, because the beats
+ * around it were written against the broken fetch: the Copy arm's
+ * `option[value^="character:"]` count, asserted as 0, becomes 4 (four real
+ * character destinations — correct product behaviour, a vacuously-green
+ * assertion), and the move beat then fails to find its outfit row. Un-parking
+ * this beat properly means revisiting those beats too, which is its own scoped
+ * job rather than a tail-end patch. Recorded in the P4.D130 lane record.
+ */
+async function hasTransferDestinations(page: Page): Promise<boolean> {
+  const res = await page.request.post(`${BASE_URL}/api/dispatch`, {
+    data: { type: 'wardrobeTransferDestinations' },
+  });
+  const body = (await res.json().catch(() => null)) as {
+    type?: string;
+    data?: { destinations?: unknown };
+  } | null;
+  return body?.type !== 'error' && body?.data?.destinations != null;
 }
 
 function runCliWrite(cli: string, sql: string): void {

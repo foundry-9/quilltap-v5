@@ -91652,3 +91652,249 @@ service). That is a separate order — outside this lane's mandate
 candidate; the measurement above is its justification.**
 
 Not escalated: nothing here needs a payload or schema change.
+## P4.D130 — the `aec86a613` outfit pull-down (SPA drift) + the wardrobe e2e-fixture debt
+
+**Lane branch:** `claude/p4-d130-outfit-quick-pick-9a808f`. **v4 baseline
+`8872d7efc`; this lane's target commit `aec86a613`** (drift-ledger §1/§3,
+probe PASSED at lane start: checkout on `main`, clean, nothing past
+`aec86a613` / `3a76b17df`). Regen rule PIN REQUIRED — every v4-side run in
+this lane went through a lane-unique detached worktree at **`aec86a613`**
+(`/tmp/qt-v4-pin-p4d130-aec86a613`, three symlink classes, §5.1), because
+for a drift port the drift commit IS the spec.
+
+**Zero crate source changed in this lane** (`git diff main...HEAD -- crates/`
+is empty) — the whole port is SPA + e2e, exactly as `aec86a613` is
+client-only. No core/harness/web/host/cli/tauri bump; SPA only.
+
+### Unit 1 — `composed-outfits.ts`, the pool split (commit `c4e9f973`)
+
+A character-for-character client twin of v4's new
+`lib/wardrobe/composed-outfits.ts`: `selectComposedOutfits` (filter
+`isBundle`, then `a.title.localeCompare(b.title)`) and `selectGarments` (the
+complement, caller's order), built on the EXISTING client `isBundle`
+(`dissolve-bundles.ts:64`) so the outfit-vs-garment rule stays
+single-sourced. Generic over `WearableNode & {title}` so `WardrobeItemDto`
+and the lighter summaries both satisfy it; v4's why-comments carried.
+
+**Two equivalence checks, and the second earns its keep.** (a) v4's own
+69-line `__tests__/unit/lib/wardrobe/composed-outfits.test.ts` transcribed
+**1:1** — same `describe`/`it` names, same fixture items (curly apostrophe
+included), same expectations; v4's suite re-run at the pin is 7/7 and the
+transcription is 7/7. (b) A NEW oracle case,
+`harness/oracle/cases/composed-outfits.test.ts`, imports v4's REAL module
+from the pin and records its output over a nine-case corpus into
+`apps/web/src/app/wardrobe/__fixtures__/composed-outfits-vectors.json`,
+which a spec replays through the v5 twin.
+
+The reason for (b): the sort is `localeCompare`, and **no transcribed case
+asks an ICU question**. The corpus does — lowercase-before-uppercase
+(`apple Coat` < `Ashen Coat` < `banded Cape` < `Banded Cape`), accents
+collating with their base letter (`Etoile` / `Étoile` / `Étoile` before
+`Zouave`), NFC-vs-NFD spellings landing adjacent, `10 Buttons` before
+`9 Buttons` (not numeric), and stable ties. **Mutation-proven:** replacing
+`localeCompare` with a code-unit compare leaves **all seven transcribed
+cases green** and reddens three recorded ones; making `selectGarments` sort
+too reddens the caller's-order case plus one transcribed case. A corpus
+self-guard asserts the collation rows are still present, so a future regen
+that silently dropped them cannot pass as coverage.
+
+### Unit 2 — `outfit-quick-pick.ts`, the pull-down (commit `6dd4cd90`)
+
+The Angular port of v4's 138-line component: the `qt-button-secondary
+qt-button-sm` full-width toggle with the rotating `chevron-down`, the
+`role="listbox"` panel, the autofocused `type="search"` box, per-row
+`WARDROBE_SLOT_META[t].label` joins plus ` · replaces`, `No matching
+outfits.`, outside-click close, and the Escape handler.
+
+Two things the transcription cannot see, both spec-pinned with the v4 line
+cited:
+
+- **The Escape contract is a real capture-phase listener**
+  (`document.addEventListener('keydown', h, true)` + `stopPropagation` +
+  `preventDefault`, v4 `:55-66`) — the house `scenario-row.ts` idiom, NOT a
+  template `(document:keydown.escape)` binding, which compiles to a BUBBLE
+  listener and would let the enclosing wardrobe dialog dismiss itself along
+  with the menu. The spec proves it with a bubble-phase dialog stub that
+  must NOT fire while the menu is open (and DOES fire when it is closed, so
+  the assertion cannot pass vacuously). Mutating `true` → `false` reddens it.
+- **Renders nothing on a composite-free pool** (v4 `:74` returns `null`).
+  An Angular host element cannot leave the DOM, so it takes the `hidden`
+  attribute — which both hides it and drops it out of the composer's
+  Tailwind `space-y-2` sibling chain, so the first bundle card keeps exactly
+  the spacing v4 gives it in that state. This is a recorded, deliberate
+  mechanism divergence with no visible consequence.
+
+Ten specs; three mutations, each reddening exactly the right one(s).
+
+### Units 3 + 4 — the split goes live (commit `a98bd716`)
+
+The composer mounts `<qt-outfit-quick-pick>` above the bundle cards, wiring
+`(wear)` → `addToSlot.emit({ slot: outfit.types[0]!, itemId: outfit.id })`
+— **the existing output; `aec86a613` added no equip path.** v5's two
+consumers already apply `wearItemIntoSlots` across every slot an item
+covers, so `slot` names where the gesture started, not where the item lands
+(verified at both `wardrobe-control-dialog.ts` handlers). `equipped-slot-row`
+runs its candidates through `selectGarments` FIRST and the dead
+`' · composite'` suffix is deleted; `allItems` still passes whole.
+
+**That last point was load-bearing and had no test anywhere.** The obvious
+simplification — narrow `[allItems]` at the composer instead — leaves every
+other spec green, because `groupEquippedSlots` promotes a composite to a
+bundle card at two-or-more occupied slots and every existing fixture uses a
+multi-slot one. A **one**-slot composite stays in `slotRemainders` and
+renders as a chip whose title comes from the same list the picker draws
+from. A new composer spec was written RED against exactly that mutation
+(the chip read `unknown`) before being made green. `equipped-slot-row.spec.ts`
+is new (the file had no spec); reverting the `selectGarments` filter reddens
+two of its four cases.
+
+### Unit 5 — the live e2e beat, and the two carried fixture debts
+
+**A note on the order's §Fixtures paragraph, corrected by measurement
+(ledger §5.3 applies to order prose as much as to commit prose):** the
+wardrobe beats do NOT run on `salon-*`. `wardrobe-flow.spec.ts` boots its
+OWN server on port 4329 over the committed **`characters-{main,mount}.db`**
+pair (`:126`), which is what phase-4 candidate 5 names. That distinction
+decided the whole tier-2 approach.
+
+**Debt 1 — the parked wardrobe beats. HALF CLOSED, with the committed fixture
+untouched; the other half diagnosed to a SECOND, independent, pre-existing
+blocker.** Measured
+cause: `characters-main.db` carries **no `instance_settings` table at all**,
+and `ensure_builtin_mounts` opens with v4's own `shouldRun` guard —
+`sqliteTableExists('instance_settings')` — so boot skipped the entire
+provisioning unit and the instance had no Quilltap General to write into.
+`beforeAll` now materializes that (empty) table, and v5's REAL provisioning
+path mints the three built-in stores at boot. **The "Shared — everywhere"
+create-scope half is LIVE** — the container-selector beat's write half ran for
+the first time and is green.
+
+This is **instance materialization, not a fixture regen** — the verbatim
+precedent of the salon instance's own `terminal_sessions` / `chat_documents`
+/ `instance_settings` steps in `global-setup.ts`. It matters a great deal
+here: widening the committed pair instead would have invalidated **six
+harness differential families** (`characters_reads`, `characters_mutations`,
+`characters_actions`, `characters_subresources`,
+`character_photo_upload_tier2`, `character_avatar_write_tier2`), the
+`quilltap-web` test venue (`tests/common/mod.rs`), `system_restore_guards`,
+and `characters-flow.spec.ts` — every one of which would have needed a
+regen at the `8872d7efc` pin because a new store, its folders and new
+`instance_settings` rows all show up in DB-state comparands. **Nothing was
+invalidated; no committed fixture byte changed in this lane.** Measured
+result: exactly one each of Quilltap General / Quilltap Uploads / Lantern
+Backgrounds.
+
+**The component-transfer beat stays parked, on its REAL blocker now.** Lifting
+the General-store park exposed a second gap the park had been hiding:
+`characters-main.db` has no `projects` and no `groups` tables either (of those
+three it has `characters` and nothing else), `enumerate_destinations` reads
+BOTH, and one missing table fails the whole verb — so
+`wardrobeTransferDestinations` answers `Failed to load transfer destinations`,
+the Move dialog's `<select>` renders with no options, and `general:` was never
+selectable, General store or not. **Measured server-side with no browser, on a
+fixture copy, with AND without `instance_settings`** — identical failure either
+way, so it is pre-existing and not something this lane introduced (the two-pin
+rule: red at both pins is not mine).
+
+Materializing empty `projects`/`groups` does make the verb succeed — it was
+tried, and reverted, because two more things then surface, both consequences of
+beats written against the broken fetch: the Copy arm asserts
+`option[value^="character:"]` has count **0**, which becomes **4** once real
+character destinations exist (a vacuously-green assertion — the fetch had
+always died before any option could render), and the move beat then cannot find
+its outfit row at all. Un-parking properly means revisiting those beats, which
+is its own scoped job rather than a tail-end patch at the close of a drift
+lane. So the park STAYS but now names the truth: it probes
+`wardrobeTransferDestinations` itself (`hasTransferDestinations`) instead of the
+General store, with the measurement in its docblock. **Follow-up candidate,
+precisely scoped:** materialize `projects` + `groups` in this spec's
+`beforeAll` (DDL is in `fresh_schema.json`; the salon instance already does
+exactly this for `groups`), then fix the Copy arm's stale count and re-drive the
+move beat.
+
+One more thing the un-parking taught, worth carrying: the transfer beat's 90 s
+timeout **cascaded** into the in-chat `set_all` beat two positions later, which
+failed only because of it — proven by running beat 1 plus that beat alone with
+the materialization in place, where it passes. A serial e2e file's later beats
+are not independent of an earlier one's timeout; attribute before diagnosing.
+
+**Debt 2 — the duplicate "Quilltap General" (P4.D122's find). DIAGNOSED TO
+ROOT CAUSE, FIXED, and it is NOT `builtin_mounts.rs`.** Reproduced first:
+`workspace-search-documents-flow` alone still logged `sameName=2`. Then the
+provisioner was cleared by direct measurement on an isolated instance —
+first boot mints, second boot ADOPTS, one store; and on the locked path one
+unlock mints once while a second unlock is refused outright. The actual
+cause is the seeding: `seedCourierImagesFixture` copies the courier
+fixture's whole `doc_mount_points` table, and **`courier-images-mount.db`
+carries its own "Quilltap General" (`b0000000-…-00a0`) and "Quilltap
+Uploads" (`…-00ff`)**. It copies MOUNT-partition tables only, so the
+matching `instance_settings` pointers never arrive — and provision-or-adopt
+is idempotent **by the pointer, not by name** (v4's migrations are the same;
+this is the contract, not a v5 quirk). No pointer → boot mints a rival.
+
+So the fix belongs to the seeding, and `global-setup.ts` now reconciles each
+seeded built-in store **by what it actually holds**, not by a hard-coded
+list: nothing references it (no folders, links, chunks or project links) →
+drop it and let boot mint its own; something references it → write the
+pointer so boot adopts it. Measured today, and confirmed live in the run
+log: the courier "Quilltap General" is referenced by **nothing** and is
+dropped; "Quilltap Uploads" holds the ingested courier image (1 link, 1
+folder) and is adopted — dropping THAT one would orphan the image and the
+boot reaper would sweep it. Verified: `sameName=1`.
+
+Two things worth flagging. First, an intermediate version of this fix
+adopted *both* stores, which removed the duplicate but moved which store
+boot minted last — and therefore moved the store
+`workspace-search-documents-flow` picks as "the first enabled ordinary
+store", from Quilltap General to Lantern Backgrounds. Dropping the empty row
+instead of adopting it keeps boot's mint order unchanged, so that spec's
+subject is exactly what it always was. (While the adopt-both version was in
+place, that spec's in-chat beat failed once and passed on re-run with the
+same subject — an intermittent, recorded here rather than hidden.) Second,
+P4.D122 noted a silver lining — the duplicate exercised the
+`nameIsAmbiguous` arm live. **That incidental coverage is gone now**, by
+design; the arm's own home is the routes differential.
+
+**The beat.** `wardrobe-flow.spec.ts` gains
+`the outfit pull-down wears a composite, which dissolves into its slots —
+and the slot pickers no longer offer it (P4.D130)`: two garments in
+different slots, bundled into one composite, then (1) the Top picker offers
+the garment and NOT the composite though the composite covers that slot,
+(2) the pull-down lists it as `Top, Footwear`, (3) wearing it there lands
+`Oilskin Slicker` in Top and `Storm Boots` in Footwear with no bundle card
+and no `Squall Rig` chip anywhere — dissolution, through the pre-existing
+`addToSlot` path. The container-selector beat additionally gained a standing
+tripwire asserting exactly one enabled store named "Quilltap General".
+
+### Regen recipes
+
+`composed-outfits` vectors (the only oracle this lane authored):
+
+```
+V5=~/source/quilltap-v5
+PIN=/tmp/qt-v4-pin-p4d130-aec86a613     # git worktree add --detach <v4> aec86a613 + the 3 symlink classes
+mkdir -p /tmp/qt-oracle-composed-outfits
+cp $V5/harness/oracle/cases/composed-outfits.test.ts /tmp/qt-oracle-composed-outfits/
+cd $PIN
+PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH \
+QT_ORACLE_OUT=$V5/apps/web/src/app/wardrobe/__fixtures__/composed-outfits-vectors.json \
+  npx jest --silent --roots "$PWD" --roots /tmp/qt-oracle-composed-outfits \
+    -- "composed-outfits\.test\.ts$"
+```
+
+Pin verification is structural: `lib/wardrobe/composed-outfits.ts` does not
+exist before `aec86a613`, so a baseline-pinned tree fails to resolve the
+import outright. The anchored filter also picks up v4's own
+`composed-outfits.test.ts`, so the run re-proves v4's suite (8 tests, 2
+suites) every time the vectors are regenerated.
+
+### Deferred, loudly
+
+- **The new-chat host.** `screens/new-chat/outfit-selector.ts` carries a
+  dated comment on its existing deferral block: the pull-down lives in
+  `OutfitComposer`, so it arrives in the chat-start Manual mode FOR FREE the
+  moment Compose is enabled, and proving it in that host belongs to the
+  standing wardrobe-composer family's scope — not a separate follow-up.
+  `manual` still renders loudly disabled; nothing here changed that.
+- **`help/wardrobe.md`** (v4's two new sections, Composite Items and the
+  chat-start Manual mode) → the `p4.9i2` help bank. Ported: NOTHING.
