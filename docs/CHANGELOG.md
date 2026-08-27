@@ -81,6 +81,15 @@ One escalation, recorded not fixed: a wrong-typed `tagId` (`[{"tagId": 5}]`) is
 carried by v4 into `linkedTo` as the raw value, where v5 drops it. Closing it
 needs `Request::FileUpload.tags` widened past `Vec<String>` in
 `quilltap-core/src/api/types.rs`, outside this lane's ownership.
+#### 2026-08-27 — docs(porting): P4.63's gate numbers, measured at the committed state
+
+_Docs-only change._
+
+The lane record's gate section, filled in from the run at the committed
+versions: clippy exit 0 on both feature sets, `cargo test --workspace` 471
+binaries / 2,555 passed / 0 failed, and both owned families confirmed to have
+run inside the suite rather than skipped.
+
 #### 2026-08-27 — test(harness): the bug-105 oracle divergence arm — v4 aborts a whole import, v5 names the item
 
 _Versions: harness 0.0.601._

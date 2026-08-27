@@ -91522,3 +91522,23 @@ What the next `/driftcheck` and `/unify` need to know:
   and the blanked body together. The arm's v4 leg fails with that
   instruction spelled out.
 - The lane did NOT touch the drift ledger (lane agents never do).
+
+### The gate, measured at the committed state
+
+- `cargo fmt --all --check` clean; `harness/tools/check_spelling.py` exit 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` **exit 0**, and the
+  same with `--features quilltap-core/native-transport` **exit 0**.
+- `cargo test --workspace` with the lane's two oracle variables:
+  **471 test binaries / 2,555 passed / 0 failed** (cargo exit 0). The +1 test
+  against the round's 2,554 is exactly this lane's delta — the new
+  `the_hit_classifier_separates_code_from_comment`; every other change added
+  arms inside existing tests.
+- Both owned families confirmed RUN inside that suite, not skipped:
+  `system_import_state` 1/1 in 4.40 s, `attach_mount_file_equivalence` 2/2 in
+  0.07 s. Run by name with `--nocapture` beforehand: 37 cases and 13 cases
+  respectively, each printing `OK <case>`.
+- No SPA gate: the lane touches no `apps/web` file, and runs no Playwright
+  (P4.D130 is the round's sole Playwright runner).
+
+Versions: core 0.0.697, harness 0.0.601; host/web/cli/tauri/SPA unchanged.
+
