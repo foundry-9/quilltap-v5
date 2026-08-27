@@ -47,7 +47,7 @@ export class ScriptoriumBadge {
       case 'rendered':
         return 'qt-bg-warning/10 qt-text-warning hover:qt-bg-warning/20';
       default:
-        return 'bg-destructive/10 qt-text-destructive hover:bg-destructive/20';
+        return 'qt-bg-destructive/10 qt-text-destructive hover:qt-bg-destructive/20';
     }
   });
 

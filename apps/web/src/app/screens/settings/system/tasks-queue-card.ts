@@ -139,7 +139,7 @@ function errText(err: unknown, fallback: string): string {
           >
             <span
               [class]="
-                'w-2 h-2 rounded-full ' + (running() ? 'bg-success animate-pulse' : 'qt-bg-muted-foreground')
+                'w-2 h-2 rounded-full ' + (running() ? 'qt-bg-success animate-pulse' : 'qt-bg-muted-foreground')
               "
             ></span>
             {{ running() ? 'Queue Running' : 'Queue Stopped' }}

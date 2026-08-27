@@ -65,7 +65,7 @@ import { Modal } from '../../ui/modal';
         </button>
         <button
           type="button"
-          class="qt-button bg-destructive qt-text-on-destructive disabled:opacity-50"
+          class="qt-button qt-bg-destructive qt-text-on-destructive disabled:opacity-50"
           [disabled]="isDeleting()"
           (click)="confirm.emit()"
         >

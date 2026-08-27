@@ -77,7 +77,7 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
         >
           <input
             type="checkbox"
-            class="mt-1 h-4 w-4 rounded"
+            class="mt-1 qt-checkbox"
             [checked]="expandRelated()"
             [disabled]="saving()"
             (change)="onExpandRelatedChange($any($event.target).checked)"
@@ -98,7 +98,7 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
         >
           <input
             type="checkbox"
-            class="mt-1 h-4 w-4 rounded"
+            class="mt-1 qt-checkbox"
             [checked]="perTurnConversationSummaries()"
             [disabled]="saving()"
             (change)="onPerTurnConversationsChange($any($event.target).checked)"

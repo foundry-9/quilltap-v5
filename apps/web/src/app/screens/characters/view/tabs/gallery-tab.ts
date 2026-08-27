@@ -166,7 +166,7 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
                 }
                 @if (currentAvatarId() === photo.linkId) {
                   <div
-                    class="absolute top-1 left-1 bg-success qt-text-on-success text-xs px-1.5 py-0.5 rounded font-medium"
+                    class="absolute top-1 left-1 qt-bg-success qt-text-on-success text-xs px-1.5 py-0.5 rounded font-medium"
                   >
                     Avatar
                   </div>
@@ -180,7 +180,7 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
                 @if (currentAvatarId() !== photo.linkId) {
                   <button
                     type="button"
-                    class="p-1.5 rounded-full qt-shadow-md qt-bg-card qt-text-secondary hover:bg-success hover:qt-text-on-success transition-colors"
+                    class="p-1.5 rounded-full qt-shadow-md qt-bg-card qt-text-secondary hover:qt-bg-success hover:qt-text-on-success transition-colors"
                     title="Set as avatar"
                     [disabled]="settingAvatar() === photo.linkId"
                     (click)="$event.stopPropagation(); handleSetAvatar(photo)"
@@ -195,7 +195,7 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
                 @if (!missingImages().has(photo.linkId)) {
                   <button
                     type="button"
-                    class="p-1.5 rounded-full qt-shadow-md qt-bg-card qt-text-secondary hover:bg-primary hover:qt-text-on-primary transition-colors"
+                    class="p-1.5 rounded-full qt-shadow-md qt-bg-card qt-text-secondary hover:qt-bg-primary hover:qt-text-on-primary transition-colors"
                     title="Download image"
                     aria-label="Download image"
                     (click)="$event.stopPropagation(); handleDownloadImage(photo)"
@@ -208,8 +208,8 @@ const DEFAULT_THUMBNAIL_INDEX = 2;
                     type="button"
                     class="p-1.5 rounded-full qt-shadow-md transition-colors {{
                       confirmDelete() === photo.linkId
-                        ? 'bg-destructive qt-text-on-destructive'
-                        : 'qt-bg-card qt-text-secondary hover:bg-destructive hover:qt-text-on-destructive'
+                        ? 'qt-bg-destructive qt-text-on-destructive'
+                        : 'qt-bg-card qt-text-secondary hover:qt-bg-destructive hover:qt-text-on-destructive'
                     }}"
                     [title]="
                       confirmDelete() === photo.linkId

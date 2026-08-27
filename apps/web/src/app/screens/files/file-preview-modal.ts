@@ -103,7 +103,7 @@ const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE
             }
             <button
               type="button"
-              class="qt-button qt-button-secondary p-2 qt-text-destructive disabled:opacity-50"
+              class="qt-button qt-button-secondary p-2 qt-text-destructive hover:qt-bg-destructive hover:qt-text-on-destructive disabled:opacity-50"
               title="Delete"
               (click)="delete.emit(file())"
             >

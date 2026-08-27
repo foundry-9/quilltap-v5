@@ -183,6 +183,62 @@ worktree pinned at `8872d7efc`: the two `image-attachment-non-vision` rows
 flipped red-first (v5 produced the text-only body v4 no longer produces), a
 new `image-attachment-glm-5-3` pair records the model that named the bug, and
 all 339 other rows are byte-identical.
+#### 2026-08-26 — refactor(themes): the release-window qt-* utilities sweep (v4 `97d0b8f8e`)
+
+_Versions: SPA 0.5.584._
+
+P4.D128 unit 1. v4's 4.9.0 release-checklist item 7 converted 20 Tailwind class
+sites across 15 components to semantic `qt-*` utilities and added the two solid
+hover fills its stylesheet had been missing. Ported onto v5's twins.
+
+**The two utilities.** `.hover\:qt-bg-primary` and `.hover\:qt-bg-success` —
+the solid-fill siblings of `.hover\:qt-bg-destructive`, which v5 already had.
+Tailwind generates no variants for classes declared in `@layer utilities`, so
+an unwritten hover form is inert; both landed in v4's sibling positions with
+v4's `var(--color-*)` bodies, and both blocks now match v4 byte-for-byte.
+
+**The sweep, per site** (v4 site → v5 twin): 18 PORTED, 1 ALREADY-QT, 1
+NO-SITE. `AuroraView.tsx:581` → `characters/list/character-card.ts`;
+`CharacterHeader.tsx:279` → `characters/view/character-header.ts`;
+`ProjectDetailHeader.tsx:81` → `prospero/cards/project-header.ts`;
+`DeleteProjectDialog.tsx:35` → `prospero/project-delete-dialog.ts`;
+`ChatCard.tsx:268` → `ui/scriptorium-badge.ts` (v5 extracted that ternary into
+its own component); `FileDeleteConfirmation.tsx:50` →
+`files/file-delete-confirmation.ts`; `OrphanCleanupModal.tsx:60` →
+`files/orphan-cleanup-dialog.ts`; `DeletedImagePlaceholder.tsx:70` →
+`images/deleted-image-placeholder.ts`; `GalleryImage.tsx` ×4 →
+`characters/view/tabs/gallery-tab.ts`; `ImageMetadata.tsx:78` →
+`images/image-metadata.ts`; `image-gallery.tsx` ×2 → `images/image-gallery.ts`;
+`TaskFilters.tsx:140` → `settings/system/tasks-queue-card.ts`. Both
+`memory-recall-card.tsx` checkboxes → `mt-1 qt-checkbox` (v5's class is defined
+identically to v4's).
+
+**ALREADY-QT:** `CharacterHeader.tsx:139`, the avatar placeholder v4 moved off
+`bg-gray-300 dark:bg-slate-700` — v5's port had already written `qt-bg-muted`
+there, so v4 converged onto v5 and nothing moved.
+
+**NO-SITE:** `ChatCard.tsx:362`, the `actionType === 'delete'` branch. v5's
+chat card implements only the `remove` overlay (recorded in its own docstring),
+so the delete-action variant has no twin to convert.
+
+**One visible shift carried:** `image-gallery.tsx:176`, the overlay's
+`bg-black` + `bg-opacity-0/50` pair → `qt-bg-overlay-medium`, dropping the
+redundant opacity pair (the element's own `opacity-0 group-hover:opacity-100`
+fade already does that work). This was the SPA's only `bg-opacity` site.
+
+**One pre-existing v5 gap closed on the way:** v4's `FilePreviewActions.tsx:108`
+converts `hover:bg-destructive` to the qt- form on a delete button whose v5
+twin (`files/file-preview-modal.ts`) carried no hover treatment at all — both
+`hover:qt-bg-destructive` and `hover:qt-text-on-destructive` restored, and both
+resolve in v5's stylesheet.
+
+`check-qt-classes` reports 937 classes defined with every guarded reference
+resolving (v4's post-change count is 920; the numbers differ by design and it
+is resolution, not the count, that is asserted). Mutation-proven: deleting
+either new utility makes the guard exit 1 and name the inert class and its
+call site (`hover:qt-bg-primary` → `gallery-tab.ts:198`; `hover:qt-bg-success`
+→ `gallery-tab.ts:183`). v4's `packages/theme-storybook` mirror has no v5
+analog — recorded, not ported.
 
 #### 2026-08-26 — docs(porting): four work orders for the 4.9.0-push catch-up round — all fourteen drift rows ordered
 

@@ -212,7 +212,7 @@ interface StatItem {
         <a
           [routerLink]="['/characters', character().id]"
           [queryParams]="{ action: 'chat' }"
-          class="inline-flex items-center justify-center rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-on-success qt-shadow-sm hover:qt-bg-success/90"
+          class="inline-flex items-center justify-center rounded-lg qt-bg-success px-4 py-2 text-sm font-semibold qt-text-on-success qt-shadow-sm hover:qt-bg-success/90"
         >
           Start Chat
         </a>

@@ -98,7 +98,7 @@ export interface OrphanCleanupStats {
         </button>
         <button
           type="button"
-          class="qt-button bg-destructive qt-text-on-destructive disabled:opacity-50"
+          class="qt-button qt-bg-destructive qt-text-on-destructive disabled:opacity-50"
           [disabled]="isProcessing()"
           (click)="delete.emit()"
         >

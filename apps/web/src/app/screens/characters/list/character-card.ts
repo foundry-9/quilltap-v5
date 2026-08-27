@@ -145,7 +145,7 @@ import { processTemplate, resolveUserToken } from '../templates';
             [routerLink]="inTab() ? null : ['/characters', character().id]"
             [queryParams]="inTab() ? null : { action: 'chat' }"
             (click)="inTab() && onDrillChat($event)"
-            class="character-card__action character-card__action--chat inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-success px-4 py-2 text-sm font-semibold qt-text-on-success qt-shadow-sm transition hover:qt-bg-success/90"
+            class="character-card__action character-card__action--chat inline-flex flex-1 items-center justify-center gap-2 rounded-lg qt-bg-success px-4 py-2 text-sm font-semibold qt-text-on-success qt-shadow-sm transition hover:qt-bg-success/90"
             title="Start a chat with this character"
           >
             <qt-icon name="chat" class="w-5 h-5" />

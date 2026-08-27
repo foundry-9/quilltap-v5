@@ -26,7 +26,7 @@ import { Modal } from '../../ui/modal';
         </button>
         <button
           type="button"
-          class="inline-flex items-center rounded-lg bg-destructive px-4 py-2 text-sm font-semibold qt-text-on-destructive shadow hover:qt-bg-destructive/90"
+          class="inline-flex items-center rounded-lg qt-bg-destructive px-4 py-2 text-sm font-semibold qt-text-on-destructive shadow hover:qt-bg-destructive/90"
           (click)="confirm.emit()"
         >
           Delete

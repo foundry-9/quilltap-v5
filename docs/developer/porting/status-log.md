@@ -90228,3 +90228,91 @@ and the backup/import trees were not touched.
 prefix match (`contains("WARN quilltap::cheap_llm")`), the same weakness unit
 2's mutation pass found and fixed in its own new pin. One-line tightening
 whenever that file is next opened.
+### P4.D128 unit 1 — the release-window qt-* utilities sweep (v4 `97d0b8f8e`)
+
+**Lane:** `claude/qt-utilities-cli-docs-a3527c` (work order
+`p4.d128-qt-utilities-cli-about.md`). **Baseline:** `f3892158d`; the lane's
+pinned worktree is `/tmp/qt-v4-pin-p4d128-8872d7efc` at the round's target
+`8872d7efc`. Drift-ledger §2 probe at lane start: PASS (branch `main`, tree
+clean, both logs empty).
+
+**The two utilities.** v4 added `.hover\:qt-bg-primary` and
+`.hover\:qt-bg-success` — the solid-fill siblings of the destructive form v5
+already had. Tailwind generates no variants for `@layer utilities` classes, so
+an unwritten hover form is INERT; both landed in v4's sibling positions
+(immediately before the `/5` and `/20` steps respectively) with v4's
+`var(--color-*)` bodies. The whole primary and success hover blocks now diff
+byte-identical against v4's `app/styles/qt-components/_utilities.css`.
+
+**The 20-site census** (v4 hunk → v5 twin → disposition). 18 PORTED, 1
+ALREADY-QT, 1 NO-SITE:
+
+| v4 site | v5 twin | disposition |
+|---|---|---|
+| `AuroraView.tsx:581` `bg-success` | `screens/characters/list/character-card.ts:148` | PORTED |
+| `CharacterHeader.tsx:139` `bg-gray-300 dark:bg-slate-700` | `screens/characters/view/character-header.ts:49` | **ALREADY-QT** — v5's port had written `qt-bg-muted` already |
+| `CharacterHeader.tsx:279` `bg-success` | `screens/characters/view/character-header.ts:215` | PORTED |
+| `ProjectDetailHeader.tsx:81` `bg-success` | `screens/prospero/cards/project-header.ts:78` | PORTED |
+| `DeleteProjectDialog.tsx:35` `bg-destructive` | `screens/prospero/project-delete-dialog.ts:29` | PORTED |
+| `ChatCard.tsx:268` `bg-destructive/10 … hover:bg-destructive/20` | `ui/scriptorium-badge.ts:50` (v5 extracted the ternary into its own component) | PORTED |
+| `ChatCard.tsx:362` `bg-destructive` | — | **NO-SITE** — v5's chat card implements only the `remove` overlay, never the `actionType === 'delete'` variant (its own docstring records this) |
+| `FileDeleteConfirmation.tsx:50` `bg-destructive` | `screens/files/file-delete-confirmation.ts:68` | PORTED |
+| `FilePreviewActions.tsx:108` `hover:bg-destructive` | `screens/files/file-preview-modal.ts:106` | PORTED **+ a pre-existing v5 gap closed** — v5's twin carried NO hover treatment at all; both `hover:qt-bg-destructive` and `hover:qt-text-on-destructive` restored |
+| `OrphanCleanupModal.tsx:60` `bg-destructive` | `screens/files/orphan-cleanup-dialog.ts:101` | PORTED |
+| `DeletedImagePlaceholder.tsx:70` `bg-destructive` | `images/deleted-image-placeholder.ts:51` | PORTED |
+| `GalleryImage.tsx:56` `bg-success` | `screens/characters/view/tabs/gallery-tab.ts:169` | PORTED |
+| `GalleryImage.tsx:71` `hover:bg-success` | `…/gallery-tab.ts:183` | PORTED |
+| `GalleryImage.tsx:91` `hover:bg-primary` | `…/gallery-tab.ts:198` | PORTED |
+| `GalleryImage.tsx:108` `bg-destructive` | `…/gallery-tab.ts:211` | PORTED |
+| `GalleryImage.tsx:109` `hover:bg-destructive` | `…/gallery-tab.ts:212` | PORTED |
+| `ImageMetadata.tsx:78` `bg-success` | `images/image-metadata.ts:42` | PORTED |
+| `image-gallery.tsx:176` overlay | `images/image-gallery.ts:78` | PORTED (**visible shift**, carried) |
+| `image-gallery.tsx:193` `bg-destructive` | `images/image-gallery.ts:91` | PORTED |
+| `TaskFilters.tsx:140` `bg-success` | `screens/settings/system/tasks-queue-card.ts:142` | PORTED |
+
+Plus both `memory-recall-card.tsx` checkboxes (`:150`, `:169`) →
+`mt-1 qt-checkbox` at `screens/settings/memory/memory-recall-card.ts:80,101`.
+v5's `.qt-checkbox` in `_interactive.css` was verified byte-identical to v4's
+before relying on it. v5's pre-fix string was `mt-1 h-4 w-4 rounded` (a
+narrower pre-existing divergence from v4's
+`mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary`); both
+converge on v4's post-fix `mt-1 qt-checkbox`.
+
+**The visible shift, carried not normalized.** `images/image-gallery.ts`'s
+overlay went from `bg-black bg-opacity-0 group-hover:bg-opacity-50` to
+`qt-bg-overlay-medium`, dropping the `bg-opacity` pair — redundant with the
+element's own `opacity-0 group-hover:opacity-100` fade, and v4 cites
+`GenerateImageView.tsx:315` as the precedent. This was the SPA's ONLY
+`bg-opacity` site; the token is now absent from `apps/web/src` templates
+entirely.
+
+**The other visible shift needed no v5 edit.** v4's avatar-placeholder change
+(`bg-gray-300 dark:bg-slate-700` → `qt-bg-muted`, matching `--qt-avatar-bg`) is
+v4 converging onto what v5's character-header already rendered — the census's
+one ALREADY-QT row, and the reason `bg-gray-300`/`bg-slate-700` return zero
+hits in the SPA.
+
+**One spec selector followed the markup:** `files-browser.spec.ts:354` drove the
+orphan-cleanup confirm through `querySelector('button.bg-destructive')` — now
+`button.qt-bg-destructive`. (Left alone deliberately:
+`search-results.spec.ts`'s `not.toContain('bg-destructive')`, which asserts the
+progress fill routes through `qt-progress-fill-danger` and is still true.)
+
+**The guard.** `check-qt-classes` (which runs in `npm run lint` AND ahead of
+`npm test`) reports **937 classes defined, every guarded reference resolves**.
+v4's post-change count is 920; the counts differ by design, and it is
+resolution — not the number — that is asserted. **Mutation-proven, both new
+utilities:** deleting `.hover\:qt-bg-primary` exits 1 naming
+`hover:qt-bg-primary` at `gallery-tab.ts:198`; deleting
+`.hover\:qt-bg-success` exits 1 naming `hover:qt-bg-success` at
+`gallery-tab.ts:183`. That is exactly the inert-class trap v4's commit message
+describes, caught by name and site.
+
+**Recorded, not ported:** v4 mirrors the two utilities into
+`packages/theme-storybook` (1.0.65). v5 has no storybook analog. v4 also notes
+`text-foreground` was left alone (Tailwind is the convention there 376-to-73);
+v5 changed nothing there either.
+
+**Gate for this unit:** `npm run lint` clean (937); `npm test` **361 files /
+5,398 → 5,399 tests / 0 failed** (the +1 is unit 3's About spec, landed in the
+same lane); `npm run build` clean.

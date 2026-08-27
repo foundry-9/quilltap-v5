@@ -351,7 +351,7 @@ describe('FilesBrowser toasts', () => {
     ).click();
     await new Promise((r) => setTimeout(r, 0));
     fixture.detectChanges();
-    (fixture.nativeElement.querySelector('button.bg-destructive') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('button.qt-bg-destructive') as HTMLButtonElement).click();
     await new Promise((r) => setTimeout(r, 0));
     expect(toasts()).toEqual([{ type: 'success', message: 'Removed 3 orphaned files' }]);
   });
