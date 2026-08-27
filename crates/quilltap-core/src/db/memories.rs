@@ -42,6 +42,7 @@ use serde_json::Value;
 
 use super::memories_read;
 use super::DbError;
+use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::clock::now_iso;
 use crate::embedding_blob::float32_to_blob;
 
@@ -329,22 +330,30 @@ impl<'c> MemoriesRepository<'c> {
     }
 
     /// `bulkDelete` — `deleteMany({ characterId, id: { $in } })`; empty → 0.
+    ///
+    /// **Chunked** (v4 `805ef12bf`): v4's query translator expands `$in` to one
+    /// bind variable per id and this one binds them directly, so a full-wipe
+    /// cascade can exceed `SQLITE_MAX_VARIABLE_NUMBER` (999 on older builds,
+    /// 32766 on current ones) and the whole statement fails with "too many SQL
+    /// variables" instead of deleting. The chunks are summed, exactly as v4
+    /// accumulates `deletedCount`.
     pub fn bulk_delete(&self, character_id: &str, memory_ids: &[String]) -> Result<i64, DbError> {
         if memory_ids.is_empty() {
             return Ok(0);
         }
-        let placeholders = (0..memory_ids.len())
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(", ");
-        let sql = format!("DELETE FROM memories WHERE characterId = ? AND id IN ({placeholders})");
-        let mut p: Vec<&dyn ToSql> = Vec::with_capacity(1 + memory_ids.len());
-        p.push(&character_id);
-        for id in memory_ids {
-            p.push(id);
+        let mut deleted = 0i64;
+        for chunk in chunk_array(memory_ids, SQLITE_VARIABLE_CHUNK_SIZE) {
+            let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql =
+                format!("DELETE FROM memories WHERE characterId = ? AND id IN ({placeholders})");
+            let mut p: Vec<&dyn ToSql> = Vec::with_capacity(1 + chunk.len());
+            p.push(&character_id);
+            for id in chunk {
+                p.push(id);
+            }
+            deleted += self.conn.execute(&sql, p.as_slice())? as i64;
         }
-        let n = self.conn.execute(&sql, p.as_slice())?;
-        Ok(n as i64)
+        Ok(deleted)
     }
 
     /// `updateAccessTime` — set `lastAccessedAt = now` if owned. (v4's `update`
@@ -600,16 +609,18 @@ impl<'c> MemoriesRepository<'c> {
 
         // Resolve id → characterId for the doomed set, group, `bulkDelete` per
         // character (final DB state is independent of group iteration order).
-        let placeholders = (0..memory_ids.len())
-            .map(|_| "?")
-            .collect::<Vec<_>>()
-            .join(", ");
-        let sql = format!("SELECT id, characterId FROM memories WHERE id IN ({placeholders})");
+        //
+        // **Chunked** (v4 `805ef12bf`): each id is one bind variable, and a
+        // full-wipe cascade can pass more ids than `SQLITE_MAX_VARIABLE_NUMBER`
+        // allows in a single statement. Every chunk accumulates into the SAME
+        // map, so the grouping is unchanged.
         let mut by_character: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
-        {
+        for chunk in chunk_array(memory_ids, SQLITE_VARIABLE_CHUNK_SIZE) {
+            let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = format!("SELECT id, characterId FROM memories WHERE id IN ({placeholders})");
             let mut stmt = self.conn.prepare(&sql)?;
-            let p: Vec<&dyn ToSql> = memory_ids.iter().map(|s| s as &dyn ToSql).collect();
+            let p: Vec<&dyn ToSql> = chunk.iter().map(|s| s as &dyn ToSql).collect();
             let rows = stmt.query_map(p.as_slice(), |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
             })?;
@@ -845,5 +856,91 @@ mod tests {
         let repo = w.memories();
         assert_eq!(repo.delete_many_with_unlink(&[]).unwrap(), 0);
         assert_eq!(related_of(&w, "mA1"), Some(vec!["mA2".to_string()]));
+    }
+
+    // ── P4.D126 unit 2: the SQLite bind-variable ceiling (v4 `805ef12bf`) ────
+    //
+    // RED-FIRST, measured 2026-08-26 before the chunking landed: both sites
+    // answered
+    //   Sqlite(SqliteFailure(Error { code: Unknown, extended_code: 1 },
+    //                        Some("too many SQL variables")))
+    // on a 40,000-id batch. SQLite3MC is the same engine v4 links, so the
+    // ceiling (32,766 here) and v4's 900-id budget are the same numbers.
+
+    /// A batch far past `SQLITE_MAX_VARIABLE_NUMBER` must still delete the rows
+    /// it names — the ids that exist — and count them.
+    #[test]
+    fn bulk_delete_chunks_past_the_variable_limit() {
+        let (_dir, w) = seed(&[
+            ("mA1", "charA", &[]),
+            ("mA2", "charA", &[]),
+            ("mB1", "charB", &[]),
+        ]);
+        let repo = w.memories();
+        // 40,000 > 32,766: one statement per id list is impossible.
+        let mut ids: Vec<String> = (0..40_000).map(|i| format!("ghost-{i}")).collect();
+        // Spread the REAL ids across three different chunks (0, 900, 39_999) so a
+        // port that only ever ran the first chunk would miss two of them.
+        ids[0] = "mA1".to_string();
+        ids[SQLITE_VARIABLE_CHUNK_SIZE] = "mA2".to_string();
+        ids[39_999] = "mB1".to_string();
+
+        let deleted = repo
+            .bulk_delete("charA", &ids)
+            .expect("a chunked bulk_delete must not hit the variable limit");
+        assert_eq!(deleted, 2, "only charA's two rows are in scope");
+        assert_eq!(related_of(&w, "mA1"), None);
+        assert_eq!(related_of(&w, "mA2"), None);
+        assert!(
+            related_of(&w, "mB1").is_some(),
+            "the characterId scope still holds across chunks"
+        );
+    }
+
+    /// The chokepoint's doomed-id → character resolve, same ceiling. Every chunk
+    /// accumulates into the SAME map, so the by-character grouping — and the
+    /// neighbour scrub that runs before it — are unchanged.
+    #[test]
+    fn delete_many_with_unlink_chunks_past_the_variable_limit() {
+        let (_dir, w) = seed(&[
+            ("mA1", "charA", &[]),
+            ("mA2", "charA", &[]),
+            ("mB1", "charB", &[]),
+            ("mB2", "charB", &["mA1", "mB1"]),
+        ]);
+        let repo = w.memories();
+        let mut ids: Vec<String> = (0..40_000).map(|i| format!("ghost-{i}")).collect();
+        ids[0] = "mA1".to_string();
+        ids[SQLITE_VARIABLE_CHUNK_SIZE] = "mA2".to_string();
+        ids[39_999] = "mB1".to_string();
+
+        let deleted = repo
+            .delete_many_with_unlink(&ids)
+            .expect("a chunked resolve must not hit the variable limit");
+        assert_eq!(deleted, 3, "all three real rows, across two characters");
+        assert_eq!(related_of(&w, "mA1"), None);
+        assert_eq!(related_of(&w, "mA2"), None);
+        assert_eq!(related_of(&w, "mB1"), None);
+        assert_eq!(
+            related_of(&w, "mB2"),
+            Some(vec![]),
+            "the surviving neighbour is still scrubbed of BOTH doomed ids"
+        );
+    }
+
+    /// v4's own pin at both sites is a **2,000-id batch** — under the current
+    /// ceiling, over the 900 budget, so it proves the chunking runs rather than
+    /// merely that nothing threw. Rows sit either side of the first boundary.
+    #[test]
+    fn a_two_thousand_id_batch_crosses_the_chunk_boundary() {
+        let (_dir, w) = seed(&[("mA1", "charA", &[]), ("mA2", "charA", &[])]);
+        let repo = w.memories();
+        let mut ids: Vec<String> = (0..2_000).map(|i| format!("ghost-{i}")).collect();
+        // 899 is the last id of chunk 1; 900 is the first of chunk 2.
+        ids[SQLITE_VARIABLE_CHUNK_SIZE - 1] = "mA1".to_string();
+        ids[SQLITE_VARIABLE_CHUNK_SIZE] = "mA2".to_string();
+        assert_eq!(repo.bulk_delete("charA", &ids).unwrap(), 2);
+        assert_eq!(related_of(&w, "mA1"), None);
+        assert_eq!(related_of(&w, "mA2"), None);
     }
 }

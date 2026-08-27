@@ -158,6 +158,7 @@ pub mod chat_timestamp;
 pub mod chat_utils;
 pub mod cheap_llm;
 pub mod cheap_model;
+pub mod chunk;
 pub mod clock;
 pub mod collation;
 pub mod content_disposition;

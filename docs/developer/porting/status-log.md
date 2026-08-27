@@ -89742,3 +89742,59 @@ Family re-run at the pin: `system_delete_data_equivalence` 2/2 (9 oracle
 cases + the new wiring pin), oracle regenerated fresh from the pinned
 worktree through `harness/tools/recipe_sweep.py --run
 system_delete_data_equivalence --v4 /tmp/qt-v4-pin-p4d126-8872d7efc`.
+
+### Unit 2 — `805ef12bf`, the SQLite bind-variable ceiling
+
+**RED-FIRST, measured before the port (2026-08-26).** A 40,000-id batch
+against a fresh encrypted fixture:
+
+```
+bulk_delete 40k:              Some(Sqlite(SqliteFailure(Error { code: Unknown,
+    extended_code: 1 }, Some("too many SQL variables"))))
+delete_many_with_unlink 40k:  Some(Sqlite(SqliteFailure(Error { code: Unknown,
+    extended_code: 1 }, Some("too many SQL variables"))))
+```
+
+So v5 measurably had the bug at BOTH sites the drift ledger names
+(`db/memories.rs` `bulk_delete` and the doomed-set resolve inside
+`delete_many_with_unlink`), and SQLite3MC's ceiling here is the same 32,766
+v4's commit message quotes.
+
+**The port.** New `crates/quilltap-core/src/chunk.rs` mirrors v4's
+`lib/utils/chunk.ts` one-for-one: `SQLITE_VARIABLE_CHUNK_SIZE = 900` with v4's
+doc-comment reasoning carried, and `chunk_array(items, size)` —
+order-preserving, empty input yields NO chunks, and a zero size asserts with
+v4's byte-exact sentence `chunkArray size must be a positive integer, got 0`.
+Two deliberate, documented departures: the return is borrowed sub-slices
+rather than fresh arrays (same sequence, no copy — both consumers only read),
+and v4's *non-integer* half of the guard is unreachable in Rust, `size` being
+a `usize`.
+
+Both call sites loop it. `bulk_delete` sums `execute` per chunk exactly as v4
+accumulates `deletedCount`; the resolve accumulates every chunk into the SAME
+`by_character` map, so the grouping — and the neighbour scrub that runs before
+it — are byte-for-byte what they were.
+
+**Pins.** The helper's own seven cases mirror v4's `chunk.test.ts` (order, the
+short tail, the exact multiple, empty, size > input, the 2,000-id 900/900/200
+shape with a flatten-equals-input check, the zero refusal). At the two sites,
+v4 pins the chunked query shapes with 2,000-id batches; v5 pins the same
+boundary behaviourally — real rows are planted in three DIFFERENT chunks of a
+40,000-id batch (indices 0, 900 and 39,999) and either side of the first
+boundary in a 2,000-id one, so a port that ran only the first chunk loses
+rows.
+
+**Mutation pass (3, each reddening exactly the right tests):**
+
+1. `SQLITE_VARIABLE_CHUNK_SIZE` 900 → 40_000 — 5 red (both site tests, the
+   2,000-id boundary test, the shape pin, the constant pin).
+2. `break` after the first chunk in `bulk_delete` — 2 red
+   (`bulk_delete_chunks_past_the_variable_limit`,
+   `a_two_thousand_id_batch_crosses_the_chunk_boundary`).
+3. `break` after the first chunk in the resolve — 1 red
+   (`delete_many_with_unlink_chunks_past_the_variable_limit`).
+
+**Families re-run at the `8872d7efc` pin, fresh oracles, zero SKIP:**
+`memory_delete_tier2_equivalence` 1/1, `memory_cascade_tier2_equivalence` 1/1
+(the DB end state is chunk-count-independent by construction, so these are
+neutrality evidence, not the pin — the pin is the site tests above).

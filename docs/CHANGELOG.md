@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — fix(memory): chunk batch memory deletion under the SQLite variable limit
+
+_Versions: core 0.0.690._
+
+Ports v4 `805ef12bf` (P4.D126 unit 2). Both batch-deletion sites built one
+`IN (…)` list with one bind variable per id, so a batch past
+`SQLITE_MAX_VARIABLE_NUMBER` failed the whole statement instead of deleting.
+Measured before the fix on a 40,000-id batch: both
+`MemoriesRepository::bulk_delete` and the doomed-id resolve inside
+`delete_many_with_unlink` answered `too many SQL variables`. This bites
+full-wipe restores and large character cascades on instances with tens of
+thousands of memories.
+
+New `quilltap_core::chunk` mirrors v4's `lib/utils/chunk.ts`: the
+`SQLITE_VARIABLE_CHUNK_SIZE = 900` budget (safely under both the 999 of older
+builds and the 32766 of current ones) and an order-preserving `chunk_array`
+that refuses a zero size with v4's sentence. Both sites loop it — the
+repository summing `deletedCount` per chunk, the resolve accumulating into the
+same by-character map — so the grouping and the neighbour scrub are unchanged.
+
+Pinned by v4's own shapes: the helper's order/empty/exact-multiple/2,000-id
+cases, and site tests that put real rows in three different chunks of a
+40,000-id batch (and either side of the first 900-boundary in a 2,000-id one).
+Mutation-proven three ways: raising the budget over the ceiling, and
+short-circuiting each site's loop after its first chunk.
+
 #### 2026-08-26 — refactor(backup): route the full-wipe memory deletion through the memory-gate chokepoint
 
 _Versions: core 0.0.689, harness 0.0.593._
