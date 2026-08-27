@@ -6,25 +6,70 @@
 //! [`enrich_tags`] / [`filter_chats_by_excluded_tags`]) and the **DETAIL**
 //! participant path ([`enrich_participant_detail`] / [`get_character_detail`] /
 //! [`get_connection_profile`] / [`get_image_profile`]) are the P4.6a Salon-read
-//! unit's — ported here as the no-preloaded path (byte-identical output to v4's
-//! batched `preloaded` fast path). `cleanEnrichedChats` (strip `_allTagIds`) is a
-//! `#[serde(skip)]` field on [`EnrichedChatSummary`].
+//! unit's. `cleanEnrichedChats` (strip `_allTagIds`) is a `#[serde(skip)]`
+//! field on [`EnrichedChatSummary`].
 //!
-//! Character reads go through the vault-overlaid [`characters_read::find_by_id`];
-//! the avatar resolves through the ported
-//! [`crate::photos::resolve_character_avatar`].
+//! **P4.65:** the LIST path now carries v4's [`ChatListPreloaded`] batching —
+//! [`enrich_chats_for_list`] collects every character/project/story-background
+//! id up front, issues ONE batched read per repository, and threads the maps
+//! through the per-chat helpers, exactly per v4 `:620-687`. (The P4.6a port
+//! had dropped the preload entirely — payload-equivalent but structurally
+//! N+1; P4.64 measured it at 97% of the 8.6–12.2 s salon list / dashboard
+//! cost on the real instance.) Each helper keeps v4's no-`preloaded` fallback
+//! branch for the single-row callers.
+//!
+//! Character reads go through the vault-overlaid [`characters_read::find_by_id`]
+//! (per-row) or [`characters_read::find_by_ids`] (the batch); the per-row
+//! avatar resolves through [`crate::photos::resolve_character_avatar`].
+
+use std::collections::{HashMap, HashSet};
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::db::doc_mount_file_links::{DocMountFileLinksRepository, LinkWithContent};
+use crate::db::files::FileEntry;
 use crate::db::projects::ProjectsRepository;
 use crate::db::{
     api_keys, chats_messages_read, connection_profiles, conversation_chunks, image_profiles,
     memories_read, tags, DbError,
 };
 use crate::db::{characters_read, files};
-use crate::photos::resolve_character_avatar::{build_legacy_file_url, resolve_character_avatar};
+use crate::photos::resolve_character_avatar::{
+    build_legacy_file_url, build_mount_file_url, resolve_character_avatar,
+};
+
+/// Pre-loaded data for batched list enrichment (v4 `ChatListPreloaded`,
+/// `chat-enrichment.service.ts:38-56`). Populated once by
+/// [`enrich_chats_for_list`] and threaded through the per-chat / per-participant
+/// helpers so they skip per-row `findById` calls. Without this, v4's 287 chats ×
+/// N participants turned into ~500+ `characters.findById` calls, each of which
+/// triggered the 8-query `applyDocumentStoreOverlay` block — a 4000+ query stall
+/// right after startup. (v5 re-measured the same shape at P4.64: ~2,000 vault
+/// lookups and 97% of an 8.6–12.2 s list on the real instance.)
+pub struct ChatListPreloaded {
+    /// Overlaid character rows by id ([`characters_read::find_by_ids`] — a
+    /// character whose vault is unavailable is DROPPED from the batch, so a map
+    /// miss here answers `character: null` where the per-row fallback errors).
+    pub characters: HashMap<String, Value>,
+    /// Story-background `files` rows by id.
+    pub files: HashMap<String, FileEntry>,
+    /// Vault link ids resolved up front for character avatars. Post-Phase-3
+    /// `defaultImageId` carries `doc_mount_file_links.id`; we look them up
+    /// alongside `files` so the per-character enrichment hot path stays one map
+    /// lookup (v4's comment, carried).
+    pub doc_mount_file_links: HashMap<String, LinkWithContent>,
+    /// Hydrated store-backed projects by id (unavailable stores dropped, like
+    /// characters).
+    pub projects: HashMap<String, Value>,
+    /// Memory counts per chatId (zero when absent).
+    pub memory_counts: HashMap<String, i64>,
+    /// Conversation-chunk `(total, embedded)` per chatId (absent when no chunks
+    /// exist). Used together with `chat.renderedMarkdown` to derive
+    /// `scriptoriumStatus`.
+    pub conversation_chunk_counts: HashMap<String, (i64, i64)>,
+}
 
 /// Image info for enriched entities (v4 `EnrichedImage`). `url` is always null on
 /// this path (v4 sets `url: null` and carries the URL in `filepath`).
@@ -68,27 +113,72 @@ fn s(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
-/// v4 `getCharacterSummary` (no-`preloaded` branch): the overlaid character +
-/// its resolved avatar → the summary shape. `None` when the character row is
-/// absent.
+/// v4 `getCharacterSummary(characterId, repos)` — the no-`preloaded` call shape
+/// (`handleCreate`'s 201 response). Kept as a thin wrapper so the single-row
+/// callers don't carry a `None` literal.
 pub fn get_character_summary(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
 ) -> Result<Option<EnrichedCharacterSummary>, DbError> {
-    let Some(character) = characters_read::find_by_id(main, mount, character_id)? else {
+    get_character_summary_preloaded(main, mount, character_id, None)
+}
+
+/// v4 `getCharacterSummary(characterId, repos, preloaded?)`: the overlaid
+/// character + its resolved avatar → the summary shape. `None` when the
+/// character row is absent.
+///
+/// When `preloaded` is supplied, both the character and its defaultImage are
+/// read from the pre-fetched maps instead of hitting the repository — this is
+/// the batched list path (v4's comment, carried). A map MISS is `None`, never a
+/// fallback read: v4's preloaded branch is `preloaded.characters.get(id) ??
+/// null`, so an unavailable-vault character (dropped from the batch) answers
+/// `character: null` here where the per-row branch would error. The avatar
+/// tries the vault-link map first, then the `files` map — which holds only
+/// story backgrounds, so a legacy-file avatar resolves in the list only when
+/// its id doubles as some chat's story background (v4 `:252-264`, faithfully).
+fn get_character_summary_preloaded(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    preloaded: Option<&ChatListPreloaded>,
+) -> Result<Option<EnrichedCharacterSummary>, DbError> {
+    let character = match preloaded {
+        Some(p) => p.characters.get(character_id).cloned(),
+        None => characters_read::find_by_id(main, mount, character_id)?,
+    };
+    let Some(character) = character else {
         return Ok(None);
     };
 
     let mut default_image: Option<EnrichedImage> = None;
     let default_image_id = s(&character, "defaultImageId");
     if let Some(did) = default_image_id.as_deref() {
-        if let Some(resolved) = resolve_character_avatar(main, mount, Some(did))? {
-            default_image = Some(EnrichedImage {
-                id: resolved.id,
-                filepath: resolved.url,
-                url: None,
-            });
+        match preloaded {
+            Some(p) => {
+                if let Some(link) = p.doc_mount_file_links.get(did) {
+                    default_image = Some(EnrichedImage {
+                        id: did.to_string(),
+                        filepath: build_mount_file_url(&link.mount_point_id, &link.relative_path),
+                        url: None,
+                    });
+                } else if let Some(file_entry) = p.files.get(did) {
+                    default_image = Some(EnrichedImage {
+                        id: file_entry.id.clone(),
+                        filepath: build_legacy_file_url(&file_entry.id),
+                        url: None,
+                    });
+                }
+            }
+            None => {
+                if let Some(resolved) = resolve_character_avatar(main, mount, Some(did))? {
+                    default_image = Some(EnrichedImage {
+                        id: resolved.id,
+                        filepath: resolved.url,
+                        url: None,
+                    });
+                }
+            }
         }
     }
 
@@ -117,17 +207,29 @@ pub fn get_character_summary(
     }))
 }
 
-/// v4 `enrichParticipantSummary` (no-`preloaded` branch): the participant Value
-/// (an element of the chat's `participants` array) → the summary shape.
+/// v4 `enrichParticipantSummary(participant, repos)` — the no-`preloaded` call
+/// shape (`handleCreate`'s 201 response).
 pub fn enrich_participant_summary(
     main: &Connection,
     mount: &Connection,
     participant: &Value,
 ) -> Result<EnrichedParticipantSummary, DbError> {
+    enrich_participant_summary_preloaded(main, mount, participant, None)
+}
+
+/// v4 `enrichParticipantSummary(participant, repos, preloaded?)`: the
+/// participant Value (an element of the chat's `participants` array) → the
+/// summary shape, threading `preloaded` down to the character read.
+fn enrich_participant_summary_preloaded(
+    main: &Connection,
+    mount: &Connection,
+    participant: &Value,
+    preloaded: Option<&ChatListPreloaded>,
+) -> Result<EnrichedParticipantSummary, DbError> {
     let kind = s(participant, "type").unwrap_or_else(|| "CHARACTER".to_string());
     let character_id = s(participant, "characterId");
     let character = match (kind.as_str(), character_id.as_deref()) {
-        ("CHARACTER", Some(cid)) => get_character_summary(main, mount, cid)?,
+        ("CHARACTER", Some(cid)) => get_character_summary_preloaded(main, mount, cid, preloaded)?,
         _ => None,
     };
 
@@ -433,8 +535,8 @@ pub fn enrich_participant_detail(
 
 // ===========================================================================
 // The LIST path (v4 `enrichChatsForList` / `enrichChatForList` / `enrichTags` /
-// `filterChatsByExcludedTags` / `cleanEnrichedChats`) — the no-preloaded
-// orchestration. Byte-identical output to v4's batched `preloaded` fast path.
+// `filterChatsByExcludedTags` / `cleanEnrichedChats`) — since P4.65, the real
+// `ChatListPreloaded` batched orchestration, with v4's per-row fallback arms.
 // ===========================================================================
 
 /// v4 `EnrichedTag` — `{ tag: { id, name } }`.
@@ -514,101 +616,20 @@ pub fn enrich_tags(conn: &Connection, tag_ids: &[String]) -> Result<Vec<Enriched
         .collect())
 }
 
-/// The LIST-path avatar resolution: v4's batched `enrichChatsForList` preloads
-/// character avatars ONLY as vault links (`docMountFileLinks`) — `preloaded.files`
-/// holds story backgrounds, not avatar files — so a **legacy-file** avatar resolves
-/// to `null` in the list (unlike the no-preloaded GET/create path, which falls back
-/// to the legacy `files` table). Reproduce that vault-only behavior here.
-fn resolve_list_avatar(
-    mount: &Connection,
-    image_id: &str,
-) -> Result<Option<EnrichedImage>, DbError> {
-    let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
-    if let Some(link) = links.find_by_id_with_content(image_id)? {
-        return Ok(Some(EnrichedImage {
-            id: image_id.to_string(),
-            filepath: crate::photos::resolve_character_avatar::build_mount_file_url(
-                &link.mount_point_id,
-                &link.relative_path,
-            ),
-            url: None,
-        }));
-    }
-    Ok(None)
-}
-
-/// v4 `getCharacterSummary` with the LIST (batched) avatar semantics (vault-only).
-fn get_character_summary_for_list(
-    main: &Connection,
-    mount: &Connection,
-    character_id: &str,
-) -> Result<Option<EnrichedCharacterSummary>, DbError> {
-    let Some(character) = characters_read::find_by_id(main, mount, character_id)? else {
-        return Ok(None);
-    };
-    let default_image_id = s(&character, "defaultImageId");
-    let default_image = match default_image_id.as_deref() {
-        Some(did) => resolve_list_avatar(mount, did)?,
-        None => None,
-    };
-    let avatar_url = default_image.as_ref().map(|i| i.filepath.clone());
-    Ok(Some(EnrichedCharacterSummary {
-        id: s(&character, "id").unwrap_or_default(),
-        name: s(&character, "name").unwrap_or_default(),
-        title: s(&character, "title"),
-        avatar_url,
-        default_image_id,
-        default_image,
-        talkativeness: character
-            .get("talkativeness")
-            .and_then(Value::as_f64)
-            .unwrap_or(0.5),
-        tags: character
-            .get("tags")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default(),
-    }))
-}
-
-/// v4 `enrichParticipantSummary` with the LIST avatar semantics.
-fn enrich_participant_summary_for_list(
-    main: &Connection,
-    mount: &Connection,
-    participant: &Value,
-) -> Result<EnrichedParticipantSummary, DbError> {
-    let kind = s(participant, "type").unwrap_or_else(|| "CHARACTER".to_string());
-    let character = match (kind.as_str(), s(participant, "characterId").as_deref()) {
-        ("CHARACTER", Some(cid)) => get_character_summary_for_list(main, mount, cid)?,
-        _ => None,
-    };
-    Ok(EnrichedParticipantSummary {
-        id: s(participant, "id").unwrap_or_default(),
-        kind,
-        display_order: participant
-            .get("displayOrder")
-            .and_then(Value::as_i64)
-            .unwrap_or(0),
-        is_active: participant
-            .get("isActive")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-        status: s(participant, "status").unwrap_or_else(|| "active".to_string()),
-        removed_at: s(participant, "removedAt"),
-        character,
-    })
-}
-
-/// v4 `enrichChatForList(chat, repos)` (no-preloaded): the per-chat
-/// `EnrichedChatSummary`.
+/// v4 `enrichChatForList(chat, repos, preloaded?)`: the per-chat
+/// `EnrichedChatSummary`. On the list path `preloaded` is always supplied by
+/// [`enrich_chats_for_list`]; the `None` arms are v4's per-row fallback
+/// branches, kept for shape fidelity (v5 has no single-chat caller today).
+///
+/// Until P4.65 the list path approximated v4's preloaded avatar semantics with
+/// a per-row vault-link-only lookup; the real preload now carries v4's exact
+/// two-step (the `docMountFileLinks` map, then the story-background `files`
+/// map) inside [`get_character_summary_preloaded`].
 pub fn enrich_chat_for_list(
     main: &Connection,
     mount: &Connection,
     chat: &Value,
+    preloaded: Option<&ChatListPreloaded>,
 ) -> Result<EnrichedChatSummary, DbError> {
     let chat_id = s(chat, "id").unwrap_or_default();
 
@@ -619,7 +640,9 @@ pub fn enrich_chat_for_list(
         .unwrap_or_default();
     let mut participants = Vec::with_capacity(raw_participants.len());
     for p in &raw_participants {
-        participants.push(enrich_participant_summary_for_list(main, mount, p)?);
+        participants.push(enrich_participant_summary_preloaded(
+            main, mount, p, preloaded,
+        )?);
     }
 
     let chat_tag_ids: Vec<String> = chat
@@ -633,53 +656,71 @@ pub fn enrich_chat_for_list(
         .unwrap_or_default();
     let tags = enrich_tags(main, &chat_tag_ids)?;
 
-    // project
+    // project (v4: `preloaded ? preloaded.projects.get(id) ?? null : findById`
+    // — a map miss is null, never a fallback read; an unavailable project store
+    // was dropped from the batch, where the per-row `findById` throws).
     let project = match s(chat, "projectId") {
-        Some(pid) => ProjectsRepository::new(main, mount)
-            .find_by_id(&pid)
-            .map_err(|e| DbError::Internal(format!("project overlay: {e}")))?
-            .map(|p| EnrichedProject {
-                id: s(&p, "id").unwrap_or_default(),
-                name: s(&p, "name").unwrap_or_default(),
-                color: s(&p, "color"),
-            }),
+        Some(pid) => match preloaded {
+            Some(p) => p.projects.get(&pid).cloned(),
+            None => ProjectsRepository::new(main, mount)
+                .find_by_id(&pid)
+                .map_err(|e| DbError::Internal(format!("project overlay: {e}")))?,
+        }
+        .map(|p| EnrichedProject {
+            id: s(&p, "id").unwrap_or_default(),
+            name: s(&p, "name").unwrap_or_default(),
+            color: s(&p, "color"),
+        }),
         None => None,
     };
 
     // story background (always resolves through the legacy `files` table)
     let story_background = match s(chat, "storyBackgroundImageId") {
         Some(bg_id) => {
-            let repo = files::FilesRepository::new(main);
-            match repo.find_by_id(&bg_id)? {
-                Some(f) => Some(EnrichedStoryBackground {
-                    filepath: build_legacy_file_url(&f.id),
-                    id: f.id,
-                }),
-                None => None,
-            }
+            let bg_file = match preloaded {
+                Some(p) => p.files.get(&bg_id).cloned(),
+                None => files::FilesRepository::new(main).find_by_id(&bg_id)?,
+            };
+            bg_file.map(|f| EnrichedStoryBackground {
+                filepath: build_legacy_file_url(&f.id),
+                id: f.id,
+            })
         }
         None => None,
     };
 
     // _count
     let messages = chats_messages_read::get_message_count(main, &chat_id)?;
-    let memories = memories_read::count_by_chat_id(main, &chat_id)?;
+    // Memory count: prefer the bulk-preloaded value (`?? 0`); fall back to the
+    // per-chat read when the single-chat path calls in without preload (v4's
+    // comment, carried).
+    let memories = match preloaded {
+        Some(p) => p.memory_counts.get(&chat_id).copied().unwrap_or(0),
+        None => memories_read::count_by_chat_id(main, &chat_id)?,
+    };
 
-    // scriptorium status
+    // scriptorium status. With preload the map is consulted for every chat but
+    // only holds rendered chats' rows (v4 reads it unconditionally too); the
+    // fallback queries only when renderedMarkdown is truthy, as v4's does.
     let has_rendered = chat
         .get("renderedMarkdown")
         .and_then(Value::as_str)
         .map(|s| !s.is_empty())
         .unwrap_or(false);
+    let chunk_stats: Option<(i64, i64)> = match preloaded {
+        Some(p) => p.conversation_chunk_counts.get(&chat_id).copied(),
+        None if has_rendered => Some(
+            conversation_chunks::ConversationChunksRepository::new(main)
+                .count_stats_by_chat_id(&chat_id)?,
+        ),
+        None => None,
+    };
     let scriptorium_status = if !has_rendered {
         "none".to_string()
     } else {
-        let (total, embedded) = conversation_chunks::ConversationChunksRepository::new(main)
-            .count_stats_by_chat_id(&chat_id)?;
-        if total > 0 && embedded >= total {
-            "embedded".to_string()
-        } else {
-            "rendered".to_string()
+        match chunk_stats {
+            Some((total, embedded)) if total > 0 && embedded >= total => "embedded".to_string(),
+            _ => "rendered".to_string(),
         }
     };
 
@@ -737,9 +778,16 @@ pub fn sort_chats_for_list(chats: &mut [Value]) {
     });
 }
 
-/// v4 `enrichChatsForList(chats, repos)`: sort descending by
-/// `lastMessageAt ?? updatedAt`, then per-chat enrich. Stable sort (V8's is
-/// stable) — ties keep the input order.
+/// v4 `enrichChatsForList(chats, repos)` (`:620-687`): sort descending by
+/// `lastMessageAt ?? updatedAt` (stable — ties keep the input order), build the
+/// [`ChatListPreloaded`] maps with ONE batched read per repository, then
+/// per-chat enrich on the preload.
+///
+/// v4's build order, kept exactly: one collection pass over the sorted chats;
+/// `characters.findByIds` FIRST (its results seed the avatar-id set from the
+/// returned characters' `defaultImageId`); then the five remaining batched
+/// reads (v4 runs them in one `Promise.all` — concurrency only, same
+/// connection underneath; sequential here).
 pub fn enrich_chats_for_list(
     main: &Connection,
     mount: &Connection,
@@ -747,9 +795,117 @@ pub fn enrich_chats_for_list(
 ) -> Result<Vec<EnrichedChatSummary>, DbError> {
     let mut chats = chats;
     sort_chats_for_list(&mut chats);
+
+    // ONE pass collecting the cross-chat id sets (v4 `:631-640`). Insertion
+    // order with a seen-set — the order feeds only `IN` queries whose results
+    // land in maps, but determinism is free. JS-truthiness: v4's `if
+    // (chat.projectId)` / `p.characterId` guards skip empty strings.
+    let mut character_ids: Vec<String> = Vec::new();
+    let mut project_ids: Vec<String> = Vec::new();
+    let mut file_ids: Vec<String> = Vec::new();
+    let mut seen_characters = HashSet::new();
+    let mut seen_projects = HashSet::new();
+    let mut seen_files = HashSet::new();
+    for chat in &chats {
+        if let Some(pid) = s(chat, "projectId").filter(|v| !v.is_empty()) {
+            if seen_projects.insert(pid.clone()) {
+                project_ids.push(pid);
+            }
+        }
+        if let Some(fid) = s(chat, "storyBackgroundImageId").filter(|v| !v.is_empty()) {
+            if seen_files.insert(fid.clone()) {
+                file_ids.push(fid);
+            }
+        }
+        for p in chat
+            .get("participants")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+        {
+            // The same type-defaulting spelling `enrich_participant_summary`
+            // uses (a missing `type` reads as CHARACTER), so the collection
+            // pass and the lookup pass can never disagree about a seat.
+            let kind = s(p, "type").unwrap_or_else(|| "CHARACTER".to_string());
+            if kind == "CHARACTER" {
+                if let Some(cid) = s(p, "characterId").filter(|v| !v.is_empty()) {
+                    if seen_characters.insert(cid.clone()) {
+                        character_ids.push(cid);
+                    }
+                }
+            }
+        }
+    }
+
+    // Characters first (v4 `:641-652`): the batch drops unavailable-vault rows,
+    // and the RETURNED characters seed the avatar-id set.
+    let characters = characters_read::find_by_ids(main, mount, &character_ids)?;
+    let mut character_avatar_ids: Vec<String> = Vec::new();
+    let mut seen_avatars = HashSet::new();
+    for character in &characters {
+        if let Some(did) = s(character, "defaultImageId").filter(|v| !v.is_empty()) {
+            if seen_avatars.insert(did.clone()) {
+                character_avatar_ids.push(did);
+            }
+        }
+    }
+    let characters_map: HashMap<String, Value> = characters
+        .into_iter()
+        .filter_map(|c| s(&c, "id").map(|id| (id, c)))
+        .collect();
+
+    let chat_ids: Vec<String> = chats.iter().filter_map(|c| s(c, "id")).collect();
+    // Restrict the chunk-count query to chats that actually have rendered
+    // markdown — every other chat is unambiguously 'none' and querying for it
+    // is wasted work. Memory counts run over every chat ID since a chat can
+    // accrue memories without ever being rendered. (v4 `:655-661`.)
+    let rendered_chat_ids: Vec<String> = chats
+        .iter()
+        .filter(|c| {
+            c.get("renderedMarkdown")
+                .and_then(Value::as_str)
+                .map(|s| !s.is_empty())
+                .unwrap_or(false)
+        })
+        .filter_map(|c| s(c, "id"))
+        .collect();
+
+    // The five remaining batched reads (v4's `Promise.all`, `:663-675`).
+    // Story backgrounds still resolve through the legacy `files` table (they
+    // live in the Lantern Backgrounds mount but `chat.storyBackgroundImageId`
+    // continues to point at a `files` row by design — v4's comment, carried).
+    let files_rows = files::FilesRepository::new(main).find_by_ids(&file_ids)?;
+    let links =
+        DocMountFileLinksRepository::new(mount).find_by_ids_with_content(&character_avatar_ids)?;
+    let projects_rows = ProjectsRepository::new(main, mount)
+        .find_by_ids(&project_ids)
+        .map_err(|e| DbError::Internal(format!("project overlay: {e}")))?;
+    let memory_counts_json = memories_read::count_by_chat_ids(main, &chat_ids)?;
+    let conversation_chunk_counts = conversation_chunks::ConversationChunksRepository::new(main)
+        .count_by_chat_ids(&rendered_chat_ids)?;
+
+    let preloaded = ChatListPreloaded {
+        characters: characters_map,
+        files: files_rows.into_iter().map(|f| (f.id.clone(), f)).collect(),
+        doc_mount_file_links: links.into_iter().map(|l| (l.id.clone(), l)).collect(),
+        projects: projects_rows
+            .into_iter()
+            .filter_map(|p| s(&p, "id").map(|id| (id, p)))
+            .collect(),
+        memory_counts: memory_counts_json
+            .as_object()
+            .map(|m| {
+                m.iter()
+                    .filter_map(|(k, v)| v.as_i64().map(|n| (k.clone(), n)))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        conversation_chunk_counts,
+    };
+
     let mut out = Vec::with_capacity(chats.len());
     for c in &chats {
-        out.push(enrich_chat_for_list(main, mount, c)?);
+        out.push(enrich_chat_for_list(main, mount, c, Some(&preloaded))?);
     }
     Ok(out)
 }

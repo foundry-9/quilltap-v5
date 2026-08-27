@@ -10,6 +10,13 @@
 //! extracts the comparable payload from each side: settings → the object; list →
 //! v4 `body.chats` vs the Rust array; get → `{chat}` both.
 //!
+//! P4.65 widened the committed fixture for the `ChatListPreloaded` batching
+//! port: a THIRD chat (cross-row character/project/story-background dedup,
+//! later-dated messages so the sort has distinct keys), character-level tags
+//! (Aria: Adventure; Elm: Mystery — the participant `_allTagIds` arm), a
+//! vault-LINK avatar hit (Elm), and an unavailable-vault character (Vex — the
+//! drop-vs-503 convergence pin), plus the `list_all` key-order pin.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-salon-reads.ndjson npx jest -- salon-reads
 //! Run:
@@ -31,7 +38,15 @@ use serde_json::Value;
 struct Spec {
     test_pepper_base64: String,
     user_id: String,
+    /// P4.65: the fixture's tag table — `tags[1]` ("Mystery") lives ONLY on a
+    /// character, driving the `list_exclude_character_tag` case.
+    #[serde(default)]
+    tags: Vec<TagSpec>,
     chats: Vec<ChatSpec>,
+}
+#[derive(Deserialize)]
+struct TagSpec {
+    id: String,
 }
 #[derive(Deserialize)]
 struct ChatSpec {
@@ -106,6 +121,28 @@ fn norm(v: &Value) -> String {
     let sorted = sorted(&v);
     serde_json::to_string_pretty(&sorted).unwrap()
 }
+/// Every object's key sequence, depth-first — the shape `norm`'s sorted compare
+/// deliberately throws away (mirrors `home_routes_equivalence::key_paths`).
+fn key_paths(v: &Value, path: &str, out: &mut Vec<String>) {
+    match v {
+        Value::Object(o) => {
+            out.push(format!(
+                "{path}: {}",
+                o.keys().cloned().collect::<Vec<_>>().join(",")
+            ));
+            for (k, x) in o.iter() {
+                key_paths(x, &format!("{path}/{k}"), out);
+            }
+        }
+        Value::Array(a) => {
+            for (i, x) in a.iter().enumerate() {
+                key_paths(x, &format!("{path}[{i}]"), out);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn first_diff(got: &str, want: &str) -> String {
     let g: Vec<&str> = got.lines().collect();
     let w: Vec<&str> = want.lines().collect();
@@ -204,6 +241,25 @@ fn salon_reads_match_oracle() {
         let want = oracle["list_exclude_tag"]["body"]["chats"].clone();
         cases.push(("list_exclude_tag".into(), got, want));
     }
+    // list_exclude_character_tag (P4.65): "Mystery" lives ONLY on a character
+    // (Elm, in the third chat, which carries no chat-level tag) — the
+    // participant half of `_allTagIds` in isolation. The list cases as a set
+    // also pin the drop-vs-503 convergence: every one of them enriches the
+    // third chat, whose Vex participant has an UNAVAILABLE vault — v4's
+    // batched `findByIds` drops it (participant.character: null) where v5's
+    // pre-P4.65 per-row `find_by_id` answered a StoreUnavailable error.
+    {
+        let character_tag = &spec.tags[1].id;
+        let got = response_data(&salon::list_chats(
+            &db,
+            uid,
+            std::slice::from_ref(character_tag),
+            None,
+            false,
+        ));
+        let want = oracle["list_exclude_character_tag"]["body"]["chats"].clone();
+        cases.push(("list_exclude_character_tag".into(), got, want));
+    }
     // list_limit1
     {
         let got = response_data(&salon::list_chats(&db, uid, &[], Some(1), false));
@@ -259,5 +315,27 @@ fn salon_reads_match_oracle() {
             eprintln!("[{name}] OK.");
         }
     }
+
+    // P4.65: the wire-order claim over the richest list body — the Rust key
+    // sequence must match v4's `JSON.stringify` bytes, not merely carry the
+    // same key SET (`norm` sorts keys away). Works because serde_json is built
+    // with `preserve_order` workspace-wide (feature unification), so both the
+    // parsed oracle line and the serialized Rust response retain source order.
+    // Mirrors `home_routes_equivalence::check_key_order` (P4.64's precedent).
+    if let Some((_, got, want)) = cases.iter().find(|(n, _, _)| n == "list_all") {
+        let mut got_paths = Vec::new();
+        key_paths(got, "", &mut got_paths);
+        let mut want_paths = Vec::new();
+        key_paths(want, "", &mut want_paths);
+        if got_paths != want_paths {
+            eprintln!("[list_all] KEY ORDER MISMATCH:\n got {got_paths:#?}\n want {want_paths:#?}");
+            failed.push("list_all:keyOrder".into());
+        } else {
+            eprintln!("[list_all] key order OK ({} objects).", got_paths.len());
+        }
+    } else {
+        failed.push("list_all:keyOrder-case-missing".into());
+    }
+
     assert!(failed.is_empty(), "salon-reads FAILED: {failed:?}");
 }

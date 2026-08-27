@@ -118,6 +118,36 @@ P4.D128 coverage guard now enforces the five new flags; a mutation dropping
 `--no-passphrase` from the fish template reddens it (proven, restored).
 `--force` cannot discriminate template-wide because `docs` already carries it —
 v4's own guard coarseness, recorded in the lane record.
+#### 2026-08-27 — port(chat-list): the ChatListPreloaded batching threaded through the list enrichment (P4.65)
+
+_Versions: core 0.0.700, harness 0.0.603, web 0.0.99._
+
+The Salon chat list stops paying 8.6–12.2 s at real scale: v4's
+`ChatListPreloaded` maps are now built in `enrich_chats_for_list` (one
+collection pass, `characters.findByIds` first seeding the avatar-id set,
+then the five remaining batched reads in v4's exact order) and threaded
+through `enrich_chat_for_list` / `enrichParticipantSummary` /
+`getCharacterSummary` with v4's preload-preferred/fallback shape. The
+`_for_list` vault-only twins are retired — the preloaded avatar branch now
+carries v4's real two-step (the vault-link map, then the story-background
+files map). Payload identity proven two ways: the `salon_reads_equivalence`
+family over a pin-fresh oracle (8 cases + a 30-object key-order pin), and
+the real-scale leg on the Friday copy — the `listChats` dispatch payload
+byte-identical before and after (4,104,806 bytes, md5
+`1ef288a15da550c0625ec74a8bc4e557`, `cmp` clean) with enrichment at
+12,984/8,256 ms → 2,227/1,451 ms. One named behavior CONVERGENCE: a
+participant whose character vault is unavailable now answers
+`character: null` (v4's batched drop) where v5's per-row read answered a
+StoreUnavailable error — pinned by the widened fixture's broken-vault
+character. The committed salon fixture DBs regenerated from the pinned v4
+worktree with a third chat (cross-row dedup, distinct sort keys),
+character-level tags, a vault-link avatar hit, and the broken vault; the
+new `list_exclude_character_tag` case pins the participant `_allTagIds`
+arm; the three sibling salon families and `home_routes_equivalence` re-ran
+green over pin-fresh oracles through the sweep driver. Eight source
+mutations (reverse sort, each preload map dropped, a silent-absorb
+fallback) each reddened the family.
+
 #### 2026-08-27 — port(db): the four batched read paths for the chat-list preload (P4.65)
 
 _Versions: core 0.0.699._

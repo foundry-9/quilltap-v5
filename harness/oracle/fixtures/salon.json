@@ -67,6 +67,10 @@
   {
    "id": "70000001-0000-4000-8000-000000000001",
    "name": "Adventure"
+  },
+  {
+   "id": "70000001-0000-4000-8000-000000000002",
+   "name": "Mystery"
   }
  ],
  "projects": [
@@ -86,6 +90,9 @@
    ],
    "controlledBy": "llm",
    "talkativeness": 0.7,
+   "tags": [
+    "70000001-0000-4000-8000-000000000001"
+   ],
    "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
    "defaultImageId": "f0000001-0000-4000-8000-000000000001",
    "systemPrompt": {
@@ -117,6 +124,35 @@
    "controlledBy": "llm",
    "talkativeness": 0.5,
    "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+  },
+  {
+   "id": "a1000000-0000-4000-8000-000000000005",
+   "name": "Elm",
+   "description": "A quiet archivist.",
+   "controlledBy": "llm",
+   "talkativeness": 0.4,
+   "tags": [
+    "70000001-0000-4000-8000-000000000002"
+   ],
+   "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
+   "defaultImageId": "eb000000-0000-4000-8000-000000000001",
+   "vaultAvatar": {
+    "linkId": "eb000000-0000-4000-8000-000000000001",
+    "fileId": "eb000000-0000-4000-8000-000000000002",
+    "relativePath": "Photos/elm-portrait.png",
+    "fileName": "elm-portrait.png",
+    "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "fileSizeBytes": 512
+   }
+  },
+  {
+   "id": "a1000000-0000-4000-8000-000000000006",
+   "name": "Vex",
+   "description": "A stranger whose vault went missing.",
+   "controlledBy": "llm",
+   "talkativeness": 0.5,
+   "connectionProfileId": "c0000001-0000-4000-8000-000000000001",
+   "breakVault": true
   }
  ],
  "chatSettings": {
@@ -295,6 +331,54 @@
       "kind": "character",
       "characterId": "a1000000-0000-4000-8000-000000000004"
      }
+    }
+   ]
+  },
+  {
+   "id": "c1000000-0000-4000-8000-000000000003",
+   "title": "Ridge Reunion",
+   "chatType": "salon",
+   "projectId": "70000002-0000-4000-8000-000000000001",
+   "storyBackgroundImageId": "f0000002-0000-4000-8000-000000000002",
+   "participants": [
+    {
+     "id": "b3000000-0000-4000-8000-000000000001",
+     "character": "a1000000-0000-4000-8000-000000000002",
+     "controlledBy": "llm",
+     "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "b3000000-0000-4000-8000-000000000002",
+     "character": "a1000000-0000-4000-8000-000000000005",
+     "controlledBy": "llm",
+     "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "b3000000-0000-4000-8000-000000000003",
+     "character": "a1000000-0000-4000-8000-000000000006",
+     "controlledBy": "llm",
+     "connectionProfileId": "c0000001-0000-4000-8000-000000000001"
+    },
+    {
+     "id": "b3000000-0000-4000-8000-000000000004",
+     "character": "a1000000-0000-4000-8000-000000000003",
+     "controlledBy": "user"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3000000-0000-4000-8000-000000000001",
+     "role": "USER",
+     "content": "Back to the ridge, then.",
+     "participantId": "b3000000-0000-4000-8000-000000000004",
+     "createdAt": "2026-02-02T00:00:00.000Z"
+    },
+    {
+     "id": "d3000000-0000-4000-8000-000000000002",
+     "role": "ASSISTANT",
+     "content": "I brought the charts this time.",
+     "participantId": "b3000000-0000-4000-8000-000000000001",
+     "createdAt": "2026-02-02T00:00:00.000Z"
     }
    ]
   }

@@ -38,6 +38,7 @@ import { tmpdir } from 'node:os';
 interface Spec {
   testPepperBase64: string;
   userId: string;
+  tags?: Array<{ id: string; name: string }>;
   chats: Array<{ id: string; tags?: string[] }>;
 }
 
@@ -193,6 +194,10 @@ async function main(): Promise<void> {
   const soloId = spec.chats[0].id;
   const groupId = spec.chats[1].id;
   const tag = spec.chats[0].tags?.[0] ?? '';
+  // P4.65: the "Mystery" tag lives ONLY on a character (Elm, in the third
+  // chat, which carries no chat-level tag) — excluding it exercises the
+  // participant half of `_allTagIds` in isolation.
+  const characterTag = spec.tags?.[1]?.id ?? '';
   const cases: CaseSpec[] = [
     { name: 'settings', kind: 'settings', url: 'http://localhost/api/v1/settings/chat' },
     { name: 'list_all', kind: 'list', url: 'http://localhost/api/v1/chats' },
@@ -200,6 +205,11 @@ async function main(): Promise<void> {
       name: 'list_exclude_tag',
       kind: 'list',
       url: `http://localhost/api/v1/chats?excludeTagIds=${tag}`,
+    },
+    {
+      name: 'list_exclude_character_tag',
+      kind: 'list',
+      url: `http://localhost/api/v1/chats?excludeTagIds=${characterTag}`,
     },
     { name: 'list_limit1', kind: 'list', url: 'http://localhost/api/v1/chats?limit=1' },
     { name: 'get_solo', kind: 'get', url: `http://localhost/api/v1/chats/${soloId}`, chatId: soloId },

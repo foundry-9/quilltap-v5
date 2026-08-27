@@ -227,10 +227,19 @@ pub fn get_home_data(
     // the first, `recent_chats` is the map over the twelve). Only the cost
     // moves. P4.64 measured it on the real instance (773 salon chats): the
     // enrichment ran 8.6–12.2 s — ~97% of `systemHome`'s ~9 s — against 145 ms
-    // for the same twelve, because every CHARACTER participant re-hydrates its
-    // character through the vault overlay (nine single-file reads plus two
-    // folder scans against the mount index, per lookup, ~2,000 lookups per
-    // dashboard) and 761 of the 773 results were then thrown away.
+    // for the same twelve, because at the time every CHARACTER participant
+    // re-hydrated its character through the vault overlay (nine single-file
+    // reads plus two folder scans against the mount index, per lookup, ~2,000
+    // lookups per dashboard) and 761 of the 773 results were then thrown away.
+    //
+    // Since P4.65, `enrich_chats_for_list` carries v4's `ChatListPreloaded`
+    // batching, so enriching everything is no longer catastrophic (measured
+    // 1.5–2.2 s for all 776 at that scale, not ~9 s — the residue is the
+    // per-chat getMessageCount/enrichTags reads v4 also pays) and the preload
+    // is available if this dashboard ever needs enrich-all again. The
+    // slice-first mechanism here STAYS: it is payload-proven identical
+    // (P4.64's md5 leg), still strictly cheaper, and reverting it would
+    // re-couple the dashboard's latency to the chat count.
     //
     // The one thing that can differ is an error only a discarded chat would
     // have raised: v4 (and v5 until now) fails the whole dashboard on it. Every

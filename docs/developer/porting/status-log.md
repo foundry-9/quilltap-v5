@@ -92285,3 +92285,182 @@ expected — this lane adds and removes zero tests), with the
 Cargo-only per the order (P4.D132 is the round's Playwright runner).
 
 Versions: core 0.0.699 (doc-comment-only change), harness 0.0.603.
+## P4.65 — the Salon chat-list `ChatListPreloaded` batching (2026-08-27)
+
+**Order:** `work-orders/p4.65-chat-list-preloaded-batching.md`. Branch
+`claude/chat-list-preloaded-batching-94bcc7`. Baseline `aec86a613` (NOT a
+drift lane — the target is P4.64's measured port defect: v5's
+`enrichChatsForList` port dropped v4's up-front batching entirely).
+Freshness probe at lane start: PASSED (checkout on `main`, tree clean,
+nothing past `b121ac77f` on main / `3a76b17df` on bugfix). Every regen and
+fixture build ran from the lane-unique pin
+`/tmp/qt-v4-pin-p465-aec86a613`; the family regens ran through the sweep
+driver (`--v4 <pin>`), serially.
+
+### Commit 1 — the batched-read substrate (core 0.0.699)
+
+The four missing batch paths plus one hardening, each beside its
+single-row twin with unit tests:
+
+- `files::find_by_ids` (v4 `files.repository.ts:27`) — `IN` over
+  `FILE_ENTRY_SELECT_ALL`.
+- `store_backed::{find_by_ids_raw, find_by_ids}` (v4
+  `store-backed.repository.ts:101`) + `projects::find_by_ids` delegating —
+  the hydrated form DROPS a row whose store is unavailable, per v4's
+  `applyOverlay`; proven against the real three-table mount-index join
+  (NULL-FK and missing-`properties.json` arms), not stubbed.
+- `doc_mount_file_links::find_by_ids_with_content` (v4 `:566`) —
+  first-occurrence id dedup (v4's `Array.from(new Set(ids))`), the
+  `LINK_WITH_CONTENT_SELECT` replace idiom.
+- `conversation_chunks::count_by_chat_ids` (v4 `:75`) — one GROUP BY,
+  `SUM(CASE WHEN embedding IS NOT NULL …)`, `embedded ?? 0` carried;
+  `count_stats_by_chat_id`'s doc now points at its real twin.
+- `memories_read::count_by_chat_ids` — body-only change: the GROUP BY now
+  runs per 900-id chunk (it gains its first production caller, with 861+
+  chat ids on the real instance).
+
+**Chunking:** every new `IN (…)` goes through
+`chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE}` (the P4.D126 idiom).
+⚠ v4 does NOT chunk these particular reads (only its two memories-delete
+sites chunk) — the chunking here is a scale-safety divergence that is
+invisible in output (results are consumed as maps), mandated by the order.
+Each site carries the note. Twenty unit tests, including a
+past-the-32,766-ceiling proof per site (~40,000 ids, real ids planted in
+chunk regions 0 / 900 / 39,999, the `db/memories.rs:863` shape).
+**Mutation-proven:** chunk size → `usize::MAX` at all five sites reddened
+exactly the five chunking proofs with the P4.D126 failure text
+(`too many SQL variables`); the two pre-existing memories chunk tests
+stayed green (scope control); reverted by file restore.
+
+### Commit 2 — the preload threaded + the widened fixture (core 0.0.700, harness 0.0.603, web 0.0.99)
+
+`ChatListPreloaded` (six maps, v4 `:38-56` with the why-comment carried)
+built in `enrich_chats_for_list` exactly per v4 `:620-687`: sort; ONE
+collection pass (JS-truthiness guards — empty-string ids skipped; the
+participant pass uses the same type-defaults-to-CHARACTER spelling as the
+lookup so the two can never disagree); `characters_read::find_by_ids`
+FIRST with the returned rows seeding `characterAvatarIds`;
+`renderedChatIds` restricted to truthy `renderedMarkdown` (v4's comment
+carried); then the five remaining batched reads (v4's `Promise.all` —
+concurrency only — run sequentially). Threaded with v4's
+preload-preferred / fallback shape: `get_character_summary` /
+`enrich_participant_summary` keep their public no-preload signatures
+(chat-create's caller untouched) and delegate to `_preloaded` twins;
+`enrich_chat_for_list` takes `Option<&ChatListPreloaded>`. The
+`_for_list` vault-only twins (P4.6a's approximation of the preloaded
+semantics) are RETIRED — the preloaded avatar branch now carries v4's
+real two-step: the `docMountFileLinks` map, then the story-background
+`files` map. `api::salon::list_chats` needed zero edits (the preload is
+internal to `enrich_chats_for_list`, as in v4); `services/home.rs`
+changed comment-only (slice-first mechanism STAYS — the comment now
+records the preload exists and the measured enrich-all residue).
+
+**Two named behavior changes, both CONVERGENCES onto v4's list output,
+neither silent:**
+
+1. **The drop-vs-503 arm (ordered):** a participant whose character vault
+   is unavailable now answers `character: null` (v4's batched
+   `findByIds` → `applyOverlay` drop) where v5's per-row
+   `characters_read::find_by_id` answered `StoreUnavailable` (v5's list
+   503'd; v4's never did). Same class, projects: an unavailable project
+   store now answers `project: null` (v4's batch drop) where the per-row
+   read threw. Both pinned by the widened fixture (below); the real-scale
+   BEFORE run completing at all proves the Friday copy has no such rows,
+   so the md5 identity is not masking this arm.
+2. **The avatar files-map fallback corner:** v4's preloaded branch falls
+   back from the vault-link map to the story-background files map, so a
+   LEGACY-file avatar resolves in the list iff its id doubles as some
+   chat's story background. v5's retired `_for_list` twin never consulted
+   files at all. Observable only in that coincidence corner (not on the
+   fixture, not on Friday — md5 identical); carried because it is v4's
+   code shape, with the doc comment naming it.
+
+**The widened fixture** (`salon.json` + `build-salon-fixture.ts` → the
+committed `salon-{main,mount}.db`, REGENERATED from the pin,
+delete-first): a THIRD chat `Ridge Reunion` (`c1…0003`) with
+`2026-02-02` messages (distinct sort keys — without them every chat tied
+and a reversed sort was an invisible no-op), reusing Bram + project
+Skyhaven + the group chat's story background (cross-row dedup, the whole
+point of the batch); character-level tags (Aria: Adventure — which makes
+`list_exclude_tag` drop the GROUP chat through a participant tag; Elm:
+Mystery — only reachable through the participant arm); Elm
+(`a1…0005`) with a real vault-link avatar (`doc_mount_files` +
+`doc_mount_file_links` rows in Elm's own vault, link id `eb…0001` —
+first picked as `e1…` and renamed after the whole-id-set collision grep
+found the e2e llm-log seeds using those strings); Vex (`a1…0006`) with
+`breakVault: true` — the builder deletes the vault's `properties.json`
+LINK row (the keystone BOTH implementations read through the same
+links⋈documents join), asserting exactly one row deleted. The builder
+gained `tags` / `vaultAvatar` / `breakVault` / per-message `createdAt`
+spec fields. New oracle case `list_exclude_character_tag`; the harness
+family gained the case plus a `key_paths` wire-order pin over `list_all`
+(30 objects, the P4.64 `home_routes` precedent — valid because
+`preserve_order` is workspace-unified).
+
+**Proof, two legs (the order's P4.64 mirror):**
+
+1. **The family over pin-fresh oracles.** `salon_reads_equivalence`
+   **8/8 cases OK + the 30-object key-order pin**, zero SKIP, via the
+   sweep driver at the pin. The regenerated NDJSON greps: `Ridge
+   Reunion`/`Vex`/`eb000000` present; the oracle's `list_all` shows
+   Vex's seat as `character: null` (v4's drop), Elm's Mystery tag and
+   mount-file avatar URL, Aria's legacy avatar as null in the list
+   (v4's preloaded semantics — the files map holds only story
+   backgrounds).
+2. **Real scale, byte-for-byte.** The `listChats` payload dumped on the
+   Friday COPY (read-only opens; the P4.64 temp-profile-module method,
+   torn out before commit): **4,104,806 bytes, md5
+   `1ef288a15da550c0625ec74a8bc4e557`, identical before/after (`cmp`
+   clean)** — zero bytes to attribute to the convergence arms. Timing,
+   same runs, release build, 861 chats found / 776 kept:
+   **enrich 12,984.2 / 8,255.8 ms → 2,226.5 / 1,451.4 ms (~5.7×)**.
+   The residue is the per-chat `getMessageCount` + `enrichTags` reads v4
+   also pays per-chat.
+
+**Mutation proofs (the differential discriminates every map):** reverse
+the sort → RED (3 list cases + key order; the third chat's distinct keys
+are what make this possible); DROP each preload map in turn — characters,
+files, links, projects, memory_counts, conversation_chunk_counts — each
+RED with a sensible per-map red set; the silent-absorb anti-pattern (map
+miss falls back to the per-row read) → RED on all four list cases (the
+Vex arm — this is the drop-vs-503 pin firing). All reverted by file
+restore, green re-checked after each.
+
+**Consuming families (the fixture regenerated → their oracles were built
+against the old bytes):** `salon_mutations_equivalence` (17 cases),
+`salon_skip_equivalence` (2), `salon_swipe_generate_equivalence` (4) all
+regenerated at the pin through the sweep driver and re-run by name —
+GREEN, zero SKIP; the driver's repo-write shield held (fixture sha256
+identical before/after every run). `home_routes_equivalence` re-run
+green (14 cases + key order — the guard on home.rs; its own fixture).
+`build-long-chat-fixture.ts` verified INDEPENDENT (writes its own
+`salon-long-*` pair; only a doc reference to the salon DBs).
+
+**⚠ FLAG FOR THE UNIFIER (loud, per the order):** the committed
+`salon-{main,mount}.db` REGENERATED. The e2e suite seeds from this family
+(`apps/web/e2e/global-setup.ts` + `m4-salon` + `salon-scenario-flow`).
+The e2e-literal grep found: selectors are title-based (`Solo Voyage` /
+`Group Expedition` — both unchanged, identical baked ids); global-setup's
+raw SQL targets rows by title/pinned ids that all still exist; the new
+`Ridge Reunion` chat + Elm/Vex characters will APPEAR in e2e-visible
+lists (chat list, home recents, character listings) — no count-based
+assertions were found, but **only the unified gate's full Playwright run
+proves this** (P4.D132 is the round's sole Playwright runner; this lane's
+gate is cargo-only by design). Note the id-collision near-miss recorded
+above (`e1…` → `eb…`).
+
+**Gate (this lane):** `cargo fmt --all --check`; clippy workspace
+both feature sets, zero warnings; the five families by name at the pin,
+zero SKIP; the real-scale legs above; `cargo test --workspace` with the
+five oracle env vars: **473 test binaries / 2,577 passed / 0 failed**
+(cargo exit 0) — +20 tests over the round base, exactly this lane's
+delta (the twenty batch-substrate unit tests; the family cases live
+inside existing tests). All five families confirmed RUN by name inside
+the suite. No SPA gate: the lane touches no `apps/web` file and runs no
+Playwright (P4.D132 is the round's sole Playwright runner).
+
+**Deferred loudly (tier 3, per the order):** transcribing v4's 681-line
+`chat-enrichment.service.test.ts` wholesale (the differential + the
+targeted units cover the contract); 💸 the Salon list's live
+before/after feel on the next dogfood pass (the md5/timing proof above
+is the lane's own).

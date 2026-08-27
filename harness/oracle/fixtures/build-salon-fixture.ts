@@ -44,11 +44,33 @@ interface CharacterSpec {
   name: string;
   description?: string;
   aliases?: string[];
+  /** Tag IDS on the character row (P4.65) — the participant `_allTagIds` arm:
+   * `enrichChatForList` folds these into the chat's exclusion set, so a chat
+   * with NO chat-level tag is still droppable through a tagged participant. */
+  tags?: string[];
   controlledBy: string;
   talkativeness: number;
   connectionProfileId: string;
   defaultImageId?: string;
-  systemPrompt?: { name: string; prompt: string; isDefault: boolean };
+  /** P4.65: bake a real vault-link avatar — a `doc_mount_files` content row +
+   * `doc_mount_file_links` row in this character's own vault, with
+   * `defaultImageId` pointing at the LINK id. This is the batched list path's
+   * `docMountFileLinks` HIT arm (the committed fixture previously covered only
+   * the miss). */
+  vaultAvatar?: {
+    linkId: string;
+    fileId: string;
+    relativePath: string;
+    fileName: string;
+    sha256: string;
+    fileSizeBytes: number;
+  };
+  /** P4.65: after provisioning, delete the vault's `properties.json` LINK row —
+   * the keystone both v4 (`read-overlay.ts:161`) and v5 read through the same
+   * links⋈documents join. The character then reads as vault-UNAVAILABLE:
+   * v4's batched `findByIds` drops it (participant.character → null) where a
+   * per-row `findById` throws — the drop-vs-503 convergence arm. */
+  breakVault?: boolean;
 }
 interface ParticipantSpec {
   id: string;
@@ -63,6 +85,10 @@ interface MessageSpec {
   role: string;
   content: string;
   participantId: string | null;
+  /** P4.65: per-message timestamp override (default = the seed TS). A chat
+   * whose messages post-date the others gives the list sort DISTINCT keys —
+   * without one, every chat ties and a reversed sort is an invisible no-op. */
+  createdAt?: string;
   provider?: string;
   modelName?: string;
   tokenCount?: number;
@@ -274,6 +300,7 @@ async function main(): Promise<void> {
         controlledBy: c.controlledBy,
         talkativeness: c.talkativeness,
         defaultConnectionProfileId: c.connectionProfileId,
+        ...(c.tags !== undefined ? { tags: c.tags } : {}),
         ...(c.defaultImageId !== undefined ? { defaultImageId: c.defaultImageId } : {}),
       } as never,
       { id: c.id, createdAt: TS, updatedAt: TS } as never,
@@ -284,6 +311,61 @@ async function main(): Promise<void> {
         prompt: c.systemPrompt.prompt,
         isDefault: c.systemPrompt.isDefault,
       } as never);
+    }
+  }
+
+  // 8b (P4.65). Post-provision vault surgery: the vault-link avatar HIT and the
+  // broken (unavailable) vault. Both need the character's minted vault mount id,
+  // read raw from the main DB (the overlay would hide nothing here, but raw is
+  // exact and cheap).
+  const { rawQuery } = await import('@/lib/database/manager');
+  for (const c of spec.characters) {
+    if (!c.vaultAvatar && !c.breakVault) continue;
+    const rows = (await rawQuery(
+      'SELECT characterDocumentMountPointId AS m FROM characters WHERE id = ?',
+      [c.id],
+    )) as Array<{ m: string | null }>;
+    const mountId = rows[0]?.m;
+    if (!mountId) throw new Error(`character ${c.name} has no vault mount point`);
+    if (c.vaultAvatar) {
+      const a = c.vaultAvatar;
+      // A database-source blob content row + its link, ids pinned. The list
+      // enrichment reads only (mountPointId, relativePath) off the link; no
+      // byte blob is needed.
+      await repos.docMountFiles.create(
+        {
+          sha256: a.sha256,
+          fileSizeBytes: a.fileSizeBytes,
+          fileType: 'blob',
+          source: 'database',
+        } as never,
+        { id: a.fileId, createdAt: TS, updatedAt: TS } as never,
+      );
+      await repos.docMountFileLinks.create(
+        {
+          fileId: a.fileId,
+          mountPointId: mountId,
+          relativePath: a.relativePath,
+          fileName: a.fileName,
+          lastModified: TS,
+        } as never,
+        { id: a.linkId, createdAt: TS, updatedAt: TS } as never,
+      );
+    }
+    if (c.breakVault) {
+      // Delete the keystone's LINK row. Both implementations read vault files
+      // through the links⋈documents join, so the join now returns no
+      // properties.json for this mount → CharacterVaultUnavailableError (v4) /
+      // VaultUnavailable (v5): dropped by the batched read, thrown by the
+      // per-row one.
+      const gone = midb
+        .prepare(
+          "DELETE FROM doc_mount_file_links WHERE mountPointId = ? AND LOWER(relativePath) = LOWER('properties.json')",
+        )
+        .run(mountId);
+      if (gone.changes !== 1) {
+        throw new Error(`breakVault(${c.name}): expected 1 properties.json link, deleted ${gone.changes}`);
+      }
     }
   }
 
@@ -360,7 +442,7 @@ async function main(): Promise<void> {
           role: m.role,
           content: m.content,
           participantId: m.participantId ?? undefined,
-          createdAt: TS,
+          createdAt: m.createdAt ?? TS,
           attachments: [],
           ...(m.provider !== undefined ? { provider: m.provider } : {}),
           ...(m.modelName !== undefined ? { modelName: m.modelName } : {}),
