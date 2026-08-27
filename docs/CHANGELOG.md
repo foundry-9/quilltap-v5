@@ -233,6 +233,25 @@ one thing this can no longer do is fail the whole dashboard because of an
 error raised by a conversation nobody was going to see — a case these reads
 do not produce, since every read made for a discarded conversation is also
 made for the twelve that are kept.
+#### 2026-08-27 — port(wardrobe): the composed-outfit pool split, with v4's collation recorded
+
+_Versions: SPA 0.5.587._
+
+A client twin of v4's new `lib/wardrobe/composed-outfits.ts` (`aec86a613`):
+`selectComposedOutfits` (composites, title-sorted) and `selectGarments` (the
+complement, caller's order), both built on the existing client `isBundle` so
+the outfit-vs-garment rule stays single-sourced. Nothing consumes them yet —
+the composer and slot-row wiring follow.
+
+Two equivalence checks ship with it. v4's own 69-line
+`composed-outfits.test.ts` is transcribed 1:1 (same case names, same fixture
+items, same expectations). Beyond that, a new oracle case
+(`harness/oracle/cases/composed-outfits.test.ts`) drives v4's REAL module over
+a nine-case corpus from a worktree pinned at `aec86a613` and records the result
+as committed vectors, because the sort is `localeCompare` and no transcribed
+case asks an ICU question. It matters: replacing `localeCompare` with a
+code-unit compare leaves all seven transcribed cases green and reddens three
+recorded ones.
 
 #### 2026-08-27 — docs(orders): the four-lane round — the `aec86a613` pull-down drift, the collapse pockets, the harness follow-ups, the systemHome profile
 

@@ -1,0 +1,362 @@
+[
+  {
+    "name": "mixed pool",
+    "items": [
+      {
+        "id": "dress",
+        "title": "Green Dress",
+        "types": [
+          "top",
+          "bottom"
+        ],
+        "componentItemIds": []
+      },
+      {
+        "id": "boots",
+        "title": "Ankle Boots",
+        "types": [
+          "footwear"
+        ],
+        "componentItemIds": []
+      },
+      {
+        "id": "sunday",
+        "title": "Sunday Best",
+        "types": [
+          "top",
+          "bottom",
+          "footwear"
+        ],
+        "componentItemIds": [
+          "dress",
+          "boots"
+        ]
+      },
+      {
+        "id": "jewelry",
+        "title": "Aunt Dahlia’s Pearls",
+        "types": [
+          "accessories"
+        ],
+        "componentItemIds": [
+          "earrings"
+        ]
+      }
+    ],
+    "composedOutfitIds": [
+      "jewelry",
+      "sunday"
+    ],
+    "garmentIds": [
+      "dress",
+      "boots"
+    ]
+  },
+  {
+    "name": "no composites",
+    "items": [
+      {
+        "id": "a",
+        "title": "Ankle Boots",
+        "types": [
+          "footwear"
+        ],
+        "componentItemIds": []
+      },
+      {
+        "id": "b",
+        "title": "Green Dress",
+        "types": [
+          "top",
+          "bottom"
+        ],
+        "componentItemIds": []
+      }
+    ],
+    "composedOutfitIds": [],
+    "garmentIds": [
+      "a",
+      "b"
+    ]
+  },
+  {
+    "name": "empty pool",
+    "items": [],
+    "composedOutfitIds": [],
+    "garmentIds": []
+  },
+  {
+    "name": "collation: case is not code-unit order",
+    "items": [
+      {
+        "id": "c1",
+        "title": "banded Cape",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "c2",
+        "title": "Banded Cape",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "c3",
+        "title": "Ashen Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "c4",
+        "title": "apple Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      }
+    ],
+    "composedOutfitIds": [
+      "c4",
+      "c3",
+      "c1",
+      "c2"
+    ],
+    "garmentIds": []
+  },
+  {
+    "name": "collation: accents and combining marks",
+    "items": [
+      {
+        "id": "d1",
+        "title": "Zouave Jacket",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "d2",
+        "title": "Étoile Wrap",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "d3",
+        "title": "Etoile Wrap",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "d4",
+        "title": "Étoile Wrap",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      }
+    ],
+    "composedOutfitIds": [
+      "d3",
+      "d2",
+      "d4",
+      "d1"
+    ],
+    "garmentIds": []
+  },
+  {
+    "name": "collation: punctuation and digits",
+    "items": [
+      {
+        "id": "e1",
+        "title": "9 Buttons",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "e2",
+        "title": "10 Buttons",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "e3",
+        "title": "“Quoted” Kit",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "e4",
+        "title": " Leading Space",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "e5",
+        "title": "(Parenthetical)",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      }
+    ],
+    "composedOutfitIds": [
+      "e4",
+      "e3",
+      "e5",
+      "e2",
+      "e1"
+    ],
+    "garmentIds": []
+  },
+  {
+    "name": "collation: equal titles keep input order",
+    "items": [
+      {
+        "id": "f2",
+        "title": "Same Name",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "f1",
+        "title": "Same Name",
+        "types": [
+          "bottom"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      },
+      {
+        "id": "f3",
+        "title": "Same Name",
+        "types": [
+          "hair"
+        ],
+        "componentItemIds": [
+          "x"
+        ]
+      }
+    ],
+    "composedOutfitIds": [
+      "f2",
+      "f1",
+      "f3"
+    ],
+    "garmentIds": []
+  },
+  {
+    "name": "garment order is the caller’s",
+    "items": [
+      {
+        "id": "g1",
+        "title": "Zebra Stripes",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": []
+      },
+      {
+        "id": "g2",
+        "title": "Alpine Tweeds",
+        "types": [
+          "bottom"
+        ],
+        "componentItemIds": []
+      },
+      {
+        "id": "g3",
+        "title": "Masquerade Kit",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [
+          "g1"
+        ]
+      },
+      {
+        "id": "g4",
+        "title": "Boater Hat",
+        "types": [
+          "accessories"
+        ],
+        "componentItemIds": []
+      }
+    ],
+    "composedOutfitIds": [
+      "g3"
+    ],
+    "garmentIds": [
+      "g1",
+      "g2",
+      "g4"
+    ]
+  },
+  {
+    "name": "single-slot composite",
+    "items": [
+      {
+        "id": "h1",
+        "title": "Aunt Dahlia’s Pearls",
+        "types": [
+          "accessories"
+        ],
+        "componentItemIds": [
+          "h9"
+        ]
+      }
+    ],
+    "composedOutfitIds": [
+      "h1"
+    ],
+    "garmentIds": []
+  }
+]
