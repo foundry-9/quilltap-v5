@@ -91910,3 +91910,104 @@ suites) every time the vectors are regenerated.
   `manual` still renders loudly disabled; nothing here changed that.
 - **`help/wardrobe.md`** (v4's two new sections, Composite Items and the
   chat-start Manual mode) → the `p4.9i2` help bank. Ported: NOTHING.
+
+---
+
+## The P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 round — UNIFIED on main (2026-08-27)
+
+**All four orders CLOSED; the oracle baseline MOVES `8872d7efc` →
+`aec86a613`.** The four lane records above carry the per-lane story; this
+record is the unification: the wires, the review, the gate, and the drift
+that arrived while the round ran.
+
+### The reconcile
+
+Branch `unify/p4d130-round`; twelve lane commits cherry-picked in
+dependency order (P4.62 → P4.63 → P4.64 → P4.D130) with union merge on the
+two append-only docs — **zero source conflicts; the ownership table held.**
+The playbook's silent-auto-merge version trap fired exactly as documented:
+P4.63's and P4.64's identical core 696→697 bumps merged as one, and
+P4.62's harness 598→599 was absorbed inside P4.63's 598→601. Recounted as
+base + total bumps at the wires: **core 0.0.698, harness 0.0.602**, web
+0.0.98, SPA 0.5.590.
+
+### v4 drifted THREE TIMES across the round — every regen was pinned
+
+1. **`679e450e3`** (mid-lane, CONVERGENCE): v4 fixed bug 105 — this port's
+   own filing — HOURS after P4.63 wrote the divergence-aware
+   `execute_bug105_seed_abort` arm that pins the pre-fix behavior. The arm
+   is pinned at the `8872d7efc` baseline (which still carries the bug) and
+   its own doc schedules the retirement: it trips BY DESIGN at the round
+   that moves the baseline past `679e450e3` (ledger §5.4 — measure the
+   adoption, then retire the classifier + `skip` insert + blanked body).
+2. **`0bd841394`** (mid-unify, PORT-NEW): the Tooltip component + the
+   message action bar's eleven buttons + the pinnable verdict badge, with
+   the checkout DIRTY continuing the surface.
+3. **`1b0ce9eba`** (mid-gate, caught by the pin-list guard): the dirty
+   tree committed — the always-hidden `MessageDesktopActions` deleted. v5
+   never ported it; the intersection is two dead transcribed CSS rules +
+   one stale doc-comment cite (ledger §3 row).
+
+The ledger was updated mid-unify (commit `e31b9fd18` on main, BEFORE the
+reconcile) and again at the baseline move. No lane or gate regen ever ran
+from the moved/dirty checkout — P4.D130 pinned `aec86a613` (the drift
+commit IS its spec), everything else pinned `8872d7efc`, and the gate
+re-verified both pins by `rev-parse` and by marker.
+
+### The §3 review — NO blocking findings
+
+The whole combined diff was read hunk by hunk against the orders and
+against v4's real code (the unlock route's three-step gate byte-checked at
+the pin; the quick-pick compared line-for-line against v4's tsx including
+the search-clear asymmetry — Escape/pick clear it, toggle-close and
+outside-click keep it; the home reorder's downstream readers enumerated —
+the stats loops read `all_chats_raw`, untruncated; the oracle cases'
+mock hygiene checked — `deleteAllUserData` deliberately unmocked as a
+tripwire). Non-blocking notes: P4.64's `chat_enrichment.rs` comparator
+extraction is an ownership stretch, declared in its record and kept (the
+single-home argument is right); P4.62's venue materializer is duplicated
+into its two test files rather than `tests/common` (correctly — that file
+is outside its ownership; a future consolidation candidate). The one
+unifier-owed edit (P4.63's stale "no oracle tripwire" comment in
+`profiles.rs`) landed at the wires with the version recount.
+
+### The unification wires (`port(wires)` commit)
+
+The version recount (above) and the `profiles.rs` unit-pin doc correction
+— it now names `execute_bug105_seed_abort` as the oracle tripwire and its
+scheduled convergence retirement. No shared contracts existed (the lanes
+met nowhere), so no name-for-name diff was owed.
+
+### The unified gate
+
+- `cargo fmt --all --check` clean; `harness/tools/check_spelling.py` exit
+  0; `cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH
+  feature sets; release build clean.
+- The five affected families regenerated FRESH through the sweep driver
+  from the lane-unique pin `/tmp/qt-v4-pin-unify2-8872d7efc`
+  (`--run-all --families …`): **5/5 ok, zero SKIP** —
+  `system_body_guards_equivalence`, `files_body_guards_equivalence`,
+  `system_import_state` (37 cases incl. the bug-105 arm),
+  `attach_mount_file_equivalence` (13 cases, canned vision calls 0 → 4),
+  `home_routes_equivalence` (14 cases + the 88-object key-order pin).
+  Changed bytes grepped, not trusted: 15 `progressid_gate` arms, 4
+  `Invalid option:` enum rows, the bug-105 abort sentence, 8 attach
+  llmLogs rows.
+- The P4.D130 vectors regenerated from the SECOND pin
+  (`/tmp/qt-v4-pin-unify2-aec86a613`): **byte-identical to the committed
+  file**, v4's own suite 8/8 alongside, collation rows present.
+- `cargo test --workspace` with the round's five oracle env vars:
+  **473 test binaries / 2,557 passed / 0 failed** (cargo exit 0) — +2
+  binaries / +3 tests over the round base, exactly the lanes' union.
+- SPA: `npm run lint` (check-qt-classes 937, every reference resolves);
+  `npm test` **364 files / 5,435 / 0**; `npm run build` clean; full
+  Playwright: **253 passed / 0 failed / 1 skipped (5.8 m)** — the suite grew with the pull-down beat and the un-parked create-scope half; the one skip is the component-transfer beat re-parked on its REAL blocker (the missing `projects`/`groups` tables — named, P4.D130).
+
+Versions: core 0.0.698, harness 0.0.602, web 0.0.98, SPA 0.5.590;
+host/cli/tauri/fixture-sanitizer/sqlite3mc-sys unchanged.
+
+### 💸 the dogfood queue gains
+
+The outfit pull-down on real Friday wardrobes (composite pool, dissolution,
+garments-only pickers) and the home dashboard at ~0.39 s on the Friday copy
+(was ~9 s — P4.64's fix, already byte-proven at real scale during the lane).

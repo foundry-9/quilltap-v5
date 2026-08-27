@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — port(round): the P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 unification — the outfit pull-down, the collapse pockets closed whole, the home dashboard 22× faster
+
+_Versions: core 0.0.698, harness 0.0.602, web 0.0.98, SPA 0.5.590._
+
+All four orders closed; the oracle baseline moves `8872d7efc` →
+`aec86a613`. The `aec86a613` outfit pull-down landed whole in the SPA
+(composed-outfit pool split with an ICU-collation recorded-vector corpus,
+the capture-phase-Escape pull-down, garments-only slot pickers, a live
+dissolution beat) plus both carried wardrobe e2e debts — the missing
+`instance_settings` materialization (create-scope beat LIVE) and the
+duplicate-"Quilltap General" root cause (the courier seeding, NOT the
+provisioner; reconciled by what each store holds). P4.62 adjudicated the
+last three wrong-type-collapse pockets site by site (13+7+1 — zero census
+rows remain unadjudicated; two new DB-free-over-real-HTTP families; the
+whole system/unlock body gate and the per-action malformed-body 500s
+restored to v4's bytes). P4.63 closed the four harness follow-ups (the
+bug-105 divergence arm — which v4 then fixed HOURS later, so the arm's
+scheduled convergence trip is already booked; the attach-mount-file red
+diagnosed to bug-91 corpus vintage and re-lit, canned calls 0 → 4; the
+deadline-warn assert bound to its exact line; both blob censuses
+comment-aware). P4.64 profiled the 7.5 s dashboard, refuted the standing
+hypothesis (97% was the enrichment fan-out — a dropped-preload port
+defect, not the findAll loads), and landed the payload-identical
+sort-then-slice fix: byte-equal at real scale, 8.8 s → 0.39 s; the Salon
+list's matching cost is the named next candidate (`ChatListPreloaded`
+batching). The §3 review found no blocking findings. Gate: 473 test
+binaries / 2,557 / 0 with five pin-fresh families zero SKIP; clippy both
+feature sets; release build; ng 364 files / 5,435; full Playwright
+**253 passed / 0 failed / 1 skipped (5.8 m)** — the suite grew with the pull-down beat and the un-parked create-scope half; the one skip is the component-transfer beat re-parked on its REAL blocker (the missing `projects`/`groups` tables — named, P4.D130). v4 drifted three times during the round
+(`679e450e3` convergence, `0bd841394` tooltips, `1b0ce9eba` cleanup) —
+all recorded in the drift ledger, every regen pinned; the catch-up is the
+next round's top candidate.
+
+
 #### 2026-08-27 — docs(drift): the mid-unify probe — v4 moved twice more and the checkout is dirty
 
 _Docs-only change._

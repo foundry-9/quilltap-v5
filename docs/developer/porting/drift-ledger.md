@@ -19,51 +19,37 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline:** `8872d7efc` — "perf(cheap-llm): give compression
-  its own budget, and log cheap-task failures" (v4 main, 2026-08-26, the
-  last commit of the 4.9.0 release push), adopted at the 4.9.0-push round
-  unification (2026-08-27, P4.D126 ∥ P4.D127 ∥ P4.D128 ∥ P4.D129 + the
-  unification wires).
-- **Checked:** 2026-08-27 (the mid-unify probe of the P4.D130/P4.62/P4.63/
-  P4.64 round — the probe FAILED against the morning's check, so the new
-  state is recorded here; both new commits classified from their hunks).
-- **v4 `main` HEAD at check:** `0bd841394` — **FOUR commits past the
-  baseline**:
-  - `b6c6d7793` `docs(bugs): file bug 105` — docs-only, this port's own
-    filing. NO-PORT? row in §3 (unchanged).
-  - `aec86a613` `feat(wardrobe): an outfit pull-down…` — PORT-NEW,
-    ORDERED(p4.d130); **the lane is finished and unifying now**. The lane's
-    v4-side runs all went through a detached `aec86a613` pin; when this
-    drift arrived mid-lane, a fresh pin was built and the vectors
-    re-recorded byte-identical (lane record in `status-log.md`).
-  - `679e450e3` `fix(import): one malformed connection profile no longer
-    aborts a whole .qtap import (bug 105)` — **CONVERGENCE** (v4 fixing
-    this port's own filing). Row in §3. ⚠ It lands the very divergence the
-    P4.63 lane's new `system_import_state` oracle arm pins — that arm is
-    divergence-aware BY DESIGN and will flip at the first regen from a pin
-    past this commit; retire it by measurement (§5.4) in the round that
-    absorbs this.
-  - `0bd841394` `fix(salon): Quilltap's own tooltips for the message
-    action bar and the verdict badge` — **PORT-NEW** (a new
-    `components/ui/Tooltip.tsx` portal component + the action bar's eleven
-    buttons and the pinnable answer-confirmation badge adopting it, style
-    + storybook + help riders). Row in §3.
+- **Oracle baseline:** `aec86a613` — "feat(wardrobe): an outfit pull-down
+  above the slot rows, garments only in the slot pickers" (v4 main,
+  2026-08-27), adopted at the P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 round
+  unification (2026-08-27).
+- **Checked:** 2026-08-27 (the round's unification — the mid-unify probe
+  had already recorded `679e450e3` + `0bd841394`; the gate's pin-list
+  guard then caught v4 committing ONCE more, classified below).
+- **v4 `main` HEAD at check:** `1b0ce9eba` — **THREE commits past the new
+  baseline**, all in §3:
+  - `679e450e3` (CONVERGENCE — v4's bug-105 fix; ⚠ absorbing it trips
+    `system_import_state`'s `execute_bug105_seed_abort` BY DESIGN — retire
+    by measurement, §5.4, and update `profiles.rs`'s unit-pin doc
+    alongside).
+  - `0bd841394` (PORT-NEW — the Tooltip component + message-action-bar /
+    verdict-badge adoption).
+  - `1b0ce9eba` (PORT, small — the dirty-tree work committed: deletes the
+    always-hidden `MessageDesktopActions` + its `display:none !important`
+    rules. v5 never ported the hidden component; what intersects is two
+    dead transcribed CSS rules and a stale doc-comment cite — a cleanup
+    rider for the absorbing round).
 - **v4 `bugfix` tip at check:** `3a76b17df` — unmoved (the bare 4.8.4 fork
   marker; the long `main..bugfix` list is the documented squash-topology
   lie, §4 step 2).
-- **Checkout at check:** branch `main`, tree **DIRTY in `app/`** —
-  `app/salon/[id]/components/MessageRow.tsx` (M),
-  `app/salon/[id]/components/message-row/MessageDesktopActions.tsx` (D),
-  `app/styles/qt-components/_chat.css` (M): uncommitted in-progress salon
-  work, continuing `0bd841394`'s surface. **Any regen from the checkout is
-  poisoned twice over** (HEAD past baseline + dirty app tree).
-- **Verdict: DRIFT PENDING — 2 unprocessed portable commits**
-  (`679e450e3` CONVERGENCE, `0bd841394` PORT-NEW), with `aec86a613`
-  ORDERED and mid-unification.
-- **Regen rule in force: PIN REQUIRED** — lane-unique detached worktrees
-  per §5.1 for **every** oracle regen and fixture build: at `8872d7efc`
-  for pre-existing families, at `aec86a613` only for the P4.D130 drift
-  family whose spec that commit is.
+- **Checkout at check:** branch `main`, tree **clean** (the earlier salon
+  dirt became `1b0ce9eba`).
+- **Verdict: DRIFT PENDING — 3 unprocessed portable commits** (the
+  `679e450e3`+`0bd841394`+`1b0ce9eba` catch-up is the next round's top
+  candidate; phase-4 candidate 1).
+- **Regen rule in force: PIN REQUIRED** — v4 HEAD is past the baseline;
+  lane-unique detached worktrees at `aec86a613` per §5.1 for **every**
+  oracle regen and fixture build until the baseline moves again.
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
   fork; v4 develops on `main` alone. Keep probing BOTH branches.
 
@@ -104,61 +90,9 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `b6c6d7793` | 2026-08-27 | docs(bugs): file bug 105 — the legacy-field seeding sits outside the per-item try | NO-PORT? | none — `docs/developer/bugs.md` + the bug file only, and it is **this port's own filing** (raised by P4.D126 while porting `e000d6bfc`) | UNPROCESSED |
-| `aec86a613` | 2026-08-27 | feat(wardrobe): an outfit pull-down above the slot rows, garments only in the slot pickers | PORT-NEW | the SPA composer surface — `apps/web/src/app/wardrobe/outfit-composer.ts` + `equipped-slot-row.ts` (ported P4.9f2 unit 3, 2026-07-19; since touched by the hair slot P4.D87 and the container rounds P4.D112/P4.D113), the client bundle rule `apps/web/src/app/wardrobe/dissolve-bundles.ts` (P4.D72 unit 3) it builds on, and the composer's two hosts — the wardrobe dialog and the chat-start Starting Outfit panel (`screens/new-chat/outfit-selector.ts`). `help/wardrobe.md` banks to `p4.9i2`. | ORDERED(p4.d130) |
 | `679e450e3` | 2026-08-27 | fix(import): one malformed connection profile no longer aborts a whole .qtap import (bug 105) | CONVERGENCE | v5's `services/quilltap_import/profiles.rs` (never had the bug — the standing 2026-08-03 ruling; unit pin `a_non_string_provider_is_named_and_does_not_abort_the_import`) and **P4.63's new divergence-aware `system_import_state` oracle arm** (`import_aborts_on_non_string_provider` class — built to flip when v4 fixed this; retire by measurement at the round that moves the baseline past this commit, §5.4). v4 moved the seeding inside the per-item try + widened the guard past `??`. | UNPROCESSED |
-| `0bd841394` | 2026-08-27 | fix(salon): Quilltap's own tooltips for the message action bar and the verdict badge | PORT-NEW | a NEW `components/ui/Tooltip.tsx` (240 lines: body-portalled, 200 ms dwell / focus-immediate, flip + clamp, follows on scroll/resize, Escape, `pinnable`/`interactive`) + `MessageActionBar.tsx`'s eleven buttons with explicit aria-labels + the answer-confirmation badge as a real pinnable button with structured content — v5's salon message action bar (ported across the Salon rounds; the answer-confirmation badge from the P4.d drift re-ports). Style riders `_chat.css`/`_surfaces.css` + theme-storybook; `help/*` banks to `p4.9i2`. ⚠ The checkout's DIRTY files continue this surface — expect a follow-on commit before the next round plans. | UNPROCESSED |
-
-**`aec86a613` — what the hunks actually ship** (§5.3: classified from the
-diff, not the message). Client-only; no server verb, no schema, no wire
-change. Five shipped pieces:
-
-1. **NEW `lib/wardrobe/composed-outfits.ts`** (41 lines) — a pure pool
-   split on the *existing* `isBundle` from `lib/wardrobe/dissolve-bundles.ts`:
-   `selectComposedOutfits` (filter `isBundle`, then
-   `a.title.localeCompare(b.title)`) and `selectGarments` (the complement,
-   caller's order). Archived items are already gone from the pool the
-   composer is handed — nothing is re-filtered. Shipped with
-   `__tests__/unit/lib/wardrobe/composed-outfits.test.ts` (69 lines).
-   v5 has `crates/quilltap-core/src/dissolve_bundles.rs` and the SPA
-   client twin, so the natural home is the SPA twin; nothing server-side
-   consumes this.
-2. **NEW `components/wardrobe/outfit-quick-pick.tsx`** (138 lines) — the
-   `Wear an outfit…` pull-down: a `qt-button-secondary qt-button-sm` full-
-   width toggle with a rotating `chevron-down`, a `role="listbox"` panel
-   with an autofocused `type="search"` box, per-row
-   `WARDROBE_SLOT_META[t].label` joins plus a ` · replaces` suffix when
-   `outfit.replace`, `No matching outfits.` on an empty filter, outside-
-   click close, and an Escape handler registered **in the capture phase
-   with `stopPropagation`** so the enclosing dialog is not dismissed along
-   with the menu. **Renders nothing when the pool holds no composites.**
-   No v5 counterpart exists.
-3. **`outfit-composer.tsx`** — mounts `<OutfitQuickPick>` *above* the
-   bundle cards and slot rows, wiring `onWear` as
-   `onAddToSlot(outfit.types[0]!, outfit.id)`. **No new equip path:** the
-   existing callback already applies `wearItemIntoSlots` across every slot
-   an item covers, so the `slot` argument names where the gesture started,
-   not where the item lands. Additive bundles layer; a `replace` bundle
-   sweeps its slots first; either way it dissolves into components as it
-   lands.
-4. **`equipped-slot-row.tsx`** — the picker candidates become
-   `selectGarments(allItems)` before the existing slot/equipped/search
-   filters, and the now-dead `· composite` suffix is deleted. `allItems`
-   is still passed whole so equipped composite *chips* keep their labels.
-   ⚠ **v5 measurably has the pre-fix shape**: `equipped-slot-row.ts:100`
-   still renders `' · composite'` and `:144`'s `candidates` computed still
-   offers composites.
-5. **Infra/docs riders** — `help/wardrobe.md` (Composite Items + chat-start
-   Manual mode), `docs/CHANGELOG.md`, and the `4.9.0-dev.87 → .89` version
-   bump across `README.md` / `package.json` / `packages/quilltap/package.json`
-   / `package-lock.json`.
-
-Note for the porting lane: the prose's "a multi-slot *leaf* (a dress typed
-`["top","bottom"]`) is not a composite and stays in the slot pickers" is
-not a new rule — it falls out of `isBundle` testing `componentItemIds`,
-which v5 already ports. Nothing in this commit changes what reaches the
-server; the differential surface is the SPA specs plus a tier-1 port of the
-two selectors.
+| `0bd841394` | 2026-08-27 | fix(salon): Quilltap's own tooltips for the message action bar and the verdict badge | PORT-NEW | a NEW `components/ui/Tooltip.tsx` (240 lines: body-portalled, 200 ms dwell / focus-immediate, flip + clamp, follows on scroll/resize, Escape, `pinnable`/`interactive`) + `MessageActionBar.tsx`'s eleven buttons with explicit aria-labels + the answer-confirmation badge as a real pinnable button with structured content — v5's salon message action bar (ported across the Salon rounds; the answer-confirmation badge from the P4.d drift re-ports). Style riders `_chat.css`/`_surfaces.css` + theme-storybook; `help/*` banks to `p4.9i2`. The dirty-tree follow-on landed as `1b0ce9eba` (next row). | UNPROCESSED |
+| `1b0ce9eba` | 2026-08-27 | refactor(salon): remove the hidden desktop message actions | PORT (small) | v5 never ported the hidden `MessageDesktopActions` (it was `display:none !important` in v4 since the icon bar); what intersects is two dead transcribed CSS rules (`apps/web/src/styles/qt-components/_chat.css:3487` `.qt-chat-desktop-hover-actions`, `:3495` `.qt-chat-desktop-timestamp`) and the stale doc-comment cite at `apps/web/src/app/chat/message-row.ts:538`. A cleanup rider for the absorbing round — v4's own commit says no behavior change (verified from the hunks: deletion-only + CSS rule removal). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -314,6 +248,15 @@ don't silently swap it in.
 
 Absorbed drift blocks get one line each here when `/unify` moves the
 baseline; the full story lives in the round record in `status-log.md`.
+
+- **The P4.D130 round (2026-08-27, baseline `8872d7efc` → `aec86a613`):**
+  `aec86a613` ABSORBED(p4.d130 — the outfit pull-down + garments-only slot
+  pickers, SPA-only; the composed-outfits selectors' recorded-vector corpus
+  pinned at the drift commit, re-proven byte-identical after mid-lane
+  drift), `b6c6d7793` NO-PORT-RATIFIED(this round — docs-only, this port's
+  own bug-105 filing; file list verified `docs/developer/bugs.md` + the bug
+  file, zero lib/app/packages/plugins content). Round record:
+  `status-log.md` → "The P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 round".
 
 - **The 4.9.0-push round (2026-08-27, baseline `f3892158d` → `8872d7efc`):**
   `914b59e13` + `805ef12bf` + `e000d6bfc` ABSORBED(p4.d126 — the full-wipe

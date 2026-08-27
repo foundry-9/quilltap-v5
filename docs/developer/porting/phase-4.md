@@ -6255,3 +6255,65 @@ baseline `8872d7efc`, drift debt CLEARED):
 
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
+
+**Next candidates, in rough value order** (updated at the
+P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 round unification, 2026-08-27 — the
+`aec86a613` drift is absorbed and the baseline moves to it; the duplicate
+"Quilltap General" e2e store is CLOSED, root cause the courier seeding):
+
+1. **The `679e450e3` + `0bd841394` drift catch-up** (drift-ledger §3, both
+   UNPROCESSED). `679e450e3` is the bug-105 CONVERGENCE — v4 adopting this
+   port's own filing; at the baseline move past it,
+   `system_import_state`'s `execute_bug105_seed_abort` trips BY DESIGN:
+   regenerate, measure v4's post-fix output, and retire the classifier +
+   the `skip` insert + the blanked body to a plain equality (ledger §5.4),
+   updating `profiles.rs`'s unit-pin doc alongside. `0bd841394` is
+   PORT-NEW: `components/ui/Tooltip.tsx` (body-portalled, 200 ms
+   dwell/focus-immediate, flip+clamp, pinnable/interactive) adopted by the
+   message action bar's eleven buttons (each gaining an explicit
+   aria-label) and the answer-confirmation badge (now a real pinnable
+   button with structured content) + style/storybook riders. ⚠ The v4
+   checkout is DIRTY continuing the same salon surface — expect a
+   follow-on commit; probe before planning and pin every regen.
+2. **The Salon chat-list `ChatListPreloaded` batching** (P4.64's
+   measurement is the justification): the Salon list pays the same
+   8.6–12.2 s enrichment the dashboard used to and genuinely needs every
+   row enriched (`_allTagIds` feeds `filter_chats_by_excluded_tags`);
+   v5's port dropped v4's up-front batch reads entirely. Needs the four
+   missing batched read paths — `files::find_by_ids`,
+   `projects::find_by_ids`, `doc_mount_file_links::find_by_ids_with_content`,
+   `conversation_chunks::count_by_chat_ids` (`characters_read::find_by_ids`
+   and `memories_read::count_by_chat_ids` exist, unused by this service).
+   Payload-identity discipline per the P4.64 order.
+3. **The owed dogfood pass** — the standing queue plus this round's
+   surfaces: the outfit pull-down on real Friday wardrobes (a composite
+   pool, dissolution, the garments-only pickers), the home dashboard's
+   0.39 s on the Friday copy (was ~9 s), and the previous round's items
+   (bug-103 seeding, glm-5.3 wire, the 75 s compression fold, About
+   strings, three-shell completion, hover fills; carried: Pascal's group
+   tier, the Brahma deep-query budget, dedup/summaries, the NanoGPT
+   caching smoke / #101).
+4. **P4.62's escalations, ordered shapes in its lane record:** the
+   wrong-typed `tagId` carry (widen `Request::FileUpload.tags` in
+   `api/types.rs` + DB-backed arms), the jobs-enqueue `payload: []` (v4
+   accepts 201; fix `jobs_enqueue`'s `!payload.is_object()` in
+   `api/system_data.rs`, arm in `system_jobs_collection_equivalence`),
+   and the `chat_media::chat_file_link` `fileId is required` guard
+   simplification.
+5. **Widen the committed `system-data-main.db` past
+   `multiCharacterPrefill`** (P4.63's surfaced vacuity: every
+   connection-profile import in the family fails identically on both
+   sides — that import has measured nothing since bug 68). Cross-lane:
+   the fixture is shared with the system-data routes differentials.
+6. **Un-park the component-transfer beat** (P4.D130's precise scope):
+   materialize `projects` + `groups` in `wardrobe-flow.spec.ts`'s
+   `beforeAll` (DDL in `fresh_schema.json`; the salon instance's `groups`
+   step is the precedent), fix the Copy arm's vacuously-green
+   `option[value^="character:"]` count-0 assert, re-drive the move beat.
+7. The present-but-null validation lead (carried).
+8. `p4.9i2` — help/HelpChat as a dedicated round (the bank gained
+   `help/wardrobe.md`'s Composite Items + chat-start Manual mode).
+9. The handler-logging sweep (carried).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json`
+file port remains a NAMED standalone flag.

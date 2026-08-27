@@ -2298,22 +2298,66 @@ records THERE. Update this summary only when a phase or round completes.
   completion, and the two hover fills. Versions: core 0.0.696, harness
   0.0.598, web 0.0.97, cli 0.0.14, SPA 0.5.586. Round record:
   `status-log.md`.
-- **Oracle baseline: `8872d7efc` (2026-08-26, v4 main — "perf(cheap-llm):
-  give compression its own budget, and log cheap-task failures", the last
-  commit of the 4.9.0 release push), adopted at the 4.9.0-push round
-  unification (2026-08-27).** **Drift state, the drift-check method, and
-  the pinned-worktree regen recipe live in
-  `docs/developer/porting/drift-ledger.md`** — maintained by
-  `/driftcheck` and by `/unify` at baseline moves; the other porting
+- **The P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 round: UNIFIED on main
+  (2026-08-27) — ALL FOUR CLOSED; the oracle baseline MOVES to
+  `aec86a613`.** The `aec86a613` outfit pull-down whole (the pool-split
+  twin with v4's 7-case transcription 1:1 PLUS a nine-case recorded-vector
+  corpus that asks the ICU questions the transcription cannot — mutation-
+  proven; the capture-phase-Escape pull-down; garments-only slot pickers
+  with the `allItems`-passed-whole chip pin written RED first; the live
+  dissolution beat) + both carried wardrobe e2e debts (the missing
+  `instance_settings` MATERIALIZED — not a fixture regen, six families
+  spared — with the create-scope beat LIVE and the transfer beat re-parked
+  on its REAL blocker, named; the duplicate "Quilltap General" root-caused
+  to the courier seeding — NOT the provisioner, measured idempotent — and
+  reconciled by what each store holds, `sameName=1` + a standing tripwire)
+  ∥ P4.62: the last three wrong-type-collapse pockets adjudicated whole
+  (13+7+1, zero unadjudicated census rows; 11+3 FAITHFUL / 2+3
+  DIVERGENT-FIXED incl. the Zod `validationError` envelope, the
+  `zod_uuid` gate transcribed from Zod 4's own regex, the whole
+  `writeBodySchema`, the `system/unlock` body gate that used to let `42`
+  through to a passphrase change, and the per-action malformed-body 500s;
+  two new families driving v4's REAL handlers over real HTTP, 15
+  mutations; three escalations with ordered shapes) ∥ P4.63: the four
+  harness follow-ups (the bug-105 divergence-aware oracle arm — **which
+  v4 then fixed HOURS later (`679e450e3`), so the arm's convergence trip
+  at the next baseline move is already booked by design**; the
+  attach-mount-file red = bug-91 corpus vintage, profiles → OPENAI,
+  canned calls 0 → 4 with a per-case vision-rung pin; the deadline-warn
+  assert bound to one line with its vacuity MEASURED; both blob censuses
+  comment-aware, the whole-file exemption now per-site) ∥ P4.64: the
+  7.5 s dashboard profiled at real scale — **the standing hypothesis
+  refuted: 97% was `enrich_chats_for_list`'s per-participant vault
+  fan-out, a dropped-preload PORT DEFECT** (v4 batches up front;
+  the-differential-cannot-see-a-dropped-batch class) — fixed
+  payload-identically (sort-then-slice; dispatch payload byte-equal at
+  real scale, **8.8 s → 0.39 s, 22.5×**; `home_routes_equivalence` 14/14
+  discriminating); **the Salon list pays the same 8.6–12.2 s and needs
+  v4's `ChatListPreloaded` batching — the named next candidate with this
+  measurement as its justification.** The §3 review: NO blocking findings.
+  v4 drifted THREE times during the round (`679e450e3` CONVERGENCE,
+  `0bd841394` tooltips PORT-NEW, `1b0ce9eba` cleanup) — every regen
+  pinned, the ledger updated mid-unify and at the move; the catch-up is
+  the top next candidate. Gate: 473 test binaries / 2,557 / 0 with the
+  five pin-fresh families zero SKIP (changed bytes grepped); clippy both
+  feature sets; release build; ng 364 files / 5,435; full Playwright
+  green (numbers in the round record). Versions: core 0.0.698, harness
+  0.0.602, web 0.0.98, SPA 0.5.590. Round record: `status-log.md`.
+- **Oracle baseline: `aec86a613` (2026-08-27, v4 main — the outfit
+  pull-down), adopted at the P4.D130-round unification (2026-08-27).**
+  **Drift state, the drift-check method, and the pinned-worktree regen
+  recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
+  by `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
   drift, and lanes never write it. **Never restate the drift count here —
   read the ledger's §1.** As of the unification (2026-08-27), v4 main
-  HEAD is `b6c6d7793` — ONE docs-only commit past the baseline, and it is
-  this port's own bug-105 filing (recorded in the ledger's §1 so the
-  probe doesn't re-alarm); the checkout is clean on `main`, bugfix is an
-  inert fork marker, and the regen rule is **PIN NOT REQUIRED** — but
-  expect v4's `release: 4.9.0` squash + a new bugfix fork imminently and
-  re-probe BOTH branches at the next check. The sweep driver remains the
+  HEAD is `1b0ce9eba` — three portable commits past the baseline (the
+  bug-105 convergence + the Tooltip PORT-NEW + the hidden-actions
+  cleanup; ledger §3), the checkout is clean on `main`, bugfix is an
+  inert fork marker, and the regen rule is **PIN REQUIRED** at
+  `aec86a613` until the baseline moves again. Still no `release: 4.9.0`
+  squash — re-probe BOTH branches at the next check. The sweep driver
+  remains the
   sanctioned per-family regen path — never run two sweeps concurrently;
   since P4.53 it refuses empty-stage families by name, `--self-test`
   guards recipe headers against cross-alias defaults, and since this
