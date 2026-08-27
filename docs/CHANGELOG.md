@@ -104,6 +104,24 @@ seeds a memory on a character the user does not own (so it survives the
 wipe) whose `relatedMemoryIds` points at a doomed row, and asserts the edge
 is scrubbed. That only happens through the chokepoint. Mutation-proven:
 restoring the per-row loop leaves the edge dangling and the test fails.
+#### 2026-08-27 — chore(logging): drop the per-publish realtime coalesce trace
+
+_Versions: core 0.0.691._
+
+Ports v4 `21f573039`, one deleted line. The `Realtime publish coalesced` debug
+print fired on every publish that landed inside the 250 ms debounce window, and
+job-status transitions pump that path: an `EMBEDDING_REINDEX_ALL` sweep of 1,000
+jobs emitted one "queued", 999 "coalesced" and one flush line. The flush line
+already reports the same absorbed total once per window, and with logs rolling
+every 2-3 MB the per-absorb copy only evicted real diagnostics.
+
+The `coalesced` counter itself stays — the flush line reads it. Log-only on both
+halves, so no differential can see it: the pin is a capturing tracing layer
+asserting silence at the publish site, exactly one surviving "queued" line, and
+the flush line's exact `coalesced=11` after twelve publishes. That last value is
+what separates "delete the trace" from "delete the counter with it"; both
+mutations redden it.
+
 #### 2026-08-27 — perf(cheap-llm): give compression its own budget, and log cheap-task failures
 
 _Versions: core 0.0.690._

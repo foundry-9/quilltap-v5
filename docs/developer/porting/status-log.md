@@ -90145,3 +90145,20 @@ any target with that prefix. The assertion now matches the whole target token
 true deletion. The same prefix weakness exists in the older
 `a_fired_deadline_warns_and_writes_the_ruled_error_row` pin; left alone as
 out-of-scope, recorded here as a small follow-up.
+
+### Unit 3 — the realtime coalesce trace (`21f573039`)
+
+One deleted `tracing::debug!` at `realtime/bus.rs`, with v4's rationale carried
+as the comment that replaces it (the 1 000-job `EMBEDDING_REINDEX_ALL` sweep
+emitting one "queued", 999 "coalesced" and one flush line; logs rolling every
+2-3 MB). **The `coalesced` counter STAYS** — the flush line reads it, and v5's
+flush was already untouched.
+
+Log-only, so the pin is a capturing tracing layer
+(`differential-blind-to-a-log-only-fix`) asserting three things after twelve
+publishes inside one window: no "Realtime publish coalesced" line at all,
+exactly ONE surviving "Realtime publish queued", and the flush line carrying
+`coalesced=11`. That last one is deliberate — it is the only thing separating
+"delete the trace" from "delete the counter with it"
+(`coalescing-hides-its-own-mutation-proofs`). **Both mutations redden it:**
+restoring v4's deleted line, and replacing `*coalesced += 1` with a no-op.

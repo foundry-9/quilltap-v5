@@ -194,14 +194,16 @@ pub fn publish_realtime(topic: RealtimeTopic, id: Option<&str>) {
     {
         let mut pending = bus.pending.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(coalesced) = pending.get_mut(&key) {
+            // v4 `21f573039` deleted the per-publish "Realtime publish coalesced"
+            // debug print that used to sit here. It fired on every publish that
+            // landed inside the 250 ms window, and job-status transitions pump
+            // this path: an EMBEDDING_REINDEX_ALL sweep of 1 000 jobs emitted one
+            // "queued", 999 "coalesced" and one flush line. The flush line already
+            // reports the same total once per window, and with logs rolling every
+            // 2–3 MB the per-absorb copy only evicted real diagnostics.
+            //
+            // The COUNTER stays — the flush line below reads it.
             *coalesced += 1;
-            tracing::debug!(
-                target: "quilltap::realtime",
-                topic = topic.as_str(),
-                id = id.unwrap_or(""),
-                coalesced = *coalesced,
-                "Realtime publish coalesced",
-            );
             return;
         }
         pending.insert(key.clone(), 0);
@@ -395,6 +397,93 @@ mod tests {
         arm_realtime_bus_for_current_thread(tx, spawn, crate::clock::now_unix_ms);
         tokio::time::sleep(std::time::Duration::from_millis(COALESCE_WINDOW_MS + 5)).await;
         assert!(rx.try_recv().is_err(), "a pre-arming publish is dropped");
+    }
+
+    /// A `tracing` layer capturing `LEVEL target msg field=value …` per event.
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+
+    struct FieldVisitor(String);
+
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    /// P4.D127 / v4 `21f573039` — the per-publish coalesce trace is GONE, and
+    /// the counter it used to print is not.
+    ///
+    /// Log-only on both halves, so no differential can see it
+    /// (`differential-blind-to-a-log-only-fix`): the pin is a capturing layer
+    /// asserting SILENCE at the publish site and PRESENCE of the flush line —
+    /// and the flush line's exact `coalesced` value, because that is the only
+    /// thing standing between "delete the trace" and "delete the counter with
+    /// it" (`coalescing-hides-its-own-mutation-proofs`).
+    #[tokio::test(start_paused = true)]
+    async fn a_coalesced_publish_is_silent_and_the_flush_still_counts_it() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let (mut rx, _g) = armed(0);
+
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            for _ in 0..12 {
+                publish_realtime(RealtimeTopic::Jobs, None);
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(COALESCE_WINDOW_MS + 5)).await;
+        }
+        rx.try_recv().expect("one hint");
+
+        let captured = logs.lock().unwrap().join("\n");
+        assert!(
+            !captured.contains("Realtime publish coalesced"),
+            "the per-publish coalesce trace must be gone; captured:\n{captured}"
+        );
+        // v4 kept the sibling "queued" line — once, on the publish that opened
+        // the window.
+        assert_eq!(
+            captured
+                .lines()
+                .filter(|l| l.contains("Realtime publish queued"))
+                .count(),
+            1,
+            "exactly one queued line per window; captured:\n{captured}"
+        );
+        // …and the flush still reports the absorbed total, which is what keeps
+        // the counter load-bearing: twelve publishes, one opener + eleven
+        // absorbed.
+        assert!(
+            captured.contains("Realtime hint emitted")
+                && captured.lines().any(|l| l.contains("coalesced=11")),
+            "the flush line must still report coalesced=11; captured:\n{captured}"
+        );
     }
 
     /// A publish with NO subscriber must not panic or wedge the key — v4
