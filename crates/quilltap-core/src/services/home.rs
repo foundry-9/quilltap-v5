@@ -14,7 +14,11 @@
 //! SPA Home screen.
 //!
 //! Pinned by `home_routes_equivalence` over the committed `home-{main,mount}.db`
-//! fixture family.
+//! fixture family — whose 14 salon chats exceed the 12-row slice, so the family
+//! discriminates the one place this file departs from v4's order of operations:
+//! the recent-chats slice happens BEFORE the enrichment, not after (see the
+//! comment at the call site — payload-identical, and the whole of P4.64's
+//! 22× measured saving).
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -201,7 +205,7 @@ pub fn get_home_data(
     // Help-chat filter: `!c.chatType || c.chatType === 'salon'` — note this is
     // NOT the Salon list's filter (autonomous chats never show on the homepage,
     // visibility notwithstanding).
-    let salon_chats: Vec<Value> = all_chats_raw
+    let mut salon_chats: Vec<Value> = all_chats_raw
         .iter()
         .filter(|c| {
             let ct = c.get("chatType").and_then(Value::as_str);
@@ -212,8 +216,30 @@ pub fn get_home_data(
 
     // enrichChatsForList (sorts by lastMessageAt ?? updatedAt desc internally)
     // → cleanEnrichedChats (the `#[serde(skip)]` field) → slice(0, 12).
-    let mut recent_enriched = chat_enrichment::enrich_chats_for_list(main, mount, salon_chats)?;
-    recent_enriched.truncate(12);
+    //
+    // ⚠ ORDER OF OPERATIONS, deliberately not v4's: v4 enriches EVERY salon
+    // chat and only then slices twelve. v5 sorts and slices FIRST, then
+    // enriches those twelve. The rows are identical — the slice order is
+    // `sort_chats_for_list`'s key, a RAW chat field that no part of the
+    // enrichment feeds; the sort is stable on both sides, so re-sorting the
+    // already-sorted twelve inside `enrich_chats_for_list` is a no-op; and
+    // nothing below reads an enriched chat past the twelfth (`last_chat_id` is
+    // the first, `recent_chats` is the map over the twelve). Only the cost
+    // moves. P4.64 measured it on the real instance (773 salon chats): the
+    // enrichment ran 8.6–12.2 s — ~97% of `systemHome`'s ~9 s — against 145 ms
+    // for the same twelve, because every CHARACTER participant re-hydrates its
+    // character through the vault overlay (nine single-file reads plus two
+    // folder scans against the mount index, per lookup, ~2,000 lookups per
+    // dashboard) and 761 of the 773 results were then thrown away.
+    //
+    // The one thing that can differ is an error only a discarded chat would
+    // have raised: v4 (and v5 until now) fails the whole dashboard on it. Every
+    // read the enrichment makes for a discarded chat it also makes for the top
+    // twelve, against the same tables, so a failure that spares all twelve and
+    // strikes only a row nobody renders is not a shape these reads produce.
+    chat_enrichment::sort_chats_for_list(&mut salon_chats);
+    salon_chats.truncate(12);
+    let recent_enriched = chat_enrichment::enrich_chats_for_list(main, mount, salon_chats)?;
 
     let last_chat_id = recent_enriched.first().map(|c| c.id.clone());
 

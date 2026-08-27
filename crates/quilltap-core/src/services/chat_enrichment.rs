@@ -714,15 +714,16 @@ pub fn enrich_chat_for_list(
     })
 }
 
-/// v4 `enrichChatsForList(chats, repos)`: sort descending by
-/// `lastMessageAt ?? updatedAt`, then per-chat enrich. Stable sort (V8's is
-/// stable) — ties keep the input order.
-pub fn enrich_chats_for_list(
-    main: &Connection,
-    mount: &Connection,
-    chats: Vec<Value>,
-) -> Result<Vec<EnrichedChatSummary>, DbError> {
-    let mut chats = chats;
+/// v4 `enrichChatsForList`'s ordering pass on its own — `lastMessageAt ??
+/// updatedAt`, descending, stable (V8's sort is stable too, so ties keep input
+/// order).
+///
+/// Exposed because the key is a **raw chat field**: nothing the enrichment
+/// produces feeds it. A caller that renders only the first N may therefore sort
+/// and truncate BEFORE enriching and get byte-identical rows without paying for
+/// the enrichment of the ones it discards (P4.64 — the home dashboard). Kept as
+/// the single home of the comparator so the two spellings cannot drift.
+pub fn sort_chats_for_list(chats: &mut [Value]) {
     chats.sort_by(|a, b| {
         let key = |c: &Value| -> i64 {
             let ts = c
@@ -734,6 +735,18 @@ pub fn enrich_chats_for_list(
         // Descending.
         key(b).cmp(&key(a))
     });
+}
+
+/// v4 `enrichChatsForList(chats, repos)`: sort descending by
+/// `lastMessageAt ?? updatedAt`, then per-chat enrich. Stable sort (V8's is
+/// stable) — ties keep the input order.
+pub fn enrich_chats_for_list(
+    main: &Connection,
+    mount: &Connection,
+    chats: Vec<Value>,
+) -> Result<Vec<EnrichedChatSummary>, DbError> {
+    let mut chats = chats;
+    sort_chats_for_list(&mut chats);
     let mut out = Vec::with_capacity(chats.len());
     for c in &chats {
         out.push(enrich_chat_for_list(main, mount, c)?);

@@ -91542,3 +91542,113 @@ What the next `/driftcheck` and `/unify` need to know:
 
 Versions: core 0.0.697, harness 0.0.601; host/web/cli/tauri/SPA unchanged.
 
+## P4.64 — the `systemHome` profile (2026-08-27)
+
+**Order:** `work-orders/p4.64-systemhome-profile.md`. Branch
+`claude/p4-64-systemhome-profile-port-674d3c`. Baseline `8872d7efc`; the
+lane's one regen ran from `/tmp/qt-v4-pin-p464-8872d7efc`.
+
+### Tier 1 — the profile (the deliverable)
+
+**Method.** A temporary `#[cfg(test)] #[ignore]` module inside `home.rs`
+(the lane's owned file), gated on `QT_PROFILE_DATA_DIR`, opening the two
+partitions READ-ONLY with the `PRAGMA key` sequence and timing each step of
+`get_home_data` plus the whole call. Instrumentation torn back out before
+the commit (no tracing span survives — the numbers are the artifact). Run
+against **the Friday COPY** `~/qt-dogfood-friday/data` (rsync'd 2026-08-26,
+the same vintage as the dogfood pass that reported 7.5 s): main 816 MB,
+mount-index 732 MB, **861 chats / 773 salon / 42 characters / 8 projects /
+2,674 files**, payload 12 recent + 8 projects + 24 characters. Both a
+debug and a release build were profiled; the release numbers are of record.
+
+**Release, warm (two rounds):**
+
+| step | round 1 | round 2 |
+|---|---|---|
+| `users::find_name_by_id` | 0.1 ms | 0.1 ms |
+| `chats_read::find_by_user_id` (861) | 101.9 ms | 100.1 ms |
+| `ProjectsRepository::find_all` (8) | 16.6 ms | 16.3 ms |
+| `characters_read::find_by_user_id` (42) | 128.9 ms | 120.7 ms |
+| `FilesRepository::find_all` (2,674) | 11.3 ms | 11.0 ms |
+| **`enrich_chats_for_list` (773)** | **12,206.4 ms** | **8,562.9 ms** |
+| the same twelve only | 143.6 ms | 145.3 ms |
+| `enrich_with_default_image` ×24 | 1.0 ms | 1.0 ms |
+| **`get_home_data` (whole)** | **8,835.4 ms** | **9,211.9 ms** |
+
+Cold `get_home_data` 10,100 ms. A clean before-run with no interleaved
+steps: **8,871.3 ms / 8,770.7 ms**.
+
+**The standing hypothesis was WRONG about where the money goes.** The four
+`findAll`-shaped loads the phase-4 candidate named are **~250 ms
+combined** — 3% of the cost — and the mount-index-connection reads it
+suspected (projects 16 ms, characters 121 ms) are among the cheapest.
+**97% is the chat-list enrichment**, and it is not the 859-row read: it is
+the per-chat, per-participant fan-out inside `enrich_chat_for_list`. Every
+`CHARACTER` participant calls `characters_read::find_by_id`, which runs
+`load_vault_file_maps` for that one character — **nine single-file
+`find_many_by_mount_points_and_path` reads plus two folder scans against
+the 732 MB mount index, then nine document parses, per lookup** — roughly
+two thousand lookups per dashboard, to render twelve cards.
+
+**And this is a port defect, not a v4 cost.** v4's `enrichChatsForList`
+(`lib/services/chat-enrichment.service.ts:620`) collects every character
+id, project id, file id and chat id up front and issues **one batched read
+each** (`characters.findByIds`, `files.findByIds`,
+`docMountFileLinks.findByIdsWithContent`, `projects.findByIds`,
+`memories.countByChatIds`, `conversationChunks.countByChatIds`), hands the
+result down as `ChatListPreloaded`, and `enrichChatForList` prefers the
+preloaded map at every site. **v5's port dropped the preload entirely** —
+payload-equivalent, structurally N+1. So the answer to "does v4 pay the
+same?" is **no**, and outcome (c) in the order is refuted.
+
+### Tier 2 — the fix (payload-identical, landed)
+
+`get_home_data` now sorts and slices the twelve **before** enriching, where
+v4 enriches everything and slices after. Identity is by construction: the
+slice order is `enrich_chats_for_list`'s own comparator, whose key is a RAW
+chat field (`lastMessageAt ?? updatedAt`) that no part of the enrichment
+feeds; the sort is stable on both sides, so the internal re-sort of the
+already-sorted twelve is a no-op; and nothing downstream reads an enriched
+chat past the twelfth. The comparator was extracted to
+`chat_enrichment::sort_chats_for_list` so the two dependents cannot drift —
+`enrich_chats_for_list` now calls it, which is why that extraction is
+behaviour-neutral by construction rather than by argument.
+
+**Proof, two ways.**
+1. **Real scale, byte-for-byte.** The dispatch payload dumped from the
+   Friday copy before and after: **52,841 bytes, md5
+   `2fff2184ae6aef6f777005e2bf1ef5a0`, identical** (`cmp` clean). Timing on
+   the same runs: **8,871.3 / 8,770.7 ms → 394.0 / 385.5 ms — 22.5×.**
+2. **The differential.** `home_routes_equivalence` over an oracle
+   regenerated fresh from the `8872d7efc` pin: **14/14 cases OK plus the
+   88-object key-order pin**. The family discriminates this change — its
+   fixture carries **14 salon chats against the 12-row slice**.
+   Mutation-proven: reversing the two lines (truncate, then sort) turns it
+   RED.
+
+The one behaviour that cannot survive the reorder is an error raised only
+by a discarded chat, which v4 (and v5 until now) would let fail the whole
+dashboard. Every read the enrichment makes for a discarded chat it also
+makes for the twelve kept, against the same tables, so a failure that
+spares all twelve and strikes only an unrendered row is not a shape these
+reads produce. Recorded at the call site.
+
+### Tier 3 — deferred LOUDLY, with the numbers
+
+**The Salon chat list pays the same 8.6–12.2 s and this fix cannot help
+it.** `api::salon::chat_list` calls the identical
+`enrich_chats_for_list` over the identical set (plus visible autonomous
+chats), and it genuinely needs every row enriched: `_allTagIds` — which
+`filter_chats_by_excluded_tags` reads — is built from the participants'
+character tags, so the exclusion filter cannot run before enrichment, and
+`limit` is applied after it. The only fix for that path is **porting v4's
+`ChatListPreloaded` batching**, which needs new batched read paths that v5
+does not have (`files::find_by_ids`, `projects::find_by_ids`,
+`doc_mount_file_links::find_by_ids_with_content`,
+`conversation_chunks::count_by_chat_ids`; `characters_read::find_by_ids`
+and `memories_read::count_by_chat_ids` already exist and are unused by this
+service). That is a separate order — outside this lane's mandate
+(`systemHome`) and larger than its ownership. **Recommended as the next
+candidate; the measurement above is its justification.**
+
+Not escalated: nothing here needs a payload or schema change.

@@ -203,6 +203,36 @@ it — on the line that also carries the abandonment message, and every field is
 asserted on that line. Measured rather than argued: retargeting the
 abandonment warn to `quilltap::cheap_llm_exec` leaves the old assert GREEN and
 reddens the new one. Test-only; no production behavior changed.
+#### 2026-08-27 — perf(home): slice the recent chats before enriching them, not after
+
+_Versions: core 0.0.697._
+
+The landing dashboard took about nine seconds to build on a real instance
+(773 conversations). Measuring it per step showed that ninety-seven percent
+of that was one thing: the dashboard enriched every one of those 773
+conversations — resolving each participant's character through the vault,
+which costs eleven database reads and nine document parses per lookup,
+roughly two thousand lookups in all — and then displayed the twelve most
+recent and discarded the rest.
+
+The order of those two operations is now reversed. The sort that picks the
+twelve reads only raw conversation fields, so nothing the enrichment
+produces can affect which twelve are chosen; sorting and slicing first and
+enriching only the survivors therefore yields exactly the same twelve rows
+in exactly the same order. On the real instance the dashboard payload came
+back byte-for-byte identical (52,841 bytes, same checksum) while the time
+fell from 8.87 s to 0.39 s — twenty-two times faster. The equivalence test
+against the reference app is unchanged and green; its fixture carries
+fourteen conversations against a twelve-row slice, so it does exercise the
+reordering.
+
+The comparator itself moved into a named function so the two places that
+now depend on the same ordering cannot drift apart. Nothing else changed:
+the reference app still enriches everything and slices afterwards, and the
+one thing this can no longer do is fail the whole dashboard because of an
+error raised by a conversation nobody was going to see — a case these reads
+do not produce, since every read made for a discarded conversation is also
+made for the twelve that are kept.
 
 #### 2026-08-27 — docs(orders): the four-lane round — the `aec86a613` pull-down drift, the collapse pockets, the harness follow-ups, the systemHome profile
 
