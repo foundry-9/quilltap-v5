@@ -699,6 +699,18 @@ pub async fn jobs_enqueue(
         .await;
     match written {
         Ok(()) => {
+            // v4's collection POST enqueues through `enqueueJob`
+            // (`route.ts:107`), which is a realtime publish site — the queue
+            // moved, so every open tab hears it. v5's API-layer enqueue writes
+            // the row itself rather than through `queue_service::enqueue_job`,
+            // so the hint has to be published here. (The activated hint beat's
+            // first live run found this: a fourth enqueue site neither lane's
+            // survey table carried.)
+            {
+                use crate::realtime::bus::publish_realtime;
+                use crate::realtime::types::RealtimeTopic;
+                publish_realtime(RealtimeTopic::Jobs, None);
+            }
             let mut m = Map::new();
             m.insert("jobId".into(), Value::from(new_id.to_string()));
             m.insert("message".into(), Value::from("Job created successfully"));

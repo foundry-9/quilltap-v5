@@ -259,13 +259,34 @@ test('a `jobs` hint invalidates the chips with the fallback heartbeat parked', a
   await expect(embChip).toContainText('0');
 
   // Enqueue real work: the server publishes a `jobs` hint, the hub invalidates.
+  // The first live run tried `memoryBackfillStart`, which the committed
+  // fixture refuses (no default embedding profile — the CRUD beats stay
+  // non-default on purpose). The collection POST is the right gesture twice
+  // over: it needs no preconditions, and it is the FOURTH enqueue publish
+  // site (v4 routes it through `enqueueJob`), which that same first run
+  // caught v5 missing — so this beat is also its live wire proof. The raw
+  // request context bypasses this page's `/api/v1/system/jobs` interception.
   body = {
     activeByKind: { memory: 0, embedding: 3, summary: 0, danger: 0, image: 0 },
     startedByKind: { memory: 0, embedding: 0, summary: 0, danger: 0, image: 0 },
   };
-  await dispatch({ type: 'memoryBackfillStart', limit: 1 });
+  const ctx = await pwRequest.newContext();
+  const posted = await ctx.post(`${BASE_URL}/api/v1/system/jobs`, {
+    // A bogus characterId: the handler fails fast, and the row is deleted
+    // below either way — no residue for later beats.
+    data: {
+      type: 'CHARACTER_HEADSHOULDERS_BACKFILL',
+      payload: { characterId: '00000000-0000-0000-0000-000000000000' },
+    },
+  });
+  expect(posted.status()).toBe(201);
+  const { jobId } = (await posted.json()) as { jobId: string };
+
   await expect(embChip).toContainText('3', { timeout: 5_000 });
 
+  // Residue-free: remove the throwaway row whatever state the pump left it in.
+  await ctx.delete(`${BASE_URL}/api/v1/system/jobs/${jobId}`);
+  await ctx.dispose();
   await page.unroute('**/api/v1/system/jobs');
 });
 

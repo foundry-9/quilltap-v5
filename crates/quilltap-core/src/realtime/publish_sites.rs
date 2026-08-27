@@ -130,6 +130,44 @@ mod tests {
         assert_eq!(cap.drain().await, vec![jobs()]);
     }
 
+    /// The collection POST's enqueue (v4 `POST /api/v1/system/jobs` →
+    /// `enqueueJob`, a publish site). v5's `jobs_enqueue` writes the row at
+    /// the API layer rather than through `queue_service::enqueue_job`, so it
+    /// publishes there — the FOURTH enqueue site, found by the activated hint
+    /// beat's first live run at the f3892158d-round unification.
+    #[tokio::test]
+    async fn the_collection_post_enqueue_publishes_too() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = make_db("enqpost");
+        let resp = crate::api::system_data::jobs_enqueue_now(
+            &db,
+            "u1",
+            "MEMORY_HOUSEKEEPING",
+            &json!({}),
+            None,
+            None,
+        )
+        .await;
+        assert!(
+            matches!(resp, crate::api::types::Response::System(_)),
+            "the enqueue itself must succeed for this pin to mean anything"
+        );
+        assert_eq!(cap.drain().await, vec![jobs()]);
+
+        // …and the refusal arms write nothing, so they announce nothing.
+        let refused = crate::api::system_data::jobs_enqueue_now(
+            &db,
+            "u1",
+            "NOT_A_JOB_TYPE",
+            &json!({}),
+            None,
+            None,
+        )
+        .await;
+        assert!(!matches!(refused, crate::api::types::Response::System(_)));
+        assert_eq!(cap.drain().await, vec![]);
+    }
+
     /// v4 has ONE `enqueueJob`; v5 split it in two, so the priority variant is
     /// the same v4 site and must publish too.
     #[tokio::test]

@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — fix(realtime): the collection POST's enqueue publishes its jobs hint — the activated beat's first-run catch
+
+_Versions: core 0.0.688, harness 0.0.592 (unchanged), SPA 0.5.583 (unchanged)._
+
+The unification-activated hint beat failed its FIRST live run and led to a
+real cross-lane fidelity gap: v4's `POST /api/v1/system/jobs` enqueues
+through `enqueueJob` — a realtime publish site — but v5's `jobs_enqueue`
+writes the row at the API layer, bypassing `queue_service::enqueue_job`, so
+the collection POST emitted no hint. A fourth enqueue site neither lane's
+survey table carried. Fixed at the API layer; pinned by a capturing test
+(publish on success, silence on the refusal arms), a new census row in
+`realtime_publish_sites_guard`, and a mutation proof reddening both. The
+beat's own failure was a fixture-precondition gesture defect
+(`memoryBackfillStart` needs a default embedding profile the committed
+fixture deliberately lacks); it now drives the collection POST — which
+makes the beat the new site's live wire proof — with a residue-free delete.
+
+
 #### 2026-08-26 — test(core): serialize the wrapped-path span writers with the registry's exact-count tests
 
 _Versions: core 0.0.687._

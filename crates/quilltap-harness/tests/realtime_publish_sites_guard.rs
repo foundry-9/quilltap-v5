@@ -58,6 +58,17 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          `applyChildActivityDelta` / `resetChildActivity`, the child-mirror legs \
          v5 has no analogue for.",
     ),
+    (
+        "crates/quilltap-core/src/api/system_data.rs",
+        "publish_realtime(RealtimeTopic::Jobs, None);",
+        1,
+        "the collection POST's enqueue. v4's route goes through `enqueueJob` — \
+         a publish site — but v5's `jobs_enqueue` writes the row itself rather \
+         than through `queue_service::enqueue_job`, so the hint is published at \
+         the API layer. Found by the activated hint beat's FIRST live run at the \
+         f3892158d-round unification: a fourth enqueue site neither lane's \
+         survey table carried.",
+    ),
 ];
 
 fn repo_root() -> PathBuf {
