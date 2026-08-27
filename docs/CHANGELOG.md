@@ -38,6 +38,22 @@ directions. The `profiles.rs` divergence doc block is rewritten as a
 convergence record. No v5 production behavior changed; the core bump is
 doc-comment-only. The one v4-side line this commit does not port —
 `help/system-import-export.md`'s new sentence — banks to `p4.9i2`.
+#### 2026-08-27 — port(cli): the instances restore-key completion templates + help text, red-first
+
+_Versions: cli 0.0.15._
+
+The P4.D133 lane's first unit: v4 `b121ac77f`'s completion-template and help
+changes byte-copied from a pinned worktree, red-first. Against the pinned v4
+with v5 unchanged, the Tier R differential went red on exactly the four
+predicted cases (`instances help` + `completion bash|zsh|fish`; 188 cases, 4
+failures — the P4.D118/P4.D128 signature); after the copy it is 188/0. The
+three shell templates are `cmp`-identical to v4's; `instances_help.txt` was
+captured from v4's running launcher (`quilltap instances --help`) rather than
+extracted from the source literal, which would have left `\\` unrendered. The
+P4.D128 coverage guard now enforces the five new flags; a mutation dropping
+`--no-passphrase` from the fish template reddens it (proven, restored).
+`--force` cannot discriminate template-wide because `docs` already carries it —
+v4's own guard coarseness, recorded in the lane record.
 
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
 

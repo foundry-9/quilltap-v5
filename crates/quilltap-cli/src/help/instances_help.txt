@@ -12,6 +12,7 @@ Verbs:
   set-passphrase <name>         Change or clear the stored passphrase
   default [<name>]              Set/show/clear default instance
   rename <old> <new>            Rename an instance (preserves passphrase)
+  restore-key <name>            Rebuild a lost/locked .dbkey from the pepper
   -h, --help                    This help
 
 Storage: ~/Library/Application Support/Quilltap/instances.json on macOS,
@@ -34,6 +35,22 @@ Default Instance:
   quilltap instances default Friday          # set Friday as the default
   quilltap instances default --clear         # clear the default
   quilltap instances default                 # show the current default
+
+Rebuilding a .dbkey:
+  The .dbkey file only WRAPS the pepper — the pepper itself is the database
+  key. So if the file is lost, or its passphrase is forgotten, an operator who
+  still has the pepper can rebuild it:
+
+  quilltap instances restore-key Friday          # pepper from the environment,
+                                                 #   or a hidden prompt
+  quilltap instances restore-key Friday --no-passphrase --yes
+
+  The pepper is read from ENCRYPTION_MASTER_PEPPER or prompted for, never
+  passed as a flag (a command line lands in shell history and in ps output). It is
+  proved against the encrypted databases on disk before anything is written,
+  and the command refuses while the instance lock is held, so run it with the
+  server down. Flags: --passphrase <pass>, --no-passphrase, --data-dir <path>,
+  --force (no encrypted database to prove against), --yes.
 
 Examples:
   quilltap instances add Friday ~/iCloud/Quilltap/Friday
