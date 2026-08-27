@@ -67,6 +67,7 @@ pub mod commonplace_notifications;
 pub mod compression;
 pub mod compression_cache;
 pub mod concierge_notifications;
+pub mod connection_profile_legacy_fields;
 pub mod context_summary;
 pub mod context_summary_job;
 pub mod conversation_summaries_regen;

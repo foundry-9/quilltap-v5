@@ -515,3 +515,90 @@ fn annotations_restore_onto_a_vintage_instance_without_colliding() {
         "the pre-existing annotation must be wiped, not preserved"
     );
 }
+
+// ── P4.D126: bug 103's `multiCharacterPrefill` half (v4 `e000d6bfc`) ─────────
+
+/// The one place bug 103's headline half is observable at all.
+///
+/// v4's `generateDDL` declares `connection_profiles.multiCharacterPrefill` as
+/// `INTEGER` with **no default**, so on every freshly-provisioned target —
+/// which is what every other restore differential in this repo uses — omitting
+/// the column and writing an explicit NULL land the same cell. The `DEFAULT 1`
+/// lives only in the MIGRATED shape
+/// (`migrations/scripts/add-profile-multi-character-prefill-field.ts:64`), i.e.
+/// on exactly the instances real people restore onto.
+///
+/// **RED-FIRST, measured 2026-08-26 before the port**, restoring
+/// `restore-archive-legacy-profiles.zip` into this fixture:
+///
+/// ```text
+/// Both Predate      ANTHROPIC  sIU=Some(0)  mCP=Some(1)
+/// Carried Both      OPENAI     sIU=Some(1)  mCP=Some(0)
+/// Lowercase Legacy  openai     sIU=Some(0)  mCP=Some(1)
+/// Never Capable     OLLAMA     sIU=Some(0)  mCP=Some(1)
+/// Prefill Predates  ANTHROPIC  sIU=Some(1)  mCP=Some(1)
+/// Stored False      GOOGLE     sIU=Some(0)  mCP=Some(1)
+/// ```
+///
+/// Five of the six landed `multiCharacterPrefill = 1` — the `[Name]` assistant
+/// prefill switched ON for profiles whose owners never chose it, Anthropic
+/// included, where 4.6+ rejects an assistant tail outright and every
+/// multi-character turn then 400s. Two of the six also lost their vision flag.
+///
+/// A v5-side invariant suite like the rest of this file: v4 is pinned on the
+/// same decision by `connection_profile_legacy_fields_equivalence` (the shared
+/// helper, tier-1 exact) and on the fresh-target row values by
+/// `system_restore_state`'s `restore_legacy_profiles_replace`. What can only be
+/// said here is what the migrated DEFAULT does about it.
+#[test]
+fn a_pre_49_archive_lands_never_chosen_not_the_migrated_default() {
+    let (instance, warnings, _links) = run_restore(
+        "legacyprofiles",
+        "restore-archive-legacy-profiles.zip",
+        RestoreMode::Replace,
+    );
+    assert_no_raw_sqlite("restore-archive-legacy-profiles.zip / replace", &warnings);
+
+    let db = open(&instance);
+    let rows: Vec<(String, Option<i64>, Option<i64>)> = db
+        .read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT name, supportsImageUpload, multiCharacterPrefill                  FROM connection_profiles ORDER BY name",
+            )?;
+            let out = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, Option<i64>>(1)?,
+                        r.get::<_, Option<i64>>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok::<_, quilltap_core::db::DbError>(out)
+        })
+        .expect("read the restored profiles");
+
+    // `(name, supportsImageUpload, multiCharacterPrefill)`, in name order.
+    let expected: Vec<(&str, Option<i64>, Option<i64>)> = vec![
+        // both keys carried → both untouched.
+        ("Both Predate", Some(1), None),
+        // ANTHROPIC, both absent → the historic map says vision, the prefill is
+        // "never chosen". Pre-fix this row was `(0, 1)` — the worst of the six.
+        ("Carried Both", Some(1), Some(0)),
+        // lowercase `openai`, both absent → the map is matched case-insensitively.
+        ("Lowercase Legacy", Some(1), None),
+        // OLLAMA, both absent → never capable, still never chosen.
+        ("Never Capable", Some(0), None),
+        // sIU carried true, prefill absent.
+        ("Prefill Predates", Some(1), None),
+        // GOOGLE with a STORED false and a STORED null: a truthiness seeding
+        // condition would turn vision back on here. Neither key is touched.
+        ("Stored False", Some(0), None),
+    ];
+    let got: Vec<(&str, Option<i64>, Option<i64>)> =
+        rows.iter().map(|(n, i, m)| (n.as_str(), *i, *m)).collect();
+    assert_eq!(
+        got, expected,
+        "the six seeding shapes must land what their owners chose, not the          migrated table defaults"
+    );
+}

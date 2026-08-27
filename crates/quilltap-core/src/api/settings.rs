@@ -1507,7 +1507,10 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
             get_bool("allowToolUse", true)
         },
         pseudo_tool_mode,
-        multi_character_prefill: Some(multi_character_prefill),
+        // The create route always resolves a boolean (`:1331`), so the column
+        // is always named and never NULL — the outer `Some` is "the document
+        // carries the key", the inner one its value.
+        multi_character_prefill: Some(Some(multi_character_prefill)),
         model_class,
         max_context,
         max_tokens: None,

@@ -1158,8 +1158,21 @@ function malformedItemsPayload(): { manifest: unknown; data: Record<string, unkn
         {
           id: 'dd000000-0000-4000-8000-000000000002',
           name: 'Broken Connection',
-          provider: 42,
-          modelName: 'a-model',
+          // [P4.D126] The wrong-typed field is `modelName`, NOT `provider`.
+          // v4 `e000d6bfc` (bug 103) reads `(seeded.provider ?? '')
+          // .toUpperCase()` at the TOP of the loop body, OUTSIDE the per-item
+          // try — so a non-string `provider` no longer produces a named
+          // warning, it throws a TypeError that escapes to `executeImport`'s
+          // outer catch and aborts the WHOLE import
+          // (`Import failed: (seeded.provider ?? "").toUpperCase is not a
+          // function`). That regression is v4's, is recorded as a deliberate
+          // v5 divergence under the standing backup/restore/import/export
+          // ruling, and is pinned v5-side in
+          // `services::quilltap_import::profiles`. Here the item just needs to
+          // fail its own import on BOTH sides, which `modelName` does:
+          // v4's `z.string()` and the port's `String` both refuse it.
+          provider: 'OPENAI',
+          modelName: 42,
         },
       ],
       imageProfiles: [

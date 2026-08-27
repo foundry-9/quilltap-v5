@@ -852,6 +852,11 @@ fn archive_for(name: &str) -> &'static str {
         "restore_orphan_links_replace" => "restore-archive-orphan-links.zip",
         // [P4.D46] The compact restore tail (24a + 25).
         "restore_compact_replace" | "restore_compact_new_account" => "restore-archive-compact.zip",
+        // [P4.D126] bug 103 — the connection-profile columns an older archive
+        // predates. See the oracle case list for what the six profiles span and
+        // why the `multiCharacterPrefill` half is pinned in
+        // `restore_vintage_state` instead.
+        "restore_legacy_profiles_replace" => "restore-archive-legacy-profiles.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1130,9 +1135,9 @@ fn system_restore_state_equivalence() {
     }
 
     assert_eq!(
-        seen, 13,
-        "expected all thirteen restore cases in the oracle (ten + the #58 orphan-links arm \
-         + P4.D46's two compact arms)"
+        seen, 14,
+        "expected all fourteen restore cases in the oracle (ten + the #58 orphan-links arm \
+         + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm)"
     );
     assert!(
         failures.is_empty(),

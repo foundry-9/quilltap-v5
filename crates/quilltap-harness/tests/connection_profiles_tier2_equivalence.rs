@@ -248,7 +248,12 @@ fn connection_profiles_tier2_matches_oracle() {
                             use_native_web_search: data.use_native_web_search,
                             allow_tool_use: data.allow_tool_use,
                             pseudo_tool_mode: data.pseudo_tool_mode.clone(),
-                            multi_character_prefill: data.multi_character_prefill,
+                            // P4.D126: `CpCreate` now models all THREE of v4's
+                            // `insertOne` states. The corpus's `Option` is
+                            // "absent vs a stored boolean", so it maps to
+                            // omit-vs-write — the create route never writes an
+                            // explicit NULL, and neither does this corpus.
+                            multi_character_prefill: data.multi_character_prefill.map(Some),
                             model_class: data.model_class.clone(),
                             max_context: data.max_context,
                             max_tokens: data.max_tokens,

@@ -24,16 +24,13 @@ use serde_json::{json, Value};
 
 use super::{ConflictStrategy, IdMap, ImportOptions};
 use crate::db::{connection_profiles, embedding_profiles, image_profiles, DbError};
+use crate::services::connection_profile_legacy_fields::seed_legacy_connection_profile_fields;
 use crate::services::profile_names::{make_unique_profile_name, normalize_profile_name};
 
 pub(super) struct Counts {
     pub imported: u32,
     pub skipped: u32,
 }
-
-/// v4 `LEGACY_IMAGE_CAPABLE_PROVIDERS` — seeds `supportsImageUpload` for exports
-/// that predate the per-profile flag.
-const LEGACY_IMAGE_CAPABLE_PROVIDERS: &[&str] = &["OPENAI", "ANTHROPIC", "GOOGLE", "GROK"];
 
 /// The connection-profile payload with v4's Zod defaults materialized
 /// (`ConnectionProfileSchema`, `profile.types.ts:42`). Unknown keys (the export's
@@ -69,21 +66,31 @@ struct ImportedConnectionProfile {
     #[serde(default)]
     max_context: Option<f64>,
     /// `["boolean","null"]` in the export schema (v4 `23af7146`). A real v4
-    /// export never emits an explicit `null` — a never-chosen profile's
-    /// net-read OMITS the key (NULL boolean → `undefined` → dropped by
-    /// `JSON.stringify`) — so folding null and absent into `None` here is
-    /// faithful for every bundle v4 can produce. (A hand-crafted bundle
-    /// carrying a literal `null` would get an explicit NULL written by v4's
-    /// `insertOne` and the column OMITTED by v5 — observable only on a
-    /// migrated instance whose DDL default is 1. Recorded, not modeled.)
+    /// export never emits an explicit `null` — a never-chosen profile's net-read
+    /// OMITS the key (NULL boolean → `undefined` → dropped by `JSON.stringify`)
+    /// — so this `Option` cannot tell absent from null, and does not have to:
+    /// like [`Self::supports_image_upload`] it is kept for its VALIDATION alone.
+    /// The write reads the RAW record through
+    /// [`crate::services::connection_profile_legacy_fields`].
+    ///
+    /// **The divergence recorded here at P4.D79 is RETIRED** (v4 `e000d6bfc`,
+    /// P4.D126): a hand-crafted bundle carrying a literal `null` used to get an
+    /// explicit NULL from v4's `insertOne` and an OMITTED column from v5 —
+    /// observable on a migrated instance whose DDL default is 1. Both sides now
+    /// write the explicit NULL, because both read key presence.
     #[serde(default)]
+    #[allow(dead_code)]
     multi_character_prefill: Option<bool>,
     #[serde(default)]
     max_tokens: Option<f64>,
     #[serde(default)]
     is_dangerous_compatible: bool,
-    /// `None` = the key was absent — the pre-validation legacy fold fires.
+    /// Kept for its VALIDATION, not its value: since v4 `e000d6bfc` the seeding
+    /// decision reads the raw record (key presence, which this `Option` cannot
+    /// express), but a non-boolean `supportsImageUpload` must still be refused
+    /// here exactly as v4's `z.boolean().default(false)` refuses it.
     #[serde(default)]
+    #[allow(dead_code)]
     supports_image_upload: Option<bool>,
     #[serde(default)]
     tags: Vec<String>,
@@ -246,12 +253,27 @@ fn create_connection_profile(
     raw: &Value,
     unique_name: String,
 ) -> Result<String, DbError> {
-    // Older exports predate the per-profile supportsImageUpload flag; seed it
-    // from the historic provider capability map so image support round-trips.
-    let supports_image_upload = p
-        .supports_image_upload
-        .unwrap_or_else(|| LEGACY_IMAGE_CAPABLE_PROVIDERS.contains(&p.provider.as_str()));
-    let _ = raw;
+    // Older exports predate some of the columns; seed them so the bundle's age,
+    // not the table DEFAULT, decides what the profile comes back as. Shared with
+    // backup restore (v4 `e000d6bfc`, bug 103) so the two paths cannot drift:
+    // a `.qtap` bundle and a backup ZIP carrying the same profile land the same
+    // row. Reads the RAW record, because the decision is key PRESENCE and
+    // `ImportedConnectionProfile` folds an absent key and an explicit `null`
+    // into the same `None`.
+    //
+    // This also retires v5's own copy of the provider set, which tested
+    // membership on the STORED casing where v4 upcases first — so a legacy
+    // bundle whose `provider` read `openai` lost its vision flag.
+    let seeded = seed_legacy_connection_profile_fields(raw);
+    if seeded.seeded_anything() {
+        tracing::debug!(
+            profile_id = %source_id,
+            provider = %p.provider,
+            seeded_multi_character_prefill = seeded.seeded_multi_character_prefill,
+            seeded_supports_image_upload = seeded.seeded_supports_image_upload,
+            "Seeded connection-profile columns the bundle predates"
+        );
+    }
     let create = connection_profiles::CpCreate {
         user_id: user_id.to_string(),
         name: unique_name,
@@ -269,16 +291,17 @@ fn create_connection_profile(
         allow_tool_use: p.allow_tool_use,
         pseudo_tool_mode: p.pseudo_tool_mode,
         // v4 `23af7146`'s importer carries `multiCharacterPrefill` through its
-        // `...profileData` spread, so a 4.9 bundle's stored choice round-trips
-        // (absent → column omitted, the DDL default / tri-state decides — the
-        // pre-4.9 shape). Landed at the round's unification: P4.D79's ordered
-        // edit, applied once P4.48's ownership of this file had merged.
-        multi_character_prefill: p.multi_character_prefill,
+        // `...profileData` spread, so a 4.9 bundle's stored choice round-trips.
+        // Since `e000d6bfc` the seeded record ALWAYS carries the key, so a
+        // pre-4.9 bundle lands an explicit NULL ("never chosen") rather than the
+        // table default — which on a migrated instance is `DEFAULT 1`, i.e. the
+        // `[Name]` prefill switched on for a profile nobody chose it for.
+        multi_character_prefill: Some(seeded.multi_character_prefill),
         model_class: p.model_class,
         max_context: p.max_context,
         max_tokens: p.max_tokens,
         is_dangerous_compatible: p.is_dangerous_compatible,
-        supports_image_upload,
+        supports_image_upload: seeded.supports_image_upload,
         tags: p.tags,
         sort_index: p.sort_index,
         total_tokens: p.total_tokens,
@@ -580,11 +603,17 @@ mod tests {
         .unwrap()
     }
 
-    /// The unification wire's pin (P4.D79's ordered edit, applied at unify):
-    /// a 4.9 bundle's stored `multiCharacterPrefill` round-trips through the
-    /// import, and an absent key still lets the DDL default decide (here the
-    /// MIGRATED shape's `DEFAULT 1`; on a fresh generateDDL instance, NULL —
-    /// pinned by `connection_profiles_tier2`).
+    /// The unification wire's pin (P4.D79's ordered edit, applied at unify),
+    /// **plus bug 103's arm** (v4 `e000d6bfc`, P4.D126): a 4.9 bundle's stored
+    /// `multiCharacterPrefill` round-trips through the import, and an absent key
+    /// now lands an explicit NULL — the "never chosen" tri-state — instead of
+    /// letting the table default decide.
+    ///
+    /// The table here is the MIGRATED shape, `INTEGER DEFAULT 1`, which is the
+    /// only shape where the two answers differ (generateDDL declares the column
+    /// with no default, so there both land NULL). **RED-FIRST:** before the port
+    /// the `Silent` row read `Some(1)` — the `[Name]` prefill switched on for a
+    /// profile whose owner never chose it.
     #[test]
     fn import_carries_the_stored_prefill_choice() {
         let conn = Connection::open_in_memory().unwrap();
@@ -622,8 +651,189 @@ mod tests {
         // as "never chosen" — this is the arm that reddens on a regression)...
         assert_eq!(stored_prefill(&conn, "Off"), Some(0));
         assert_eq!(stored_prefill(&conn, "On"), Some(1));
-        // ...and an absent key is still the column-omitting INSERT: the
-        // migrated DDL default answers, not an explicit NULL write.
-        assert_eq!(stored_prefill(&conn, "Silent"), Some(1));
+        // ...and an absent key is now an explicit NULL, not the migrated DDL
+        // default. This assertion read `Some(1)` before bug 103 was ported.
+        assert_eq!(stored_prefill(&conn, "Silent"), None);
+    }
+
+    // ── P4.D126 unit 3: bug 103's `supportsImageUpload` half ────────────────
+
+    fn stored_image_flag(conn: &Connection, name: &str) -> Option<i64> {
+        conn.query_row(
+            "SELECT supportsImageUpload FROM connection_profiles WHERE name = ?1",
+            [name],
+            |r| r.get::<_, Option<i64>>(0),
+        )
+        .unwrap()
+    }
+
+    fn profile_record(id: &str, name: &str, provider: &str, extra: Value) -> Value {
+        let mut rec = json!({
+            "id": id,
+            "name": name,
+            "provider": provider,
+            "modelName": "m",
+        });
+        if let Some(obj) = extra.as_object() {
+            for (k, v) in obj {
+                rec[k] = v.clone();
+            }
+        }
+        rec
+    }
+
+    /// The import site's WIRING pin: the shared seeding helper (proven against
+    /// v4's real module by `connection_profile_legacy_fields_equivalence`) is
+    /// actually the thing this path answers with.
+    ///
+    /// The last row is the one that used to be wrong on its own: v5's private
+    /// provider set tested membership on the STORED casing where v4 upcases
+    /// first, so a legacy bundle whose `provider` read `openai` came back with
+    /// vision stripped.
+    #[test]
+    fn import_seeds_the_columns_a_bundle_predates() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrated_table(&conn);
+        let profiles = vec![
+            // Carried: never touched, a stored `false` included.
+            profile_record(
+                "a1000000-0000-4000-8000-000000000001",
+                "Carried False",
+                "GOOGLE",
+                json!({ "supportsImageUpload": false }),
+            ),
+            // Absent + historically capable → true.
+            profile_record(
+                "a1000000-0000-4000-8000-000000000002",
+                "Legacy Anthropic",
+                "ANTHROPIC",
+                json!({}),
+            ),
+            // Absent + never capable → false.
+            profile_record(
+                "a1000000-0000-4000-8000-000000000003",
+                "Legacy Ollama",
+                "OLLAMA",
+                json!({}),
+            ),
+            // Absent + capable, stored lowercase → true (the case-insensitive
+            // match v5 did not have).
+            profile_record(
+                "a1000000-0000-4000-8000-000000000004",
+                "Legacy Lowercase",
+                "openai",
+                json!({}),
+            ),
+        ];
+        let mut id_map = IdMap::default();
+        let mut warnings: Vec<String> = Vec::new();
+        let counts = import_connection_profiles(
+            &conn,
+            "user",
+            &profiles,
+            &ImportOptions::seed_defaults(),
+            &mut id_map,
+            &mut warnings,
+        )
+        .unwrap();
+        assert_eq!(counts.imported, 4);
+        assert!(
+            warnings.is_empty(),
+            "clean imports name nothing: {warnings:?}"
+        );
+
+        assert_eq!(stored_image_flag(&conn, "Carried False"), Some(0));
+        assert_eq!(stored_image_flag(&conn, "Legacy Anthropic"), Some(1));
+        assert_eq!(stored_image_flag(&conn, "Legacy Ollama"), Some(0));
+        assert_eq!(stored_image_flag(&conn, "Legacy Lowercase"), Some(1));
+
+        // Every one of them predates the prefill column, so every one is NULL.
+        for name in [
+            "Carried False",
+            "Legacy Anthropic",
+            "Legacy Ollama",
+            "Legacy Lowercase",
+        ] {
+            assert_eq!(stored_prefill(&conn, name), None, "{name}");
+        }
+    }
+
+    /// ## ⚠ DELIBERATE DIVERGENCE — a non-string `provider` aborts v4's WHOLE
+    /// import (a v4 regression from `e000d6bfc`, TO FILE UPSTREAM)
+    ///
+    /// v4's `importConnectionProfiles` calls
+    /// `seedLegacyConnectionProfileFields(rawProfile)` at the TOP of the loop
+    /// body — **outside** the per-item `try`. The helper does
+    /// `(seeded.provider ?? '').toUpperCase()`, which on a non-string
+    /// `provider` throws a `TypeError` that escapes to `executeImport`'s outer
+    /// catch. One malformed profile in a bundle therefore stops the entire
+    /// import with
+    ///
+    /// ```text
+    /// Import failed: (seeded.provider ?? "").toUpperCase is not a function
+    /// ```
+    ///
+    /// where before `e000d6bfc` the same item produced a per-item
+    /// `Failed to import connection profile "…"` warning and the import
+    /// continued. Measured 2026-08-26 against v4's REAL `executeImport` at
+    /// `8872d7efc`: the `execute_named_item_failures` oracle arm, whose payload
+    /// carried `provider: 42`, went from five named warnings to that one
+    /// sentence and an empty write.
+    ///
+    /// **v5 does not reproduce it**, under the standing 2026-08-03 ruling
+    /// (backup / restore / import / export: v5 FIXES v4's bugs rather than
+    /// reproducing them). Two things keep v5 lenient, and both are deliberate:
+    /// [`seed_legacy_connection_profile_fields`] reads the provider as
+    /// `as_str().unwrap_or("")` and cannot throw, and v5 parses the record
+    /// BEFORE it seeds, so a non-string provider is refused by
+    /// `parse_connection_profile` with its own named warning and the remaining
+    /// profiles still import.
+    ///
+    /// ⚠ There is no oracle tripwire for this one: the arm that would carry it
+    /// belongs to `system_import_state`, a family this lane does not own, and
+    /// it needs its own divergence-aware case kind. Named as a follow-up in the
+    /// lane record. The corpus item that used to carry `provider: 42` was moved
+    /// to a wrong-typed `modelName` so the five-named-warnings arm keeps
+    /// measuring what it exists for on both sides.
+    #[test]
+    fn a_non_string_provider_is_named_and_does_not_abort_the_import() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrated_table(&conn);
+        let profiles = vec![
+            json!({
+                "id": "a2000000-0000-4000-8000-000000000001",
+                "name": "Broken Connection",
+                "provider": 42,
+                "modelName": "a-model",
+            }),
+            profile_record(
+                "a2000000-0000-4000-8000-000000000002",
+                "Fine Connection",
+                "ANTHROPIC",
+                json!({}),
+            ),
+        ];
+        let mut id_map = IdMap::default();
+        let mut warnings: Vec<String> = Vec::new();
+        let counts = import_connection_profiles(
+            &conn,
+            "user",
+            &profiles,
+            &ImportOptions::seed_defaults(),
+            &mut id_map,
+            &mut warnings,
+        )
+        .expect("v5 must not abort the import on one malformed profile");
+
+        assert_eq!(counts.imported, 1, "the sound profile still imports");
+        assert_eq!(warnings.len(), 1, "exactly the broken one is named");
+        assert!(
+            warnings[0].starts_with("Failed to import connection profile \"Broken Connection\": "),
+            "the warning must name the item: {}",
+            warnings[0]
+        );
+        // …and the survivor still got its seeding.
+        assert_eq!(stored_image_flag(&conn, "Fine Connection"), Some(1));
+        assert_eq!(stored_prefill(&conn, "Fine Connection"), None);
     }
 }

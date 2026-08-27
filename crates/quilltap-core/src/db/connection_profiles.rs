@@ -57,8 +57,9 @@
 //!     [`crate::services::multi_character_prefill`] resolves to the provider
 //!     default. On the READ side a NULL marshals to an ABSENT key (v4's SQLite
 //!     hydration maps a NULL boolean to `undefined`, which `JSON.stringify`
-//!     omits); on the WRITE side `None` OMITS the column from the INSERT rather
-//!     than writing NULL, so the DDL default decides exactly as it does in v4.
+//!     omits); on the WRITE side the create carries all THREE states — omit the
+//!     column (no key in the document, DDL default decides), write an explicit
+//!     NULL, or write 0/1 — exactly as v4's `insertOne` does off `Object.keys`.
 //!     The read is column-tolerant (see [`cp_select_columns`]) so tables that
 //!     predate the column still open; the write is strict, as v4's is.
 //!
@@ -109,20 +110,29 @@ pub struct CpCreate {
     pub allow_tool_use: bool,
     /// Enum TEXT (`'auto' | 'native' | 'simple-json' | 'text-block'`).
     pub pseudo_tool_mode: String,
-    /// The multi-character `[Name]` turn anchor (v4 `23af7146`), TRI-STATE:
-    /// `Some(b)` writes 0/1, **`None` OMITS the column from the INSERT** so the
-    /// DDL default applies — which is what v4 does and is not the same as
-    /// writing NULL. v4's `insertOne` builds its column list from
-    /// `Object.keys(row)` (`backends/sqlite/backend.ts:128`), and Zod drops an
-    /// absent `.optional()` key, so a pre-4.9 archive record simply never names
-    /// the column. On a fresh (generateDDL) instance that lands NULL — the
-    /// "never chosen" tri-state — while on a MIGRATED instance the
-    /// `INTEGER DEFAULT 1` lands 1. Both are v4's behaviour, and writing an
-    /// explicit NULL would silently diverge on the second.
+    /// The multi-character `[Name]` turn anchor (v4 `23af7146`), modelled as
+    /// v4's `insertOne` sees it — **three states, not two**:
     ///
-    /// The create ROUTE always resolves a boolean, so `None` here is reached
-    /// only by import/restore of a pre-4.9 bundle.
-    pub multi_character_prefill: Option<bool>,
+    /// - `None` — the document does not carry the key, so the column is OMITTED
+    ///   from the INSERT and the DDL default applies. v4's `insertOne` builds
+    ///   its column list from `Object.keys(row)`
+    ///   (`backends/sqlite/backend.ts:128`) and Zod drops an absent
+    ///   `.optional()` key, so a record that never mentions the column never
+    ///   names it. On a fresh (generateDDL) instance that lands NULL; on a
+    ///   MIGRATED instance the `INTEGER DEFAULT 1` lands 1. Both are v4's.
+    /// - `Some(None)` — an explicit SQL NULL: the "never chosen" tri-state,
+    ///   written deliberately. **Not** the same as omitting the column, and the
+    ///   difference is exactly bug 103 (v4 `e000d6bfc`): on a migrated instance
+    ///   omitting turns the `[Name]` prefill ON for a profile whose owner never
+    ///   chose it, Anthropic included, where 4.6+ rejects an assistant tail.
+    /// - `Some(Some(b))` — the stored choice, written 0/1.
+    ///
+    /// The create ROUTE always resolves a boolean. Restore and `.qtap` import
+    /// always answer through
+    /// [`crate::services::connection_profile_legacy_fields`], which never leaves
+    /// the key out — so `None` is what a caller means by "this document had no
+    /// opinion", and today only tests take it.
+    pub multi_character_prefill: Option<Option<bool>>,
     /// `None` => SQL NULL.
     pub model_class: Option<String>,
     /// Nullable REAL int-override; `None` => SQL NULL.
@@ -222,9 +232,10 @@ impl<'c> ConnectionProfilesRepository<'c> {
         let tags_json = serde_json::to_string(&data.tags)
             .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
 
-        // v4 names only the columns the parsed document actually carries, so an
-        // absent `multiCharacterPrefill` must be OMITTED (letting the DDL
-        // default decide) rather than written as NULL — see the field's doc.
+        // v4 names only the columns the parsed document actually carries, so a
+        // document with no `multiCharacterPrefill` key at all OMITS the column
+        // (letting the DDL default decide); a document that carries the key —
+        // including as an explicit `null` — names it. See the field's doc.
         let (prefill_col, prefill_placeholder) = match data.multi_character_prefill {
             Some(_) => ("multiCharacterPrefill, ", "?30, "),
             None => ("", ""),
@@ -271,8 +282,9 @@ impl<'c> ConnectionProfilesRepository<'c> {
             Box::new(opts.created_at.clone()),
             Box::new(opts.updated_at.clone()),
         ];
-        if let Some(b) = data.multi_character_prefill {
-            binds.push(Box::new(i64::from(b)));
+        if let Some(prefill) = data.multi_character_prefill {
+            // `Some(None)` binds SQL NULL; `Some(Some(b))` binds 0/1.
+            binds.push(Box::new(prefill.map(i64::from)));
         }
         let refs: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
         self.conn.execute(&sql, refs.as_slice())?;

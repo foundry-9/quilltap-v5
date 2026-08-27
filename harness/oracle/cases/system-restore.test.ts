@@ -194,6 +194,27 @@ const RESTORE_CASES: Array<{
   // archive carries its own Quilltap Uploads mount.
   { name: 'restore_compact_replace', archive: 'restore-archive-compact.zip', alignUploadsPointer: true },
   { name: 'restore_compact_new_account', archive: 'restore-archive-compact.zip', mode: 'new-account' },
+
+  // ── P4.D126 (`e000d6bfc`, bug 103): the columns an older archive predates ─
+  //
+  // `restore-archive-legacy-profiles.zip` is the ONE archive that can see the
+  // seeding: measured 2026-08-26, all ten other committed archives carry
+  // exactly one profile, `OPENAI_COMPATIBLE`, with `supportsImageUpload`
+  // STORED and `multiCharacterPrefill` absent — so the flag's seeding arm is
+  // invisible in every one of them. This archive carries six profiles spanning
+  // v4's own `restore-field-fidelity.test.ts` 4.9 block plus the two arms a
+  // state diff can carry that a repository mock cannot: a stored `false` on a
+  // historically-capable provider (which a truthiness seeding condition would
+  // flip back on) and a lowercase `provider` (which the map must match
+  // case-insensitively). It is a DERIVATION of `restore-archive-minimal.zip`,
+  // because an archive older than a column is not a thing v4's writer can
+  // still produce — see the builder's header.
+  //
+  // ⚠ The `multiCharacterPrefill` half is deliberately NOT pinned here: on a
+  // freshly-provisioned (generateDDL) target that column has no DEFAULT, so
+  // omitting it and writing an explicit NULL land the same cell. Its pin is
+  // `restore_vintage_state`, against the migrated shape's `DEFAULT 1`.
+  { name: 'restore_legacy_profiles_replace', archive: 'restore-archive-legacy-profiles.zip' },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the

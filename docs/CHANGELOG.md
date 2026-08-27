@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — fix(backup): seed the profile columns an older archive predates (bug 103)
+
+_Versions: core 0.0.691, harness 0.0.594._
+
+Ports v4 `e000d6bfc` (P4.D126 unit 3). Restore and `.qtap` import both rebuild
+a connection profile from whatever the archive held, so a column the archive is
+older than got no answer at all and the table DEFAULT decided a setting nobody
+chose. New `services::connection_profile_legacy_fields` seeds both columns for
+both paths: `supportsImageUpload` from the frozen historic provider map
+(matched case-insensitively), `multiCharacterPrefill` as an explicit `null` —
+the "never chosen" tri-state. A key the archive did carry is never touched, a
+stored `false` and a stored `null` included. Both call sites debug-log when
+seeding fires.
+
+`CpCreate.multi_character_prefill` becomes `Option<Option<bool>>` so an
+explicit NULL is expressible: omitting the column and writing NULL land the
+same cell on a fresh (generateDDL) instance but not on a migrated one, where
+`DEFAULT 1` turned the `[Name]` prefill on for every profile in a pre-4.9
+backup, Anthropic included. Measured before the fix against the rebuilt
+migration-vintage fixture: five of six profiles landed
+`multiCharacterPrefill = 1` and two lost their vision flag. The import site's
+private provider set retires into the shared module, which also fixes its
+case-sensitive match.
+
+Three things came out of the port. v5's restore defaulted `courierDeltaMode` to
+`false` where v4's schema defaults it `true` — invisible until an archive
+omitted the key. The committed `migration-vintage` fixture was rebuilt at the
+pin: it predated v4's own `multiCharacterPrefill` migration, so its column set
+no longer matched what its suite claims. And v4's fix reads
+`(seeded.provider ?? '').toUpperCase()` outside the per-item try, so one
+non-string `provider` now aborts a whole v4 import; v5 does not reproduce that,
+under the standing backup/restore/import/export ruling.
+
+New fixture `restore-archive-legacy-profiles.zip` (with its builder) carries the
+six shapes; new tier-1 family `connection_profile_legacy_fields_equivalence`
+drives v4's real helper over 306 cases.
+
 #### 2026-08-26 — fix(memory): chunk batch memory deletion under the SQLite variable limit
 
 _Versions: core 0.0.690._

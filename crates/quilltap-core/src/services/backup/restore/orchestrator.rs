@@ -43,6 +43,7 @@ use super::{ProfileCounts, RestoreSummary, TemplateCounts};
 use crate::db::runtime::{Db, WriterSet};
 use crate::db::DbError;
 use crate::services::backup::{BackupHost, HostDirs};
+use crate::services::connection_profile_legacy_fields::seed_legacy_connection_profile_fields;
 use crate::services::file_storage::PixelCodec;
 use crate::services::profile_names::{make_unique_profile_name, normalize_profile_name};
 
@@ -260,6 +261,20 @@ fn restore_on_writer(
         }
         for p in &data.connection_profiles {
             let original = s(p, "name");
+            // v4 `e000d6bfc` (bug 103), `restore.ts:97`: the columns the archive
+            // PREDATES would otherwise be decided by the table DEFAULT rather
+            // than by the profile's owner. Seeded BEFORE the unique-name pass,
+            // exactly where v4 seeds them.
+            let seeded = seed_legacy_connection_profile_fields(p);
+            if seeded.seeded_anything() {
+                tracing::debug!(
+                    profile_id = %id_of(p),
+                    provider = %s(p, "provider"),
+                    seeded_multi_character_prefill = seeded.seeded_multi_character_prefill,
+                    seeded_supports_image_upload = seeded.seeded_supports_image_upload,
+                    "Seeded connection-profile columns the archive predates"
+                );
+            }
             let unique = make_unique_profile_name(&original, &taken);
             taken.insert(normalize_profile_name(&unique));
             let create = crate::db::connection_profiles::CpCreate {
@@ -267,7 +282,13 @@ fn restore_on_writer(
                 name: unique,
                 provider: s(p, "provider"),
                 transport: str_or(p, "transport", "api"),
-                courier_delta_mode: b(p, "courierDeltaMode", false),
+                // ⚠ v4's Zod default here is `true`, not `false`
+                // (`profile.types.ts:69`). v5 read it as `false` until P4.D126,
+                // which was invisible because every committed archive carries
+                // the key — the same shape bug 103 is about, one column over.
+                // Caught by `restore-archive-legacy-profiles.zip`, whose
+                // deliberately sparse records omit it.
+                courier_delta_mode: b(p, "courierDeltaMode", true),
                 // v4 `:89`: apiKeyId is deliberately NOT restored — keys are
                 // encrypted with a pepper the archive does not carry.
                 api_key_id: None,
@@ -280,15 +301,22 @@ fn restore_on_writer(
                 use_native_web_search: b(p, "useNativeWebSearch", false),
                 allow_tool_use: b(p, "allowToolUse", true),
                 pseudo_tool_mode: str_or(p, "pseudoToolMode", "auto"),
-                // v4 `23af7146`: tri-state. A pre-4.9 archive has no such key,
-                // so `None` omits the column and the DDL default decides —
-                // exactly what v4's `...profileData` spread produces there.
-                multi_character_prefill: ob(p, "multiCharacterPrefill"),
+                // v4 `23af7146` + `e000d6bfc`: tri-state, and the seeded record
+                // ALWAYS carries the key — a pre-4.9 archive lands an explicit
+                // NULL ("never chosen") rather than the table default. On a
+                // migrated instance those are different cells: `DEFAULT 1`
+                // turned the `[Name]` prefill on for profiles nobody chose it
+                // for, Anthropic included, and every multi-character turn then
+                // 400s. That is bug 103.
+                multi_character_prefill: Some(seeded.multi_character_prefill),
                 model_class: os(p, "modelClass"),
                 max_context: on(p, "maxContext"),
                 max_tokens: on(p, "maxTokens"),
                 is_dangerous_compatible: b(p, "isDangerousCompatible", false),
-                supports_image_upload: b(p, "supportsImageUpload", false),
+                // Seeded from the frozen historic provider map when the archive
+                // predates the per-profile flag (v4 `e000d6bfc`); a carried
+                // value — a stored `false` included — is passed through.
+                supports_image_upload: seeded.supports_image_upload,
                 tags: sa(p, "tags"),
                 sort_index: n(p, "sortIndex", 0.0),
                 total_tokens: n(p, "totalTokens", 0.0),

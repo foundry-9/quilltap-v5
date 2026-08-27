@@ -89798,3 +89798,138 @@ rows.
 `memory_delete_tier2_equivalence` 1/1, `memory_cascade_tier2_equivalence` 1/1
 (the DB end state is chunk-count-independent by construction, so these are
 neutrality evidence, not the pin — the pin is the site tests above).
+
+### Unit 3 — `e000d6bfc`, bug 103: the columns an older archive predates
+
+**RED-FIRST, measured before the port (2026-08-26).** The committed archives
+were probed first, and the probe is itself a finding: **all ten carry exactly
+one connection profile, `OPENAI_COMPATIBLE`, with `supportsImageUpload: false`
+STORED and `multiCharacterPrefill` ABSENT.** So the flag's seeding arm was
+structurally invisible to the whole family (the P4.D31 blind-archive class
+again), and the prefill arm was invisible *on a fresh target* for a second,
+sharper reason: **v4's `generateDDL` declares `multiCharacterPrefill INTEGER`
+with NO default.** The `DEFAULT 1` lives only in
+`migrations/scripts/add-profile-multi-character-prefill-field.ts:64` — i.e. on
+exactly the instances real people restore onto, and on none of the instances
+this repo's differentials provision.
+
+Two fixtures were therefore built before a line of the port was written.
+
+1. **`restore-archive-legacy-profiles.zip`** (+ its committed builder,
+   `harness/oracle/fixtures/build-restore-archive-legacy-profiles.ts`). Six
+   profiles: v4's own four `restore-field-fidelity.test.ts` 4.9 shapes, plus a
+   stored-`false`-on-a-capable-provider arm (which a truthiness seeding
+   condition would flip back on) and a lowercase-`provider` arm (the
+   case-insensitive match). It is a DERIVATION of
+   `restore-archive-minimal.zip` — **an archive older than a column is not a
+   thing v4's writer can still produce** — repackaged with the same
+   `zip -r <out> <folder>` call `backup-service.ts:800` uses, so every other
+   byte in it is v4's own.
+2. **The committed `migration-vintage/` fixture was REBUILT at the pin.** It
+   was built 2026-08-03, before v4's `multiCharacterPrefill` migration existed,
+   so its column set no longer matched the claim its own suite header makes
+   ("the committed vintage instance has been through v4's WHOLE migration
+   chain, so its column SET matches `generateDDL`'s"). One replay command; the
+   builder's header already says it "moves when v4's migrations move".
+
+The measurement, restoring the new archive into the rebuilt vintage instance
+with v5 as it stood:
+
+```text
+Both Predate      ANTHROPIC  sIU=Some(0)  mCP=Some(1)
+Carried Both      OPENAI     sIU=Some(1)  mCP=Some(0)
+Lowercase Legacy  openai     sIU=Some(0)  mCP=Some(1)
+Never Capable     OLLAMA     sIU=Some(0)  mCP=Some(1)
+Prefill Predates  ANTHROPIC  sIU=Some(1)  mCP=Some(1)
+Stored False      GOOGLE     sIU=Some(0)  mCP=Some(1)
+```
+
+Five of six had the `[Name]` prefill switched ON by the table default —
+Anthropic included, where 4.6+ rejects an assistant tail and every
+multi-character turn then 400s — and two lost their vision flag. On the import
+side the existing `import_carries_the_stored_prefill_choice` already asserted
+the bug (`Silent` → `Some(1)`), which is what its own comment had called
+correct.
+
+**The port.** New `services/connection_profile_legacy_fields.rs`, one home for
+both decisions and both `=== undefined` flags. v5's two call sites build their
+`CpCreate` explicitly (no spread), so the helper returns the DECISIONS rather
+than a copied record; the condition is v4's exactly — **key presence in the raw
+record**, not the parsed value, since every v5 parse folds absent and null into
+one `None`. `CpCreate.multi_character_prefill` grew to `Option<Option<bool>>`
+so all three of v4's `insertOne` states are expressible: omit the column,
+write an explicit NULL, write 0/1. The import site's private
+`LEGACY_IMAGE_CAPABLE_PROVIDERS` retires into the shared module — which fixes
+its own bug on the way, since it tested membership on the STORED casing where
+v4 upcases first.
+
+**Differentials.**
+
+- **NEW `connection_profile_legacy_fields_equivalence`** — tier-1 exact against
+  v4's REAL `seedLegacyConnectionProfileFields`, 306 cases (17 providers × 3
+  image states × 6 prefill states). This is the load-bearing family: both call
+  sites answer through the one helper, so pinning it is what makes v4's "the
+  two paths cannot drift" claim true of the port too. It also asserts v4's
+  helper still returns a COPY.
+- **`system_restore_state` gains `restore_legacy_profiles_replace`** (13 → 14
+  cases) — the fresh-target row values, v4 against v5 over the same bytes.
+- **`restore_vintage_state` gains
+  `a_pre_49_archive_lands_never_chosen_not_the_migrated_default`** — the only
+  place the prefill half is observable at all.
+- The import site's wiring is pinned v5-side in
+  `services::quilltap_import::profiles` (`import_seeds_the_columns_a_bundle_
+  predates`, incl. the lowercase-provider arm).
+
+**Mutation pass (5, each reddening exactly the right tests):**
+
+1. Seed on falsiness instead of key presence — 2 unit tests + the tier-1
+   differential (`Stored False` on GOOGLE is what catches it).
+2. Drop the `to_uppercase` fold — 2 unit tests + the tier-1 differential.
+3. Restore omits the column again (the bug-103 revert) — **only**
+   `restore_vintage_state`, which is the documented claim proven: the fresh
+   target genuinely cannot see it.
+4. Restore drops the `supportsImageUpload` seeding — `restore_vintage_state`
+   AND `system_restore_state` (checked separately, since cargo is fail-fast per
+   binary).
+5. `courierDeltaMode` default back to `false` — `system_restore_state`.
+
+**Three findings the port turned up.**
+
+1. **A pre-existing v5 restore bug, FIXED here:** `courier_delta_mode` read
+   `b(p, "courierDeltaMode", false)` where v4's schema is
+   `z.boolean().default(true)` (`profile.types.ts:68`). Invisible because every
+   committed archive carries the key — the same shape bug 103 is about, one
+   column over. The new archive's deliberately sparse records exposed it on the
+   first oracle run.
+2. **The recorded P4.D79 divergence on a hand-crafted explicit
+   `multiCharacterPrefill: null` is RETIRED.** Both sides now write the explicit
+   NULL, because both read key presence.
+3. **⚠ A v4 REGRESSION introduced by `e000d6bfc` — TO FILE UPSTREAM.** v4's
+   `importConnectionProfiles` calls the new helper at the top of the loop body,
+   **outside** the per-item `try`, and the helper does
+   `(seeded.provider ?? '').toUpperCase()`. A non-string `provider` therefore
+   throws a `TypeError` that escapes to `executeImport`'s outer catch and
+   aborts the WHOLE import:
+   `Import failed: (seeded.provider ?? "").toUpperCase is not a function`.
+   Before `e000d6bfc` the same item produced a per-item warning and the import
+   continued. Found by consequence: `system_import_state`'s
+   `execute_named_item_failures` arm (whose payload carried `provider: 42`)
+   went from five named warnings to that one sentence and an empty write.
+   **v5 does not reproduce it**, under the standing 2026-08-03 ruling
+   (backup/restore/import/export: v5 FIXES v4's bugs). Two things keep v5
+   lenient and both are deliberate: the helper reads the provider as
+   `as_str().unwrap_or("")`, and v5 parses before it seeds. Pinned v5-side by
+   `a_non_string_provider_is_named_and_does_not_abort_the_import`. The corpus
+   item was moved to a wrong-typed `modelName` (which both validators still
+   refuse) so the five-named-warnings arm keeps measuring what it exists for.
+   **Named follow-up:** there is no ORACLE tripwire for this divergence — the
+   arm that would carry it belongs to `system_import_state`, a family this lane
+   does not own, and it needs its own divergence-aware case kind.
+
+**Families re-run at the `8872d7efc` pin, fresh oracles, zero SKIP:**
+`connection_profile_legacy_fields_equivalence` 306/306,
+`system_restore_state` 14/14, `system_restore_equivalence` 6/6,
+`restore_vintage_state` 5/5, `qtap_import_equivalence` 1/1 — plus, out of §A
+and reported loudly, `system_import_state` 36/36 and
+`system_import_equivalence` (the import site's change reaches them, and no lane
+owns them).
