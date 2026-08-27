@@ -92011,3 +92011,127 @@ host/cli/tauri/fixture-sanitizer/sqlite3mc-sys unchanged.
 The outfit pull-down on real Friday wardrobes (composite pool, dissolution,
 garments-only pickers) and the home dashboard at ~0.39 s on the Friday copy
 (was ~9 s — P4.64's fix, already byte-proven at real scale during the lane).
+
+## P4.D131 — retire the bug-105 divergence arm (v4 converged at `679e450e3`) (2026-08-27, lane branch `claude/p4-convergence-retire-4b2544`)
+
+**The order's single mandate CLOSED. Zero v5 production behavior changed** —
+the lane is harness + doc-comment surgery, proven by a fresh pinned regen.
+The drift ledger's §2 freshness probe passed at lane start (checkout `main`,
+tree clean, no commits past `b121ac77f` on main, none past `3a76b17df` on
+bugfix); every regen ran from the lane-unique pinned worktree
+`/tmp/qt-v4-pin-p4d131-b121ac77f` (v4 main HEAD at planning — it contains
+all four of the round's target commits).
+
+### The §5.4 measurement (v4's actual post-fix rows, quoted)
+
+Fresh `system-import-execute` regen at the pin (the family's own header
+recipe verbatim, `cd` swapped for the pin; old NDJSON deleted first; 38
+lines, 46 MB, non-empty). Pin verified per the order: the abort sentence
+`(seeded.provider ?? "").toUpperCase is not a function` is ABSENT from the
+whole NDJSON; the named warning `Failed to import connection profile
+"Bug 105 Connection": ` is PRESENT (once). v4's `execute_bug105_seed_abort`
+leg now reads:
+
+- `success: true`
+- `warnings`: exactly one — `Failed to import connection profile "Bug 105
+  Connection": ` + Zod's own `invalid_type` JSON (`expected string, received
+  number`, path `["provider"]`) — the tail masked by the standing
+  QUOTED-family seam, identically on both legs
+- `imported.connectionProfiles: 0`, `imported.imageProfiles: 1`, every other
+  count 0; `skipped` all zero
+- `main.image_profiles`: pre `['Primary Imagery']` → post
+  `['Primary Imagery', 'Bug 105 Survivor']`; `connection_profiles`
+  untouched (1 row pre and post)
+
+**FULL convergence — no partial-convergence residue** (the order's P4.D51
+caution checked and not needed): v4's leg is byte-for-byte what v5's leg
+asserted all along. With the classifier deleted, the retained case ran GREEN
+as a plain equality on its first run — `OK execute_bug105_seed_abort`, 37
+cases, 0 failures — with `main.image_profiles` now state-compared like every
+other table.
+
+### What was retired
+
+- `classify_bug105_seed_abort` + its doc block + the three consts
+  (`ABORT`/`NAMED`/`SOUND`) + the blanked comparand body: deleted (~170
+  lines). The v4 leg's own failure text prescribed exactly this retirement.
+- The dispatch `else if` + `skip.insert(("main", "image_profiles"))`:
+  deleted — the case is an ordinary state-compared `execute` case.
+- **The `skip`-parameter machinery REMOVED outright** (the Tier-2
+  disposition, decided deliberately): `normalize_side` lost `skip_tables`
+  and its contains-check, `compare_execute` lost the `skip` param, and both
+  always-empty call sites (the runs>1 second-body compare and the
+  route-arm state compare) dropped the argument. Rationale: the capability
+  is a one-line `.contains` in one loop, trivially rebuilt by any future
+  convergence arm in whatever shape that arm actually needs; an
+  always-empty parameter threaded through three functions is dead
+  machinery, and removing it returns `compare_execute`'s "nothing is
+  skipped" comment to being literally true.
+- The module header's bug-105 section reworded to a convergence record;
+  **the `multiCharacterPrefill` fixture-vacuity note SURVIVES** (it is the
+  migration-vintage class, not bug 105 — still recorded, still phase-4
+  candidate 5, deliberately NOT this lane per the order).
+- The case-count assert stays exactly `ran == 37`; the by-name presence
+  assert stays, reworded from "divergence arm" to "regression-guard case".
+- `bug105SeedAbortPayload`'s doc + registration comment reframed as the
+  regression guard's input (the payload itself is UNCHANGED — comment-only
+  edits, so the NDJSON regenerated before the reword remains valid).
+- `profiles.rs`'s divergence doc block rewritten as a convergence record
+  (it still said "TO FILE UPSTREAM"; it was filed as v4 `b6c6d7793` and
+  fixed at `679e450e3`). The unit test
+  `a_non_string_provider_is_named_and_does_not_abort_the_import` was
+  already correct post-convergence — untouched, per the order.
+
+### Mutation proofs (v5-SOURCE mutations, file-backup revert — never the fixture)
+
+- **M-A (body discrimination):** the connection-profile PARSE-refusal
+  warning sentence perturbed (`Failed to import` → `MUTATION-A failed`) →
+  `[execute_bug105_seed_abort] result body differs`, RED by name (plus
+  `execute_named_item_failures`, which shares the site). Reverted.
+- **M-B (state discrimination — the newly un-skipped table):** the image
+  profile write silently skipped while the counts and id map were kept, so
+  ONLY the table row could discriminate →
+  `[execute_bug105_seed_abort] main.image_profiles differs — row count:
+  rust 1 vs oracle 2`, RED by name. This exact defect was INVISIBLE under
+  the retired subtraction — the retirement measurably widened coverage.
+  Reverted.
+- An instructive miss on the way: the FIRST body mutation hit the per-item
+  OUTER catch (`profiles.rs` loop tail) and reddened the four
+  vintage-vacuity cases but NOT this one — the malformed profile's warning
+  comes from the no-conflict parse-refusal site (the
+  load-bearing-site-may-not-be-the-obvious-one class). The retargeted
+  mutation is M-A above; the miss incidentally proved the outer-catch
+  sentence is compared too.
+
+### Deferrals + notes for the unifier
+
+- **Banked to `p4.9i2`:** v4 `679e450e3`'s one help line
+  (`help/system-import-export.md:336` post-commit) — recorded here, not
+  ported, per the order.
+- **NOT this lane (standing):** the `system-data-main.db`
+  `multiCharacterPrefill` vintage vacuity — phase-4 candidate 5, a
+  cross-lane fixture shared with the system-data routes differentials.
+- **Naming note for the unifier (from the order):** the drift ledger's §3
+  row names the class `import_aborts_on_non_string_provider`; the code
+  symbol is `execute_bug105_seed_abort` — reconcile when marking the row
+  ABSORBED.
+- The v4 commit's tests / bug-file move / README / CHANGELOG hunks are the
+  NO-PORT remainder. The restore path needed nothing (v4's per-profile
+  restore loop already try-wraps seeding) — `restore/orchestrator.rs:289`
+  is NOT a bug-105 site and was not touched, per the order.
+
+### Gate
+
+`cargo fmt --all --check` clean; clippy both feature sets (default +
+`quilltap-core/native-transport`) exit 0; the family by name with the fresh
+pinned oracle — `cargo test -p quilltap-harness --test system_import_state
+-- --nocapture` — 37 cases, 0 failures, zero SKIP, `OK
+execute_bug105_seed_abort` in the run output; full
+`CARGO_INCREMENTAL=0 cargo test --workspace` with
+`QT_ORACLE_SYSTEM_IMPORT_EXECUTE` set: **473 test binaries / 2,557 passed /
+0 failed** (exit 0; identical counts to the P4.D130 round's gate, as
+expected — this lane adds and removes zero tests), with the
+`system_import_state` binary positively confirmed to have RUN inside it.
+Cargo-only per the order (P4.D132 is the round's Playwright runner).
+
+Versions: core 0.0.699 (doc-comment-only change), harness 0.0.603.

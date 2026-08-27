@@ -758,29 +758,19 @@ mod tests {
         }
     }
 
-    /// ## ⚠ DELIBERATE DIVERGENCE — a non-string `provider` aborts v4's WHOLE
-    /// import (a v4 regression from `e000d6bfc`, TO FILE UPSTREAM)
+    /// ## Convergence record — v4 bug 105, fixed upstream at `679e450e3`
     ///
-    /// v4's `importConnectionProfiles` calls
-    /// `seedLegacyConnectionProfileFields(rawProfile)` at the TOP of the loop
-    /// body — **outside** the per-item `try`. The helper does
-    /// `(seeded.provider ?? '').toUpperCase()`, which on a non-string
-    /// `provider` throws a `TypeError` that escapes to `executeImport`'s outer
-    /// catch. One malformed profile in a bundle therefore stops the entire
-    /// import with
+    /// v4 `e000d6bfc` called `seedLegacyConnectionProfileFields(rawProfile)`
+    /// at the TOP of `importConnectionProfiles`' loop body — outside the
+    /// per-item `try` — and the helper's `(seeded.provider ?? '')
+    /// .toUpperCase()` threw on a non-string `provider`, so one malformed
+    /// profile aborted a WHOLE v4 import with
     ///
     /// ```text
     /// Import failed: (seeded.provider ?? "").toUpperCase is not a function
     /// ```
     ///
-    /// where before `e000d6bfc` the same item produced a per-item
-    /// `Failed to import connection profile "…"` warning and the import
-    /// continued. Measured 2026-08-26 against v4's REAL `executeImport` at
-    /// `8872d7efc`: the `execute_named_item_failures` oracle arm, whose payload
-    /// carried `provider: 42`, went from five named warnings to that one
-    /// sentence and an empty write.
-    ///
-    /// **v5 does not reproduce it**, under the standing 2026-08-03 ruling
+    /// **v5 was never affected**, under the standing 2026-08-03 ruling
     /// (backup / restore / import / export: v5 FIXES v4's bugs rather than
     /// reproducing them). Two things keep v5 lenient, and both are deliberate:
     /// [`seed_legacy_connection_profile_fields`] reads the provider as
@@ -789,12 +779,16 @@ mod tests {
     /// `parse_connection_profile` with its own named warning and the remaining
     /// profiles still import.
     ///
-    /// The oracle tripwire lives in `system_import_state`'s
-    /// `execute_bug105_seed_abort` (P4.63): the same claim driven against v4's
-    /// REAL `executeImport`, pinned in both directions and built to retire when
-    /// a round moves the baseline past v4's own fix (`679e450e3`). This test
-    /// remains the within-importer half — the loop itself carrying on to the
-    /// next profile. The corpus item that used to carry `provider: 42` was
+    /// Filed upstream as v4 bug 105 (v4 `b6c6d7793`); **v4 converged at
+    /// `679e450e3`** — the seeding call moved inside the per-item `try` (the
+    /// catch reads `rawProfile.name`/`rawProfile.id`) and the helper now
+    /// type-tests the provider (`typeof seeded.provider === 'string'`).
+    /// Measured at the P4.D131 pinned regen (drift-ledger §5.4): v4 names the
+    /// item, skips it, and imports the rest — byte-for-byte v5's behavior.
+    /// The oracle half, `system_import_state`'s `execute_bug105_seed_abort`,
+    /// now pins the SHARED behavior as a plain state-compared equality; this
+    /// test remains the within-importer half — the loop itself carrying on to
+    /// the next profile. The corpus item that used to carry `provider: 42` was
     /// moved to a wrong-typed `modelName` so the five-named-warnings arm keeps
     /// measuring what it exists for on both sides.
     #[test]

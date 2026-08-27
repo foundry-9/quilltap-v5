@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — harness(import): retire the bug-105 divergence arm — v4 converged at 679e450e3 (P4.D131)
+
+_Versions: core 0.0.699, harness 0.0.603._
+
+v4 fixed its bug 105 (one malformed connection profile aborted a whole
+`.qtap` import) at `679e450e3`, exactly as this port's filing described:
+the legacy-field seeding call moved inside the per-item try, and the
+helper now type-tests the provider instead of relying on `??`. A fresh
+oracle regen from a worktree pinned at `b121ac77f` measured FULL
+convergence — v4 now answers `success: true` with exactly one warning
+naming `Bug 105 Connection`, imports the `Bug 105 Survivor` image
+profile, and writes no connection profile — byte-for-byte what v5's leg
+of the `execute_bug105_seed_abort` case asserted all along (v5 never had
+the bug, per the standing 2026-08-03 backup/restore/import ruling).
+
+The divergence machinery is retired: `classify_bug105_seed_abort`, its
+blanked comparand, and the `main.image_profiles` table-skip threaded
+through `compare_execute`/`normalize_side` are deleted (the `skip`
+parameter is removed outright rather than kept as an always-empty
+capability). The case stays in the corpus as a plain-equality regression
+guard — 37 cases, state-compared like every other — and is
+mutation-proven in both the warning-sentence and survivor-write
+directions. The `profiles.rs` divergence doc block is rewritten as a
+convergence record. No v5 production behavior changed; the core bump is
+doc-comment-only. The one v4-side line this commit does not port —
+`help/system-import-export.md`'s new sentence — banks to `p4.9i2`.
+
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
 
 _Docs-only change._

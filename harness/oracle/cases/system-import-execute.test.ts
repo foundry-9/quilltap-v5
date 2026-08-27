@@ -1203,37 +1203,30 @@ function malformedItemsPayload(): { manifest: unknown; data: Record<string, unkn
 }
 
 /**
- * [P4.63 → v4 bug 105] The DIVERGENCE payload: one connection profile whose
- * `provider` is not a string, followed by one that is perfectly sound.
+ * [P4.63 → v4 bug 105 → P4.D131] The bug-105 regression-guard payload: one
+ * connection profile whose `provider` is not a string, followed by one image
+ * profile that is perfectly sound.
  *
- * v4 `e000d6bfc` calls `seedLegacyConnectionProfileFields(rawProfile)` at the
- * TOP of `importConnectionProfiles`' loop body — **outside** the per-item
- * `try` — and the helper does `(seeded.provider ?? '').toUpperCase()`, which
- * `??` cannot guard against a number. The TypeError escapes the loop, escapes
- * the importer, and lands in `executeImport`'s outer catch, so ONE malformed
- * profile aborts the WHOLE import with
- * `Import failed: (seeded.provider ?? "").toUpperCase is not a function` —
- * where pre-4.9 v4 named the item and carried on. Filed upstream as v4 bug 105
- * (v4 `b6c6d7793`).
+ * v4 `e000d6bfc` called `seedLegacyConnectionProfileFields(rawProfile)` at the
+ * TOP of `importConnectionProfiles`' loop body — outside the per-item `try` —
+ * and the helper's `(seeded.provider ?? '').toUpperCase()` threw on a number,
+ * so ONE malformed profile aborted the WHOLE v4 import. Filed upstream as v4
+ * bug 105 (v4 `b6c6d7793`); P4.63 pinned the divergence in both directions
+ * (v5 never had it — the standing 2026-08-03 backup/restore/import ruling).
+ * **v4 fixed it at `679e450e3`** (the seeding call moved inside the per-item
+ * `try`; the helper type-tests the provider), and the P4.D131 pinned regen
+ * measured FULL convergence: v4 now answers `success: true` with exactly one
+ * warning naming `Bug 105 Connection`, imports the survivor, and writes no
+ * connection profile — byte-for-byte what v5's leg asserted all along. The
+ * case is now an ordinary plain-equality state-compared case: one malformed
+ * profile is named-and-skipped and the import carries on, on both sides.
  *
- * v5 does NOT reproduce it (the standing 2026-08-03 backup/restore/import ruling
- * — v5 fixes v4's bugs on this family rather than matching them), so this arm is
- * a both-directions divergence pin: `classify_bug105_seed_abort` on the Rust
- * side asserts v4 ABORTS and v5 NAMES-AND-CONTINUES, and reddens the day either
- * moves. ⚠ v4 committed that fix as `679e450e3` on 2026-08-27, hours after this
- * arm was written — the arm is pinned against the `8872d7efc` BASELINE, which
- * still carries the bug, so it stays a divergence until a round moves the
- * baseline past `679e450e3`, and it WILL trip at that move by design.
+ * The seeding branch that reads the provider only runs when
+ * `supportsImageUpload` is absent, so the broken item must not carry it.
  *
- * The guard only fires when `supportsImageUpload` is absent — that is the branch
- * that reads the provider — so the broken item must not carry it.
- *
- * "Continued" is measured by a SOUND IMAGE PROFILE, because `executeImport`
- * runs tags → connectionProfiles → **imageProfiles** → … : v4's abort inside
- * `importConnectionProfiles` means the image profile is never reached, while
- * v5 names the profile and marches on to write it. The divergence is therefore
- * confined to `main.image_profiles`; everything else, `connection_profiles`
- * included (neither engine writes one), compares as a plain equality.
+ * "Carried on" is measured by the SOUND IMAGE PROFILE, because `executeImport`
+ * runs tags → connectionProfiles → **imageProfiles** → … : reaching it at all
+ * proves the loop survived the malformed record before it.
  *
  * ⚠ Why NOT a second connection profile — a standing finding worth its own
  * order. The committed `system-data-main.db` predates v4 4.9's
@@ -1969,8 +1962,9 @@ async function main(): Promise<void> {
       includeMemories: false,
       includeRelatedEntities: false,
     }),
-    // [P4.63 → v4 bug 105] The oracle-side tripwire for the seeding-helper
-    // abort — see `bug105SeedAbortPayload`.
+    // [P4.63 → v4 bug 105 → P4.D131] The named-and-skipped regression guard
+    // (a plain equality since v4 converged at `679e450e3`) — see
+    // `bug105SeedAbortPayload`.
     executeCase('execute_bug105_seed_abort', () => bug105SeedAbortPayload(), {
       conflictStrategy: 'skip',
       includeMemories: false,

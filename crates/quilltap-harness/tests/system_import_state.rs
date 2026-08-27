@@ -88,16 +88,23 @@
 //! families (the quoted item NAME is verbatim; only the validator's own
 //! sentence is masked, since Zod's wording is not v5's).
 //!
-//! ## [P4.63 → v4 bug 105] `execute_bug105_seed_abort` — a DELIBERATE DIVERGENCE
+//! ## [P4.63 → v4 bug 105] `execute_bug105_seed_abort` — CONVERGED at `679e450e3`
 //!
-//! The oracle half of the seeding-helper abort. v4 `e000d6bfc` reads
-//! `(seeded.provider ?? '').toUpperCase()` at the top of
+//! v4 `e000d6bfc` read `(seeded.provider ?? '').toUpperCase()` at the top of
 //! `importConnectionProfiles`' loop body, OUTSIDE the per-item `try`, so a
-//! non-string `provider` throws past the loop and aborts the WHOLE import;
-//! v5 names the item and carries on (the standing 2026-08-03 ruling). Pinned in
-//! both directions and built to retire — see `classify_bug105_seed_abort`.
+//! non-string `provider` threw past the loop and aborted the WHOLE import;
+//! v5 named the item and carried on (the standing 2026-08-03 ruling). Filed
+//! upstream as v4 bug 105; **v4 fixed it at `679e450e3`** (the seeding call
+//! moved inside the per-item `try`, the helper type-tests the provider), and
+//! the P4.D131 regen measured FULL convergence (drift-ledger §5.4): v4 now
+//! answers `success: true`, exactly one warning naming `Bug 105 Connection`,
+//! `imported.imageProfiles == 1`, and `main.image_profiles` gains exactly the
+//! `Bug 105 Survivor` — byte-for-byte what v5's leg asserted all along. The
+//! divergence classifier is retired; the case stays as a PLAIN-EQUALITY
+//! regression guard that one malformed profile is named-and-skipped while the
+//! import carries on to the importers behind it.
 //!
-//! ⚠ **A standing vacuity this arm surfaced.** The committed
+//! ⚠ **A standing vacuity that arm surfaced.** The committed
 //! `system-data-main.db` predates v4 4.9's
 //! `connection_profiles.multiCharacterPrefill`, so every connection-profile
 //! import in this family fails on BOTH sides with `table connection_profiles
@@ -701,7 +708,6 @@ fn normalize_side(
     derived: HashSet<String>,
     result: &Value,
     state: &StateDump,
-    skip_tables: &HashSet<(&str, &str)>,
     id_labels: BTreeMap<String, String>,
 ) -> (Value, StateDump) {
     let mut n = Normalizer::new(literals.clone())
@@ -712,9 +718,6 @@ fn normalize_side(
     for (part, tables) in state {
         let mut t = BTreeMap::new();
         for (table, rows) in tables {
-            if skip_tables.contains(&(part.as_str(), table.as_str())) {
-                continue;
-            }
             let v = n.value(&Value::Array(rows.clone()));
             t.insert(table.clone(), v.as_array().cloned().unwrap_or_default());
         }
@@ -1068,7 +1071,8 @@ fn system_import_execute_state_equivalence() {
     // the preflight — which is WHY the duplicate fork is unreachable there).
     // …+ P4.48's planted preflight-refusal arm + P4.D91's named-item-failure
     // arm.
-    // …+ P4.63's bug-105 divergence arm.
+    // …+ P4.63's bug-105 arm (a plain equality since v4 converged at
+    // `679e450e3` — P4.D131).
     assert_eq!(ran, 37, "expected 37 cases, ran {ran}");
     // [P4.63 → bug 105] Named explicitly, so a dropped case fails saying WHAT
     // went missing rather than failing the arithmetic above.
@@ -1076,8 +1080,8 @@ fn system_import_execute_state_equivalence() {
         cases
             .iter()
             .any(|c| c["name"] == "execute_bug105_seed_abort"),
-        "the oracle is missing the `execute_bug105_seed_abort` divergence arm — \
-         regenerate it"
+        "the oracle is missing the `execute_bug105_seed_abort` regression-guard \
+         case — regenerate it"
     );
     // [P4.D91 → bug 79] The five per-item arms v4 `275cd7bc` gave named
     // warnings must be MEASURED, not merely ported: no committed archive
@@ -1395,175 +1399,6 @@ fn classify_unvalidatable_row(
     (blank(got_body), blank(want_body))
 }
 
-/// ## [P4.63 → v4 bug 105] ⚠ DELIBERATE DIVERGENCE — the seeding helper's abort
-///
-/// v4 `e000d6bfc` (bug 103) calls `seedLegacyConnectionProfileFields(rawProfile)`
-/// at the TOP of `importConnectionProfiles`' loop body — **outside** the
-/// per-item `try` — and the helper does `(seeded.provider ?? '').toUpperCase()`.
-/// `??` guards null/undefined only, so a non-string `provider` reaches
-/// `.toUpperCase` and throws a `TypeError` that escapes the loop, escapes the
-/// importer, and lands in `executeImport`'s outer catch. **One malformed profile
-/// therefore aborts a WHOLE v4 import**, where pre-4.9 v4 named the item and
-/// carried on. Filed upstream as v4 bug 105 (v4 `b6c6d7793`).
-///
-/// v5 does not reproduce it, under the standing 2026-08-03 ruling (on
-/// backup / restore / import / export, v5 FIXES v4's bugs rather than matching
-/// them): [`seed_legacy_connection_profile_fields`] reads the provider as
-/// `as_str().unwrap_or("")` and cannot throw, and v5 parses the record BEFORE
-/// it seeds, so the broken item is refused with its own named warning and the
-/// rest of the bundle still imports. That was pinned unit-side by
-/// `services::quilltap_import::profiles`'
-/// `a_non_string_provider_is_named_and_does_not_abort_the_import`; this is the
-/// ORACLE half — the same claim against v4's REAL `executeImport`.
-///
-/// **Both directions, and built to retire.** The arm asserts v4's abort as
-/// tightly as v5's continuation, so it reddens whichever side moves. When v4
-/// fixes bug 105 the v4 leg fails with a message that says so: regenerate,
-/// confirm v4 now names the item, and retire this classifier for a plain
-/// equality (ledger §5.4 — measure the adoption, do not assume it).
-///
-/// ⚠ **That day is already scheduled.** v4 committed the fix as `679e450e3`
-/// (2026-08-27, hours after this arm was written) — the seeding call moved
-/// inside the per-item `try` AND the helper now type-tests the provider. The
-/// arm is pinned against the `8872d7efc` BASELINE, which still carries the
-/// bug, so it stays a divergence until a round moves the baseline past
-/// `679e450e3`. **At that baseline move this WILL trip, by design** — that is
-/// the convergence-row contract, not a regression. Expect v4 to end up
-/// agreeing with v5 outright (named warning, `success: true`, the image
-/// profile imported), which retires the classifier, the `skip` insert, and the
-/// blanked body all at once.
-///
-/// **What "continued" is measured with.** `executeImport` runs
-/// tags → connectionProfiles → **imageProfiles** → …, so a sound IMAGE profile
-/// sitting behind the broken connection profile is the discriminator: v4 never
-/// reaches it, v5 writes it. The divergence is confined to `main.image_profiles`
-/// — asserted here by row count and by name, then SUBTRACTED from the
-/// comparands (subtracted from the NORMALIZATION walk, so the minted-id labels
-/// stay aligned). Every other table in all three partitions stays a plain
-/// equality, `connection_profiles` included: neither engine writes one.
-///
-/// ⚠ The sound sibling is deliberately NOT a second connection profile. The
-/// committed `system-data-main.db` predates v4 4.9's
-/// `connection_profiles.multiCharacterPrefill`, so every connection-profile
-/// import in this family fails on BOTH sides with `table connection_profiles
-/// has no column named multiCharacterPrefill` — identically, which is why the
-/// arms are green and why that import has measured nothing since v4 `aa464abf`
-/// (bug 68). Widening the fixture is cross-lane (`system-data-*` is shared with
-/// the system-data routes differential), so P4.63 recorded it as a follow-up
-/// instead of doing it. The within-importer half of bug 105's claim — the loop
-/// itself carrying on to the next profile — stays pinned by
-/// `services::quilltap_import::profiles`'
-/// `a_non_string_provider_is_named_and_does_not_abort_the_import`.
-fn classify_bug105_seed_abort(
-    name: &str,
-    got_body: &Value,
-    want_body: &Value,
-    pre: &StateDump,
-    got_state: &StateDump,
-    want_state: &StateDump,
-    failures: &mut Vec<String>,
-) -> (Value, Value) {
-    /// v4's outer-catch sentence, verbatim — the TypeError's own message.
-    const ABORT: &str = "Import failed: (seeded.provider ?? \"\").toUpperCase is not a function";
-    /// v5's per-item warning family (the validator's own tail is masked).
-    const NAMED: &str = "Failed to import connection profile \"Bug 105 Connection\": ";
-    /// The sound sibling: the IMAGE profile that measures "and the import
-    /// CONTINUED" — it is imported after the connection profiles v4 died in.
-    const SOUND: &str = "Bug 105 Survivor";
-
-    let warnings_of = |b: &Value| -> Vec<String> {
-        b["warnings"]
-            .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|w| w.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    let profiles = |s: &StateDump| -> Vec<Value> {
-        s.get("main")
-            .and_then(|t| t.get("image_profiles"))
-            .cloned()
-            .unwrap_or_default()
-    };
-    let names = |rows: &[Value]| -> Vec<String> {
-        rows.iter()
-            .filter_map(|r| r["name"].as_str().map(str::to_string))
-            .collect()
-    };
-    let baseline = profiles(pre);
-
-    // ── v4: aborts, names nothing, writes nothing ───────────────────────────
-    let v4_w = warnings_of(want_body);
-    if want_body["success"] != json!(false)
-        || v4_w != vec![ABORT.to_string()]
-        || want_body["imported"]["connectionProfiles"] != json!(0)
-        || want_body["imported"]["imageProfiles"] != json!(0)
-    {
-        failures.push(format!(
-            "[{name}] v4 no longer aborts the whole import on a non-string \
-             `provider`. If it now NAMES the item and carries on, bug 105 is \
-             FIXED upstream: regenerate, confirm the adoption, and retire this \
-             divergence to a plain equality (drift-ledger §5.4).\n  \
-             oracle success: {}\n  oracle warnings: {v4_w:?}\n  \
-             oracle imported.connectionProfiles: {}",
-            want_body["success"], want_body["imported"]["connectionProfiles"]
-        ));
-    }
-    let v4_profiles = profiles(want_state);
-    if v4_profiles != baseline {
-        failures.push(format!(
-            "[{name}] v4's abort must leave `image_profiles` untouched — the \
-             sound sibling sits behind the importer that threw, so v4 never \
-             reaches it. baseline {} row(s), after {} row(s)",
-            baseline.len(),
-            v4_profiles.len()
-        ));
-    }
-
-    // ── v5: names the broken item, imports the sound one ────────────────────
-    let v5_w = warnings_of(got_body);
-    if got_body["success"] != json!(true)
-        || v5_w.len() != 1
-        || !v5_w[0].starts_with(NAMED)
-        || got_body["imported"]["connectionProfiles"] != json!(0)
-        || got_body["imported"]["imageProfiles"] != json!(1)
-    {
-        failures.push(format!(
-            "[{name}] v5 must NAME the malformed profile, refuse to write it, \
-             and still reach the image profile behind it (the standing \
-             2026-08-03 import ruling).\n  \
-             rust success: {}\n  rust warnings: {v5_w:?}\n  \
-             rust imported.connectionProfiles: {} imageProfiles: {}",
-            got_body["success"],
-            got_body["imported"]["connectionProfiles"],
-            got_body["imported"]["imageProfiles"]
-        ));
-    }
-    let v5_profiles = profiles(got_state);
-    let v5_names = names(&v5_profiles);
-    let baseline_names = names(&baseline);
-    let added: Vec<&String> = v5_names
-        .iter()
-        .filter(|n| !baseline_names.contains(n))
-        .collect();
-    if added != vec![&SOUND.to_string()] {
-        failures.push(format!(
-            "[{name}] v5 must add exactly the sound image profile and nothing \
-             else — added {added:?} (baseline {} row(s), after {} row(s))",
-            baseline.len(),
-            v5_profiles.len()
-        ));
-    }
-
-    // The bodies disagree in `success`, both count bags, and the warnings, so
-    // the whole envelope is the recorded divergence; it is asserted above, in
-    // both directions, rather than diffed.
-    let blank = json!({ "bug105": "<RECORDED DIVERGENCE: asserted in both directions above>" });
-    (blank.clone(), blank)
-}
-
 fn run_execute_case(
     name: &str,
     case: &Value,
@@ -1694,22 +1529,13 @@ fn run_execute_case(
     // `success`, the counts, all three partitions — is a plain equality, which
     // is the claim that matters: neither engine writes anything.
     //
-    // [P4.63 → bug 105] The seeding-helper abort is the second such arm, and
-    // the one place a table is SUBTRACTED: see `classify_bug105_seed_abort`.
-    let mut skip: HashSet<(&str, &str)> = HashSet::new();
+    // [P4.63 → bug 105 → P4.D131] The seeding-helper abort was the second such
+    // arm — and the one place a table was SUBTRACTED from the comparands. v4
+    // converged at `679e450e3`, so `execute_bug105_seed_abort` is now an
+    // ordinary plain-equality case and the table-skip machinery it carried is
+    // gone with it (see the module header).
     let (got_body, want_body) = if name == "execute_preserve_ids_unvalidatable_row_refuses" {
         classify_unvalidatable_row(name, &got_body, &want_body, failures)
-    } else if name == "execute_bug105_seed_abort" {
-        skip.insert(("main", "image_profiles"));
-        classify_bug105_seed_abort(
-            name,
-            &got_body,
-            &want_body,
-            &pre,
-            &got_state,
-            &want_state,
-            failures,
-        )
     } else {
         (got_body, want_body)
     };
@@ -1723,7 +1549,6 @@ fn run_execute_case(
         &literals,
         got_labels.clone(),
         want_labels.clone(),
-        &skip,
         failures,
     );
     if runs > 1 {
@@ -1736,7 +1561,6 @@ fn run_execute_case(
             derived_hashes(&got_state, &literals2),
             &got2,
             &got_state,
-            &HashSet::new(),
             got_labels,
         );
         let (want_norm, _) = normalize_side(
@@ -1744,7 +1568,6 @@ fn run_execute_case(
             derived_hashes(&want_state, &literals2),
             &want2,
             &want_state,
-            &HashSet::new(),
             want_labels,
         );
         if got_norm != want_norm {
@@ -1769,21 +1592,17 @@ fn compare_execute(
     literals: &HashSet<String>,
     got_labels: BTreeMap<String, String>,
     want_labels: BTreeMap<String, String>,
-    skip: &HashSet<(&str, &str)>,
     failures: &mut Vec<String>,
 ) {
-    // P4.6BK closed the chunk gap, so nothing is skipped by default: every
-    // table, including `doc_mount_chunks`, is diffed row for row. The one
-    // caller that passes a non-empty set is the bug-105 divergence arm, which
-    // asserts `main.image_profiles` itself before subtracting it — and
-    // subtracts it from the NORMALIZATION walk, so the minted-id labels stay
-    // aligned across the two sides.
+    // P4.6BK closed the chunk gap, so nothing is skipped: every table,
+    // including `doc_mount_chunks`, is diffed row for row. (The bug-105
+    // divergence arm briefly subtracted `main.image_profiles` here — retired
+    // at P4.D131 when v4 converged at `679e450e3`.)
     let (got_norm_result, got_norm_state) = normalize_side(
         literals,
         derived_hashes(got_state, literals),
         got_result,
         got_state,
-        skip,
         got_labels,
     );
     let (want_norm_result, want_norm_state) = normalize_side(
@@ -1791,7 +1610,6 @@ fn compare_execute(
         derived_hashes(want_state, literals),
         want_result,
         want_state,
-        skip,
         want_labels,
     );
 
@@ -1889,7 +1707,6 @@ fn run_route_case(
                     &literals,
                     got_labels,
                     want_labels,
-                    &HashSet::new(),
                     failures,
                 );
             } else {
