@@ -89620,3 +89620,17 @@ build failure" shape, now fixed at the root: `Application bundle generation
 failed.` is terminal for `test` too (`complete` is not — the tests still have
 to run). Proven by reliving the failure: the identical broken spec went from
 an indefinite hang to **exit 1 in 10.6 s**.
+
+**Round addendum — the workspace gate's one red, run to ground.** The first
+full-workspace run failed `services::cheap_llm_exec::tests::
+a_fired_deadline_warns_and_writes_the_ruled_error_row` (1,801/1 in the core
+lib binary). It is green in isolation ×3 and in EIGHT consecutive
+full-binary re-runs — honestly unreproduced (the P4.40 precedent), recorded
+as the pre-existing capture-under-load class (the binary already carries
+ten scoped tracing subscribers; this round added zero, but its new tests
+reshuffled the schedule — the `vitest-sharding-exposes-global-pollution`
+shape in Rust). The diagnosis DID expose a reasoned, structural race the
+round introduced: thirteen tests drive real spans through the newly wrapped
+paths without `ActivityTestGuard`, bumping the same process-global counters
+the registry's exact-count tests assert on. All thirteen now take the guard
+(test-only). The gate of record re-ran whole on the final tree.

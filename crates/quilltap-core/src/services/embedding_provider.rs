@@ -804,6 +804,10 @@ mod tests {
 
     #[tokio::test]
     async fn the_real_embedding_provider_lights_the_embedding_chip() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
         let db = test_db("activity-span").await;
         seed_profile(&db, "ep-default", "u1", "OPENAI", Some("ak-1"), None, true).await;

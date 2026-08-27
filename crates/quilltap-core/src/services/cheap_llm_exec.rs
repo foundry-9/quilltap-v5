@@ -1123,6 +1123,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_cheap_llm_task_lights_the_chip_its_task_type_names() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         use crate::services::activity_kinds::ActivityKind;
         // An image-pipeline task lights "Img".
         assert_eq!(
@@ -1155,6 +1159,10 @@ mod tests {
     /// answers is abandoned at 45 s, and the task fails soft with v4's message.
     #[tokio::test(start_paused = true)]
     async fn a_remote_attempt_is_abandoned_at_its_45s_deadline() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let exec = CheapLlmTaskExecutor::new();
         let sel = selection("DEEPSEEK", "deepseek-v4-flash");
         let started = tokio::time::Instant::now();
@@ -1189,6 +1197,10 @@ mod tests {
     /// stalled. Same stalling provider, four times the patience.
     #[tokio::test(start_paused = true)]
     async fn a_local_attempt_is_abandoned_only_at_its_180s_deadline() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let exec = CheapLlmTaskExecutor::new();
         let sel = local_selection("OLLAMA", "qwen3");
         let started = tokio::time::Instant::now();
@@ -1222,6 +1234,10 @@ mod tests {
     /// success on a local provider and an abandonment on a remote one.
     #[tokio::test(start_paused = true)]
     async fn a_hundred_second_call_succeeds_locally_and_is_abandoned_remotely() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let slow = SlowProvider {
             delay_ms: 100_000,
             content: "slow but fine".to_string(),
@@ -1264,6 +1280,10 @@ mod tests {
     /// `CompletionParams` on every arm.
     #[tokio::test]
     async fn the_provider_budget_sits_five_seconds_inside_the_deadline() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let messages = vec![CompletionMessage::user("hi")];
 
         let remote_rec = RecordingProvider::new();
@@ -1312,6 +1332,10 @@ mod tests {
     /// both provider calls carry the same budget (v4 spreads one `baseParams`).
     #[tokio::test]
     async fn every_arm_of_one_attempt_carries_the_same_budget() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let messages = vec![CompletionMessage::user("hi")];
         struct TempRejectThenRecord(RecordingProvider);
         impl CompletionProvider for TempRejectThenRecord {
@@ -1355,6 +1379,10 @@ mod tests {
     /// have fired at 45 s.
     #[tokio::test(start_paused = true)]
     async fn each_attempt_gets_a_fresh_budget() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let messages = vec![CompletionMessage::user("spicy")];
         let provider = SlowEmptyThenStall {
             first_provider: "ANTHROPIC".to_string(),
@@ -1417,6 +1445,10 @@ mod tests {
     /// timeout is a failed call.
     #[tokio::test(start_paused = true)]
     async fn a_fired_deadline_warns_and_writes_the_ruled_error_row() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         use tracing_subscriber::layer::SubscriberExt;
 
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
@@ -1532,6 +1564,10 @@ mod tests {
 
     #[tokio::test]
     async fn temperature_rejection_caches_and_retries() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let messages = vec![CompletionMessage::user("hi")];
         let provider = CannedCompletionProvider::new()
             .with_failure("OPENAI", "m", Some(0.3), &messages, "does not support temp")
@@ -1573,6 +1609,10 @@ mod tests {
 
     #[tokio::test]
     async fn empty_response_falls_back_to_uncensored_provider() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let messages = vec![CompletionMessage::user("spicy")];
         let provider = CannedCompletionProvider::new()
             .with_response("ANTHROPIC", "safe", Some(0.3), &messages, "", None)
@@ -1630,6 +1670,10 @@ mod tests {
     /// wiring regressions the compile-check can't.
     #[tokio::test]
     async fn logging_writes_one_row_through_the_real_writer() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         // The differential test pepper (32 bytes of "testpepper…", base64).
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
@@ -1797,6 +1841,10 @@ mod tests {
     /// possible for a deliberate divergence — this test IS the pin.
     #[tokio::test]
     async fn failed_call_writes_the_ruled_error_row() {
+        // Drives the REAL wrapped path, so it opens real activity spans on the
+        // process-global registry; serialize with the exact-count registry tests
+        // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
         let dir = tempfile::tempdir().unwrap();
         let main_path = dir.path().join("main.db");

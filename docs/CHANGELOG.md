@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — test(core): serialize the wrapped-path span writers with the registry's exact-count tests
+
+_Versions: core 0.0.687._
+
+The unified workspace gate's one red — `a_fired_deadline_warns_and_writes_
+the_ruled_error_row`, green in isolation and in eight consecutive
+full-binary re-runs — exposed a reasoned race while being diagnosed: the
+activity registry's exact-count tests hold `ActivityTestGuard` over the
+process-global counters, but thirteen tests in `cheap_llm_exec` and
+`embedding_provider` now drive REAL spans through the round's wrapped
+paths without it, bumping the same statics concurrently. Each takes the
+guard now (test-only; no production code moved). The observed red itself
+did not reproduce (0-for-8) and is recorded in the round record as the
+pre-existing capture-under-load class, per the P4.40 precedent for an
+honestly-unreproduced intermittent.
+
+
 #### 2026-08-26 — feat(e2e): the f3892158d-round unification wires — the live hint beat goes active
 
 _Versions: SPA 0.5.583._

@@ -6158,3 +6158,53 @@ unification, 2026-08-26):
 
 PB1 stays parked by the standing rule. The `qtap-export.schema.json` file
 port remains a NAMED standalone flag (v5 has never shipped the file).
+
+---
+
+## The `f3892158d` drift catch-up round (P4.D123→P4.D124 stacked ∥ P4.D125) — UNIFIED 2026-08-26
+
+All three orders CLOSED; the oracle baseline MOVES to `f3892158d`. The
+jobs/activity accounting and the whole realtime subsystem absorbed, with
+the round's settled mechanism divergence: the invalidation hints ride
+v5's EXISTING Event channel (engine broadcast → SSE `/api/events` → the
+Tauri pump) — no second WebSocket, per the locked transport-agnostic
+boundary. Full record: `status-log.md` → "The `f3892158d` drift catch-up
+round"; the §3 review's findings (three blocking, all SPA-side, all
+fixed red-first on the unify branch) → "The `f3892158d`-round §3
+unification review". The chronic `ng` hang gained a root fix on the way:
+`tools/ng-run.mjs` now treats a spec BUILD failure as terminal for
+`test` (was a 30-minute silent hang).
+
+**Next candidates, in rough value order** (updated at the
+`f3892158d`-round unification, 2026-08-26):
+
+1. **Ratify the two post-baseline v4 commits** (`487ae57fe` tests +
+   neutral extraction, `561466cfe` knip sweep — drift-ledger §3, both
+   NO-PORT? with ratification notes). Cheap; moves the baseline to
+   `561466cfe` without a port and returns the regen rule to pin-free.
+   Rider: check v5's `help_doc_chunks` twin pins the
+   registerBlobColumns-re-assert trap the new v4 test pins, and whether
+   v5 carries now-vestigial twins of the knip-deleted exports.
+2. **The owed dogfood pass over this round's live surfaces**: the chips
+   counting a real inline image generation (the `generate_image` tool on
+   the Friday copy — "Img" lit for the whole span), a `startedByKind`
+   pulse from sub-poll work, the pushed invalidation on a real enqueue
+   with polling verified parked (zero background fetches in an idle
+   window, v4's own verification shape), the terminal WS same-origin
+   refusal against the running server, and the tasks queue's "Fallback
+   polling (5s)" toggle.
+3. **`systemHome` — the 7.5 s landing dashboard** (carried; profile
+   first, then decide v5-local fix vs record-and-leave).
+4. The present-but-null validation lead (carried).
+5. Widen the committed `characters-*` e2e fixture with a Quilltap
+   General store (carried; still parks the component-transfer beat).
+6. The next wrong-type-collapse order (`system_data_routes.rs` 13 sites,
+   `files_routes.rs` 5 — P4.60's census, carried).
+7. `p4.9i2` — help/HelpChat as a dedicated round (the bank gained the
+   `help/system-tasks-queue.md` rows from BOTH of this round's commits).
+8. The handler-logging sweep (carried; this round added v4's
+   reconcile-pause `logger.warn` context lines to its inventory).
+9. The duplicate "Quilltap General" e2e-fixture store (carried).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json`
+file port remains a NAMED standalone flag.
