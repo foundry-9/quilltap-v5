@@ -12,6 +12,34 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(drift): record the `aec86a613` wardrobe outfit pull-down — DRIFT PENDING, pin required
+
+_Docs-only change._
+
+A `/driftcheck` run against v4. `main` has moved two commits past the
+`8872d7efc` baseline: `b6c6d7793` (docs-only — this port's own bug-105
+filing, carried as a NO-PORT? row for explicit ratification) and
+`aec86a613`, a genuine PORT-NEW.
+
+`aec86a613` adds a `Wear an outfit…` pull-down above the composer's slot
+rows and removes composites from the per-slot pickers. Client-only: no
+server verb, no schema, no wire change. Five pieces — a new pure
+`lib/wardrobe/composed-outfits.ts` (`selectComposedOutfits` /
+`selectGarments`, both built on the existing `isBundle`), a new
+`outfit-quick-pick.tsx` component, the composer mounting it above the
+bundle cards, `equipped-slot-row.tsx` filtering its candidates through
+`selectGarments` and dropping the now-dead `· composite` suffix, plus
+help/changelog/version riders. It lands on two already-ported SPA
+components (`apps/web/src/app/wardrobe/outfit-composer.ts` and
+`equipped-slot-row.ts`, P4.9f2 unit 3), and v5 measurably carries the
+pre-fix shape at `equipped-slot-row.ts:100` and `:144`.
+
+`bugfix` is unmoved at the inert `3a76b17df` fork marker; the checkout is
+clean on `main`; v4 is at `4.9.0-dev.89` with no release squash yet. The
+regen rule flips to **PIN REQUIRED** — build a detached worktree at
+`8872d7efc` (drift-ledger §5.1) for every oracle regen until the baseline
+moves.
+
 #### 2026-08-27 — docs(porting): the 4.9.0-push round unification — baseline → 8872d7efc, drift debt cleared
 
 _Versions at round close: core 0.0.696, harness 0.0.598, web 0.0.97, cli 0.0.14, SPA 0.5.586 (bumped across the round's commits; this commit is docs-only)._

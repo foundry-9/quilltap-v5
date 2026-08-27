@@ -24,26 +24,37 @@ probe verifies against._
   last commit of the 4.9.0 release push), adopted at the 4.9.0-push round
   unification (2026-08-27, P4.D126 ∥ P4.D127 ∥ P4.D128 ∥ P4.D129 + the
   unification wires).
-- **Checked:** 2026-08-27 (the unification's §2 probes — run at every
-  lane's start and close, and again at the unified gate; all PASS).
-- **v4 `main` HEAD at check:** `b6c6d7793` — ONE commit past the
-  baseline, and it is this port's own upstream filing (`docs(bugs): file
-  bug 105`, docs-only: `docs/developer/bugs.md` + the bug file, zero
-  lib/app/packages/plugins content — NO-PORT by construction, recorded
-  here so the next probe doesn't re-alarm on it).
-- **v4 `bugfix` tip at check:** `3a76b17df` — unmoved; the bare
-  `bugfix: started 4.8.4 bug branch` fork marker (2026-08-13), no
-  unabsorbed content.
+- **Checked:** 2026-08-27 (a full `/driftcheck` — both branches by the §4
+  procedure, every new commit classified from its shipped hunks).
+- **v4 `main` HEAD at check:** `aec86a613` — **TWO commits past the
+  baseline**, one of them portable:
+  - `b6c6d7793` `docs(bugs): file bug 105` — this port's own upstream
+    filing, docs-only (`docs/developer/bugs.md` + the bug file), zero
+    lib/app/packages/plugins content. Carried in §3 as a NO-PORT? row so
+    the next baseline move ratifies it explicitly.
+  - `aec86a613` `feat(wardrobe): an outfit pull-down above the slot rows,
+    garments only in the slot pickers` — a **PORT-NEW** landing on two
+    already-ported SPA components plus a new pure module. Row in §3.
+- **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** since the last
+  check (the bare `bugfix: started 4.8.4 bug branch` fork marker,
+  2026-08-13); nothing new can have landed there. Its `main..bugfix`
+  commit list still shows the whole 4.7/4.8 lineage — that is the
+  documented squash-topology lie (§4 step 2), not unabsorbed content.
 - **Checkout at check:** branch `main`, tree **clean**.
-- **Verdict: NO DRIFT.** The fourteen-commit 4.9.0 block is fully
+- **Verdict: DRIFT PENDING — 1 portable commit** (2 past the baseline;
+  `b6c6d7793` is docs-only). The fourteen-commit 4.9.0 block remains fully
   absorbed/ratified (§6).
-- **Regen rule in force: PIN NOT REQUIRED** — v4 HEAD equals the baseline
-  and the checkout is clean, so a regen from the checkout is at-baseline.
-  Run the §2 probe before any regen batch anyway; **expect a
-  `release: 4.9.0` squash and a `bugfix: started 4.9.0 bug branch` fork
-  soon** (the release-shape note from the last check stands) — re-probe
-  BOTH branches at the next check rather than assuming bugfix stays
-  inert.
+- **Regen rule in force: PIN REQUIRED** — v4 HEAD is past the baseline, so
+  a regen run from the checkout would import `aec86a613`'s tree. Build a
+  lane-unique detached worktree at `8872d7efc` per §5.1 for **every**
+  oracle regen and fixture build until the baseline moves. (The checkout
+  itself is clean and on `main`, so the pin is the only precaution
+  needed.)
+- **Release shape:** still no `release: 4.9.0` squash and no
+  `bugfix: started 4.9.0 bug branch` fork — v4 is at `4.9.0-dev.89` and
+  developing on `main` alone. The standing expectation from the last two
+  checks holds: re-probe BOTH branches next time rather than assuming
+  `bugfix` stays inert.
 
 ## §2 The freshness probe
 
@@ -82,9 +93,59 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `b6c6d7793` | 2026-08-27 | docs(bugs): file bug 105 — the legacy-field seeding sits outside the per-item try | NO-PORT? | none — `docs/developer/bugs.md` + the bug file only, and it is **this port's own filing** (raised by P4.D126 while porting `e000d6bfc`) | UNPROCESSED |
+| `aec86a613` | 2026-08-27 | feat(wardrobe): an outfit pull-down above the slot rows, garments only in the slot pickers | PORT-NEW | the SPA composer surface — `apps/web/src/app/wardrobe/outfit-composer.ts` + `equipped-slot-row.ts` (ported P4.9f2 unit 3, 2026-07-19; since touched by the hair slot P4.D87 and the container rounds P4.D112/P4.D113), the client bundle rule `apps/web/src/app/wardrobe/dissolve-bundles.ts` (P4.D72 unit 3) it builds on, and the composer's two hosts — the wardrobe dialog and the chat-start Starting Outfit panel (`screens/new-chat/outfit-selector.ts`). `help/wardrobe.md` banks to `p4.9i2`. | UNPROCESSED |
 
-_(empty — the fourteen-row 4.9.0 block was absorbed/ratified at the
-4.9.0-push round unification, 2026-08-27; see §6.)_
+**`aec86a613` — what the hunks actually ship** (§5.3: classified from the
+diff, not the message). Client-only; no server verb, no schema, no wire
+change. Five shipped pieces:
+
+1. **NEW `lib/wardrobe/composed-outfits.ts`** (41 lines) — a pure pool
+   split on the *existing* `isBundle` from `lib/wardrobe/dissolve-bundles.ts`:
+   `selectComposedOutfits` (filter `isBundle`, then
+   `a.title.localeCompare(b.title)`) and `selectGarments` (the complement,
+   caller's order). Archived items are already gone from the pool the
+   composer is handed — nothing is re-filtered. Shipped with
+   `__tests__/unit/lib/wardrobe/composed-outfits.test.ts` (69 lines).
+   v5 has `crates/quilltap-core/src/dissolve_bundles.rs` and the SPA
+   client twin, so the natural home is the SPA twin; nothing server-side
+   consumes this.
+2. **NEW `components/wardrobe/outfit-quick-pick.tsx`** (138 lines) — the
+   `Wear an outfit…` pull-down: a `qt-button-secondary qt-button-sm` full-
+   width toggle with a rotating `chevron-down`, a `role="listbox"` panel
+   with an autofocused `type="search"` box, per-row
+   `WARDROBE_SLOT_META[t].label` joins plus a ` · replaces` suffix when
+   `outfit.replace`, `No matching outfits.` on an empty filter, outside-
+   click close, and an Escape handler registered **in the capture phase
+   with `stopPropagation`** so the enclosing dialog is not dismissed along
+   with the menu. **Renders nothing when the pool holds no composites.**
+   No v5 counterpart exists.
+3. **`outfit-composer.tsx`** — mounts `<OutfitQuickPick>` *above* the
+   bundle cards and slot rows, wiring `onWear` as
+   `onAddToSlot(outfit.types[0]!, outfit.id)`. **No new equip path:** the
+   existing callback already applies `wearItemIntoSlots` across every slot
+   an item covers, so the `slot` argument names where the gesture started,
+   not where the item lands. Additive bundles layer; a `replace` bundle
+   sweeps its slots first; either way it dissolves into components as it
+   lands.
+4. **`equipped-slot-row.tsx`** — the picker candidates become
+   `selectGarments(allItems)` before the existing slot/equipped/search
+   filters, and the now-dead `· composite` suffix is deleted. `allItems`
+   is still passed whole so equipped composite *chips* keep their labels.
+   ⚠ **v5 measurably has the pre-fix shape**: `equipped-slot-row.ts:100`
+   still renders `' · composite'` and `:144`'s `candidates` computed still
+   offers composites.
+5. **Infra/docs riders** — `help/wardrobe.md` (Composite Items + chat-start
+   Manual mode), `docs/CHANGELOG.md`, and the `4.9.0-dev.87 → .89` version
+   bump across `README.md` / `package.json` / `packages/quilltap/package.json`
+   / `package-lock.json`.
+
+Note for the porting lane: the prose's "a multi-slot *leaf* (a dress typed
+`["top","bottom"]`) is not a composite and stays in the slot pickers" is
+not a new rule — it falls out of `isBundle` testing `componentItemIds`,
+which v5 already ports. Nothing in this commit changes what reaches the
+server; the differential surface is the SPA specs plus a tier-1 port of the
+two selectors.
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
