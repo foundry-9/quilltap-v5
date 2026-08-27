@@ -90575,3 +90575,199 @@ before it looks fully informative. Memory note:
 
 **Nothing is left OPEN under the order.** Tier 1 items 1–4 and Tier 2 items
 5–6 all landed; Tier 3 is the deferral list above.
+---
+
+## P4.D129 — the `dcab791c2` dedup-sweep neutrality proof + the round's five NO-PORT? ratifications + the two riders (2026-08-27)
+
+Lane branch `claude/p4-dedup-neutrality-ratify-8b82cb`, against the
+`f3892158d` baseline with v4 HEAD at `8872d7efc`. Drift-ledger §2 freshness
+probe run at lane start: branch `main`, tree clean, both logs empty —
+**PASS**, so §1's PIN REQUIRED rule stands. Lane-unique pinned worktree
+`/tmp/qt-v4-pin-p4d129-8872d7efc` built at `8872d7efc` with all three
+symlink classes (15 plugin `node_modules`). This lane changes no v5
+behavior; its output is evidence.
+
+### Unit 1.2 — the two named non-neutral hunks in `dcab791c2`
+
+**(a) The scenarios POST "latent crash" — the commit prose is WRONG about
+its own diff (ledger §5.3, again).** The message claims the POST rewrite
+"also fix[es] a latent crash: `repos` was referenced without
+destructuring." No such defect exists in the shipped hunks. The only
+`repos` change in the whole scenarios family is
+`app/api/v1/scenarios/route.ts`, where the pre-commit file bound it
+correctly — `git show dcab791c2~1:app/api/v1/scenarios/route.ts` has
+exactly three `repos` references (`:102-104`), a dynamic
+`import('@/lib/repositories/factory')`, `const repos = getRepositories()`,
+and the one use, all in scope. The group and project scenario collection
+routes carry no `repos` hunk at all. The swap that DID land — the dynamic
+lookup replaced by the context's `repos` — is provably a no-op: middleware
+`context.ts:116` awaits `getRepositoriesSafe()` before the handler runs,
+and that is `ensureMigrationsComplete()` + `getRepositories()`, which
+returns the same cached singleton the deleted lines fetched. Fewer
+lookups, same object.
+
+**No v5 analog**, as predicted: v5's `scenario_create`
+(`api/scenarios.rs:463`) takes a `&Db` through `with_both_conns` and has
+no `repos` binding to forget — an unbound name would not compile. The
+three collapsed `createScenarioSchema` copies were byte-identical Zod
+chains (the general one merely lacked the `filename` doc comment), so
+single-sourcing them into `scenarios-common.ts` moves no validation bytes.
+
+**(b) The collapsed twins — MEASURED, not read.**
+
+*`resolveDefaultOutfit` → `buildDefaultOutfit`.* The deleted body was
+reconstructed verbatim from `dcab791c2~1` and run against the survivor
+over the same pools (all three helpers it calls —
+`sortForDefaultOutfit`, `dissolveBundlesInSlots`, `makeEmptyEquippedSlots`
+— are untouched by the commit, so the reconstruction is faithful). Three
+structural differences, measured one at a time:
+
+- **The empty early-return is neutral.** The old body returned undissolved
+  empty slots; `dissolveBundlesInSlots` returns `currentSlots` unchanged
+  when nothing dissolves (`dissolve-bundles.ts:184`), so the survivor's
+  extra call is an identity.
+- **The filter/sort inversion is neutral on every reachable input.** Old:
+  filter to defaults, then sort. New: sort the whole pool, then filter
+  inside the loop. 20,000 fuzz cases per class:
+  all items carrying a valid ISO `createdAt` → **0** divergences; some
+  items *missing* `createdAt` → **0**; all missing → **0**; ALL
+  unparseable → **0**; but a pool **mixing** an unparseable `createdAt`
+  with parseable ones → **438/20,000**. The mechanism is
+  `sortForDefaultOutfit`'s comparator: `Date.parse('garbage') - <finite>`
+  is `NaN`, which makes it a non-total order whose TimSort outcome depends
+  on the array it is handed, so an item that will be *filtered out* can
+  reorder the survivors. Minimal repro: one default lacking `createdAt`,
+  three dated defaults, and one **archived** item dated `'garbage'` — the
+  old code lays the undated item last (its own documented contract,
+  "items lacking `createdAt` last"), the new one lays it **first**. Remove
+  the archived garbage-dated item and both agree.
+- **The dropped `slotType in slots` guard is a v4-side robustness
+  regression.** An item whose `types` carries a value outside the five
+  slots used to be skipped; it now throws `TypeError: Cannot read
+  properties of undefined (reading 'push')`. Zod (`z.array(
+  WardrobeItemTypeEnum)`) forbids the shape on every validated write, so
+  this is reachable only through a hand-edited vault file.
+
+**Verdict: the twins agreed on every shape Quilltap data actually holds**
+(a valid ISO string or nothing), so the collapse ratifies neutral. v5 is
+additionally immune by construction: `wardrobe::sort_for_default_outfit`
+(`wardrobe.rs:381`) maps both missing and unparseable to `i64::MAX`,
+keeping the comparator a **total order** — a decision its doc comment
+already records and justifies — and `default_outfit_from_pool`
+(`outfit_selections.rs:154`) keeps the slot guard
+(`WARDROBE_SLOT_TYPES.contains(&slot)`) that v4 has now dropped. Both
+divergent classes are unreachable in v5 by design rather than by luck.
+
+*`cleanTitle` and the help/normal chat-title twins — **NOT neutral;
+ESCALATED**.* Measured over a 38-vector title corpus at both caps:
+`normalizeTitle` → `cleanTitle(raw) || null` is exactly neutral (0/38 —
+the `''`/`null` swap round-trips through the `||`), and the caps survive
+intact (`MAX_TITLE_LENGTH = 60`; `titleChat` passes `50` explicitly). But
+the **four inline generator cleaners** — `titleChat`, `titleHelpChat`,
+`generateTitleFromSummary`, `generateHelpChatTitleFromSummary` — collapsed
+onto a `cleanTitle` that **trims a second time after stripping the
+wrapping quote pair**, which they did not. **10 of 76 vectors diverge.**
+Two observable consequences: a model answering `" A Title "` used to
+persist with its padding and now does not; and because the length cap is
+measured after that second trim, a padded title that used to be truncated
+to `…` can now survive whole (measured on the cap-60 vector).
+
+**This reaches v5 and is a real drift item.** v5's
+`clean_title` (`services/context_summary/tasks.rs:46`, both summary tasks)
+and `clean_generated_title` (`:341`, `title_chat` at 50 /
+`title_help_chat` at 60) are both faithful transcriptions of the
+**pre-sweep** spelling — trim, strip, cap, no second trim. v5's
+`normalize_title` (`title_verdict.rs:123`) already carries the second trim
+**and its doc comment already names the difference** ("note the **second**
+trim, which the pre-fix inline parsers lacked, so padding tucked inside
+the quotes used to survive into the stored title"), so the port knew the
+two v4 spellings differed; `dcab791c2` has now collapsed v4 onto the
+`normalizeTitle` one. The fix is a second `js_trim` in two functions plus
+the corpus arms to prove it. **Not made here** — this lane changes no v5
+behavior, and the surface is a generator path, not one of this lane's
+artifacts. ⚠ **The bulk sweep cannot be expected to catch it**: the
+verdict path (which the families drive) is the neutral half, and no
+committed corpus vector carries a padded-quoted title. A green regen here
+is not coverage.
+
+### Unit 1.1 — the bulk neutrality sweep
+
+_(recorded below once run — §C holds it until lanes P4.D126–P4.D128 close.)_
+
+### Unit 2 — the four hunk-read ratifications
+
+- **`487ae57fe` — NO-PORT-RATIFIED.** Nine test files + docs; the only
+  lib/app hunks are the bug-77 notice extraction from `useSSEStreaming.ts`
+  into a new `useToolExecutionStatus.ts`. Verified structure-only: the
+  `ToolExecutionStatus` interface, `TOOL_STATUS_DISMISS_MS = 6000`, and
+  all three callbacks move verbatim (the sole edit is a
+  `toolStatusTimerRef` → `timerRef` rename), the unmount cleanup splits so
+  each hook clears its own timer, and the extracted
+  `buildFailedAttachmentWarning` composes byte-identically to the deleted
+  inline block behind the exact negation of its guard. v5 ported that
+  notice as its own single-door surface in the `979652a9` round
+  (`salon-conversation.ts:2850-2880`, same 6000 ms, same
+  supersede/settle/turn-boundary semantics) and the bug-94 sentence at
+  `:2944-2956`, so a v4-internal hook extraction has no v5 move.
+- **`561466cfe` — NO-PORT-RATIFIED.** Pure deletions plus the HAIR
+  guidance dedup. The dedup's byte-neutrality is **measured, not
+  asserted**: both module versions were evaluated under `tsx` and all six
+  string exports compared byte-for-byte, including the composed
+  `FULL_FIELD_SEMANTICS` (5,163 chars) — 6/6 BYTE-IDENTICAL, so no prompt
+  text moved. `IDENTITY_STACK_BUILDER_VERSION` is untouched by the commit
+  (the only hits are the message and `DEAD-CODE-REPORT.md`; it remains
+  `= 2` at `system-prompt-builder.ts:145`, which is what both apps stamp).
+- **`7509c5cfb` — NO-PORT-RATIFIED.** The manifest hunk is the version
+  line alone (`1.0.41` → `1.0.42`); `package.json` adds the
+  `@quilltap/plugin-types` declaration; `index.js` is not in the file
+  list, so the bundle is unchanged. v5's hand-maintained
+  `provider_manifest/manifests/*.json` carry no plugin version field (the
+  only `version` key anywhere in them is Anthropic's `anthropic-version`
+  request header) and `gen-provider-manifests.mjs` emits none, so nothing
+  here reaches a generated manifest.
+- **`c0352fdba` — NO-PORT-RATIFIED.** `docs/CHANGELOG.md` +23/−0, one
+  file, confirmed by stat.
+- **`8440b6391` docs remainder — NO-PORT-RATIFIED** (§D; the AboutView
+  hunk is P4.D128's and was not touched).
+
+### Unit 3 — the two riders
+
+- **3a — the `help_doc_chunks` blob-column pin: the trap is structurally
+  impossible in v5, and that claim is now executable.** v4's new
+  `help-doc-chunks.repository.test.ts` pins that `registerBlobColumns` is
+  re-asserted on EVERY collection access, because it is keyed to the
+  backend rather than the repository instance. v5 has no such registry:
+  the header grep quoted in `db/help_docs.rs:58`
+  (`register_blob|blob_columns|BLOB_COLUMNS` over `crates/**/*.rs`) was
+  re-run and still returns exactly one hit — the comment quoting itself.
+  Rather than record that in prose, the lane lands
+  `crates/quilltap-harness/tests/embedding_blob_binding_guard.rs`: no
+  registry may grow back; each of the six modules owning an `embedding`
+  column keeps a `float32_to_blob(` call site; `float32_to_blob` has
+  exactly one definition. The needle carries its paren on purpose — a
+  module switching to `float32_to_blob_raw` (the headerless LEGACY
+  encoder) would satisfy a substring match while writing the wrong bytes,
+  a weakness the first draft had and the mutation pass exposed. Three
+  compiling mutations, each reddening exactly one arm: a planted
+  `register_blob_columns` line; `vector_indices.rs` downgraded to
+  `float32_to_blob_raw` (2 call sites → 0); a duplicate
+  `fn float32_to_blob(` in `db/chats.rs`.
+- **3b — one vestigial twin removed, one deliberately kept.** Of
+  `561466cfe`'s four wardrobe deletions: `GROUP_WARDROBE_FOLDER` and
+  `PROJECT_WARDROBE_FOLDER` have no v5 constant twins (the only mention is
+  an explanatory comment at `api/projects.rs:1209`, still accurate);
+  `noSharedWardrobeTiers` maps to `SharedWardrobeTiers::none()`, which is
+  **live at sixteen call sites** (the no-context archetype reads) and
+  stays; and `resolve_shared_wardrobe_tiers_for_project`
+  (`wardrobe_tiers.rs:94`) had **zero call sites** in v5 — dead in both
+  trees, so it is removed with the `resolve_project_mount_point_ids`
+  import it alone kept alive (that function stays live at three other
+  sites). A `pub` item in a library crate is invisible to `dead_code`,
+  which is why this class needs a v4 deletion to surface it at all. The
+  module header records the removal and the sha. The other seven knip
+  deletions have no v5 twin; two are named only in comments recording
+  deliberate non-ports (`folder_utils.rs:9` on `joinFolderPath`,
+  `apps/web/.../open-document-in-chat.ts:21` on `standaloneTabPayload` —
+  the latter is P4.D128's tree and was not touched), and v4's deletion
+  now confirms both calls.
+

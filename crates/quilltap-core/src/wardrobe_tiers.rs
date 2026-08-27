@@ -18,13 +18,24 @@
 //! struct, which is the same guarantee with the "forgot a tier" hole welded
 //! shut — there is no way to construct the carrier that names only one tier
 //! without saying so.
+//!
+//! **Removed at v4 `561466cfe` (the 4.9.0 knip sweep):**
+//! `resolveSharedWardrobeTiersForProject` and `noSharedWardrobeTiers`. v4
+//! deleted both as unused exports; v5's twin of the first
+//! (`resolve_shared_wardrobe_tiers_for_project`) had likewise never acquired a
+//! call site here — the project-keyed entrance goes through
+//! [`SharedWardrobeTiers::project_only`] or straight to
+//! `resolve_project_mount_point_ids` — so it went with it, dead in both trees.
+//! The second is NOT vestigial here: v4's free function returned a fresh
+//! `EMPTY` spread, while v5 spells it [`SharedWardrobeTiers::none`], which is
+//! load-bearing at sixteen call sites (the no-context archetype reads). A
+//! `pub` item in a library crate is invisible to `dead_code`, which is why this
+//! class needs a v4 deletion to surface it at all.
 
 use rusqlite::Connection;
 
 use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
-use crate::tools::wardrobe_shared::{
-    resolve_project_mount_point_ids, resolve_project_mount_point_ids_for_chat,
-};
+use crate::tools::wardrobe_shared::resolve_project_mount_point_ids_for_chat;
 
 /// The shared mounts in scope for one character's wardrobe (v4
 /// `SharedWardrobeTiers` / `ResolvedSharedWardrobeTiers` — v5 has only the
@@ -85,25 +96,6 @@ pub fn resolve_shared_wardrobe_tiers_for_chat(
             character_id,
         ),
         project_mount_point_ids: resolve_project_mount_point_ids_for_chat(main, mount, chat_id),
-    }
-}
-
-/// v4 `resolveSharedWardrobeTiersForProject(projectId, characterId)` — both
-/// shared tiers when the caller already holds the project id (chat creation, the
-/// outfit composer) rather than a chat id.
-pub fn resolve_shared_wardrobe_tiers_for_project(
-    main: &Connection,
-    mount: &Connection,
-    project_id: Option<&str>,
-    character_id: &str,
-) -> SharedWardrobeTiers {
-    SharedWardrobeTiers {
-        group_mount_point_ids: resolve_group_mount_point_ids_for_character(
-            main,
-            mount,
-            character_id,
-        ),
-        project_mount_point_ids: resolve_project_mount_point_ids(mount, project_id),
     }
 }
 

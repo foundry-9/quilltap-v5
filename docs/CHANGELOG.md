@@ -344,6 +344,47 @@ either new utility makes the guard exit 1 and name the inert class and its
 call site (`hover:qt-bg-primary` → `gallery-tab.ts:198`; `hover:qt-bg-success`
 → `gallery-tab.ts:183`). v4's `packages/theme-storybook` mirror has no v5
 analog — recorded, not ported.
+#### 2026-08-27 — chore(ratify): the 4.9.0 knip/coverage riders — a blob-registry guard and one vestigial wardrobe twin
+
+_Versions: core 0.0.689, harness 0.0.593._
+
+The two riders that came with P4.D129's ratification of v4's `487ae57fe`
+(regression-test coverage) and `561466cfe` (the knip sweep). Neither v4
+commit is portable; both left a question about v5 that wanted an answer.
+
+`487ae57fe` pins v4's registerBlobColumns re-assert trap with a new
+`help-doc-chunks.repository` test: the registration is keyed to the backend,
+not the repository instance, so a cached "already registered" flag leaves a
+fresh backend without blob handling and the write path then persists an
+index-keyed JSON object where a BLOB belongs — which is how v4's "legacy
+JSON-text embeddings" were minted in the first place. v5 cannot reproduce
+that bug: it abandoned v4's document mapper, so there is no registry to
+forget, no cached flag, and no `JSON.stringify` fallback a Float32 vector
+could land in. `db/help_docs.rs` and `db/help_doc_chunks.rs` already record
+that finding at length, ending with the instruction not to add a
+registration mechanism in order to have something to register.
+
+A prose instruction is not a pin, so the new
+`embedding_blob_binding_guard` makes the claim executable in three arms:
+nothing under `crates/` may name a blob-column registration mechanism (the
+sole allowed hit is the doc comment quoting the grep); each of the six
+modules owning a table with an `embedding` column still carries a
+`float32_to_blob(` call site; and `float32_to_blob` has exactly one
+definition. The needle carries its paren deliberately — a module quietly
+switching to `float32_to_blob_raw`, the headerless legacy encoder, would
+satisfy a substring match while writing the wrong bytes. All three arms
+mutation-proven with compiling mutations, each reddening exactly one arm.
+
+`561466cfe` deleted eleven unused v4 exports, four of them P4.D71-era
+wardrobe helpers. Checked against v5: `GROUP_WARDROBE_FOLDER` and
+`PROJECT_WARDROBE_FOLDER` have no v5 constant twins;
+`noSharedWardrobeTiers` maps to `SharedWardrobeTiers::none()`, which is
+load-bearing at sixteen call sites and stays; and
+`resolve_shared_wardrobe_tiers_for_project` had never acquired a call site
+in v5 either, so it is removed here — dead in both trees — together with
+the import it alone kept alive. A `pub` item in a library crate is
+invisible to `dead_code`, which is why this class needs a v4 deletion to
+surface it at all.
 
 #### 2026-08-26 — docs(porting): four work orders for the 4.9.0-push catch-up round — all fourteen drift rows ordered
 
