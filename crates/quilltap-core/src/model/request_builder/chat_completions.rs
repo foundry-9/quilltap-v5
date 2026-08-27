@@ -138,7 +138,8 @@ fn zai_user_content(msg: &StreamMessage, results: &mut StreamAttachmentResults) 
 /// when it isn't the describe-fallback has replaced the bytes with text long
 /// before. So an attachment arriving here means the operator has asserted this
 /// model reads images, and the plugin's job is to send it. Hence no
-/// `is_vision_model` arm — the difference from `zai_user_content`.
+/// `is_vision_model` arm — the shape `zai_user_content` also adopted at v4
+/// `964ffb959` (bug 104), so the two twins now agree.
 ///
 /// Before this existed the bytes were dropped silently (v4 bug 91): the failure
 /// was reported in `attachmentResults`, which nothing displayed, so a genuinely

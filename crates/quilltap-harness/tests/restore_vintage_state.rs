@@ -580,10 +580,10 @@ fn a_pre_49_archive_lands_never_chosen_not_the_migrated_default() {
 
     // `(name, supportsImageUpload, multiCharacterPrefill)`, in name order.
     let expected: Vec<(&str, Option<i64>, Option<i64>)> = vec![
-        // both keys carried → both untouched.
-        ("Both Predate", Some(1), None),
         // ANTHROPIC, both absent → the historic map says vision, the prefill is
         // "never chosen". Pre-fix this row was `(0, 1)` — the worst of the six.
+        ("Both Predate", Some(1), None),
+        // both keys carried → both untouched.
         ("Carried Both", Some(1), Some(0)),
         // lowercase `openai`, both absent → the map is matched case-insensitively.
         ("Lowercase Legacy", Some(1), None),
@@ -599,6 +599,6 @@ fn a_pre_49_archive_lands_never_chosen_not_the_migrated_default() {
         rows.iter().map(|(n, i, m)| (n.as_str(), *i, *m)).collect();
     assert_eq!(
         got, expected,
-        "the six seeding shapes must land what their owners chose, not the          migrated table defaults"
+        "the six seeding shapes must land what their owners chose, not the migrated table defaults"
     );
 }

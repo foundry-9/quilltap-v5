@@ -2850,8 +2850,9 @@ export class SalonConversation {
   private static readonly TOOL_STATUS_DISMISS_MS = 6000;
 
   /**
-   * The single door for raising the notice (v4 `publishToolExecutionStatus`,
-   * `:342-357`). A `'pending'` notice stays up until it settles or the turn
+   * The single door for raising the notice (v4 `publishToolExecutionStatus` —
+   * extracted from `useSSEStreaming.ts` into `useToolExecutionStatus.ts` at
+   * v4 `487ae57fe`, structure-only). A `'pending'` notice stays up until it settles or the turn
    * ends; a settled one schedules its own dismissal, so no caller has to
    * remember to tear it down. Each publish supersedes the timer before it.
    */
@@ -2867,7 +2868,8 @@ export class SalonConversation {
   }
 
   /**
-   * Turn-boundary cleanup (v4 `clearPendingToolExecutionStatus`, `:333-340`):
+   * Turn-boundary cleanup (v4 `clearPendingToolExecutionStatus`, now in
+   * `useToolExecutionStatus.ts` since v4 `487ae57fe`):
    * drop a notice that is still `'pending'` — its tool result never arrived. A
    * settled notice is left alone; its own countdown is already running and
    * cutting it short would rob the user of the outcome.

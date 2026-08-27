@@ -6,7 +6,9 @@
 //! [`derive_folder_path_from_storage_key`], [`resolve_effective_folder_path`]; and
 //! the files-family folders hierarchy + validation (P4.6ae): [`get_folder_depth`],
 //! [`get_parent_path`], [`get_folder_name`], [`validate_folder_path`]. The unported
-//! remainder (`listFolders`, `joinFolderPath`) has no v5 consumer yet.
+//! remainder (`listFolders`, `joinFolderPath`) has no v5 consumer — and v4's
+//! own knip sweep (`561466cfe`) deleted `joinFolderPath` as unused, settling
+//! the question on both sides.
 //!
 //! ## Faithful v4 shapes
 //!

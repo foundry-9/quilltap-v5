@@ -12,6 +12,63 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — port(wires): the dcab791c2 title second-trim, the #47 envelope retirement, the splice self-test pin
+
+_No crate versions bumped (accumulated in the sibling review-fixes commit)._
+
+The unification wires — the cross-lane obligations no single lane owned:
+
+- **The `dcab791c2` non-neutral hunk lands in v5** (P4.D129's escalation 1):
+  v4's dedup sweep collapsed the four inline title-generation cleaners onto
+  `cleanTitle`, which trims a SECOND time after stripping the wrapping quote
+  pair. v5's `clean_title` and `clean_generated_title`
+  (`services/context_summary/tasks.rs`) carried the pre-sweep spelling —
+  padding tucked inside quotes survived into the stored title, and the length
+  cap measured before the trim. Both now second-trim, red-first at unit tier
+  (two new arms failed against the pre-fix cleaners), and the
+  `chat_regenerate_title_tier3` family gains the
+  `regen_title_quoted_padded_inside` case on both sides so the oracle pins it
+  end-to-end. `normalize_title`'s doc records the convergence.
+- **The finding-#47 web-edge tripwire retired to a plain equality**
+  (P4.D129's escalation 4): v4 adopted the corrupt-vault 503 refusal at
+  `13ddc5ee`; the characters-update corpus arm was retired then, but
+  `store_unavailable_envelope`'s twin was missed because the family SKIPs
+  without its env var, and it fired at the P4.D129 neutrality sweep. Arm 2
+  now compares both sides as equals against the recorded oracle answer
+  (status, error, body-key shape).
+- **The `--nocapture` splice gains its regression pin** (P4.D129's own review
+  standard applied to it): the splice is extracted to a testable
+  `splice_nocapture` helper and `--self-test` grows four arms — flat,
+  continued (the P4.D129 bug shape asserted not to recur mid-continuation),
+  and already-spliced.
+
+#### 2026-08-27 — fix(review): the 4.9.0-push §3 review fixes — the hover pair, swapped fixture comments, stale cross-references
+
+_Versions: core 0.0.696, harness 0.0.598, web 0.0.97, SPA 0.5.586._
+(The web bump belongs to the sibling wires commit's `store_unavailable_envelope`
+retirement; all four bumps ride here so the pair accumulates once.)
+
+The unification review's findings across the four 4.9.0-push lanes, none
+blocking:
+
+- The two destructive-confirm buttons v4 styles with
+  `hover:qt-bg-destructive/90` (`FileDeleteConfirmation.tsx:50`,
+  `OrphanCleanupModal.tsx:60`) lacked the hover step in v5 — the same
+  pre-existing hover-gap class P4.D128 closed at `file-preview-modal.ts:106`,
+  found on the census's two unrecorded rows. Both closed.
+- `restore_vintage_state.rs`: the "Both Predate" / "Carried Both" row comments
+  were swapped (values were correct — they match the red-first table and the
+  archive builder); an assert message carried a flattened multi-line literal's
+  embedded spaces.
+- `chat_completions.rs`: the NanoGPT twin's doc-comment still claimed the
+  no-vision-arm shape as "the difference from `zai_user_content`" — no longer
+  a difference since bug 104's port; reworded to record the convergence.
+- Stale cross-references settled: `salon-conversation.ts`'s notice comments
+  now name `useToolExecutionStatus.ts` (the v4 `487ae57fe` extraction),
+  `folder_utils.rs` records v4's own deletion of `joinFolderPath`
+  (`561466cfe`), and the `data-dir-paths` recipe pair drops its finished-round
+  "PINNED worktree — the checkout is dirty" prose.
+
 #### 2026-08-27 — docs(porting): the P4.D126 lane record — deferrals, out-of-scope families, and the gate
 
 _Docs-only change._

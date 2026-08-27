@@ -9,7 +9,7 @@
 //! inputs verbatim — there is no duplicated case list to drift, and a
 //! disagreement can only be about the LOGIC.
 //!
-//! Generate the oracle (Node 24, from the PINNED v4 worktree — see the .ts):
+//! Generate the oracle (Node 24, from the v4 checkout — see the .ts):
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-data-dir.ndjson \
 //!     $N/node --import tsx $V5W/harness/oracle/cases/data-dir-paths.ts

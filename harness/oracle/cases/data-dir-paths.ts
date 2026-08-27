@@ -27,7 +27,8 @@
  * capabilities parse (trim / empty / duplicate); and the QUILLTAP_HOST_DATA_DIR
  * override both inside and outside a container.
  *
- * Run (Node 24, from the PINNED v4 worktree — the checkout is dirty):
+ * Run (Node 24, from the v4 checkout — or a pinned worktree when the drift
+ * ledger's regen rule requires one):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-data-dir.ndjson \
