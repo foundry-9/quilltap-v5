@@ -233,6 +233,25 @@ one thing this can no longer do is fail the whole dashboard because of an
 error raised by a conversation nobody was going to see — a case these reads
 do not produce, since every read made for a discarded conversation is also
 made for the twelve that are kept.
+#### 2026-08-27 — port(wardrobe): the "Wear an outfit…" pull-down component
+
+_Versions: SPA 0.5.588._
+
+An Angular port of v4's new `components/wardrobe/outfit-quick-pick.tsx`
+(`aec86a613`, 138 lines): a full-width toggle with a rotating chevron over a
+`role="listbox"` panel that lists every composite in the pool, title-sorted,
+each row naming the slots it claims and whether it replaces them. Nothing hosts
+it yet — the composer wiring follows.
+
+Two details are load-bearing and are pinned by spec. The Escape handler is a
+real capture-phase `document` listener that calls `stopPropagation`, so closing
+the menu does not dismiss the enclosing wardrobe dialog with it — a template
+`(document:keydown.escape)` binding is a bubble listener and would; a spec-level
+dialog stub proves the difference. And where v4 returns `null` for a
+composite-free pool, an Angular host element cannot leave the DOM, so it takes
+the `hidden` attribute instead, which also drops it out of the composer's
+`space-y-2` sibling chain and keeps the first bundle card's spacing v4's.
+
 #### 2026-08-27 — port(wardrobe): the composed-outfit pool split, with v4's collation recorded
 
 _Versions: SPA 0.5.587._
