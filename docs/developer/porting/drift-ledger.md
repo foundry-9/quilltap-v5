@@ -23,19 +23,21 @@ probe verifies against._
   searches every document store" (v4 main, 2026-08-25), adopted at the
   `b220999d`-round unification (2026-08-26, the P4.D119→P4.D120 ∥ P4.D121 ∥
   P4.D122 drift catch-up).
-- **Checked:** 2026-08-26 (`/driftcheck`, main-checkout session, evening —
-  after the `b220999d`-round dogfood pass).
-- **v4 `main` HEAD at check:** `f3892158d` — **TWO commits past the
-  baseline** (`664cfca84`, `f3892158d`, both 2026-08-26).
+- **Checked:** 2026-08-26 (the `f3892158d`-round unification's probe —
+  v4 drifted DURING the round; see the two UNPROCESSED rows in §3).
+- **v4 `main` HEAD at check:** `561466cfe` — **FOUR commits past the
+  baseline** (`664cfca84`, `f3892158d` — both ORDERED and in flight this
+  round — plus `487ae57fe`, `561466cfe`, all 2026-08-26).
 - **v4 `bugfix` tip at check:** `3a76b17df` — "bugfix: started 4.8.4 bug
   branch" (**unmoved** since the last check; the fork marker). No unabsorbed
   bugfix-side content: the content diff against main is main-forward only
   (`git diff --stat main bugfix -- lib/ app/ packages/ plugins/` = 2,711
   insertions / 32,517 deletions, i.e. bugfix *lacking* main's newer work).
 - **Checkout at check:** branch `main`, tree **clean**.
-- **Verdict: DRIFT PENDING — 2 commits.** Both land on already-ported
-  surfaces; both are substantial (a jobs/activity-accounting rework and a
-  whole new realtime subsystem). See §3.
+- **Verdict: DRIFT PENDING — 4 commits.** The first two are ORDERED and
+  being unified this round; the two that landed DURING the round
+  (`487ae57fe` tests-only + neutral extraction, `561466cfe` knip sweep)
+  are NO-PORT? candidates awaiting ratification. See §3.
 - **Regen rule in force: PIN REQUIRED.** v4 HEAD is past the baseline —
   every oracle regeneration must run from a lane-unique detached worktree
   pinned at `b220999da` (recipe in §5.1; `recipe_sweep.py --v4 "$PIN"`),
@@ -80,6 +82,8 @@ when absorbed/ratified.
 |---|---|---|---|---|---|
 | `664cfca84` | 2026-08-26 | fix(jobs): toolbar chips count whole operations, not just job rows | **PORT** | the jobs verb + `background_jobs` repo (Phase 2/3, P4.9G1 unit 1) — `GET /api/v1/system/jobs` changes wire shape; the SPA toolbar chips (P4.9P); the memory family, embeddings, the memory gate, cheap-LLM tasks, the Concierge gatekeeper, the image-generation tool handler, the wardrobe image analyzer + preview-avatar route, the character wizard, and the describe-fallback (P4.D106) each gain a span; `qt-queue-badge` CSS (P4.9P) | ORDERED(p4.d123 server ∥ p4.d125 client) |
 | `f3892158d` | 2026-08-26 | feat(realtime): push interface updates over a WebSocket, tick clocks locally | **PORT-NEW** | a whole new `lib/realtime/**` subsystem with publish points inside ported code (queue-service enqueue/cancel/claim/markCompleted/markFailed, the job dispatcher's post-commit `dispatchInvalidations`, the activity registry, autonomous-room run-state transitions); the terminal WS handler's auth (`lib/terminal/ws.ts` → `quilltap-web::terminal_routes`); `lib/format-time.ts` (v5 twin in `tasks-queue.api.ts`, P4.9G1); and roughly a dozen SPA polling sites across the Salon, characters, chat cards, the tasks queue, autonomous rooms, the memory cards, and story background | ORDERED(p4.d124 server ∥ p4.d125 client) — the round decides: the hints ride v5's EXISTING Event channel (SSE `/api/events` + the Tauri pump), no second WebSocket; the orders' §Shared contract §B is the binding shape |
+| `487ae57fe` | 2026-08-26 | test(coverage): regression tests for bugs 77, 83, 94, 99 and five uncovered modules | **NO-PORT?** | nine test files + docs; the ONLY lib/app hunks are a stated behaviour-neutral extraction on a ported surface (`useSSEStreaming.ts` → `useToolExecutionStatus.ts`, the bug-77 notice — v5 ported that notice as its own single-door surface in the `979652a9` round, so a v4-internal hook extraction has no v5 move). Ratify by verifying the extraction hunks are structure-only. One note to carry: the new `help-doc-chunks.repository` test pins the registerBlobColumns-re-assert trap — check v5's `help_doc_chunks` twin carries an equivalent pin | UNPROCESSED |
+| `561466cfe` | 2026-08-26 | chore(dead-code): knip sweep — remove 11 unused exports, dedup hair guidance | **NO-PORT?** | pure deletions of unused v4 exports + a byte-identical HAIR-guidance dedup (v4 verified no prompt-text change, no IDENTITY_STACK_BUILDER_VERSION bump). No v5 behavior moves. Follow-up candidate, not a port: check whether v5 carries live twins of the deleted exports (`GROUP_WARDROBE_FOLDER`/`PROJECT_WARDROBE_FOLDER`, `resolveSharedWardrobeTiersForProject`, `noSharedWardrobeTiers` — P4.D71-era) that are now vestigial (`v5-refactor-vestigial-v4-cruft`) | UNPROCESSED |
 
 **Row notes** (delineation detail for `/setupphase`; classified from the
 shipped hunks, not the messages):
