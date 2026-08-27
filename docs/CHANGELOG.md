@@ -167,6 +167,21 @@ proof per site; un-chunking all five sites reddened exactly those five
 proofs.
 
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
+#### 2026-08-27 — port(spa): drop the dead desktop-actions CSS (v4 1b0ce9eba)
+
+_Versions: SPA 0.5.594._
+
+The v5 share of v4 `1b0ce9eba` (deletion-only — v5 never ported the
+always-hidden `MessageDesktopActions` component itself): the three dead
+transcribed `display: none !important` rules leave `_chat.css`
+(`.qt-chat-desktop-hover-actions`, `.qt-chat-message-desktop-actions`, and
+`.qt-chat-desktop-timestamp`, all grep-confirmed template-unused), leaving
+the icon action bar's `display: flex !important` in place. The MessageRow
+copy-choice docblock and the message-row spec's test name — both of which
+cited the now-deleted `MessageDesktopActions.tsx:73` — are rewritten as
+history naming the deleting sha, and the MessageActionBar cite moves to the
+post-commit `:178`.
+
 #### 2026-08-27 — port(spa): the answer-confirmation badge — a real pinnable button
 
 _Versions: SPA 0.5.593._

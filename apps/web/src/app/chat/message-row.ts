@@ -559,12 +559,12 @@ export class MessageRow {
    * 'ASSISTANT' && onViewLLMLogs`). Only an assistant turn has a request/response
    * pair to inspect; a user message never does.
    *
-   * TITLE CHOICE: v4 has TWO action bars with DIFFERENT copy for this one button
-   * — `MessageActionBar.tsx:153` ("View LLM request/response logs") and
-   * `MessageDesktopActions.tsx:73` ("View LLM logs"). v5 has a single bar, and it
-   * is MessageActionBar's: same `qt-chat-message-action-bar` /
-   * `qt-chat-message-action-icon` classes, same hover-reveal placement, same
-   * sibling buttons. So it carries MessageActionBar's copy.
+   * COPY CHOICE (now history): v4 used to have TWO action bars with DIFFERENT
+   * copy for this one button — `MessageActionBar.tsx:178` ("View LLM
+   * request/response logs") and `MessageDesktopActions.tsx:73` ("View LLM
+   * logs"). v5 always had the single bar and carried MessageActionBar's copy;
+   * v4 `1b0ce9eba` then deleted the always-hidden MessageDesktopActions, so
+   * only that copy remains on either side.
    */
   protected readonly showLlmLogsAction = computed(
     () => this.hasLlmLogs() && this.message().role === 'ASSISTANT',

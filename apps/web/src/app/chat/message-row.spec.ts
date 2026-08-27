@@ -420,11 +420,12 @@ describe('MessageRow — the per-message LLM-logs entry (v4 MessageActionBar.tsx
     expect(entry(fixture)!.querySelector('qt-icon')!.getAttribute('name')).toBe('cpu');
   });
 
-  it('carries MessageActionBar’s copy, not MessageDesktopActions’ (v4 :153 vs :73)', () => {
-    // v4 has TWO action bars whose titles for this one button DIFFER. v5 has a
-    // single bar and it is MessageActionBar's — same qt-chat-message-action-bar /
-    // qt-chat-message-action-icon classes, same hover-reveal placement — so it
-    // takes MessageActionBar's string. Since 0bd841394 the copy lives in the
+  it('carries MessageActionBar’s copy (the sole bar since v4 1b0ce9eba deleted MessageDesktopActions)', () => {
+    // v4 USED to have two action bars whose titles for this one button differed
+    // (MessageActionBar's "View LLM request/response logs" vs the always-hidden
+    // MessageDesktopActions' "View LLM logs"); v5 always had the single bar and
+    // took MessageActionBar's string, and v4 1b0ce9eba then deleted the hidden
+    // twin outright. Since 0bd841394 the copy lives in the
     // qt-tooltip content (no `title` — the native tooltip would double up on
     // ours); focus opens the bubble immediately, so the pin reads it there.
     const fixture = renderWith(message({ role: 'ASSISTANT' }), true);
