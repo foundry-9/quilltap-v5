@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — feat(e2e): the f3892158d-round unification wires — the live hint beat goes active
+
+_Versions: SPA 0.5.583._
+
+The cross-lane proofs no single lane could run. The §Shared contract diffed
+name-for-name across sides: the six topics (`RealtimeTopic::as_str` vs the
+client `REALTIME_TOPICS`/topic map), the five kind ids in order
+(`ActivityCounts::to_json` vs the client `ACTIVITY_KINDS`), and the jobs
+response key order (server insertion vs the client reader) — all identical;
+the hint wire bytes are pinned server-side and the client discriminates on
+exactly the contract rule (`topic` + `v`). `P4D124_HINTS_LANDED` flipped
+true: the page-toolbar beat that drives a REAL `jobs` hint off the live
+event stream is active, running for the first time in the unified gate.
+
 #### 2026-08-26 — fix(spa,core,tools): the f3892158d-round §3 review findings, and the ng-run spec-build-failure hang
 
 _Versions: core 0.0.686, harness 0.0.592, SPA 0.5.582._

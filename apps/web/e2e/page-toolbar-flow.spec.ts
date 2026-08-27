@@ -227,11 +227,11 @@ test('a chip PULSES for work that started and finished between two reads', async
 });
 
 /**
- * ACTIVATE-AT-UNIFY. The `jobs` hint is emitted by the P4.D124 server lane; until
- * it lands nothing on the wire carries `{v, topic}`, so the beat below would be
- * asserting against a channel that never speaks. Flip to `true` at unification.
+ * Activated at the `f3892158d`-round unification (2026-08-26): the P4.D124
+ * server half is on the same tree, so the live event stream now carries
+ * `{v, topic}` hints and the beat asserts against a channel that speaks.
  */
-const P4D124_HINTS_LANDED = false;
+const P4D124_HINTS_LANDED = true;
 
 test('a `jobs` hint invalidates the chips with the fallback heartbeat parked', async ({ page }) => {
   test.skip(
