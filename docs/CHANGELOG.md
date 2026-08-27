@@ -183,6 +183,41 @@ worktree pinned at `8872d7efc`: the two `image-attachment-non-vision` rows
 flipped red-first (v5 produced the text-only body v4 no longer produces), a
 new `image-attachment-glm-5-3` pair records the model that named the bug, and
 all 339 other rows are byte-identical.
+#### 2026-08-26 — test(cli): mirror v4's token-level completion coverage guard
+
+_Versions: cli 0.0.14._
+
+P4.D128 unit 2, tier 2. v4's `completion-coverage.test.js` grew two guards at
+`57e7b1bc2` — the check that would have caught the four missing flags before
+they shipped. Mirrored into `crates/quilltap-cli/tests/completion_behavior.rs`,
+where both halves are in-crate and the guard needs no fixture.
+
+- **`completions_offer_every_flag_the_help_text_advertises`** — every long flag
+  named in a subcommand's own `--help` must be offered by all three templates.
+  fish spells a flag `-l 'name'` (already an exact quoted token); bash and zsh
+  are matched with a trailing-boundary rule, since `--max` is a prefix of
+  `--max-nodes` and a plain substring test passes for a flag that is not there.
+- **`bash_knows_which_docs_flags_take_a_value`** — bash cannot infer which flags
+  swallow the next word, so its `vf_*` lists are compared, as whole
+  space-delimited tokens, against the flags zsh declares with a `:value:` spec.
+- **`help_sources_cover_every_dispatched_subcommand`** — v4 asserts its help-source
+  map covers all twelve subcommands; v5 dispatches five and answers
+  `not_yet_available` for the rest, so the v5 form parses `SUBCOMMANDS` out of
+  `main.rs`, computes which have a real dispatch arm, and requires the map to
+  equal exactly that set. Implementing another subcommand now fails this file
+  until its help lands here too. (It earned its keep immediately: its first run
+  caught a bug in this test's own `SUBCOMMANDS` parser.)
+
+**Red-proven against the pre-fix templates**, and it names precisely what v4
+named: `docs: bash template is missing ["--format"]`, `docs: zsh template is
+missing ["--format"]`, `docs: fish template is missing ["--base64", "--format",
+"--uri"]`. Three further mutations, each reddening exactly one test: dropping
+`--format` from `vf_docs` alone (`do not list … ["--format"]`), dropping
+`--max` from `vf_docs` while `--max-nodes` stays (`["--max"]` — v4's
+review-bot finding, proving the token-set rather than substring comparison),
+and dropping `'--max[…]'` from zsh's `docs_opts` while `--max-nodes` stays
+(`zsh template is missing ["--max"]` — the same finding on the template scan).
+
 #### 2026-08-26 — fix(cli): complete the four flags `--help` already documents (v4 `57e7b1bc2`)
 
 _Versions: cli 0.0.13._

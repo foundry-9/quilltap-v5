@@ -90373,3 +90373,77 @@ rewrite (flag-anywhere parsing + positional store-name completion, superseding
 the pre-bug-101 description) and `packages/quilltap/README.md` (the
 `docs docker-mounts` verb, which shipped in 4.8.4 with no README entry, plus
 its "What gets completed" section). Neither has a v5 analog outside that bank.
+
+### P4.D128 unit 2, tier 2 — the token-level coverage guard mirrored
+
+v4's `packages/quilltap/lib/__tests__/completion-coverage.test.js` grew 95 lines
+at `57e7b1bc2`: the guard that would have caught unit 2's four flags before they
+shipped. Its own commit message records that the first cut of it was WRONG in a
+way the review bot caught — both new checks tested flag presence by substring,
+which passes for a flag that is not there whenever another flag has it as a
+prefix (drop `--max` from `vf_docs` and `--max-nodes` keeps the assertion
+green). The fixed form compares `vf_*` as a Set of whole space-delimited tokens
+and scans templates with a trailing-boundary match. **The mirror is of the
+FIXED form**, and both of the review bot's findings are among its mutation
+proofs.
+
+Mirrored into `crates/quilltap-cli/tests/completion_behavior.rs` — v5's help
+text and templates are both in-crate (`include_str!`), so the guard is
+self-contained: no fixture, no DB, no v4 checkout.
+
+**Three tests:**
+
+1. `completions_offer_every_flag_the_help_text_advertises` — for each
+   subcommand × each shell, every long flag named anywhere in that
+   subcommand's `--help` must be offered. fish is matched on `-l 'name'`
+   (already an exact quoted token, as in v4); bash and zsh through
+   `mentions_flag`, which requires the match to end at a non-`[a-z0-9-]`
+   character.
+2. `bash_knows_which_docs_flags_take_a_value` — parses `local vf_global="…"`
+   and `local vf_docs="…"` into whole tokens (the scanner reads
+   `$vf_global$vf_docs`, so a flag in either list counts) and requires them to
+   cover every flag zsh's `docs_opts` declares with a `:value:` spec. 13 valued
+   flags at this vintage; the `> 5` floor is v4's.
+3. `help_sources_cover_every_dispatched_subcommand` — **the one structural
+   divergence, and it is deliberate.** v4 asserts its `HELP_SOURCES` map covers
+   all twelve entries of `SUBCOMMANDS`. v5 dispatches five (`db`, `docs`,
+   `instances`, `completion`, `recall-replay`) and answers `not_yet_available`
+   for the other seven, which print no help at all — so a v5 map over twelve
+   would be a map over seven empty strings. Instead the test parses
+   `const SUBCOMMANDS: &[&str] = &[…]` out of `src/main.rs`, derives the
+   dispatched subset from the `"name" => ` arms, and requires the help-source
+   map to equal exactly that set. Implementing another subcommand fails this
+   file until its help lands here too — v4's intent, mechanically enforced on
+   v5's surface.
+
+v5's help lives in `src/help/*_help.txt` for four of the five;
+`recall-replay`'s is an inline `const HELP: &str = "…";`, pulled from the
+source the same way v4 pulls a help function's body.
+
+**Red-proof (the guard against the pre-fix templates).** With `git show HEAD:`
+copies of the three templates restored, the guard fails naming exactly what v4
+named and nothing more:
+
+```
+docs: bash template is missing ["--format"]
+docs: zsh template is missing ["--format"]
+docs: fish template is missing ["--base64", "--format", "--uri"]
+```
+
+**Three further mutations, each reddening exactly one test:**
+
+| mutation | result |
+|---|---|
+| drop `--format` from `vf_docs` only (zsh keeps its spec) | `bash_knows_which_docs_flags_take_a_value` FAILED — `do not list the valued docs flags ["--format"]` |
+| drop `--max` from `vf_docs`, leaving `--max-nodes` | same test FAILED — `["--max"]`. **This is v4's review-bot finding**: it proves the whole-token Set, not a substring test |
+| delete `'--max[Maximum results]:n:'` from zsh's `docs_opts`, leaving `--max-nodes` | `completions_offer_every_flag_the_help_text_advertises` FAILED — `docs: zsh template is missing ["--max"]`. The same finding on the template scan, proving the trailing-boundary rule |
+
+`help_sources_cover_every_dispatched_subcommand` proved itself on its FIRST
+run: the initial `subcommands()` anchored on `rest.find('[')`, which lands on
+the `[` of `&[&str]` rather than the array's, and the test reddened with
+`left: [... "db" ...] right: [... no "db" ...]`. Fixed by anchoring on the full
+declaration.
+
+**Run:** `cargo test -p quilltap-cli --test completion_behavior` — 7 tests, no
+env vars, no fixtures. (`zsh_template_is_syntactically_valid` still skips where
+no zsh answers, as in v4.)
