@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(porting): the P4.D126 lane record — deferrals, out-of-scope families, and the gate
+
+_Docs-only change._
+
+Closes the P4.D126 lane record in `status-log.md`: the tier-3 deferrals (the
+five help/docs prose rows banked to `p4.9i2` by name; the 💸 pre-4.9-archive
+live proof queued for the next dogfood pass), the three out-of-§A families the
+import-site change reached and this lane therefore re-ran, and the lane gate.
+
 #### 2026-08-27 — fix(backup): seed the profile columns an older archive predates (bug 103)
 
 _Versions: core 0.0.691, harness 0.0.594._

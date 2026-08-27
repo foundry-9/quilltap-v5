@@ -89933,3 +89933,91 @@ v4 upcases first.
 and reported loudly, `system_import_state` 36/36 and
 `system_import_equivalence` (the import site's change reaches them, and no lane
 owns them).
+
+### Tier-3 deferrals (loud) — P4.D126
+
+**Item 7 — the help/docs prose rows → the `p4.9i2` bank. Nothing ported; these
+are the exact rows, so the bank can be discharged without re-deriving them.**
+
+- **`help/system-backup-restore.md` (+28/−1 at `e000d6bfc`)** — a new
+  "Restoring an Older Backup" section (what the seeding does and why an archive
+  older than a column is not the same as a column set to its default), plus the
+  same "What's Included" corrections listed below. v5 ships the help corpus, so
+  this is content, not behaviour — but it IS user-visible and belongs with
+  whichever lane discharges `p4.9i2`.
+- **`help/connection-profiles.md` (+2)** — one archive-arrival paragraph beside
+  the existing upgrade-path one.
+- **`docs/BACKUP-RESTORE.md` (+32/−2)** — the "What's Included" list was several
+  cycles stale: no document stores, instance settings, chat settings, text
+  replacement rules, Document Mode state or embedding family, and still
+  advertising the `wardrobe_items` / `outfit_presets` tables dropped in 4.7 and
+  4.5. Rewritten with the exclusions and their reasons.
+- **`docs/developer/DDL.md` (+12/−1)** — documents `Wardrobe/instructions.md`
+  and the scenario `archived` frontmatter key.
+- **`docs/developer/bugs.md` (+5) and
+  `docs/developer/bugs/bug-103-restore-profile-column-defaults.md` (+126)** —
+  v4-repo bookkeeping. **NO-PORT**, per the order.
+
+**Item 8 — 💸 the live proof → the dogfood queue.** Restore a genuine pre-4.9
+archive on the Friday copy and read the two columns back: a pre-4.9 backup's
+Anthropic profile must come back with `multiCharacterPrefill` NULL (not 1) and
+its `supportsImageUpload` intact. Friday IS a migrated instance, so it is the
+one place bug 103 is observable outside a fixture — the differential over a
+freshly-provisioned target is structurally blind to the prefill half (see unit
+3's record). The `combined.log` should carry the
+`Seeded connection-profile columns the archive predates` debug line with the
+two flags, which is also P4.49's first look at a seeding event.
+
+### Out-of-§A families this lane re-ran, and why (reported loudly)
+
+The order's §A gives P4.D126 seven families. Unit 3's import-site change reaches
+three more, and **no lane owns any of them** (P4.D127 owns the provider
+families, P4.D128 the CLI, P4.D129 no v5 source; P4.D129's bulk sweep excludes
+only §A families by name, so a red in these would have landed on it with no
+owner). Rather than ship a change that reddens a family nobody checked, this
+lane regenerated and re-ran them at the same `8872d7efc` pin:
+
+- **`system_import_state`** — 36/36. It went RED first, which is how v4's own
+  regression was found (see unit 3, finding 3); the corpus item was repaired and
+  the family is green. **Its committed payload changed**
+  (`harness/oracle/cases/system-import-execute.test.ts`), so any other lane
+  holding a stale `/tmp/oracle-system-import-execute.ndjson` must regenerate.
+- **`system_import_equivalence`** — green on the same oracle.
+- **`connection_profiles_tier2_equivalence`** — the `CpCreate` tri-state reaches
+  its two create sites; mapped `Option<bool>` → `Option<Option<bool>>` as
+  omit-vs-write (the corpus expresses "absent vs a stored boolean", and the
+  create route never writes an explicit NULL), regenerated and green.
+
+### P4.D126 — lane gate and close
+
+Drift-ledger §2 freshness probe re-run at lane close: **PASS** (branch `main`,
+tree clean, nothing past `8872d7efc`, `bugfix` unmoved).
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with
+  `--features quilltap-core/native-transport`.
+- `cargo test --workspace` with the lane's fourteen-variable env block:
+  **470 test binaries / 2,537 passed / 0 failed**, one pre-existing ignored
+  doctest (`realtime::bus::publish_realtime`), **zero `SKIP:` lines**.
+- The lane's families re-run BY NAME over oracles regenerated fresh from the
+  lane-unique pinned worktree `/tmp/qt-v4-pin-p4d126-8872d7efc` (`8872d7efc`),
+  through `harness/tools/recipe_sweep.py --run <family> --v4 "$PIN"`:
+  `system_delete_data_equivalence` (9 oracle cases + the new wiring pin),
+  `memory_delete_tier2_equivalence`, `memory_cascade_tier2_equivalence`,
+  `system_restore_equivalence` (6 preview cases), `system_restore_state`
+  (14 cases), `restore_vintage_state` (5, no oracle by design),
+  `qtap_import_equivalence`, `connection_profile_legacy_fields_equivalence`
+  (306 cases), plus the three out-of-§A families above.
+- Changed bytes grepped in the regenerated NDJSONs rather than trusting green:
+  v4's own `restore_legacy_profiles_replace` state carries
+  `Both Predate`/`Lowercase Legacy` at `supportsImageUpload = 1` and every
+  absent-prefill row at NULL.
+- `recipe_sweep.py --self-test`: 0 failures. The new family's recipe header uses
+  the canonical `cd ~/source/quilltap-server` form — the driver's
+  `stale_v4_pin_path` check caught a hard-coded lane pin on the first draft (the
+  known lane-pin trap, third time it has bitten).
+
+Versions: core 0.0.691, harness 0.0.594. No other crate touched; `apps/web` not
+touched, so no SPA gate.
+
+**Commits:** `732f785b` (unit 1), `f0b7223f` (unit 2), `c6dc3811` (unit 3).
