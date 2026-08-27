@@ -90447,3 +90447,60 @@ declaration.
 **Run:** `cargo test -p quilltap-cli --test completion_behavior` — 7 tests, no
 env vars, no fixtures. (`zsh_template_is_syntactically_valid` still skips where
 no zsh answers, as in v4.)
+
+### P4.D128 unit 3 — the AboutView hunk (v4 `8440b6391`)
+
+Per the round's Shared contract §D, this lane owns exactly the
+`app/about/AboutView.tsx` hunk of v4's 4.9.0 documentation-freshness sweep;
+the commit's docs remainder is P4.D129's NO-PORT ratification. Neither lane
+touches the other's half, and nothing outside `apps/web/src/app/screens/about/`
+moved here.
+
+**(a) The provider sentence.** `Anthropic, OpenAI, Google Gemini, Grok,
+Ollama, OpenRouter, and OpenAI-compatible APIs` → the same list with
+`DeepSeek, Z.AI, NanoGPT` inserted after Grok. All three are real v5 providers
+(Z.AI + NanoGPT through the P4.D100→P4.D101 round, DeepSeek earlier), so the
+sentence is as true here as in v4.
+
+**(b) The new bullet**, between "LLM tools" and "Database protection", in v4's
+position: title `Live interface`, body
+
+> a single multiplexed socket tells every open tab the moment something changes
+> — queued errands, autonomous rooms, generated backdrops — so screens refresh
+> themselves rather than asking again every few seconds, and every "4m ago" in
+> the house turns over on the same tick
+
+v4's JSX spells the punctuation as entities (`&mdash;` ×2, `&ldquo;`/`&rdquo;`).
+v5's about page holds plain strings that Angular renders as text, so the
+RENDERED characters are what is carried: U+2014 for both dashes, U+201C/U+201D
+around `4m ago`. The spec asserts them by escape (`—`, `“`,
+`”`) so the codepoints are legible in the pin rather than eyeballed.
+
+**The recorded divergence this bullet sits on.** It says "socket"; v5 pushes
+the same invalidation hints over its existing SSE `Event` channel, which is the
+`f3892158d` round's LOCKED mechanism divergence (one boundary, no second
+WebSocket). v4's string is ported as written: it is user-facing copy in the
+house register, the mechanism-divergence record already covers the word, and
+rewording it would be a v5 invention of exactly the kind the announcement audit
+(P4.26/finding #43) exists to prevent.
+
+**The pin.** `about.spec.ts` gains
+`carries the 4.9.0 provider list and the Live interface bullet` — the P4.D68
+release-freshness idiom — asserting both strings plus two `indexOf` orderings
+(`LLM tools` < `Live interface` < `Database protection`). Static template prose
+has no other guard against silent rot.
+
+**Mutation-proven, three ways, each reddening only this test:**
+
+| mutation | failure |
+|---|---|
+| revert the provider sentence to the seven-provider form | `expected '…' to contain 'Anthropic, OpenAI, Google Gemini, Gro…'` |
+| delete the Live interface bullet | `expected '…' to contain 'Live interface'` |
+| move the bullet after "Database protection" | `expected 5759 to be less than 5649` (the second ordering assertion) |
+
+**Gate:** `npm test` 361 files / **5,399** tests / 0 failed (5,398 → 5,399, the
+one new test); `npm run build` clean; `npm run lint` 937.
+
+**💸 dogfood row:** the About page's new bullet and provider sentence on
+screen — cheap, and the only proof that the strings render with the right
+punctuation rather than escapes.

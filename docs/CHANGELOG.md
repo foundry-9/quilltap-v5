@@ -183,6 +183,31 @@ worktree pinned at `8872d7efc`: the two `image-attachment-non-vision` rows
 flipped red-first (v5 produced the text-only body v4 no longer produces), a
 new `image-attachment-glm-5-3` pair records the model that named the bug, and
 all 339 other rows are byte-identical.
+#### 2026-08-26 — feat(about): the 4.9.0 provider list and the Live interface bullet (v4 `8440b6391`)
+
+_Versions: SPA 0.5.585._
+
+P4.D128 unit 3 — the one code hunk of v4's 4.9.0 documentation-freshness sweep
+(the commit's docs remainder is P4.D129's ratification, per the round's Shared
+contract §D).
+
+The Multi-provider bullet gains DeepSeek, Z.AI and NanoGPT — all three shipped
+in v5 too — and a new **Live interface** bullet slots between "LLM tools" and
+"Database protection", in v4's position.
+
+v4's JSX writes the copy with HTML entities (`&mdash;`, `&ldquo;`/`&rdquo;`);
+v5's about page stores plain strings, so the RENDERED characters are carried:
+em-dashes and curly quotes, byte-for-byte what v4's browser shows.
+
+The bullet says "socket" while v5 pushes the same invalidation hints over SSE —
+the `f3892158d` round's locked mechanism divergence, already on the record.
+The register is user-facing copy and it is v4's, verbatim; nothing is reworded.
+
+Both strings and the bullet's position are spec-pinned (the about-page spec
+idiom from the P4.D68 release-freshness mirror). Mutation-proven three ways:
+reverting the provider sentence, deleting the bullet, and moving it after
+"Database protection" each redden the new test and nothing else.
+
 #### 2026-08-26 — test(cli): mirror v4's token-level completion coverage guard
 
 _Versions: cli 0.0.14._

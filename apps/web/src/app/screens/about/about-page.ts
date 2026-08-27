@@ -395,11 +395,15 @@ export class AboutPage {
     },
     {
       title: 'Multi-provider support',
-      body: 'Anthropic, OpenAI, Google Gemini, Grok, Ollama, OpenRouter, and OpenAI-compatible APIs',
+      body: 'Anthropic, OpenAI, Google Gemini, Grok, DeepSeek, Z.AI, NanoGPT, Ollama, OpenRouter, and OpenAI-compatible APIs',
     },
     {
       title: 'LLM tools',
       body: 'web search, image generation, file management, agent mode, MCP connector, custom tool plugins',
+    },
+    {
+      title: 'Live interface',
+      body: 'a single multiplexed socket tells every open tab the moment something changes — queued errands, autonomous rooms, generated backdrops — so screens refresh themselves rather than asking again every few seconds, and every “4m ago” in the house turns over on the same tick',
     },
     {
       title: 'Database protection',

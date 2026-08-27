@@ -69,6 +69,32 @@ describe('AboutPage (v4 app/about/AboutView.tsx)', () => {
     expect(text.indexOf('The Workspace')).toBeLessThan(text.indexOf('Aurora – Characters'));
   });
 
+  /**
+   * v4 `8440b6391` (the 4.9.0 documentation-freshness sweep) added DeepSeek,
+   * Z.AI and NanoGPT to the provider sentence and a new "Live interface"
+   * bullet between "LLM tools" and "Database protection". v4's JSX spells the
+   * dashes and quotes as HTML entities (`&mdash;`, `&ldquo;`/`&rdquo;`); v5
+   * stores plain strings, so the RENDERED characters are what is carried.
+   *
+   * The bullet says "socket" while v5 pushes the same hints over SSE — the
+   * f3892158d round's locked mechanism divergence. The copy is v4's, verbatim.
+   */
+  it('carries the 4.9.0 provider list and the Live interface bullet', async () => {
+    const fixture = await render({ kind: 'healthy', version: '0.0.28' });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain(
+      'Anthropic, OpenAI, Google Gemini, Grok, DeepSeek, Z.AI, NanoGPT, Ollama, OpenRouter, and OpenAI-compatible APIs',
+    );
+    expect(text).toContain('Live interface');
+    expect(text).toContain(
+      'a single multiplexed socket tells every open tab the moment something changes \u2014 queued errands, autonomous rooms, generated backdrops \u2014 so screens refresh themselves rather than asking again every few seconds, and every \u201C4m ago\u201D in the house turns over on the same tick',
+    );
+    // v4 slots it between "LLM tools" and "Database protection".
+    expect(text.indexOf('LLM tools')).toBeLessThan(text.indexOf('Live interface'));
+    expect(text.indexOf('Live interface')).toBeLessThan(text.indexOf('Database protection'));
+  });
+
   it('renders the version LOCALLY from the §3 health field', async () => {
     const fixture = await render({ kind: 'healthy', version: '0.0.28' });
     const badge = (fixture.nativeElement as HTMLElement).querySelector(
