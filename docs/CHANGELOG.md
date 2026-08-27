@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(orders): the four-lane round — the `aec86a613` pull-down drift, the collapse pockets, the harness follow-ups, the systemHome profile
+
+_Docs-only change._
+
+Four work orders for the next round, all lanes fully disjoint (the binding
+ownership table is identical in each): **P4.D130**
+(`p4.d130-outfit-quick-pick-spa.md`) ports the `aec86a613` outfit
+pull-down into the SPA composer — the round's one drift commit, marked
+ORDERED in the drift ledger — and carries the two wardrobe e2e-fixture
+debts (the Quilltap General store widening that un-parks the
+component-transfer beat, and the duplicate-General-store diagnosis);
+**P4.62** (`p4.62-wrong-type-collapse-pockets.md`) adjudicates P4.60's
+three deferred census pockets (`system_data_routes.rs` 13 sites,
+`files_routes.rs` 5 caller-input, `llm_logs_routes.rs` 1); **P4.63**
+(`p4.63-harness-differential-followups.md`) discharges the 4.9.0-push
+round's four named harness follow-ups (the bug-105 oracle-side divergence
+tripwire, the `attach_mount_file_equivalence` pre-existing red, the
+deadline-warn prefix assert, the embedding-blob guard notes); **P4.64**
+(`p4.64-systemhome-profile.md`) profiles the 7.5 s landing dashboard
+measure-first, payload-identical by rule. Regen rule for every lane: PIN
+REQUIRED (P4.D130's own family at `aec86a613`; everything else at the
+`8872d7efc` baseline).
+
 #### 2026-08-27 — docs(drift): record the `aec86a613` wardrobe outfit pull-down — DRIFT PENDING, pin required
 
 _Docs-only change._
