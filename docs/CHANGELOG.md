@@ -167,6 +167,34 @@ proof per site; un-chunking all five sites reddened exactly those five
 proofs.
 
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
+#### 2026-08-27 — port(spa): the Tooltip primitive — Quilltap draws its own tooltips
+
+_Versions: SPA 0.5.591._
+
+The v5 half of v4 `0bd841394`'s foundation: `app/ui/tooltip.ts`, an Angular
+port of v4's new `components/ui/Tooltip.tsx`. The component host is the
+`qt-tooltip-anchor` (v4's wrapper span); the bubble renders under `@if` and an
+`afterRenderEffect` reparents it onto `document.body` (v4's `createPortal`),
+with the reparented node removed by hand on close — Angular tears the embedded
+view down against the container it created the nodes in, so a moved node
+otherwise outlives its view. Faithful contract: 200 ms dwell / immediate open
+on `focusin` (React's delegated `onFocus`), 120 ms close grace, top/bottom
+flip + viewport clamp with v4's margins (8 px viewport, 6 px anchor gap),
+rAF-coalesced scroll/resize follow with capture-phase scroll, Escape closes,
+`pinnable` click-to-pin with outside-pointerdown dismissal, `interactive`
+lets the pointer enter the bubble, identity-stable coords, `aria-hidden`
+bubble with the accessible name staying on the trigger. The `_surfaces.css`
+`.qt-tooltip` rule is rewritten to v4's post-commit form (fixed, `z-[70]`,
+max-width, border color-mix, popover shadow, `pre-line`, pointer-events
+gating) and the new `qt-tooltip-anchor`/`-body`/`-title`/`-section`/
+`-section-label`/`-quote`/`-hint` family lands in v4's order. Ten specs: the
+five mirrors of v4's `tooltip.test.tsx` Tooltip block plus five
+emitted-constant pins (constants emitted from v4's real source at the pinned
+worktree — see the spec header's regen recipe). Mutation-proven: the flip
+inversion, the broken focus-immediate, and an ANCHOR_GAP nudge each redden
+the right specs; the closeSoon inner pinned-guard mutation survives because
+every pinning path also clears the timer — v4's own defensive redundancy,
+recorded rather than vacuously pinned.
 
 _Docs-only change._
 
