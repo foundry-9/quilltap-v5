@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-26 — docs(porting): four work orders for the 4.9.0-push catch-up round — all fourteen drift rows ordered
+
+_Docs-only change._
+
+The `/setupphase` planning pass over the drift ledger's fourteen-commit
+4.9.0 block. Four parallel lanes, ownership disjoint, meeting only at the
+binding Shared contract (§A family ownership, §B pins at the `8872d7efc`
+target baseline, §C sweep serialization, §D the AboutView split):
+
+- `p4.d126-memory-wipe-batch-bug103.md` — the full-wipe memory deletion
+  routed through the unlink-batch chokepoint (`914b59e13`), the SQLite
+  bind-variable chunking v5 measurably lacks at both `db/memories.rs`
+  sites (`805ef12bf`), and bug 103's shared legacy profile-column seeding
+  for restore + `.qtap` import (`e000d6bfc`) — all red-first.
+- `p4.d127-provider-cheapllm-drift.md` — bug 104's Z.AI private
+  vision-list deletion (v5 measurably has it in
+  `chat_completions.rs`), the per-task cheap-LLM budget table (75 s
+  compression) + the failed-task warn, and the realtime coalesce-trace
+  drop with a capturing-layer silence pin. Retires the expired 💸 Z.AI
+  refusal-sentence proof per the ledger's §1 note.
+- `p4.d128-qt-utilities-cli-about.md` — the two missing solid hover
+  qt-* utilities + the 20-site class sweep with its two deliberate
+  visual shifts, the four never-completed CLI flags (Tier R red-first +
+  v4's token-level coverage guard mirrored), and the About page's
+  ten-provider sentence + new "Live interface" bullet.
+- `p4.d129-dedup-neutrality-ratify.md` — the `dcab791c2` 155-file dedup
+  sweep ratified by NEUTRALITY PROOF (bulk sweep at the post-drift pin,
+  sibling families excluded; the two named non-neutral hunks measured),
+  the five remaining NO-PORT? ratifications, and the two riders (the
+  `help_doc_chunks` blob-column pin, the knip vestigial-twin check).
+  Runs after the other three lanes close.
+
+The drift ledger's §3 dispositions move to `ORDERED(<lane>)` for all
+fourteen rows in this commit.
+
 #### 2026-08-26 — docs(porting): the 4.9.0-push drift check — fourteen commits classified, eight PORT
 
 _Docs-only change._
