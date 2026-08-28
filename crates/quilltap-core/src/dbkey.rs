@@ -168,6 +168,15 @@ fn try_decrypt(file: &DbKeyFile, passphrase: &str) -> Result<Option<String>, DbK
     ct_and_tag.extend_from_slice(&tag);
 
     let cipher = Aes256Gcm16::new(Key::<Aes256Gcm16>::from_slice(&key));
+    // A crafted/damaged .dbkey can carry a valid-hex IV of the wrong length;
+    // `Nonce::from_slice` PANICS on a length mismatch, where v4's Node GCM
+    // accepts any IV length and simply fails the auth check. Refuse first so
+    // `try_decrypt_pepper`'s "None instead of any error" contract holds on
+    // hand-edited files — restore-key is aimed at exactly those (§3 unify
+    // review of P4.D133, 2026-08-27).
+    if iv.len() != 16 {
+        return Err(DbKeyError::DecryptFailed);
+    }
     let nonce = Nonce::<U16>::from_slice(&iv); // 16-byte IV, matching pepper-crypto.ts
     let plaintext = match cipher.decrypt(
         nonce,
@@ -895,6 +904,15 @@ mod tests {
         let raw = read_dbkey_raw(dir.path()).unwrap().unwrap();
         assert_eq!(try_decrypt_pepper(&raw, "wrong"), None);
         assert_eq!(try_decrypt_pepper("not json", "pw"), None);
-        assert_eq!(try_decrypt_pepper(&raw, "pw"), Some(pepper));
+        assert_eq!(try_decrypt_pepper(&raw, "pw"), Some(pepper.clone()));
+
+        // A crafted/damaged file with a valid-hex IV of the wrong LENGTH must
+        // answer None, never panic — `Nonce::from_slice` panics on a length
+        // mismatch and restore-key aims this function at hand-edited files
+        // (v4's Node GCM accepts any IV length and just fails the auth check).
+        let mut bag: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        bag["iv"] = serde_json::Value::String("aabbcc".into());
+        let short_iv = serde_json::to_string(&bag).unwrap();
+        assert_eq!(try_decrypt_pepper(&short_iv, "pw"), None);
     }
 }

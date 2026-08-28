@@ -322,7 +322,7 @@ export interface ImageClickEvent {
               <qt-tooltip content="Delete message">
                 <button
                   type="button"
-                  class="qt-chat-message-action-icon"
+                  class="qt-chat-message-action-icon qt-chat-message-action-icon-danger"
                   aria-label="Delete message"
                   (click)="delete.emit(message())"
                 >
@@ -334,7 +334,7 @@ export interface ImageClickEvent {
                 <qt-tooltip content="Previous response">
                   <button
                     type="button"
-                    class="qt-chat-message-action-icon"
+                    class="qt-chat-message-action-icon disabled:opacity-30 disabled:cursor-not-allowed"
                     aria-label="Previous response"
                     [disabled]="swipeState()!.current === 0"
                     (click)="swipePrev.emit(message())"
@@ -343,12 +343,12 @@ export interface ImageClickEvent {
                   </button>
                 </qt-tooltip>
                 <span class="qt-text-xs px-1"
-                  >{{ swipeState()!.current + 1 }} / {{ swipeState()!.total }}</span
+                  >{{ swipeState()!.current + 1 }}/{{ swipeState()!.total }}</span
                 >
                 <qt-tooltip content="Next response">
                   <button
                     type="button"
-                    class="qt-chat-message-action-icon"
+                    class="qt-chat-message-action-icon disabled:opacity-30 disabled:cursor-not-allowed"
                     aria-label="Next response"
                     [disabled]="swipeState()!.current === swipeState()!.total - 1"
                     (click)="swipeNext.emit(message())"

@@ -762,6 +762,25 @@ describe('MessageRow — the action-bar tooltip copy (v4 MessageActionBar.tsx @ 
     ]);
   });
 
+  it('pins the Delete chrome and swipe counter (v4 MessageActionBar.tsx:144,212-231 — the §3 unify-review fixes)', () => {
+    const fixture = renderRow(
+      message({ role: 'ASSISTANT', attachments: [], swipeGroupId: 'sg1' }),
+      { swipe: true },
+    );
+    const host = fixture.nativeElement as HTMLElement;
+    // v4's Delete carries the danger variant — v5's rewrite had dropped it,
+    // leaving the defined qt-chat-message-action-icon-danger rule inert.
+    const del = host.querySelector('button[aria-label="Delete message"]')!;
+    expect(del.className).toContain('qt-chat-message-action-icon-danger');
+    // v4's swipe buttons carry the disabled utilities; the counter renders
+    // with NO spaces around the slash ({current + 1}/{total}).
+    const prev = host.querySelector('button[aria-label="Previous response"]')!;
+    expect(prev.className).toContain('disabled:opacity-30');
+    expect(prev.className).toContain('disabled:cursor-not-allowed');
+    const counter = host.querySelector('.qt-chat-message-action-bar-icons span.qt-text-xs')!;
+    expect(counter.textContent!.trim()).toBe('2/3');
+  });
+
   it('leaves no title attribute anywhere in the icons row (the native tooltip would double up)', () => {
     const fixture = renderRow(
       message({ role: 'ASSISTANT', attachments: [img('a1')], swipeGroupId: 'sg1' }),

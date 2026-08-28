@@ -85,9 +85,12 @@ interface MessageSpec {
   role: string;
   content: string;
   participantId: string | null;
-  /** P4.65: per-message timestamp override (default = the seed TS). A chat
-   * whose messages post-date the others gives the list sort DISTINCT keys —
-   * without one, every chat ties and a reversed sort is an invisible no-op. */
+  /** P4.65: per-message timestamp override (default = the seed TS). Pins the
+   * message stamps the `get` payloads carry. NOTE it does NOT pin the list
+   * sort key — v4's `addMessages` stamps `chats.lastMessageAt` with the wall
+   * clock at build time regardless of message `createdAt`; the sort key is
+   * pinned by the chat-level `lastMessageAt` post-pass below (§3 unify
+   * review of P4.65, 2026-08-27). */
   createdAt?: string;
   provider?: string;
   modelName?: string;
@@ -115,6 +118,14 @@ interface ChatSpec {
   id: string;
   title: string;
   chatType: string;
+  /** REQUIRED whenever the chat has messages: the pinned list-sort key.
+   * v4's `addMessages` stamps `lastMessageAt`/`updatedAt` with the wall
+   * clock at build time, so without this pin the sort cases' "distinct
+   * keys" held only by build-order milliseconds — a faster regen could
+   * bake ties and make a reversed-sort mutation invisible (the
+   * green-regen-is-not-coverage class). The builder throws if a
+   * messages-carrying chat omits it. */
+  lastMessageAt?: string;
   projectId?: string;
   tags?: string[];
   storyBackgroundImageId?: string;
@@ -185,6 +196,7 @@ async function main(): Promise<void> {
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const { CharacterSchema } = await import('@/lib/schemas/types');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
@@ -466,6 +478,19 @@ async function main(): Promise<void> {
     if (chat.renderedMarkdown !== undefined) {
       await repos.chats.update(chat.id, { renderedMarkdown: chat.renderedMarkdown } as never);
     }
+    // Pin the list-sort key. `addMessages`/`update` stamped
+    // `lastMessageAt`/`updatedAt` with the wall clock; leave that in the
+    // committed bytes and the sort cases' distinct keys hold only by
+    // build-order milliseconds (see the ChatSpec doc). Loud by design: a
+    // messages-carrying chat MUST pin its key.
+    if (chat.messages.length > 0 && !chat.lastMessageAt) {
+      throw new Error(`chat ${chat.title}: has messages but no pinned lastMessageAt`);
+    }
+    const maindb = getRawDatabase();
+    if (!maindb) throw new Error('main DB handle unavailable');
+    maindb
+      .prepare('UPDATE chats SET "lastMessageAt" = ?, "updatedAt" = ? WHERE id = ?')
+      .run(chat.lastMessageAt ?? null, TS, chat.id);
     for (const chunk of chat.chunks ?? []) {
       await repos.conversationChunks.create({
         chatId: chat.id,

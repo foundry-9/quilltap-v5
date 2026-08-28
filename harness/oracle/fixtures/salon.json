@@ -170,6 +170,7 @@
    "id": "c1000000-0000-4000-8000-000000000001",
    "title": "Solo Voyage",
    "chatType": "salon",
+   "lastMessageAt": "2026-02-01T10:00:00.000Z",
    "projectId": "70000002-0000-4000-8000-000000000001",
    "tags": [
     "70000001-0000-4000-8000-000000000001"
@@ -241,6 +242,7 @@
    "id": "c1000000-0000-4000-8000-000000000002",
    "title": "Group Expedition",
    "chatType": "salon",
+   "lastMessageAt": "2026-02-01T11:00:00.000Z",
    "storyBackgroundImageId": "f0000002-0000-4000-8000-000000000002",
    "renderedMarkdown": "# Group Expedition\n\nRendered.",
    "chunks": [
@@ -338,6 +340,7 @@
    "id": "c1000000-0000-4000-8000-000000000003",
    "title": "Ridge Reunion",
    "chatType": "salon",
+   "lastMessageAt": "2026-02-02T12:00:00.000Z",
    "projectId": "70000002-0000-4000-8000-000000000001",
    "storyBackgroundImageId": "f0000002-0000-4000-8000-000000000002",
    "participants": [

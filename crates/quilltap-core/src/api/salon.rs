@@ -88,7 +88,9 @@ pub fn chat_settings(db: &Db, user_id: &str) -> Response {
 // The enriched chat list (v4 GET /api/v1/chats → handleList)
 // ===========================================================================
 
-/// v4 `handleList` + `enrichChatsForList` (the no-preloaded path).
+/// v4 `handleList` + `enrichChatsForList` (since P4.65 the PRELOADED path —
+/// the `ChatListPreloaded` batch is built inside `enrich_chats_for_list`,
+/// exactly where v4 builds it).
 pub fn list_chats(
     db: &Db,
     user_id: &str,
