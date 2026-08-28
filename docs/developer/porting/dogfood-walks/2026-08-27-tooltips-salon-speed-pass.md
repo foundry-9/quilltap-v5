@@ -79,11 +79,11 @@ from a worktree pinned at `b121ac77f`.
 
 | # | Owner | Step | Gesture | Expected + how verified | Status |
 |---|---|---|---|---|---|
-| C1 | CLAUDE | **The two hover fills** | Hover the two surfaces the census found bare. | A visible hover state (the utilities are solid, not the inert unwritten form). Screenshot before/after. | PENDING |
-| C2 | CLAUDE | **The About strings** | Open About. | The provider sentence + the Live-interface bullet read v4's post-`dcab791c2` copy. ⚠ **Drift:** v4 has since rewritten the VM/Lima prose (`1560bd43b`) — v5 correctly still shows the baseline text. | PENDING |
-| C3 | CLAUDE | **Live three-shell completion** | Run `quilltap completion bash|zsh|fish` from the built CLI and exercise one real `<TAB>`. | All three templates emit; a real completion fires. Shell output. | PENDING |
-| C4 | CLAUDE | **The 75 s compression budget + `[CheapLLM] Task failed` warn** | Find or force a compression run. | The local-first budget applies; the warn line appears in `combined.log` when it fails. Log grep. | PENDING |
-| C5 | CLAUDE | **The glm-5.3 vision rows** (bug 104) | Fetch Z.AI image/vision models on a real key. | `glm-5.3-flash` rows present, vision models not dropped. Network response. | PENDING |
+| C1 | CLAUDE | **The two hover fills** | Hover the two surfaces the census found bare. | A visible hover state (the utilities are solid, not the inert unwritten form). Screenshot before/after. | **PASS** |
+| C2 | CLAUDE | **The About strings** | Open About. | The provider sentence + the Live-interface bullet read v4's post-`dcab791c2` copy. ⚠ **Drift:** v4 has since rewritten the VM/Lima prose (`1560bd43b`) — v5 correctly still shows the baseline text. | **PASS** |
+| C3 | CLAUDE | **Live three-shell completion** | Run `quilltap completion bash|zsh|fish` from the built CLI and exercise one real `<TAB>`. | All three templates emit; a real completion fires. Shell output. | **PASS** |
+| C4 | CLAUDE | **The 75 s compression budget + `[CheapLLM] Task failed` warn** | Find or force a compression run. | The local-first budget applies; the warn line appears in `combined.log` when it fails. Log grep. | **DEFERRED-TO-HUMAN** |
+| C5 | CLAUDE | **The glm-5.3 vision rows** (bug 104) | Fetch Z.AI image/vision models on a real key. | `glm-5.3-flash` rows present, vision models not dropped. Network response. | **DEFERRED-TO-HUMAN** |
 | C6 | **HUMAN** | **bug-103 seeding on a real pre-4.9 archive** | Import a genuine pre-4.9 backup archive. | Legacy columns seeded. **Deferred:** needs a real archive file the human has; also a heavy write. | DEFERRED-TO-HUMAN |
 
 ## Part D — the `f3892158d` realtime round 💸
@@ -99,8 +99,8 @@ from a worktree pinned at `b121ac77f`.
 
 | # | Owner | Step | Gesture | Expected + how verified | Status |
 |---|---|---|---|---|---|
-| E1 | CLAUDE | **Pascal's group-tier write path** (the last of the four) | Run a Pascal custom tool with an `effects` write scoped to a GROUP, from a single-group chat. | The write lands in the group's store with siblings intact. DB read-back. | PENDING |
-| E2 | CLAUDE | **The Brahma deep-query budget** | Ask Brahma something that runs past the old 25-turn cap. | The raised budget (default 50) binds; the salvage path is not hit. `llm_logs` + the console. Cost-bounded: one query. | PENDING |
+| E1 | CLAUDE | **Pascal's group-tier write path** (the last of the four) | Run a Pascal custom tool with an `effects` write scoped to a GROUP, from a single-group chat. | The write lands in the group's store with siblings intact. DB read-back. | **DEFERRED-TO-HUMAN** |
+| E2 | CLAUDE | **The Brahma deep-query budget** | Ask Brahma something that runs past the old 25-turn cap. | The raised budget (default 50) binds; the salvage path is not hit. `llm_logs` + the console. Cost-bounded: one query. | **DEFERRED-TO-HUMAN** |
 | E3 | **HUMAN** | **Memory dedup / conversation-summaries first run** | Run both maintenance actions. | **Deferred by cost** — batch LLM work over 800 MB of real data. | DEFERRED-TO-HUMAN |
 | E4 | **HUMAN** | **NanoGPT caching cost question (#101)** | Judge whether the gateway ever reads a cache. | **Deferred:** a cost judgment, not a correctness one. | DEFERRED-TO-HUMAN |
 
@@ -436,3 +436,223 @@ accessory-only items (`Apple Watch`, `Ansible Forge Mark Four`) appear in
 Accessories and are absent from Top. So the filter is *membership in this
 slot*, not a blanket "garments only, no accessories" exclusion — which is
 exactly the `allItems`-passed-whole shape the lane pinned RED first.
+
+## Part C — the 4.9.0-push round 💸
+
+### C3 — live three-shell completion (PASS, 2026-08-27)
+
+**All three templates are byte-identical to v4's REAL launcher** run from a
+worktree pinned at the baseline (`/tmp/qt-v4-pin-dogfood-b121ac77f`, pin
+verified by the presence of `packages/quilltap/lib/dbkey-restore.js`):
+
+| shell | lines | `cmp` vs v4 |
+|---|---|---|
+| bash | 362 | **byte-identical** |
+| zsh | 717 | **byte-identical** |
+| fish | 319 | **byte-identical** |
+
+And a **real TAB actually fires** — the bash template sourced into a live
+shell, its registered `_quilltap_complete` driven with real `COMP_WORDS`:
+
+```
+$ quilltap instances <TAB>
+  list ls show path where add create remove rm delete set-passphrase
+  passphrase default rename restore-key rebuild-key
+
+$ quilltap instances restore-key --<TAB>
+  --names-only --json --clear --passphrase --no-passphrase --data-dir
+  --force --yes --help
+
+$ quilltap <TAB>
+  db docs themes instances memories memory-diff recall-replay logs
+  migrations maintenance file-verify completion
+```
+
+P4.D133's new verb and all four of its flags are offered. (fish carries them
+in its own `-l 'no-passphrase'` / `-l 'force'` / `-s 'y' -l 'yes'` form,
+which is why a naive `--force` grep misses it there.)
+
+### C2 — the About strings (PASS, 2026-08-27)
+
+Rendered live from the user menu → About:
+
+- Provider sentence: `Anthropic, OpenAI, Google Gemini, Grok, DeepSeek,
+  Z.AI, NanoGPT, Ollama, OpenRouter, and OpenAI-compatible APIs` — matches
+  v4 `b121ac77f:app/about/AboutView.tsx:217`.
+- The **Live interface** bullet renders in full, and **after** `LLM tools`
+  as the spec pins the order — matching v4's `:225` word for word.
+
+**Drift confirmation (not a defect).** The same page still reads "powered by
+a lightweight Linux VM behind the scenes", "Native desktop app – macOS
+(Lima/VZ) and Windows (WSL2)…", and "Desktop & Infrastructure: Electron,
+Lima, Docker". That is v4's text **at the baseline**, rendered correctly.
+v4's pending `1560bd43b` rewrites all three; until the catch-up round lands,
+this is exactly what v5 should show — and it usefully confirms the drift
+row's SPA scope from the live surface.
+
+### C1 — the two solid hover fills (PASS, 2026-08-27)
+
+Friday's Photo Gallery on the real instance — **60 photos**, each tile
+carrying both hover buttons (60 `Set as avatar`, 60 `Download image`). Both
+fills were inert on *both* sides until the 4.9.0-push round; measured here by
+computed style on the element actually under the pointer
+(`document.querySelectorAll(':hover')`, not `querySelector`, which returns
+the first of sixty):
+
+| button | resting | hovered | token |
+|---|---|---|---|
+| `Set as avatar` | `rgb(26,28,35)` | **`rgb(50,174,116)`** + white text | `--color-success` = `hsl(152 55% 44%)`, fg `hsl(0 0% 100%)` |
+| `Download image` | `rgb(26,28,35)` | **`rgb(129,151,218)`** + `rgb(19,21,27)` text | `--color-primary` = `hsl(225 55% 68%)` |
+
+Both confirmed visually in the screenshot as well (green and blue pills on
+the first tile). Theme in use: `madmans-box`.
+
+⚠ **Measurement trap worth keeping:** the first pass hovered 2 px off
+(`x=78` vs `x=80`), landed on the button's padding edge, and read the
+resting colour — reporting `filled: false` for `Set as avatar` while
+`Download` passed. That looked exactly like the known
+"unwritten `hover:` variant is inert" bug, and the bundle was searched for a
+missing rule before the coordinate was rechecked. Both rules and both tokens
+were present all along. **Re-hover before believing a negative from a
+computed-style read.**
+
+## Extra coverage — branches the plan did not list (all PASS, 2026-08-27)
+
+Added mid-walk once Parts A/B/D came back clean, on the principle that the
+value here is the gesture the e2e never makes.
+
+### The keyboard path — `focusin` opens with NO dwell
+
+v4 opens a tooltip immediately on focus (React's delegated `onFocus`), which
+is a **different branch** from the 200 ms hover dwell and was untested.
+Measured with a `MutationObserver` on `document.body` timestamping the
+bubble's insertion:
+
+| trigger | bubble appears |
+|---|---|
+| `focus()` → `focusin` | **13 ms** |
+| real pointer hover (earlier, `computer`) | absent at 100 ms, present at 700 ms |
+
+The two branches are cleanly distinguished: focus is immediate, hover waits.
+(An earlier attempt timed this with `await sleep(60)` and got `elapsed: 1103`
+— the tool bridge overshoots sleeps badly, so a wall-clock read across the
+bridge cannot prove a sub-200 ms claim. The observer timestamp can.)
+
+### `focusout` closes an unpinned bubble
+
+Controlled sequence from a cleared board: `focus()` → **1** bubble,
+`blur()` → **0**. Correct per `onAnchorFocusOut()` (`if (!pinned) closeNow()`).
+
+⚠ **A false alarm worth recording.** Mid-walk a "Copy message" bubble
+appeared stranded — visible 2 s after blur, with focus moved elsewhere. It
+looked like a real leak. It was **my instrument**: the timing test had
+dispatched a synthetic `pointerenter` that never got a matching
+`pointerleave` at the same listener, so the component's hover state stayed
+set and held the bubble open past the focus close. The controlled re-test
+above (real focus, real blur, no synthetic pointer events) is clean. Synthetic
+pointer events in this component are unreliable in both directions — they
+failed to OPEN a tooltip in the hover measurement and failed to CLOSE one
+here.
+
+### Outside-pointerdown dismisses a pinned bubble
+
+Distinct from the Escape path already covered in A5. Pin the Amended badge →
+1 bubble with `data-pinned="true"`; click a neutral spot → **0 bubbles**.
+
+### The badge's fourth state — `stood-by`
+
+Three of the four states were seen rendered on real data (`vouched`,
+`unvetted`, `amended`). **`stood-by` was proven on the wire but not on
+screen:** `chatGet` for "The Chord That Found Its Basement" returns 641
+messages carrying **6** rows with `confirmed: false`, `confirmationRevised:
+false`, `confirmationNotes` present and `confirmationOriginalContent` absent
+— which is exactly the `stood-by` + `hasDetail: true` mapping. Only ~5 badges
+render in the loaded window (the SPA does not render all 641 rows at once)
+and those six sit further up the transcript than scrolling reached. The
+state's mapping is spec-pinned; recorded as wire-proven, not screen-proven.
+
+### An incidental confirmation for A5
+
+The Amended badge's `aria-label` carries the **entire** structured payload —
+summary, all three "what looked off" points, **and** the
+`Originally written:` block. So `confirmationOriginalContent` is demonstrably
+reaching the component (the fifth field P4.D132 found the mapper dropping),
+even though the visible bubble scrolls.
+
+### A mutation made and reverted
+
+Automated clicks filtered on `textContent === '×'` matched the **Remove**
+buttons in the slot rows (their glyph is `×`; the intent is in the
+`aria-label`), which unequipped `Ivory Signal Blouse with Brass Buttons`
+(Top) and `Singularity Pendant` (Accessories) from Abigail. **Both
+re-equipped** through the pickers; the wardrobe is back to its original five
+slots. The round trip incidentally proved the P4.D130 slot-picker wear path
+end to end on real data. Standing note for future walks: filter slot-row
+buttons by `aria-label`, never by the `×` glyph.
+
+---
+
+## Summary
+
+**22 rows: 18 PASS (one partial, stated), 4 DEFERRED-TO-HUMAN. Zero v5
+defects found.**
+
+That last sentence is the headline and it deserves its qualifier: the walk
+did **not** simply fail to look. Four separate observations looked like
+defects and each was chased to a root cause by measurement —
+
+1. **Eight surviving `title=` attributes in the action bar** → v4's own;
+   `0bd841394` converted `MessageActionBar`, never `TokenBadge`, and v5
+   carries all three of its titles verbatim.
+2. **`startedByKind` flat while background jobs ran past the blip
+   threshold** → v4-identical by design; `run_attributed_to_job` /
+   `runAttributedToJob` deliberately attributes without a span because the
+   job row is already the count. The pulse *does* fire for inline work
+   (proven: a 473 ms `memorySearch`).
+3. **Every WS origin arm closing `1000 Session not found`** → the probe used
+   a bogus session id; the gate fires after the session check, exactly where
+   v4's does. Against a real PTY all eight arms are correct.
+4. **`Set as avatar` not filling on hover**, and a **stranded "Copy message"
+   bubble** → both were instrument error (a 2 px coordinate miss; a synthetic
+   `pointerenter` with no matching `pointerleave`).
+
+Two of those four were caused by my own instruments, which is the standing
+lesson from previous passes holding up: **prove the instrument before
+trusting a negative.** It bit twice more here — a liveness check that called
+the original `fetch` instead of the wrapped one, and a sleep across the tool
+bridge that overshot 60 ms to 1103 ms and could not have proven the timing
+claim it was written for.
+
+### 💸 items discharged this pass
+
+- **P4.65 — the Salon list's speed**: 779 chats, 4.1 MB, **1.34 s** (was
+  8.6–12.2 s).
+- **P4.64 — `systemHome`**: **0.31 s** (was 8.8 s).
+- **P4.D132 — tooltips + the pinnable badge**: whole surface, incl. the
+  net-NEW ConfirmationBadge on 5,736 real confirmation rows.
+- **P4.D133 — the `try_decrypt` IV guard**: proven end-to-end through the
+  real CLI **with no pepper**, plus a control run.
+- **The `f3892158d` realtime round**: chips, the pulse, pushed invalidation
+  with polling parked, the WS origin refusal, the relabel — all four.
+- **The 4.9.0-push round**: the two hover fills, the About strings, live
+  three-shell completion (byte-identical to v4's launcher + a real TAB).
+- **P4.D130**: the outfit pull-down and garments-only slot pickers.
+
+### Still owed (the human remainder)
+
+| item | why deferred |
+|---|---|
+| **A9 — `instances restore-key` with the real pepper** | Claude never handles `ENCRYPTION_MASTER_PEPPER`. Setup is done: the CLI path, the `--force` gate, the `.bak` rotation and the IV guard are all proven; only the real-pepper rebuild remains. |
+| **C5 — the glm-5.3 vision wire proof** | Needs a chat pinned to the existing `Z.AI GLM 5.3 Flash` profile plus an image attachment; `wire-tap.py` cannot help (no TLS, and it collapses `messages` to a count). The behavioural proof — does the model read the image — is the right shape, as on 2026-08-24. |
+| **C4 — the 75 s compression budget + `[CheapLLM] Task failed`** | Needs a compression run long enough to bind the budget. |
+| **E1 — Pascal's group-tier write path** | Needs a single-group chat; the last of the four write paths (the other three are proven). |
+| **E2 — the Brahma deep-query budget** | One deep query, but genuinely open-ended in cost. |
+| **E3/E4 — memory dedup, summaries regeneration, the NanoGPT caching cost question (#101)** | Batch LLM work over 800 MB of real data, and a cost judgment rather than a correctness one. |
+
+### Drift note carried forward
+
+The About page renders v4's **baseline** VM/Lima prose (`Lima/VZ`, `WSL2`,
+`Electron, Lima, Docker`) — correct, and a live confirmation of the pending
+`1560bd43b` drift row's SPA scope. The catch-up round should expect to touch
+that copy, the Profile screen's `isVM` row, the Almanack `runtimeType`
+union, and the two `self_inventory` runtime labels.

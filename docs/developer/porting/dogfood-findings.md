@@ -587,6 +587,34 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **The 7.5 s `systemHome` note above is DISCHARGED (2026-08-27).** P4.64
+  diagnosed it — the cost was `enrich_chats_for_list`'s per-participant vault
+  fan-out, a dropped-preload PORT defect, not the hypothesised cause — and the
+  2026-08-27 dogfood pass measured the front door at **0.31 / 0.30 / 0.32 s**
+  on the same real instance. The Salon list, which paid the same tax, is now
+  **1.34 s for 779 chats / 4.1 MB**. Both recorded in
+  `dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md`.
+
+- **Four apparent defects in the 2026-08-27 pass were instrument or
+  reasoning error, not v5 bugs — the shapes are worth knowing before the
+  next walk.** Two were the app being v4-faithful in a way that *looks*
+  wrong (surviving `title=` attributes that belong to a component v4 never
+  converted; a counter that stays flat because the job row is already the
+  count), one was a probe that could not reach the code under test (a WS
+  origin gate that sits *after* a session-exists check, probed with a bogus
+  session id), and one was a 2 px coordinate miss on a hover target. Add
+  the two new instrument traps to the standing list: **a `fetch` wrapper's
+  liveness check must call the WRAPPED function** (calling the saved
+  original reads a false zero), and **`await sleep(n)` across the tool
+  bridge overshoots badly** — a 60 ms sleep measured 1103 ms, so no
+  sub-second timing claim can rest on it; use a `MutationObserver`
+  timestamp instead.
+
+- **Filter slot-row buttons by `aria-label`, never by glyph.** The wardrobe
+  slot rows' Remove buttons have `textContent === '×'`; an automation filter
+  on that glyph silently unequips garments (it did, twice, on 2026-08-27 —
+  both reverted). The intent lives in `aria-label` (`Remove <item name>`).
+
 - **`systemHome` — the landing dashboard — costs a steady 7.5 s on a real
   instance** (measured 2026-08-26 on the Friday copy: **7.50 s and 7.70 s** on
   back-to-back *warm* dispatches; 859 chats, 32 live characters, 8 projects, 45

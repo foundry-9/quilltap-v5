@@ -92723,3 +92723,103 @@ files (the suite grew 254 → 256 with P4.D132's two beats); the one skip
 is the standing component-transfer store-probe park. The five archive
 tombstone beats, the generate-image gutter beat, and the courier beat all
 green with Ridge Reunion pinned oldest and the seeder tie-break in place.
+
+## Dogfood pass — the P4.D131 round + the accumulated 💸 backlog (2026-08-27, agent-driven, on the Friday copy)
+
+**22 rows, 18 PASS (one partial, stated), 4 DEFERRED-TO-HUMAN; ZERO v5
+defects; thirteen 💸 items discharged across four rounds.** Walk doc:
+`dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md`. Data rsynced
+2026-08-27 23:12 (main 819 MB / mount 737 MB / llm-logs 317 MB); server
+`quilltap-web` + the built SPA at `127.0.0.1:3000`.
+
+**The drift ledger was STALE at walk start** — `/driftcheck` ran first
+(`11edb1c6`) and recorded 2 commits past `b121ac77f`: `1560bd43b` (PORT —
+v4 retires Lima/WSL2 across six ported v5 surfaces, incl. **deleting the
+`isVM` key** from `/api/v1/system/data-dir`) and `7819afb1d` (NO-PORT?,
+CI/test plumbing). Regen rule flipped to **PIN REQUIRED**.
+
+**The two speed proofs.** `listChats` at real scale — **779 chats,
+4,148,602 bytes, 1.34 s** against the 8.6–12.2 s P4.64 measured before
+P4.65's batching (~7×). `systemHome` — **0.31 s** against 8.8 s. Both on
+data one rsync fresher than the round's own measurement.
+
+**The tooltip vertical whole.** Nine buttons, nine anchors, zero `title`s on
+any of them, the re-attribute button carrying v4's NEW copy; the bubble
+portalled onto `document.body` with `role="tooltip"`; **no accumulation**
+(five hovers → one node; two full cycles → zero, `body.children` 14 → 13).
+Three branches the plan never listed were added and proven: **`focusin`
+opens at 13 ms** against the 200 ms hover dwell (MutationObserver
+timestamps), **`focusout` closes** an unpinned bubble, and
+**outside-pointerdown dismisses a pinned one**. Flip is honestly recorded as
+**unreachable by gesture** — message action bars are the only anchors and the
+list's top edge sits ~100 px down, so the "no room above" branch cannot be
+produced; clamp measured `withinViewport: true`.
+
+**The ConfirmationBadge on real data, population measured first** (ledger
+§5.5): of 128,401 messages, 5,736 carry a confirmation — **vouched 5,544
+(0 with detail) / amended 164 (all 164) / stood-by 28 (all 28)**. That
+distribution *is* the pin-gate's justification. An amended row rendered the
+full structured bubble (title, summary, the real `confirmationNotes`),
+pinned on click (`data-pinned` + `data-interactive` **on the bubble**, not
+the badge), survived the pointer leaving, and dismissed on Escape with the
+focus ring returned. `stood-by` is **wire-proven not screen-proven** (6
+`confirmed:false` rows with notes in a 641-message `chatGet`; the SPA renders
+only a tail window).
+
+**The IV-length panic guard end-to-end with NO pepper** — two scratch
+instances given `.dbkey` files built from the real file's *shape* with every
+secret scrubbed, one with a 3-byte IV and one with a 16-byte junk control.
+**Byte-identical behavior**: same warning sentence, same rewrite, no panic
+under `RUST_BACKTRACE=1`. That is v4's Node-GCM semantics exactly.
+
+**The realtime round, all four.** The §A contract holds (five keys always,
+`activeByType` correctly absent); chips move on real work (`summary` 0→3,
+`embedding` 0→21 as renders cascade); **pushed invalidation proven by
+discriminator** — 0 app fetches across 17.4 s idle, then 13 fetches and the
+chips moving within 12.7 s of three `chatRenderConversation` calls fired
+**from curl**, which the browser could not have known about; the terminal WS
+gate correct on **all eight origin arms** against a real PTY (foreign /
+other-port / unparseable → 1008; other-scheme / empty / absent / `null` /
+matching → stream live zsh bytes), with the warn line in `combined.log` in
+v4's JSON shape; and `Fallback polling (5s)` byte-identical to v4.
+
+**Four apparent defects, all chased to root cause, none real:** the eight
+surviving `title=`s are v4's own (`TokenBadge` was never converted);
+`startedByKind` flat during background jobs is `runAttributedToJob` on
+*both* sides (the pulse fires for inline work — a 473 ms `memorySearch`
+proved it); every WS arm reading `1000 Session not found` was a bogus
+session id, the gate sitting after the session check exactly as v4's does;
+and the `Set as avatar` non-fill plus a stranded Copy bubble were both
+**instrument error** (a 2 px coordinate miss; a synthetic `pointerenter`
+with no matching `pointerleave`). Two further instrument slips are recorded
+in the walk doc — a liveness check that called the *original* `fetch`, and a
+60 ms sleep that took 1103 ms across the tool bridge and so could not have
+proven the timing claim it was written for. **Prove the instrument before
+trusting a negative** keeps earning its place.
+
+**Also discharged:** the two solid hover fills (`Set as avatar` →
+`rgb(50,174,116)`, `Download` → `rgb(129,151,218)`, on Friday's 60-photo
+gallery); the About provider sentence + Live-interface bullet in v4's order;
+**all three completion templates byte-identical to v4's REAL launcher** at
+the pin plus a real bash `<TAB>` offering `restore-key` and its four flags;
+and P4.D130's outfit pull-down (capture-phase Escape closes only itself) and
+garments-only slot pickers (Top 13 / Accessories 9 / Hair 1, **zero
+offenders**, with `Wayfarer's Fieldwork Ensemble` correctly in *both* Top and
+Accessories — membership, not category exclusion).
+
+**One mutation made and reverted:** automated clicks filtered on
+`textContent === '×'` matched the slot rows' **Remove** buttons and
+unequipped two of Abigail's garments; both re-equipped through the pickers,
+which incidentally proved the wear path live. Filter slot-row buttons by
+`aria-label`, never the glyph.
+
+**Deferred to the human:** `restore-key` with the real pepper (Claude never
+handles it — everything else on that path is proven); the glm-5.3 vision
+wire proof (needs an image on the existing `Z.AI GLM 5.3 Flash` profile;
+`wire-tap.py` cannot see TLS or content parts); the 75 s compression budget;
+Pascal's group tier (the last of four write paths); the Brahma deep query;
+and dedup/summaries + the NanoGPT caching cost question.
+
+**Carried forward for the drift catch-up:** the About page renders v4's
+baseline VM/Lima prose, confirming `1560bd43b`'s SPA scope from the live
+surface.

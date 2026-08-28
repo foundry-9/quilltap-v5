@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(dogfood): the P4.D131-round pass — 18 PASS, zero v5 defects, thirteen 💸 items discharged
+
+_Docs-only change._
+
+A 22-row walk over the Friday copy covering the P4.D131 round in full plus
+the backlog from three earlier rounds. Eighteen PASS (one partial, stated),
+four deferred to the human, **no v5 defects found**.
+
+Discharged: the Salon chat list at real scale (779 chats, 4.1 MB, 1.34 s
+against the 8.6–12.2 s P4.64 measured pre-batching) and `systemHome`
+(0.31 s against 8.8 s); the whole tooltip vertical, plus three branches the
+plan never listed — `focusin` opens at 13 ms against the 200 ms hover dwell,
+`focusout` closes, outside-pointerdown dismisses a pinned bubble; the net-NEW
+ConfirmationBadge over a measured population of 5,736 real confirmations; the
+`try_decrypt` IV-length guard end-to-end through the CLI with no pepper; all
+four realtime items including pushed invalidation proven by discriminator and
+the terminal WS origin gate correct on all eight arms against a real PTY; the
+two hover fills; the About strings; all three completion templates
+byte-identical to v4's real launcher plus a live TAB; and P4.D130's outfit
+pull-down and garments-only slot pickers.
+
+Four observations that looked like defects were each chased to a root cause
+and none was real — two were v5 being correctly v4-faithful, two were
+instrument error. Adds three memory notes and three standing notes to
+`dogfood-findings.md`; discharges that file's 7.5 s `systemHome` note.
+
 #### 2026-08-27 — docs(porting): drift check — v4 retires Lima/WSL2 (2 commits past `b121ac77f`)
 
 _Docs-only change._

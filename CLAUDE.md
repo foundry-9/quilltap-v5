@@ -2383,6 +2383,45 @@ records THERE. Update this summary only when a phase or round completes.
   0.0.16, web 0.0.100, SPA 0.5.596. 💸 the dogfood queue gains the
   tooltips + pinnable badge, the Salon list's speed, and the
   restore-key recovery walk. Round record: `status-log.md`.
+- **The P4.D131-round dogfood pass RAN (2026-08-27, agent-driven, on the
+  Friday copy) — 22 rows, 18 PASS, ZERO v5 defects, thirteen 💸 items
+  discharged across four rounds.** Walk doc:
+  `dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md`; record in
+  `status-log.md`. **The ledger was STALE at walk start** — `/driftcheck`
+  ran first (`11edb1c6`) and found 2 commits past the baseline
+  (`1560bd43b` PORT — v4 retires Lima/WSL2 across six ported surfaces incl.
+  **deleting `isVM`** from `/api/v1/system/data-dir`; `7819afb1d` NO-PORT?);
+  **regen rule flipped to PIN REQUIRED.** Discharged: the Salon list at
+  real scale (**779 chats / 4.1 MB / 1.34 s** vs P4.64's measured
+  8.6–12.2 s) and `systemHome` (**0.31 s** vs 8.8 s); the whole tooltip
+  vertical (nine anchors, zero `title`s, no body-node accumulation) plus
+  **three branches the plan never listed** — `focusin` opens at **13 ms**
+  against the 200 ms dwell, `focusout` closes, outside-pointerdown
+  dismisses a pinned bubble; the net-NEW ConfirmationBadge over a measured
+  population (5,736 confirmations — vouched 5,544 with **0** detail /
+  amended 164 all-detail / stood-by 28 all-detail, which *is* the
+  pin-gate's justification); the IV-length guard **end-to-end through the
+  CLI with NO pepper** (3-byte IV and 16-byte junk control byte-identical,
+  no panic); all four realtime items (chips moving on real work; **pushed
+  invalidation proven by discriminator** — 0 app fetches over 17.4 s idle,
+  then 13 within 12.7 s of curl-fired jobs the browser could not have
+  known about; the WS origin gate correct on **all eight arms** against a
+  real PTY; the relabel); the two hover fills; the About strings; and
+  **all three completion templates byte-identical to v4's REAL launcher**
+  plus a real `<TAB>`. **Four apparent defects were chased to root cause
+  and none was real** — the surviving `title=`s are v4's own
+  (`TokenBadge` was never converted), `startedByKind` flat during
+  background jobs is `runAttributedToJob` on BOTH sides (the pulse fires
+  for inline work), the WS arms all reading `1000 Session not found` was a
+  bogus session id, and two were **instrument error**. Four instrument
+  slips in one pass (a 2 px hover miss, a synthetic `pointerenter` with no
+  `pointerleave`, a liveness check on the *original* `fetch`, a 60 ms sleep
+  that took 1103 ms across the bridge) keep **prove the instrument before
+  trusting a negative** as the standing rule. **Still owed:**
+  `restore-key` with the real pepper (human-only; everything else on that
+  path is proven), the glm-5.3 vision wire proof, the 75 s compression
+  budget, Pascal's group tier, the Brahma deep query, and dedup/summaries
+  + the NanoGPT caching cost question (#101).
 - **Oracle baseline: `b121ac77f` (2026-08-27, v4 main — the CLI
   `.dbkey` rebuild), adopted at the P4.D131-round unification
   (2026-08-27).**
