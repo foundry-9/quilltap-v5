@@ -92617,3 +92617,109 @@ committed recorder's header.
   4 red (unit 3) — all reverted, spec-identical after.
 
 Versions: SPA 0.5.591 → 0.5.595 across the five commits; no crate touched.
+
+## The P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65 round unification (2026-08-27)
+
+**ALL FOUR CLOSED; the oracle baseline MOVES `aec86a613` → `b121ac77f` and
+the four-commit drift debt is CLEARED.** Unified on `unify/p4d131-round`
+(twelve lane commits cherry-picked in dependency order, union-merged docs,
+zero source conflicts — Ownership held). The freshness probe passed at
+unification start AND at the baseline move: v4 unmoved at `b121ac77f`,
+clean, bugfix inert — so the new regen rule is **NO PIN REQUIRED** (ledger
+§1).
+
+**The lanes, one line each** (full records above): P4.D131 retired the
+bug-105 arm on a measured FULL convergence (37 cases, coverage measurably
+widened); P4.D132 landed the Tooltip primitive + nine-button adoption +
+the net-NEW ConfirmationBadge + the `1b0ce9eba` deletions (SPA 0.5.591 →
+0.5.595); P4.D133 landed `instances restore-key` whole, Tier R red-first
+188/4 → **212/0**; P4.65 landed the `ChatListPreloaded` batching with the
+two-leg payload-identity proof (Friday-copy md5 identical at 4,104,806
+bytes; enrich 12,984/8,256 → 2,227/1,451 ms, ~5.7×).
+
+**The §3 review (three parallel fidelity reviewers + the unifier's own
+read; verdict owned at the unify): NO blocking findings in any lane's
+delivered code — and the unified gate then caught the round's
+would-have-shipped defect no lane could see.** Fixed on the unify branch,
+each with a pin:
+
+1. **The poisoned-first-card class (the headline — caught by the unified
+   Playwright run, exactly what P4.65's loud fixture flag was for).**
+   P4.65's widened salon fixture seeds Vex (deliberately broken vault)
+   and Ridge Reunion (the chat holding Vex) into the SHARED e2e instance.
+   Two independent breakages: (a) Ridge Reunion sorted NEWEST → the first
+   chat card → every position-based beat (`.first()`) walked into the
+   chat-GET's v4-faithful broken-vault 503 (`.qt-chat-messages-list`
+   never visible; the courier scan wedged mid-iteration); (b) the archive
+   island's template query (`ORDER BY createdAt LIMIT 1`, every fixture
+   character tied) handed back VEX, so Marchpane inherited the broken
+   `characterDocumentMountPointId` and the batched roster overlay DROPPED
+   the tombstone — five archive beats red. Diagnosed by measurement on a
+   scratch instance assembled from the committed fixture (whose `.dbkey`
+   was minted by the brand-new `restore-key` — its first real use).
+   Repair is fixture-design, zero product code: Ridge Reunion pinned
+   OLDEST (builder comment names why it must stay last), the seeder
+   tie-breaks `ORDER BY createdAt, id` (both template queries), fixture
+   rebuilt at the pin, all four salon families regenerated + green.
+2. **The fixture sort-key fragility (P4.65 reviewer):** the "distinct
+   sort keys" claim was mechanically false — v4's `addMessages` stamps
+   `lastMessageAt` with the WALL CLOCK at build time, so the sort held
+   by build-order milliseconds and a faster regen could bake ties,
+   blinding the reversed-sort mutation (the green-regen-is-not-coverage
+   class). The builder now REQUIRES a pinned `lastMessageAt` per
+   messages-carrying chat (loud throw) and post-passes the raw UPDATE.
+3. **The `try_decrypt` IV-length PANIC (P4.D133 reviewer):** a crafted
+   `.dbkey` with a valid-hex IV of the wrong length panicked at
+   `Nonce::from_slice` where v4's Node GCM accepts any IV length and
+   fails the auth check — and `try_decrypt_pepper`'s contract is "None
+   instead of ANY error", with restore-key aimed at exactly such damaged
+   files. Guarded + unit-pinned (`short_iv` arm).
+4. **Three v4-fidelity gaps on lines P4.D132 rewrote (its reviewer):**
+   the Delete button dropped v4's `qt-chat-message-action-icon-danger`
+   (the defined rule sat inert — no red hover), the swipe buttons
+   dropped `disabled:opacity-30 disabled:cursor-not-allowed`, and the
+   swipe counter rendered `2 / 3` where v4 renders `2/3`. All three
+   fixed + spec-pinned (`pins the Delete chrome and swipe counter`).
+5. **The stale "no-preloaded path" doc comment** at `api/salon.rs:91`.
+
+**Recorded, not fixed (named follow-ups, phase-4 candidate 5):** Ctrl-C
+during a CLI prompt skips the lock Drop (v4 releases via exit handlers;
+self-heals via the stale-lock reclaim both sides share);
+`characters_read::find_by_ids` un-chunked (real ceiling 32,766); the
+`workspace-search-documents` focused-tab suite-context intermittent (the
+P4.D132 lane record's breadcrumb); the D133 recorded divergent-bytes
+edges (malformed-`.dbkey` SyntaxError text, lenient-base64 proof-row
+text — none fixture-reachable).
+
+**The gate (all on the unify branch):** fmt clean; clippy both feature
+sets clean; release build clean; the salon fixture rebuilt TWICE at the
+`aec86a613` pin (the sort-key pin, then the Ridge-Reunion re-pin) with
+all four salon families + `home_routes_equivalence` regenerated and
+re-run through the sweep driver each time (5/5 then 4/4 ok, zero SKIP;
+the pinned stamps grepped in the fresh NDJSON);
+`system-import-execute` regenerated at the `b121ac77f` pin (46 MB, the
+abort sentence ABSENT / the named warning PRESENT — the §5.4
+measurement re-confirmed) and `system_import_state` green by name (37
+cases, `OK execute_bug105_seed_abort`); Tier R from the `b121ac77f` pin
+**212 cases / 0 failures** (~360 s); `cargo test --workspace` with the
+round's env block **473 test binaries / 2,585 passed / 0 failed**
+(exactly the lanes' union: 2,557 + 8 + 20); SPA `npm test` **366 files
+/ 5,458 / 0** (+1, the review-fix pin spec); `npm run build` clean;
+full Playwright — the first two runs exposed finding 1 (four, then
+seven reds; the first run's exit code was masked by a `| tail` pipe,
+the standing gate-log trap, re-run with full capture), and the run of
+record after the repair is in the round-record addendum below. ⚠ The
+first full-suite Playwright invocation overlapped a concurrent `cargo
+build` (the version-bump lock sync) — runs of record were taken with
+nothing else running.
+
+Versions: core 0.0.698 → 0.0.701, harness 0.0.602 → 0.0.603, cli
+0.0.14 → 0.0.16, web 0.0.98 → 0.0.100, SPA 0.5.590 → 0.5.596;
+host/tauri/fixture-sanitizer/sqlite3mc-sys unchanged.
+
+**Addendum — the Playwright run of record (post-repair):** full suite
+**255 passed / 0 failed / 1 skipped (6.1 m)**, exit 0 — 256 tests in 68
+files (the suite grew 254 → 256 with P4.D132's two beats); the one skip
+is the standing component-transfer store-probe park. The five archive
+tombstone beats, the generate-image gutter beat, and the courier beat all
+green with Ridge Reunion pinned oldest and the seeder tie-break in place.

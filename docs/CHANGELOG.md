@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(porting): the P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65 round unification — baseline → b121ac77f
+
+_Versions: core 0.0.701, harness 0.0.603, cli 0.0.16, web 0.0.100, SPA 0.5.596._
+
+All four lanes unified on `unify/p4d131-round`; the oracle baseline moves
+`aec86a613` → `b121ac77f` and the four-commit drift debt is cleared. The
+bug-105 divergence arm retired on a measured FULL convergence; the Tooltip
+primitive + nine-button adoption + the net-new ConfirmationBadge landed
+with two live beats; `instances restore-key` landed whole (Tier R 188 →
+212, red-first); the Salon chat-list gained v4's `ChatListPreloaded`
+batching, payload-proven byte-identical on the Friday copy at ~5.7×.
+
+The §3 review found no blocking findings inside any lane; the unified
+Playwright gate then caught the round's would-have-shipped defect — the
+widened salon fixture's broken-vault chat sorted FIRST and its broken
+character became the archive seeder's copy template, breaking seven
+beats — repaired fixture-side (Ridge Reunion pinned oldest, the seeder
+tie-breaks by id) with zero product code. Also fixed on the unify
+branch: the `try_decrypt` IV-length panic, the fixture sort-key
+fragility (pinned `lastMessageAt`, loud builder throw), three
+v4-fidelity gaps on the action bar (Delete danger chrome, swipe
+disabled utilities, the counter's `2/3` bytes), and a stale comment.
+
+Gate: 473 test binaries / 2,585 / 0 with the round's env block; Tier R
+212/0 from the pin; ten family regens fresh at their pins, zero SKIP;
+clippy both feature sets; release build; ng 366 files / 5,458; full
+Playwright 255 passed / 0 failed / 1 skipped (the standing store-probe
+park). Round record: `status-log.md`.
+
 #### 2026-08-27 — harness(import): retire the bug-105 divergence arm — v4 converged at 679e450e3 (P4.D131)
 
 _Versions: core 0.0.699, harness 0.0.603._

@@ -2343,20 +2343,59 @@ records THERE. Update this summary only when a phase or round completes.
   feature sets; release build; ng 364 files / 5,435; full Playwright
   green (numbers in the round record). Versions: core 0.0.698, harness
   0.0.602, web 0.0.98, SPA 0.5.590. Round record: `status-log.md`.
-- **Oracle baseline: `aec86a613` (2026-08-27, v4 main — the outfit
-  pull-down), adopted at the P4.D130-round unification (2026-08-27).**
+- **The `b121ac77f` drift catch-up + chat-list-batching round (P4.D131 ∥
+  P4.D132 ∥ P4.D133 ∥ P4.65): UNIFIED on main (2026-08-27) — ALL FOUR
+  CLOSED; the oracle baseline MOVES to `b121ac77f` and the four-commit
+  drift debt is CLEARED.** The bug-105 divergence arm retired on a
+  measured FULL convergence (v4's post-fix leg byte-for-byte v5's
+  long-standing assertion; the retirement measurably WIDENED coverage —
+  the formerly-subtracted table now discriminates, mutation-proven) ∥
+  the Tooltip vertical whole (the Angular primitive with v4's exact
+  timing/flip/clamp/pin semantics + a NEW measured trap — a reparented
+  node outlives its `@if` view; all nine action-bar buttons adopted with
+  byte-exact copy incl. the re-attribute fix; **the ConfirmationBadge
+  landed NET-NEW** — v5 had only its CSS, and the mapper had been
+  dropping `confirmationOriginalContent`; the `1b0ce9eba` deletions; two
+  live beats; suite 254 → 256) ∥ `instances restore-key` end-to-end
+  (Tier R red-first 188/4 → **212/0** vs v4's REAL launcher incl. both
+  destructive state blocks and the cross-engine sqlite-message byte
+  risk verified; three new core dbkey seams with the P4.46 divergence
+  doc RESCOPED; 💸 the real-pepper recovery walk banked, human-only) ∥
+  the Salon chat-list `ChatListPreloaded` batching (the four missing
+  batch paths, chunked; the drop-vs-503 vault arm CONVERGED onto v4 and
+  pinned; payload-proven byte-identical on the Friday copy —
+  **4,104,806 bytes md5-equal; enrich 12,984/8,256 → 2,227/1,451 ms,
+  ~5.7×**; the widened fixture + a 30-object key-order pin). **The §3
+  review found no blocking findings in any lane; the unified Playwright
+  gate then caught the round's would-have-shipped defect no lane could
+  see** — the widened fixture's broken-vault chat sorted FIRST (every
+  position-based beat walked into the v4-faithful 503) and its broken
+  character became the archive seeder's tie-broken copy template
+  (Marchpane dropped by the roster overlay) — repaired fixture-side
+  with zero product code, plus the `try_decrypt` IV-length panic
+  guard, the fixture sort-key pin (loud builder throw), and three
+  action-bar fidelity gaps (Delete danger chrome, swipe disabled
+  utilities, the `2/3` counter bytes), all spec-pinned. Gate: 473 test
+  binaries / 2,585 / 0; Tier R 212/0; ten pinned regens zero SKIP;
+  clippy both feature sets; release build; ng 366 files / 5,458; full
+  Playwright **255 passed / 0 failed / 1 skipped** (the standing
+  store-probe park). Versions: core 0.0.701, harness 0.0.603, cli
+  0.0.16, web 0.0.100, SPA 0.5.596. 💸 the dogfood queue gains the
+  tooltips + pinnable badge, the Salon list's speed, and the
+  restore-key recovery walk. Round record: `status-log.md`.
+- **Oracle baseline: `b121ac77f` (2026-08-27, v4 main — the CLI
+  `.dbkey` rebuild), adopted at the P4.D131-round unification
+  (2026-08-27).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
   drift, and lanes never write it. **Never restate the drift count here —
-  read the ledger's §1** (this bullet's own restatement went stale within
-  hours of the unification — a fourth portable commit landed — which is
-  the rule's whole point; the ledger's §1/§3 carry the current picture,
-  and as of 2026-08-27 the four UNPROCESSED rows are ORDERED as
-  P4.D131/P4.D132/P4.D133). The regen rule is **PIN REQUIRED** at
-  `aec86a613` until the baseline moves again. Still no `release: 4.9.0`
-  squash — re-probe BOTH branches at the next check. The sweep driver
+  read the ledger's §1.** As of the P4.D131-round unification
+  (2026-08-27) the drift table is EMPTY — v4 HEAD equals the baseline —
+  and the regen rule is **NO PIN REQUIRED** until the §2 probe shows
+  movement or dirt. Still no `release: 4.9.0` squash — re-probe BOTH
+  branches at the next check. The sweep driver
   remains the
   sanctioned per-family regen path — never run two sweeps concurrently;
   since P4.53 it refuses empty-stage families by name, `--self-test`
