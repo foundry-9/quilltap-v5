@@ -153,7 +153,13 @@ export function seedArchivedCharacter(cli: string): boolean {
   }
 
   // --- The character: a copy of an existing row, renamed and tombstoned.
-  const template = read(cli, 'SELECT * FROM characters ORDER BY createdAt LIMIT 1');
+  // `, id` matters: every fixture character ties on createdAt, and the
+  // engine's tie order handed back VEX — P4.65's deliberately broken-vault
+  // character — whose copied `characterDocumentMountPointId` made Marchpane
+  // vanish from the roster (the batched overlay DROPS a row whose keystone
+  // is missing). Deterministic ascending id picks Aria, the intact vault.
+  // (The §3 unify review of the P4.D131 round, 2026-08-27.)
+  const template = read(cli, 'SELECT * FROM characters ORDER BY createdAt, id LIMIT 1');
   if (template.length === 0) {
     throw new Error('archive-fixture: the shared instance has no character to copy');
   }
@@ -266,7 +272,8 @@ export function seedArchivedCharacter(cli: string): boolean {
   // beats assert exact cast option lists), holding the live seat from its
   // template plus the tombstone as an ABSENT participant, which is what an
   // archived seat looks like in practice and lets the card show BOTH badges.
-  const chatTemplate = read(cli, 'SELECT * FROM chats ORDER BY createdAt LIMIT 1');
+  // Same tie-break discipline as the character template above.
+  const chatTemplate = read(cli, 'SELECT * FROM chats ORDER BY createdAt, id LIMIT 1');
   if (chatTemplate.length === 0) {
     throw new Error('archive-fixture: the shared instance has no chat to copy');
   }

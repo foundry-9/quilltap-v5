@@ -3774,7 +3774,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.700"
+version = "0.0.701"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3886,7 +3886,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-web"
-version = "0.0.99"
+version = "0.0.100"
 dependencies = [
  "axum",
  "base64 0.22.1",

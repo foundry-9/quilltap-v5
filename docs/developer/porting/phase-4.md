@@ -6257,9 +6257,52 @@ PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
 **Next candidates, in rough value order** (updated at the
-P4.D130 ∥ P4.62 ∥ P4.63 ∥ P4.64 round unification, 2026-08-27 — the
-`aec86a613` drift is absorbed and the baseline moves to it; the duplicate
-"Quilltap General" e2e store is CLOSED, root cause the courier seeding):
+P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65 round unification, 2026-08-27 — the
+four-commit drift debt is CLEARED, the baseline moves to `b121ac77f`, and
+the Salon chat-list batching landed with the round):
+
+1. **The owed dogfood pass** — the standing 💸 queue plus this round's
+   surfaces: the tooltips + pinnable confirmation badge on real turns,
+   the Salon list's ~5.7× on the Friday copy (enrich 12,984 → 2,227 ms),
+   and **the `instances restore-key` real-pepper recovery walk** (human
+   only — the pepper never goes to an agent: run against a COPY of
+   Friday, prove the rebuilt `.dbkey` opens all three partitions).
+   Carried from earlier rounds: Pascal's group tier, the Brahma
+   deep-query budget, dedup/summaries, the NanoGPT caching smoke / #101.
+2. **P4.62's escalations, ordered shapes in its lane record:** the
+   wrong-typed `tagId` carry, the jobs-enqueue `payload: []`, and the
+   `chat_media::chat_file_link` guard simplification.
+3. **Widen the committed `system-data-main.db` past
+   `multiCharacterPrefill`** (the standing vintage vacuity — every
+   connection-profile import in the family fails identically on both
+   sides; cross-lane with the system-data routes differentials).
+4. **Un-park the component-transfer beat** (P4.D130's precise scope:
+   materialize `projects`/`groups` in `wardrobe-flow.spec.ts`, fix the
+   Copy arm's vacuous count-0 assert).
+5. **Small named follow-ups from this round's §3 review** (batchable
+   into any adjacent lane): Ctrl-C during a CLI prompt skips the lock
+   Drop (v4 releases via exit handlers; self-heals via stale-lock
+   reclaim — `resolve.rs:222` / `restore_key.rs`);
+   `characters_read::find_by_ids` is the one un-chunked batch on the
+   list path (real ceiling 32,766); the `workspace-search-documents`
+   focused-tab intermittent (hidden ⇒ wrong arm ⇒ the
+   `OpenDocumentFromSearch` focused-tab read raced — one suite-context
+   red, green in isolation ×3, recorded in the P4.D132 lane record).
+6. The present-but-null validation lead (carried).
+7. `p4.9i2` — help/HelpChat as a dedicated round (the bank gained
+   `system-import-export.md`, `answer-confirmation.md`,
+   `chat-message-actions.md`, `database-protection.md` this round-pair).
+8. The handler-logging sweep (carried).
+9. The SPA-wide `title=`-as-tooltip sweep — **keyed to v4 adopting
+   Tooltip beyond the action bar**, not unilateral v5 restyling (191
+   template files carry `title=`; the P4.D132 emit JSON already holds
+   the action-bar rows).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json`
+file port remains a NAMED standalone flag.
+
+**The superseded candidates list from the P4.D130 unification follows for
+history:**
 
 1. **The `679e450e3` + `0bd841394` drift catch-up** (drift-ledger §3, both
    UNPROCESSED). `679e450e3` is the bug-105 CONVERGENCE — v4 adopting this

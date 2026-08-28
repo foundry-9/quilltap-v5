@@ -119,6 +119,12 @@ interface ChatSpec {
   title: string;
   chatType: string;
   /** REQUIRED whenever the chat has messages: the pinned list-sort key.
+   * ⚠ Ridge Reunion (chat 3) is deliberately pinned OLDEST: it carries the
+   * broken-vault participant (Vex), and opening it 503s on BOTH sides (the
+   * per-row chat-GET enrichment throws on a missing keystone — v4-faithful).
+   * Newest-first it becomes the FIRST chat card, and every position-based
+   * e2e beat (`.qt-entity-card`.first()) walks into the poison. Keep it
+   * last. (The §3 unify review of the P4.D131 round, 2026-08-27.)
    * v4's `addMessages` stamps `lastMessageAt`/`updatedAt` with the wall
    * clock at build time, so without this pin the sort cases' "distinct
    * keys" held only by build-order milliseconds — a faster regen could
