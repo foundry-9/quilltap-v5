@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-27 — docs(porting): drift check — v4 retires Lima/WSL2 (2 commits past `b121ac77f`)
+
+_Docs-only change._
+
+The `/dogfood` freshness probe came back stale; this is the full `/driftcheck`
+that followed. v4 `main` is two commits past the oracle baseline and the
+checkout is clean on `main`.
+
+`1560bd43b` (refactor(runtime): drop Lima and WSL2 support, Docker is now the
+sandbox) is a real **PORT** row touching six already-ported v5 surfaces: the
+instance-lock `EnvironmentType` and its user-visible lock sentences (host
+`env.rs`/`lock.rs` plus the CLI's `is_vm_environment`), `lib/paths.ts` and the
+`/api/v1/system/data-dir` response — v4 **deletes** the `isVM` key, which the
+`data_dir_paths_equivalence` family compares and the SPA Profile screen reads —
+the host-rewrite gateway cascade (five strategies to two, with
+`isVMEnvironment()` changing meaning to `isDocker || QUILLTAP_HOST_IP`), the
+bug-56 base-path availability check, the Almanack `runtimeType` union, and the
+`self_inventory` runtime-mode union with its two prompt-visible labels. The
+About prose, footer `BackendMode`, CLI lock helpers, and two help pages ride
+along; `lima/`, the rootfs build script, CI, Docker and the unported plugin
+packages are the NO-PORT remainder.
+
+`7819afb1d` (fix(ci): the restore-key suite couldn't find the SQLCipher binding
+on CI) is a **NO-PORT?** candidate — jest mock plumbing, README, changelog and
+version bumps, zero `lib/`/`app/` hunks — for the very surface P4.D133 ported.
+
+The regen rule flips back to **PIN REQUIRED**: every oracle regen runs from a
+worktree pinned at `b121ac77f` until a catch-up round moves the baseline.
+
 #### 2026-08-27 — docs(porting): the P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65 round unification — baseline → b121ac77f
 
 _Versions: core 0.0.701, harness 0.0.603, cli 0.0.16, web 0.0.100, SPA 0.5.596._

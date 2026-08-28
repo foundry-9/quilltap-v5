@@ -23,26 +23,25 @@ probe verifies against._
   passphrase-locked .dbkey from the pepper" (v4 main, 2026-08-27), adopted
   at the P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65 round unification
   (2026-08-27).
-- **Checked:** 2026-08-27 (the §2 probe re-run at the unification — v4
-  unmoved since the previous full `/driftcheck`).
-- **v4 `main` HEAD at check:** `b121ac77f` — **AT the baseline; zero
-  commits past it.**
+- **Checked:** 2026-08-27 (late — the `/dogfood` §2 probe came back stale
+  and this full check followed).
+- **v4 `main` HEAD at check:** `7819afb1d` — **TWO commits past the
+  baseline** (`package.json` `4.9.0-dev.95`).
 - **v4 `bugfix` tip at check:** `3a76b17df` — unmoved (the bare 4.8.4 fork
-  marker; the long `main..bugfix` list is the documented squash-topology
-  lie, §4 step 2 — measured by content at the 2026-08-27 check, nothing
+  marker; measured by CONTENT at the 2026-08-27 check, nothing
   unabsorbed).
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — fully
   contained in `main`.
 - **Checkout at check:** branch `main`, **tree CLEAN**.
-- **Verdict: NO DRIFT — the table is empty.** All four rows from the
-  previous check were absorbed at the P4.D131-round unification (§6).
-- **Regen rule in force: NO PIN REQUIRED** — v4 HEAD equals the baseline
-  and the checkout is clean; regens may run from the checkout directly.
-  The rule flips back to PIN REQUIRED the moment the §2 probe shows
-  movement or dirt (§5.1).
+- **Verdict: DRIFT PENDING — 2 commits.** One is a large real PORT row
+  (`1560bd43b`, the Lima/WSL2 retirement) touching six already-ported v5
+  surfaces; the other is a NO-PORT? candidate (CI/test plumbing for the
+  suite that covers P4.D133's `instances restore-key`).
+- **Regen rule in force: PIN REQUIRED** — v4 HEAD is past the baseline, so
+  every oracle regen runs from a worktree pinned at `b121ac77f` (§5.1)
+  until a catch-up round moves the baseline.
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
-  fork; v4 develops on `main` alone (`package.json` at `4.9.0-dev.93`).
-  Keep probing BOTH branches.
+  fork; v4 develops on `main` alone. Keep probing BOTH branches.
 
 ## §2 The freshness probe
 
@@ -81,6 +80,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `1560bd43b` | 2026-08-27 | refactor(runtime): drop Lima and WSL2 support, Docker is now the sandbox | **PORT** | **Six ported surfaces.** (1) `lib/database/backends/sqlite/instance-lock.ts` → `quilltap-host/src/env.rs` (`EnvironmentType` still carries `Lima`/`Wsl2`; `is_lima_environment()`; the lima-before-docker probe order) + `quilltap-host/src/lock.rs` (the `is_vm` matches!, the `"Lima VM"`/`"WSL2 instance"` labels at 4 sites, the stale-reason arm) + `quilltap-cli/src/db_cmd.rs` `is_vm_environment()` (P4.1 host drivers / P4.D74 lock-order round / CLI Tier R). v4 now emits ONE label (`Docker container`) and narrows the cross-host heartbeat arm to `environment === 'docker'` — a **user-visible sentence change** the Tier R lock arms compare. (2) `lib/paths.ts` + `app/api/v1/system/data-dir/route.ts` → `quilltap-core/src/services/data_dir.rs` (`is_lima_environment`, the Lima-first `getPlatform`, `LimaContainer` env capture, `is_vm`) + `api/data_dir.rs` (the `isVM` response key AND its key-order list) → harness family **`data_dir_paths_equivalence`** (its `isVM` comparand) + SPA `screens/profile/profile.api.ts`/`profile.spec.ts`. v4 DELETED the `isVM` field — a wire/key-order change. (3) `lib/host-rewrite.ts` → `quilltap-core/src/provider_manifest/rewrite.rs`: five gateway strategies → two, and **`isVMEnvironment()` changes meaning** (`isDocker \|\| QUILLTAP_HOST_IP` — a self-managed VM now opts in by env var); the `/proc/net/route`, `/etc/resolv.conf` WSL2 and `/etc/hosts` fallbacks are gone. (4) `lib/mount-index/base-path-availability.ts` → the P4.D67 bug-56 port (`isContainerized()` drops the Lima disjunct). (5) `lib/tools/almanack/{types,phase1-premises}.ts` → `quilltap-core/src/almanack/{types,phase1_premises}.rs` + `quilltap-host/src/almanack_services.rs` → family **`almanack_tier2_equivalence`** (`runtimeType` drops `'lima'` — v5 already never emits it, so this may be pure doc-comment convergence: MEASURE). (6) `lib/tools/self-inventory-tool.ts` + `handlers/self-inventory/{builders,formatters}.ts` → `quilltap-core/src/tools/self_inventory.rs`: `SelfInventoryRuntimeMode` drops `'vm'`/`'electron-vm'` and the two `RUNTIME_MODE_LABELS` rows (`"VM (Lima/WSL2)"`, `"Electron + VM"`) — **prompt-visible bytes**. Plus: `components/footer-wrapper.tsx` `BackendMode` (SPA footer/profile), `app/about/AboutView.tsx` (three prose blocks + the tech list — the SPA About mirror, m6 §1.4), `packages/quilltap/{bin/quilltap.js,lib/lock-helpers.js}` (CLI Tier R lock display + `detectEnvironmentType`), `help/{chat-settings,the-almanack}.md` (→ bank `p4.9i2`). NO-PORT remainder: `lima/`, `scripts/build-rootfs.mjs`, `Dockerfile.ci`, `.github/workflows/release.yml`, `docker/entrypoint.sh`, `docs/WINDOWS.md`, README/DEPLOYMENT/DDL/DEVELOPMENT, `packages/plugin-utils` + `plugins/dist/qtap-plugin-mcp` (unported plugin surfaces), v4's own test deletions. | UNPROCESSED |
+| `7819afb1d` | 2026-08-27 | fix(ci): the restore-key suite couldn't find the SQLCipher binding on CI | **NO-PORT?** | Tests + release plumbing only: `packages/quilltap/lib/__tests__/dbkey-restore.test.js` (the jest mock factory falls back to the root `better-sqlite3` alias by absolute path), README, `docs/CHANGELOG.md`, and the `4.9.0-dev.94 → dev.95` version bumps. Zero `lib/`/`app/` hunks. It is the CI-side suite for the surface **P4.D133 ported** (`instances restore-key`, Tier R 188 → 212) — v5's Tier R arms drive v4's REAL launcher, so nothing here changes what they compare. Ratify with evidence at the catch-up round. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
