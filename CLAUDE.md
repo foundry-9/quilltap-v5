@@ -2384,8 +2384,9 @@ records THERE. Update this summary only when a phase or round completes.
   tooltips + pinnable badge, the Salon list's speed, and the
   restore-key recovery walk. Round record: `status-log.md`.
 - **The P4.D131-round dogfood pass RAN (2026-08-27, agent-driven, on the
-  Friday copy) — 22 rows, 20 PASS, ZERO v5 defects, fifteen 💸 items
-  discharged across four rounds** (A9 + C5 ran human-side 2026-08-28). Walk doc:
+  Friday copy) — 22 rows, 21 PASS, ZERO v5 defects found by the walk, sixteen
+  💸 items discharged across four rounds** (A9 + C5 + C4 human-side
+  2026-08-28/29). Walk doc:
   `dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md`; record in
   `status-log.md`. **The ledger was STALE at walk start** — `/driftcheck`
   ran first (`11edb1c6`) and found 2 commits past the baseline
@@ -2424,9 +2425,17 @@ records THERE. Update this summary only when a phase or round completes.
   vision send also CLOSED human-side** — a 1.8 MB JPEG read by
   `glm-5.3-flash` (a model id with no `v`), with **zero
   `IMAGE_DESCRIPTION` rows in the window**, so no describe-fallback ran.
-  **Still owed:** the 75 s compression budget, Pascal's group tier, the
-  Brahma deep query, and dedup/summaries + the NanoGPT caching cost
-  question (#101). **⚠ Post-walk, finding #106 RECORDED (2026-08-29, NOT
+  **The 75 s compression budget CLOSED PARTIAL** — three v5 calls
+  (30,080/26,633/25,459 ms) on the remote cheap LLM prove production picks
+  the 75 s branch; the discriminating 40–75 s band is provider-latency luck
+  (18 of 397 historical calls) and the `[CheapLLM] Task failed` warn needs
+  >75 s, **never once crossed in 400 real calls** — both unit-proven
+  instead. Two corrections banked: compression fires on context PRESSURE
+  (`compressible_tokens > max_available × 0.50`), not conversation length —
+  the first target's characters sat on 1,024,000-token windows, ten times
+  over the bar — and duration does NOT track prompt size (13.0 s @ 287 KB
+  vs 30.1 s @ 242 KB). **Still owed:** Pascal's group tier, the Brahma deep
+  query, and dedup/summaries + the NanoGPT caching cost question (#101). **⚠ Post-walk, finding #106 RECORDED (2026-08-29, NOT
   fixed — needs an order): the user's own message renders TWICE for most of
   a multi-character turn.** v4 keeps the optimistic bubble INSIDE the
   message array so a refetch replaces it; v5 holds it in a separate signal

@@ -92726,8 +92726,10 @@ green with Ridge Reunion pinned oldest and the seeder tie-break in place.
 
 ## Dogfood pass — the P4.D131 round + the accumulated 💸 backlog (2026-08-27, agent-driven, on the Friday copy)
 
-**22 rows, 20 PASS (one partial, stated), 2 DEFERRED-TO-HUMAN; ZERO v5
-defects; fifteen 💸 items discharged across four rounds.** Walk doc:
+**22 rows, 21 PASS (two partial, stated), 1 DEFERRED-TO-HUMAN; ZERO v5
+defects found by the walk; sixteen 💸 items discharged across four rounds.**
+(Finding #106 was reported by the human in normal use after the walk closed —
+see the post-walk section.) Walk doc:
 `dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md`. Data rsynced
 2026-08-27 23:12 (main 819 MB / mount 737 MB / llm-logs 317 MB); server
 `quilltap-web` + the built SPA at `127.0.0.1:3000`.
@@ -92874,4 +92876,40 @@ gesture does not exist in the suite at all — which is how a regression on the
 SPA's most-used screen survived a full round and a 22-row dogfood walk that
 exercised this very component. The owning lane should treat that beat as a
 deliverable in its own right.
+
+### Post-walk — C4, the 75 s compression budget (PASS, partial and stated, 2026-08-29)
+
+Closed human-side with a deliberately bounded claim. **Proven live:**
+production selects the 75 s branch — three v5-written `CONTEXT_COMPRESSION`
+calls (**30,080 / 26,633 / 25,459 ms**) against the remote NANOGPT cheap LLM,
+the arm where `cheap_llm_deadline_for` returns the override rather than the
+local 175 s or the shared 40 s default. **Not provable by gesture:** the
+40–75 s discriminating band (below 40 s both budgets succeed; the band is
+provider-latency luck — 18 of 397 historical calls, 4.5%) and the
+`[CheapLLM] Task failed` warn (needs >75 s; **max ever observed across 400
+real calls is 67.7 s**). Both are unit-proven in `cheap_llm_exec.rs`; a
+stalling stub is the honest tool for the live variant.
+
+**Two measurement corrections banked, both of which the agent got wrong
+first and had to be walked back:**
+
+1. **Compression fires on context PRESSURE, not conversation length** — the
+   gate is `compressible_tokens > max_available × 0.50`
+   (`CONTEXT_HISTORY_BUDGET_RATIO`, `build_context.rs:168`). The first target
+   was a 409-message / 420 KB chat whose characters sat on **1,024,000-token**
+   profiles, i.e. a 512,000-token budget against ~50 K of history — roughly
+   **ten times** under the bar, so no number of turns could ever have fired
+   it. The advice "continue a long conversation" was wrong and should have
+   been preceded by measuring the profiles' windows. The fix: switch **one
+   responding character** to a small-window profile
+   (`Z_AI/glm-4.5-airx`, 32,768 → 16,384) — and note the profile is
+   **character-level** (`characters.defaultConnectionProfileId`), there being
+   no chat-level or participant-level connection profile for salon turns, so
+   the change follows that character everywhere.
+2. **Duration does not track prompt size** — measured **13,013 ms @ 287 KB**
+   vs **30,080 ms @ 242 KB** vs **25,459 ms @ 150 KB**, with prompt sizes
+   clustering at 150–306 KB regardless of chat volume (a 3.2 MB chat produced
+   a *smaller* compression prompt than a 420 KB one). So the follow-up advice
+   to "pick a denser chat" was also wrong: chat selection is not a lever on
+   duration, and the historical 40–75 s calls were provider-latency variance.
 

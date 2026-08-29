@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-29 — docs(dogfood): close C4 partial — the 75 s compression budget, with two measurement corrections
+
+_Docs-only change._
+
+Closes the walk's last non-deferred row with a deliberately bounded claim,
+taking it to 21 PASS / 1 deferred and sixteen live proofs discharged.
+
+Proven live: production selects the 75 s branch. Three v5-written
+CONTEXT_COMPRESSION calls (30,080 / 26,633 / 25,459 ms) ran against the remote
+NANOGPT cheap LLM, which is the arm where cheap_llm_deadline_for returns the
+override rather than the local 175 s or the shared 40 s default.
+
+Not provable by gesture, and recorded as such: the 40-75 s discriminating band
+(below 40 s both budgets succeed, and the band is provider-latency luck at 18
+of 397 historical calls) and the "[CheapLLM] Task failed" warn, which needs a
+call over 75 s when the maximum ever observed across 400 real calls is 67.7 s.
+Both are unit-proven in cheap_llm_exec.rs.
+
+Two corrections banked as a memory note, both of which sent the human after
+the wrong thing before being measured. Compression fires on context pressure
+(compressible_tokens > max_available * 0.50), not conversation length — the
+first target's characters sat on 1,024,000-token windows, ten times over the
+bar, so no number of turns could have fired it; the profile is character-level,
+there being no chat-level or participant-level connection profile for salon
+turns. And duration does not track prompt size: 13,013 ms at 287 KB against
+30,080 ms at 242 KB, with prompt sizes clustering regardless of chat volume.
+
 #### 2026-08-29 — docs(dogfood): record finding #106 — the duplicate optimistic user bubble
 
 _Docs-only change._

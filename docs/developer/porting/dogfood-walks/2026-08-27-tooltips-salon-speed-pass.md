@@ -82,7 +82,7 @@ from a worktree pinned at `b121ac77f`.
 | C1 | CLAUDE | **The two hover fills** | Hover the two surfaces the census found bare. | A visible hover state (the utilities are solid, not the inert unwritten form). Screenshot before/after. | **PASS** |
 | C2 | CLAUDE | **The About strings** | Open About. | The provider sentence + the Live-interface bullet read v4's post-`dcab791c2` copy. ⚠ **Drift:** v4 has since rewritten the VM/Lima prose (`1560bd43b`) — v5 correctly still shows the baseline text. | **PASS** |
 | C3 | CLAUDE | **Live three-shell completion** | Run `quilltap completion bash|zsh|fish` from the built CLI and exercise one real `<TAB>`. | All three templates emit; a real completion fires. Shell output. | **PASS** |
-| C4 | CLAUDE | **The 75 s compression budget + `[CheapLLM] Task failed` warn** | Find or force a compression run. | The local-first budget applies; the warn line appears in `combined.log` when it fails. Log grep. | **DEFERRED-TO-HUMAN** |
+| C4 | CLAUDE | **The 75 s compression budget + `[CheapLLM] Task failed` warn** | Find or force a compression run. | The local-first budget applies; the warn line appears in `combined.log` when it fails. Log grep. | **PASS (partial — stated)** |
 | C5 | CLAUDE | **The glm-5.3 vision rows** (bug 104) | Fetch Z.AI image/vision models on a real key. | `glm-5.3-flash` rows present, vision models not dropped. Network response. | **PASS (human-run)** |
 | C6 | **HUMAN** | **bug-103 seeding on a real pre-4.9 archive** | Import a genuine pre-4.9 backup archive. | Legacy columns seeded. **Deferred:** needs a real archive file the human has; also a heavy write. | DEFERRED-TO-HUMAN |
 
@@ -594,9 +594,10 @@ buttons by `aria-label`, never by the `×` glyph.
 
 ## Summary
 
-**22 rows: 20 PASS (one partial, stated), 2 DEFERRED-TO-HUMAN. Zero v5
-defects found.** (A9 and C5 ran human-side on 2026-08-28 and both passed —
-see their sections.)
+**22 rows: 21 PASS (two partial, stated), 1 DEFERRED-TO-HUMAN. Zero v5
+defects found by the walk** — plus finding #106, reported by the human in
+normal use after the walk closed (recorded, not fixed). A9, C5 and C4 ran
+human-side on 2026-08-28/29 — see their sections.
 
 That last sentence is the headline and it deserves its qualifier: the walk
 did **not** simply fail to look. Four separate observations looked like
@@ -642,12 +643,15 @@ claim it was written for.
 - **P4.D130**: the outfit pull-down and garments-only slot pickers.
 - **Bug 104 — the glm-5.3 vision send (C5, human-run)**: a 1.8 MB JPEG read
   by `glm-5.3-flash`, with no `describe_image` call anywhere in the window.
+- **The 75 s compression budget (C4, human-run, PARTIAL)**: three v5 calls on
+  the remote cheap LLM prove production selects the 75 s branch; the
+  discriminating 40–75 s band and the warn line are unreachable by gesture
+  and are unit-proven instead.
 
 ### Still owed (the human remainder)
 
 | item | why deferred |
 |---|---|
-| **C4 — the 75 s compression budget + `[CheapLLM] Task failed`** | Needs a compression run long enough to bind the budget. |
 | **E1 — Pascal's group-tier write path** | Needs a single-group chat; the last of the four write paths (the other three are proven). |
 | **E2 — the Brahma deep-query budget** | One deep query, but genuinely open-ended in cost. |
 | **E3/E4 — memory dedup, summaries regeneration, the NanoGPT caching cost question (#101)** | Batch LLM work over 800 MB of real data, and a cost judgment rather than a correctness one. |
@@ -758,3 +762,51 @@ Playwright suite is green through this. Every beat asserts the transcript
 observing mid-turn — is missing from the suite, which is how a regression on
 the SPA's most-used screen went unnoticed through a full round and a 22-row
 dogfood walk that touched this very component.
+
+### C4 — the 75 s compression budget (PASS, partial and stated, human-run 2026-08-29)
+
+**What is proven live:** compression runs under v5 and production selects the
+75 s branch. Three v5-written `CONTEXT_COMPRESSION` calls — **30,080 /
+26,633 / 25,459 ms** — against the remote NANOGPT cheap LLM
+(`deepseek/deepseek-v4-flash-latest`), which is the arm where
+`cheap_llm_deadline_for` returns the 75 s override rather than the local
+175 s or the shared 40 s default. The instance-wide setting is
+`{"enabled":true,"windowSize":5,"compressionTargetTokens":1500,…}`.
+
+**What is NOT proven live, and cannot be by gesture:**
+
+- **The 40–75 s discriminating band.** Below 40 s a call succeeds under both
+  the old default and the new override, so it cannot tell them apart. The
+  band is reachable only by provider-latency luck — historically **18 of
+  397 calls (4.5%)**.
+- **The `[CheapLLM] Task failed` warn**, which needs >75 s. **In 400 real
+  calls the maximum ever recorded is 67.7 s.** The instance's distribution
+  does not produce it.
+
+Both are **unit-proven** in `cheap_llm_exec.rs` — the override resolving to
+`Some(75_000)`, and the exact sentence `Cheap LLM task
+(compress-conversation-history) exceeded its 75000ms budget` under a
+thread-scoped capturing layer. A stalling stub provider is the honest tool
+for the live variant, not a conversation.
+
+**Two measurement corrections earned along the way, both worth keeping:**
+
+1. **Compression fires on context PRESSURE, not conversation length.** The
+   gate is `compressible_tokens > max_available × 0.50`
+   (`CONTEXT_HISTORY_BUDGET_RATIO`, `build_context.rs:168`). The first
+   attempt used a 409-message / 420 KB chat whose characters sat on
+   **1,024,000-token** profiles — a 512,000-token budget, roughly **ten
+   times** the history. No number of turns could ever have triggered it.
+   Switching one responding character to a small-window profile
+   (`Z_AI/glm-4.5-airx`, 32,768 → 16,384) made it fire on the next turn.
+   ⚠ The profile is **character-level**
+   (`characters.defaultConnectionProfileId`) — there is no chat-level or
+   participant-level connection profile for salon turns — so the change
+   follows that character into every chat.
+2. **Duration does not track prompt size.** Measured:
+   **13,013 ms @ 287 KB** vs **30,080 ms @ 242 KB** vs **25,459 ms @
+   150 KB**. Prompt sizes also cluster at 150–306 KB regardless of chat
+   volume — a 3.2 MB chat produced a *smaller* compression prompt (150 KB)
+   than a 420 KB one (242 KB). So "use a bigger chat" is not a lever on
+   duration, and the walk's initial advice to chase the band that way was
+   wrong.
