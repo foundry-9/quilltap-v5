@@ -92726,8 +92726,8 @@ green with Ridge Reunion pinned oldest and the seeder tie-break in place.
 
 ## Dogfood pass — the P4.D131 round + the accumulated 💸 backlog (2026-08-27, agent-driven, on the Friday copy)
 
-**22 rows, 18 PASS (one partial, stated), 4 DEFERRED-TO-HUMAN; ZERO v5
-defects; thirteen 💸 items discharged across four rounds.** Walk doc:
+**22 rows, 19 PASS (one partial, stated), 3 DEFERRED-TO-HUMAN; ZERO v5
+defects; fourteen 💸 items discharged across four rounds.** Walk doc:
 `dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md`. Data rsynced
 2026-08-27 23:12 (main 819 MB / mount 737 MB / llm-logs 317 MB); server
 `quilltap-web` + the built SPA at `127.0.0.1:3000`.
@@ -92813,8 +92813,18 @@ unequipped two of Abigail's garments; both re-equipped through the pickers,
 which incidentally proved the wear path live. Filter slot-row buttons by
 `aria-label`, never the glyph.
 
-**Deferred to the human:** `restore-key` with the real pepper (Claude never
-handles it — everything else on that path is proven); the glm-5.3 vision
+**A9 closed human-side (2026-08-28, after the agent's rows):**
+`instances restore-key` with the REAL pepper, server down and lock released
+(the command refuses while it is held — an ordering the agent first got
+wrong). No `--force`, so the proof arm the agent's run skipped had to
+execute: all three partitions answered `opens with this pepper ✓` **before
+anything was written**, the key was rewritten at 0600, and `quilltap db`
+then read back **42 characters**. No `.bak` line, correctly — the old file
+had been moved aside. ⚠ Operational note: the pepper went in as an inline
+env prefix, which lands it in shell history — the exact exposure the CLI's
+help cites for never taking it as a flag; the hidden prompt avoids it.
+
+**Deferred to the human:** the glm-5.3 vision
 wire proof (needs an image on the existing `Z.AI GLM 5.3 Flash` profile;
 `wire-tap.py` cannot see TLS or content parts); the 75 s compression budget;
 Pascal's group tier (the last of four write paths); the Brahma deep query;

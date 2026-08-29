@@ -65,7 +65,7 @@ from a worktree pinned at `b121ac77f`.
 | A6 | CLAUDE | **Salon chat-list speed at real scale** (P4.65's whole point) | Time the Salon list's dispatch on the real instance — `enrich_chats_for_list` used to cost 8.6–12.2 s. | The batched path lands ~5.7× faster. Measured from the server log's per-request timing and a wall-clock `curl` of the dispatch verb; compare with the round record's 2,227/1,451 ms. | **PASS** |
 | A7 | CLAUDE | **The `1b0ce9eba` deletions** | Grep the served CSS bundle for the three deleted `display:none !important` rules. | Absent; `.qt-chat-message-action-bar { display:flex }` still present. `curl` the chunk + grep. | **PASS** |
 | A8 | CLAUDE | **The `try_decrypt` IV-length panic guard** | Build a scratch instance, hand-craft a `.dbkey` whose IV is valid hex of the WRONG length, run `quilltap instances restore-key` against it with a throwaway pepper. | No panic; the CLI reports failure gracefully (v4's Node GCM accepts any IV length and fails the auth check). Needs no real pepper. Server log / CLI exit code. | **PASS** |
-| A9 | **HUMAN** | **`instances restore-key` with the REAL pepper** | Delete/rename the `.dbkey` on the copy, then rebuild it from `ENCRYPTION_MASTER_PEPPER`. | The rebuilt `.dbkey` opens the copy's databases. **Deferred by rule — Claude never handles the pepper.** | DEFERRED-TO-HUMAN |
+| A9 | **HUMAN** | **`instances restore-key` with the REAL pepper** | Delete/rename the `.dbkey` on the copy, then rebuild it from `ENCRYPTION_MASTER_PEPPER`. | The rebuilt `.dbkey` opens the copy's databases. **Human-run** (Claude never handles the pepper). | **PASS** |
 
 ## Part B — the P4.D130 round
 
@@ -594,8 +594,8 @@ buttons by `aria-label`, never by the `×` glyph.
 
 ## Summary
 
-**22 rows: 18 PASS (one partial, stated), 4 DEFERRED-TO-HUMAN. Zero v5
-defects found.**
+**22 rows: 19 PASS (one partial, stated), 3 DEFERRED-TO-HUMAN. Zero v5
+defects found.** (A9 ran human-side on 2026-08-28 and passed — see its section.)
 
 That last sentence is the headline and it deserves its qualifier: the walk
 did **not** simply fail to look. Four separate observations looked like
@@ -631,7 +631,9 @@ claim it was written for.
 - **P4.D132 — tooltips + the pinnable badge**: whole surface, incl. the
   net-NEW ConfirmationBadge on 5,736 real confirmation rows.
 - **P4.D133 — the `try_decrypt` IV guard**: proven end-to-end through the
-  real CLI **with no pepper**, plus a control run.
+  real CLI **with no pepper**, plus a control run. **And `restore-key`
+  itself closed human-side (A9)** — all three partitions proved against the
+  real pepper before the write, 42 characters read back after.
 - **The `f3892158d` realtime round**: chips, the pulse, pushed invalidation
   with polling parked, the WS origin refusal, the relabel — all four.
 - **The 4.9.0-push round**: the two hover fills, the About strings, live
@@ -642,7 +644,6 @@ claim it was written for.
 
 | item | why deferred |
 |---|---|
-| **A9 — `instances restore-key` with the real pepper** | Claude never handles `ENCRYPTION_MASTER_PEPPER`. Setup is done: the CLI path, the `--force` gate, the `.bak` rotation and the IV guard are all proven; only the real-pepper rebuild remains. |
 | **C5 — the glm-5.3 vision wire proof** | Needs a chat pinned to the existing `Z.AI GLM 5.3 Flash` profile plus an image attachment; `wire-tap.py` cannot help (no TLS, and it collapses `messages` to a count). The behavioural proof — does the model read the image — is the right shape, as on 2026-08-24. |
 | **C4 — the 75 s compression budget + `[CheapLLM] Task failed`** | Needs a compression run long enough to bind the budget. |
 | **E1 — Pascal's group-tier write path** | Needs a single-group chat; the last of the four write paths (the other three are proven). |
@@ -656,3 +657,40 @@ The About page renders v4's **baseline** VM/Lima prose (`Lima/VZ`, `WSL2`,
 `1560bd43b` drift row's SPA scope. The catch-up round should expect to touch
 that copy, the Profile screen's `isVM` row, the Almanack `runtimeType`
 union, and the two `self_inventory` runtime labels.
+
+### A9 — `instances restore-key` with the real pepper (PASS, human-run, 2026-08-28)
+
+The one row reserved for the human, and the one arm the agent's run could not
+reach. Executed with the **server down and the instance lock released** (the
+command refuses while the lock is held — an ordering the agent initially got
+wrong by relaunching the server first).
+
+`.dbkey` stashed aside, then `restore-key --no-passphrase --yes` with the
+pepper supplied through the environment (no `--force`, deliberately, so the
+proof step had to run):
+
+```
+  quilltap.db                  opens with this pepper ✓
+  quilltap-llm-logs.db         opens with this pepper ✓
+  quilltap-mount-index.db      opens with this pepper ✓
+
+Wrote …/data/quilltap.dbkey (mode 0600).
+The instance now opens with no passphrase.
+```
+
+**This is the arm `--force` skipped in the agent's run**, where all three
+databases listed as `absent` and the pepper could not be proved. Here each
+partition was opened and verified **before anything was written** — the
+whole point of the command's safety contract. The rebuilt key then read back
+**42 characters** through `quilltap db`, so it genuinely unwraps the pepper
+the databases are encrypted with.
+
+Note no `.bak-…Z` line appears, correctly: the previous file had been moved
+aside, so there was nothing to rotate (the agent's run, which overwrote an
+existing `.dbkey`, did produce one).
+
+⚠ **Operational note, not a product finding:** the pepper was passed as an
+inline `ENCRYPTION_MASTER_PEPPER=…` prefix, which lands it in shell history —
+the exact exposure the CLI's help text cites as its reason for never
+accepting the pepper as a flag. The hidden prompt (omit the env var and let
+the command ask) avoids it. Flagged to the human at the time.

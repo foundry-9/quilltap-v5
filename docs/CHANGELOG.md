@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-28 — docs(dogfood): close A9 — `instances restore-key` proven with the real pepper
+
+_Docs-only change._
+
+The one row the agent-driven pass reserved for the human ran on 2026-08-28
+and passed, taking the walk to 19 PASS / 3 deferred. Run with the server down
+and the instance lock released, and deliberately without `--force`, so the
+proof arm the agent's run had to skip actually executed: all three partitions
+answered `opens with this pepper` before anything was written, the `.dbkey`
+was rewritten at mode 0600, and a subsequent `quilltap db` read back 42
+characters. No `.bak` rotation line, correctly — the previous file had been
+moved aside rather than overwritten.
+
+Recorded alongside it: the command refuses while the instance lock is held,
+so it must run with the server stopped (the agent initially got that ordering
+wrong), and passing the pepper as an inline environment prefix lands it in
+shell history — the exposure the CLI's own help cites as its reason for never
+accepting it as a flag.
+
 #### 2026-08-27 — docs(dogfood): the P4.D131-round pass — 18 PASS, zero v5 defects, thirteen 💸 items discharged
 
 _Docs-only change._
