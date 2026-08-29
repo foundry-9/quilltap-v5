@@ -732,3 +732,29 @@ structurally cannot show content parts. Absence there is not evidence of
 absence on the wire; the message/attachment/timing chain above is what
 proves it. (Same trap as the 2026-08-23 pass's note that the projection
 cannot show the leading-system fold.)
+
+## Found after the walk closed — finding #106 (RECORDED, not fixed)
+
+Reported by the human on 2026-08-29 while working a long chat for item C4:
+**their own message renders twice for most of a multi-character turn**, in its
+correct chronological place and again at the bottom, collapsing to one when the
+turn ends.
+
+Diagnosed but deliberately **not** fixed in place — the human's call, and the
+right one: the fix is an effect plus specs plus an e2e beat that reproduces the
+mid-turn window, which is lane-sized.
+
+The short version: v4 puts the optimistic bubble **inside** the message array,
+so a refetch replaces it; v5 keeps it in a separate signal appended at render
+and clears it only at turn end. The realtime round (P4.D123–D125) then started
+refetching the chat mid-turn — `CHAT_DANGER_CLASSIFICATION` alone completed six
+times in four minutes during the reporting session — so the canonical row now
+arrives while the optimistic bubble is still up. Full evidence in
+`dogfood-findings.md` row 106.
+
+**The uncomfortable part, and the reason it earns a standing note:** the entire
+Playwright suite is green through this. Every beat asserts the transcript
+*after* the turn completes; the defect exists only *during* it. That gesture —
+observing mid-turn — is missing from the suite, which is how a regression on
+the SPA's most-used screen went unnoticed through a full round and a 22-row
+dogfood walk that touched this very component.

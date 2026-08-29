@@ -2426,7 +2426,17 @@ records THERE. Update this summary only when a phase or round completes.
   `IMAGE_DESCRIPTION` rows in the window**, so no describe-fallback ran.
   **Still owed:** the 75 s compression budget, Pascal's group tier, the
   Brahma deep query, and dedup/summaries + the NanoGPT caching cost
-  question (#101).
+  question (#101). **⚠ Post-walk, finding #106 RECORDED (2026-08-29, NOT
+  fixed — needs an order): the user's own message renders TWICE for most of
+  a multi-character turn.** v4 keeps the optimistic bubble INSIDE the
+  message array so a refetch replaces it; v5 holds it in a separate signal
+  appended at render and clears it only at turn end — latent until
+  P4.D123–D125 started refetching the chat mid-turn
+  (`CHAT_DANGER_CLASSIFICATION` completed six times in four minutes on the
+  live instance). **The whole Playwright suite is green through it**,
+  because every beat asserts the POST-turn transcript and the defect is
+  strictly mid-turn; the owning lane's first deliverable is that missing
+  gesture.
 - **Oracle baseline: `b121ac77f` (2026-08-27, v4 main — the CLI
   `.dbkey` rebuild), adopted at the P4.D131-round unification
   (2026-08-27).**

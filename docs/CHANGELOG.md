@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-29 — docs(dogfood): record finding #106 — the duplicate optimistic user bubble
+
+_Docs-only change._
+
+Reported from a real multi-character turn on the Friday copy: the user's own
+message renders twice for most of the turn — in its chronological place and
+again at the transcript foot — collapsing to one when the turn ends. Recorded
+rather than fixed, at the human's direction; the fix is lane-sized.
+
+v4 pushes the optimistic bubble into the message array itself, so any refetch
+that replaces the array removes it and v4 structurally cannot show both. v5
+holds it in a separate signal appended unconditionally at render and clears it
+only at the turn-end reconcile point. That divergence was latent until
+P4.D123-D125 began publishing scoped chat hints on per-turn job completion, so
+the chat is now refetched mid-turn and the persisted user row arrives while the
+optimistic bubble is still standing. CHAT_DANGER_CLASSIFICATION alone completed
+six times in four minutes during the reporting session.
+
+Recorded with it as a standing note: the entire Playwright suite is green
+through this defect, because every beat asserts the transcript after the turn
+completes and the bug exists only during it. No beat observes the mid-turn
+window, which is how a regression on the SPA's most-used screen survived a full
+round and a 22-row dogfood walk over the same component. The owning lane should
+treat that gesture as a deliverable in its own right.
+
 #### 2026-08-28 — docs(dogfood): close C5 — bug 104's glm-5.3 vision send proven on real data
 
 _Docs-only change._

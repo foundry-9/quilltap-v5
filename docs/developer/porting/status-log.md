@@ -92845,3 +92845,33 @@ and dedup/summaries + the NanoGPT caching cost question.
 **Carried forward for the drift catch-up:** the About page renders v4's
 baseline VM/Lima prose, confirming `1560bd43b`'s SPA scope from the live
 surface.
+
+### Post-walk — finding #106, the duplicate optimistic user bubble (RECORDED 2026-08-29)
+
+Reported by the human two days after the walk closed, while working a long chat
+for the compression item: **the user's own message renders twice for most of a
+multi-character turn** — in its chronological place and again at the transcript
+foot — collapsing to one at turn end.
+
+**Diagnosed, deliberately not fixed** (the human's call; the fix is lane-sized).
+v4 pushes the optimistic bubble INTO the message array
+(`useSSEStreaming.ts:746`), so any `setMessages(canonical)` replaces it and v4
+**structurally cannot** show both. v5 holds it in a separate signal
+(`salon-conversation.ts:1291`) appended unconditionally at render (`:1758`) and
+cleared only at the turn-end reconcile (`:2818`) or `stop()` (`:3035`). That
+divergence was **latent until P4.D123–D125**: `topics_for_completed_job` now
+publishes a scoped `Chats` hint for `CHAT_DANGER_CLASSIFICATION`,
+`SCENE_STATE_TRACKING`, `CONTEXT_SUMMARY`, `TITLE_UPDATE` and
+`WARDROBE_OUTFIT_ANNOUNCEMENT` (`job_topics.rs:81-88`), the SPA maps `chats` →
+`[chatKeys.detail(id)]`, and the chat is refetched mid-turn. Measured live:
+`CHAT_DANGER_CLASSIFICATION` COMPLETED **six times in four minutes** during the
+reporting session.
+
+**The standing lesson, recorded in `dogfood-findings.md`:** the whole Playwright
+suite is green through this defect, because every beat asserts the transcript
+*after* the turn and the bug exists only *during* it. A mid-turn observation
+gesture does not exist in the suite at all — which is how a regression on the
+SPA's most-used screen survived a full round and a 22-row dogfood walk that
+exercised this very component. The owning lane should treat that beat as a
+deliverable in its own right.
+
