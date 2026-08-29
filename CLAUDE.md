@@ -2384,8 +2384,8 @@ records THERE. Update this summary only when a phase or round completes.
   tooltips + pinnable badge, the Salon list's speed, and the
   restore-key recovery walk. Round record: `status-log.md`.
 - **The P4.D131-round dogfood pass RAN (2026-08-27, agent-driven, on the
-  Friday copy) — 22 rows, 19 PASS, ZERO v5 defects, fourteen 💸 items
-  discharged across four rounds** (A9 ran human-side 2026-08-28). Walk doc:
+  Friday copy) — 22 rows, 20 PASS, ZERO v5 defects, fifteen 💸 items
+  discharged across four rounds** (A9 + C5 ran human-side 2026-08-28). Walk doc:
   `dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md`; record in
   `status-log.md`. **The ledger was STALE at walk start** — `/driftcheck`
   ran first (`11edb1c6`) and found 2 commits past the baseline
@@ -2420,10 +2420,13 @@ records THERE. Update this summary only when a phase or round completes.
   trusting a negative** as the standing rule. **`restore-key` with the real pepper CLOSED
   human-side (2026-08-28)** — server down, no `--force`, so the proof arm
   the agent skipped ran: all three partitions `opens with this pepper ✓`
-  before the write, 42 characters read back after. **Still owed:** the
-  glm-5.3 vision wire proof, the 75 s compression budget, Pascal's group
-  tier, the Brahma deep query, and dedup/summaries + the NanoGPT caching
-  cost question (#101).
+  before the write, 42 characters read back after. **Bug 104's glm-5.3
+  vision send also CLOSED human-side** — a 1.8 MB JPEG read by
+  `glm-5.3-flash` (a model id with no `v`), with **zero
+  `IMAGE_DESCRIPTION` rows in the window**, so no describe-fallback ran.
+  **Still owed:** the 75 s compression budget, Pascal's group tier, the
+  Brahma deep query, and dedup/summaries + the NanoGPT caching cost
+  question (#101).
 - **Oracle baseline: `b121ac77f` (2026-08-27, v4 main — the CLI
   `.dbkey` rebuild), adopted at the P4.D131-round unification
   (2026-08-27).**

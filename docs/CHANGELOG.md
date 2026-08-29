@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-28 — docs(dogfood): close C5 — bug 104's glm-5.3 vision send proven on real data
+
+_Docs-only change._
+
+A 1.8 MB `image/jpeg` attached to a chat on the existing `Z.AI GLM 5.3 Flash`
+profile was described correctly, taking the walk to 20 PASS / 2 deferred and
+fifteen live proofs discharged.
+
+The server-side chain rules out the describe-fallback: the user message at
+`04:53:52`-minus-30s carries the file, the only completion in the window is
+`Z_AI`/`glm-5.3-flash`/`CHAT_MESSAGE` at 25,821 ms, and there are zero
+`IMAGE_DESCRIPTION` rows after a call 31 minutes earlier. So a model whose id
+carries no `v` read the image directly — the case v4's plugin dropped before
+1.1.24, and the reason bug 104's fix deleted Z.AI's private vision-model list
+outright.
+
+Recorded with it: `llm_logs.request` cannot evidence a vision send either way.
+It is a pre-builder projection with message content flattened to strings, so a
+search for `image_url` correctly returns zero whether or not the image reached
+the wire.
+
 #### 2026-08-28 — docs(dogfood): close A9 — `instances restore-key` proven with the real pepper
 
 _Docs-only change._

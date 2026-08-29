@@ -83,7 +83,7 @@ from a worktree pinned at `b121ac77f`.
 | C2 | CLAUDE | **The About strings** | Open About. | The provider sentence + the Live-interface bullet read v4's post-`dcab791c2` copy. ⚠ **Drift:** v4 has since rewritten the VM/Lima prose (`1560bd43b`) — v5 correctly still shows the baseline text. | **PASS** |
 | C3 | CLAUDE | **Live three-shell completion** | Run `quilltap completion bash|zsh|fish` from the built CLI and exercise one real `<TAB>`. | All three templates emit; a real completion fires. Shell output. | **PASS** |
 | C4 | CLAUDE | **The 75 s compression budget + `[CheapLLM] Task failed` warn** | Find or force a compression run. | The local-first budget applies; the warn line appears in `combined.log` when it fails. Log grep. | **DEFERRED-TO-HUMAN** |
-| C5 | CLAUDE | **The glm-5.3 vision rows** (bug 104) | Fetch Z.AI image/vision models on a real key. | `glm-5.3-flash` rows present, vision models not dropped. Network response. | **DEFERRED-TO-HUMAN** |
+| C5 | CLAUDE | **The glm-5.3 vision rows** (bug 104) | Fetch Z.AI image/vision models on a real key. | `glm-5.3-flash` rows present, vision models not dropped. Network response. | **PASS (human-run)** |
 | C6 | **HUMAN** | **bug-103 seeding on a real pre-4.9 archive** | Import a genuine pre-4.9 backup archive. | Legacy columns seeded. **Deferred:** needs a real archive file the human has; also a heavy write. | DEFERRED-TO-HUMAN |
 
 ## Part D — the `f3892158d` realtime round 💸
@@ -594,8 +594,9 @@ buttons by `aria-label`, never by the `×` glyph.
 
 ## Summary
 
-**22 rows: 19 PASS (one partial, stated), 3 DEFERRED-TO-HUMAN. Zero v5
-defects found.** (A9 ran human-side on 2026-08-28 and passed — see its section.)
+**22 rows: 20 PASS (one partial, stated), 2 DEFERRED-TO-HUMAN. Zero v5
+defects found.** (A9 and C5 ran human-side on 2026-08-28 and both passed —
+see their sections.)
 
 That last sentence is the headline and it deserves its qualifier: the walk
 did **not** simply fail to look. Four separate observations looked like
@@ -639,12 +640,13 @@ claim it was written for.
 - **The 4.9.0-push round**: the two hover fills, the About strings, live
   three-shell completion (byte-identical to v4's launcher + a real TAB).
 - **P4.D130**: the outfit pull-down and garments-only slot pickers.
+- **Bug 104 — the glm-5.3 vision send (C5, human-run)**: a 1.8 MB JPEG read
+  by `glm-5.3-flash`, with no `describe_image` call anywhere in the window.
 
 ### Still owed (the human remainder)
 
 | item | why deferred |
 |---|---|
-| **C5 — the glm-5.3 vision wire proof** | Needs a chat pinned to the existing `Z.AI GLM 5.3 Flash` profile plus an image attachment; `wire-tap.py` cannot help (no TLS, and it collapses `messages` to a count). The behavioural proof — does the model read the image — is the right shape, as on 2026-08-24. |
 | **C4 — the 75 s compression budget + `[CheapLLM] Task failed`** | Needs a compression run long enough to bind the budget. |
 | **E1 — Pascal's group-tier write path** | Needs a single-group chat; the last of the four write paths (the other three are proven). |
 | **E2 — the Brahma deep-query budget** | One deep query, but genuinely open-ended in cost. |
@@ -694,3 +696,39 @@ inline `ENCRYPTION_MASTER_PEPPER=…` prefix, which lands it in shell history �
 the exact exposure the CLI's help text cites as its reason for never
 accepting the pepper as a flag. The hidden prompt (omit the env var and let
 the command ask) avoids it. Flagged to the human at the time.
+
+### C5 — the glm-5.3 vision wire proof, bug 104 (PASS, human-run, 2026-08-28)
+
+A real photo attached to a chat on the existing `Z.AI GLM 5.3 Flash`
+profile. **The model described it correctly** — and the human's incidental
+observation is the sharper proof: it *considered* `describe_image`, then
+"realized it could actually see the image". Under bug 104 the attachment
+would have been dropped before the wire, leaving it nothing to see and
+forcing the describe-fallback (bug 91's path).
+
+Confirmed server-side, three ways:
+
+| evidence | value |
+|---|---|
+| the attached file | `9aca182d…` = **`IMG_4496.jpeg`, `image/jpeg`, 1,860,259 bytes** |
+| the user message carrying it | `d85141bd…`, `role=USER`, `2026-08-29T04:53:22.710Z` |
+| the only completion in the window | **`Z_AI` / `glm-5.3-flash` / `CHAT_MESSAGE`, 25,821 ms**, `04:53:52.125Z` |
+| `IMAGE_DESCRIPTION` rows after it | **zero** — the latest is `04:22:08`, 31 minutes earlier |
+
+No `describe_image` call exists in the window, so the description cannot
+have come from the fallback tier. A 1.8 MB JPEG reached **a model whose id
+carries no `v`** and was read — the exact case v4's plugin dropped until
+1.1.24, and the reason bug 104's fix deleted Z.AI's private vision-model
+list outright.
+
+The model misidentified a cat as a large dog. That is model quality, not
+transport: a dropped attachment yields *no* animal, not the wrong one.
+
+⚠ **`llm_logs.request` cannot serve as evidence here** and a search of it
+for `image_url` / `data:image` / `base64` correctly returns zero. The column
+is a **pre-builder projection** — `{messageCount, messages, temperature,
+maxTokens, toolCount}` with content flattened to strings — so it
+structurally cannot show content parts. Absence there is not evidence of
+absence on the wire; the message/attachment/timing chain above is what
+proves it. (Same trap as the 2026-08-23 pass's note that the projection
+cannot show the leading-system fold.)

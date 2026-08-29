@@ -92726,8 +92726,8 @@ green with Ridge Reunion pinned oldest and the seeder tie-break in place.
 
 ## Dogfood pass — the P4.D131 round + the accumulated 💸 backlog (2026-08-27, agent-driven, on the Friday copy)
 
-**22 rows, 19 PASS (one partial, stated), 3 DEFERRED-TO-HUMAN; ZERO v5
-defects; fourteen 💸 items discharged across four rounds.** Walk doc:
+**22 rows, 20 PASS (one partial, stated), 2 DEFERRED-TO-HUMAN; ZERO v5
+defects; fifteen 💸 items discharged across four rounds.** Walk doc:
 `dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md`. Data rsynced
 2026-08-27 23:12 (main 819 MB / mount 737 MB / llm-logs 317 MB); server
 `quilltap-web` + the built SPA at `127.0.0.1:3000`.
@@ -92824,9 +92824,21 @@ had been moved aside. ⚠ Operational note: the pepper went in as an inline
 env prefix, which lands it in shell history — the exact exposure the CLI's
 help cites for never taking it as a flag; the hidden prompt avoids it.
 
-**Deferred to the human:** the glm-5.3 vision
-wire proof (needs an image on the existing `Z.AI GLM 5.3 Flash` profile;
-`wire-tap.py` cannot see TLS or content parts); the 75 s compression budget;
+**C5 also closed human-side (2026-08-28) — bug 104 proven on real data:** a
+**1.8 MB `image/jpeg`** attached on the existing `Z.AI GLM 5.3 Flash`
+profile was described correctly, and the model *considered* `describe_image`
+before finding it could see the picture itself. Server-side chain: the user
+message (`04:53:22.710Z`) carries the file; the only completion in the
+window is **`Z_AI`/`glm-5.3-flash`/`CHAT_MESSAGE`, 25,821 ms**
+(`04:53:52.125Z`); and there are **zero `IMAGE_DESCRIPTION` rows after
+`04:22:08`**, so no fallback ran. A model whose id carries no `v` read the
+image — the exact case v4's plugin dropped before 1.1.24. ⚠ `llm_logs.
+request` cannot evidence this either way: it is a pre-builder projection
+(`{messageCount, messages, temperature, maxTokens, toolCount}`, content
+flattened to strings) and a search of it for `image_url` correctly returns
+zero.
+
+**Deferred to the human:** the 75 s compression budget;
 Pascal's group tier (the last of four write paths); the Brahma deep query;
 and dedup/summaries + the NanoGPT caching cost question.
 
