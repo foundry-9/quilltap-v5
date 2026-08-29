@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-29 — docs(dogfood): record finding #107 — the Markdown toolbar overflows its column
+
+_Docs-only change._
+
+Reported from the New Chat dialog's Starting Scenario field: the formatting
+toolbar's buttons extend past the writing column on both sides. Recorded rather
+than fixed — the run was closing.
+
+The both-sides symmetry is the diagnostic. A block overflow spills right only;
+equal overhang means justify-content: center on a flex row wider than its
+container. The CSS is a faithful port — v5's .qt-formatting-toolbar is
+byte-identical to v4's, flex items-center justify-center gap-2 with no wrap and
+no max-width. The divergence is the enclosing box: v5 interposes
+<qt-markdown-field>, whose host class has no rule anywhere in
+apps/web/src/styles/, so it renders at display: inline and constrains nothing.
+v4 has no such wrapper.
+
+This is the third instance of the family, after finding #97 (qt-tab-view) and
+the Almanack walk's qt-entity-tabs, across 20 non-spec call sites. The standing
+note now proposes closing the class rather than the instance: assert that every
+component whose host declares a qt- class has a matching CSS rule, in the
+check-qt-classes idiom. The likely fix is a block display on the host, but it
+wants verification across a sample of the 20 sites since some may depend on the
+current shrink-to-content behaviour.
+
 #### 2026-08-29 — docs(dogfood): close C4 partial — the 75 s compression budget, with two measurement corrections
 
 _Docs-only change._

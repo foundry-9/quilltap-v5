@@ -810,3 +810,25 @@ for the live variant, not a conversation.
    than a 420 KB one (242 KB). So "use a bigger chat" is not a lever on
    duration, and the walk's initial advice to chase the band that way was
    wrong.
+
+## Also found after the walk closed — finding #107 (RECORDED, not fixed)
+
+Reported by the human at the end of the run: in the **New Chat** dialog, the
+Markdown formatting toolbar's buttons extend past the writing column's bounds
+on **both** sides of the *Starting Scenario (Optional)* field.
+
+The both-sides symmetry is the diagnostic detail — a block overflow spills
+right only. Equal overhang means `justify-content: center` on a flex row wider
+than its container.
+
+Localized from source (server already down): the CSS is a **faithful** port —
+v5's `.qt-formatting-toolbar` is byte-identical to v4's, `flex items-center
+justify-center gap-2` with no wrap and no max-width. The divergence is the
+host. v5 interposes `<qt-markdown-field>`, whose `host: { class:
+'qt-markdown-field' }` names a class that **is defined nowhere in
+`apps/web/src/styles/`** — so it renders at `display: inline`, establishes no
+block box, and constrains nothing. v4 has no such wrapper.
+
+**Third occurrence of this family** (after #97's `qt-tab-view` and the
+Almanack walk's `qt-entity-tabs`), and **20 non-spec call sites** inherit it.
+Full detail and the proposed sweep in `dogfood-findings.md` row 107.

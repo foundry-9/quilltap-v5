@@ -2445,7 +2445,14 @@ records THERE. Update this summary only when a phase or round completes.
   live instance). **The whole Playwright suite is green through it**,
   because every beat asserts the POST-turn transcript and the defect is
   strictly mid-turn; the owning lane's first deliverable is that missing
-  gesture.
+  gesture. **Finding #107 also RECORDED (2026-08-29, not fixed): the
+  Markdown formatting toolbar overflows its column on BOTH sides** (New
+  Chat's scenario field) — the CSS is byte-identical to v4's, but v5
+  interposes `<qt-markdown-field>` whose host class has **no rule anywhere**,
+  so it renders `display: inline` and constrains nothing. **Third instance
+  of the inline-host family** (after #97's `qt-tab-view` and the Almanack
+  walk's `qt-entity-tabs`), **20 call sites**; the standing note proposes a
+  guard over every `host: { class: 'qt-…' }` without a matching CSS rule.
 - **Oracle baseline: `b121ac77f` (2026-08-27, v4 main — the CLI
   `.dbkey` rebuild), adopted at the P4.D131-round unification
   (2026-08-27).**

@@ -92913,3 +92913,27 @@ first and had to be walked back:**
    to "pick a denser chat" was also wrong: chat selection is not a lever on
    duration, and the historical 40–75 s calls were provider-latency variance.
 
+### Post-walk — finding #107, the overflowing Markdown toolbar (RECORDED 2026-08-29)
+
+Reported by the human as the run closed: in the New Chat dialog the formatting
+toolbar's buttons extend past the writing column on **both** sides of the
+Starting Scenario field. The symmetry is the diagnostic — a block overflow
+spills right only; equal overhang is `justify-content: center` on a flex row
+wider than its container.
+
+**Diagnosed from source, not fixed.** The CSS is a faithful port: v5's
+`.qt-formatting-toolbar` (`_chat.css:1539`) is **byte-identical** to v4's
+(`b121ac77f:app/styles/qt-components/_chat.css:1408`) — `flex items-center
+justify-center gap-2`, no wrap, no max-width. The divergence is the enclosing
+box. v5 interposes `<qt-markdown-field>` (`editor/markdown-field.ts:74`) whose
+host class **has no rule anywhere in `apps/web/src/styles/`**, so it renders at
+`display: inline` and constrains nothing; v4 has no such wrapper and the
+toolbar inherits the column width.
+
+**This is the THIRD instance of the family** — after finding #97
+(`qt-tab-view`, Document Mode's 77 px source textarea) and the `qt-entity-tabs`
+inline-host bug from the Almanack walk — and **20 non-spec call sites** use
+`<qt-markdown-field>`. The standing note now proposes closing the *class*
+rather than the instance: every component whose `host: { class: 'qt-…' }` names
+a class should be checked for a matching rule, in the `check-qt-classes` idiom.
+
