@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-29 — docs(drift): record four new v4 commits — fallback chains and bugs 106/107
+
+_Docs-only change._
+
+A full `/driftcheck`. v4 `main` is now six commits past the `b121ac77f` oracle
+baseline — four of them new since the 2026-08-27 check. `bugfix` is unmoved at
+`3a76b17df`; the checkout is clean on `main`; the regen rule stays PIN REQUIRED.
+
+Two of the four are real ports on heavily-ported surfaces. `65f5021c8`
+(provider/model fallback chains) is PORT-NEW: two `connection_profiles` columns
+inserted mid-table by `generateDDL` and appended by the migration, a new pure
+`lib/llm/fallback/` engine, a new `failing-over` SSE stage, four integration
+sites across the chat spine and the cheap-LLM path, `allowCheapFallback` on
+`CheapLLMSettings`, and `fallbackProfileId` remapping in both id-rewriting
+paths. `a1d88aa3a` (bugs 106/107) is PORT: bug 106's message-array
+re-decision — which v4's own bug row says any port swapping the model mid-turn
+inherits — plus the consolidation of three "can this profile receive this
+attachment?" spellings into one predicate, and bug 107's cheap-LLM budget
+rewrite. The other two are docs-only NO-PORT candidates.
+
+Bug 107 supersedes the 75 s compression budget this port landed at P4.D127 and
+the dogfood pass closed as C4 PARTIAL two days ago: the background ceiling
+moves to 120 s, the shared tier to 90 s, and a new latency class keeps the
+interactive legs at their old values. Recorded under the ledger's §5.5
+proof-expiry rule — re-measure, don't carry the old numbers forward.
+
+CLAUDE.md's baseline bullet had restated the drift count in defiance of its own
+"never restate it here" rule and gone stale within hours; the restatement is
+removed rather than refreshed.
+
 #### 2026-08-29 — docs(dogfood): record finding #107 — the Markdown toolbar overflows its column
 
 _Docs-only change._

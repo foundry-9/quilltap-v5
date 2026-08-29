@@ -2461,11 +2461,9 @@ records THERE. Update this summary only when a phase or round completes.
   by `/driftcheck` and by `/unify` at baseline moves; the other porting
   commands run the ledger's §2 freshness probe instead of re-deriving
   drift, and lanes never write it. **Never restate the drift count here —
-  read the ledger's §1.** As of the P4.D131-round unification
-  (2026-08-27) the drift table is EMPTY — v4 HEAD equals the baseline —
-  and the regen rule is **NO PIN REQUIRED** until the §2 probe shows
-  movement or dirt. Still no `release: 4.9.0` squash — re-probe BOTH
-  branches at the next check. The sweep driver
+  read the ledger's §1** (this bullet restated it once, went stale within
+  hours, and the restatement is gone for good). Still no `release: 4.9.0`
+  squash as of the 2026-08-29 check — re-probe BOTH branches every time. The sweep driver
   remains the
   sanctioned per-family regen path — never run two sweeps concurrently;
   since P4.53 it refuses empty-stage families by name, `--self-test`
