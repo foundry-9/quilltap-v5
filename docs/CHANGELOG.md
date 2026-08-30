@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-30 — docs(drift): record five more v4 commits — LoRA adapters, doc-tool matching, qt-range
+
+_Docs-only change._
+
+A full `/driftcheck`, one day after the last. v4 `main` is now eleven commits
+past the `b121ac77f` oracle baseline — five new since 2026-08-29. `bugfix` is
+still unmoved at `3a76b17df`; the checkout is clean on `main`; the regen rule
+stays PIN REQUIRED. The backlog is now large enough to need more than one
+catch-up round.
+
+`487ae16b1` (bugs 108/109) is PORT and the one v4 says this port inherits:
+`doc_str_replace` handlers now guard their arguments before opening the file
+(`replace` by `typeof`, since `''` is a legitimate deletion), and a new
+typographic-folding pass runs after an exact miss so a document's curly
+punctuation no longer defeats an edit the model retyped straight. It rebuilds
+`lib/doc-edit/diacritics.ts`, which v5 ported file-for-file.
+
+`84f33ce94` is PORT-NEW: LoRA adapters stored under a reserved key in the
+existing `parameters` bag, per-model provider option resolution through the
+same `matchModel` as orientation, and `appliesToModels` promoted from reserved
+to honoured. It also consolidates five image-parameter call sites that had
+drifted apart — three of them read only `quality` off the profile, so profile
+settings worked for `generate_image` and vanished for avatars, story
+backgrounds, the images route and the wardrobe preview. Worth measuring v5 for
+the same drift. `648d5c8aa` (bugs 110/111) stacks on it.
+
+`5f56f7a7d` defines `qt-range`, a class v4 referenced and never had — the
+inert-name family's third instance, and v5 has the same ten range-input hosts
+with no such class. `7fb668263` is a Discord link that reaches the ported About
+mirror.
+
 #### 2026-08-29 — docs(drift): record four new v4 commits — fallback chains and bugs 106/107
 
 _Docs-only change._
