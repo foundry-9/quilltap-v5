@@ -63,6 +63,7 @@ async function render(
     providers?: ProviderInfo[];
     profile?: ConnectionProfileDto | null;
     apiKeys?: ApiKeyDto[];
+    allProfiles?: ConnectionProfileDto[];
   },
   client: Partial<CoreClient> = stubClient(),
 ): Promise<ComponentFixture<ProfileModal>> {
@@ -79,6 +80,7 @@ async function render(
   fixture.componentRef.setInput('providers', inputs.providers ?? [provider({})]);
   fixture.componentRef.setInput('apiKeys', inputs.apiKeys ?? []);
   fixture.componentRef.setInput('takenNames', inputs.takenNames ?? new Set<string>());
+  fixture.componentRef.setInput('allProfiles', inputs.allProfiles ?? []);
   fixture.detectChanges();
   await fixture.whenStable();
   fixture.detectChanges();
@@ -1838,5 +1840,140 @@ describe('ProfileModal — search providers never enter the LLM picker (dogfood 
     const values = Array.from(select.options).map((o) => o.value);
     expect(values).toContain('OPENAI');
     expect(values).not.toContain('IMAGES_ONLY');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// P4.D135 — the Fallback card (v4 `65f5021c8`, `ProfileModal.tsx:1030-1097`)
+// ---------------------------------------------------------------------------
+
+describe('ProfileModal (the fallback understudy picker)', () => {
+  function cp(over: Partial<ConnectionProfileDto>): ConnectionProfileDto {
+    return {
+      id: 'p-1',
+      userId: 'u1',
+      name: 'A Profile',
+      provider: 'OPENAI',
+      modelName: 'gpt-4o',
+      transport: 'api',
+      isDefault: false,
+      ...over,
+    } as ConnectionProfileDto;
+  }
+
+  function understudySelect(fixture: ComponentFixture<ProfileModal>): HTMLSelectElement | null {
+    return (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '#qt-pf-fallback',
+    );
+  }
+
+  function optionValues(select: HTMLSelectElement): string[] {
+    return Array.from(select.options).map((o) => o.value);
+  }
+
+  it('offers every profile but this one and the Couriers', async () => {
+    const self = cp({ id: 'p-self', name: 'Self' });
+    const fixture = await render({
+      profile: self,
+      allProfiles: [
+        self,
+        cp({ id: 'p-other', name: 'Other' }),
+        cp({ id: 'p-courier', name: 'Pigeon', transport: 'courier' }),
+      ],
+    });
+    const select = understudySelect(fixture)!;
+    expect(optionValues(select)).toEqual(['', 'p-other']);
+  });
+
+  /**
+   * A cycle is deliberately allowed: chains never recurse, so B's own
+   * understudy is not followed and the cycle simply stops. A picker that
+   * filtered it out would be inventing a rule v4 does not have.
+   */
+  it('offers a profile that already names this one back', async () => {
+    const self = cp({ id: 'p-self', name: 'Self' });
+    const fixture = await render({
+      profile: self,
+      allProfiles: [self, cp({ id: 'p-b', name: 'B', fallbackProfileId: 'p-self' })],
+    });
+    expect(optionValues(understudySelect(fixture)!)).toEqual(['', 'p-b']);
+  });
+
+  it('is hidden entirely on a Courier profile', async () => {
+    const fixture = await render({
+      profile: cp({ id: 'p-c', transport: 'courier', provider: 'COURIER' }),
+      allProfiles: [cp({ id: 'p-other' })],
+    });
+    expect(understudySelect(fixture)).toBeNull();
+  });
+
+  it('renders no understudies at all when the pool was not supplied', async () => {
+    // v4's `allProfiles = []` default: a modal rendered without the pool offers
+    // nothing rather than crashing.
+    const fixture = await render({ profile: cp({ id: 'p-self' }) });
+    expect(optionValues(understudySelect(fixture)!)).toEqual(['']);
+  });
+
+  it('warns — softly — when the chosen understudy has no key yet', async () => {
+    const self = cp({ id: 'p-self' });
+    const fixture = await render({
+      profile: cp({ ...self, fallbackProfileId: 'p-keyless' }),
+      allProfiles: [self, cp({ id: 'p-keyless', name: 'Keyless', apiKeyId: null })],
+    });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Keyless has no API key attached yet');
+    // A warning, never a block.
+    expect(understudySelect(fixture)!.value).toBe('p-keyless');
+  });
+
+  it('says nothing when the understudy holds a key', async () => {
+    const self = cp({ id: 'p-self' });
+    const fixture = await render({
+      profile: cp({ ...self, fallbackProfileId: 'p-keyed' }),
+      allProfiles: [self, cp({ id: 'p-keyed', name: 'Keyed', apiKeyId: 'k-1' })],
+    });
+    expect((fixture.nativeElement as HTMLElement).textContent ?? '').not.toContain(
+      'has no API key attached yet',
+    );
+  });
+
+  /**
+   * A provider that takes no key at all is perfectly ready as it stands — the
+   * warning must not fire for Ollama and friends (v4's
+   * `!providerAcceptsApiKey(...)` arm).
+   */
+  it('says nothing when the understudy is on a keyless provider', async () => {
+    const self = cp({ id: 'p-self' });
+    const fixture = await render({
+      profile: cp({ ...self, fallbackProfileId: 'p-ollama' }),
+      providers: [
+        provider({}),
+        provider({
+          id: 'OLLAMA',
+          name: 'OLLAMA',
+          displayName: 'Ollama',
+          configRequirements: { requiresApiKey: false, requiresBaseUrl: true },
+        }),
+      ],
+      allProfiles: [
+        self,
+        cp({ id: 'p-ollama', name: 'Local', provider: 'OLLAMA', apiKeyId: null }),
+      ],
+    });
+    expect((fixture.nativeElement as HTMLElement).textContent ?? '').not.toContain(
+      'has no API key attached yet',
+    );
+  });
+
+  it('nudges toward a Model Class only while none is set', async () => {
+    const withoutClass = await render({ profile: cp({ id: 'p-self', modelClass: null }) });
+    expect((withoutClass.nativeElement as HTMLElement).textContent ?? '').toContain(
+      'Set a Model Class above',
+    );
+    const withClass = await render({ profile: cp({ id: 'p-self', modelClass: 'Deep' }) });
+    expect((withClass.nativeElement as HTMLElement).textContent ?? '').not.toContain(
+      'Set a Model Class above',
+    );
   });
 });

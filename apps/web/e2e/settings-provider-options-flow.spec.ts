@@ -464,4 +464,70 @@ test.describe('P4.D98 — the thinking-turn prefill seed', () => {
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(providerSelect(page)).toHaveCount(0);
   });
+
+  /**
+   * P4.D135 — the understudy round-trip (v4 `65f5021c8`).
+   *
+   * The one thing no unit spec can reach: that the picker's choice survives the
+   * wire. It is written on one profile, saved, and read back off the reopened
+   * modal — which means it went out on the create/update body, through the
+   * route's target-shape validation, into the column, and back through the list
+   * projection.
+   *
+   * The seeded instance has at least one other API profile, so the dropdown has
+   * somebody to offer; the beat picks the first real option rather than naming
+   * a fixture id, so it survives a fixture regen.
+   */
+  test('the fallback understudy survives a save and a reopen', async ({ page }) => {
+    await openProfilesCard(page);
+
+    // Edit the FIRST profile in the card — whichever the fixture leads with.
+    const firstEdit = page.getByRole('button', { name: 'Edit' }).first();
+    await expect(firstEdit).toBeVisible({ timeout: 15_000 });
+    await firstEdit.click();
+    await expect(providerSelect(page)).toBeVisible({ timeout: 15_000 });
+
+    const understudy = page.locator('#qt-pf-fallback');
+    const tierBox = page.locator('#qt-pf-tier');
+    await expect(understudy).toBeVisible();
+    await expect(tierBox).not.toBeChecked();
+
+    // The first non-empty option is another of the user's API profiles: this
+    // profile itself and every Courier are filtered out.
+    const options = understudy.locator('option');
+    const optionCount = await options.count();
+    test.skip(optionCount < 2, 'the seeded instance has only one API profile to offer');
+    const targetId = await options.nth(1).getAttribute('value');
+    const targetLabel = (await options.nth(1).textContent())?.trim() ?? '';
+
+    await understudy.selectOption(targetId!);
+    await tierBox.check();
+    await page.getByRole('button', { name: 'Update Profile' }).click();
+    await expect(providerSelect(page)).toHaveCount(0, { timeout: 15_000 });
+
+    // Reopen: the choice came back off the wire, not out of a stale form.
+    await page.getByRole('button', { name: 'Edit' }).first().click();
+    await expect(page.locator('#qt-pf-fallback')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#qt-pf-fallback')).toHaveValue(targetId!);
+    await expect(page.locator('#qt-pf-tier')).toBeChecked();
+    // …and the option it lands on is still the one that was chosen.
+    await expect(
+      page.locator('#qt-pf-fallback option:checked'),
+    ).toHaveText(targetLabel);
+
+    // Clearing is the other half of the round-trip: `(None)` must persist as a
+    // cleared column, not as an unchanged one.
+    await page.locator('#qt-pf-fallback').selectOption('');
+    await page.locator('#qt-pf-tier').uncheck();
+    await page.getByRole('button', { name: 'Update Profile' }).click();
+    await expect(providerSelect(page)).toHaveCount(0, { timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'Edit' }).first().click();
+    await expect(page.locator('#qt-pf-fallback')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#qt-pf-fallback')).toHaveValue('');
+    await expect(page.locator('#qt-pf-tier')).not.toBeChecked();
+
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(providerSelect(page)).toHaveCount(0);
+  });
 });

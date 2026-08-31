@@ -2927,8 +2927,22 @@ export class SalonConversation {
  *    the failure carrying the tool's own sentence (Bug 84).
    */
   private reportStreamTransitions(before: ChatStreamState, after: ChatStreamState): void {
-    if (after.status?.stage === 'retrying' && before.status?.stage !== 'retrying') {
-      const message = after.status.message;
+    // v4 `useSSEStreaming.ts:508-519` (`65f5021c8`): `retrying` is the same
+    // provider having another go after an empty response, `failing-over` is an
+    // understudy from the profile's fallback chain taking the turn. Both are
+    // moments where the reply the user gets is not the one they configured, so
+    // both are worth saying out loud.
+    //
+    // ⚠ The recorded divergence above applies to BOTH stages, and bites harder
+    // on this one: riding transitions means a chain that walks two stand-ins
+    // emits two `failing-over` frames and toasts ONCE, where v4 toasts twice.
+    // The reducer coalesces repeats, and two consecutive "X is standing in for
+    // Y..." toasts are noise rather than news — recorded, not fixed.
+    const RESCUE_STAGES = ['retrying', 'failing-over'];
+    const afterStage = after.status?.stage ?? '';
+    const beforeStage = before.status?.stage ?? '';
+    if (RESCUE_STAGES.includes(afterStage) && afterStage !== beforeStage) {
+      const message = after.status?.message;
       if (message) this.toasts.showWarning(message);
     }
     // Attachments the provider plugin could not put on the wire. The ledger has

@@ -13,6 +13,14 @@ interface CheapLLMSettings {
   userDefinedProfileId?: string | null;
   defaultCheapProfileId?: string | null;
   fallbackToLocal: boolean;
+  /**
+   * Whether a cheap route with no connection profile behind it may have a
+   * stand-in drafted from the user's `isCheap` profiles when it fails (v4
+   * `65f5021c8`). Routes that DO have a profile take their chain from that
+   * profile's own Fallback section instead. Optional: a settings bag written
+   * before 4.10 does not carry it, and absent reads as off.
+   */
+  allowCheapFallback?: boolean;
   embeddingProvider: EmbeddingProvider;
 }
 
@@ -149,6 +157,27 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
             <div class="font-medium text-sm">Fallback to Local</div>
             <div class="qt-text-xs">
               Use local Ollama models as fallback if configured strategy is unavailable
+            </div>
+          </div>
+        </label>
+
+        <!-- Allow a drafted stand-in for profile-less cheap routes -->
+        <label
+          class="flex items-center gap-3 p-3 border qt-border-default rounded qt-hover-accent cursor-pointer transition-colors"
+        >
+          <input
+            type="checkbox"
+            [checked]="cheap().allowCheapFallback ?? false"
+            [disabled]="saving()"
+            (change)="update({ allowCheapFallback: $any($event.target).checked })"
+          />
+          <div class="flex-1">
+            <div class="font-medium text-sm">Allow a Similar-Tier Stand-In</div>
+            <div class="qt-text-xs">
+              When the cheap route fails and no connection profile stands behind it — a local
+              model, or a route assembled on the spot — permit one understudy to be drafted
+              from your inexpensive connections. Routes that <em>do</em> have a profile take
+              their understudy from that profile&rsquo;s own Fallback section instead.
             </div>
           </div>
         </label>

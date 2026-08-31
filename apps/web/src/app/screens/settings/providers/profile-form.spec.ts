@@ -480,3 +480,63 @@ describe('profile form — outboundApiKeyId (Bug 76)', () => {
     expect(body['apiKeyId']).toBeNull();
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// P4.D135 — the fallback pair through the form (v4 `65f5021c8`)
+// ---------------------------------------------------------------------------
+
+describe('profile form — the fallback pair', () => {
+  it('starts with no understudy and the tier pick off', () => {
+    expect(initialFormState.fallbackProfileId).toBe('');
+    expect(initialFormState.allowTierFallback).toBe(false);
+  });
+
+  it('loads a stored understudy, and a null one as the empty string', () => {
+    expect(loadProfileIntoForm(profile({ fallbackProfileId: 'p-u' })).fallbackProfileId).toBe(
+      'p-u',
+    );
+    expect(loadProfileIntoForm(profile({ fallbackProfileId: null })).fallbackProfileId).toBe('');
+    expect(loadProfileIntoForm(profile({})).fallbackProfileId).toBe('');
+  });
+
+  it('loads the tier flag, defaulting an absent one to false', () => {
+    expect(loadProfileIntoForm(profile({ allowTierFallback: true })).allowTierFallback).toBe(true);
+    expect(loadProfileIntoForm(profile({ allowTierFallback: false })).allowTierFallback).toBe(
+      false,
+    );
+    expect(loadProfileIntoForm(profile({})).allowTierFallback).toBe(false);
+  });
+
+  it('sends the understudy, and maps the empty string back to null', () => {
+    expect(
+      buildProfileRequestBody(form({ fallbackProfileId: 'p-u' }), PROVIDERS)['fallbackProfileId'],
+    ).toBe('p-u');
+    expect(
+      buildProfileRequestBody(form({ fallbackProfileId: '' }), PROVIDERS)['fallbackProfileId'],
+    ).toBeNull();
+  });
+
+  it('sends the tier flag as a boolean either way', () => {
+    expect(
+      buildProfileRequestBody(form({ allowTierFallback: true }), PROVIDERS)['allowTierFallback'],
+    ).toBe(true);
+    expect(
+      buildProfileRequestBody(form({ allowTierFallback: false }), PROVIDERS)['allowTierFallback'],
+    ).toBe(false);
+  });
+
+  /**
+   * A Courier request is carried by hand, so nothing about it can fail over
+   * automatically: v4 forces BOTH off in the courier body regardless of what
+   * the form holds (`useProfileForm.ts:188-193`).
+   */
+  it('forces both off on a Courier profile, whatever the form says', () => {
+    const body = buildProfileRequestBody(
+      form({ transport: 'courier', fallbackProfileId: 'p-u', allowTierFallback: true }),
+      PROVIDERS,
+    );
+    expect(body['fallbackProfileId']).toBeNull();
+    expect(body['allowTierFallback']).toBe(false);
+  });
+});

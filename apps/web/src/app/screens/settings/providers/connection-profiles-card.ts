@@ -188,6 +188,7 @@ interface Badge {
           [providers]="providers()"
           [apiKeys]="apiKeys()"
           [takenNames]="takenNames()"
+          [allProfiles]="profilesQuery.data() ?? []"
           (close)="closeModal()"
           (saved)="onSaved()"
         />

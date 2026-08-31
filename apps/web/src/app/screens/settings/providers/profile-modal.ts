@@ -640,6 +640,75 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
             </div>
           </div>
 
+          <!-- Fallback — the understudies. API transport only: a Courier
+               request is carried by hand, so nothing about it can stand in
+               automatically. Sits next to Model Class because the tier toggle
+               below is only as good as that field (v4
+               ProfileModal.tsx:1030-1097). -->
+          @if (!isCourier()) {
+            <div class="qt-card p-4 space-y-3">
+              <div>
+                <h4 class="qt-text-label">Fallback</h4>
+                <p class="qt-text-xs mt-1">
+                  Should this connection be indisposed — a refused key, a rate limit, a
+                  provider gone dark — the show need not come down. Name an understudy and
+                  the call is passed along without a word to anyone.
+                </p>
+              </div>
+
+              <div>
+                <label for="qt-pf-fallback" class="block qt-text-label mb-2">Understudy</label>
+                <select
+                  id="qt-pf-fallback"
+                  name="fallbackProfileId"
+                  class="qt-select"
+                  [value]="form().fallbackProfileId"
+                  (change)="setField('fallbackProfileId', $any($event.target).value)"
+                >
+                  <option value="" [selected]="!form().fallbackProfileId">
+                    (None — the call simply fails)
+                  </option>
+                  @for (p of fallbackCandidates(); track p.id) {
+                    <option [value]="p.id" [selected]="form().fallbackProfileId === p.id">
+                      {{ p.name }} — {{ p.provider }} {{ p.modelName }}
+                    </option>
+                  }
+                </select>
+                @if (selectedFallbackProfile(); as target) {
+                  @if (!fallbackTargetHasKey()) {
+                    <p class="qt-text-xs qt-text-warning mt-1">
+                      {{ target.name }} has no API key attached yet. The understudy will be
+                      skipped until one arrives.
+                    </p>
+                  }
+                }
+              </div>
+
+              <div class="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="qt-pf-tier"
+                  name="allowTierFallback"
+                  class="qt-checkbox"
+                  [checked]="form().allowTierFallback"
+                  (change)="setField('allowTierFallback', $any($event.target).checked)"
+                />
+                <label for="qt-pf-tier" class="text-sm">
+                  Draft a stand-in from the company when both named players are indisposed
+                </label>
+              </div>
+              <p class="qt-text-xs">
+                One further attempt, and one only: a connection of the same standing or
+                better, preferring a different provider than the one that just failed.
+                @if (!form().modelClass) {
+                  Set a Model Class above and the choice will be a great deal better
+                  informed — without one, only your other unclassified connections are
+                  eligible.
+                }
+              </p>
+            </div>
+          }
+
           <!-- Provider-specific options — schema-driven, supplied by the active
                plugin. v4's slot exactly (ProfileModal.tsx:899-908): after Max
                Context, before the tag editor. -->
@@ -683,6 +752,12 @@ export class ProfileModal implements OnInit {
   readonly apiKeys = input<ApiKeyDto[]>([]);
   /** Normalized names already taken by OTHER profiles (duplicate-name guard). */
   readonly takenNames = input<Set<string>>(new Set());
+  /**
+   * Every profile the user owns — the candidate pool for the Fallback dropdown
+   * (v4 `ProfileModal.tsx:27-32`). A modal rendered without it simply offers no
+   * understudies, which is the right answer rather than a crash.
+   */
+  readonly allProfiles = input<ConnectionProfileDto[]>([]);
   readonly close = output<void>();
   readonly saved = output<void>();
 
@@ -710,6 +785,39 @@ export class ProfileModal implements OnInit {
 
   protected readonly editing = computed(() => !!this.profile()?.id);
   protected readonly isCourier = computed(() => this.form().transport === 'courier');
+
+  /**
+   * Eligible understudies: anyone but this profile and the Courier profiles.
+   * A cycle (A names B, B names A) is deliberately allowed — chains never
+   * recurse, so B's own understudy is not followed and the cycle simply stops.
+   *
+   * NOTE the options bind `[selected]`, not the select's
+   * `[value]`: an Angular select cannot mirror React's controlled value, and
+   * every sibling select in this modal binds the same way.
+   */
+  protected readonly fallbackCandidates = computed(() =>
+    this.allProfiles().filter(
+      (p) => p.id !== this.profile()?.id && p.transport !== 'courier',
+    ),
+  );
+
+  protected readonly selectedFallbackProfile = computed(() => {
+    const id = this.form().fallbackProfileId;
+    if (!id) return null;
+    return this.allProfiles().find((p) => p.id === id) ?? null;
+  });
+
+  /**
+   * A soft warning, never a block: keys can arrive later, and a provider that
+   * takes none at all is perfectly ready as it stands.
+   */
+  protected readonly fallbackTargetHasKey = computed(() => {
+    const target = this.selectedFallbackProfile();
+    if (!target) return true;
+    if (target.apiKeyId) return true;
+    const cfg = this.providers().find((p) => p.name === target.provider)?.configRequirements;
+    return !providerAcceptsApiKey(cfg);
+  });
 
   protected readonly chatProviders = computed(() =>
     this.providers().filter((p) => p.capabilities?.chat),

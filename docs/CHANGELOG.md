@@ -165,6 +165,74 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — feat(spa): the understudy picker, the cheap-LLM stand-in toggle, and the failing-over toast (P4.D135 unit 5)
+
+_Versions: SPA 0.5.597._
+
+The client half of the fallback chains (v4 `65f5021c8`). The profile modal gains
+its Fallback card — the understudy dropdown (this profile and every Courier
+filtered out; a cycle is deliberately offered, because chains never recurse and
+one simply stops) and the tier-pick toggle with its Model Class nudge. The
+soft key warning is a warning, never a block: keys arrive later, and a provider
+that takes none at all is ready as it stands.
+
+The Cheap LLM card gains "Allow a Similar-Tier Stand-In", the one off-profile
+switch, with v4's copy carried over.
+
+The Salon's rescue toast now fires on `failing-over` as well as `retrying` —
+both are moments where the reply the user gets is not the one they configured.
+No reducer change was needed and that was MEASURED, not assumed: `ResponseStatus
+.stage` is a free string and the reducer carries the whole status object
+through, so the new stage arrives intact. The recorded once-per-entry divergence
+applies to both stages and bites harder on this one (a chain walking two
+stand-ins toasts once where v4 toasts twice) — recorded, not fixed.
+
+Nine new specs (the picker's filters, the pool default, the key warning in three
+positions, the Model Class nudge) and six on the form's load/build round-trip
+including the Courier body, which forces both fields off whatever the form
+holds. Plus this branch's Playwright beat: the understudy chosen, saved, read
+back off a reopened modal, then cleared and read back again — the one thing no
+unit spec can reach, because it proves the choice survived the wire.
+
+⚠ The picker binds `[selected]` on the option, not `[value]` on the select. The
+first version bound the select and the spec caught it: an Angular select cannot
+mirror React's controlled value, and every sibling select in this modal already
+binds the same way.
+
+#### 2026-08-31 — feat(memory): the cheap-LLM fallback chain, and the switch that governs the profile-less routes (P4.D135 unit 4)
+
+_Versions: core 0.0.705, harness 0.0.607._
+
+`services/cheap_llm_fallback.rs` — v4's `lib/memory/cheap-llm-tasks/fallback.ts`.
+The cheap path speaks a different currency from the Salon (a `CheapLlmSelection`,
+not a connection profile), so this converts between the two rather than growing
+a second engine; the two paths drifting apart is the trap the feature was warned
+about. A failed cheap task now walks the route's chain, re-issuing against each
+stand-in with a FRESH deadline — the previous route spent its budget without
+answering, and charging the understudy for that would guarantee it fails too.
+
+The `allowCheapFallback` half landed with the schema in unit 1; this is what
+reads it. A route with no profile behind it — a pure-local Ollama pick, a
+provider-cheapest synthesis — has nothing to hang a chain on, so it is governed
+by that one off-profile switch and draws a stand-in from the user's `isCheap`
+profiles.
+
+v4 reaches its ambient `getRepositories()`; v5 needs an explicit handle, and
+`CheapLlmLogConfig` already carries the `Db` and the user id, so `with_logging`
+supplies both and none of the 60-odd call sites change. ⚠ `CheapLlmTaskExecutor
+::new()` therefore has no chain — the two production sites that use it (image
+prompt expansion, one enclave leg) keep the pre-4.10 behaviour. A named gap.
+
+New family `cheap_llm_fallback_equivalence` (7 cases, five mutation proofs) over
+the settings fixture, comparing SELECTIONS — the conversion is where the two
+currencies meet. It had to walk around two vacuity traps, both measured rather
+than reasoned: a profile-less route stands in a synthetic failed profile with no
+model class, and `tierMatches` reads unknown-vs-known as a non-match, so a
+*classified* cheap profile is never drafted and the switch's two positions both
+answered `[]`; and v4's `jest.setup.ts` mocks the whole DB stack while
+`safeQuery` swallows the failure, so every seeding write quietly no-ops and the
+case goes green having measured a world it never built.
+
 #### 2026-08-31 — feat(chat): the fallback chain on the Salon spine, both entrances (P4.D135 unit 3)
 
 _Versions: core 0.0.704, harness 0.0.606._

@@ -93657,3 +93657,114 @@ not counted as dangerous for the chain.
 `turn_orchestrator`'s `ChainConfig`: v4 deleted `maxRetries` / `retryDelayMs` in
 this commit ("declared and never read"). v5 never ported them — they were dead
 on arrival — so the deletion is a no-op here and only the doc comment moved.
+
+---
+
+## P4.D135 unit 4 — the cheap-LLM fallback chain (v4 `65f5021c8`)
+
+`services/cheap_llm_fallback.rs` (v4 `lib/memory/cheap-llm-tasks/fallback.ts`) +
+`attempt_cheap_fallback_chain` on the executor (v4's `core-execution.ts` hunk).
+The `allowCheapFallback` schema/settings half landed in unit 1; this is what
+reads it.
+
+### The handle, and the gap it leaves
+
+v4 reaches its ambient `getRepositories()`. v5 needs an explicit `Db`, and
+`CheapLlmLogConfig` already carries one plus the user id — so `with_logging`
+populates a `CheapFallbackHandle` from the same values and **none of the ~60
+construction sites change**.
+
+⚠ **`CheapLlmTaskExecutor::new()` therefore has no chain.** The two production
+sites that use it — `tools::generate_image`'s prompt expansion and one
+`enclave::step` leg — keep the pre-4.10 behaviour, as do the differentials that
+construct a bare executor. A NAMED gap, not an accident: closing it means giving
+those two a `Db`, which is a caller-side change this lane does not own.
+
+### v4 shapes carried
+
+- `selection_from_profile` made `pub` (v4 `export`ed it in this commit for
+  exactly this).
+- The synthetic failed profile for the profile-less arm: v4 casts a five-key
+  literal through `as ConnectionProfile`, so every other field is `undefined` —
+  including `allowToolUse`, which is only read when `needsTools`, and a cheap
+  task never sets it.
+- `CheapLLMTimeoutError` is the one class v4's classifier tests by NAME. v5's
+  cheap path surfaces a `CompletionError` carrying the message, so the deadline
+  is recognised by its sentence and handed to `FallbackError::named`.
+
+### The differential — and its two vacuity traps, both MEASURED
+
+New family `cheap_llm_fallback_equivalence`, 7 cases over a copy of the settings
+fixture, comparing SELECTIONS field-for-field (provider, model, baseUrl,
+connectionProfileId, isLocal, profileParameters). The conversion between the two
+currencies is what this family uniquely proves — the tier picker's own rules are
+already exhaustively pinned at tier-1.
+
+1. **The profile-less arm was vacuous on its first run.** Both switch positions
+   answered `[]`, because a profile-less route stands in a SYNTHETIC failed
+   profile with no model class and `tierMatches` reads unknown-vs-KNOWN as a
+   non-match in both directions — so the fixture's *classified* cheap profile was
+   never drafted. The case now clears that `modelClass` before the profile-less
+   arms, and the switch discriminates.
+2. **v4's `jest.setup.ts` mocks the whole DB stack** — the manager, the
+   repositories, the factory — and `safeQuery` SWALLOWS the resulting failure.
+   Every seeding write quietly no-ops and the case goes green having measured a
+   world it never built. The oracle un-mocks all three (the `settings-routes`
+   idiom) plus `provider-validation`, which the credential gate reads.
+
+A `nonempty >= 3` shape assertion guards both: an all-empty corpus proves only
+that both sides refuse.
+
+**Mutation proofs (5):** `allowCheapFallback` ignored; the primary not dropped
+from the chain; the synthetic failed profile given a model class; `dangerous`
+not threaded; a profile-backed selection treated as profile-less.
+
+---
+
+## P4.D135 unit 5 — the SPA mirrors (v4 `65f5021c8`)
+
+The profile modal's Fallback card (understudy dropdown + tier toggle + the
+Model Class nudge + the soft key warning), the Cheap LLM card's "Allow a
+Similar-Tier Stand-In", and the Salon's rescue toast extended to `failing-over`.
+
+### Two things measured rather than assumed
+
+1. **The reducer needed NO change.** The order carries the standing
+   "a v4 client fix may need TWO layers in v5" warning — the pure reducer must
+   carry a new frame field before any display can read it. It does not bite
+   here: `ResponseStatus.stage` is a free `string`, and
+   `chat-stream.reducer.ts:188` carries the whole `frame.status` object through
+   by assignment. Read before writing; nothing to port.
+2. **The picker binds `[selected]` on the option, not `[value]` on the select.**
+   The first version bound the select's value and the new spec caught it
+   immediately (`expected '' to be 'p-keyless'`) — the standing
+   `angular-select-cannot-mirror-react-controlled-value` note, and every sibling
+   select in this modal already binds the same way.
+
+### The recorded divergence, widened
+
+The rescue toast rides transitions (`after.stage !== before.stage`) where v4
+toasts on every status event. That was already recorded for `retrying`; it bites
+harder on `failing-over`, because a chain walking two stand-ins emits two frames
+and toasts ONCE where v4 toasts twice. Two consecutive "X is standing in for Y…"
+toasts are noise rather than news — recorded in the code, not fixed.
+
+### Coverage
+
+Nine `profile-modal` specs (the two filters, the deliberately-offered cycle, the
+Courier hiding the card entirely, the absent-pool default, the key warning in
+three positions incl. a keyless provider, the Model Class nudge both ways) and
+six `profile-form` specs (initial state, load in both directions for both
+fields, the empty-string ⇄ null mapping, and the Courier body forcing both off
+whatever the form holds).
+
+**The Playwright beat** (`settings-provider-options-flow.spec.ts`, this branch's
+slot) is the one thing no unit spec can reach: the understudy is chosen, saved,
+and read back off a REOPENED modal — so it went out on the request body, through
+the route's target-shape validation, into the column, and back through the list
+projection. Then cleared and read back again, because `(None)` persisting as a
+cleared column is the other half of the round-trip. It picks the first real
+option rather than naming a fixture id, so a fixture regen does not stale it,
+and it skips loudly if the seeded instance has only one API profile to offer.
+
+Gate: `npm test` 366 files / 5,472 tests / 0 failed; `npm run build` clean.

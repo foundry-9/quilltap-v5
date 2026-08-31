@@ -3407,6 +3407,23 @@ export interface ConnectionProfileDto {
   multiCharacterPrefill?: boolean | null;
   supportsImageUpload?: boolean;
   modelClass?: string | null;
+  /**
+   * The understudy (v4 `65f5021c8`): another profile to try when a call through
+   * this one fails outright. `null`/absent means none named. Chains never
+   * recurse, so the understudy's own understudy is not followed.
+   */
+  fallbackProfileId?: string | null;
+  /**
+   * Whether, once this profile and its named understudy have both failed, one
+   * further candidate of the same or better `modelClass` may be drafted
+   * automatically. Defaults to false — an auto-picked replacement spends money
+   * at a provider the user did not choose for this call.
+   *
+   * Always present on the wire (v4's Zod is `z.boolean().default(false)`, not
+   * `.nullable().optional()`), but typed optional so a hand-built DTO in a spec
+   * need not carry it.
+   */
+  allowTierFallback?: boolean;
   maxContext?: number | null;
   sortIndex?: number;
   apiKey?: ProfileApiKeyRef | null;

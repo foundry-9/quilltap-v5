@@ -31,6 +31,18 @@ export interface ProfileFormData {
   allowWebSearch: boolean;
   useNativeWebSearch: boolean;
   modelClass: string;
+  /**
+   * The understudy: the id of another profile to try when a call through this
+   * one fails outright (v4 `65f5021c8`). **Empty string means none named** —
+   * the select's `(None)` option — which the request builder maps back to
+   * `null`.
+   */
+  fallbackProfileId: string;
+  /**
+   * Whether, once this profile and its understudy have both failed, Quilltap
+   * may draft one further stand-in of the same or better model class.
+   */
+  allowTierFallback: boolean;
   maxContext: string;
   /**
    * The profile's `parameters` blob MINUS the three sampling keys the form owns
@@ -66,6 +78,8 @@ export const initialFormState: ProfileFormData = {
   allowWebSearch: false,
   useNativeWebSearch: false,
   modelClass: '',
+  fallbackProfileId: '',
+  allowTierFallback: false,
   maxContext: '',
   parameters: {},
 };
@@ -125,6 +139,8 @@ export function loadProfileIntoForm(profile: ConnectionProfileDto): ProfileFormD
     allowWebSearch: profile.allowWebSearch ?? false,
     useNativeWebSearch: profile.useNativeWebSearch ?? false,
     modelClass: profile.modelClass ?? '',
+    fallbackProfileId: profile.fallbackProfileId ?? '',
+    allowTierFallback: profile.allowTierFallback ?? false,
     maxContext: profile.maxContext ? String(profile.maxContext) : '',
     parameters: rest,
   };
@@ -244,6 +260,11 @@ export function buildProfileRequestBody(
       allowWebSearch: false,
       useNativeWebSearch: false,
       modelClass: null,
+      // A Courier request is carried by hand. Nothing about that route can fail
+      // over automatically, so it neither names an understudy nor accepts a
+      // drafted one (v4 `useProfileForm.ts:188-193`).
+      fallbackProfileId: null,
+      allowTierFallback: false,
       maxContext: null,
       parameters: {},
     };
@@ -276,6 +297,8 @@ export function buildProfileRequestBody(
     allowWebSearch: form.allowWebSearch,
     useNativeWebSearch: form.useNativeWebSearch,
     modelClass: form.modelClass || null,
+    fallbackProfileId: form.fallbackProfileId || null,
+    allowTierFallback: form.allowTierFallback,
     maxContext: form.maxContext ? parseInt(form.maxContext, 10) : null,
     // Always sent, never conditionally: `null` is how the row is *cleared* of a
     // key the current provider cannot use, so a profile that carried one across
