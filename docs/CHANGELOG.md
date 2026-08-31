@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — docs(orders): write the drift catch-up round 1 of 2 — P4.D134 ∥ (P4.D135 → P4.D136 stacked) ∥ P4.D137
+
+_Docs-only change._
+
+Four work orders covering the contiguous drift prefix `1560bd43b`..
+`7fb668263` (eight of the fifteen pending commits; the baseline moves to
+`7fb668263` when the round unifies). P4.D134: the Lima/WSL2 retirement
+across the six ported surfaces (host env/lock, CLI, data-dir wire with the
+`isVM` key deletion, host-rewrite collapse, almanack/self-inventory, SPA
+About/footer/profile) plus the `7fb668263` About Discord-link rider and
+the `7819afb1d`/`3c3432ae9` NO-PORT ratifications. P4.D135: the
+provider/model fallback chains whole — the D23 re-dump for the two
+mid-table `connection_profiles` columns, the pure fallback engine, the
+four integration sites, both id-remap paths, the delete-nulls cascade,
+and the SPA mirrors. P4.D136 (stacked on D135's branch): bugs 106/107 —
+the reroute's message-array re-decision + the
+`profileCanReceiveAttachment` consolidation, and the cheap-LLM budget
+rewrite with the latency-class split (the superseded 75 s dogfood C4 row
+retired per ledger §5.5). P4.D137: doc-edit bugs 108/109 — the argument
+guards and the typographic-folding two-tier matcher. The remaining seven
+rows (the three-commit LoRA train, `qt-range`, bug 112, the Concierge
+four-state, `e41fcb12e`) are round 2 by design: they stack on this
+round's output or collide with its lanes (`tools/self_inventory.rs`, the
+spine quartet, the job handlers). Ledger §3 rows marked ORDERED.
+
 #### 2026-08-31 — docs(drift): record four more v4 commits — bug 112, the Concierge four-state, the HuggingFace LoRA lookup
 
 _Docs-only change._
