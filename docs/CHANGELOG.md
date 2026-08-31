@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — docs(drift): record four more v4 commits — bug 112, the Concierge four-state, the HuggingFace LoRA lookup
+
+_Docs-only change._
+
+A full `/driftcheck`, one day after the last. v4 `main` is now fifteen
+commits past the `b121ac77f` oracle baseline — four new since 2026-08-30.
+`bugfix` is still unmoved at `3a76b17df`; the checkout is clean on `main`;
+the regen rule stays PIN REQUIRED.
+
+`735d9408c` (bug 112, v4-filed) is PORT and lands on surfaces this port just
+rebuilt: `lastMessageAt` now moves only when a character — the user or an
+LLM — posts content, via a new chokepoint predicate
+(`isCharacterAuthoredMessage` + its SQL mirror), with every chat-list sort,
+both write sites, deletion recompute, restore/import re-derivation, and a
+recompute migration behind it. That hits v5's `db/chats_messages.rs`, the
+P4.65 `ChatListPreloaded` Salon-list batching, P4.64's `services/home.rs`,
+the characters/projects/brahma routes, self-inventory, and the SPA chat
+cards.
+
+`60e3c4a0a` is PORT: the per-chat Concierge control grows to four states
+(`conciergeOverride` admits `'UNCENSORED'`; `'OFF'` relabeled Vouched Safe).
+No DDL change — the migration is ledger-only — but the whole
+chat-override/manual-flip/resolver family v5 ported reshapes
+(`isChatActiveDangerous` → `shouldUseUncensoredRoute`, new flip kinds, new
+Concierge notice sentences) across ~14 ported call sites, plus the Salon
+sidebar control.
+
+`2ece98c90` is PORT-NEW, the LoRA train's third commit (D-stack with
+`84f33ce94` → `648d5c8aa`): a HuggingFace lookup for LoRA sources — the
+repo's second mocked non-LLM external HTTP provider after Serper — behind
+`POST /api/v1/image-profiles?action=lora-metadata`, deliberately rendering
+no compatibility verdict. `e41fcb12e` is a docs/help-only NO-PORT? candidate
+whose help hunks bank to `p4.9i2`.
+
 #### 2026-08-30 — docs(drift): record five more v4 commits — LoRA adapters, doc-tool matching, qt-range
 
 _Docs-only change._
