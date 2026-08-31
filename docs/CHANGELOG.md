@@ -165,6 +165,43 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — fix(jobs): a cheap-LLM pass lost to a timeout fails its job (v4 a1d88aa3a, bug 107)
+
+_Versions: core 0.0.711, harness 0.0.611._
+
+The half of bug 107 that makes the other half measurable. A cheap task that
+times out returns an unsuccessful result, and every job handler treated that the
+same way it treats a refusal: log a warning, return, and be marked COMPLETED. So
+the memory that was never extracted and the scene state that was never derived
+looked, from every counter the operator has, exactly like work that finished.
+
+Five of v4's six handlers take the guard: title-update (before the cursor write,
+so a timeout defers the rename instead of skipping it), context-summary,
+story-background, memory-extraction and carina-memory-extraction. The sixth,
+scene-state-tracking, has no v5 handler to attach it to — its wrapper is a
+pre-existing tracked deferral, recorded loudly in the module header.
+`TurnMemoryProcessingResult.passes_lost_to_timeout` carries the multi-pass count,
+since a per-character pass fails soft and a turn can lose half its extraction and
+still return `success: true`, and `SummaryGenerationResult.timed_out` carries the
+fold's.
+
+Two differentials grew a timing-out arm. `title_update_tier3` gains
+`provider_times_out` — the throw comparand carries v4's exact
+`CheapLLMTaskLostError` message. `memory_processor_tier3` gains
+`self_pass_times_out`, where one SELF pass and one OTHER pass time out on a
+profile with its own model: `passesLostToTimeout: 2`, `success: true`, both SELF
+debug lines and the rewritten OTHER sentence. The completion rules can now throw,
+which also made the RULED failed-call log divergence reachable from that family
+for the first time — subtracted by name with an exact-count pin that fired the
+moment the second timing-out rule was added. Three mutations, each reddening one
+arm.
+
+Recorded on the way: v4's retry is atomic because the job child's writes are
+discarded on a throw, and v5's writer applies as it goes — so v5's re-run repeats
+the passes that succeeded. The outcome is the same because the repeat is
+idempotent (v4's own handler-audit table says so), which is why v5 needs no
+buffering here.
+
 #### 2026-08-31 — fix(cheap-llm): set the budgets from the measured curve and retry a timeout once (v4 a1d88aa3a, bug 107)
 
 _Versions: core 0.0.710, harness 0.0.610._

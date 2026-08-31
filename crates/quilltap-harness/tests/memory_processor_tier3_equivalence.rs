@@ -281,6 +281,11 @@ struct CannedRowW {
     messages: Vec<CannedMessageW>,
     response: String,
     usage: CannedUsageW,
+    /// P4.D136 (v4 `a1d88aa3a`, bug 107): the rule THREW instead of answering.
+    /// Registered as a canned FAILURE so v5's cheap task sees the same error —
+    /// and, because the map is stateless, so does the same-route retry.
+    #[serde(default)]
+    failure: Option<String>,
 }
 
 fn spec_path() -> PathBuf {
@@ -386,6 +391,19 @@ fn normalize_all(dumps: &mut [Value]) {
 
 /// Tokenize the minted created-memory ids inside a result object (both sides),
 /// leaving the pinned reinforced ids literal.
+/// A v5-only failed-call row: `response.error` set with an empty `content`
+/// (`cheap_llm_exec::log_failed_call`'s shape). Success rows always log
+/// `error: null`.
+fn is_v5_failed_call_row(row: &Value) -> bool {
+    let Some(raw) = row.get("response").and_then(Value::as_str) else {
+        return false;
+    };
+    let Ok(parsed) = serde_json::from_str::<Value>(raw) else {
+        return false;
+    };
+    parsed.get("error").map(|e| !e.is_null()).unwrap_or(false)
+}
+
 fn normalize_result(result: &mut Value) {
     if let Some(Value::Array(ids)) = result.get_mut("createdMemoryIds") {
         for (i, id) in ids.iter_mut().enumerate() {
@@ -476,18 +494,27 @@ async fn memory_processor_tier3_matches_oracle() {
                 content: m.content.clone(),
             })
             .collect();
-        completion = completion.with_response(
-            &row.provider,
-            &row.model,
-            row.temperature,
-            &messages,
-            row.response.clone(),
-            Some(CompletionUsage {
-                prompt_tokens: row.usage.prompt_tokens,
-                completion_tokens: row.usage.completion_tokens,
-                total_tokens: row.usage.total_tokens,
-            }),
-        );
+        completion = match &row.failure {
+            Some(message) => completion.with_failure(
+                &row.provider,
+                &row.model,
+                row.temperature,
+                &messages,
+                message.clone(),
+            ),
+            None => completion.with_response(
+                &row.provider,
+                &row.model,
+                row.temperature,
+                &messages,
+                row.response.clone(),
+                Some(CompletionUsage {
+                    prompt_tokens: row.usage.prompt_tokens,
+                    completion_tokens: row.usage.completion_tokens,
+                    total_tokens: row.usage.total_tokens,
+                }),
+            ),
+        };
     }
 
     // The same canned embeddings both sides inject. The failure message mirrors
@@ -613,7 +640,31 @@ async fn memory_processor_tier3_matches_oracle() {
     }
 
     // W4.10b: the MEMORY_EXTRACTION rows the extraction cheap calls wrote.
-    let got_logs = common::dump_llm_logs(&db);
+    // The RULED failed-call divergence, subtracted by name (P4.13 unit 6, ruled
+    // 2026-07-23; `cheap_llm_exec::log_failed_call`): v4 logs NOTHING when a
+    // cheap-LLM call fails, v5 logs an error row so the failure is visible to an
+    // operator with no console. It had never been REACHABLE from this family
+    // until P4.D136 added a timing-out pass — which produces exactly two such
+    // rows (the attempt and its same-route retry). They are dropped here rather
+    // than masked field-by-field, because the row's whole existence is the
+    // divergence; every other row still compares byte-for-byte, and the
+    // assertion below still counts them.
+    //
+    // FOUR rows: the corpus times out Aria's SELF pass and Bram's OTHER pass,
+    // and each spends an attempt AND its same-route retry. The count is a real
+    // pin — it fired the moment the second timing-out rule was added.
+    let all_logs = common::dump_llm_logs(&db);
+    let v5_only_error_rows = all_logs.iter().filter(|r| is_v5_failed_call_row(r)).count();
+    let got_logs: Vec<Value> = all_logs
+        .into_iter()
+        .filter(|r| !is_v5_failed_call_row(r))
+        .collect();
+    assert_eq!(
+        v5_only_error_rows, 4,
+        "the ruled failed-call divergence must produce exactly the four rows the \
+         two timing-out passes earn (each attempt + its retry); a different count \
+         means either the retry stopped happening or the ruling moved"
+    );
 
     // Dump + diff the three tables in the shared-id-map remap form.
     let mut got: Vec<Value> = TABLES

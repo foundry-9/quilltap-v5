@@ -156,7 +156,31 @@ where
         generate_context_summary_with_seams(db, completion, executor, &options, &seams).await;
 
     if !result.success || !result.was_generated {
-        // v4 warns and returns — no chain.
+        // v4's warn, byte-exact, which `a1d88aa3a` extended with
+        // `timedOut: result.timedOut === true`. (v5 had no counterpart to this
+        // line at all — a pre-existing gap the bug-107 field brought to light.
+        // `jobId` has no source here: v5's core handler takes a payload, not
+        // the job row.)
+        tracing::warn!(
+            chat_id = %payload.chat_id,
+            error = result.error.as_deref().unwrap_or(""),
+            timed_out = result.timed_out,
+            "[ContextSummary] Summary update did not run"
+        );
+        // The summary was never produced — not produced and found wanting. Fail
+        // the job so it is retried and, failing that, visible (v4 `a1d88aa3a`,
+        // bug 107). `throw_if_lost_to_timeout` takes a `CheapLlmTaskResult`; the
+        // two fields it reads are `success` and `timed_out`, which is what v4's
+        // `Pick<CheapLLMTaskResult, 'success' | 'timedOut' | 'error'>` parameter
+        // says too — this is that structural type, spelled out.
+        if result.timed_out && !result.success {
+            return Err(
+                crate::services::cheap_llm_exec::cheap_llm_task_lost_message(
+                    "update-context-summary",
+                    result.error.as_deref(),
+                ),
+            );
+        }
         return Ok(Some(result));
     }
 

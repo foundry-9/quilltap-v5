@@ -87,6 +87,13 @@ interface CompletionRule {
   autonomous?: boolean;
   response: string;
   usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+  /**
+   * Make this rule THROW instead of answering (P4.D136 / v4 `a1d88aa3a`, bug
+   * 107). A timeout-shaped message is what drives `isTimeoutFailure` → the
+   * same-route retry → `timedOut` → `passesLostToTimeout`. Stateless, so the
+   * retry throws too, which is the point: both attempts are spent.
+   */
+  error?: string;
 }
 interface ProfileSpec {
   id: string;
@@ -262,8 +269,10 @@ async function main(): Promise<void> {
               messages,
               response: rule.response,
               usage: rule.usage,
+              failure: rule.error ?? null,
             });
           }
+          if (rule.error !== undefined) throw new Error(rule.error);
           return { content: rule.response, finishReason: 'stop', usage: rule.usage };
         },
       }),

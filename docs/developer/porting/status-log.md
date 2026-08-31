@@ -94190,3 +94190,71 @@ green, all byte-identical, because v4's oracle passes no `latency` and takes its
 `background` default.
 
 Versions: core 0.0.710, harness 0.0.610.
+
+### P4.D136 unit 5 — a lost cheap-LLM pass fails its job (v4 `a1d88aa3a`, bug 107)
+
+**Five of v4's six handlers took the guard; the sixth has no v5 home.**
+
+| handler | v5 site | note |
+|---|---|---|
+| title-update | `title_update_job.rs` | the failure returns BEFORE `advance_cursor` — v4's own `BACKGROUND_JOBS_CHILD.md` note: "order matters where a handler writes a cursor on failure" |
+| context-summary | `context_summary_job.rs` | plus v4's `[ContextSummary] Summary update did not run` warn, which v5 had NO counterpart to at all (a pre-existing gap the bug-107 field brought to light) |
+| story-background | `story_background_job.rs` | plus v4's `[StoryBackground] Failed to craft background prompt` warn, ditto |
+| memory-extraction | `memory_extraction_job.rs` | via `passes_lost_to_timeout` |
+| carina-memory-extraction | `carina_memory_extraction.rs` | ditto |
+| **scene-state-tracking** | — | **DEFERRED LOUD.** v5 has no handler wrapper (pre-existing tracked deferral); the deferral is recorded in `scene_state_tracking/mod.rs`'s header naming the guard, the task string and the machinery that is already here. It is v4's headline example — *99 jobs COMPLETED over 12 losses* — so it is worth being loud about |
+
+`jobId` is absent from all five v5 log lines: v5's core handlers take a payload,
+not the job row (the host wrapper owns it). Recorded at each site rather than
+invented.
+
+**`passes_lost_to_timeout`** on `TurnMemoryProcessingResult`, incremented at both
+extraction arms, with v4's asymmetric logging carried exactly: the SELF arm adds
+a NEW line *before* the success branch (so a timed-out SELF pass logs BOTH the
+LOST line and the existing `failed` line), while the OTHER arm's existing
+sentence was REWRITTEN to interpolate `was LOST to a timeout` in place of
+`failed` — one line, not two.
+
+**The measurement the order asked for (survey 8: the all-or-nothing rule).** v4's
+retry is ATOMIC: `handleChildJobResult` only calls `applyWritesAtomically` when
+`msg.ok`, so a turn that lost one character's pass discards the others too and
+the re-run is duplicate-free. **v5's writer applies as it goes, so the successful
+passes SURVIVE and the re-run repeats them.** A genuine mechanism divergence with
+the same outcome, because the repeat is idempotent — v4's own handler-audit table
+answers *"Idempotent under retry? Yes (memories upserted by content hash)"*. So
+v5 needs no buffering to reach v4's guarantee here, and it pays less for it (the
+passes that DID succeed are not thrown away). Recorded at the guard site, not
+just here. The DEBUG-LOG half is reproduced by ORDER instead: the guard sits
+before the debug-log write, exactly where v4 puts it, so the logs describing the
+timeout never reach the message on either side.
+
+**Two differentials grew a timing-out arm.**
+
+- `title_update_tier3_equivalence` → `provider_times_out`: the case spec gained
+  `providerThrowMessage`, and the `threw` comparand carries v4's exact
+  `Cheap LLM task "title-update" timed out and was not retried successfully: …`.
+- `memory_processor_tier3_equivalence` → `self_pass_times_out`: the completion
+  rules gained an `error` arm (recorded as a canned `failure` and replayed
+  through `CannedCompletionProvider::with_failure`, whose stateless map means the
+  same-route RETRY throws too). A new profile with its own model keys the
+  timing-out rules so they cannot reach any other call; Aria's SELF pass and
+  Bram's OTHER pass both time out. Oracle: `passesLostToTimeout: 2`,
+  `success: true`, all three debug lines.
+
+**The RULED failed-call divergence became reachable here for the first time.**
+v5 logs an error row for a failed cheap call where v4 logs nothing (P4.13 unit 6,
+ruled 2026-07-23) — invisible to this family until a call actually failed in it.
+The four rows (two passes × attempt + retry) are subtracted by name, with an
+exact-count assertion that fired the moment the second timing-out rule landed.
+Every other `llm_logs` row still compares byte-for-byte.
+
+**Mutation proofs (3):** removing the title-update guard (`THROW MISMATCH: got
+None`), disabling the SELF counter, and reverting the OTHER sentence to `failed`
+— each reddening exactly its own case.
+
+**Also this unit:** the 2026-08-29 dogfood **C4 row is marked SUPERSEDED** in
+both the walk doc and `dogfood-findings.md` (drift-ledger §5.5): its 75 s ceiling
+and its ">75 s, never crossed" warn observation measured a wall that has moved,
+and a re-measured live compression row is owed with its recipe written down.
+
+Versions: core 0.0.711, harness 0.0.611.

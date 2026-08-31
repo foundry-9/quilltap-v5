@@ -343,6 +343,17 @@ where
             payload.chat_id,
             task.error.as_deref().unwrap_or("undefined")
         );
+        // Before the cursor is burned: a timeout means the check never ran, and
+        // burning the checkpoint over it would skip the rename entirely rather
+        // than defer it (v4 `a1d88aa3a`, bug 107). v4's own note in
+        // `BACKGROUND_JOBS_CHILD.md`: "order matters where a handler writes a
+        // cursor on failure" — this throw sits BEFORE the cursor write for
+        // exactly that reason.
+        if let Err(e) =
+            crate::services::cheap_llm_exec::throw_if_lost_to_timeout(&task, "title-update")
+        {
+            return Err(e.to_string());
+        }
         // A persistently-failing cheap LLM shouldn't re-fire every turn either.
         advance_cursor(db, &payload.chat_id, payload.current_interchange, now_ms).await;
         return Ok(());

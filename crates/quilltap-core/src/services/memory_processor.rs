@@ -376,6 +376,17 @@ pub struct TurnMemoryProcessingResult {
     pub extracted_candidates: Option<Vec<ExtractedCandidate>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// How many extraction passes were lost to a cheap-LLM timeout rather than
+    /// answered (v4 `TurnMemoryProcessingResult.passesLostToTimeout`,
+    /// `a1d88aa3a`, bug 107).
+    ///
+    /// A per-character pass fails soft — the loop logs it and moves to the next
+    /// character — so a turn can lose half its extraction and still return
+    /// `success: true`. That is right for a refusal, and wrong for a timeout: no
+    /// memory was formed, nothing will re-queue the work, and the job that asked
+    /// for it reports a clean finish over the hole. The handler reads this and
+    /// fails the job so the whole turn is re-run.
+    pub passes_lost_to_timeout: usize,
 }
 
 enum RateLimitDecision {
@@ -448,6 +459,8 @@ fn js_interp(value: Option<&str>) -> &str {
 
 struct RunState {
     debug_logs: Vec<String>,
+    /// Passes that never happened, as distinct from passes that found nothing.
+    passes_lost_to_timeout: usize,
     created_memory_ids: Vec<String>,
     reinforced_memory_ids: Vec<String>,
     collected_candidates: Vec<ExtractedCandidate>,
@@ -685,6 +698,7 @@ pub async fn process_turn_for_memory<C: CompletionProvider, E: EmbeddingProvider
     ctx: &TurnMemoryExtractionContext,
 ) -> TurnMemoryProcessingResult {
     let mut state = RunState {
+        passes_lost_to_timeout: 0,
         debug_logs: Vec::new(),
         created_memory_ids: Vec::new(),
         reinforced_memory_ids: Vec::new(),
@@ -705,6 +719,7 @@ pub async fn process_turn_for_memory<C: CompletionProvider, E: EmbeddingProvider
             debug_logs: state.debug_logs,
             extracted_candidates: ctx.dry_run.then_some(state.collected_candidates),
             error: None,
+            passes_lost_to_timeout: state.passes_lost_to_timeout,
         },
         Err(error) => TurnMemoryProcessingResult {
             success: false,
@@ -717,6 +732,7 @@ pub async fn process_turn_for_memory<C: CompletionProvider, E: EmbeddingProvider
             debug_logs: state.debug_logs,
             extracted_candidates: ctx.dry_run.then_some(state.collected_candidates),
             error: Some(error.to_string()),
+            passes_lost_to_timeout: state.passes_lost_to_timeout,
         },
     }
 }
@@ -944,6 +960,17 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
 
         state.add_usage(self_result.usage);
 
+        // v4 `a1d88aa3a` (bug 107): an EXTRA line before the success branch, so
+        // a timed-out SELF pass logs BOTH this and the `failed` line below.
+        if !self_result.success && self_result.timed_out {
+            state.passes_lost_to_timeout += 1;
+            state.debug_logs.push(format!(
+                "[Memory] SELF extraction for {} was LOST to a timeout, not refused: {}",
+                slice.character_name,
+                js_interp(self_result.error.as_deref())
+            ));
+        }
+
         if self_result.success {
             let raw_candidates = self_result.result.unwrap_or_default();
             let raw_len = raw_candidates.len();
@@ -1080,8 +1107,19 @@ async fn run_passes<C: CompletionProvider, E: EmbeddingProvider>(
         state.add_usage(other_result.usage);
 
         if !other_result.success {
+            // v4 `a1d88aa3a` (bug 107) rewrote this sentence to name the shape:
+            // `` `[Memory] OTHER extraction ${timedOut ? 'was LOST to a timeout'
+            // : 'failed'} (…)` `` — one line either way, unlike the SELF arm.
+            if other_result.timed_out {
+                state.passes_lost_to_timeout += 1;
+            }
             state.debug_logs.push(format!(
-                "[Memory] OTHER extraction failed ({} → {} subject(s)): {}",
+                "[Memory] OTHER extraction {} ({} → {} subject(s)): {}",
+                if other_result.timed_out {
+                    "was LOST to a timeout"
+                } else {
+                    "failed"
+                },
                 observer.character_name,
                 resolved_subjects.len(),
                 js_interp(other_result.error.as_deref())

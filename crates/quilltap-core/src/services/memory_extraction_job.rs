@@ -309,6 +309,46 @@ where
     };
 
     let result = process_turn_for_memory(db, completion, embedding, executor, &ctx).await;
+
+    // A pass lost to a timeout is work that never happened, and nothing
+    // downstream re-queues it. Fail the job rather than let it report a clean
+    // finish over the hole (v4 `a1d88aa3a`, bug 107). A refusal or an
+    // unparseable answer would fail identically on every retry and keeps the
+    // old log-and-move-on behaviour.
+    //
+    // Placed BEFORE the debug-log write, as v4 places it: v4's note in
+    // `BACKGROUND_JOBS_CHILD.md` is that the debug logs describing the timeout
+    // never reach the message, because they are child writes discarded on the
+    // throw. v5 has no child and applies as it goes, so the ORDER is what
+    // reproduces that outcome here.
+    //
+    // ⚠ RECORDED MECHANISM DIVERGENCE (measured, P4.D136). v4's retry is
+    // ATOMIC: `handleChildJobResult` only calls `applyWritesAtomically` when
+    // `msg.ok`, so a turn that lost one character's pass discards the others
+    // too and the re-run is duplicate-free. v5's writer applies as it goes, so
+    // the successful passes SURVIVE and the re-run repeats them. The outcome is
+    // the same because the repeat is idempotent — v4's own handler-audit table
+    // answers "Idempotent under retry? Yes (memories upserted by content hash)"
+    // — so v5 needs no buffering to be correct here; it reaches v4's guarantee
+    // by a different route, and pays less for it (the passes that DID succeed
+    // are not thrown away).
+    if result.passes_lost_to_timeout > 0 {
+        // v4 also carries `jobId`. v5's core handler takes a payload, not the
+        // job — the host wrapper owns the job row — so the field has no source
+        // here; the chat id and the count are what v5 can name.
+        tracing::error!(
+            chat_id = %payload.chat_id,
+            passes_lost_to_timeout = result.passes_lost_to_timeout,
+            error = result.error.as_deref().unwrap_or(""),
+            "[MemoryExtraction] Extraction passes lost to a cheap-LLM timeout; failing the job for retry"
+        );
+        return Err(
+            crate::services::cheap_llm_exec::cheap_llm_task_lost_message(
+                "memory-extraction",
+                result.error.as_deref(),
+            ),
+        );
+    }
     // v4 logs the success/failure shape either way; the job itself COMPLETES.
 
     // Persist debug logs onto the latest assistant message of the turn so the

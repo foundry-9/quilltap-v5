@@ -161,6 +161,11 @@ pub struct SummaryGenerationResult {
     pub error: Option<String>,
     pub was_generated: bool,
     pub usage: Option<Usage>,
+    /// True when the fold was lost to a cheap-LLM timeout rather than answered
+    /// (v4 `SummaryGenerationResult.timedOut`, `a1d88aa3a`, bug 107).
+    /// Propagated from the task so the background handler can fail the job
+    /// instead of reporting a clean finish over a summary that never ran.
+    pub timed_out: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -178,6 +183,16 @@ impl SummaryGenerationResult {
             error: Some(error.to_string()),
             was_generated: false,
             usage: None,
+            timed_out: false,
+        }
+    }
+
+    /// The fold's own failure arm — v4 carries `timedOut: foldResult.timedOut`
+    /// there and only there.
+    fn fail_from_fold(error: &str, timed_out: bool) -> Self {
+        Self {
+            timed_out,
+            ..Self::fail(error)
         }
     }
 }
@@ -677,11 +692,12 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
     .await;
 
     let (Some(new_summary), true) = (fold_result.result.clone(), fold_result.success) else {
-        return Ok(SummaryGenerationResult::fail(
+        return Ok(SummaryGenerationResult::fail_from_fold(
             fold_result
                 .error
                 .as_deref()
                 .unwrap_or("Failed to fold summary"),
+            fold_result.timed_out,
         ));
     };
 
@@ -926,6 +942,7 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
         error: None,
         was_generated: true,
         usage,
+        timed_out: false,
     })
 }
 

@@ -90,6 +90,12 @@ interface CaseSpec {
   reply?: (key: 'help' | 'literary') => { content: string; promptTokens: number; completionTokens: number };
   /** Make the provider throw instead of replying. */
   providerThrows?: boolean;
+  /**
+   * The message it throws with. Defaults to `canned provider failure`; a
+   * timeout-shaped message is what drives `isTimeoutFailure` → the same-route
+   * retry → `timedOut` → `throwIfLostToTimeout` (bug 107).
+   */
+  providerThrowMessage?: string;
   /** The handler is expected to throw; record the message instead of state. */
   expectThrow?: boolean;
 }
@@ -120,6 +126,16 @@ function buildCases(): CaseSpec[] {
     },
     // A provider throw IS a task failure: cursor advances, no event, no job.
     { name: 'provider_throws', chat: (s) => s.chatTitleId, providerThrows: true },
+    // …unless it TIMED OUT (bug 107). Then the check never ran, the cursor must
+    // NOT be burned over it, and the handler throws so the job is retried. The
+    // throw sits before the cursor write for exactly that reason.
+    {
+      name: 'provider_times_out',
+      chat: (s) => s.chatTitleId,
+      providerThrows: true,
+      providerThrowMessage: 'Request timed out.',
+      expectThrow: true,
+    },
     // The two background-gate skips: renamed + the event, but NO job enqueued.
     { name: 'autonomous_no_background', chat: (s) => s.chatAutonomousId },
     {
@@ -275,7 +291,7 @@ function applyMocks(spec: Spec, c: CaseSpec): void {
       ...actual,
       createLLMProvider: async () => ({
         sendMessage: async (params: { messages: Array<{ role: string; content: string }> }) => {
-          if (c.providerThrows) throw new Error('canned provider failure');
+          if (c.providerThrows) throw new Error(c.providerThrowMessage ?? 'canned provider failure');
           const system = params.messages.find((m) => m.role === 'system')?.content ?? '';
           const key = keyForSystemPrompt(system);
           const canned = c.reply ? c.reply(key) : spec.cannedTitles[key];

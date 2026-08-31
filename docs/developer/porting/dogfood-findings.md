@@ -2465,3 +2465,26 @@ catch, since every fixture is built fresh.
   grepping the refusal strings whenever a round un-refuses anything** —
   the sources are now cited per-seam in the row itself, which makes the
   check mechanical.
+
+---
+
+## ⚠ Superseded live proof — the 75 s compression budget (C4, 2026-08-29)
+
+**Recorded 2026-08-31 by P4.D136 (v4 `a1d88aa3a`, bug 107); the walk row itself
+is annotated in place at
+`dogfood-walks/2026-08-27-tooltips-salon-speed-pass.md` → "C4".**
+
+The 2026-08-27 pass closed C4 PARTIAL against a **75 s** compression ceiling and
+a `[CheapLLM] Task failed` warn that "needs >75 s, never once crossed in 400 real
+calls". v4 then re-measured the same distribution and found both ceilings sitting
+inside it — 1,971 non-compression calls with a maximum of 39,936 ms against a
+40,000 ms budget, and 256 `CONTEXT_COMPRESSION` calls at p99 61.1 s / max
+67,733 ms against 70,000 — so the shared tier is now **90 s** and compression's
+pre-computed path **120 s**, with the inline cache-miss compression and the
+memory recap holding the old numbers because the operator is waiting on those.
+
+Nothing in the old reading was wrong; it measured a ceiling that has since moved.
+💸 **owed:** a re-measured live compression row — force an uncached compression,
+read the `CONTEXT_COMPRESSION` `durationMs` rows, and confirm the pre-computed
+pass is budgeted at 120 s while the inline one is not. The discriminator is which
+of the two actually ran, so the walk has to note that as well as the duration.

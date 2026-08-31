@@ -16,6 +16,19 @@
 //! selection, wardrobe resolve, the scene-state `ChatUpdate` setter added this
 //! round); it lands with the W4.8 runner-dispatch wiring — see the module's
 //! tracked deferral in the CHANGELOG.
+//!
+//! ## ⚠ DEFERRED with that wrapper (P4.D136, v4 `a1d88aa3a`, bug 107)
+//!
+//! v4 added `throwIfLostToTimeout(result, 'scene-state-tracking')` to the
+//! handler's failure arm — the sixth of the six handlers that fail their job
+//! rather than report a clean finish over a pass that never ran. It is v4's
+//! headline example: *99 `SCENE_STATE_TRACKING` jobs came back COMPLETED over
+//! 12 losses.* v5 has no scene-state handler to attach it to, so the guard
+//! rides the deferred wrapper. The machinery it needs is already here and
+//! proven — [`crate::services::cheap_llm_exec::throw_if_lost_to_timeout`] and
+//! [`crate::services::cheap_llm_exec::CheapLlmTaskResult::timed_out`] — so
+//! landing the wrapper is the only remaining work. The other five handlers took
+//! their guards this round.
 
 mod prompt_text;
 

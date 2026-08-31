@@ -765,6 +765,36 @@ dogfood walk that touched this very component.
 
 ### C4 — the 75 s compression budget (PASS, partial and stated, human-run 2026-08-29)
 
+> ### ⚠ SUPERSEDED UPSTREAM (2026-08-31, P4.D136 / v4 `a1d88aa3a`, bug 107)
+>
+> **Do not carry these numbers forward.** v4 re-measured the same distribution
+> on a live instance and found the ceilings were sitting INSIDE it: across 1,971
+> completed non-compression calls not one exceeded 40,000 ms against a 40,000 ms
+> provider budget, and 256 `CONTEXT_COMPRESSION` calls ran p99 61.1 s / max
+> 67,733 ms against 70,000. So the shared tier moved 45 s → **90 s** and
+> compression 75 s → **120 s**, split by a new latency class: the inline
+> cache-miss compression and the memory recap keep the old 75 s / 45 s because
+> the operator is waiting on those, and only the pre-computed pass gets the
+> raise.
+>
+> The reading below therefore stands as a measurement of the OLD ceiling and no
+> longer describes production. Two consequences for the next pass:
+>
+> - the three measured calls (30,080 / 26,633 / 25,459 ms) were all
+>   **pre-computed**, so they now run under 120 s, not 75 s;
+> - the `[CheapLLM] Task failed` warn, recorded here as needing >75 s and
+>   "never once crossed in 400 real calls", now needs **>120 s** on that path —
+>   which is the point of the raise, and makes a live sighting even less likely.
+>   P4.D136 unit-pins it instead (a stalling socket under a paused clock), and
+>   adds the same-route retry the old ceiling had no counterpart for.
+>
+> 💸 **A re-measured live compression row is owed to the next dogfood pass**
+> (recipe: force an uncached compression, read the `CONTEXT_COMPRESSION`
+> `durationMs` rows, and confirm the pre-computed path is budgeted at 120 s
+> while the inline one is not — the discriminator is which of the two ran).
+
+
+
 **What is proven live:** compression runs under v5 and production selects the
 75 s branch. Three v5-written `CONTEXT_COMPRESSION` calls — **30,080 /
 26,633 / 25,459 ms** — against the remote NANOGPT cheap LLM

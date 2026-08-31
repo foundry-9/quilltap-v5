@@ -647,7 +647,24 @@ where
     .await;
 
     if !craft_result.success {
-        // Actual cheap-LLM error — WARN+RETURN.
+        // Actual cheap-LLM error — WARN+RETURN. v4's warn gained
+        // `timedOut: craftResult.timedOut === true` at `a1d88aa3a` (bug 107);
+        // `jobId` has no source here (v5's core handler takes a payload).
+        tracing::warn!(
+            context = "background-jobs.story-background",
+            error = craft_result.error.as_deref().unwrap_or(""),
+            timed_out = craft_result.timed_out,
+            "[StoryBackground] Failed to craft background prompt"
+        );
+        // Nothing has been generated yet, so a timed-out prompt-craft is a pass
+        // that never ran rather than an image that came out wrong. Fail the job
+        // so it is retried and, failing that, visible (v4 `a1d88aa3a`, bug 107).
+        if let Err(e) = crate::services::cheap_llm_exec::throw_if_lost_to_timeout(
+            &craft_result,
+            "craft-story-background-prompt",
+        ) {
+            return Err(e.to_string());
+        }
         return Ok(());
     }
     let mut final_prompt = match craft_result.result.filter(|s| !s.is_empty()) {

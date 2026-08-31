@@ -102,6 +102,10 @@ struct CannedTitleProvider {
     /// Per-case override (the no-rename / unparseable arms).
     override_reply: Option<CannedTitle>,
     throws: bool,
+    /// The message it throws with (v4's `providerThrowMessage`). A
+    /// timeout-shaped one drives `is_timeout_failure` → the same-route retry →
+    /// `timed_out` → the lost-pass failure (v4 `a1d88aa3a`, bug 107).
+    throw_message: String,
 }
 
 /// v4's `keyForSystemPrompt`: the help evaluator names itself in its first line.
@@ -121,7 +125,7 @@ impl CompletionProvider for CannedTitleProvider {
         params: &CompletionParams,
     ) -> Result<CompletionResponse, CompletionError> {
         if self.throws {
-            return Err(CompletionError::new("canned provider failure"));
+            return Err(CompletionError::new(self.throw_message.clone()));
         }
         let system = params
             .messages
@@ -261,13 +265,14 @@ fn title_update_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
 
     // (name, chat, user, override reply, provider throws)
-    let cases: Vec<(&str, &str, &str, Option<CannedTitle>, bool)> = vec![
+    let cases: Vec<(&str, &str, &str, Option<CannedTitle>, bool, &str)> = vec![
         (
             "manually_renamed",
             &spec.chat_renamed_id,
             &spec.user_enabled_id,
             None,
             false,
+            "",
         ),
         (
             "help_chat",
@@ -275,6 +280,7 @@ fn title_update_matches_oracle() {
             &spec.user_enabled_id,
             None,
             false,
+            "",
         ),
         (
             "normal_renamed",
@@ -282,6 +288,7 @@ fn title_update_matches_oracle() {
             &spec.user_enabled_id,
             None,
             false,
+            "",
         ),
         (
             "no_rename_needed",
@@ -293,6 +300,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 8,
             }),
             false,
+            "",
         ),
         (
             "unparseable_reply",
@@ -304,6 +312,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 6,
             }),
             false,
+            "",
         ),
         (
             "provider_throws",
@@ -311,6 +320,19 @@ fn title_update_matches_oracle() {
             &spec.user_enabled_id,
             None,
             true,
+            "canned provider failure",
+        ),
+        // …unless it TIMED OUT (v4 `a1d88aa3a`, bug 107). Then the check never
+        // ran, the cursor must NOT be burned over it, and the handler fails so
+        // the job is retried. The throw sits BEFORE the cursor write for
+        // exactly that reason — v4's own note in `BACKGROUND_JOBS_CHILD.md`.
+        (
+            "provider_times_out",
+            &spec.chat_title_id,
+            &spec.user_enabled_id,
+            None,
+            true,
+            "Request timed out.",
         ),
         (
             "autonomous_no_background",
@@ -318,6 +340,7 @@ fn title_update_matches_oracle() {
             &spec.user_enabled_id,
             None,
             false,
+            "",
         ),
         (
             "disabled_no_background",
@@ -325,6 +348,7 @@ fn title_update_matches_oracle() {
             &spec.user_disabled_id,
             None,
             false,
+            "",
         ),
         (
             "empty_conversation",
@@ -332,6 +356,7 @@ fn title_update_matches_oracle() {
             &spec.user_enabled_id,
             None,
             false,
+            "",
         ),
         // ── P4.D110 / v4 bug 96: the tolerant title-verdict parser, measured
         // through the handler's WRITES. Each reply is a shape the pre-fix
@@ -346,6 +371,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 12,
             }),
             false,
+            "",
         ),
         (
             "fold_key_snake_case",
@@ -357,6 +383,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 9,
             }),
             false,
+            "",
         ),
         (
             "canonical_beats_near_miss",
@@ -368,6 +395,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 11,
             }),
             false,
+            "",
         ),
         (
             "rename_with_no_usable_title",
@@ -379,6 +407,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 10,
             }),
             false,
+            "",
         ),
         (
             "quoted_padded_title",
@@ -390,6 +419,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 10,
             }),
             false,
+            "",
         ),
         (
             "overlong_near_miss_title",
@@ -401,6 +431,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 18,
             }),
             false,
+            "",
         ),
         (
             "null_canonical_falls_through",
@@ -412,6 +443,7 @@ fn title_update_matches_oracle() {
                 completion_tokens: 9,
             }),
             false,
+            "",
         ),
         (
             "chat_missing",
@@ -419,15 +451,17 @@ fn title_update_matches_oracle() {
             &spec.user_enabled_id,
             None,
             false,
+            "",
         ),
     ];
 
-    for (name, chat_id, user_id, override_reply, throws) in cases {
+    for (name, chat_id, user_id, override_reply, throws, throw_message) in cases {
         let db = fresh_db(name);
         let provider = CannedTitleProvider {
             canned: spec.canned_titles.clone(),
             override_reply,
             throws,
+            throw_message: throw_message.to_string(),
         };
         let executor = CheapLlmTaskExecutor::new();
         let payload = TitleUpdatePayload {
@@ -527,6 +561,7 @@ fn title_update_runner_registration_e2e() {
                 canned: spec.canned_titles.clone(),
                 override_reply: None,
                 throws: false,
+                throw_message: String::new(),
             },
             executor: CheapLlmTaskExecutor::new(),
             cost: NoMessageCost,
@@ -680,6 +715,7 @@ fn capture_runs(
                 canned: spec.canned_titles.clone(),
                 override_reply: override_reply.clone(),
                 throws,
+                throw_message: "canned provider failure".to_string(),
             };
             let payload = TitleUpdatePayload {
                 chat_id: chat_id.to_string(),
