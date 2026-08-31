@@ -97,6 +97,11 @@ fn moderation_finish_reason_matches_v4() {
                     row.uncensored,
                     row.same,
                     row.flagged,
+                    // P4.D135: this family's corpus predates the fallback chain
+                    // and never walks one, so the trail is empty and every
+                    // sentence renders without the understudy roll — which is
+                    // exactly what its recorded strings are.
+                    &[],
                     row.finish_reason.as_deref(),
                     row.provider.as_deref(),
                     row.model_name.as_deref(),

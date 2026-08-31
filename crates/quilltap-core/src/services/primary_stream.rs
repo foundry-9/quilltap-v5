@@ -810,6 +810,23 @@ pub struct RunPrimaryStreamOptions<'a> {
     /// corpus is untouched; the autonomous turn passes
     /// `LogContext { autonomous_run_id: Some(run_id) }`.
     pub log_context: LogContext,
+    /// Whether this turn is running in dangerous-routed territory (v4
+    /// `65f5021c8`). Threaded into the fallback chain so an auto-picked stand-in
+    /// stays `isDangerousCompatible` — a reroute that quietly drafts a
+    /// mainstream model hands the content back to the moderation that refused
+    /// it.
+    pub is_dangerous_routed: bool,
+    /// Whether the turn carries image attachments — v4's
+    /// `attachedFiles.some((f) => f.mimeType?.startsWith('image/'))`. Both chain
+    /// steps filter on it, because a chain swaps the model but reuses the
+    /// message array the primary's call was built against, with the raw bytes
+    /// already embedded.
+    pub needs_vision: bool,
+    /// The failing profile as a full row, for the chain (v5's `StreamingState`
+    /// carries only the four-field [`EffectiveProfile`]). `None` disables the
+    /// chain entirely, which is what every caller without a profile row wants —
+    /// the catch-all then rethrows exactly as it did before this feature.
+    pub fallback_profile: Option<crate::llm_fallback::FallbackProfile>,
     /// The mutable streaming state (holds `effective_profile` / `effective_api_key`).
     pub state: &'a mut StreamingState,
 }
@@ -1065,16 +1082,18 @@ pub(crate) fn attachment_results_to_value(
 /// tool-unsupported retry-without-tools and the request-limit recovery branches.
 /// The two model boundaries (`P` streaming, and recovery's own `P` stream) are
 /// generic; the writer is the `Db`.
-pub async fn run_primary_stream<P, S>(
+pub async fn run_primary_stream<P, S, FR>(
     db: &Db,
     provider: &P,
     sink: &S,
     preserve: &mut PreservePartialOnError,
+    repos: Option<&FR>,
     opts: RunPrimaryStreamOptions<'_>,
 ) -> Result<PrimaryStreamResult, StreamError>
 where
     P: StreamingCompletionProvider,
     S: EventSink,
+    FR: super::fallback_repos::FallbackChainRepos,
 {
     let RunPrimaryStreamOptions {
         chat_id,
@@ -1094,6 +1113,9 @@ where
         // pre-generated assistant message id).
         pre_generated_assistant_message_id,
         log_context,
+        is_dangerous_routed,
+        needs_vision,
+        fallback_profile,
         state,
     } = opts;
 
@@ -1221,8 +1243,66 @@ where
         // recovery failed — fall through to preserve + rethrow.
     }
 
+    // --- Fallback chain (v4 `65f5021c8`) ---
+    //
+    // The profile named an understudy, or is willing to have one drafted; give
+    // them the turn before the error reaches the user. NOT reached for a
+    // token-limit overrun or a tool-unsupported rejection —
+    // `classify_fallback_trigger` refuses those, so the two branches above keep
+    // their exclusive claim on them.
+    let failover = match (repos, fallback_profile) {
+        (Some(repos), Some(failed)) => {
+            super::provider_failover::attempt_hard_error_failover(
+                provider,
+                sink,
+                super::provider_failover::WalkFallbackChainOptions {
+                    state,
+                    repos,
+                    failed,
+                    context: crate::llm_fallback::FallbackContext {
+                        user_id: user_id.clone(),
+                        purpose: crate::llm_fallback::FallbackPurpose::Chat,
+                        dangerous: is_dangerous_routed,
+                        needs_vision,
+                        needs_tools: had_tools,
+                        already_tried: Vec::new(),
+                    },
+                    params: params.clone(),
+                    chat_id: chat_id.clone(),
+                    character_id: character_id.clone(),
+                    character_name: character_name.clone(),
+                },
+                &crate::llm_fallback::FallbackError::message(&err.message),
+                stream_log
+                    .as_ref()
+                    .map(|l| super::provider_failover::FailoverLogCtx {
+                        db: l.db,
+                        message_id: l.message_id,
+                    }),
+            )
+            .await
+        }
+        _ => super::provider_failover::FallbackChainResult::default(),
+    };
+
+    if failover.recovered {
+        return Ok(PrimaryStreamResult::default());
+    }
+
     preserve.preserve(db, state, &err.message).await;
     let _ = participant_status; // consumed by the preserve ctx above.
+
+    // Name the understudies in the error the user sees. Without this the chain
+    // is invisible: the message would blame the primary for a failure three
+    // providers deep. v4 rewrites the ORIGINAL error's `message` in place and
+    // rethrows it, so the `(…)` suffix rides whatever the caller does next.
+    if failover.attempts.len() > 1 {
+        let summary = crate::llm_fallback::summarize_fallback_attempts(
+            &failover.attempts,
+            failover.tier_pick_was_offered,
+        );
+        return Err(StreamError::new(format!("{} ({summary})", err.message)));
+    }
     Err(err)
 }
 

@@ -91,6 +91,7 @@ pub mod embedding_generate_job;
 pub mod embedding_provider;
 pub mod embedding_reapply_profile;
 pub mod embedding_refit_job;
+pub mod fallback_repos;
 pub mod file_fallback;
 pub mod file_storage;
 pub mod first_message_context;

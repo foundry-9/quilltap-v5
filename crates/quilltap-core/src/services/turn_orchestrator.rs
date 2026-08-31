@@ -73,9 +73,15 @@ use crate::turn_state::{
 // Config + result types (v4 `ChainConfig` / `ChainDecision`).
 // ---------------------------------------------------------------------------
 
-/// Chain-driver limits (v4 `ChainConfig`). Only `max_chain_depth` /
-/// `max_chain_time_ms` are read by [`should_chain_next`]; the retry fields live
-/// with the (not-yet-ported) chain driver but are carried for shape fidelity.
+/// Chain-driver limits (v4 `ChainConfig`): how many turns a multi-character
+/// chain may run and for how long.
+///
+/// **Nothing here is about retrying a FAILED turn** — that is the fallback
+/// chain's job ([`crate::llm_fallback`]), and it is per-call rather than
+/// per-chain. v4 carried `maxRetries` / `retryDelayMs` in this struct, declared
+/// and never read, and deleted them in `65f5021c8` when the real retry
+/// machinery arrived; v5 never ported them (they were dead on arrival), so the
+/// drift commit's deletion is a no-op here and only this comment moves.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChainConfig {
     pub max_chain_depth: i64,

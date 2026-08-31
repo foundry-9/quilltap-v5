@@ -34,10 +34,33 @@ interface ChatSpec {
   title: string;
   participants: ParticipantSpec[];
 }
+interface ProfileSpec {
+  id: string;
+  userId: string;
+  name: string;
+  provider: string;
+  modelName: string;
+  baseUrl: string | null;
+  apiKeyId?: string | null;
+  modelClass?: string | null;
+  fallbackProfileId?: string | null;
+  allowTierFallback?: boolean;
+}
+interface ApiKeySpec {
+  id: string;
+  provider: string;
+  label: string;
+  keyValue: string;
+}
 interface Spec {
   testPepperBase64: string;
   sentinel: string;
   chats: ChatSpec[];
+  userId: string;
+  profile: ProfileSpec;
+  understudyProfile: ProfileSpec;
+  tierSpareProfile: ProfileSpec;
+  apiKeys: ApiKeySpec[];
 }
 
 async function main(): Promise<void> {
@@ -88,8 +111,62 @@ async function main(): Promise<void> {
   // Force chat_messages into existence (empty) so the port can INSERT into it.
   await repo.getMessageCount(spec.chats[0].id);
 
+  // P4.D135: the fallback chain reads REAL rows — `repos.connections.findById`
+  // for the named understudy, `findByUserId` for the tier pick, and
+  // `resolveConnectionProfileApiKey` for each candidate's key. Seeded here so
+  // both sides walk the same company.
+  const { ConnectionProfilesRepository } = await import(
+    '@/lib/database/repositories/connection-profiles.repository'
+  );
+  const { ensureCollection, getCollection } = await import('@/lib/database/manager');
+  const { ApiKeySchema } = await import('@/lib/schemas/types');
+  const connections = new ConnectionProfilesRepository();
+  await ensureCollection('api_keys', ApiKeySchema);
+  // `createApiKey` mints its own id, and the ids have to be PINNED (the
+  // profiles name them and the committed spec carries both sides' view), so the
+  // rows go in through the collection — the `build-settings-fixture` idiom.
+  const apiKeyCol = await getCollection('api_keys');
+  for (const k of spec.apiKeys) {
+    await apiKeyCol.insertOne(
+      ApiKeySchema.parse({
+        id: k.id,
+        userId: spec.userId,
+        label: k.label,
+        provider: k.provider,
+        key_value: k.keyValue,
+        isActive: true,
+        createdAt: spec.sentinel,
+        updatedAt: spec.sentinel,
+      }) as never,
+    );
+  }
+  for (const p of [spec.profile, spec.understudyProfile, spec.tierSpareProfile]) {
+    await connections.create(
+      {
+        userId: p.userId,
+        name: p.name,
+        provider: p.provider,
+        transport: 'api',
+        apiKeyId: p.apiKeyId ?? null,
+        baseUrl: p.baseUrl,
+        modelName: p.modelName,
+        parameters: {},
+        isDefault: false,
+        isCheap: false,
+        modelClass: p.modelClass ?? null,
+        fallbackProfileId: p.fallbackProfileId ?? null,
+        allowTierFallback: p.allowTierFallback ?? false,
+        tags: [],
+      } as never,
+      { id: p.id, createdAt: spec.sentinel, updatedAt: spec.sentinel } as never,
+    );
+  }
+
   await closeDatabase();
-  process.stderr.write(`built primary-stream seed fixture: ${out} (${spec.chats.length} chats)\n`);
+  process.stderr.write(
+    `built primary-stream seed fixture: ${out} (${spec.chats.length} chats, ` +
+      `3 connection profiles, ${spec.apiKeys.length} api keys)\n`,
+  );
   process.exit(0);
 }
 

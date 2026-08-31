@@ -138,6 +138,18 @@ pub enum ProfileApiKeyFailure {
     ApiKeyNotFound,
 }
 
+impl ProfileApiKeyFailure {
+    /// v4's `reason` string verbatim. The fallback chain records it as the
+    /// attempt's `error`, so it reaches the user through
+    /// `summarize_fallback_attempts` — bytes, not a label.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ProfileApiKeyFailure::NoApiKeyConfigured => "no-api-key-configured",
+            ProfileApiKeyFailure::ApiKeyNotFound => "api-key-not-found",
+        }
+    }
+}
+
 /// v4 `ProfileApiKeyResolution`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProfileApiKeyResolution {

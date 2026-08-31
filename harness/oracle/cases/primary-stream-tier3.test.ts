@@ -82,6 +82,12 @@ interface ChunkSpec {
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
   error?: string;
 }
+interface ApiKeySpec {
+  id: string;
+  provider: string;
+  label: string;
+  keyValue: string;
+}
 interface ProfileSpec {
   id: string;
   userId: string;
@@ -89,6 +95,10 @@ interface ProfileSpec {
   provider: string;
   modelName: string;
   baseUrl: string | null;
+  apiKeyId?: string | null;
+  modelClass?: string | null;
+  fallbackProfileId?: string | null;
+  allowTierFallback?: boolean;
 }
 interface CharacterSpec {
   id: string;
@@ -102,7 +112,7 @@ interface AttachedFileSpec {
 }
 interface CallSpec {
   name: string;
-  kind: 'primary' | 'recovery' | 'failover' | 'findPrevResponseId';
+  kind: 'primary' | 'recovery' | 'failover' | 'hardFailover' | 'findPrevResponseId';
   chatId?: string;
   participantId?: string;
   preGeneratedMessageId?: string;
@@ -116,12 +126,16 @@ interface CallSpec {
   provider?: string;
   existingMessages?: Array<Record<string, unknown>>;
   expectThrow?: boolean;
+  isDangerousRouted?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
   sentinel: string;
   profile: ProfileSpec;
   uncensoredProfile: ProfileSpec;
+  understudyProfile: ProfileSpec;
+  tierSpareProfile: ProfileSpec;
+  apiKeys: ApiKeySpec[];
   userId: string;
   character: CharacterSpec;
   streams: Record<string, ChunkSpec[][]>;
@@ -137,6 +151,14 @@ function toConnectionProfile(p: ProfileSpec): Record<string, unknown> {
     provider: p.provider,
     modelName: p.modelName,
     baseUrl: p.baseUrl,
+    // P4.D135: the chain reads these off the profile it is handed. The primary
+    // names an understudy and opts in to the tier pick; the others carry the
+    // neutral defaults, so B's own understudy is never followed (chains do not
+    // recurse) and only the primary can draft a spare.
+    apiKeyId: p.apiKeyId ?? null,
+    modelClass: p.modelClass ?? null,
+    fallbackProfileId: p.fallbackProfileId ?? null,
+    allowTierFallback: p.allowTierFallback ?? false,
   };
 }
 
@@ -405,6 +427,10 @@ async function main(): Promise<void> {
           attachedFiles: (call.attachedFiles ?? []) as never,
           originalMessage: call.originalMessage,
           connectionProfile: toConnectionProfile(spec.profile) as never,
+          // P4.D135: no `primary` case is danger-routed, and none carries an
+          // image — the fallback shapes get their own `hardFailover` cases
+          // below, where the flags matter.
+          isDangerousRouted: false,
           streaming: streaming as never,
           controller: controller as never,
           encoder,
@@ -460,13 +486,94 @@ async function main(): Promise<void> {
         // v4's `restreamInto` logs the CHAT_MESSAGE row against this id (the
         // wrapper passes NO `characterId`, so those rows carry `characterId=NULL`).
         preGeneratedAssistantMessageId: call.preGeneratedMessageId,
+        // P4.D135: the THIRD recovery. Present `repos` + `fallbackContext` is
+        // what enables it; absent keeps the pre-4.10 two-step behaviour, which
+        // is what every pre-existing case here still exercises when its second
+        // step produced content.
+        repos,
+        fallbackContext: { dangerous: false, needsVision: false, needsTools: false },
       });
       result = {
         uncensoredRetryAttempted: flags.uncensoredRetryAttempted,
         sameProviderRetryAttempted: flags.sameProviderRetryAttempted,
+        chainFallbackAttempted: flags.chainFallbackAttempted,
+        chainAttempts: flags.chainAttempts.map((a) => ({
+          profileId: a.profileId,
+          profileName: a.profileName,
+          provider: a.provider,
+          modelName: a.modelName,
+          trigger: a.trigger,
+          error: a.error,
+        })),
         fullResponse: streaming.fullResponse,
         effectiveProfileId: streaming.effectiveProfile.id,
       };
+    } else if (call.kind === 'hardFailover') {
+      // P4.D135: `runPrimaryStream`'s catch-all, which since `65f5021c8` walks
+      // the chain before it rethrows. Driven through the REAL `runPrimaryStream`
+      // rather than `attemptHardErrorFailover` directly, because the two things
+      // worth pinning are exactly the ones only the whole path shows: that the
+      // chain runs AFTER the tool-unsupported and request-limit branches have
+      // declined, and that an exhausted chain's summary reaches the rethrown
+      // error's message.
+      const streaming = freshStreamingState();
+      const character = {
+        id: spec.character.id,
+        name: spec.character.name,
+        aliases: spec.character.aliases,
+      };
+      const characterParticipant = { id: call.participantId as string };
+      const preserve = makePreservePartialOnError({
+        repos,
+        chatId: call.chatId as string,
+        character: character as never,
+        characterParticipant,
+        streaming: streaming as never,
+        preGeneratedAssistantMessageId: call.preGeneratedMessageId as string,
+      });
+      try {
+        const psResult = await runPrimaryStream({
+          repos,
+          chatId: call.chatId as string,
+          userId: spec.userId,
+          chat: { isPaused: false } as never,
+          character: character as never,
+          characterParticipant,
+          userParticipantId: null,
+          isMultiCharacter: false,
+          formattedMessages: userMessages(call.originalMessage as string) as never,
+          modelParams: { temperature: 1.0, maxTokens: 4096 },
+          actualTools: [],
+          useNativeWebSearch: false,
+          preGeneratedAssistantMessageId: call.preGeneratedMessageId as string,
+          attachedFiles: (call.attachedFiles ?? []) as never,
+          originalMessage: call.originalMessage,
+          connectionProfile: toConnectionProfile(spec.profile) as never,
+          isDangerousRouted: !!call.isDangerousRouted,
+          streaming: streaming as never,
+          controller: controller as never,
+          encoder,
+          preservePartialOnError: preserve,
+        });
+        result = {
+          earlyReturn: psResult.earlyReturn ?? null,
+          fullResponse: streaming.fullResponse,
+          effectiveProfileId: streaming.effectiveProfile.id,
+          // The swap's buffer reset is only measurable against a DIRTY state:
+          // a failed attempt that left reasoning behind before it died.
+          reasoningContent: streaming.reasoningContent ?? null,
+          reasoningSegmentCount: (streaming.reasoningSegments ?? []).length,
+        };
+      } catch (e) {
+        threw = e instanceof Error ? e.message : String(e);
+        result = {
+          threw,
+          fullResponse: streaming.fullResponse,
+          effectiveProfileId: streaming.effectiveProfile.id,
+          reasoningContent: streaming.reasoningContent ?? null,
+          reasoningSegmentCount: (streaming.reasoningSegments ?? []).length,
+        };
+      }
     }
 
     lines.push(JSON.stringify({ kind: 'result', call: call.name, result }));

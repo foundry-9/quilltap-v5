@@ -7,7 +7,11 @@
     "name": "Primary",
     "provider": "ANTHROPIC",
     "modelName": "claude-sonnet-4-5",
-    "baseUrl": null
+    "baseUrl": null,
+    "apiKeyId": "cc000001-0000-4000-8000-000000000001",
+    "modelClass": "Standard",
+    "fallbackProfileId": "aa000003-0000-4000-8000-000000000003",
+    "allowTierFallback": true
   },
   "uncensoredProfile": {
     "id": "aa000002-0000-4000-8000-000000000002",
@@ -17,6 +21,56 @@
     "modelName": "dolphin",
     "baseUrl": null
   },
+  "understudyProfile": {
+    "$comment": [
+      "P4.D135 — the named understudy `profile` points at.",
+      "OPENAI (a provider that REQUIRES a key), keyed, so the chain's",
+      "credential gate passes and the walk actually calls it. modelClass",
+      "Standard so the tier spare below is a same-or-better match."
+    ],
+    "id": "aa000003-0000-4000-8000-000000000003",
+    "userId": "bb000001-0000-4000-8000-000000000001",
+    "name": "Understudy",
+    "provider": "OPENAI",
+    "modelName": "gpt-4o-mini",
+    "baseUrl": null,
+    "apiKeyId": "cc000002-0000-4000-8000-000000000002",
+    "modelClass": "Standard"
+  },
+  "tierSpareProfile": {
+    "$comment": [
+      "The auto-picked tier replacement. A DIFFERENT provider from the",
+      "primary, which is the picker's first ranking key."
+    ],
+    "id": "aa000004-0000-4000-8000-000000000004",
+    "userId": "bb000001-0000-4000-8000-000000000001",
+    "name": "Tier Spare",
+    "provider": "GOOGLE",
+    "modelName": "gemini-3-flash",
+    "baseUrl": null,
+    "apiKeyId": "cc000003-0000-4000-8000-000000000003",
+    "modelClass": "Standard"
+  },
+  "apiKeys": [
+    {
+      "id": "cc000001-0000-4000-8000-000000000001",
+      "provider": "ANTHROPIC",
+      "label": "Primary key",
+      "keyValue": "primary-key"
+    },
+    {
+      "id": "cc000002-0000-4000-8000-000000000002",
+      "provider": "OPENAI",
+      "label": "Understudy key",
+      "keyValue": "understudy-key"
+    },
+    {
+      "id": "cc000003-0000-4000-8000-000000000003",
+      "provider": "GOOGLE",
+      "label": "Spare key",
+      "keyValue": "spare-key"
+    }
+  ],
   "userId": "bb000001-0000-4000-8000-000000000001",
   "chats": [
     {
@@ -131,74 +185,244 @@
   "character": {
     "id": "cc000001-0000-4000-8000-000000000001",
     "name": "Friday",
-    "aliases": ["Fri"]
+    "aliases": [
+      "Fri"
+    ]
   },
   "_comment_streams": "Keyed by streamLabel, an ORDERED list of stream attempts. The v4 streamMessage mock finds the call's `originalMessage` MARKER inside any user message (the oracle puts it in the primary/failover messages; the recovery service embeds it in its recovery user message too), resolves the label, then pops the next attempt in order — so a tool-unsupported retry / empty retry / the primary-then-recovery pair, all re-issuing streams, get DIFFERENT sequences. Each chunk: {content}, {reasoning} (cumulative), {done, usage?}, or {error}.",
   "streams": {
     "clean": [
       [
-        { "reasoning": "Let me think" },
-        { "content": "Once " },
-        { "content": "upon a time." },
-        { "done": true, "usage": { "promptTokens": 40, "completionTokens": 5, "totalTokens": 45 } }
+        {
+          "reasoning": "Let me think"
+        },
+        {
+          "content": "Once "
+        },
+        {
+          "content": "upon a time."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 5,
+            "totalTokens": 45
+          }
+        }
       ]
     ],
     "mid_error": [
       [
-        { "content": "The story begins" },
-        { "error": "upstream connection reset" }
+        {
+          "content": "The story begins"
+        },
+        {
+          "error": "upstream connection reset"
+        }
       ]
     ],
     "tool_unsupported_then_ok": [
       [
-        { "error": "Tool use with function calling is unsupported for this model" }
+        {
+          "error": "Tool use with function calling is unsupported for this model"
+        }
       ],
       [
-        { "content": "No tools needed: hello." },
-        { "done": true, "usage": { "promptTokens": 30, "completionTokens": 4, "totalTokens": 34 } }
+        {
+          "content": "No tools needed: hello."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 30,
+            "completionTokens": 4,
+            "totalTokens": 34
+          }
+        }
       ]
     ],
     "tool_unsupported_then_fail": [
       [
-        { "error": "Tool use with function calling is unsupported for this model" }
+        {
+          "error": "Tool use with function calling is unsupported for this model"
+        }
       ],
       [
-        { "content": "partial before failure" },
-        { "error": "retry also died" }
+        {
+          "content": "partial before failure"
+        },
+        {
+          "error": "retry also died"
+        }
       ]
     ],
     "token_limit": [
       [
-        { "error": "prompt is too long: 210311 tokens > 200000 maximum" }
+        {
+          "error": "prompt is too long: 210311 tokens > 200000 maximum"
+        }
       ],
       [
-        { "content": "I'm sorry — that was too long. Try a shorter excerpt." },
-        { "done": true, "usage": { "promptTokens": 12, "completionTokens": 8, "totalTokens": 20 } }
+        {
+          "content": "I'm sorry — that was too long. Try a shorter excerpt."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 12,
+            "completionTokens": 8,
+            "totalTokens": 20
+          }
+        }
       ]
     ],
     "recovery_fails": [
       [
-        { "error": "recovery model also failed" }
+        {
+          "error": "recovery model also failed"
+        }
       ]
     ],
     "retry_ok": [
       [
-        { "content": "recovered on retry." },
-        { "done": true, "usage": { "promptTokens": 20, "completionTokens": 3, "totalTokens": 23 } }
+        {
+          "content": "recovered on retry."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 20,
+            "completionTokens": 3,
+            "totalTokens": 23
+          }
+        }
       ]
     ],
     "uncensored_ok": [
       [
-        { "content": "forbidden but answered." },
-        { "done": true, "usage": { "promptTokens": 25, "completionTokens": 3, "totalTokens": 28 } }
+        {
+          "content": "forbidden but answered."
+        },
+        {
+          "done": true,
+          "usage": {
+            "promptTokens": 25,
+            "completionTokens": 3,
+            "totalTokens": 28
+          }
+        }
       ]
     ],
     "retry_empty_uncensored_empty": [
       [
-        { "done": true, "usage": null }
+        {
+          "done": true,
+          "usage": null
+        }
       ],
       [
-        { "done": true, "usage": null }
+        {
+          "done": true,
+          "usage": null
+        }
+      ],
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "done": true
+        }
+      ]
+    ],
+    "auth_then_understudy_ok": [
+      [
+        {
+          "error": "401 Unauthorized"
+        }
+      ],
+      [
+        {
+          "content": "The understudy carries the scene."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "auth_then_understudy_fails": [
+      [
+        {
+          "error": "401 Unauthorized"
+        }
+      ],
+      [
+        {
+          "error": "429 Too Many Requests"
+        }
+      ],
+      [
+        {
+          "error": "503 Service Unavailable"
+        }
+      ]
+    ],
+    "content_then_error": [
+      [
+        {
+          "content": "Half a sentence"
+        },
+        {
+          "error": "ECONNRESET"
+        }
+      ]
+    ],
+    "token_limit_no_chain": [
+      [
+        {
+          "error": "This model's maximum context length is 200000 tokens"
+        }
+      ]
+    ],
+    "empty_then_understudy_ok": [
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "content": "The understudy answers where the route would not."
+        },
+        {
+          "done": true
+        }
+      ]
+    ],
+    "reasoning_then_error_then_understudy": [
+      [
+        {
+          "reasoning": "Let me think about this at length."
+        },
+        {
+          "error": "401 Unauthorized"
+        }
+      ],
+      [
+        {
+          "content": "The understudy speaks, unencumbered."
+        },
+        {
+          "done": true
+        }
       ]
     ]
   },
@@ -308,9 +532,23 @@
       "kind": "findPrevResponseId",
       "provider": "OPENAI",
       "existingMessages": [
-        { "type": "message", "role": "USER", "content": "hi" },
-        { "type": "message", "role": "ASSISTANT", "rawResponse": { "id": "resp_abc123" } },
-        { "type": "message", "role": "USER", "content": "more" }
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "hi"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "rawResponse": {
+            "id": "resp_abc123"
+          }
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "more"
+        }
       ]
     },
     {
@@ -318,7 +556,13 @@
       "kind": "findPrevResponseId",
       "provider": "ANTHROPIC",
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "rawResponse": { "id": "resp_abc123" } }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "rawResponse": {
+            "id": "resp_abc123"
+          }
+        }
       ]
     },
     {
@@ -326,8 +570,88 @@
       "kind": "findPrevResponseId",
       "provider": "OPENAI",
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "rawResponse": { "id": "chatcmpl_x" } }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "rawResponse": {
+            "id": "chatcmpl_x"
+          }
+        }
       ]
+    },
+    {
+      "name": "hard_error_understudy_answers",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000010-0000-4000-8000-000000000010",
+      "hasTools": false,
+      "streamLabel": "auth_then_understudy_ok",
+      "attachedFiles": [],
+      "originalMessage": "a dead key sends the turn to the understudy",
+      "comment": "v4 65f5021c8: runPrimaryStream's catch-all now routes an auth failure through the chain. The named understudy answers and state.effectiveProfile swaps to it."
+    },
+    {
+      "name": "hard_error_chain_exhausted",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000011-0000-4000-8000-000000000011",
+      "hasTools": false,
+      "streamLabel": "auth_then_understudy_fails",
+      "attachedFiles": [],
+      "originalMessage": "every candidate is indisposed tonight",
+      "comment": "Understudy AND the tier pick both fail: the chain is exhausted, the buffers are left empty, and the rethrown error carries summarizeFallbackAttempts' roll."
+    },
+    {
+      "name": "hard_error_after_content",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000012-0000-4000-8000-000000000012",
+      "hasTools": false,
+      "streamLabel": "content_then_error",
+      "attachedFiles": [],
+      "originalMessage": "the curtain falls mid-line",
+      "comment": "Content already reached the user, so the chain is SKIPPED and the partial is preserved as before. restreamInto appends and SSE has no reset."
+    },
+    {
+      "name": "hard_error_not_eligible",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000013-0000-4000-8000-000000000013",
+      "hasTools": false,
+      "streamLabel": "token_limit_no_chain",
+      "attachedFiles": [],
+      "originalMessage": "a prompt too long for anyone",
+      "comment": "classifyFallbackTrigger refuses a token limit, so the chain never runs and the request-limit recovery keeps its exclusive claim."
+    },
+    {
+      "name": "empty_chain_fallback",
+      "kind": "failover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000014-0000-4000-8000-000000000014",
+      "hasTools": false,
+      "streamLabel": "empty_then_understudy_ok",
+      "attachedFiles": [],
+      "originalMessage": "an empty house three times over",
+      "dangerMode": "OFF",
+      "contentWasFlaggedDangerous": false,
+      "comment": "The THIRD recovery: same-provider retry empty, no Auto-Route, so the chain walks and the understudy answers."
+    },
+    {
+      "name": "hard_error_resets_dirty_buffers",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000015-0000-4000-8000-000000000015",
+      "hasTools": false,
+      "streamLabel": "reasoning_then_error_then_understudy",
+      "attachedFiles": [],
+      "originalMessage": "the primary thinks aloud and then collapses",
+      "comment": "P4.D135: the primary emits REASONING and then dies. hasStartedStreaming stays false (only content sets it), so the chain runs — and the understudy's answer must not be glued onto the corpse of the one before it. resetStreamingBuffersForSwap is what makes that true, and only a DIRTY-buffer case can tell it from a no-op: the buffers are compared."
     }
   ]
 }

@@ -2664,11 +2664,26 @@ where
         .get("isPaused")
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    // The fallback chain's read seam (v4 `65f5021c8`). Built here and shared by
+    // the hard-error walk below and the empty-response walk further down.
+    let fallback_repos = crate::services::fallback_repos::DbFallbackRepos::new(db);
+    // v4 walks `state.effectiveProfile`, which IS the whole profile object;
+    // v5's state carries the four-field `EffectiveProfile`, so the chain gets
+    // the row this turn already loaded. `None` (an unparseable row) disables the
+    // chain, and the catch-all rethrows exactly as it did before.
+    let fallback_primary = crate::llm_fallback::FallbackProfile::from_value(&effective_profile_row);
+    // v4: `(dangerFlags?.length ?? 0) > 0 || streamingState.effectiveProfile.id
+    // !== connectionProfile.id` — the Concierge either flagged this content or
+    // swapped the profile out for an uncensored one. Either way an auto-picked
+    // stand-in must be cleared for it.
+    let is_dangerous_routed = content_was_flagged_dangerous || did_reroute;
+    let turn_needs_vision = file_processing.has_image_attachment;
     let primary = primary_stream::run_primary_stream(
         db,
         deps.streaming,
         sink,
         &mut preserve,
+        Some(&fallback_repos),
         RunPrimaryStreamOptions {
             chat_id: chat_id.clone(),
             user_id: user_id.clone(),
@@ -2687,6 +2702,9 @@ where
             // U4.4: the run-id context the autonomous turn threads through (v4's
             // `runWithAutonomousRunId` scope covers the whole generation).
             log_context: input.log_context.clone(),
+            is_dangerous_routed,
+            needs_vision: turn_needs_vision,
+            fallback_profile: fallback_primary.clone(),
             state: &mut streaming_state,
         },
     )
@@ -2943,6 +2961,7 @@ where
         deps.streaming,
         sink,
         deps.danger_router,
+        Some(&fallback_repos),
         AttemptEmptyResponseRecoveryOptions {
             state: &mut streaming_state,
             tool_messages_length: tool_messages_len,
@@ -2957,6 +2976,14 @@ where
             chat_id: chat_id.clone(),
             character_id: character_id.clone(),
             character_name: character_name.clone(),
+            // v4 `orchestrator.service.ts:1573-1577`: `dangerous` here is the
+            // FLAG alone, not the reroute — the recovery ORs in the reroute and
+            // the flag itself before it walks.
+            fallback_context: Some(provider_failover::ChainCapabilities {
+                dangerous: content_was_flagged_dangerous,
+                needs_vision: turn_needs_vision,
+                needs_tools: !actual_tools.is_empty(),
+            }),
         },
     )
     .await;
@@ -3246,6 +3273,7 @@ where
             recovery_flags.uncensored_retry_attempted,
             recovery_flags.same_provider_retry_attempted,
             content_was_flagged_dangerous,
+            &recovery_flags.chain_attempts,
             empty_finish_reason.as_deref(),
             Some(&effective_profile.provider),
             Some(&effective_profile.model_name),
@@ -3266,6 +3294,15 @@ where
             moderation_refusal = crate::moderation_finish_reason::is_moderation_finish_reason(
                 empty_finish_reason.as_deref()
             ),
+            // v4 `65f5021c8` logs the trail as `{profileName, provider, trigger}`
+            // triples; tracing has no nested payload, so the same three fields
+            // render as a debug list.
+            chain_attempts = ?recovery_flags
+                .chain_attempts
+                .iter()
+                .map(|a| (a.profile_name.as_str(), a.provider.as_str(), a.trigger.as_str()))
+                .collect::<Vec<_>>(),
+            danger_mode_for_chain = %danger_settings.mode,
             provider = %effective_profile.provider,
             model = %effective_profile.model_name,
             "Empty response"

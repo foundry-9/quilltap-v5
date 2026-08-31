@@ -104,6 +104,22 @@ struct ProfileW {
     base_url: Option<String>,
 }
 
+/// The three seeded connection-profile rows the chain reads (P4.D135). The
+/// fixture holds them; this is only what the harness needs to NAME them.
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ChainProfileW {
+    id: String,
+}
+
+/// A bare "is this profile in the fixture?" probe for the shape assertions.
+fn fallback_repos_lookup(db: &Db, id: &str) -> Option<Value> {
+    let owned = id.to_string();
+    db.read_main(move |c| quilltap_core::db::connection_profiles::find_by_id(c, &owned))
+        .ok()
+        .flatten()
+}
+
 impl ProfileW {
     fn to_effective(&self) -> EffectiveProfile {
         EffectiveProfile {
@@ -157,6 +173,8 @@ struct CallW {
     provider: Option<String>,
     #[serde(default)]
     existing_messages: Vec<Value>,
+    #[serde(default)]
+    is_dangerous_routed: bool,
 }
 
 #[derive(Deserialize)]
@@ -166,6 +184,10 @@ struct Spec {
     sentinel: String,
     profile: ProfileW,
     uncensored_profile: ProfileW,
+    #[serde(default)]
+    understudy_profile: Option<ChainProfileW>,
+    #[serde(default)]
+    tier_spare_profile: Option<ChainProfileW>,
     user_id: String,
     character: CharacterW,
     calls: Vec<CallW>,
@@ -492,6 +514,45 @@ async fn primary_stream_tier3_matches_oracle() {
     )
     .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
+    // P4.D135: the chain's read seam, over the same fixture copy v4's `repos`
+    // read. `fallback_primary` is the failing profile as a full row — v4 walks
+    // `state.effectiveProfile`, which IS the whole object; v5's state carries
+    // the four-field projection, so the row comes from the table.
+    let fallback_repos = quilltap_core::services::fallback_repos::DbFallbackRepos::new(&db);
+    let fallback_primary = {
+        let id = spec.profile.id.clone();
+        db.read_main(move |c| quilltap_core::db::connection_profiles::find_by_id(c, &id))
+            .ok()
+            .flatten()
+            .as_ref()
+            .and_then(quilltap_core::llm_fallback::FallbackProfile::from_value)
+    };
+    assert!(
+        fallback_primary.is_some(),
+        "the fixture must carry the primary connection profile — the chain reads REAL rows \
+         (rebuild it: the recipe's `build-primary-stream-fixture.ts` step)"
+    );
+    // Shape assertion, not decoration: a fixture that lost the understudy or
+    // the spare would leave every chain case measuring a chain of one.
+    if let Some(p) = fallback_primary.as_ref() {
+        assert_eq!(
+            p.fallback_profile_id.as_deref(),
+            spec.understudy_profile.as_ref().map(|u| u.id.as_str()),
+            "the primary must name the understudy the spec does"
+        );
+        assert!(
+            p.allow_tier_fallback,
+            "the primary must opt in to the tier pick, or no case reaches the spare"
+        );
+    }
+    assert!(
+        spec.tier_spare_profile
+            .as_ref()
+            .and_then(|sp| fallback_repos_lookup(&db, &sp.id))
+            .is_some(),
+        "the fixture must carry the tier spare"
+    );
+
     // The messages the oracle plants for primary/failover calls.
     let user_messages = |marker: &str| -> Vec<CompletionMessage> {
         vec![
@@ -596,10 +657,23 @@ async fn primary_stream_tier3_matches_oracle() {
                         .pre_generated_message_id
                         .clone()
                         .unwrap(),
+                    // P4.D135: no `primary` case is danger-routed or carries an
+                    // image; the fallback shapes get their own `hardFailover`
+                    // cases below, where the flags matter.
+                    is_dangerous_routed: false,
+                    needs_vision: false,
+                    fallback_profile: fallback_primary.clone(),
                     state: &mut state,
                 };
-                match primary_stream::run_primary_stream(&db, &provider, &sink, &mut preserve, opts)
-                    .await
+                match primary_stream::run_primary_stream(
+                    &db,
+                    &provider,
+                    &sink,
+                    &mut preserve,
+                    Some(&fallback_repos),
+                    opts,
+                )
+                .await
                 {
                     Ok(res) => {
                         let early = res.early_return.map(|e| {
@@ -670,6 +744,14 @@ async fn primary_stream_tier3_matches_oracle() {
                     chat_id: call.chat_id.clone().unwrap(),
                     character_id: spec.character.id.clone(),
                     character_name: spec.character.name.clone(),
+                    // P4.D135: present `repos` + `fallback_context` is what
+                    // enables the THIRD recovery; the pre-existing cases whose
+                    // second step produced content never reach it.
+                    fallback_context: Some(provider_failover::ChainCapabilities {
+                        dangerous: false,
+                        needs_vision: false,
+                        needs_tools: false,
+                    }),
                 };
                 // W4.11b: drive the logging entry point so the failover CHAT_MESSAGE
                 // rows are written (messageId = the pre-generated id; characterId is
@@ -679,6 +761,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     &provider,
                     &sink,
                     &router,
+                    Some(&fallback_repos),
                     opts,
                     Some(FailoverLogCtx {
                         db: &db,
@@ -689,9 +772,106 @@ async fn primary_stream_tier3_matches_oracle() {
                 json!({
                     "uncensoredRetryAttempted": flags.uncensored_retry_attempted,
                     "sameProviderRetryAttempted": flags.same_provider_retry_attempted,
+                    "chainFallbackAttempted": flags.chain_fallback_attempted,
+                    "chainAttempts": flags
+                        .chain_attempts
+                        .iter()
+                        .map(|a| json!({
+                            "profileId": a.profile_id,
+                            "profileName": a.profile_name,
+                            "provider": a.provider,
+                            "modelName": a.model_name,
+                            "trigger": a.trigger.as_str(),
+                            "error": a.error,
+                        }))
+                        .collect::<Vec<_>>(),
                     "fullResponse": state.full_response,
                     "effectiveProfileId": state.effective_profile.as_ref().map(|p| p.id.clone()),
                 })
+            }
+            "hardFailover" => {
+                // P4.D135: `run_primary_stream`'s catch-all, which since
+                // `65f5021c8` walks the chain before it rethrows. Driven through
+                // the WHOLE `run_primary_stream` rather than
+                // `attempt_hard_error_failover` directly, because the two things
+                // worth pinning are exactly the ones only the whole path shows:
+                // that the chain runs AFTER the tool-unsupported and
+                // request-limit branches have declined, and that an exhausted
+                // chain's summary reaches the rethrown error's message.
+                let mut state = StreamingState {
+                    effective_profile: Some(spec.profile.to_effective()),
+                    effective_api_key: "primary-key".into(),
+                    ..Default::default()
+                };
+                let mut preserve = PreservePartialOnError::new(
+                    call.chat_id.clone().unwrap(),
+                    spec.character.id.clone(),
+                    spec.character.name.clone(),
+                    spec.character.aliases.clone(),
+                    call.participant_id.clone().unwrap(),
+                    None,
+                    call.pre_generated_message_id.clone().unwrap(),
+                );
+                let marker = call.original_message.clone().unwrap_or_default();
+                let params = base_params(user_messages(&marker));
+                let opts = RunPrimaryStreamOptions {
+                    log_context: LogContext::none(),
+                    chat_id: call.chat_id.clone().unwrap(),
+                    user_id: spec.user_id.clone(),
+                    chat: primary_stream::PrimaryStreamChat { is_paused: false },
+                    character_id: spec.character.id.clone(),
+                    character_name: spec.character.name.clone(),
+                    character_aliases: spec.character.aliases.clone(),
+                    participant_id: call.participant_id.clone().unwrap(),
+                    participant_status: None,
+                    user_participant_id: None,
+                    is_multi_character: false,
+                    params,
+                    attached_files: Vec::new(),
+                    original_message: call.original_message.clone(),
+                    pre_generated_assistant_message_id: call
+                        .pre_generated_message_id
+                        .clone()
+                        .unwrap(),
+                    is_dangerous_routed: call.is_dangerous_routed,
+                    needs_vision: false,
+                    fallback_profile: fallback_primary.clone(),
+                    state: &mut state,
+                };
+                match primary_stream::run_primary_stream(
+                    &db,
+                    &provider,
+                    &sink,
+                    &mut preserve,
+                    Some(&fallback_repos),
+                    opts,
+                )
+                .await
+                {
+                    Ok(res) => json!({
+                        "earlyReturn": res.early_return.map(|e| json!({
+                            "isMultiCharacter": e.is_multi_character,
+                            "hasContent": e.has_content,
+                            "messageId": e.message_id,
+                            "userParticipantId": e.user_participant_id,
+                            "isPaused": e.is_paused,
+                        })),
+                        "fullResponse": state.full_response,
+                        "effectiveProfileId": state.effective_profile.as_ref().map(|p| p.id.clone()),
+                        // The swap's buffer reset is only measurable against a
+                        // DIRTY state — a failed attempt that left reasoning
+                        // behind before it died.
+                        "reasoningContent": state.reasoning_content,
+                        "reasoningSegmentCount": state.reasoning_segments.len(),
+                    }),
+                    Err(e) => json!({
+                        "threw": e.message,
+                        "fullResponse": state.full_response,
+                        "effectiveProfileId": state.effective_profile.as_ref().map(|p| p.id.clone()),
+                        "reasoningContent": state.reasoning_content,
+                        "reasoningSegmentCount": state.reasoning_segments.len(),
+                    }),
+                }
             }
             other => panic!("unknown call kind {other}"),
         };

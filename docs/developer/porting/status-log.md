@@ -93555,3 +93555,105 @@ understudy's own understudy one level.
 - v4's third comparator key subtracts two `?? 0` floats; `sort_index` is
   `z.number().default(0)` and can never be NaN, so `total_cmp` is the same
   ordering for every value the column can hold.
+
+---
+
+## P4.D135 unit 3 — the fallback chain on the Salon spine (v4 `65f5021c8`)
+
+Both entrances, wired and differential-verified: `run_primary_stream`'s
+catch-all (hard errors) and `attempt_empty_response_recovery`'s new THIRD step.
+
+### The read seam
+
+`services/fallback_repos.rs` — `FallbackChainRepos: FallbackRepos` plus
+`DbFallbackRepos`. The extra method is `resolve_api_key`, which the ENGINE does
+not need but a WALK does: an understudy's key has to be resolved before its call
+goes out, and v4 records a resolution failure as an `auth` attempt (carrying
+v4's own `'no-api-key-configured'` / `'api-key-not-found'` reason string, now
+exposed as `ProfileApiKeyFailure::as_str`) rather than silently skipping the
+candidate.
+
+It holds a `Db` and does its own `read_main` per question rather than borrowing
+a `&Connection`: a borrowed connection cannot be held across an await, and the
+walk is async. That is also what keeps the engine synchronous and driveable from
+an in-memory `Vec` in the tier-1.
+
+### v5's one shape difference from v4, recorded
+
+v4 walks `state.effectiveProfile`, which IS the whole `ConnectionProfile`. v5's
+`StreamingState` carries the four-field `EffectiveProfile`, so the failing
+profile arrives as a `FallbackProfile` the caller supplies — the orchestrator's
+`effective_profile_row` for the hard-error path, and a re-read by id for the
+empty-response path (where the effective profile may by then be the uncensored
+one). A row that has gone says so and disables the chain, the same
+loud-fallback shape the `aa464abf` review asked for on the sibling re-read.
+
+### Three things the differential caught that inspection had not
+
+1. **`65f5021c8` also added `characterId` to `restreamInto`'s `streamMessage`
+   call** (alongside the optional `stop`). Every failover leg's `CHAT_MESSAGE`
+   `llm_logs` row now carries the character where it used to carry NULL. The
+   results and the event traces both matched; only the log dump disagreed. The
+   module header and an in-module assertion both said "passes no characterId" —
+   both corrected, and the sha named.
+2. **v5 was forwarding two params v4 never sends.** v4's `restreamInto` builds
+   its call by hand and names neither `previousResponseId` (its own comment: an
+   OpenAI Responses-API chaining token handed to a different account is
+   meaningless at best) nor — on the empty-response legs — `stop`. v5 cloned the
+   primary's whole `StreamParams`, so both rode along. **Pre-existing**, and
+   invisible to the tier-3: its canned key is
+   `provider|model|temperature|messages`. Fixed with `stop` as an explicit
+   argument and `previous_response_id` cleared unconditionally; pinned by
+   `restream_clears_the_chaining_token_and_honours_the_stop_argument`, a
+   recording provider that keeps the params it was handed.
+3. **The buffer reset survived its first mutation.** Deleting
+   `reset_streaming_buffers_for_swap` went GREEN — no case dirtied the buffers
+   before a swap (`hard_error_after_content` has content but SKIPS the chain).
+   The corpus gained `hard_error_resets_dirty_buffers`: a primary that emits
+   REASONING and then dies, so `hasStartedStreaming` stays false and the chain
+   runs with a dirty state. The `hardFailover` result now carries
+   `reasoningContent` + `reasoningSegmentCount`. **v4 resets `reasoningContent`
+   to the EMPTY STRING, not to absent** — a reset state is distinguishable from
+   one that never carried reasoning — and the port now matches (v5's readers
+   treat the two identically, so only the observable value moved).
+
+### Corpus
+
+`primary-stream-tier3.json` grows three connection profiles (primary naming an
+understudy and opting in to the tier pick, the understudy, a different-provider
+tier spare) and three api keys — the chain reads REAL rows through both v4's
+`repos` and v5's `DbFallbackRepos`. Six new cases:
+
+| case | what it pins |
+|---|---|
+| `hard_error_understudy_answers` | the named understudy answers; `effectiveProfile` swaps to it |
+| `hard_error_chain_exhausted` | understudy AND tier pick fail; `summarizeFallbackAttempts`' roll reaches the rethrown error |
+| `hard_error_after_content` | content already streamed → the chain is SKIPPED, the partial preserved |
+| `hard_error_not_eligible` | a token limit → `classifyFallbackTrigger` refuses, and the request-limit recovery keeps its exclusive claim |
+| `empty_chain_fallback` | the THIRD recovery: same-provider retry empty, no Auto-Route, the chain walks, the TIER PICK answers |
+| `hard_error_resets_dirty_buffers` | the swap's reset, against a state the failed attempt dirtied |
+
+A seventh shape came free and is worth naming: **`both_empty` proves the tier
+pick is REFUSED once an uncensored reroute has happened**. The chain's
+`dangerous` ORs in `uncensoredRetryAttempted`, so the mainstream spare is
+filtered out where `hard_error_chain_exhausted` (no reroute) reaches it. Two
+cases, one rule, opposite answers.
+
+`retry_empty_uncensored_empty` gained two attempts for the same reason: with the
+chain now walking after the two local retries, an under-supplied stream label
+runs BOTH mocks dry and the two sides compare two different "exhausted"
+sentences.
+
+### Mutation proofs (7)
+
+The mid-stream guard removed; the buffer reset removed (twice — before and after
+the corpus could see it); the reset clearing reasoning to absent instead of v4's
+empty string; the exhausted-chain summary never appended; the empty-response
+chain no longer third; the effective profile not swapped on success; the reroute
+not counted as dangerous for the chain.
+
+### No-op with evidence
+
+`turn_orchestrator`'s `ChainConfig`: v4 deleted `maxRetries` / `retryDelayMs` in
+this commit ("declared and never read"). v5 never ported them — they were dead
+on arrival — so the deletion is a no-op here and only the doc comment moved.

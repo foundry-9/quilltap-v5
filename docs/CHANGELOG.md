@@ -165,6 +165,52 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — feat(chat): the fallback chain on the Salon spine, both entrances (P4.D135 unit 3)
+
+_Versions: core 0.0.704, harness 0.0.606._
+
+The chain reaches the turn. `run_primary_stream`'s catch-all — which rethrew
+unconditionally — now walks the profile's chain before it preserves and
+rethrows; the empty-response recovery gains its THIRD step, after the
+same-provider retry and the uncensored reroute; and both stream through the new
+`failing-over` SSE stage.
+
+`FallbackChainRepos` (`services/fallback_repos.rs`) is the shared read seam: the
+engine's two lookups plus the one a walk needs on top, an understudy's API key,
+because v4 records a resolution failure as an `auth` attempt rather than
+silently skipping the candidate. It holds a `Db` and does its own `read_main`
+per question — a borrowed connection cannot be held across an await, and this is
+what lets the engine stay synchronous and driveable from an in-memory `Vec`.
+
+**Three things the differential caught that inspection had not:**
+
+1. **`65f5021c8` also added `characterId` to `restreamInto`'s call.** Every
+   failover leg's `CHAT_MESSAGE` row now carries the character where it used to
+   carry NULL — invisible in the results and the event traces, caught by the
+   `llm_logs` dump.
+2. **v5 was forwarding two params v4 never sends.** `restreamInto` builds its
+   `streamMessage` call by hand and names neither `previousResponseId` (v4's
+   comment: handing an OpenAI chaining token to a different account is
+   meaningless at best) nor, on the empty-response legs, `stop`. v5 cloned the
+   primary's whole `StreamParams`, so it carried both — a pre-existing
+   divergence the tier-3 corpus cannot see, because its canned key is
+   `provider|model|temperature|messages`. `stop` is now an explicit argument
+   (`None` = v4's empty-response shape, the primary's sequences on the chain
+   legs) and the pin is a recording provider.
+3. **The buffer reset survived its first mutation.** No case dirtied the buffers
+   before a swap, so deleting `reset_streaming_buffers_for_swap` went green. The
+   corpus gained a primary that emits REASONING and then dies —
+   `hasStartedStreaming` stays false, so the chain runs — with the reasoning
+   buffers as comparands. v4 resets to the empty string, not to absent, and the
+   port now does too.
+
+Corpus: `primary-stream-tier3` grows three profiles + three api keys (the chain
+reads REAL rows) and six cases — the understudy answering, an exhausted chain
+whose summary reaches the rethrown error, the mid-stream skip, a non-eligible
+token limit, the empty-response third recovery, and the dirty-buffer swap. Seven
+mutation proofs. `turn_orchestrator`'s `ChainConfig` needed no change: v4 deleted
+`maxRetries`/`retryDelayMs` in this commit and v5 never ported them.
+
 #### 2026-08-31 — feat(llm): the pure fallback engine, tier-1 against v4's real modules (P4.D135 unit 2)
 
 _Versions: core 0.0.703, harness 0.0.605._
