@@ -627,6 +627,50 @@ connection-profile leg has been vacuous since v4 `aa464abf` (the committed
 identically and the arms stay green on matching failures), and the two new
 columns land in the same hole. Widening that fixture is cross-lane; the gap is
 named in both files.
+#### 2026-08-31 — fix(doc-tools): name the missing argument, and match past the file's punctuation (v4 bugs 108, 109)
+
+_Versions: core 0.0.703, harness 0.0.605._
+
+The enablement half of v4 `487ae16b1`, and bug 108 whole.
+
+**Bug 108 — the call, not the file.** The tool dispatcher deliberately hands a
+handler its raw arguments (that is what lets a `qtap://` URI stand in for
+scope/mount/path), so a `doc_str_replace` that simply omitted `find` reached the
+matcher as an absent needle, matched nothing, and was answered "Text not found
+in file… use the exact text from your most recent read". A model reading that
+re-reads and repeats the identical malformed call. v5 measurably had this shape;
+the differential ran red on it before the fix.
+
+`handle_str_replace` now checks `find` and `replace` **before the file is
+opened** — before path resolution and the write-permission check, so a
+write-blocked file, an unknown mount and a non-text extension all still answer
+the argument sentence. `find` must be a non-empty string, and the message says
+`empty` or `missing` accordingly. `replace` is guarded by type, not truthiness:
+`''` is a legitimate deletion, and without the type test an omitted `replace`
+silently deleted the found span. `handle_insert_text` gains the same guards for
+`position` and `content`; an array `position` still falls through to v4's own
+"Position must specify before, after, or at", being truthy and `typeof 'object'`.
+
+**Bug 109 — enablement.** The typographic fold is turned on for
+`doc_str_replace`, for `doc_insert_text`'s anchor, and for `doc_grep`'s
+**literal** path. Grep folds unconditionally — there is no uniqueness contract
+to protect and a character searching for `Veyra-5's` should find the sentence.
+The regex path is deliberately untouched: there the caller is spelling the
+pattern themselves.
+
+A typographic-tier match splices the replacement over the **original** span, so
+the caller dictates the new bytes of the passage it named and cannot reach
+beyond it. The success message says when a match needed the fold, and an
+ambiguity the fold produced is reported differently from one the bytes produced.
+
+`doc_text_equivalence` grew 20 ops (43 → 46 with the ordering trio) and
+`doc_enum_equivalence` grew the grep trio that makes the fold's scope
+measurable: the literal query finds the curly file, the regex and un-normalized
+queries do not. Both families regenerated from the `487ae16b1` pin; nine
+mutations, each reddening exactly the arm it should.
+
+Quilltap's own typography did not move.
+
 #### 2026-08-31 — feat(doc-edit): fold typographic spellings for matching (v4 bug 109, part 1)
 
 _Versions: core 0.0.702, harness 0.0.604._

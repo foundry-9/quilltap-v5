@@ -394,6 +394,37 @@ fn doc_text_matches_oracle() {
         );
     }
 
+    // Shape assert (v4 bug 108 / 109, `487ae16b1`): the argument-guard and
+    // typographic-fold ops must be PRESENT. A fixture that lost them would leave
+    // the whole family green while measuring neither bug.
+    for required in [
+        "str_replace_find_missing",
+        "str_replace_find_empty",
+        "str_replace_find_wrong_type",
+        "str_replace_replace_missing",
+        "str_replace_find_missing_unresolvable_path",
+        "str_replace_find_missing_write_blocked",
+        "str_replace_find_missing_bad_mount",
+        "str_replace_find_missing_non_text",
+        "insert_position_missing",
+        "insert_position_wrong_type",
+        "insert_position_null",
+        "insert_position_array",
+        "insert_content_missing",
+        "str_replace_curly_apostrophe",
+        "str_replace_em_dash",
+        "str_replace_exact_says_nothing",
+        "str_replace_folded_ambiguous",
+        "str_replace_still_missing",
+        "str_replace_empty_replace_deletes",
+        "insert_anchor_curly",
+    ] {
+        assert!(
+            spec.ops.iter().any(|o| o.name == required),
+            "the doc-text corpus lost its bug-108/109 op `{required}`"
+        );
+    }
+
     // Dump the two content tables and diff. Order by remap-invariant keys (a
     // content-derived sha / the stable relativePath) so the positional-UUID remap
     // assigns identical tokens on both sides.

@@ -94463,3 +94463,123 @@ QT_ORACLE_DOC_EDIT_LEAVES=/tmp/oracle-doc-edit-leaves.ndjson \
 exist at the `b121ac77f` baseline** — it can only be regenerated at
 `487ae16b1` or later. That is expected for a drift port and becomes moot when
 the round moves the baseline.
+
+### Unit 2 — the argument guards + the three enablement sites (bug 108 whole, bug 109's wire)
+
+**RED FIRST.** `doc_text_equivalence`, regenerated from the pin with the new
+ops, against the pre-fix handler:
+
+```
+op[26] str_replace_find_missing diverged
+  rust:   "Text not found in file. The exact text to find was not present in
+           Notes/curly.md. Make sure you are using the exact text from your most
+           recent read of this file."
+  oracle: "The `find` argument was missing. doc_str_replace needs `find` … This
+           is a problem with the call, not with the file — re-issue it with both
+           arguments."
+```
+
+**v5 measurably HAD bug 108**, in exactly the shape the ledger predicted: the
+sentence that sends a model back to re-read, for a fault that is not in the
+file. One v5-side difference from v4 worth recording: v5 read `replace` through
+`arg_str(...).unwrap_or_default()`, so an omitted `replace` **silently deleted
+the found span** where v4 (which has no default) spliced the literal string
+`"undefined"`. Different coat, same bug; v4's `typeof` guard fixes both, and the
+why-comment carries the distinction.
+
+**What landed** in `tools/doc_edit/text.rs`:
+
+- `handle_str_replace`'s `find`/`replace` guards, placed where v4 places them —
+  **before path resolution and `assert_character_may_write`**, not merely before
+  the read.
+- `handle_insert_text`'s `position`/`content` guards, after the file-type check
+  and before the read, matching v4. `position` is refused unless it is a JSON
+  object or array, reproducing JS `!position || typeof position !== 'object'`
+  arm for arm: `null`, `false`, `0`, a number and a string are all refused; an
+  ARRAY passes (truthy, `typeof 'object'`) and falls through to v4's own
+  "Position must specify before, after, or at".
+- `fold_typography: true` at the three enablement sites, with the tier consumed:
+  the success sentence's punctuation note, the multi-match `nearly` clause, and
+  v4's `logger.debug` line.
+- `doc_grep`'s literal path folds unconditionally; **`GrepMatcher::Regex` is
+  untouched**, and so is the un-normalized non-regex path — v4 folds only inside
+  its `normalize_diacritics !== false && !is_regex` branch, and v5's matcher
+  split already mirrors that exactly.
+
+**The differentials.** `doc_text_equivalence` 26 → 46 ops (20 new) and
+`doc_enum_equivalence` 14 → 17 ops, both regenerated from the pin. The doc-enum
+trio is what makes the fold's SCOPE measurable rather than merely asserted:
+
+| op | v4 |
+|---|---|
+| `grep_curly_literal` (`Veyra-5's`) | 2 matches — both curly lines |
+| `grep_curly_regex` (same query, `is_regex: true`) | 0 |
+| `grep_curly_no_normalize` (same query, `normalize_diacritics: false`) | 0 |
+
+Named-op shape asserts were added to both families, so a fixture that lost these
+ops fails loudly instead of leaving the family vacuously green.
+
+**Mutation proofs (nine, each reverted by file backup; each reddens exactly one
+op and nothing else):**
+
+| mutation | reddens |
+|---|---|
+| `doc_grep` literal stops folding | `grep_curly_literal` (regex + no-normalize stay green) |
+| `doc_str_replace` stops folding | `str_replace_curly_apostrophe` |
+| `doc_insert_text`'s anchor stops folding | `insert_anchor_curly` |
+| `what` is always `"missing"` | `str_replace_find_empty` |
+| `replace` guarded by truthiness instead of type | `str_replace_empty_replace_deletes` |
+| the guards move AFTER path resolution | `str_replace_find_missing_write_blocked` |
+| `position` refused only when null | `insert_position_wrong_type` |
+| the success punctuation note dropped | `str_replace_curly_apostrophe` |
+| the multi-match `nearly` clause dropped | `str_replace_folded_ambiguous` |
+
+**A corpus-craft correction worth the note.** The first ordering op —
+`str_replace_find_missing_unresolvable_path`, a `find`-less call at
+`Notes/does-not-exist.md` — was a **non-discriminator**: the move-the-guard
+mutation stayed green, because resolution of a nonexistent `.md` path succeeds
+and the guard still preceded the read either way. Three ops that reach a
+genuinely failing stage were added (write-blocked file, unknown mount, non-text
+extension), and the mutation then reddened. The original op is kept: it still
+pins "before the file is opened".
+
+**Regen recipe (both families, through the sanctioned driver):**
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d137-487ae16b1
+rm -f /tmp/qt-dt-main.db /tmp/qt-dt-mount.db /tmp/oracle-doc-text.ndjson
+python3 harness/tools/recipe_sweep.py --run doc_text_equivalence --v4 "$PIN"
+rm -f /tmp/qt-den-main.db /tmp/qt-den-mount.db /tmp/oracle-doc-enum.ndjson
+python3 harness/tools/recipe_sweep.py --run doc_enum_equivalence --v4 "$PIN"
+```
+
+Both fixture pairs are MINTED per run, so the oracle and `cargo test` must point
+at the same build — the driver does this in one invocation. Never run two sweeps
+concurrently.
+
+**Fixtures changed:** `harness/oracle/fixtures/doc-text.json` (six new vault
+files + 20 ops) and `harness/oracle/fixtures/doc-enum.json` (one new vault file
++ 3 ops). Both are per-recipe-built, not committed databases, so **no other
+family is invalidated** — no committed `.db` moved in this lane.
+
+### Deferred, loudly
+
+- **Help rows → `p4.9i2`.** `help/chat-settings.md` (+1) and
+  `help/document-editing-tools.md` (+10) are NOT ported here; they join the
+  standing help bank.
+- **💸 the live proof joins the dogfood queue:** a real doc-edit turn in which a
+  model-authored curly-quote `find` resolves, and the reply says why. Nothing in
+  the differential can show a model changing its behaviour on reading the new
+  sentence.
+- **NO-PORT remainder, ratified:** README, `docs/CHANGELOG.md`,
+  `docs/developer/bugs.md` + the two bug files, `package*.json`, and v4's two new
+  test files (their case shapes ARE the corpus above; the oracle drives v4's real
+  functions, never a reimplementation).
+
+### The trap this lane re-confirmed (ledger §5.3)
+
+The commit's subject line is about typography, and **Quilltap's own typography
+did not change**. `remark-smartypants` still runs at exactly two HTML-render call
+sites and the keystroke engine still fires only for typed dashes and ellipses.
+The P4.D71 smart-typography port was verified untouched; the new module's header
+says so, naming the sha.

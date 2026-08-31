@@ -287,6 +287,21 @@ fn doc_enum_matches_oracle() {
         );
     }
 
+    // Shape assert (v4 bug 109, `487ae16b1`): doc_grep's LITERAL path folds
+    // typographic spellings while the regex path and the un-normalized path do
+    // NOT. All three ops must be present — the trio is what makes the fold's
+    // scope measurable rather than merely asserted.
+    for required in [
+        "grep_curly_literal",
+        "grep_curly_regex",
+        "grep_curly_no_normalize",
+    ] {
+        assert!(
+            spec.ops.iter().any(|o| o.name == required),
+            "the doc-enum corpus lost its bug-109 op `{required}`"
+        );
+    }
+
     drop(main);
     drop(mount);
     let _ = std::fs::remove_file(&work_main);

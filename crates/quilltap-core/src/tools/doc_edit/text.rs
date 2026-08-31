@@ -25,7 +25,7 @@ use crate::db::database_store::list_database_files;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
 use crate::doc_edit::diacritics::{
-    find_all_matches, find_unique_match, DiacriticsMatchOptions, UniqueMatch,
+    find_all_matches, find_unique_match, DiacriticsMatchOptions, MatchTier, UniqueMatch,
 };
 use crate::doc_edit::mime_registry::{
     detect_mime_from_extension, is_json_family, is_jsonl_mime, parse_content, serialize_content,
@@ -407,6 +407,39 @@ pub fn handle_str_replace(
     let Some(path) = addressing.path.clone() else {
         return Ok(DocEditToolResult::fail("A `path` or a `uri` is required."));
     };
+
+    // The arguments themselves, before the file is opened. The dispatcher hands a
+    // handler its RAW input when the schema parse fails (that is what lets a
+    // `qtap://` URI stand in for scope/mount/path), so a call that simply omitted
+    // `find` arrives here with it absent — and an absent needle matches nothing,
+    // which the matcher would report as "text not found" and the model would read
+    // as *its text* being stale. It then re-reads and repeats the identical
+    // malformed call. Say what is actually wrong instead (v4 bug 108,
+    // `487ae16b1`).
+    let find_arg = args.get("find");
+    let find = match find_arg.and_then(Value::as_str) {
+        Some(f) if !f.is_empty() => f.to_string(),
+        _ => {
+            let what = if matches!(find_arg, Some(Value::String(_))) {
+                "empty"
+            } else {
+                "missing"
+            };
+            return Ok(DocEditToolResult::fail(format!(
+                "The `find` argument was {what}. doc_str_replace needs `find` (the exact existing text) and `replace` (what to put in its place); nothing in {path} was changed. This is a problem with the call, not with the file — re-issue it with both arguments."
+            )));
+        }
+    };
+    // `replace` is guarded by type, NOT by truthiness: `''` is a legitimate
+    // deletion, and without the type test an omitted `replace` silently deleted
+    // the found span (v4, lacking a default, spliced the literal string
+    // "undefined" into the document — the same bug wearing a different coat).
+    let Some(replace) = args.get("replace").and_then(Value::as_str) else {
+        return Ok(DocEditToolResult::fail(format!(
+            "The `replace` argument was missing. doc_str_replace needs `replace` (use an empty string to delete the found text); nothing in {path} was changed."
+        )));
+    };
+
     let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::DocumentStore);
     let write_context = build_write_resolution_context(main, mount, &addressing, ctx)?;
     let resolved = resolve_doc_edit_path(
@@ -427,29 +460,55 @@ pub fn handle_str_replace(
     }
 
     let content = read_file_with_mtime(mount, &resolved)?.content;
-    let find = arg_str(args, "find").unwrap_or_default();
-    let replace = arg_str(args, "replace").unwrap_or_default();
     let options = DiacriticsMatchOptions {
         case_sensitive: arg_bool(args, "case_sensitive") != Some(false),
         normalize_diacritics: arg_bool(args, "normalize_diacritics") != Some(false),
-        fold_typography: false,
+        // Curly quotes, dashes and ellipses in the file — written there by a
+        // model in the first place — are matched by their ASCII spellings on a
+        // total miss, never in preference to an exact hit (v4 bug 109).
+        fold_typography: true,
     };
-    let (index, length) = match find_unique_match(&content, &find, options) {
-        UniqueMatch::Found { index, length, .. } => (index, length),
-        UniqueMatch::NotFound { count, .. } => {
+    let (index, length, tier) = match find_unique_match(&content, &find, options) {
+        UniqueMatch::Found {
+            index,
+            length,
+            tier,
+        } => (index, length, tier),
+        UniqueMatch::NotFound { count, tier } => {
             if count == 0 {
                 return Ok(DocEditToolResult::fail_with_formatted(
                     format!("Text not found in file. The exact text to find was not present in {path}. Make sure you are using the exact text from your most recent read of this file."),
                     format!("Error: Text not found in {path}. No matches for the find text. Re-read the file and use the exact text."),
                 ));
             }
+            // An ambiguity the fold produced is a different report from an
+            // ambiguity the bytes produced: say which reading found them.
+            let nearly = if tier == MatchTier::Typographic {
+                " (no passage matches your find text exactly; these differ from it only in punctuation — curly quotes, dashes or an ellipsis)"
+            } else {
+                ""
+            };
             return Ok(DocEditToolResult::fail_with_formatted(
-                format!("Multiple matches ({count}) found in file. Include more surrounding context in the find text to make it unique."),
-                format!("Error: {count} matches found in {path}. Include more surrounding context to make the match unique."),
+                format!("Multiple matches ({count}) found in file{nearly}. Include more surrounding context in the find text to make it unique."),
+                format!("Error: {count} matches found in {path}{nearly}. Include more surrounding context to make the match unique."),
             ));
         }
     };
 
+    if tier == MatchTier::Typographic {
+        tracing::debug!(
+            target: "quilltap::doc_edit",
+            path = %path,
+            index,
+            length,
+            "str_replace matched only after folding typographic variants",
+        );
+    }
+
+    // Perform the replacement. The replacement text is spliced over the ORIGINAL
+    // span, so a typographic-tier match rewrites the file's punctuation in that
+    // span to whatever the caller supplied — which is what str_replace means: the
+    // caller dictates the new bytes of the passage it named.
     let new_content = format!(
         "{}{}{}",
         utf16_substring(&content, 0, index),
@@ -488,8 +547,13 @@ pub fn handle_str_replace(
         "mtime": mtime,
         "line_number": line_number,
     });
+    let typography_note = if tier == MatchTier::Typographic {
+        " Your find text matched only once punctuation was set aside: the file spells some of it with curly quotes, a dash character or an ellipsis where you used the plain ASCII form. The passage now reads exactly as you wrote it."
+    } else {
+        ""
+    };
     let formatted = format!(
-        "Replaced text at line {line_number} in {path} (mtime: {mtime}). Note: your previous read of this file is now stale — re-read before making further edits."
+        "Replaced text at line {line_number} in {path} (mtime: {mtime}).{typography_note} Note: your previous read of this file is now stale — re-read before making further edits."
     );
     Ok(DocEditToolResult::ok(result, formatted).with_librarian_announcement(announcement))
 }
@@ -530,9 +594,25 @@ pub fn handle_insert_text(
         )));
     }
 
-    let content = read_file_with_mtime(mount, &resolved)?.content;
-    let insert_content = arg_str(args, "content").unwrap_or_default();
+    // Same raw-input fallback as doc_str_replace: an omitted `position` reaches
+    // this handler absent and would throw a TypeError reading `.at`, which the
+    // dispatcher reports as a file error rather than a call error (v4 bug 108).
+    // v4's test is `!position || typeof position !== 'object'`, so every falsy
+    // value AND every non-object is refused — an ARRAY passes, being truthy and
+    // `typeof 'object'`, and then falls through to "Position must specify…".
     let position = args.get("position").cloned().unwrap_or(Value::Null);
+    if !matches!(position, Value::Object(_) | Value::Array(_)) {
+        return Ok(DocEditToolResult::fail(format!(
+            "The `position` argument was missing. doc_insert_text needs `position` — {{\"at\": \"start\"}}, {{\"at\": \"end\"}}, {{\"before\": \"…\"}} or {{\"after\": \"…\"}}; nothing in {path} was changed."
+        )));
+    }
+    let Some(insert_content) = arg_str(args, "content") else {
+        return Ok(DocEditToolResult::fail(format!(
+            "The `content` argument was missing. doc_insert_text needs the text to insert; nothing in {path} was changed."
+        )));
+    };
+
+    let content = read_file_with_mtime(mount, &resolved)?.content;
     let at = position.get("at").and_then(Value::as_str);
     let content_len = content.encode_utf16().count();
 
@@ -550,7 +630,10 @@ pub fn handle_insert_text(
             let options = DiacriticsMatchOptions {
                 case_sensitive: true,
                 normalize_diacritics: arg_bool(args, "normalize_diacritics") != Some(false),
-                fold_typography: false,
+                // As for doc_str_replace: an anchor whose only difference from
+                // the file is a curly quote or a dash still names the passage
+                // the caller meant (v4 bug 109).
+                fold_typography: true,
             };
             let (index, length) = match find_unique_match(&content, anchor, options) {
                 UniqueMatch::Found { index, length, .. } => (index, length),
@@ -865,7 +948,13 @@ fn grep_search_content(
             DiacriticsMatchOptions {
                 case_sensitive: *case_sensitive,
                 normalize_diacritics: true,
-                fold_typography: false,
+                // A literal search is a search for the words, not for the file's
+                // punctuation: `Veyra-5's` finds `Veyra-5’s` (v4 bug 109).
+                // Unconditional here — there is no uniqueness contract to
+                // protect. The `GrepMatcher::Regex` arm below is deliberately
+                // left alone: there the caller is spelling the pattern
+                // themselves.
+                fold_typography: true,
             },
         )
         .iter()

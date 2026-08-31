@@ -21,7 +21,13 @@
     { "relativePath": "Notes/protectedW.md", "content": "---\ncharacter_write: false\n---\n\nreadonly" },
     { "relativePath": "Notes/fmupd.md", "content": "---\ntitle: Upd\nkeep: yes\n---\n\nbody" },
     { "relativePath": "Notes/fmrep.md", "content": "---\ntitle: Rep\ndrop: yes\n---\n\nbody" },
-    { "relativePath": "Notes/headupd.md", "content": "# Top\n\n## Section A\n\nOld body\n\n### Sub\n\nsub body\n\n## Section B\n\nB body" }
+    { "relativePath": "Notes/headupd.md", "content": "# Top\n\n## Section A\n\nOld body\n\n### Sub\n\nsub body\n\n## Section B\n\nB body" },
+    {"relativePath": "Notes/curly.md", "content": "## Open items\n\n- Sylvain’s first entry (his tempo).\n- Family vote — not scheduled.\n"},
+    {"relativePath": "Notes/curlydash.md", "content": "keep\n- Family vote — not scheduled.\nkeep too\n"},
+    {"relativePath": "Notes/curlyexact.md", "content": "## Outstanding\n\nplain ascii only\n"},
+    {"relativePath": "Notes/curlydup.md", "content": "hers’ and hers’ again\n"},
+    {"relativePath": "Notes/curlydel.md", "content": "keep me\n- Family vote — not scheduled.\nkeep me too\n"},
+    {"relativePath": "Notes/curlyanchor.md", "content": "She paused… then spoke\n"}
   ],
   "projectFiles": [
     { "relativePath": "design.md", "content": "Project design notes" }
@@ -52,6 +58,26 @@
     { "name": "update_fm_replace", "tool": "doc_update_frontmatter", "args": { "mount_point": "self", "path": "Notes/fmrep.md", "updates": { "only": "kept" }, "replace_all": true } },
     { "name": "read_heading", "tool": "doc_read_heading", "args": { "mount_point": "self", "path": "Notes/doc.md", "heading": "Section A" } },
     { "name": "read_heading_notfound", "tool": "doc_read_heading", "args": { "mount_point": "self", "path": "Notes/doc.md", "heading": "Nope" } },
-    { "name": "update_heading", "tool": "doc_update_heading", "args": { "mount_point": "self", "path": "Notes/headupd.md", "heading": "Section A", "content": "REPLACED", "preserve_subheadings": false } }
+    { "name": "update_heading", "tool": "doc_update_heading", "args": { "mount_point": "self", "path": "Notes/headupd.md", "heading": "Section A", "content": "REPLACED", "preserve_subheadings": false } },
+    {"name": "str_replace_find_missing", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curly.md", "replace": "new text"}},
+    {"name": "str_replace_find_empty", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curly.md", "find": "", "replace": "new text"}},
+    {"name": "str_replace_find_wrong_type", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curly.md", "find": 42, "replace": "new text"}},
+    {"name": "str_replace_replace_missing", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curly.md", "find": "## Open items"}},
+    {"name": "str_replace_find_missing_unresolvable_path", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/does-not-exist.md", "replace": "new text"}},
+    {"name": "str_replace_find_missing_write_blocked", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/protectedW.md", "replace": "new text"}},
+    {"name": "str_replace_find_missing_bad_mount", "tool": "doc_str_replace", "args": {"mount_point": "no-such-mount", "path": "Notes/curly.md", "replace": "new text"}},
+    {"name": "str_replace_find_missing_non_text", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/x.yaml", "replace": "new text"}},
+    {"name": "insert_position_missing", "tool": "doc_insert_text", "args": {"mount_point": "self", "path": "Notes/insert.md", "content": "a new line\n"}},
+    {"name": "insert_position_wrong_type", "tool": "doc_insert_text", "args": {"mount_point": "self", "path": "Notes/insert.md", "position": "start", "content": "a new line\n"}},
+    {"name": "insert_position_null", "tool": "doc_insert_text", "args": {"mount_point": "self", "path": "Notes/insert.md", "position": null, "content": "a new line\n"}},
+    {"name": "insert_position_array", "tool": "doc_insert_text", "args": {"mount_point": "self", "path": "Notes/insert.md", "position": [], "content": "a new line\n"}},
+    {"name": "insert_content_missing", "tool": "doc_insert_text", "args": {"mount_point": "self", "path": "Notes/insert.md", "position": {"at": "start"}}},
+    {"name": "str_replace_curly_apostrophe", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curly.md", "find": "- Sylvain's first entry (his tempo).", "replace": "- Sylvain has filed his first entry."}},
+    {"name": "str_replace_em_dash", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curlydash.md", "find": "- Family vote - not scheduled.", "replace": "- Family vote scheduled for Tuesday."}},
+    {"name": "str_replace_exact_says_nothing", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curlyexact.md", "find": "## Outstanding", "replace": "## Open"}},
+    {"name": "str_replace_folded_ambiguous", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curlydup.md", "find": "hers' a", "replace": "x"}},
+    {"name": "str_replace_still_missing", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curly.md", "find": "a sentence never written", "replace": "x"}},
+    {"name": "str_replace_empty_replace_deletes", "tool": "doc_str_replace", "args": {"mount_point": "self", "path": "Notes/curlydel.md", "find": "- Family vote — not scheduled.\n", "replace": ""}},
+    {"name": "insert_anchor_curly", "tool": "doc_insert_text", "args": {"mount_point": "self", "path": "Notes/curlyanchor.md", "position": {"after": "paused... then"}, "content": " [X]"}}
   ]
 }
