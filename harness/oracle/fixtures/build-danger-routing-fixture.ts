@@ -30,6 +30,8 @@ interface ProfileSpec {
   baseUrl?: string;
   apiKeyId: string;
   isDangerousCompatible: boolean;
+  /** P4.D136 (v4 `a1d88aa3a`, bug 106): the attachment-carry half of the scan. */
+  supportsImageUpload?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -78,6 +80,7 @@ async function main(): Promise<void> {
         baseUrl: cp.baseUrl ?? null,
         apiKeyId: cp.apiKeyId,
         isDangerousCompatible: cp.isDangerousCompatible,
+        supportsImageUpload: cp.supportsImageUpload ?? false,
       } as never,
       { id: cp.id, createdAt: ts, updatedAt: ts }
     );

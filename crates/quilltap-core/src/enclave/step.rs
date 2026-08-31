@@ -1699,6 +1699,7 @@ mod tests {
             k: &str,
             _s: &DangerSettings,
             _u: &str,
+            _mimes: &[String],
         ) -> impl std::future::Future<Output = RouteResult> + Send {
             let profile = p.clone();
             let key = k.to_string();

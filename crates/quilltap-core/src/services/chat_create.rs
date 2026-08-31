@@ -1745,6 +1745,9 @@ where
         "AUTO_ROUTE",
         resolved.settings.uncensored_text_profile_id.as_deref(),
         user_id,
+        // v4 `app/api/v1/chats/route.ts:763` takes the `[]` default — a chat
+        // being created carries no turn yet (v4 `a1d88aa3a`).
+        &[],
     );
     if !route.rerouted {
         return None;

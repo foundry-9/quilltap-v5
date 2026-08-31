@@ -347,6 +347,7 @@ impl DangerousContentRouter for CannedRouter {
         _original_api_key: &str,
         _settings: &DangerSettings,
         _user_id: &str,
+        _turn_attachment_mime_types: &[String],
     ) -> RouteResult {
         RouteResult {
             rerouted: true,

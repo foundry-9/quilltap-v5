@@ -93952,3 +93952,66 @@ oracles regenerated from the `a1d88aa3a` pin
 (`/tmp/qt-v4-pin-p4d136-a1d88aa3a`), through `recipe_sweep.py --v4 <pin>`.
 
 Versions: core 0.0.707.
+
+### P4.D136 unit 2 — the uncensored scan ordered by the turn's attachments (v4 `a1d88aa3a`, bug 106)
+
+**v5 measurably HAD the bug, proven red-first by mutation.** With the partition
+reverted to a plain scan, `mime-image-prefers-carrier` hands an image-bearing
+turn to `Compatible A` (OLLAMA, `supportsAttachments: []`) where v4 answers
+`Compatible Vision A`. That is bug 106's shape exactly: a guaranteed 400 from the
+gateway, after which the chain stops and the character says nothing.
+
+**The port.** `resolve_provider_for_dangerous_content` gains v4's fifth
+parameter (`turn_attachment_mime_types: &[String]`) and the private
+`profile_can_carry_turn` (v4's `profileCanCarryTurn` — `mimeTypes.every(m =>
+profileCanReceiveAttachment(p, m))`, and an empty list qualifies everyone in
+both languages). The scan materializes v4's `eligible` list, partitions it, logs
+v4's `[DangerousContent] Deprioritising uncensored candidates that cannot carry
+this turn` line with the two name arrays, then walks `canCarry ++ cannotCarry`.
+
+**Ordered, not filtered** — v4's own comment, carried: filtering would trade a
+degraded-but-delivered turn for no reroute at all when the only uncensored route
+on an instance is text-only. The caller re-decides the attachment question
+against whichever profile comes back (unit 3), so an image becomes a description
+rather than a 400.
+
+**The seam.** `DangerousContentRouter::resolve` grows the parameter. Only the
+empty-response reroute passes a non-empty list; v4's three other call sites (both
+`danger-orchestrator.service.ts` legs, `app/api/v1/chats/route.ts:763`) take the
+`[]` default, and v5's twins (`orchestrator.rs:1343`, `chat_create.rs:1740`) do
+the same with the reason recorded at each.
+
+`collect_attachment_mime_types` arrives here with the new
+`services/message_attachment_adapter` module (v4
+`lib/chat/message-attachment-adapter.ts`), feeding the reroute's call.
+
+**The corpus: 8 new text cases + 3 new profiles.**
+
+| case | pins |
+|---|---|
+| `mime-image-prefers-carrier` | the ordering itself — AND, because the first carrier has no API key, that the partition happens BEFORE the key loop |
+| `mime-pdf-prefers-carrier` | the non-image branch (only ANTHROPIC carries `application/pdf`) |
+| `mime-text-prefers-carrier` | ditto for `text/plain` |
+| `mime-image-and-pdf-nobody-carries` | `every`, not `some` — and the preference-not-filter contract |
+| `mime-empty-list-is-the-old-order` | an explicit `[]` is the pre-`a1d88aa3a` answer |
+| `mime-configured-honoured-anyway` | an explicitly configured uncensored profile is honoured whatever it can read |
+| `mime-image-subtype-uses-the-flag` | `image/heic` — the image branch never consults the MIME list, only the flag |
+| `mime-off-mode-ignores-the-payload` | the mode gate runs first |
+
+Every pre-existing row is byte-identical (the cases omit the field and take v4's
+default; the three new profiles are inserted after the last existing A-profile,
+so `findAll` order is unchanged for them).
+
+**The oracle now initializes the provider registry with the ten real dist
+plugins.** Load-bearing and the same finding as the D135 `fallback-engine`
+oracle: the carry test reaches `providerCanTransportImages`, which prefers the
+live registry and falls back to the client-safe static mirror only when the
+registry is DOWN. v5's manifests are baked, so it always answers the registry
+tier — an uninitialized oracle would answer the mirror, and the two can disagree
+for exactly the providers v4 bug 97 was about.
+
+**Mutation proofs (2):** collapsing the partition to `(eligible, vec![])` reddens
+`mime-image-prefers-carrier` (the red-first proof above); `all` → `any` in
+`profile_can_carry_turn` reddens `mime-image-and-pdf-nobody-carries` alone.
+
+Versions: core 0.0.708, harness 0.0.608.

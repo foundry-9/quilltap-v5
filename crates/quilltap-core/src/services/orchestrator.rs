@@ -1350,6 +1350,11 @@ where
                             .clone(),
                     },
                     &user_id,
+                    // v4's danger-orchestrator sites take the parameter's `[]`
+                    // default: the pre-classification reroute happens BEFORE the
+                    // message array is built, so there is no payload to consult
+                    // (v4 `a1d88aa3a`).
+                    &[],
                 )
                 .await;
             if route.rerouted {
@@ -4383,6 +4388,7 @@ mod tests {
             k: &str,
             _s: &crate::services::provider_failover::DangerSettings,
             _u: &str,
+            _mimes: &[String],
         ) -> impl std::future::Future<Output = crate::services::provider_failover::RouteResult> + Send
         {
             let profile = p.clone();

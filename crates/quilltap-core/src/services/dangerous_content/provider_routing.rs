@@ -160,12 +160,37 @@ fn decrypt_profile_api_key<A: ApiKeyResolver>(
     api_keys.resolve(api_key_id, user_id)
 }
 
+/// Whether a profile can take every attachment this turn is carrying.
+///
+/// v4 `profileCanCarryTurn` (`a1d88aa3a`, bug 106). A reroute swaps the model
+/// but inherits the message array the *original* profile's call was built
+/// against, bytes and all. A substitute that cannot receive those bytes is not
+/// a slightly worse choice, it is a guaranteed 400 from the gateway. An empty
+/// list means the turn carries nothing and every profile qualifies (JS
+/// `[].every(…)` is `true`, and so is Rust's `all`).
+fn profile_can_carry_turn(profile: &Value, mime_types: &[String]) -> bool {
+    let view = crate::files::image_transport::AttachmentProfileView::from_json(profile);
+    mime_types
+        .iter()
+        .all(|m| crate::files::image_transport::profile_can_receive_attachment(view, m))
+}
+
 /// v4 `resolveProviderForDangerousContent`. Reads connection profiles from
 /// `conn` and resolves an uncensored text provider (or returns the original with
 /// `rerouted: false`). Never throws (v4 catches → the "Routing failed" result).
 ///
 /// `mode` / `uncensored_text_profile_id` are the two settings fields the text
 /// resolution consumes.
+///
+/// `turn_attachment_mime_types` are the MIME types riding in this turn's
+/// message array, if any (v4 `a1d88aa3a`, bug 106). The scan *prefers* a
+/// substitute that can receive them; without it the scan answers a question the
+/// payload has already settled. Note this is a **preference, not a filter**: an
+/// explicitly configured uncensored profile is still honoured whatever it can
+/// read, and a text-only stand-in is still better than no reroute at all —
+/// the caller re-runs the attachment decision against whichever profile comes
+/// back (`adapt_messages_for_profile`), so an image becomes a description
+/// rather than a 400.
 pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
     conn: &rusqlite::Connection,
     api_keys: &A,
@@ -174,6 +199,7 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
     mode: &str,
     uncensored_text_profile_id: Option<&str>,
     user_id: &str,
+    turn_attachment_mime_types: &[String],
 ) -> DangerousProviderRouteResult {
     // If mode is not AUTO_ROUTE, don't reroute.
     if mode != "AUTO_ROUTE" {
@@ -209,17 +235,48 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
         }
 
         // Scan for any isDangerousCompatible profile.
-        for profile in connection_profiles::find_all(conn)? {
-            if user_id_of(&profile) == Some(user_id) && is_dangerous_compatible(&profile) {
-                if let Some(api_key) = decrypt_profile_api_key(api_keys, &profile, user_id) {
-                    let rp = route_profile_from_value(&profile);
-                    return Ok(DangerousProviderRouteResult {
-                        rerouted: true,
-                        reason: format!("Rerouted to uncensored-compatible profile: {}", rp.name),
-                        connection_profile: rp,
-                        api_key,
-                    });
-                }
+        //
+        // Ordered, not filtered (v4 `a1d88aa3a`, bug 106): profiles that can
+        // carry this turn's attachments come first, and the rest follow behind
+        // them. Filtering outright would trade a degraded-but-delivered turn
+        // for no reroute at all when the only uncensored route on the instance
+        // happens to be text-only.
+        let eligible: Vec<Value> = connection_profiles::find_all(conn)?
+            .into_iter()
+            .filter(|p| user_id_of(p) == Some(user_id) && is_dangerous_compatible(p))
+            .collect();
+        let (can_carry, cannot_carry): (Vec<Value>, Vec<Value>) = eligible
+            .into_iter()
+            .partition(|p| profile_can_carry_turn(p, turn_attachment_mime_types));
+
+        if !turn_attachment_mime_types.is_empty() && !cannot_carry.is_empty() {
+            let names = |v: &[Value]| -> Vec<String> {
+                v.iter()
+                    .map(|p| {
+                        p.get("name")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string()
+                    })
+                    .collect()
+            };
+            tracing::info!(
+                turn_attachment_mime_types = ?turn_attachment_mime_types,
+                can_carry = ?names(&can_carry),
+                cannot_carry = ?names(&cannot_carry),
+                "[DangerousContent] Deprioritising uncensored candidates that cannot carry this turn"
+            );
+        }
+
+        for profile in can_carry.into_iter().chain(cannot_carry) {
+            if let Some(api_key) = decrypt_profile_api_key(api_keys, &profile, user_id) {
+                let rp = route_profile_from_value(&profile);
+                return Ok(DangerousProviderRouteResult {
+                    rerouted: true,
+                    reason: format!("Rerouted to uncensored-compatible profile: {}", rp.name),
+                    connection_profile: rp,
+                    api_key,
+                });
             }
         }
 
@@ -386,6 +443,7 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
         original_api_key: &str,
         settings: &DangerSettings,
         user_id: &str,
+        turn_attachment_mime_types: &[String],
     ) -> RouteResult {
         let original = RouteProfile {
             id: original_profile.id.clone(),
@@ -407,6 +465,7 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
                     &settings.mode,
                     settings.uncensored_text_profile_id.as_deref(),
                     user_id,
+                    turn_attachment_mime_types,
                 ))
             })
             .unwrap_or_else(|_| DangerousProviderRouteResult {

@@ -7,6 +7,8 @@
     "a0000000-0000-4000-8000-0000000000a1": "KEY_ORIG_A",
     "a0000000-0000-4000-8000-0000000000a2": "KEY_UNC_A",
     "a0000000-0000-4000-8000-0000000000a3": "KEY_COMPAT_A",
+    "a0000000-0000-4000-8000-0000000000a6": "KEY_VISION_A",
+    "a0000000-0000-4000-8000-0000000000a7": "KEY_DOCS_A",
     "a0000000-0000-4000-8000-0000000000b1": "KEY_ORIG_B",
     "a0000000-0000-4000-8000-0000000000c1": "IMGKEY_ORIG_A",
     "a0000000-0000-4000-8000-0000000000c2": "IMGKEY_UNC_A",
@@ -17,6 +19,9 @@
     { "id": "c0000000-0000-4000-8000-0000000000a2", "user": "A", "name": "Configured Uncensored", "provider": "OPENROUTER", "modelName": "cognitivecomputations/dolphin", "baseUrl": "https://openrouter.ai/api/v1", "apiKeyId": "a0000000-0000-4000-8000-0000000000a2", "isDangerousCompatible": false },
     { "id": "c0000000-0000-4000-8000-0000000000a3", "user": "A", "name": "Compatible A", "provider": "OLLAMA", "modelName": "wizard-vicuna", "apiKeyId": "a0000000-0000-4000-8000-0000000000a3", "isDangerousCompatible": true },
     { "id": "c0000000-0000-4000-8000-0000000000a4", "user": "A", "name": "NoKey Configured", "provider": "OPENAI", "modelName": "gpt-x", "apiKeyId": "a0000000-0000-4000-8000-00000000dead", "isDangerousCompatible": false },
+    { "id": "c0000000-0000-4000-8000-0000000000a5", "user": "A", "name": "Compatible Vision NoKey A", "provider": "OPENAI", "modelName": "gpt-4o-vision", "apiKeyId": "a0000000-0000-4000-8000-00000000dea5", "isDangerousCompatible": true, "supportsImageUpload": true },
+    { "id": "c0000000-0000-4000-8000-0000000000a6", "user": "A", "name": "Compatible Vision A", "provider": "OPENAI", "modelName": "gpt-4o-mini-vision", "apiKeyId": "a0000000-0000-4000-8000-0000000000a6", "isDangerousCompatible": true, "supportsImageUpload": true },
+    { "id": "c0000000-0000-4000-8000-0000000000a7", "user": "A", "name": "Compatible Docs A", "provider": "ANTHROPIC", "modelName": "claude-uncensored", "apiKeyId": "a0000000-0000-4000-8000-0000000000a7", "isDangerousCompatible": true, "supportsImageUpload": false },
     { "id": "c0000000-0000-4000-8000-0000000000b1", "user": "B", "name": "Original B", "provider": "OPENAI", "modelName": "gpt-4o", "apiKeyId": "a0000000-0000-4000-8000-0000000000b1", "isDangerousCompatible": false },
     { "id": "c0000000-0000-4000-8000-0000000000b2", "user": "B", "name": "Compat NoKey B", "provider": "OLLAMA", "modelName": "wizard", "apiKeyId": "a0000000-0000-4000-8000-00000000beef", "isDangerousCompatible": true }
   ],
@@ -34,7 +39,16 @@
     { "id": "configured-nokey-fallthrough", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a4" },
     { "id": "configured-not-owned", "user": "B", "originalProfileId": "c0000000-0000-4000-8000-0000000000b1", "originalApiKey": "KEY_ORIG_B", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2" },
     { "id": "no-uncensored-available", "user": "B", "originalProfileId": "c0000000-0000-4000-8000-0000000000b1", "originalApiKey": "KEY_ORIG_B", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null },
-    { "id": "configured-nonexistent", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-00000000ffff" }
+    { "id": "configured-nonexistent", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-00000000ffff" },
+
+    { "id": "mime-image-prefers-carrier", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["image/png"] },
+    { "id": "mime-pdf-prefers-carrier", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["application/pdf"] },
+    { "id": "mime-text-prefers-carrier", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["text/plain"] },
+    { "id": "mime-image-and-pdf-nobody-carries", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["image/png", "application/pdf"] },
+    { "id": "mime-empty-list-is-the-old-order", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": [] },
+    { "id": "mime-configured-honoured-anyway", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "c0000000-0000-4000-8000-0000000000a2", "turnAttachmentMimeTypes": ["image/png"] },
+    { "id": "mime-image-subtype-uses-the-flag", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "AUTO_ROUTE", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["image/heic"] },
+    { "id": "mime-off-mode-ignores-the-payload", "user": "A", "originalProfileId": "c0000000-0000-4000-8000-0000000000a1", "originalApiKey": "KEY_ORIG_A", "mode": "OFF", "uncensoredTextProfileId": null, "turnAttachmentMimeTypes": ["image/png"] }
   ],
   "imageCases": [
     { "id": "img-off", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "mode": "OFF", "uncensoredImageProfileId": null },

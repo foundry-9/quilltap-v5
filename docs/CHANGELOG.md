@@ -165,6 +165,40 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — fix(danger): order the uncensored scan by what the turn is carrying (v4 a1d88aa3a, bug 106)
+
+_Versions: core 0.0.708, harness 0.0.608._
+
+The uncensored reroute swaps the model but inherits the message array the
+original profile's call was built against, bytes and all. On a turn carrying an
+image, a vision-capable primary had correctly embedded the raw bytes and a
+text-only substitute got them: 400, then the chain stopped and the character
+said nothing. v5 measurably had the bug — the differential's new
+`mime-image-prefers-carrier` case hands an image turn to a text-only OLLAMA
+profile before this change.
+
+`resolve_provider_for_dangerous_content` gains v4's fifth parameter, the MIME
+types this turn's message array is carrying, and partitions its scan by
+`profile_can_carry_turn` before walking. **Ordered, not filtered**: filtering
+outright would trade a degraded-but-delivered turn for no reroute at all when
+the only uncensored route on an instance happens to be text-only, so the
+non-carriers follow behind the carriers rather than being dropped. The
+`DangerousContentRouter` seam carries the parameter through; v4's three other
+call sites (both danger-orchestrator legs, chat create) take the `[]` default
+and so do v5's. `collect_attachment_mime_types` arrives with the new
+`services/message_attachment_adapter` module and feeds the empty-response
+reroute's call.
+
+`danger_routing_equivalence` grows eight cases and three profiles: the image and
+non-image carrier preferences, the `every`-not-`some` multi-MIME arm, the
+nobody-carries fall-through that proves this is a preference, an explicit
+configured profile honoured despite the payload, and the OFF-mode arm. A carrier
+with no API key sits first among the carriers, so the same row also pins that
+the ordering happens before the key loop. The oracle now initializes the
+provider registry with the ten real dist plugins — load-bearing, since the carry
+test reaches `providerCanTransportImages`, which prefers the registry and would
+otherwise answer the static mirror.
+
 #### 2026-08-31 — fix(attachments): one predicate for "can this profile receive this?" (v4 a1d88aa3a, bug 106)
 
 _Versions: core 0.0.707._

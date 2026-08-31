@@ -74,12 +74,17 @@ pub struct RouteResult {
 /// `rerouted: false`). Injected so the DB-reading + key-decryption resolution
 /// stays host-side.
 pub trait DangerousContentRouter {
+    /// `turn_attachment_mime_types` are the MIME types this turn's message
+    /// array is actually carrying (v4 `a1d88aa3a`, bug 106). Only the
+    /// empty-response reroute below passes a non-empty list; v4's other three
+    /// call sites take the parameter's `[]` default, and so do v5's.
     fn resolve(
         &self,
         original_profile: &EffectiveProfile,
         original_api_key: &str,
         settings: &DangerSettings,
         user_id: &str,
+        turn_attachment_mime_types: &[String],
     ) -> impl std::future::Future<Output = RouteResult> + Send;
 }
 
@@ -293,6 +298,12 @@ where
                 &state.effective_api_key,
                 &danger_settings,
                 &user_id,
+                // What the array is actually carrying, so the scan does not
+                // offer a substitute the payload rules out (v4 `a1d88aa3a`,
+                // bug 106).
+                &crate::services::message_attachment_adapter::collect_attachment_mime_types(
+                    &params.messages,
+                ),
             )
             .await;
 
@@ -1060,6 +1071,7 @@ mod tests {
             original_api_key: &str,
             _settings: &DangerSettings,
             _user_id: &str,
+            _mimes: &[String],
         ) -> RouteResult {
             RouteResult {
                 rerouted: false,
@@ -1080,6 +1092,7 @@ mod tests {
             _original_api_key: &str,
             _settings: &DangerSettings,
             _user_id: &str,
+            _mimes: &[String],
         ) -> RouteResult {
             RouteResult {
                 rerouted: true,

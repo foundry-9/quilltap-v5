@@ -31,7 +31,7 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
-interface Case { id: string; user: 'A' | 'B'; originalProfileId?: string; currentProfileId?: string; originalApiKey?: string; mode: string; uncensoredTextProfileId?: string | null; uncensoredImageProfileId?: string | null }
+interface Case { id: string; user: 'A' | 'B'; originalProfileId?: string; currentProfileId?: string; originalApiKey?: string; mode: string; uncensoredTextProfileId?: string | null; uncensoredImageProfileId?: string | null; turnAttachmentMimeTypes?: string[] }
 interface Spec {
   testPepperBase64: string;
   userA: string;
@@ -81,6 +81,28 @@ async function main(): Promise<void> {
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
+  // The provider registry, initialized with the ten real dist plugins.
+  //
+  // LOAD-BEARING since `a1d88aa3a`: the scan's carry test runs through
+  // `profileCanReceiveAttachment` → `providerCanTransportImages`, which prefers
+  // the live registry and only falls back to the client-safe static mirror when
+  // the registry is DOWN. v5's manifests are baked, so it always answers the
+  // registry tier; an uninitialized oracle would answer the mirror and the two
+  // could disagree for exactly the providers bug 97 was about. (Same finding as
+  // the `fallback-engine` oracle's registry block — [[jest-oracle-empty-provider-registry]].)
+  const nodeRequire = require;
+  const PLUGIN_DIRS = [
+    'anthropic', 'openai', 'google', 'grok', 'deepseek',
+    'z-ai', 'openrouter', 'ollama', 'openai-compatible', 'nanogpt',
+  ];
+  const { initializeProviderRegistry } = await import('@/lib/plugins/provider-registry');
+  await initializeProviderRegistry(
+    PLUGIN_DIRS.map((d) => {
+      const m = nodeRequire(join(process.cwd(), 'plugins', 'dist', `qtap-plugin-${d}`, 'index.js'));
+      return m.plugin || m.default?.plugin || m.default;
+    }),
+  );
+
   const routing = await import('@/lib/services/dangerous-content/provider-routing.service');
 
   await initializeDatabase();
@@ -100,7 +122,12 @@ async function main(): Promise<void> {
     const original = await repos.connections.findById(c.originalProfileId!);
     if (!original) throw new Error(`text case ${c.id}: original ${c.originalProfileId} not found`);
     const settings = { mode: c.mode, uncensoredTextProfileId: c.uncensoredTextProfileId ?? undefined } as any;
-    const r = await routing.resolveProviderForDangerousContent(original as any, c.originalApiKey!, settings, uid(c.user));
+    // `turnAttachmentMimeTypes` is v4's fifth parameter (`a1d88aa3a`, bug 106).
+    // A case that omits it takes v4's `[]` default, so every pre-existing row
+    // is byte-identical.
+    const r = await routing.resolveProviderForDangerousContent(
+      original as any, c.originalApiKey!, settings, uid(c.user), c.turnAttachmentMimeTypes ?? []
+    );
     lines.push(JSON.stringify({ kind: 'text', id: c.id, rerouted: r.rerouted, profile: profileSubset(r.connectionProfile), apiKey: r.apiKey, reason: r.reason }));
   }
 

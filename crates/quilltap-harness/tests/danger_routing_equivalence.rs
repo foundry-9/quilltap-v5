@@ -81,6 +81,11 @@ struct CaseSpec {
     uncensored_text_profile_id: Option<String>,
     #[serde(rename = "uncensoredImageProfileId", default)]
     uncensored_image_profile_id: Option<String>,
+    /// v4's fifth parameter since `a1d88aa3a` (bug 106) — the MIME types this
+    /// turn's message array carries. Absent takes v4's `[]` default, which is
+    /// why every pre-existing case's row is unchanged.
+    #[serde(rename = "turnAttachmentMimeTypes", default)]
+    turn_attachment_mime_types: Vec<String>,
 }
 
 /// Oracle rows (tagged by `kind`).
@@ -196,6 +201,7 @@ async fn danger_routing_matches_oracle() {
                     &c.mode,
                     c.uncensored_text_profile_id.as_deref(),
                     &user,
+                    &c.turn_attachment_mime_types,
                 ))
             })
             .expect("resolve text");
