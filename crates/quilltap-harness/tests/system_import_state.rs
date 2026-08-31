@@ -114,6 +114,14 @@
 //! (`system-data-*` is shared with the system-data routes differential), so
 //! P4.63 recorded it rather than doing it.
 //!
+//! **P4.D135 lands in the same hole** and takes the same route: the 4.10
+//! `connection_profiles.fallbackProfileId` / `allowTierFallback` columns (v4
+//! `65f5021c8`) are BEYOND this fixture's vintage too, so the understudy remap
+//! the `.qtap` reconcile pass performs is invisible here. It is pinned at the
+//! unit tier instead — `services::quilltap_import::reconcile`'s
+//! `the_understudy_is_remapped_including_a_forward_reference` and its two
+//! siblings, mutation-proven — and the widening stays with the named candidate.
+//!
 //! Generate the oracle (see `system-import-execute.test.ts`), then:
 //!   QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson \
 //!     cargo test -p quilltap-harness --test system_import_state -- --nocapture

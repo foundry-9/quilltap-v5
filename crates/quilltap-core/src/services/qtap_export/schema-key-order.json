@@ -299,6 +299,8 @@
     "pseudoToolMode",
     "multiCharacterPrefill",
     "modelClass",
+    "fallbackProfileId",
+    "allowTierFallback",
     "maxContext",
     "maxTokens",
     "isDangerousCompatible",

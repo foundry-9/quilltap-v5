@@ -439,6 +439,11 @@ fn zod_cheap_llm_settings(v: &Value) -> Result<chat_settings::SettingsColVal, St
     );
     out.insert("embeddingProvider".into(), json!(embedding));
     zod_opt_uuid(o, "imagePromptProfileId", PREFIX, &mut out, &mut issues);
+    // v4 `65f5021c8` appended `allowCheapFallback` at the END of the schema,
+    // so it lands last in the parsed key order too — which is what a fresh
+    // instance's `cheapLLMSettings` DEFAULT and its seed row both carry.
+    let allow_cheap_fallback = zod_bool(o, "allowCheapFallback", false, PREFIX, &mut issues);
+    out.insert("allowCheapFallback".into(), json!(allow_cheap_fallback));
 
     if !issues.is_empty() {
         return Err(zod_error_message(&issues));
@@ -1013,6 +1018,15 @@ fn build_settings_assignments(
                     return Err("Invalid embedding provider".to_string());
                 }
             }
+            // v4 `65f5021c8`, `settings/chat/route.ts:89-94`. Unlike the two
+            // enum guards above this one is NOT truthiness-gated: it is
+            // `typeof !== 'undefined' && typeof !== 'boolean'`, so an explicit
+            // `null` — falsy, and waved through by both guards above — is
+            // refused here.
+            match o.get("allowCheapFallback") {
+                None | Some(Value::Bool(_)) => {}
+                Some(_) => return Err("allowCheapFallback must be a boolean".to_string()),
+            }
         }
         cheap_llm_slot = Some(out.len());
         out.push(("cheapLLMSettings", Col::Null));
@@ -1341,6 +1355,53 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
         Some(Value::Bool(b)) => *b,
         Some(_) => return bad_request("multiCharacterPrefill must be a boolean"),
     };
+
+    // The fallback chain (v4 `65f5021c8`, `route.ts:170-206`). Both gates sit
+    // HERE — after the prefill check, before the required-field checks — so a
+    // create with a bad `allowTierFallback` AND no name answers the fallback
+    // error, exactly as v4's route order does.
+    //
+    // v4 destructures with defaults (`fallbackProfileId = null`,
+    // `allowTierFallback = false`), so absent and explicit-null differ only for
+    // `allowTierFallback`: its `typeof !== 'boolean'` gate 400s on an explicit
+    // null where absence takes the default.
+    let allow_tier_fallback = match bag.get("allowTierFallback") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return bad_request("allowTierFallback must be a boolean"),
+    };
+    // A brand-new profile has no id yet, so the self-reference rule cannot bite
+    // here; what can is a target that is not the user's, or one whose transport
+    // is Courier — a request a human carries by hand is no kind of automatic
+    // failover.
+    let fallback_profile_id: Option<String> = match bag.get("fallbackProfileId") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(target)) if target.is_empty() => None,
+        Some(Value::String(target)) => {
+            let target = target.clone();
+            let lookup = target.clone();
+            let found =
+                match db.read_main(move |conn| connection_profiles::find_by_id(conn, &lookup)) {
+                    Ok(v) => v,
+                    Err(e) => return internal(e),
+                };
+            let owned_by_user = found
+                .as_ref()
+                .and_then(|p| s(p, "userId"))
+                .is_some_and(|owner| owner == user_id);
+            let Some(found) = found.filter(|_| owned_by_user) else {
+                return bad_request("Fallback profile not found");
+            };
+            if s(&found, "transport").as_deref() == Some("courier") {
+                return bad_request(
+                    "A Courier profile cannot be used as a fallback — its requests are carried by hand, so it cannot stand in automatically",
+                );
+            }
+            Some(target)
+        }
+        Some(_) => return bad_request("fallbackProfileId must be a profile id or null"),
+    };
+
     let base_url = get_str("baseUrl").map(str::to_string);
     // resolvedSupportsImageUpload — the client field, else the static capability.
     let resolved_supports_image_upload =
@@ -1512,6 +1573,8 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
         // carries the key", the inner one its value.
         multi_character_prefill: Some(Some(multi_character_prefill)),
         model_class,
+        fallback_profile_id,
+        allow_tier_fallback,
         max_context,
         max_tokens: None,
         is_dangerous_compatible: if is_courier {
@@ -1829,6 +1892,57 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
         patch.multi_character_prefill = Some(b);
     }
 
+    // The fallback chain (v4 `65f5021c8`, `[id]/route.ts:324-355`). Two rules,
+    // both structural: a profile cannot understudy itself (the chain would be
+    // one attempt wearing two names), and a Courier profile cannot stand in for
+    // anyone (its "transport" is a human carrying the request by hand).
+    // Everything else — a target with no API key yet, a cycle A->B/B->A — is
+    // legal; chains never recurse, so a cycle simply stops.
+    //
+    // Note the guard ORDER: the self-reference check comes BEFORE the lookup,
+    // so naming yourself answers "cannot be its own fallback" even when the row
+    // would have been found. Not gated on `isCourier` in v4 either.
+    if let Some(v) = bag.get("fallbackProfileId") {
+        match v {
+            Value::Null => patch.fallback_profile_id = Some(None),
+            Value::String(target) if target.is_empty() => patch.fallback_profile_id = Some(None),
+            Value::String(target) if target == id => {
+                return bad_request("A connection profile cannot be its own fallback")
+            }
+            Value::String(target) => {
+                let target = target.clone();
+                let lookup = target.clone();
+                let found = match db
+                    .read_main(move |conn| connection_profiles::find_by_id(conn, &lookup))
+                {
+                    Ok(v) => v,
+                    Err(e) => return internal(e),
+                };
+                let owned_by_user = found
+                    .as_ref()
+                    .and_then(|p| s(p, "userId"))
+                    .is_some_and(|owner| owner == user_id);
+                let Some(found) = found.filter(|_| owned_by_user) else {
+                    return bad_request("Fallback profile not found");
+                };
+                if s(&found, "transport").as_deref() == Some("courier") {
+                    return bad_request(
+                        "A Courier profile cannot be used as a fallback — its requests are carried by hand, so it cannot stand in automatically",
+                    );
+                }
+                patch.fallback_profile_id = Some(Some(target));
+            }
+            _ => return bad_request("fallbackProfileId must be a profile id or null"),
+        }
+    }
+
+    if let Some(v) = bag.get("allowTierFallback") {
+        let Some(b) = v.as_bool() else {
+            return bad_request("allowTierFallback must be a boolean");
+        };
+        patch.allow_tier_fallback = Some(b);
+    }
+
     if let Some(v) = bag.get("modelClass") {
         if v.is_null() || v.as_str() == Some("") {
             patch.clear_model_class = true;
@@ -1915,6 +2029,9 @@ fn cleared_null_keys(patch: &connection_profiles::CpUpdate) -> Vec<&'static str>
     }
     if patch.clear_max_context {
         out.push("maxContext");
+    }
+    if matches!(patch.fallback_profile_id, Some(None)) {
+        out.push("fallbackProfileId");
     }
     out
 }

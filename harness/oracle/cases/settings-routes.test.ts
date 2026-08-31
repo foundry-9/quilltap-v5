@@ -386,6 +386,41 @@ describe('settings-routes oracle', () => {
       body: { cheapLLMSettings: { strategy: 'PROVIDER_CHEAPEST' } },
     },
     {
+      // P4.D135: the one off-profile fallback switch (v4 `65f5021c8`). Rides
+      // the same merge-then-validate as its siblings, so the stored bag comes
+      // back with the whole CheapLLMSettingsSchema materialized and the new key
+      // LAST — v4 appended it to the schema.
+      name: 's_put_allow_cheap_fallback',
+      family: 'settings_chat',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { strategy: 'PROVIDER_CHEAPEST', allowCheapFallback: true } },
+    },
+    {
+      // The route's own guard, which — unlike the two enum guards beside it —
+      // is NOT truthiness-gated: `typeof !== 'undefined' && typeof !==
+      // 'boolean'`, so a falsy non-boolean is refused where a falsy bad
+      // strategy would slip through to Zod.
+      name: 's_put_allow_cheap_fallback_nonbool',
+      family: 'settings_chat',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { allowCheapFallback: 'yes' } },
+    },
+    {
+      name: 's_put_allow_cheap_fallback_null',
+      family: 'settings_chat',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { cheapLLMSettings: { allowCheapFallback: null } },
+    },
+    {
       // A partial themePreference — the route-level ThemePreferenceSchema.parse
       // defaults activeThemeId null + showNavThemeSelector false.
       name: 's_put_theme_partial',
@@ -1463,6 +1498,250 @@ describe('settings-routes oracle', () => {
       url: cbase(spec.profiles.gpt),
       paramId: spec.profiles.gpt,
       body: { baseUrl: 5 },
+      after: 'connProfiles',
+    },
+    // ── P4.D135: the fallback chain's route validation (v4 `65f5021c8`) ─────
+    //
+    // The CREATE gates sit before the required-field checks, so
+    // `cp_create_tier_nonbool_unnamed` proves the ORDER as well as the message:
+    // a body with no name at all still answers the allowTierFallback error.
+    {
+      name: 'cp_create_fallback_named',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Understudied',
+        provider: 'OPENAI',
+        modelName: 'gpt-4o-mini',
+        transport: 'api',
+        apiKeyId: spec.apiKeys.openai,
+        fallbackProfileId: spec.profiles.gpt,
+        allowTierFallback: true,
+      },
+      after: 'connProfiles',
+    },
+    {
+      // An explicit `null` and an empty string are both "no understudy named" —
+      // v4's `fallbackProfileId !== null && fallbackProfileId !== ''` gate.
+      name: 'cp_create_fallback_empty',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'No Understudy',
+        provider: 'OPENAI',
+        modelName: 'gpt-4o-mini',
+        transport: 'api',
+        apiKeyId: spec.apiKeys.openai,
+        fallbackProfileId: '',
+        allowTierFallback: false,
+      },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_create_fallback_missing',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Dangling Understudy',
+        provider: 'OPENAI',
+        modelName: 'gpt-4o-mini',
+        transport: 'api',
+        apiKeyId: spec.apiKeys.openai,
+        fallbackProfileId: MISSING_ID,
+      },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_create_fallback_courier',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Courier Understudy',
+        provider: 'OPENAI',
+        modelName: 'gpt-4o-mini',
+        transport: 'api',
+        apiKeyId: spec.apiKeys.openai,
+        fallbackProfileId: spec.profiles.courier,
+      },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_create_fallback_nonstring',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Numeric Understudy',
+        provider: 'OPENAI',
+        modelName: 'gpt-4o-mini',
+        transport: 'api',
+        apiKeyId: spec.apiKeys.openai,
+        fallbackProfileId: 7,
+      },
+      after: 'connProfiles',
+    },
+    {
+      // No name, no provider, no modelName — and the answer is still the
+      // fallback error, because v4 checks it FIRST.
+      name: 'cp_create_tier_nonbool_unnamed',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: { allowTierFallback: 'yes' },
+      after: 'connProfiles',
+    },
+    {
+      // v4 destructures `allowTierFallback = false`, so ABSENT takes the
+      // default while an explicit `null` fails `typeof !== 'boolean'`.
+      name: 'cp_create_tier_null',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfiles',
+      method: 'POST',
+      url: `http://x${CP}`,
+      body: {
+        name: 'Null Tier',
+        provider: 'OPENAI',
+        modelName: 'gpt-4o-mini',
+        transport: 'api',
+        apiKeyId: spec.apiKeys.openai,
+        allowTierFallback: null,
+      },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_fallback_set',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { fallbackProfileId: spec.profiles.claude, allowTierFallback: true },
+      after: 'connProfiles',
+    },
+    {
+      // The cleared-null echo (P4.D85's class): v4's `_update` answers the
+      // in-memory merge, so the key is present as an explicit `null` in the
+      // response body while the re-read row omits it.
+      name: 'cp_update_fallback_clear_null',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.claude),
+      paramId: spec.profiles.claude,
+      body: { fallbackProfileId: null },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_fallback_clear_empty',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.claude),
+      paramId: spec.profiles.claude,
+      body: { fallbackProfileId: '' },
+      after: 'connProfiles',
+    },
+    {
+      // The self-reference gate fires BEFORE the lookup, so naming yourself
+      // answers "cannot be its own fallback" rather than anything about the
+      // target row.
+      name: 'cp_update_fallback_self',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { fallbackProfileId: spec.profiles.gpt },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_fallback_missing',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { fallbackProfileId: MISSING_ID },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_fallback_courier',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { fallbackProfileId: spec.profiles.courier },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_fallback_nonstring',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { fallbackProfileId: 7 },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_tier_nonbool',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { allowTierFallback: 'yes' },
+      after: 'connProfiles',
+    },
+    {
+      name: 'cp_update_tier_null',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'PUT',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
+      body: { allowTierFallback: null },
+      after: 'connProfiles',
+    },
+    {
+      // THE CASCADE. The fixture seeds Claude naming GPT, so deleting GPT must
+      // come back with Claude's `fallbackProfileId` gone from the list — and
+      // its `updatedAt` moved, because v4 releases through `updateMany`, which
+      // always stamps it.
+      name: 'cp_delete_understudy',
+      family: 'connection_profiles',
+      user: 'A',
+      route: 'connProfileItem',
+      method: 'DELETE',
+      url: cbase(spec.profiles.gpt),
+      paramId: spec.profiles.gpt,
       after: 'connProfiles',
     },
     {

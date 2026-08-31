@@ -28,6 +28,20 @@
  * (v4's return is a copy, so this catches a helper that dropped a key), and the
  * two `=== undefined` flags both call sites read for their debug lines.
  *
+ * P4.D135 adds a SECOND corpus block (`kind: 'fallback'`) for the 4.10
+ * fallback-chain pair (v4 `65f5021c8`). It is a separate cross product rather
+ * than a widening of the first, so every pre-existing row stays byte-identical.
+ * What it pins:
+ *
+ *   - both keys' `=== undefined` fill, and that a stored value — a `false`, an
+ *     explicit `null` — is never touched;
+ *   - the self-reference strip, whose gate is JS-TRUTHY
+ *     (`seeded.fallbackProfileId && seeded.fallbackProfileId === seeded.id`):
+ *     an empty-string id equal to an empty-string fallback is NOT stripped,
+ *     which a `==`-style transcription would get wrong;
+ *   - that `allowTierFallback` is filled with a literal `false`, never coerced
+ *     from a non-boolean the archive carried.
+ *
  * Run from the v4 checkout (pin a detached worktree via
  * `recipe_sweep.py --v4` when v4 HEAD has moved past the baseline):
  *   cd ~/source/quilltap-server
@@ -111,6 +125,62 @@ for (const [pid, provider] of PROVIDERS) {
           ('supportsImageUpload' in profile ? profile.supportsImageUpload : ABSENT) === image &&
           ('multiCharacterPrefill' in profile ? profile.multiCharacterPrefill : ABSENT) ===
             prefill,
+      });
+    }
+  }
+}
+
+// ── P4.D135: the 4.10 fallback-chain pair ───────────────────────────────────
+
+/** `fallbackProfileId`'s stored states, including the self-reference. */
+const FALLBACK: Array<[string, unknown]> = [
+  ['absent', ABSENT],
+  ['null', null],
+  ['other', 'p-understudy'],
+  ['self', 'p1'],
+  ['empty', ''],
+  ['number', 7],
+];
+
+/** `allowTierFallback`'s stored states, non-boolean fall-throughs included. */
+const TIER: Array<[string, unknown]> = [
+  ['absent', ABSENT],
+  ['true', true],
+  ['false', false],
+  ['null', null],
+  ['number-1', 1],
+  ['string-true', 'true'],
+];
+
+/** The record's own `id` — the other half of the self-reference comparison. */
+const IDS: Array<[string, unknown]> = [
+  ['p1', 'p1'],
+  ['empty-id', ''],
+  ['absent-id', ABSENT],
+];
+
+for (const [idid, id] of IDS) {
+  for (const [fid, fallback] of FALLBACK) {
+    for (const [tid, tier] of TIER) {
+      const profile: Record<string, unknown> = { name: 'A Profile', provider: 'OPENAI' };
+      if (id !== ABSENT) profile.id = id;
+      if (fallback !== ABSENT) profile.fallbackProfileId = fallback;
+      if (tier !== ABSENT) profile.allowTierFallback = tier;
+
+      const seeded = seedLegacyConnectionProfileFields(profile) as Record<string, unknown>;
+
+      rows.push({
+        kind: 'fallback',
+        id: `${idid}/fb-${fid}/tier-${tid}`,
+        recordId: id === ABSENT ? ABSENT : id,
+        storedFallback: fallback,
+        storedTier: tier,
+        fallbackProfileId:
+          'fallbackProfileId' in seeded ? seeded.fallbackProfileId : ABSENT,
+        allowTierFallback:
+          'allowTierFallback' in seeded ? seeded.allowTierFallback : ABSENT,
+        seededFallbackProfileId: profile.fallbackProfileId === undefined,
+        seededAllowTierFallback: profile.allowTierFallback === undefined,
       });
     }
   }

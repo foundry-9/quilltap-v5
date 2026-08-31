@@ -93312,3 +93312,166 @@ MEASUREMENT justifying the unit pin rather than a family arm.
 
 **Fixtures: none changed.** No committed DB fixture, archive, or corpus JSON was
 touched, so no sibling family is invalidated by this lane.
+## P4.D135 unit 1 — the connection-profile fallback columns (v4 `65f5021c8`)
+
+**Lane:** `claude/provider-fallback-chains-docs-1a481b`. **v4 pin:**
+`/tmp/qt-v4-pin-p4d135-65f5021c8` (detached worktree at the TARGET commit —
+the ledger's regen rule is PIN REQUIRED and this lane's baseline is the target,
+not `b121ac77f`). Freshness probe PASSED at lane start (branch `main`, tree
+clean, no commits past `60e3c4a0a`/`3a76b17df`).
+
+### What landed
+
+The substrate half of the feature — the two `connection_profiles` columns
+through every surface that reads or writes them — before the engine that
+consumes them.
+
+1. **The D23 re-dump.** `fresh_schema.json` regenerated from the pin's live
+   `generateDDL`. **Two tables moved, only one of which the order predicted:**
+   - `connection_profiles` gains `"fallbackProfileId" TEXT` +
+     `"allowTierFallback" INTEGER DEFAULT 0`;
+   - `chat_settings`'s `cheapLLMSettings` DEFAULT grows
+     `"allowCheapFallback":false`.
+
+   **The order's column POSITION was wrong (drift-ledger §5.3, again).** It
+   quotes `sqlite-initial-schema.ts`, which inserts the pair after
+   `multiCharacterPrefill` and before `supportsImageUpload`. That hand-written
+   base table is not what a fresh instance gets: generateDDL places the pair
+   after `modelClass` and before `maxContext` — the Zod declaration order — and
+   the regenerated `schema-key-order.json` agrees exactly. Both facts are now
+   code comments naming the sha.
+
+   `provisioning_equivalence` went RED on the `chat_settings` seed before the
+   normalizer landed and GREEN after — the tripwire firing as designed, on a
+   default the order never mentioned.
+
+2. **The boot ensure** — `db::connection_profiles_fallback_repair`, wired in
+   `quilltap-host`'s `seed_built_ins` right after the P4.D79 prefill ensure
+   (v4's migration `dependsOn`s that one). Reproduces
+   `add-profile-fallback-fields-v1` including its **per-column** guard, so a
+   half-migrated table heals on the next boot, plus its NULL backfill. Five
+   in-module tests, one of which pins that a fresh (generateDDL-shaped) table is
+   left alone rather than gaining appended duplicates.
+
+   ⚠ **Unusually, the two DDL shapes AGREE here.** generateDDL and the migration
+   declare identical defaults, so omitting a column and writing its default land
+   the same cell — which is why `CpCreate` names both unconditionally instead of
+   carrying `multiCharacterPrefill`'s three-state omission. Recorded in the
+   module header so the next column does not inherit the assumption.
+
+3. **The repo surface** — `CpCreate` / `CpUpdate` / INSERT / UPDATE / the
+   tolerant SELECT / `marshal_cp_row` / `cp_schema_key_order` /
+   `create_return_shape`. One read subtlety worth naming: `allowTierFallback` is
+   `z.boolean().default(false)`, NOT `.nullable().optional()`, so a NULL cell —
+   or a table that predates the column — hydrates to `undefined` and Zod fills
+   `false`. The key is therefore **always present** in a v4 net read, unlike
+   every other nullable column in the marshal.
+
+4. **The delete cascade.** v4's `delete` releases the row from every other
+   profile that named it. **It also stamps their `updatedAt`**, because the
+   release goes through the base repo's `updateMany`, which always folds
+   `updatedAt: getCurrentTimestamp()` into the `$set`
+   (`base.repository.ts:513-527`). The tier-2 dump caught that on its first
+   run — the port had the NULL-ing and not the stamp.
+
+5. **The route gates**, byte-for-byte, on both create and update: the
+   self-reference refusal (which fires BEFORE the target lookup, so naming
+   yourself answers "cannot be its own fallback" rather than anything about the
+   row), the Courier refusal, the two non-boolean 400s, and v4's guard ORDER —
+   the create checks `allowTierFallback` before it checks that the profile has a
+   name at all, so a body with neither answers the fallback error. Plus the
+   `fallbackProfileId` entry in `cleared_null_keys`, so a PUT that clears it
+   echoes an explicit `null` in schema position (the P4.D85 class).
+
+6. **`seedLegacyConnectionProfileFields`** gains both seeds and the
+   self-reference strip. v4's strip gate is JS-TRUTHY
+   (`seeded.fallbackProfileId && … === seeded.id`), so an empty-string id equal
+   to an empty-string understudy is NOT stripped — a `==`-style transcription
+   would get that wrong, and the corpus now asks the question.
+
+7. **Both id-rewriting paths.** `fallbackProfileId` joins the backup remapper's
+   scalar list alongside `id`/`apiKeyId`; and the `.qtap` reconcile pass remaps
+   it once every profile has landed, which is the whole reason v4 put it there —
+   an understudy may appear LATER in the bundle. The reconcile block was
+   restructured to build one patch (v4's `updates` bag) so a profile with
+   nothing to remap is not rewritten at all.
+
+8. **`allowCheapFallback`, settings half only.** The provisioning seed row, the
+   `CheapLLMSettingsSchema` normalizer (appended LAST — v4 appended it to the
+   schema, so it lands last in the parsed key order), and the chat-settings
+   route's boolean guard. That guard is NOT truthiness-gated, unlike the two
+   enum guards beside it: it is `typeof !== 'undefined' && typeof !== 'boolean'`,
+   so an explicit `null` is refused where a falsy bad strategy would slip
+   through to Zod. The cheap-LLM chain RUNTIME is a later unit.
+
+### Differentials (all regenerated from the `65f5021c8` pin)
+
+| family | what moved | proof |
+|---|---|---|
+| `provisioning_equivalence` | the D23 re-dump | RED on both moved defaults before the fix, green after |
+| `connection_profiles_tier2_equivalence` | corpus 11 → 18 ops | create-with-understudy, the UPDATE assignment, the clear-to-NULL double-option arm, and the **two-namer delete cascade** |
+| `connection_profile_legacy_fields_equivalence` | 306 → 414 cases | a separate `kind: 'fallback'` block (108 rows: 6 self-references, 72 recorded non-scalar divergences) so every pre-existing row stays byte-identical |
+| `settings_routes_equivalence` | 26 → 43 connection-profile arms; 10 → 13 settings_chat | the fixture gains a Courier profile and seeds Claude naming GPT |
+| `backup_uuid_remap_equivalence` | a new `fallback_understudy_links` corpus case | forward reference, dangling reference, self-reference, explicit null, absent key |
+| `restore_vintage_state` | the committed migration-vintage instance replayed at the pin | + a new tripwire naming a stale fixture directly |
+
+**Mutation proofs (each reddened the named family, then restored green):**
+drop the delete cascade; keep the cascade but drop its `updatedAt` stamp; drop
+the self-reference strip in the seeder; default `allowTierFallback` to `true`;
+compare the empty-string understudy (dropping v4's truthy gate); drop the create
+Courier check; drop the update self-reference check; drop the
+`allowCheapFallback` route guard; accept a non-boolean `allowTierFallback` on
+create; drop `fallbackProfileId` from the backup remapper's field list; blind
+the reconcile remap.
+
+### Recorded, not fixed
+
+- **`system_import_state`'s connection-profile leg stays vacuous.** The
+  committed `system-data-main.db` predates `multiCharacterPrefill`, so every
+  profile import has failed identically on both sides since v4 `aa464abf` and
+  the arms stay green on matching failures. The two new columns land in the same
+  hole. Widening that fixture is cross-lane (it is shared with the system-data
+  routes differential), so the understudy remap is pinned at the UNIT tier
+  instead — `services::quilltap_import::reconcile`'s
+  `the_understudy_is_remapped_including_a_forward_reference` and its two
+  siblings, mutation-proven — and the gap is named in both files.
+- **v5 ships no `public/schemas/qtap-export.schema.json`.** v4's hunk adds the
+  two keys to that published JSON-Schema; v5 has no counterpart artifact (the
+  export's key order lives in `schema-key-order.json`, which IS regenerated).
+  NO-PORT with evidence.
+- **v4's migration pretty label** ("Teaching each connection the name of its
+  understudy", `lib/startup/prettify.ts`) has no v5 analog — v5 surfaces no
+  migration labels anywhere. NO-PORT, the P4.D63 / P4.D73 / P4.D79 precedent.
+- **The `.qtap` import DTO's UUID-format gap.** v4 declares
+  `fallbackProfileId: UUIDSchema.nullable().optional()`, so a bundle naming a
+  non-UUID understudy is refused by v4's parse and accepted by v5's. That is the
+  module's standing Zod-format gap (`apiKeyId` and every other `UUIDSchema`
+  field on that DTO is a plain string), not a new one.
+
+### Fixtures the new INSERT reached
+
+`CpCreate`'s INSERT now names both columns, so any test that writes a profile
+into a PRE-4.10 committed fixture fails with `has no column named
+fallbackProfileId`. The workspace gate found exactly two shapes:
+
+- **`restore_vintage_state`** — the migration-vintage instance, re-replayed from
+  the pin (the fixture's whole point is to move when v4's migrations move), plus
+  the new tripwire that names a stale fixture directly.
+- **`web_search_runner_wire`** — copies the committed `chat-admin-main.db` and
+  seeds a profile on top. Repaired by running the boot ensure in the seed rather
+  than re-cutting a fixture six other families read: on a real instance the
+  ensure has already run before anything writes a profile, and this is the same
+  repaired-at-boot idiom `restore_vintage_state` uses for `linkGroupId`.
+
+### A trap worth the memory note
+
+**A sweep-driver recipe that stages its spec BEFORE running the fixture builder
+reads the STALE spec on the first run after a spec change.** `settings-routes`
+copies `harness/oracle/fixtures/settings.json` into its `/tmp` mirror, then runs
+`build-settings-fixture.ts`, which REWRITES that file in the repo. So the first
+run after adding `profiles.courier` saw `undefined`, the two Courier-target
+cases silently dropped the key from their request bodies, and BOTH SIDES agreed
+on a 200 — a green run that had measured nothing. Caught by grepping the
+regenerated NDJSON for the refusal sentence (drift-ledger §5.2: a green regen is
+not coverage); the second run carried it. Any recipe of this shape needs two
+runs, or the grep.

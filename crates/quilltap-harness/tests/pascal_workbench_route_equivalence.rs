@@ -149,6 +149,8 @@ fn insert_consult_profile(main: &std::path::Path) {
                 pseudo_tool_mode: "auto".into(),
                 multi_character_prefill: None,
                 model_class: None,
+                fallback_profile_id: None,
+                allow_tier_fallback: false,
                 max_context: None,
                 max_tokens: None,
                 is_dangerous_compatible: false,

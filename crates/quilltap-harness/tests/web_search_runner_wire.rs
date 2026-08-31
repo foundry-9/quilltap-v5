@@ -174,6 +174,16 @@ fn seed_web_search_chat(db_main: &std::path::Path) {
     let w = Writer::open_writable(db_main, PEPPER).unwrap();
     let conn = w.connection();
 
+    // P4.D135: the committed `chat-admin-main.db` predates the 4.10
+    // fallback-chain columns, and `CpCreate`'s INSERT names them. On a real
+    // instance the boot ensure has already added them before anything writes a
+    // profile, so the ensure is what this seed runs too — the same
+    // repaired-at-boot idiom `restore_vintage_state` uses for `linkGroupId`,
+    // and cheaper than re-cutting a fixture six other families read.
+    quilltap_core::db::connection_profiles_fallback_repair::
+        ensure_connection_profiles_fallback_columns(conn)
+        .expect("ensure the fallback columns on the vintage fixture");
+
     let cp = connection_profiles::CpCreate {
         user_id: USER.to_string(),
         name: "Web-enabled".to_string(),
@@ -192,6 +202,8 @@ fn seed_web_search_chat(db_main: &std::path::Path) {
         pseudo_tool_mode: "auto".to_string(),
         multi_character_prefill: None,
         model_class: None,
+        fallback_profile_id: None,
+        allow_tier_fallback: false,
         max_context: None,
         max_tokens: None,
         is_dangerous_compatible: false,

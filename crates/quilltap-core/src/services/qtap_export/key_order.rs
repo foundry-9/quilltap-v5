@@ -178,16 +178,30 @@ mod tests {
             "the prefill must follow pseudoToolMode"
         );
         assert_eq!(t[idx + 1], "modelClass", "and precede modelClass");
+        // P4.D135: the 4.10 fallback pair sits between `modelClass` and
+        // `maxContext` — the Zod declaration order, which is ALSO where the
+        // generateDDL re-dump puts the columns (and NOT where
+        // `sqlite-initial-schema.ts`'s hand-written base table puts them).
+        assert_eq!(
+            &t[idx + 1..idx + 5],
+            &[
+                Value::from("modelClass"),
+                Value::from("fallbackProfileId"),
+                Value::from("allowTierFallback"),
+                Value::from("maxContext"),
+            ],
+            "the fallback pair follows modelClass and precedes maxContext"
+        );
 
         // And the reorder actually applies it: a net-read object in COLUMN order
         // comes out in SCHEMA order with the key in place.
         let v: Value = serde_json::from_str(
-            r#"{"id":"i","pseudoToolMode":"auto","modelClass":null,"multiCharacterPrefill":false}"#,
+            r#"{"id":"i","pseudoToolMode":"auto","allowTierFallback":true,"modelClass":null,"multiCharacterPrefill":false,"fallbackProfileId":"u"}"#,
         )
         .unwrap();
         assert_eq!(
             reorder("connection_profile", v).to_string(),
-            r#"{"id":"i","pseudoToolMode":"auto","multiCharacterPrefill":false,"modelClass":null}"#
+            r#"{"id":"i","pseudoToolMode":"auto","multiCharacterPrefill":false,"modelClass":null,"fallbackProfileId":"u","allowTierFallback":true}"#
         );
     }
 

@@ -491,7 +491,7 @@ pub(super) fn reconcile_relationships(
         }
     }
 
-    // ── Connection profiles (tags) ─────────────────────────────────────────
+    // ── Connection profiles (tags + the fallback understudy) ───────────────
     for (_backup_id, new_id) in id_maps.connection_profiles.iter() {
         let out: Result<(), String> = (|| {
             let Some(profile) =
@@ -499,19 +499,41 @@ pub(super) fn reconcile_relationships(
             else {
                 return Ok(());
             };
+            let mut patch = connection_profiles::CpUpdate {
+                updated_at: crate::clock::now_iso(),
+                ..Default::default()
+            };
+            let mut touched = false;
+
             let tags = str_array_of(&profile, "tags");
             if !tags.is_empty() {
                 let remapped = remap_id_array(&tags, &id_maps.tags);
                 if !remapped.is_empty() {
-                    let patch = connection_profiles::CpUpdate {
-                        tags: Some(remapped),
-                        updated_at: crate::clock::now_iso(),
-                        ..Default::default()
-                    };
-                    connection_profiles::ConnectionProfilesRepository::new(main)
-                        .update(new_id, &patch)
-                        .map_err(|e| e.to_string())?;
+                    patch.tags = Some(remapped);
+                    touched = true;
                 }
+            }
+
+            // Remap `fallbackProfileId` (the understudy, v4 `65f5021c8`). This
+            // has to happen in the reconcile pass rather than at insert time: a
+            // profile may name an understudy that appears *later* in the
+            // bundle, so the map is only complete once every profile has
+            // landed. A reference the map cannot resolve is left alone —
+            // `build_fallback_chain` drops a target that isn't there, and
+            // clearing it would throw away a chain that a preserve-ids import
+            // got right.
+            if let Some(current) = profile.get("fallbackProfileId").and_then(Value::as_str) {
+                let remapped = remap_id(Some(current), &id_maps.connection_profiles);
+                if let Some(remapped) = remapped.filter(|r| r != current) {
+                    patch.fallback_profile_id = Some(Some(remapped));
+                    touched = true;
+                }
+            }
+
+            if touched {
+                connection_profiles::ConnectionProfilesRepository::new(main)
+                    .update(new_id, &patch)
+                    .map_err(|e| e.to_string())?;
             }
             Ok(())
         })();
@@ -617,5 +639,153 @@ pub(super) fn reconcile_relationships(
             ));
             tracing::warn!(template_id = %new_id, error = %e, "Failed to reconcile roleplay template");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::quilltap_import::IdMap;
+
+    /// The `connection_profiles` shape the reconcile pass reads and writes —
+    /// the CpCreate INSERT's column list, in the MIGRATED (appended) order the
+    /// boot ensure produces. SQLite's dynamic typing makes the affinities
+    /// immaterial here.
+    fn profiles_table(conn: &Connection) {
+        conn.execute_batch(
+            "CREATE TABLE connection_profiles (\
+               id TEXT PRIMARY KEY, userId TEXT, name TEXT, provider TEXT, \
+               transport TEXT, courierDeltaMode INTEGER, apiKeyId TEXT, \
+               baseUrl TEXT, modelName TEXT, parameters TEXT, isDefault INTEGER, \
+               isCheap INTEGER, allowWebSearch INTEGER, useNativeWebSearch INTEGER, \
+               allowToolUse INTEGER, pseudoToolMode TEXT, \
+               \"multiCharacterPrefill\" INTEGER, modelClass TEXT, \
+               maxContext REAL, maxTokens REAL, isDangerousCompatible INTEGER, \
+               supportsImageUpload INTEGER, tags TEXT, sortIndex REAL, \
+               totalTokens REAL, totalPromptTokens REAL, totalCompletionTokens REAL, \
+               messageCount REAL, createdAt TEXT, updatedAt TEXT, \
+               \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0)",
+        )
+        .unwrap();
+    }
+
+    fn insert(conn: &Connection, id: &str, fallback: Option<&str>) {
+        conn.execute(
+            "INSERT INTO connection_profiles \
+               (id, userId, name, provider, transport, courierDeltaMode, modelName, \
+                parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
+                allowToolUse, pseudoToolMode, isDangerousCompatible, supportsImageUpload, \
+                tags, sortIndex, totalTokens, totalPromptTokens, totalCompletionTokens, \
+                messageCount, createdAt, updatedAt, fallbackProfileId) \
+             VALUES (?1, 'u1', 'P', 'OPENAI', 'api', 1, 'm', '{}', 0, 0, 0, 0, 1, 'auto', \
+                     0, 0, '[]', 0, 0, 0, 0, 0, 't', 't', ?2)",
+            rusqlite::params![id, fallback],
+        )
+        .unwrap();
+    }
+
+    fn understudy_of(conn: &Connection, id: &str) -> Option<String> {
+        conn.query_row(
+            "SELECT fallbackProfileId FROM connection_profiles WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .unwrap()
+    }
+
+    /// **The unit pin the `.qtap` import differential cannot carry.**
+    ///
+    /// `system_import_state`'s connection-profile leg has been vacuous since v4
+    /// `aa464abf`: the committed `system-data-main.db` predates
+    /// `multiCharacterPrefill`, so every profile import fails on BOTH sides with
+    /// `no column named …` and the arms stay green on matching failures (the
+    /// family header records it; widening that fixture is cross-lane). The 4.10
+    /// fallback columns land in the same hole, so the understudy remap is
+    /// pinned here instead, at the unit tier, and named in both places.
+    ///
+    /// What it proves is v4 `65f5021c8`'s reason for putting the remap in the
+    /// reconcile pass at all: the FORWARD reference. `cp-a` names `cp-b`, and
+    /// `cp-b` lands after it — at insert time the map has no entry for `cp-b`
+    /// yet, so only a pass that runs once everything has landed can resolve it.
+    #[test]
+    fn the_understudy_is_remapped_including_a_forward_reference() {
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        profiles_table(&main);
+        // The bundle's `cp-a` named `cp-b`; both were re-created under new ids.
+        insert(&main, "new-a", Some("cp-b"));
+        insert(&main, "new-b", None);
+
+        let mut id_maps = IdMaps::default();
+        let mut cps = IdMap::default();
+        cps.set("cp-a".into(), "new-a".into());
+        cps.set("cp-b".into(), "new-b".into());
+        id_maps.connection_profiles = cps;
+
+        let mut warnings = Vec::new();
+        reconcile_relationships(&main, &mount, &id_maps, &mut warnings);
+
+        assert_eq!(understudy_of(&main, "new-a").as_deref(), Some("new-b"));
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    /// An id the map cannot resolve is LEFT ALONE, not cleared — v4's comment:
+    /// `buildFallbackChain` drops a target that isn't there, and clearing it
+    /// would throw away a chain a preserve-ids import got right.
+    #[test]
+    fn an_unresolvable_understudy_is_left_alone() {
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        profiles_table(&main);
+        insert(&main, "new-a", Some("preserved-id"));
+
+        let mut id_maps = IdMaps::default();
+        let mut cps = IdMap::default();
+        cps.set("cp-a".into(), "new-a".into());
+        id_maps.connection_profiles = cps;
+
+        let mut warnings = Vec::new();
+        reconcile_relationships(&main, &mount, &id_maps, &mut warnings);
+
+        assert_eq!(
+            understudy_of(&main, "new-a").as_deref(),
+            Some("preserved-id")
+        );
+        assert!(warnings.is_empty(), "{warnings:?}");
+    }
+
+    /// A profile with no understudy is not written at all — the reconcile pass
+    /// only issues an UPDATE when something actually moved (v4 builds an
+    /// `updates` bag and skips an empty one).
+    #[test]
+    fn a_profile_with_nothing_to_remap_is_not_rewritten() {
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        profiles_table(&main);
+        insert(&main, "new-a", None);
+        let before: String = main
+            .query_row(
+                "SELECT updatedAt FROM connection_profiles WHERE id = 'new-a'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let mut id_maps = IdMaps::default();
+        let mut cps = IdMap::default();
+        cps.set("cp-a".into(), "new-a".into());
+        id_maps.connection_profiles = cps;
+
+        let mut warnings = Vec::new();
+        reconcile_relationships(&main, &mount, &id_maps, &mut warnings);
+
+        let after: String = main
+            .query_row(
+                "SELECT updatedAt FROM connection_profiles WHERE id = 'new-a'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(before, after, "an untouched profile must not be re-stamped");
     }
 }

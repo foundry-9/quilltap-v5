@@ -81,6 +81,24 @@ struct ImportedConnectionProfile {
     #[serde(default)]
     #[allow(dead_code)]
     multi_character_prefill: Option<bool>,
+    /// The 4.10 understudy (v4 `65f5021c8`). Like the two fields above, kept
+    /// for its VALIDATION alone — the write reads the RAW record through
+    /// [`crate::services::connection_profile_legacy_fields`], because the
+    /// seeding decision is key presence, which this `Option` cannot express.
+    ///
+    /// ⚠ v4 declares it `UUIDSchema.nullable().optional()`, so a bundle naming
+    /// a non-UUID understudy is REFUSED by v4's parse and accepted here. That
+    /// is the module's standing Zod-format gap, not a new one: `apiKeyId` and
+    /// every other `UUIDSchema` field on this DTO are plain strings too.
+    #[serde(default)]
+    #[allow(dead_code)]
+    fallback_profile_id: Option<String>,
+    /// The tier-pick opt-in (v4 `65f5021c8`), `z.boolean().default(false)` —
+    /// so a non-boolean must be refused here exactly as v4's parse refuses it.
+    /// Value unused for the same reason as its siblings.
+    #[serde(default)]
+    #[allow(dead_code)]
+    allow_tier_fallback: bool,
     #[serde(default)]
     max_tokens: Option<f64>,
     #[serde(default)]
@@ -298,6 +316,12 @@ fn create_connection_profile(
         // `[Name]` prefill switched on for a profile nobody chose it for.
         multi_character_prefill: Some(seeded.multi_character_prefill),
         model_class: p.model_class,
+        // v4 `65f5021c8`: the understudy rides the `...profileData` spread the
+        // same way. The id it names is a BUNDLE id at this point; the reconcile
+        // pass remaps it once every profile has landed (an understudy may
+        // appear later in the bundle).
+        fallback_profile_id: seeded.fallback_profile_id.clone(),
+        allow_tier_fallback: seeded.allow_tier_fallback,
         max_context: p.max_context,
         max_tokens: p.max_tokens,
         is_dangerous_compatible: p.is_dangerous_compatible,
@@ -572,7 +596,9 @@ mod tests {
                isCheap INTEGER, allowWebSearch INTEGER, useNativeWebSearch INTEGER, \
                allowToolUse INTEGER, pseudoToolMode TEXT, \
                \"multiCharacterPrefill\" INTEGER DEFAULT 1, \
-               modelClass TEXT, maxContext REAL, maxTokens REAL, \
+               modelClass TEXT, \
+               \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0, \
+               maxContext REAL, maxTokens REAL, \
                isDangerousCompatible INTEGER, supportsImageUpload INTEGER, \
                tags TEXT, sortIndex REAL, totalTokens REAL, totalPromptTokens REAL, \
                totalCompletionTokens REAL, messageCount REAL, createdAt TEXT, \

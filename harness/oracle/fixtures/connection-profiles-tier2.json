@@ -107,6 +107,20 @@
       "updatedAt": "2026-01-01T00:00:00.000Z"
     }
   ],
+  "cascadeReleased": {
+    "$comment": [
+      "P4.D135 — the rows the delete-cascade RELEASES, and the updatedAt each",
+      "held immediately before that delete.",
+      "",
+      "v4 releases through the base repo's updateMany, which always folds",
+      "`updatedAt: getCurrentTimestamp()` into the $set (base.repository.ts:513).",
+      "That stamp is a WALL CLOCK on both sides and cannot be compared, but its",
+      "absence is exactly what a port that forgot the stamp would look like — so",
+      "each side asserts the value MOVED off the pin below and only then",
+      "placeholders it (the normalize_duration_ms idiom)."
+    ],
+    "bb100000-0000-4000-8000-00000000cd03": "2026-02-02T00:00:00.000Z"
+  },
   "ops": [
     {
       "kind": "create",
@@ -362,6 +376,153 @@
       "kind": "delete",
       "comment": "Delete the first created profile (Ollama Local).",
       "id": "e5000000-0000-4000-8000-000000000003"
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D135: the understudy target. Created FIRST so the two profiles below can name it; carries the fallback pair ABSENT — the pre-4.10 import/restore shape (both DDL shapes default the same way here, unlike multiCharacterPrefill).",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "Kimi Understudy",
+        "provider": "OPENAI",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": "https://api.anthropic.com",
+        "modelName": "kimi-k2",
+        "parameters": {},
+        "isDefault": false,
+        "isCheap": false,
+        "allowWebSearch": true,
+        "useNativeWebSearch": false,
+        "allowToolUse": true,
+        "pseudoToolMode": "native",
+        "modelClass": "Standard",
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": true,
+        "tags": [],
+        "sortIndex": 10,
+        "totalTokens": 42,
+        "totalPromptTokens": 30,
+        "totalCompletionTokens": 12,
+        "messageCount": 1
+      },
+      "options": {
+        "id": "bb100000-0000-4000-8000-00000000cd01",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D135: create NAMING an understudy and opting in to the tier pick. Pins the fallbackProfileId TEXT write and the allowTierFallback 0/1 write on the create path.",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "Sonnet Primary",
+        "provider": "ANTHROPIC",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": "https://api.anthropic.com",
+        "modelName": "claude-sonnet",
+        "parameters": {},
+        "isDefault": false,
+        "isCheap": false,
+        "allowWebSearch": true,
+        "useNativeWebSearch": false,
+        "allowToolUse": true,
+        "pseudoToolMode": "native",
+        "modelClass": "Extended",
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": true,
+        "tags": [],
+        "sortIndex": 10,
+        "totalTokens": 42,
+        "totalPromptTokens": 30,
+        "totalCompletionTokens": 12,
+        "messageCount": 1,
+        "fallbackProfileId": "bb100000-0000-4000-8000-00000000cd01",
+        "allowTierFallback": true
+      },
+      "options": {
+        "id": "bb100000-0000-4000-8000-00000000cd02",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D135: a SECOND profile naming the same understudy, with the tier pick explicitly off. The delete-cascade op below must null every namer, not just one.",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "Grok Namer",
+        "provider": "GROK",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": "https://api.anthropic.com",
+        "modelName": "grok-4",
+        "parameters": {},
+        "isDefault": false,
+        "isCheap": false,
+        "allowWebSearch": true,
+        "useNativeWebSearch": false,
+        "allowToolUse": true,
+        "pseudoToolMode": "native",
+        "modelClass": "Standard",
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": true,
+        "tags": [],
+        "sortIndex": 10,
+        "totalTokens": 42,
+        "totalPromptTokens": 30,
+        "totalCompletionTokens": 12,
+        "messageCount": 1,
+        "fallbackProfileId": "bb100000-0000-4000-8000-00000000cd01",
+        "allowTierFallback": false
+      },
+      "options": {
+        "id": "bb100000-0000-4000-8000-00000000cd03",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D135: set allowTierFallback TRUE on a row that stored FALSE. Pins the UPDATE assignment.",
+      "id": "bb100000-0000-4000-8000-00000000cd03",
+      "data": {
+        "allowTierFallback": true,
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D135: CLEAR the understudy to an explicit SQL NULL. The double-option arm — an explicit null in the patch, not an absent key.",
+      "id": "bb100000-0000-4000-8000-00000000cd02",
+      "data": {
+        "fallbackProfileId": null,
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D135: name an understudy again on a row whose column is NULL, this time pointing at the OTHER new profile (a legal A->B chain).",
+      "id": "bb100000-0000-4000-8000-00000000cd02",
+      "data": {
+        "fallbackProfileId": "bb100000-0000-4000-8000-00000000cd03",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "delete",
+      "comment": "P4.D135 THE CASCADE: delete the understudy the Grok row still points at. v4's repository nulls fallbackProfileId on every OTHER profile that named it, so the Grok row's column comes back NULL in the dump while the Sonnet row (which now names Grok) is untouched.",
+      "id": "bb100000-0000-4000-8000-00000000cd01"
     }
   ]
 }

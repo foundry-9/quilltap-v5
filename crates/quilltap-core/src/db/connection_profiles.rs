@@ -62,6 +62,29 @@
 //!     NULL, or write 0/1 — exactly as v4's `insertOne` does off `Object.keys`.
 //!     The read is column-tolerant (see [`cp_select_columns`]) so tables that
 //!     predate the column still open; the write is strict, as v4's is.
+//!   - the **fallback-chain pair** (`fallbackProfileId` TEXT nullable +
+//!     `allowTierFallback` INTEGER, v4 `65f5021c8`). Two more shapes the module
+//!     already knows — a nullable string and a defaulted boolean — but with one
+//!     difference from `multiCharacterPrefill` worth stating: **omitting the
+//!     column and writing its default are the same row here**, because
+//!     generateDDL and the `add-profile-fallback-fields-v1` migration agree on
+//!     both defaults (no DEFAULT on the TEXT column, `DEFAULT 0` on the INTEGER
+//!     one). That is what lets the create name them unconditionally instead of
+//!     carrying the prefill's three-state omission. Note also that
+//!     `allowTierFallback` is `z.boolean().default(false)`, NOT
+//!     `.nullable().optional()` — so a NULL cell (or a table predating the
+//!     column) hydrates to `undefined` and Zod fills `false`, meaning the key is
+//!     **always present** in a v4 net read. `fallbackProfileId` is
+//!     `.nullable().optional()`, so a NULL is an ABSENT key as usual.
+//!
+//!     ⚠ Column POSITION: v4's `sqlite-initial-schema.ts` inserts the pair after
+//!     `multiCharacterPrefill` and before `supportsImageUpload`, but that
+//!     hand-written base table is not what a fresh instance gets. The
+//!     **generateDDL** surface (`fresh_schema.json`, re-dumped at the pin) places
+//!     them after `modelClass` and before `maxContext` — the Zod declaration
+//!     order — and so does the export key-order table. The work order's
+//!     paragraph quotes the base table; the re-dump is the authority
+//!     (drift-ledger §5.3).
 //!
 //! To avoid relying on Zod create-time defaults (`transport`/`pseudoToolMode`/
 //! `courierDeltaMode`/`allowToolUse` and the many `false`/`0` defaults), the
@@ -135,6 +158,16 @@ pub struct CpCreate {
     pub multi_character_prefill: Option<Option<bool>>,
     /// `None` => SQL NULL.
     pub model_class: Option<String>,
+    /// The understudy (v4 `65f5021c8`): another profile's id to try when a call
+    /// through this one fails outright. `None` => SQL NULL ("no understudy
+    /// named"), which is also what omitting the column would land — see the
+    /// module header for why this one does not need the prefill's three-state
+    /// treatment.
+    pub fallback_profile_id: Option<String>,
+    /// Whether one same-or-better-tier stand-in may be drafted automatically
+    /// after both named players fail (v4 `65f5021c8`). `z.boolean().default(false)`
+    /// on v4's side, so always written 0/1.
+    pub allow_tier_fallback: bool,
     /// Nullable REAL int-override; `None` => SQL NULL.
     pub max_context: Option<f64>,
     /// Nullable REAL int-override; `None` => SQL NULL.
@@ -196,6 +229,14 @@ pub struct CpUpdate {
     /// Set `modelClass` to SQL NULL (the route PUT's `modelClass: null|''`). Wins
     /// over [`Self::model_class`] when true.
     pub clear_model_class: bool,
+    /// The understudy. The route PUT can name one (`Some(Some(id))`), clear it
+    /// (`Some(None)` → SQL NULL, its `null|''` arm), or leave it alone (`None`).
+    /// A double-`Option`, like [`Self::api_key_id`], because NULL is a value the
+    /// route can actually send.
+    pub fallback_profile_id: Option<Option<String>>,
+    /// `allowTierFallback` — `Some(b)` sets the column 0/1 (the route 400s on a
+    /// non-boolean, so there is no NULL arm to express).
+    pub allow_tier_fallback: Option<bool>,
     pub max_context: Option<f64>,
     /// Set `maxContext` to SQL NULL (the route PUT's `maxContext: null|''|0`). Wins
     /// over [`Self::max_context`] when true.
@@ -237,19 +278,20 @@ impl<'c> ConnectionProfilesRepository<'c> {
         // (letting the DDL default decide); a document that carries the key —
         // including as an explicit `null` — names it. See the field's doc.
         let (prefill_col, prefill_placeholder) = match data.multi_character_prefill {
-            Some(_) => ("multiCharacterPrefill, ", "?30, "),
+            Some(_) => ("multiCharacterPrefill, ", "?32, "),
             None => ("", ""),
         };
         let sql = format!(
             "INSERT INTO connection_profiles \
                (id, userId, name, provider, transport, courierDeltaMode, apiKeyId, baseUrl, \
                 modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
-                allowToolUse, pseudoToolMode, {prefill_col}modelClass, maxContext, maxTokens, \
+                allowToolUse, pseudoToolMode, {prefill_col}modelClass, fallbackProfileId, \
+                allowTierFallback, maxContext, maxTokens, \
                 isDangerousCompatible, supportsImageUpload, tags, sortIndex, totalTokens, \
                 totalPromptTokens, totalCompletionTokens, messageCount, createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
                      {prefill_placeholder}?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, \
-                     ?27, ?28, ?29)"
+                     ?27, ?28, ?29, ?30, ?31)"
         );
         let mut binds: Vec<Box<dyn ToSql>> = vec![
             Box::new(opts.id.clone()),
@@ -269,6 +311,8 @@ impl<'c> ConnectionProfilesRepository<'c> {
             Box::new(i64::from(data.allow_tool_use)),
             Box::new(data.pseudo_tool_mode.clone()),
             Box::new(data.model_class.clone()),
+            Box::new(data.fallback_profile_id.clone()),
+            Box::new(i64::from(data.allow_tier_fallback)),
             Box::new(data.max_context),
             Box::new(data.max_tokens),
             Box::new(i64::from(data.is_dangerous_compatible)),
@@ -377,6 +421,19 @@ impl<'c> ConnectionProfilesRepository<'c> {
             assignments.push(format!("modelClass = ?{}", values.len() + 1));
             values.push(Box::new(model_class.clone()));
         }
+        if let Some(fallback_profile_id) = &patch.fallback_profile_id {
+            match fallback_profile_id {
+                Some(target) => {
+                    assignments.push(format!("fallbackProfileId = ?{}", values.len() + 1));
+                    values.push(Box::new(target.clone()));
+                }
+                None => assignments.push("fallbackProfileId = NULL".to_string()),
+            }
+        }
+        if let Some(allow_tier_fallback) = patch.allow_tier_fallback {
+            assignments.push(format!("allowTierFallback = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(allow_tier_fallback)));
+        }
         if patch.clear_max_context {
             assignments.push("maxContext = NULL".to_string());
         } else if let Some(max_context) = patch.max_context {
@@ -440,10 +497,36 @@ impl<'c> ConnectionProfilesRepository<'c> {
 
     /// Delete the profile `id`. Returns `Ok(false)` when no row matched (v4's
     /// `_delete` "deletedCount === 0 -> false").
+    ///
+    /// Also releases the deleted profile from any *other* profile that had
+    /// named it as its fallback understudy (v4 `65f5021c8`).
+    /// `fallbackProfileId` is deliberately not a foreign key —
+    /// `build_fallback_chain` already drops a target it cannot find, so a stale
+    /// reference is harmless at call time — but leaving it in the row is a lie
+    /// the profile editor would then render as a dropdown pointing at nothing.
+    ///
+    /// v4 runs the release only when the delete actually removed a row, and
+    /// only after it; reproduced. The `UPDATE` is a no-op on a table that
+    /// predates the column, which the boot ensure has already fixed on any live
+    /// instance — but a fixture built before the drift would otherwise 500 the
+    /// whole delete, so it is guarded the same way the reads are.
+    ///
+    /// ⚠ v4 releases through the base repo's `updateMany`, which ALWAYS adds
+    /// `updatedAt: getCurrentTimestamp()` to the `$set`
+    /// (`base.repository.ts:513-527`) — so a released row's `updatedAt` moves
+    /// to the wall clock, not just its `fallbackProfileId` to NULL. That is a
+    /// visible cell, and the tier-2 dump caught it on the first run.
     pub fn delete(&self, id: &str) -> Result<bool, DbError> {
         let affected = self
             .conn
             .execute("DELETE FROM connection_profiles WHERE id = ?1", params![id])?;
+        if affected > 0 && cp_table_has_column(self.conn, "fallbackProfileId") {
+            self.conn.execute(
+                "UPDATE connection_profiles SET fallbackProfileId = NULL, updatedAt = ?2 \
+                 WHERE fallbackProfileId = ?1",
+                params![id, crate::clock::now_iso()],
+            )?;
+        }
         Ok(affected > 0)
     }
 
@@ -500,8 +583,13 @@ impl<'c> ConnectionProfilesRepository<'c> {
 const CP_COLUMNS_HEAD: &str = "id, userId, name, provider, transport, courierDeltaMode, apiKeyId, \
      baseUrl, modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
      allowToolUse, pseudoToolMode";
-/// The rest, from `modelClass` on — `multiCharacterPrefill` sits between the two.
-const CP_COLUMNS_TAIL: &str = "modelClass, maxContext, maxTokens, isDangerousCompatible, \
+/// `modelClass` — on its own because the two 4.10 fallback columns land right
+/// after it and are read tolerantly (see [`cp_select_columns`]).
+const CP_COLUMNS_MODEL_CLASS: &str = "modelClass";
+/// The rest, from `maxContext` on. `multiCharacterPrefill` sits between
+/// [`CP_COLUMNS_HEAD`] and [`CP_COLUMNS_MODEL_CLASS`]; `fallbackProfileId` +
+/// `allowTierFallback` sit between [`CP_COLUMNS_MODEL_CLASS`] and this.
+const CP_COLUMNS_TAIL: &str = "maxContext, maxTokens, isDangerousCompatible, \
      supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, \
      totalCompletionTokens, messageCount, createdAt, updatedAt";
 
@@ -524,12 +612,27 @@ const CP_COLUMNS_TAIL: &str = "modelClass, maxContext, maxTokens, isDangerousCom
 /// ([`crate::db::connection_profiles_prefill_repair`]) is what gets a real
 /// instance the column; this is what keeps old fixtures readable.
 fn cp_select_columns(conn: &Connection) -> String {
-    let prefill = if cp_table_has_column(conn, "multiCharacterPrefill") {
-        "multiCharacterPrefill"
-    } else {
-        "NULL"
+    let tolerant = |column: &'static str| {
+        if cp_table_has_column(conn, column) {
+            column
+        } else {
+            "NULL"
+        }
     };
-    format!("{CP_COLUMNS_HEAD}, {prefill}, {CP_COLUMNS_TAIL}")
+    let prefill = tolerant("multiCharacterPrefill");
+    // The 4.10 fallback pair (v4 `65f5021c8`), same tolerance for the same
+    // reason: a `connection_profiles` table that predates
+    // `add-profile-fallback-fields-v1` has neither column, and every committed
+    // fixture built before this drift is exactly that table. A NULL cell
+    // marshals to what v4's Zod produces for a missing column — an absent
+    // `fallbackProfileId` key, and `allowTierFallback: false` from its
+    // `.default(false)`.
+    let fallback_profile_id = tolerant("fallbackProfileId");
+    let allow_tier_fallback = tolerant("allowTierFallback");
+    format!(
+        "{CP_COLUMNS_HEAD}, {prefill}, {CP_COLUMNS_MODEL_CLASS}, \
+         {fallback_profile_id}, {allow_tier_fallback}, {CP_COLUMNS_TAIL}"
+    )
 }
 
 /// The profile document's key order — the Zod SHAPE order v4's
@@ -545,6 +648,9 @@ pub fn cp_schema_key_order() -> Vec<&'static str> {
     let split = |s: &'static str| s.split(',').map(str::trim).collect::<Vec<_>>();
     let mut keys = split(CP_COLUMNS_HEAD);
     keys.push("multiCharacterPrefill");
+    keys.push(CP_COLUMNS_MODEL_CLASS);
+    keys.push("fallbackProfileId");
+    keys.push("allowTierFallback");
     keys.extend(split(CP_COLUMNS_TAIL));
     keys
 }
@@ -646,42 +752,55 @@ fn marshal_cp_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> 
         r.get::<_, Option<i64>>(16)?,
     );
     put_opt_string(&mut obj, "modelClass", r.get::<_, Option<String>>(17)?);
-    put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(18)?);
-    put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(19)?);
+    put_opt_string(
+        &mut obj,
+        "fallbackProfileId",
+        r.get::<_, Option<String>>(18)?,
+    );
+    // `allowTierFallback` is `z.boolean().default(false)`, not
+    // `.nullable().optional()` — v4's hydration turns a NULL (or a column the
+    // table does not have) into `undefined` and Zod's default fills `false`. So
+    // unlike every other nullable column here, the key is ALWAYS present.
+    obj.insert(
+        "allowTierFallback".into(),
+        Value::Bool(r.get::<_, Option<i64>>(19)? == Some(1)),
+    );
+    put_opt_number(&mut obj, "maxContext", r.get::<_, Option<f64>>(20)?);
+    put_opt_number(&mut obj, "maxTokens", r.get::<_, Option<f64>>(21)?);
     obj.insert(
         "isDangerousCompatible".into(),
-        Value::Bool(r.get::<_, i64>(20)? == 1),
+        Value::Bool(r.get::<_, i64>(22)? == 1),
     );
     obj.insert(
         "supportsImageUpload".into(),
-        Value::Bool(r.get::<_, i64>(21)? == 1),
+        Value::Bool(r.get::<_, i64>(23)? == 1),
     );
     obj.insert(
         "tags".into(),
-        array_or_empty(r.get::<_, Option<String>>(22)?),
+        array_or_empty(r.get::<_, Option<String>>(24)?),
     );
     obj.insert(
         "sortIndex".into(),
-        super::js_number_to_json(r.get::<_, f64>(23)?),
-    );
-    obj.insert(
-        "totalTokens".into(),
-        super::js_number_to_json(r.get::<_, f64>(24)?),
-    );
-    obj.insert(
-        "totalPromptTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(25)?),
     );
     obj.insert(
-        "totalCompletionTokens".into(),
+        "totalTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(26)?),
     );
     obj.insert(
-        "messageCount".into(),
+        "totalPromptTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(27)?),
     );
-    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(28)?));
-    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(29)?));
+    obj.insert(
+        "totalCompletionTokens".into(),
+        super::js_number_to_json(r.get::<_, f64>(28)?),
+    );
+    obj.insert(
+        "messageCount".into(),
+        super::js_number_to_json(r.get::<_, f64>(29)?),
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(30)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(31)?));
     Ok(Value::Object(obj))
 }
 
@@ -737,6 +856,14 @@ pub fn create_return_shape(reread: &serde_json::Value) -> serde_json::Value {
         }
     }
     out.insert("modelClass".into(), nullable("modelClass"));
+    // v4's create input always names both fallback keys (`fallbackProfileId` as
+    // the resolved `string | null`, `allowTierFallback` as a boolean), so both
+    // survive the parse into the create-return. The nullable one is present as
+    // `null` where the re-read omits it; the boolean is always in the re-read.
+    out.insert("fallbackProfileId".into(), nullable("fallbackProfileId"));
+    if let Some(v) = take("allowTierFallback") {
+        out.insert("allowTierFallback".to_string(), v);
+    }
     out.insert("maxContext".into(), nullable("maxContext"));
     for key in [
         "isDangerousCompatible",

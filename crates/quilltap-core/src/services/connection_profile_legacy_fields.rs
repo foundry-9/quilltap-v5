@@ -25,6 +25,16 @@
 //!   [`crate::services::multi_character_prefill::profile_uses_name_prefill`]
 //!   resolves the provider default instead of a table default nobody picked.
 //!
+//! The 4.10 fallback-chain columns — **`fallbackProfileId`** and
+//! **`allowTierFallback`** (v4 `65f5021c8`) — are named here too, but for a
+//! different reason. Their table DEFAULTs (NULL and 0) *are* the neutral
+//! answer: a profile from an archive that predates them simply has no
+//! understudy, which is exactly how it behaved before the columns existed. What
+//! they need instead is a sanity check, because `fallbackProfileId` is the
+//! module's first column holding a *reference*: a hand-edited bundle can name
+//! the profile itself, and a self-referential chain is the one shape config
+//! validation forbids.
+//!
 //! ⚠ **Where the two DDLs disagree, and why the differential needs the vintage
 //! fixture.** v4's `generateDDL` declares `multiCharacterPrefill INTEGER` with
 //! NO default, so on a freshly-provisioned instance omitting the column and
@@ -76,12 +86,28 @@ pub struct SeededLegacyFields {
     pub seeded_supports_image_upload: bool,
     /// v4's `rawProfileData.multiCharacterPrefill === undefined`.
     pub seeded_multi_character_prefill: bool,
+    /// The value `fallbackProfileId` takes: the carried understudy id, or
+    /// `None` for "no understudy named" (both an absent key and a
+    /// self-reference land here). **Always written.**
+    pub fallback_profile_id: Option<String>,
+    /// The value `allowTierFallback` takes. **Always written.**
+    pub allow_tier_fallback: bool,
+    /// v4's `rawProfileData.fallbackProfileId === undefined`.
+    pub seeded_fallback_profile_id: bool,
+    /// v4's `rawProfileData.allowTierFallback === undefined`.
+    pub seeded_allow_tier_fallback: bool,
+    /// Whether a carried `fallbackProfileId` named the profile itself and was
+    /// dropped. v4 does this silently; v5 surfaces it on the debug line.
+    pub dropped_self_reference: bool,
 }
 
 impl SeededLegacyFields {
     /// Whether either column was seeded — v4's condition for the debug line.
     pub fn seeded_anything(&self) -> bool {
-        self.seeded_supports_image_upload || self.seeded_multi_character_prefill
+        self.seeded_supports_image_upload
+            || self.seeded_multi_character_prefill
+            || self.seeded_fallback_profile_id
+            || self.seeded_allow_tier_fallback
     }
 }
 
@@ -116,11 +142,46 @@ pub fn seed_legacy_connection_profile_fields(raw: &Value) -> SeededLegacyFields 
     let seeded_multi_character_prefill = stored_prefill.is_none();
     let multi_character_prefill = stored_prefill.and_then(Value::as_bool);
 
+    // Fallback chain (4.10). Absent means "no understudy named", which is both
+    // the table DEFAULT and the pre-column behaviour — stated explicitly so a
+    // later change to either DEFAULT can't quietly rewrite a restored profile.
+    let stored_fallback = raw.get("fallbackProfileId");
+    let seeded_fallback_profile_id = stored_fallback.is_none();
+    let carried_fallback = stored_fallback
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        // v4's gate is JS-truthy (`seeded.fallbackProfileId &&`), so an empty
+        // string is neither checked nor cleared — it rides through as the empty
+        // string it was. Reproduced by treating only a non-empty value as
+        // carried; an empty one falls to the same `None` v5's `os()` reader
+        // would produce for it anyway.
+        .filter(|id| !id.is_empty());
+    let stored_allow_tier = raw.get("allowTierFallback");
+    let seeded_allow_tier_fallback = stored_allow_tier.is_none();
+    let allow_tier_fallback = stored_allow_tier.and_then(Value::as_bool).unwrap_or(false);
+
+    // A profile can't understudy itself: the chain would be one attempt wearing
+    // two names. Config validation refuses it on the way in; an archive is
+    // data, not a contract, so it gets refused on the way back too.
+    let own_id = raw.get("id").and_then(Value::as_str);
+    let dropped_self_reference =
+        carried_fallback.is_some() && carried_fallback.as_deref() == own_id;
+    let fallback_profile_id = if dropped_self_reference {
+        None
+    } else {
+        carried_fallback
+    };
+
     SeededLegacyFields {
         supports_image_upload,
         multi_character_prefill,
         seeded_supports_image_upload,
         seeded_multi_character_prefill,
+        fallback_profile_id,
+        allow_tier_fallback,
+        seeded_fallback_profile_id,
+        seeded_allow_tier_fallback,
+        dropped_self_reference,
     }
 }
 
@@ -147,6 +208,11 @@ mod tests {
                 multi_character_prefill: Some(false),
                 seeded_supports_image_upload: false,
                 seeded_multi_character_prefill: false,
+                fallback_profile_id: None,
+                allow_tier_fallback: false,
+                seeded_fallback_profile_id: true,
+                seeded_allow_tier_fallback: true,
+                dropped_self_reference: false,
             }
         );
     }
@@ -167,8 +233,67 @@ mod tests {
                 multi_character_prefill: None,
                 seeded_supports_image_upload: false,
                 seeded_multi_character_prefill: false,
+                fallback_profile_id: None,
+                allow_tier_fallback: false,
+                seeded_fallback_profile_id: true,
+                seeded_allow_tier_fallback: true,
+                dropped_self_reference: false,
             }
         );
+    }
+
+    #[test]
+    fn a_carried_understudy_rides_through() {
+        let out = seed(json!({
+            "id": "p-primary",
+            "provider": "OPENAI",
+            "fallbackProfileId": "p-understudy",
+            "allowTierFallback": true,
+        }));
+        assert_eq!(out.fallback_profile_id.as_deref(), Some("p-understudy"));
+        assert!(out.allow_tier_fallback);
+        assert!(!out.seeded_fallback_profile_id);
+        assert!(!out.seeded_allow_tier_fallback);
+        assert!(!out.dropped_self_reference);
+    }
+
+    #[test]
+    fn an_absent_pair_seeds_the_neutral_answer() {
+        let out = seed(json!({ "id": "p-primary", "provider": "OPENAI" }));
+        assert_eq!(out.fallback_profile_id, None);
+        assert!(!out.allow_tier_fallback);
+        assert!(out.seeded_fallback_profile_id);
+        assert!(out.seeded_allow_tier_fallback);
+        assert!(out.seeded_anything());
+    }
+
+    /// The one shape config validation forbids and an archive can still carry.
+    #[test]
+    fn a_self_referential_understudy_is_dropped() {
+        let out = seed(json!({
+            "id": "p-primary",
+            "provider": "OPENAI",
+            "fallbackProfileId": "p-primary",
+        }));
+        assert_eq!(out.fallback_profile_id, None);
+        assert!(out.dropped_self_reference);
+        assert!(!out.seeded_fallback_profile_id, "the key WAS carried");
+    }
+
+    /// v4's self-reference gate is JS-truthy, so an empty string never reaches
+    /// the comparison — and a stored `false` never becomes `true`.
+    #[test]
+    fn an_empty_understudy_is_neither_checked_nor_promoted() {
+        let out = seed(json!({
+            "id": "",
+            "provider": "OPENAI",
+            "fallbackProfileId": "",
+            "allowTierFallback": false,
+        }));
+        assert_eq!(out.fallback_profile_id, None);
+        assert!(!out.dropped_self_reference, "an empty id is falsy in v4");
+        assert!(!out.allow_tier_fallback);
+        assert!(!out.seeded_allow_tier_fallback, "a stored false is carried");
     }
 
     #[test]
@@ -223,6 +348,8 @@ mod tests {
             "provider": "GROK",
             "supportsImageUpload": true,
             "multiCharacterPrefill": true,
+            "fallbackProfileId": null,
+            "allowTierFallback": false,
         }));
         assert!(!out.seeded_anything());
     }

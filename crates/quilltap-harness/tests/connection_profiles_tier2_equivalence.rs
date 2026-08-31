@@ -27,20 +27,88 @@
 //!   QT_ORACLE_CONNECTION_PROFILES=/tmp/oracle-cp.ndjson \
 //!   QT_FIXTURE_CONNECTION_PROFILES=/tmp/qt-cp-fixture.db \
 //!     cargo test -p quilltap-harness --test connection_profiles_tier2_equivalence
+//!
+//! P4.D135 extends the corpus with the 4.10 fallback pair (v4 `65f5021c8`):
+//! the create write (named understudy + `allowTierFallback` on/off), the
+//! UPDATE assignment, the clear-to-NULL double-option arm, and — the one
+//! genuinely new BEHAVIOUR — the **delete cascade**: v4's repository nulls
+//! `fallbackProfileId` on every other profile that named the row it just
+//! deleted, which only a two-namer corpus can tell from a one-namer one.
 
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::connection_profiles::{CpCreate, CpUpdate, CreateOptions};
 use quilltap_core::db::Writer;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
+
+/// serde double-option (mirrors `api::types::double_option`, which is private):
+/// an ABSENT field decodes to `None`, an explicit `null` to `Some(None)`, and a
+/// value to `Some(Some(v))` — the null-vs-absent distinction the spec's
+/// clear-to-NULL op depends on.
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: Deserializer<'de>,
+{
+    Deserialize::deserialize(de).map(Some)
+}
 
 /// The committed fixture spec — the single source driving both ports.
 #[derive(Deserialize)]
 struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
+    /// P4.D135: `profileId -> the updatedAt it held immediately before the
+    /// delete-cascade op`. See [`normalize_cascade_stamps`].
+    #[serde(rename = "cascadeReleased", default)]
+    cascade_released: std::collections::BTreeMap<String, Value>,
     ops: Vec<Op>,
+}
+
+/// Placeholder the wall-clock `updatedAt` v4's `updateMany` stamps on every row
+/// the delete-cascade releases — but only after PROVING it moved.
+///
+/// v4 releases through the base repo's `updateMany`, which always folds
+/// `updatedAt: getCurrentTimestamp()` into the `$set`
+/// (`base.repository.ts:513-527`). Neither side can pin that clock, so the
+/// value itself is not comparable; its *movement* is, and a port that released
+/// the column without the stamp would otherwise pass. So each released row is
+/// asserted to have left its pinned pre-delete timestamp, and only then
+/// collapsed to `<released>` — the `normalize_duration_ms` idiom.
+///
+/// `$comment` keys in the spec map are skipped.
+fn normalize_cascade_stamps(
+    rows: &mut Value,
+    released: &std::collections::BTreeMap<String, Value>,
+    side: &str,
+) {
+    let Some(rows) = rows.as_array_mut() else {
+        return;
+    };
+    for row in rows {
+        let Some(obj) = row.as_object_mut() else {
+            continue;
+        };
+        let Some(id) = obj.get("id").and_then(Value::as_str).map(str::to_string) else {
+            continue;
+        };
+        let Some(before) = released.get(&id).and_then(Value::as_str) else {
+            continue;
+        };
+        let now = obj.get("updatedAt").and_then(Value::as_str).unwrap_or("");
+        assert_ne!(
+            now, before,
+            "{side}: profile {id} was released by the delete cascade, so its \
+             updatedAt must have moved off {before} (v4's updateMany always \
+             stamps it)"
+        );
+        assert!(
+            now.ends_with('Z') && now.len() == 24,
+            "{side}: profile {id}'s released updatedAt is not an ISO stamp: {now:?}"
+        );
+        obj.insert("updatedAt".into(), Value::String("<released>".into()));
+    }
 }
 
 #[derive(Deserialize)]
@@ -92,6 +160,14 @@ struct CreateData {
     multi_character_prefill: Option<bool>,
     #[serde(rename = "modelClass")]
     model_class: Option<String>,
+    /// P4.D135: the 4.10 understudy. `default` so the pre-existing ops (which
+    /// predate the column) keep meaning "the create input never named it" —
+    /// which for this pair is the same row as writing the default, because
+    /// generateDDL and the migration agree on both defaults.
+    #[serde(rename = "fallbackProfileId", default)]
+    fallback_profile_id: Option<String>,
+    #[serde(rename = "allowTierFallback", default)]
+    allow_tier_fallback: bool,
     #[serde(rename = "maxContext")]
     max_context: Option<f64>,
     #[serde(rename = "maxTokens")]
@@ -158,6 +234,17 @@ struct UpdateData {
     multi_character_prefill: Option<bool>,
     #[serde(default, rename = "modelClass")]
     model_class: Option<String>,
+    /// P4.D135: double-option so the corpus can express BOTH "leave the
+    /// understudy alone" (key absent) and "clear it to SQL NULL" (an explicit
+    /// `null`) — the arm v4's PUT reaches through its `null | ''` branch.
+    #[serde(
+        default,
+        rename = "fallbackProfileId",
+        deserialize_with = "double_option"
+    )]
+    fallback_profile_id: Option<Option<String>>,
+    #[serde(default, rename = "allowTierFallback")]
+    allow_tier_fallback: Option<bool>,
     #[serde(default, rename = "maxContext")]
     max_context: Option<f64>,
     #[serde(default, rename = "maxTokens")]
@@ -255,6 +342,8 @@ fn connection_profiles_tier2_matches_oracle() {
                             // explicit NULL, and neither does this corpus.
                             multi_character_prefill: data.multi_character_prefill.map(Some),
                             model_class: data.model_class.clone(),
+                            fallback_profile_id: data.fallback_profile_id.clone(),
+                            allow_tier_fallback: data.allow_tier_fallback,
                             max_context: data.max_context,
                             max_tokens: data.max_tokens,
                             is_dangerous_compatible: data.is_dangerous_compatible,
@@ -294,6 +383,8 @@ fn connection_profiles_tier2_matches_oracle() {
                                 parameters: data.parameters.clone(),
                                 multi_character_prefill: data.multi_character_prefill,
                                 model_class: data.model_class.clone(),
+                                fallback_profile_id: data.fallback_profile_id.clone(),
+                                allow_tier_fallback: data.allow_tier_fallback,
                                 max_context: data.max_context,
                                 max_tokens: data.max_tokens,
                                 is_dangerous_compatible: data.is_dangerous_compatible,
@@ -319,11 +410,15 @@ fn connection_profiles_tier2_matches_oracle() {
         }
     }
 
-    let got = writer
+    let mut got = writer
         .dump_table_json("connection_profiles", "id")
         .expect("dump connection_profiles");
 
     let _ = std::fs::remove_file(&work);
+
+    let mut oracle = oracle;
+    normalize_cascade_stamps(&mut got["rows"], &spec.cascade_released, "rust");
+    normalize_cascade_stamps(&mut oracle["rows"], &spec.cascade_released, "oracle");
 
     // Structural diff: table + columns + rows must match (ignore the oracle's
     // "case" label). assert_eq on serde_json::Value is order-independent for

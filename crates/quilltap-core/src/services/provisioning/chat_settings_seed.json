@@ -39,7 +39,7 @@
     "avatarDisplayMode": "ALWAYS",
     "avatarDisplayStyle": "CIRCULAR",
     "tagStyles": "{}",
-    "cheapLLMSettings": "{\"strategy\":\"PROVIDER_CHEAPEST\",\"fallbackToLocal\":true,\"embeddingProvider\":\"OPENAI\"}",
+    "cheapLLMSettings": "{\"strategy\":\"PROVIDER_CHEAPEST\",\"fallbackToLocal\":true,\"embeddingProvider\":\"OPENAI\",\"allowCheapFallback\":false}",
     "imageDescriptionProfileId": null,
     "uncensoredImageDescriptionProfileId": null,
     "defaultRoleplayTemplateId": null,

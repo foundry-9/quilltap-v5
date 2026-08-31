@@ -596,6 +596,20 @@ function edgeCases(): Case[] {
       }),
     },
     {
+      name: 'fallback_understudy_links',
+      note: "P4.D135: fallbackProfileId points at another row in the SAME table, so it rides remapFields alongside id. The memoizer is lazy and consistent, so a FORWARD reference (cp-a names cp-b, which appears after it) resolves to the same new id as cp-b's own — the trap the reconcile pass exists for on the import side. A dangling reference mints an id for a row that is not there (v4 remaps the value, it does not check it); a self-reference collapses to the row's own new id; an absent key is untouched, and so is an explicit null.",
+      targetUserId: t,
+      data: bag({
+        connectionProfiles: [
+          { id: 'cp-a', apiKeyId: 'ak-1', fallbackProfileId: 'cp-b', tags: [] },
+          { id: 'cp-b', apiKeyId: null, fallbackProfileId: 'cp-missing', tags: [] },
+          { id: 'cp-c', fallbackProfileId: 'cp-c', tags: [] },
+          { id: 'cp-d', fallbackProfileId: null, tags: [] },
+          { id: 'cp-e', tags: [] },
+        ],
+      }),
+    },
+    {
       name: 'user_id_position',
       note: 'trap 1: an EXISTING userId keeps its position with the new value; an absent one is APPENDED',
       targetUserId: t,

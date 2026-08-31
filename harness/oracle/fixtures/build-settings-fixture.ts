@@ -45,6 +45,11 @@ const SPEC = {
   profiles: {
     gpt: '5e400000-0000-4000-8000-000000000001',
     claude: '5e400000-0000-4000-8000-000000000002',
+    // P4.D135: a COURIER profile. The fallback route's one target-shape refusal
+    // is "a Courier profile cannot be used as a fallback", and no case can
+    // reach it without a courier row already in the table (each case runs on a
+    // fresh copy, so one case cannot set up another's world).
+    courier: '5e400000-0000-4000-8000-000000000003',
   },
   providerModels: {
     a: '5e600000-0000-4000-8000-000000000001',
@@ -219,6 +224,30 @@ async function main() {
       tags: [],
     } as never,
     { id: SPEC.profiles.claude, createdAt: TS, updatedAt: TS } as never,
+  );
+  // P4.D135: Claude NAMES GPT as its understudy, so the delete-cascade case
+  // (`cp_delete_understudy`) has something to release. Seeded rather than set
+  // by an earlier case, because every case starts from a fresh fixture copy.
+  await repos.connections.update(SPEC.profiles.claude, {
+    fallbackProfileId: SPEC.profiles.gpt,
+    updatedAt: TS,
+  } as never);
+  await repos.connections.create(
+    {
+      userId: USER_A,
+      name: 'Carrier Pigeon',
+      provider: 'COURIER',
+      transport: 'courier',
+      apiKeyId: null,
+      baseUrl: null,
+      modelName: 'Manual (clipboard)',
+      parameters: {},
+      isDefault: false,
+      isCheap: false,
+      sortIndex: 2,
+      tags: [],
+    } as never,
+    { id: SPEC.profiles.courier, createdAt: TS, updatedAt: TS } as never,
   );
 
   // provider_models — cached OPENAI rows.

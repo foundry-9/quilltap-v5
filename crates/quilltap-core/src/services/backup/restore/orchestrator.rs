@@ -272,6 +272,9 @@ fn restore_on_writer(
                     provider = %s(p, "provider"),
                     seeded_multi_character_prefill = seeded.seeded_multi_character_prefill,
                     seeded_supports_image_upload = seeded.seeded_supports_image_upload,
+                    seeded_fallback_profile_id = seeded.seeded_fallback_profile_id,
+                    seeded_allow_tier_fallback = seeded.seeded_allow_tier_fallback,
+                    dropped_self_reference = seeded.dropped_self_reference,
                     "Seeded connection-profile columns the archive predates"
                 );
             }
@@ -310,6 +313,11 @@ fn restore_on_writer(
                 // 400s. That is bug 103.
                 multi_character_prefill: Some(seeded.multi_character_prefill),
                 model_class: os(p, "modelClass"),
+                // v4 `65f5021c8`: carried through when the archive has them,
+                // otherwise the neutral "no understudy / no tier pick". A
+                // self-reference is dropped — see the seeder.
+                fallback_profile_id: seeded.fallback_profile_id.clone(),
+                allow_tier_fallback: seeded.allow_tier_fallback,
                 max_context: on(p, "maxContext"),
                 max_tokens: on(p, "maxTokens"),
                 is_dangerous_compatible: b(p, "isDangerousCompatible", false),

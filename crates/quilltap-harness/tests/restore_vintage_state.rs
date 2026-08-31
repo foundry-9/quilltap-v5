@@ -516,6 +516,75 @@ fn annotations_restore_onto_a_vintage_instance_without_colliding() {
     );
 }
 
+/// **P4.D135 — the fixture-vintage repair tripwire.**
+///
+/// This whole family's value is that the committed instance is v4's REAL
+/// migration chain replayed, so it moves when v4's migrations move. Every time
+/// v4 adds a column the chain must be replayed again — and until it is, the
+/// symptom is a pile of `has no column named …` warnings from
+/// `no_restore_phase_names_a_column_a_migrated_table_lacks`, which reads like a
+/// port defect rather than a stale fixture. (That is exactly how `65f5021c8`'s
+/// two columns first surfaced.)
+///
+/// So the vintage is asserted directly, by name: a fixture that predates the
+/// migration fails HERE first, with a sentence that says what to re-run.
+#[test]
+fn the_vintage_fixture_carries_the_columns_v4s_chain_adds() {
+    let (_root, instance) = vintage_instance("vintagecolumns");
+    let conn = Connection::open(instance.join("quilltap.db")).unwrap();
+    conn.pragma_update(
+        None,
+        "key",
+        format!(
+            "x'{}'",
+            quilltap_core::dbkey::pepper_b64_to_key_hex(TEST_PEPPER).unwrap()
+        ),
+    )
+    .unwrap();
+
+    // (table, column, the migration that adds it) — the tail of v4's chain that
+    // this port has absorbed. Extend on every D23 re-dump that adds a column.
+    let expected: &[(&str, &str, &str)] = &[
+        (
+            "connection_profiles",
+            "multiCharacterPrefill",
+            "add-profile-multi-character-prefill-field-v1",
+        ),
+        (
+            "connection_profiles",
+            "fallbackProfileId",
+            "add-profile-fallback-fields-v1",
+        ),
+        (
+            "connection_profiles",
+            "allowTierFallback",
+            "add-profile-fallback-fields-v1",
+        ),
+    ];
+
+    let mut missing: Vec<String> = Vec::new();
+    for (table, column, migration) in expected {
+        let present: bool = conn
+            .prepare(&format!(
+                "SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?1"
+            ))
+            .and_then(|mut st| st.exists([column]))
+            .unwrap_or(false);
+        if !present {
+            missing.push(format!("{table}.{column} (added by {migration})"));
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "the committed migration-vintage fixture is STALE — it is missing {}.\n\
+         Re-replay v4's chain from a pinned worktree:\n  \
+         QT_FIXTURE_MV_DIR=<worktree>/crates/quilltap-web/tests/fixtures/migration-vintage \\\n    \
+         node --import tsx <worktree>/harness/oracle/fixtures/build-migration-vintage-fixture.ts",
+        missing.join(", ")
+    );
+}
+
 // ── P4.D126: bug 103's `multiCharacterPrefill` half (v4 `e000d6bfc`) ─────────
 
 /// The one place bug 103's headline half is observable at all.

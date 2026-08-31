@@ -136,9 +136,22 @@ pub fn remap_backup_data(
     // Remap characters
     let characters = each(&data.characters, |c| remap_character(r, c, target_user_id));
 
-    // Remap connection profiles
+    // Remap connection profiles.
+    //
+    // `fallbackProfileId` (v4 `65f5021c8`) points at another row in this same
+    // table, so it has to be remapped alongside `id` or a restored profile's
+    // understudy would name a uuid that no longer exists. The remapper is lazy
+    // and consistent — the same old id always yields the same new one — so a
+    // profile naming an understudy that appears later in the array is remapped
+    // correctly either way.
     let connection_profiles = each(&data.connection_profiles, |p| {
-        chain_owned(r, p, &["id", "apiKeyId"], &["tags"], target_user_id)
+        chain_owned(
+            r,
+            p,
+            &["id", "apiKeyId", "fallbackProfileId"],
+            &["tags"],
+            target_user_id,
+        )
     });
 
     // Remap image profiles

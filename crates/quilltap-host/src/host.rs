@@ -960,6 +960,18 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             quilltap_core::db::connection_profiles_prefill_repair::
                 ensure_connection_profiles_prefill_column(main)?;
             // === end P4.D79 ===
+            // === P4.D135 (v4 `65f5021c8`, migration
+            // `add-profile-fallback-fields-v1`) ===
+            // The `connection_profiles` fallback-chain pair
+            // (`fallbackProfileId` + `allowTierFallback`), re-homed from v4's
+            // migration runner for the same reason. Load-bearing on an existing
+            // instance: without the columns the profile PUT's
+            // `UPDATE … SET fallbackProfileId = ?` would 500, and no chain
+            // could ever name an understudy. v4's migration `dependsOn`s the
+            // prefill one, so it sits here, after it.
+            quilltap_core::db::connection_profiles_fallback_repair::
+                ensure_connection_profiles_fallback_columns(main)?;
+            // === end P4.D135 ===
             // === P4.D97 (v4 `97d2fcb5`, migration
             // `retire-prefill-on-thinking-profiles-v1`) ===
             // The data pass that turns the multi-character [Name] prefill off

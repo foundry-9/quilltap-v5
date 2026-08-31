@@ -86,9 +86,156 @@ fn connection_profile_legacy_fields_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
     let mut recorded_non_boolean = 0usize;
+    let mut fallback_cases = 0usize;
+    let mut recorded_fallback_non_scalar = 0usize;
+    let mut self_reference_rows = 0usize;
 
     for case in &cases {
         let id = case["id"].as_str().expect("case id");
+
+        // ── P4.D135: the 4.10 fallback-chain block ──────────────────────────
+        if case["kind"].as_str() == Some("fallback") {
+            fallback_cases += 1;
+            let record_id = &case["recordId"];
+            let stored_fallback = &case["storedFallback"];
+            let stored_tier = &case["storedTier"];
+
+            let mut profile = Map::new();
+            profile.insert("name".into(), json!("A Profile"));
+            profile.insert("provider".into(), json!("OPENAI"));
+            if !is_absent(record_id) {
+                profile.insert("id".into(), record_id.clone());
+            }
+            if !is_absent(stored_fallback) {
+                profile.insert("fallbackProfileId".into(), stored_fallback.clone());
+            }
+            if !is_absent(stored_tier) {
+                profile.insert("allowTierFallback".into(), stored_tier.clone());
+            }
+            let got = seed_legacy_connection_profile_fields(&Value::Object(profile));
+
+            let mut diffs: Vec<String> = Vec::new();
+
+            // v4's helper returns a copy: BOTH keys must end up present.
+            for key in ["fallbackProfileId", "allowTierFallback"] {
+                if is_absent(&case[key]) {
+                    diffs.push(format!("    oracle dropped `{key}` from its copy"));
+                }
+            }
+            for (key, got_flag) in [
+                ("seededFallbackProfileId", got.seeded_fallback_profile_id),
+                ("seededAllowTierFallback", got.seeded_allow_tier_fallback),
+            ] {
+                if case[key] != json!(got_flag) {
+                    diffs.push(format!(
+                        "    {key}: rust {got_flag} != oracle {}",
+                        case[key]
+                    ));
+                }
+            }
+
+            // `fallbackProfileId`: exact where v4's value is a string or null.
+            // A carried NON-STRING (the corpus's stored `7`) is passed through
+            // untouched by v4 and read as absent by v5 — the same RECORDED
+            // divergence class as `multiCharacterPrefill`'s non-boolean, and
+            // guarded in BOTH directions the same way.
+            let oracle_fallback = &case["fallbackProfileId"];
+            if oracle_fallback.is_string() || oracle_fallback.is_null() {
+                let rust = got
+                    .fallback_profile_id
+                    .clone()
+                    .map(Value::String)
+                    .unwrap_or(Value::Null);
+                // v5 folds the empty string to None (its `os()` reader would
+                // too); v4 keeps it. Both write the same NULL cell, so the
+                // comparison is on the CELL, not the in-memory shape.
+                let oracle_cell = if oracle_fallback.as_str() == Some("") {
+                    Value::Null
+                } else {
+                    oracle_fallback.clone()
+                };
+                if rust != oracle_cell {
+                    diffs.push(format!(
+                        "    fallbackProfileId: rust {rust} != oracle {oracle_fallback}"
+                    ));
+                }
+            } else {
+                recorded_fallback_non_scalar += 1;
+                if got.fallback_profile_id.is_some() {
+                    diffs.push(format!(
+                        "    fallbackProfileId: the RECORDED divergence has CLOSED — v5 now \
+                         carries the non-string {oracle_fallback} as {:?}. Retire the carve-out.",
+                        got.fallback_profile_id
+                    ));
+                }
+                if *oracle_fallback != *stored_fallback {
+                    diffs.push(format!(
+                        "    fallbackProfileId: v4 no longer passes a non-string through \
+                         ({stored_fallback} became {oracle_fallback}) — the recorded \
+                         divergence needs re-measuring, not deleting."
+                    ));
+                }
+            }
+
+            // `allowTierFallback`: same shape, one type over.
+            let oracle_tier = &case["allowTierFallback"];
+            if oracle_tier.is_boolean() {
+                if *oracle_tier != json!(got.allow_tier_fallback) {
+                    diffs.push(format!(
+                        "    allowTierFallback: rust {} != oracle {oracle_tier}",
+                        got.allow_tier_fallback
+                    ));
+                }
+            } else {
+                recorded_fallback_non_scalar += 1;
+                if got.allow_tier_fallback {
+                    diffs.push(format!(
+                        "    allowTierFallback: the RECORDED divergence has CLOSED — v5 now \
+                         carries the non-boolean {oracle_tier} as true. Retire the carve-out."
+                    ));
+                }
+                if *oracle_tier != *stored_tier {
+                    diffs.push(format!(
+                        "    allowTierFallback: v4 no longer passes a non-boolean through \
+                         ({stored_tier} became {oracle_tier}) — re-measure."
+                    ));
+                }
+            }
+
+            // The self-reference strip, and its JS-TRUTHY gate: the empty
+            // string is NOT compared, so an empty id + an empty fallback is a
+            // NON-strip on both sides.
+            let is_self_reference = stored_fallback.is_string()
+                && !is_absent(stored_fallback)
+                && !is_absent(record_id)
+                && stored_fallback.as_str() != Some("")
+                && stored_fallback == record_id;
+            if is_self_reference {
+                self_reference_rows += 1;
+                if !oracle_fallback.is_null() {
+                    diffs.push(format!(
+                        "    v4 no longer strips a self-referential understudy \
+                         ({oracle_fallback}) — re-measure the rule."
+                    ));
+                }
+                if !got.dropped_self_reference {
+                    diffs.push("    rust did not record the self-reference drop".into());
+                }
+            } else if got.dropped_self_reference {
+                diffs.push(format!(
+                    "    rust dropped a self-reference that is not one \
+                     (stored {stored_fallback}, id {record_id})"
+                ));
+            }
+
+            if diffs.is_empty() {
+                ran += 1;
+            } else {
+                failed.push(format!("{id}:\n{}", diffs.join("\n")));
+            }
+            continue;
+        }
+
         let provider = &case["provider"];
         let stored_image = &case["storedImage"];
         let stored_prefill = &case["storedPrefill"];
@@ -200,13 +347,35 @@ fn connection_profile_legacy_fields_matches_oracle() {
          divergence is no longer measured"
     );
     assert!(
-        cases.len() - recorded_non_boolean > 100,
+        cases.len() - recorded_non_boolean - fallback_cases > 100,
         "the corpus lost its reachable-domain rows ({} of {})",
-        cases.len() - recorded_non_boolean,
+        cases.len() - recorded_non_boolean - fallback_cases,
         cases.len()
     );
+    // P4.D135 shape assertions: the fallback block must still be there, must
+    // still carry the non-scalar rows its recorded divergence is about, and
+    // must still exercise the self-reference strip. A corpus that lost any of
+    // the three would go green having measured nothing.
+    assert!(
+        fallback_cases > 50,
+        "the corpus lost its fallback-pair block ({fallback_cases} rows)"
+    );
+    assert!(
+        recorded_fallback_non_scalar > 0,
+        "the corpus lost its non-scalar fallback rows — the recorded divergence \
+         is no longer measured"
+    );
+    assert!(
+        self_reference_rows > 0,
+        "the corpus lost its self-referential-understudy rows"
+    );
     eprintln!(
-        "OK {} cases ({} of them the recorded non-boolean divergence)",
-        ran, recorded_non_boolean
+        "OK {} cases ({} of them the recorded non-boolean divergence; {} fallback \
+         rows, {} of them the recorded non-scalar divergence, {} self-references)",
+        ran,
+        recorded_non_boolean,
+        fallback_cases,
+        recorded_fallback_non_scalar,
+        self_reference_rows
     );
 }

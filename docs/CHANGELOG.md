@@ -165,6 +165,75 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — feat(db): the connection-profile fallback columns, their CRUD, and both id-remap paths (P4.D135 unit 1)
+
+_Versions: core 0.0.702, harness 0.0.604, host 0.0.84._
+
+The substrate half of v4's provider/model fallback chains (`65f5021c8`): the two
+`connection_profiles` columns end to end, before the engine that reads them.
+
+`fresh_schema.json` is re-dumped from the pin's live `generateDDL`. It moved in
+two places, only one of which the work order predicted: `connection_profiles`
+gains `"fallbackProfileId" TEXT` + `"allowTierFallback" INTEGER DEFAULT 0`, and
+`chat_settings`'s `cheapLLMSettings` DEFAULT grows `"allowCheapFallback":false`.
+The column POSITION is not where the order said either — v4's hand-written
+`sqlite-initial-schema.ts` inserts the pair after `multiCharacterPrefill`, but
+generateDDL (the shape a fresh instance actually gets) places it after
+`modelClass`, which is the Zod declaration order. The re-dumped
+`schema-key-order.json` agrees, and the export key-order guard now pins the slot
+by name.
+
+Unusually, the two DDL shapes AGREE on the defaults here (no DEFAULT on the TEXT
+column, `DEFAULT 0` on the INTEGER one), so omitting a column and writing its
+default land the same cell — which is why the create names both unconditionally
+instead of carrying `multiCharacterPrefill`'s three-state omission. The boot
+ensure (`db::connection_profiles_fallback_repair`) reproduces v4's migration
+`add-profile-fallback-fields-v1` including its per-column guard, so a
+half-migrated table heals on the next boot.
+
+Also landed: the create/update route gates byte-for-byte (the self-reference and
+Courier refusals, the non-boolean 400s, and v4's guard ORDER — the create checks
+`allowTierFallback` before it checks that the profile has a name at all); the
+cleared-null echo for `fallbackProfileId`; the delete cascade, which releases the
+deleted profile from every other profile that named it — **and stamps their
+`updatedAt`, because v4 releases through `updateMany`, which always folds the
+timestamp into its `$set`**; `seedLegacyConnectionProfileFields`'s two new seeds
+plus its self-reference strip (whose gate is JS-truthy, so an empty string is
+neither compared nor cleared); `fallbackProfileId` in the backup remapper's
+scalar list; and its remap in the `.qtap` reconcile pass, where a forward
+reference — a profile naming an understudy that lands later in the bundle — is
+the whole reason the pass exists.
+
+`allowCheapFallback` lands as far as the settings substrate: the seed row, the
+`CheapLLMSettingsSchema` normalizer (appended LAST, as v4 appended it to the
+schema), and the chat-settings route's boolean guard, which unlike its two enum
+neighbours is not truthiness-gated and so refuses an explicit `null`.
+
+Differentials: `provisioning_equivalence` (the D23 tripwire fired on both moved
+defaults, as designed), `connection_profiles_tier2_equivalence` (corpus 11 → 18
+ops, incl. the two-namer delete cascade with a movement-asserting normalizer for
+the wall-clock release stamp), `connection_profile_legacy_fields_equivalence`
+(306 → 414 cases, a separate `fallback` block so every pre-existing row stays
+byte-identical), `settings_routes_equivalence` (26 → 43 connection-profile arms
++ three `allowCheapFallback` arms; the fixture gains a Courier profile and seeds
+one profile naming another), `backup_uuid_remap_equivalence` (a new
+`fallback_understudy_links` corpus case), and `restore_vintage_state` (the
+committed migration-vintage instance replayed at the pin, plus a new tripwire
+that names a stale fixture directly instead of leaving it to surface as a pile
+of `has no column named` warnings).
+
+Two committed fixtures needed the new INSERT: the migration-vintage instance was
+re-replayed from the pin (it exists to move when v4's migrations move), and
+`web_search_runner_wire`'s pre-4.10 `chat-admin-main.db` seed now runs the boot
+ensure first, the same repaired-at-boot idiom the vintage family uses for
+`linkGroupId`.
+
+The `.qtap` reconcile remap is pinned at the UNIT tier: `system_import_state`'s
+connection-profile leg has been vacuous since v4 `aa464abf` (the committed
+`system-data-main.db` predates `multiCharacterPrefill`, so both sides fail
+identically and the arms stay green on matching failures), and the two new
+columns land in the same hole. Widening that fixture is cross-lane; the gap is
+named in both files.
 
 #### 2026-08-31 — docs(orders): write the drift catch-up round 1 of 2 — P4.D134 ∥ (P4.D135 → P4.D136 stacked) ∥ P4.D137
 
