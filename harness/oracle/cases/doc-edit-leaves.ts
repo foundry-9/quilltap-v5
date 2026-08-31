@@ -24,6 +24,11 @@ import {
   findUniqueMatch,
 } from '@/lib/doc-edit/diacritics';
 import {
+  TYPOGRAPHIC_FOLDINGS,
+  foldTypography,
+  hasTypographicVariants,
+} from '@/lib/doc-edit/typographic-folding';
+import {
   detectMimeFromExtension,
   isJsonMime,
   isJsonlMime,
@@ -93,6 +98,176 @@ for (const [id, haystack, needle, norm, cs] of [
     id,
     all: findAllMatches(haystack, needle, options),
     unique: findUniqueMatch(haystack, needle, options),
+  });
+}
+
+// ---- typographic folding (bug 109, v4 487ae16b1) ----
+// The fold table itself, as ordered [key, value] pairs so the port's
+// transcription is compared entry-for-entry AND in order (the byte-exact
+// static-data transcription rule; ~26 rows, small enough to transcribe).
+rows.push({
+  kind: 'typographic-fold-table',
+  id: 'table',
+  entries: Object.entries(TYPOGRAPHIC_FOLDINGS),
+});
+
+for (const [id, text] of [
+  ['quotes', '‘a’ “b”'],
+  ['dashes', 'a–b—c−d'],
+  ['ellipsis', 'wait… now'],
+  ['spaces', 'a\u00A0b\u202Fc\u2003d'],
+  ['untouched', '\u00ABmot\u00BB\u200B\u00AD'],
+  ['plain-ascii', "plain ascii's fine"],
+  ['curly-apostrophe', 'curly’s not'],
+  ['primes', '′ and ″'],
+  ['empty', ''],
+  ['astral', '😀’'],
+] as Array<[string, string]>) {
+  rows.push({
+    kind: 'typographic-fold',
+    id,
+    text,
+    folded: foldTypography(text),
+    hasVariants: hasTypographicVariants(text),
+  });
+}
+
+// findAllMatches / findUniqueMatch with the fold in play. Inputs are carried in
+// the row so the corpus has ONE definition; the answers are still v4's.
+for (const [id, haystack, needle, options] of [
+  // The real failing passage from the instance bug 109 was found on.
+  [
+    'veyra-no-fold-default',
+    'Cometary reservoir: a few short-period comets dipping inside Veyra-5’s orbit.\n',
+    "dipping inside Veyra-5's orbit.",
+    {},
+  ],
+  [
+    'veyra-fold-rescues',
+    'Cometary reservoir: a few short-period comets dipping inside Veyra-5’s orbit.\n',
+    "dipping inside Veyra-5's orbit.",
+    { foldTypography: true },
+  ],
+  ['em-dash-by-hyphen', 'the rail is a notary — not a warden', 'notary - not', { foldTypography: true }],
+  ['em-dash-exact', 'the rail is a notary — not a warden', 'notary — not', { foldTypography: true }],
+  // The one fold that is not one-to-one: the map back must survive it.
+  ['ellipsis-mapback', 'she paused… then spoke', 'paused... then', { foldTypography: true }],
+  ['ellipsis-mid-haystack', 'a… b… c', 'b... c', { foldTypography: true }],
+  ['ellipsis-in-needle', 'she paused... then spoke', 'paused… then', { foldTypography: true }],
+  ['nbsp', 'Chapter\u00A014 begins here', 'Chapter 14', { foldTypography: true }],
+  ['double-quotes', 'she called it “thin” today', 'called it "thin"', { foldTypography: true }],
+  // Exact first: a file with both spellings answers with the caller's.
+  [
+    'both-spellings-prefers-exact',
+    "first Veyra-5's orbit, then Veyra-5’s orbit",
+    "Veyra-5's orbit",
+    { foldTypography: true },
+  ],
+  ['folded-ambiguous', 'hers’ and hers’ again', "hers' a", { foldTypography: true }],
+  ['multiple-exact-never-folds', 'alpha beta alpha', 'alpha', { foldTypography: true }],
+  ['composes-with-diacritics', 'Nimuë’s letter', "Nimue's letter", { foldTypography: true }],
+  [
+    'honours-normalize-false',
+    'Nimuë’s letter',
+    "Nimue's letter",
+    { foldTypography: true, normalizeDiacritics: false },
+  ],
+  ['findall-off-by-default', 'a’b', "a'b", {}],
+  ['grep-all-spellings', "one Veyra-5's, two Veyra-5’s, three Veyra-5’s", "Veyra-5's", { foldTypography: true }],
+  ['fold-ci-independent', 'A’B', "a'b", { foldTypography: true, caseSensitive: false }],
+  ['fold-without-diacritics', 'café’s', "cafe's", { foldTypography: true, normalizeDiacritics: false }],
+  ['empty-needle-with-fold', 'a’b', '', { foldTypography: true }],
+] as Array<[string, string, string, Record<string, boolean>]>) {
+  rows.push({
+    kind: 'typographic-match',
+    id,
+    haystack,
+    needle,
+    options,
+    all: findAllMatches(haystack, needle, options),
+    unique: findUniqueMatch(haystack, needle, options),
+  });
+}
+
+// v4's replay shape (bug 109's "How to verify" / the commit's closing paragraph):
+// five typographic failures now resolve to a UNIQUE match, and the genuinely
+// stale find texts still miss. The instance log is private, so this reproduces
+// the SHAPE over a synthetic document carrying one member of each fold family.
+const REPLAY_FILE = [
+  '# Hestia — survey notes',
+  '',
+  '## Cometary reservoir',
+  '',
+  'A few short-period comets dip inside Veyra-5’s orbit each decade.',
+  'The reservoir is “thin but persistent” by every measure we have.',
+  '',
+  '## Open items',
+  '',
+  '- Family vote — not scheduled.',
+  '- Sylvain’s first entry (his tempo).',
+  '- She paused… then filed the addendum.',
+  '- Chapter\u00A014 begins the second survey.',
+  '',
+].join('\n');
+
+// Five valid edits, refused before the fold, all in the same direction the bug
+// records: the file curly, the find text straight.
+const REPLAY_TYPOGRAPHIC: Array<[string, string]> = [
+  ['apostrophe', "dip inside Veyra-5's orbit each decade."],
+  ['double-quote', 'is "thin but persistent" by every'],
+  ['em-dash', '- Family vote - not scheduled.'],
+  ['ellipsis', '- She paused... then filed the addendum.'],
+  ['nbsp', '- Chapter 14 begins the second survey.'],
+];
+
+// Twenty-five genuinely stale find texts: the fold must not rescue any of them.
+const REPLAY_STALE: string[] = [
+  "dip outside Veyra-5's orbit each decade.",
+  'A dozen short-period comets dip inside',
+  '## Cometary reservoirs',
+  'The reservoir is thick and fleeting',
+  '- Family vote scheduled for Tuesday.',
+  "- Sylvain's second entry (his tempo).",
+  "- Sylvain's first entry (her tempo).",
+  '- She paused, then filed the addendum.',
+  '- Chapter 15 begins the second survey.',
+  '- Chapter 14 begins the third survey.',
+  '# Hestia - field notes',
+  '## Closed items',
+  'orbit each century.',
+  'by every metric we have.',
+  'begins the first survey.',
+  'then filed the amendment.',
+  'short-period asteroids',
+  "Veyra-6's orbit",
+  'not yet scheduled.',
+  '(his cadence).',
+  'a reservoir nobody surveyed',
+  'the addendum was withdrawn',
+  '- Marchpane volunteered.',
+  'the tempo he prefers',
+  'no comets at all',
+];
+
+// The document itself, emitted once so the corpus has ONE definition and the
+// port reads it from the row rather than transcribing it.
+rows.push({ kind: 'typographic-replay-file', id: 'file', file: REPLAY_FILE });
+
+for (const [id, needle] of REPLAY_TYPOGRAPHIC) {
+  rows.push({
+    kind: 'typographic-replay',
+    id: `resolves-${id}`,
+    needle,
+    unique: findUniqueMatch(REPLAY_FILE, needle, { foldTypography: true }),
+  });
+}
+for (let i = 0; i < REPLAY_STALE.length; i++) {
+  const needle = REPLAY_STALE[i];
+  rows.push({
+    kind: 'typographic-replay',
+    id: `stale-${String(i + 1).padStart(2, '0')}`,
+    needle,
+    unique: findUniqueMatch(REPLAY_FILE, needle, { foldTypography: true }),
   });
 }
 

@@ -15,6 +15,7 @@ pub mod markdown_parser;
 pub mod mime_registry;
 pub mod path_resolver;
 pub mod qtap_uri;
+pub mod typographic_folding;
 pub mod unified_diff;
 pub mod uri_producers;
 //

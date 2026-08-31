@@ -94357,3 +94357,109 @@ assertions moved into `const { … }` blocks — the stronger form, matching
 `build_context`'s idiom.
 
 Versions: core 0.0.712, harness 0.0.612.
+## P4.D137 — doc-edit argument guards + typographic folding (v4 `487ae16b1`, bugs 108/109)
+
+**Lane branch:** `claude/doc-edit-guards-typographic-folding-245289`. Oracle
+baseline `b121ac77f`; **lane pin at the TARGET commit `487ae16b1`**
+(`/tmp/qt-v4-pin-p4d137-487ae16b1`, three symlink classes, ledger §5.1). The §2
+freshness probe passed at lane start: v4 on `main` at `60e3c4a0a`, tree clean,
+both `main..` and `bugfix..` logs empty.
+
+### Unit 1 — the fold module + the rebuilt matcher (bug 109's pure half)
+
+**RED FIRST, before a line of port code.** The `doc-edit-leaves` oracle was
+regenerated from the pin and `doc_edit_leaves_equivalence` went red immediately
+on every pre-existing `diacritics-match` row — v4's `findUniqueMatch` now
+returns a `tier` v5's `UniqueMatch` had no field for:
+
+```
+assertion `left == right` failed: findUnique m-base-vs-accent
+  left: {"found": true, "index": 4, "length": 5}
+ right: {"found": true, "index": 4, "length": 5, "tier": "exact"}
+```
+
+**What landed.** `quilltap-core/src/doc_edit/typographic_folding.rs` is new: the
+25-entry table transcribed in v4's source order (quote family → `'`/`"`, dash
+family → `-`, `…` → `...`, the five non-breaking/wide spaces → U+0020), plus
+`fold_typographic_char` / `fold_typography` / `has_typographic_variants`.
+Zero-width characters and guillemets are excluded, and v4's reasons for both
+exclusions are carried as why-comments.
+
+`diacritics.rs` is a substantial rewrite, not a patch:
+
+- `DiacriticsMatchOptions` gains `fold_typography`, default **false**, so every
+  pre-existing caller keeps byte-exact semantics.
+- The searched string and the position map now come from ONE per-UTF-16-unit
+  function (`normalize_unit`, v4's `normalizeChar`), which is what makes a
+  length-changing fold map back correctly. **This closes the whole-string /
+  per-unit seam v5's own module header used to document** — v4's pre-`487ae16b1`
+  code had it too, and the commit closed it deliberately.
+- `find_unique_match` returns `MatchTier`: it runs **exact first and folds only
+  on a total miss**. More than one exact match is an answer, not a miss, and
+  never consults the fold — a file holding both `Veyra-5's` and `Veyra-5’s`
+  resolves to the spelling the caller typed rather than going ambiguous.
+- Both of v4's `logger.debug` lines are carried (`target: "quilltap::doc_edit"`).
+
+**No enablement in this unit.** All three tool call sites were updated
+mechanically to `fold_typography: false`; nothing folds until unit 2.
+
+**The differential.** `doc_edit_leaves_equivalence` grew four kinds over v4's
+REAL `lib/doc-edit` at the pin — 167 rows, all green:
+
+- `typographic-fold-table` — the table compared **entry-for-entry and in order**
+  (25 rows), so a dropped, reordered or mis-valued entry is a divergence.
+- `typographic-fold` — 10 `foldTypography`/`hasTypographicVariants` cases
+  including the deliberate non-folds (guillemets, ZWSP, soft hyphen) and an
+  astral pair.
+- `typographic-match` — 19 cases carrying their own haystack/needle/options, so
+  the corpus has one definition: the real Hestia passage from bug 109, the
+  em-dash pair proving both tiers, the ellipsis map-back (one character to
+  three), a mid-haystack ellipsis and the reverse direction, the no-break space,
+  double quotes, the both-spellings exact preference, folded-ambiguous vs
+  exact-ambiguous, composition with the diacritics fold, and
+  `normalizeDiacritics: false` alongside the fold.
+- `typographic-replay` — **v4's own replay shape as an executable assertion.**
+  The instance log is private, so the corpus reproduces the shape over a
+  synthetic document carrying one member of each fold family: five valid edits
+  refused before the fix now resolve uniquely, and twenty-five genuinely stale
+  find texts still miss. The harness asserts the `(5, 25)` split from the
+  ORACLE's answers, so a shrunken corpus cannot pass vacuously; shape floors
+  guard the other three kinds.
+
+**Corpus-craft note:** the first draft measured 6/24, not 5/25 — a "stale"
+needle `# Hestia - survey note` was in fact a legitimate typographic rescue of a
+truncated line (the file reads `# Hestia — survey notes`). v4 said so; the row
+was replaced rather than the assertion loosened.
+
+**Mutation proofs (four, each reverted by file backup):**
+
+| mutation | reddens |
+|---|---|
+| `exact.len() > 1` → `false` (drop the multi-exact short-circuit) | `findUnique multiple-exact-never-folds` |
+| the FIRST reading folds too (drop exact-first entirely) | `findUnique veyra-fold-rescues` — the tier flips |
+| `fold_typographic_char` stops answering for U+2014 | `foldTypography dashes` |
+| `build_normalization_map` pushes once per original unit (the pre-fix 1:1 shape) | `findAll ellipsis-mapback` — span 14 where v4 says 12 |
+
+A fifth mutation was run and came back **green, and is recorded as a
+non-discriminator**: rebuilding the searched string whole-string instead of
+per-unit changes nothing for this corpus, because the fold is per-character
+either way and the corpus deliberately excludes the decomposable-astral and
+length-changing-case-fold shapes where whole-string and per-unit NFD differ. The
+map-back proof is mutation 4, not that one.
+
+**Regen recipe (unit 1's oracle):**
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d137-487ae16b1
+cd "$PIN"   # NOT ~/source/quilltap-server — HEAD is 15 commits past the baseline
+LOG_LEVEL=error ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <worktree>/harness/oracle/cases/doc-edit-leaves.ts \
+  > /tmp/oracle-doc-edit-leaves.ndjson
+QT_ORACLE_DOC_EDIT_LEAVES=/tmp/oracle-doc-edit-leaves.ndjson \
+  cargo test -p quilltap-harness --test doc_edit_leaves_equivalence -- --nocapture
+```
+
+⚠ The case now imports `@/lib/doc-edit/typographic-folding`, which **does not
+exist at the `b121ac77f` baseline** — it can only be regenerated at
+`487ae16b1` or later. That is expected for a drift port and becomes moot when
+the round moves the baseline.

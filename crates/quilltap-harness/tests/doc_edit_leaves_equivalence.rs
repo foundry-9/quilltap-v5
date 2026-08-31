@@ -2,7 +2,12 @@
 //! field-by-field equivalence vs v4's REAL exports from
 //! lib/doc-edit/{diacritics, mime-registry, unified-diff, markdown-parser}.ts.
 //!
-//! Covers: NFD diacritics normalize + match (index/length UTF-16 remap), the MIME
+//! Covers: NFD diacritics normalize + match (index/length UTF-16 remap), the
+//! typographic fold (v4 bug 109 / `487ae16b1` — the table entry-for-entry and in
+//! ORDER, `foldTypography`/`hasTypographicVariants`, the two-tier
+//! `findUniqueMatch` incl. which tier answered, and v4's own replay shape: five
+//! typographic failures resolve, twenty-five genuinely stale find texts still
+//! miss), the MIME
 //! registry (detect / predicates / parse / serialize / validate), the hand-rolled
 //! unified diff, and the markdown heading ops + `serializeFrontmatter` /
 //! `updateFrontmatterInContent`. The V8 `JSON.parse` message text is a documented
@@ -31,6 +36,9 @@ use quilltap_core::doc_edit::mime_registry::{
     detect_mime_from_extension, is_json_family, is_json_mime, is_jsonl_mime, parse_content,
     serialize_content, validate_json, ParseResult,
 };
+use quilltap_core::doc_edit::typographic_folding::{
+    fold_typography, has_typographic_variants, TYPOGRAPHIC_FOLDINGS,
+};
 use quilltap_core::doc_edit::unified_diff::{format_autosave_notification, generate_unified_diff};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
@@ -47,6 +55,19 @@ fn opts(norm: bool, cs: bool) -> DiacriticsMatchOptions {
     DiacriticsMatchOptions {
         normalize_diacritics: norm,
         case_sensitive: cs,
+        fold_typography: false,
+    }
+}
+
+/// Build the options from the oracle row's `options` object, applying v4's
+/// defaults for every absent key (`normalizeDiacritics`/`caseSensitive` true,
+/// `foldTypography` false).
+fn opts_from_row(v: &Value) -> DiacriticsMatchOptions {
+    let flag = |k: &str, dflt: bool| v.get(k).and_then(Value::as_bool).unwrap_or(dflt);
+    DiacriticsMatchOptions {
+        normalize_diacritics: flag("normalizeDiacritics", true),
+        case_sensitive: flag("caseSensitive", true),
+        fold_typography: flag("foldTypography", false),
     }
 }
 
@@ -60,10 +81,14 @@ fn matches_json(m: &[(usize, usize)]) -> Value {
 
 fn unique_json(u: UniqueMatch) -> Value {
     match u {
-        UniqueMatch::Found { index, length } => {
-            json!({ "found": true, "index": index, "length": length })
+        UniqueMatch::Found {
+            index,
+            length,
+            tier,
+        } => json!({ "found": true, "index": index, "length": length, "tier": tier.as_str() }),
+        UniqueMatch::NotFound { count, tier } => {
+            json!({ "found": false, "count": count, "tier": tier.as_str() })
         }
-        UniqueMatch::NotFound { count } => json!({ "found": false, "count": count }),
     }
 }
 
@@ -124,6 +149,16 @@ fn doc_edit_leaves_match_oracle() {
     let simple = "# A\nold body\n## B\nkeep\n";
 
     let mut count = 0usize;
+    // Bug 109 (v4 `487ae16b1`): the replay shape is an assertion of its own —
+    // v4's five typographic failures must RESOLVE and its genuinely stale find
+    // texts must still MISS. Counted from the ORACLE's answers, so the claim
+    // "v4 replays 5/25" is executable and a shrunken corpus cannot pass.
+    let mut replay_file: Option<String> = None;
+    let mut replay_resolved = 0usize;
+    let mut replay_missed = 0usize;
+    let mut typographic_match_rows = 0usize;
+    let mut fold_rows = 0usize;
+    let mut fold_table_seen = false;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Row = serde_json::from_str(line).expect("oracle line parses");
         let want = |k: &str| row.rest.get(k).cloned().unwrap_or(Value::Null);
@@ -262,11 +297,94 @@ fn doc_edit_leaves_match_oracle() {
                 let got = update_frontmatter_in_content(content, &updates, replace_all);
                 assert_eq!(json!(got), want("result"), "fm-update {id}");
             }
+            // ---- typographic folding (bug 109, v4 `487ae16b1`) ----
+            "typographic-fold-table" => {
+                // Entry-for-entry AND in order: the transcription is the port,
+                // so a dropped or reordered row is a real divergence.
+                let ours: Value = Value::Array(
+                    TYPOGRAPHIC_FOLDINGS
+                        .iter()
+                        .map(|(k, v)| json!([k.to_string(), v]))
+                        .collect(),
+                );
+                assert_eq!(ours, want("entries"), "TYPOGRAPHIC_FOLDINGS table");
+                fold_table_seen = true;
+            }
+            "typographic-fold" => {
+                let text = want("text");
+                let text = text.as_str().expect("fold row carries its text");
+                assert_eq!(
+                    json!(fold_typography(text)),
+                    want("folded"),
+                    "foldTypography {id}"
+                );
+                assert_eq!(
+                    json!(has_typographic_variants(text)),
+                    want("hasVariants"),
+                    "hasTypographicVariants {id}"
+                );
+                fold_rows += 1;
+            }
+            "typographic-match" => {
+                let h = want("haystack");
+                let h = h.as_str().expect("match row carries its haystack");
+                let n = want("needle");
+                let n = n.as_str().expect("match row carries its needle");
+                let o = opts_from_row(&want("options"));
+                assert_eq!(
+                    matches_json(&find_all_matches(h, n, o)),
+                    want("all"),
+                    "findAll {id}"
+                );
+                assert_eq!(
+                    unique_json(find_unique_match(h, n, o)),
+                    want("unique"),
+                    "findUnique {id}"
+                );
+                typographic_match_rows += 1;
+            }
+            "typographic-replay-file" => {
+                let f = want("file");
+                replay_file = Some(f.as_str().expect("replay file is a string").to_string());
+            }
+            "typographic-replay" => {
+                let file = replay_file
+                    .as_deref()
+                    .expect("the replay file row precedes the replay rows");
+                let n = want("needle");
+                let n = n.as_str().expect("replay row carries its needle");
+                let o = DiacriticsMatchOptions {
+                    fold_typography: true,
+                    ..DiacriticsMatchOptions::default()
+                };
+                let got = find_unique_match(file, n, o);
+                assert_eq!(unique_json(got), want("unique"), "replay {id}");
+                match got {
+                    UniqueMatch::Found { .. } => replay_resolved += 1,
+                    UniqueMatch::NotFound { .. } => replay_missed += 1,
+                }
+            }
             other => panic!("unknown kind '{other}'"),
         }
         count += 1;
     }
     assert!(count >= 100, "expected the full corpus, saw {count}");
+    // Shape asserts: a corpus that silently lost its bug-109 rows would
+    // otherwise pass vacuously.
+    assert!(
+        fold_table_seen,
+        "the fold table row is missing from the oracle"
+    );
+    assert!(fold_rows >= 10, "expected the fold corpus, saw {fold_rows}");
+    assert!(
+        typographic_match_rows >= 19,
+        "expected the typographic match corpus, saw {typographic_match_rows}"
+    );
+    assert_eq!(
+        (replay_resolved, replay_missed),
+        (5, 25),
+        "v4's replay split: five typographic failures resolve, twenty-five stale texts still miss"
+    );
     eprintln!("doc_edit_leaves: {count} rows matched the oracle.");
 }
 

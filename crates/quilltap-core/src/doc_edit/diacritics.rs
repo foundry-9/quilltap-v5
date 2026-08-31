@@ -1,36 +1,59 @@
-//! Diacritics-aware text matching — v4 `lib/doc-edit/diacritics.ts`.
+//! Match normalization — diacritics and typographic spelling. v4
+//! `lib/doc-edit/diacritics.ts`.
 //!
 //! NFD-decompose text and strip combining marks so a base character matches its
 //! accented variant ("Nimue" matches "Nimuë") — essential for fiction vaults with
-//! accented names. `find_all_matches` / `find_unique_match` are the core of the
-//! `str_replace` uniqueness constraint.
+//! accented names — and, behind an opt-in flag, let a straight quote match the
+//! curly one a model wrote into the file (see [`super::typographic_folding`],
+//! v4 bug 109 / `487ae16b1`).
+//!
+//! Both are the same kind of concession and share one mechanism: a
+//! **per-character** rewrite, plus a map from positions in the rewritten string
+//! back to positions in the original, so a match found in normalized space can be
+//! applied to the original bytes. Every normalization here must therefore be
+//! expressible one source character at a time; a rule that needed to see two
+//! characters at once could not be mapped back and does not belong in this file.
+//!
+//! `find_all_matches` / `find_unique_match` are the core of the `str_replace`
+//! uniqueness constraint.
 //!
 //! ## UTF-16 fidelity
 //!
 //! v4 operates on **UTF-16 code units** throughout: `indexOf` returns UTF-16
-//! indices, and `buildNormalizationMap` walks the original string one UTF-16 unit
-//! at a time (per JS `original[i]`), mapping each resulting normalized unit back.
-//! The port reproduces that on `Vec<u16>` / the `jsstr` UTF-16 primitives.
+//! indices, and both `normalizeForMatching` and `buildNormalizationMap` walk the
+//! original string one UTF-16 unit at a time (per JS `text[i]`). The port
+//! reproduces that on `Vec<u16>` / the `jsstr` UTF-16 primitives.
 //!
-//! **Documented seam** (kept out of the corpus): v4's map is built **per-UTF-16-
-//! unit** while the searched `normalizedHaystack` is built **whole-string** (and
-//! `buildNormalizationMap` ignores its `normalized` argument entirely, rebuilding
-//! from `original`). For the corpus space — BMP Latin (precomposed + decomposed),
-//! Hangul (one syllable → two jamo units), and ASCII-length-preserving
-//! `toLowerCase` — the per-unit and whole-string decompositions are identical, so
-//! the map aligns with the search string. Decomposable astral characters and
-//! length-changing case folds (İ / final-sigma) can desync the two the same way
-//! v4 does; they are excluded.
+//! **The former whole-string/per-unit seam is closed.** Before `487ae16b1` v4
+//! built the searched string whole-string and the map per-unit, so a length-
+//! changing rewrite could desync the two; the commit rebuilt both from ONE
+//! per-character function precisely so a length-changing fold (`…` → `...`) maps
+//! back correctly, and this port follows. Decomposable astral characters and
+//! length-changing case folds (İ / final-sigma) are still excluded from the
+//! corpus: `to_lowercase` is applied whole-string on both sides, after the map is
+//! built, exactly as v4 does.
 
 use crate::jsstr::js_index_of;
 use unicode_normalization::UnicodeNormalization;
 
-/// Options for diacritics-aware matching (v4 `DiacriticsMatchOptions`). Both
-/// default true.
+use super::typographic_folding::fold_typographic_char;
+
+/// Options for normalization-aware matching (v4 `DiacriticsMatchOptions`).
+/// `normalize_diacritics` and `case_sensitive` default true; `fold_typography`
+/// defaults **false**, so every pre-existing caller keeps byte-exact semantics.
 #[derive(Debug, Clone, Copy)]
 pub struct DiacriticsMatchOptions {
     pub normalize_diacritics: bool,
     pub case_sensitive: bool,
+    /// Whether to treat a curly quote, a dash-family character, `…` or a
+    /// non-breaking space as equal to its ASCII spelling.
+    ///
+    /// [`find_all_matches`] and [`find_unique_match`] read this flag differently,
+    /// and deliberately: `find_all_matches` folds and reports whatever that
+    /// finds, while `find_unique_match` — which owes its caller a *unique*
+    /// answer — tries the exact reading first and only folds when the exact one
+    /// found nothing at all.
+    pub fold_typography: bool,
 }
 
 impl Default for DiacriticsMatchOptions {
@@ -38,6 +61,7 @@ impl Default for DiacriticsMatchOptions {
         DiacriticsMatchOptions {
             normalize_diacritics: true,
             case_sensitive: true,
+            fold_typography: false,
         }
     }
 }
@@ -62,34 +86,67 @@ pub fn normalize_diacritics(text: &str) -> String {
         .collect()
 }
 
-/// The NFD-then-strip UTF-16 units a SINGLE original UTF-16 unit contributes (v4's
-/// per-unit `original[i].normalize('NFD').replace(combining, '')`). A lone
-/// surrogate normalizes to itself; a BMP scalar decomposes.
-fn per_unit_normalized(unit: u16) -> Vec<u16> {
+/// The per-character rewrites in force for one match (v4 `NormalizationFlags`).
+#[derive(Debug, Clone, Copy)]
+struct NormalizationFlags {
+    diacritics: bool,
+    typography: bool,
+}
+
+/// Rewrite ONE source UTF-16 unit (v4 `normalizeChar`), returning the units it
+/// contributes.
+///
+/// The typographic fold runs *before* the diacritics strip because it is defined
+/// over composed characters (`’`, `—`, `…`), and its output is plain ASCII that
+/// NFD leaves alone. May return more than one unit (`…` → `...`); both the
+/// searched string and the position map are built from this one function, so they
+/// cannot drift.
+fn normalize_unit(unit: u16, flags: NormalizationFlags) -> Vec<u16> {
     if (0xD800..=0xDFFF).contains(&unit) {
-        // Lone surrogate: `String.fromCharCode(unit).normalize('NFD')` is the unit
-        // itself, and it is not a combining mark.
+        // Lone surrogate (one half of an astral pair): it is not a fold-table key
+        // and `String.fromCharCode(unit).normalize('NFD')` is the unit itself.
+        // Each half passes through in order, so the pair is reconstituted.
         return vec![unit];
     }
     let c = char::from_u32(unit as u32).expect("BMP non-surrogate is a scalar");
-    c.to_string()
-        .nfd()
-        .filter(|d| !is_combining_mark(*d as u32))
-        .flat_map(|d| {
-            let mut buf = [0u16; 2];
-            d.encode_utf16(&mut buf).to_vec()
-        })
-        .collect()
+    let mut out: String = if flags.typography {
+        match fold_typographic_char(c) {
+            Some(folded) => folded.to_string(),
+            None => c.to_string(),
+        }
+    } else {
+        c.to_string()
+    };
+    if flags.diacritics {
+        out = out
+            .nfd()
+            .filter(|d| !is_combining_mark(*d as u32))
+            .collect();
+    }
+    out.encode_utf16().collect()
+}
+
+/// Rewrite a whole string, unit by unit (v4 `normalizeForMatching`). Built from
+/// [`normalize_unit`] rather than from whole-string operations so that it cannot
+/// drift from [`build_normalization_map`]: the string being searched and the map
+/// used to translate the hit back must be produced by the same rule, or an index
+/// found in one is meaningless in the other.
+fn normalize_for_matching(text: &str, flags: NormalizationFlags) -> String {
+    let mut units: Vec<u16> = Vec::with_capacity(text.len());
+    for unit in text.encode_utf16() {
+        units.extend(normalize_unit(unit, flags));
+    }
+    // Surrogate halves pass through in order, so the result is always well-formed.
+    String::from_utf16(&units).expect("per-unit rewrite preserves surrogate pairs")
 }
 
 /// v4 `buildNormalizationMap`: `map[i]` = position in the ORIGINAL string
-/// (UTF-16) of the character at position `i` in the normalized string. Built
-/// per-original-UTF-16-unit.
-fn build_normalization_map(original_u16: &[u16]) -> Vec<usize> {
+/// (UTF-16) of the character at position `i` in the normalized string.
+fn build_normalization_map(original_u16: &[u16], flags: NormalizationFlags) -> Vec<usize> {
     let mut map: Vec<usize> = Vec::new();
     for (original_pos, unit) in original_u16.iter().enumerate() {
-        let stripped = per_unit_normalized(*unit);
-        for _ in 0..stripped.len() {
+        let rewritten = normalize_unit(*unit, flags);
+        for _ in 0..rewritten.len() {
             map.push(original_pos);
         }
     }
@@ -104,14 +161,15 @@ pub fn find_all_matches(
     options: DiacriticsMatchOptions,
 ) -> Vec<(usize, usize)> {
     let should_normalize = options.normalize_diacritics;
+    let should_fold = options.fold_typography;
     let case_sensitive = options.case_sensitive;
 
     if needle.is_empty() {
         return Vec::new();
     }
 
-    // Simple case: no normalization needed.
-    if !should_normalize && case_sensitive {
+    // Simple case: no rewriting needed.
+    if !should_normalize && !should_fold && case_sensitive {
         let mut matches = Vec::new();
         let needle_len = crate::jsstr::utf16_len(needle);
         let mut search_index = 0usize;
@@ -122,13 +180,19 @@ pub fn find_all_matches(
         return matches;
     }
 
+    let flags = NormalizationFlags {
+        diacritics: should_normalize,
+        typography: should_fold,
+    };
+    let rewriting = should_normalize || should_fold;
+
     // Build normalized versions.
-    let (mut normalized_haystack, mut normalized_needle, haystack_map) = if should_normalize {
+    let (mut normalized_haystack, mut normalized_needle, haystack_map) = if rewriting {
         let orig_u16: Vec<u16> = haystack.encode_utf16().collect();
-        let map = build_normalization_map(&orig_u16);
+        let map = build_normalization_map(&orig_u16, flags);
         (
-            normalize_diacritics(haystack),
-            normalize_diacritics(needle),
+            normalize_for_matching(haystack, flags),
+            normalize_for_matching(needle, flags),
             Some(map),
         )
     } else {
@@ -149,6 +213,7 @@ pub fn find_all_matches(
     let mut search_index = 0usize;
     while let Some(idx) = js_index_of(&normalized_haystack, &normalized_needle, search_index) {
         let (original_index, original_length) = if let Some(map) = &haystack_map {
+            // Map normalized positions back to the original string.
             let original_index = map[idx];
             let normalized_end_pos = idx + needle_len - 1;
             let original_end_pos = map[normalized_end_pos];
@@ -162,33 +227,113 @@ pub fn find_all_matches(
     matches
 }
 
-/// The result of [`find_unique_match`] (v4's discriminated return).
+/// Which reading of the text produced the answer (v4 `MatchTier`).
+///
+/// `Exact` means the needle was found as written (modulo the diacritics and case
+/// options the caller had already asked for); `Typographic` means it was found
+/// only once curly quotes, dashes, `…` and non-breaking spaces were folded onto
+/// their ASCII spellings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchTier {
+    Exact,
+    Typographic,
+}
+
+impl MatchTier {
+    /// v4's wire token (`'exact'` / `'typographic'`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            MatchTier::Exact => "exact",
+            MatchTier::Typographic => "typographic",
+        }
+    }
+}
+
+/// The result of [`find_unique_match`] (v4's discriminated `UniqueMatchResult`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UniqueMatch {
-    Found { index: usize, length: usize },
-    NotFound { count: usize },
+    Found {
+        index: usize,
+        length: usize,
+        tier: MatchTier,
+    },
+    NotFound {
+        count: usize,
+        tier: MatchTier,
+    },
 }
 
 /// Find a UNIQUE match of `needle` in `haystack` (v4 `findUniqueMatch`). Returns
-/// the match iff exactly one exists, else the count.
+/// the match iff exactly one exists, else the count. This is the core matching
+/// function for `str_replace`'s uniqueness constraint.
+///
+/// With `fold_typography` on, this runs **exact first and folded only on a total
+/// miss**. The order is the whole design: a file holding both `Veyra-5's` and
+/// `Veyra-5’s` has one exact answer and two folded ones, and the caller asked for
+/// the text it typed — so folding unconditionally would turn a good edit into an
+/// ambiguity error. Folding is a rescue, not a policy.
+///
+/// On failure, `tier` says which reading produced `count`, so a caller can tell
+/// "three exact matches, be more specific" from "nothing matched even when the
+/// punctuation was ignored".
 pub fn find_unique_match(
     haystack: &str,
     needle: &str,
     options: DiacriticsMatchOptions,
 ) -> UniqueMatch {
-    let matches = find_all_matches(haystack, needle, options);
-    if matches.len() == 1 {
-        UniqueMatch::Found {
-            index: matches[0].0,
-            length: matches[0].1,
-        }
-    } else {
-        UniqueMatch::NotFound {
-            count: matches.len(),
-        }
+    let exact = find_all_matches(
+        haystack,
+        needle,
+        DiacriticsMatchOptions {
+            fold_typography: false,
+            ..options
+        },
+    );
+
+    if exact.len() == 1 {
+        return UniqueMatch::Found {
+            index: exact[0].0,
+            length: exact[0].1,
+            tier: MatchTier::Exact,
+        };
+    }
+    // More than one exact match is an answer, not a miss: folding could only add
+    // candidates to an ambiguity the caller must resolve anyway.
+    if exact.len() > 1 || !options.fold_typography {
+        return UniqueMatch::NotFound {
+            count: exact.len(),
+            tier: MatchTier::Exact,
+        };
+    }
+
+    let folded = find_all_matches(
+        haystack,
+        needle,
+        DiacriticsMatchOptions {
+            fold_typography: true,
+            ..options
+        },
+    );
+
+    if folded.len() == 1 {
+        tracing::debug!(
+            target: "quilltap::doc_edit",
+            needle_length = crate::jsstr::utf16_len(needle),
+            haystack_length = crate::jsstr::utf16_len(haystack),
+            "Match found only after folding typographic variants",
+        );
+        return UniqueMatch::Found {
+            index: folded[0].0,
+            length: folded[0].1,
+            tier: MatchTier::Typographic,
+        };
+    }
+
+    UniqueMatch::NotFound {
+        count: folded.len(),
+        tier: MatchTier::Typographic,
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;

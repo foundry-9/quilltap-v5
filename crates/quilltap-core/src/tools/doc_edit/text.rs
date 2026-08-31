@@ -432,10 +432,11 @@ pub fn handle_str_replace(
     let options = DiacriticsMatchOptions {
         case_sensitive: arg_bool(args, "case_sensitive") != Some(false),
         normalize_diacritics: arg_bool(args, "normalize_diacritics") != Some(false),
+        fold_typography: false,
     };
     let (index, length) = match find_unique_match(&content, &find, options) {
-        UniqueMatch::Found { index, length } => (index, length),
-        UniqueMatch::NotFound { count } => {
+        UniqueMatch::Found { index, length, .. } => (index, length),
+        UniqueMatch::NotFound { count, .. } => {
             if count == 0 {
                 return Ok(DocEditToolResult::fail_with_formatted(
                     format!("Text not found in file. The exact text to find was not present in {path}. Make sure you are using the exact text from your most recent read of this file."),
@@ -549,10 +550,11 @@ pub fn handle_insert_text(
             let options = DiacriticsMatchOptions {
                 case_sensitive: true,
                 normalize_diacritics: arg_bool(args, "normalize_diacritics") != Some(false),
+                fold_typography: false,
             };
             let (index, length) = match find_unique_match(&content, anchor, options) {
-                UniqueMatch::Found { index, length } => (index, length),
-                UniqueMatch::NotFound { count } => {
+                UniqueMatch::Found { index, length, .. } => (index, length),
+                UniqueMatch::NotFound { count, .. } => {
                     if count == 0 {
                         return Ok(DocEditToolResult::fail(
                             "Anchor text not found in file. Make sure you are using exact text from your most recent read.",
@@ -863,6 +865,7 @@ fn grep_search_content(
             DiacriticsMatchOptions {
                 case_sensitive: *case_sensitive,
                 normalize_diacritics: true,
+                fold_typography: false,
             },
         )
         .iter()

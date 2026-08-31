@@ -627,6 +627,39 @@ connection-profile leg has been vacuous since v4 `aa464abf` (the committed
 identically and the arms stay green on matching failures), and the two new
 columns land in the same hole. Widening that fixture is cross-lane; the gap is
 named in both files.
+#### 2026-08-31 — feat(doc-edit): fold typographic spellings for matching (v4 bug 109, part 1)
+
+_Versions: core 0.0.702, harness 0.0.604._
+
+Ports v4's `lib/doc-edit/typographic-folding.ts` (new at `487ae16b1`) and the
+rebuilt `lib/doc-edit/diacritics.ts` that composes with it. Models write curly
+punctuation of their own accord and Quilltap stores it faithfully; a later turn
+retypes the sentence with a straight apostrophe and the byte-exact match fails.
+
+The new `doc_edit::typographic_folding` module holds the 25-entry fold table —
+the quote family onto `'` and `"`, the dash family onto `-`, `…` onto `...`, and
+the non-breaking/wide spaces onto U+0020 — transcribed in v4's source order.
+Zero-width characters and guillemets are deliberately excluded.
+
+`DiacriticsMatchOptions` gains `fold_typography` (default false, so every
+existing caller keeps byte-exact semantics), and `find_unique_match` now returns
+the `MatchTier` that answered: it runs **exact first and folds only on a total
+miss**, so a file carrying both spellings still resolves to the one the caller
+typed rather than going ambiguous. More than one exact match is an answer, not a
+miss, and never consults the fold.
+
+The searched string and its position map are now built from ONE per-character
+function, so a length-changing fold (`…` → `...`, one character to three) maps
+back to the original span correctly. This closes the whole-string/per-unit seam
+the module header used to document.
+
+Enablement at the three tool sites is a separate change; nothing folds yet.
+
+`doc_edit_leaves_equivalence` grew the bug-109 corpus: the fold table compared
+entry-for-entry and in order, 10 fold cases, 19 match cases, and v4's replay
+shape as an executable assertion — five typographic failures resolve, twenty-five
+genuinely stale find texts still miss. 167 rows against v4's real `lib/doc-edit`
+at the `487ae16b1` pin.
 
 #### 2026-08-31 — docs(orders): write the drift catch-up round 1 of 2 — P4.D134 ∥ (P4.D135 → P4.D136 stacked) ∥ P4.D137
 
