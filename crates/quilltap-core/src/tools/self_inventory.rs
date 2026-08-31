@@ -2832,15 +2832,19 @@ fn format_carina_section(section: &CarinaSection) -> String {
     }
 }
 
+/// v4 `RUNTIME_MODE_LABELS` (`self-inventory/formatters.ts`). `1560bd43b`
+/// deleted the `vm` → "VM (Lima/WSL2)" and `electron-vm` → "Electron + VM"
+/// rows along with `SelfInventoryRuntimeMode`'s `'vm'`/`'electron-vm'` members;
+/// v5's host stopped producing `vm` in the same commit's port. A stale value
+/// takes v4's own `?? mode` fallback and prints raw — these are PROMPT-visible
+/// bytes, so the catch-all is the contract, not a convenience.
 fn runtime_mode_label(mode: &str) -> &str {
     match mode {
         "local-dev" => "Local (development)",
         "local-production" => "Local (production)",
         "docker" => "Docker",
-        "vm" => "VM (Lima/WSL2)",
         "electron" => "Electron desktop app",
         "electron-docker" => "Electron + Docker",
-        "electron-vm" => "Electron + VM",
         // v4 `RUNTIME_MODE_LABELS[mode] ?? mode` — unknown falls back to the raw.
         other => other,
     }
@@ -3129,4 +3133,31 @@ pub fn format_self_inventory(output: &SelfInventoryOutput) -> String {
     }
 
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod runtime_mode_label_tests {
+    use super::runtime_mode_label;
+
+    /// The `vm` / `electron-vm` retirement (v4 `1560bd43b`) is INVISIBLE to
+    /// `self_inventory_equivalence` — every corpus row runs `local-dev` — so the
+    /// deleted rows are pinned here instead. These are prompt-visible bytes.
+    #[test]
+    fn the_retired_vm_modes_fall_through_to_the_raw_value() {
+        // v4's post-`1560bd43b` RUNTIME_MODE_LABELS, byte-for-byte.
+        assert_eq!(runtime_mode_label("local-dev"), "Local (development)");
+        assert_eq!(runtime_mode_label("local-production"), "Local (production)");
+        assert_eq!(runtime_mode_label("docker"), "Docker");
+        assert_eq!(runtime_mode_label("electron"), "Electron desktop app");
+        assert_eq!(runtime_mode_label("electron-docker"), "Electron + Docker");
+
+        // The two deleted rows. v4's lookup is `RUNTIME_MODE_LABELS[mode] ?? mode`
+        // over a map that no longer holds them, so a stale value now prints RAW
+        // — it must NOT still render "VM (Lima/WSL2)" / "Electron + VM".
+        assert_eq!(runtime_mode_label("vm"), "vm");
+        assert_eq!(runtime_mode_label("electron-vm"), "electron-vm");
+
+        // And the same `?? mode` fallback for anything else.
+        assert_eq!(runtime_mode_label("kubernetes"), "kubernetes");
+    }
 }

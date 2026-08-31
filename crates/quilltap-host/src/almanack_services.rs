@@ -24,7 +24,8 @@
 //!    A platform we genuinely cannot read still answers 0,
 //!  - `uptimeSeconds` is the host process's own uptime,
 //!  - `runtimeType` keeps v4's vocabulary: `docker` in a container, else
-//!    `node` (v5 has no lima/electron shell detection).
+//!    `node` (v5 has no electron shell detection; v4 `1560bd43b` retired the
+//!    third value, `lima`, which v5 never emitted).
 
 use std::path::PathBuf;
 use std::sync::Arc;

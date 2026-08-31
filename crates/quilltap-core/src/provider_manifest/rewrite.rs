@@ -1,17 +1,44 @@
 //! Pure port of v4's `rewriteLocalhostUrl` (`lib/host-rewrite.ts`).
 //!
 //! v4 rewrites `localhost` / `127.0.0.1` URLs to the host gateway when running
-//! inside a VM/container so a user-configured `http://localhost:11434` (Ollama,
-//! LM Studio) reaches the host. v4's function is impure — it reads the VM
-//! environment (`isVMEnvironment()`) and resolves the gateway from
-//! env/`/proc`/`/etc/hosts`. That environment probe + gateway resolution is a
-//! HOST-tier concern; in the sans-IO core the **pure** part is the URL rewrite
-//! itself, with the resolved gateway injected.
+//! inside a container so a user-configured `http://localhost:11434` (Ollama,
+//! LM Studio) reaches the host. v4's function is impure — it reads the
+//! environment (`isVMEnvironment()`) and resolves the gateway. That environment
+//! probe + gateway resolution is a HOST-tier concern; in the sans-IO core the
+//! **pure** part is the URL rewrite itself, with the resolved gateway injected.
 //!
 //! [`rewrite_localhost_url`] takes `gateway: Option<&str>`:
-//!   * `None` — v4's "not in a VM environment" OR "gateway resolution failed":
+//!   * `None` — v4's "no rewriting environment" OR "gateway resolution failed":
 //!     both no-op, returning the URL unchanged.
 //!   * `Some(host)` — the resolved gateway host: rewrite localhost URLs to it.
+//!
+//! ## What the injected gateway means since v4 `1560bd43b`
+//!
+//! v4 collapsed five gateway strategies to two, and redefined the environment
+//! test with them:
+//!   1. `QUILLTAP_HOST_IP` — the explicit override, and now ALSO the only
+//!      supported route for a self-managed VM, which Quilltap has no reliable
+//!      way to detect on its own.
+//!   2. In Docker: `host.docker.internal` (Docker Desktop DNS, or `--add-host`
+//!      on Linux, does the forwarding).
+//!   3. Otherwise give up gracefully and return the URL unchanged.
+//! `isVMEnvironment()` is therefore `isDockerEnvironment() || QUILLTAP_HOST_IP
+//! is set` — an env var is how a hand-rolled VM opts in.
+//!
+//! The three deleted strategies (the WSL2 `/etc/resolv.conf` nameserver, the
+//! `/proc/net/route` default gateway, and the `/etc/hosts` lookup of
+//! `host.docker.internal`) existed only for Lima and WSL2, and the middle one
+//! was **actively wrong for Docker**: the bridge gateway it returns (e.g.
+//! `172.17.0.1`) is just the bridge interface — services listening on the
+//! host's own loopback are not reachable through it. That is why the collapsed
+//! order has no `/proc/net/route` fallback under the Docker arm.
+//!
+//! ⚠ **v5 has never had a gateway resolver.** Nothing outside this crate calls
+//! `with_localhost_gateway`, so the injected gateway is `None` on every
+//! production path and no localhost URL is ever rewritten — a PRE-EXISTING gap
+//! this deletion lane deliberately does not close (adding the two strategies
+//! would be new wire behavior, not a retirement). Named as a follow-up in the
+//! P4.D134 lane record.
 //!
 //! **Reproducing `new URL(url).toString()`.** v4 does `new URL(url)`, swaps
 //! `.hostname`, and re-serializes. That serialization normalizes: it lowercases
@@ -105,12 +132,14 @@ fn split_url(url: &str) -> Option<SplitUrl<'_>> {
 
 /// Rewrite a localhost URL to point at the host gateway.
 ///
-/// No-ops when `gateway` is `None` (not in a VM / resolution failed), when the
+/// No-ops when `gateway` is `None` (no rewriting environment / resolution failed), when the
 /// URL is not parseable, or when the URL's host is not a localhost variant —
 /// returning the URL unchanged in every such case (v4's early-return semantics).
 pub fn rewrite_localhost_url(url: &str, gateway: Option<&str>) -> String {
     let Some(gateway) = gateway else {
         // v4: `!isVMEnvironment()` OR gateway resolution failed → unchanged.
+        // (`isVMEnvironment()` since `1560bd43b`: in Docker, or QUILLTAP_HOST_IP
+        // is set — see the module header.)
         return url.to_string();
     };
 
@@ -157,7 +186,7 @@ mod tests {
 
     #[test]
     fn none_gateway_passthrough() {
-        // not in a VM / resolution failed
+        // no rewriting environment / resolution failed
         assert_eq!(
             rewrite_localhost_url("http://localhost:11434", None),
             "http://localhost:11434"

@@ -198,7 +198,7 @@ pub struct WireStreamingProvider<T: ProviderTransport, K: ProviderKeySource> {
     user_agent: String,
     /// v4 `process.env.BASE_URL` (openrouter's `HTTP-Referer`).
     base_url_env: Option<String>,
-    /// The host's container/VM gateway for `rewrite_localhost_url` (W4.7a — v4
+    /// The host's container gateway for `rewrite_localhost_url` (W4.7a — v4
     /// resolves it host-side; `None` on a bare-metal host).
     localhost_gateway: Option<String>,
 }

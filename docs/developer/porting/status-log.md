@@ -93052,3 +93052,64 @@ present verbatim.
   cascade (it renders the conflict detail without an environment label).
 
 SPA gate: `npm test` 366 files / 5,459 tests, 0 failed; `npm run build` clean.
+
+---
+
+## P4.D134 unit 4 — the `vm` runtime modes, the Almanack `lima` value, and the gateway-strategy collapse (v4 `1560bd43b`)
+
+**Landed 2026-08-31.** Versions: core 0.0.703, host 0.0.84.
+
+**`tools/self_inventory.rs` (v4 `handlers/self-inventory/{builders,formatters}.ts`
++ `self-inventory-tool.ts`).** `RUNTIME_MODE_LABELS` drops
+`vm` → `"VM (Lima/WSL2)"` and `electron-vm` → `"Electron + VM"`; the host's
+`resolve_runtime_mode()` stopped producing `vm` in the same round (unit 2).
+These are **prompt-visible bytes**.
+
+**A deletion no family can see → a named unit pin.** Every
+`self_inventory_equivalence` corpus row runs `runtime_mode: "local-dev"`, and so
+do the four sibling tier-3 families, so the two removed rows are invisible to
+the differential. `runtime_mode_label_tests::
+the_retired_vm_modes_fall_through_to_the_raw_value` pins all five surviving
+labels byte-for-byte, plus v4's `RUNTIME_MODE_LABELS[mode] ?? mode` fallthrough
+for `vm`, `electron-vm` and an arbitrary third value. Mutation: restoring the
+`vm` row reddens it (`left: "VM (Lima/WSL2)", right: "vm"`).
+
+**Almanack `runtimeType` — MEASURED first, and it is pure doc convergence.** v4
+drops `'lima'` from `RuntimeEnvironmentInfo['runtimeType']`. v5's only emitter
+(`quilltap-host/src/almanack_services.rs:251`) is a two-way
+`if is_docker_environment() { "docker" } else { "node" }` — it has never
+produced `lima` — and `almanack_tier2_equivalence` SPLICES the whole
+runtime-environment block anyway (the recorded phase-1 divergence). So the union
+comment in `almanack/types.rs` and the two rationale comments are the entire
+change. Recorded as convergence, not claimed as a fix; the family was not
+re-run for it because it cannot observe it.
+
+**`provider_manifest/rewrite.rs` — the gateway-strategy collapse.** v4 went from
+five strategies to two (`QUILLTAP_HOST_IP`, then `host.docker.internal` in
+Docker) and redefined `isVMEnvironment()` as
+`isDockerEnvironment() || QUILLTAP_HOST_IP is set` — the env var is how a
+self-managed VM opts in, since one cannot be auto-detected. v5's port of this
+module is the **pure** rewrite with the gateway injected, so there were no
+strategy branches in v5 to delete: the collapse lands as the module contract,
+with v4's why-comment carried in full — including that the `/proc/net/route`
+bridge gateway (e.g. `172.17.0.1`) was **actively wrong for Docker** because
+services on the host's loopback are not reachable through it.
+`packages/plugin-utils/src/host-rewrite.ts` was diffed against the lib copy at
+the pin before ratifying its NO-PORT: same `isVMEnvironment()` body, same two
+strategies, zero `resolv.conf` / `/proc/net/route` / `/etc/hosts` hits — they
+agree.
+
+**⚠ Deferred LOUDLY, in the module header and here: v5 has never had a gateway
+resolver.** `with_localhost_gateway` has zero call sites outside
+`quilltap-core` (measured: `ggrep -rn localhost_gateway crates` finds only the
+two builders and the pure module), so the injected gateway is `None` on every
+production path and **no localhost URL is ever rewritten** in v5. That is a
+PRE-EXISTING gap, not one this commit opened. Porting the two surviving
+strategies would add wire behavior to a retirement lane — the base URL a
+provider is called on would change — so it is named as a follow-up order
+instead. It wants its own differential (v4's `resolveHostGateway` caches its
+answer in a module global, which is its own fidelity question).
+
+The `VM`-flavoured wording in the two gateway-holding builders
+(`model/streaming_provider.rs`, `services/embedding_provider.rs`) was swept to
+"container" in the same pass.

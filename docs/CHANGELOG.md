@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — refactor(runtime): retire the vm runtime modes and the Lima gateway strategies (v4 1560bd43b)
+
+_Versions: core 0.0.703, host 0.0.84._
+
+The remainder of v4's Lima/WSL2 retirement.
+
+`self_inventory`: `RUNTIME_MODE_LABELS` drops the `vm` -> "VM (Lima/WSL2)" and
+`electron-vm` -> "Electron + VM" rows, which are prompt-visible bytes. No
+differential can see this — every `self_inventory_equivalence` row runs
+`local-dev` — so a unit test pins all five surviving labels plus v4's
+`?? mode` fallthrough for the two deleted ones and for anything else. A
+mutation restoring the `vm` row reddens it.
+
+Almanack `runtimeType` drops `'lima'` from its union. Measured before porting:
+v5's emitter has only ever answered `docker` or `node`, and the tier-2
+differential splices the whole runtime-environment block, so this is pure
+doc-comment convergence — recorded as such rather than claimed as a fix.
+
+`provider_manifest::rewrite`: v4 collapsed five gateway strategies to two
+(`QUILLTAP_HOST_IP`, then `host.docker.internal` in Docker) and redefined
+`isVMEnvironment()` as `isDockerEnvironment() || QUILLTAP_HOST_IP is set`, which
+is how a self-managed VM opts in. v5's port of this module is the pure URL
+rewrite with the gateway injected, so the collapse lands as the module contract:
+v4's why-comment is carried in full, including why `/proc/net/route` was
+actively wrong for Docker.
+
+That header also records a measured pre-existing gap, loudly: nothing outside
+`quilltap-core` calls `with_localhost_gateway`, so the injected gateway is
+`None` on every production path and v5 has never rewritten a localhost URL.
+Porting the two surviving strategies would be new wire behavior, not a
+retirement, so this deletion lane names it as a follow-up instead of closing it.
 #### 2026-08-31 — refactor(about): the three back ends, no VM (v4 1560bd43b + 7fb668263)
 
 _Versions: SPA 0.5.598._

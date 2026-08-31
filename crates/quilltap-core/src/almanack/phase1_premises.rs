@@ -16,8 +16,10 @@
 //! `generatedAt`), so nothing about them is asserted equal to v4's.
 //!
 //! `runtimeType` keeps v4's vocabulary: `docker` when the host says so, else
-//! `node` — v5 has no `lima`/`electron` shell detection, and inventing values
-//! outside v4's union would break the card that reads them.
+//! `node` — v5 has no `electron` shell detection, and inventing values outside
+//! v4's union would break the card that reads them. (v4 `1560bd43b` dropped
+//! `'lima'` from that union; v5 never emitted it, so nothing but this sentence
+//! moved.)
 
 use std::path::{Path, PathBuf};
 

@@ -29,7 +29,7 @@
 //! - **Base URL**: v4 `resolveBaseUrl` = `baseUrl ? rewriteLocalhostUrl(baseUrl)
 //!   : baseUrl` — a non-empty profile `baseUrl` goes through
 //!   [`rewrite_localhost_url`] with the host-injected `localhost_gateway`
-//!   (default `None` = not in a VM → unchanged).
+//!   (default `None` = no rewriting environment → unchanged).
 //! - **API key** (v4 `getApiKeyForProfile`): when the manifest's
 //!   `configRequirements.requiresApiKey` is true, `profile.apiKeyId` resolves
 //!   through [`api_keys::find_by_id_and_user_id`]; a missing id or row is the
@@ -140,8 +140,8 @@ pub struct ApiEmbeddingProvider<T: WireTransport> {
     /// The OpenRouter `HTTP-Referer` (v4 `process.env.BASE_URL ||
     /// 'http://localhost:3000'`).
     openrouter_referer: String,
-    /// The VM host gateway for `rewrite_localhost_url` (host-injected; `None` =
-    /// not in a VM → base URLs pass through unchanged).
+    /// The container host gateway for `rewrite_localhost_url` (host-injected; `None` =
+    /// not in a rewriting environment → base URLs pass through unchanged).
     localhost_gateway: Option<String>,
     /// v4's module-global `numCtxCache` (per-provider-instance here, the
     /// `NumCtxCache` precedent): derived-only `/api/show` results keyed by
@@ -173,7 +173,7 @@ impl<T: WireTransport> ApiEmbeddingProvider<T> {
         self
     }
 
-    /// Inject the VM host gateway for localhost base-URL rewriting.
+    /// Inject the container host gateway for localhost base-URL rewriting.
     pub fn with_localhost_gateway(mut self, gateway: Option<String>) -> Self {
         self.localhost_gateway = gateway;
         self

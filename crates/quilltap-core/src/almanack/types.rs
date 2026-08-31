@@ -34,7 +34,7 @@ pub struct RuntimeEnvironmentInfo {
     pub os_release: String,
     pub total_memory_bytes: f64,
     pub free_memory_bytes: f64,
-    /// v4 `'docker' | 'lima' | 'electron' | 'node'`.
+    /// v4 `'docker' | 'electron' | 'node'` (`1560bd43b` dropped `'lima'`).
     pub runtime_type: String,
     pub electron_shell_version: Option<String>,
     pub shell_capabilities: Vec<String>,
