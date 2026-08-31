@@ -282,6 +282,25 @@ pub struct CheapLlmTaskExecutor {
     /// When present, every provider call writes an `llm_logs` row — success
     /// rows v4-faithful, failure rows per the ruled divergence (unit 6).
     log: Option<CheapLlmLogConfig>,
+    /// When present, a failed task walks the route's fallback chain (v4
+    /// `65f5021c8`). v4 reaches its ambient `getRepositories()`; v5 needs an
+    /// explicit handle, and [`CheapLlmLogConfig`] already carries the `Db` + the
+    /// user id the chain reads — so `with_logging` supplies BOTH and no call
+    /// site changes.
+    ///
+    /// ⚠ `CheapLlmTaskExecutor::new()` therefore has no chain: the two
+    /// production sites that use it (`tools::generate_image`'s prompt expansion
+    /// and one `enclave::step` leg) keep the pre-4.10 behaviour, and so do the
+    /// differentials. A NAMED gap, not an accident — closing it means giving
+    /// those two a `Db`.
+    fallback: Option<CheapFallbackHandle>,
+}
+
+/// The `Db` + user id a chain walk needs, carried beside the log config.
+#[derive(Clone)]
+struct CheapFallbackHandle {
+    db: Db,
+    user_id: String,
 }
 
 impl CheapLlmTaskExecutor {
@@ -293,9 +312,14 @@ impl CheapLlmTaskExecutor {
     /// `sendToProvider` `logLLMCall`). The host / job runner / a logging
     /// differential constructs this; the request-path spine keeps [`new`].
     pub fn with_logging(log: CheapLlmLogConfig) -> Self {
+        let fallback = Some(CheapFallbackHandle {
+            db: log.db.clone(),
+            user_id: log.user_id.clone(),
+        });
         Self {
             profiles_without_custom_temp: Mutex::new(HashSet::new()),
             log: Some(log),
+            fallback,
         }
     }
 
@@ -846,6 +870,29 @@ impl CheapLlmTaskExecutor {
             },
             // v4 `getErrorMessage(error)` — the thrown Error's message.
             Err(error) => {
+                // v4 `65f5021c8`: walk the failed route's fallback chain,
+                // re-issuing the task against each stand-in with a FRESH
+                // deadline. A fresh budget per attempt, not a shared one: the
+                // whole reason we are here is that the previous route spent its
+                // budget without answering, and charging the understudy for
+                // that would guarantee it fails too. Background work never
+                // toasts — the job logs its attempt trail and moves on.
+                if let Some(result) = self
+                    .attempt_cheap_fallback_chain(
+                        completion,
+                        selection,
+                        &messages,
+                        &parse_response,
+                        &error,
+                        uncensored_fallback,
+                        max_tokens,
+                        character_id,
+                        task_type,
+                    )
+                    .await
+                {
+                    return result;
+                }
                 // Say so in the server log (v4 `8872d7efc`). `send_with_deadline`
                 // already reports the case where *our* deadline fires, but a
                 // provider giving up on its own budget arrives here as an ordinary
@@ -875,6 +922,154 @@ impl CheapLlmTaskExecutor {
                 }
             }
         }
+    }
+
+    /// v4 `attemptCheapFallbackChain` (core-execution.ts, `65f5021c8`).
+    ///
+    /// Returns `None` when nothing was attempted or nothing worked, leaving the
+    /// caller to fail exactly as it did before this feature existed.
+    #[allow(clippy::too_many_arguments)]
+    async fn attempt_cheap_fallback_chain<C: CompletionProvider, T>(
+        &self,
+        completion: &C,
+        selection: &CheapLlmSelection,
+        messages: &[CompletionMessage],
+        parse_response: &impl Fn(&str) -> T,
+        error: &CompletionError,
+        uncensored_fallback: Option<&UncensoredFallbackOptions<'_>>,
+        max_tokens: Option<f64>,
+        character_id: Option<&str>,
+        task_type: Option<&str>,
+    ) -> Option<CheapLlmTaskResult<T>> {
+        let handle = self.fallback.as_ref()?;
+
+        // v4 classifies the thrown error; a non-trigger (a token limit, a
+        // tool-unsupported rejection, one of our own bugs) leaves the chain out
+        // of it. v5's cheap path surfaces a `CompletionError` carrying the
+        // message, which is what `FallbackError::message` reads — except for the
+        // one class v4 tests by NAME: its own `CheapLLMTimeoutError`, which
+        // `send_with_deadline` raises with v4's exact sentence.
+        let is_deadline =
+            error.message.contains("exceeded its") && error.message.contains("budget");
+        let fe = if is_deadline {
+            crate::llm_fallback::FallbackError::named("CheapLLMTimeoutError", &error.message)
+        } else {
+            crate::llm_fallback::FallbackError::message(&error.message)
+        };
+        let Some(trigger) = crate::llm_fallback::classify_fallback_trigger(fe) else {
+            tracing::debug!(
+                target: "quilltap::cheap_llm",
+                task_type = task_type.unwrap_or(""),
+                error = %error.message,
+                "[CheapLLM] Failure is not fallback-eligible"
+            );
+            return None;
+        };
+
+        // v4: a stand-in for an uncensored route must itself be cleared for the
+        // content, or the fallback hands it back to the moderation that refused.
+        let dangerous = uncensored_fallback.is_some_and(|u| {
+            u.is_dangerous_chat == Some(true)
+                || selection
+                    .connection_profile_id
+                    .as_deref()
+                    .is_some_and(|id| {
+                        u.available_profiles
+                            .iter()
+                            .find(|p| p.id == id)
+                            .is_some_and(|p| p.is_dangerous_compatible)
+                    })
+        });
+
+        let stand_ins = super::cheap_llm_fallback::build_cheap_fallback_selections(
+            &handle.db,
+            super::cheap_llm_fallback::CheapFallbackRequest {
+                selection,
+                user_id: &handle.user_id,
+                dangerous,
+                already_tried: selection
+                    .connection_profile_id
+                    .clone()
+                    .into_iter()
+                    .collect(),
+                task_type,
+            },
+        );
+        if stand_ins.is_empty() {
+            return None;
+        }
+
+        for stand_in in &stand_ins {
+            tracing::info!(
+                target: "quilltap::cheap_llm",
+                task_type = task_type.unwrap_or(""),
+                trigger = trigger.as_str(),
+                failed_provider = %selection.provider,
+                failed_model = %selection.model_name,
+                stand_in_provider = %stand_in.provider,
+                stand_in_model = %stand_in.model_name,
+                stand_in_profile_id = stand_in.connection_profile_id.as_deref().unwrap_or(""),
+                "[CheapLLM] Retrying task with a stand-in"
+            );
+
+            match self
+                .send_with_deadline(
+                    completion,
+                    stand_in,
+                    messages,
+                    max_tokens,
+                    character_id,
+                    task_type,
+                )
+                .await
+            {
+                Ok(response) => {
+                    if js_trim(&response.content).is_empty() {
+                        tracing::warn!(
+                            target: "quilltap::cheap_llm",
+                            task_type = task_type.unwrap_or(""),
+                            stand_in_provider = %stand_in.provider,
+                            stand_in_model = %stand_in.model_name,
+                            "[CheapLLM] Stand-in returned an empty response"
+                        );
+                        continue;
+                    }
+                    tracing::info!(
+                        target: "quilltap::cheap_llm",
+                        task_type = task_type.unwrap_or(""),
+                        stand_in_provider = %stand_in.provider,
+                        stand_in_model = %stand_in.model_name,
+                        response_length = response.content.len(),
+                        "[CheapLLM] Stand-in answered"
+                    );
+                    return Some(CheapLlmTaskResult {
+                        success: true,
+                        result: Some(parse_response(&response.content)),
+                        error: None,
+                        usage: response.usage,
+                    });
+                }
+                Err(stand_in_error) => tracing::warn!(
+                    target: "quilltap::cheap_llm",
+                    task_type = task_type.unwrap_or(""),
+                    stand_in_provider = %stand_in.provider,
+                    stand_in_model = %stand_in.model_name,
+                    error = %stand_in_error.message,
+                    "[CheapLLM] Stand-in also failed"
+                ),
+            }
+        }
+
+        tracing::warn!(
+            target: "quilltap::cheap_llm",
+            task_type = task_type.unwrap_or(""),
+            trigger = trigger.as_str(),
+            failed_provider = %selection.provider,
+            failed_model = %selection.model_name,
+            stand_ins_tried = stand_ins.len(),
+            "[CheapLLM] Fallback chain exhausted"
+        );
+        None
     }
 }
 

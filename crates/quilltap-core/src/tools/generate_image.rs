@@ -1168,7 +1168,7 @@ fn resolve_unique_relative_path(
 
 /// Build a [`CheapLlmProfile`] from a connection-profile net-read value (v4
 /// treats a connection profile as a cheap-LLM profile candidate).
-fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
+pub(crate) fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
     CheapLlmProfile {
         id: v
             .get("id")

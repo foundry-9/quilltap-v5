@@ -220,7 +220,9 @@ fn base_url_or_localhost(profile: &CheapLlmProfile) -> Option<String> {
     Some(base_url_or_none(profile).unwrap_or_else(|| "http://localhost:11434".to_string()))
 }
 
-fn selection_from_profile(profile: &CheapLlmProfile) -> CheapLlmSelection {
+/// v4 `selectionFromProfile` — `export`ed at `65f5021c8` so the cheap-LLM
+/// fallback chain can turn a drafted connection profile into a selection.
+pub fn selection_from_profile(profile: &CheapLlmProfile) -> CheapLlmSelection {
     CheapLlmSelection {
         provider: profile.provider.clone(),
         model_name: profile.model_name.clone(),
