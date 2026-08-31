@@ -94324,3 +94324,36 @@ title-update's cursor write still sits after the throw.
      ANSWERS, where before it 400'd and the character said nothing.
 
 _Docs-only unit; no crate versions bumped._
+
+### P4.D136 — the unified gate's catch: a SECOND inverted layering
+
+`cargo test --workspace` caught what no differential could: raising the shared
+background tier 45 s → 90 s **inverted the outfit consult's two bounds**, the same
+way it tried to invert the memory recap's.
+
+`a_stalled_provider_gives_up_at_the_timeout` measured 60 000 ms where it asserted
+45 000. P4.D42 had bounded the consult twice and, on a REMOTE profile, the inner
+bound (the cheap-LLM attempt deadline) was the tighter one; at 90 s it no longer
+is, and `OUTFIT_LLM_TIMEOUT_MS` (60 s, untouched by `a1d88aa3a`) becomes binding.
+
+**v4 inverts it too, and deliberately did not prevent it.** Measured at the pin:
+`lib/wardrobe/apply-outfit-selections.ts:390` calls `chooseLLMOutfit` inside
+`withTimeout(…, OUTFIT_LLM_TIMEOUT_MS)` and never passes an options bag, so it
+takes the `background` default like every other unmarked caller. Contrast the
+memory recap, which v4 marks `interactive` *precisely* to keep its phase ceiling
+above its legs. So the right port is to reproduce the inversion, not to protect
+against it — the test now pins 60 000 with that reasoning spelled out, and the
+LOCAL twin (180 s attempt vs the same ceiling) is unaffected either way.
+
+Worth naming as a class: **a raised inner bound silently promotes every outer
+one.** v5 had two such layerings; one is compile-pinned (`build_context`'s const
+block, which failed to build) and one was runtime-pinned (this test, which failed
+to pass). Both fired. Neither was reachable from any oracle.
+
+Also fixed at the gate: three clippy allowances the new parameters earned
+(`send_to_provider`, `resolve_provider_for_dangerous_content`, and the
+title-update case tuple factored into a `type` alias), and the two new constant
+assertions moved into `const { … }` blocks — the stronger form, matching
+`build_context`'s idiom.
+
+Versions: core 0.0.712, harness 0.0.612.

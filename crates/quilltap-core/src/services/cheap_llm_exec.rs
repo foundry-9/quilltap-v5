@@ -687,6 +687,7 @@ impl CheapLlmTaskExecutor {
     /// unless the profile is known not to support one, the per-character cache
     /// key, the profile's provider extras) and call the boundary, retrying
     /// without a temperature when the provider rejects it.
+    #[allow(clippy::too_many_arguments)]
     async fn send_to_provider<C: CompletionProvider>(
         &self,
         completion: &C,
@@ -1751,7 +1752,10 @@ mod tests {
     /// maximum, which is how 61 of 81 losses landed in this tier.
     #[test]
     fn the_shared_default_clears_the_censored_tail_by_a_real_margin() {
-        assert!(CHEAP_LLM_TASK_TIMEOUT_MS > CENSORED_TAIL_MS * 3 / 2);
+        // A const block, as `build_context`'s phase-ceiling pin is: moving the
+        // ceiling back under the measured tail should fail to COMPILE, not
+        // merely fail a test.
+        const { assert!(CHEAP_LLM_TASK_TIMEOUT_MS > CENSORED_TAIL_MS * 3 / 2) };
     }
 
     /// Compression's background budget clears its own measured p99.
@@ -1826,7 +1830,7 @@ mod tests {
             ),
             CHEAP_LLM_TASK_TIMEOUT_MS
         );
-        assert!(CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS < CHEAP_LLM_TASK_TIMEOUT_MS);
+        const { assert!(CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS < CHEAP_LLM_TASK_TIMEOUT_MS) };
     }
 
     // ── v4's `isTimeoutFailure` / `throwIfLostToTimeout` suites ─────────────

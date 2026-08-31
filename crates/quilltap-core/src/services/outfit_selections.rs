@@ -1401,17 +1401,29 @@ mod tests {
             LlmChooseOutcome::Attempted { choice, .. } => assert!(choice.is_none()),
             LlmChooseOutcome::NotAttempted => panic!("the consult did start"),
         }
-        // P4.D42 (v4 `74ec93b5`): the consult is now bounded TWICE, and on a
-        // REMOTE profile the inner bound is the tighter one. `executeCheapLLMTask`
-        // abandons its own attempt at `CHEAP_LLM_TASK_TIMEOUT_MS` (45 s), so the
-        // 60 s phase ceiling never gets to fire here — in v4 as in v5, since v4
-        // wraps the very same `executeCheapLLMTask`. The literals stay spelled
-        // out rather than read back from the constants, so moving either bound
-        // has to be a deliberate edit here too.
+        // P4.D42 (v4 `74ec93b5`) bounded the consult TWICE, and on a REMOTE
+        // profile the INNER bound used to be the tighter one: `executeCheapLLMTask`
+        // abandoned its own attempt at 45 s, inside the 60 s phase ceiling.
+        //
+        // **P4.D136 (v4 `a1d88aa3a`, bug 107) INVERTED that layering**, and v4
+        // inverted it too. The shared background tier is 90 s now, and the outfit
+        // consult passes NO latency class — v4's `applyOutfitSelections`
+        // (`lib/wardrobe/apply-outfit-selections.ts:390`) calls `chooseLLMOutfit`
+        // through `withTimeout(…, OUTFIT_LLM_TIMEOUT_MS)` and never reaches for
+        // the options bag — so both sides take the `background` default and
+        // `OUTFIT_LLM_TIMEOUT_MS` (60 s, untouched by that commit) is now the
+        // binding bound on a remote profile.
+        //
+        // Unlike the memory recap, which v4 deliberately declares `interactive`
+        // precisely to keep its phase ceiling above its legs, v4 left this one to
+        // invert. So v5 reproduces the inversion rather than protecting against
+        // it. The literals stay spelled out rather than read back from the
+        // constants, so moving either bound has to be a deliberate edit here too.
         assert_eq!(
             started.elapsed().as_millis() as u64,
-            45_000,
-            "a remote consult gives up at the cheap-LLM attempt deadline, inside the phase ceiling"
+            60_000,
+            "a remote consult now gives up at the OUTFIT phase ceiling, which the \
+             90 s background attempt deadline no longer sits inside"
         );
     }
 

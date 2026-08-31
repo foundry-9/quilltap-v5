@@ -165,6 +165,30 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — fix(wardrobe): the outfit consult's two bounds inverted with the raised cheap-LLM ceiling
+
+_Versions: core 0.0.712, harness 0.0.612._
+
+The unified gate's catch. P4.D42 bounded the outfit consult twice, and on a
+REMOTE profile the inner bound used to be the tighter one: the cheap-LLM attempt
+gave up at 45 s, inside the 60 s `OUTFIT_LLM_TIMEOUT_MS` phase ceiling. Raising
+the shared background tier to 90 s (bug 107) inverts that — and v4 inverts it
+too, because `applyOutfitSelections` calls `chooseLLMOutfit` through
+`withTimeout(…, OUTFIT_LLM_TIMEOUT_MS)` and never reaches for the options bag, so
+both sides take the `background` default.
+
+Unlike the memory recap — which v4 deliberately declares `interactive` precisely
+to keep its phase ceiling above its own legs — v4 left this one to invert. So v5
+reproduces the inversion rather than protecting against it, and the paused-clock
+test now pins 60 s with the reasoning written down. The local twin (180 s attempt
+vs the same 60 s ceiling) is unaffected.
+
+Also here: three clippy allowances the new parameters earned
+(`send_to_provider`, `resolve_provider_for_dangerous_content`, and the
+title-update case tuple factored into a `type` alias), and the two new
+constant assertions moved into `const { … }` blocks — which is the stronger form
+anyway, matching the phase-ceiling pin in `build_context`.
+
 #### 2026-08-31 — fix(jobs): a cheap-LLM pass lost to a timeout fails its job (v4 a1d88aa3a, bug 107)
 
 _Versions: core 0.0.711, harness 0.0.611._

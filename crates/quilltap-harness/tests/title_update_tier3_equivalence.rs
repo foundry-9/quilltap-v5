@@ -265,7 +265,17 @@ fn title_update_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
 
     // (name, chat, user, override reply, provider throws)
-    let cases: Vec<(&str, &str, &str, Option<CannedTitle>, bool, &str)> = vec![
+    /// One driven case: name, chat id, user id, the reply override, whether the
+    /// provider throws, and the message it throws with.
+    type Case<'a> = (
+        &'a str,
+        &'a str,
+        &'a str,
+        Option<CannedTitle>,
+        bool,
+        &'a str,
+    );
+    let cases: Vec<Case> = vec![
         (
             "manually_renamed",
             &spec.chat_renamed_id,

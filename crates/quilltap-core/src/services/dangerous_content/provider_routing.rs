@@ -199,6 +199,8 @@ fn profile_can_carry_turn(profile: &Value, mime_types: &[String]) -> bool {
 /// the caller re-runs the attachment decision against whichever profile comes
 /// back (`adapt_messages_for_profile`), so an image becomes a description
 /// rather than a 400.
+// v4's parameter list, one for one — it grew to eight at `a1d88aa3a`.
+#[allow(clippy::too_many_arguments)]
 pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
     conn: &rusqlite::Connection,
     api_keys: &A,
