@@ -22,6 +22,7 @@
 //!   2. In Docker: `host.docker.internal` (Docker Desktop DNS, or `--add-host`
 //!      on Linux, does the forwarding).
 //!   3. Otherwise give up gracefully and return the URL unchanged.
+//!
 //! `isVMEnvironment()` is therefore `isDockerEnvironment() || QUILLTAP_HOST_IP
 //! is set` — an env var is how a hand-rolled VM opts in.
 //!

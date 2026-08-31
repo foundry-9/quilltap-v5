@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — style(rewrite): blank-line the gateway-order list (clippy doc_lazy_continuation)
+
+_Versions: core 0.0.704._
+
+The paragraph after the three-item gateway-resolution list in
+`provider_manifest/rewrite.rs`'s header read as an unindented continuation of
+item 3, which `clippy::doc_lazy_continuation` rejects under `-D warnings`. A
+blank line separates them. Comment-only.
+
 #### 2026-08-31 — docs(lima-retirement): the completeness census, the NO-PORT ratifications, and the help bank
 
 _Docs-only change._
