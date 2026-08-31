@@ -2227,6 +2227,33 @@ fn cli_differential() {
             ..Default::default()
         },
     );
+    // A RETIRED-vocabulary lock (v4 `1560bd43b` dropped `lima`/`wsl2` from
+    // `VM_ENVIRONMENTS`). Fresh heartbeat, different host: `docker` would read
+    // ACTIVE and refuse the clean; `lima` no longer can, so both verbs take the
+    // plain different-host arm. This is the deletion's CLI proof.
+    let lima_fresh_pre = |live: &Path| {
+        std::fs::write(
+            live.join("instA/data/quilltap.lock"),
+            lock_json(4242, "elsewhere-host", "lima", &iso_minus_secs(60), vec![]),
+        )
+        .unwrap();
+    };
+    ctx.case_with(
+        "lock status retired lima env",
+        &d(&["--lock-status"]),
+        CaseOpts {
+            pre: Some(Box::new(lima_fresh_pre)),
+            ..Default::default()
+        },
+    );
+    ctx.case_with(
+        "lock clean retired lima env",
+        &d(&["--lock-clean"]),
+        CaseOpts {
+            pre: Some(Box::new(lima_fresh_pre)),
+            ..Default::default()
+        },
+    );
     let foreign_local_pre = |live: &Path| {
         std::fs::write(
             live.join("instA/data/quilltap.lock"),

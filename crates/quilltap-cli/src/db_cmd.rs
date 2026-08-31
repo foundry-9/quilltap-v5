@@ -484,8 +484,11 @@ fn heartbeat_age_ms(lock: &Map<String, Value>) -> f64 {
     }
 }
 
+/// v4 `lock-helpers.js`'s `VM_ENVIRONMENTS` set, which `1560bd43b` narrowed to
+/// the single `docker` entry when the managed Lima/WSL2 modes were retired. A
+/// lock still carrying a retired value takes the plain different-host arm.
 fn is_vm_environment(lock: &Map<String, Value>) -> bool {
-    matches!(lock_str(lock, "environment"), "docker" | "lima" | "wsl2")
+    lock_str(lock, "environment") == "docker"
 }
 
 fn push_history(lock: &mut Map<String, Value>, event: &str, detail: String) {

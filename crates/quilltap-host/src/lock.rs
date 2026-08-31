@@ -7,9 +7,9 @@
 //! hostname, environment type, and a capped history log of state changes.
 //!
 //! v4's design decisions, all carried over:
-//! - **PID-in-file, not `flock()`** — VirtioFS (Lima) and network mounts do
-//!   not reliably propagate POSIX file locks.
-//! - **Hostname disambiguates PIDs** across VM/container boundaries; a
+//! - **PID-in-file, not `flock()`** — network mounts and bind mounts do not
+//!   reliably propagate POSIX file locks.
+//! - **Hostname disambiguates PIDs** across container boundaries; a
 //!   different-host lock is judged by heartbeat freshness (< 5 min → live).
 //! - **Atomic create** (`O_CREAT | O_EXCL`) for the no-lock fast path; EEXIST
 //!   re-reads and falls through to the stale logic.
@@ -27,10 +27,13 @@
 //! concern; the server-side classifier reports `active` there, exactly like
 //! the server's own acquire path, which never runs the identity probe).
 //!
-//! Environment vocabulary: v4's five (`local|electron|docker|lima|wsl2`) are
-//! all PARSED (a v4-Electron-written lock must classify correctly); v5's own
-//! probes only ever EMIT `local|docker|lima|wsl2` (no Electron shell here —
-//! the Tauri host maps later).
+//! Environment vocabulary: v4 `1560bd43b` retired `lima`/`wsl2`, leaving
+//! `local|electron|docker`. All three are PARSED (a v4-Electron-written lock
+//! must classify correctly), plus any retired value via
+//! [`EnvironmentType::Other`] — v4 never validated the field, so a pre-4.9
+//! `"lima"` lock still reads there and simply fails the container test. v5's
+//! own probes only ever EMIT `local|docker` (no Electron shell here — the
+//! Tauri host maps later).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -42,7 +45,7 @@ use crate::env::{detect_environment_type, EnvironmentType};
 /// v4 `HEARTBEAT_INTERVAL_MS` — how often the owner refreshes `lastHeartbeat`.
 pub const HEARTBEAT_INTERVAL_MS: u64 = 60_000;
 
-/// v4's different-host freshness window: a VM/container lock with a heartbeat
+/// v4's different-host freshness window: a container lock with a heartbeat
 /// younger than this is treated as live.
 pub const HEARTBEAT_FRESH_MS: i64 = 5 * 60 * 1000;
 
@@ -273,7 +276,7 @@ pub enum LockStatus {
     Absent,
     Corrupt,
     /// Held by a live process (same-host live PID, or a different-host
-    /// VM/container lock with a fresh heartbeat).
+    /// container lock with a fresh heartbeat).
     Active {
         reason: String,
     },
@@ -313,14 +316,11 @@ fn classify_lock_content(lock: &LockFileContent, now_ms: i64) -> LockStatus {
             reason: format!("held by PID {} on this host", lock.pid),
         };
     }
-    let is_vm = matches!(
-        lock.environment,
-        EnvironmentType::Docker | EnvironmentType::Lima | EnvironmentType::Wsl2
-    );
+    let is_container = lock.environment.is_container();
     let heartbeat_age_ms = iso_to_ms(&lock.last_heartbeat)
         .map(|hb| now_ms - hb)
         .unwrap_or(i64::MAX);
-    if is_vm && heartbeat_age_ms < HEARTBEAT_FRESH_MS {
+    if is_container && heartbeat_age_ms < HEARTBEAT_FRESH_MS {
         return LockStatus::Active {
             reason: format!(
                 "held by {} instance on {} (heartbeat {}s ago)",
@@ -339,13 +339,14 @@ fn classify_lock_content(lock: &LockFileContent, now_ms: i64) -> LockStatus {
 // Acquire / release / heartbeat
 // ============================================================================
 
-fn env_label(env: EnvironmentType) -> &'static str {
+/// v4's same-host conflict label cascade: electron → docker → 'local server'.
+/// A retired `lima`/`wsl2` value takes the final arm exactly as v4's
+/// unmatched-string fallthrough does.
+fn env_label(env: &EnvironmentType) -> &'static str {
     match env {
         EnvironmentType::Electron => "Electron app",
         EnvironmentType::Docker => "Docker container",
-        EnvironmentType::Lima => "Lima VM",
-        EnvironmentType::Wsl2 => "WSL2 instance",
-        EnvironmentType::Local => "local server",
+        EnvironmentType::Local | EnvironmentType::Other(_) => "local server",
     }
 }
 
@@ -450,28 +451,22 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
         );
     }
 
-    // Different hostname — a VM/container sharing the data dir via a mount.
+    // Different hostname — a container sharing the data dir via a bind mount.
     // PID liveness can't cross PID namespaces; judge by heartbeat freshness.
     if !same_host {
-        let is_vm = matches!(
-            existing.environment,
-            EnvironmentType::Docker | EnvironmentType::Lima | EnvironmentType::Wsl2
-        );
+        let is_container = existing.environment.is_container();
         let now_ms = iso_to_ms(&now_iso()).unwrap_or(0);
         let heartbeat_age_ms = iso_to_ms(&existing.last_heartbeat)
             .map(|hb| now_ms - hb)
             .unwrap_or(i64::MAX);
 
-        if is_vm && heartbeat_age_ms < HEARTBEAT_FRESH_MS {
-            let label = match existing.environment {
-                EnvironmentType::Docker => "Docker container",
-                EnvironmentType::Lima => "Lima VM",
-                _ => "WSL2 instance",
-            };
+        if is_container && heartbeat_age_ms < HEARTBEAT_FRESH_MS {
+            // Post-`1560bd43b` the label is the ONE containerized value v4 still
+            // knows; the three-way cascade went with `lima`/`wsl2`.
             let message = format!(
-                "Another Quilltap instance ({label}, PID {} on {}) is already using this \
-                 database (last heartbeat {}s ago). Stop the other instance or use the lock \
-                 override to force access.",
+                "Another Quilltap instance (Docker container, PID {} on {}) is already using \
+                 this database (last heartbeat {}s ago). Stop the other instance or use the \
+                 lock override to force access.",
                 existing.pid,
                 existing.hostname,
                 (heartbeat_age_ms as f64 / 1000.0).round() as i64
@@ -483,7 +478,7 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
             })));
         }
 
-        let stale_reason = if is_vm {
+        let stale_reason = if is_container {
             format!(
                 "{} lock from {} has no recent heartbeat (last: {}, age: {}s)",
                 existing.environment.as_str(),
@@ -508,7 +503,7 @@ pub fn acquire_instance_lock(lock_path: &Path) -> Result<(), LockError> {
     let message = format!(
         "Another Quilltap instance ({}, PID {}) is already using this database. \
          Started at {}. Kill the other process or use the lock override to force access.",
-        env_label(existing.environment),
+        env_label(&existing.environment),
         existing.pid,
         existing.started_at
     );
@@ -1004,7 +999,7 @@ mod tests {
     fn foreign_host_non_vm_is_stale_regardless_of_heartbeat() {
         let path = temp_lock_path();
         // A LOCAL lock from a different hostname is stale even with a fresh
-        // heartbeat (v4: only VM/container environments get the freshness test).
+        // heartbeat (v4: only container environments get the freshness test).
         let mut content = build_lock_content();
         content.pid = 4242;
         content.hostname = "laptop-elsewhere".to_string();
@@ -1196,6 +1191,46 @@ mod tests {
         write_lock_file(&path, &foreign).unwrap();
         release_write_lock(&data_dir);
         assert!(path.exists());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// v4 `1560bd43b` deleted `lima`/`wsl2` from `EnvironmentType`, but v4's
+    /// `readLockFile` never validated the field — a pre-4.9 lock written inside
+    /// a Lima VM still PARSES there and then fails every `=== 'docker'` test.
+    /// v5 must not turn that lock into `Corrupt`: it round-trips through
+    /// `Other` and classifies as a different-host non-container, i.e. STALE
+    /// whatever its heartbeat says.
+    #[test]
+    fn a_retired_lima_lock_parses_and_is_not_a_container() {
+        let path = temp_lock_path();
+        let raw = r#"{"pid": 4242, "hostname": "elsewhere-host",
+"startedAt": "2026-01-01T00:00:00.000Z", "lastHeartbeat": "2026-01-01T00:00:00.000Z",
+"environment": "lima", "processTitle": "node", "processArgv0": "/usr/bin/node",
+"history": []}"#;
+        std::fs::write(&path, raw).unwrap();
+        let content = read_lock_file(&path).expect("a retired-vocabulary lock still parses");
+        assert_eq!(
+            content.environment,
+            EnvironmentType::Other("lima".to_string())
+        );
+        assert_eq!(content.environment.as_str(), "lima");
+        assert!(!content.environment.is_container());
+        // A heartbeat one second old: `docker` would read ACTIVE here; `lima`
+        // no longer can.
+        let now_ms = iso_to_ms("2026-01-01T00:00:01.000Z").unwrap();
+        assert_eq!(
+            classify_lock_status(&path, now_ms),
+            LockStatus::Stale {
+                reason: "held by elsewhere-host but no recent heartbeat".to_string(),
+            }
+        );
+        // And `Other` is a READ shape only — the label cascade falls through to
+        // v4's final arm, and the probe never mints one.
+        assert_eq!(env_label(&content.environment), "local server");
+        assert!(!matches!(
+            detect_environment_type(),
+            EnvironmentType::Other(_)
+        ));
         let _ = std::fs::remove_file(&path);
     }
 

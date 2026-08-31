@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — refactor(lock): retire the lima and wsl2 environments (v4 1560bd43b)
+
+_Versions: host 0.0.85, cli 0.0.17._
+
+The instance-lock half of v4's Lima/WSL2 retirement. `EnvironmentType` drops
+`Lima` and `Wsl2`; `detect_environment_type()` loses the `LIMA_CONTAINER` and
+`WSL_DISTRO_NAME` branches that used to run ahead of the Docker probe;
+`resolve_runtime_mode()` loses the `vm` mode; `is_lima_environment()` is
+deleted. The cross-host heartbeat arm narrows to `environment === 'docker'`,
+the three-way containerized label collapses to the literal `Docker container`,
+and the same-host `env_label` cascade drops its two VM rows.
+
+The CLI's `is_vm_environment()` mirrors v4's `VM_ENVIRONMENTS` set, now the
+single `docker` entry.
+
+`EnvironmentType` gains an `Other(String)` READ shape. This is not an invented
+value: v4's type is a bare TypeScript union over a JSON field its
+`readLockFile` never validates (only pid, hostname and history are
+shape-checked), so a lock written by a pre-4.9 v4 inside a Lima VM still parses
+there and simply fails every `=== 'docker'` test. Without the catch-all v5
+would classify that lock as `corrupt` where v4 reads it as a stale
+different-host lock. A unit test pins the whole chain — parse, `as_str`
+round-trip, not-a-container, `Stale` despite a one-second-old heartbeat,
+`local server` label, and that no probe ever mints one — and two mutations
+(counting `Other` as a container; collapsing it to `Local`) each redden it.
+
+Tier R gained two cases and ran red-first against the pinned v4 launcher: with
+the old three-value predicate, `lock status retired lima env` and `lock clean
+retired lima env` produced 3 failures (two stdout, one exit code) out of 214;
+after the port, 214/0.
 #### 2026-08-31 — refactor(runtime): retire the vm runtime modes and the Lima gateway strategies (v4 1560bd43b)
 
 _Versions: core 0.0.703, host 0.0.84._

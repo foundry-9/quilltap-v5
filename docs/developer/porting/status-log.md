@@ -93113,3 +93113,70 @@ answer in a module global, which is its own fidelity question).
 The `VM`-flavoured wording in the two gateway-holding builders
 (`model/streaming_provider.rs`, `services/embedding_provider.rs`) was swept to
 "container" in the same pass.
+
+---
+
+## P4.D134 unit 2 — the host lock + CLI retire `lima`/`wsl2` (v4 `1560bd43b`)
+
+**Landed 2026-08-31.** Versions: host 0.0.85, cli 0.0.17.
+
+**Ported (v4 `lib/database/backends/sqlite/instance-lock.ts` −42,
+`packages/quilltap/{bin/quilltap.js,lib/lock-helpers.js}`):**
+
+- `quilltap-host/src/env.rs`: `EnvironmentType` drops `Lima`/`Wsl2`;
+  `is_lima_environment()` DELETED; `detect_environment_type()` loses the
+  `LIMA_CONTAINER` and `WSL_DISTRO_NAME` branches that ran ahead of the Docker
+  probe; `resolve_runtime_mode()` loses the `vm` mode.
+- `quilltap-host/src/lock.rs`: the cross-host arm narrows to
+  `environment === 'docker'` (now `EnvironmentType::is_container()`, one home
+  for what was a two-site `matches!`); the three-way containerized label
+  collapses to the literal `Docker container` in the conflict sentence; the
+  same-host `env_label` cascade drops both VM rows; v4's rewritten design
+  comments (network/bind mounts, container boundaries) carried.
+- `quilltap-cli/src/db_cmd.rs`: `is_vm_environment()` is v4's narrowed
+  `VM_ENVIRONMENTS` set — the single `docker` entry. The display sentences
+  interpolate `lock.environment`, so no CLI string moved.
+
+**The one shape that is not a pure deletion: `EnvironmentType::Other(String)`.**
+v4's `EnvironmentType` is a bare TS union over an UNVALIDATED JSON field —
+`readLockFile` shape-checks only `pid`/`hostname`/`history` (verified in the
+pinned source) — so a lock written by a pre-4.9 v4 inside a Lima VM still parses
+in v4 today and simply fails every `=== 'docker'` / `=== 'electron'` test.
+Deleting the variants outright would have made v5 answer `Corrupt` where v4
+answers a stale different-host lock, which is a behavior change v4 did not make.
+`Other` is a READ shape only: it round-trips the raw string through the
+hand-written `Serialize`/`Deserialize`, no probe mints one, and
+`claim_stale_lock` overwrites `environment` from our own detection, so it is
+never re-serialized from a foreign value.
+
+**Pinned by `a_retired_lima_lock_parses_and_is_not_a_container`** — parse,
+`as_str()` round-trip, `!is_container()`, `Stale` despite a one-second-old
+heartbeat (a `docker` lock would read ACTIVE there), the `local server` label,
+and `detect_environment_type()` never producing `Other`. Two mutations, each
+reddening it: (1) `is_container()` widened to `Docker | Other(_)` →
+`assertion failed: !content.environment.is_container()`; (2) `from_str`'s
+catch-all collapsed to `Local` → `left: Local, right: Other("lima")`.
+
+**Tier R, red-first against v4's REAL launcher from the pin.** Two new cases —
+`lock status retired lima env` and `lock clean retired lima env`, a
+fresh-heartbeat `lima` lock on a different host. With the pre-port
+three-value predicate still in place:
+
+```
+CLI differential: 214 cases, 3 failures
+[lock status retired lima env] stdout differs
+[lock clean retired lima env] stdout differs
+[lock clean retired lima env] exit code differs: v4=0 v5=1
+```
+
+(v5 read ACTIVE and refused the clean; v4 takes the plain different-host arm and
+removes the lock.) After the port: **214 cases, 0 failures** — the suite grew
+212 → 214.
+
+**Recipe:**
+
+```
+QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d134-1560bd43b \
+QT_NODE=~/.nvm/versions/node/v24.13.1/bin/node \
+  cargo test -p quilltap-cli --test cli_differential -- --nocapture
+```

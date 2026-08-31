@@ -3,14 +3,24 @@
 //! Two distinct v4 probe families live here — do not merge them:
 //!
 //! - [`detect_environment_type`] — the LOCK's probe
-//!   (`instance-lock.ts detectEnvironmentType()`): electron → lima → wsl2 →
-//!   docker (`DOCKER_CONTAINER` / `/.dockerenv`) → local. v5 emits no
-//!   `electron` (no Electron shell in this host); the variant exists so a
-//!   v4-written lock file still parses/classifies.
-//! - [`is_docker_environment`] / [`is_lima_environment`] — `lib/paths.ts`'s
-//!   probes, consumed by `resolveRuntimeMode()`. NOTE the paths.ts docker probe
-//!   additionally treats an `/app` DIRECTORY as Docker (the Quilltap Docker
-//!   convention) — the lock's probe does not.
+//!   (`instance-lock.ts detectEnvironmentType()`): electron → docker
+//!   (`DOCKER_CONTAINER` / `/.dockerenv`) → local. v5 emits no `electron` (no
+//!   Electron shell in this host); the variant exists so a v4-written lock
+//!   file still parses/classifies.
+//! - [`is_docker_environment`] — `lib/paths.ts`'s probe, consumed by
+//!   `resolveRuntimeMode()`. NOTE the paths.ts docker probe additionally
+//!   treats an `/app` DIRECTORY as Docker (the Quilltap Docker convention) —
+//!   the lock's probe does not.
+//!
+//! v4 `1560bd43b` retired the managed Lima (macOS) and WSL2 (Windows) VM
+//! modes: `isLimaEnvironment()` is gone, `EnvironmentType` is down to three,
+//! and the `lima`/`wsl2` detection branches were deleted rather than
+//! reassigned. A lock file written by a pre-4.9 v4 running in one of those VMs
+//! can still be on disk, so [`EnvironmentType::Other`] keeps v4's own
+//! tolerance: v4's type is a bare TS union over an UNVALIDATED JSON field
+//! (`readLockFile` shape-checks only pid/hostname/history), so `"lima"` still
+//! parses there and simply fails every `=== 'docker'` / `=== 'electron'`
+//! test.
 //!
 //! [`SelfInventoryEnv::production`] fills the core's injected
 //! `self_inventory` environment seam from host reality: the host version, the
@@ -50,43 +60,61 @@ use quilltap_core::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 // Environment probes
 // ============================================================================
 
-/// v4 `EnvironmentType` (`'local' | 'electron' | 'docker' | 'lima' | 'wsl2'`).
+/// v4 `EnvironmentType` (`'local' | 'electron' | 'docker'` since `1560bd43b`).
 /// v5 never emits `Electron`; it parses (v4-written lock files).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// [`EnvironmentType::Other`] is the retired-vocabulary tolerance described in
+/// the module header: a pre-4.9 `"lima"` / `"wsl2"` lock round-trips as its own
+/// string and, like every unrecognized value in v4, matches neither `docker`
+/// nor `electron`. It is a READ shape only — no probe ever produces it.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnvironmentType {
-    #[serde(rename = "local")]
     Local,
-    #[serde(rename = "electron")]
     Electron,
-    #[serde(rename = "docker")]
     Docker,
-    #[serde(rename = "lima")]
-    Lima,
-    #[serde(rename = "wsl2")]
-    Wsl2,
+    Other(String),
 }
 
 impl EnvironmentType {
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             EnvironmentType::Local => "local",
             EnvironmentType::Electron => "electron",
             EnvironmentType::Docker => "docker",
-            EnvironmentType::Lima => "lima",
-            EnvironmentType::Wsl2 => "wsl2",
+            EnvironmentType::Other(raw) => raw.as_str(),
         }
+    }
+
+    fn from_str(raw: &str) -> Self {
+        match raw {
+            "local" => EnvironmentType::Local,
+            "electron" => EnvironmentType::Electron,
+            "docker" => EnvironmentType::Docker,
+            other => EnvironmentType::Other(other.to_string()),
+        }
+    }
+
+    /// v4's post-`1560bd43b` container test: `environment === 'docker'`, the
+    /// one value whose cross-host heartbeat is trusted.
+    pub fn is_container(&self) -> bool {
+        matches!(self, EnvironmentType::Docker)
+    }
+}
+
+impl Serialize for EnvironmentType {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for EnvironmentType {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(EnvironmentType::from_str(&String::deserialize(d)?))
     }
 }
 
 fn env_is(name: &str, want: &str) -> bool {
     std::env::var(name).map(|v| v == want).unwrap_or(false)
-}
-
-/// v4 `isLimaEnvironment()` (`lib/paths.ts:80`): `LIMA_CONTAINER === 'true'`.
-/// Must be probed BEFORE docker — the Lima rootfs exported from Docker still
-/// contains `/.dockerenv`.
-pub fn is_lima_environment() -> bool {
-    env_is("LIMA_CONTAINER", "true")
 }
 
 /// v4 `isDockerEnvironment()` (`lib/paths.ts:92`): `DOCKER_CONTAINER === 'true'`,
@@ -104,19 +132,11 @@ pub fn is_docker_environment() -> bool {
 }
 
 /// The LOCK's environment probe (v4 `instance-lock.ts detectEnvironmentType()`,
-/// minus the Electron branches — v5 has no Electron shell): lima (checked
-/// before docker) → wsl2 (`WSL_DISTRO_NAME`) → docker (`DOCKER_CONTAINER` /
-/// `/.dockerenv` — NO `/app` check in this probe) → local.
+/// minus the Electron branches — v5 has no Electron shell): docker
+/// (`DOCKER_CONTAINER` / `/.dockerenv` — NO `/app` check in this probe) →
+/// local. v4 `1560bd43b` deleted the `LIMA_CONTAINER` and `WSL_DISTRO_NAME`
+/// branches that used to run ahead of the Docker probe.
 pub fn detect_environment_type() -> EnvironmentType {
-    if is_lima_environment() {
-        return EnvironmentType::Lima;
-    }
-    if std::env::var("WSL_DISTRO_NAME")
-        .map(|v| !v.is_empty())
-        .unwrap_or(false)
-    {
-        return EnvironmentType::Wsl2;
-    }
     if env_is("DOCKER_CONTAINER", "true") || Path::new("/.dockerenv").exists() {
         return EnvironmentType::Docker;
     }
@@ -124,14 +144,11 @@ pub fn detect_environment_type() -> EnvironmentType {
 }
 
 /// v4 `resolveRuntimeMode()` (`self-inventory/builders.ts:689`), for a host
-/// with no Electron shell: `vm` (lima) → `docker` → `local-dev` /
-/// `local-production`. `dev` is the caller's development flag (v4
-/// `isDevelopment` = `NODE_ENV === 'development'`; the host passes
-/// `cfg!(debug_assertions)`).
+/// with no Electron shell: `docker` → `local-dev` / `local-production`. v4
+/// `1560bd43b` deleted the `vm` and `electron-vm` modes with the Lima probe.
+/// `dev` is the caller's development flag (v4 `isDevelopment` =
+/// `NODE_ENV === 'development'`; the host passes `cfg!(debug_assertions)`).
 pub fn resolve_runtime_mode(dev: bool) -> String {
-    if is_lima_environment() {
-        return "vm".to_string();
-    }
     if is_docker_environment() {
         return "docker".to_string();
     }
