@@ -53,6 +53,7 @@ use crate::dissolve_bundles::{dissolve_bundles_in_slots, WearableLookup};
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 use crate::services::creation_progress::{
     CreationProgressEmitter, LogLevel, OutfitPreviewEntry, OutfitPreviewSlots,
 };
@@ -828,6 +829,7 @@ pub async fn choose_llm_outfit<C: CompletionProvider, F: FnOnce() -> Option<Stri
         None,
         Some(character_id),
         Some("outfit-selection"),
+        CheapLlmTaskOptions::default(),
     );
 
     let choice = match tokio::time::timeout(

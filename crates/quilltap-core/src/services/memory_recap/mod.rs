@@ -25,6 +25,7 @@ use crate::memory_weighting::{format_relative_age, MemoryInputs};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 use crate::services::knowledge_injector::document_search::{
     search_document_chunks, DocumentSearchOptions,
 };
@@ -610,6 +611,14 @@ async fn summarize_memory_recap<C: CompletionProvider>(
             None,
             Some(character_id),
             Some("memory-recap-summarization"),
+            // The recap is assembled inline while a visible turn waits on
+            // "Recalling…", and it is optional context — losing it costs the
+            // character some remembered flavour, not the turn. So it takes the
+            // tighter of the two budgets and forgoes the retry a background pass
+            // would get (v4 `a1d88aa3a`, bug 107, declared at the task because
+            // `summarizeMemoryRecap` has exactly one caller and that caller is
+            // always a visible turn).
+            CheapLlmTaskOptions::interactive(),
         )
         .await;
 
@@ -763,6 +772,69 @@ mod tests {
         assert_eq!(ramp_limit(Some(40000), 3, 10, 4000, 32000), 10);
         // Midpoint (18000): ratio = 14000/28000 = 0.5 → 3 + 0.5*7 = 6.5 → round 7.
         assert_eq!(ramp_limit(Some(18000), 3, 10, 4000, 32000), 7);
+    }
+
+    /// P4.D136 (v4 `a1d88aa3a`, bug 107) — the recap declares itself
+    /// INTERACTIVE, and the only place that shows is the budget the provider is
+    /// handed: 40 000 ms (45 s minus the 5 s headroom), not the 85 000 ms the
+    /// background class would give. Also the reason the phase ceiling in
+    /// `build_context` still sits above its own legs — see the const block
+    /// there.
+    #[tokio::test]
+    async fn the_recap_declares_itself_interactive() {
+        use crate::model::completion::{
+            CompletionError, CompletionParams, CompletionProvider, CompletionResponse,
+        };
+        use std::sync::Mutex;
+
+        struct BudgetRecorder(Mutex<Vec<Option<i64>>>);
+        impl CompletionProvider for BudgetRecorder {
+            fn send_message(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                params: &CompletionParams,
+            ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+            {
+                self.0.lock().unwrap().push(params.request_timeout_ms);
+                async move {
+                    Ok(CompletionResponse {
+                        content: "a recap".to_string(),
+                        usage: None,
+                        finish_reason: None,
+                        attachment_results: None,
+                    })
+                }
+            }
+        }
+
+        let provider = BudgetRecorder(Mutex::new(Vec::new()));
+        let tiered = TieredMemories {
+            high: vec![serde_json::json!({ "summary": "a thing happened" })],
+            medium: Vec::new(),
+            low: Vec::new(),
+        };
+        let selection = CheapLlmSelection {
+            provider: "DEEPSEEK".to_string(),
+            model_name: "deepseek-v4-flash".to_string(),
+            base_url: None,
+            connection_profile_id: None,
+            is_local: false,
+            profile_parameters: None,
+        };
+        let out = summarize_memory_recap(
+            &CheapLlmTaskExecutor::new(),
+            &provider,
+            "Aurora",
+            &tiered,
+            &selection,
+            None,
+            "char-1",
+            0.0,
+        )
+        .await;
+        assert_eq!(out, "a recap");
+        assert_eq!(provider.0.lock().unwrap().clone(), vec![Some(40_000)]);
     }
 
     #[test]

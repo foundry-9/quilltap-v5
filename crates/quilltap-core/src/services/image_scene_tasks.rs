@@ -28,7 +28,9 @@ use crate::cheap_llm::CheapLlmSelection;
 use crate::jsstr::{js_trim, utf16_len, utf16_truncate};
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{CompletionMessage, CompletionProvider};
-use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskResult};
+use crate::services::cheap_llm_exec::{
+    CheapLlmTaskExecutor, CheapLlmTaskOptions, CheapLlmTaskResult,
+};
 use crate::wardrobe::{describe_outfit, OutfitSlotValues};
 
 // ===========================================================================
@@ -190,6 +192,7 @@ pub async fn craft_image_prompt<C: CompletionProvider>(
             // No character-id cache key on this path.
             None,
             Some("craft-image-prompt"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -442,6 +445,7 @@ pub async fn resolve_appearance<C: CompletionProvider>(
             None,
             None,
             Some("resolve-character-appearances"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -536,6 +540,7 @@ pub async fn sanitize_appearance<C: CompletionProvider>(
             None,
             None,
             Some("sanitize-appearance"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -632,6 +637,7 @@ pub async fn derive_scene_context<C: CompletionProvider>(
             None,
             None,
             Some("derive-scene-context"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -766,6 +772,7 @@ pub async fn craft_story_background_prompt<C: CompletionProvider>(
             Some(4000.0),
             None,
             Some("craft-story-background-prompt"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }

@@ -53,6 +53,22 @@ pub struct CheapLlmTaskResult<T> {
     pub success: bool,
     pub result: Option<T>,
     pub error: Option<String>,
+    /// True when the failure was a timeout rather than an answer — our own
+    /// deadline, or the provider abandoning the socket on the budget we handed
+    /// it — and every retry the task had was spent (v4
+    /// `CheapLLMTaskResult.timedOut`, `a1d88aa3a`, bug 107).
+    ///
+    /// The distinction is what separates "the model produced a disappointing
+    /// answer" from "this pass never happened". A caller that swallows the
+    /// second reports a clean finish over work that is permanently lost, which
+    /// is how 81 timed-out passes in 60 hours left every background job in the
+    /// window marked COMPLETED. Jobs whose whole purpose is the lost pass
+    /// should surface it — see [`throw_if_lost_to_timeout`].
+    ///
+    /// v4's field is `boolean | undefined` and absent on success; v5 spells the
+    /// absent case `false`, which every reader treats identically (v4's own
+    /// `result.success || !result.timedOut` gate is the only consumer).
+    pub timed_out: bool,
     pub usage: Option<CompletionUsage>,
 }
 
@@ -63,6 +79,7 @@ impl<T> CheapLlmTaskResult<T> {
             success: true,
             result: Some(result),
             error: None,
+            timed_out: false,
             usage: None,
         }
     }
@@ -131,16 +148,84 @@ struct ProviderResponse {
 // ---------------------------------------------------------------------------
 
 /// v4 `CHEAP_LLM_TASK_TIMEOUT_MS` — the wall-clock budget for a single
-/// cheap-LLM attempt against a REMOTE provider.
+/// cheap-LLM attempt against a REMOTE provider, when nobody is waiting on it.
 ///
-/// Cheap tasks are small — a few hundred completion tokens — and several of
-/// them (the memory recap in particular) are awaited *inline* on a
-/// user-visible turn. Provider SDKs default to a 10-minute request timeout, so
-/// a provider that accepts the connection and then never answers wedges the
-/// whole turn behind it with no log output. This budget abandons the attempt
-/// instead: the task fails soft, its caller drops the optional content, and the
-/// turn moves on.
-pub const CHEAP_LLM_TASK_TIMEOUT_MS: u64 = 45_000;
+/// Cheap tasks are small — a few hundred completion tokens. Provider SDKs
+/// default to a 10-minute request timeout, so a provider that accepts the
+/// connection and then never answers wedges the caller behind it with no log
+/// output. This budget abandons the attempt instead: the task fails soft, its
+/// caller drops the optional content, and the turn moves on.
+///
+/// **Set from the observed distribution, not from a round number** (v4
+/// `a1d88aa3a`, bug 107). The old 45 s — a 40 s provider budget after
+/// headroom — looked generous until the `[CheapLLM] Task failed` counter made
+/// the losses visible. Across 1,971 completed non-compression calls on a live
+/// instance, not one had ever taken more than 40,000 ms, and three separate
+/// task types peaked within 600 ms of the wall: `MEMORY_EXTRACTION` at 39,936,
+/// `ANSWER_CONFIRMATION` at 39,789, `SCENE_STATE_TRACKING` at 39,461. That is
+/// not a distribution, it is a censored one — the maxima were the budget, not
+/// the work, and 61 of the 81 losses in the counter's first 60 hours landed
+/// under this tier.
+///
+/// The true tail is therefore unknown, so this is deliberately set well clear
+/// of it rather than just past the old wall: the point is to stop cutting the
+/// curve so the histogram can be re-read honestly. It stays a real ceiling — a
+/// provider that accepts and never answers is still abandoned, just not one
+/// that is merely slow.
+pub const CHEAP_LLM_TASK_TIMEOUT_MS: u64 = 90_000;
+
+/// v4 `CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS` — the same tier's budget when a
+/// human is waiting on the call.
+///
+/// A handful of cheap tasks are awaited *inline* while a turn is being
+/// assembled — the memory recap, the two memory compressions, the cache-miss
+/// context compression — and there the budget is not protecting the work, it is
+/// protecting the person watching "Recalling…". All of them produce optional
+/// context: losing one costs the character some remembered flavour, not the
+/// turn. So the generous background ceiling above would be spent in exactly the
+/// place it should not be, and these keep the old 45 s instead.
+///
+/// This is the same asymmetry the compression override draws, generalised: the
+/// ceiling should follow *who is waiting*, not only *which task it is*.
+pub const CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS: u64 = 45_000;
+
+/// v4 `CheapLLMLatencyClass` — whether a human is waiting on this call.
+///
+/// The two are budgeted differently on purpose (bug 107). Almost every cheap
+/// task runs off the turn's critical path, where a generous ceiling costs
+/// nothing but a slow background pass — and a stingy one permanently loses the
+/// work, because there is no downstream retry. Compression is the exception: it
+/// is pre-computed when a cached result is available and falls back to a
+/// *synchronous inline* call when it isn't, and there the whole budget is
+/// latency the operator sits through. One number cannot serve both.
+///
+/// v4's parameter defaults to `background`, which is what the great majority of
+/// callers are; Rust has no default arguments, so every call site names its
+/// class through [`CheapLlmTaskOptions`] and the knob is visible where it is
+/// chosen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CheapLlmLatencyClass {
+    #[default]
+    Background,
+    Interactive,
+}
+
+/// v4 `CheapLLMTaskOptions` — the trailing, rarely-set knobs on a cheap-LLM
+/// task. Positional parameters ran out long ago; anything new goes here.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CheapLlmTaskOptions {
+    /// Whether a human is waiting on this call.
+    pub latency: CheapLlmLatencyClass,
+}
+
+impl CheapLlmTaskOptions {
+    /// The inline-on-a-visible-turn shape (v4 `{ latency: 'interactive' }`).
+    pub fn interactive() -> Self {
+        Self {
+            latency: CheapLlmLatencyClass::Interactive,
+        }
+    }
+}
 
 /// v4 `CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS` — the longer budget for local providers
 /// (Ollama and friends), where a cold model load or a CPU-bound machine can
@@ -178,10 +263,10 @@ const PROVIDER_BUDGET_HEADROOM_MS: u64 = 5_000;
 /// A slice rather than a map: v4's object literal is three keys, and the lookup
 /// is on the hot-ish path of every cheap task (`TASK_TYPE_ACTIVITY` above takes
 /// the same shape for the same reason).
-const CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS: &[(&str, u64)] = &[
-    ("compress-conversation-history", 75_000),
-    ("compress-system-prompt", 75_000),
-    ("compress-memories", 75_000),
+const CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS: &[(&str, u64, u64)] = &[
+    ("compress-conversation-history", 120_000, 75_000),
+    ("compress-system-prompt", 120_000, 75_000),
+    ("compress-memories", 120_000, 75_000),
 ];
 
 /// v4 `deadlineFor(selection, taskType?)` — the caller-side deadline for one
@@ -196,16 +281,28 @@ const CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS: &[(&str, u64)] = &[
 /// v4's `OVERRIDES[taskType ?? ''] ?? CHEAP_LLM_TASK_TIMEOUT_MS` — an absent
 /// task type looks up the empty string, which is never a key, so it falls
 /// through to the default just as an unknown one does.
-pub fn cheap_llm_deadline_for(selection: &CheapLlmSelection, task_type: Option<&str>) -> u64 {
+pub fn cheap_llm_deadline_for(
+    selection: &CheapLlmSelection,
+    task_type: Option<&str>,
+    latency: CheapLlmLatencyClass,
+) -> u64 {
     if selection.is_local {
         return CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS;
     }
     let key = task_type.unwrap_or("");
-    CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS
+    if let Some((_, background, interactive)) = CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS
         .iter()
-        .find(|(k, _)| *k == key)
-        .map(|(_, ms)| *ms)
-        .unwrap_or(CHEAP_LLM_TASK_TIMEOUT_MS)
+        .find(|(k, _, _)| *k == key)
+    {
+        return match latency {
+            CheapLlmLatencyClass::Background => *background,
+            CheapLlmLatencyClass::Interactive => *interactive,
+        };
+    }
+    match latency {
+        CheapLlmLatencyClass::Background => CHEAP_LLM_TASK_TIMEOUT_MS,
+        CheapLlmLatencyClass::Interactive => CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS,
+    }
 }
 
 /// v4 `providerBudgetFor(selection, taskType?)` — the hard per-request budget
@@ -216,17 +313,23 @@ pub fn cheap_llm_deadline_for(selection: &CheapLlmSelection, task_type: Option<&
 // literals today, and so is every override — but if any of them ever moves,
 // make it a compile error rather than a wrap.
 const _: () = assert!(CHEAP_LLM_TASK_TIMEOUT_MS > PROVIDER_BUDGET_HEADROOM_MS);
+const _: () = assert!(CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS > PROVIDER_BUDGET_HEADROOM_MS);
 const _: () = assert!(CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS > PROVIDER_BUDGET_HEADROOM_MS);
 const _: () = {
     let mut i = 0;
     while i < CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS.len() {
         assert!(CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS[i].1 > PROVIDER_BUDGET_HEADROOM_MS);
+        assert!(CHEAP_LLM_TASK_TIMEOUT_OVERRIDES_MS[i].2 > PROVIDER_BUDGET_HEADROOM_MS);
         i += 1;
     }
 };
 
-pub fn provider_budget_for(selection: &CheapLlmSelection, task_type: Option<&str>) -> i64 {
-    (cheap_llm_deadline_for(selection, task_type) - PROVIDER_BUDGET_HEADROOM_MS) as i64
+pub fn provider_budget_for(
+    selection: &CheapLlmSelection,
+    task_type: Option<&str>,
+    latency: CheapLlmLatencyClass,
+) -> i64 {
+    (cheap_llm_deadline_for(selection, task_type, latency) - PROVIDER_BUDGET_HEADROOM_MS) as i64
 }
 
 /// The message bytes of v4's `CheapLLMTimeoutError`
@@ -244,6 +347,102 @@ pub fn cheap_llm_timeout_message(timeout_ms: u64, task_type: Option<&str>) -> St
         Some(t) => format!("Cheap LLM task ({t}) exceeded its {timeout_ms}ms budget"),
         None => format!("Cheap LLM task exceeded its {timeout_ms}ms budget"),
     }
+}
+
+/// The JS `\s` character class, spelled out — v4's `isTimeoutFailure` regex
+/// uses `\s?`, and JS's `\s` and Rust's differ (`\ufeff` in particular is
+/// whitespace to JS and not to Rust's Unicode `\s`). Same treatment as the
+/// vocative regex in `skip_signal` (`[[js-regex-to-rust-regex-fidelity]]`).
+const JS_SPACE: &str = "[\\t\\n\\x0B\\x0C\\r \\u{a0}\\u{1680}\\u{2000}-\\u{200a}\\u{2028}\\u{2029}\\u{202f}\\u{205f}\\u{3000}\\u{feff}]";
+
+/// v4 `isTimeoutFailure(error)` (`a1d88aa3a`, bug 107) — did this attempt end
+/// because nobody answered in time?
+///
+/// Two shapes mean the same thing and must be told apart from "the provider
+/// said no": our own deadline firing, and the provider abandoning the socket on
+/// the budget we handed it. The second is by far the more common — v4's
+/// `withDeadline` backstop fired zero times across the whole window that
+/// produced bug 107, because `requestTimeoutMs` always gives up first, by
+/// design. Both are transient and worth one more attempt; a refusal, a parse
+/// failure or a bad key is neither.
+///
+/// **v4 asks three questions; v5 asks two.** v4's `instanceof
+/// CheapLLMTimeoutError` becomes a match on the message
+/// [`cheap_llm_timeout_message`] builds — the same equivalence the port already
+/// records for that helper (v5 has no thrown-value hierarchy here, and the
+/// deadline is the only thing that ever produces those bytes). v4's
+/// `error.name === 'AbortError' | 'TimeoutError'` is a **NO-PORT with
+/// evidence**: those are Node `fetch`/SDK error *names*, and v5's transport
+/// surfaces a timeout as a [`CompletionError`] message with no name channel —
+/// the regex below is what actually classifies them on this side, and it
+/// already matches every message those two carry.
+pub fn is_timeout_failure(error: &CompletionError) -> bool {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    // v4: `/timed?\s?out|timeout|ETIMEDOUT|ESOCKETTIMEDOUT/i`.
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(&format!(
+            "(?i)timed?{JS_SPACE}?out|timeout|ETIMEDOUT|ESOCKETTIMEDOUT"
+        ))
+        .expect("the timeout-classifier regex compiles")
+    });
+    if error.message.starts_with("Cheap LLM task")
+        && error.message.ends_with("ms budget")
+        && error.message.contains(" exceeded its ")
+    {
+        return true;
+    }
+    re.is_match(&error.message)
+}
+
+/// v4 `CheapLLMTaskLostError`'s message bytes — raised when a cheap-LLM pass
+/// was lost to a timeout and its caller cannot do its job without it. Carries
+/// the task type so the job's `lastError` names the pass rather than the
+/// provider.
+pub fn cheap_llm_task_lost_message(task_type: &str, provider_error: Option<&str>) -> String {
+    // v4: `` `Cheap LLM task "${taskType}" timed out and was not retried
+    // successfully${providerError ? `: ${providerError}` : ''}` ``. The JS
+    // ternary is falsy for `''` as well as for absent, so an empty provider
+    // error takes the no-colon form.
+    match provider_error.filter(|e| !e.is_empty()) {
+        Some(e) => format!(
+            "Cheap LLM task \"{task_type}\" timed out and was not retried successfully: {e}"
+        ),
+        None => {
+            format!("Cheap LLM task \"{task_type}\" timed out and was not retried successfully")
+        }
+    }
+}
+
+/// v4 `throwIfLostToTimeout(result, taskType)` — `Err` when a background job's
+/// cheap-LLM pass was lost to a timeout.
+///
+/// The half of bug 107 that makes the other half measurable. A cheap task that
+/// times out returns an unsuccessful result, and every job handler treated that
+/// the same way it treats a refusal: log a warning, return, and be marked
+/// COMPLETED. So the memory that was never extracted and the scene state that
+/// was never derived looked, from every counter the operator has, exactly like
+/// work that finished — 83 `MEMORY_EXTRACTION` and 99 `SCENE_STATE_TRACKING`
+/// jobs COMPLETED in a window that lost 33 extraction passes and 12 scene ones.
+///
+/// Failing the job hands it to the runner's `mark_failed`, which already does
+/// the right thing: exponential backoff, a retry, and DEAD with the reason
+/// attached once the attempts run out. That is a third attempt at the pass on
+/// top of the same-route retry, at no new machinery.
+///
+/// **Only for timeouts.** A refusal, an unparseable answer or a missing key
+/// would fail identically on every retry, and re-queuing those would spend the
+/// backoff learning nothing. Those keep the old behaviour: log, return, done.
+pub fn throw_if_lost_to_timeout<T>(
+    result: &CheapLlmTaskResult<T>,
+    task_type: &str,
+) -> Result<(), crate::db::DbError> {
+    if result.success || !result.timed_out {
+        return Ok(());
+    }
+    Err(crate::db::DbError::Internal(cheap_llm_task_lost_message(
+        task_type,
+        result.error.as_deref(),
+    )))
 }
 
 /// v4's `effectiveMaxTokens` floor: cheap tasks never ask for fewer than 2048.
@@ -496,6 +695,7 @@ impl CheapLlmTaskExecutor {
         max_tokens: Option<f64>,
         character_id: Option<&str>,
         task_type: Option<&str>,
+        latency: CheapLlmLatencyClass,
     ) -> Result<ProviderResponse, CompletionError> {
         let profile_key = profile_key_for(selection);
         let effective_max_tokens = effective_max_tokens(max_tokens);
@@ -519,7 +719,7 @@ impl CheapLlmTaskExecutor {
             // `send_with_deadline` remains the backstop for providers that
             // ignore it. (v4 `baseParams.requestTimeoutMs`, stamped ONCE and
             // spread into all three arms — the closure is v5's spread.)
-            request_timeout_ms: Some(provider_budget_for(selection, task_type)),
+            request_timeout_ms: Some(provider_budget_for(selection, task_type, latency)),
         };
 
         let known_no_temp = self
@@ -712,8 +912,9 @@ impl CheapLlmTaskExecutor {
         max_tokens: Option<f64>,
         character_id: Option<&str>,
         task_type: Option<&str>,
+        latency: CheapLlmLatencyClass,
     ) -> Result<ProviderResponse, CompletionError> {
-        let timeout_ms = cheap_llm_deadline_for(selection, task_type);
+        let timeout_ms = cheap_llm_deadline_for(selection, task_type, latency);
         // `tokio::time::Instant`, not `std::time::Instant`: it reads the same
         // clock the deadline does, so a paused-clock test measures the virtual
         // elapsed time the log reports.
@@ -726,6 +927,7 @@ impl CheapLlmTaskExecutor {
             max_tokens,
             character_id,
             task_type,
+            latency,
         );
         match tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), work).await {
             Ok(result) => result,
@@ -785,6 +987,7 @@ impl CheapLlmTaskExecutor {
         max_tokens: Option<f64>,
         character_id: Option<&str>,
         task_type: Option<&str>,
+        options: CheapLlmTaskOptions,
     ) -> CheapLlmTaskResult<T> {
         crate::services::activity_registry::track_activity(
             activity_kind_for_task(task_type),
@@ -797,6 +1000,7 @@ impl CheapLlmTaskExecutor {
                 max_tokens,
                 character_id,
                 task_type,
+                options,
             ),
         )
         .await
@@ -814,13 +1018,15 @@ impl CheapLlmTaskExecutor {
         max_tokens: Option<f64>,
         character_id: Option<&str>,
         task_type: Option<&str>,
+        options: CheapLlmTaskOptions,
     ) -> CheapLlmTaskResult<T> {
         // Each attempt gets its own budget rather than sharing one across the
         // task: the uncensored fallback below only fires after a *completed*
         // call came back empty, so it is a fresh attempt and deserves a fresh
         // deadline (v4's `deadlineFor` per call site).
+        let latency = options.latency;
         let attempt = async {
-            let mut response = self
+            let mut response = match self
                 .send_with_deadline(
                     completion,
                     selection,
@@ -828,14 +1034,62 @@ impl CheapLlmTaskExecutor {
                     max_tokens,
                     character_id,
                     task_type,
+                    latency,
                 )
-                .await?;
+                .await
+            {
+                Ok(r) => r,
+                // One more go at a fresh socket, and only for a timeout (v4
+                // `a1d88aa3a`, bug 107).
+                //
+                // A timed-out cheap pass is permanently lost otherwise: the SDK
+                // is given `maxRetries: 0`, nothing downstream re-queues the
+                // work, and the job that asked for it goes on to report a clean
+                // finish. A second attempt costs one call and recovers most of a
+                // fat-tail miss, which is the cheapest half of bug 107's fix.
+                //
+                // Not on the interactive path: there the operator is already
+                // waiting out the budget, and doubling it to rescue an
+                // optimisation they would never have noticed missing is the
+                // wrong trade.
+                Err(first_error) => {
+                    if !is_timeout_failure(&first_error)
+                        || latency == CheapLlmLatencyClass::Interactive
+                    {
+                        return Err(first_error);
+                    }
+                    tracing::warn!(
+                        target: "quilltap::cheap_llm",
+                        task_type = task_type.unwrap_or(""),
+                        chat_id = self.log.as_ref().and_then(|c| c.chat_id.as_deref()).unwrap_or(""),
+                        character_id = character_id.unwrap_or(""),
+                        provider = %selection.provider,
+                        model = %selection.model_name,
+                        budget_ms = cheap_llm_deadline_for(selection, task_type, latency),
+                        error = %first_error.message,
+                        "[CheapLLM] Attempt timed out; retrying the same route once",
+                    );
+                    self.send_with_deadline(
+                        completion,
+                        selection,
+                        &messages,
+                        max_tokens,
+                        character_id,
+                        task_type,
+                        latency,
+                    )
+                    .await?
+                }
+            };
 
             if let Some(uncensored_selection) = should_attempt_uncensored_fallback(
                 &response.content,
                 selection,
                 uncensored_fallback,
             ) {
+                // v4 calls `attempt(uncensoredSelection)` here, which is the
+                // deadlined send WITHOUT the timeout retry — the retry wraps only
+                // the first call.
                 let retry = self
                     .send_with_deadline(
                         completion,
@@ -844,6 +1098,7 @@ impl CheapLlmTaskExecutor {
                         max_tokens,
                         character_id,
                         task_type,
+                        latency,
                     )
                     .await?;
                 if js_trim(&retry.content).is_empty() {
@@ -866,6 +1121,7 @@ impl CheapLlmTaskExecutor {
                 success: true,
                 result: Some(parse_response(&response.content)),
                 error: None,
+                timed_out: false,
                 usage: response.usage,
             },
             // v4 `getErrorMessage(error)` — the thrown Error's message.
@@ -888,6 +1144,7 @@ impl CheapLlmTaskExecutor {
                         max_tokens,
                         character_id,
                         task_type,
+                        latency,
                     )
                     .await
                 {
@@ -914,10 +1171,17 @@ impl CheapLlmTaskExecutor {
                     error = %error.message,
                     "[CheapLLM] Task failed",
                 );
+                // Say *how* it was lost, not just that it was. A refusal or a
+                // parse failure is a finished pass with a disappointing answer;
+                // a timeout is work that never happened, and a caller that
+                // treats the two alike reports a clean finish over a hole in
+                // the data (v4 `a1d88aa3a`, bug 107).
+                let timed_out = is_timeout_failure(&error);
                 CheapLlmTaskResult {
                     success: false,
                     result: None,
                     error: Some(error.message),
+                    timed_out,
                     usage: None,
                 }
             }
@@ -940,6 +1204,9 @@ impl CheapLlmTaskExecutor {
         max_tokens: Option<f64>,
         character_id: Option<&str>,
         task_type: Option<&str>,
+        // `latency`: v4 threads the caller's class through the chain's `meta`,
+        // so a stand-in is budgeted the same way the failed route was.
+        latency: CheapLlmLatencyClass,
     ) -> Option<CheapLlmTaskResult<T>> {
         let handle = self.fallback.as_ref()?;
 
@@ -1020,6 +1287,7 @@ impl CheapLlmTaskExecutor {
                     max_tokens,
                     character_id,
                     task_type,
+                    latency,
                 )
                 .await
             {
@@ -1046,6 +1314,7 @@ impl CheapLlmTaskExecutor {
                         success: true,
                         result: Some(parse_response(&response.content)),
                         error: None,
+                        timed_out: false,
                         usage: response.usage,
                     });
                 }
@@ -1339,7 +1608,8 @@ mod tests {
             cheap_llm_timeout_message(
                 cheap_llm_deadline_for(
                     &selection("DEEPSEEK", "m"),
-                    Some("compress-conversation-history")
+                    Some("compress-conversation-history"),
+                    CheapLlmLatencyClass::Interactive,
                 ),
                 Some("compress-conversation-history")
             ),
@@ -1366,7 +1636,8 @@ mod tests {
         let remote = selection("DEEPSEEK", "m");
         for task in COMPRESSION_TASKS {
             assert!(
-                cheap_llm_deadline_for(&remote, Some(task)) > CHEAP_LLM_TASK_TIMEOUT_MS,
+                cheap_llm_deadline_for(&remote, Some(task), CheapLlmLatencyClass::Background)
+                    > CHEAP_LLM_TASK_TIMEOUT_MS,
                 "{task} did not get more room than the default"
             );
         }
@@ -1378,10 +1649,12 @@ mod tests {
         let remote = selection("DEEPSEEK", "m");
         let budgets: std::collections::HashSet<u64> = COMPRESSION_TASKS
             .iter()
-            .map(|t| cheap_llm_deadline_for(&remote, Some(t)))
+            .map(|t| cheap_llm_deadline_for(&remote, Some(t), CheapLlmLatencyClass::Background))
             .collect();
         assert_eq!(budgets.len(), 1);
-        assert_eq!(budgets.into_iter().next(), Some(75_000));
+        // P4.D136 (v4 `a1d88aa3a`, bug 107): 75 s → 120 s on the path nobody is
+        // waiting on.
+        assert_eq!(budgets.into_iter().next(), Some(120_000));
     }
 
     /// The override must not read as a GLOBAL bump: v4 names six task types
@@ -1398,7 +1671,7 @@ mod tests {
             "title-chat",
         ] {
             assert_eq!(
-                cheap_llm_deadline_for(&remote, Some(task)),
+                cheap_llm_deadline_for(&remote, Some(task), CheapLlmLatencyClass::Background),
                 CHEAP_LLM_TASK_TIMEOUT_MS,
                 "{task} should still be on the shared default"
             );
@@ -1411,15 +1684,19 @@ mod tests {
     fn an_unknown_or_absent_task_type_falls_back_to_the_default() {
         let remote = selection("DEEPSEEK", "m");
         assert_eq!(
-            cheap_llm_deadline_for(&remote, Some("not-a-real-task")),
+            cheap_llm_deadline_for(
+                &remote,
+                Some("not-a-real-task"),
+                CheapLlmLatencyClass::Background
+            ),
             CHEAP_LLM_TASK_TIMEOUT_MS
         );
         assert_eq!(
-            cheap_llm_deadline_for(&remote, None),
+            cheap_llm_deadline_for(&remote, None, CheapLlmLatencyClass::Background),
             CHEAP_LLM_TASK_TIMEOUT_MS
         );
         assert_eq!(
-            cheap_llm_deadline_for(&remote, Some("")),
+            cheap_llm_deadline_for(&remote, Some(""), CheapLlmLatencyClass::Background),
             CHEAP_LLM_TASK_TIMEOUT_MS
         );
     }
@@ -1433,16 +1710,447 @@ mod tests {
     fn a_local_provider_keeps_its_own_budget_whatever_the_task() {
         let local = local_selection("OLLAMA", "qwen3");
         assert_eq!(
-            cheap_llm_deadline_for(&local, None),
+            cheap_llm_deadline_for(&local, None, CheapLlmLatencyClass::Background),
             CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS
         );
         for task in COMPRESSION_TASKS {
             assert_eq!(
-                cheap_llm_deadline_for(&local, Some(task)),
+                cheap_llm_deadline_for(&local, Some(task), CheapLlmLatencyClass::Background),
                 CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS,
                 "a per-task override shrank the local budget for {task}"
             );
+            // v4 `a1d88aa3a` adds the interactive arm to the same assertion:
+            // the local exemption ignores the latency class too.
+            assert_eq!(
+                cheap_llm_deadline_for(&local, Some(task), CheapLlmLatencyClass::Interactive),
+                CHEAP_LLM_TASK_TIMEOUT_LOCAL_MS,
+                "the interactive class shrank the local budget for {task}"
+            );
         }
+    }
+
+    // ── P4.D136 / v4 `a1d88aa3a` (bug 107) — the budgets set from the curve ──
+    //
+    // v4's `cheap-llm-deadlines.test.ts` additions, mirrored. The measured
+    // numbers these bounds defend, from a live instance:
+    //   - 1,971 non-compression calls, max 39,936 ms against a 40,000 ms
+    //     provider budget — a CENSORED distribution, so the true tail is at
+    //     least 40 s.
+    //   - 256 CONTEXT_COMPRESSION calls: p99 61.1 s, max 67,733 ms against
+    //     70,000. A budget below its own task's p99 converts healthy calls into
+    //     permanent losses at exactly the rate the tail crosses it.
+
+    /// The measured p99 of `CONTEXT_COMPRESSION`, in ms.
+    const COMPRESSION_P99_MS: u64 = 61_100;
+    /// The observed maximum of the *censored* non-compression distribution. The
+    /// true tail is unknown and at least this; a ceiling at or below it is by
+    /// construction cutting healthy work.
+    const CENSORED_TAIL_MS: u64 = 40_000;
+
+    /// The old 45 s (40 s after provider headroom) sat *on* the observed
+    /// maximum, which is how 61 of 81 losses landed in this tier.
+    #[test]
+    fn the_shared_default_clears_the_censored_tail_by_a_real_margin() {
+        assert!(CHEAP_LLM_TASK_TIMEOUT_MS > CENSORED_TAIL_MS * 3 / 2);
+    }
+
+    /// Compression's background budget clears its own measured p99.
+    #[test]
+    fn compression_clears_its_measured_p99_where_nobody_is_waiting() {
+        let remote = selection("DEEPSEEK", "m");
+        for task in COMPRESSION_TASKS {
+            assert!(
+                cheap_llm_deadline_for(&remote, Some(task), CheapLlmLatencyClass::Background)
+                    > COMPRESSION_P99_MS,
+                "{task} does not clear the measured p99"
+            );
+        }
+    }
+
+    /// Asymmetry is the point: a generous background budget costs nothing but a
+    /// slow pass, while the same number inline is time the operator spends
+    /// watching an empty composer.
+    #[test]
+    fn the_inline_compression_path_is_budgeted_more_tightly() {
+        let remote = selection("DEEPSEEK", "m");
+        for task in COMPRESSION_TASKS {
+            assert!(
+                cheap_llm_deadline_for(&remote, Some(task), CheapLlmLatencyClass::Interactive)
+                    < cheap_llm_deadline_for(&remote, Some(task), CheapLlmLatencyClass::Background),
+                "{task}'s inline budget is not tighter"
+            );
+        }
+    }
+
+    /// v4's parameter defaults to `background`; v5 spells that
+    /// `CheapLlmLatencyClass::default()`, and the two must agree.
+    #[test]
+    fn the_default_latency_class_is_background() {
+        let remote = selection("DEEPSEEK", "m");
+        assert_eq!(
+            CheapLlmLatencyClass::default(),
+            CheapLlmLatencyClass::Background
+        );
+        assert_eq!(
+            CheapLlmTaskOptions::default().latency,
+            CheapLlmLatencyClass::Background
+        );
+        for task in COMPRESSION_TASKS {
+            assert_eq!(
+                cheap_llm_deadline_for(&remote, Some(task), CheapLlmLatencyClass::default()),
+                cheap_llm_deadline_for(&remote, Some(task), CheapLlmLatencyClass::Background),
+            );
+        }
+    }
+
+    /// The asymmetry follows *who is waiting*, not *which task it is*: the
+    /// shared tier splits the same way compression does. The memory recap is
+    /// awaited inline while a turn assembles, and a 90 s ceiling would be spent
+    /// in exactly the place it should not be.
+    #[test]
+    fn the_latency_class_reaches_the_shared_tier_too() {
+        let remote = selection("DEEPSEEK", "m");
+        assert_eq!(
+            cheap_llm_deadline_for(
+                &remote,
+                Some("memory-recap-summarization"),
+                CheapLlmLatencyClass::Interactive
+            ),
+            CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS
+        );
+        assert_eq!(
+            cheap_llm_deadline_for(
+                &remote,
+                Some("memory-recap-summarization"),
+                CheapLlmLatencyClass::Background
+            ),
+            CHEAP_LLM_TASK_TIMEOUT_MS
+        );
+        assert!(CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS < CHEAP_LLM_TASK_TIMEOUT_MS);
+    }
+
+    // ── v4's `isTimeoutFailure` / `throwIfLostToTimeout` suites ─────────────
+    //
+    // Both shapes mean "nobody answered in time", and the provider's own
+    // abandonment is by far the more common: our deadline is the backstop and
+    // fired zero times across the window that produced bug 107.
+
+    #[test]
+    fn is_timeout_failure_recognises_our_own_deadline() {
+        // v4 catches this by `instanceof CheapLLMTimeoutError`; v5 has only the
+        // message, and this is the shape `cheap_llm_timeout_message` builds.
+        assert!(is_timeout_failure(&CompletionError::new(
+            cheap_llm_timeout_message(40_000, Some("memory-extraction-self"))
+        )));
+        assert!(is_timeout_failure(&CompletionError::new(
+            cheap_llm_timeout_message(180_000, None)
+        )));
+    }
+
+    #[test]
+    fn is_timeout_failure_recognises_a_provider_giving_up() {
+        for msg in [
+            "Request timed out.",
+            "NanoGPT API error: ETIMEDOUT",
+            "socket hang up: ESOCKETTIMEDOUT",
+            "Timeout while awaiting the upstream",
+            // The regex's `timed?\s?out` arm, all three spacings.
+            "the request timedout",
+            "the request timeout",
+            "the request TIMED OUT",
+        ] {
+            assert!(
+                is_timeout_failure(&CompletionError::new(msg)),
+                "not classified as a timeout: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_timeout_failure_leaves_ordinary_failures_alone() {
+        // These would fail identically on every retry; treating them as
+        // timeouts would spend the backoff learning nothing.
+        for msg in [
+            "401 Unauthorized",
+            "Empty response from provider",
+            "Unexpected token in JSON",
+            "",
+        ] {
+            assert!(
+                !is_timeout_failure(&CompletionError::new(msg)),
+                "wrongly classified as a timeout: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn throw_if_lost_to_timeout_says_nothing_about_a_success() {
+        let ok: CheapLlmTaskResult<()> = CheapLlmTaskResult::early(());
+        assert!(throw_if_lost_to_timeout(&ok, "scene-state-tracking").is_ok());
+    }
+
+    #[test]
+    fn throw_if_lost_to_timeout_says_nothing_about_an_ordinary_failure() {
+        // A refusal is a finished pass with a disappointing answer. Re-queuing
+        // it would just spend the backoff on the same refusal.
+        let refused: CheapLlmTaskResult<()> = CheapLlmTaskResult {
+            success: false,
+            result: None,
+            error: Some("content refused".to_string()),
+            timed_out: false,
+            usage: None,
+        };
+        assert!(throw_if_lost_to_timeout(&refused, "scene-state-tracking").is_ok());
+    }
+
+    #[test]
+    fn throw_if_lost_to_timeout_fails_a_pass_that_never_happened() {
+        let lost: CheapLlmTaskResult<()> = CheapLlmTaskResult {
+            success: false,
+            result: None,
+            error: Some("Request timed out.".to_string()),
+            timed_out: true,
+            usage: None,
+        };
+        let err = throw_if_lost_to_timeout(&lost, "scene-state-tracking").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "Cheap LLM task \"scene-state-tracking\" timed out and was not retried successfully: Request timed out."
+        );
+
+        // v4's `${providerError ? `: ${providerError}` : ''}` is falsy for the
+        // empty string as well as for absent.
+        let bare: CheapLlmTaskResult<()> = CheapLlmTaskResult {
+            success: false,
+            result: None,
+            error: None,
+            timed_out: true,
+            usage: None,
+        };
+        assert_eq!(
+            throw_if_lost_to_timeout(&bare, "scene-state-tracking")
+                .unwrap_err()
+                .to_string(),
+            "Cheap LLM task \"scene-state-tracking\" timed out and was not retried successfully"
+        );
+        let empty: CheapLlmTaskResult<()> = CheapLlmTaskResult {
+            success: false,
+            result: None,
+            error: Some(String::new()),
+            timed_out: true,
+            usage: None,
+        };
+        assert_eq!(
+            throw_if_lost_to_timeout(&empty, "scene-state-tracking")
+                .unwrap_err()
+                .to_string(),
+            "Cheap LLM task \"scene-state-tracking\" timed out and was not retried successfully"
+        );
+    }
+
+    // ── v4's `cheap-llm-timeout-retry.test.ts`, mirrored ────────────────────
+    //
+    // A timed-out cheap pass used to be permanently lost: the SDK is handed
+    // `maxRetries: 0` so a provider that gives up on its own budget arrives as a
+    // single failed attempt; nothing downstream re-queues the work; and the job
+    // that asked for it went on to report a clean finish. Across 60 hours on a
+    // live instance that was 81 lost passes, every one `Request timed out.`
+
+    /// Answers a scripted list of results in order, counting the calls.
+    struct ScriptedProvider {
+        script: Mutex<std::collections::VecDeque<Result<String, String>>>,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+    impl ScriptedProvider {
+        fn new(script: Vec<Result<&str, &str>>) -> Self {
+            Self {
+                script: Mutex::new(
+                    script
+                        .into_iter()
+                        .map(|r| r.map(str::to_string).map_err(str::to_string))
+                        .collect(),
+                ),
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+        fn calls(&self) -> usize {
+            self.calls.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+    impl CompletionProvider for ScriptedProvider {
+        fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &CompletionParams,
+        ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+        {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let next = self
+                .script
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or(Err("script exhausted".to_string()));
+            async move {
+                match next {
+                    Ok(content) => Ok(CompletionResponse {
+                        content,
+                        usage: None,
+                        finish_reason: None,
+                        attachment_results: None,
+                    }),
+                    Err(e) => Err(CompletionError::new(e)),
+                }
+            }
+        }
+    }
+
+    async fn run_scripted(
+        provider: &ScriptedProvider,
+        task_type: &str,
+        options: CheapLlmTaskOptions,
+    ) -> CheapLlmTaskResult<String> {
+        CheapLlmTaskExecutor::new()
+            .execute(
+                provider,
+                &selection("NANOGPT", "deepseek-v4-flash"),
+                vec![CompletionMessage::user("go".to_string())],
+                |c: &str| c.to_string(),
+                None,
+                None,
+                None,
+                Some(task_type),
+                options,
+            )
+            .await
+    }
+
+    #[tokio::test]
+    async fn it_tries_the_same_route_once_more_when_the_provider_times_out() {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let provider = ScriptedProvider::new(vec![Err("Request timed out."), Ok("{\"ok\":true}")]);
+        let result = run_scripted(
+            &provider,
+            "memory-extraction-self",
+            CheapLlmTaskOptions::default(),
+        )
+        .await;
+        assert_eq!(provider.calls(), 2);
+        assert!(result.success);
+        assert_eq!(result.result.as_deref(), Some("{\"ok\":true}"));
+        assert!(!result.timed_out);
+    }
+
+    #[tokio::test]
+    async fn it_gives_up_after_the_second_timeout_and_says_the_pass_was_lost() {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let provider =
+            ScriptedProvider::new(vec![Err("Request timed out."), Err("Request timed out.")]);
+        let result = run_scripted(
+            &provider,
+            "memory-extraction-self",
+            CheapLlmTaskOptions::default(),
+        )
+        .await;
+        assert_eq!(provider.calls(), 2);
+        assert!(!result.success);
+        // The flag is the whole point: without it a caller cannot tell this
+        // apart from a refusal, and reports a clean finish over a hole.
+        assert!(result.timed_out);
+    }
+
+    #[tokio::test]
+    async fn it_does_not_retry_an_ordinary_provider_failure() {
+        // A 401 would be a 401 the second time too. The old behaviour — one
+        // attempt, then the chain — is right for everything that is not a
+        // timeout.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let provider = ScriptedProvider::new(vec![Err("401 Unauthorized"), Ok("never reached")]);
+        let result = run_scripted(
+            &provider,
+            "memory-extraction-self",
+            CheapLlmTaskOptions::default(),
+        )
+        .await;
+        assert_eq!(provider.calls(), 1);
+        assert!(!result.success);
+        assert!(!result.timed_out);
+    }
+
+    #[tokio::test]
+    async fn it_does_not_spend_a_second_budget_while_the_operator_is_waiting() {
+        // The inline compression path: doubling the wait to rescue an
+        // optimisation nobody would have noticed missing is the wrong trade.
+        // The turn goes out uncompressed instead.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let provider = ScriptedProvider::new(vec![Err("Request timed out."), Ok("never reached")]);
+        let result = run_scripted(
+            &provider,
+            "compress-conversation-history",
+            CheapLlmTaskOptions::interactive(),
+        )
+        .await;
+        assert_eq!(provider.calls(), 1);
+        assert!(result.timed_out);
+    }
+
+    #[tokio::test]
+    async fn it_still_retries_compression_on_the_pre_computed_path() {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let provider = ScriptedProvider::new(vec![Err("Request timed out."), Ok("compressed")]);
+        let result = run_scripted(
+            &provider,
+            "compress-conversation-history",
+            CheapLlmTaskOptions::default(),
+        )
+        .await;
+        assert_eq!(provider.calls(), 2);
+        assert!(result.success);
+    }
+
+    #[tokio::test]
+    async fn it_leaves_the_inline_recap_on_the_tighter_budget_with_no_retry() {
+        // `summarize_memory_recap` declares itself interactive at the task,
+        // because it has exactly one caller and that caller is always a visible
+        // turn.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let provider = ScriptedProvider::new(vec![Err("Request timed out."), Ok("never reached")]);
+        let result = run_scripted(
+            &provider,
+            "memory-recap-summarization",
+            CheapLlmTaskOptions::interactive(),
+        )
+        .await;
+        assert_eq!(provider.calls(), 1);
+        assert!(result.timed_out);
+    }
+
+    /// v4's `[CheapLLM] Attempt timed out; retrying the same route once` warn,
+    /// which is the only trace the retry leaves when it succeeds.
+    #[tokio::test]
+    async fn the_retry_says_so_in_the_log() {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let provider = ScriptedProvider::new(vec![Err("Request timed out."), Ok("answered")]);
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            run_scripted(
+                &provider,
+                "memory-extraction-self",
+                CheapLlmTaskOptions::default(),
+            )
+            .await;
+        }
+        let lines = logs.lock().unwrap().clone();
+        let hit = lines
+            .iter()
+            .find(|l| l.contains("[CheapLLM] Attempt timed out; retrying the same route once"))
+            .unwrap_or_else(|| panic!("no retry warn in {lines:?}"));
+        assert!(hit.contains("budget_ms=90000"), "{hit}");
+        assert!(hit.contains("task_type=memory-extraction-self"), "{hit}");
     }
 
     // ── P4.D123 site 3: the executor is wrapped, and the KIND is COMPUTED ────
@@ -1493,6 +2201,7 @@ mod tests {
                 None,
                 None,
                 task_type,
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(out.success, "the stub provider answers");
@@ -1535,7 +2244,14 @@ mod tests {
     }
 
     /// The incident: a remote provider that accepts the request and never
-    /// answers is abandoned at 45 s, and the task fails soft with v4's message.
+    /// answers is abandoned at its deadline, and the task fails soft with v4's
+    /// message.
+    ///
+    /// Driven on the INTERACTIVE class, which is what this task
+    /// (`memory-recap-summarization`) actually declares in production, so the
+    /// bound stays 45 s and — crucially — the abandonment is NOT retried: v4's
+    /// same-route retry never fires on the interactive path (`a1d88aa3a`, bug
+    /// 107). The background twin below is the retrying half.
     #[tokio::test(start_paused = true)]
     async fn a_remote_attempt_is_abandoned_at_its_45s_deadline() {
         // Drives the REAL wrapped path, so it opens real activity spans on the
@@ -1556,6 +2272,7 @@ mod tests {
                 None,
                 None,
                 Some("memory-recap-summarization"),
+                CheapLlmTaskOptions::interactive(),
             )
             .await;
 
@@ -1564,11 +2281,58 @@ mod tests {
             r.error.as_deref(),
             Some("Cheap LLM task (memory-recap-summarization) exceeded its 45000ms budget")
         );
+        // P4.D136: an abandoned attempt is now a TIMEOUT, not just a failure.
+        assert!(r.timed_out);
         let elapsed = started.elapsed();
         assert!(
-            elapsed >= std::time::Duration::from_millis(CHEAP_LLM_TASK_TIMEOUT_MS)
-                && elapsed < std::time::Duration::from_millis(CHEAP_LLM_TASK_TIMEOUT_MS + 1_000),
+            elapsed >= std::time::Duration::from_millis(CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS)
+                && elapsed
+                    < std::time::Duration::from_millis(
+                        CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS + 1_000
+                    ),
             "abandoned after {elapsed:?}, expected ~45s"
+        );
+    }
+
+    /// The BACKGROUND twin of the test above, and the retry's wall-clock proof:
+    /// the same stalling provider now costs TWO 90 s budgets before the task
+    /// fails, because a timed-out attempt gets one more go at a fresh socket
+    /// (v4 `a1d88aa3a`, bug 107). A stalling socket is the only thing that can
+    /// show the retry is a *second budget* rather than a second call inside the
+    /// first (the P4.D42 idiom).
+    #[tokio::test(start_paused = true)]
+    async fn a_background_attempt_spends_two_budgets_before_it_gives_up() {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let exec = CheapLlmTaskExecutor::new();
+        let sel = selection("DEEPSEEK", "deepseek-v4-flash");
+        let started = tokio::time::Instant::now();
+
+        let r = exec
+            .execute(
+                &StallingProvider,
+                &sel,
+                vec![CompletionMessage::user("hi")],
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("memory-extraction-self"),
+                CheapLlmTaskOptions::default(),
+            )
+            .await;
+
+        assert!(!r.success);
+        assert!(r.timed_out);
+        assert_eq!(
+            r.error.as_deref(),
+            Some("Cheap LLM task (memory-extraction-self) exceeded its 90000ms budget")
+        );
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(CHEAP_LLM_TASK_TIMEOUT_MS * 2)
+                && elapsed
+                    < std::time::Duration::from_millis(CHEAP_LLM_TASK_TIMEOUT_MS * 2 + 1_000),
+            "gave up after {elapsed:?}, expected ~180s (two 90s budgets)"
         );
     }
 
@@ -1594,6 +2358,7 @@ mod tests {
                 None,
                 None,
                 Some("summarize-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
 
@@ -1633,6 +2398,7 @@ mod tests {
                 None,
                 None,
                 Some("summarize-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(local.success);
@@ -1648,16 +2414,26 @@ mod tests {
                 None,
                 None,
                 Some("summarize-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(!remote.success);
-        assert!(remote.error.as_deref().unwrap().contains("45000ms budget"));
+        // P4.D136 (bug 107): the remote ceiling is 90 s now, and a 100 s call
+        // still overruns it — twice, since the timeout retry gets a fresh
+        // budget and the provider is just as slow the second time.
+        assert!(remote.error.as_deref().unwrap().contains("90000ms budget"));
+        assert!(remote.timed_out);
     }
 
-    /// P4.D127 (v4 `8872d7efc`) — the override on the REAL path, both ways. A
-    /// 60 s remote compression call used to be abandoned at 45 s and now
-    /// succeeds; a 100 s one is still abandoned, but at 75 s, and the message
-    /// bytes say so. Pre-fix, the first half of this test was red.
+    /// P4.D127 (v4 `8872d7efc`) — the override on the REAL path, both ways,
+    /// re-measured for P4.D136 (v4 `a1d88aa3a`, bug 107).
+    ///
+    /// The interactive class keeps `8872d7efc`'s numbers exactly: a 60 s inline
+    /// compression call finishes and a 100 s one is abandoned at 75 s with the
+    /// message bytes that say so. The background class is the raise: the same
+    /// 100 s call now finishes there, which is the difference between a
+    /// compressed next turn and a permanently lost pass. And the override is
+    /// still not a global bump — a 100 s `summarize-chat` is abandoned at 90 s.
     #[tokio::test(start_paused = true)]
     async fn a_remote_compression_call_lives_to_seventy_five_seconds() {
         // Drives the REAL wrapped path, so it opens real activity spans on the
@@ -1679,6 +2455,7 @@ mod tests {
                 None,
                 None,
                 Some("compress-conversation-history"),
+                CheapLlmTaskOptions::interactive(),
             )
             .await;
         assert!(
@@ -1701,6 +2478,7 @@ mod tests {
                 None,
                 None,
                 Some("compress-memories"),
+                CheapLlmTaskOptions::interactive(),
             )
             .await;
         assert!(!abandoned.success);
@@ -1714,12 +2492,38 @@ mod tests {
             abandoned.error
         );
 
+        // P4.D136: the SAME 100 s call on the pre-computed path now finishes.
+        // That is the raise, and the reason for it — this call is not stalled,
+        // it is carrying a whole conversation and nobody is waiting on it.
+        let survives_background = CheapLlmTaskExecutor::new()
+            .execute(
+                &SlowProvider {
+                    delay_ms: 100_000,
+                    content: "compressed at leisure".to_string(),
+                },
+                &selection("DEEPSEEK", "deepseek-v4-flash"),
+                messages.clone(),
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("compress-memories"),
+                CheapLlmTaskOptions::default(),
+            )
+            .await;
+        assert!(
+            survives_background.success,
+            "a 100 s pre-computed compression must finish: {:?}",
+            survives_background.error
+        );
+
         // …and the override is not a global bump on the real path either: the
-        // same 60 s call on a non-compression task is still abandoned at 45 s.
+        // same 100 s call on a non-compression task is still abandoned, at the
+        // shared 90 s ceiling.
         let still_bounded = CheapLlmTaskExecutor::new()
             .execute(
                 &SlowProvider {
-                    delay_ms: 60_000,
+                    delay_ms: 100_000,
                     content: "irrelevant".to_string(),
                 },
                 &selection("DEEPSEEK", "deepseek-v4-flash"),
@@ -1729,6 +2533,7 @@ mod tests {
                 None,
                 None,
                 Some("summarize-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(!still_bounded.success);
@@ -1736,7 +2541,7 @@ mod tests {
             .error
             .as_deref()
             .unwrap()
-            .contains("45000ms budget"));
+            .contains("90000ms budget"));
     }
 
     /// P4.D127 (v4 `8872d7efc`) — a failed cheap task narrates itself. Log-only:
@@ -1785,6 +2590,7 @@ mod tests {
                     None,
                     Some("char-9"),
                     Some("memory-extraction-self"),
+                    CheapLlmTaskOptions::default(),
                 )
                 .await
         };
@@ -1844,6 +2650,7 @@ mod tests {
                     None,
                     None,
                     Some("memory-extraction-self"),
+                    CheapLlmTaskOptions::default(),
                 )
                 .await
         };
@@ -1877,9 +2684,12 @@ mod tests {
                 None,
                 None,
                 Some("title-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
-        assert_eq!(remote_rec.budgets(), vec![Some(40_000)]);
+        // P4.D136 (v4 `a1d88aa3a`, bug 107): the background shared tier is 90 s,
+        // so the provider is handed 85 s.
+        assert_eq!(remote_rec.budgets(), vec![Some(85_000)]);
 
         let local_rec = RecordingProvider::new();
         CheapLlmTaskExecutor::new()
@@ -1892,13 +2702,15 @@ mod tests {
                 None,
                 None,
                 Some("title-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert_eq!(local_rec.budgets(), vec![Some(175_000)]);
 
         // P4.D127 (v4 `8872d7efc`): a REMOTE compression attempt hands the
-        // provider 70 s — five seconds inside its own 75 s deadline — so the
-        // per-task override reaches `CompletionParams`, not just `deadline_for`.
+        // provider five seconds inside its own deadline, so the per-task
+        // override reaches `CompletionParams` and not just `deadline_for`.
+        // P4.D136 raised the background compression deadline to 120 s.
         let compress_rec = RecordingProvider::new();
         CheapLlmTaskExecutor::new()
             .execute(
@@ -1910,26 +2722,61 @@ mod tests {
                 None,
                 None,
                 Some("compress-conversation-history"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
-        assert_eq!(compress_rec.budgets(), vec![Some(70_000)]);
+        assert_eq!(compress_rec.budgets(), vec![Some(115_000)]);
+
+        // …and the same call on the INTERACTIVE path keeps the old 70 s, which
+        // is the whole asymmetry: the operator is waiting out this one.
+        let compress_inline = RecordingProvider::new();
+        CheapLlmTaskExecutor::new()
+            .execute(
+                &compress_inline,
+                &selection("DEEPSEEK", "deepseek-v4-flash"),
+                vec![CompletionMessage::user("compress me".to_string())],
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("compress-conversation-history"),
+                CheapLlmTaskOptions::interactive(),
+            )
+            .await;
+        assert_eq!(compress_inline.budgets(), vec![Some(70_000)]);
 
         // v4's own two assertions, restated: strictly inside our deadline (so
         // the provider aborts its socket first), and the local budget outranks
         // the remote *deadline*.
         assert!(
-            provider_budget_for(&selection("DEEPSEEK", "m"), Some("title-chat"))
-                < CHEAP_LLM_TASK_TIMEOUT_MS as i64
+            provider_budget_for(
+                &selection("DEEPSEEK", "m"),
+                Some("title-chat"),
+                CheapLlmLatencyClass::Background
+            ) < CHEAP_LLM_TASK_TIMEOUT_MS as i64
         );
-        assert!(provider_budget_for(&selection("DEEPSEEK", "m"), Some("title-chat")) > 0);
         assert!(
-            provider_budget_for(&local_selection("OLLAMA", "m"), Some("title-chat"))
-                > CHEAP_LLM_TASK_TIMEOUT_MS as i64
+            provider_budget_for(
+                &selection("DEEPSEEK", "m"),
+                Some("title-chat"),
+                CheapLlmLatencyClass::Background
+            ) > 0
+        );
+        assert!(
+            provider_budget_for(
+                &local_selection("OLLAMA", "m"),
+                Some("title-chat"),
+                CheapLlmLatencyClass::Background
+            ) > CHEAP_LLM_TASK_TIMEOUT_MS as i64
         );
         // …and the local exemption reaches the provider budget too: a local
         // compression attempt keeps 175 s, not the override's 70 s.
         assert_eq!(
-            provider_budget_for(&local_selection("OLLAMA", "m"), Some("compress-memories")),
+            provider_budget_for(
+                &local_selection("OLLAMA", "m"),
+                Some("compress-memories"),
+                CheapLlmLatencyClass::Background
+            ),
             175_000
         );
     }
@@ -1973,10 +2820,12 @@ mod tests {
                 None,
                 None,
                 Some("title-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(r.success);
-        assert_eq!(p.0.budgets(), vec![Some(40_000), Some(40_000)]);
+        // P4.D136: the shared background tier is 90 s, so both arms carry 85 s.
+        assert_eq!(p.0.budgets(), vec![Some(85_000), Some(85_000)]);
     }
 
     /// Each attempt gets a FRESH budget. The safe provider burns 30 s and comes
@@ -2029,17 +2878,19 @@ mod tests {
                 None,
                 None,
                 Some("summarize-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
 
         assert!(!r.success);
         // The fallback selection is `isLocal: false` in v4, so its fresh budget
-        // is the remote 45 s — reported as such.
-        assert!(r.error.as_deref().unwrap().contains("45000ms budget"));
+        // is the remote shared tier — 90 s since P4.D136 (bug 107) — reported as
+        // such.
+        assert!(r.error.as_deref().unwrap().contains("90000ms budget"));
         let elapsed = started.elapsed();
         assert!(
-            elapsed >= std::time::Duration::from_millis(75_000),
-            "the second attempt shared the first's budget (total {elapsed:?}, expected ~75s)"
+            elapsed >= std::time::Duration::from_millis(120_000),
+            "the second attempt shared the first's budget (total {elapsed:?}, expected ~120s)"
         );
     }
 
@@ -2107,6 +2958,10 @@ mod tests {
                 None,
                 Some("char-9"),
                 Some("memory-recap-summarization"),
+                // The recap's real production class (P4.D136 / bug 107): the
+                // interactive budget, and no same-route retry — so exactly ONE
+                // abandonment fires and its fields are unambiguous.
+                CheapLlmTaskOptions::interactive(),
             )
             .await
         };
@@ -2207,6 +3062,7 @@ mod tests {
                 None,
                 None,
                 None,
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(r.success);
@@ -2224,6 +3080,7 @@ mod tests {
                 None,
                 None,
                 None,
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(r2.success);
@@ -2276,6 +3133,7 @@ mod tests {
                 None,
                 None,
                 None,
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(r.success);
@@ -2370,6 +3228,7 @@ mod tests {
                 None,
                 // Maps to SUMMARIZATION via `map_task_type_to_log_type`.
                 Some("summarize-chat"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(r.success);
@@ -2526,6 +3385,7 @@ mod tests {
                 None,
                 None,
                 Some("memory-extraction-self"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
         assert!(!r.success);

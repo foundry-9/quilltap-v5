@@ -94094,3 +94094,99 @@ de-duplication, and relaxing the type guard's `id` requirement — each reddenin
 exactly one arm, all six named above.
 
 Versions: core 0.0.709, harness 0.0.609.
+
+### P4.D136 unit 4 — the cheap-LLM budgets set from the measured curve (v4 `a1d88aa3a`, bug 107)
+
+v4's diagnosis, carried whole into the constants' doc comments: the ceilings
+were round numbers sitting inside the distribution they were meant to bound.
+1,971 completed non-compression calls, max 39,936 ms against a 40,000 ms
+provider budget, with `MEMORY_EXTRACTION` / `ANSWER_CONFIRMATION` /
+`SCENE_STATE_TRACKING` all peaking within 600 ms of the wall — a CENSORED
+distribution. 256 `CONTEXT_COMPRESSION` calls: p99 61.1 s, max 67,733 ms against
+70,000.
+
+**The constants.** `CHEAP_LLM_TASK_TIMEOUT_MS` 45 s → **90 s**;
+new `CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS` = 45 s; the overrides table becomes
+`(task, background, interactive)` at 120 s / 75 s. `cheap_llm_deadline_for` and
+`provider_budget_for` take the class; the compile-time underflow guards widen to
+both columns.
+
+**The class.** `CheapLlmLatencyClass` + `CheapLlmTaskOptions`, threaded from the
+CALL SITE. Rust has no default arguments, so where v4 omits the bag every v5 site
+writes `CheapLlmTaskOptions::default()` — 45 call sites, and the knob is visible
+where it is chosen rather than inherited silently by a site added later.
+`CheapLlmTaskOptions::default()` is asserted equal to `Background`, so v4's
+default and v5's cannot drift.
+
+Interactive in v5: the memory recap (declared at the task, as v4 does — it has
+exactly one caller and that caller is always a visible turn) and the cache-miss
+inline `apply_context_compression` in `build_context`. Explicitly background:
+the async compression trigger (v4 spreads `latency: 'background'` at the same
+point).
+
+**⚠ The recap phase ceiling caught the raise, exactly as the order predicted.**
+`build_context`'s `const { assert!(MEMORY_RECAP_PHASE_TIMEOUT_MS >
+CHEAP_LLM_TASK_TIMEOUT_MS) }` FAILED TO COMPILE the moment the constant moved.
+That is the pin working: v4's own comment says the recap declares itself
+interactive *precisely so* this ordering holds. Retargeted to
+`..._INTERACTIVE_MS`, and a SECOND const block added asserting the background
+budget is now ABOVE the ceiling — which is why the recap must not take that
+class.
+
+**The retry.** One more attempt at a fresh socket, on a timeout only, never
+interactive — wrapping the FIRST send only (v4's uncensored-empty retry calls
+plain `attempt(uncensoredSelection)`, and so does v5). `is_timeout_failure`
+ports v4's regex with `JS_SPACE` spelled out (`[[js-regex-to-rust-regex-fidelity]]`);
+v4's `instanceof CheapLLMTimeoutError` becomes a match on the bytes
+`cheap_llm_timeout_message` builds — the same equivalence the port already
+records for that helper — and v4's `error.name === 'AbortError' | 'TimeoutError'`
+is a **NO-PORT with evidence**: those are Node fetch/SDK error *names*, v5's
+transport has no name channel, and the regex already matches every message they
+carry.
+
+**The reporting half.** `CheapLlmTaskResult.timed_out: bool` (v4's `boolean |
+undefined`; the only consumer is `result.success || !result.timedOut`, so `false`
+and absent are indistinguishable), `cheap_llm_task_lost_message` byte-exact
+including v4's falsy-empty-string arm, and `throw_if_lost_to_timeout` returning
+`Err(DbError::Internal(…))` — which the job runner's `mark_failed` already turns
+into backoff → retry → DEAD with the reason attached.
+
+**Tests.** v4's `cheap-llm-deadlines.test.ts` additions and its whole new
+`cheap-llm-timeout-retry.test.ts` transcribed, including the measured constants
+`COMPRESSION_P99_MS` / `CENSORED_TAIL_MS` as named bounds. Plus three v5-only
+pins the differential cannot reach:
+
+- `a_background_attempt_spends_two_budgets_before_it_gives_up` — a stalling
+  socket under a paused clock, the only thing that can show the retry is a
+  SECOND BUDGET rather than a second call inside the first (the P4.D42 idiom);
+- `the_recap_declares_itself_interactive` — a budget-recording provider through
+  the real `summarize_memory_recap`: 40 000 ms, not 85 000;
+- `the_latency_class_reaches_the_providers_budget` — the same for
+  `apply_context_compression`, both classes, because the tier-3 families
+  deliberately drive v4's `background` default and the forwarding could
+  otherwise be deleted with everything staying green.
+
+The pre-existing paused-clock tests were re-measured rather than relaxed: the
+45 s abandonment test now drives the interactive class (which is what that task
+declares in production, and what keeps ONE abandonment in the log for its field
+assertions), the 100 s remote pair reads 90 s, the fresh-budget test's total
+moves 75 s → 120 s, and the compression real-path test gained the background arm
+where a 100 s call now FINISHES.
+
+**Mutation proofs (5):** dropping the compression forwarding; removing the
+interactive no-retry guard; blinding `is_timeout_failure`'s deadline-message arm;
+un-declaring the recap's class; and (from unit 4's own first run) the deadline
+ceiling itself — each reddening exactly the arms named above.
+
+**Deferred loud:** v4's two `compressMemories('interactive')` legs have NO v5
+twin — build-context phase 2 (`compressMemories`) is a pre-existing tracked
+deferral (`build_context.rs:2715`). The `compress-memories` /
+`compress-system-prompt` override rows are ported and correct but unreached in
+production until that lands.
+
+**Families re-run at the pin:** `compression_tier3_equivalence`,
+`compression_cache_tier3_equivalence`, `context_compression_equivalence` — all
+green, all byte-identical, because v4's oracle passes no `latency` and takes its
+`background` default.
+
+Versions: core 0.0.710, harness 0.0.610.

@@ -331,6 +331,13 @@ impl<C: crate::model::completion::CompletionProvider + Sync> AsyncCompressionTri
             character_name: args.character_name.clone(),
             user_name: args.user_name.clone(),
             uncensored_fallback: uncensored,
+            // Nobody is waiting: this runs after the turn has already been
+            // delivered, to be ready for the next one. A budget that clears the
+            // measured p99 costs nothing here and is the difference between a
+            // compressed next turn and a permanently lost pass (v4 `a1d88aa3a`,
+            // bug 107 — v4 sets `latency: 'background'` explicitly at the same
+            // point, in `triggerAsyncCompression`).
+            latency: crate::services::cheap_llm_exec::CheapLlmLatencyClass::Background,
         };
         crate::services::compression_cache::trigger_async_compression(
             self.db,

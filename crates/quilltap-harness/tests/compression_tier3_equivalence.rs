@@ -324,6 +324,14 @@ async fn compression_tier3_matches_oracle() {
             character_name: call.character_name,
             user_name: call.user_name,
             uncensored_fallback,
+            // The oracle's `applyContextCompression` call passes no `latency`,
+            // so v4 takes its `background` default (v4 `a1d88aa3a`, bug 107) and
+            // every pre-existing row stays byte-identical. The budget the class
+            // selects is not in this family's comparand — it is pinned by the
+            // `cheap_llm_exec` RecordingProvider tests (70 s vs 115 s through
+            // the REAL `execute`) and by the forwarding test in
+            // `services::compression`.
+            latency: quilltap_core::services::cheap_llm_exec::CheapLlmLatencyClass::Background,
         };
 
         let result = apply_context_compression(

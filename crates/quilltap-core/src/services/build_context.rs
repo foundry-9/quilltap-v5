@@ -2066,6 +2066,10 @@ where
                         character_name: input.character.name.clone(),
                         user_name,
                         uncensored_fallback: uncensored,
+                        // The operator is waiting on this one: no cached result
+                        // was ready, so the turn is blocked behind the call.
+                        // Tight budget (v4 `a1d88aa3a`, bug 107).
+                        latency: crate::services::cheap_llm_exec::CheapLlmLatencyClass::Interactive,
                     },
                 )
                 .await;
@@ -3638,10 +3642,28 @@ mod phase_ceiling_tests {
         // merely slow in two places is still doing useful work. A const block,
         // so inverting the ordering fails to COMPILE rather than merely failing
         // a test.
+        //
+        // The comparison is against the **interactive** budget, and deliberately
+        // so (v4 `a1d88aa3a`, bug 107, and v4's own comment on
+        // `MEMORY_RECAP_PHASE_TIMEOUT_MS`): the recap declares itself
+        // interactive precisely so this phase ceiling stays above its legs
+        // rather than underneath them. Raising the BACKGROUND budget 45 s → 90 s
+        // would otherwise have inverted the two and made this the binding
+        // constraint — and it did, loudly, the moment the constant moved: this
+        // block failed to compile until the recap's call site declared its
+        // class. That is the pin doing its job, not a bound to relax.
         const {
             assert!(
                 MEMORY_RECAP_PHASE_TIMEOUT_MS
-                    > crate::services::cheap_llm_exec::CHEAP_LLM_TASK_TIMEOUT_MS
+                    > crate::services::cheap_llm_exec::CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS
+            )
+        };
+        // …and the background budget is now ABOVE it, which is exactly why the
+        // recap must not take that class.
+        const {
+            assert!(
+                crate::services::cheap_llm_exec::CHEAP_LLM_TASK_TIMEOUT_MS
+                    > MEMORY_RECAP_PHASE_TIMEOUT_MS
             )
         };
     }

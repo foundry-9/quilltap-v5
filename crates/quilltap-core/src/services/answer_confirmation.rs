@@ -45,6 +45,7 @@ use crate::jsstr::{js_trim, utf16_len, utf16_slice_from};
 use crate::message_attribution::{get_participant_name, AttributionParticipant};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 use crate::services::tool_execution::ToolMessage;
 
 pub mod prompt_text;
@@ -644,6 +645,7 @@ pub async fn run_answer_confirmation<C: CompletionProvider>(
             Some(512.0),
             opts.character_id,
             Some("answer-confirmation"),
+            CheapLlmTaskOptions::default(),
         )
         .await;
 
@@ -728,6 +730,7 @@ pub async fn run_answer_confirmation<C: CompletionProvider>(
             Some(4096.0),
             opts.character_id,
             Some("answer-reaffirmation"),
+            CheapLlmTaskOptions::default(),
         )
         .await;
 

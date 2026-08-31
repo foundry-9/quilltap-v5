@@ -15,7 +15,9 @@
 use crate::cheap_llm::CheapLlmSelection;
 use crate::jsstr::{js_trim, utf16_len, utf16_truncate};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
-use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskResult};
+use crate::services::cheap_llm_exec::{
+    CheapLlmTaskExecutor, CheapLlmTaskOptions, CheapLlmTaskResult,
+};
 
 use super::prompt_text::{
     CHAT_TITLE_CONSIDERATION_PROMPT, CHAT_TITLE_FROM_SUMMARY_PROMPT, CHAT_TITLE_PROMPT,
@@ -107,6 +109,7 @@ pub async fn fold_chat_summary<C: CompletionProvider>(
             None,
             None,
             Some("fold-chat-summary"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -132,6 +135,7 @@ pub async fn generate_title_from_summary<C: CompletionProvider>(
             None,
             None,
             Some("title-from-summary"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -158,6 +162,7 @@ pub async fn generate_help_chat_title_from_summary<C: CompletionProvider>(
             None,
             None,
             Some("title-from-summary"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -233,6 +238,7 @@ pub async fn consider_title_update<C: CompletionProvider>(
             None,
             None,
             Some("consider-title-update"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -270,6 +276,7 @@ pub async fn consider_help_chat_title_update<C: CompletionProvider>(
             None,
             None,
             Some("consider-title-update"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -383,6 +390,7 @@ pub async fn title_chat<C: CompletionProvider>(
             None,
             None,
             Some("title-chat"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -420,6 +428,7 @@ pub async fn title_help_chat<C: CompletionProvider>(
             None,
             None,
             Some("title-chat"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }

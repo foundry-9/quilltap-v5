@@ -36,7 +36,9 @@ use crate::db::runtime::Db;
 use crate::db::{chats_read, connection_profiles};
 use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::pascal::custom_tools::{LlmInvokeOptions, LlmInvokeResult, LlmInvoker};
-use crate::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
+use crate::services::cheap_llm_exec::{
+    CheapLlmLogConfig, CheapLlmTaskExecutor, CheapLlmTaskOptions,
+};
 use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::image_job_common::{
@@ -310,6 +312,7 @@ where
                 Some(max_tokens),
                 None,
                 Some("custom-tool-consult"),
+                CheapLlmTaskOptions::default(),
             )
             .await;
 

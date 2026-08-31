@@ -238,6 +238,10 @@ fn compression_cache_tier3_matches_oracle() {
         character_name: spec.character_name.clone(),
         user_name: spec.user_name.clone(),
         uncensored_fallback: None,
+        // v4's `triggerAsyncCompression` spreads `latency: 'background'` over
+        // the caller's options (`a1d88aa3a`, bug 107) — this family drives that
+        // path, so `Background` is what v4 uses here too.
+        latency: quilltap_core::services::cheap_llm_exec::CheapLlmLatencyClass::Background,
     };
     let sys_hash = hash_string(&spec.system_prompt);
     let full = to_compressible(&spec.messages);

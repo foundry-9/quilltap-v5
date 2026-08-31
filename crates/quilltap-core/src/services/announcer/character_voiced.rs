@@ -45,6 +45,7 @@ use crate::memory_injector::{format_dynamic_memory_head, InjectorResult, RecallA
 use crate::model::completion::{CompletionMessage, CompletionProvider, CompletionRole};
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 use crate::services::commonplace_notifications::{build_commonplace_llm_context, CommonplaceParts};
 use crate::services::memory_service::{
     search_memories_semantic, SemanticSearchOptions, SemanticSearchResult,
@@ -439,6 +440,7 @@ where
             Some(2048.0),
             Some(&character_id),
             Some(TASK_TYPE),
+            CheapLlmTaskOptions::default(),
         )
         .await;
 

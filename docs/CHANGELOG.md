@@ -165,6 +165,44 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — fix(cheap-llm): set the budgets from the measured curve and retry a timeout once (v4 a1d88aa3a, bug 107)
+
+_Versions: core 0.0.710, harness 0.0.610._
+
+The cheap-LLM ceilings were round numbers sitting inside the distribution they
+were meant to bound. Across 1,971 completed non-compression calls on a live
+instance, not one had ever exceeded 40,000 ms against a 40,000 ms provider
+budget, and three task types peaked within 600 ms of the wall — a censored
+distribution, where the maxima were the budget rather than the work.
+
+The shared tier moves 45 s → **90 s** and compression 75 s → **120 s**, both set
+clear of the measured p99s. The ceiling now follows *who is waiting*, not only
+which task it is: a `CheapLlmLatencyClass` threads from the call site, and the
+memory recap and the cache-miss inline compression declare themselves
+interactive and keep the tighter numbers. That split is also what stops the
+raise inverting `MEMORY_RECAP_PHASE_TIMEOUT_MS` — the const block pinning that
+ordering failed to compile the moment the constant moved, which is the pin doing
+its job.
+
+A timed-out attempt now gets one more go at a fresh socket. Timeouts only: a 401
+or a refusal would fail identically. Never on the interactive path, where the
+operator is already waiting out the budget. `CheapLlmTaskResult.timed_out`
+separates "this pass never happened" from "this pass disappointed me", and
+`throw_if_lost_to_timeout` turns the first into a failed job.
+
+v4's two test suites are transcribed whole (the deadline additions and the new
+`cheap-llm-timeout-retry` suite), plus a background stalling-socket proof that
+the retry is a *second budget* rather than a second call inside the first, a
+wiring pin that the recap's interactive declaration reaches the provider's
+budget (40 000 ms, not 85 000), and a forwarding pin that
+`apply_context_compression` hands `options.latency` down. Five mutations, each
+reddening the right arm.
+
+Note the two `compressMemories` legs v4 also marks interactive have no v5 twin
+yet — build-context phase 2 is a pre-existing tracked deferral — so the
+`compress-memories` / `compress-system-prompt` override rows are ported and
+ready but unreached in production.
+
 #### 2026-08-31 — fix(chat): re-decide the attachment question when the model changes underneath the array (v4 a1d88aa3a, bug 106)
 
 _Versions: core 0.0.709, harness 0.0.609._

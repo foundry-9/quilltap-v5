@@ -59,7 +59,9 @@ use crate::memory_tasks::{
 };
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
-use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskResult};
+use crate::services::cheap_llm_exec::{
+    CheapLlmTaskExecutor, CheapLlmTaskOptions, CheapLlmTaskResult,
+};
 use crate::services::memory_gate::{
     create_memory_with_gate, CreateMemoryOptions, GateAction, MemoryServiceOptions,
 };
@@ -199,6 +201,7 @@ pub async fn extract_self_memories_from_turn<C: CompletionProvider>(
             resolved_max_tokens,
             Some(target_character_id),
             Some("memory-extraction-self"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }
@@ -248,6 +251,7 @@ pub async fn extract_other_memories_from_turn<C: CompletionProvider>(
             resolved_max_tokens,
             Some(observer_character_id),
             Some("memory-extraction-other"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }

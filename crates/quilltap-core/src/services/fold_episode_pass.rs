@@ -29,6 +29,7 @@ use crate::memory_tasks::{
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 use crate::services::memory_gate::{
     create_memory_with_gate, CreateMemoryOptions, GateAction, MemoryServiceOptions,
 };
@@ -214,6 +215,7 @@ pub async fn run_fold_episode_pass<C: CompletionProvider, E: EmbeddingProvider>(
             None,
             None,
             Some("fold-episode-extraction"),
+            CheapLlmTaskOptions::default(),
         )
         .await;
     let episodes = match (extraction.success, extraction.result) {

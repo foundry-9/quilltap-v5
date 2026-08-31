@@ -28,6 +28,7 @@
 //! and the port's boundary starts at the provider call. No compression-specific
 //! deferral.
 
+use crate::services::cheap_llm_exec::{CheapLlmLatencyClass, CheapLlmTaskOptions};
 use serde::Serialize;
 
 use crate::cheap_llm::{CheapLlmSelection, UncensoredFallbackOptions};
@@ -106,6 +107,16 @@ pub struct ContextCompressionOptions<'a> {
     /// danger settings and available profiles (v4's `dangerSettings &&
     /// availableProfiles` gate).
     pub uncensored_fallback: Option<UncensoredFallbackOptions<'a>>,
+    /// Whether a human is waiting on this compression (v4
+    /// `ContextCompressionOptions.latency`, `a1d88aa3a`, bug 107).
+    ///
+    /// `Background` is the pre-computation the finalizer kicks off after a turn:
+    /// nobody is watching, and a generous budget costs nothing but a slow pass —
+    /// while a tight one permanently loses it, because there is no downstream
+    /// retry and the turn simply goes out uncompressed. `Interactive` is the
+    /// synchronous fallback on a cache miss, where the whole budget is latency
+    /// the operator sits through.
+    pub latency: CheapLlmLatencyClass,
 }
 
 /// Details about a compression that was applied (v4
@@ -172,6 +183,9 @@ async fn compress_conversation_history<C: CompletionProvider>(
     target_tokens: i64,
     selection: &CheapLlmSelection,
     uncensored_fallback: Option<&UncensoredFallbackOptions<'_>>,
+    // `latency`: v4 `compressConversationHistory`'s trailing parameter
+    // (`a1d88aa3a`, bug 107) — the caller's class, forwarded verbatim.
+    latency: CheapLlmLatencyClass,
 ) -> Result<HistoryCompression, String> {
     // Format messages for compression: user → userName, assistant →
     // characterName, anything else → "System"; blocks joined by a blank line.
@@ -224,6 +238,7 @@ async fn compress_conversation_history<C: CompletionProvider>(
             Some(4000.0),
             None,
             Some("compress-conversation-history"),
+            CheapLlmTaskOptions { latency },
         )
         .await;
 
@@ -289,6 +304,7 @@ pub async fn apply_context_compression<C: CompletionProvider>(
         options.compression_target_tokens,
         &options.selection,
         options.uncensored_fallback.as_ref(),
+        options.latency,
     )
     .await
     {
@@ -370,6 +386,78 @@ mod tests {
         }
     }
 
+    /// P4.D136 (v4 `a1d88aa3a`, bug 107) — the FORWARDING pin.
+    ///
+    /// `apply_context_compression` has to hand `options.latency` down to the
+    /// executor, and the only place that is visible is the budget the provider
+    /// is given. A recording provider is the whole test: interactive → 70 s,
+    /// background → 115 s. Nothing else in this module can see the class, and
+    /// the tier-3 families deliberately drive v4's `background` default, so
+    /// without this the forwarding could be deleted and every other test would
+    /// stay green.
+    #[tokio::test]
+    async fn the_latency_class_reaches_the_providers_budget() {
+        use std::sync::Mutex;
+
+        struct BudgetRecorder(Mutex<Vec<Option<i64>>>);
+        impl crate::model::completion::CompletionProvider for BudgetRecorder {
+            fn send_message(
+                &self,
+                _provider: &str,
+                _base_url: Option<&str>,
+                params: &crate::model::completion::CompletionParams,
+            ) -> impl std::future::Future<
+                Output = Result<
+                    crate::model::completion::CompletionResponse,
+                    crate::model::completion::CompletionError,
+                >,
+            > + Send {
+                self.0.lock().unwrap().push(params.request_timeout_ms);
+                async move {
+                    Ok(crate::model::completion::CompletionResponse {
+                        content: "compressed".to_string(),
+                        usage: None,
+                        finish_reason: None,
+                        attachment_results: None,
+                    })
+                }
+            }
+        }
+
+        let messages: Vec<CompressibleMessage> = (0..12)
+            .map(|i| {
+                msg(
+                    if i % 2 == 0 { "user" } else { "assistant" },
+                    "a line of talk",
+                )
+            })
+            .collect();
+
+        for (latency, want) in [
+            (CheapLlmLatencyClass::Interactive, 70_000_i64),
+            (CheapLlmLatencyClass::Background, 115_000_i64),
+        ] {
+            let provider = BudgetRecorder(Mutex::new(Vec::new()));
+            let exec = CheapLlmTaskExecutor::new();
+            let opts = ContextCompressionOptions {
+                window_size: 2,
+                compression_target_tokens: 800,
+                selection: selection(),
+                character_name: "Aurora".to_string(),
+                user_name: "Charlie".to_string(),
+                uncensored_fallback: None,
+                latency,
+            };
+            let result = apply_context_compression(&provider, &exec, &messages, "sys", &opts).await;
+            assert!(result.compression_applied, "{latency:?} did not compress");
+            assert_eq!(
+                provider.0.lock().unwrap().clone(),
+                vec![Some(want)],
+                "{latency:?} reached the provider with the wrong budget"
+            );
+        }
+    }
+
     fn msg(role: &str, content: &str) -> CompressibleMessage {
         CompressibleMessage {
             role: role.to_string(),
@@ -446,6 +534,7 @@ mod tests {
             character_name: "Aurora".to_string(),
             user_name: "Charlie".to_string(),
             uncensored_fallback: None,
+            latency: CheapLlmLatencyClass::Background,
         };
         let result = apply_context_compression(&provider, &exec, &messages, "sys", &opts).await;
 
@@ -481,6 +570,7 @@ mod tests {
             character_name: "Aurora".to_string(),
             user_name: "Charlie".to_string(),
             uncensored_fallback: None,
+            latency: CheapLlmLatencyClass::Background,
         };
         let result = apply_context_compression(&provider, &exec, &messages, "sys", &opts).await;
 
@@ -520,6 +610,7 @@ mod tests {
             character_name: "Aurora".to_string(),
             user_name: "Charlie".to_string(),
             uncensored_fallback: None,
+            latency: CheapLlmLatencyClass::Background,
         };
         let result = apply_context_compression(&provider, &exec, &messages, "sys", &opts).await;
 
@@ -576,6 +667,7 @@ mod tests {
                 available_profiles: &profiles,
                 is_dangerous_chat: None,
             }),
+            latency: CheapLlmLatencyClass::Background,
         };
         let result = apply_context_compression(&provider, &exec, &messages, "sys", &opts).await;
 

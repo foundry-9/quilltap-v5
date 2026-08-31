@@ -24,7 +24,9 @@ use serde_json::Value;
 use crate::cheap_llm::{CheapLlmSelection, UncensoredFallbackOptions};
 use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{CompletionMessage, CompletionProvider};
-use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskResult};
+use crate::services::cheap_llm_exec::{
+    CheapLlmTaskExecutor, CheapLlmTaskOptions, CheapLlmTaskResult,
+};
 
 use prompt_text::{SCENE_STATE_FIRST_TURN_PROMPT, SCENE_STATE_UPDATE_PROMPT};
 
@@ -154,6 +156,7 @@ pub async fn update_scene_state<C: CompletionProvider>(
             None,
             None,
             Some("scene-state-tracking"),
+            CheapLlmTaskOptions::default(),
         )
         .await
 }

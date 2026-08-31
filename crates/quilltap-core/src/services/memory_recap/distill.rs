@@ -16,6 +16,7 @@ use crate::memory_tasks::strip_code_fences;
 use crate::model::completion::{CompletionMessage, CompletionProvider};
 use crate::recall_tags::{ContextTag, TemporalTag};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 
 use super::prompt_text::MEMORY_KEYWORD_EXTRACTION_PROMPT;
 
@@ -360,6 +361,7 @@ pub async fn distill_memory_search<C: CompletionProvider>(
             None,
             Some(character_id),
             Some("memory-keyword-extraction"),
+            CheapLlmTaskOptions::default(),
         )
         .await;
 
