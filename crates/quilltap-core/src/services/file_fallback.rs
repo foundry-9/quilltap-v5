@@ -76,6 +76,17 @@ pub struct ProcessingMetadata {
     pub used_image_description_llm: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub used_uncensored_fallback: Option<bool>,
+    /// Who was asked and how each one failed, in order, when the primary
+    /// describer did not answer (v4 `65f5021c8`). Present only when at least one
+    /// stand-in was tried; the first entry is always the primary itself.
+    ///
+    /// ⚠ v4 declares it in the interface between `usedUncensoredFallback` and
+    /// `reusedPersistedDescription`, and it is spread onto an EXISTING metadata
+    /// object at every site — so its key order is the object's, not the
+    /// interface's, and it lands LAST wherever it is added. Nothing reads the
+    /// order today; the position here mirrors the declaration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_attempt_trail: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reused_persisted_description: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -875,6 +886,48 @@ async fn run_generate_image_description<CMP: CompletionProvider>(
         return primary;
     }
 
+    // The describer failed. Three escapes, in this order (v4 `65f5021c8`):
+    //
+    //   1. the primary's own fallback chain — an *availability* answer;
+    //   2. the configured uncensored describer — a *content* answer, and the
+    //      long-standing escape hatch for a refusal;
+    //   3. that profile's own chain, run dangerous so a tier pick stays cleared.
+    //
+    // The chain comes first because it is cheaper to be right about: a describer
+    // that is rate-limited or misconfigured is not a content problem, and
+    // spending the uncensored profile on it wastes the one escape that can
+    // actually answer a refusal.
+    let primary_name = image_desc_profile
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let mut attempt_trail: Vec<String> = vec![format!(
+        "{primary_name}: {}",
+        primary
+            .error
+            .clone()
+            .unwrap_or_else(|| "failed".to_string())
+    )];
+
+    let primary_id_owned = image_desc_profile
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if let Some(chain_result) = describe_via_fallback_chain(
+        deps,
+        file,
+        &image_desc_profile,
+        false,
+        std::slice::from_ref(&primary_id_owned),
+        &mut attempt_trail,
+    )
+    .await
+    {
+        return chain_result;
+    }
+
     let fallback_profile = get_uncensored_image_description_profile(deps)
         .await
         .ok()
@@ -886,19 +939,73 @@ async fn run_generate_image_description<CMP: CompletionProvider>(
     let fallback_profile = match fallback_profile {
         Some(fp) if fp.get("id").and_then(Value::as_str) != Some(primary_id) => fp,
         // No fallback, or the same profile → return the primary result.
-        _ => return primary,
+        _ => return with_attempt_trail(primary, &attempt_trail),
     };
+
+    // NOTE the id is resolved OUTSIDE the macro: inside it, `Value` resolves to
+    // `tracing::field::Value`, not `serde_json::Value`.
+    let fallback_profile_id = fallback_profile
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    tracing::info!(
+        target: "quilltap::image_fallback",
+        primary_profile_id = primary_id,
+        fallback_profile_id,
+        primary_error = primary.error.as_deref().unwrap_or(""),
+        chain_attempts = attempt_trail.len() - 1,
+        "[Image Fallback] Primary profile failed, retrying with uncensored fallback"
+    );
 
     let fallback_result = describe_image_with_profile(deps, file, &fallback_profile).await;
     if fallback_result.type_ == FallbackType::ImageDescription {
         let mut result = fallback_result;
         if let Some(m) = result.processing_metadata.as_mut() {
             m.used_uncensored_fallback = Some(true);
+            m.fallback_attempt_trail = Some(attempt_trail.clone());
         }
         return result;
     }
 
-    // Both failed — return the primary with a combined error.
+    let fallback_name = fallback_profile
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    attempt_trail.push(format!(
+        "{fallback_name}: {}",
+        fallback_result
+            .error
+            .clone()
+            .unwrap_or_else(|| "failed".to_string())
+    ));
+
+    // The uncensored describer is a connection profile like any other and
+    // carries its own understudy. Its chain runs DANGEROUS — whatever refused
+    // the primary would refuse a mainstream stand-in too.
+    let fallback_id = fallback_profile
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if let Some(mut chain_result) = describe_via_fallback_chain(
+        deps,
+        file,
+        &fallback_profile,
+        true,
+        &[primary_id_owned, fallback_id],
+        &mut attempt_trail,
+    )
+    .await
+    {
+        if let Some(m) = chain_result.processing_metadata.as_mut() {
+            m.used_uncensored_fallback = Some(true);
+        }
+        return chain_result;
+    }
+
+    // Everything failed — return the primary's error since that's what the user
+    // configured first, but annotate what else was tried.
     let mut result = primary;
     let primary_err = result
         .error
@@ -910,7 +1017,113 @@ async fn run_generate_image_description<CMP: CompletionProvider>(
     result.error = Some(format!(
         "{primary_err} (uncensored fallback also failed: {fallback_err})"
     ));
+    if let Some(m) = result.processing_metadata.as_mut() {
+        m.fallback_attempt_trail = Some(attempt_trail);
+    }
     result
+}
+
+/// Attach the attempt trail to a result without disturbing anything else on it
+/// (v4 `withAttemptTrail`). A trail of one is the primary alone — nothing was
+/// tried, so nothing is annotated.
+fn with_attempt_trail(mut result: FallbackResult, attempt_trail: &[String]) -> FallbackResult {
+    if attempt_trail.len() <= 1 {
+        return result;
+    }
+    if let Some(m) = result.processing_metadata.as_mut() {
+        m.fallback_attempt_trail = Some(attempt_trail.to_vec());
+    }
+    result
+}
+
+/// Walk a describer profile's fallback chain, returning the first description
+/// that comes back — or `None` when nobody could produce one (v4
+/// `describeViaFallbackChain`).
+///
+/// `needs_vision: true` is the load-bearing flag: a stand-in must both accept
+/// image uploads (`supportsImageUpload`) and have a plugin that actually puts
+/// the bytes on the wire (`providerCanTransportImages`). A describer that
+/// silently drops the image would answer from the prompt alone and invent a
+/// picture — which is worse than failing.
+async fn describe_via_fallback_chain<CMP: CompletionProvider>(
+    deps: &FallbackDeps<'_, CMP>,
+    file: &FallbackFile,
+    primary: &Value,
+    dangerous: bool,
+    already_tried: &[String],
+    attempt_trail: &mut Vec<String>,
+) -> Option<FallbackResult> {
+    let Some(primary_profile) = crate::llm_fallback::FallbackProfile::from_value(primary) else {
+        tracing::warn!(
+            target: "quilltap::image_fallback",
+            "[Image Fallback] Could not build a fallback chain for the describer"
+        );
+        return None;
+    };
+    let repos = crate::services::fallback_repos::DbFallbackRepos::new(deps.db);
+    let chain = crate::llm_fallback::build_fallback_chain(
+        &primary_profile,
+        &repos,
+        &crate::llm_fallback::FallbackContext {
+            user_id: deps.user_id.to_string(),
+            purpose: crate::llm_fallback::FallbackPurpose::Vision,
+            dangerous,
+            needs_vision: true,
+            needs_tools: false,
+            already_tried: already_tried.to_vec(),
+        },
+    );
+
+    for candidate in &chain {
+        if candidate.profile.id == primary_profile.id {
+            continue;
+        }
+        tracing::info!(
+            target: "quilltap::image_fallback",
+            primary_profile_id = %primary_profile.id,
+            stand_in_profile_id = %candidate.profile.id,
+            stand_in_name = %candidate.profile.name,
+            stand_in_provider = %candidate.profile.provider,
+            kind = candidate.kind.as_str(),
+            dangerous,
+            "[Image Fallback] Trying a describer stand-in"
+        );
+
+        let row = {
+            let id = candidate.profile.id.clone();
+            deps.db
+                .read_main(move |c| crate::db::connection_profiles::find_by_id(c, &id))
+                .ok()
+                .flatten()
+        };
+        let Some(row) = row else {
+            attempt_trail.push(format!("{}: failed", candidate.profile.name));
+            continue;
+        };
+
+        let result = describe_image_with_profile(deps, file, &row).await;
+        if result.type_ == FallbackType::ImageDescription {
+            tracing::info!(
+                target: "quilltap::image_fallback",
+                stand_in_profile_id = %candidate.profile.id,
+                stand_in_name = %candidate.profile.name,
+                kind = candidate.kind.as_str(),
+                "[Image Fallback] Describer stand-in answered"
+            );
+            let mut result = result;
+            if let Some(m) = result.processing_metadata.as_mut() {
+                m.fallback_attempt_trail = Some(attempt_trail.clone());
+            }
+            return Some(result);
+        }
+        attempt_trail.push(format!(
+            "{}: {}",
+            candidate.profile.name,
+            result.error.unwrap_or_else(|| "failed".to_string())
+        ));
+    }
+
+    None
 }
 
 /// The first non-empty JS-trimmed value in priority order (v4's `a?.trim() ||

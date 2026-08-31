@@ -93768,3 +93768,44 @@ option rather than naming a fixture id, so a fixture regen does not stale it,
 and it skips loudly if the seeded instance has only one API profile to offer.
 
 Gate: `npm test` 366 files / 5,472 tests / 0 failed; `npm run build` clean.
+
+---
+
+## P4.D135 unit 6 — the fourth call site: image description (v4 `65f5021c8`)
+
+`services/file_fallback.rs`'s `run_generate_image_description` gains v4's three
+escapes in v4's order — the primary's own chain, the configured uncensored
+describer, then THAT profile's chain run dangerous — plus
+`describe_via_fallback_chain` and `with_attempt_trail`, and
+`processingMetadata.fallbackAttemptTrail`.
+
+### The fixture change that made the order measurable
+
+The trail alone was NOT enough. With the fixture's describers carrying no chain,
+`describe_via_fallback_chain` always returned `None`, and a mutation that moved
+the chain to AFTER the uncensored escape passed. The primary describer now names
+the Z_AI vision profile as its understudy, so the chain walks and answers first —
+observable as `usedUncensoredFallback` going ABSENT on `fb_refusal_retry`, where
+before it was `true`.
+
+**Pointing it at `Local llava` instead does not work, and the reason is its own
+pin:** `staticProviderCanTransportImages('OLLAMA')` is FALSE, so the vision gate
+drops the candidate and the chain is empty again. Measured on v4, not guessed,
+and recorded in the fixture next to the field.
+
+### What this family proves, and what it does not
+
+**Proven here** (mutation-proven): the trail is attached on the uncensored-success
+path, and the chain runs BEFORE the uncensored escape.
+
+**Deliberately NOT proven here** — the chain's own filters. Mutations flipping
+`dangerous` and `needs_vision` on this call site both SURVIVE, and correctly so:
+a NAMED understudy is honoured regardless of danger (only the tier pick is
+filtered on it), and this fixture's understudy passes the vision gate either way.
+Both rules are exhaustively pinned at tier 1 —
+`fallback_engine_equivalence`'s `dangerous-incompatible-understudy-honoured`,
+`tier-pick-respects-dangerous`, `blind-understudy-dropped-on-a-vision-turn` and
+`non-transporting-plugin-dropped-on-a-vision-turn`. Making them bite HERE would
+need a fourth fixture profile that transports images but declares
+`supportsImageUpload: false`; recorded rather than built, because the rule is
+already measured where it lives.

@@ -165,6 +165,30 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — feat(chat): the fallback chain on image description, the fourth call site (P4.D135 unit 6)
+
+_Versions: core 0.0.706._
+
+The describer's three escapes, in v4's order (`65f5021c8`): the primary's own
+fallback chain, THEN the configured uncensored describer, then that profile's own
+chain run dangerous. The chain comes first because it is cheaper to be right
+about — a describer that is rate-limited or misconfigured is not a content
+problem, and spending the uncensored profile on it wastes the one escape that can
+actually answer a refusal. `processingMetadata` gains `fallbackAttemptTrail`:
+who was asked and how each one failed, in order.
+
+`needsVision: true` is the load-bearing flag on this path. A stand-in must both
+accept image uploads and have a plugin that actually puts the bytes on the wire;
+a describer that silently drops the image would answer from the prompt alone and
+invent a picture, which is worse than failing.
+
+The fixture's primary describer now names an understudy, so the chain WALKS and
+the chain-before-uncensored order is observable — the trail alone was not enough,
+and a mutation moving the chain after the uncensored escape survived until it
+did. Pointing the understudy at the local Ollama profile does NOT work, and the
+reason is itself a pin: `staticProviderCanTransportImages('OLLAMA')` is false, so
+the vision gate drops it and the chain is empty again.
+
 #### 2026-08-31 — feat(spa): the understudy picker, the cheap-LLM stand-in toggle, and the failing-over toast (P4.D135 unit 5)
 
 _Versions: SPA 0.5.597._

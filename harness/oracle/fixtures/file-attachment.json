@@ -2,7 +2,11 @@
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "seedTimestamp": "2020-01-01T00:00:00.000Z",
   "userId": "10000000-0000-4000-8000-000000000001",
-  "user": { "email": "attach@example.com", "name": "Attach User", "username": "attachuser" },
+  "user": {
+    "email": "attach@example.com",
+    "name": "Attach User",
+    "username": "attachuser"
+  },
   "chatId": "20000000-0000-4000-8000-000000000001",
   "participantAId": "21000000-0000-4000-8000-000000000001",
   "charId": "22000000-0000-4000-8000-000000000001",
@@ -25,7 +29,9 @@
         "temperature": 0.42,
         "max_tokens": 321,
         "topP": 0.87
-      }
+      },
+      "fallbackProfileId": "30000000-0000-4000-8000-0000000000d2",
+      "$comment_fallback": "P4.D135: the primary describer names the Z_AI vision profile as its understudy, so the describer chain actually WALKS and the chain-before-uncensored ORDER is observable. Pointing it at Local llava instead does NOT work and the reason is the pin: staticProviderCanTransportImages('OLLAMA') is FALSE, so the vision gate drops it and the chain is empty again. Measured, not guessed."
     },
     {
       "id": "30000000-0000-4000-8000-0000000000d2",
@@ -85,7 +91,20 @@
       "originalFilename": "kept-photo.png",
       "mimeType": "image/png",
       "category": "IMAGE",
-      "fsmBytes": [137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4]
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        1,
+        2,
+        3,
+        4
+      ]
     },
     {
       "key": "descImage",
@@ -93,7 +112,20 @@
       "originalFilename": "plain-image.png",
       "mimeType": "image/png",
       "category": "IMAGE",
-      "fsmBytes": [137, 80, 78, 71, 13, 10, 26, 10, 9, 8, 7, 6]
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        9,
+        8,
+        7,
+        6
+      ]
     },
     {
       "key": "refusalImage",
@@ -101,7 +133,20 @@
       "originalFilename": "refusal-image.png",
       "mimeType": "image/png",
       "category": "IMAGE",
-      "fsmBytes": [137, 80, 78, 71, 13, 10, 26, 10, 5, 5, 5, 5]
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        5,
+        5,
+        5,
+        5
+      ]
     },
     {
       "key": "zip",
@@ -109,7 +154,16 @@
       "originalFilename": "archive.zip",
       "mimeType": "application/zip",
       "category": "ATTACHMENT",
-      "fsmBytes": [80, 75, 3, 4, 20, 0, 0, 0]
+      "fsmBytes": [
+        80,
+        75,
+        3,
+        4,
+        20,
+        0,
+        0,
+        0
+      ]
     },
     {
       "key": "missing",
@@ -125,7 +179,16 @@
       "originalFilename": "reuse-revised.png",
       "mimeType": "image/png",
       "category": "IMAGE",
-      "fsmBytes": [137, 80, 78, 71, 1, 1, 1, 1],
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        1,
+        1,
+        1,
+        1
+      ],
       "generationRevisedPrompt": "A crimson rose in full bloom, dew still clinging to its velvet petals.",
       "generationPrompt": "a red rose",
       "description": "old cached description"
@@ -136,7 +199,16 @@
       "originalFilename": "reuse-prompt.png",
       "mimeType": "image/png",
       "category": "IMAGE",
-      "fsmBytes": [137, 80, 78, 71, 2, 2, 2, 2],
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        2,
+        2,
+        2,
+        2
+      ],
       "generationPrompt": "A calm blue ocean stretching to the horizon under a clear sky.",
       "description": "old cached description"
     },
@@ -146,7 +218,16 @@
       "originalFilename": "reuse-desc.png",
       "mimeType": "image/png",
       "category": "IMAGE",
-      "fsmBytes": [137, 80, 78, 71, 3, 3, 3, 3],
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        3,
+        3,
+        3,
+        3
+      ],
       "description": "A dense green forest with sunlight filtering through the canopy."
     },
     {
@@ -155,7 +236,16 @@
       "originalFilename": "reuse-ws.png",
       "mimeType": "image/png",
       "category": "IMAGE",
-      "fsmBytes": [137, 80, 78, 71, 4, 4, 4, 4],
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        4,
+        4,
+        4,
+        4
+      ],
       "generationRevisedPrompt": "   ",
       "generationPrompt": "A weathered lighthouse standing against a stormy grey sea."
     }
@@ -165,7 +255,18 @@
     "relativePath": "attach/scriptorium-note.png",
     "fileName": "scriptorium-note.png",
     "storedMimeType": "image/png",
-    "data": [137, 80, 78, 71, 11, 22, 33, 44, 55, 66]
+    "data": [
+      137,
+      80,
+      78,
+      71,
+      11,
+      22,
+      33,
+      44,
+      55,
+      66
+    ]
   },
   "vision": [
     {
@@ -174,7 +275,11 @@
       "filename": "plain-image.png",
       "content": "A tranquil mountain lake at dawn, its glassy surface mirroring snow-dusted peaks while wisps of morning mist drift between tall evergreen pines along the shoreline.",
       "finishReason": "stop",
-      "usage": { "promptTokens": 820, "completionTokens": 44, "totalTokens": 864 }
+      "usage": {
+        "promptTokens": 820,
+        "completionTokens": 44,
+        "totalTokens": 864
+      }
     },
     {
       "provider": "OPENAI",
