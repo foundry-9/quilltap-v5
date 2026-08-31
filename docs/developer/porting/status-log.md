@@ -93809,3 +93809,74 @@ Both rules are exhaustively pinned at tier 1 —
 need a fourth fixture profile that transports images but declares
 `supportsImageUpload: false`; recorded rather than built, because the rule is
 already measured where it lives.
+
+---
+
+## P4.D135 — the lane's loud deferrals and standing notes
+
+Everything this order named that did NOT land, and why.
+
+### Tier 3 (the order's own explicit deferrals)
+
+- **Help rows → `p4.9i2`.** v4's `help/{chat-settings,connection-profiles}.md`
+  gain 107 lines between them (the Fallback section, the understudy rules, the
+  cheap stand-in switch). Banked to the standing help-docs lane, as every
+  drift round since P4.D77 has done.
+- **💸 The live proof joins the dogfood queue.** v4's own commit verified this
+  against V4test with a dead endpoint. The recipe: point a profile's `baseUrl`
+  at a closed port, name a working profile as its understudy, and send a turn —
+  the understudy should answer and the message should be ATTRIBUTED to it (the
+  `effectiveProfile` swap is what the finalizer reads). Then break the
+  understudy too and read the exhausted chain's roll in the error. Then tick
+  "Draft a stand-in" and watch the tier picker cross providers. None of that is
+  reachable from a differential: it needs a real socket refusing a real
+  connection.
+
+### NO-PORT with evidence
+
+- **`public/schemas/qtap-export.schema.json`** — v4's hunk adds the two keys to
+  that published JSON-Schema. v5 ships no counterpart artifact; the export's key
+  order lives in `schema-key-order.json`, which IS regenerated and pinned.
+- **v4's migration pretty label** ("Teaching each connection the name of its
+  understudy", `lib/startup/prettify.ts`) — v5 surfaces no migration labels
+  anywhere. The P4.D63 / P4.D73 / P4.D79 precedent.
+- **`turn_orchestrator`'s `ChainConfig`** — v4 deleted `maxRetries` /
+  `retryDelayMs` here ("declared and never read"). v5 never ported them, so the
+  deletion is a no-op; only the doc comment moved.
+- **`lib/startup/prettify.ts`** (survey 10) — measured: the +1 line is exactly
+  the migration label above. Nothing else in that file moved.
+
+### Named gaps, all with their reason
+
+1. **`CheapLlmTaskExecutor::new()` has no fallback chain.** The handle rides
+   `with_logging`'s `Db` + user id, which covers every host construction site
+   without touching ~60 call sites; the two production sites that use the bare
+   constructor (`tools::generate_image`'s prompt expansion, one `enclave::step`
+   leg) keep the pre-4.10 behaviour. Closing it means giving those two a `Db`.
+2. **`system_import_state`'s connection-profile leg stays vacuous** (the
+   committed `system-data-main.db` predates `multiCharacterPrefill`; the two new
+   columns land in the same hole). The `.qtap` understudy remap is pinned at the
+   UNIT tier instead, and the gap is named in both files. Widening that fixture
+   is cross-lane.
+3. **The describer chain's own filters are not proven at the call site** —
+   `dangerous` and `needs_vision` mutations survive there because a named
+   understudy is honoured regardless of danger and the fixture's understudy
+   passes the vision gate either way. Both are mutation-proven at tier 1.
+4. **The `.qtap` import DTO's UUID-format gap.** v4 declares
+   `fallbackProfileId: UUIDSchema.nullable().optional()`, so a bundle naming a
+   non-UUID understudy is refused by v4's parse and accepted by v5's — the
+   module's standing Zod-format gap, not a new one.
+
+### Two traps worth a memory note
+
+- **A sweep recipe that stages its spec BEFORE running the fixture builder reads
+  the STALE spec on the first run after a spec change.** `settings-routes` copies
+  `settings.json` into its `/tmp` mirror, then runs the builder, which REWRITES
+  that file in the repo. The first run after adding `profiles.courier` saw
+  `undefined`, both Courier cases silently dropped the key from their request
+  bodies, and BOTH SIDES agreed on a 200 — green, having measured nothing.
+  Caught by grepping the regenerated NDJSON for the refusal sentence. Any recipe
+  of this shape needs two runs, or the grep.
+- **`Value::as_str` inside a `tracing::` macro resolves to
+  `tracing::field::Value`**, not `serde_json::Value` — "expected a type, found a
+  trait". Resolve the string before the macro.
