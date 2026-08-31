@@ -21,13 +21,13 @@
 //!   target's own mode. The differential's `denied` arms plant an unreadable
 //!   PARENT for exactly that reason.
 //! - v4's `isContainerized()` reads `process.env` at call time. v5 already owns
-//!   that pair as pure functions over a [`DataDirEnv`] snapshot
+//!   that probe as a pure function over a [`DataDirEnv`] snapshot
 //!   (`services::data_dir`), so [`is_containerized_in`] is the pure half and
 //!   [`is_containerized`] is the one impure edge.
 
 use std::path::Path;
 
-use crate::services::data_dir::{is_docker_environment, is_lima_environment, DataDirEnv};
+use crate::services::data_dir::{is_docker_environment, DataDirEnv};
 
 /// Why a base path could not be used (v4 `BasePathUnavailableReason`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,10 +104,10 @@ impl std::fmt::Display for BasePathUnavailableError {
 impl std::error::Error for BasePathUnavailableError {}
 
 /// v4 `isContainerized()` over a captured env: this process can only see host
-/// paths that were explicitly passed through — i.e. a container. Lima counts:
-/// it is a VM with the same property.
+/// paths that were explicitly passed through — i.e. a container. (v4
+/// `1560bd43b` dropped the Lima disjunct with the rest of the Lima family.)
 pub fn is_containerized_in(env: &DataDirEnv) -> bool {
-    is_docker_environment(env) || is_lima_environment(env)
+    is_docker_environment(env)
 }
 
 /// The impure edge: v4 reads `process.env` (and the two filesystem probes) on
@@ -213,7 +213,7 @@ mod tests {
 
     // The container-variant sentences are pinned HERE, not in the
     // differential: `containerized` is false in both test environments (no
-    // `/.dockerenv`, no `/app` directory, no `LIMA_CONTAINER=true`).
+    // `/.dockerenv`, no `/app` directory).
     #[test]
     fn explain_matches_v4_byte_for_byte() {
         assert_eq!(

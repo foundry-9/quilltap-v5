@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — refactor(data-dir): drop the Lima probe and the isVM wire key (v4 1560bd43b)
+
+_Versions: core 0.0.702, harness 0.0.604, SPA 0.5.597._
+
+v4 `1560bd43b` retired the managed Lima (macOS) and WSL2 (Windows) VM modes.
+The data-directory half: `isLimaEnvironment()` is deleted along with the
+Lima-first branch in `getPlatform()` (a `LIMA_CONTAINER=true` process carrying
+its exported rootfs's Docker markers now reports as `docker`, deliberately) and
+the Lima disjunct in `getHostDataDir()`. `DataDirEnv` loses its
+`lima_container` field — v4 reads the variable nowhere. `isContainerized()` in
+the mount-index base-path probe drops the same disjunct.
+
+`GET /api/v1/system/data-dir` no longer answers `isVM`: the key is gone from the
+response builder, from the key-order pin, and from the SPA's `DataDirInfo` wire
+type and spec mock.
+
+`data_dir_paths_equivalence` regenerated from a worktree pinned at `1560bd43b`
+and re-run red-first: the two Lima cases diverged on `platform`, `path`,
+`sourceDescription` and `hostPath` before the port and are green after. Both
+were reshaped into deletion pins — `platform_lima_flag_inert` and
+`host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
+that it now changes nothing — and the corpus-coverage guard names them.
+
 #### 2026-08-31 — docs(orders): write the drift catch-up round 1 of 2 — P4.D134 ∥ (P4.D135 → P4.D136 stacked) ∥ P4.D137
 
 _Docs-only change._

@@ -38,7 +38,6 @@ export interface DataDirInfo {
   sourceDescription: string;
   platform: 'docker' | 'linux' | 'darwin' | 'win32';
   isDocker: boolean;
-  isVM: boolean;
   isElectronShell: boolean;
   shellVersion: string | null;
   shellCapabilities: string[];

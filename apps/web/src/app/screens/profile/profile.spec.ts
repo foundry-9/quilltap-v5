@@ -48,7 +48,6 @@ const DATA_DIR = {
   sourceDescription: '--data-dir command-line flag (/tmp/instance)',
   platform: 'darwin',
   isDocker: false,
-  isVM: false,
   isElectronShell: false,
   shellVersion: null,
   shellCapabilities: [],

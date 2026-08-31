@@ -23,9 +23,16 @@
  * and without APPDATA); the QUILLTAP_DATA_DIR override (plain, `~`-expanded,
  * bare `~`, and the EMPTY-string falsy arm); Docker via each of the three
  * probes (env flag / `/.dockerenv` / `/app`) and Docker ignoring the override;
- * Lima beating the Docker markers; the Electron shell version + the
- * capabilities parse (trim / empty / duplicate); and the QUILLTAP_HOST_DATA_DIR
- * override both inside and outside a container.
+ * the Electron shell version + the capabilities parse (trim / empty /
+ * duplicate); and the QUILLTAP_HOST_DATA_DIR override both inside and outside
+ * a container.
+ *
+ * P4.D134 (v4 `1560bd43b`): `isLimaEnvironment()` and every Lima branch are
+ * GONE, and the route no longer answers `isVM`. `LIMA_CONTAINER` therefore
+ * survives here as a V4-SIDE-ONLY input: the two `*_lima_flag_inert` cases set
+ * it for real and record what v4 now answers, which is the deletion's proof.
+ * It is deliberately absent from the emitted `snapshot` — the Rust
+ * `DataDirEnv` no longer has a field for it, because v4 reads it nowhere.
  *
  * Run (Node 24, from the v4 checkout — or a pinned worktree when the drift
  * ledger's regen rule requires one):
@@ -109,9 +116,10 @@ const CASES: CaseSpec[] = [
     platform: 'linux',
   },
 
-  // ── Lima beats the Docker markers (the exported-rootfs false positive) ──
+  // ── The retired Lima probe is INERT: the Docker markers now win (v4
+  //    `1560bd43b` deleted the Lima-first branch in getPlatform()) ──
   {
-    name: 'lima_beats_docker_markers',
+    name: 'platform_lima_flag_inert',
     env: { LIMA_CONTAINER: 'true', DOCKER_CONTAINER: 'true' },
     platform: 'darwin',
     fakeDockerenv: true,
@@ -140,8 +148,10 @@ const CASES: CaseSpec[] = [
     env: { DOCKER_CONTAINER: 'true', QUILLTAP_HOST_DATA_DIR: '/host/side/Quilltap' },
     platform: 'darwin',
   },
+  // getHostDataDir() no longer honours LIMA_CONTAINER — the override is
+  // ignored outside a container and the base dir wins.
   {
-    name: 'host_path_inside_lima',
+    name: 'host_path_lima_flag_inert',
     env: { LIMA_CONTAINER: 'true', QUILLTAP_HOST_DATA_DIR: '/host/side/Quilltap' },
     platform: 'linux',
   },
@@ -204,7 +214,6 @@ async function main(): Promise<void> {
       // The snapshot the Rust `DataDirEnv` is built from — the ambient world as
       // these calls saw it.
       const snapshot = {
-        limaContainer: process.env.LIMA_CONTAINER ?? null,
         dockerContainer: process.env.DOCKER_CONTAINER ?? null,
         quilltapDataDir: process.env.QUILLTAP_DATA_DIR ?? null,
         quilltapHostDataDir: process.env.QUILLTAP_HOST_DATA_DIR ?? null,
@@ -224,7 +233,6 @@ async function main(): Promise<void> {
         sourceDescription: dirInfo.sourceDescription,
         platform,
         isDocker,
-        isVM: paths.isLimaEnvironment(),
         isElectronShell: paths.isElectronShell(),
         shellVersion: paths.getElectronShellVersion(),
         shellCapabilities: [...paths.getShellCapabilities()],

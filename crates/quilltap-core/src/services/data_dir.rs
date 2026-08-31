@@ -1,6 +1,6 @@
 //! The data-directory resolver (P4.9c) — a differential port of the
 //! `lib/paths.ts` functions v4's `GET /api/v1/system/data-dir` route composes:
-//! `isLimaEnvironment`, `isDockerEnvironment`, `isElectronShell`,
+//! `isDockerEnvironment`, `isElectronShell`,
 //! `getElectronShellVersion`, `getShellCapabilities`, `getPlatform`,
 //! `getPlatformDefaultBaseDir`, `getBaseDataDirWithSource`, and
 //! `getHostDataDir`.
@@ -22,8 +22,8 @@
 //! - `process.env.X` is `undefined` when unset and `""` when set empty; v4's
 //!   `!!raw` / `if (envOverride)` guards treat BOTH as absent. [`truthy`]
 //!   collapses them, so `Option<String>` alone is not enough.
-//! - `isLimaEnvironment` / the `DOCKER_CONTAINER` probe compare `=== 'true'`
-//!   STRICTLY — `"1"`, `"TRUE"`, `"yes"` are all false.
+//! - the `DOCKER_CONTAINER` probe compares `=== 'true'` STRICTLY — `"1"`,
+//!   `"TRUE"`, `"yes"` are all false.
 //! - `getShellCapabilities` returns a `Set`, so duplicates collapse while
 //!   INSERTION order survives; `[...set]` then reaches the wire in that order.
 //!
@@ -41,8 +41,6 @@ use std::path::Path;
 /// Field names mirror the env vars / Node globals they stand in for.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct DataDirEnv {
-    /// `process.env.LIMA_CONTAINER`.
-    pub lima_container: Option<String>,
     /// `process.env.DOCKER_CONTAINER`.
     pub docker_container: Option<String>,
     /// `process.env.QUILLTAP_DATA_DIR`.
@@ -70,7 +68,6 @@ impl DataDirEnv {
     /// filesystem probes, exactly as v4 reads them at call time.
     pub fn from_process() -> Self {
         Self {
-            lima_container: std::env::var("LIMA_CONTAINER").ok(),
             docker_container: std::env::var("DOCKER_CONTAINER").ok(),
             quilltap_data_dir: std::env::var("QUILLTAP_DATA_DIR").ok(),
             quilltap_host_data_dir: std::env::var("QUILLTAP_HOST_DATA_DIR").ok(),
@@ -106,7 +103,7 @@ fn os_platform() -> &'static str {
 }
 
 /// v4's `Platform` union (`lib/paths.ts:46`), which is NOT `process.platform` —
-/// `docker` displaces the real OS, and Lima reports as plain `linux`.
+/// `docker` displaces the real OS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
     Docker,
@@ -169,7 +166,6 @@ pub struct DataDirInfo {
     pub source_description: String,
     pub platform: Platform,
     pub is_docker: bool,
-    pub is_vm: bool,
     pub is_electron_shell: bool,
     pub shell_version: Option<String>,
     pub shell_capabilities: Vec<String>,
@@ -183,11 +179,6 @@ fn truthy(v: &Option<String>) -> Option<&str> {
         Some(s) if !s.is_empty() => Some(s.as_str()),
         _ => None,
     }
-}
-
-/// v4 `isLimaEnvironment()` — a STRICT `=== 'true'` compare.
-pub fn is_lima_environment(env: &DataDirEnv) -> bool {
-    env.lima_container.as_deref() == Some("true")
 }
 
 /// v4 `isDockerEnvironment()` — the env flag, then `/.dockerenv`, then `/app`
@@ -226,13 +217,10 @@ pub fn shell_capabilities(env: &DataDirEnv) -> Vec<String> {
     out
 }
 
-/// v4 `getPlatform()`. The Lima check runs FIRST on purpose: the rootfs
-/// exported from Docker still carries `/.dockerenv` and `/app`, which would
-/// otherwise make a Lima VM report as Docker.
+/// v4 `getPlatform()`. v4 `1560bd43b` deleted the Lima-first branch along with
+/// `isLimaEnvironment()` — a `LIMA_CONTAINER=true` process carrying the Docker
+/// markers of its exported rootfs now reports as `docker`, deliberately.
 pub fn get_platform(env: &DataDirEnv) -> Platform {
-    if is_lima_environment(env) {
-        return Platform::Linux;
-    }
     if is_docker_environment(env) {
         return Platform::Docker;
     }
@@ -298,9 +286,10 @@ pub fn base_data_dir_with_source(env: &DataDirEnv) -> BaseDataDirInfo {
 }
 
 /// v4 `getHostDataDir()` — `QUILLTAP_HOST_DATA_DIR` is only meaningful inside
-/// a VM/container, where the path the app sees differs from the host's.
+/// a container, where the internal path differs from the host path. In local
+/// environments always use the base dir, to respect `QUILLTAP_DATA_DIR`.
 pub fn host_data_dir(env: &DataDirEnv) -> String {
-    if is_lima_environment(env) || is_docker_environment(env) {
+    if is_docker_environment(env) {
         if let Some(override_path) = truthy(&env.quilltap_host_data_dir) {
             return override_path.to_string();
         }
@@ -318,8 +307,6 @@ pub fn data_dir_info(env: &DataDirEnv) -> DataDirInfo {
         source_description: dir_info.source_description,
         platform: get_platform(env),
         is_docker,
-        // v4's `isVM` is the LIMA probe only (WSL2 rides the same flag).
-        is_vm: is_lima_environment(env),
         is_electron_shell: is_electron_shell(env),
         shell_version: electron_shell_version(env),
         shell_capabilities: shell_capabilities(env),
@@ -416,20 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn lima_wins_over_docker_markers() {
-        let mut env = base_env();
-        env.lima_container = Some("true".to_string());
-        env.dockerenv_exists = true;
-        env.app_is_dir = true;
-        let info = data_dir_info(&env);
-        assert_eq!(info.platform, Platform::Linux);
-        assert_eq!(info.path, "/Users/fixture/.quilltap");
-        // isDocker is still true — only the PLATFORM defers to Lima.
-        assert!(info.is_docker);
-        assert!(info.is_vm);
-    }
-
-    #[test]
     fn capabilities_trim_dedupe_and_keep_order() {
         let mut env = base_env();
         env.quilltap_shell_capabilities =
@@ -456,7 +429,7 @@ mod tests {
     fn host_path_override_only_inside_a_vm_or_container() {
         let mut env = base_env();
         env.quilltap_host_data_dir = Some("/host/side".to_string());
-        // Not in a VM/container: the override is ignored.
+        // Not in a container: the override is ignored.
         assert_eq!(
             host_data_dir(&env),
             "/Users/fixture/Library/Application Support/Quilltap"

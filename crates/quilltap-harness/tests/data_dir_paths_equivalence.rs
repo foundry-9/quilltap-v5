@@ -1,6 +1,6 @@
 //! P4.9c DATA-DIRECTORY differential: `services::data_dir::data_dir_info` vs
 //! v4's REAL `lib/paths.ts` family (`getBaseDataDirWithSource`, `getPlatform`,
-//! `isDockerEnvironment`, `isLimaEnvironment`, `isElectronShell`,
+//! `isDockerEnvironment`, `isElectronShell`,
 //! `getElectronShellVersion`, `getShellCapabilities`, `getHostDataDir`) across
 //! an environment matrix.
 //!
@@ -23,7 +23,6 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
-    lima_container: Option<String>,
     docker_container: Option<String>,
     quilltap_data_dir: Option<String>,
     quilltap_host_data_dir: Option<String>,
@@ -44,8 +43,6 @@ struct Info {
     source_description: String,
     platform: String,
     is_docker: bool,
-    #[serde(rename = "isVM")]
-    is_vm: bool,
     is_electron_shell: bool,
     shell_version: Option<String>,
     shell_capabilities: Vec<String>,
@@ -63,7 +60,6 @@ struct Row {
 impl From<Snapshot> for DataDirEnv {
     fn from(s: Snapshot) -> Self {
         DataDirEnv {
-            lima_container: s.lima_container,
             docker_container: s.docker_container,
             quilltap_data_dir: s.quilltap_data_dir,
             quilltap_host_data_dir: s.quilltap_host_data_dir,
@@ -126,7 +122,6 @@ fn data_dir_paths_match_oracle() {
             got.is_docker.to_string(),
             &want.is_docker.to_string(),
         );
-        cmp("isVM", got.is_vm.to_string(), &want.is_vm.to_string());
         cmp(
             "isElectronShell",
             got.is_electron_shell.to_string(),
@@ -171,7 +166,11 @@ fn data_dir_paths_match_oracle() {
         "docker_dockerenv_marker",
         "docker_app_dir_marker",
         "docker_ignores_override",
-        "lima_beats_docker_markers",
+        // The two deletion pins (v4 `1560bd43b`): LIMA_CONTAINER is set on the
+        // v4 side and changes NOTHING — the Docker markers win the platform and
+        // the host-path override is ignored outside a container.
+        "platform_lima_flag_inert",
+        "host_path_lima_flag_inert",
         "shell_version_and_capabilities",
         "host_path_inside_docker",
         "host_path_outside_container",

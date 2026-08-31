@@ -92937,3 +92937,78 @@ inline-host bug from the Almanack walk — and **20 non-spec call sites** use
 rather than the instance: every component whose `host: { class: 'qt-…' }` names
 a class should be checked for a matching rule, in the `check-qt-classes` idiom.
 
+
+---
+
+## P4.D134 unit 1 — the data-dir family loses Lima, the wire loses `isVM` (v4 `1560bd43b`)
+
+**Landed 2026-08-31** on `claude/p4-lima-wsl2-retirement-894ad2`. Versions: core
+0.0.702, harness 0.0.604, SPA 0.5.597.
+
+**Pin.** Every regen in this lane runs from `/tmp/qt-v4-pin-p4d134-1560bd43b`, a
+lane-unique detached worktree at the TARGET commit with all three symlink
+classes (ledger §5.1). The pin was verified two ways: `lib/paths.ts` in it
+contains no `isLimaEnvironment` (the deletion marker), and the FIRST regen
+attempt — the unmodified oracle — died with
+`TypeError: paths.isLimaEnvironment is not a function`. The drift-ledger §2
+freshness probe passed at lane start (branch `main`, tree clean, both logs
+empty).
+
+**Ported (v4 `lib/paths.ts` −34, `app/api/v1/system/data-dir/route.ts` −5,
+`lib/mount-index/base-path-availability.ts` −6):**
+
+- `services/data_dir.rs`: `is_lima_environment()` DELETED; `get_platform()`
+  loses its Lima-first branch; `host_data_dir()` loses the Lima disjunct and
+  takes v4's rewritten why-comment; `DataDirEnv::lima_container` and
+  `DataDirInfo::is_vm` are gone, as is `from_process`'s `LIMA_CONTAINER` read.
+  The `lima_wins_over_docker_markers` unit test went with the branch it pinned
+  (v4 deleted its own `paths.test.ts` Lima cases in the same commit).
+- `services/mount_index/base_path_availability.rs`: `is_containerized_in()` is
+  `is_docker_environment(env)` alone.
+- `api/data_dir.rs`: the `isVM` key is deleted from the response builder AND
+  from `the_payload_keeps_v4s_field_order`'s list.
+- SPA `screens/profile/profile.api.ts` + `profile.spec.ts`: the `isVM` field
+  drops from the wire type and the mock.
+
+**The differential, red-first on the LOGIC (not just on the missing key).** The
+oracle was regenerated at the pin with only `isVM: paths.isLimaEnvironment()`
+removed; `Info.is_vm` and the `cmp("isVM", …)` line were dropped from the
+harness; the Rust logic was left UNTOUCHED and the family run:
+
+```
+[lima_beats_docker_markers] MISMATCH:
+  path: got "/Users/csebold/.quilltap" want "/app/quilltap"
+  sourceDescription: got "Linux default (~/.quilltap)" want "Docker container default (/app/quilltap)"
+  platform: got "linux" want "docker"
+  hostPath: got "/Users/csebold/.quilltap" want "/app/quilltap"
+[host_path_inside_lima] MISMATCH:
+  hostPath: got "/host/side/Quilltap" want "/Users/csebold/.quilltap"
+cases diverged from v4: ["lima_beats_docker_markers", "host_path_inside_lima"]
+```
+
+After the port: 20/20 OK. Changed-bytes greps on the regenerated NDJSON:
+`isVM` count 0, `limaContainer` count 0.
+
+**Both Lima cases became DELETION PINS rather than being deleted.** They keep
+setting `LIMA_CONTAINER=true` for real on the v4 side and record what v4 now
+answers, renamed for what they prove:
+`lima_beats_docker_markers` → **`platform_lima_flag_inert`** (the flag plus the
+Docker markers now yields `platform: docker`, `path: /app/quilltap`) and
+`host_path_inside_lima` → **`host_path_lima_flag_inert`** (the
+`QUILLTAP_HOST_DATA_DIR` override is ignored outside a container). Both are in
+the corpus-coverage guard's required list. `LIMA_CONTAINER` is deliberately
+absent from the emitted `snapshot` — the Rust `DataDirEnv` has no field for it
+because v4 reads it nowhere — and the oracle header says so.
+
+**Regen recipe (unchanged shape; the driver reads it):**
+
+```
+PIN=/tmp/qt-v4-pin-p4d134-1560bd43b ; N=~/.nvm/versions/node/v24.13.1/bin
+cd "$PIN"
+QT_ORACLE_OUT=/tmp/oracle-data-dir.ndjson \
+  $N/node --import tsx $V5W/harness/oracle/cases/data-dir-paths.ts
+QT_ORACLE_DATA_DIR=/tmp/oracle-data-dir.ndjson \
+  cargo test -p quilltap-harness --test data_dir_paths_equivalence -- --nocapture
+```
+
+No committed DB fixture moved, so no sibling family is invalidated.

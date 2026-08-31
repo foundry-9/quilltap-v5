@@ -20,9 +20,11 @@
  * itself: `fs.stat` takes its EACCES from the parent directory's search
  * permission, and a 000 directory still stats fine and reads as available.
  *
- * ⚠ `containerized` is false in BOTH environments (no `/.dockerenv`, no `/app`,
- * no `LIMA_CONTAINER`), so the container-variant sentences are pinned by UNIT
- * tests on the message builder (`base_path_availability.rs`), not here.
+ * ⚠ `containerized` is false in BOTH environments (no `/.dockerenv`, no
+ * `/app`), so the container-variant sentences are pinned by UNIT tests on the
+ * message builder (`base_path_availability.rs`), not here. (v4 `1560bd43b`
+ * dropped `isLimaEnvironment()` from `isContainerized()`; the probe is now the
+ * Docker one alone.)
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
