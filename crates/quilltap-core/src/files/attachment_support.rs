@@ -91,6 +91,28 @@ pub fn supports_mime_type(provider: &str, mime_type: &str) -> bool {
     supported_mime_types(provider).contains(&mime_type)
 }
 
+/// v4 `profileSupportsMimeType(profile, mimeType)` (`lib/llm/connection-profile-utils.ts`)
+/// — does the *model* read this MIME type?
+///
+/// Images are gated by the profile's own `supportsImageUpload` tick (the
+/// operator's assertion about the model); every other type consults the
+/// client-safe map above by provider. The `baseUrl` v4 forwards to
+/// `supportsMimeType` is accepted-but-unused there, so the view carries none.
+///
+/// This is the ONE implementation: [`crate::services::file_fallback::profile_supports_mime_type`]
+/// is a thin `&Value` delegate for the raw-row call sites, and
+/// [`crate::files::image_transport::profile_can_receive_attachment`] is the
+/// pair of this and the transport question (v4 `a1d88aa3a`, bug 106).
+pub fn profile_supports_mime_type(
+    profile: crate::files::image_transport::AttachmentProfileView<'_>,
+    mime_type: &str,
+) -> bool {
+    if mime_type.starts_with("image/") {
+        return profile.supports_image_upload == Some(true);
+    }
+    supports_mime_type(profile.provider, mime_type)
+}
+
 /// v4 `staticProviderCanTransportImages(provider)` (a14a1811, bug 91) — the
 /// client-safe answer to "can this provider's plugin put image bytes on the
 /// wire?", the static mirror behind

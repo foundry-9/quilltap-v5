@@ -188,6 +188,16 @@ pub struct FallbackProfile {
 }
 
 impl FallbackProfile {
+    /// The attachment-capability view of this profile (v4 passes the whole
+    /// `ConnectionProfile` to `profileCanReceiveAttachment`; v5's parsed shape
+    /// projects the two fields the predicate reads).
+    pub fn attachment_view(&self) -> crate::files::image_transport::AttachmentProfileView<'_> {
+        crate::files::image_transport::AttachmentProfileView {
+            provider: &self.provider,
+            supports_image_upload: Some(self.supports_image_upload),
+        }
+    }
+
     /// Read a profile out of a net-read `connection_profiles` row.
     ///
     /// Every optional key follows v4's Zod: an absent boolean with a

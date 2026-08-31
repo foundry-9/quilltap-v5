@@ -165,6 +165,37 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — fix(attachments): one predicate for "can this profile receive this?" (v4 a1d88aa3a, bug 106)
+
+_Versions: core 0.0.707._
+
+v4 had three independent spellings of the question "can this profile actually
+receive an attachment of this MIME type?" — the dangerous-content router asked
+it not at all, the describe-fallback and the fallback chain asked it
+differently — and that drift is what produced v4's bugs 91, 97 and 104.
+`a1d88aa3a` collapsed them into one `profileCanReceiveAttachment`; this commit
+does the same in v5.
+
+`profile_can_receive_attachment` lands in `files/image_transport.rs` over a new
+`AttachmentProfileView` (v4's structural `{provider, supportsImageUpload?,
+baseUrl?}` parameter; `baseUrl` is accepted-but-unused in v4 and so absent
+here), and the model-half question moves to
+`files/attachment_support::profile_supports_mime_type` as its single home.
+`services/file_fallback::profile_supports_mime_type` is now a thin `&Value`
+delegate, `needs_fallback_processing` is the predicate's negation, and the
+fallback chain's `can_receive_this_turns_images` calls it with v4's own
+`image/jpeg` probe.
+
+Truth-table neutral, so the log line is the only observable movement:
+`[Attachment] Profile claims image support but its plugin cannot transport
+images` becomes `[Attachment] Plugin cannot transport images`, gains
+`supportsImageUpload`, and now also fires when the operator's tick is off (the
+early return that used to pre-empt it belongs to the predicate). Pinned by an
+exhaustive negation test over provider x flag x MIME and by a capture-layer
+test on the new sentence; both mutation-proven. `file_attachment_tier3`,
+`attachment_anchor`, `fallback_engine` and `image_transport` all stay green
+against oracles regenerated at the `a1d88aa3a` pin.
+
 #### 2026-08-31 — feat(chat): the fallback chain on image description, the fourth call site (P4.D135 unit 6)
 
 _Versions: core 0.0.706._

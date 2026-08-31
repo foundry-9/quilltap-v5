@@ -146,18 +146,17 @@ pub struct FallbackFile {
 // Pure predicates
 // ============================================================================
 
-/// v4 `profileSupportsMimeType(profile, mimeType)`. Images are gated by the
-/// profile's `supportsImageUpload` flag; every other type consults the
-/// client-safe [`crate::files::attachment_support`] map by provider.
+/// v4 `profileSupportsMimeType(profile, mimeType)` over a raw profile row.
+///
+/// A thin delegate: the implementation is
+/// [`crate::files::attachment_support::profile_supports_mime_type`], which the
+/// bug-106 consolidation made the single home so the raw-row callers here and
+/// the parsed-profile caller in the fallback chain cannot drift apart again.
 pub fn profile_supports_mime_type(profile: &Value, mime_type: &str) -> bool {
-    if mime_type.starts_with("image/") {
-        return profile.get("supportsImageUpload").and_then(Value::as_bool) == Some(true);
-    }
-    let provider = profile
-        .get("provider")
-        .and_then(Value::as_str)
-        .unwrap_or("");
-    crate::files::attachment_support::supports_mime_type(provider, mime_type)
+    crate::files::attachment_support::profile_supports_mime_type(
+        crate::files::image_transport::AttachmentProfileView::from_json(profile),
+        mime_type,
+    )
 }
 
 /// v4 `needsFallbackProcessing(profile, mimeType)`.
@@ -178,31 +177,40 @@ pub fn profile_supports_mime_type(profile: &Value, mime_type: &str) -> bool {
 /// routes to the describe-fallback, which is exactly what it's for. The
 /// `image/` prefix gate is load-bearing — non-image types are unaffected by
 /// the transport check.
+///
+/// Since v4 `a1d88aa3a` (bug 106) both questions live in
+/// [`crate::files::image_transport::profile_can_receive_attachment`] and this
+/// is its negation plus a log line: the router, the describe-fallback and the
+/// fallback chain had drifted into three spellings of one question, which is
+/// what produced bugs 91, 97 and 104.
 pub fn needs_fallback_processing(profile: &Value, mime_type: &str) -> bool {
-    if !profile_supports_mime_type(profile, mime_type) {
-        return true;
+    let view = crate::files::image_transport::AttachmentProfileView::from_json(profile);
+    if crate::files::image_transport::profile_can_receive_attachment(view, mime_type) {
+        return false;
     }
-    if mime_type.starts_with("image/") {
-        let provider = profile
-            .get("provider")
+    // The disagreement case, logged on its way past. v4 `a1d88aa3a` moved the
+    // decision above and left this as a pure log arm — it no longer returns,
+    // because the predicate has already settled the answer. The log fires only
+    // for the transport half so the sentence keeps naming the plugin, and it
+    // gained `supportsImageUpload` (the operator's tick is the other half of
+    // the disagreement, and the old line named only the plugin's side of it).
+    if mime_type.starts_with("image/")
+        && !crate::files::image_transport::provider_can_transport_images(view.provider)
+    {
+        let profile_id = profile.get("id").and_then(Value::as_str).unwrap_or("");
+        let model_name = profile
+            .get("modelName")
             .and_then(Value::as_str)
             .unwrap_or("");
-        if !crate::files::image_transport::provider_can_transport_images(provider) {
-            let profile_id = profile.get("id").and_then(Value::as_str).unwrap_or("");
-            let model_name = profile
-                .get("modelName")
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            tracing::info!(
-                profile_id,
-                provider,
-                model_name,
-                "[Attachment] Profile claims image support but its plugin cannot transport images; routing to describe-fallback"
-            );
-            return true;
-        }
+        tracing::info!(
+            profile_id,
+            provider = view.provider,
+            model_name,
+            supports_image_upload = view.supports_image_upload,
+            "[Attachment] Plugin cannot transport images; routing to describe-fallback"
+        );
     }
-    false
+    true
 }
 
 /// v4 `isTextFile(mimeType)`.
@@ -1198,6 +1206,135 @@ mod tests {
         let anthropic = json!({ "provider": "ANTHROPIC", "supportsImageUpload": true });
         assert!(!needs_fallback_processing(&anthropic, "application/pdf"));
         assert!(needs_fallback_processing(&anthropic, "application/zip"));
+    }
+
+    /// The bug-106 refactor is truth-table-neutral: the predicate is exactly the
+    /// negation of `profile_can_receive_attachment` over every combination of
+    /// the two halves, for an image type and for a non-image one.
+    #[test]
+    fn needs_fallback_is_the_negation_of_can_receive() {
+        use crate::files::image_transport::{
+            profile_can_receive_attachment, AttachmentProfileView,
+        };
+        // OPENAI transports images, DEEPSEEK does not — the two sides of the
+        // transport half; the flag is the other side.
+        for provider in ["OPENAI", "DEEPSEEK", "ANTHROPIC", "OPENAI_COMPATIBLE"] {
+            for flag in [Value::Bool(true), Value::Bool(false), Value::Null] {
+                let profile = json!({ "provider": provider, "supportsImageUpload": flag });
+                for mime in ["image/png", "image/jpeg", "application/pdf", "text/plain"] {
+                    let view = AttachmentProfileView::from_json(&profile);
+                    assert_eq!(
+                        needs_fallback_processing(&profile, mime),
+                        !profile_can_receive_attachment(view, mime),
+                        "{provider}/{flag}/{mime}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The one thing `a1d88aa3a` DID move here: the log sentence, and the
+    /// `supportsImageUpload` field beside it. A differential cannot see a
+    /// log-only change, so the capture layer is the pin.
+    #[test]
+    fn transport_disagreement_logs_v4s_new_sentence() {
+        // Flag ticked, plugin cannot transport → the disagreement arm.
+        let lines = captured(|| {
+            let p = json!({
+                "id": "p-1", "provider": "DEEPSEEK", "modelName": "deepseek-vision",
+                "supportsImageUpload": true
+            });
+            assert!(needs_fallback_processing(&p, "image/png"));
+        });
+        let hit = lines
+            .iter()
+            .find(|l| l.contains("[Attachment] Plugin cannot transport images"))
+            .unwrap_or_else(|| panic!("no transport log line in {lines:?}"));
+        assert!(
+            hit.contains("routing to describe-fallback"),
+            "sentence: {hit}"
+        );
+        // `Option<bool>` records as the bare bool, and a `None` is DROPPED —
+        // which is v4's shape too (`supportsImageUpload: undefined` never
+        // reaches the JSON line).
+        assert!(hit.contains("supports_image_upload=true"), "{hit}");
+        assert!(hit.contains("provider=DEEPSEEK"), "{hit}");
+        assert!(hit.contains("profile_id=p-1"), "{hit}");
+        // v4 retired the old sentence wholesale.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Profile claims image support")),
+            "the pre-a1d88aa3a sentence survived: {lines:?}"
+        );
+
+        // The flag OFF and the plugin unable: v4 logs here too, because the
+        // early return now belongs to `profileCanReceiveAttachment`, which
+        // already said no. (Before the refactor the `!supports` arm returned
+        // first and this line never fired.)
+        let lines = captured(|| {
+            let p = json!({
+                "id": "p-2", "provider": "DEEPSEEK", "modelName": "deepseek-chat",
+                "supportsImageUpload": false
+            });
+            assert!(needs_fallback_processing(&p, "image/png"));
+        });
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[Attachment] Plugin cannot transport images")),
+            "{lines:?}"
+        );
+
+        // A provider that CAN transport, flag off: no transport line at all.
+        let lines = captured(|| {
+            let p = json!({ "id": "p-3", "provider": "OPENAI", "supportsImageUpload": false });
+            assert!(needs_fallback_processing(&p, "image/png"));
+        });
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("[Attachment] Plugin cannot transport images")),
+            "{lines:?}"
+        );
+    }
+
+    struct CaptureLayer(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+    fn captured(f: impl FnOnce()) -> Vec<String> {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            f();
+        }
+        let out = logs.lock().unwrap().clone();
+        out
     }
 
     #[test]

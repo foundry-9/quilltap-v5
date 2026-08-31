@@ -93898,3 +93898,57 @@ Everything this order named that did NOT land, and why.
 - **`Value::as_str` inside a `tracing::` macro resolves to
   `tracing::field::Value`**, not `serde_json::Value` — "expected a type, found a
   trait". Resolve the string before the macro.
+
+### P4.D136 unit 1 — one predicate for "can this profile receive this attachment?" (v4 `a1d88aa3a`, bug 106)
+
+**The spelling half of bug 106.** v4's commit message names the cost directly:
+"Can this profile receive this attachment?" had three independent spellings —
+the router asked it not at all, the describe-fallback and the chain asked it
+differently — and that drift produced bugs 91, 97 and 104. `a1d88aa3a`
+collapses them into `profileCanReceiveAttachment` in `lib/llm/image-transport.ts`.
+
+v5's shape mirrored v4's exactly (the same three sites:
+`services/file_fallback::needs_fallback_processing`,
+`llm_fallback/engine::can_receive_this_turns_images`, and the router that never
+asked), so the consolidation lands the same way:
+
+- `files/image_transport::profile_can_receive_attachment(view, mime)` over a new
+  `AttachmentProfileView<'a>` — v4's structural `{provider, supportsImageUpload?,
+  baseUrl?}` parameter. `baseUrl` is accepted-but-unused by v4's
+  `supportsMimeType` (already recorded in `attachment_support`'s header), so the
+  view carries two fields, not three. A view rather than a `&Value` because the
+  two callers hold different shapes — the raw profile row and the parsed
+  `FallbackProfile`; `FallbackProfile::attachment_view()` is the bridge.
+- The model-half question moves to
+  `files/attachment_support::profile_supports_mime_type(view, mime)` as its ONE
+  implementation; `services/file_fallback::profile_supports_mime_type(&Value, …)`
+  stays as a thin delegate so v4's two other call sites (the describer auto-pick
+  at `:362` and the describer support check at `:446`, both of which v4 left
+  spelled the old way) keep their v4-faithful shape.
+
+**Truth-table neutral, measured not asserted.** `needs_fallback_processing`'s new
+body is `if can_receive { return false }; if image && !transport { log }; true`,
+against the old `if !supports { return true }; if image && !transport { log;
+return true }; false`. A new exhaustive test compares the predicate to the
+negation over provider × flag(true/false/null) × MIME(4) — 48 combinations —
+rather than trusting the reading.
+
+**The one observable movement is the log**, which no differential can see
+(`[[differential-blind-to-a-log-only-fix]]`). v4 reworded the sentence
+(`Profile claims image support but its plugin cannot transport images` →
+`Plugin cannot transport images`), added `supportsImageUpload`, and — because
+the early return moved into the predicate — the line now ALSO fires when the
+operator's tick is off. All three are pinned by a capture-layer test.
+`Option<bool>` records as the bare bool and a `None` is dropped, which is v4's
+shape too (`supportsImageUpload: undefined` never reaches the JSON line).
+
+**Mutation proofs (2):** reverting the first arm to the old `!supports → true`
+reddens all three predicate tests; deleting the `supports_image_upload` field
+from the log reddens the capture test alone.
+
+**Neutrality:** `file_attachment_tier3_equivalence`, `attachment_anchor_equivalence`,
+`fallback_engine_equivalence` and `image_transport_equivalence` all green over
+oracles regenerated from the `a1d88aa3a` pin
+(`/tmp/qt-v4-pin-p4d136-a1d88aa3a`), through `recipe_sweep.py --v4 <pin>`.
+
+Versions: core 0.0.707.

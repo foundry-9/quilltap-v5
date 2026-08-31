@@ -25,7 +25,7 @@
 //! and everything here is a read*), which is also what lets the tier-1
 //! differential drive it from an in-memory `Vec`.
 
-use crate::files::image_transport::provider_can_transport_images;
+use crate::files::image_transport::profile_can_receive_attachment;
 use crate::services::llm_errors::LlmErrorKind;
 use crate::services::primary_stream::{
     is_content_limit_error, is_token_limit_error, is_tool_unsupported_error,
@@ -182,12 +182,18 @@ pub fn classify_fallback_trigger(error: FallbackError<'_>) -> Option<FallbackTri
 /// Whether a profile can actually receive the images this turn is carrying.
 ///
 /// Both halves matter, and for different reasons: `supportsImageUpload` is the
-/// operator's assertion that the *model* can see, and
-/// `provider_can_transport_images` is whether the *plugin* will put the bytes on
-/// the wire. A profile failing either would answer from the prompt alone, or be
-/// refused outright by the gateway.
+/// operator's assertion that the *model* can see, and the transport check is
+/// whether the *plugin* will put the bytes on the wire. A profile failing
+/// either would answer from the prompt alone, or be refused outright by the
+/// gateway.
+///
+/// Both halves are asked by
+/// [`crate::files::image_transport::profile_can_receive_attachment`] since v4
+/// `a1d88aa3a` (bug 106) — `image/jpeg` is v4's own probe MIME here, and it
+/// stands for every image type because the profile flag is per-profile, not
+/// per-format.
 fn can_receive_this_turns_images(profile: &FallbackProfile) -> bool {
-    profile.supports_image_upload && provider_can_transport_images(&profile.provider)
+    profile_can_receive_attachment(profile.attachment_view(), "image/jpeg")
 }
 
 /// Build the ordered candidate list for a call: `[primary, understudy?, tierPick?]`.

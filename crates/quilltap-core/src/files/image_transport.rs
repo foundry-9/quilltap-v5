@@ -66,6 +66,68 @@ pub fn provider_can_transport_images(provider: &str) -> bool {
     static_provider_can_transport_images(provider)
 }
 
+/// The connection-profile fields the attachment predicates read — v4's
+/// structural parameter `{ provider, supportsImageUpload?, baseUrl? }`.
+///
+/// A view rather than a `&Value` because the two call sites hold different
+/// shapes: the file subsystem and the router carry the raw profile row, while
+/// the fallback chain carries a parsed
+/// [`crate::llm_fallback::FallbackProfile`]. `baseUrl` is in v4's parameter
+/// type but never read (`supportsMimeType` accepts it and ignores it — see
+/// [`crate::files::attachment_support`]), so it is absent here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AttachmentProfileView<'a> {
+    pub provider: &'a str,
+    /// v4 `profile.supportsImageUpload` — the operator's per-profile tick.
+    /// `None` is the absent/null column, which is NOT `Some(true)`.
+    pub supports_image_upload: Option<bool>,
+}
+
+impl<'a> AttachmentProfileView<'a> {
+    /// The view over a raw connection-profile row.
+    pub fn from_json(profile: &'a serde_json::Value) -> Self {
+        Self {
+            provider: profile
+                .get("provider")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            supports_image_upload: profile
+                .get("supportsImageUpload")
+                .and_then(serde_json::Value::as_bool),
+        }
+    }
+}
+
+/// Can this profile actually *receive* an attachment of this MIME type?
+///
+/// v4 `profileCanReceiveAttachment` (`a1d88aa3a`, bug 106) — the single
+/// predicate behind every "should we send the bytes, or describe them?"
+/// decision. Two questions, and both have to answer yes:
+///
+///  1. **Does the model read this?** —
+///     [`crate::files::attachment_support::profile_supports_mime_type`], which
+///     for images is the operator's per-profile `supportsImageUpload` tick and
+///     for everything else is the provider's capability map.
+///  2. **Can the plugin put it on the wire?** —
+///     [`provider_can_transport_images`], for images only. See the module note
+///     above for why these are different questions (bug 91).
+///
+/// Before this commit the question had three independent spellings — the
+/// router asked it not at all, the describe-fallback and the fallback chain
+/// asked it differently — and that drift is what produced v4's bugs 91, 97 and
+/// 104. Callers who ask the *negative* ("does this need the describe-fallback?")
+/// want [`crate::services::file_fallback::needs_fallback_processing`], which
+/// delegates here and logs the disagreement case.
+pub fn profile_can_receive_attachment(profile: AttachmentProfileView<'_>, mime_type: &str) -> bool {
+    if !crate::files::attachment_support::profile_supports_mime_type(profile, mime_type) {
+        return false;
+    }
+    if mime_type.starts_with("image/") && !provider_can_transport_images(profile.provider) {
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
