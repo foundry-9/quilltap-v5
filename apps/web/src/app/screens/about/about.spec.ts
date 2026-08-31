@@ -126,10 +126,36 @@ describe('AboutPage (v4 app/about/AboutView.tsx)', () => {
     expect(hrefs).toContain('https://github.com/foundry-9/quilltap-server/blob/main/LICENSE');
     expect(hrefs).toContain('https://hub.docker.com/r/foundry9/quilltap');
     expect(hrefs).toContain('https://www.npmjs.com/package/quilltap');
-    expect(hrefs).toContain('https://discord.gg/6enCeQxY');
+    // v4 `7fb668263` moved the Discord invite (the P4.D134 rider).
+    expect(hrefs).toContain('https://discord.gg/fnTPEZDE4');
     expect(hrefs).toContain('https://quilltap.ai');
     expect(hrefs).toContain('mailto:charles.sebold@foundry-9.com');
     expect(hrefs.every((h) => !h?.includes('shields.io'))).toBe(true);
+  });
+
+  it('describes the three back ends and names no VM (v4 `1560bd43b`)', async () => {
+    const fixture = await render({ kind: 'healthy', version: '0.0.28' });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    // The retirement: not one of these words survives anywhere on the page.
+    for (const gone of ['Lima', 'WSL2', 'WSL', 'VZ', 'macOS VM', 'Windows VM']) {
+      expect(text).not.toContain(gone);
+    }
+
+    // What replaced them, byte-for-byte from v4's post-`1560bd43b` AboutView.
+    expect(text).toContain(
+      'runs as a native desktop application on macOS, Windows, and Linux.',
+    );
+    expect(text).toContain(
+      'macOS, Windows, and Linux installers with branded splash screen, data directory ' +
+        'management, and managed updates, fronting the back end of your choosing: Direct (the ' +
+        'server inside Electron), Docker, or Remote (any Quilltap URL that will have you)',
+    );
+    expect(text).toContain(
+      'the sandboxed option: chosen from the splash screen or run standalone via Docker Hub, ' +
+        'with filesystem document stores bound through to the container',
+    );
+    expect(text).toContain('Electron, Docker');
   });
 });
 

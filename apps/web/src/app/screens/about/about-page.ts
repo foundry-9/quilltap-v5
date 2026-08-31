@@ -87,7 +87,7 @@ import { Icon } from '../../ui/icon';
             >npm</a
           >
           <a
-            href="https://discord.gg/6enCeQxY"
+            href="https://discord.gg/fnTPEZDE4"
             target="_blank"
             rel="noopener noreferrer"
             class="qt-button qt-button-secondary text-xs"
@@ -121,10 +121,10 @@ import { Icon } from '../../ui/icon';
           and The Foundry (architecture) &mdash; all extensible through a plugin system.
         </p>
         <p class="qt-text-primary">
-          <qt-brand-name /> runs as a native desktop application on macOS and Windows, powered by a
-          lightweight Linux VM behind the scenes. You can also run it via Docker or directly from
-          source, should you prefer to take the scenic route. No subscriptions, no data harvested,
-          no landlords.
+          <qt-brand-name /> runs as a native desktop application on macOS, Windows, and Linux. For
+          those who would rather their assistant conducted its business behind a locked door, there
+          is Docker &mdash; or you may run it directly from source, should you prefer to take the
+          scenic route. No subscriptions, no data harvested, no landlords.
         </p>
       </div>
 
@@ -311,11 +311,11 @@ export class AboutPage {
   protected readonly features = [
     {
       title: 'Native desktop app',
-      body: 'macOS (Lima/VZ) and Windows (WSL2) installers with branded splash screen, data directory management, and automatic VM lifecycle',
+      body: 'macOS, Windows, and Linux installers with branded splash screen, data directory management, and managed updates, fronting the back end of your choosing: Direct (the server inside Electron), Docker, or Remote (any Quilltap URL that will have you)',
     },
     {
       title: 'Docker runtime',
-      body: 'toggle between VM and Docker from the splash screen, or run standalone via Docker Hub, with filesystem document stores bound through to the container',
+      body: 'the sandboxed option: chosen from the splash screen or run standalone via Docker Hub, with filesystem document stores bound through to the container',
     },
     {
       title: 'The Workspace',
@@ -428,8 +428,6 @@ export class AboutPage {
     { label: 'Desktop', value: 'Electron' },
     { label: 'Styling', value: 'Tailwind CSS 4+' },
     { label: 'Validation', value: 'Zod' },
-    { label: 'macOS VM', value: 'Lima / VZ' },
-    { label: 'Windows VM', value: 'WSL2' },
     { label: 'Containers', value: 'Docker' },
   ];
 
@@ -456,7 +454,7 @@ export class AboutPage {
       body: 'Tailwind CSS, dnd-kit, @tanstack/react-virtual, @svar-ui/react-filemanager, sharp, Lucide Icons',
     },
     { label: 'Filesystem & Archives', body: 'chokidar, tar, yauzl, semver' },
-    { label: 'Desktop & Infrastructure', body: 'Electron, Lima, Docker' },
+    { label: 'Desktop & Infrastructure', body: 'Electron, Docker' },
     { label: 'Testing', body: 'Jest, Playwright, Storybook, Testing Library' },
   ];
 }

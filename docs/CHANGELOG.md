@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — refactor(about): the three back ends, no VM (v4 1560bd43b + 7fb668263)
+
+_Versions: SPA 0.5.598._
+
+The About page's half of the Lima/WSL2 retirement, byte-for-byte from v4's
+post-`1560bd43b` `AboutView.tsx`: the "runs as a native desktop application"
+paragraph now names macOS, Windows and Linux with Docker as the locked door;
+the Native-desktop-app and Docker-runtime feature bullets describe the shell's
+three back ends (Direct, Docker, Remote) instead of the old VM/Docker toggle;
+the "macOS VM: Lima / VZ" and "Windows VM: WSL2" tech-stack rows are deleted;
+and the infrastructure acknowledgment reads "Electron, Docker".
+
+Riding along: v4 `7fb668263`'s one ported hunk, the updated Discord invite.
+The existing link spec pinned the old invite and went red first.
+
+A new spec asserts both halves — that none of Lima / WSL2 / WSL / VZ / macOS VM
+/ Windows VM appears anywhere on the rendered page, and that each replacement
+sentence is present verbatim.
+
+Two v4 hunks in the same commit are NO-PORTs with evidence: `footer-wrapper.tsx`
+(v5 ships no footer component and no `BackendMode` badge) and
+`instance-lock-gate.tsx` (v5's startup screen never ported the environment-label
+cascade).
 #### 2026-08-31 — refactor(data-dir): drop the Lima probe and the isVM wire key (v4 1560bd43b)
 
 _Versions: core 0.0.702, harness 0.0.604, SPA 0.5.597._

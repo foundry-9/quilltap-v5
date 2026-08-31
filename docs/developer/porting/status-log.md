@@ -93012,3 +93012,43 @@ QT_ORACLE_DATA_DIR=/tmp/oracle-data-dir.ndjson \
 ```
 
 No committed DB fixture moved, so no sibling family is invalidated.
+
+---
+
+## P4.D134 unit 3 — the About page's three back ends + the Discord rider (v4 `1560bd43b` + `7fb668263`)
+
+**Landed 2026-08-31.** Versions: SPA 0.5.598.
+
+**Ported (v4 `app/about/AboutView.tsx`, −19/+…).** Four blocks, byte-for-byte
+from the pinned post-`1560bd43b` file:
+
+1. The "runs as a native desktop application" paragraph — macOS, Windows and
+   Linux, with Docker as the locked door.
+2. The **Native desktop app** bullet — installers "fronting the back end of your
+   choosing: Direct (the server inside Electron), Docker, or Remote (any
+   Quilltap URL that will have you)".
+3. The **Docker runtime** bullet — "the sandboxed option", no VM toggle.
+4. The tech-stack rows `macOS VM: Lima / VZ` and `Windows VM: WSL2` DELETED, and
+   `Desktop & Infrastructure` → `Electron, Docker`.
+
+**The rider.** v4 `7fb668263`'s one ported hunk — the Discord invite moves from
+`discord.gg/6enCeQxY` to `discord.gg/fnTPEZDE4`. The link was already
+spec-pinned, so the change ran red-first
+(`expected [ …(14) ] to include 'https://discord.gg/6enCeQxY'`).
+
+**Spec pin (the P4.D128 precedent), both directions.** A new case asserts that
+none of `Lima` / `WSL2` / `WSL` / `VZ` / `macOS VM` / `Windows VM` appears
+anywhere in the rendered page text, AND that each replacement sentence is
+present verbatim.
+
+**Two NO-PORTs in the same v4 commit, with evidence:**
+
+- `components/footer-wrapper.tsx` (`BackendMode` loses the `VM` /
+  `Electron+VM` badges) — **v5 ships no footer component at all**: `find
+  apps/web/src -iname '*footer*'` is empty and nothing in the SPA reads
+  `isDocker`/`isElectronShell` to build a badge. Nothing to trim.
+- `components/startup/instance-lock-gate.tsx` (the `envLabel` cascade loses its
+  two VM rows) — v5's `screens/startup/startup-screen.ts` never ported that
+  cascade (it renders the conflict detail without an environment label).
+
+SPA gate: `npm test` 366 files / 5,459 tests, 0 failed; `npm run build` clean.
