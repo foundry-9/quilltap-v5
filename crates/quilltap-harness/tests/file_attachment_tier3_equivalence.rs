@@ -81,6 +81,43 @@ struct Spec {
     #[serde(rename = "respProfiles")]
     resp_profiles: HashMap<String, Value>,
     files: Vec<FileSpec>,
+    /// P4.D136 (v4 `a1d88aa3a`, bug 106) — the message-attachment adapter's
+    /// cases, read from the SAME spec both sides consume.
+    #[serde(rename = "adaptCases")]
+    adapt_cases: Vec<AdaptCase>,
+    #[serde(rename = "mimeCases")]
+    mime_cases: Vec<MimeCase>,
+}
+
+/// One attachment slot in an adapter case: either a fixture file by key, or a
+/// raw bag the type guard is meant to reject.
+#[derive(Deserialize, Clone)]
+struct AttachmentRef {
+    #[serde(default)]
+    file: Option<String>,
+    #[serde(default)]
+    raw: Option<Value>,
+}
+
+#[derive(Deserialize, Clone)]
+struct AdaptCase {
+    label: String,
+    profile: String,
+    messages: Vec<AdaptMessage>,
+}
+
+#[derive(Deserialize, Clone)]
+struct AdaptMessage {
+    role: String,
+    content: String,
+    #[serde(default)]
+    attachments: Option<Vec<AttachmentRef>>,
+}
+
+#[derive(Deserialize, Clone)]
+struct MimeCase {
+    label: String,
+    attachments: Vec<AttachmentRef>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -433,6 +470,125 @@ fn file_attachment_matches_oracle() {
             .get(*label)
             .unwrap_or_else(|| panic!("oracle missing case {label}"));
         assert_eq!(&got, want, "fb case {label} diverged");
+    }
+
+    // ---- (E) adaptMessagesForProfile / collectAttachmentMimeTypes ----
+    //
+    // v4 `lib/chat/message-attachment-adapter.ts` (`a1d88aa3a`, bug 106). Runs
+    // between (B) and (C) on BOTH sides so the describer cache each section
+    // leaves behind is in the same state when the next one starts.
+    {
+        use quilltap_core::model::stream::StreamMessage;
+        use quilltap_core::services::message_attachment_adapter::{
+            adapt_messages_for_profile, collect_attachment_mime_types,
+        };
+
+        let build_attachment = |r: &AttachmentRef| -> Value {
+            if let Some(raw) = &r.raw {
+                return raw.clone();
+            }
+            let key = r.file.as_deref().expect("attachment ref needs file or raw");
+            let f = &file_by_key[key];
+            let data = f.data_base64();
+            json!({
+                "id": f.id,
+                "filepath": format!("/api/v1/files/{}", f.id),
+                "filename": f.original_filename,
+                "mimeType": f.mime_type,
+                "size": data.len(),
+                "data": data,
+            })
+        };
+        let build_messages = |ms: &[AdaptMessage]| -> Vec<StreamMessage> {
+            ms.iter()
+                .map(|m| {
+                    let attachments: Vec<Value> = m
+                        .attachments
+                        .as_ref()
+                        .map(|a| a.iter().map(&build_attachment).collect())
+                        .unwrap_or_default();
+                    match m.role.as_str() {
+                        "system" => StreamMessage::system(m.content.clone()),
+                        "assistant" => StreamMessage::assistant(m.content.clone()),
+                        _ => StreamMessage::User {
+                            content: m.content.clone(),
+                            cache_control: None,
+                            attachments,
+                        },
+                    }
+                })
+                .collect()
+        };
+        // The oracle's `project`: role + content + the attachments list, with
+        // `null` for "the key is absent". v4 deletes `attachments` when nothing
+        // is kept; v5 has no absent-vs-empty distinction on the enum, so the
+        // projection maps an empty list to `null` on BOTH sides — which is
+        // exactly the state v4's `delete` leaves and what the oracle emits for a
+        // message that never had the key.
+        let project = |ms: &[StreamMessage]| -> Value {
+            Value::Array(
+                ms.iter()
+                    .map(|m| {
+                        let att = m.attachments();
+                        json!({
+                            "role": m.role_str(),
+                            "content": match m {
+                                StreamMessage::System { content }
+                                | StreamMessage::User { content, .. }
+                                | StreamMessage::Assistant { content, .. }
+                                | StreamMessage::Tool { content, .. } => content.clone(),
+                            },
+                            "attachments": if att.is_empty() {
+                                Value::Null
+                            } else {
+                                Value::Array(att.to_vec())
+                            },
+                        })
+                    })
+                    .collect(),
+            )
+        };
+
+        let adapt_deps = FallbackDeps {
+            db: &db,
+            completion: &provider,
+            transcoder: &transcoder,
+            user_id: &spec.user_id,
+            now_ms: 0,
+        };
+        for c in &spec.adapt_cases {
+            let messages = build_messages(&c.messages);
+            let profile = &spec.resp_profiles[&c.profile];
+            let adapted = rt.block_on(adapt_messages_for_profile(
+                &messages,
+                profile,
+                &adapt_deps,
+                &spec.chat_id,
+            ));
+            let got = json!({
+                // v4's same-array-reference contract, made a comparand: `None`
+                // back from the port IS `result === messages`.
+                "same": adapted.is_none(),
+                "messages": project(adapted.as_deref().unwrap_or(&messages)),
+            });
+            let (_family, want) = cases
+                .get(c.label.as_str())
+                .unwrap_or_else(|| panic!("oracle missing case {}", c.label));
+            assert_eq!(&got, want, "adapt case {} diverged", c.label);
+        }
+
+        for c in &spec.mime_cases {
+            let messages = vec![StreamMessage::User {
+                content: "x".to_string(),
+                cache_control: None,
+                attachments: c.attachments.iter().map(&build_attachment).collect(),
+            }];
+            let got = json!(collect_attachment_mime_types(&messages));
+            let (_family, want) = cases
+                .get(c.label.as_str())
+                .unwrap_or_else(|| panic!("oracle missing case {}", c.label));
+            assert_eq!(&got, want, "mime case {} diverged", c.label);
+        }
     }
 
     // ---- (C) loadChatFilesForLLM (mount-path branch) ----

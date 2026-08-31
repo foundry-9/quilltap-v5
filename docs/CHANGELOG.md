@@ -165,6 +165,44 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — fix(chat): re-decide the attachment question when the model changes underneath the array (v4 a1d88aa3a, bug 106)
+
+_Versions: core 0.0.709, harness 0.0.609._
+
+The other two halves of bug 106. `services/message_attachment_adapter` ports
+v4's new `lib/chat/message-attachment-adapter.ts`: the uncensored reroute now
+re-runs `process_file_attachment_fallback` against the profile actually being
+called, so an image a text-only substitute cannot read becomes its description
+and the retry proceeds instead of dying at the gateway with *400 does not
+support image inputs*. v4's same-array-reference contract — a profile that can
+take the bytes gets the array back untouched, no describer spent — becomes a
+`None` return, so it is a type fact rather than a comment. The rerouted
+profile's raw row rides up through `RouteResult`/`DangerousProviderRouteResult`,
+because v4's route result IS the whole `ConnectionProfile` and v5's four-field
+`EffectiveProfile` cannot answer the attachment question.
+
+And `needsVision` now reads what the message array carries rather than what the
+user uploaded, at both call sites. An image the primary could not take was
+already replaced by its description upstream, and a chain that still called the
+turn vision-bearing skipped understudies perfectly able to answer it.
+`ProcessedFiles::has_image_attachment` and `RunPrimaryStreamOptions::needs_vision`
+are retired with it — the value is computed where it is used.
+
+Differentials: `file_attachment_tier3` grows an (E) family driving v4's real
+`adaptMessagesForProfile` and `collectAttachmentMimeTypes` over 11 + 3 cases
+(the same-reference contract, the describe/inline/unsupported branches, the
+keep-and-drop partition, the foreign-bag passthrough, multi-message and
+multi-attachment ordering, MIME de-duplication), with its own fixture image so
+the describe is a real call. `primary_stream_tier3` gains
+`hard_error_vision_skips_understudy`, where `attachedFiles` is empty and the
+array carries an image: the two spellings of `needsVision` disagree on exactly
+that case. Seven mutations, each reddening one arm.
+
+One recorded narrowing: v4's `delete next.attachments` distinguishes an absent
+key from an empty list and `StreamMessage::User.attachments` cannot. Nothing
+observes the difference — every request builder reads the list with JS
+truthiness — and the differential collapses the two on both sides.
+
 #### 2026-08-31 — fix(danger): order the uncensored scan by what the turn is carrying (v4 a1d88aa3a, bug 106)
 
 _Versions: core 0.0.708, harness 0.0.608._

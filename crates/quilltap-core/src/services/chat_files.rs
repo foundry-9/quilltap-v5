@@ -378,16 +378,6 @@ pub struct ProcessedFiles {
     pub message_content_prefix: Option<String>,
     /// v4 `attachmentsToSend` — the kept (provider-supported) attachments.
     pub attachments_to_send: Vec<Value>,
-    /// Whether ANY matched file is an image — v4's
-    /// `fileProcessing.attachedFiles.some((f) => f.mimeType?.startsWith('image/'))`
-    /// (`orchestrator.service.ts:1576`, `65f5021c8`), which the fallback chain
-    /// reads as `needsVision`.
-    ///
-    /// Off `attachedFiles`, NOT `attachmentsToSend`: the question is whether the
-    /// TURN carries an image, and the provider filter has already dropped the
-    /// ones this profile could not take. A stand-in must be able to see what the
-    /// message array carries, and that array was built for the primary.
-    pub has_image_attachment: bool,
 }
 
 /// v4 `loadAndProcessFiles(chatId, fileIds, connectionProfile, userId)` — read the
@@ -469,7 +459,6 @@ pub async fn load_and_process_files<CMP: CompletionProvider>(
             Some(message_content_prefix)
         },
         attachments_to_send,
-        has_image_attachment: matched.iter().any(|f| f.mime_type.starts_with("image/")),
     }
 }
 

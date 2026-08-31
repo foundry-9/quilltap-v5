@@ -248,6 +248,28 @@
       ],
       "generationRevisedPrompt": "   ",
       "generationPrompt": "A weathered lighthouse standing against a stormy grey sea."
+    },
+    {
+      "key": "adaptImage",
+      "id": "f0000000-0000-4000-8000-00000000000b",
+      "originalFilename": "adapt-image.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        2,
+        4,
+        6,
+        8
+      ],
+      "$comment": "P4.D136 (v4 a1d88aa3a, bug 106): its own image so the adapter's describe is a REAL describer call rather than a reuse of a description fb_desc already cached."
     }
   ],
   "mount": {
@@ -296,6 +318,257 @@
       "content": "A bold abstract composition of overlapping crimson and cobalt geometric planes set against a stark, luminous white backdrop.",
       "finishReason": "stop",
       "usage": null
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "adapt-image.png",
+      "content": "A weathered brass sextant resting on a folded nautical chart, its index arm catching a shaft of afternoon light.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 640,
+        "completionTokens": 29,
+        "totalTokens": 669
+      }
+    }
+  ],
+  "adaptCases": [
+    {
+      "label": "adapt_noop_no_attachments",
+      "profile": "noImg",
+      "$why": "Nothing to re-decide: v4 returns the SAME array reference and spends no describer.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Tell me about the sextant.",
+          "attachments": []
+        }
+      ]
+    },
+    {
+      "label": "adapt_noop_profile_accepts",
+      "profile": "imgOK",
+      "$why": "The substitute reads what the original did — same reference again, the overwhelmingly common case.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Look at this.",
+          "attachments": [
+            {
+              "file": "adaptImage"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_image_to_description",
+      "profile": "noImg",
+      "$why": "Bug 106's whole point: a text-only substitute gets the description instead of the bytes.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Look at this.",
+          "attachments": [
+            {
+              "file": "adaptImage"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_vision_no_transport",
+      "profile": "visionNoTransport",
+      "$why": "Bug 91's shape reaching the adapter: the tick is on, the plugin cannot transport, so it describes.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Look at this.",
+          "attachments": [
+            {
+              "file": "descImage"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_text_inlined",
+      "profile": "noImg",
+      "$why": "A non-image type takes the text-inline branch, not the describer.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Read this.",
+          "attachments": [
+            {
+              "file": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_unsupported_zip",
+      "profile": "noImg",
+      "$why": "Neither describable nor inlinable: the unsupported prefix replaces the bytes.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Open this.",
+          "attachments": [
+            {
+              "file": "zip"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_mixed_keep_and_drop",
+      "profile": "imgOK",
+      "$why": "The keep/drop partition on ONE message: OPENAI takes the image and cannot read text/plain, so the image survives in `attachments` and the note is inlined ahead of the content.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Both, please.",
+          "attachments": [
+            {
+              "file": "keptImage"
+            },
+            {
+              "file": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_passthrough_foreign_bag",
+      "profile": "noImg",
+      "$why": "A bag the type guard rejects (no `mimeType`) is a caller's own shape: carried through untouched, and it alone never triggers the rewrite.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Mixed bag.",
+          "attachments": [
+            {
+              "raw": {
+                "id": "not-an-attachment",
+                "note": "caller's own shape"
+              }
+            },
+            {
+              "file": "adaptImage"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_only_foreign_bag_is_a_noop",
+      "profile": "noImg",
+      "$why": "…and with nothing else to decide, the array comes back by reference.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Just the odd one.",
+          "attachments": [
+            {
+              "raw": {
+                "id": "not-an-attachment"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_multiple_messages",
+      "profile": "noImg",
+      "$why": "Only the anchor message carries attachments; the others ride through with their content untouched.",
+      "messages": [
+        {
+          "role": "system",
+          "content": "You are helpful."
+        },
+        {
+          "role": "user",
+          "content": "Earlier turn.",
+          "attachments": []
+        },
+        {
+          "role": "assistant",
+          "content": "Earlier answer."
+        },
+        {
+          "role": "user",
+          "content": "Look at this.",
+          "attachments": [
+            {
+              "file": "adaptImage"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_two_attachments_both_dropped",
+      "profile": "noImg",
+      "$why": "Two describable/inlinable attachments accumulate their prefixes in order and leave `attachments` absent.",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Two things.",
+          "attachments": [
+            {
+              "file": "adaptImage"
+            },
+            {
+              "file": "text"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "mimeCases": [
+    {
+      "label": "mimes_dedupes",
+      "attachments": [
+        {
+          "file": "adaptImage"
+        },
+        {
+          "file": "descImage"
+        },
+        {
+          "file": "text"
+        }
+      ]
+    },
+    {
+      "label": "mimes_skips_foreign_bags",
+      "attachments": [
+        {
+          "raw": {
+            "id": "x"
+          }
+        },
+        {
+          "raw": {
+            "mimeType": "image/png"
+          }
+        },
+        {
+          "file": "text"
+        }
+      ]
+    },
+    {
+      "label": "mimes_empty",
+      "attachments": []
     }
   ]
 }

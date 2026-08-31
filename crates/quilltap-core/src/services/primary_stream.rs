@@ -816,12 +816,6 @@ pub struct RunPrimaryStreamOptions<'a> {
     /// mainstream model hands the content back to the moderation that refused
     /// it.
     pub is_dangerous_routed: bool,
-    /// Whether the turn carries image attachments — v4's
-    /// `attachedFiles.some((f) => f.mimeType?.startsWith('image/'))`. Both chain
-    /// steps filter on it, because a chain swaps the model but reuses the
-    /// message array the primary's call was built against, with the raw bytes
-    /// already embedded.
-    pub needs_vision: bool,
     /// The failing profile as a full row, for the chain (v5's `StreamingState`
     /// carries only the four-field [`EffectiveProfile`]). `None` disables the
     /// chain entirely, which is what every caller without a profile row wants —
@@ -1114,10 +1108,20 @@ where
         pre_generated_assistant_message_id,
         log_context,
         is_dangerous_routed,
-        needs_vision,
         fallback_profile,
         state,
     } = opts;
+
+    // Whether the turn carries images — read from the ARRAY, not from what the
+    // user uploaded (v4 `a1d88aa3a`, bug 106). An image the primary could not
+    // take was already replaced by its description upstream, and a chain that
+    // still called the turn vision-bearing would skip understudies perfectly
+    // able to answer it.
+    let needs_vision = crate::services::message_attachment_adapter::collect_attachment_mime_types(
+        &params.messages,
+    )
+    .iter()
+    .any(|m| m.starts_with("image/"));
 
     // v4 gates the terminal `logLLMCall` on `if (userId)`.
     let stream_log = (!user_id.is_empty()).then(|| StreamLogCtx {

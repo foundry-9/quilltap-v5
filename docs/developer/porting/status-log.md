@@ -94015,3 +94015,82 @@ for exactly the providers v4 bug 97 was about.
 `profile_can_carry_turn` reddens `mime-image-and-pdf-nobody-carries` alone.
 
 Versions: core 0.0.708, harness 0.0.608.
+
+### P4.D136 unit 3 — the message-attachment adapter + `needsVision` off the array (v4 `a1d88aa3a`, bug 106)
+
+Bug 106's other two halves.
+
+**The adapter** (`services/message_attachment_adapter`, v4
+`lib/chat/message-attachment-adapter.ts`). The empty-response reroute re-runs
+`process_file_attachment_fallback` against the profile actually being called, so
+an image a text-only substitute cannot read becomes its description. v4's
+**same-array-reference** contract — load-bearing, because callers compare — has
+no v5 spelling, so it becomes the return type: `Option<Vec<StreamMessage>>`
+where `None` IS "unchanged". A type fact instead of a comment, and a comparand
+in the differential (`same: adapted.is_none()` vs v4's `result === messages`).
+
+**Getting the row to the adapter.** v4's `routeResult.connectionProfile` IS the
+whole `ConnectionProfile`; v5's `EffectiveProfile` is four fields and cannot
+answer the attachment question. `DangerousProviderRouteResult` and `RouteResult`
+grew `profile_row: Option<Value>`, populated on the two rerouted arms. `None`
+(the test doubles) skips the re-decide — which is v4's OWN `repos ? … :
+formattedMessages` arm, not a v5 invention.
+
+**`needsVision` reads the ARRAY.** Both v4 sites moved to
+`collectAttachmentMimeTypes(formattedMessages)`; v5's twins are
+`run_primary_stream` (computed inside, where v4 computes it) and the
+orchestrator's `ChainCapabilities`. `ProcessedFiles::has_image_attachment` and
+`RunPrimaryStreamOptions::needs_vision` are RETIRED with the change — both
+existed only to carry the uploaded-files answer, and nothing reads them now.
+
+**Two recorded narrowings, both measured rather than asserted:**
+
+1. *absent vs empty `attachments`.* v4's `delete next.attachments` distinguishes
+   the two; `StreamMessage::User.attachments` is a `Vec` and cannot. Nothing
+   observes it — every request builder reads the list with JS truthiness — and
+   the differential's projection collapses the two on BOTH sides so the rest
+   stays discriminating.
+2. *`filepath` / `size`.* v4 rebuilds both into the metadata it hands the
+   fallback; v5's `FallbackFile` carries neither, and the `fb` family of the
+   same differential already proves the results identical without them.
+
+**Differentials.**
+
+`file_attachment_tier3_equivalence` gains an **(E)** family driving v4's REAL
+`adaptMessagesForProfile` + `collectAttachmentMimeTypes` — 11 adapt cases and 3
+collector cases, read from the SAME spec block both sides consume. It sits
+between (B) and (C) on both sides so the describer cache each section leaves
+behind is in the same state when the next runs, and the fixture gained its own
+image (`adapt-image.png` + a canned description) so the adapter's describe is a
+REAL call rather than a reuse of what `fb_desc` already cached.
+
+| case | pins |
+|---|---|
+| `adapt_noop_no_attachments` / `adapt_noop_profile_accepts` | the same-reference contract, both ways in |
+| `adapt_image_to_description` | bug 106 itself |
+| `adapt_vision_no_transport` | bug 91's shape reaching the adapter |
+| `adapt_text_inlined` / `adapt_unsupported_zip` | the non-describer branches |
+| `adapt_mixed_keep_and_drop` | the keep/drop partition on one message |
+| `adapt_passthrough_foreign_bag` / `adapt_only_foreign_bag_is_a_noop` | the type guard's two consequences |
+| `adapt_multiple_messages` | non-anchor messages ride through |
+| `adapt_two_attachments_both_dropped` | prefix accumulation order |
+| `mimes_dedupes` / `mimes_skips_foreign_bags` / `mimes_empty` | the collector |
+
+`primary_stream_tier3_equivalence` gains **`hard_error_vision_skips_understudy`**
+— the only case where the two spellings of `needsVision` disagree:
+`attachedFiles` is EMPTY and the message array carries an image. Post-fix the
+chain filters the OPENAI understudy (no `supportsImageUpload`) and the GOOGLE
+tier spare, finds nothing, and rethrows the bare `401 Unauthorized` with no
+attempt roll. Pre-fix the understudy answers. The call gets its own
+one-attempt stream label — reusing `auth_then_understudy_ok` exhausted the
+shared sequence and failed with a mock-exhaustion message on both sides, which
+is a false red, not a divergence.
+
+**Mutation proofs (7).** `needs_vision = false` (the pre-fix caller-passed
+spelling) reddens the new tier-3 case; and on the adapter: dropping the
+same-reference contract, dropping the keep arm, appending the prefix instead of
+prepending, removing the foreign-bag passthrough, removing the collector's
+de-duplication, and relaxing the type guard's `id` requirement — each reddening
+exactly one arm, all six named above.
+
+Versions: core 0.0.709, harness 0.0.609.

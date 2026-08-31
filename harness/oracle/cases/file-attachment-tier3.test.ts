@@ -74,6 +74,13 @@ interface VisionSpec {
   finishReason: string | null;
   usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
 }
+interface AttachmentRef { file?: string; raw?: Record<string, unknown> }
+interface AdaptCase {
+  label: string;
+  profile: string;
+  messages: Array<{ role: string; content: string; attachments?: AttachmentRef[] }>;
+}
+interface MimeCase { label: string; attachments: AttachmentRef[] }
 interface Spec {
   testPepperBase64: string;
   userId: string;
@@ -81,6 +88,8 @@ interface Spec {
   respProfiles: Record<string, Record<string, unknown>>;
   files: FileSpec[];
   vision: VisionSpec[];
+  adaptCases: AdaptCase[];
+  mimeCases: MimeCase[];
 }
 interface Meta {
   mountLinkId: string;
@@ -318,6 +327,89 @@ async function main(): Promise<void> {
       spec.userId,
     );
     lines.push(JSON.stringify({ kind: 'case', family: 'fb', label: c.label, result }));
+  }
+
+  // ---- (E) adaptMessagesForProfile / collectAttachmentMimeTypes -------------
+  //
+  // v4 `lib/chat/message-attachment-adapter.ts` (`a1d88aa3a`, bug 106). Placed
+  // between (B) and (C) on BOTH sides so the describer cache each section leaves
+  // behind is in the same state when the next one runs.
+  {
+    const adapter = await import('@/lib/chat/message-attachment-adapter');
+
+    const buildAttachment = (entry: { file?: string; raw?: Record<string, unknown> }): unknown => {
+      if (entry.raw) return entry.raw;
+      const f = fileByKey[entry.file!];
+      return {
+        id: f.id,
+        filepath: `/api/v1/files/${f.id}`,
+        filename: f.originalFilename,
+        mimeType: f.mimeType,
+        size: dataByKey[entry.file!].length,
+        data: dataByKey[entry.file!],
+      };
+    };
+    const buildMessages = (
+      ms: Array<{ role: string; content: string; attachments?: Array<{ file?: string; raw?: Record<string, unknown> }> }>,
+    ): Array<Record<string, unknown>> =>
+      ms.map((m) => {
+        const out: Record<string, unknown> = { role: m.role, content: m.content };
+        if (m.attachments !== undefined) out.attachments = m.attachments.map(buildAttachment);
+        return out;
+      });
+    // Only the fields the port can carry: v4 spreads every extra key through
+    // `{...message}` and v5's `StreamMessage` reconstructs its variant, so the
+    // comparand is the three fields both sides actually decide about.
+    //
+    // An EMPTY list projects to `null` alongside an absent key. v4 distinguishes
+    // the two (`delete next.attachments` vs a message that never had the key);
+    // v5's `StreamMessage::User.attachments` is a `Vec` and structurally cannot,
+    // which is a recorded narrowing rather than a divergence: every request
+    // builder reads the list with JS truthiness, so `[]` and absent reach the
+    // wire identically. Collapsing here keeps the rest of the projection
+    // discriminating instead of failing on a difference nothing can observe.
+    const project = (ms: Array<Record<string, unknown>>): unknown =>
+      ms.map((m) => {
+        const att = (m.attachments as unknown[] | undefined) ?? [];
+        return { role: m.role, content: m.content, attachments: att.length > 0 ? att : null };
+      });
+
+    for (const c of spec.adaptCases) {
+      const messages = buildMessages(c.messages);
+      const profile = spec.respProfiles[c.profile];
+      const result = await adapter.adaptMessagesForProfile(
+        messages as never,
+        profile as never,
+        repos,
+        spec.userId,
+        { chatId: spec.chatId },
+      );
+      lines.push(
+        JSON.stringify({
+          kind: 'case',
+          family: 'adapt',
+          label: c.label,
+          result: {
+            // v4's same-array-reference contract, made a comparand. v5 answers
+            // `None` for exactly this case.
+            same: result === messages,
+            messages: project(result as Array<Record<string, unknown>>),
+          },
+        }),
+      );
+    }
+
+    for (const c of spec.mimeCases) {
+      const messages = buildMessages([{ role: 'user', content: 'x', attachments: c.attachments }]);
+      lines.push(
+        JSON.stringify({
+          kind: 'case',
+          family: 'adapt',
+          label: c.label,
+          result: adapter.collectAttachmentMimeTypes(messages as never),
+        }),
+      );
+    }
   }
 
   // ---- (C) loadChatFilesForLLM (mount-path branch) --------------------------

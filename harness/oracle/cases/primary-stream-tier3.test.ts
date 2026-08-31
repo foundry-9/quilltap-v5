@@ -384,9 +384,15 @@ async function main(): Promise<void> {
     hasStartedStreaming: false,
   });
 
-  const userMessages = (marker: string) => [
+  // P4.D136 (v4 `a1d88aa3a`, bug 106): a call may plant attachments ON THE
+  // ARRAY, which is where `needsVision` is now read from. `attachedFiles` (what
+  // the user uploaded) stays independent, and the disagreement between the two
+  // is the whole point of the `hard_error_vision_skips_understudy` case.
+  const userMessages = (marker: string, attachments?: unknown[]) => [
     { role: 'system', content: `You are ${spec.character.name}.` },
-    { role: 'user', content: marker },
+    attachments && attachments.length > 0
+      ? { role: 'user', content: marker, attachments }
+      : { role: 'user', content: marker },
   ];
 
   for (const call of spec.calls) {
@@ -419,7 +425,7 @@ async function main(): Promise<void> {
           characterParticipant,
           userParticipantId: null,
           isMultiCharacter: false,
-          formattedMessages: userMessages(call.originalMessage as string) as never,
+          formattedMessages: userMessages(call.originalMessage as string, call.messageAttachments as unknown[] | undefined) as never,
           modelParams: { temperature: 1.0, maxTokens: 4096 },
           actualTools: call.hasTools ? [{ function: { name: 'noop' } }] : [],
           useNativeWebSearch: false,
@@ -474,7 +480,7 @@ async function main(): Promise<void> {
             call.dangerMode === 'AUTO_ROUTE' ? spec.uncensoredProfile.id : undefined,
         } as never,
         connectionProfile: toConnectionProfile(spec.profile) as never,
-        formattedMessages: userMessages(call.originalMessage as string) as never,
+        formattedMessages: userMessages(call.originalMessage as string, call.messageAttachments as unknown[] | undefined) as never,
         modelParams: { temperature: 1.0, maxTokens: 4096 },
         actualTools: [],
         useNativeWebSearch: false,
@@ -541,7 +547,7 @@ async function main(): Promise<void> {
           characterParticipant,
           userParticipantId: null,
           isMultiCharacter: false,
-          formattedMessages: userMessages(call.originalMessage as string) as never,
+          formattedMessages: userMessages(call.originalMessage as string, call.messageAttachments as unknown[] | undefined) as never,
           modelParams: { temperature: 1.0, maxTokens: 4096 },
           actualTools: [],
           useNativeWebSearch: false,

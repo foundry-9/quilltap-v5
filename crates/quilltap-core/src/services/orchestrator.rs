@@ -2682,7 +2682,6 @@ where
     // swapped the profile out for an uncensored one. Either way an auto-picked
     // stand-in must be cleared for it.
     let is_dangerous_routed = content_was_flagged_dangerous || did_reroute;
-    let turn_needs_vision = file_processing.has_image_attachment;
     let primary = primary_stream::run_primary_stream(
         db,
         deps.streaming,
@@ -2708,7 +2707,6 @@ where
             // `runWithAutonomousRunId` scope covers the whole generation).
             log_context: input.log_context.clone(),
             is_dangerous_routed,
-            needs_vision: turn_needs_vision,
             fallback_profile: fallback_primary.clone(),
             state: &mut streaming_state,
         },
@@ -2962,11 +2960,23 @@ where
 
     // --- Empty-response recovery (orchestrator.service.ts:1380–1397) ---
     // W4.2u: the danger flags + settings are now the real resolution (above).
+    // The describer-bearing deps the reroute's attachment re-decide needs (v4
+    // `a1d88aa3a`, bug 106 — v4 hands `adaptMessagesForProfile` the repos it
+    // already has in scope; v5's file subsystem takes the same four seams the
+    // turn's own attachment pass took).
+    let adapter_deps = crate::services::file_fallback::FallbackDeps {
+        db,
+        completion: deps.completion,
+        transcoder: deps.image_transcoder,
+        user_id: &user_id,
+        now_ms: input.clock.now_ms,
+    };
     let recovery_flags = provider_failover::attempt_empty_response_recovery(
         deps.streaming,
         sink,
         deps.danger_router,
         Some(&fallback_repos),
+        Some(&adapter_deps),
         AttemptEmptyResponseRecoveryOptions {
             state: &mut streaming_state,
             tool_messages_length: tool_messages_len,
@@ -2986,7 +2996,14 @@ where
             // the flag itself before it walks.
             fallback_context: Some(provider_failover::ChainCapabilities {
                 dangerous: content_was_flagged_dangerous,
-                needs_vision: turn_needs_vision,
+                // What the array carries, not what the user uploaded — see the
+                // same note in `run_primary_stream` (v4 `a1d88aa3a`, bug 106).
+                needs_vision:
+                    crate::services::message_attachment_adapter::collect_attachment_mime_types(
+                        &params.messages,
+                    )
+                    .iter()
+                    .any(|m| m.starts_with("image/")),
                 needs_tools: !actual_tools.is_empty(),
             }),
         },
@@ -4398,6 +4415,7 @@ mod tests {
                     rerouted: false,
                     connection_profile: profile,
                     api_key: key,
+                    profile_row: None,
                 }
             }
         }

@@ -66,6 +66,16 @@ pub struct RouteResult {
     pub rerouted: bool,
     pub connection_profile: EffectiveProfile,
     pub api_key: String,
+    /// The rerouted profile's raw row — v4's `routeResult.connectionProfile` IS
+    /// the whole `ConnectionProfile`, and `adaptMessagesForProfile` reads
+    /// `supportsImageUpload`/`provider` off it (v4 `a1d88aa3a`, bug 106). v5's
+    /// four-field [`EffectiveProfile`] cannot answer the attachment question, so
+    /// the row rides along.
+    ///
+    /// `None` for a router with no row to hand over — the test doubles. The
+    /// re-decide then skips, which is v4's own `repos ? … : formattedMessages`
+    /// arm rather than a v5 invention.
+    pub profile_row: Option<serde_json::Value>,
 }
 
 /// The dangerous-content routing seam — v4
@@ -163,11 +173,12 @@ pub struct FailoverLogCtx<'a> {
 /// v4 `attemptEmptyResponseRecovery` — the orchestrator entry point. Delegates to
 /// [`attempt_empty_response_recovery_with_log`] with no `llm_logs` writer (the
 /// spine does not yet thread the db + pre-generated message id into the failover).
-pub async fn attempt_empty_response_recovery<P, S, R, FR>(
+pub async fn attempt_empty_response_recovery<P, S, R, FR, CMP>(
     provider: &P,
     sink: &S,
     router: &R,
     repos: Option<&FR>,
+    adapter: Option<&crate::services::file_fallback::FallbackDeps<'_, CMP>>,
     opts: AttemptEmptyResponseRecoveryOptions<'_>,
 ) -> EmptyResponseRecoveryFlags
 where
@@ -175,18 +186,25 @@ where
     S: EventSink,
     R: DangerousContentRouter,
     FR: FallbackChainRepos,
+    CMP: crate::model::completion::CompletionProvider,
 {
-    attempt_empty_response_recovery_with_log(provider, sink, router, repos, opts, None).await
+    attempt_empty_response_recovery_with_log(provider, sink, router, repos, adapter, opts, None)
+        .await
 }
 
 /// v4 `attemptEmptyResponseRecovery`, with the optional failover `CHAT_MESSAGE`
 /// logging (v4's `restreamInto` logs per `streamMessage` call). Mutates `state` in
 /// place.
-pub async fn attempt_empty_response_recovery_with_log<P, S, R, FR>(
+pub async fn attempt_empty_response_recovery_with_log<P, S, R, FR, CMP>(
     provider: &P,
     sink: &S,
     router: &R,
     repos: Option<&FR>,
+    // `adapter`: v4's `repos ? await adaptMessagesForProfile(…) :
+    // formattedMessages` (`a1d88aa3a`, bug 106) — the describer-bearing deps the
+    // re-decide needs. `None` takes v4's falsy-`repos` arm and reroutes the
+    // array unchanged.
+    adapter: Option<&crate::services::file_fallback::FallbackDeps<'_, CMP>>,
     opts: AttemptEmptyResponseRecoveryOptions<'_>,
     log: Option<FailoverLogCtx<'_>>,
 ) -> EmptyResponseRecoveryFlags
@@ -195,6 +213,7 @@ where
     S: EventSink,
     R: DangerousContentRouter,
     FR: FallbackChainRepos,
+    CMP: crate::model::completion::CompletionProvider,
 {
     let AttemptEmptyResponseRecoveryOptions {
         state,
@@ -327,6 +346,29 @@ where
             // retry against the rerouted `connectionProfile`.
             let mut re_params = params.clone();
             re_params.model = route.connection_profile.model_name.clone();
+
+            // The array was built for the profile that just refused. An
+            // explicitly configured uncensored profile is honoured ahead of the
+            // scan, so it may still be one that cannot read this turn's images —
+            // re-decide before spending the attempt, or the gateway 400s and the
+            // last line of defence never runs (v4 `a1d88aa3a`, bug 106).
+            //
+            // `None` back from the adapter is v4's same-array-reference contract:
+            // nothing needed changing, so `re_params` keeps what it had and no
+            // describer was spent.
+            if let (Some(adapter), Some(row)) = (adapter, route.profile_row.as_ref()) {
+                if let Some(adapted) =
+                    crate::services::message_attachment_adapter::adapt_messages_for_profile(
+                        &re_params.messages,
+                        row,
+                        adapter,
+                        &chat_id,
+                    )
+                    .await
+                {
+                    re_params.messages = adapted;
+                }
+            }
             let _ = restream_into(
                 provider,
                 state,
@@ -1077,6 +1119,7 @@ mod tests {
                 rerouted: false,
                 connection_profile: original_profile.clone(),
                 api_key: original_api_key.to_string(),
+                profile_row: None,
             }
         }
     }
@@ -1098,6 +1141,7 @@ mod tests {
                 rerouted: true,
                 connection_profile: self.profile.clone(),
                 api_key: self.key.clone(),
+                profile_row: None,
             }
         }
     }
@@ -1194,10 +1238,12 @@ mod tests {
             _,
             _,
             crate::services::fallback_repos::DbFallbackRepos,
+            crate::model::completion::CannedCompletionProvider,
         >(
             &provider,
             &sink,
             &NoRouter,
+            None,
             None,
             AttemptEmptyResponseRecoveryOptions {
                 state: &mut state,
@@ -1249,10 +1295,17 @@ mod tests {
             })),
             ..Default::default()
         };
-        attempt_empty_response_recovery::<_, _, _, crate::services::fallback_repos::DbFallbackRepos>(
+        attempt_empty_response_recovery::<
+            _,
+            _,
+            _,
+            crate::services::fallback_repos::DbFallbackRepos,
+            crate::model::completion::CannedCompletionProvider,
+        >(
             &provider,
             &sink,
             &NoRouter,
+            None,
             None,
             AttemptEmptyResponseRecoveryOptions {
                 state: &mut state,
@@ -1302,6 +1355,7 @@ mod tests {
             _,
             _,
             crate::services::fallback_repos::DbFallbackRepos,
+            crate::model::completion::CannedCompletionProvider,
         >(
             &provider,
             &sink,
@@ -1309,6 +1363,7 @@ mod tests {
                 profile: uncensored.clone(),
                 key: "k2".into(),
             },
+            None,
             None,
             AttemptEmptyResponseRecoveryOptions {
                 state: &mut state,
@@ -1353,10 +1408,12 @@ mod tests {
             _,
             _,
             crate::services::fallback_repos::DbFallbackRepos,
+            crate::model::completion::CannedCompletionProvider,
         >(
             &provider,
             &sink,
             &NoRouter,
+            None,
             None,
             AttemptEmptyResponseRecoveryOptions {
                 state: &mut state,
@@ -1401,10 +1458,12 @@ mod tests {
             _,
             _,
             crate::services::fallback_repos::DbFallbackRepos,
+            crate::model::completion::CannedCompletionProvider,
         >(
             &provider,
             &sink,
             &NoRouter,
+            None,
             None,
             AttemptEmptyResponseRecoveryOptions {
                 state: &mut state,
@@ -1610,6 +1669,7 @@ mod tests {
             _,
             _,
             crate::services::fallback_repos::DbFallbackRepos,
+            crate::model::completion::CannedCompletionProvider,
         >(
             &provider,
             &sink,
@@ -1617,6 +1677,7 @@ mod tests {
                 profile: uncensored,
                 key: "k2".into(),
             },
+            None,
             None,
             AttemptEmptyResponseRecoveryOptions {
                 state: &mut state,

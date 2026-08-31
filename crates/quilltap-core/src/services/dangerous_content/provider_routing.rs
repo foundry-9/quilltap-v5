@@ -38,6 +38,14 @@ pub struct DangerousProviderRouteResult {
     pub connection_profile: RouteProfile,
     pub api_key: String,
     pub reason: String,
+    /// The chosen profile's raw row. v4's result carries the whole
+    /// `ConnectionProfile`; v5 projects the identity into [`RouteProfile`] for
+    /// the routing comparands and keeps the row here for the callers that need
+    /// more of it — since v4 `a1d88aa3a` (bug 106) the empty-response reroute
+    /// re-runs the attachment decision against it. `None` on the arms that
+    /// return the ORIGINAL profile (no reroute happened, so there is no new row
+    /// to decide against).
+    pub profile_row: Option<Value>,
 }
 
 /// v4 `DangerousImageProviderRouteResult`.
@@ -208,6 +216,7 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
             connection_profile: original_profile.clone(),
             api_key: original_api_key.to_string(),
             reason: format!("Mode is {mode}, no rerouting"),
+            profile_row: None,
         };
     }
 
@@ -226,6 +235,7 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
                             ),
                             connection_profile: rp,
                             api_key,
+                            profile_row: Some(profile.clone()),
                         });
                     }
                     // Configured profile has no valid API key — fall through.
@@ -276,6 +286,7 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
                     reason: format!("Rerouted to uncensored-compatible profile: {}", rp.name),
                     connection_profile: rp,
                     api_key,
+                    profile_row: Some(profile.clone()),
                 });
             }
         }
@@ -286,6 +297,7 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
             connection_profile: original_profile.clone(),
             api_key: original_api_key.to_string(),
             reason: "No uncensored provider available - sending to regular provider".to_string(),
+            profile_row: None,
         })
     };
 
@@ -294,6 +306,7 @@ pub fn resolve_provider_for_dangerous_content<A: ApiKeyResolver>(
         connection_profile: original_profile.clone(),
         api_key: original_api_key.to_string(),
         reason: format!("Routing failed: {e}"),
+        profile_row: None,
     })
 }
 
@@ -473,6 +486,7 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
                 connection_profile: original.clone(),
                 api_key: original_api_key.to_string(),
                 reason: "Routing failed".to_string(),
+                profile_row: None,
             });
 
         RouteResult {
@@ -484,6 +498,7 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
                 base_url: result.connection_profile.base_url,
             },
             api_key: result.api_key,
+            profile_row: result.profile_row,
         }
     }
 }

@@ -424,6 +424,13 @@
           "done": true
         }
       ]
+    ],
+    "auth_then_no_eligible_candidate": [
+      [
+        {
+          "error": "401 Unauthorized"
+        }
+      ]
     ]
   },
   "calls": [
@@ -652,6 +659,27 @@
       "attachedFiles": [],
       "originalMessage": "the primary thinks aloud and then collapses",
       "comment": "P4.D135: the primary emits REASONING and then dies. hasStartedStreaming stays false (only content sets it), so the chain runs — and the understudy's answer must not be glued onto the corpse of the one before it. resetStreamingBuffersForSwap is what makes that true, and only a DIRTY-buffer case can tell it from a no-op: the buffers are compared."
+    },
+    {
+      "name": "hard_error_vision_skips_understudy",
+      "kind": "hardFailover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000016-0000-4000-8000-000000000016",
+      "hasTools": false,
+      "streamLabel": "auth_then_no_eligible_candidate",
+      "attachedFiles": [],
+      "messageAttachments": [
+        {
+          "id": "f0000000-0000-4000-8000-0000000000f1",
+          "filename": "turn-photo.png",
+          "mimeType": "image/png",
+          "size": 12,
+          "data": "aW1hZ2UtYnl0ZXM="
+        }
+      ],
+      "originalMessage": "the turn is carrying a picture",
+      "comment": "P4.D136 (v4 a1d88aa3a, bug 106): `needsVision` is now read from what the message ARRAY carries, not from what the user uploaded. `attachedFiles` is EMPTY here and the array carries an image — the pre-fix spelling reads the uploads and calls the turn text-only, so the OPENAI understudy (no supportsImageUpload) answers. Post-fix the chain filters it out, the tier pick is filtered too, and the exhausted chain rethrows with summarizeFallbackAttempts' roll. The two spellings disagree on this one case and agree on every other."
     }
   ]
 }

@@ -30,6 +30,16 @@
 //! `None` IS "unchanged — keep what you had". A caller cannot accidentally
 //! spend a clone on the common case, and the contract is checkable rather than
 //! documented.
+//!
+//! ## One recorded narrowing: absent vs empty `attachments`
+//!
+//! v4 ends a rewritten message with `delete next.attachments` when nothing is
+//! kept, so its arrays distinguish "the key is gone" from "the key is an empty
+//! list". `StreamMessage::User.attachments` is a `Vec` and structurally cannot.
+//! Nothing observes the difference — every request builder reads the list with
+//! JS truthiness, so `[]` and absent reach the wire identically — and the
+//! `file_attachment_tier3` differential's (E) family collapses the two on BOTH
+//! sides so the rest of its projection stays discriminating.
 
 use serde_json::Value;
 
@@ -44,7 +54,6 @@ use crate::services::file_fallback::{
 /// type guard tests exactly those two, both `typeof === 'string'`).
 struct LoadedAttachment<'a> {
     id: &'a str,
-    filepath: Option<&'a str>,
     filename: &'a str,
     mime_type: &'a str,
     data: Option<&'a str>,
@@ -58,7 +67,6 @@ fn as_loaded_attachment(value: &Value) -> Option<LoadedAttachment<'_>> {
     let mime_type = value.get("mimeType").and_then(Value::as_str)?;
     Some(LoadedAttachment {
         id,
-        filepath: value.get("filepath").and_then(Value::as_str),
         // v4's interface types `filename` as a required string but the guard
         // does not check it; a bag without one reaches `processFileAttachment-
         // Fallback` as `undefined` and lands in the metadata as such.
@@ -164,20 +172,19 @@ pub async fn adapt_messages_for_profile<CMP: CompletionProvider>(
                 continue;
             }
 
-            // v4 passes `filepath ?? \`/api/v1/files/${id}\`` — the loader
-            // usually supplies one, and the synthesised path is what the
-            // describer's byte read falls back to.
-            let filepath = a
-                .filepath
-                .map(str::to_string)
-                .unwrap_or_else(|| format!("/api/v1/files/{}", a.id));
+            // v4 also rebuilds `filepath` (`?? \`/api/v1/files/${id}\``) and
+            // `size` into the metadata it hands the fallback. v5's
+            // [`FallbackFile`] carries neither: `process_file_attachment_fallback`
+            // reads id / filename / mimeType / data and nothing else, and the
+            // `fb` family of this same differential proves the results are
+            // identical without them. Recorded rather than carried, so the
+            // narrowing is a measurement instead of an omission.
             let file = FallbackFile {
                 id: a.id.to_string(),
                 filename: a.filename.to_string(),
                 mime_type: a.mime_type.to_string(),
                 data: a.data.map(str::to_string),
             };
-            let _ = &filepath;
             let result =
                 file_fallback::process_file_attachment_fallback(deps, &file, profile).await;
             prefix.push_str(&format_fallback_as_message_prefix(&result));

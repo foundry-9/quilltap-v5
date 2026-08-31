@@ -1708,6 +1708,7 @@ mod tests {
                     rerouted: false,
                     connection_profile: profile,
                     api_key: key,
+                    profile_row: None,
                 }
             }
         }

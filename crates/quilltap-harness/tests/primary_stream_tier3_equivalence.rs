@@ -161,6 +161,11 @@ struct CallW {
     has_tools: bool,
     #[serde(default)]
     attached_files: Vec<AttachedFileW>,
+    /// P4.D136 (v4 `a1d88aa3a`, bug 106): attachments planted on the message
+    /// ARRAY. Independent of `attached_files` (what the user uploaded) — the
+    /// two disagreeing is exactly what the new case measures.
+    #[serde(default)]
+    message_attachments: Vec<Value>,
     #[serde(default)]
     original_message: Option<String>,
     #[serde(default)]
@@ -353,6 +358,7 @@ impl DangerousContentRouter for CannedRouter {
             rerouted: true,
             connection_profile: self.profile.clone(),
             api_key: self.key.clone(),
+            profile_row: None,
         }
     }
 }
@@ -561,30 +567,37 @@ async fn primary_stream_tier3_matches_oracle() {
             CompletionMessage::user(marker.to_string()),
         ]
     };
-    let base_params = |messages: Vec<CompletionMessage>| StreamParams {
-        // The canned registration keeps the oracle-recorded `[{role, content}]`
-        // shape; the params carry the equivalent StreamMessage projection
-        // (identical canned key bytes).
-        messages: messages
-            .iter()
-            .map(|m| match m.role {
-                CompletionRole::System => StreamMessage::system(m.content.clone()),
-                CompletionRole::Assistant => StreamMessage::assistant(m.content.clone()),
-                _ => StreamMessage::user(m.content.clone()),
-            })
-            .collect(),
-        model: spec.profile.model_name.clone(),
-        temperature: Some(1.0),
-        max_tokens: Some(4096),
-        top_p: None,
-        tools: None,
-        web_search_enabled: false,
-        profile_parameters: None,
-        cache_key: None,
-        previous_response_id: None,
-        stop: Vec::new(),
-        request_timeout_ms: None,
-    };
+    // P4.D136 (v4 `a1d88aa3a`, bug 106): the attachments a call plants ON THE
+    // ARRAY. `needsVision` is read from here now, not from `attachedFiles`.
+    let base_params_with_attachments =
+        |messages: Vec<CompletionMessage>, attachments: &[Value]| StreamParams {
+            // The canned registration keeps the oracle-recorded `[{role, content}]`
+            // shape; the params carry the equivalent StreamMessage projection
+            // (identical canned key bytes).
+            messages: messages
+                .iter()
+                .map(|m| match m.role {
+                    CompletionRole::System => StreamMessage::system(m.content.clone()),
+                    CompletionRole::Assistant => StreamMessage::assistant(m.content.clone()),
+                    _ => StreamMessage::User {
+                        content: m.content.clone(),
+                        cache_control: None,
+                        attachments: attachments.to_vec(),
+                    },
+                })
+                .collect(),
+            model: spec.profile.model_name.clone(),
+            temperature: Some(1.0),
+            max_tokens: Some(4096),
+            top_p: None,
+            tools: None,
+            web_search_enabled: false,
+            profile_parameters: None,
+            cache_key: None,
+            previous_response_id: None,
+            stop: Vec::new(),
+            request_timeout_ms: None,
+        };
 
     assert_eq!(
         spec.calls.len(),
@@ -611,7 +624,8 @@ async fn primary_stream_tier3_matches_oracle() {
             }
             "primary" => {
                 let marker = call.original_message.clone().unwrap_or_default();
-                let mut params = base_params(user_messages(&marker));
+                let mut params =
+                    base_params_with_attachments(user_messages(&marker), &call.message_attachments);
                 if call.has_tools {
                     params.tools = Some(json!([{ "function": { "name": "noop" } }]));
                 }
@@ -662,7 +676,6 @@ async fn primary_stream_tier3_matches_oracle() {
                     // image; the fallback shapes get their own `hardFailover`
                     // cases below, where the flags matter.
                     is_dangerous_routed: false,
-                    needs_vision: false,
                     fallback_profile: fallback_primary.clone(),
                     state: &mut state,
                 };
@@ -740,7 +753,10 @@ async fn primary_stream_tier3_matches_oracle() {
                         uncensored_text_profile_id: uncensored_id,
                     },
                     connection_profile: spec.profile.to_effective(),
-                    params: base_params(user_messages(&marker)),
+                    params: base_params_with_attachments(
+                        user_messages(&marker),
+                        &call.message_attachments,
+                    ),
                     user_id: spec.user_id.clone(),
                     chat_id: call.chat_id.clone().unwrap(),
                     character_id: spec.character.id.clone(),
@@ -758,11 +774,25 @@ async fn primary_stream_tier3_matches_oracle() {
                 // rows are written (messageId = the pre-generated id; characterId is
                 // NULL — v4's `restreamInto` passes none).
                 let msg_id = call.pre_generated_message_id.clone().unwrap();
-                let flags = provider_failover::attempt_empty_response_recovery_with_log(
+                let flags = provider_failover::attempt_empty_response_recovery_with_log::<
+                    _,
+                    _,
+                    _,
+                    _,
+                    quilltap_core::model::completion::CannedCompletionProvider,
+                >(
                     &provider,
                     &sink,
                     &router,
                     Some(&fallback_repos),
+                    // The reroute's attachment re-decide (v4 `a1d88aa3a`, bug
+                    // 106) is exercised by `file_attachment_tier3`'s (E) family,
+                    // over the fixture that HAS a describer and image bytes.
+                    // This family's arrays carry no attachments at all, so the
+                    // adapter would answer "unchanged" for every case here;
+                    // `None` is v4's own falsy-`repos` arm and keeps the canned
+                    // router (which has no profile row to hand over) honest.
+                    None,
                     opts,
                     Some(FailoverLogCtx {
                         db: &db,
@@ -814,7 +844,8 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.pre_generated_message_id.clone().unwrap(),
                 );
                 let marker = call.original_message.clone().unwrap_or_default();
-                let params = base_params(user_messages(&marker));
+                let params =
+                    base_params_with_attachments(user_messages(&marker), &call.message_attachments);
                 let opts = RunPrimaryStreamOptions {
                     log_context: LogContext::none(),
                     chat_id: call.chat_id.clone().unwrap(),
@@ -835,7 +866,6 @@ async fn primary_stream_tier3_matches_oracle() {
                         .clone()
                         .unwrap(),
                     is_dangerous_routed: call.is_dangerous_routed,
-                    needs_vision: false,
                     fallback_profile: fallback_primary.clone(),
                     state: &mut state,
                 };
