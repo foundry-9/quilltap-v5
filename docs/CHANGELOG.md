@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — docs(lima-retirement): the completeness census, the NO-PORT ratifications, and the help bank
+
+_Docs-only change._
+
+Closes P4.D134's tier-2 and tier-3 deliverables.
+
+The grep census over `crates/*/src`, `crates/*/tests`, `apps/web/src` and
+`harness/oracle` finds zero production code paths still consulting a Lima or
+WSL2 signal. Every surviving hit is enumerated and classified: comments citing
+the sha, the retired-vocabulary lock tolerance, the deletion pins that set
+`LIMA_CONTAINER` on purpose, and v4's own `isVMEnvironment` name (which survives
+with a new meaning). One stale comment was repaired —
+`mount-points-routes.test.ts` still cited `LIMA_CONTAINER` as a containerized
+probe.
+
+Two help rows go to the `p4.9i2` bank: `chat-settings.md`'s timezone paragraph
+and `the-almanack.md`'s runtime-type list.
+
+Both adjacent NO-PORT? rows are ratified with file lists rather than subject
+lines: `7819afb1d` is six files with zero `lib/`/`app/` hunks and no
+`packages/quilltap` production hunk (a jest mock-factory fix in v4's own test,
+plus README, changelog and version bumps), and `3c3432ae9` is one file,
+`docs/releases/4.9.0.md`. `1560bd43b`'s own NO-PORT remainder is ratified by
+file list too, including `packages/plugin-utils`, whose host-rewrite copy was
+diffed against the lib copy at the pin and agrees.
+
 #### 2026-08-31 — refactor(lock): retire the lima and wsl2 environments (v4 1560bd43b)
 
 _Versions: host 0.0.85, cli 0.0.17._

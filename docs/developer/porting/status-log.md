@@ -93180,3 +93180,88 @@ QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d134-1560bd43b \
 QT_NODE=~/.nvm/versions/node/v24.13.1/bin/node \
   cargo test -p quilltap-cli --test cli_differential -- --nocapture
 ```
+
+---
+
+## P4.D134 unit 5 — the completeness census, the NO-PORT ratifications, and the help bank (v4 `1560bd43b`)
+
+**Landed 2026-08-31.** Docs-only.
+
+### Tier 2 — the grep census (the deletion port's completeness check)
+
+```
+ggrep -rniE '\blima\b|\bwsl2?\b|LIMA_CONTAINER|WSL_DISTRO|isVM' \
+  crates/*/src crates/*/tests apps/web/src harness/oracle
+```
+
+**Zero production code paths consult a Lima or WSL2 signal.** Every surviving
+hit is one of four deliberate kinds, and each is listed here so a future sweep
+does not re-open a settled row:
+
+1. **Comments citing the sha** — `almanack/{types,phase1_premises}.rs`,
+   `almanack_services.rs`, `services/data_dir.rs`,
+   `mount_index/base_path_availability.rs`, `host/env.rs`, `host/lock.rs`,
+   `cli/db_cmd.rs`, `provider_manifest/rewrite.rs` (which also keeps the
+   deleted strategies named, because knowing WHY `/proc/net/route` went is the
+   point of the comment).
+2. **The retired-vocabulary tolerance** — `host/env.rs`'s
+   `EnvironmentType::Other` and `host/lock.rs`'s
+   `a_retired_lima_lock_parses_and_is_not_a_container`. See unit 2: v4 keeps
+   this tolerance implicitly, so v5 keeps it explicitly.
+3. **The deletion pins** — the oracle's `platform_lima_flag_inert` /
+   `host_path_lima_flag_inert` (they SET `LIMA_CONTAINER` on the v4 side on
+   purpose), Tier R's two `retired lima env` lock cases, and the About spec's
+   "none of these words appears" list.
+4. **`isVMEnvironment` in `rewrite.rs`** — v4's function name, which survives
+   `1560bd43b` with a new meaning (`isDockerEnvironment() || QUILLTAP_HOST_IP`).
+
+One stale comment was repaired on the way: `mount-points-routes.test.ts`'s
+"`containerized` is false in BOTH environments" note still cited
+`LIMA_CONTAINER` as one of the probes.
+
+### Tier 3 — deferrals and ratifications
+
+**Help rows → the `p4.9i2` bank (2 rows, both one-line prose edits):**
+
+- `help/chat-settings.md:591` — "if you're running in Docker, Lima, or WSL2"
+  becomes "if you're running in Docker".
+- `help/the-almanack.md:31` — the Premises runtime-type list loses `Lima`:
+  "(Docker, Electron, or plain Node)".
+
+Nothing above the help-content layer is ported, so these ride `p4.9i2` with the
+rest of the HelpChat bank.
+
+**NO-PORT ratifications for the unifier to stamp in the ledger:**
+
+- **`7819afb1d`** — CONFIRMED NO-PORT. Six files, **zero `lib/` / `app/` /
+  `plugins/` hunks and zero `packages/quilltap` PRODUCTION hunks**: `README.md`,
+  `docs/CHANGELOG.md`, `package-lock.json`, `package.json`,
+  `packages/quilltap/package.json` (both version bumps), and
+  `packages/quilltap/lib/__tests__/dbkey-restore.test.js` — a jest mock-factory
+  fix in v4's own test. The surface it tests is P4.D133's Tier R domain, already
+  driven against v4's real launcher.
+- **`3c3432ae9`** — CONFIRMED NO-PORT. **One file**, `docs/releases/4.9.0.md`
+  (+52/−6), release-notes prose.
+
+**`1560bd43b`'s own NO-PORT remainder**, ratified by file list: `lima/wsl-init.sh`,
+`scripts/build-rootfs.mjs`, `scripts/build-push-docker.ts`, `Dockerfile.ci`,
+`.github/workflows/release.yml`, `docker/entrypoint.sh`, `docs/WINDOWS.md`,
+`README.md`, `docs/DEPLOYMENT.md`, `docs/developer/DDL.md`,
+`docs/developer/DEVELOPMENT.md`, `.gitattributes`,
+`.claude/commands/update-documentation.md`, `package.json`/`package-lock.json`,
+`packages/plugin-utils/**` and `plugins/dist/qtap-plugin-mcp/**` (v5 ships no
+plugin SDK — the plugin-utils copy was diffed against the lib copy at the pin
+and AGREES: same `isVMEnvironment()` body, same two strategies, zero
+`resolv.conf` / `/proc/net/route` / `/etc/hosts` hits), and v4's five deleted
+test files. `lib/env.ts`'s one-line comment edit
+(`passed to Lima/WSL2/Docker` → `passed through to Docker`) has no v5 twin —
+v5's `QUILLTAP_TIMEZONE` resolver (P4.D48) carries its own prose.
+
+### The one follow-up this lane opens
+
+**The host-side gateway resolver is unported.** Measured, not assumed:
+`with_localhost_gateway` has zero call sites outside `quilltap-core`, so v5 has
+never rewritten a localhost URL in production. v4's post-`1560bd43b` resolver is
+now only two strategies, which makes the port cheap — but it ADDS wire behavior
+(a provider's base URL would change inside Docker), so it belongs to its own
+order, not to a retirement lane. Named in `rewrite.rs`'s header and here.
