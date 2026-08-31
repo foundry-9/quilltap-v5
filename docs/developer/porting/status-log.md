@@ -93812,6 +93812,24 @@ already measured where it lives.
 
 ---
 
+## P4.D135 — the Playwright beat, run live
+
+`settings-provider-options-flow.spec.ts` **8 passed / 0 failed** (10.3 m against
+debug binaries), the new `the fallback understudy survives a save and a reopen`
+beat GREEN on its first live run. It walks: pick the first offered understudy,
+tick the tier toggle, save, reopen and read both back; then clear to `(None)`,
+untick, save, reopen and read both back again. That second half is the part a
+unit spec cannot reach — `(None)` has to persist as a CLEARED column, not as an
+unchanged one, which means the empty string went out as `null`, the route's
+`null | ''` arm fired, and the column came back absent through the list
+projection.
+
+The beat names no fixture id: it takes the first non-empty option, so a fixture
+regen cannot stale it, and it skips loudly if the seeded instance ever drops to
+one API profile.
+
+---
+
 ## P4.D135 — the lane's loud deferrals and standing notes
 
 Everything this order named that did NOT land, and why.
