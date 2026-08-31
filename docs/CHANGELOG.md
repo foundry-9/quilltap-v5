@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## August 2026
 
+#### 2026-08-31 — docs(status): record the P4.D134 lane gate
+
+_Docs-only change._
+
+The lane's verification gate: fmt clean, clippy clean on both feature sets, the
+full workspace test green at 473 binaries / 2,586 tests / 0 failed with zero
+`SKIP:` lines, and all four touched families confirmed to have run by name over
+oracles regenerated from a worktree pinned at `1560bd43b`. SPA: 366 files /
+5,459 tests and a clean build. No Playwright — the sibling branch owns port
+4319 this round. Changed-bytes greps and the "no fixtures moved" statement are
+recorded with it.
+
 #### 2026-08-31 — style(rewrite): blank-line the gateway-order list (clippy doc_lazy_continuation)
 
 _Versions: core 0.0.704._

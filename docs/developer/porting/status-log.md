@@ -93265,3 +93265,50 @@ never rewritten a localhost URL in production. v4's post-`1560bd43b` resolver is
 now only two strategies, which makes the port cheap — but it ADDS wire behavior
 (a provider's base URL would change inside Docker), so it belongs to its own
 order, not to a retirement lane. Named in `rewrite.rs`'s header and here.
+
+---
+
+## P4.D134 — the lane gate (2026-08-31)
+
+Branch `claude/p4-lima-wsl2-retirement-894ad2`, six commits. Every regen ran
+from `/tmp/qt-v4-pin-p4d134-1560bd43b` (detached worktree at the TARGET commit
+`1560bd43b`, three symlink classes). The drift-ledger §2 freshness probe was run
+at lane start AND again mid-lane — branch `main`, tree clean, both logs empty
+both times; `git worktree list` showed only this lane's pin.
+
+- `cargo fmt --all --check` — exit 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` — exit 0.
+- Same with `--features quilltap-core/native-transport` — exit 0.
+  (One real red on the way, fixed and committed:
+  `clippy::doc_lazy_continuation` on the rewritten gateway-order list.)
+- `cargo test --workspace` with the lane's env block — **exit 0, 473 test
+  binaries, 2,586 tests passed, 0 failed, 1 ignored, ZERO `SKIP:` lines.**
+  The four families this lane touches were confirmed to have RUN by name:
+  `data_dir_paths_match_oracle` ok, `self_inventory_matches_oracle` ok,
+  `cli_differential` ok (214 cases / 0 failures), `almanack_tier2_matches_oracle`
+  ok. Env block:
+
+  ```
+  QT_ORACLE_DATA_DIR=/tmp/oracle-data-dir-p4d134.ndjson
+  QT_ORACLE_SELFINV=/tmp/oracle-selfinv-p4d134.ndjson
+  QT_FIXTURE_SELFINV_{MAIN,MOUNT,LLMLOGS}=/tmp/qt-selfinv-{main,mount,llmlogs}.db
+  QT_ORACLE_ALMANACK_TIER2=/tmp/oracle-almanack-p4d134.ndjson
+  QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d134-1560bd43b
+  QT_NODE=~/.nvm/versions/node/v24.13.1/bin/node
+  ```
+
+- SPA: `npm test` **366 files / 5,459 tests, 0 failed**; `npm run build` clean
+  (initial total 1.03 MB).
+- **NO Playwright** — port 4319 is repo-wide and the P4.D135→D136 branch owns it
+  this round (the order's ownership table).
+
+**Changed-bytes greps (ledger §5.2 — a green regen is not coverage).**
+`/tmp/oracle-data-dir-p4d134.ndjson`: `isVM` 0, `limaContainer` 0, and both
+`*_lima_flag_inert` names present. `/tmp/oracle-selfinv-p4d134.ndjson`:
+`"runtimeMode"` takes exactly one distinct value, `local-dev` — which is the
+MEASUREMENT justifying the unit pin rather than a family arm.
+`/tmp/oracle-almanack-p4d134.ndjson`: `"runtimeType":"node"` only, `lima` count
+0 — the almanack retirement is doc convergence, as recorded.
+
+**Fixtures: none changed.** No committed DB fixture, archive, or corpus JSON was
+touched, so no sibling family is invalidated by this lane.
