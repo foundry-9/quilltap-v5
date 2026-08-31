@@ -93475,3 +93475,83 @@ on a 200 — a green run that had measured nothing. Caught by grepping the
 regenerated NDJSON for the refusal sentence (drift-ledger §5.2: a green regen is
 not coverage); the second run carried it. Any recipe of this shape needs two
 runs, or the grep.
+
+---
+
+## P4.D135 unit 2 — the pure fallback engine (v4 `65f5021c8`, `lib/llm/fallback/`)
+
+`quilltap_core::llm_fallback` (`types` / `engine` / `tier_picker` + the `mod.rs`
+surface mirroring v4's `index.ts`). Pure: no call site is wired yet, so nothing
+observable moved.
+
+### The two shape decisions
+
+1. **The error input.** v4's `classifyFallbackTrigger(error: unknown)` walks
+   `instanceof`, then `error.name`, then `error.message`. v5 has no error-class
+   hierarchy at the stream seam (`StreamError` carries a message and nothing
+   else), so [`FallbackError`] names `kind` / `name` / `message` and a caller
+   supplies whichever it holds. The ORDER of v4's ladder is preserved exactly,
+   non-triggers first — several of them arrive *as* `LLMProviderError`
+   subclasses, which is why they are checked before the typed arm.
+
+   `record_attempt` takes `Option<&str>`, not `&str`. v4's
+   `String(error ?? 'unknown error')` arm is reachable only from `throw null`;
+   an `Error` whose message is `''` keeps the empty string. The first port
+   collapsed the two (empty → "unknown error") and the corpus caught it.
+
+2. **The repo seam.** v4's `buildFallbackChain` is `async` because its repo
+   reads are. v5's are synchronous over a borrowed `&Connection`, so
+   `FallbackRepos` is a synchronous trait: the chain is BUILT inside one read
+   and WALKED afterwards. The trait is narrow on purpose, carrying v4's own
+   reason (*the forked job child hands over a read-through proxy, and everything
+   here is a read*), which is also what lets the differential drive it from an
+   in-memory `Vec`.
+
+### The differential — and the venue defect it caught first
+
+`fallback_engine_equivalence`, **155 cases**: 42 classify, 36 tierMatches, 20
+chain, 19 pick, 12 transport, 12 apiKeyCapability, 8 summarize, 6 record. The
+corpus is v4's own `engine.test.ts` + `tier-picker.test.ts` shapes (568 lines
+between them) plus every arm they do not reach.
+
+**Two things it does that v4's own tests deliberately do not:**
+
+- **It INITIALIZES the provider registry** with the ten real dist plugins (the
+  `image-transport.ts` idiom). v4's tests mock `providerCanTransportImages`, so
+  they never compare the real answer — and an uninitialized registry is *worse*
+  than a mock here, because it silently changes the verdict:
+  `getConfigRequirements` returns undefined, `requiresApiKey` defaults to `true`
+  "for safety", and a keyless OLLAMA candidate is skipped for want of a key it
+  never needed. **That is exactly what the first run reported** (`rust "ollama"
+  != oracle null`) — a VENUE artifact, not v4 behaviour, and comparing against
+  it would have pinned the wrong rule.
+- **Both capability answers are their own comparands** — `transport` rows for
+  `providerCanTransportImages`, `apiKeyCapability` rows for the
+  `acceptsApiKey`/`requiresApiKey` pair. A registry-vs-mirror disagreement now
+  fails by name rather than surfacing as a wrong pick three cases later.
+
+**⚠ `LOG_LEVEL=error` in the recipe is load-bearing**, not tidiness: the engine
+and the picker log at debug/info/warn through v4's real logger, which writes
+JSON lines to STDOUT — straight into the NDJSON the script is producing. Without
+it the first oracle line is a log record and the differential dies on a row with
+no `id`. The reader now refuses such a line by name and says what to re-run.
+
+### Mutation proofs (11, each reddening the family then restored green)
+
+Every classifier non-trigger has its own: the typed token/content arm, the
+message-matched token/content arm, tool-unsupported, ZodError, and the
+unattributed 4xx. Plus: the named understudy's vision filter removed; a danger
+filter ADDED to the named understudy (v4 honours the user's choice there — only
+the tier pick is danger-filtered); the picker's different-provider preference
+inverted; `tierMatches` treating unknown-vs-known as a match; the
+"no tier replacement qualified" tail dropped; and a chain that follows the
+understudy's own understudy one level.
+
+### Recorded
+
+- v4's `pickTierCandidate` sorts with `Array.prototype.sort`, stable in every
+  engine Quilltap runs on; `sort_by` is stable too, so a full three-key tie
+  keeps input order on both sides (the `a-full-tie-keeps-input-order` case asks).
+- v4's third comparator key subtracts two `?? 0` floats; `sort_index` is
+  `z.number().default(0)` and can never be NaN, so `total_cmp` is the same
+  ordering for every value the column can hold.

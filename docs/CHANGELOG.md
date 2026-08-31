@@ -165,6 +165,59 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+#### 2026-08-31 — feat(llm): the pure fallback engine, tier-1 against v4's real modules (P4.D135 unit 2)
+
+_Versions: core 0.0.703, harness 0.0.605._
+
+`quilltap_core::llm_fallback` — v4's `lib/llm/fallback/` whole: the trigger
+classifier, the chain builder, the tier picker, `recordAttempt` and
+`summarizeFallbackAttempts`. Pure; no call site wired yet.
+
+Two shape decisions the port had to make and the corpus then settled:
+
+**The error input.** v4 classifies an `unknown` by walking `instanceof`, then
+`error.name`, then `error.message`. v5 has no error-class hierarchy at the
+stream seam — `StreamError` carries a message and nothing else — so
+`FallbackError` names those three inputs explicitly and a caller supplies
+whichever it holds. The oracle emits the OBSERVED `(name, message)` pair rather
+than a constructor label, so both classifiers work from the same two strings.
+`record_attempt` takes `Option<&str>`, because v4's
+`String(error ?? 'unknown error')` arm is reachable only from a `throw null` —
+which an `Error` with an empty message must NOT be confused with, and
+`String(error ?? '')` alone renders the two identically.
+
+**The repo seam.** v4's `buildFallbackChain` is async because its reads are;
+v5's are synchronous over a borrowed connection, so `FallbackRepos` is a
+synchronous trait and the chain is built inside one read and walked afterwards.
+
+The differential (`fallback_engine_equivalence`, 155 cases) drives v4's real
+modules over v4's own two test files' shapes plus the arms they do not reach.
+It does two things v4's tests deliberately do not:
+
+- **it initializes the provider registry with the ten real dist plugins.** v4's
+  tests mock `providerCanTransportImages`; an UNINITIALIZED registry is worse
+  than a mock, because it silently changes the verdict — `getConfigRequirements`
+  returns undefined, `requiresApiKey` defaults to `true` "for safety", and a
+  keyless Ollama candidate is skipped for want of a key it never needed. That
+  divergence is exactly what the first run reported, and initializing is what
+  makes both sides answer the same production question;
+- **both capability answers are their own comparands** (`transport` rows for
+  `providerCanTransportImages`, `apiKeyCapability` rows for the
+  `acceptsApiKey`/`requiresApiKey` pair), so a registry-vs-mirror disagreement
+  fails by name instead of surfacing as a mysteriously wrong pick.
+
+Eleven mutation proofs: each of the five classifier non-triggers (typed
+token/content, message-matched token/content, tool-unsupported, ZodError,
+unattributed 4xx), the named understudy's vision filter, the danger filter it
+deliberately does NOT have, the picker's different-provider preference, the
+unknown-vs-known tier rule, the "no tier replacement qualified" tail, and a
+chain that recurses one level.
+
+`LOG_LEVEL=error` is load-bearing in the recipe: the engine logs through v4's
+real logger, which writes JSON to stdout and would interleave log records into
+the NDJSON. The reader refuses such a line by name rather than dying on a
+missing field.
+
 #### 2026-08-31 — feat(db): the connection-profile fallback columns, their CRUD, and both id-remap paths (P4.D135 unit 1)
 
 _Versions: core 0.0.702, harness 0.0.604, host 0.0.84._

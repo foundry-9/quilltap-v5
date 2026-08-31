@@ -190,6 +190,7 @@ pub mod image_gen_data;
 pub mod jsnum;
 pub mod jsstr;
 pub mod literal_boost;
+pub mod llm_fallback;
 pub mod markdown;
 pub mod memory_format;
 pub mod memory_gate;
