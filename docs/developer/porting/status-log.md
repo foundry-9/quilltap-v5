@@ -94258,3 +94258,69 @@ and its ">75 s, never crossed" warn observation measured a wall that has moved,
 and a re-measured live compression row is owed with its recipe written down.
 
 Versions: core 0.0.711, harness 0.0.611.
+
+### P4.D136 unit 6 — the ratifications, the bank, and what this lane did NOT port
+
+**`97ebfb9fc` ratified NO-PORT with evidence.** The commit is
+`docs/developer/bugs.md` + the two bug files and nothing else (`git show --stat`:
+three docs paths, zero `lib/`). Its content is the two rows this lane implements,
+and both name their own v5 relevance:
+
+- **bug 106** — *"**Applies.** Any port that swaps the model mid-turn without
+  re-deciding the attachment question inherits it — the message array is shaped
+  for the model it was built for"*. Confirmed by measurement, not by reading:
+  units 2 and 3 both ran RED first.
+- **bug 107** — *"**Not investigated** — the numbers are v4's, but the shape
+  transfers: a port keeping a fixed per-task ceiling inherits the need to set it
+  from the observed distribution, and the reporting half (a lost pass must not
+  look like a finished one) transfers whole"*. v5 had inherited exactly the two
+  ported ceilings, so the shape did transfer; the numbers are adopted as v4 set
+  them, since they come from a live instance neither port can re-derive.
+
+**Help → the `p4.9i2` bank (three files, prose only, no ported surface):**
+
+- `help/chat-settings.md` (+8) — "Two clocks, and why": the background-vs-inline
+  compression intervals in the Quilltap register, and the generalisation to every
+  cheap-LLM task.
+- `help/dangerous-content.md` (+11) — "When the Turn Is Carrying a Picture": the
+  reroute's two halves (choosing the understudy, preparing the payload) as an
+  operator would meet them.
+- `help/system-tasks-queue.md` (+16) — "A Task That Never Heard Back": the retry,
+  the Failed-then-Dead escalation, and why a refusal is not treated that way.
+
+**NO-PORT remainder, named:** `README.md`, `docs/CHANGELOG.md`, the bug docs,
+v4's own `__tests__/**` (transcribed rather than ported — see units 4 and 5),
+`package.json` / `package-lock.json` / `packages/quilltap/package.json` (version
+bumps).
+
+**`docs/developer/BACKGROUND_JOBS_CHILD.md` (+38) — read, not mirrored.** v5 has
+no job child and no `BACKGROUND_JOBS_CHILD.md` counterpart; its three
+consequences were checked against v5's single-writer runtime and the one that
+differs (the atomic-retry rule) is recorded at the guard site and in unit 5's
+record. The other two hold: the debug logs describing a timeout do not reach the
+message on either side (v5 by guard ORDER rather than by discard), and
+title-update's cursor write still sits after the throw.
+
+**Deferred loud, carried out of this lane:**
+
+1. **`throwIfLostToTimeout` in the scene-state handler** — no v5 handler exists;
+   the wrapper is a pre-existing tracked deferral and the guard rides it. Named
+   in `scene_state_tracking/mod.rs`'s header with the task string and the
+   machinery it needs (both already landed).
+2. **The two `compressMemories('interactive')` legs** — build-context phase 2 is
+   a pre-existing tracked deferral (`build_context.rs:2715`), so v4's two
+   interactive memory-compression call sites have no v5 twin. The
+   `compress-memories` / `compress-system-prompt` override rows are ported and
+   correct but unreached in production until that lands.
+3. **💸 Two live proofs owed to the next dogfood pass:**
+   - a **re-measured compression row** (the C4 supersession above; recipe: force
+     an uncached compression, read the `CONTEXT_COMPRESSION` `durationMs` rows,
+     and note WHICH path ran — pre-computed at 120 s vs inline at 75 s is the
+     discriminator);
+   - the **reroute with an image** on a real instance: a turn carrying a picture
+     to a vision-capable primary, flagged dangerous, rerouted to a text-only
+     uncensored profile. The proof is the `[Attachment] Re-deciding attachments
+     for a substituted profile` line in `combined.log` followed by a turn that
+     ANSWERS, where before it 400'd and the character said nothing.
+
+_Docs-only unit; no crate versions bumped._
