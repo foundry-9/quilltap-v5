@@ -586,6 +586,30 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — feat(spa): the LoRA / options-schema DTOs and client API (P4.D139 unit 4)
+
+_Versions: SPA 0.5.604._
+
+The Shared contract §A shapes land in `core-contract.ts`'s §D region:
+`ImageLoraSpec`, `ImageLoraSupport`, `HuggingFaceLookupFailure`,
+`HuggingFaceLoraFacts`, `HuggingFaceLookupResult`, and the two new request
+variants `imageProfileOptionsSchema` + `imageProfileLoraMetadata`. Field names
+are §A's verbatim; the doc comments carry v4's reasons — why the lookup renders
+no compatibility verdict, why an over-cap list is kept rather than deleted, and
+why the token rides the POST body rather than a query string.
+
+`image-profiles.api.ts` gains `fetchImageOptionsSchema` and
+`queryLoraMetadata`, and `ImageModelListing` gains `loraSupport` between
+`source` and `fetchError`. The map is read through a defensive helper: a
+server that has not landed it yet reads as "no model declares support", which
+is precisely what the map's own absent-not-empty rule means, so the editor
+degrades to offering no LoRA rows rather than to a crash.
+
+⚠ **Cross-lane:** the two dispatch verb NAMES are this lane's, since §D gives
+`core-contract.ts` to P4.D139 — P4.D138's server arms must match
+`imageProfileOptionsSchema` / `imageProfileLoraMetadata`, and the unifier
+diffs the contract name-for-name.
+
 #### 2026-09-01 — feat(spa): the client HuggingFace repo-id twin (P4.D139 unit 3)
 
 _Versions: SPA 0.5.603._

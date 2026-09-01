@@ -96341,3 +96341,43 @@ both-outcomes-in-quantity guard exists for the same class of silent collapse.
 npx jest --silent --roots "$PWD" --roots /tmp/qt-oracle-hf-repo-id --
 "huggingface-repo-id\.test\.ts$"`. Pin verification: the module does not exist
 before `2ece98c90`.
+
+### Unit 4 — the LoRA / options-schema DTOs and the client API
+
+**`core-contract.ts`, §D region only** (a new block immediately after the
+existing image-profile request variants; P4.D140's `RecentChat.createdAt` and
+P4.D141's `conciergeOverride` unions are untouched). Names are Shared contract
+§A's, verbatim: `ImageLoraSpec`, `ImageLoraSupport`,
+`HuggingFaceLookupFailure`, `HuggingFaceLoraFacts`, `HuggingFaceLookupResult`,
+plus the two request variants and their entries in the `CoreRequest` union.
+The doc comments carry v4's *reasons* rather than restating the field lists —
+why the lookup renders no compatibility verdict, why an over-cap list is kept
+and flagged rather than deleted, and why `lora-metadata` is POST.
+
+**`image-profiles.api.ts`:** `fetchImageOptionsSchema` (v4
+`ImageProfileForm.tsx:194-231`) and `queryLoraMetadata` (v4
+`LoraListEditor.tsx:117-141`), plus `loraSupport` on `ImageModelListing`
+between `source` and `fetchError` per §A.
+
+**One defensive read, recorded because it is a choice.** `loraSupport` is
+parsed through `asLoraSupportMap`: a non-object (or absent) value reads as
+`{}`. That is not tolerance for a wrong shape — it is the SAME meaning §A
+already assigns to a model's absence from the map ("offer no LoRA rows"), so
+an editor talking to a server that has not landed P4.D138 yet degrades to
+exactly the no-LoRA state rather than to a crash. Written this way
+deliberately because the two lanes run in parallel.
+
+**⚠ CROSS-LANE, for the unifier (§A/§D).** §A pins the HTTP routes but names
+no dispatch verbs, and §D gives `core-contract.ts` to this lane — so the verb
+NAMES are set here, by the mechanical convention v5's existing image-profile
+variants already use (`?action=list-models` → `imageProfileListModels`):
+
+- `?action=options-schema` → **`imageProfileOptionsSchema`**
+- `?action=lora-metadata` → **`imageProfileLoraMetadata`**
+
+P4.D138's `api/image_profiles.rs` arms and `api/types.rs` variants must carry
+the same two names. The playbook's name-for-name contract diff at unification
+is where a mismatch would surface; flagging it here so it is looked for rather
+than discovered by a 500.
+
+**Gate:** `npm run build` clean with the new types in the graph.

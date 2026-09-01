@@ -9,6 +9,8 @@
 
 import type { CoreClient } from '../../../core/core-client';
 import type {
+  HuggingFaceLookupResult,
+  ImageLoraSupport,
   ImageProfileCreateBag,
   ImageProfileCreateRequest,
   ImageProfileDeleteRequest,
@@ -16,11 +18,14 @@ import type {
   ImageProfileGetRequest,
   ImageProfileListModelsRequest,
   ImageProfileListRequest,
+  ImageProfileLoraMetadataRequest,
+  ImageProfileOptionsSchemaRequest,
   ImageProfileUpdateBag,
   ImageProfileUpdateRequest,
   ImageProviderInfo,
   ImageProviderListRequest,
 } from '../../../core/core-contract';
+import type { ProviderOptionsSchema } from '../providers/provider-options-schema';
 
 type ImageProfileRequest =
   | ImageProfileListRequest
@@ -29,6 +34,8 @@ type ImageProfileRequest =
   | ImageProfileUpdateRequest
   | ImageProfileDeleteRequest
   | ImageProfileListModelsRequest
+  | ImageProfileOptionsSchemaRequest
+  | ImageProfileLoraMetadataRequest
   | ImageProviderListRequest;
 
 function listingDispatch(
@@ -102,6 +109,13 @@ export interface ImageModelListing {
   models: string[];
   supportedModels: string[];
   source: 'provider' | 'builtin';
+  /**
+   * Per-model LoRA support, keyed by model id (v4 `84f33ce94`; the Shared
+   * contract §A places it between `source` and the conditional `fetchError`).
+   * A model that resolves no support is **ABSENT from the map**, never present
+   * with a zero cap — absence is the editor's "offer no LoRA rows" signal.
+   */
+  loraSupport: Record<string, ImageLoraSupport>;
   fetchError?: string;
 }
 
@@ -132,6 +146,81 @@ export async function fetchImageModels(
     supportedModels: (data['supportedModels'] as string[]) ?? [],
     // v4 `:154` — anything that is not exactly 'provider' reads as 'builtin'.
     source: data['source'] === 'provider' ? 'provider' : 'builtin',
+    loraSupport: asLoraSupportMap(data['loraSupport']),
     ...(typeof data['fetchError'] === 'string' ? { fetchError: data['fetchError'] } : {}),
   };
+}
+
+/**
+ * The `loraSupport` map, read defensively. A server that has not landed the
+ * map yet (or one answering an older shape) reads as "no model declares
+ * support", which is the same thing the map's own absence rule means — so the
+ * editor degrades to offering no LoRA rows rather than to a crash.
+ */
+function asLoraSupportMap(raw: unknown): Record<string, ImageLoraSupport> {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {};
+  return raw as Record<string, ImageLoraSupport>;
+}
+
+/** One `options-schema` answer (Shared contract §A). */
+export interface ImageOptionsSchemaAnswer {
+  provider: string;
+  model: string | null;
+  /** `null` exactly when the provider's plugin declares no schema. */
+  optionsSchema: ProviderOptionsSchema | null;
+  /** `null`, never a zero-cap object, when the model resolves no support. */
+  loraSupport: ImageLoraSupport | null;
+}
+
+/**
+ * v4 `ImageProfileForm`'s options-schema fetch (`:194-231`) — ask the
+ * provider's plugin what THIS model's options look like, and whether it takes
+ * LoRA adapters.
+ *
+ * Image gateways route to hundreds of models with different legal sizes, so
+ * the answer is per model and not per provider. A provider without the hook
+ * answers with a null schema and the legacy hand-written panel takes over.
+ */
+export async function fetchImageOptionsSchema(
+  core: CoreClient,
+  provider: string,
+  model?: string,
+): Promise<ImageOptionsSchemaAnswer> {
+  const data = await listingDispatch(core, {
+    type: 'imageProfileOptionsSchema',
+    provider,
+    ...(model ? { model } : {}),
+  });
+  return {
+    provider: (data['provider'] as string) ?? provider,
+    model: (data['model'] as string | null) ?? null,
+    optionsSchema: (data['optionsSchema'] as ProviderOptionsSchema | null) ?? null,
+    loraSupport: (data['loraSupport'] as ImageLoraSupport | null) ?? null,
+  };
+}
+
+/**
+ * v4 `LoraListEditor`'s query (`:117-141`) — ask HuggingFace about one LoRA
+ * source, host-side.
+ *
+ * The token rides the request BODY, never a query string: it is a credential,
+ * and the lookup runs on the host so the browser never contacts HuggingFace
+ * and the token never reaches the page's address bar or any proxy log.
+ *
+ * Both outcomes are ordinary answers — a failed lookup is `{ok: false}` at
+ * HTTP 200. A failed REQUEST is the caller's business: v4 collapses it into
+ * the same `network` shape, because from the reader's chair they are the same
+ * disappointment.
+ */
+export async function queryLoraMetadata(
+  core: CoreClient,
+  source: string,
+  hfToken?: string,
+): Promise<HuggingFaceLookupResult> {
+  const data = await listingDispatch(core, {
+    type: 'imageProfileLoraMetadata',
+    source,
+    ...(hfToken ? { hfToken } : {}),
+  });
+  return data as unknown as HuggingFaceLookupResult;
 }

@@ -4462,6 +4462,150 @@ export interface ImageProfileListModelsRequest {
   apiKeyId?: string;
 }
 
+// --- Image profiles: LoRA adapters (v4 `84f33ce94` + `2ece98c90`) ------------
+
+/**
+ * One LoRA adapter stored on an image profile under the reserved
+ * `parameters.loras` key (v4 `ImageLoraSpec`,
+ * `packages/plugin-types/src/providers/image.ts`).
+ *
+ * Provider-neutral by design: the host stores and edits this shape and each
+ * provider translates it into whatever its own API calls the same idea. A
+ * provider that declares no {@link ImageLoraSupport} never receives it.
+ *
+ * Storage refuses only what no provider could mean — an empty source, or a
+ * scale that is not a finite number in `0..10` (v4 `ImageLoraSpecSchema`).
+ * There is no server-side CAP: an over-cap list is kept and flagged, so
+ * narrowing the model and widening it again loses nothing.
+ */
+export interface ImageLoraSpec {
+  /** A weights URL, an `owner/repo` reference, or a provider-scoped id. */
+  source: string;
+  /** Strength. Omitted means "the provider's own default". */
+  scale?: number;
+  /** Injected into the prompt on every generation that uses this profile. */
+  triggerPhrase?: string;
+  /** Display label for the editor UI; never sent on the wire. */
+  label?: string;
+}
+
+/**
+ * What a provider (or one of its models) can do with LoRA adapters (v4
+ * `ImageLoraSupport`). Declaring it is the whole opt-in: the host shows the
+ * LoRA editor, stores the list, caps it, and hands it to the generate call.
+ *
+ * Resolved SERVER-side per model (exact id → longest-prefix family → provider
+ * → none) and handed down, so the browser never re-implements the lookup.
+ */
+export interface ImageLoraSupport {
+  /** How many adapters this model accepts in one request. */
+  maxLoras: number;
+  /**
+   * Bounds for {@link ImageLoraSpec.scale}, used by the editor's slider.
+   * Omitted means the host offers a permissive 0–2 range and the provider's
+   * own default applies when the user leaves it alone.
+   */
+  scale?: { min: number; max: number; default: number; step?: number };
+  /** What this provider accepts in `source`. */
+  sourceKinds: Array<'url' | 'hf-repo' | 'provider-id'>;
+  /**
+   * Whether this model can take a token for private or gated weights. The
+   * token itself travels as an ordinary options-schema field in the
+   * parameters bag, not here.
+   */
+  supportsPrivateWeightsToken?: boolean;
+}
+
+/** Why a HuggingFace lookup produced no facts (v4 `HuggingFaceLookupFailure`). */
+export type HuggingFaceLookupFailure =
+  | 'not-a-repo-id'
+  | 'missing-or-private'
+  | 'not-found'
+  | 'rate-limited'
+  | 'timeout'
+  | 'network'
+  | 'http';
+
+/**
+ * What a repository declares about itself, as facts and nothing more (v4
+ * `HuggingFaceLoraFacts`).
+ *
+ * The lookup deliberately renders NO compatibility verdict: matching a
+ * provider's model ids against HuggingFace `base_model` strings means matching
+ * two naming conventions that answer to nobody, and a false "this will not
+ * work" on an adapter that works is worse than the silence it replaces.
+ */
+export interface HuggingFaceLoraFacts {
+  /** The canonical `owner/name` that was actually queried. */
+  repoId: string;
+  /** The model card, for the user to go read. */
+  url: string;
+  /** `cardData.base_model` merged with `base_model:adapter:…` tags, deduped. */
+  baseModels: string[];
+  /** Whether HuggingFace tags this an adapter rather than a checkpoint. */
+  isAdapter: boolean;
+  /** Whether the `lora` tag is present. */
+  isLora: boolean;
+  /** `text-to-image`, `image-to-image`, and so on. */
+  pipelineTag: string | null;
+  /** `false`, or HuggingFace's gate mode (`auto` / `manual`). */
+  gated: string | false;
+  /** `.safetensors` files in the repository. More than one means a choice. */
+  weightFiles: string[];
+  /** `cardData.instance_prompt` — the adapter's magic word, when declared. */
+  triggerPhrase: string | null;
+  downloads: number | null;
+  likes: number | null;
+  lastModified: string | null;
+}
+
+/**
+ * One lookup answer (v4 `HuggingFaceLookupResult`).
+ *
+ * The route answers **HTTP 200** for both arms: "HuggingFace would not say" is
+ * a result to display, not a broken request.
+ */
+export type HuggingFaceLookupResult =
+  | { ok: true; facts: HuggingFaceLoraFacts }
+  | {
+      ok: false;
+      reason: HuggingFaceLookupFailure;
+      /** The id that was attempted, when one could be made out. */
+      repoId: string | null;
+      /** The card URL, so "go look yourself" stays available even on failure. */
+      url: string | null;
+      /** Transport or status detail, for the log and for the curious. */
+      detail?: string;
+    };
+
+/**
+ * The per-model options schema and LoRA support (v4
+ * `GET /api/v1/image-profiles?action=options-schema&provider=…[&model=…]`).
+ *
+ * Both payload fields are `null`, never a zero-cap object, when the provider's
+ * plugin declares nothing — a provider without the hook falls back to the
+ * legacy hand-written panel and offers no LoRA rows at all.
+ */
+export interface ImageProfileOptionsSchemaRequest {
+  type: 'imageProfileOptionsSchema';
+  provider: string;
+  model?: string;
+}
+
+/**
+ * Ask HuggingFace about a LoRA source (v4
+ * `POST /api/v1/image-profiles?action=lora-metadata`).
+ *
+ * POST rather than GET **because `hfToken` is a credential and does not belong
+ * in a query string**; the lookup runs host-side so the browser never contacts
+ * HuggingFace, and the token is logged only as `hasToken`.
+ */
+export interface ImageProfileLoraMetadataRequest {
+  type: 'imageProfileLoraMetadata';
+  source: string;
+  hfToken?: string;
+}
+
 // --- Global mount points ----------------------------------------------------
 
 /** Per-mount capability flags (v4 mount-point GET `capabilities`). */
@@ -4564,6 +4708,8 @@ export type ListingSurfaceRequest =
   | ImageProfileGenerateRequest
   | ImageProfileValidateKeyRequest
   | ImageProfileListModelsRequest
+  | ImageProfileOptionsSchemaRequest
+  | ImageProfileLoraMetadataRequest
   | MountPointListRequest
   | MountPointGetRequest
   | MountPointCreateRequest
