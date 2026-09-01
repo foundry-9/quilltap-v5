@@ -1203,7 +1203,14 @@
    * of applying them by name.
    */
   .qt-markdown-field {
-    @apply block rounded-lg border overflow-hidden;
+    /* v4's frame is `… overflow-hidden`; v5 deliberately leaves overflow
+       VISIBLE. The formatting toolbar sits INSIDE this frame on both sides
+       and its emoji/unicode pickers open ABOVE it (`absolute bottom-full`),
+       i.e. outside the frame's box — v4's overflow-hidden clips them out of
+       existence in every framed markdown editor (a v4-side filing candidate,
+       found at the round-2 unification when the frame landed here and the
+       `composer-char-insert-flow` beat went red). That beat is the pin. */
+    @apply block rounded-lg border;
     /* The next three lines are `.qt-border-default` / `.qt-bg-card` /
        `.qt-shadow-sm` inlined from `_utilities.css` — keep them in sync with
        those rules; `@apply` cannot reach a plain class declared in @layer. */

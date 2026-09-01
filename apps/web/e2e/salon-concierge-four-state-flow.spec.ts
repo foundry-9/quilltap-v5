@@ -225,10 +225,18 @@ test.describe('P4.D141 — the Concierge four-state per-chat control', () => {
         timeout: 15_000,
       });
       await conciergeChips(page).last().click();
+      // Expanded chips stay expanded, and `manual-resumed` fires TWICE in this
+      // walk (Vouched → Monitored and Uncensored → Monitored), so by step 10 the
+      // phrase sits in two bubbles — a bare `toBeVisible` is a strict-mode
+      // violation (the beat's first live run) and a `.last()` would be
+      // satisfied by the EARLIER bubble alone. The discriminating form is the
+      // COUNT: exactly as many phrase bubbles as walk steps so far that carry
+      // this phrase — one short means this step's announcement never landed.
+      const phraseBubbles = WALK.slice(0, i + 1).filter((s) => s.phrase === step.phrase).length;
       await expect(
         page.locator('.qt-chat-messages-list').getByText(step.phrase),
-        `step ${i + 1} — the phrase "${step.phrase}"`,
-      ).toBeVisible({ timeout: 15_000 });
+        `step ${i + 1} — the phrase "${step.phrase}" (${phraseBubbles} bubble(s) so far)`,
+      ).toHaveCount(phraseBubbles, { timeout: 15_000 });
 
       // 3. The stored PAIR, read from the DB. This is where CT-2 lives: after
       //    Flagged → Vouched the label is still 1, and after Vouched →

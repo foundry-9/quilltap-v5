@@ -120,29 +120,21 @@ function constraintsFor(provider: string): { orientationSupport: unknown } | nul
 }
 
 function canonicalImageKey(provider: string, params: Record<string, unknown>): string {
+  // The key is `JSON.stringify` of the params in v4's OWN insertion order —
+  // `params` here IS the object `buildImageGenParams` built, so walking its
+  // keys reproduces the order v5's `ImageGenParams::to_key_value` reproduces
+  // (`{prompt, model, n}` first, each conditional assignment in source order,
+  // then `loras`, then `profileParameters` — and a `size`/`aspectRatio` the
+  // ORIENTATION pass inserted lands after `steps`, which a fixed-order rebuild
+  // put in the wrong slot; the round-2 unification's `to_key_value` fix
+  // surfaced it). Only the known host keys are kept, in the object's order;
+  // undefined/null drop as JSON.stringify drops undefined.
+  const KNOWN = new Set(['prompt','model','n','negativePrompt','size','aspectRatio','quality','style','responseFormat','seed','guidanceScale','steps','loras','profileParameters']);
   const c: Record<string, unknown> = {};
-  const put = (k: string, v: unknown) => {
-    if (v !== undefined && v !== null) c[k] = v;
-  };
-  // P4.D138: the order is v5 `ImageGenParams::to_key_value`, which is v4's
-  // `buildImageGenParams` INSERTION order (`{prompt, model, n}` first, then each
-  // conditional assignment in source order, then `loras`, then
-  // `profileParameters`). It used to be the pre-`84f33ce94` `mergeParameters`
-  // order and dropped the three new fields entirely.
-  put('prompt', params.prompt);
-  put('model', params.model);
-  put('n', params.n);
-  put('negativePrompt', params.negativePrompt);
-  put('size', params.size);
-  put('aspectRatio', params.aspectRatio);
-  put('quality', params.quality);
-  put('style', params.style);
-  put('responseFormat', params.responseFormat);
-  put('seed', params.seed);
-  put('guidanceScale', params.guidanceScale);
-  put('steps', params.steps);
-  put('loras', params.loras);
-  put('profileParameters', params.profileParameters);
+  for (const k of Object.keys(params)) {
+    const v = params[k];
+    if (KNOWN.has(k) && v !== undefined && v !== null) c[k] = v;
+  }
   return `${provider}|${params.model}|${JSON.stringify(c)}`;
 }
 
