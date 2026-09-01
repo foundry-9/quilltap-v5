@@ -96281,3 +96281,63 @@ the choice count.
 **Gate:** panel spec 49/49; full SPA suite **367 files / 5,548 tests / 0**
 (5,477 → 5,548 = the 62 unit-1 matcher cases plus these 9); `npm run build`
 clean.
+
+### Unit 3 — the client HuggingFace repo-id twin
+
+v4's `lib/image-gen/huggingface-repo-id.ts` (new at `2ece98c90`) transcribed
+to `apps/web/src/app/screens/settings/images/huggingface-repo-id.ts` —
+`REPO_ID_PATTERN`, the URL arm (hostname `/(^|\.)huggingface\.co$/i`, first two
+non-empty path segments), the bare-string arm, and `huggingFaceCardUrl`. v4
+split this module out of the lookup for exactly the reason v5 needs it: the
+editor decides in the browser whether a source is askable-about before it
+offers a Query button, and the module must not drag the logger into the client
+bundle. P4.D138 carries the Rust twin for the host-side lookup.
+
+**The differential is a recording, because there is nothing to transcribe.**
+v4 ships no unit test for this module — `2ece98c90`'s only test file is
+`__tests__/unit/image-gen/huggingface-lookup.test.ts`, which drives the network
+path. New oracle case `harness/oracle/cases/huggingface-repo-id.test.ts`,
+**49 rows** into
+`apps/web/src/app/screens/settings/images/__fixtures__/huggingface-repo-id-vectors.json`.
+
+**What the corpus establishes about v4 (each measured, not assumed):**
+
+- The hostname regex has three arms and the corpus holds all of them:
+  `huggingface.co` and `hf.huggingface.co` resolve; `nothuggingface.co` and
+  `huggingface.co.evil.example` do not; and `huggingface.co.` (the
+  fully-qualified trailing dot, which `URL` keeps in `hostname`) does **not**
+  either — the `$` anchor refuses it.
+- The rule is FIRST two segments, and the corpus pins the quirk that follows:
+  `https://huggingface.co/models/owner/name` yields **`models/owner`**, not
+  `owner/name`. The site does serve that URL shape. v5 reproduces it rather
+  than "fixing" it, and the spec says so at the row.
+- Each segment must OPEN alphanumeric even though `.`/`-`/`_` are legal
+  inside: `owner/.hidden`, `.owner/name` and `owner/-name` all refuse, while
+  `owner/name.safetensors` resolves.
+- The `^https?://` gate is case-insensitive but total: `huggingface.co/o/n`,
+  `ftp://huggingface.co/o/n` and `//huggingface.co/o/n` all fall to the bare
+  arm and lose there.
+- A query string and a fragment vanish (not pathname); percent-encoding does
+  not (`own%20er` refuses).
+
+**Mutation proofs (five, each verified applied).** Hostname test →
+`includes('huggingface.co')`: 3 red. Segment class → a single
+`[A-Za-z0-9._-]+`: 4 red. First-two → last-two segments: 3 red.
+`filter(Boolean)` dropped: 15 red. `trim()` dropped: 2 red.
+
+**One process note worth carrying.** The spec's first run failed on a row the
+corpus did not contain (the canonical bare-host URL — the corpus had it only
+under a different repo name). The row was ADDED to the oracle corpus and
+re-recorded rather than the assertion being re-pointed at a neighbour: an
+assertion that reads a missing row gets `undefined`, and `toBe` catches that
+but a `toBeNull`-shaped one would not have. The corpus's own
+both-outcomes-in-quantity guard exists for the same class of silent collapse.
+
+**Gate:** repo-id spec 54/54.
+
+**Regen recipe** (in the oracle case's header, verbatim): mirror to
+`/tmp/qt-oracle-hf-repo-id`, `cd /tmp/qt-v4-pin-p4d139-2ece98c90`, Node 24,
+`QT_ORACLE_OUT=<v5>/apps/web/src/app/screens/settings/images/__fixtures__/huggingface-repo-id-vectors.json
+npx jest --silent --roots "$PWD" --roots /tmp/qt-oracle-hf-repo-id --
+"huggingface-repo-id\.test\.ts$"`. Pin verification: the module does not exist
+before `2ece98c90`.

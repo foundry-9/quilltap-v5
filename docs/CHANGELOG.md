@@ -586,6 +586,31 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — feat(spa): the client HuggingFace repo-id twin (P4.D139 unit 3)
+
+_Versions: SPA 0.5.603._
+
+v4's `lib/image-gen/huggingface-repo-id.ts` (new at `2ece98c90`, split out of
+the lookup precisely so the browser can decide whether to offer a Query
+button) transcribed into the SPA as
+`screens/settings/images/huggingface-repo-id.ts`. Pure and dependency-free on
+both sides. Nothing consumes it yet — the LoRA editor is unit 6.
+
+v4 ships NO unit test for this module, so the whole differential is a 49-row
+recording of v4's REAL functions from a worktree pinned at `2ece98c90` (new
+oracle case `harness/oracle/cases/huggingface-repo-id.test.ts`). The corpus
+asks the questions a hand-written table would have invented answers for: the
+hostname regex's three arms (`hf.huggingface.co` accepted,
+`nothuggingface.co` and `huggingface.co.evil.example` refused, and a
+fully-qualified trailing dot refused), the first-two-segments rule INCLUDING
+its quirk (a `/models/owner/name` URL yields `models/owner`, which v5
+reproduces rather than fixes), the leading-alphanumeric anchor on each
+segment, and what the `^https?://` gate does not treat as a URL.
+
+Five mutations redden it: `includes('huggingface.co')` for the hostname test
+(3), a single character class per segment (4), last-two segments instead of
+first-two (3), dropping `filter(Boolean)` (15), and dropping the trim (2).
+
 #### 2026-09-01 — feat(spa): the shared options renderer honours `appliesToModels` (P4.D139 unit 2)
 
 _Versions: SPA 0.5.602._

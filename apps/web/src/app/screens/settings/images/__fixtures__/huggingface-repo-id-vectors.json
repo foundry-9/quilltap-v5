@@ -1,0 +1,247 @@
+[
+  {
+    "source": "owner/model-name",
+    "repoId": "owner/model-name",
+    "cardUrl": "https://huggingface.co/owner/model-name"
+  },
+  {
+    "source": "https://huggingface.co/owner/model-name",
+    "repoId": "owner/model-name",
+    "cardUrl": "https://huggingface.co/owner/model-name"
+  },
+  {
+    "source": "https://huggingface.co/owner/model-name/resolve/main/weights.safetensors",
+    "repoId": "owner/model-name",
+    "cardUrl": "https://huggingface.co/owner/model-name"
+  },
+  {
+    "source": "https://huggingface.co/owner/model-name/blob/main/x.safetensors",
+    "repoId": "owner/model-name",
+    "cardUrl": "https://huggingface.co/owner/model-name"
+  },
+  {
+    "source": "  owner/model-name  ",
+    "repoId": "owner/model-name",
+    "cardUrl": "https://huggingface.co/owner/model-name"
+  },
+  {
+    "source": "",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "   ",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "\towner/model-name\n",
+    "repoId": "owner/model-name",
+    "cardUrl": "https://huggingface.co/owner/model-name"
+  },
+  {
+    "source": "https://example.com/owner/model-name/weights.safetensors",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://cdn.example.org/x.safetensors",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://huggingface.co/owner/name",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "https://nothuggingface.co/owner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://huggingface.co.evil.example/owner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://hf.huggingface.co/owner/name",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "https://HUGGINGFACE.CO/owner/name",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "HTTPS://huggingface.co/owner/name",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "https://huggingface.co./owner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "http://huggingface.co/owner/name",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "https://huggingface.co:443/owner/name",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "https://user:pw@huggingface.co/owner/name",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "ftp://huggingface.co/owner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "huggingface.co/owner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "//huggingface.co/owner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://huggingface.co/owner",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://huggingface.co/",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://huggingface.co",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://huggingface.co//owner//name",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "https://huggingface.co/owner/name/",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "https://huggingface.co/models/owner/name",
+    "repoId": "models/owner",
+    "cardUrl": "https://huggingface.co/models/owner"
+  },
+  {
+    "source": "Owner/Model_Name-1.0",
+    "repoId": "Owner/Model_Name-1.0",
+    "cardUrl": "https://huggingface.co/Owner/Model_Name-1.0"
+  },
+  {
+    "source": "owner/.hidden",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": ".owner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "-owner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "owner/-name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "owner/name.safetensors",
+    "repoId": "owner/name.safetensors",
+    "cardUrl": "https://huggingface.co/owner/name.safetensors"
+  },
+  {
+    "source": "owner/name/extra",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "owner",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "owner/",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "own er/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "owner/na me",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "öwner/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "owner/näme",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "o/n",
+    "repoId": "o/n",
+    "cardUrl": "https://huggingface.co/o/n"
+  },
+  {
+    "source": "0/9",
+    "repoId": "0/9",
+    "cardUrl": "https://huggingface.co/0/9"
+  },
+  {
+    "source": "owner//name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://huggingface.co/own%20er/name",
+    "repoId": null,
+    "cardUrl": null
+  },
+  {
+    "source": "https://huggingface.co/owner/name?download=true",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  },
+  {
+    "source": "https://huggingface.co/owner/name#card",
+    "repoId": "owner/name",
+    "cardUrl": "https://huggingface.co/owner/name"
+  }
+]
