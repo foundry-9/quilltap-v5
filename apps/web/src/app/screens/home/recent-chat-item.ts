@@ -3,6 +3,7 @@ import { RouterLink } from '@angular/router';
 
 import { AvatarStack, type AvatarStackEntity, normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { characterAvatarSrc } from '../characters/characters.api';
+import { chatActivityAt } from '../../chat/chat-activity';
 import { formatMessageTime } from './format-time';
 import type { RecentChat } from './home.api';
 
@@ -84,7 +85,5 @@ export class RecentChatItem {
           : characters.map((c) => c.name).join(' + ');
   });
 
-  protected readonly timeLabel = computed(() =>
-    formatMessageTime(this.chat().lastMessageAt ?? this.chat().updatedAt),
-  );
+  protected readonly timeLabel = computed(() => formatMessageTime(chatActivityAt(this.chat())));
 }

@@ -16,6 +16,12 @@ import type { CoreClient } from '../../core/core-client';
 export interface RecentChat {
   id: string;
   title: string;
+  /**
+   * The activity fallback (v4 `735d9408c`): the card shows
+   * `lastMessageAt ?? createdAt`, so `createdAt` has to reach the client. v4
+   * places the key here, between `title` and `updatedAt`.
+   */
+  createdAt: string;
   updatedAt: string;
   lastMessageAt: string | null;
   /** Whether this chat has been classified as dangerous */

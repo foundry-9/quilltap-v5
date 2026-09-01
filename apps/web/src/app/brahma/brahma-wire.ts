@@ -64,6 +64,12 @@ export type BrahmaRequest =
 export interface BrahmaPastChat {
   id: string;
   title: string;
+  /**
+   * v4 `735d9408c` added this to the route's projection, in this slot. The
+   * launcher renders no date (only the message count), so nothing DISPLAYS it —
+   * it is carried for wire fidelity with v4's row.
+   */
+  createdAt: string;
   updatedAt: string;
   lastMessageAt: string | null;
   messageCount: number;

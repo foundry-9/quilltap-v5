@@ -20,6 +20,7 @@ import { formatRelativeDate } from '../shared/format-date';
 import { NowService } from '../shared/now.service';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
+import { chatActivityAt } from './chat-activity';
 import { mergeConversation, readOutfitSummary } from './chat-admin.api';
 
 /** v4 `presentCharacters` (`MergeConversationModal.tsx:63-74`). */
@@ -315,7 +316,7 @@ export class MergeConversationModal {
   });
 
   protected when(chat: EnrichedChatSummary): string {
-    return formatRelativeDate(chat.lastMessageAt ?? chat.updatedAt, this.nowMs());
+    return formatRelativeDate(chatActivityAt(chat), this.nowMs());
   }
 
   protected company(chat: EnrichedChatSummary): string {

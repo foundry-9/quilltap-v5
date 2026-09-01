@@ -135,6 +135,7 @@ function recentChat(over: Partial<RecentChat>): RecentChat {
   return {
     id: 'rc1',
     title: 'A Chat',
+    createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-02T00:00:00.000Z',
     lastMessageAt: null,
     participants: [],

@@ -15,19 +15,21 @@ import { CharacterConversationCard } from './character-conversation-card';
  * re-render. v4's `ChatCard` takes exactly this tick for exactly this reason.
  */
 
-function chat(lastMessageAt: string): CharacterChatSummary {
+function chat(lastMessageAt: string | null, over: Record<string, unknown> = {}): CharacterChatSummary {
   return {
     id: 'chat-1',
     title: 'A conversation',
     lastMessageAt,
-    updatedAt: lastMessageAt,
+    createdAt: lastMessageAt ?? '2026-01-01T00:00:00.000Z',
+    updatedAt: lastMessageAt ?? '2026-01-01T00:00:00.000Z',
     messages: [],
     tags: [],
     _count: { messages: 0, memories: 0 },
+    ...over,
   } as unknown as CharacterChatSummary;
 }
 
-function render(lastMessageAt: string) {
+function render(lastMessageAt: string | null, over: Record<string, unknown> = {}) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [CharacterConversationCard],
@@ -38,7 +40,7 @@ function render(lastMessageAt: string) {
     ],
   });
   const fixture = TestBed.createComponent(CharacterConversationCard);
-  fixture.componentRef.setInput('chat', chat(lastMessageAt));
+  fixture.componentRef.setInput('chat', chat(lastMessageAt, over));
   fixture.detectChanges();
   return fixture;
 }
@@ -90,5 +92,33 @@ describe('CharacterConversationCard — the day-boundary rollover', () => {
     TestBed.tick();
     // Still before midnight: the timer has not fired, so it is still the one.
     expect(vi.getTimerCount()).toBe(1);
+  });
+});
+
+/**
+ * P4.D140 (v4 `735d9408c`, bug 112): the card dates a chat by when a CHARACTER
+ * last posted, falling back to when it was created — never by `updatedAt`,
+ * which moves for a background render or a cost tally.
+ */
+describe('CharacterConversationCard — the activity date', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    __resetNowTickersForTests();
+  });
+  afterEach(() => {
+    __resetNowTickersForTests();
+    vi.useRealTimers();
+  });
+
+  it('falls back to createdAt, not updatedAt, when nobody has spoken', () => {
+    vi.setSystemTime(new Date(2026, 7, 30, 12, 0, 0, 0));
+    const fixture = render(null, {
+      createdAt: new Date(2024, 0, 15, 9, 0, 0, 0).toISOString(),
+      // A Staff announcement moved the row yesterday. It is not activity.
+      updatedAt: new Date(2026, 7, 29, 9, 0, 0, 0).toISOString(),
+    });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('2024');
+    expect(text).not.toContain('Yesterday');
   });
 });

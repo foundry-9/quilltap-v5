@@ -11,6 +11,7 @@ import { RouterLink } from '@angular/router';
 
 import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import type { EnrichedChatSummary } from '../../core/core-contract';
+import { chatActivityAt } from '../../chat/chat-activity';
 import { notifyQueueChange } from '../../layout/queue-status.logic';
 import { AvatarStack, type AvatarStackEntity, normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { Icon } from '../../ui/icon';
@@ -182,8 +183,10 @@ export class ChatCard {
   protected readonly tagNames = computed(() => (this.chat().tags ?? []).map((t) => t.tag.name));
 
   protected readonly dateStr = computed(() => {
-    // The Salon transform deliberately omits lastMessageAt, so cards show updatedAt.
-    const d = new Date(this.chat().updatedAt);
+    // When a character last posted, falling back to when the chat was created —
+    // NEVER `updatedAt`, which moves for a background render or a cost tally
+    // (v4 `735d9408c`, bug 112; see `chat/chat-activity.ts`).
+    const d = new Date(chatActivityAt(this.chat()));
     return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString();
   });
 

@@ -95596,3 +95596,62 @@ no-drift → `[no-drift] v4 skipped; v5 must too`; `<>` for `IS NOT` →
 9 vs 10; skipping the completed guard → `[mixed] v5 must skip on the ledger
 row`. Plus three unit tests (clean instance stamps nothing; the ledger row makes
 it once-only; a missing table is NotApplicable and stamps nothing).
+
+### Units 6 + 7 — the SPA display flips and the e2e fixture landmine
+
+**The client twin.** `apps/web/src/app/chat/chat-activity.ts` (NEW) transcribes
+v4's `chatActivityAt` — the one export the client uses — with v4's own `??`.
+Four sites take it:
+
+- `screens/salon/chat-card.ts` — read `updatedAt` **only**, under a comment
+  claiming "the Salon transform deliberately omits lastMessageAt". That comment
+  was FALSE (its input `EnrichedChatSummary` carries `lastMessageAt` AND
+  `createdAt`, contract :2562-2570); rewritten with the real rule.
+- `chat/merge-conversation-modal.ts`, `screens/home/recent-chat-item.ts` —
+  `?? updatedAt` → the helper.
+- `screens/characters/view/tabs/character-conversation-card.ts` — `||` → v4's
+  `??`, via the helper.
+- `screens/prospero/cards/project-chats-section.ts` — **no local edit**: it
+  renders `<qt-chat-card>` over `EnrichedChatSummary[]` straight from the
+  projects API (which already carried `createdAt`), so it inherits the fix. v4
+  needed a transform edit there; v5 does not. Recorded, per the order.
+
+**DTOs.** The home `RecentChat` gains `createdAt` (between `title` and
+`updatedAt`, v4's slot) — ⚠ **§D deviation worth the unifier's attention: that
+DTO lives in `screens/home/home.api.ts`, not `core-contract.ts`**, so this lane
+did not touch the contract file at all. `BrahmaPastChat` gains `createdAt` in
+v4's slot too, carried for wire fidelity only — the Console launcher renders no
+date, just the message count (checked, not assumed).
+
+**Spec pins, all four mutation-proven:** `chat/chat-activity.spec.ts` (the
+parity table plus the operator question a transcription can silently get wrong —
+`??` vs `||`, pinned by the empty-stamp case); NEW
+`screens/salon/chat-card.spec.ts` (the card had no spec at all, so a regression
+there would have been invisible); a home row pin; and a character-card pin.
+Mutations: `??`→`||` in the helper; each of the three components reverted to
+`updatedAt` — each reddened exactly its own spec. Four factories gained
+`createdAt` (home, quick-hide-consumers, brahma-console-dialog, the character
+card's).
+
+**The e2e landmine (point 7).** `e2e/support/seed-archived-character.ts` stamped
+a wall-clock `lastMessageAt` on a chat whose ONE seeded message carried the old
+`TS`. Under the new boot recompute the date walks BACK to `TS`, the chat sinks
+out of the virtualized render window, and the courier beats' `openChatWith`
+breaks — the exact failure the recency float exists to prevent. Repaired: the
+message's `createdAt` is `RECENT` too, and `systemSender`/`customAnnouncer` are
+forced NULL instead of inherited from whatever row `SELECT * FROM chat_messages
+LIMIT 1` happened to return (a Staff stamp there would make the recompute clear
+the column outright). Comment carries the why. **No Playwright run in this lane
+(P4.66 owns port 4319) — the repair is reasoned + commented, and wants the
+unified suite as its proof.**
+
+**The other flagged fixtures, re-measured rather than assumed:**
+`build-retention-caches-fixture.ts`'s `dressChat` sets `lastMessageAt` by raw
+`UPDATE` after the adds, so it is immune by construction;
+`build-maintenance-sweep-fixture.ts:223`'s "RECENT participant message" is a
+plain `ASSISTANT` row with `systemSender NULL` and no `customAnnouncer`, so the
+widened predicate still matches it (both maintenance families green);
+`chat_admin_routes_equivalence:524`'s "Host bubbles stamped from the wall clock"
+note describes the behaviour this port removes — the family was regenerated and
+re-run and is green, so the clock-minted normalization still holds for the cases
+that carry it.

@@ -43,6 +43,7 @@ function chat(over: Partial<RecentChat> = {}): RecentChat {
   return {
     id: 'c1',
     title: 'A Chat',
+    createdAt: '2025-12-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
     lastMessageAt: '2026-01-02T00:00:00Z',
     participants: [],
@@ -235,6 +236,27 @@ describe('HomePage', () => {
     const marker = fixture.nativeElement.querySelector('span[title="Flagged as dangerous"]');
     expect(marker).not.toBeNull();
     expect(marker!.textContent).toBe('*');
+  });
+
+  it('dates a recent chat by activity, falling back to createdAt and never updatedAt (P4.D140)', async () => {
+    // v4 `735d9408c`, bug 112: a Staff announcement moves `updatedAt` without
+    // being conversational activity, so the readout must ignore it.
+    const fixture = await render(
+      homeClient(
+        homeData({
+          recentChats: [
+            chat({
+              lastMessageAt: null,
+              createdAt: '2025-12-31T09:00:00',
+              updatedAt: '2026-07-16T14:59:00',
+            }),
+          ],
+        }),
+      ),
+    );
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain(formatMessageTime('2025-12-31T09:00:00'));
+    expect(text).not.toContain(formatMessageTime('2026-07-16T14:59:00'));
   });
 
   it('prefers the story background strip over the avatar stack (v4 RecentChatItem)', async () => {

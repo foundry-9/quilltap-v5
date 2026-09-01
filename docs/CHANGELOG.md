@@ -157,6 +157,34 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+#### 2026-09-01 — fix(spa): chat cards show when a character last spoke (v4 735d9408c, bug 112)
+
+_Versions: SPA 0.5.601._
+
+The client half of P4.D140. A new `chat/chat-activity.ts` transcribes v4's
+`chatActivityAt` — the one export the client uses — and four display sites take
+it: the Salon chat card (which read `updatedAt` ONLY, under a comment claiming
+the Salon transform omits `lastMessageAt`; it does not), the merge-conversation
+modal, the home recent-chat row, and the character Conversations card (whose
+`||` becomes v4's `??`). Prospero's chats section reuses `<qt-chat-card>`
+directly, so it inherits the fix with no local edit — v4 needed a transform edit
+there and v5 does not.
+
+Two DTOs gain `createdAt` in v4's slot: the home `RecentChat` (which the row's
+fallback needs) and `BrahmaPastChat` (carried for wire fidelity — the launcher
+renders no date at all).
+
+Four spec pins, each mutation-proven: the helper's `??`-not-`||` semantics, and
+a never-spoken-in chat dating by `createdAt` on the Salon card, the home row and
+the character card.
+
+Also repaired: the archived-character e2e seed stamped a wall-clock
+`lastMessageAt` on a chat whose only message was old, so the new boot recompute
+would walk the date back and sink the chat out of the virtualized render window
+— breaking the courier beats' `openChatWith`. The message is now stamped RECENT
+too, with `systemSender`/`customAnnouncer` forced NULL rather than inherited
+from whatever row `LIMIT 1` returned.
+
 #### 2026-09-01 — feat(boot): recompute existing chats' last-activity dates once (v4 735d9408c, bug 112)
 
 _Versions: core 0.0.725, harness 0.0.619, host 0.0.87._

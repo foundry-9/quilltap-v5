@@ -10,6 +10,7 @@ import { normalizeAvatarSrc } from '../../../../ui/avatar-stack';
 import { Icon } from '../../../../ui/icon';
 import { ScriptoriumBadge } from '../../../../ui/scriptorium-badge';
 import { ToastService } from '../../../../ui/toast.service';
+import { chatActivityAt } from '../../../../chat/chat-activity';
 
 /** The preview text (v4 `lib/chat-utils.ts` `getCharacterChatPreview`): the LAST
  *  element of the recent-first ≤3 array (i.e. the oldest of the recent three),
@@ -141,7 +142,7 @@ export class CharacterConversationCard {
   private readonly nowMs = inject(NowService).now(DAY_GRANULARITY_MS);
 
   protected readonly dateStr = computed(() =>
-    formatChatListDate(this.chat().lastMessageAt || this.chat().updatedAt, this.nowMs()),
+    formatChatListDate(chatActivityAt(this.chat()), this.nowMs()),
   );
 
   /**

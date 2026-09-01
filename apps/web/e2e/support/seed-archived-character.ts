@@ -318,6 +318,17 @@ export function seedArchivedCharacter(cli: string): boolean {
   // first — an empty chat broke that invariant on the full suite's first
   // run at the round-1 unification. The speaker is the live template
   // seat (participants[0]), so avatar/name resolution stays coherent.
+  //
+  // ⚠ THREE fields keep the recency float honest under P4.D140 (v4
+  // `735d9408c`, bug 112). Since that port, boot RECOMPUTES every chat's
+  // `lastMessageAt` from its character-authored messages, so a chat whose
+  // stamp says RECENT while its only message says `TS` has its date walked
+  // BACK to `TS` — and it sinks out of the virtualized render window,
+  // exactly the failure the float exists to avoid. So the message is stamped
+  // RECENT too, and `systemSender`/`customAnnouncer` are forced NULL rather
+  // than inherited from whatever row `LIMIT 1` happened to return: a Staff
+  // stamp on the copied template would make the recompute clear the column
+  // to NULL outright.
   const messageTemplate = read(cli, 'SELECT * FROM chat_messages LIMIT 1');
   if (messageTemplate[0]) {
     insertCopy(cli, 'chat_messages', messageTemplate[0], {
@@ -325,9 +336,11 @@ export function seedArchivedCharacter(cli: string): boolean {
       chatId: CHAT_ID,
       participantId: String(seat['id'] ?? ''),
       role: 'ASSISTANT',
+      systemSender: null,
+      customAnnouncer: null,
       content:
         'The dust sheets are drawn, the keys are turned, and the wing keeps its own counsel.',
-      createdAt: TS,
+      createdAt: RECENT,
     });
   }
 
