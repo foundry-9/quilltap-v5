@@ -95184,3 +95184,73 @@ green with the manifest regen, so the lane's red-first set shrank from five to
 four.
 
 Versions: core 0.0.723.
+
+### P4.D138 — lane status: OPEN at units 5–7
+
+Four units are committed and each carries its own full workspace gate. The
+remaining three are NOT started in code (nothing half-applied is left in the
+tree — `git status` is clean at the last commit). The resume list, in order:
+
+**Unit 5 — the train's commit 2 (`648d5c8aa`, bugs 110 + 111).** Both belong to
+ONE v4 commit, so they are one v5 commit.
+  - Bug 110: restructure `model::nanogpt_loras::apply_loras` to resolve the
+    family FIRST, drop the empty-list early return, gate the weights/url key
+    writes on `kept` being non-empty, move the `lora_preset` attachment OUTSIDE
+    that guard, and report `Some(dialect)` for a known family even with zero
+    keys. **Port BOTH asymmetry comments** (the credential is gated on weights;
+    the preset stands alone) so it is not "consistency"-fixed back.
+  - Bug 111: wrap the NanoGPT generate call and log at ERROR
+    `NanoGPT image request failed` with
+    `{context: 'NanoGPTImageProvider.generateImage', model, size, n,
+    loraDialect, loraKeys, loraDropped, passthroughKeys, error}` — key NAMES
+    only — then rethrow unchanged. It must cover the transport throw and the
+    non-2xx gate, NOT the `Invalid response from NanoGPT Images API` arm (v4
+    raises that after its try/catch). The design that avoids double-firing
+    `apply_loras`'s warnings: have `build_nanogpt` RETURN its
+    `{passthroughKeys, applied}` pair, add a
+    `build_image_request_with_extras(provider, params)` that carries it, and
+    have `RealImageProvider::generate_image` call that variant.
+  - Corpus: re-record `image-dialects` from the TIP pin
+    (`/tmp/qt-v4-pin-p4d138-2ece98c90`) and check that exactly
+    `lora_preset_without_adapters` and `lora_preset_no_loras_key` gain
+    `lora_preset` while `lora_weights_token_without_weights` stays `{}`.
+  - Bug 111 is log-only and differential-invisible: it needs a capturing-layer
+    pin (the `title_update_tier3_equivalence` `CaptureLayer` idiom;
+    `tracing::subscriber::set_default` is thread-scoped), asserting the ERROR
+    line's fields on the failure branch AND silence on the success branch.
+  - Mutations owed: revert the preset outside-the-guard move (must redden
+    `lora_preset_without_adapters`), and widen a capper away (must redden
+    `lora_indexed_over_cap`).
+
+**Unit 6 — the routes' read side (`84f33ce94`).** The four `list_models` arms
+are RED-FIRST against the committed oracle and are this unit's proof.
+  - `list-models` gains `loraSupport: Record<modelId, ImageLoraSupport>`
+    inserted between `source` and the conditional `fetchError`; models
+    resolving nothing are ABSENT from the map; debug
+    `Resolved LoRA support for the model list`.
+  - NEW `options-schema` GET arm per §A (`Provider is required` /
+    `` Provider ${provider} is not available `` 400s; a throwing hook → warn +
+    null schema; `{provider, model: model ?? null, optionsSchema, loraSupport}`
+    with **null, not a zero-cap object**).
+  - The NanoGPT image options schema (`getNanoGPTImageOptionsSchema`) needs
+    v4's module-level DETAILED-CATALOG cache (`?detailed=true`, 60-minute TTL,
+    filled by the keyed listing and read by the synchronous schema hook, cold
+    cache falling back to `FALLBACK_SIZES`). v5's honest home for that write is
+    `RealImageProvider::available_models` (the IO layer), not the sans-IO
+    parser. The same cache is what `lora_data_for`'s recorded narrowing names —
+    a live `lora`-tagged model outside the static table gets
+    `{maxLoras: 1, sourceKinds: ['url','hf-repo']}` and no dialect.
+
+**Unit 7 — the train's commit 3 (`2ece98c90`, the HuggingFace lookup).** Order
+Tier 2: `huggingface-repo-id.ts` (pure) + `huggingface-lookup.ts` + the
+`POST ?action=lora-metadata` arm per §A's exact guard sentences, with
+`mock-serper.ts` as the precedent for the v5-side test double. If its mocked
+provider harness proves larger than budgeted the order allows dropping it to a
+LOUD typed `not_available` refusal honouring §A's shape — **but the refusal is
+not the default; the port is.**
+
+Standing for whoever resumes: BOTH v4 pins are lane-unique detached worktrees
+(`/tmp/qt-v4-pin-p4d138-84f33ce94` for commit-1 rows,
+`/tmp/qt-v4-pin-p4d138-2ece98c90` for the tip) and may have been reaped —
+rebuild them per drift-ledger §5.1 and re-verify the marker file before any
+regen. The lane's fixture+oracle snapshot for the gate lives in `/tmp/p4d138/`.
