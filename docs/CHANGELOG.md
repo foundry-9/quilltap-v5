@@ -10,6 +10,34 @@ are archived under `docs/changelog/`.
 
 Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 (days 1–15)](changelog/2026-07a.md), [June 2026](changelog/2026-06.md).
 
+## September 2026
+
+#### 2026-09-01 — chore(unify): the drift catch-up round 1 of 2 — P4.D134 ∥ (P4.D135→P4.D136) ∥ P4.D137
+
+_Versions: core 0.0.719, harness 0.0.616, host 0.0.86, cli 0.0.17, SPA 0.5.600; web/tauri unchanged._
+
+All four orders unified onto main; the oracle baseline moves `b121ac77f` →
+`7fb668263` and the round's eight-row drift prefix is cleared (the Lima/WSL2
+retirement, provider/model fallback chains, bugs 106/107, bugs 108/109, two
+NO-PORT ratifications, the About Discord rider; eight commits remain as the
+pre-planned round 2). The §3 unification review (four parallel reviewers
+against v4's real source at the pins) found zero blocking findings and fixed
+four groups on the unify branch: the `[CheapLLM] Task failed` warn now fires
+BEFORE the fallback chain as v4's catch does (a rescued task still counts — the
+counter bug 107 was measured from; capture-layer pinned, mutation-proven), the
+failing-over toast fires on a message change within the stage (the second
+stand-in's name is news; four new unit specs on a previously spec-less branch),
+two corpus blind spots closed (three classifier ladder-order rows; the doc-text
+guard-placement ops moved off `.yaml` — a supported text format — onto `.png`,
+with insert gaining its own mutation-proven placement op), and four stale
+comments/names corrected. Gate: family sweep 23 recipes + uuid-remap's replay
+leg fresh from the `7fb668263` pin, zero unexplained SKIP; Tier R 214/0 against
+v4's real launcher; 475 test binaries / 2,632 / 0 with the round's env block,
+zero SKIP; fmt/clippy both feature sets; release build; ng test 5,477/0; ng
+build clean; full Playwright 256 passed / 0 failed / 1 skipped (the standing
+store-probe park; the suite grew 255 → 256 with the live understudy
+round-trip beat).
+
 ## August 2026
 
 #### 2026-08-31 — docs(status): record the P4.D134 lane gate

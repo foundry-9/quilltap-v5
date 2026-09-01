@@ -2453,9 +2453,52 @@ records THERE. Update this summary only when a phase or round completes.
   of the inline-host family** (after #97's `qt-tab-view` and the Almanack
   walk's `qt-entity-tabs`), **20 call sites**; the standing note proposes a
   guard over every `host: { class: 'qt-…' }` without a matching CSS rule.
-- **Oracle baseline: `b121ac77f` (2026-08-27, v4 main — the CLI
-  `.dbkey` rebuild), adopted at the P4.D131-round unification
-  (2026-08-27).**
+- **The drift catch-up round 1 of 2 (P4.D134 ∥ P4.D135→P4.D136 ∥ P4.D137):
+  UNIFIED on main (2026-09-01) — ALL FOUR ORDERS CLOSED; the oracle baseline
+  MOVES to `7fb668263` and the round's eight-row drift prefix is CLEARED**
+  (eight commits remain — the pre-planned round 2: the LoRA train ×3, bug
+  112, the Concierge four-state, `qt-range`, two docs rows). The Lima/WSL2
+  retirement whole (env/lock/CLI with Tier R red-first 212 → 214/0, the
+  data-dir `isVM` wire deletion with two renamed deletion pins, the
+  host-rewrite two-strategy collapse, self-inventory/almanack retirements,
+  the SPA About mirrors + Discord rider, the grep census; **one follow-up
+  opened: v5 has never had a host gateway resolver** — measured, named in
+  `rewrite.rs`) ∥ provider/model fallback chains END-TO-END (the two
+  `connection_profiles` columns through the D23 re-dump — the order's
+  column position was WRONG, generateDDL places them after `modelClass`;
+  the pure engine tier-1 at 158 cases; both Salon entrances + cheap-LLM +
+  image description; both id-remap paths; the delete-nulls cascade WITH
+  v4's `updatedAt` stamp; the SPA understudy picker + live round-trip
+  beat) ∥ bugs 106/107 (v5 measurably HAD bug 106 in both halves, proven
+  red-first; the budget rewrite with the latency class threaded from 45
+  call sites, the timeout-only retry, five of six handler guards —
+  scene-state deferred loud; the recap ceiling's compile-pin FIRED as
+  designed, and the outfit consult's inversion measured as v4's own and
+  reproduced) ∥ bugs 108/109 (both proven red-first — v5's bug-108 coat
+  silently DELETED the found span where v4 spliced `"undefined"`; the
+  25-entry fold table entry-for-entry; the rebuilt per-UTF-16-unit
+  diacritics map; the 5/25 replay split executable). **The §3 review (four
+  parallel reviewers): ZERO blocking; four groups fixed at unification —
+  headline: the `[CheapLLM] Task failed` warn fired AFTER the chain where
+  v4 warns BEFORE it** (a rescued task still counts — the very counter bug
+  107 was measured from; capture-pinned, mutation-proven); the
+  failing-over toast now re-fires on a message change (the second
+  stand-in's name is news; the branch gained its first specs); three
+  classifier ladder-order rows; the doc-text guard-placement ops moved off
+  `.yaml` (a SUPPORTED text format — the discriminator was vacuous both
+  sides) onto `.png` with insert's own mutation-proven placement op. Gate:
+  23-family pinned sweep + uuid-remap's replay leg zero unexplained SKIP;
+  Tier R 214/0; 475 test binaries / 2,632 / 0 zero SKIP; clippy both
+  feature sets; release build; ng 5,477/0 + build clean; full Playwright
+  green (numbers in the round record). Versions: core 0.0.719, harness
+  0.0.616, host 0.0.86, cli 0.0.17, SPA 0.5.600. 💸 the dogfood queue
+  gains the dead-endpoint understudy walk, the reroute-with-an-image +
+  re-measured compression row (the 75 s C4 numbers are SUPERSEDED), the
+  live curly-quote resolve, and the stand-in toasts. Round record:
+  `status-log.md`.
+- **Oracle baseline: `7fb668263` (2026-08-29, v4 main — the Discord-link
+  doc commit), adopted at the round-1 drift catch-up unification
+  (2026-09-01).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

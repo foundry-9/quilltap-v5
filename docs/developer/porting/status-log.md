@@ -94583,3 +94583,142 @@ did not change**. `remark-smartypants` still runs at exactly two HTML-render cal
 sites and the keystroke engine still fires only for typed dashes and ellipses.
 The P4.D71 smart-typography port was verified untouched; the new module's header
 says so, naming the sha.
+
+---
+
+## Round record — the drift catch-up round 1 of 2 unification (P4.D134 ∥ P4.D135→P4.D136 ∥ P4.D137), 2026-09-01
+
+**ALL FOUR ORDERS CLOSED; the oracle baseline MOVES `b121ac77f` → `7fb668263`
+and the round's eight-row drift prefix is CLEARED** — `1560bd43b`
+ABSORBED(p4.d134), `7819afb1d` + `3c3432ae9` NO-PORT-RATIFIED(p4.d134),
+`65f5021c8` ABSORBED(p4.d135), `97ebfb9fc` NO-PORT-RATIFIED(p4.d136),
+`a1d88aa3a` ABSORBED(p4.d136), `487ae16b1` ABSORBED(p4.d137), `7fb668263`
+ABSORBED(p4.d134's About rider). Eight commits remain past the new baseline
+(the pre-planned round 2: the three-commit LoRA train, bug 112, the Concierge
+four-state, `qt-range`, two docs-only rows) — the regen rule stays PIN
+REQUIRED at `7fb668263`.
+
+**Mid-round drift:** v4 committed `4622411fd` (docs(release),
+`docs/releases/4.9.0.md` only) during the lanes. Recorded in the ledger §3 at
+this unification as NO-PORT?; nothing in any lane was ported or regenerated
+against it (the D136 order header carries the lane-side note).
+
+**Reconciliation.** `unify/p4d134-d137-round1` from main; 26 lane commits
+cherry-picked (7 + 17 + 2) in round order under union-merge attributes on the
+two append-only docs; every manifest delta verified version-only BEFORE any
+`--theirs` resolution; versions recounted base + bumps (the silent-collapse
+trap fired, as always): core 701+3+11+2 → 0.0.717, harness 603+1+9+2 →
+0.0.615, host 0.0.86, cli 0.0.17, SPA 0.5.599 (then the review fixes: core
+0.0.718 → 0.0.719, harness 0.0.616, SPA 0.5.600). No source-file overlap
+between lanes — Ownership held.
+
+### The §3 review (four parallel reviewers — D134 / D135 / D136 / D137 — each byte-comparing against v4's real source at the target pins; the verdict owned at the unify)
+
+**ZERO blocking findings.** Fixed on the unify branch:
+
+1. **The headline (would have shipped): the `[CheapLLM] Task failed` warn
+   fired AFTER the fallback chain instead of before it** (`5121b8ec`). v4
+   (`65f5021c8`) logs at the top of the catch, THEN walks the chain — a task
+   a stand-in rescues still logs the failure, and that warn is the exact
+   counter bug 107's ceilings were measured from ("81 losses in the counter's
+   first 60 hours"). v5 under-counted losses whenever the chain rescued.
+   Log-only and differential-blind; introduced by D135 unit 4, standing in
+   D136's final state, unrecorded in either lane record. Pinned by a
+   capture-layer test over a real two-profile chain
+   (`a_chain_rescued_task_still_logs_the_failure_warn`), mutation-proven —
+   re-inverting the order reddens it.
+2. **The failing-over toast lost the second stand-in's name** (`87812a3a`).
+   v4 toasts per status event; v5's transition-keyed gate suppressed a
+   same-stage frame with a DIFFERENT message — a chain walking two stand-ins
+   names each, and the second name is news, not noise. The gate widened to
+   stage-OR-message-changed (byte-identical repeats still coalesce — the
+   narrowed divergence re-recorded in code), and the branch gained its first
+   four unit specs: reverting the RESCUE_STAGES arm had left the entire gate
+   green. The inert `[value]` binding on the understudy select (contradicting
+   its own `[selected]`-only comment) removed in the same commit.
+3. **Two corpus blind spots closed, one exposing a vacuous discriminator**
+   (`3075b89d`). (a) The fallback-engine corpus gained three ladder-order
+   rows (155 → 158): a typed NetworkError/RateLimitError whose MESSAGE
+   matches a non-trigger pattern, and a ZodError with a network-shaped
+   message — all null in v4 because the non-trigger checks run BEFORE the
+   typed ladder; a mutation hoisting the typed arms had stayed green and now
+   reddens exactly the new rows. (b) The doc-text guard-placement ops were
+   built on `Notes/x.yaml` — which IS a supported text format for
+   str_replace/insert (`isTextFile` accepts `.yaml`; the path was borrowed
+   from `write_yaml_reject`, whose `doc_write_file` allowed set is narrower)
+   — so the file-type stage was vacuously green on BOTH sides. Both ops
+   moved to `Notes/x.png`, measured on v4: str_replace's guard answers FIRST
+   even on a non-text path, and insert's file-format sentence answers BEFORE
+   the position guard. The NEW `insert_position_missing_non_text` op (+ its
+   required-op row) is mutation-proven red under a hoisted guard; the
+   str_replace demote-mutation could not be run to a clean red (the
+   reordered code fails to compile — a build-red proves nothing, per the
+   standing note), so its discrimination rests on the measured v4 answers.
+4. **Comment/naming corrections** (same commit): the stored-`""` understudy
+   comments (module + harness carve-out) claimed v4 lands the same NULL
+   cell — v4's `UUIDSchema` parse actually refuses the WHOLE profile; both
+   now cite the recorded `.qtap` Zod-format gap. The `build_context`
+   compressMemories deferral header gained the bug-107 rider (declare
+   `latency: interactive` when the task lands — the background default would
+   silently diverge 45→90 s / 75→120 s). A `data_dir` test shed its retired
+   "vm" name.
+
+**Recorded, not fixed — the review's named follow-ups** (also in phase-4.md's
+candidates): the empty-response failover legs log no `llm_logs` rows on the
+production spine (the orchestrator's recovery call takes the no-log entry
+where v4's `restreamInto` logs every leg; the hard-error site DOES thread the
+log; fix shape = thread `FailoverLogCtx` at `orchestrator.rs`'s recovery
+call — recorded in-code at `provider_failover.rs:158-165`); three chain-walk
+corpus blind spots (a mid-chain empty answer continuing the walk, the no-key
+`auth` attempt's `no-api-key-configured` reason bytes, fail-then-recover);
+`resolve_provider_for_dangerous_content`'s missing per-arm log lines
+(pre-existing; joins the handler-logging sweep). Smaller notes, no action:
+the engine's `-0.0`/`total_cmp` comment nit; the Unicode-vs-ASCII `\d`/`\b`
+divergences in the transcribed patterns (the ratified JS-regex family);
+`FallbackProfile`'s pub fields carry the `""`-truthiness contract only in
+`from_value`; the fold table's 25-entry linear scan vs v4's hash lookup; no
+astral haystack reaches a positional doc-edit match; the understudy e2e beat
+could add a full-reload leg; the harness `kind_for` name-map nuance.
+
+### The unification wires
+
+None this round by design — all four orders declared no shared contract, and
+the round's one Playwright beat (the understudy round-trip) ran LIVE in its
+lane. The wire work was the docs: both open order headers closed, the ledger
+baseline move + §3 retirement + §6 entry, phase-4's candidates rewritten for
+round 2, and the memory-note update.
+
+### The gate (every regen fresh from `/tmp/qt-v4-pin-unify-7fb668263` — the unified pin at the NEW baseline; every lane target is an ancestor, and nothing between any target and the pin touches that target's surfaces)
+
+- `cargo fmt --all --check` exit 0; `cargo clippy --workspace --all-targets
+  -- -D warnings` exit 0, plain AND `--features
+  quilltap-core/native-transport`; `cargo build --release` exit 0.
+- **The family sweep by name through the sanctioned driver:** 22 recipes ok
+  + `backup_uuid_remap_equivalence` correctly REFUSED by the driver (its
+  recording stage writes the committed corpus — policy 1) and run by hand
+  from the pin instead: the jest regen reproduced the committed corpus
+  BYTE-IDENTICALLY (no git diff) and the family passed with the
+  `fallback_understudy_links` case present. Changed-bytes greps per ledger
+  §5.2 held (`isVM` 0 in the data-dir NDJSON, the three new classify rows
+  present, the two `.png` ops answering their measured sentences).
+- **Tier R:** `cli_differential` **214 cases / 0 failures** against v4's
+  REAL launcher from the pin (`-- --nocapture`, count read).
+- **`cargo test --workspace`** with the round's ~55-variable env block:
+  **475 test binaries / 2,632 passed / 0 failed / 1 ignored, ZERO `SKIP:`
+  lines** — exit 0.
+- **SPA:** `npm test` **5,477 / 0** (the four new toast specs in the count);
+  `npm run build` clean.
+- **Full Playwright:** **256 passed / 0 failed / 1 skipped** (6.2 m; the one
+  skip is the standing store-probe park — the component-transfer beat's
+  named blocker, phase-4 candidate 7). The suite grew 255 → 256 with the
+  P4.D135 understudy round-trip beat, which had already run green in-lane.
+
+Versions at unification: core 0.0.719, harness 0.0.616, host 0.0.86, cli
+0.0.17, SPA 0.5.600; web 0.0.100 / tauri 0.0.7 unchanged.
+
+**💸 the dogfood queue gains:** the dead-endpoint understudy answering with
+correct attribution + the exhausted chain's roll + the tier pick crossing
+providers (recipe in the P4.D135 record), the reroute-with-an-image walk +
+the re-measured compression row (P4.D136 record — the old 75 s C4 numbers
+are SUPERSEDED per ledger §5.5), the live curly-quote doc-edit resolve
+(P4.D137), and the failing-over toast naming each stand-in.

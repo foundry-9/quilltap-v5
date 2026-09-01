@@ -6256,10 +6256,67 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
-**Next candidates, in rough value order** (updated at the
-P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65 round unification, 2026-08-27 — the
-four-commit drift debt is CLEARED, the baseline moves to `b121ac77f`, and
-the Salon chat-list batching landed with the round):
+**Next candidates, in rough value order** (updated at the round-1 drift
+catch-up unification, P4.D134 ∥ P4.D135→P4.D136 ∥ P4.D137, 2026-09-01 —
+the eight-row drift prefix is CLEARED and the baseline moves to
+`7fb668263`; eight commits remain, the pre-planned round 2):
+
+1. **The round-2 drift catch-up** (drift-ledger §3, eight rows): the
+   THREE-commit D-stacked LoRA train (`84f33ce94` → `648d5c8aa` →
+   `2ece98c90`), bug 112's `lastMessageAt` redefinition (`735d9408c` — it
+   lands on the P4.64/P4.65 home + Salon-list surfaces), the Concierge
+   four-state (`60e3c4a0a`), `qt-range` (`5f56f7a7d`), and the two
+   docs-only ratifications (`e41fcb12e`, `4622411fd`). PIN REQUIRED at
+   `7fb668263` until it lands.
+2. **The owed dogfood pass** — the standing 💸 queue plus round 1's
+   surfaces: a real dead-endpoint understudy answering with correct
+   attribution + the exhausted chain's roll + the tier pick crossing
+   providers (recipe in the P4.D135 record), the reroute-with-an-image
+   walk + the re-measured compression row (P4.D136 record — the old 75 s
+   C4 numbers are SUPERSEDED), the live curly-quote doc-edit resolve
+   (P4.D137), and the failing-over toast naming each stand-in. Carried:
+   the tooltips/badge walk, the restore-key real-pepper walk (human
+   only), Pascal's group tier, the Brahma deep-query budget,
+   dedup/summaries, the NanoGPT caching smoke / #101.
+3. **The host-side gateway resolver** (P4.D134's named follow-up): v5
+   has never rewritten a localhost URL in production
+   (`with_localhost_gateway` has zero call sites outside core —
+   measured); v4's post-`1560bd43b` resolver is only two strategies, but
+   porting it ADDS wire behavior (a provider's base URL changes inside
+   Docker) and v4's module-global answer cache is its own fidelity
+   question. Named in `rewrite.rs`'s header.
+4. **The empty-response failover legs' missing `llm_logs` rows** (the
+   round-1 §3 review's recorded follow-up): the orchestrator's recovery
+   call takes the no-log entry where v4's `restreamInto` logs every leg;
+   the hard-error site already threads the log. Fix shape: thread
+   `FailoverLogCtx` at `orchestrator.rs`'s recovery call
+   (`provider_failover.rs:158-165` records it in-code). Plus the three
+   chain-walk corpus blind spots named in the round record (mid-chain
+   empty, the no-key auth-reason bytes, fail-then-recover).
+5. **P4.62's escalations** (carried; ordered shapes in its lane record):
+   the wrong-typed `tagId` carry, the jobs-enqueue `payload: []`, the
+   `chat_media::chat_file_link` guard simplification.
+6. **Widen the committed `system-data-main.db` past
+   `multiCharacterPrefill`** (carried — and round 1 measured the two NEW
+   fallback columns landing in the same hole; the understudy remap is
+   unit-pinned meanwhile).
+7. **Un-park the component-transfer beat** (carried, P4.D130's scope).
+8. **`CheapLlmTaskExecutor::new()`'s missing chain** (P4.D135's named
+   gap): the two bare-constructor production sites
+   (`tools::generate_image`'s prompt expansion, one `enclave::step` leg)
+   have no fallback chain — closing it means giving those two a `Db`.
+9. The present-but-null validation lead (carried); `p4.9i2` help/HelpChat
+   (the bank gained 7 more rows this round); the handler-logging sweep
+   (carried — round 1 added `resolve_provider_for_dangerous_content`'s
+   per-arm lines to its list); the SPA-wide `title=` sweep (carried,
+   keyed to v4).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json`
+file port remains a NAMED standalone flag (round 1 recorded another
+no-counterpart hunk against it).
+
+**The superseded candidates list from the P4.D131 unification follows for
+history:**
 
 1. **The owed dogfood pass** — the standing 💸 queue plus this round's
    surfaces: the tooltips + pinnable confirmation badge on real turns,
