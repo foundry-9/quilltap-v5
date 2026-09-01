@@ -1127,6 +1127,34 @@ impl CheapLlmTaskExecutor {
             },
             // v4 `getErrorMessage(error)` — the thrown Error's message.
             Err(error) => {
+                // Say so in the server log (v4 `8872d7efc`). `send_with_deadline`
+                // already reports the case where *our* deadline fires, but a
+                // provider giving up on its own budget arrives here as an ordinary
+                // provider error — and the plugin's own log line names the
+                // provider without naming the task, so a timed-out extraction pass
+                // was legible only in the debug logs stored on the message. One
+                // line here ties the two together.
+                //
+                // ⚠ BEFORE the fallback chain, deliberately (v4 `65f5021c8` logs
+                // at the top of the catch, then walks the chain): a task a
+                // stand-in later rescues still FAILED on this route, and this
+                // warn is the very counter bug 107's ceilings were measured
+                // from — logging it only on an unrescued failure would
+                // under-count losses relative to v4.
+                //
+                // v4 threads `chatId`/`characterId` as parameters; v5's `chat_id`
+                // comes from the attached log config, the same source the
+                // abandonment warn above reads.
+                tracing::warn!(
+                    target: "quilltap::cheap_llm",
+                    task_type = task_type.unwrap_or(""),
+                    chat_id = self.log.as_ref().and_then(|c| c.chat_id.as_deref()).unwrap_or(""),
+                    character_id = character_id.unwrap_or(""),
+                    provider = %selection.provider,
+                    model = %selection.model_name,
+                    error = %error.message,
+                    "[CheapLLM] Task failed",
+                );
                 // v4 `65f5021c8`: walk the failed route's fallback chain,
                 // re-issuing the task against each stand-in with a FRESH
                 // deadline. A fresh budget per attempt, not a shared one: the
@@ -1151,27 +1179,6 @@ impl CheapLlmTaskExecutor {
                 {
                     return result;
                 }
-                // Say so in the server log (v4 `8872d7efc`). `send_with_deadline`
-                // already reports the case where *our* deadline fires, but a
-                // provider giving up on its own budget arrives here as an ordinary
-                // provider error — and the plugin's own log line names the
-                // provider without naming the task, so a timed-out extraction pass
-                // was legible only in the debug logs stored on the message. One
-                // line here ties the two together.
-                //
-                // v4 threads `chatId`/`characterId` as parameters; v5's `chat_id`
-                // comes from the attached log config, the same source the
-                // abandonment warn above reads.
-                tracing::warn!(
-                    target: "quilltap::cheap_llm",
-                    task_type = task_type.unwrap_or(""),
-                    chat_id = self.log.as_ref().and_then(|c| c.chat_id.as_deref()).unwrap_or(""),
-                    character_id = character_id.unwrap_or(""),
-                    provider = %selection.provider,
-                    model = %selection.model_name,
-                    error = %error.message,
-                    "[CheapLLM] Task failed",
-                );
                 // Say *how* it was lost, not just that it was. A refusal or a
                 // parse failure is a finished pass with a disappointing answer;
                 // a timeout is work that never happened, and a caller that
@@ -2663,6 +2670,133 @@ mod tests {
         assert!(
             !captured.contains("[CheapLLM] Task failed"),
             "a successful task must not warn; captured:\n{captured}"
+        );
+    }
+
+    /// v4 `65f5021c8` logs `[CheapLLM] Task failed` at the top of the catch,
+    /// BEFORE walking the fallback chain — so a task a stand-in rescues still
+    /// logs the failure. That warn is the very counter bug 107's ceilings were
+    /// measured from ("81 losses in the counter's first 60 hours"); warning only
+    /// on an unrescued failure would under-count losses relative to v4. Caught
+    /// by the round-1 unification review (2026-09-01); this pin holds the order.
+    #[tokio::test]
+    async fn a_chain_rescued_task_still_logs_the_failure_warn() {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        use tracing_subscriber::layer::SubscriberExt;
+
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        {
+            let w = Writer::open_writable(&main_path, PEPPER).unwrap();
+            // The reconcile-test table shape: post-4.10, both fallback columns.
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE connection_profiles (\
+                       id TEXT PRIMARY KEY, userId TEXT, name TEXT, provider TEXT, \
+                       transport TEXT, courierDeltaMode INTEGER, apiKeyId TEXT, \
+                       baseUrl TEXT, modelName TEXT, parameters TEXT, isDefault INTEGER, \
+                       isCheap INTEGER, allowWebSearch INTEGER, useNativeWebSearch INTEGER, \
+                       allowToolUse INTEGER, pseudoToolMode TEXT, \
+                       \"multiCharacterPrefill\" INTEGER, modelClass TEXT, \
+                       maxContext REAL, maxTokens REAL, isDangerousCompatible INTEGER, \
+                       supportsImageUpload INTEGER, tags TEXT, sortIndex REAL, \
+                       totalTokens REAL, totalPromptTokens REAL, totalCompletionTokens REAL, \
+                       messageCount REAL, createdAt TEXT, updatedAt TEXT, \
+                       \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0);",
+                )
+                .unwrap();
+            // The failed primary names a keyless OLLAMA understudy. Every
+            // column `marshal_cp_row` reads non-optionally is filled.
+            w.connection()
+                .execute_batch(
+                    "INSERT INTO connection_profiles \
+                       (id, userId, name, provider, transport, courierDeltaMode, \
+                        modelName, parameters, isDefault, isCheap, allowWebSearch, \
+                        useNativeWebSearch, allowToolUse, pseudoToolMode, \
+                        isDangerousCompatible, supportsImageUpload, tags, sortIndex, \
+                        totalTokens, totalPromptTokens, totalCompletionTokens, \
+                        messageCount, createdAt, updatedAt, fallbackProfileId) VALUES \
+                       ('cp-primary', 'user-1', 'Primary', 'DEEPSEEK', 'api', 0, \
+                        'deepseek-chat', '{}', 0, 1, 0, 0, 1, 'auto', 0, 0, '[]', 0, \
+                        0, 0, 0, 0, 't', 't', 'cp-understudy'), \
+                       ('cp-understudy', 'user-1', 'Understudy', 'OLLAMA', 'api', 0, \
+                        'llama3', '{}', 0, 1, 0, 0, 1, 'auto', 0, 0, '[]', 1, \
+                        0, 0, 0, 0, 't', 't', NULL);",
+                )
+                .unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main: main_path,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+
+        let messages = vec![CompletionMessage::user("extract")];
+        // The primary fails with a chain-eligible (network-class) error; the
+        // understudy answers.
+        let provider = CannedCompletionProvider::new()
+            .with_failure(
+                "DEEPSEEK",
+                "deepseek-chat",
+                Some(0.3),
+                &messages,
+                "fetch failed",
+            )
+            .with_response("OLLAMA", "llama3", Some(0.3), &messages, "rescued", None);
+
+        let logs = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let r = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+                db: db.clone(),
+                user_id: "user-1".to_string(),
+                chat_id: None,
+                message_id: None,
+                ctx: LogContext::none(),
+            })
+            .execute(
+                &provider,
+                &CheapLlmSelection {
+                    provider: "DEEPSEEK".to_string(),
+                    model_name: "deepseek-chat".to_string(),
+                    base_url: None,
+                    connection_profile_id: Some("cp-primary".to_string()),
+                    is_local: false,
+                    profile_parameters: None,
+                },
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("memory-extraction-self"),
+                CheapLlmTaskOptions::default(),
+            )
+            .await
+        };
+        // The chain rescued the task…
+        let captured = logs.lock().unwrap().join("\n");
+        assert!(
+            r.success,
+            "the understudy should have answered: {:?}; captured:\n{captured}",
+            r.error
+        );
+        // …and the failure warn STILL fired, before the chain walked.
+        let failed_at = captured.find("[CheapLLM] Task failed").unwrap_or_else(|| {
+            panic!("a rescued task must still log its route's failure (v4 warns before the chain); captured:\n{captured}")
+        });
+        let retry_at = captured
+            .find("[CheapLLM] Retrying task with a stand-in")
+            .expect("the chain should have walked");
+        assert!(
+            failed_at < retry_at,
+            "the failure warn must precede the chain walk, as v4's catch does; captured:\n{captured}"
         );
     }
 
