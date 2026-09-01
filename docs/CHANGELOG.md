@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — docs(setupphase): the round-2 drift catch-up work orders — P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66
+
+_Docs-only; no version bumps._
+
+Six agent-ready work orders for the pre-planned round 2 (drift-ledger §3's
+eight rows, all now ORDERED): the three-commit LoRA train split
+server/SPA (P4.D138 D-stacks `84f33ce94` → `648d5c8aa` → `2ece98c90`
+server-side incl. the five-call-site params consolidation and the
+HuggingFace lookup; P4.D139 carries the client half incl. the
+`appliesToModels` gate), bug 112's `lastMessageAt` redefinition whole
+(P4.D140, with the recompute boot heal in the P4.D97 ledger shape), the
+Concierge four-state whole (P4.D141, closing the long-named
+`conciergeState` PUT deferral), `qt-range` + dogfood finding #107's
+inline-host fix and guard (P4.D142), and finding #106's optimistic-bubble
+reconcile with the suite's first mid-turn observation beat (P4.66, the
+round's one Playwright slot). Five shared contracts (§A–§E) pinned
+verbatim across all six orders; `4622411fd` assigned to the round's
+`/unify` for NO-PORT ratification with its evidence recorded. Regen rule:
+PIN REQUIRED, per-lane pins at each target commit.
+
 #### 2026-09-01 — chore(unify): the drift catch-up round 1 of 2 — P4.D134 ∥ (P4.D135→P4.D136) ∥ P4.D137
 
 _Versions: core 0.0.719, harness 0.0.616, host 0.0.86, cli 0.0.17, SPA 0.5.600; web/tauri unchanged._

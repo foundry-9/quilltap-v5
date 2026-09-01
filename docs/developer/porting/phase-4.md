@@ -6267,7 +6267,12 @@ the eight-row drift prefix is CLEARED and the baseline moves to
    lands on the P4.64/P4.65 home + Salon-list surfaces), the Concierge
    four-state (`60e3c4a0a`), `qt-range` (`5f56f7a7d`), and the two
    docs-only ratifications (`e41fcb12e`, `4622411fd`). PIN REQUIRED at
-   `7fb668263` until it lands.
+   `7fb668263` until it lands. **ORDERED 2026-09-01** as six lanes:
+   `p4.d138-lora-train-server` ∥ `p4.d139-lora-train-spa` ∥
+   `p4.d140-chat-activity-bug112` ∥ `p4.d141-concierge-four-state` ∥
+   `p4.d142-qt-range-inline-host` ∥ `p4.66-optimistic-bubble-reconcile`
+   (the last two fold in dogfood findings #107 and #106; `4622411fd`
+   ratifies at the round's `/unify`).
 2. **The owed dogfood pass** — the standing 💸 queue plus round 1's
    surfaces: a real dead-endpoint understudy answering with correct
    attribution + the exhausted chain's roll + the tier pick crossing
