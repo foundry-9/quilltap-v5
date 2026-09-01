@@ -96386,3 +96386,74 @@ is where a mismatch would surface; flagging it here so it is looked for rather
 than discovered by a 500.
 
 **Gate:** `npm run build` clean with the new types in the graph.
+
+### Unit 5 — the LoRA query-result panel
+
+v4's `components/image-profiles/LoraQueryResult.tsx` (new at `2ece98c90`)
+ported as `apps/web/src/app/screens/settings/images/lora-query-result.ts`. The
+module doc carries v4's thesis intact: the panel renders facts and **passes no
+judgement**, because a compatibility verdict would mean matching a provider's
+model ids against HuggingFace `base_model` strings — two naming conventions
+that answer to nobody — and a false "this will not work" on an adapter that
+works is worse than the silence it replaces.
+
+Ported whole: the seven `failureCopy` sentences, the three `kindCopy`
+sentences, the `<dl>` rows (Trained on / Nature / Pipeline / Weights with its
+0-1-many arms / Gated with the token cross-reference pair / Standing), the
+trigger-phrase row, the closing sentence, and the failure panel with its
+`HuggingFace — {repoId}` heading, `Try the page yourself` link and
+`target="_blank" rel="noopener noreferrer"`.
+
+**One recorded spelling divergence, deliberate and semantically neutral.** v4
+holds most of this copy in JSX and only `failureCopy`/`kindCopy` in module
+functions. v5 lifts the other meaning-carrying sentences (`baseModelsCopy`,
+`gatedCopy`, `standingCopy`) into exported helpers as well, so the spec pins
+their BYTES rather than a whitespace-collapsed `textContent` — Angular and JSX
+collapse template whitespace by similar but not identical rules, and the order
+asks for byte-for-byte asserts on the load-bearing copy. The two v4 already
+factored are 1:1 with v4's.
+
+**The fixtures are RECORDED, not written.** New oracle case
+`harness/oracle/cases/lora-lookup-shapes.test.ts` drives v4's REAL
+`lookupHuggingFaceLora` with `global.fetch` mocked over **v4's own payload
+fixtures** (`REALISM_LORA_PAYLOAD` and the trigger-phrase / multi-base /
+gated / ambiguous-weights / 401 variants lifted from
+`__tests__/unit/image-gen/huggingface-lookup.test.ts`), plus four shapes v4's
+suite does not build because its own tests do not need them
+(`adapter-not-lora`, `not-an-adapter`, `no-base-model`, `not-a-repo-id`) —
+each the only row that drives a panel branch. Ten shapes into
+`__fixtures__/lora-lookup-shapes.json`. This is what the order means by
+keeping the panel spec and the server's mock corpus the same shapes: they are
+the same shapes **by construction**, not by agreement.
+
+**What recording bought that a written fixture would not have.** v4's
+`ambiguous-weights` payload derives `isLora: true` **with** `isAdapter: false`
+— a combination no fixture author would think to build, and the only thing
+that makes the ORDER of `kindCopy`'s two ifs testable. The spec asserts that
+combination explicitly before asserting the sentence it produces.
+
+**Coverage of the seven failure sentences.** Only two are reachable through a
+recorded shape (`missing-or-private` via the 401, `not-a-repo-id` via a
+non-repo source), so all seven are pinned at the function — including the
+`default:` arm, which the spec also drives with an unlisted reason to prove a
+future server reason still reads as something rather than as blank. The
+`rate-limited` case asserts the apostrophe is U+2019 and explicitly NOT
+U+0027.
+
+**Mutation proofs (five, each verified applied).** `phraseOnOffer` comparing
+un-trimmed: 1 red. `kindCopy` checking `isAdapter` first: 2 red. The standing
+join changed from ` · ` to `, `: 2 red. `likes` rendered without
+`toLocaleString`: 2 red. The failure heading dropping the repo id: 1 red.
+
+A client-side mirror of v4's server-side honesty guard also ships: over four
+recorded shapes the rendered text must contain none of `compatible`,
+`compatibility`, `verdict` or `will not work`.
+
+**Gate:** panel spec 35/35.
+
+**Regen recipe** (in the oracle case's header, verbatim): mirror to
+`/tmp/qt-oracle-lora-lookup`, `cd /tmp/qt-v4-pin-p4d139-2ece98c90`, Node 24,
+`QT_ORACLE_OUT=<v5>/apps/web/src/app/screens/settings/images/__fixtures__/lora-lookup-shapes.json
+npx jest --silent --roots "$PWD" --roots /tmp/qt-oracle-lora-lookup --
+"lora-lookup-shapes\.test\.ts$"`. The network is never touched: `global.fetch`
+is replaced per case and restored in a `finally`.

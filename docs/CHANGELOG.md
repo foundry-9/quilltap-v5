@@ -586,6 +586,38 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — feat(spa): the LoRA query-result panel (P4.D139 unit 5)
+
+_Versions: SPA 0.5.606._
+
+v4's `LoraQueryResult.tsx` (new at `2ece98c90`, 187 lines) ported as
+`screens/settings/images/lora-query-result.ts`. Renders what HuggingFace
+declares about a repository and passes NO judgement on whether it will work —
+the module doc carries v4's reason, that a false "this will not work" on an
+adapter that works is worse than the silence it replaces.
+
+Everything is here: the seven `failureCopy` sentences (including
+`rate-limited`'s U+2019 in `moment’s`), the three `kindCopy` sentences, the
+Trained on / Nature / Pipeline / Weights (0-1-many arms) / Gated / Standing
+rows, the trigger-phrase row with its `Use it` button versus
+`— already in place.` on TRIMMED equality, the closing sentence, and the
+failure panel with its `HuggingFace — {repoId}` heading and
+`Try the page yourself` link. External links carry
+`target="_blank" rel="noopener noreferrer"`.
+
+v4's JSX copy that carries meaning is lifted into exported helpers so the spec
+pins its bytes directly rather than through a whitespace-collapsed
+`textContent` — a spelling difference, not a semantic one; the helpers are 1:1
+with v4's own module-level `failureCopy`/`kindCopy`.
+
+The result objects the spec renders are NOT hand-written. New oracle case
+`harness/oracle/cases/lora-lookup-shapes.test.ts` drives v4's REAL
+`lookupHuggingFaceLora` with `fetch` mocked over v4's own payload fixtures at
+the pin, and records the ten resulting shapes. That caught something a written
+fixture would have missed: v4's `ambiguous-weights` payload derives
+`isLora: true` WITH `isAdapter: false`, which is what makes the ORDER of
+`kindCopy`'s two ifs testable at all. Five mutations redden the spec.
+
 #### 2026-09-01 — test(spa): transcribe v4's repo-id table, which does exist (P4.D139 unit 3 correction)
 
 _Versions: SPA 0.5.605._

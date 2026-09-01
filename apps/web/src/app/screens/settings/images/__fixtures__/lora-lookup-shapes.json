@@ -1,0 +1,215 @@
+[
+  {
+    "name": "realism-lora",
+    "source": "XLabs-AI/flux-RealismLora",
+    "result": {
+      "ok": true,
+      "facts": {
+        "repoId": "XLabs-AI/flux-RealismLora",
+        "url": "https://huggingface.co/XLabs-AI/flux-RealismLora",
+        "baseModels": [
+          "black-forest-labs/FLUX.1-dev"
+        ],
+        "isAdapter": true,
+        "isLora": true,
+        "pipelineTag": "text-to-image",
+        "gated": false,
+        "weightFiles": [
+          "lora.safetensors"
+        ],
+        "triggerPhrase": null,
+        "downloads": 15707,
+        "likes": 1232,
+        "lastModified": "2024-08-22T10:19:23.000Z"
+      }
+    }
+  },
+  {
+    "name": "trigger-phrase",
+    "source": "Datou1111/shou_xin",
+    "result": {
+      "ok": true,
+      "facts": {
+        "repoId": "Datou1111/shou_xin",
+        "url": "https://huggingface.co/Datou1111/shou_xin",
+        "baseModels": [
+          "black-forest-labs/FLUX.1-dev"
+        ],
+        "isAdapter": true,
+        "isLora": true,
+        "pipelineTag": null,
+        "gated": false,
+        "weightFiles": [
+          "shou_xin.safetensors"
+        ],
+        "triggerPhrase": "shou_xin, pencil sketch",
+        "downloads": null,
+        "likes": null,
+        "lastModified": null
+      }
+    }
+  },
+  {
+    "name": "multi-base",
+    "source": "someone/multi-base",
+    "result": {
+      "ok": true,
+      "facts": {
+        "repoId": "someone/multi-base",
+        "url": "https://huggingface.co/someone/multi-base",
+        "baseModels": [
+          "black-forest-labs/FLUX.1-dev",
+          "black-forest-labs/FLUX.2-dev"
+        ],
+        "isAdapter": true,
+        "isLora": true,
+        "pipelineTag": null,
+        "gated": false,
+        "weightFiles": [],
+        "triggerPhrase": null,
+        "downloads": null,
+        "likes": null,
+        "lastModified": null
+      }
+    }
+  },
+  {
+    "name": "gated",
+    "source": "XLabs-AI/flux-RealismLora",
+    "result": {
+      "ok": true,
+      "facts": {
+        "repoId": "XLabs-AI/flux-RealismLora",
+        "url": "https://huggingface.co/XLabs-AI/flux-RealismLora",
+        "baseModels": [
+          "black-forest-labs/FLUX.1-dev"
+        ],
+        "isAdapter": true,
+        "isLora": true,
+        "pipelineTag": "text-to-image",
+        "gated": "auto",
+        "weightFiles": [
+          "lora.safetensors"
+        ],
+        "triggerPhrase": null,
+        "downloads": 15707,
+        "likes": 1232,
+        "lastModified": "2024-08-22T10:19:23.000Z"
+      }
+    }
+  },
+  {
+    "name": "ambiguous-weights",
+    "source": "lovis93/Flux-2-Multi-Angles-LoRA-v2",
+    "result": {
+      "ok": true,
+      "facts": {
+        "repoId": "lovis93/Flux-2-Multi-Angles-LoRA-v2",
+        "url": "https://huggingface.co/lovis93/Flux-2-Multi-Angles-LoRA-v2",
+        "baseModels": [],
+        "isAdapter": false,
+        "isLora": true,
+        "pipelineTag": null,
+        "gated": false,
+        "weightFiles": [
+          "flux-multi-angles-v2-72poses-comfy.safetensors",
+          "flux-multi-angles-v2-72poses-fal.safetensors"
+        ],
+        "triggerPhrase": null,
+        "downloads": null,
+        "likes": null,
+        "lastModified": null
+      }
+    }
+  },
+  {
+    "name": "unauthorized",
+    "source": "nobody/nothing-at-all",
+    "result": {
+      "ok": false,
+      "reason": "missing-or-private",
+      "repoId": "nobody/nothing-at-all",
+      "url": "https://huggingface.co/nobody/nothing-at-all",
+      "detail": "HTTP 401"
+    }
+  },
+  {
+    "name": "adapter-not-lora",
+    "source": "someone/plain-adapter",
+    "result": {
+      "ok": true,
+      "facts": {
+        "repoId": "someone/plain-adapter",
+        "url": "https://huggingface.co/someone/plain-adapter",
+        "baseModels": [
+          "black-forest-labs/FLUX.1-dev"
+        ],
+        "isAdapter": true,
+        "isLora": false,
+        "pipelineTag": null,
+        "gated": false,
+        "weightFiles": [
+          "adapter.safetensors"
+        ],
+        "triggerPhrase": null,
+        "downloads": null,
+        "likes": null,
+        "lastModified": null
+      }
+    }
+  },
+  {
+    "name": "not-an-adapter",
+    "source": "someone/full-checkpoint",
+    "result": {
+      "ok": true,
+      "facts": {
+        "repoId": "someone/full-checkpoint",
+        "url": "https://huggingface.co/someone/full-checkpoint",
+        "baseModels": [],
+        "isAdapter": false,
+        "isLora": false,
+        "pipelineTag": "text-to-image",
+        "gated": false,
+        "weightFiles": [
+          "model.safetensors"
+        ],
+        "triggerPhrase": null,
+        "downloads": 42,
+        "likes": null,
+        "lastModified": null
+      }
+    }
+  },
+  {
+    "name": "no-base-model",
+    "source": "someone/bare",
+    "result": {
+      "ok": true,
+      "facts": {
+        "repoId": "someone/bare",
+        "url": "https://huggingface.co/someone/bare",
+        "baseModels": [],
+        "isAdapter": false,
+        "isLora": true,
+        "pipelineTag": null,
+        "gated": false,
+        "weightFiles": [],
+        "triggerPhrase": null,
+        "downloads": null,
+        "likes": null,
+        "lastModified": null
+      }
+    }
+  },
+  {
+    "name": "not-a-repo-id",
+    "source": "https://cdn.example.com/w.safetensors",
+    "result": {
+      "ok": false,
+      "reason": "not-a-repo-id",
+      "repoId": null,
+      "url": null
+    }
+  }
+]
