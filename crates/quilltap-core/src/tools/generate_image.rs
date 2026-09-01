@@ -56,9 +56,13 @@ use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::doc_mount_file_links::{DocMountFileLinksRepository, LinkBlobInput};
 use crate::db::runtime::Db;
 use crate::db::DbError;
-use crate::image_gen::{resolve_orientation, ModelInfo, Orientation};
+use crate::image_gen::params_builder::{
+    build_image_gen_params, resolve_profile_loras, ImageDeclarations, ImageDeclarationsFn,
+    ImageGenOverrides, ImageParamsLogContext, ImageProfileLike,
+};
+use crate::image_gen::Orientation;
 use crate::model::completion::CompletionProvider;
-use crate::model::image::{ImageGenParams, ImageProvider, ImageTranscoder, TranscodeInput};
+use crate::model::image::{ImageProvider, ImageTranscoder, TranscodeInput};
 use crate::pronoun_gender::gender_from_pronouns;
 use crate::services::activity_kinds::ActivityKind;
 use crate::services::activity_registry::track_activity;
@@ -114,8 +118,12 @@ pub struct GeneratedImageResult {
 }
 
 /// The tool input the dispatcher hands the handler (v4 `ImageGenerationToolInput`
-/// — the validated Zod shape). `count`/`size`/`style` carry the schema defaults
-/// materialized by the dispatcher before the handler runs.
+/// — the validated Zod shape). Every field is as the CALLER supplied it: the
+/// schema's `size`/`style`/`quality`/`count` defaults are materialized by the
+/// handler itself, exactly as v4's `validateImageGenerationInput` (a Zod
+/// `safeParse`) does — see `apply_tool_input_schema_defaults`. (This comment
+/// used to claim the dispatcher materialized them; it does not, and P4.D138's
+/// corpus widening is what made the gap visible.)
 #[derive(Clone, Debug)]
 pub struct ImageGenerationToolInput {
     pub prompt: String,
@@ -133,6 +141,36 @@ pub struct ImageGenerationToolInput {
 pub fn validate_image_generation_input(input: &ImageGenerationToolInput) -> bool {
     let n = crate::jsstr::utf16_len(&input.prompt);
     (1..=4000).contains(&n)
+}
+
+/// v4's `imageGenerationToolInputSchema` DEFAULTS, applied by the handler's own
+/// `validateImageGenerationInput` (`safeParse(...).data`) before anything reads
+/// the input: `size: '1024x1024'`, `style: 'vivid'`, `quality: 'standard'`,
+/// `count: 1`.
+///
+/// **This was a latent v5 divergence, exposed by `84f33ce94`'s corpus
+/// widening.** v5 only ever checked the prompt here, so those four fields
+/// stayed `None` — invisible for as long as the profile's stored bag was empty,
+/// because the OpenAI dialect applies the same `standard`/`vivid` defaults at
+/// the wire. The moment a profile stores `quality: 'hd'`, v4 keeps `standard`
+/// (the schema default is an OVERRIDE and outranks the stored default) and v5
+/// took `hd`. Measured against v4's real handler, not reasoned about.
+///
+/// The enum/length VALIDATION half of `safeParse` is deliberately not
+/// reproduced here: v5's tool input is already typed by the time it reaches
+/// this handler, and v4's refusal-on-bad-enum has no v5 corpus. Recorded rather
+/// than silently narrowed.
+fn apply_tool_input_schema_defaults(input: &ImageGenerationToolInput) -> ImageGenerationToolInput {
+    ImageGenerationToolInput {
+        size: input.size.clone().or_else(|| Some("1024x1024".to_string())),
+        style: input.style.clone().or_else(|| Some("vivid".to_string())),
+        quality: input
+            .quality
+            .clone()
+            .or_else(|| Some("standard".to_string())),
+        count: input.count.or(Some(1)),
+        ..input.clone()
+    }
 }
 
 /// The execution context (v4 `ImageToolExecutionContext`).
@@ -297,7 +335,7 @@ impl ImageGenerationRunner for NotConfiguredImageGeneration {
 
 /// A concrete [`ImageGenerationRunner`] over owned seams. The production host + the
 /// differential each build one of these; it forwards to
-/// [`execute_image_generation_tool`]. `orientation_data_for` is an owned closure.
+/// [`execute_image_generation_tool`]. `declarations_for` is an owned closure.
 pub struct TypedImageGeneration<I, C, M, A, T, L, F> {
     pub image_provider: I,
     pub completion: C,
@@ -307,8 +345,8 @@ pub struct TypedImageGeneration<I, C, M, A, T, L, F> {
     pub lantern: L,
     pub executor: CheapLlmTaskExecutor,
     pub now_ms: i64,
-    /// `Fn(provider) -> (models, provider-support)` (the plugin-registry seam).
-    pub orientation_data_for: F,
+    /// `Fn(provider) -> ImageDeclarations` (the plugin-registry seam).
+    pub declarations_for: F,
 }
 
 impl<I, C, M, A, T, L, F> ImageGenerationRunner for TypedImageGeneration<I, C, M, A, T, L, F>
@@ -319,10 +357,7 @@ where
     A: ApiKeyResolver + Send + Sync,
     T: ImageTranscoder + Send + Sync,
     L: LanternNotificationSink + Send + Sync,
-    F: Fn(&str) -> (Vec<ModelInfo>, Option<crate::image_gen::OrientationSupport>)
-        + Send
-        + Sync
-        + 'static,
+    F: Fn(&str) -> ImageDeclarations + Send + Sync + 'static,
 {
     fn run<'a>(
         &'a self,
@@ -341,18 +376,12 @@ where
                 lantern: &self.lantern,
                 executor: &self.executor,
                 now_ms: self.now_ms,
-                orientation_data_for: &self.orientation_data_for,
+                declarations_for: &self.declarations_for,
             };
             execute_image_generation_tool(db, &deps, input, ctx).await
         })
     }
 }
-
-/// The orientation-data provider signature (v4's plugin-registry
-/// `getImageGenerationModels` + `getImageProviderConstraints(...).orientationSupport`,
-/// per provider): `provider -> (per-model info, provider-level default support)`.
-pub type OrientationDataFn =
-    dyn Fn(&str) -> (Vec<ModelInfo>, Option<crate::image_gen::OrientationSupport>) + Send + Sync;
 
 /// The bag of injected seams the handler needs (grouped so the top-level signature
 /// stays legible). Providers are borrowed for the handler's lifetime.
@@ -369,78 +398,42 @@ pub struct ImageGenDeps<'a, I, C, M, A, T, L> {
     /// Injected wall clock for the `generated_<ts>.<ext>` filename (v4
     /// `Date.now()`). The differential pins it so the provider filename is stable.
     pub now_ms: i64,
-    /// Injected orientation data per provider (v4's plugin-registry
-    /// `getImageGenerationModels` + `getImageProviderConstraints(...).orientationSupport`).
-    /// Returns `(per-model info, provider-level default support)`, both consulted
-    /// by `resolveOrientation`.
-    pub orientation_data_for: &'a OrientationDataFn,
+    /// Injected plugin-registry declarations per provider (v4's
+    /// `getImageGenerationModels` + `getImageProviderConstraints`): the model
+    /// list plus BOTH provider-level defaults. Consulted by `resolveOrientation`
+    /// AND `resolveLoraSupport` — `84f33ce94` widened this seam from the
+    /// orientation half to v4's whole declaration set.
+    pub declarations_for: &'a ImageDeclarationsFn,
 }
 
 // ===========================================================================
-// mergeParameters + applyOrientation
+// The shared params builder (v4 `84f33ce94`)
 // ===========================================================================
+//
+// v4 DELETED this file's local `mergeParameters` + `applyOrientation` in
+// `84f33ce94`, folding both into `lib/image-gen/params-builder.ts` so all five
+// image call sites merge identically. v5 does the same: the tool's own input
+// is translated to the builder's override slice and nothing else here knows
+// the merge semantics.
 
-/// A JSON value's number as `i64` when integer-valued (v4 reads
-/// `profile.n as number` etc.; SQLite REAL cells round-trip integers).
-fn as_i64(v: Option<&Value>) -> Option<i64> {
-    v.and_then(Value::as_i64)
-        .or_else(|| v.and_then(Value::as_f64).map(|f| f as i64))
-}
+/// v4 `buildImageGenParams`'s `fallbackModel` default — the model of last
+/// resort when neither the tool input, the profile, nor the stored bag names
+/// one.
+const DEFAULT_IMAGE_MODEL: &str = "dall-e-3";
 
-/// v4 `mergeParameters`: tool input over profile defaults, model from the profile.
-fn merge_parameters(
-    input: &ImageGenerationToolInput,
-    profile_defaults: &Value,
-    model: Option<&str>,
-) -> ImageGenParams {
-    let d = |k: &str| profile_defaults.get(k);
-    let str_default = |k: &str| d(k).and_then(Value::as_str).map(str::to_string);
-    ImageGenParams {
-        prompt: input.prompt.clone(),
-        negative_prompt: input
-            .negative_prompt
-            .clone()
-            .or_else(|| str_default("negativePrompt")),
-        model: model
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .or_else(|| str_default("model"))
-            .unwrap_or_else(|| "dall-e-3".to_string()),
-        n: input.count.or_else(|| as_i64(d("n"))).or(Some(1)),
-        size: input.size.clone().or_else(|| str_default("size")),
-        aspect_ratio: input
-            .aspect_ratio
-            .clone()
-            .or_else(|| str_default("aspectRatio")),
-        quality: input.quality.clone().or_else(|| str_default("quality")),
-        style: input.style.clone().or_else(|| str_default("style")),
-        seed: as_i64(d("seed")),
-        guidance_scale: d("guidanceScale").and_then(Value::as_f64),
-        steps: as_i64(d("steps")),
-    }
-}
-
-/// v4 `applyOrientation`: mutate `size`/`aspectRatio`/prompt in place per the
-/// resolved orientation (orientation wins over any raw size/aspectRatio). The
-/// per-provider `models` + provider-level `provider_support` come from the plugin
-/// registry (v4's `getImageGenerationModels` / `getImageProviderConstraints`),
-/// supplied via the injected [`ImageGenDeps::orientation_data_for`].
-fn apply_orientation(
-    params: &mut ImageGenParams,
-    orientation: Orientation,
-    models: &[ModelInfo],
-    provider_support: Option<&crate::image_gen::OrientationSupport>,
-) {
-    let model = params.model.clone();
-    let resolved = resolve_orientation(Some(models), Some(&model), provider_support, orientation);
-    if let Some(size) = resolved.size {
-        params.size = Some(size);
-    }
-    if let Some(aspect) = resolved.aspect_ratio {
-        params.aspect_ratio = Some(aspect);
-    }
-    if !resolved.prompt_hint.is_empty() {
-        params.prompt = format!("{}\n\n{}", params.prompt, resolved.prompt_hint);
+/// Turn the tool's own input into the override slice the shared builder takes
+/// (v4 `toolInputOverrides`). This only translates vocabulary (`count` -> `n`)
+/// so the tool's schema and `ImageGenParams` can keep their own names — the
+/// builder owns the merge.
+fn tool_input_overrides(input: &ImageGenerationToolInput) -> ImageGenOverrides {
+    ImageGenOverrides {
+        negative_prompt: input.negative_prompt.clone(),
+        n: input.count.map(|c| c as f64),
+        size: input.size.clone(),
+        aspect_ratio: input.aspect_ratio.clone(),
+        quality: input.quality.clone(),
+        style: input.style.clone(),
+        ..Default::default()
     }
 }
 
@@ -768,6 +761,7 @@ fn build_expansion_context(
     original_prompt: &str,
     resolved: &[ResolvedPlaceholder],
     provider: &str,
+    style_trigger_phrase: Option<&str>,
     resolved_appearances: Option<&[ResolvedCharacterAppearance]>,
 ) -> ImagePromptExpansionContext {
     let placeholders = resolved
@@ -843,7 +837,10 @@ fn build_expansion_context(
         placeholders,
         target_length: provider_limit(provider),
         provider: provider.to_string(),
-        style_trigger_phrase: None,
+        style_trigger_phrase: style_trigger_phrase.map(str::to_string),
+        // v4 only ever sets `styleName` alongside a real STYLE (unported here);
+        // the LoRA fold supplies the phrase alone, so the crafter's
+        // ` (for "…" style)` suffix stays absent.
         style_name: None,
         scene_aesthetic: None,
         character_aesthetic: None,
@@ -1557,13 +1554,17 @@ where
     T: ImageTranscoder,
     L: LanternNotificationSink,
 {
-    // 1. Validate input.
+    // 1. Validate input. v4's `validateImageGenerationInput` is a Zod
+    // `safeParse`, so it also APPLIES the schema's defaults and the handler
+    // reads `parsed` from here on — see `apply_tool_input_schema_defaults`.
     if !validate_image_generation_input(input) {
         return output_error(
             "Invalid input: prompt is required and must be a non-empty string",
             "Image generation tool received invalid parameters",
         );
     }
+    let defaulted = apply_tool_input_schema_defaults(input);
+    let input = &defaulted;
 
     // 2. Load + validate the profile (API key via the seam).
     let load = match load_and_validate_profile(db, deps.api_keys, &ctx.profile_id, &ctx.user_id) {
@@ -1880,6 +1881,38 @@ where
     T: ImageTranscoder,
     L: LanternNotificationSink,
 {
+    // 5c (v4 `84f33ce94`, the tail of `classifyAndRouteForDangerousContent`).
+    // Fold in the trigger phrases of the effective profile's LoRAs, so the
+    // prompt crafter weaves each adapter's magic word into the prompt it writes
+    // rather than having it bolted on afterwards. Resolved against the profile
+    // that will actually generate — the reroute above may have swapped it. The
+    // params builder appends anything the crafter fails to say, so a skipped or
+    // fallen-back expansion still delivers the phrase.
+    //
+    // v4 combines with `styleOptions.styleTriggerPhrase` (`${style}, ${lora}`);
+    // v5 has no style-options surface on this path (the crafter seam's
+    // `style_trigger_phrase` has always been `None` here), so the LoRA phrases
+    // ARE the combined value.
+    let (_, _, lora_trigger_phrase) = resolve_profile_loras(
+        ImageProfileLike {
+            provider: &effective_profile.provider,
+            model_name: Some(&effective_profile.model_name),
+            parameters: Some(&effective_profile.parameters),
+        },
+        &(deps.declarations_for)(&effective_profile.provider),
+    );
+    let style_trigger_phrase = if lora_trigger_phrase.is_empty() {
+        None
+    } else {
+        tracing::debug!(
+            chat_id = ?ctx.chat_id,
+            profile_id = %effective_profile.id,
+            lora_trigger_phrase = %lora_trigger_phrase,
+            "[Image Generation] LoRA trigger phrases routed into prompt expansion"
+        );
+        Some(lora_trigger_phrase)
+    };
+
     // 6. Expand.
     let expanded_prompt = expand_prompt_with_descriptions(
         db,
@@ -1887,6 +1920,7 @@ where
         &input.prompt,
         &effective_profile.provider,
         image_prompt_dangerous,
+        style_trigger_phrase.as_deref(),
         resolved_appearances,
         db_ctx,
         ctx,
@@ -1946,6 +1980,9 @@ async fn expand_prompt_with_descriptions<I, C, M, A, T, L>(
     original_prompt: &str,
     provider: &str,
     is_dangerous: bool,
+    // v4 `styleOptions?.styleTriggerPhrase` — on this path, the effective
+    // profile's joined LoRA trigger phrases (step 5c).
+    style_trigger_phrase: Option<&str>,
     resolved_appearances: Option<&[ResolvedCharacterAppearance]>,
     db_ctx: &DbContext,
     ctx: &ImageToolExecutionContext,
@@ -1970,8 +2007,13 @@ where
             Err(_) => return original_prompt.to_string(),
         };
 
-    let expansion_context =
-        build_expansion_context(original_prompt, &resolved, provider, resolved_appearances);
+    let expansion_context = build_expansion_context(
+        original_prompt,
+        &resolved,
+        provider,
+        style_trigger_phrase,
+        resolved_appearances,
+    );
 
     // Select the crafting cheap-LLM: the uncensored image-prompt profile on
     // dangerous content, else the standard cheap-LLM logic.
@@ -2201,19 +2243,31 @@ where
     T: ImageTranscoder,
     L: LanternNotificationSink,
 {
-    // Merge params + resolve orientation (orientation wins over raw size/aspect).
-    let mut merged = merge_parameters(
-        tool_input,
-        &image_profile.parameters,
-        Some(&image_profile.model_name),
-    );
-    let (models, support) = (deps.orientation_data_for)(&image_profile.provider);
-    apply_orientation(
-        &mut merged,
-        orientation_of(original_input),
-        &models,
-        support.as_ref(),
-    );
+    // One builder for every image call site: merges the profile's defaults
+    // under the tool's input, resolves the orientation onto this
+    // provider/model's own mechanism (orientation outranks any raw size the LLM
+    // passed), and attaches the profile's capped LoRA list plus its residual
+    // parameter bag. `tool_input.prompt` is already the expanded prompt, so
+    // whatever the builder appends lands in the intended final form.
+    let merged = build_image_gen_params(
+        ImageProfileLike {
+            provider: &image_profile.provider,
+            model_name: Some(&image_profile.model_name),
+            parameters: Some(&image_profile.parameters),
+        },
+        &tool_input.prompt,
+        &tool_input_overrides(tool_input),
+        Some(orientation_of(original_input)),
+        DEFAULT_IMAGE_MODEL,
+        &(deps.declarations_for)(&image_profile.provider),
+        &ImageParamsLogContext {
+            context: "tools.generate_image",
+            chat_id: ctx.chat_id.clone(),
+            profile_id: Some(image_profile.id.clone()),
+            ..Default::default()
+        },
+    )
+    .params;
 
     let mut active_provider = image_profile.provider.clone();
     let mut active_model = image_profile.model_name.clone();
@@ -2289,19 +2343,29 @@ where
             // `parameters` are not carried on the `RouteProfile`; v4 reads
             // `reroute.profile.parameters`, so load them from the DB.
             let reroute_params = load_profile_parameters(db, &reroute.profile.id);
-            let mut reroute_merged = merge_parameters(
-                tool_input,
-                &reroute_params,
-                Some(&reroute.profile.model_name),
-            );
-            let (reroute_models, reroute_support) =
-                (deps.orientation_data_for)(&reroute.profile.provider);
-            apply_orientation(
-                &mut reroute_merged,
-                orientation_of(original_input),
-                &reroute_models,
-                reroute_support.as_ref(),
-            );
+            // Rebuild from scratch for the reroute target: its shape mechanism,
+            // its LoRA support, and its stored parameters are all its own. The
+            // prompt was crafted against the original profile, so any trigger
+            // phrases the fallback's adapters want get appended here.
+            let reroute_merged = build_image_gen_params(
+                ImageProfileLike {
+                    provider: &reroute.profile.provider,
+                    model_name: Some(&reroute.profile.model_name),
+                    parameters: Some(&reroute_params),
+                },
+                &tool_input.prompt,
+                &tool_input_overrides(tool_input),
+                Some(orientation_of(original_input)),
+                DEFAULT_IMAGE_MODEL,
+                &(deps.declarations_for)(&reroute.profile.provider),
+                &ImageParamsLogContext {
+                    context: "tools.generate_image.concierge-reroute",
+                    chat_id: ctx.chat_id.clone(),
+                    profile_id: Some(reroute.profile.id.clone()),
+                    ..Default::default()
+                },
+            )
+            .params;
             let reroute_start = crate::clock::now_unix_ms();
             match deps
                 .image_provider
@@ -2499,7 +2563,7 @@ mod duration_tests {
             &self,
             _provider: &str,
             _api_key: &str,
-            _params: &ImageGenParams,
+            _params: &crate::model::image::ImageGenParams,
         ) -> Result<ImageGenResponse, ImageGenError> {
             tokio::time::sleep(std::time::Duration::from_millis(30)).await;
             Err(ImageGenError {
@@ -2538,7 +2602,8 @@ mod duration_tests {
         )
         .unwrap();
 
-        let orientation_data: Box<OrientationDataFn> = Box::new(|_p: &str| (Vec::new(), None));
+        let declarations: Box<ImageDeclarationsFn> =
+            Box::new(|_p: &str| ImageDeclarations::default());
         let deps = ImageGenDeps {
             image_provider: &SlowFailingProvider,
             completion: &CannedCompletionProvider::new(),
@@ -2548,7 +2613,7 @@ mod duration_tests {
             lantern: &NoLanternNotification,
             executor: &CheapLlmTaskExecutor::new(),
             now_ms: 1_700_000_000_000,
-            orientation_data_for: &orientation_data,
+            declarations_for: &declarations,
         };
         let tool_input = ImageGenerationToolInput {
             prompt: "a prompt".to_string(),

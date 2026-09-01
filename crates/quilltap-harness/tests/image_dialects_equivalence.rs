@@ -43,6 +43,23 @@ fn opt_str(v: &Value, key: &str) -> Option<String> {
     v.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
+/// Rebuild one `ImageLoraSpec` from the recorded `loras` entry (P4.D138).
+fn lora_spec_from_json(v: &Value) -> quilltap_core::image_gen::lora_support::ImageLoraSpec {
+    quilltap_core::image_gen::lora_support::ImageLoraSpec {
+        source: v
+            .get("source")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        scale: v.get("scale").and_then(Value::as_f64),
+        trigger_phrase: v
+            .get("triggerPhrase")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        label: v.get("label").and_then(Value::as_str).map(str::to_string),
+    }
+}
+
 fn params_from_json(input: &Value) -> ImageGenParams {
     ImageGenParams {
         prompt: input
@@ -56,14 +73,21 @@ fn params_from_json(input: &Value) -> ImageGenParams {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string(),
-        n: input.get("n").and_then(Value::as_i64),
+        n: input.get("n").and_then(Value::as_f64),
         size: opt_str(input, "size"),
         aspect_ratio: opt_str(input, "aspectRatio"),
         quality: opt_str(input, "quality"),
         style: opt_str(input, "style"),
-        seed: input.get("seed").and_then(Value::as_i64),
+        seed: input.get("seed").and_then(Value::as_f64),
         guidance_scale: input.get("guidanceScale").and_then(Value::as_f64),
-        steps: input.get("steps").and_then(Value::as_i64),
+        response_format: opt_str(input, "responseFormat"),
+        loras: input
+            .get("loras")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().map(lora_spec_from_json).collect())
+            .unwrap_or_default(),
+        profile_parameters: input.get("profileParameters").cloned(),
+        steps: input.get("steps").and_then(Value::as_f64),
     }
 }
 

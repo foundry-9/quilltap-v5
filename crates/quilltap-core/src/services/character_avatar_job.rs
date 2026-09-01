@@ -99,7 +99,7 @@ pub struct AvatarJobDeps<'a, I, C, M, A, T, U> {
     pub now_ms: i64,
     /// The plugin-registry orientation seam (v4's `getImageGenerationModels` +
     /// `getImageProviderConstraints`).
-    pub orientation_data_for: &'a common::OrientationDataFn,
+    pub declarations_for: &'a common::ImageDeclarationsFn,
 }
 
 /// v4 `handleCharacterAvatarGeneration`. Returns `Ok(())` on success or a benign
@@ -109,6 +109,10 @@ pub async fn handle_character_avatar_generation<I, C, M, A, T, U>(
     deps: &AvatarJobDeps<'_, I, C, M, A, T, U>,
     user_id: &str,
     payload: &CharacterAvatarPayload,
+    // v4 folds `jobId: job.id` into this handler's image-params log context
+    // (`84f33ce94`). Log-only, but the runner has it in hand, so it is threaded
+    // rather than dropped.
+    job_id: &str,
 ) -> Result<(), String>
 where
     I: ImageProvider,
@@ -310,13 +314,16 @@ where
         &eff_api_key,
         &prompt,
         Orientation::Portrait,
-        deps.orientation_data_for,
+        deps.declarations_for,
         &danger_settings.mode,
         danger_settings.uncensored_image_profile_id.as_deref(),
         user_id,
         Some(&payload.chat_id),
         Some(&payload.character_id),
         "Avatar image generation failed",
+        "background-jobs.character-avatar",
+        "background-jobs.character-avatar.concierge-reroute",
+        Some(job_id),
         // [decd8ef9] The candid re-craft is the STORY path's; v4's avatar
         // builder is unchanged, so the reroute resends the prompt it has.
         &common::NoRerouteRecraft,
@@ -494,7 +501,7 @@ pub struct CharacterAvatarGenerationHandler<I, C, M, A, T, U, F> {
     pub upload: U,
     pub now_ms: i64,
     /// `Fn(provider) -> (models, provider-support)` (the plugin-registry seam).
-    pub orientation_data_for: F,
+    pub declarations_for: F,
 }
 
 impl<I, C, M, A, T, U, F> crate::services::job_runner::JobHandler
@@ -506,14 +513,7 @@ where
     A: ApiKeyResolver + Send + Sync,
     T: ImageTranscoder + Send + Sync,
     U: common::ProjectImageUpload + Send + Sync,
-    F: Fn(
-            &str,
-        ) -> (
-            Vec<crate::image_gen::ModelInfo>,
-            Option<crate::image_gen::OrientationSupport>,
-        ) + Send
-        + Sync
-        + 'static,
+    F: Fn(&str) -> crate::image_gen::params_builder::ImageDeclarations + Send + Sync + 'static,
 {
     fn handle<'a>(
         &'a self,
@@ -534,9 +534,11 @@ where
                 transcoder: &self.transcoder,
                 upload: &self.upload,
                 now_ms: self.now_ms,
-                orientation_data_for: &self.orientation_data_for as &common::OrientationDataFn,
+                declarations_for: &self.declarations_for as &common::ImageDeclarationsFn,
             };
-            match handle_character_avatar_generation(db, &deps, &job.user_id, &payload).await {
+            match handle_character_avatar_generation(db, &deps, &job.user_id, &payload, &job.id)
+                .await
+            {
                 Ok(()) => crate::services::job_runner::JobOutcome::Completed(None),
                 Err(e) => crate::services::job_runner::JobOutcome::Failed(e),
             }

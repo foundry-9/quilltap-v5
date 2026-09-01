@@ -75,7 +75,20 @@
       "modelName": "dall-e-3",
       "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
       "baseUrl": null,
-      "parameters": {},
+      "parameters": {
+        "quality": "hd",
+        "negativePrompt": "blurry, extra fingers",
+        "seed": 4242,
+        "guidanceScale": 3.5,
+        "steps": 28,
+        "responseFormat": "b64_json",
+        "num_inference_steps": 20,
+        "loras": [
+          { "source": "owner/portrait-lora", "scale": 0.8, "triggerPhrase": "shou_xin" },
+          { "source": "https://example.test/second.safetensors" },
+          { "source": "owner/third-lora", "triggerPhrase": "dropped_phrase" }
+        ]
+      },
       "isDefault": true,
       "isDangerousCompatible": false,
       "tags": []

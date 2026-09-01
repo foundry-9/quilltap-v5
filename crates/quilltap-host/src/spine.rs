@@ -2832,7 +2832,7 @@ impl JobHandler for AvatarJobHandler {
                     codec: Arc::new(HostImageCodec),
                 },
                 now_ms: now_unix_ms(),
-                orientation_data_for: quilltap_core::image_gen_data::orientation_data_for,
+                declarations_for: quilltap_core::image_gen_data::image_declarations_for,
             };
             inner.handle(db, job).await
         })
@@ -2879,7 +2879,7 @@ impl JobHandler for StoryBackgroundJobHandler {
                     ctx: LogContext::none(),
                 }),
                 now_ms: now_unix_ms(),
-                orientation_data_for: quilltap_core::image_gen_data::orientation_data_for,
+                declarations_for: quilltap_core::image_gen_data::image_declarations_for,
             };
             inner.handle(db, job).await
         })
@@ -2927,7 +2927,7 @@ impl ImageGenerationRunner for HostImageGenerationRunner {
                 message_id: None,
                 ctx: LogContext::none(),
             });
-            let orientation_fn = quilltap_core::image_gen_data::orientation_data_for;
+            let declarations_fn = quilltap_core::image_gen_data::image_declarations_for;
             let deps = ImageGenDeps {
                 image_provider: &image_provider,
                 completion: &completion,
@@ -2937,7 +2937,7 @@ impl ImageGenerationRunner for HostImageGenerationRunner {
                 lantern: &lantern,
                 executor: &executor,
                 now_ms: now_unix_ms(),
-                orientation_data_for: &orientation_fn,
+                declarations_for: &declarations_fn,
             };
             execute_image_generation_tool(db, &deps, input, ctx).await
         })

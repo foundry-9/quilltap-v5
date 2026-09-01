@@ -119,10 +119,28 @@
   ],
 
   "imageProfiles": [
-    { "id": "e5000000-0000-4000-8000-000000000001", "name": "OpenAI Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": true, "isDangerousCompatible": false, "tags": [] },
+    { "id": "e5000000-0000-4000-8000-000000000001", "name": "OpenAI Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {
+        "quality": "hd",
+        "negativePrompt": "blurry, extra fingers",
+        "seed": 4242,
+        "guidanceScale": 3.5,
+        "steps": 28,
+        "responseFormat": "b64_json",
+        "num_inference_steps": 20,
+        "loras": [
+          { "source": "owner/portrait-lora", "scale": 0.8, "triggerPhrase": "shou_xin" },
+          { "source": "https://example.test/second.safetensors" },
+          { "source": "owner/third-lora", "triggerPhrase": "dropped_phrase" }
+        ]
+      }, "isDefault": true, "isDangerousCompatible": false, "tags": [] },
     { "id": "e5000000-0000-4000-8000-000000000002", "name": "Grok Images", "provider": "GROK", "modelName": "grok-2-image", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": false, "tags": [] },
     { "id": "e5000000-0000-4000-8000-000000000003", "name": "Blocked Images", "provider": "OPENAI", "modelName": "blocked-model", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": false, "tags": [] },
-    { "id": "e5000000-0000-4000-8000-000000000004", "name": "Uncensored Images", "provider": "OPENAI", "modelName": "uncensored-model", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {}, "isDefault": false, "isDangerousCompatible": true, "tags": [] }
+    { "id": "e5000000-0000-4000-8000-000000000004", "name": "Uncensored Images", "provider": "OPENAI", "modelName": "uncensored-model", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {
+        "quality": "standard",
+        "negativePrompt": "washed out",
+        "seed": 99,
+        "lora_preset": "noir"
+      }, "isDefault": false, "isDangerousCompatible": true, "tags": [] }
   ],
 
   "connectionProfiles": [

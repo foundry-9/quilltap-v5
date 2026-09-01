@@ -32,6 +32,7 @@ use crate::db::js_number_to_json;
 
 pub mod lora_support;
 pub mod lora_validation;
+pub mod params_builder;
 
 pub use lora_support::{ImageLoraSpec, ImageLoraSupport, LoraScale};
 

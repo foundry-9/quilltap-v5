@@ -84,8 +84,16 @@ const OPENAI_SUPPORT = {
   landscape: { size: '1792x1024' },
   square: { size: '1024x1024' },
 };
-function modelsFor(provider: string): Array<{ id: string; orientationSupport: unknown }> | null {
-  if (provider === 'OPENAI') return [{ id: 'dall-e-3', orientationSupport: OPENAI_SUPPORT }];
+
+/** P4.D138: a canned per-model `loraSupport`, so the shared params builder's
+ *  cap + trigger-phrase append are MEASURABLE on this path. Two adapters, no
+ *  scale block (the host's DEFAULT_LORA_SCALE applies). */
+const CANNED_LORA_SUPPORT = { maxLoras: 2, sourceKinds: ['url', 'hf-repo'] };
+function modelsFor(
+  provider: string,
+): Array<{ id: string; orientationSupport: unknown; loraSupport?: unknown }> | null {
+  if (provider === 'OPENAI')
+    return [{ id: 'dall-e-3', orientationSupport: OPENAI_SUPPORT, loraSupport: CANNED_LORA_SUPPORT }];
   return null;
 }
 function constraintsFor(provider: string): { orientationSupport: unknown } | null {

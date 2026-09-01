@@ -94934,3 +94934,159 @@ that one failure being the SAME five red-first arms as unit 1 and nothing
 else.
 
 Versions: core 0.0.721, harness 0.0.618, host 0.0.87, web 0.0.101.
+
+### Unit 3 — the params builder + the call-site consolidation
+
+v4 sources: `lib/image-gen/params-builder.ts` (NEW, 298) and the five call
+sites it consolidated —
+`lib/tools/handlers/image-generation-handler.ts` (its local `mergeParameters` +
+`applyOrientation` DELETED, both build sites rerouted, plus step 5c),
+`lib/background-jobs/handlers/{character-avatar,story-background}.ts`,
+`app/api/v1/images/route.ts`, `app/api/v1/wardrobe/preview-avatar/route.ts`.
+
+v5: NEW `crates/quilltap-core/src/image_gen/params_builder.rs`;
+`model/image.rs` (the `ImageGenParams` widening + the `to_key_value`
+reorder); `image_gen_data.rs` (`image_declarations_for`);
+`model/image_dialects.rs` (the JS-number renders);
+`tools/generate_image.rs`; `services/image_job_common.rs`;
+`services/{character_avatar_job,story_background_job}.rs`;
+`api/wardrobe.rs` (preview) + `quilltap-host/src/avatar_preview.rs`;
+`quilltap-host/src/spine.rs` (the seam wiring).
+
+**v5 had the drift v4 fixed, and the fix is the point of the unit.** v4's
+framing — three of five call sites read exactly ONE key (`quality`) off the
+profile — applies to v5 verbatim: `build_job_gen_params` hard-coded
+`{prompt, model, n: 1, …resolved, quality, style: 'natural'}` and
+`quality_from_parameters` WAS the "reads only quality" bug. Both are deleted.
+The avatar job, the story-background job, both of their Concierge reroutes and
+the wardrobe preview now GAIN the profile's `negativePrompt` / `seed` /
+`guidanceScale` / `steps` / `responseFormat`, its residual options bag and its
+LoRA list, and the preview resolves portrait through the provider's own
+mechanism instead of the hardcoded `1024x1792`.
+
+**Site 5 (`POST /api/v1/images?action=generate`) has no v5 twin** — re-measured
+rather than assumed: v5's web router serves only `/api/v1/images/{id}`
+(GET + DELETE), and v5's Generate Image surface goes through
+`POST /api/v1/image-profiles/[id]?action=generate` → the tool, which site 1
+already covers. (The same measurement the P4.D123 activity-span census
+recorded for its own site 9.)
+
+Three shape decisions worth the record:
+
+- **`ImageGenParams.n` / `seed` / `steps` become `f64`.** v4's `asNumber`
+  admits any finite JSON number, so a fractional stored default rides; they
+  render through `js_number_to_json`, so an integral value still prints as `1`
+  and every pre-existing recorded wire vector stays byte-identical.
+- **`to_key_value`'s key ORDER is now v4's builder insertion order** — the
+  literal `{prompt, model, n}` first, then each conditional assignment in
+  source order, then `loras`, then `profileParameters`. `JSON.stringify` emits
+  insertion order and three tier-3 families key their canned provider off this
+  string on both sides, so a wrong order silently shifts every image key.
+- **The injected registry seam widened rather than doubled.**
+  `orientation_data_for` becomes `declarations_for`, returning v4's whole
+  `ImageDeclarations` (ONE model list carrying both supports plus both
+  provider-level defaults). v5's two compiled tables are merged back into that
+  shape by `image_gen_data::image_declarations_for`; a second parallel seam
+  would have let the orientation and LoRA views of the same provider disagree.
+
+Step 5c landed on the tool path: the effective profile's joined LoRA trigger
+phrases are folded into the crafter's `styleTriggerPhrase` seam before
+expansion. v4 combines them with a style's own phrase; v5 has no style-options
+surface on this path (the seam has always been `None` here), so the LoRA
+phrases ARE the combined value — recorded at the site.
+
+**Differential.** `image_gen_leaves_equivalence` grows 25 `params_builder`
+rows (plus the `HOST_OWNED_PARAMETER_KEYS` constant) against v4's REAL
+`buildImageGenParams`, each row carrying its own profile / overrides /
+orientation / declarations so nothing is transcribed. Green on the first run.
+
+⚠ **The consolidation was INVISIBLE to the four downstream families until the
+corpora were widened.** All four tier-3 image families went green on the first
+pin-fresh regen — and a `grep` for the changed bytes
+(`negativePrompt` / `seed` / `profileParameters` / `loras`) found **zero** in
+every regenerated NDJSON: every image profile in `avatar-job.json`,
+`story-background-job.json` and `image-generation.json` carried
+`"parameters": {}`, so the paths that GAINED fields had no field to gain. That
+is the `a-differential-cannot-see-a-dropped-batch` class in reverse, and a
+green regen there proved nothing. Fixed by widening symmetrically on both
+sides: the primary image profile in each fixture now carries
+`quality`/`negativePrompt`/`seed`/`guidanceScale`/`steps`/`responseFormat`, a
+residual `num_inference_steps`, and a THREE-entry `loras` list against a
+two-adapter cap (so the cap and the trigger-phrase append are both measured);
+the reroute-target profile carries a DIFFERENT bag (so the reroute's own
+rebuild is measured rather than inheriting the primary's); and the four
+oracles' registry mocks plus the four harness `declarations_for` tables gain a
+matching canned `loraSupport` on the ids those fixtures point at.
+
+**The widening then found a REAL pre-existing v5 defect, caught by
+consequence.** With the profile bag finally carrying a `quality`, three of the
+four families went red on a one-field divergence: v4 sent `quality: "standard"`
+where v5 sent the bag's `"hd"` — and v4 also sent a `style: "vivid"` that no
+bag and no caller supplied. The cause is v4's own
+`validateImageGenerationInput`, which is a Zod **`safeParse`**, so the handler's
+`parsed` carries the schema's DEFAULTS: `size: '1024x1024'`, `style: 'vivid'`,
+`quality: 'standard'`, `count: 1`. Those are OVERRIDES in the merge and
+therefore outrank the profile's stored defaults. v5's twin returned a bare
+`bool` and applied nothing, and a stale comment on `ImageGenerationToolInput`
+claimed "the dispatcher materializes them" — it does not (measured at
+`tools/executor.rs`, which reads each key straight off the tool call). The gap
+was invisible for as long as every fixture's `parameters` was `{}`, because the
+OpenAI dialect applies the same `standard`/`vivid` defaults at the wire.
+`apply_tool_input_schema_defaults` closes it at v4's own site; the
+enum/length VALIDATION half of `safeParse` stays unported and is recorded at
+the function rather than silently narrowed.
+
+**A second stale mirror, in the harness this time.** The avatar-job and
+story-background oracles key their canned provider through a hand-written
+`canonicalImageKey` that MIRRORS `ImageGenParams::to_key_value` — and it still
+spelled the pre-`84f33ce94` `mergeParameters` order while dropping
+`responseFormat` / `loras` / `profileParameters` entirely. Both were updated to
+the new order and the three new fields; the comment now says what the function
+is a mirror OF, so the next reorder has somewhere to look.
+
+**Mutation proofs (eight, each applied-and-verified, each reddening a named
+arm):** `first_non_empty_string` accepting empty strings
+(`pb_blank_override_falls_through`); the residual bag keeping host-owned keys
+(`pb_numeric_defaults`); the orientation no longer OVERWRITING a merged size
+(`pb_orientation_overwrites_size`); the trigger phrases appended without the
+`includes` test (`pb_loras_trigger_already_present`); `as_number` accepting a
+numeric STRING (`pb_numeric_string_defaults_ignored`); `to_key_value` moving
+`negativePrompt` back above `model` (the whole avatar family, via the canned
+image key); the tool-input schema defaults dropped (ditto); and the job path
+no longer handing the builder the profile bag (ditto — the "GAIN" the unit is
+about, made falsifiable).
+
+⚠ **A process trap the round should keep:** two mutation runners were killed
+mid-step (a tool timeout), each leaving its mutation on disk, and the NEXT
+runner's `cp file backup` then captured the MUTATED file as its baseline — so
+every later "restore" restored the bug and the re-application reported
+`ANCHOR NOT FOUND` rather than "already mutated". It happened twice (the
+`to_key_value` order and the job-path bag) and both were caught only by
+reading the file rather than the log. The fix used here: a pristine snapshot
+under a name no runner writes, plus a diff of all four files against it after
+the last mutation. Banked as a memory note.
+
+⚠ **A parallel-round hazard the gate hit, worth carrying:** every harness
+recipe writes its fixture DB and oracle NDJSON to a FIXED `/tmp` path, and
+`/tmp` is shared by all six lanes of this round. A sibling regenerating
+`image_generation_tier3`'s fixture between this lane's regen and its gate left
+the oracle paired with build A and the test reading build B — the diff then
+failed on a freshly-minted `mountPointId` that neither lane had touched, which
+reads exactly like a port defect in the mount-index. Re-running that family
+alone (regen + run as a pair) was green. Because `cargo test --workspace` is
+fail-fast per binary, that one family also cut the gate short at 176 of ~440
+binaries while still printing a plausible pass total — so the BINARY COUNT is
+part of reading a gate, not just the failure line. The lane now snapshots its
+whole fixture+oracle set into `/tmp/p4d138/` and points the gate's env block
+there. Banked as a memory note.
+
+**Gate (unit 3):** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean on BOTH feature sets; `cargo test
+--workspace --no-fail-fast` = **475 test binaries / 2,640 passed / 1 failed**,
+and that one failure is the SAME five red-first arms owned by units 5 and 8 of
+this lane (`list_providers` + the four `list_models`), with nothing else moved.
+`--no-fail-fast` is now part of the lane's gate: with the routes family
+deliberately red, the default fail-fast stopped the run at 176 of 475 binaries
+while still printing a plausible pass total.
+
+Versions: core 0.0.722, harness 0.0.619, host 0.0.88.

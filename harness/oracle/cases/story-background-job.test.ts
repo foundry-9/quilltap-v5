@@ -101,11 +101,18 @@ function supportFor(provider: string): unknown | null {
   if (provider === 'GROK') return GROK_SUPPORT;
   return null;
 }
-function modelsFor(provider: string): Array<{ id: string; orientationSupport: unknown }> | null {
+
+/** P4.D138: a canned per-model `loraSupport`, so the shared params builder's
+ *  cap + trigger-phrase append are MEASURABLE on this path. Two adapters, no
+ *  scale block (the host's DEFAULT_LORA_SCALE applies). */
+const CANNED_LORA_SUPPORT = { maxLoras: 2, sourceKinds: ['url', 'hf-repo'] };
+function modelsFor(
+  provider: string,
+): Array<{ id: string; orientationSupport: unknown; loraSupport?: unknown }> | null {
   const s = supportFor(provider);
   if (!s) return null;
   const id = provider === 'GROK' ? 'grok-2-image' : 'dall-e-3';
-  return [{ id, orientationSupport: s }];
+  return [{ id, orientationSupport: s, loraSupport: CANNED_LORA_SUPPORT }];
 }
 function constraintsFor(provider: string): { orientationSupport: unknown } | null {
   const s = supportFor(provider);
@@ -117,17 +124,25 @@ function canonicalImageKey(provider: string, params: Record<string, unknown>): s
   const put = (k: string, v: unknown) => {
     if (v !== undefined && v !== null) c[k] = v;
   };
+  // P4.D138: the order is v5 `ImageGenParams::to_key_value`, which is v4's
+  // `buildImageGenParams` INSERTION order (`{prompt, model, n}` first, then each
+  // conditional assignment in source order, then `loras`, then
+  // `profileParameters`). It used to be the pre-`84f33ce94` `mergeParameters`
+  // order and dropped the three new fields entirely.
   put('prompt', params.prompt);
-  put('negativePrompt', params.negativePrompt);
   put('model', params.model);
   put('n', params.n);
+  put('negativePrompt', params.negativePrompt);
   put('size', params.size);
   put('aspectRatio', params.aspectRatio);
   put('quality', params.quality);
   put('style', params.style);
+  put('responseFormat', params.responseFormat);
   put('seed', params.seed);
   put('guidanceScale', params.guidanceScale);
   put('steps', params.steps);
+  put('loras', params.loras);
+  put('profileParameters', params.profileParameters);
   return `${provider}|${params.model}|${JSON.stringify(c)}`;
 }
 

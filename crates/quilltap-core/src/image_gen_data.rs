@@ -16,6 +16,7 @@
 //! `resolveOrientation` in `image_dialects_equivalence`.
 
 use crate::image_gen::lora_support::ImageLoraSupport;
+use crate::image_gen::params_builder::ImageDeclarations;
 use crate::image_gen::{ModelInfo, OrientationMapping, OrientationStrategy, OrientationSupport};
 use crate::model::nanogpt_loras::{nanogpt_lora_families, NANOGPT_FLAGSHIP_IMAGE_MODEL_IDS};
 
@@ -195,6 +196,38 @@ pub fn lora_data_for(provider: &str) -> (Vec<ModelInfo>, Option<ImageLoraSupport
             (models, None)
         }
         _ => (Vec::new(), None),
+    }
+}
+
+/// v4's ONE `getImageGenerationModels(provider)` list plus BOTH provider-level
+/// defaults, merged from the two compiled tables above (`84f33ce94`).
+///
+/// v4 keeps a single declaration list whose entries may carry either or both of
+/// `orientationSupport` / `loraSupport`; v5 transcribed the two capabilities in
+/// different rounds, so this merges them back by model id — an id declared in
+/// both tables becomes one [`ModelInfo`] carrying both supports, which is what
+/// [`crate::image_gen::match_model`] must see for "one matcher, two
+/// capabilities" to hold.
+///
+/// This is the production value of the injected
+/// [`ImageDeclarationsFn`](crate::image_gen::params_builder::ImageDeclarationsFn)
+/// seam.
+pub fn image_declarations_for(provider: &str) -> ImageDeclarations {
+    let (orientation_models, orientation_provider) = orientation_data_for(provider);
+    let (lora_models, lora_provider) = lora_data_for(provider);
+
+    let mut models = orientation_models;
+    for lora in lora_models {
+        match models.iter_mut().find(|m| m.id == lora.id) {
+            Some(existing) => existing.lora_support = lora.lora_support,
+            None => models.push(lora),
+        }
+    }
+
+    ImageDeclarations {
+        models,
+        orientation_provider,
+        lora_provider,
     }
 }
 

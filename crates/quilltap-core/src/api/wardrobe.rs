@@ -40,6 +40,12 @@ use crate::db::vault_wardrobe_public::{
     WardrobePatch,
 };
 use crate::db::DbError;
+use crate::image_gen::params_builder::{
+    build_image_gen_params, ImageGenOverrides, ImageParamsLogContext, ImageProfileLike,
+};
+use crate::image_gen::Orientation;
+use crate::image_gen_data::image_declarations_for;
+use crate::model::image::ImageGenParams;
 use crate::services::activity_kinds::ActivityKind;
 use crate::services::activity_registry::track_activity;
 use crate::services::image_job_common::with_both_conns;
@@ -736,11 +742,13 @@ pub async fn wardrobe_transfer_apply(db: &Db, user_id: &str, body: Value, now: &
 /// response — diffs for real.
 #[derive(Clone, Debug)]
 pub struct AvatarPreviewRenderRequest {
-    pub prompt: String,
     pub provider: String,
-    pub model: String,
-    /// `parameters.quality` when the profile carries one (`standard` | `hd`).
-    pub quality: Option<String>,
+    /// The request the shared builder produced (v4 `84f33ce94`). It used to be
+    /// a hand-rolled `{prompt, model, n:1, size:'1024x1792', quality,
+    /// style:'natural'}` — which read exactly ONE key off the profile and
+    /// pinned a size only OpenAI ever accepted — so the preview lied about the
+    /// avatar the same profile would really produce.
+    pub params: ImageGenParams,
     pub api_key: String,
     /// The character's display name (v4 mints the provider filename from it).
     pub character_name: String,
@@ -1036,23 +1044,46 @@ async fn run_wardrobe_preview_avatar(
     let prompt = prompt_result.prompt;
 
     // The render (provider + transcode — the erased host seam).
+    // Through the shared builder, so the preview shows what the profile actually
+    // produces — LoRAs, residual options and all — rather than a hand-rolled
+    // subset that would make the preview lie about the real avatar. Portrait is
+    // resolved onto the provider's own mechanism instead of the hardcoded
+    // 1024x1792 that only OpenAI ever accepted.
+    let provider = profile
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let model_name = profile.get("modelName").and_then(Value::as_str);
+    let parameters = profile.get("parameters");
+    let params = build_image_gen_params(
+        ImageProfileLike {
+            provider: &provider,
+            model_name,
+            parameters,
+        },
+        &prompt,
+        &ImageGenOverrides {
+            n: Some(1.0),
+            style: Some("natural".to_string()),
+            ..Default::default()
+        },
+        Some(Orientation::Portrait),
+        "dall-e-3",
+        &image_declarations_for(&provider),
+        &ImageParamsLogContext {
+            context: "api.v1.wardrobe.preview-avatar",
+            profile_id: profile
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            ..Default::default()
+        },
+    )
+    .params;
     let render_req = AvatarPreviewRenderRequest {
-        prompt: prompt.clone(),
-        provider: profile
-            .get("provider")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        model: profile
-            .get("modelName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        quality: profile
-            .get("parameters")
-            .and_then(|p| p.get("quality"))
-            .and_then(Value::as_str)
-            .map(str::to_string),
+        provider,
+        params,
         api_key,
         character_name: character_name.clone(),
     };
@@ -1077,7 +1108,7 @@ async fn run_wardrobe_preview_avatar(
     // preview')` (its try/catch around exactly this region).
     let sha256 = crate::photos::keep_image_markdown::sha256_of_buffer(&image.buffer);
     let file_id = uuid::Uuid::new_v4().to_string();
-    let model_name = render_req.model.clone();
+    let model_name = render_req.params.model.clone();
     let description = format!("{character_name} — outfit preview");
     let character_id = parsed.character_id.clone();
     let image_for_write = image.clone();

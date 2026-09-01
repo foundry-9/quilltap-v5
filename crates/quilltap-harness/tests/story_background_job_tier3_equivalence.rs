@@ -39,6 +39,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::image_gen::params_builder::ImageDeclarations;
 use quilltap_core::image_gen::{
     ModelInfo, OrientationMapping, OrientationStrategy, OrientationSupport,
 };
@@ -211,31 +212,49 @@ fn size_support(portrait: &str, landscape: &str, square: &str) -> OrientationSup
     }
 }
 
-fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<OrientationSupport>) {
+/// P4.D138: the canned per-model `loraSupport` the oracle's registry mock also
+/// declares, so the shared params builder's cap + trigger-phrase append are
+/// MEASURABLE on this path (two adapters, no scale block).
+fn canned_lora_support() -> quilltap_core::image_gen::lora_support::ImageLoraSupport {
+    quilltap_core::image_gen::lora_support::ImageLoraSupport {
+        max_loras: 2.0,
+        scale: None,
+        source_kinds: vec!["url".to_string(), "hf-repo".to_string()],
+        supports_private_weights_token: None,
+    }
+}
+
+/// The canned plugin-registry declarations (v4's `getImageGenerationModels` +
+/// `getImageProviderConstraints`). P4.D138 widened the seam from the
+/// orientation half to v4's whole declaration set; these fixtures declare no
+/// LoRA support on the ids the fixtures point at, mirroring the oracle's mock.
+fn declarations_for(provider: &str) -> ImageDeclarations {
     match provider {
         "OPENAI" => {
             let s = size_support("1024x1792", "1792x1024", "1024x1024");
-            (
-                vec![ModelInfo {
-                    lora_support: None,
+            ImageDeclarations {
+                models: vec![ModelInfo {
+                    lora_support: Some(canned_lora_support()),
                     id: "dall-e-3".to_string(),
                     orientation_support: Some(s.clone()),
                 }],
-                Some(s),
-            )
+                orientation_provider: Some(s),
+                lora_provider: None,
+            }
         }
         "GROK" => {
             let s = size_support("768x1344", "1344x768", "1024x1024");
-            (
-                vec![ModelInfo {
-                    lora_support: None,
+            ImageDeclarations {
+                models: vec![ModelInfo {
+                    lora_support: Some(canned_lora_support()),
                     id: "grok-2-image".to_string(),
                     orientation_support: Some(s.clone()),
                 }],
-                Some(s),
-            )
+                orientation_provider: Some(s),
+                lora_provider: None,
+            }
         }
-        _ => (Vec::new(), None),
+        _ => ImageDeclarations::default(),
     }
 }
 
@@ -684,7 +703,7 @@ fn story_background_job_matches_oracle() {
             upload: &upload,
             executor: &executor,
             now_ms: spec.frozen_now_ms,
-            orientation_data_for: &orientation_data_for,
+            declarations_for: &declarations_for,
         };
         let payload = StoryBackgroundPayload {
             chat_id: case.id.clone(),
@@ -699,6 +718,7 @@ fn story_background_job_matches_oracle() {
             &deps,
             &spec.user_id,
             &payload,
+            "job-1",
         ));
         let got_threw: Option<String> = outcome.err();
         assert_eq!(
@@ -909,7 +929,7 @@ fn story_background_job_runner_registration_e2e() {
         upload: RecordingProjectUpload,
         executor: CheapLlmTaskExecutor::new(),
         now_ms: spec.frozen_now_ms,
-        orientation_data_for,
+        declarations_for,
     };
     let mut reg = HandlerRegistry::new();
     reg.register("STORY_BACKGROUND_GENERATION", Box::new(handler));

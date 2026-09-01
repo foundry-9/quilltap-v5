@@ -112,7 +112,7 @@ pub struct StoryJobDeps<'a, I, C, M, A, T, U> {
     /// The cheap-LLM task executor (holds the no-custom-temperature cache).
     pub executor: &'a CheapLlmTaskExecutor,
     pub now_ms: i64,
-    pub orientation_data_for: &'a common::OrientationDataFn,
+    pub declarations_for: &'a common::ImageDeclarationsFn,
 }
 
 /// The subset of a scene state the story handler reads.
@@ -273,6 +273,9 @@ pub async fn handle_story_background_generation<I, C, M, A, T, U>(
     deps: &StoryJobDeps<'_, I, C, M, A, T, U>,
     user_id: &str,
     payload: &StoryBackgroundPayload,
+    // v4 folds `jobId: job.id` into this handler's image-params log context
+    // (`84f33ce94`). Log-only, but the runner has it in hand.
+    job_id: &str,
 ) -> Result<(), String>
 where
     I: ImageProvider,
@@ -765,13 +768,16 @@ where
         &api_key,
         &final_prompt,
         Orientation::Landscape,
-        deps.orientation_data_for,
+        deps.declarations_for,
         &danger_settings.mode,
         danger_settings.uncensored_image_profile_id.as_deref(),
         user_id,
         Some(&payload.chat_id),
         None,
         "Image generation failed",
+        "background-jobs.story-background",
+        "background-jobs.story-background.concierge-reroute",
+        Some(job_id),
         &recraft,
     )
     .await?;
@@ -932,7 +938,7 @@ pub struct StoryBackgroundGenerationHandler<I, C, M, A, T, U, F> {
     pub upload: U,
     pub executor: CheapLlmTaskExecutor,
     pub now_ms: i64,
-    pub orientation_data_for: F,
+    pub declarations_for: F,
 }
 
 impl<I, C, M, A, T, U, F> crate::services::job_runner::JobHandler
@@ -944,14 +950,7 @@ where
     A: ApiKeyResolver + Send + Sync,
     T: ImageTranscoder + Send + Sync,
     U: common::ProjectImageUpload + Send + Sync,
-    F: Fn(
-            &str,
-        ) -> (
-            Vec<crate::image_gen::ModelInfo>,
-            Option<crate::image_gen::OrientationSupport>,
-        ) + Send
-        + Sync
-        + 'static,
+    F: Fn(&str) -> crate::image_gen::params_builder::ImageDeclarations + Send + Sync + 'static,
 {
     fn handle<'a>(
         &'a self,
@@ -973,9 +972,11 @@ where
                 upload: &self.upload,
                 executor: &self.executor,
                 now_ms: self.now_ms,
-                orientation_data_for: &self.orientation_data_for as &common::OrientationDataFn,
+                declarations_for: &self.declarations_for as &common::ImageDeclarationsFn,
             };
-            match handle_story_background_generation(db, &deps, &job.user_id, &payload).await {
+            match handle_story_background_generation(db, &deps, &job.user_id, &payload, &job.id)
+                .await
+            {
                 Ok(()) => crate::services::job_runner::JobOutcome::Completed(None),
                 Err(e) => crate::services::job_runner::JobOutcome::Failed(e),
             }

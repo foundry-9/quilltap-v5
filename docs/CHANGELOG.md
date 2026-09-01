@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — feat(images): one params builder for every image call site (P4.D138 unit 3)
+
+_Versions: core 0.0.722, harness 0.0.619, host 0.0.88._
+
+`quilltap_core::image_gen::params_builder` ports v4's
+`lib/image-gen/params-builder.ts` and takes over from the four v5 call sites
+that used to assemble image requests independently. v4's own framing applies
+here unchanged: three of those sites read exactly ONE key off the profile
+(`quality`), so anything configured on a profile worked in the Salon and
+vanished for avatars, story backgrounds and the wardrobe preview. v5 inherited
+that drift verbatim — `services::image_job_common::build_job_gen_params`
+hard-coded it and `quality_from_parameters` WAS the bug — and both are deleted
+here. Those paths now gain the profile's `negativePrompt`, `seed`,
+`guidanceScale`, `steps`, its residual options bag and its LoRA list, and the
+wardrobe preview resolves portrait through the provider's own mechanism instead
+of the hardcoded 1024x1792 that only OpenAI ever accepted.
+
+`ImageGenParams` grows `responseFormat`, `loras` and `profileParameters`, and
+`n` / `seed` / `steps` become JS numbers (`f64` rendered through
+`js_number_to_json`, so an integral value still prints as `1`). `to_key_value`
+is reordered to v4's builder INSERTION order — `JSON.stringify` emits insertion
+order, and the canned image key in three tier-3 families is built from it on
+both sides.
+
+The injected plugin-registry seam widens with it: `orientation_data_for`
+becomes `declarations_for`, returning v4's whole `ImageDeclarations`
+(one model list carrying both `orientationSupport` and `loraSupport`, plus both
+provider-level defaults) rather than the orientation half.
+`image_gen_data::image_declarations_for` merges v5's two compiled tables back
+into that single-list shape.
+
+The `generate_image` path also gains v4's step 5c: the effective profile's LoRA
+trigger phrases are folded into the prompt crafter's `styleTriggerPhrase` seam
+before expansion, so an adapter's magic word is woven into the crafted prompt
+rather than bolted on afterwards — and the builder still appends whatever the
+crafter failed to say.
+
+`POST /api/v1/images?action=generate` is the one v4 call site with no v5 twin
+(re-measured, not assumed).
+
+`image_gen_leaves_equivalence` grows 25 params-builder rows against v4's real
+`buildImageGenParams`, driven from each row's own recorded profile, overrides
+and declarations.
+
 #### 2026-09-01 — feat(images): the write-side LoRA guard + the Zod refusal envelope (P4.D138 unit 2)
 
 _Versions: core 0.0.721, harness 0.0.618, host 0.0.87, web 0.0.101._

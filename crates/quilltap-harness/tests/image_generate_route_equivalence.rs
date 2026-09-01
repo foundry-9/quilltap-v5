@@ -34,6 +34,7 @@ use std::path::{Path, PathBuf};
 use quilltap_core::api::image_profiles::image_profile_generate;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::image_gen::params_builder::ImageDeclarations;
 use quilltap_core::image_gen::{
     ModelInfo, OrientationMapping, OrientationStrategy, OrientationSupport,
 };
@@ -131,20 +132,37 @@ fn size_support(portrait: &str, landscape: &str, square: &str) -> OrientationSup
 }
 
 /// The OPENAI size-strategy support (identical to the oracle's OPENAI_SUPPORT).
-fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<OrientationSupport>) {
+/// P4.D138: the canned per-model `loraSupport` the oracle's registry mock also
+/// declares, so the shared params builder's cap + trigger-phrase append are
+/// MEASURABLE on this path (two adapters, no scale block).
+fn canned_lora_support() -> quilltap_core::image_gen::lora_support::ImageLoraSupport {
+    quilltap_core::image_gen::lora_support::ImageLoraSupport {
+        max_loras: 2.0,
+        scale: None,
+        source_kinds: vec!["url".to_string(), "hf-repo".to_string()],
+        supports_private_weights_token: None,
+    }
+}
+
+/// The canned plugin-registry declarations (v4's `getImageGenerationModels` +
+/// `getImageProviderConstraints`). P4.D138 widened the seam from the
+/// orientation half to v4's whole declaration set; these fixtures declare no
+/// LoRA support on the ids the fixtures point at, mirroring the oracle's mock.
+fn declarations_for(provider: &str) -> ImageDeclarations {
     match provider {
         "OPENAI" => {
             let s = size_support("1024x1792", "1792x1024", "1024x1024");
-            (
-                vec![ModelInfo {
-                    lora_support: None,
+            ImageDeclarations {
+                models: vec![ModelInfo {
+                    lora_support: Some(canned_lora_support()),
                     id: "dall-e-3".to_string(),
                     orientation_support: Some(s.clone()),
                 }],
-                Some(s),
-            )
+                orientation_provider: Some(s),
+                lora_provider: None,
+            }
         }
-        _ => (Vec::new(), None),
+        _ => ImageDeclarations::default(),
     }
 }
 
@@ -176,7 +194,7 @@ impl ImageGenerationRunner for TestImageRunner {
                 message_id: None,
                 ctx: LogContext::none(),
             });
-            let orientation_fn = orientation_data_for;
+            let declarations_fn = declarations_for;
             let deps = ImageGenDeps {
                 image_provider: &self.image_provider,
                 completion: &self.completion,
@@ -186,7 +204,7 @@ impl ImageGenerationRunner for TestImageRunner {
                 lantern: &lantern,
                 executor: &executor,
                 now_ms: self.now_ms,
-                orientation_data_for: &orientation_fn,
+                declarations_for: &declarations_fn,
             };
             execute_image_generation_tool(db, &deps, input, ctx).await
         })
@@ -197,6 +215,23 @@ impl ImageGenerationRunner for TestImageRunner {
 // Canned image wire (the tier3 mold)
 // ===========================================================================
 
+/// Rebuild one `ImageLoraSpec` from the recorded `loras` entry (P4.D138).
+fn lora_spec_from_json(v: &Value) -> quilltap_core::image_gen::lora_support::ImageLoraSpec {
+    quilltap_core::image_gen::lora_support::ImageLoraSpec {
+        source: v
+            .get("source")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        scale: v.get("scale").and_then(Value::as_f64),
+        trigger_phrase: v
+            .get("triggerPhrase")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        label: v.get("label").and_then(Value::as_str).map(str::to_string),
+    }
+}
+
 /// Reconstruct [`ImageGenParams`] from an `image_gen_key` param JSON.
 fn params_from_key_json(v: &Value) -> ImageGenParams {
     let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
@@ -204,14 +239,21 @@ fn params_from_key_json(v: &Value) -> ImageGenParams {
         prompt: s("prompt").unwrap_or_default(),
         negative_prompt: s("negativePrompt"),
         model: s("model").unwrap_or_default(),
-        n: v.get("n").and_then(Value::as_i64),
+        n: v.get("n").and_then(Value::as_f64),
         size: s("size"),
         aspect_ratio: s("aspectRatio"),
         quality: s("quality"),
         style: s("style"),
-        seed: v.get("seed").and_then(Value::as_i64),
+        seed: v.get("seed").and_then(Value::as_f64),
         guidance_scale: v.get("guidanceScale").and_then(Value::as_f64),
-        steps: v.get("steps").and_then(Value::as_i64),
+        response_format: s("responseFormat"),
+        loras: v
+            .get("loras")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().map(lora_spec_from_json).collect())
+            .unwrap_or_default(),
+        profile_parameters: v.get("profileParameters").cloned(),
+        steps: v.get("steps").and_then(Value::as_f64),
     }
 }
 

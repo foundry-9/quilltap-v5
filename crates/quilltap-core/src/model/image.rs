@@ -18,42 +18,67 @@ use std::future::Future;
 
 use serde_json::Value;
 
+use crate::db::js_number_to_json;
+use crate::image_gen::lora_support::ImageLoraSpec;
+
 /// The merged image-generation request (v4 `mergeParameters` output — the fields
 /// `applyOrientation` mutates plus the profile-default carry-overs). Bound
 /// verbatim into [`image_gen_key`]: the canned key proves the merged params
 /// (incl. the orientation-driven `size`/`aspectRatio` and the appended prompt
 /// hint) reach the provider.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ImageGenParams {
     pub prompt: String,
     pub negative_prompt: Option<String>,
     pub model: String,
-    /// v4 `n` — image count (`input.count ?? profile.n ?? 1`).
-    pub n: Option<i64>,
+    /// v4 `n` — image count. A JS number: the builder's
+    /// `overrides.n ?? asNumber(defaults.n) ?? 1` can carry a fractional stored
+    /// default, so this is `f64` and renders through `js_number_to_json`
+    /// (an integral value still prints as `1`, never `1.0`).
+    pub n: Option<f64>,
     pub size: Option<String>,
     pub aspect_ratio: Option<String>,
     /// `'standard' | 'hd'`.
     pub quality: Option<String>,
     /// `'vivid' | 'natural'`.
     pub style: Option<String>,
-    pub seed: Option<i64>,
+    /// v4 `responseFormat` — read off the profile bag by the shared builder
+    /// (`84f33ce94`). No v5 dialect consumes it yet; it is carried because the
+    /// builder sets it and the params object is a comparand.
+    pub response_format: Option<String>,
+    pub seed: Option<f64>,
     pub guidance_scale: Option<f64>,
-    pub steps: Option<i64>,
+    pub steps: Option<f64>,
+    /// The capped, validated adapter list (`84f33ce94`). Empty means the key is
+    /// ABSENT on the wire — v4 only ever assigns `params.loras` when the list is
+    /// non-empty.
+    pub loras: Vec<ImageLoraSpec>,
+    /// The profile's residual `parameters` bag — everything the host does not
+    /// own by name, handed to the provider so per-model options travel without
+    /// the host enumerating them. `None` when nothing is left over.
+    pub profile_parameters: Option<Value>,
 }
 
 impl ImageGenParams {
-    /// The params as the canonical JSON object v4 would `JSON.stringify` — used
-    /// only to build the deterministic [`image_gen_key`]. Optional fields are
-    /// omitted when `None` (matching v4's `undefined`-drop), in v4 field order.
-    fn to_key_value(&self) -> Value {
+    /// The params as the canonical JSON object v4 would `JSON.stringify` — the
+    /// deterministic [`image_gen_key`]'s payload AND the params-builder
+    /// differential's comparand. Optional fields are omitted when `None`
+    /// (matching v4's `undefined`-drop).
+    ///
+    /// **The key ORDER is v4's `buildImageGenParams` INSERTION order**
+    /// (`84f33ce94`): the literal `{prompt, model, n}` first, then each
+    /// conditional assignment in source order, then `loras`, then
+    /// `profileParameters`. `JSON.stringify` emits insertion order, so getting
+    /// this wrong silently shifts every canned image key in the harness.
+    pub fn to_key_value(&self) -> Value {
         let mut map = serde_json::Map::new();
         map.insert("prompt".into(), Value::String(self.prompt.clone()));
-        if let Some(v) = &self.negative_prompt {
-            map.insert("negativePrompt".into(), Value::String(v.clone()));
-        }
         map.insert("model".into(), Value::String(self.model.clone()));
         if let Some(v) = self.n {
-            map.insert("n".into(), Value::from(v));
+            map.insert("n".into(), js_number_to_json(v));
+        }
+        if let Some(v) = &self.negative_prompt {
+            map.insert("negativePrompt".into(), Value::String(v.clone()));
         }
         if let Some(v) = &self.size {
             map.insert("size".into(), Value::String(v.clone()));
@@ -67,14 +92,26 @@ impl ImageGenParams {
         if let Some(v) = &self.style {
             map.insert("style".into(), Value::String(v.clone()));
         }
+        if let Some(v) = &self.response_format {
+            map.insert("responseFormat".into(), Value::String(v.clone()));
+        }
         if let Some(v) = self.seed {
-            map.insert("seed".into(), Value::from(v));
+            map.insert("seed".into(), js_number_to_json(v));
         }
         if let Some(v) = self.guidance_scale {
-            map.insert("guidanceScale".into(), Value::from(v));
+            map.insert("guidanceScale".into(), js_number_to_json(v));
         }
         if let Some(v) = self.steps {
-            map.insert("steps".into(), Value::from(v));
+            map.insert("steps".into(), js_number_to_json(v));
+        }
+        if !self.loras.is_empty() {
+            map.insert(
+                "loras".into(),
+                serde_json::to_value(&self.loras).unwrap_or(Value::Null),
+            );
+        }
+        if let Some(v) = &self.profile_parameters {
+            map.insert("profileParameters".into(), v.clone());
         }
         Value::Object(map)
     }
@@ -354,16 +391,10 @@ mod tests {
     fn params(model: &str, size: Option<&str>) -> ImageGenParams {
         ImageGenParams {
             prompt: "a cat".into(),
-            negative_prompt: None,
             model: model.into(),
-            n: Some(1),
+            n: Some(1.0),
             size: size.map(str::to_string),
-            aspect_ratio: None,
-            quality: None,
-            style: None,
-            seed: None,
-            guidance_scale: None,
-            steps: None,
+            ..Default::default()
         }
     }
 

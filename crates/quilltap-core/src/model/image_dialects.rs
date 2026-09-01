@@ -36,6 +36,7 @@
 
 use serde_json::{Map, Value};
 
+use crate::db::js_number_to_json;
 use crate::jsstr;
 use crate::model::image::{GeneratedImageData, ImageGenError, ImageGenParams, ImageGenResponse};
 use crate::model::request_builder::BuiltRequest;
@@ -155,7 +156,7 @@ fn build_openai(params: &ImageGenParams) -> (String, Value) {
     let mut body = obj();
     body.insert("model".into(), Value::String(model.to_string()));
     body.insert("prompt".into(), Value::String(params.prompt.clone()));
-    body.insert("n".into(), Value::from(params.n.unwrap_or(1)));
+    body.insert("n".into(), js_number_to_json(params.n.unwrap_or(1.0)));
     if !is_gpt {
         body.insert("response_format".into(), Value::String("b64_json".into()));
     }
@@ -187,7 +188,7 @@ fn build_grok(params: &ImageGenParams) -> (String, Value) {
     let mut body = obj();
     body.insert("model".into(), Value::String(model.to_string()));
     body.insert("prompt".into(), Value::String(params.prompt.clone()));
-    body.insert("n".into(), Value::from(params.n.unwrap_or(1)));
+    body.insert("n".into(), js_number_to_json(params.n.unwrap_or(1.0)));
     body.insert("response_format".into(), Value::String("b64_json".into()));
     if let Some(ar) = params.aspect_ratio.as_deref().filter(|s| !s.is_empty()) {
         body.insert("aspect_ratio".into(), Value::String(ar.to_string()));
@@ -206,7 +207,7 @@ fn build_zai(params: &ImageGenParams) -> (String, Value) {
     let mut body = obj();
     body.insert("model".into(), Value::String(model.to_string()));
     body.insert("prompt".into(), Value::String(params.prompt.clone()));
-    body.insert("n".into(), Value::from(params.n.unwrap_or(1)));
+    body.insert("n".into(), js_number_to_json(params.n.unwrap_or(1.0)));
     // size is ALWAYS set: params.size || (glm-image ? 1280x1280 : 1024x1024).
     let size = params
         .size
@@ -299,12 +300,15 @@ fn build_google(params: &ImageGenParams) -> (String, Value) {
         let mut instance = obj();
         instance.insert("prompt".into(), Value::String(params.prompt.clone()));
         let mut parameters = obj();
-        parameters.insert("sampleCount".into(), Value::from(params.n.unwrap_or(1)));
+        parameters.insert(
+            "sampleCount".into(),
+            js_number_to_json(params.n.unwrap_or(1.0)),
+        );
         if let Some(ar) = params.aspect_ratio.as_deref().filter(|s| !s.is_empty()) {
             parameters.insert("aspectRatio".into(), Value::String(ar.to_string()));
         }
         if let Some(seed) = params.seed {
-            parameters.insert("seed".into(), Value::from(seed));
+            parameters.insert("seed".into(), js_number_to_json(seed));
         }
         let mut body = obj();
         body.insert(
@@ -459,13 +463,13 @@ fn build_nanogpt(params: &ImageGenParams) -> (String, Value) {
     let mut body = obj();
     body.insert("model".into(), Value::String(model.to_string()));
     body.insert("prompt".into(), Value::String(params.prompt.clone()));
-    body.insert("n".into(), Value::from(params.n.unwrap_or(1)));
+    body.insert("n".into(), js_number_to_json(params.n.unwrap_or(1.0)));
     body.insert("response_format".into(), Value::String("b64_json".into()));
     if let Some(size) = params.size.as_deref().filter(|s| !s.is_empty()) {
         body.insert("size".into(), Value::String(size.to_string()));
     }
     if let Some(seed) = params.seed {
-        body.insert("seed".into(), Value::from(seed));
+        body.insert("seed".into(), js_number_to_json(seed));
     }
     (
         "https://nano-gpt.com/api/v1/images/generations".to_string(),
@@ -1596,16 +1600,9 @@ mod tests {
     fn params(model: &str) -> ImageGenParams {
         ImageGenParams {
             prompt: "a cat".into(),
-            negative_prompt: None,
             model: model.into(),
-            n: Some(1),
-            size: None,
-            aspect_ratio: None,
-            quality: None,
-            style: None,
-            seed: None,
-            guidance_scale: None,
-            steps: None,
+            n: Some(1.0),
+            ..Default::default()
         }
     }
 

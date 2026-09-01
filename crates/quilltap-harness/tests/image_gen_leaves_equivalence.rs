@@ -13,7 +13,11 @@
 //!   - `quilltap_core::image_gen::lora_support` vs v4's REAL `resolveLoraSupport`
 //!     / `resolveLoraScaleBounds` / `readLorasFromParameters` / `capLoras` /
 //!     `loraTriggerPhrases` / `joinLoraTriggerPhrases`, plus the
-//!     `DEFAULT_LORA_SCALE` constant.
+//!     `DEFAULT_LORA_SCALE` constant;
+//!   - `quilltap_core::image_gen::params_builder` vs v4's REAL
+//!     `buildImageGenParams` + `HOST_OWNED_PARAMETER_KEYS` — the merge
+//!     semantics key for key, the orientation overwrite, the LoRA cap and
+//!     trigger-phrase append, and the residual bag.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout; STAGE outside `.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<worktree> ; STAGE=/tmp/qt-oracle-stage
@@ -32,6 +36,10 @@ use quilltap_core::image_gen::lora_support::{
     cap_loras, join_lora_trigger_phrases, lora_trigger_phrases, read_loras_from_parameters,
     resolve_lora_scale_bounds, resolve_lora_support, ImageLoraSpec, ImageLoraSupport,
     LoraLogContext, LoraScale, DEFAULT_LORA_SCALE,
+};
+use quilltap_core::image_gen::params_builder::{
+    build_image_gen_params, ImageDeclarations, ImageGenOverrides, ImageParamsLogContext,
+    ImageProfileLike, HOST_OWNED_PARAMETER_KEYS,
 };
 use quilltap_core::image_gen::{
     parse_placeholders, resolve_orientation, ModelInfo, Orientation, OrientationMapping,
@@ -137,6 +145,39 @@ fn support_from_json(v: &Value) -> ImageLoraSupport {
         supports_private_weights_token: v
             .get("supportsPrivateWeightsToken")
             .and_then(Value::as_bool),
+    }
+}
+
+/// Rebuild an `OrientationSupport` from a row's recorded declaration.
+fn mapping_from_json(v: &Value) -> OrientationMapping {
+    OrientationMapping {
+        size: v.get("size").and_then(Value::as_str).map(str::to_string),
+        aspect_ratio: v
+            .get("aspectRatio")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        prompt_hint: v
+            .get("promptHint")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        nominal_width: v.get("nominalWidth").and_then(Value::as_f64),
+        nominal_height: v.get("nominalHeight").and_then(Value::as_f64),
+    }
+}
+
+fn orientation_from_json(v: &Value) -> OrientationSupport {
+    OrientationSupport {
+        strategy: match v["strategy"].as_str() {
+            Some("size") => OrientationStrategy::Size,
+            Some("aspectRatio") => OrientationStrategy::AspectRatio,
+            _ => OrientationStrategy::Prompt,
+        },
+        portrait: mapping_from_json(&v["portrait"]),
+        landscape: mapping_from_json(&v["landscape"]),
+        square: v
+            .get("square")
+            .filter(|s| !s.is_null())
+            .map(mapping_from_json),
     }
 }
 
@@ -438,7 +479,124 @@ fn image_gen_leaves_matches_oracle() {
         "the LoRA corpus shrank ({lora_rows} rows) — a stale oracle"
     );
 
+    // ---- params-builder (P4.D138) ----
+    let mut pb_rows = 0usize;
+    for (label, row) in &oracle {
+        match row["kind"].as_str() {
+            Some("params_const") => {
+                assert_eq!(
+                    serde_json::to_string(&HOST_OWNED_PARAMETER_KEYS)
+                        .unwrap()
+                        .as_str(),
+                    row["json"].as_str().unwrap(),
+                    "params_const {label}"
+                );
+                pb_rows += 1;
+            }
+            Some("params_builder") => {
+                let models: Vec<ModelInfo> = row["models"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|m| ModelInfo {
+                                id: m["id"].as_str().unwrap().to_string(),
+                                orientation_support: m
+                                    .get("orientationSupport")
+                                    .filter(|v| !v.is_null())
+                                    .map(orientation_from_json),
+                                lora_support: m
+                                    .get("loraSupport")
+                                    .filter(|v| !v.is_null())
+                                    .map(support_from_json),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let cons = &row["constraints"];
+                let declarations = ImageDeclarations {
+                    models,
+                    orientation_provider: cons
+                        .get("orientationSupport")
+                        .filter(|v| !v.is_null())
+                        .map(orientation_from_json),
+                    lora_provider: cons
+                        .get("loraSupport")
+                        .filter(|v| !v.is_null())
+                        .map(support_from_json),
+                };
+                let profile_params = row["profile"]["parameters"].clone();
+                let profile = ImageProfileLike {
+                    provider: row["profile"]["provider"].as_str().unwrap(),
+                    model_name: row["profile"]["modelName"].as_str(),
+                    parameters: if profile_params.is_null() {
+                        None
+                    } else {
+                        Some(&profile_params)
+                    },
+                };
+                let o = &row["overrides"];
+                let overrides = ImageGenOverrides {
+                    negative_prompt: o
+                        .get("negativePrompt")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    model: o.get("model").and_then(Value::as_str).map(str::to_string),
+                    n: o.get("n").and_then(Value::as_f64),
+                    size: o.get("size").and_then(Value::as_str).map(str::to_string),
+                    aspect_ratio: o
+                        .get("aspectRatio")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    quality: o.get("quality").and_then(Value::as_str).map(str::to_string),
+                    style: o.get("style").and_then(Value::as_str).map(str::to_string),
+                    response_format: o
+                        .get("responseFormat")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    seed: o.get("seed").and_then(Value::as_f64),
+                    guidance_scale: o.get("guidanceScale").and_then(Value::as_f64),
+                    steps: o.get("steps").and_then(Value::as_f64),
+                };
+                let orientation = match row["orientation"].as_str() {
+                    Some("portrait") => Some(Orientation::Portrait),
+                    Some("landscape") => Some(Orientation::Landscape),
+                    Some("square") => Some(Orientation::Square),
+                    _ => None,
+                };
+                let fallback = row["fallbackModel"].as_str().unwrap_or("dall-e-3");
+                let built = build_image_gen_params(
+                    profile,
+                    row["prompt"].as_str().unwrap(),
+                    &overrides,
+                    orientation,
+                    fallback,
+                    &declarations,
+                    &ImageParamsLogContext::default(),
+                );
+                let got = serde_json::json!({
+                    "params": built.params.to_key_value(),
+                    "loraSupport": built.lora_support,
+                    "loras": built.loras,
+                    "loraTriggerPhrase": built.lora_trigger_phrase,
+                    "appendedTriggerPhrases": built.appended_trigger_phrases,
+                    "orientation": built.orientation,
+                });
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap().as_str(),
+                    row["json"].as_str().unwrap(),
+                    "params_builder {label}"
+                );
+                pb_rows += 1;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        pb_rows >= 24,
+        "the params-builder corpus shrank ({pb_rows} rows) — a stale oracle"
+    );
+
     eprintln!(
-        "OK: image-gen-leaves differential matched the oracle ({matcher_rows} matcher + {lora_rows} LoRA rows)."
+        "OK: image-gen-leaves differential matched the oracle ({matcher_rows} matcher + {lora_rows} LoRA + {pb_rows} params rows)."
     );
 }

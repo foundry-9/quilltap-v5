@@ -28,7 +28,7 @@ use quilltap_core::api::wardrobe::{
     AvatarPreviewError, AvatarPreviewImage, AvatarPreviewRenderRequest, AvatarPreviewRenderer,
 };
 use quilltap_core::clock::now_unix_ms;
-use quilltap_core::model::image::{ImageGenParams, ImageProvider};
+use quilltap_core::model::image::ImageProvider;
 use quilltap_core::model::image_dialects::RealImageProvider;
 use quilltap_core::services::file_storage::convert_to_webp;
 
@@ -61,9 +61,10 @@ impl AvatarPreviewRenderer for HostAvatarPreviewRenderer {
 /// seam and an injected `now_ms` clock so the host tests can drive it
 /// deterministically. Mirrors `preview-avatar/route.ts` line-for-line:
 ///
-/// - provider call `{ prompt, model, n:1, size:'1024x1792', quality,
-///   style:'natural' }` (the dangerous-content classifier is deliberately
-///   skipped — v4's comment: an explicit operator-chosen one-shot);
+/// - the provider call, whose params the CORE builds through the shared
+///   `buildImageGenParams` (v4 `84f33ce94`) and hands over on the request — the
+///   host no longer knows the shape. The dangerous-content classifier is still
+///   deliberately skipped (v4's comment: an explicit operator-chosen one-shot);
 /// - `rawData = imageData?.data || imageData?.b64Json` → the model folds
 ///   `b64_json` into `data`, so an empty/absent `data` is the same
 ///   `NoImageData` refusal;
@@ -79,24 +80,10 @@ pub async fn render_over_provider<P: ImageProvider>(
     req: &AvatarPreviewRenderRequest,
     now_ms: i64,
 ) -> Result<AvatarPreviewImage, AvatarPreviewError> {
-    let params = ImageGenParams {
-        prompt: req.prompt.clone(),
-        negative_prompt: None,
-        model: req.model.clone(),
-        n: Some(1),
-        size: Some("1024x1792".to_string()),
-        aspect_ratio: None,
-        quality: req.quality.clone(),
-        style: Some("natural".to_string()),
-        seed: None,
-        guidance_scale: None,
-        steps: None,
-    };
-
     // v4: an uncaught provider throw → the middleware generic 500 (mapped to
     // `Failed` upstream, which the handler renders as "Internal server error").
     let response = provider
-        .generate_image(&req.provider, &req.api_key, &params)
+        .generate_image(&req.provider, &req.api_key, &req.params)
         .await
         .map_err(|e| AvatarPreviewError::Failed(e.message))?;
 
@@ -166,7 +153,7 @@ mod tests {
             &self,
             _provider: &str,
             _api_key: &str,
-            _params: &ImageGenParams,
+            _params: &quilltap_core::model::image::ImageGenParams,
         ) -> impl std::future::Future<Output = Result<ImageGenResponse, ImageGenError>> + Send
         {
             let out = match &self.0 {
@@ -188,10 +175,15 @@ mod tests {
 
     fn req(name: &str) -> AvatarPreviewRenderRequest {
         AvatarPreviewRenderRequest {
-            prompt: "a brass-goggled aviatrix".into(),
             provider: "OPENAI".into(),
-            model: "dall-e-3".into(),
-            quality: Some("hd".into()),
+            params: quilltap_core::model::image::ImageGenParams {
+                prompt: "a brass-goggled aviatrix".into(),
+                model: "dall-e-3".into(),
+                n: Some(1.0),
+                quality: Some("hd".into()),
+                style: Some("natural".into()),
+                ..Default::default()
+            },
             api_key: "sk-test".into(),
             character_name: name.into(),
         }

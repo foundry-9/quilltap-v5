@@ -1,10 +1,17 @@
-//! Shared helpers for the avatar + story-background job handlers (the parts that
-//! differ from the `generate_image` TOOL path): building the cheap-LLM selection
-//! from the user's profiles, decoding the provider's base64 bytes, constructing
-//! the job-path `generateImage` params (the inline `{ prompt, model, n, …resolved,
-//! quality, style }` object, NOT the tool's `mergeParameters` shape), and the
-//! generate-with-post-hoc-reroute flow the two handlers share (parameterized by
-//! the failure-message prefix + orientation).
+//! Shared helpers for the avatar + story-background job handlers: building the
+//! cheap-LLM selection from the user's profiles, decoding the provider's base64
+//! bytes, and the generate-with-post-hoc-reroute flow the two handlers share
+//! (parameterized by the failure-message prefix + orientation).
+//!
+//! **The params are no longer built here.** Until v4 `84f33ce94` these two job
+//! paths assembled the request inline as `{ prompt, model, n: 1, ...resolved,
+//! quality, style: 'natural' }`, reading exactly ONE key off the profile — so a
+//! `negativePrompt`, `seed`, `guidanceScale`, `steps` or (later) `loras`
+//! configured on a profile worked in the Salon and vanished for avatars and
+//! story backgrounds. v5 inherited that drift verbatim (the deleted
+//! `build_job_gen_params` hard-coded it and `quality_from_parameters` WAS the
+//! "reads only quality" bug). Both attempts now go through the one shared
+//! [`build_image_gen_params`], so these paths GAIN every one of those fields.
 
 use rusqlite::Connection;
 use serde_json::Value;
@@ -13,9 +20,12 @@ use crate::cheap_llm::{
     get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
 };
 use crate::db::runtime::Db;
-use crate::image_gen::{resolve_orientation, Orientation};
-use crate::image_gen::{ModelInfo, OrientationSupport};
-use crate::model::image::{ImageGenError, ImageGenParams, ImageGenResponse, ImageProvider};
+use crate::image_gen::params_builder::{
+    build_image_gen_params, ImageDeclarations, ImageGenOverrides, ImageParamsLogContext,
+    ImageProfileLike,
+};
+use crate::image_gen::Orientation;
+use crate::model::image::{ImageGenError, ImageGenResponse, ImageProvider};
 use crate::services::dangerous_content::provider_routing::{
     is_image_moderation_error, resolve_uncensored_image_profile_for_reroute, ApiKeyResolver,
 };
@@ -24,11 +34,25 @@ use crate::services::llm_logging::{
     LogResponse,
 };
 
-/// The orientation-data provider signature (v4's plugin-registry
-/// `getImageGenerationModels` + `getImageProviderConstraints(...).orientationSupport`,
-/// per provider): `provider -> (per-model info, provider-level default support)`.
-pub type OrientationDataFn =
-    dyn Fn(&str) -> (Vec<ModelInfo>, Option<OrientationSupport>) + Send + Sync;
+/// The plugin-registry declaration seam (v4's `getImageGenerationModels` +
+/// `getImageProviderConstraints`, per provider). `84f33ce94` widened it from
+/// the orientation half to v4's whole declaration set — see
+/// [`ImageDeclarations`].
+pub type ImageDeclarationsFn = dyn Fn(&str) -> ImageDeclarations + Send + Sync;
+
+/// The job handlers' fixed overrides — v4's `{ n: 1, style: 'natural' }` on
+/// BOTH job paths and BOTH attempts (natural reads better for an avatar and for
+/// an ambient background alike).
+fn job_overrides() -> ImageGenOverrides {
+    ImageGenOverrides {
+        n: Some(1.0),
+        style: Some("natural".to_string()),
+        ..Default::default()
+    }
+}
+
+/// v4 `buildImageGenParams`'s `fallbackModel` default.
+const DEFAULT_IMAGE_MODEL: &str = "dall-e-3";
 
 /// v4 `cheapLLMProfile` field extraction from a connection-profile `Value`.
 pub(crate) fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
@@ -145,41 +169,6 @@ pub(crate) fn decode_base64_node(s: &str) -> Vec<u8> {
         }
     }
     out
-}
-
-/// The job-path `generateImage` params: the inline `{ prompt: genPrompt, model,
-/// n: 1, ...resolved.params, quality, style: 'natural' }` object both handlers
-/// build. Bound verbatim into `image_gen_key` so the canned key proves prompt +
-/// orientation reach the provider.
-pub(crate) fn build_job_gen_params(
-    gen_prompt: &str,
-    model: &str,
-    quality: Option<String>,
-    size: Option<String>,
-    aspect_ratio: Option<String>,
-) -> ImageGenParams {
-    ImageGenParams {
-        prompt: gen_prompt.to_string(),
-        negative_prompt: None,
-        model: model.to_string(),
-        n: Some(1),
-        size,
-        aspect_ratio,
-        quality,
-        style: Some("natural".to_string()),
-        seed: None,
-        guidance_scale: None,
-        steps: None,
-    }
-}
-
-/// The `quality` param off a profile's `parameters` object (v4
-/// `(profile.parameters as Record)?.quality`).
-pub(crate) fn quality_from_parameters(parameters: &Value) -> Option<String> {
-    parameters
-        .get("quality")
-        .and_then(Value::as_str)
-        .map(str::to_string)
 }
 
 /// Load an image profile's `parameters` object by id (v4 reads
@@ -327,35 +316,45 @@ pub(crate) async fn generate_with_reroute<
     api_key: &str,
     final_prompt: &str,
     orientation: Orientation,
-    orientation_data_for: &OrientationDataFn,
+    declarations_for: &ImageDeclarationsFn,
     danger_mode: &str,
     uncensored_image_profile_id: Option<&str>,
     user_id: &str,
     chat_id: Option<&str>,
     character_id: Option<&str>,
     fail_prefix: &str,
+    // v4's `logContext.context` literals for this handler's two attempts
+    // (`'background-jobs.character-avatar'` / `'…concierge-reroute'`, and the
+    // story-background pair) plus the job id it folds in.
+    log_context: &'static str,
+    reroute_log_context: &'static str,
+    job_id: Option<&str>,
     recraft: &R,
 ) -> Result<GenOutcome, String> {
-    // Resolve orientation + build the merged params.
-    let (models, support) = orientation_data_for(provider);
-    let resolved = resolve_orientation(
-        Some(models.as_slice()),
-        Some(model_name),
-        support.as_ref(),
-        orientation,
-    );
-    let gen_prompt = if resolved.prompt_hint.is_empty() {
-        final_prompt.to_string()
-    } else {
-        format!("{final_prompt}\n\n{}", resolved.prompt_hint)
-    };
-    let params = build_job_gen_params(
-        &gen_prompt,
-        model_name,
-        quality_from_parameters(parameters),
-        resolved.size.clone(),
-        resolved.aspect_ratio.clone(),
-    );
+    // The shared builder maps the handler's orientation onto the provider's own
+    // size / aspect ratio / prompt wording AND attaches the profile's LoRAs and
+    // residual options — the same params the Salon's `generate_image` gets, so
+    // a LoRA configured for a profile does not work in chat and quietly vanish
+    // here. `style: 'natural'` and `n: 1` stay the handler's fixed choices.
+    let params = build_image_gen_params(
+        ImageProfileLike {
+            provider,
+            model_name: Some(model_name),
+            parameters: Some(parameters),
+        },
+        final_prompt,
+        &job_overrides(),
+        Some(orientation),
+        DEFAULT_IMAGE_MODEL,
+        &declarations_for(provider),
+        &ImageParamsLogContext {
+            context: log_context,
+            chat_id: chat_id.map(str::to_string),
+            job_id: job_id.map(str::to_string),
+            profile_id: Some(profile_id.to_string()),
+        },
+    )
+    .params;
 
     // v4 `const genStartTime = Date.now()` — a real wall-clock read bracketing
     // the provider attempt (NOT the handlers' pinned `now_ms`, which stamps
@@ -411,13 +410,16 @@ pub(crate) async fn generate_with_reroute<
                 &error,
                 final_prompt,
                 orientation,
-                orientation_data_for,
+                declarations_for,
                 danger_mode,
                 uncensored_image_profile_id,
                 user_id,
                 chat_id,
                 character_id,
                 fail_prefix,
+                log_context,
+                reroute_log_context,
+                job_id,
                 recraft,
             )
             .await
@@ -435,15 +437,19 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver, R: RerouteRecraft>
     error: &ImageGenError,
     final_prompt: &str,
     orientation: Orientation,
-    orientation_data_for: &OrientationDataFn,
+    declarations_for: &ImageDeclarationsFn,
     danger_mode: &str,
     uncensored_image_profile_id: Option<&str>,
     user_id: &str,
     chat_id: Option<&str>,
     character_id: Option<&str>,
     fail_prefix: &str,
+    log_context: &'static str,
+    reroute_log_context: &'static str,
+    job_id: Option<&str>,
     recraft: &R,
 ) -> Result<GenOutcome, String> {
+    let _ = log_context;
     let reroute = if is_image_moderation_error(&error.message) {
         let uid = user_id.to_string();
         let mode = danger_mode.to_string();
@@ -482,27 +488,28 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver, R: RerouteRecraft>
         .await
         .unwrap_or_else(|| final_prompt.to_string());
 
-    // Re-resolve for the reroute provider/model; load its `parameters`.
+    // Rebuild for the reroute provider/model — its shape mechanism, its LoRA
+    // support, and its stored options are all its own.
     let reroute_params = load_profile_parameters(db, &reroute.profile.id).await;
-    let (models, support) = orientation_data_for(&reroute.profile.provider);
-    let resolved = resolve_orientation(
-        Some(models.as_slice()),
-        Some(&reroute.profile.model_name),
-        support.as_ref(),
-        orientation,
-    );
-    let reroute_prompt = if resolved.prompt_hint.is_empty() {
-        reroute_base_prompt.clone()
-    } else {
-        format!("{reroute_base_prompt}\n\n{}", resolved.prompt_hint)
-    };
-    let params = build_job_gen_params(
-        &reroute_prompt,
-        &reroute.profile.model_name,
-        quality_from_parameters(&reroute_params),
-        resolved.size.clone(),
-        resolved.aspect_ratio.clone(),
-    );
+    let params = build_image_gen_params(
+        ImageProfileLike {
+            provider: &reroute.profile.provider,
+            model_name: Some(&reroute.profile.model_name),
+            parameters: Some(&reroute_params),
+        },
+        &reroute_base_prompt,
+        &job_overrides(),
+        Some(orientation),
+        DEFAULT_IMAGE_MODEL,
+        &declarations_for(&reroute.profile.provider),
+        &ImageParamsLogContext {
+            context: reroute_log_context,
+            chat_id: chat_id.map(str::to_string),
+            job_id: job_id.map(str::to_string),
+            profile_id: Some(reroute.profile.id.clone()),
+        },
+    )
+    .params;
 
     // v4 `const rerouteStartTime = Date.now()` — the reroute attempt gets its
     // own wall-clock span.
@@ -696,7 +703,7 @@ mod tests {
             &self,
             _provider: &str,
             _api_key: &str,
-            _params: &ImageGenParams,
+            _params: &crate::model::image::ImageGenParams,
         ) -> impl std::future::Future<Output = Result<ImageGenResponse, ImageGenError>> + Send
         {
             let fail = self.fail;
@@ -761,7 +768,8 @@ mod tests {
     }
 
     async fn run_gen(db: &Db, fail: bool) -> Result<GenOutcome, String> {
-        let orientation_data: Box<OrientationDataFn> = Box::new(|_p: &str| (Vec::new(), None));
+        let declarations: Box<ImageDeclarationsFn> =
+            Box::new(|_p: &str| ImageDeclarations::default());
         generate_with_reroute(
             db,
             &SlowImageProvider { fail },
@@ -773,13 +781,16 @@ mod tests {
             "sk-test",
             "a prompt",
             Orientation::Square,
-            &orientation_data,
+            &declarations,
             "OFF",
             None,
             "user-1",
             None,
             None,
             "Image generation failed",
+            "test.image-job",
+            "test.image-job.concierge-reroute",
+            None,
             &NoRerouteRecraft,
         )
         .await
