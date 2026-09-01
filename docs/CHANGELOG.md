@@ -157,6 +157,31 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+#### 2026-09-01 — fix(settings): chat settings carry allowCheapFallback, as v4's schema default does
+
+_Versions: core 0.0.723._
+
+A P4.D135 remainder, found by P4.D140's oracle regens and confirmed
+pre-existing by two-pin attribution (the identical divergence appears against a
+worktree pinned at the baseline `7fb668263`, and nothing P4.D140 touches is on
+that path).
+
+v4 `65f5021c8` appended `allowCheapFallback: z.boolean().default(false)` to the
+end of `CheapLLMSettingsSchema`. A Zod `.default()` is always present after a
+parse, so v4 writes the key on every create AND fills it in on every read —
+including for a stored bag that predates it. v5's `CheapLlmSettings` had no such
+field, so v5 wrote three-key bags, and `find_by_user_id` returned pre-4.9 bags
+verbatim, three-keyed.
+
+Both halves fixed: the field lands at the end of the struct with
+`#[serde(default)]` (v4's schema position, so the serialized key order matches),
+and the read fills the key in when a stored bag lacks it. That closed two
+standing reds — `salon_reads_equivalence [settings]` and ten cases of
+`system_restore_state`, all of them the one missing key — and left
+`provisioning_equivalence`, `chat_settings_tier2`, `settings_routes`,
+`chat_settings_composer_web_routes` and `system_restore_equivalence` green.
+Two mutation proofs, one per half.
+
 #### 2026-09-01 — fix(chats): every chat list dates by activity, not by the row changing (v4 735d9408c, bug 112)
 
 _Versions: core 0.0.722, harness 0.0.618._

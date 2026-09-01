@@ -998,6 +998,34 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 );
             }
             // === end P4.D97 ===
+            // === P4.D140 (v4 `735d9408c`, migration
+            // `recompute-chat-last-message-at-v1`) ===
+            // Bug 112's data pass: `lastMessageAt` used to be bumped by any
+            // message row, so every Staff announcement (a story background
+            // finishing, a folded summary, a Pascal roll, a Host notice) dated a
+            // months-dead chat as freshly active — 608 of 871 chats mis-dated on
+            // the real instance. This rewrites the column for existing chats
+            // under the shipped predicate, so history reads the way new activity
+            // will. DATA-only like the P4.D97 pass above, so its once-only guard
+            // is v4's own migrations_state ledger — and, exactly as v4's runner
+            // does, a boot that finds NO drift writes NO ledger row and simply
+            // re-checks next time (a stamp on a clean boot would make a later v4
+            // boot skip a migration it never ran).
+            if let quilltap_core::db::chat_activity_recompute_heal::RecomputeOutcome::Ran {
+                updated,
+                cleared,
+            } = quilltap_core::db::chat_activity_recompute_heal::recompute_chat_last_message_at(
+                main,
+                &quilltap_core::clock::now_iso(),
+            )? {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    updated,
+                    cleared,
+                    "Recomputed chat last-activity from character-authored messages"
+                );
+            }
+            // === end P4.D140 ===
             // === P4.D77 (v4 `24633026`, migration
             // `create-help-doc-chunks-table-v1`) ===
             // The `help_doc_chunks` table itself, re-homed from v4's migration

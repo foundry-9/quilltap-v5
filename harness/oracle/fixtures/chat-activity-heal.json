@@ -1,0 +1,46 @@
+{
+  "_comment": "P4.D140 heal spec (v4 735d9408c, migration recompute-chat-last-message-at-v1). Two scenarios built identically by the oracle case and the Rust family over v4's own migration-vintage reduced schema. The `mixed` scenario carries every shape from v4's integration suite plus the '' -systemSender seam, where the SQL mirror (IS NULL) and the in-memory predicate (JS truthiness) deliberately disagree — the migration is SQL, so the SQL answer is the one that must be reproduced.",
+  "scenarios": [
+    {
+      "name": "mixed",
+      "chats": [
+        { "id": "walk-back", "lastMessageAt": "2026-08-30T00:00:00.000Z" },
+        { "id": "whisper-kept", "lastMessageAt": "2026-05-01T00:00:00.000Z" },
+        { "id": "staff-only", "lastMessageAt": "2026-08-30T00:00:00.000Z" },
+        { "id": "announcer-only", "lastMessageAt": "2026-08-30T00:00:00.000Z" },
+        { "id": "tool-only", "lastMessageAt": "2026-08-30T00:00:00.000Z" },
+        { "id": "system-role-only", "lastMessageAt": "2026-08-30T00:00:00.000Z" },
+        { "id": "context-summary-only", "lastMessageAt": "2026-08-30T00:00:00.000Z" },
+        { "id": "system-event-only", "lastMessageAt": "2026-08-30T00:00:00.000Z" },
+        { "id": "already-correct", "lastMessageAt": "2026-07-07T00:00:00.000Z" },
+        { "id": "never-stamped", "lastMessageAt": null },
+        { "id": "empty-string-sender", "lastMessageAt": "2026-04-04T00:00:00.000Z" },
+        { "id": "no-messages-at-all", "lastMessageAt": "2026-01-05T00:00:00.000Z" }
+      ],
+      "messages": [
+        { "chatId": "walk-back", "createdAt": "2026-08-16T00:00:00.000Z", "role": "USER" },
+        { "chatId": "walk-back", "createdAt": "2026-08-30T00:00:00.000Z", "systemSender": "lantern" },
+        { "chatId": "whisper-kept", "createdAt": "2026-05-01T00:00:00.000Z", "role": "ASSISTANT" },
+        { "chatId": "staff-only", "createdAt": "2026-08-30T00:00:00.000Z", "systemSender": "host" },
+        { "chatId": "announcer-only", "createdAt": "2026-08-30T00:00:00.000Z", "role": "USER", "customAnnouncer": "{\"kind\":\"custom\",\"displayName\":\"The Narrator\"}" },
+        { "chatId": "tool-only", "createdAt": "2026-08-30T00:00:00.000Z", "role": "TOOL" },
+        { "chatId": "system-role-only", "createdAt": "2026-08-30T00:00:00.000Z", "role": "SYSTEM" },
+        { "chatId": "context-summary-only", "createdAt": "2026-08-30T00:00:00.000Z", "type": "context-summary", "role": null },
+        { "chatId": "system-event-only", "createdAt": "2026-08-30T00:00:00.000Z", "type": "system", "role": null },
+        { "chatId": "already-correct", "createdAt": "2026-07-07T00:00:00.000Z", "role": "ASSISTANT" },
+        { "chatId": "never-stamped", "createdAt": "2026-03-03T00:00:00.000Z", "role": "ASSISTANT" },
+        { "chatId": "empty-string-sender", "createdAt": "2026-04-04T00:00:00.000Z", "role": "ASSISTANT", "systemSender": "" }
+      ]
+    },
+    {
+      "name": "no-drift",
+      "chats": [
+        { "id": "already-correct", "lastMessageAt": "2026-07-07T00:00:00.000Z" }
+      ],
+      "messages": [
+        { "chatId": "already-correct", "createdAt": "2026-07-07T00:00:00.000Z", "role": "ASSISTANT" },
+        { "chatId": "already-correct", "createdAt": "2026-08-30T00:00:00.000Z", "systemSender": "prospero" }
+      ]
+    }
+  ]
+}

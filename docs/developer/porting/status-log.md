@@ -95471,3 +95471,31 @@ five sibling lanes are in flight. **Ordered follow-up for the next round.** Ever
 other arm of the family — `list_all`, both exclude-tag arms, `list_limit1`, the
 three `get_*` arms and the 30-object key-order pin — is GREEN, and those are the
 arms this lane moves.
+
+### Unit 3b — the `allowCheapFallback` gap CLOSED (a P4.D135 remainder, not this lane's mandate)
+
+The finding recorded above turned out to block two of the lane's OWN required
+families (`salon_reads` and ten cases of `system_restore_state`), and
+`db/chat_settings.rs` belongs to no lane this round, so it is fixed here rather
+than deferred — narrowly, in its own commit, with the two families as its
+differential.
+
+v4's `allowCheapFallback: z.boolean().default(false)` sits at the END of
+`CheapLLMSettingsSchema`. A `.default()` is ALWAYS present after a parse, so v4
+writes it on every create and fills it in on every read — including a stored bag
+written before the key existed. v5 had neither half.
+
+- **Write:** `CheapLlmSettings` gains `allow_cheap_fallback: bool` with
+  `#[serde(default)]`, at the END of the struct so the serialized key order is
+  v4's.
+- **Read:** the new `default_cheap_llm_keys` fills the key into the
+  `cheapLLMSettings` bag when absent (insertion order puts it last, where Zod
+  puts it). Documented as the ONLY key needing this today; the older keys were
+  present from the column's first write.
+
+**Mutation proofs (two, one per half):** the read helper made a no-op →
+`salon_reads [settings]` red; the field made `skip_serializing` →
+`system_restore_state` red on `main.chat_settings`. **Blast radius re-run
+green:** `provisioning_equivalence`, `chat_settings_tier2_equivalence`,
+`settings_routes_equivalence`, `chat_settings_composer_web_routes`,
+`system_restore_equivalence`, `system_restore_state`, `salon_reads_equivalence`.

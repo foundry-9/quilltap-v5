@@ -32,6 +32,7 @@ pub mod character_resolver;
 pub mod character_vault;
 pub mod characters;
 pub mod characters_read;
+pub mod chat_activity_recompute_heal;
 pub mod chat_documents;
 pub mod chat_settings;
 pub mod chat_settings_composer_repair;

@@ -125,6 +125,28 @@ pub struct CheapLlmSettings {
     pub fallback_to_local: bool,
     pub embedding_provider: String,
     pub image_prompt_profile_id: Option<String>,
+    /// v4 `65f5021c8` appended `allowCheapFallback: z.boolean().default(false)`
+    /// at the END of the schema (P4.D135). A `.default()` is ALWAYS present after
+    /// a parse, so every bag v4 writes carries it and every bag v4 READS gains
+    /// it — including a pre-4.9 bag that predates the key. `#[serde(default)]`
+    /// reproduces the write half; the read half is
+    /// [`default_cheap_llm_keys`].
+    #[serde(default)]
+    pub allow_cheap_fallback: bool,
+}
+
+/// Fill the Zod `.default()`s a stored `cheapLLMSettings` bag can predate, so a
+/// migration-vintage instance reads the way v4's `.parse()` makes it read. Only
+/// `allowCheapFallback` needs this today (v4 `65f5021c8`); the older keys were
+/// present from the column's first write. Insertion order is v4's schema order —
+/// the key goes LAST, where Zod puts it.
+fn default_cheap_llm_keys(mut bag: serde_json::Value) -> serde_json::Value {
+    if let Some(o) = bag.as_object_mut() {
+        if !o.contains_key("allowCheapFallback") {
+            o.insert("allowCheapFallback".into(), serde_json::Value::Bool(false));
+        }
+    }
+    bag
 }
 
 /// `ThemePreferenceSchema` (themes/types.ts L532). `activeThemeId` is
@@ -924,7 +946,7 @@ pub fn find_by_user_id(
                 );
                 obj.insert(
                     "cheapLLMSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(5)?),
+                    default_cheap_llm_keys(parse_json(r.get::<_, Option<String>>(5)?)),
                 );
                 put_opt(
                     &mut obj,
