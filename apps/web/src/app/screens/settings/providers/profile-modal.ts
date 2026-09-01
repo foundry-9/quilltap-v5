@@ -662,7 +662,6 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                   id="qt-pf-fallback"
                   name="fallbackProfileId"
                   class="qt-select"
-                  [value]="form().fallbackProfileId"
                   (change)="setField('fallbackProfileId', $any($event.target).value)"
                 >
                   <option value="" [selected]="!form().fallbackProfileId">

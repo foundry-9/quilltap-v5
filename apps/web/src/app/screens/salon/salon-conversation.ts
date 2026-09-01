@@ -2933,15 +2933,19 @@ export class SalonConversation {
     // moments where the reply the user gets is not the one they configured, so
     // both are worth saying out loud.
     //
-    // ⚠ The recorded divergence above applies to BOTH stages, and bites harder
-    // on this one: riding transitions means a chain that walks two stand-ins
-    // emits two `failing-over` frames and toasts ONCE, where v4 toasts twice.
-    // The reducer coalesces repeats, and two consecutive "X is standing in for
-    // Y..." toasts are noise rather than news — recorded, not fixed.
+    // ⚠ The recorded divergence above applies to BOTH stages, narrowed at the
+    // round-1 unification (2026-09-01): v4 toasts on EVERY status event; v5
+    // rides transitions, but a stage that stays put while its MESSAGE changes
+    // still toasts — a chain that walks two stand-ins names each of them, and
+    // the second name is news, not noise. What v5 still coalesces (recorded,
+    // not fixed) is a byte-identical repeat frame, which v4 would re-toast.
     const RESCUE_STAGES = ['retrying', 'failing-over'];
     const afterStage = after.status?.stage ?? '';
     const beforeStage = before.status?.stage ?? '';
-    if (RESCUE_STAGES.includes(afterStage) && afterStage !== beforeStage) {
+    if (
+      RESCUE_STAGES.includes(afterStage) &&
+      (afterStage !== beforeStage || after.status?.message !== before.status?.message)
+    ) {
       const message = after.status?.message;
       if (message) this.toasts.showWarning(message);
     }

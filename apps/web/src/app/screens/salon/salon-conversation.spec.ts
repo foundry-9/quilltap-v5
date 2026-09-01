@@ -2720,3 +2720,74 @@ describe('SalonConversation — the story-background loops are the fallback now'
     }
   });
 });
+
+/**
+ * The rescue-stage toasts (`retrying` / `failing-over`, v4
+ * `useSSEStreaming.ts:508-519` at `65f5021c8`).
+ *
+ * v4 toasts on EVERY status event; v5 rides transitions with one narrowing,
+ * settled at the round-1 unification (2026-09-01): a stage that stays put while
+ * its MESSAGE changes still toasts — a chain walking two stand-ins names each,
+ * and the second name is news — while a byte-identical repeat frame is
+ * coalesced (the remaining recorded divergence).
+ */
+describe('SalonConversation rescue-stage toasts (65f5021c8)', () => {
+  function withStatus(stage: string, message: string): ChatStreamState {
+    return { ...initialChatStreamState(), status: { stage, message } };
+  }
+
+  function report(
+    fixture: ComponentFixture<SalonConversation>,
+    before: ChatStreamState,
+    after: ChatStreamState,
+  ): void {
+    (
+      fixture.componentInstance as unknown as {
+        reportStreamTransitions(a: ChatStreamState, b: ChatStreamState): void;
+      }
+    ).reportStreamTransitions(before, after);
+  }
+
+  it('toasts the server sentence on entering failing-over', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const n = toasts().length;
+    report(
+      fixture,
+      initialChatStreamState(),
+      withStatus('failing-over', 'Understudy is standing in for Aria...'),
+    );
+    expect(toasts().slice(n)).toEqual([
+      { type: 'warning', message: 'Understudy is standing in for Aria...' },
+    ]);
+  });
+
+  it('toasts AGAIN when the stage stays failing-over but the message names a different stand-in', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const n = toasts().length;
+    const first = withStatus('failing-over', 'Understudy is standing in for Aria...');
+    report(fixture, initialChatStreamState(), first);
+    report(fixture, first, withStatus('failing-over', 'Tier Spare is standing in for Aria...'));
+    expect(toasts().slice(n)).toEqual([
+      { type: 'warning', message: 'Understudy is standing in for Aria...' },
+      { type: 'warning', message: 'Tier Spare is standing in for Aria...' },
+    ]);
+  });
+
+  it('coalesces a byte-identical repeat frame (the recorded divergence from v4)', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const n = toasts().length;
+    const frame = withStatus('retrying', 'Retrying with the same provider...');
+    report(fixture, initialChatStreamState(), frame);
+    report(fixture, frame, { ...initialChatStreamState(), status: { ...frame.status! } });
+    expect(toasts().slice(n)).toEqual([
+      { type: 'warning', message: 'Retrying with the same provider...' },
+    ]);
+  });
+
+  it('never toasts a non-rescue stage', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const n = toasts().length;
+    report(fixture, initialChatStreamState(), withStatus('thinking', 'Composing...'));
+    expect(toasts().slice(n)).toEqual([]);
+  });
+});
