@@ -3663,6 +3663,7 @@ impl Response {
             associations: None,
             character_id: None,
             entity: None,
+            details: None,
         })
     }
 
@@ -3678,6 +3679,7 @@ impl Response {
             code: None,
             associations: None,
             character_id: None,
+            details: None,
             entity: Some(Box::new(UnavailableEntity {
                 label: label.to_string(),
                 id: id.to_string(),
@@ -3687,6 +3689,24 @@ impl Response {
 
     /// An error response carrying v4's file-op `code` (P4.6y — the
     /// `{ error, code }` body; see [`CoreError::code`]).
+    /// v4 `validationError(err)` — the Zod refusal envelope: a 400 whose body is
+    /// `{error: 'Validation error', details: err.issues}`. The message is v4's
+    /// fixed `'Validation error'` sentence (it mirrors the wire body's `error`,
+    /// the same convention [`Response::store_unavailable`] follows); `details`
+    /// is the raw issue array.
+    pub fn validation_error(details: serde_json::Value) -> Response {
+        Response::Error(CoreError {
+            kind: ErrorKind::BadRequest,
+            message: "Validation error".to_string(),
+            pepper_state: None,
+            code: None,
+            associations: None,
+            character_id: None,
+            entity: None,
+            details: Some(Box::new(details)),
+        })
+    }
+
     pub fn error_coded(
         kind: ErrorKind,
         message: impl Into<String>,
@@ -3700,6 +3720,7 @@ impl Response {
             associations: None,
             character_id: None,
             entity: None,
+            details: None,
         })
     }
 
@@ -3717,9 +3738,10 @@ impl Response {
             message: message.into(),
             pepper_state: None,
             code: Some(code.into()),
-            associations: Some(associations),
+            associations: Some(Box::new(associations)),
             character_id: None,
             entity: None,
+            details: None,
         })
     }
 
@@ -3741,6 +3763,7 @@ impl Response {
             associations: None,
             character_id: Some(Box::new(character_id.into())),
             entity: None,
+            details: None,
         })
     }
 
@@ -3756,6 +3779,7 @@ impl Response {
             associations: None,
             character_id: None,
             entity: None,
+            details: None,
         })
     }
 }
@@ -3930,8 +3954,13 @@ pub struct CoreError {
     /// v4's `FILE_HAS_ASSOCIATIONS` itemized payload (P4.6ah `fileDelete`):
     /// the `getFileAssociations` result — present ONLY on the un-forced
     /// linked-file delete refusal, absent everywhere else.
+    ///
+    /// **Boxed** since P4.D138, like `character_id` and `entity`: the two `Vec`s
+    /// inline made `CoreError` 48 bytes wider than the box, and the `details`
+    /// rider added there pushed `Response` over clippy's `result_large_err`
+    /// threshold — a workspace-wide lint failure for one rarely-populated field.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub associations: Option<FileAssociations>,
+    pub associations: Option<Box<FileAssociations>>,
     /// v4's `ARCHIVE_BUNDLE_HELD` holder id (P4.D65 — the files-delete guard):
     /// the character whose `archiveFileId` is the file the caller tried to
     /// delete. Present ONLY on that refusal, absent everywhere else. v4 nests it
@@ -3953,6 +3982,18 @@ pub struct CoreError {
     /// the message — see [`CoreError::unavailable_wire_body`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub entity: Option<Box<UnavailableEntity>>,
+    /// v4 `validationError(zodError)`'s `details` array (P4.D138 —
+    /// `84f33ce94`'s image-profile LoRA guard is the first user): the raw Zod
+    /// issues, carried flat on the error exactly as `associations` and
+    /// `character_id` already are, so the transport can render v4's
+    /// `{error: 'Validation error', details: [...]}` 400 body without parsing
+    /// the message. Present ONLY on that refusal, absent everywhere else.
+    ///
+    /// **Boxed** for the same reason `entity` is: `Response` travels by value
+    /// through dozens of `Result<_, Response>` helpers and an inline `Value`
+    /// here pushes `CoreError` over clippy's `result_large_err` threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<Box<serde_json::Value>>,
 }
 
 /// The broken store's entity, carried on [`ErrorKind::Unavailable`] errors.
@@ -4005,6 +4046,22 @@ impl CoreError {
             format!("{}Id", entity.label),
             serde_json::Value::String(entity.id.clone()),
         );
+        Some(serde_json::Value::Object(body))
+    }
+
+    /// v4 `validationError(zodError)`'s wire body — `{error: 'Validation
+    /// error', details: [...]}` at 400 — for the errors that carry
+    /// [`CoreError::details`]. `None` for every other refusal, which keeps the
+    /// plain `{error}` shape (the [`CoreError::unavailable_wire_body`]
+    /// pattern).
+    pub fn validation_wire_body(&self) -> Option<serde_json::Value> {
+        let details = self.details.as_ref()?;
+        let mut body = serde_json::Map::new();
+        body.insert(
+            "error".to_string(),
+            serde_json::Value::String(self.message.clone()),
+        );
+        body.insert("details".to_string(), (**details).clone());
         Some(serde_json::Value::Object(body))
     }
 }

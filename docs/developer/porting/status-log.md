@@ -94837,3 +94837,100 @@ only, so the rows simply sit unread until their unit lands): the
 `image-profiles-routes` LoRA-guard cases (unit 2), the `image-gen-leaves`
 `params_builder` cases (unit 3), and the `record-image-fixtures.mjs` NanoGPT
 LoRA/passthrough rows (units 5–7).
+
+### Unit 2 — the write-side LoRA guard + the Zod refusal envelope
+
+v4 sources: `lib/image-gen/lora-validation.ts` (NEW, 42), the
+`ImageLoraSpecSchema` + `IMAGE_PROFILE_LORAS_KEY` block in
+`lib/schemas/profile.types.ts`, and the two guard hunks in
+`app/api/v1/image-profiles/route.ts` (create) and
+`app/api/v1/image-profiles/[id]/route.ts` (PUT).
+
+v5: NEW `crates/quilltap-core/src/image_gen/lora_validation.rs`;
+`api/image_profiles.rs` (both guards); `api/types.rs` (the `details` carry +
+`Response::validation_error` + `CoreError::validation_wire_body`);
+`quilltap-web/src/dispatch.rs` (the body merge); `quilltap-host/src/spine.rs`
+(the mechanical `details: None` on its twelve `CoreError` literals).
+
+**The refusal is the Zod ENVELOPE, and that is the whole point of the unit.**
+v4 answers `validationError(loraError)` — `{error: 'Validation error',
+details: err.issues}` at 400 — never a bespoke sentence. v5 had no way to
+carry a structured `details` payload, so `CoreError` gains one, boxed and
+`skip_serializing_if`-absent, exactly as `associations` / `character_id` /
+`entity` already ride flat on the error with the transport rendering them into
+the body. The dispatch merge follows the P4.23 store-unavailable precedent
+line for line. (No image-profiles REST edge exists in `quilltap-web` — the SPA
+uses the dispatch verb — so the two generic REST error renderers were left
+alone rather than given an unreachable branch.)
+
+**The issue objects were MEASURED, not guessed.** The transcription (untagged
+variants so `Option` skipping cannot reorder; `invalid_type` puts `expected`
+first, `too_small`/`too_big` put `origin` first; array indices ride the `path`
+as JSON NUMBERS while keys ride as strings; `.trim()` runs before `.min(1)` so
+a whitespace-only source is a length failure, not a type one) was written
+first and then checked against a pin-fresh oracle: all sixteen arms matched
+byte-for-byte on the first run. One arm is a real order pin (the guard outranks
+the `apiKeyId` 404) and two are storage dumps: an over-cap list is stored
+intact (there is NO cap check on the write path; do not add one "for
+symmetry"), and a refused update leaves the fixture's bag untouched.
+
+**A measured non-discriminator, recorded rather than dressed up.**
+`create_params_array_still_wins` was authored as the other half of the order
+pin — "the caller's own object check outranks the guard" — and the mutation
+that moves the guard ABOVE that check left it green. The reason is v4's own
+comment: `validateProfileLoras` opens by refusing a non-object bag itself, so
+running it first on an array simply returns "nothing to complain about" and the
+object-check sentence stands either way. No input can make that placement
+observable through the route. The arm is therefore a regression guard on the
+sentence, not an order pin, and the "never inspect a non-object bag" rule is
+pinned where it IS observable — the `non_object_and_absent_key_are_silent`
+unit test in `lora_validation.rs`.
+
+One reachability note carried into the source: `z.number().finite(...)` has no
+reachable arm through JSON, since neither NaN nor Infinity survives
+`JSON.parse` and Zod 4's `z.number()` refuses them anyway.
+
+**Differential.** `image_profiles_routes_equivalence` 28 → 44 cases; the new
+arms compare the WHOLE body through a new `err_details` comparator (a plain
+`err` would go green on any `Validation error` 400 whatever the issues said),
+and the family's stale-oracle guard list gains six of the new names. Regen
+recipe (from the pin):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+PIN=/tmp/qt-v4-pin-p4d138-2ece98c90 ; TMPO=/tmp/qt-image-profiles-routes-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp $V5W/harness/oracle/cases/image-profiles-routes.test.ts "$TMPO/cases/"
+cp $V5W/harness/oracle/fixtures/groups-projects.json       "$TMPO/fixtures/"
+cd "$PIN"
+QT_FIXTURE_GP_MAIN=$V5W/crates/quilltap-web/tests/fixtures/groups-projects-main.db \
+QT_FIXTURE_GP_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/groups-projects-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-image-profiles-routes.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- image-profiles-routes
+QT_ORACLE_IMAGE_ROUTES=/tmp/oracle-image-profiles-routes.ndjson \
+  cargo test -p quilltap-harness --test image_profiles_routes_equivalence
+```
+
+**Mutation proofs (six applied-and-verified; five reddened a named arm, one
+measured non-discriminating and is recorded above):** the guard moved BELOW the
+`apiKeyId` lookup (every create arm incl. the order pin); a write-path cap
+check added "for symmetry" (`create_loras_over_cap_kept` + its table dump); the
+`too_small` `minimum` 1 → 0 (`create_loras_blank_source` and both arms that
+carry that issue); Zod short-circuited to the first issue
+(`create_loras_two_bad_entries`); the update guard deleted
+(`update_loras_malformed` + its table dump + `update_loras_not_a_list`); and
+the guard moved ABOVE the object check (green — see above).
+
+The family's five units-5/8 arms (`list_providers` + the four `list_models`)
+stay RED against that oracle until those units land — see the unit-1 gate note.
+
+**Gate (unit 2):** fmt clean; clippy clean on BOTH feature sets — after boxing
+`CoreError::associations`, which the `details` rider pushed over clippy's
+`result_large_err` threshold (the same trap `character_id` and `entity`
+already document at the site; the two inline `Vec`s were 40 bytes of the
+budget); `cargo test --workspace` = 178 binaries / 2,137 passed / 1 failed,
+that one failure being the SAME five red-first arms as unit 1 and nothing
+else.
+
+Versions: core 0.0.721, harness 0.0.618, host 0.0.87, web 0.0.101.

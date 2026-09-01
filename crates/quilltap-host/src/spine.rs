@@ -1206,6 +1206,7 @@ where
                 associations: None,
                 character_id: None,
                 entity: None,
+                details: None,
             },
             RegenError::Db(_) => CoreError {
                 kind: ErrorKind::Internal,
@@ -1215,6 +1216,7 @@ where
                 associations: None,
                 character_id: None,
                 entity: None,
+                details: None,
             },
         })
     }
@@ -1415,6 +1417,7 @@ where
                     associations: None,
                     character_id: None,
                     entity: None,
+                    details: None,
                 });
             }
         };
@@ -1593,6 +1596,7 @@ where
                     associations: None,
                     character_id: None,
                     entity: None,
+                    details: None,
                 })
             }
         }
@@ -1770,6 +1774,7 @@ fn map_create_error(e: HandleCreateError) -> CoreError {
         associations: None,
         character_id: None,
         entity: None,
+        details: None,
     }
 }
 
@@ -1837,6 +1842,7 @@ where
                 associations: None,
                 character_id: None,
                 entity: None,
+                details: None,
             })?;
 
         // Open the OWN writable partitions (module note). `busy_timeout` guards
@@ -1853,6 +1859,7 @@ where
                         associations: None,
                         character_id: None,
                         entity: None,
+                        details: None,
                     }
                 })?;
             w.connection().busy_timeout(busy).map_err(|e| CoreError {
@@ -1863,6 +1870,7 @@ where
                 associations: None,
                 character_id: None,
                 entity: None,
+                details: None,
             })?;
             Ok(w)
         };
@@ -1974,6 +1982,7 @@ where
                         associations: None,
                         character_id: None,
                         entity: None,
+                        details: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -1987,6 +1996,7 @@ where
                     associations: None,
                     character_id: None,
                     entity: None,
+                    details: None,
                 })
             })
         })
@@ -2046,6 +2056,7 @@ where
                         associations: None,
                         character_id: None,
                         entity: None,
+                        details: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2059,6 +2070,7 @@ where
                     associations: None,
                     character_id: None,
                     entity: None,
+                    details: None,
                 })
             })
         })
@@ -2096,6 +2108,7 @@ where
                         associations: None,
                         character_id: None,
                         entity: None,
+                        details: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2109,6 +2122,7 @@ where
                     associations: None,
                     character_id: None,
                     entity: None,
+                    details: None,
                 })
             })
         })
@@ -2147,6 +2161,7 @@ where
                         associations: None,
                         character_id: None,
                         entity: None,
+                        details: None,
                     }),
                 };
                 let _ = tx.send(result);
@@ -2160,6 +2175,7 @@ where
                     associations: None,
                     character_id: None,
                     entity: None,
+                    details: None,
                 })
             })
         })

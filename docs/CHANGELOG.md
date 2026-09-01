@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — feat(images): the write-side LoRA guard + the Zod refusal envelope (P4.D138 unit 2)
+
+_Versions: core 0.0.721, harness 0.0.618, host 0.0.87, web 0.0.101._
+
+`quilltap_core::image_gen::lora_validation` ports v4's
+`lib/image-gen/lora-validation.ts`: the reserved `parameters.loras` key is
+validated before anything is written, so a malformed adapter list is a 400
+with nothing stored rather than a profile that saves cleanly and fails at
+generation time. There is deliberately **no cap check** on the write path — an
+over-cap list is kept by the absence of a guard, so narrowing the model and
+widening it again loses nothing.
+
+The refusal is v4's Zod envelope, not a bespoke sentence:
+`{error: 'Validation error', details: [...]}` at 400. `CoreError` therefore
+gains a `details` carry (boxed, skipped when absent — the `entity` /
+`associations` pattern), `Response::validation_error(...)` builds it, and the
+dispatch transport merges `CoreError::validation_wire_body()` into the body the
+way the store-unavailable 503 already merges its own. The issue objects are
+reproduced key-for-key against Zod 4 — `invalid_type` puts `expected` first,
+the size issues put `origin` first, array indices ride the `path` as numbers —
+and every arm was measured against v4's real handler rather than guessed.
+
+The guard sits between the "Parameters must be an object" check (whose refusal
+it must not steal) and the `apiKeyId` lookup (whose 404 it outranks) on create,
+and inside the `parameters !== undefined` arm on update, each with its own warn
+sentence. `image_profiles_routes_equivalence` grows sixteen arms comparing the
+WHOLE refusal body, plus two storage dumps proving the over-cap list is stored
+intact and a refused update writes nothing.
+
 #### 2026-09-01 — feat(images): the model matchers + the LoRA support resolver (P4.D138 unit 1)
 
 _Versions: core 0.0.720, harness 0.0.617._

@@ -15,6 +15,9 @@ use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{api_keys, image_profiles as ip, provider_models, tags};
+use crate::image_gen::lora_validation::{
+    lora_issue_details, lora_issue_log_lines, validate_profile_loras,
+};
 use crate::model::image::ErasedImageDiscovery;
 use crate::model::image_dialects::supported_image_models;
 use crate::provider_manifest::Registry;
@@ -300,6 +303,18 @@ pub async fn image_profile_create(db: &Db, user_id: &str, body: Value) -> Respon
         Some(Value::Object(_)) => body.get("parameters").cloned().unwrap(),
         Some(_) => return bad_request("Parameters must be an object"),
     };
+    // `84f33ce94`: validate the reserved `loras` key before anything is written
+    // — a malformed adapter list must not save cleanly and fail at generation.
+    // The guard sits HERE, after the parameters-object check (whose refusal it
+    // must not steal) and BEFORE the apiKeyId lookup (whose 404 it outranks).
+    if let Some(issues) = validate_profile_loras(&parameters) {
+        tracing::warn!(
+            provider = %provider,
+            issues = ?lora_issue_log_lines(&issues),
+            "[Image Profiles v1] Rejected a profile with a malformed LoRA list"
+        );
+        return Response::validation_error(lora_issue_details(&issues));
+    }
     let api_key_id = body
         .get("apiKeyId")
         .and_then(Value::as_str)
@@ -487,6 +502,16 @@ pub async fn image_profile_update(
     if let Some(p) = body_obj.get("parameters") {
         if !p.is_object() {
             return bad_request("Parameters must be an object");
+        }
+        // `84f33ce94`, inside the `parameters !== undefined` arm — same rule,
+        // same placement, a different warn sentence.
+        if let Some(issues) = validate_profile_loras(p) {
+            tracing::warn!(
+                profile_id = %profile_id,
+                issues = ?lora_issue_log_lines(&issues),
+                "[Image Profiles v1] Rejected an update with a malformed LoRA list"
+            );
+            return Response::validation_error(lora_issue_details(&issues));
         }
         mo.insert("parameters".into(), p.clone());
         patch.parameters = Some(p.clone());

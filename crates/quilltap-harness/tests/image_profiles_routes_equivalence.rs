@@ -200,6 +200,25 @@ fn ensure_provider_models(db: &Db, ddl: &str) {
     .expect("create provider_models");
 }
 
+/// `parameters` as stored — the P4.D138 LoRA arms' storage comparand: an
+/// over-cap adapter list is KEPT, never trimmed at the write, and a refused
+/// update leaves the fixture's bag untouched.
+fn dump_profile_parameters(db: &Db) -> Value {
+    db.read_main(|conn| {
+        let mut stmt = conn.prepare("SELECT name, parameters FROM image_profiles ORDER BY name")?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(json!({
+                    "name": r.get::<_, String>(0)?,
+                    "parameters": r.get::<_, String>(1)?,
+                }))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(json!({ "profileParameters": rows }))
+    })
+    .unwrap()
+}
+
 fn dump_profiles(db: &Db) -> Value {
     db.read_main(|conn| {
         let mut stmt = conn.prepare("SELECT name, isDefault FROM image_profiles ORDER BY name")?;
@@ -242,6 +261,13 @@ fn image_profiles_routes_match_oracle() {
         "list_models_live_ok",
         "list_models_live_failure",
         "list_models_dangling_key",
+        // P4.D138 (`84f33ce94`) — the LoRA guard arms.
+        "create_loras_ok",
+        "create_loras_over_cap_kept",
+        "create_loras_not_a_list",
+        "create_loras_two_bad_entries",
+        "create_loras_guard_precedes_apikey",
+        "update_loras_malformed",
     ] {
         assert!(
             oracle.contains_key(required),
@@ -314,6 +340,36 @@ fn image_profiles_routes_match_oracle() {
                     want_msg
                 );
                 failed.push(name.to_string());
+            }
+            _ => {
+                eprintln!("[{name}] expected error {want_status}, got success");
+                failed.push(name.to_string());
+            }
+        }
+    };
+
+    // P4.D138 (`84f33ce94`): the LoRA guard's refusal is v4's Zod ENVELOPE, so
+    // the arm compares the WHOLE body — `{error, details}` — not just the
+    // sentence. A plain `err` here would go green on any `Validation error`
+    // 400 whatever the issues said.
+    let err_details = |name: &str, resp: &Response, failed: &mut Vec<String>| {
+        let want = &oracle[name];
+        let want_status = want["status"].as_i64().unwrap();
+        match resp {
+            Response::Error(e) => {
+                let got_status = http_for(e.kind);
+                let got_body = e
+                    .validation_wire_body()
+                    .unwrap_or_else(|| json!({ "error": e.message }));
+                if got_status == want_status && norm(&got_body, &[]) == norm(&want["body"], &[]) {
+                    eprintln!("[{name}] OK (err {want_status} + details).");
+                } else {
+                    eprintln!(
+                        "[{name}] ERR MISMATCH (status {got_status} want {want_status}):\n{}",
+                        first_diff(&norm(&got_body, &[]), &norm(&want["body"], &[]))
+                    );
+                    failed.push(name.to_string());
+                }
             }
             _ => {
                 eprintln!("[{name}] expected error {want_status}, got success");
@@ -682,6 +738,181 @@ fn image_profiles_routes_match_oracle() {
     err(
         "delete_404",
         &rt.block_on(ip::image_profile_delete(&fresh_db(&spec, "d4"), BOGUS)),
+        &mut failed,
+    );
+
+    // --- 84f33ce94: the write-side `parameters.loras` guard ---
+    {
+        let db = fresh_db(&spec, "lok");
+        ok(
+            "create_loras_ok",
+            &rt.block_on(ip::image_profile_create(
+                &db,
+                &uid,
+                json!({
+                    "name": "LoRA Profile",
+                    "provider": "NANOGPT",
+                    "modelName": "flux-2-dev-lora",
+                    "parameters": { "loras": [
+                        { "source": "owner/adapter", "scale": 0.8, "triggerPhrase": "shou_xin", "label": "Shou Xin" },
+                        { "source": "https://example.test/w.safetensors" }
+                    ]}
+                }),
+            )),
+            CREATED,
+            &mut failed,
+        );
+    }
+    {
+        // No cap check on the write path: three adapters against a one-adapter
+        // model save intact, and the STORED bag proves it (not just the echo).
+        let db = fresh_db(&spec, "locap");
+        ok(
+            "create_loras_over_cap_kept",
+            &rt.block_on(ip::image_profile_create(
+                &db,
+                &uid,
+                json!({
+                    "name": "Over Cap",
+                    "provider": "NANOGPT",
+                    "modelName": "flux-lora",
+                    "parameters": { "loras": [{ "source": "a/1" }, { "source": "a/2" }, { "source": "a/3" }] }
+                }),
+            )),
+            CREATED,
+            &mut failed,
+        );
+        check_tables(
+            "create_loras_over_cap_kept",
+            &dump_profile_parameters(&db),
+            &mut failed,
+        );
+    }
+    for (name, tag, params) in [
+        (
+            "create_loras_not_a_list",
+            "lnl",
+            json!({ "loras": "owner/adapter" }),
+        ),
+        ("create_loras_null", "lnu", json!({ "loras": Value::Null })),
+        (
+            "create_loras_entry_not_object",
+            "leo",
+            json!({ "loras": ["a/b"] }),
+        ),
+        (
+            "create_loras_missing_source",
+            "lms",
+            json!({ "loras": [{ "scale": 1 }] }),
+        ),
+        (
+            "create_loras_blank_source",
+            "lbs",
+            json!({ "loras": [{ "source": "   " }] }),
+        ),
+        (
+            "create_loras_scale_negative",
+            "lsn",
+            json!({ "loras": [{ "source": "a/b", "scale": -1 }] }),
+        ),
+        (
+            "create_loras_scale_too_big",
+            "lstb",
+            json!({ "loras": [{ "source": "a/b", "scale": 10.5 }] }),
+        ),
+        (
+            "create_loras_scale_not_a_number",
+            "lsna",
+            json!({ "loras": [{ "source": "a/b", "scale": "1" }] }),
+        ),
+        (
+            "create_loras_two_bad_entries",
+            "ltbe",
+            json!({ "loras": [{ "source": "" }, { "source": "a/b", "scale": 99 }] }),
+        ),
+    ] {
+        err_details(
+            name,
+            &rt.block_on(ip::image_profile_create(
+                &fresh_db(&spec, tag),
+                &uid,
+                json!({ "name": "X", "provider": "OPENAI", "modelName": "m", "parameters": params }),
+            )),
+            &mut failed,
+        );
+    }
+    // ORDER PIN: the guard sits between the parameters-object check and the
+    // apiKeyId lookup, so a body wrong in BOTH ways answers the LoRA 400.
+    err_details(
+        "create_loras_guard_precedes_apikey",
+        &rt.block_on(ip::image_profile_create(
+            &fresh_db(&spec, "lgpa"),
+            &uid,
+            json!({
+                "name": "X", "provider": "OPENAI", "modelName": "m",
+                "parameters": { "loras": [{ "source": "" }] },
+                "apiKeyId": "00000000-0000-4000-8000-0000000000ff"
+            }),
+        )),
+        &mut failed,
+    );
+    // ORDER PIN (the other side): the caller's own check owns a non-object bag,
+    // so the LoRA validator never runs and the sentence is the plain one.
+    err_details(
+        "create_params_array_still_wins",
+        &rt.block_on(ip::image_profile_create(
+            &fresh_db(&spec, "lpas"),
+            &uid,
+            json!({ "name": "X", "provider": "OPENAI", "modelName": "m", "parameters": [{ "loras": [] }] }),
+        )),
+        &mut failed,
+    );
+    {
+        let db = fresh_db(&spec, "ulok");
+        ok(
+            "update_loras_ok",
+            &rt.block_on(ip::image_profile_update(
+                &db,
+                &uid,
+                IP_1,
+                json!({ "parameters": { "quality": "hd", "loras": [{ "source": "owner/adapter", "triggerPhrase": "magic" }] } }),
+            )),
+            UPDATED,
+            &mut failed,
+        );
+        check_tables(
+            "update_loras_ok",
+            &dump_profile_parameters(&db),
+            &mut failed,
+        );
+    }
+    {
+        // The refusal writes NOTHING: the stored bag is the fixture's.
+        let db = fresh_db(&spec, "ulmal");
+        err_details(
+            "update_loras_malformed",
+            &rt.block_on(ip::image_profile_update(
+                &db,
+                &uid,
+                IP_1,
+                json!({ "parameters": { "loras": [{ "source": "a/b", "scale": 42 }] } }),
+            )),
+            &mut failed,
+        );
+        check_tables(
+            "update_loras_malformed",
+            &dump_profile_parameters(&db),
+            &mut failed,
+        );
+    }
+    err_details(
+        "update_loras_not_a_list",
+        &rt.block_on(ip::image_profile_update(
+            &fresh_db(&spec, "ulnl"),
+            &uid,
+            IP_1,
+            json!({ "parameters": { "loras": 7 } }),
+        )),
         &mut failed,
     );
 

@@ -108,6 +108,16 @@ pub async fn dispatch_body(state: &SharedState, body: &[u8]) -> (StatusCode, Val
                 }
             }
         }
+        // v4's `validationError(err)` body (`{error: 'Validation error',
+        // details: [...]}` — P4.D138's image-profile LoRA guard) merges the
+        // same way, so a dispatch client reads v4's exact keys.
+        if let (Some(obj), Some(Value::Object(wire))) =
+            (body.as_object_mut(), e.validation_wire_body())
+        {
+            for (k, v) in wire {
+                obj.insert(k, v);
+            }
+        }
     }
     (status, body)
 }
