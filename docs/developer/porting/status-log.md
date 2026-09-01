@@ -96457,3 +96457,75 @@ recorded shapes the rendered text must contain none of `compatible`,
 npx jest --silent --roots "$PWD" --roots /tmp/qt-oracle-lora-lookup --
 "lora-lookup-shapes\.test\.ts$"`. The network is never touched: `global.fetch`
 is replaced per case and restored in a `finally`.
+
+### Unit 6 — the LoRA list editor
+
+v4's `components/image-profiles/LoraListEditor.tsx` in its post-`2ece98c90`
+state (created at `84f33ce94`, the Query button and trigger-phrase adoption
+added by `2ece98c90`) ported as
+`apps/web/src/app/screens/settings/images/lora-list-editor.ts`.
+
+**Copy, verbatim:** the `LoRA Adapters (Optional)` heading; the composed intro
+(`Adapters are applied in the order listed. {sourceHint} This model accepts
+{a single adapter | up to N adapters}.`); the empty state; the
+`Adapter N — {label}` row heading; the over-cap warning; `Source`; the
+placeholder; `Query`/`Asking…` with BOTH titles; the querying and
+trigger-phrase help paragraphs; `Strength — {n.toFixed(2)}`; the bounds
+sentence; `Trigger Phrase (optional)` and its placeholder; `Add LoRA` with
+both titles; and the `{n} of {max}` tally. `support === null` renders nothing
+at all.
+
+**Mechanics, with their reasons carried:** editing a row's Source DISCARDS
+that row's answer — and ONLY a Source edit does, so a scale or trigger tweak
+leaves the findings standing; removing a row RE-INDEXES the answers below it,
+because rows are keyed by POSITION and row 1's findings must not resurface
+under row 0; `add()` pushes `{source: '', scale: bounds.default}` using the
+DECLARED default, not the constant; an emptied trigger phrase becomes
+`undefined`, not `''`; and a thrown or non-ok request collapses into the same
+`network` panel as a failed lookup, because from the reader's chair they are
+the same disappointment.
+
+**§B compliance:** the slider carries the literal `class="qt-range w-full"`
+and this editor ships NO slider CSS. P4.D142 defines `.qt-range`; the name is
+inert-until-both, never broken, and a spec pins the class attribute exactly so
+a later "improvement" adding local styling is caught.
+
+**⚠ The wire is STUBBED, deliberately.** `imageProfileLoraMetadata` is
+P4.D138's and that lane runs in parallel, so the query cases drive a scripted
+`CoreClient`. What it answers with are the RECORDED shapes from unit 5's
+oracle — so the editor is exercised on what the server will actually send, not
+on a hand-written stand-in. The spec's header says so at the top.
+
+**Mutation proofs (ten, each verified applied; the two block groups had to be
+run under separate `--filter`s — see the process note).** Naive delete with no
+re-index: 1 red. Re-index sides SWAPPED: 2 red. Every patch clearing the query:
+1 red. A source edit NOT clearing it: 1 red. `sourceHint` capitalising the
+multi-kind case: 3 red. `sourceHint` following the array order instead of the
+fixed one: 1 red. `add()` using the constant default: 1 red. An empty trigger
+stored as `''`: 1 red. The single-adapter wording collapsed: 1 red.
+`scaleBounds` ignoring a declared step: 1 red.
+
+**One mutation stayed GREEN and is recorded as neutral, not as a gap.**
+Rewriting `scaleBounds`'s return as `{ ...DEFAULT_SCALE, ...declared }`
+produces identical output for every shape a provider can declare (a missing
+`step` key falls through to the constant either way). It differs only for a
+declared `step` explicitly set to `undefined`, which no manifest can express —
+the same class as unit 1's escape-class widening.
+
+**Two process notes worth carrying.**
+
+1. **A page-wide text assertion cannot tell WHICH row an answer sits under.**
+   The swap mutation first reddened only ONE case: the two others asserted
+   `text(fixture)).toContain(phrase)`, and a shifted answer still puts that
+   phrase somewhere on the page — under the wrong Source, which IS the bug.
+   All three re-index cases now scope through a `answerIn(fixture, row)`
+   helper that reads the query panel inside a specific row's container.
+2. **`ng test --filter` matches TEST NAMES, so a mutation run can silently
+   skip the block it was aimed at.** `--filter=LoraListEditor` ran 35 of the
+   file's 44 cases — the `sourceHint` and `scaleBounds` describe blocks are
+   not named for the component, so four mutations aimed at them were measured
+   against a suite that never ran them. Re-run per block; the counts above are
+   from the runs that actually included the target.
+
+**Gate:** editor spec 44/44; full SPA suite **370 files / 5,686 tests / 0**;
+`npm run build` clean.

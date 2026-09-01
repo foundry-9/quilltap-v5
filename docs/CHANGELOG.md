@@ -586,6 +586,36 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — feat(spa): the LoRA list editor (P4.D139 unit 6)
+
+_Versions: SPA 0.5.607._
+
+v4's `LoraListEditor.tsx` (`84f33ce94` + `2ece98c90`'s query half) ported as
+`screens/settings/images/lora-list-editor.ts`, with every string verbatim: the
+heading, the composed `sourceHint` sentence, the empty state, the over-cap
+warning, the Query button's two titles, both help paragraphs, the strength
+label, and the footer tally. A null `support` hides the editor entirely.
+
+The mechanics that make position-keyed rows safe are ported with their reasons:
+editing a Source DISCARDS that row's answer (a stale fact beside a new address
+is worse than no fact) while a scale or trigger edit does not; removing a row
+RE-INDEXES the answers below it; an emptied trigger phrase becomes `undefined`
+rather than `''`; and a thrown or non-ok request collapses into the same
+`network` panel as a failed lookup.
+
+The slider carries the literal `qt-range w-full` per Shared contract §B and
+ships no slider CSS of its own — P4.D142 defines the class, and the name is
+inert-until-both rather than broken.
+
+⚠ The wire is STUBBED: `imageProfileLoraMetadata` is P4.D138's, so the query
+cases drive a scripted `CoreClient` — answering with the RECORDED shapes from
+unit 5's oracle, so the editor is exercised on what the server will send.
+
+Ten mutations redden the spec, including both re-index spellings. The swap
+mutation initially reddened only one case: a page-wide text assertion cannot
+tell WHICH row an answer sits under, which is the exact bug the re-index
+prevents. The three re-index cases now scope every assertion to a row.
+
 #### 2026-09-01 — feat(spa): the LoRA query-result panel (P4.D139 unit 5)
 
 _Versions: SPA 0.5.606._
