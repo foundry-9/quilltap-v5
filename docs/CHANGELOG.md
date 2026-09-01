@@ -586,6 +586,31 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — feat(spa): the client model-matcher twin for `appliesToModels` (P4.D139 unit 1)
+
+_Versions: SPA 0.5.601._
+
+v4's `lib/plugins/model-matchers.ts` (new at `84f33ce94`) transcribed into
+the SPA as `screens/settings/providers/model-matchers.ts`:
+`modelMatchesPattern` (empty-pattern-never, exact, `*` glob with
+regex-escaped literals anchored `^…$`, then plain prefix) and
+`fieldAppliesToModel` (absent/empty list or unknown model resolve toward
+showing). Names match P4.D138's Rust twin. Nothing consumes it yet — the
+renderer gate is unit 2.
+
+Two-part differential: v4's own eleven-expectation unit table transcribed
+1:1, plus a 37+12-case recorded differential against v4's REAL functions
+run from a worktree pinned at `2ece98c90` (new oracle case
+`harness/oracle/cases/model-matchers.test.ts`, vectors committed at
+`__fixtures__/model-matchers-vectors.json`). The recording reaches what the
+transcription cannot: the `^…$` anchors, the escape class's actual
+membership, and the guard order that makes an empty pattern match nothing
+even though every string starts with it. Mutation-proven — dropping the
+anchors, removing the empty-pattern guard, narrowing the escape class, and
+inverting the unknown-model arm each redden the corpus and not the
+transcription. One mutation (WIDENING the escape class to cover `-` and
+`/`) stays green and is recorded as behaviour-neutral rather than a
+coverage gap: `\-` and `\/` mean themselves outside a character class.
 
 #### 2026-09-01 — docs(setupphase): the round-2 drift catch-up work orders — P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66
 

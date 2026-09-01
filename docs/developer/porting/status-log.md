@@ -96160,3 +96160,76 @@ vs sibling wire, the ignored override, the un-reverted select).
 
 Versions: core 0.0.721, harness 0.0.620, SPA 0.5.601 (host/web/cli/tauri
 unchanged).
+## P4.D139 — the LoRA train, SPA half (lane record)
+
+**Order:** `docs/developer/porting/work-orders/p4.d139-lora-train-spa.md`.
+**Branch:** `claude/lora-train-spa-porting-82491b`. **v4 targets:** the CLIENT
+halves of `84f33ce94` and `2ece98c90`. **Baseline `7fb668263`; regen rule PIN
+REQUIRED** — every regen in this lane ran from the lane-unique worktree
+`/tmp/qt-v4-pin-p4d139-2ece98c90`. Freshness probe at lane start: PASS
+(checkout on `main`, tree clean, both drift logs empty).
+
+### Unit 1 — the client model-matcher twin
+
+v4's `lib/plugins/model-matchers.ts` (new at `84f33ce94`, pure and
+dependency-free precisely so the client can import it) transcribed to
+`apps/web/src/app/screens/settings/providers/model-matchers.ts`. A TS→TS
+transcription, character for character; the exported names match P4.D138's
+Rust twin so the two halves of the feature stay greppable together. Nothing
+consumes it yet — the renderer gate is unit 2.
+
+One recorded shape note carried into the module doc: v5's options panel types
+`modelName` as a non-nullable `string` defaulting to `''`, where v4's prop is
+`string | undefined`. The empty string is falsy exactly as `undefined` is, so
+`fieldAppliesToModel`'s unknown-model arm is reached identically — and the
+corpus below pins BOTH spellings rather than reasoning about it.
+
+**Differential (two halves).**
+
+1. v4's own unit table (`lib/plugins/__tests__/model-matchers.test.ts`, eleven
+   expectations incl. the metachar case) transcribed 1:1 into
+   `model-matchers.spec.ts`.
+2. A recorded differential over v4's REAL functions: new oracle case
+   `harness/oracle/cases/model-matchers.test.ts` (the P4.D96 client-twin
+   recipe — the SPA has no jest, so the comparand is committed rather than
+   diffed in Rust), 37 `modelMatchesPattern` rows + 12 `fieldAppliesToModel`
+   rows written to
+   `apps/web/src/app/screens/settings/providers/__fixtures__/model-matchers-vectors.json`.
+   The regen run also executed v4's own suite from the pin (2 suites / 11
+   tests green), which is the pin's own liveness check.
+
+**Why the recording, beyond the transcription.** The glob arm compiles a
+`RegExp` out of the pattern, and v4's eleven expectations never ask: what the
+`^…$` anchors do to a leading glob (`prefix-flux-2-dev` vs `flux-2-*` — v4
+says **false**, a substring search would say true); which characters the escape
+class actually covers (`{}`, `()`, `[]`, `|`, `+` are all in reach of the
+corpus and none of v4's cases); and the guard ORDER, since every string starts
+with the empty prefix, so the plain-prefix arm alone would answer `true` for
+`('flux', '')` where v4 answers **false**. The corpus also pins that an empty
+entry INSIDE a non-empty list matches nothing — `fieldAppliesToModel([''],
+'hidream')` is **false**, which is not the empty-list arm.
+
+**Mutation proofs (four applied, each verified to have applied by grep before
+the run).** Dropping the `^…$` anchors → 1 red. Removing the empty-pattern
+guard → 6 red. Narrowing the escape class by dropping `{}` → 2 red; by
+dropping `()` → 1 red. Inverting the unknown-model arm to hide → 4 red. Every
+red landed in the recorded-vector block, not the transcription — which is the
+point of carrying both.
+
+**One mutation stayed GREEN and is recorded, not papered over.** WIDENING the
+escape class to include `-` and `/` changes nothing observable: `\-` and `\/`
+mean themselves outside a character class, so the mutant is genuinely
+behaviour-neutral rather than a coverage gap (the standing "a green mutation
+means a non-discriminating ARM" note's other outcome). The spec's comment
+originally claimed a wider class would be caught; that claim was FALSE and was
+corrected at the wire, with the asymmetry — escaping too little is a bug,
+escaping more is not — written down beside the rows that prove it.
+
+**Gate:** `model-matchers.spec.ts` 62/62 green.
+
+**Regen recipe** (in the oracle case's header, verbatim): mirror the case to
+`/tmp/qt-oracle-model-matchers`, `cd /tmp/qt-v4-pin-p4d139-2ece98c90`, Node 24
+on PATH, `QT_ORACLE_OUT=<v5>/apps/web/src/app/screens/settings/providers/__fixtures__/model-matchers-vectors.json
+npx jest --silent --roots "$PWD" --roots /tmp/qt-oracle-model-matchers --
+"model-matchers\.test\.ts$"`. Pin verification: the module does not exist
+before `84f33ce94`, so a baseline-pinned run fails to resolve the import.

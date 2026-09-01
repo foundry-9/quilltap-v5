@@ -1,0 +1,277 @@
+{
+  "patterns": [
+    {
+      "model": "flux-lora",
+      "pattern": "flux-lora",
+      "matches": true
+    },
+    {
+      "model": "hidream",
+      "pattern": "flux-lora",
+      "matches": false
+    },
+    {
+      "model": "flux-lora/inpainting",
+      "pattern": "flux-lora",
+      "matches": true
+    },
+    {
+      "model": "flux",
+      "pattern": "flux-lora",
+      "matches": false
+    },
+    {
+      "model": "wavespeed-ai/krea-v2/turbo-lora",
+      "pattern": "wavespeed-ai/*",
+      "matches": true
+    },
+    {
+      "model": "pruna-ai/p-image/edit-lora",
+      "pattern": "wavespeed-ai/*",
+      "matches": false
+    },
+    {
+      "model": "z-image-turbo-lora",
+      "pattern": "*-lora",
+      "matches": true
+    },
+    {
+      "model": "z-image-turbo",
+      "pattern": "*-lora",
+      "matches": false
+    },
+    {
+      "model": "gpt-image-125",
+      "pattern": "gpt-image-1.5*",
+      "matches": false
+    },
+    {
+      "model": "gpt-image-1.5",
+      "pattern": "gpt-image-1.5*",
+      "matches": true
+    },
+    {
+      "model": "anything",
+      "pattern": "",
+      "matches": false
+    },
+    {
+      "model": "a-b/c",
+      "pattern": "a-b/*",
+      "matches": true
+    },
+    {
+      "model": "a-b/c",
+      "pattern": "*/c",
+      "matches": true
+    },
+    {
+      "model": "whatever",
+      "pattern": "*",
+      "matches": true
+    },
+    {
+      "model": "",
+      "pattern": "*",
+      "matches": true
+    },
+    {
+      "model": "whatever",
+      "pattern": "**",
+      "matches": true
+    },
+    {
+      "model": "prefix-flux-2-dev",
+      "pattern": "flux-2-*",
+      "matches": false
+    },
+    {
+      "model": "flux-2-dev-suffix",
+      "pattern": "flux-2-*",
+      "matches": true
+    },
+    {
+      "model": "flux-2-dev",
+      "pattern": "flux-2-*",
+      "matches": true
+    },
+    {
+      "model": "a/b/c",
+      "pattern": "*/b/*",
+      "matches": true
+    },
+    {
+      "model": "gpt-image-1x5",
+      "pattern": "gpt-image-1.5*",
+      "matches": false
+    },
+    {
+      "model": "a+b",
+      "pattern": "a+b*",
+      "matches": true
+    },
+    {
+      "model": "axxb",
+      "pattern": "a+b*",
+      "matches": false
+    },
+    {
+      "model": "a(b)c",
+      "pattern": "a(b)*",
+      "matches": true
+    },
+    {
+      "model": "a[b]c",
+      "pattern": "a[b]*",
+      "matches": true
+    },
+    {
+      "model": "a|b",
+      "pattern": "a|b*",
+      "matches": true
+    },
+    {
+      "model": "a$b",
+      "pattern": "a$b*",
+      "matches": true
+    },
+    {
+      "model": "a^b",
+      "pattern": "a^b*",
+      "matches": true
+    },
+    {
+      "model": "a{2}b",
+      "pattern": "a{2}*",
+      "matches": true
+    },
+    {
+      "model": "aab",
+      "pattern": "a{2}*",
+      "matches": false
+    },
+    {
+      "model": "a.b",
+      "pattern": "a.b",
+      "matches": true
+    },
+    {
+      "model": "flux-lora",
+      "pattern": "flux",
+      "matches": true
+    },
+    {
+      "model": "FLUX-LORA",
+      "pattern": "flux-lora",
+      "matches": false
+    },
+    {
+      "model": "flux-lora",
+      "pattern": " ",
+      "matches": false
+    },
+    {
+      "model": "flux",
+      "pattern": "",
+      "matches": false
+    },
+    {
+      "model": "",
+      "pattern": "",
+      "matches": false
+    },
+    {
+      "model": "",
+      "pattern": "flux",
+      "matches": false
+    }
+  ],
+  "fields": [
+    {
+      "appliesToModels": null,
+      "model": "hidream",
+      "applies": true
+    },
+    {
+      "appliesToModels": [],
+      "model": "hidream",
+      "applies": true
+    },
+    {
+      "appliesToModels": [
+        "flux-lora"
+      ],
+      "model": null,
+      "applies": true
+    },
+    {
+      "appliesToModels": [
+        "hidream",
+        "flux-2-*"
+      ],
+      "model": "flux-2-dev-lora",
+      "applies": true
+    },
+    {
+      "appliesToModels": [
+        "hidream",
+        "flux-2-*"
+      ],
+      "model": "recraft-v3",
+      "applies": false
+    },
+    {
+      "appliesToModels": [
+        "flux-lora"
+      ],
+      "model": "",
+      "applies": true
+    },
+    {
+      "appliesToModels": [
+        "hidream",
+        "flux-2-*"
+      ],
+      "model": "",
+      "applies": true
+    },
+    {
+      "appliesToModels": [
+        ""
+      ],
+      "model": "hidream",
+      "applies": false
+    },
+    {
+      "appliesToModels": [
+        "",
+        "hidream"
+      ],
+      "model": "hidream",
+      "applies": true
+    },
+    {
+      "appliesToModels": [
+        "",
+        "hidream"
+      ],
+      "model": "recraft-v3",
+      "applies": false
+    },
+    {
+      "appliesToModels": [
+        "*"
+      ],
+      "model": "anything",
+      "applies": true
+    },
+    {
+      "appliesToModels": [
+        "flux",
+        "hidream"
+      ],
+      "model": "flux-2-dev",
+      "applies": true
+    }
+  ]
+}
