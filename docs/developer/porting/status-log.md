@@ -96588,3 +96588,46 @@ legacy textarea.
 
 **Gate:** modal spec 44/44; full SPA suite **370 files / 5,706 tests / 0**;
 `npm run build` clean.
+
+### Unit 8 — the gated e2e beats
+
+New `apps/web/e2e/settings-image-lora-flow.spec.ts`, two beats, riding the
+SHARED global-setup server (filename sorts after `aa-foundation`) and
+self-cleaning — each creates one profile and deletes it again.
+
+1. **The round trip.** NanoGPT + a LoRA-capable model → the `LoRA Adapters
+   (Optional)` section appears with its composed capacity sentence and the
+   empty state → Add LoRA → fill source and trigger phrase → the Query button
+   lights up (the client repo-id twin deciding, no wire) → Create → a FULL
+   RELOAD → re-open the editor and find the adapter intact with its tally.
+2. **The over-cap flag.** Fill to the model's declared cap, narrow to another
+   model, and assert every row SURVIVES — the list is flagged, never trimmed,
+   so widening again loses nothing. The warning's byte-exact tail is asserted
+   when a warning appears; the row COUNT is the invariant, because the second
+   model's cap is P4.D138's to declare and this lane must not guess it.
+
+**Both gated behind `P4D138_LORA_SERVER_LANDED = false`** (ACTIVATE-AT-UNIFY,
+e2e-playwright-traps §7). The constant's comment records why it is a NAMED
+constant rather than a capability probe, on two grounds:
+
+- A probe cannot distinguish a model that legitimately resolves no support —
+  most models, and the entire point of §A's absent-not-empty rule — from a
+  server that has not learned to serve `loraSupport` at all. It would silently
+  activate the beats into guaranteed failure.
+- Even a probe that got past that would be fooled by the write: **an unknown
+  field on a dispatch verb is silently IGNORED** (memory note
+  `dispatch-verb-ignores-unknown-fields`), so a `parameters.loras` list would
+  round-trip as nothing at all and the reload assertion would fail for a
+  reason that says nothing about this lane.
+
+`LORA_MODEL` is a named constant with a comment: if P4.D138's manifest names a
+different LoRA-capable NanoGPT model, that one line changes — the beats assert
+the SECTION and the row count, not the model string.
+
+**No Playwright RUN in this lane** (P4.66 owns port 4319). The beats were
+parse-checked with `npx playwright test --list`, which starts no server, runs
+no `globalSetup` and binds no port: both register by name. Worth recording
+because there is no other check available — **the repo installs no
+`@types/node`, so no tsconfig typechecks `e2e/**` at all**; Playwright
+transpiles the specs at run time, and `--list` is the only thing short of a
+full run that will parse them.

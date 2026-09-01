@@ -586,6 +586,28 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — test(e2e): the LoRA editor beats, gated ACTIVATE-AT-UNIFY (P4.D139 unit 8)
+
+_Versions: SPA 0.5.609._
+
+Two beats in a new `settings-image-lora-flow.spec.ts`, riding the shared
+global-setup server and self-cleaning: the round trip (a LoRA-capable NanoGPT
+model offers the editor with its capacity sentence, an adapter is added and
+saved, and a full reload re-opens the editor with it intact) and the over-cap
+flag (adding to the cap then narrowing the model keeps every row).
+
+Both gated behind `P4D138_LORA_SERVER_LANDED = false`. A NAMED constant, not a
+capability probe, for two reasons: a probe cannot tell a model that
+legitimately declares no support — most of them, which is the whole point of
+§A's absent-not-empty rule — from a server that has not learned to serve
+support at all; and an unknown field on a dispatch verb is silently ignored, so
+a `loras` list would round-trip as nothing and the reload assertion would fail
+for a reason that says nothing about this lane.
+
+No Playwright run in this lane (P4.66 owns port 4319). The beats were
+parse-checked with `playwright test --list`, which starts no server, runs no
+`globalSetup`, and binds no port: both register.
+
 #### 2026-09-01 — feat(spa): the image-profile editor asks the plugin what to render (P4.D139 unit 7)
 
 _Versions: SPA 0.5.608._
