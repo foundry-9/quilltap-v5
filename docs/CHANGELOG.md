@@ -362,6 +362,22 @@ mutations, each reddening exactly the arm it should.
 
 Nothing calls the module yet — the write gates, readers, restore and the boot
 heal follow in their own units.
+#### 2026-09-01 — docs(p4.d141): the lane's verification gate record and the m6 placement row
+
+_Docs-only change._
+
+Records P4.D141's in-lane gate: 475 test binaries / 2,637 passed / 0 failed / 1
+ignored with the lane's 14-variable env block and zero SKIP lines; the eight
+affected families 8/8 ok through the sanctioned sweep driver from the
+`60e3c4a0a` pin, with the changed-bytes greps; clippy clean on both feature sets;
+SPA 367 files / 5,523 passed and a clean build; no Playwright (P4.66 owns the
+port, and this lane's beat is authored gated). Also lists the twenty mutations,
+each verified applied and reverted.
+
+The m6 parity row for the Agent-mode badge is corrected: it no longer leads the
+Chat section, because v4's placement — directly after the Concierge control — is
+restored now that the four-state control occupies that slot.
+
 #### 2026-09-01 — feat(salon): the Concierge four-state control, the single-pill header badge and the client predicate twin (v4 `60e3c4a0a`)
 
 _Versions: SPA 0.5.601._

@@ -96116,3 +96116,47 @@ which waits ten minutes to prove the classifier does not run on an operator-stat
 chat. Its substance is pinned at the differential instead — the two gate families'
 `skip-uncensored` / `cb` rows (unit 2), where reverting either gate reddens
 exactly that family. Recorded as the order asks.
+
+### P4.D141 verification gate (2026-09-01, in-lane)
+
+Freshness probe re-run immediately before the gate: v4 on `main`, tree clean,
+both logs empty — the pin `/tmp/qt-v4-pin-p4d141-60e3c4a0a` intact and still the
+only P4.D141 worktree.
+
+- **The lane's families by name through the sanctioned driver, from the
+  `60e3c4a0a` PIN: 8/8 ok, zero SKIP** —
+  `danger_resolver_equivalence`, `danger_scan_tier2_equivalence`,
+  `danger_gatekeeper_tier3_equivalence`, `danger_routing_equivalence`,
+  `post_office_concierge_lantern_suparna_equivalence` (TZ=UTC),
+  `salon_mutations_equivalence`, `story_background_job_tier3_equivalence`,
+  `precompute_equivalence`. Changed-bytes greps per ledger §5.2 held: the
+  resolver NDJSON carries `"chat-uncensored"` ×3 / `"chat-vouched"` ×3 /
+  `"classifierOnDuty"` ×13 with the retired `"chat-off-duty"` / `"offDuty"` /
+  `"state":"safe"` / `"state":"off"` all at **0**; the flip NDJSON carries the
+  five manual sentences at 3/1/3/2/3 (= the 12 changed transitions) with the
+  U+2019 `operator’s` present ×3.
+- **`cargo fmt --all --check`** clean.
+- **`cargo clippy --workspace --all-targets -- -D warnings`** clean on BOTH
+  feature sets (default and `quilltap-core/native-transport`).
+- **`cargo test --workspace`** with the lane's 14-variable env block:
+  **475 test binaries / 2,637 passed / 0 failed / 1 ignored, ZERO `SKIP:`
+  lines** — exit 0.
+- **SPA:** `npm test` **367 files / 5,523 passed / 0 failed**;
+  `npm run build` clean; `check-qt-classes` 943 classes, every guarded
+  reference resolving.
+- **NO Playwright** — P4.66 owns port 4319, and this lane's beat is authored
+  gated (ACTIVATE-AT-UNIFY).
+
+**Twenty mutations across the lane, each verified APPLIED and each reverted:**
+M1–M7 (the predicate family, resolver branch order and forced AUTO_ROUTE, the
+`manual-resumed` scope, the vouched advisory, the cross-lane mask), M8–M9 (the
+two classifier gates, each reddening exactly its own family and leaving the
+sibling green — and both GREEN on the pre-change corpora, which is the blind-spot
+proof), M10–M14 (the PUT arm: the retired `'off'` spelling, guard order, null as
+absent, the flip skipped, `double_option`), M15–M16 (the spine: the Uncensored
+arm reddens the story family; the forced AUTO_ROUTE does not, by design — it is
+covered in the resolver family), M17–M20 (the SPA: the two-pill render, the bag
+vs sibling wire, the ignored override, the un-reverted select).
+
+Versions: core 0.0.721, harness 0.0.620, SPA 0.5.601 (host/web/cli/tauri
+unchanged).
