@@ -156,6 +156,6 @@ export class ConversationHeader {
     const cats = this.chat().dangerCategories ?? [];
     return cats.length > 0
       ? `The Concierge has flagged this chat: ${cats.join(', ')}`
-      : 'The Concierge has flagged this chat.';
+      : 'The Concierge has flagged this chat';
   });
 }

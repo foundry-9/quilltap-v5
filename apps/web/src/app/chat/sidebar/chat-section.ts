@@ -1,4 +1,16 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import {
+  afterRenderEffect,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+} from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { toggleAgentMode } from '../chat-admin.api';
@@ -136,6 +148,7 @@ export interface ChatSectionState {
           />
         </span>
         <select
+          #conciergeSelect
           class="qt-select text-sm"
           [value]="conciergeState()"
           [disabled]="conciergeSaving()"
@@ -448,6 +461,18 @@ export class ChatSection {
   protected readonly hasEverOpened = signal(false);
 
   constructor() {
+    // React re-applies a controlled <select>'s value on every render, so v4's
+    // control can never sit on a pick the stored state does not carry (a
+    // rejected write, a refetch, an auto-flip, another tab). Angular's [value]
+    // writes only when the BOUND value changes, which would let the user's pick
+    // stand until the next change — so the element is re-written from the
+    // derived state after each render instead (the P4.D115 ScenarioSelect idiom).
+    afterRenderEffect(() => {
+      const value = this.conciergeState();
+      this.conciergeSaving();
+      const select = this.conciergeSelectRef()?.nativeElement;
+      if (select && select.value !== value) select.value = value;
+    });
     effect(() => {
       if (this.sectionOpen() && !this.hasEverOpened()) {
         this.hasEverOpened.set(true);
@@ -589,22 +614,25 @@ export class ChatSection {
   // ── The Concierge four-state (v4 `ChatSidebar.tsx:1123-1170`, P4.D141) ──
 
   /**
-   * The displayed state, adopted optimistically so the select shows the pick
-   * while the PUT is in flight (the same idiom the section's other controls
-   * use); a failure reverts it. Otherwise derived from the chat's two stored
-   * fields through the SHARED predicate, so the sidebar, the header badge and
-   * the message-list danger styling cannot disagree.
+   * The displayed state — derived from the chat's two stored fields through the
+   * SHARED predicate and from NOTHING else, exactly as v4's `ChatSidebar.tsx:1123`
+   * computes `getConciergeState({isDangerousChat, conciergeOverride})` straight
+   * from props. There is deliberately no optimistic latch: a local "last pick"
+   * that outlived the write would ignore a refetch, a classifier auto-flip and
+   * another tab's change for the rest of the session, and let this control
+   * disagree with the header badge (the P4.D141 unification review's catch).
+   * The pick shows once the parent's refetch reflects it; a failed write needs
+   * no revert because the element is re-written from this value after every
+   * render (see the constructor's `afterRenderEffect`).
    */
-  private readonly localConciergeState = signal<ConciergeStateWire | null>(null);
-  protected readonly conciergeState = computed<ConciergeStateWire>(
-    () =>
-      this.localConciergeState() ??
-      getConciergeState({
-        isDangerousChat: this.isDangerousChat(),
-        conciergeOverride: this.conciergeOverride(),
-      }),
+  protected readonly conciergeState = computed<ConciergeStateWire>(() =>
+    getConciergeState({
+      isDangerousChat: this.isDangerousChat(),
+      conciergeOverride: this.conciergeOverride(),
+    }),
   );
   protected readonly conciergeSaving = signal(false);
+  private readonly conciergeSelectRef = viewChild<ElementRef<HTMLSelectElement>>('conciergeSelect');
 
   /** v4's helper text, byte for byte — it names the ACTOR, not the effect. */
   protected readonly conciergeHelperText = computed(() => {
@@ -637,18 +665,17 @@ export class ChatSection {
   /**
    * v4 `handleConciergeStateChange` (`ChatSidebar.tsx:1068-1095`): PUT
    * `{conciergeState: next}` — a SIBLING of the `chat` bag, not a bag key —
-   * then the state's own success copy and a parent refetch. A failure reverts
-   * the optimistic value and restores the `<select>`'s own value, matching the
-   * section's other controls (v4's control snaps back because it re-renders
-   * from props; v5's needs the element write, since change detection never ran
-   * while the optimistic value was in the model).
+   * then the state's own success copy and a parent refetch. v4 fires the PUT
+   * unconditionally (no "already there" short-circuit) and holds no local
+   * state: React re-applies the controlled `value` from props on every render,
+   * so the element snaps to the STORED state until the refetch carries the
+   * pick. v5 reproduces that re-apply with the constructor's
+   * `afterRenderEffect` — which is also what reverts a rejected pick, since
+   * the stored state never moved.
    */
   protected async onConciergeStateChange(event: Event): Promise<void> {
     const el = event.target as HTMLSelectElement;
     const next = el.value as ConciergeStateWire;
-    const previous = this.conciergeState();
-    if (next === previous) return;
-    this.localConciergeState.set(next);
     this.conciergeSaving.set(true);
     try {
       const resp = await this.core.dispatch({
@@ -663,8 +690,6 @@ export class ChatSection {
       this.toasts.showSuccess(CONCIERGE_TOASTS[next]);
       this.chatUpdated.emit();
     } catch (error) {
-      this.localConciergeState.set(previous);
-      el.value = previous;
       const msg = error instanceof Error ? error.message : String(error);
       this.toasts.showError(msg || 'Failed to change the Concierge state');
     } finally {

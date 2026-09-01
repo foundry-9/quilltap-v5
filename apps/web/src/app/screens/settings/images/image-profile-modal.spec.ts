@@ -658,6 +658,19 @@ describe('ImageProfileModal — the options-schema swap', () => {
     expect(has(fixture, 'qt-provider-options-panel')).toBe(true);
   });
 
+  it('asks for the options schema ONCE per (provider, model, catalog) — the providers query settling does not refire it (v4 deps `[providerKey, modelKey, catalogVersion]`)', async () => {
+    // The providers query resolves after the first render with a NEW list
+    // object whose normalized name is unchanged; v4's effect keys on the
+    // normalized STRING and so does not refetch. A dependency on the list
+    // itself fired a second, identical dispatch (the unification review's catch).
+    const seen: SchemaDispatch[] = [];
+    await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: null }], seen }),
+      profile({ apiKeyId: 'k1' }),
+    );
+    expect(seen.filter((r) => r.type === 'imageProfileOptionsSchema')).toHaveLength(1);
+  });
+
   it('sends the NORMALIZED provider and the selected model', async () => {
     const seen: SchemaDispatch[] = [];
     await render(

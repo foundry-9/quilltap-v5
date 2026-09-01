@@ -415,9 +415,10 @@ impl<'c> ChatMessagesRepository<'c> {
     }
 
     /// `addMessage` — insert one event, then update the owning chat's metadata
-    /// (`messageCount`; for a `type:'message'` event also `lastMessageAt` /
-    /// `updatedAt` minted `now` and `spokenThisCycle`). No-op metadata if the chat
-    /// is gone (v4's `if (chat)` guard).
+    /// (`messageCount`; for a `type:'message'` event `updatedAt` minted `now` and
+    /// `spokenThisCycle`; `lastMessageAt` only when the row is CHARACTER-AUTHORED
+    /// — v4 `735d9408c`, bug 112, see `crate::chat_activity`). No-op metadata if
+    /// the chat is gone (v4's `if (chat)` guard).
     pub fn add_message(&self, chat_id: &str, event: &ChatEventInput) -> Result<(), DbError> {
         insert_event(self.conn, chat_id, event)?;
         self.update_chat_metadata(chat_id, std::slice::from_ref(event))
@@ -497,11 +498,22 @@ impl<'c> ChatMessagesRepository<'c> {
             // `lastMessageAt` *backwards*, not leave it pointing at a row that
             // no longer exists — recompute from what survives (v4 `735d9408c`).
             // It can go to NULL. `updatedAt` is still deliberately not bumped.
+            // v4 wraps the lookup in `safeQuery(…, null)` — FALLBACK mode: a
+            // failed read logs and yields NULL, and the delete still lands its
+            // `messageCount` (the unification review's catch; no input reaches
+            // this arm, so it is pinned by reading v4 rather than by a corpus).
+            let last_played = chats_messages_read::get_last_played_message_at(self.conn, chat_id)
+                .unwrap_or_else(|e| {
+                    tracing::error!(
+                        chat_id,
+                        error = %e,
+                        "Failed to get last played message timestamp"
+                    );
+                    None
+                });
             let update = ChatUpdate {
                 message_count: Some(count_visible_messages(&all) as f64),
-                last_message_at: Some(chats_messages_read::get_last_played_message_at(
-                    self.conn, chat_id,
-                )?),
+                last_message_at: Some(last_played),
                 ..Default::default()
             };
             ChatsRepository::new(self.conn).update(chat_id, &update)?;
@@ -623,9 +635,6 @@ fn count_visible_messages(messages: &[Value]) -> usize {
         .count()
 }
 
-/// Build the turn-machine view for the spoken-this-cycle helper. Only
-/// `type:'message'` events affect the cycle; the others resolve to `None` inside
-/// the helper (its first `type` check), so a placeholder role is fine.
 /// [`crate::chat_activity::is_character_authored_message`] over the typed write
 /// shape. The `type === 'message'` half is the enum arm; the field-level half is
 /// the shared predicate body, so the two spellings cannot drift.
@@ -640,6 +649,9 @@ fn is_character_authored_input(event: &ChatEventInput) -> bool {
     crate::chat_activity::is_character_authored_parts(&m.role, sender.as_ref(), announcer.as_ref())
 }
 
+/// Build the turn-machine view for the spoken-this-cycle helper. Only
+/// `type:'message'` events affect the cycle; the others resolve to `None` inside
+/// the helper (its first `type` check), so a placeholder role is fine.
 fn message_view(event: &ChatEventInput) -> MessageView {
     match event {
         ChatEventInput::Message(m) => MessageView {

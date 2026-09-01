@@ -473,8 +473,9 @@ pub(crate) fn require_chat(db: &Db, chat_id: &str) -> Result<(), Response> {
 ///
 /// v4 rebuilds the whole transcript: `clearMessages` then `addMessage` for every
 /// event in order (`bulk.ts:103-106`). That is not incidental — each `addMessage`
-/// runs the chat-metadata side effect (recount `messageCount`, bump
-/// `lastMessageAt`/`updatedAt` for message-typed events, fold
+/// runs the chat-metadata side effect (recount `messageCount`, bump `updatedAt`
+/// for message-typed events and `lastMessageAt` for CHARACTER-AUTHORED ones —
+/// v4 `735d9408c` — fold
 /// `spokenThisCycleParticipantIds`), so the final chat row is the product of N
 /// sequential writes, not one. The port replays the same way, one event at a
 /// time, so the metadata lands identically.

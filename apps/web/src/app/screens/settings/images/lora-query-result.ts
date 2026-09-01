@@ -87,7 +87,7 @@ export function standingCopy(facts: HuggingFaceLoraFacts): string {
     @if (failure(); as failed) {
       <div class="rounded border qt-border-warning qt-bg-surface-alt p-3 space-y-2">
         <p class="qt-text-label-xs">{{ failureHeading() }}</p>
-        <p class="qt-text-xs">{{ failureCopy() }}</p>
+        <p class="qt-text-xs">{{ failureSentence() }}</p>
         @if (failed.url) {
           <!-- A link out to the model card, opened away from the half-filled form. -->
           <a
@@ -206,7 +206,9 @@ export class LoraQueryResult {
     return f?.repoId ? `HuggingFace — ${f.repoId}` : 'HuggingFace';
   });
 
-  protected readonly failureCopy = computed(() => {
+  /** Named apart from the module-level `failureCopy` it calls, so a refactor
+   * cannot turn the call into silent self-recursion. */
+  protected readonly failureSentence = computed(() => {
     const f = this.failure();
     return f ? failureCopy(f) : '';
   });

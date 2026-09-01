@@ -332,6 +332,16 @@ export class ImageProfileModal implements OnInit {
 
   protected readonly providers = computed(() => this.providersQuery.data() ?? FALLBACK_PROVIDERS);
 
+  /**
+   * The NORMALIZED provider key — v4 `ImageProfileForm.tsx:194,231`'s
+   * `providerKey`, the string its options-schema effect depends on. A string
+   * computed notifies only when its VALUE changes, so the providers query
+   * settling (a new list object, same normalized name) does not refire the
+   * fetch — reading `providers()` directly inside the effect did (the
+   * unification review's catch: two identical dispatches per modal open).
+   */
+  private readonly providerKey = computed(() => normalizeProviderName(this.provider(), this.providers()));
+
   protected readonly eligibleApiKeys = computed(() =>
     availableApiKeys(this.apiKeysQuery.data() ?? [], this.provider(), this.providers()),
   );
@@ -516,13 +526,14 @@ export class ImageProfileModal implements OnInit {
      * v4 `:194-231` — ask the provider's plugin what this model's options look
      * like, and whether it takes LoRA adapters. v4's effect deps are
      * `[providerKey, modelKey, catalogVersion]`, where `providerKey` is the
-     * NORMALIZED provider; reading those three here reproduces that set.
+     * NORMALIZED provider string — read through the `providerKey` computed so
+     * the dependency set is exactly v4's three VALUES, not the providers list.
      *
      * The cancelled flag is v4's: a slower answer for a provider the user has
      * already left must not land on top of a newer one.
      */
     effect((onCleanup) => {
-      const providerKey = normalizeProviderName(this.provider(), this.providers());
+      const providerKey = this.providerKey();
       const modelKey = this.modelName();
       this.catalogVersion();
       let cancelled = false;

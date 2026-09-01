@@ -372,6 +372,15 @@ async function main(): Promise<void> {
       prompt: 'a cat', orientation: 'portrait', models: pbModels,
     },
     {
+      // The merge produced NO size (the bag has none), so the orientation's
+      // `size` is INSERTED by section 2 — after `steps`, not in section 1's
+      // slot. JSON.stringify emits insertion order, and this is the one shape
+      // where declaration order and insertion order disagree.
+      label: 'pb_orientation_inserts_size_last',
+      profile: { provider: 'OPENAI', modelName: 'dall-e-3', parameters: { quality: 'hd', style: 'natural' } },
+      prompt: 'a cat', orientation: 'portrait', models: pbModels,
+    },
+    {
       label: 'pb_orientation_prompt_hint_appended',
       profile: { provider: 'P', modelName: 'hinted' },
       prompt: 'a cat', orientation: 'landscape', models: pbModels,

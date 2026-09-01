@@ -46,6 +46,8 @@ import {
 } from '../../core/chat-stream.reducer';
 import type { ToolExecutionStatus } from '../../chat/chat-composer';
 import { SalonConversation, messageIsOptimisticEcho } from './salon-conversation';
+import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
+import { By } from '@angular/platform-browser';
 import { ToastService } from '../../ui/toast.service';
 import { chatKeys } from '../../chat/chat-keys';
 
@@ -894,6 +896,21 @@ describe('SalonConversation — the standalone generate-image dialog (v4 ChatMod
       participantId: 'p1',
       controlledBy: 'user',
     });
+  });
+
+  it('the sidebar receives the chat’s conciergeOverride beside isDangerousChat (v4 SalonView :1883/:1897 — the P4.D141 unification wire)', async () => {
+    // v4 hands ChatSidebar BOTH stored fields because neither is meaningful
+    // alone; the four-state control reads the pair to show an operator state.
+    // A host that binds only isDangerousChat leaves the input at its null
+    // default, and Vouched/Uncensored can be WRITTEN through the control but
+    // never read back. Pinned here because the binding lives in this file while
+    // the control lives in the sidebar (P4.D141 ∥ P4.66 ownership split).
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient({ ...chatDetail(), conciergeOverride: 'UNCENSORED', isDangerousChat: true }, events$);
+    const fixture = await render(client);
+    const sidebar = fixture.debugElement.query(By.directive(ChatSidebar)).componentInstance as ChatSidebar;
+    expect(sidebar.conciergeOverride()).toBe('UNCENSORED');
+    expect(sidebar.isDangerousChat()).toBe(true);
   });
 
   it('the status select sends v4’s derived isActive alongside status (ChatSidebar :818)', async () => {
@@ -2800,6 +2817,7 @@ describe('SalonConversation rescue-stage toasts (65f5021c8)', () => {
  * real component.
  */
 describe('messageIsOptimisticEcho (dogfood #106)', () => {
+  const NONE: ReadonlySet<string> = new Set();
   function temp(over: Partial<MessageDto> = {}): MessageDto {
     return message({
       id: 'temp-user-1000',
@@ -2819,18 +2837,20 @@ describe('messageIsOptimisticEcho (dogfood #106)', () => {
       content: 'Are we there yet?',
       createdAt: '2026-01-01T00:00:11.000Z',
     });
-    expect(messageIsOptimisticEcho(persisted, temp())).toBe(true);
+    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(true);
   });
 
-  it('matches at the exact same instant (createdAt equality)', () => {
+  it('matches whatever the clocks say — a persisted row stamped EARLIER than the bubble (server clock behind the browser)', () => {
+    // The two stamps come from two clocks; a Docker host a few seconds behind
+    // the browser makes the echo sort BEFORE the send. The match must not care.
     const persisted = message({
       id: 'srv-1',
       role: 'USER',
       participantId: 'pu',
       content: 'Are we there yet?',
-      createdAt: '2026-01-01T00:00:10.000Z',
+      createdAt: '2026-01-01T00:00:03.000Z',
     });
-    expect(messageIsOptimisticEcho(persisted, temp())).toBe(true);
+    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(true);
   });
 
   it('does not match a non-USER row', () => {
@@ -2841,7 +2861,7 @@ describe('messageIsOptimisticEcho (dogfood #106)', () => {
       content: 'Are we there yet?',
       createdAt: '2026-01-01T00:00:11.000Z',
     });
-    expect(messageIsOptimisticEcho(persisted, temp())).toBe(false);
+    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(false);
   });
 
   it('does not match a different seat — multi-user chats, or an impersonated author', () => {
@@ -2852,7 +2872,7 @@ describe('messageIsOptimisticEcho (dogfood #106)', () => {
       content: 'Are we there yet?',
       createdAt: '2026-01-01T00:00:11.000Z',
     });
-    expect(messageIsOptimisticEcho(persisted, temp())).toBe(false);
+    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(false);
   });
 
   it('does not match different content', () => {
@@ -2863,12 +2883,14 @@ describe('messageIsOptimisticEcho (dogfood #106)', () => {
       content: 'Almost there.',
       createdAt: '2026-01-01T00:00:11.000Z',
     });
-    expect(messageIsOptimisticEcho(persisted, temp())).toBe(false);
+    expect(messageIsOptimisticEcho(persisted, temp(), NONE)).toBe(false);
   });
 
-  it('does not match a row older than the send (a REPEATED message keeps its own bubble)', () => {
+  it('does not match a row that was already on screen at send time (a REPEATED message keeps its own bubble)', () => {
     // The user sent the identical content earlier in the conversation; that
-    // persisted row must not eat the new bubble it now looks like a duplicate of.
+    // persisted row must not eat the new bubble it now looks like a duplicate
+    // of. It is excluded by IDENTITY (it was on screen when the send was
+    // made), not by timestamp.
     const earlier = message({
       id: 'srv-0',
       role: 'USER',
@@ -2876,7 +2898,20 @@ describe('messageIsOptimisticEcho (dogfood #106)', () => {
       content: 'Are we there yet?',
       createdAt: '2026-01-01T00:00:05.000Z',
     });
-    expect(messageIsOptimisticEcho(earlier, temp())).toBe(false);
+    expect(messageIsOptimisticEcho(earlier, temp(), new Set(['srv-0']))).toBe(false);
+  });
+
+  it('an earlier duplicate whose server stamp is LATER than the bubble (server clock ahead) still does not eat it', () => {
+    // The shape a timestamp scope gets wrong: the same earlier row, but the
+    // server's clock runs ahead of the browser's, so it sorts AFTER the send.
+    const earlier = message({
+      id: 'srv-0',
+      role: 'USER',
+      participantId: 'pu',
+      content: 'Are we there yet?',
+      createdAt: '2026-01-01T00:00:15.000Z',
+    });
+    expect(messageIsOptimisticEcho(earlier, temp(), new Set(['srv-0']))).toBe(false);
   });
 
   it('matches an attachments-only send (empty content on both sides)', () => {
@@ -2888,12 +2923,12 @@ describe('messageIsOptimisticEcho (dogfood #106)', () => {
       content: '',
       createdAt: '2026-01-01T00:00:11.000Z',
     });
-    expect(messageIsOptimisticEcho(persisted, bubble)).toBe(true);
+    expect(messageIsOptimisticEcho(persisted, bubble, NONE)).toBe(true);
   });
 
   it('never matches itself', () => {
     const t = temp();
-    expect(messageIsOptimisticEcho(t, t)).toBe(false);
+    expect(messageIsOptimisticEcho(t, t, NONE)).toBe(false);
   });
 });
 
@@ -2972,7 +3007,9 @@ describe('SalonConversation — the optimistic bubble reconciles against a mid-t
         role: 'USER',
         participantId: temp!.participantId,
         content: 'Are we there yet?',
-        createdAt: new Date(Date.parse(temp!.createdAt) + 1000).toISOString(),
+        // Stamped by a server clock a second BEHIND the browser's — the
+        // reconcile must not depend on the two clocks agreeing.
+        createdAt: new Date(Date.parse(temp!.createdAt) - 1000).toISOString(),
       }),
     ];
     await TestBed.inject(QueryClient).invalidateQueries({ queryKey: chatKeys.detail('chat-1') });
@@ -3001,7 +3038,9 @@ describe('SalonConversation — the optimistic bubble reconciles against a mid-t
 
   it('keeps its own bubble when the user repeats an earlier message mid-conversation', async () => {
     // An OLDER persisted row with the identical content must not eat the NEW
-    // bubble — the predicate is scoped to rows newer than the send.
+    // bubble — the predicate excludes the rows that were on screen at send
+    // time. Its stamp is deliberately in the FUTURE (a server clock ahead of
+    // the browser's), the shape a timestamp scope would get wrong.
     const state = {
       messages: [
         ...chatDetail().messages,
@@ -3010,7 +3049,7 @@ describe('SalonConversation — the optimistic bubble reconciles against a mid-t
           role: 'USER',
           participantId: 'pu',
           content: 'Are we there yet?',
-          createdAt: '2020-01-01T00:00:00.000Z',
+          createdAt: '2099-01-01T00:00:00.000Z',
         }),
       ],
     };

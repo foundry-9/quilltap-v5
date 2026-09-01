@@ -235,6 +235,11 @@ describe('ConversationHeader — the Concierge badge (P4.D141, v4 SalonView.tsx:
     expect(badges(render(chatDetail({ isDangerousChat: null })))).toHaveLength(0);
   });
 
+  it('the Flagged pill with no categories carries v4’s title byte for byte — no trailing period (SalonView :1090)', () => {
+    const [pill] = badges(render(chatDetail({ isDangerousChat: true, dangerCategories: [] })));
+    expect(pill.getAttribute('title')).toBe('The Concierge has flagged this chat');
+  });
+
   it('renders the red Flagged pill, with the categories in its title', () => {
     const fixture = render(
       chatDetail({ isDangerousChat: true, dangerCategories: ['nsfw', 'violence'] }),

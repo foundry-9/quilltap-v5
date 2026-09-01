@@ -57,6 +57,17 @@ pub struct ImageGenParams {
     /// own by name, handed to the provider so per-model options travel without
     /// the host enumerating them. `None` when nothing is left over.
     pub profile_parameters: Option<Value>,
+    /// `size` was INSERTED by the orientation pass (section 2 of v4's
+    /// `buildImageGenParams`) because the merge (section 1) produced none. JS
+    /// objects remember insertion order, so that `size` sits AFTER `steps` in
+    /// v4's `JSON.stringify` — [`Self::to_key_value`] reproduces the slot. An
+    /// orientation that OVERWRITES a merged size keeps section 1's slot.
+    /// (The unification review's catch: declaration order ≠ insertion order in
+    /// exactly this shape, and no corpus row hit it until
+    /// `pb_orientation_inserts_size_last`.)
+    pub size_inserted_by_orientation: bool,
+    /// The `aspectRatio` twin of [`Self::size_inserted_by_orientation`].
+    pub aspect_ratio_inserted_by_orientation: bool,
 }
 
 impl ImageGenParams {
@@ -69,7 +80,10 @@ impl ImageGenParams {
     /// (`84f33ce94`): the literal `{prompt, model, n}` first, then each
     /// conditional assignment in source order, then `loras`, then
     /// `profileParameters`. `JSON.stringify` emits insertion order, so getting
-    /// this wrong silently shifts every canned image key in the harness.
+    /// this wrong silently shifts every canned image key in the harness. One
+    /// shape makes insertion order differ from declaration order: a `size` /
+    /// `aspectRatio` the merge did NOT produce but the orientation pass did is
+    /// inserted after `steps` (see the two `*_inserted_by_orientation` flags).
     pub fn to_key_value(&self) -> Value {
         let mut map = serde_json::Map::new();
         map.insert("prompt".into(), Value::String(self.prompt.clone()));
@@ -81,10 +95,14 @@ impl ImageGenParams {
             map.insert("negativePrompt".into(), Value::String(v.clone()));
         }
         if let Some(v) = &self.size {
-            map.insert("size".into(), Value::String(v.clone()));
+            if !self.size_inserted_by_orientation {
+                map.insert("size".into(), Value::String(v.clone()));
+            }
         }
         if let Some(v) = &self.aspect_ratio {
-            map.insert("aspectRatio".into(), Value::String(v.clone()));
+            if !self.aspect_ratio_inserted_by_orientation {
+                map.insert("aspectRatio".into(), Value::String(v.clone()));
+            }
         }
         if let Some(v) = &self.quality {
             map.insert("quality".into(), Value::String(v.clone()));
@@ -103,6 +121,17 @@ impl ImageGenParams {
         }
         if let Some(v) = self.steps {
             map.insert("steps".into(), js_number_to_json(v));
+        }
+        // Section 2's own insertions — only when section 1 set nothing.
+        if let Some(v) = &self.size {
+            if self.size_inserted_by_orientation {
+                map.insert("size".into(), Value::String(v.clone()));
+            }
+        }
+        if let Some(v) = &self.aspect_ratio {
+            if self.aspect_ratio_inserted_by_orientation {
+                map.insert("aspectRatio".into(), Value::String(v.clone()));
+            }
         }
         if !self.loras.is_empty() {
             map.insert(

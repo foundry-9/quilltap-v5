@@ -755,9 +755,10 @@ pub fn enrich_chat_for_list(
     })
 }
 
-/// v4 `enrichChatsForList`'s ordering pass on its own — `lastMessageAt ??
-/// updatedAt`, descending, stable (V8's sort is stable too, so ties keep input
-/// order).
+/// v4 `enrichChatsForList`'s ordering pass on its own — `byChatActivityDesc`
+/// (`lastMessageAt ?? createdAt`: when a character last spoke, never
+/// `updatedAt` — v4 `735d9408c`, bug 112), descending, stable (V8's sort is
+/// stable too, so ties keep input order).
 ///
 /// Exposed because the key is a **raw chat field**: nothing the enrichment
 /// produces feeds it. A caller that renders only the first N may therefore sort

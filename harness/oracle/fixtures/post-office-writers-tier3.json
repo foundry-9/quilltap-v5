@@ -53,14 +53,19 @@
       "manualKind": "manual-safe"
     },
     {
-      "name": "concierge_manual_off_duty",
+      "name": "concierge_manual_vouched",
       "kind": "conciergeManual",
-      "manualKind": "manual-off-duty"
+      "manualKind": "manual-vouched"
     },
     {
-      "name": "concierge_manual_on_duty",
+      "name": "concierge_manual_resumed",
       "kind": "conciergeManual",
-      "manualKind": "manual-on-duty"
+      "manualKind": "manual-resumed"
+    },
+    {
+      "name": "concierge_manual_uncensored",
+      "kind": "conciergeManual",
+      "manualKind": "manual-uncensored"
     },
     {
       "name": "prospero_conn_profile",

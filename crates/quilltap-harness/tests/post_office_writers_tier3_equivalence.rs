@@ -709,6 +709,8 @@ async fn post_office_writers_tier3_matches_oracle() {
         .as_array()
         .map(|a| a.len())
         .unwrap_or(0);
-    assert_eq!(nm, 21, "expected 19 persona + 2 cost SYSTEM rows");
+    // 20 persona rows since P4.D141 (the third Concierge manual kind,
+    // `manual-uncensored`, joined `manual-vouched` / `manual-resumed`).
+    assert_eq!(nm, 22, "expected 20 persona + 2 cost SYSTEM rows");
     eprintln!("OK: post-office-writers tier-3 matched oracle ({nm} rows, chats aggregate).");
 }

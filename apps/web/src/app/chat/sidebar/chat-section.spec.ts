@@ -602,9 +602,35 @@ describe('ChatSection — the Concierge four-state (P4.D141, v4 60e3c4a0a)', () 
     expect(fixture.componentInstance.refetched).toBe(0);
   });
 
-  it('sends nothing when the pick already matches the stored state', async () => {
+  it('fires the PUT even when the pick matches the stored state (v4 `:1068-1095` has no short-circuit)', async () => {
     const fixture = await render();
     await choose(fixture, conciergeSelect(fixture), 'monitored');
-    expect(sent.filter((r) => r['type'] === 'chatUpdate')).toEqual([]);
+    expect(sent.filter((r) => r['type'] === 'chatUpdate')).toHaveLength(1);
+  });
+
+  it('holds no latch: after a successful pick the control shows the STORED state, then follows the refetch (v4 derives from props)', async () => {
+    // v4 computes the select's value from props on every render; a local
+    // "last pick" that outlived the write would ignore a refetch, a classifier
+    // auto-flip and another tab for the rest of the session, and let the
+    // control disagree with the header badge (the unification review's catch).
+    const fixture = await render();
+    await choose(fixture, conciergeSelect(fixture), 'uncensored');
+    expect(sent.filter((r) => r['type'] === 'chatUpdate')).toHaveLength(1);
+    expect(fixture.componentInstance.refetched).toBe(1);
+    // The stored fields have not moved yet, so the element reads the stored state.
+    expect(conciergeSelect(fixture).value).toBe('monitored');
+    // The parent's refetch lands the operator state → the control follows it.
+    fixture.componentInstance.conciergeOverride.set('UNCENSORED');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(conciergeSelect(fixture).value).toBe('uncensored');
+    // … and a later change from elsewhere (an auto-flip, another tab) wins too.
+    fixture.componentInstance.conciergeOverride.set(null);
+    fixture.componentInstance.isDangerousChat.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(conciergeSelect(fixture).value).toBe('flagged');
   });
 });

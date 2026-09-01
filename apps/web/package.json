@@ -3,12 +3,12 @@
   "version": "0.5.614",
   "scripts": {
     "ng": "ng",
-    "lint": "node scripts/check-qt-classes.mjs",
+    "lint": "node scripts/check-qt-classes.mjs --self-test && node scripts/check-qt-classes.mjs",
     "start": "ng serve",
     "build": "node tools/ng-run.mjs build",
     "build:raw": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "node scripts/check-qt-classes.mjs && node tools/ng-run.mjs test --watch=false",
+    "test": "node scripts/check-qt-classes.mjs --self-test && node scripts/check-qt-classes.mjs && node tools/ng-run.mjs test --watch=false",
     "test:raw": "ng test",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium"

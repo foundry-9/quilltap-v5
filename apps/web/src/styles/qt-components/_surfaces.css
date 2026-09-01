@@ -1204,6 +1204,9 @@
    */
   .qt-markdown-field {
     @apply block rounded-lg border overflow-hidden;
+    /* The next three lines are `.qt-border-default` / `.qt-bg-card` /
+       `.qt-shadow-sm` inlined from `_utilities.css` — keep them in sync with
+       those rules; `@apply` cannot reach a plain class declared in @layer. */
     border-color: var(--color-border);
     background-color: var(--color-card);
     box-shadow: var(--qt-card-shadow, 0 1px 3px hsl(225 18% 10% / 0.06), 0 1px 2px hsl(225 18% 10% / 0.04));

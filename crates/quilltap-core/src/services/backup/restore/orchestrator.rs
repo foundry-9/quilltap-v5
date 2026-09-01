@@ -516,18 +516,28 @@ fn restore_on_writer(
             // defines it (`crate::chat_activity`). NULL when no character ever
             // posted, where readers fall back to `createdAt`. (v4 `735d9408c` —
             // its own try, post-write, `updatedAt` preserved by omission.)
-            let restamp = crate::db::chats_messages_read::get_last_played_message_at(main, &id)
-                .and_then(|last| {
-                    chats
-                        .update(
-                            &id,
-                            &crate::db::chats::ChatUpdate {
-                                last_message_at: Some(last),
-                                ..Default::default()
-                            },
-                        )
-                        .map(|_| ())
+            // The lookup is v4's `safeQuery(…, null)` in FALLBACK mode: a failed
+            // READ logs and writes NULL with no warning pushed — only the
+            // `repos.chats.update` can reach v4's catch (the unification
+            // review's catch; nothing in a corpus reaches this arm).
+            let last = crate::db::chats_messages_read::get_last_played_message_at(main, &id)
+                .unwrap_or_else(|e| {
+                    tracing::error!(
+                        chat_id = %id,
+                        error = %e,
+                        "Failed to get last played message timestamp"
+                    );
+                    None
                 });
+            let restamp = chats
+                .update(
+                    &id,
+                    &crate::db::chats::ChatUpdate {
+                        last_message_at: Some(last),
+                        ..Default::default()
+                    },
+                )
+                .map(|_| ());
             if let Err(e) = restamp {
                 w.push(format!(
                     "Failed to restore last-activity date for chat \"{title}\": {e}"

@@ -278,9 +278,13 @@ pub fn build_image_gen_params(
         // Orientation outranks any raw size/aspectRatio that arrived above: the
         // caller asked for a shape, not for a string.
         if let Some(size) = &resolved.size {
+            // A size the merge never set is INSERTED here — after `steps` in
+            // v4's object (see `ImageGenParams::size_inserted_by_orientation`).
+            params.size_inserted_by_orientation = params.size.is_none();
             params.size = Some(size.clone());
         }
         if let Some(ar) = &resolved.aspect_ratio {
+            params.aspect_ratio_inserted_by_orientation = params.aspect_ratio.is_none();
             params.aspect_ratio = Some(ar.clone());
         }
         if !resolved.prompt_hint.is_empty() {

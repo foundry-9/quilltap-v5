@@ -417,7 +417,6 @@ pub(crate) async fn generate_with_reroute<
                 chat_id,
                 character_id,
                 fail_prefix,
-                log_context,
                 reroute_log_context,
                 job_id,
                 recraft,
@@ -444,12 +443,10 @@ async fn reroute_or_fail<I: ImageProvider, A: ApiKeyResolver, R: RerouteRecraft>
     chat_id: Option<&str>,
     character_id: Option<&str>,
     fail_prefix: &str,
-    log_context: &'static str,
     reroute_log_context: &'static str,
     job_id: Option<&str>,
     recraft: &R,
 ) -> Result<GenOutcome, String> {
-    let _ = log_context;
     let reroute = if is_image_moderation_error(&error.message) {
         let uid = user_id.to_string();
         let mode = danger_mode.to_string();

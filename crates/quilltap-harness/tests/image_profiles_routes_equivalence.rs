@@ -10,6 +10,13 @@
 //! Run:
 //!   QT_ORACLE_IMAGE_ROUTES=/tmp/oracle-image-profiles-routes.ndjson \
 //!     cargo test -p quilltap-harness --test image_profiles_routes_equivalence
+//!
+//! ⚠ P4.D138 (the LoRA train) grew this family 28 → 44 cases; its `loras`
+//! write guards are live, but the `list-models` READ side (`loraSupport`) is
+//! unit 6 of that order and OPEN — the four success arms strip v4's key behind
+//! `LORA_SUPPORT_PENDING_P4D138_UNIT6` after measuring the shape (see the
+//! constant's doc). The `options-schema` / `lora-metadata` actions (§A) have
+//! no arms here yet; they arrive with units 6–7.
 
 use std::collections::HashMap;
 use std::path::PathBuf;

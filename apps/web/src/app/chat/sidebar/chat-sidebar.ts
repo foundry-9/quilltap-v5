@@ -377,10 +377,11 @@ export class ChatSidebar implements OnInit {
    * `isDangerousChat` — v4's `ChatSidebarProps` carries both for the same
    * reason: neither field is meaningful alone.
    *
-   * ⚠ **Needs a cross-lane binding.** The value lives in
-   * `screens/salon/salon-conversation.ts`, which **P4.66 owns**; until the
-   * unifier adds `[conciergeOverride]="c.conciergeOverride ?? null"` to the
-   * `<qt-chat-sidebar>` element, this stays `null`.
+   * Bound by `screens/salon/salon-conversation.ts` as
+   * `[conciergeOverride]="c.conciergeOverride ?? null"` on the `<qt-chat-sidebar>`
+   * element (the round-2 unification wire; pinned by the Salon spec). A host
+   * that leaves it unbound gets `null`, and the control can then DISPLAY only
+   * Monitored/Flagged — an operator state written through it would not read back.
    */
   readonly conciergeOverride = input<ConciergeOverrideValue | null>(null);
 

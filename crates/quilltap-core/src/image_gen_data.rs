@@ -182,9 +182,11 @@ pub fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<Orientati
 /// ⚠ **Narrower than v4 by one arm, deliberately.** v4's
 /// `getNanoGPTImageModels()` also augments this list from the module-level
 /// detailed-catalog cache, giving a live-catalog `lora`-tagged model outside
-/// the table `{ maxLoras: 1, sourceKinds: ['url','hf-repo'] }`. v5 carries that
-/// arm too, but the cache is runtime state rather than compiled data (the
-/// `model::nanogpt_catalog` module).
+/// the table `{ maxLoras: 1, sourceKinds: ['url','hf-repo'] }`. v5 does NOT
+/// carry that arm yet: the cache is runtime state rather than compiled data and
+/// lands with P4.D138 unit 6 (the routes' read side + the detailed-catalog
+/// cache, OPEN — see the order's status header). Until then a live-tagged model
+/// outside the table resolves no LoRA support here.
 pub fn lora_data_for(provider: &str) -> (Vec<ModelInfo>, Option<ImageLoraSupport>) {
     match provider {
         "NANOGPT" => {

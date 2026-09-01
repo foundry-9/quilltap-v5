@@ -64,7 +64,13 @@
  * new `<qt-bg-…>` component is subtracted the day it is written.
  *
  * Run standalone with `node scripts/check-qt-classes.mjs` (or `npm run lint`);
- * `npm test` runs it ahead of the unit suite so the workspace gate covers it.
+ * `npm test` runs it ahead of the unit suite so the workspace gate covers it,
+ * and `--self-test` re-proves the guard's own mechanism over synthetic sources.
+ *
+ * ⚠ `definedClasses()` scans raw CSS text, comments included — a `.qt-foo`
+ * spelled inside a CSS comment counts as a definition (P4.D142 hit this with
+ * its own prose, and `_variables.css`'s RANGE banner names `.qt-range` that
+ * way). Never rely on a comment-only mention being flagged.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -104,12 +110,18 @@ const COMPONENT_SELECTOR = /selector:\s*'(qt-[a-z0-9-]+)'/g
 /**
  * An `@Component({ … })` decorator's metadata, up to (excluding) its own
  * `template:` key. Every component in this codebase declares an inline
- * `template:` (never `templateUrl`) at 2-space indent, so this reliably
- * bounds ONE decorator's header even in a file with several components
- * stacked back to back — the search resumes after each match, so the next
- * `@Component({` is found fresh rather than re-scanning consumed text.
+ * `template:` (never `templateUrl`), so the FIRST `template:` after the
+ * decorator opens bounds ONE decorator's header even in a file with several
+ * components stacked back to back — the search resumes after each match, so
+ * the next `@Component({` is found fresh rather than re-scanning consumed
+ * text. The bound is `\btemplate:` on purpose, not "`template:` at 2-space
+ * indent": a one-line `@Component({ selector: …, template: '…' })` (two spec
+ * hosts write exactly that) matched no header under the indented form, and a
+ * lazy `[\s\S]*?` then spanned from it into the NEXT component's header,
+ * attributing that component's `host:` block to the wrong site and leaving
+ * its own unchecked (the unification review's catch; `--self-test` pins it).
  */
-const COMPONENT_HEADER = /@Component\(\{([\s\S]*?)\n {2}template:/g
+const COMPONENT_HEADER = /@Component\(\{([\s\S]*?)\btemplate:/g
 
 /** A component header's `host: { … }` object (assumed non-nested — true of
  * every host block in this codebase today; see the mutation-proof note by
@@ -201,17 +213,76 @@ function hostClasses(sources) {
   return used
 }
 
+/** The unresolved `qt-*` tokens over a source set, against a defined set. */
+function unresolvedClasses(sources, defined) {
+  const used = usedClasses(sources, componentSelectors(sources))
+  for (const [token, sites] of hostClasses(sources)) {
+    if (!used.has(token)) used.set(token, [])
+    used.get(token).push(...sites)
+  }
+  return [...used.entries()].filter(([token]) => !defined.has(token))
+}
+
+/**
+ * `--self-test`: the guard's own red-first proofs over synthetic sources, so
+ * the mechanism is re-proven by `npm test` rather than by a one-off manual
+ * mutation. Each case names the shape it pins.
+ */
+function selfTest() {
+  const cases = [
+    {
+      name: 'a host class with no rule is reported at the component site',
+      source: "@Component({\n  selector: 'qt-a',\n  host: { class: 'qt-nope block' },\n  template: '<p></p>',\n})\nclass A {}",
+      defined: ['qt-other'],
+      expect: [['qt-nope', ['x.ts:1']]],
+    },
+    {
+      name: "a one-line @Component header is parsed, and does not swallow the next component's host block",
+      source: "@Component({ selector: 'qt-one', template: '' })\nclass One {}\n\n@Component({\n  selector: 'qt-two',\n  host: { class: 'qt-second-host' },\n  template: '<p></p>',\n})\nclass Two {}",
+      defined: [],
+      expect: [['qt-second-host', ['x.ts:4']]],
+    },
+    {
+      name: 'a conditional [class.qt-…] host binding is policed too',
+      source: "@Component({\n  selector: 'qt-b',\n  host: { class: 'qt-b-host', '[class.qt-b-collapsed]': 'collapsed()' },\n  template: '<p></p>',\n})\nclass B {}",
+      defined: ['qt-b-host'],
+      expect: [['qt-b-collapsed', ['x.ts:1']]],
+    },
+    {
+      name: 'a host whose classes all resolve reports nothing',
+      source: "@Component({\n  selector: 'qt-c',\n  host: { class: 'qt-c-host' },\n  template: '<p class=\"qt-bg-card\"></p>',\n})\nclass C {}",
+      defined: ['qt-c-host', 'qt-bg-card'],
+      expect: [],
+    },
+    {
+      name: 'a component selector is a tag, never a class (the qt-text-… collision)',
+      source: "@Component({\n  selector: 'qt-text-thing',\n  template: '<qt-text-thing></qt-text-thing>',\n})\nclass T {}",
+      defined: [],
+      expect: [],
+    },
+  ]
+  let failed = 0
+  for (const c of cases) {
+    const got = JSON.stringify(unresolvedClasses([['x.ts', c.source]], new Set(c.defined)))
+    const want = JSON.stringify(c.expect)
+    if (got === want) console.log(`  ok   ${c.name}`)
+    else {
+      failed++
+      console.error(`  FAIL ${c.name}\n       got  ${got}\n       want ${want}`)
+    }
+  }
+  console.log(`check-qt-classes --self-test: ${cases.length - failed}/${cases.length} passed.`)
+  process.exit(failed === 0 ? 0 : 1)
+}
+
+if (process.argv.includes('--self-test')) selfTest()
+
 const sources = tracked(SOURCE_GLOBS)
   .filter((file) => !SKIPPED_PREFIXES.some((p) => file.startsWith(p)))
   .map((file) => [file, readFileSync(path.join(SPA_ROOT, file), 'utf8')])
 
 const defined = definedClasses()
-const used = usedClasses(sources, componentSelectors(sources))
-for (const [token, sites] of hostClasses(sources)) {
-  if (!used.has(token)) used.set(token, [])
-  used.get(token).push(...sites)
-}
-const unresolved = [...used.entries()].filter(([token]) => !defined.has(token))
+const unresolved = unresolvedClasses(sources, defined)
 
 const missing = unresolved.sort((a, b) => b[1].length - a[1].length)
 

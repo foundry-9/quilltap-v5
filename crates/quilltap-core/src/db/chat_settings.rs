@@ -1372,6 +1372,43 @@ pub fn patch_create_return_shape(settings: &mut serde_json::Value) {
 mod tests {
     use super::*;
 
+    /// v4 `65f5021c8` appended `allowCheapFallback: z.boolean().default(false)`
+    /// to `CheapLLMSettingsSchema`; a `.default()` is always present after a
+    /// parse, so a pre-4.9 three-key bag reads back FOUR-keyed with the new key
+    /// LAST (P4.D140's out-of-mandate fix — pinned locally so the cross-family
+    /// mutation proofs are not its only guard).
+    #[test]
+    fn a_pre_4_9_cheap_llm_bag_reads_back_with_allow_cheap_fallback_last() {
+        let stored = serde_json::json!({
+            "strategy": "user-defined",
+            "fallbackToLocal": true,
+            "embeddingProvider": "local"
+        });
+        let read = default_cheap_llm_keys(stored);
+        let keys: Vec<&str> = read.as_object().unwrap().keys().map(String::as_str).collect();
+        assert_eq!(
+            keys,
+            ["strategy", "fallbackToLocal", "embeddingProvider", "allowCheapFallback"]
+        );
+        assert_eq!(read["allowCheapFallback"], serde_json::Value::Bool(false));
+        // A bag that already carries the key is untouched — value AND position.
+        let four = serde_json::json!({"allowCheapFallback": true, "strategy": "auto"});
+        assert_eq!(default_cheap_llm_keys(four.clone()), four);
+        // The write half: the typed struct fills the field from a three-key bag.
+        let typed: CheapLlmSettings = serde_json::from_value(serde_json::json!({
+            "strategy": "auto",
+            "fallbackToLocal": false,
+            "embeddingProvider": "local"
+        }))
+        .unwrap();
+        assert!(!typed.allow_cheap_fallback);
+        let written = serde_json::to_value(&typed).unwrap();
+        assert_eq!(
+            written.as_object().unwrap().keys().last().map(String::as_str),
+            Some("allowCheapFallback")
+        );
+    }
+
     /// The second Friday dogfood finding: a real instance's `chat_settings`
     /// table predates the schema's `timezone` column (added to v4 with NO
     /// migration — v4's `SELECT *` reads never notice). The tolerant SELECT

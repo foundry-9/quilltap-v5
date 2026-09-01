@@ -771,6 +771,25 @@ pub struct ModelsPage {
 /// PLUGIN's. Transcribed from the five `image-provider.ts` files and verified
 /// against v4's live instances by the `kind:'models'` corpus rows, every one of
 /// which carries the recorded `supportedModels`.
+/// v4 `models.ts`'s `STATIC_IMAGE_MODEL_IDS = STATIC_IMAGE_MODELS.map(m => m.id)`:
+/// the six documented flagships FOLLOWED by one entry per LoRA family, in the
+/// dialect table's order. Built once; the table is compiled data.
+fn nanogpt_static_image_model_ids() -> &'static [&'static str] {
+    static IDS: std::sync::OnceLock<Vec<&'static str>> = std::sync::OnceLock::new();
+    IDS.get_or_init(|| {
+        crate::model::nanogpt_loras::NANOGPT_FLAGSHIP_IMAGE_MODEL_IDS
+            .iter()
+            .copied()
+            .chain(
+                crate::model::nanogpt_loras::nanogpt_lora_families()
+                    .into_iter()
+                    .map(|f| f.prefix),
+            )
+            .collect()
+    })
+    .as_slice()
+}
+
 pub fn supported_image_models(provider: &str) -> Result<&'static [&'static str], ImageGenError> {
     Ok(match provider {
         // P4.D101 — NanoGPT's `STATIC_IMAGE_MODEL_IDS` (from `models.ts`, which
@@ -780,24 +799,10 @@ pub fn supported_image_models(provider: &str) -> Result<&'static [&'static str],
         // FOLLOWED by one entry per LoRA family, generated from the dialect
         // table (`models.ts` imports `NANOGPT_LORA_FAMILIES` rather than
         // repeating the list, so a family added there appears here for free).
-        "NANOGPT" => &[
-            "hidream",
-            "flux-2-flash",
-            "flux-2-dev",
-            "flux-2-pro",
-            "recraft-v3",
-            "gpt-image-1.5",
-            "flux-2-dev-lora",
-            "flux-2-klein-4b",
-            "flux-2-klein-9b",
-            "wavespeed-ai/flux-2-klein-base-4b",
-            "wavespeed-ai/flux-2-klein-base-9b",
-            "z-image-turbo-lora",
-            "wavespeed-ai/krea-v2/turbo-lora",
-            "pruna-ai/p-image/text-to-image-lora",
-            "pruna-ai/p-image/edit-lora",
-            "flux-lora",
-        ],
+        // v5 derives it the same way rather than repeating the sixteen ids by
+        // hand — a hand-copied list drifted from the table once already (the
+        // unit-4 manifest regen), and the unification review caught the copy.
+        "NANOGPT" => nanogpt_static_image_model_ids(),
         "OPENAI" => &[
             "gpt-image-2",
             "gpt-image-1.5",

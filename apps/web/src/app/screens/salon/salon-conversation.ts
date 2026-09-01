@@ -185,18 +185,32 @@ export function readActiveTyping(data: Record<string, unknown>): string | null {
  * twice. This is the documented mechanism divergence (the {@link
  * turnOverride} precedent): rather than v4's wholesale replace, v5 drops the
  * bubble the moment a matching persisted row exists, by content rather than
- * id (a temp id never matches a server id) — same author, same content,
- * created no earlier than the send that minted the bubble (so a repeated
- * send mid-conversation gets its OWN bubble, not the earlier persisted row
- * of the same content).
+ * id (a temp id never matches a server id) — same author, same content, and
+ * NOT one of the rows that were already on screen when the send was made
+ * (`priorIds`, snapshotted at send time), so a repeated send mid-conversation
+ * gets its OWN bubble rather than being eaten by the earlier persisted row of
+ * the same content.
+ *
+ * Why an id snapshot and not a timestamp: the first draft scoped the match to
+ * `candidate.createdAt >= temp.createdAt`, but those two stamps come from two
+ * CLOCKS — the browser's `Date.now()` and the server's `clock::now_iso()` —
+ * and the first-class HTTP/Docker deployment puts them on different machines.
+ * A server behind the browser makes the echo sort before the bubble (finding
+ * #106 returns for the whole turn); a server ahead makes an EARLIER duplicate
+ * sort after it (the live bubble vanishes). The set of ids already displayed
+ * crosses no clock (the unification review's catch).
  */
-export function messageIsOptimisticEcho(candidate: MessageDto, temp: MessageDto): boolean {
+export function messageIsOptimisticEcho(
+  candidate: MessageDto,
+  temp: MessageDto,
+  priorIds: ReadonlySet<string>,
+): boolean {
   return (
     candidate.role === 'USER' &&
     candidate.id !== temp.id &&
+    !priorIds.has(candidate.id) &&
     candidate.participantId === temp.participantId &&
-    candidate.content === temp.content &&
-    candidate.createdAt >= temp.createdAt
+    candidate.content === temp.content
   );
 }
 
@@ -1322,6 +1336,11 @@ export class SalonConversation {
   protected readonly stream = signal<ChatStreamState | null>(null);
   protected readonly busy = computed(() => this.stream() != null);
   private readonly optimisticUser = signal<MessageDto | null>(null);
+  /**
+   * The ids on screen when {@link optimisticUser} was minted — the rows a
+   * persisted echo can never be ({@link messageIsOptimisticEcho}).
+   */
+  private readonly optimisticPriorIds = signal<ReadonlySet<string>>(new Set());
 
   // --- client-side swipe switching (v4 `switchSwipe`) ---
   private readonly swipeOverride = signal<Record<string, number>>({});
@@ -1793,7 +1812,8 @@ export class SalonConversation {
       );
     const temp = this.optimisticUser();
     if (!temp) return msgs;
-    const alreadyPersisted = msgs.some((m) => messageIsOptimisticEcho(m, temp));
+    const prior = this.optimisticPriorIds();
+    const alreadyPersisted = msgs.some((m) => messageIsOptimisticEcho(m, temp, prior));
     return alreadyPersisted ? msgs : [...msgs, temp];
   });
 
@@ -2774,6 +2794,7 @@ export class SalonConversation {
     const hasAttachments = (opts.fileIds?.length ?? 0) > 0;
     const pending = opts.pending ?? [];
     if (opts.content || hasAttachments || pending.length > 0) {
+      this.optimisticPriorIds.set(new Set((this.chat()?.messages ?? []).map((m) => m.id)));
       this.optimisticUser.set(this.makeTempUserMessage(opts.content ?? ''));
       // A user send always chases the bottom and re-enables auto-scroll (v4).
       this.messageList()?.scrollOnUserMessage();
