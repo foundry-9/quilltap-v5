@@ -812,6 +812,28 @@ inverting the unknown-model arm each redden the corpus and not the
 transcription. One mutation (WIDENING the escape class to cover `-` and
 `/`) stays green and is recorded as behaviour-neutral rather than a
 coverage gap: `\-` and `\/` mean themselves outside a character class.
+#### 2026-09-01 — feat(lint): guard every Angular component host's qt-* class, not just the four utility families
+
+_Versions: SPA 0.5.602; core/harness/host/web/cli/tauri unchanged._
+
+Extends `check-qt-classes.mjs` (P4.D142, point 4): the guard already refused
+an undefined `qt-bg-`/`qt-text-`/`qt-border-`/`qt-shadow-` name or a
+hand-written variant, but it deliberately never policed bare component
+classes, on the theory that most are theme hooks meant to have no app-side
+rule. That theory doesn't hold for a component's OWN host class — an
+unstyled Angular custom element defaults to `display: inline`, and an
+unruled host class has now shipped as a live bug three times (dogfood #97,
+the Almanack's `qt-entity-tabs`, and #107, fixed in the prior commit). The
+guard now also scans every `@Component`'s `host: { class: '…' }` (and
+`[class.qt-…]` conditional bindings) and requires any bare `qt-*` token
+found there to resolve to a CSS rule, red-first proven by stripping
+`.qt-markdown-field`'s rule and confirming the guard names it. Landed at
+this narrower scope rather than the fuller "every host needs an explicit
+display" invariant the finding proposed: building the wider form surfaced
+roughly a dozen pre-existing hosts with no class, no style, and no
+bare-element rule, each needing its own visual judgment call — recorded as
+a named follow-up rather than guessed at.
+
 #### 2026-09-01 — fix(theme): give sliders a real qt-range class, and fix finding #107's toolbar overflow
 
 _Versions: SPA 0.5.601; core/harness/host/web/cli/tauri unchanged._

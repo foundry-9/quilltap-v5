@@ -96631,3 +96631,114 @@ because there is no other check available — **the repo installs no
 `@types/node`, so no tsconfig typechecks `e2e/**` at all**; Playwright
 transpiles the specs at run time, and `--list` is the only thing short of a
 full run that will parse them.
+## P4.D142 — `.qt-range` + the inline-host guard (v4 `5f56f7a7d`, finding #107)
+
+SPA-only lane; no crate touched, no oracle regenerated (the v4 spec is the
+shipped hunks read by sha, pinned by construction). Freshness probe passed
+(`main` clean, both `4622411fd..main` and `3a76b17df..bugfix` empty) before
+starting.
+
+### Tier 1 — `.qt-range` + tokens + the twelve adoptions + finding #107
+
+`.qt-range` (`_interactive.css:318-340`) and `--qt-range-accent`/
+`--qt-range-focus-ring` (`_variables.css:172-187`) transcribed byte-for-byte
+from `git show 5f56f7a7d` — comment blocks included, diffed mechanically
+against the hunk text (both blocks IDENTICAL, confirmed with a script-built
+diff, not eyeballed). All twelve v5 `type="range"` hosts adopted with v4's
+exact class strings: `participant-card.ts` (×2, dropping the `qt-input`
+text-field idiom), `housekeeping-dialog.ts` + `memory-editor.ts` (dropping
+`appearance-none` with no replacement track), `context-compression-
+settings.ts` (×3), `dangerous-content-settings.ts`, `memory-dedup-card.ts`,
+`profile-modal.ts` (×2), `tasks-queue-card.ts` — the three v4 hosts with no
+v5 counterpart (ExternalPromptDialog, CharacterOptimizerModal — unported;
+LoraListEditor — P4.D139's, carries the class per §B) left out on purpose.
+One spec pin per idiom (qt-input, appearance-none, no-accent) added to the
+existing spec files for `participant-card`, `memory-editor`, `profile-modal`,
+`tasks-queue-card`, asserting the rendered host class.
+
+Finding #107: `markdown-field.ts`'s `host: { class: 'qt-markdown-field' }`
+had no CSS rule anywhere, so the host rendered `display: inline` and the
+formatting toolbar's non-wrapping centred row hung out equally on both
+sides of its column (the third instance of the family, after #97's
+`qt-tab-view` and the Almanack's `qt-entity-tabs`). Fixed with ONE rule in
+`_surfaces.css`, next to the canonical `qt-collapsible-card` inline-host
+comment (whose family list now names all three instances): `display: block`
+plus v4's frame — transcribed from `MarkdownLexicalEditor.tsx:194-206`
+(`rounded-lg border qt-border-default qt-bg-card qt-shadow-sm overflow-hidden`
++ `focus-within:outline-none focus-within:ring-2 focus-within:ring-ring`).
+
+**One deviation from the order's literal CSS, forced by the build:** the
+order's suggested rule `@apply`s `qt-border-default`/`qt-bg-card`/
+`qt-shadow-sm` directly, but those are plain classes in `_utilities.css`,
+not Tailwind v4 `@utility` declarations — `@apply` refused them
+(`Cannot apply unknown utility class`), caught by `npm run build` on the
+first attempt. Fixed by inlining the exact properties those three classes
+set (`border-color: var(--color-border)`, `background-color:
+var(--color-card)`, `box-shadow: var(--qt-card-shadow, …)` — read
+verbatim off each class's own rule) instead of applying them by name; the
+genuine Tailwind utilities (`block`, `rounded-lg`, `border`,
+`overflow-hidden`, the three `focus-within:` variants) stay `@apply`'d.
+Computed style is unchanged; the WHY is commented in place so a future pass
+doesn't "simplify" it back into a build break. Spec pin: `markdown-field.
+spec.ts` asserts the host element carries exactly `qt-markdown-field` (jsdom
+computes no layout, so the reachable pin is the class the CSS rule targets,
+not the rendered box — same idiom as `standalone-document-view.spec.ts`'s
+#97 pin).
+
+### Tier 2 — the guard, landed at a deliberately NARROW scope
+
+The order's point 4 asked for the real invariant ("every component host must
+have an explicit display") but flagged that its own census found the narrow
+form ("every host `qt-*` class needs a rule") sufcient for every historical
+instance. Extending `check-qt-classes.mjs` to the real invariant was
+attempted first: `@Component` headers are now parsed generally enough to do
+either. Building the WIDE form and running it surfaced roughly a dozen
+pre-existing component hosts (`qt-equipped-slot-row`, `qt-wardrobe-item-row`,
+three selectors in `wardrobe-control-dialog.ts`, `qt-outfit-quick-pick`,
+`qt-rng-dropdown`, `qt-custom-tools-popup`, `qt-library-file-picker-modal`,
+`qt-search-bar`, `qt-photos-page`, `qt-search-dialog`,
+`qt-brahma-model-picker`) with NO host class, NO host style, and NO
+bare-element CSS rule at all — none of them in this order's scope, and each
+would need its own visual judgment call (does this host's inline default
+actually matter, given what it wraps and where it mounts?) that a grep
+cannot make. Per the order's Tier-3 fallback, landed the NARROW form
+instead: `check-qt-classes.mjs` now also scans every `@Component`'s `host:`
+block (`class: '…'` static strings AND `[class.qt-…]` conditional bindings,
+e.g. `chat-sidebar.ts`'s collapsed/overlay states) and requires any bare
+`qt-*` token found there to resolve to a CSS rule — the general "theme hook"
+exemption for ordinary template classes is untouched. SCOPE paragraph
+rewritten to say so plainly, and the file header names the dozen residue
+hosts + why they're deferred rather than guessed at, so this reads back as
+a recorded follow-up, not a silent gap.
+
+**Red-first proof:** stripped the `.qt-markdown-field` rule from
+`_surfaces.css` (via a scripted removal, backup restored after) and ran the
+guard — it failed naming exactly `qt-markdown-field` at
+`markdown-field.ts:73`. Restored the rule; guard passed again (943 classes
+defined, `diff` against the pre-mutation file clean). One iteration on the
+proof itself: the canonical `qt-collapsible-card` comment's added family-list
+sentence originally wrote `` `.qt-markdown-field` below `` — the leading dot
+made the OLD `definedClasses()` regex (which scans raw CSS text, comments
+included) treat that prose mention as a definition, so the first mutation
+attempt came back green on stale reasoning. Reworded to drop the dot; the
+mutation then reddened correctly. Worth its own note: `check-qt-classes.mjs`
+does not strip comments before scanning for selectors — any future
+`.qt-something`-shaped prose in a CSS comment can produce the same false
+pass, not just this one.
+
+**Named follow-up (not this lane's scope):** the wider "every host needs an
+explicit display" invariant, and the dozen residue hosts listed above —
+phase-4.md candidates.
+
+### The gate
+
+`node scripts/check-qt-classes.mjs` — 943 qt-* classes defined, every
+guarded reference resolves (red-first proven separately, see above).
+`npm test` (guard + `ng test --watch=false`) — **366 test files / 5,482
+tests, 0 failed**. `npm run build` — clean, `Application bundle generation
+complete`. No crate touched, so no Rust gate to run. No Playwright per the
+order (P4.66 owns port 4319).
+
+Two commits (Tier 1: `.qt-range` + tokens + twelve adoptions + finding #107;
+Tier 2: the guard extension). Versions: SPA 0.5.600 → 0.5.602; core/harness/
+host/web/cli/tauri unchanged.

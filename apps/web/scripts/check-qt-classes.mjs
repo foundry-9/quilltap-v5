@@ -25,10 +25,27 @@
  * SCOPE. The guard covers the four *utility* families — `qt-bg-`, `qt-text-`,
  * `qt-border-`, `qt-shadow-` — plus any `qt-*` token carrying a variant prefix,
  * whatever its family. It deliberately does not police bare component classes
- * (`qt-card`, `qt-chat-sidebar-section-participants`): plenty of those are
- * emitted purely as hooks for themes to target and are *meant* to have no rule
- * in the app's own CSS. Widening the net there would mean an allowlist that
- * rots, which is worse than the gap.
+ * on ORDINARY template elements (`qt-card`,
+ * `qt-chat-sidebar-section-participants`): plenty of those are emitted purely
+ * as hooks for themes to target and are *meant* to have no rule in the app's
+ * own CSS. Widening the net there would mean an allowlist that rots, which is
+ * worse than the gap.
+ *
+ * ONE bare-class site is policed anyway: an Angular component's OWN HOST
+ * (`@Component({ host: { class: '…' } })`, static or a `[class.qt-…]`
+ * binding). A theme hook that resolves to nothing inherits silently; a host
+ * class that resolves to nothing is different in kind — it is the ONE place
+ * an unruled `qt-*` name is load-bearing rather than decorative, because an
+ * unstyled Angular custom element defaults to `display: inline`, and that has
+ * shipped as a real bug three times (dogfood #97 `qt-tab-view`'s
+ * `qt-standalone-document-view` host, the Almanack's `qt-entity-tabs`, dogfood
+ * #107 `qt-markdown-field`). This is the NARROW form of that invariant — see
+ * `docs/developer/porting/status-log.md` (P4.D142) for why the WIDER one (any
+ * component host must have an explicit display, by a covering utility class,
+ * host style, or bare-element rule — not just a `qt-*` class) was surveyed and
+ * deliberately deferred rather than guessed at: the survey found roughly a
+ * dozen existing hosts with no class, no style, and no bare-element rule at
+ * all, and each needs its own visual judgment call this script cannot make.
  *
  * Escape hatch: a line containing `qt-class-exception` is skipped.
  *
@@ -84,6 +101,23 @@ const SELECTOR = /\.((?:[a-z][a-z0-9-]*(?:\\\/[a-z0-9-]+)?\\:)*qt-[a-z0-9-]+(?:\
 /** `selector: 'qt-…'` on an Angular component — a tag name, never a class. */
 const COMPONENT_SELECTOR = /selector:\s*'(qt-[a-z0-9-]+)'/g
 
+/**
+ * An `@Component({ … })` decorator's metadata, up to (excluding) its own
+ * `template:` key. Every component in this codebase declares an inline
+ * `template:` (never `templateUrl`) at 2-space indent, so this reliably
+ * bounds ONE decorator's header even in a file with several components
+ * stacked back to back — the search resumes after each match, so the next
+ * `@Component({` is found fresh rather than re-scanning consumed text.
+ */
+const COMPONENT_HEADER = /@Component\(\{([\s\S]*?)\n {2}template:/g
+
+/** A component header's `host: { … }` object (assumed non-nested — true of
+ * every host block in this codebase today; see the mutation-proof note by
+ * `hostClasses` below if that stops holding). */
+const HOST_BLOCK = /(?:^|\s)host:\s*\{([^{}]*)\}/
+const HOST_STATIC_CLASS = /class:\s*'([^']*)'/
+const HOST_DYNAMIC_CLASS = /\[class\.(qt-[a-z0-9-]+)\]/g
+
 function tracked(globs) {
   return execFileSync('git', ['ls-files', ...globs], { cwd: SPA_ROOT, encoding: 'utf8' })
     .split('\n')
@@ -131,14 +165,53 @@ function usedClasses(sources, selectors) {
   return used
 }
 
+/**
+ * Every `qt-*` token an Angular component's OWN host declares — a static
+ * `class: '…'` string and any `[class.qt-…]` conditional binding alike (the
+ * chat sidebar's collapsed/overlay states are conditional and still need
+ * this: `sidebar/chat-sidebar.ts`). Unlike `usedClasses`, this is NOT limited
+ * to the four guarded utility families or variant-prefixed tokens — a bare
+ * host class name is exactly what this check exists for (see the SCOPE note
+ * at the top of the file).
+ */
+function hostClasses(sources) {
+  const used = new Map()
+  for (const [file, source] of sources) {
+    for (const match of source.matchAll(COMPONENT_HEADER)) {
+      const header = match[1]
+      if (header.includes('qt-class-exception')) continue
+      const hostMatch = header.match(HOST_BLOCK)
+      if (!hostMatch) continue
+      const hostBody = hostMatch[1]
+      const site = `${file}:${source.slice(0, match.index).split('\n').length}`
+      const tokens = new Set()
+      const staticMatch = hostBody.match(HOST_STATIC_CLASS)
+      if (staticMatch) {
+        for (const t of staticMatch[1].split(/\s+/)) {
+          if (/^qt-[a-z0-9-]+$/.test(t)) tokens.add(t)
+        }
+      }
+      for (const m of hostBody.matchAll(HOST_DYNAMIC_CLASS)) tokens.add(m[1])
+      for (const token of tokens) {
+        if (!used.has(token)) used.set(token, [])
+        used.get(token).push(site)
+      }
+    }
+  }
+  return used
+}
+
 const sources = tracked(SOURCE_GLOBS)
   .filter((file) => !SKIPPED_PREFIXES.some((p) => file.startsWith(p)))
   .map((file) => [file, readFileSync(path.join(SPA_ROOT, file), 'utf8')])
 
 const defined = definedClasses()
-const unresolved = [...usedClasses(sources, componentSelectors(sources)).entries()].filter(
-  ([token]) => !defined.has(token)
-)
+const used = usedClasses(sources, componentSelectors(sources))
+for (const [token, sites] of hostClasses(sources)) {
+  if (!used.has(token)) used.set(token, [])
+  used.get(token).push(...sites)
+}
+const unresolved = [...used.entries()].filter(([token]) => !defined.has(token))
 
 const missing = unresolved.sort((a, b) => b[1].length - a[1].length)
 
