@@ -765,21 +765,14 @@ pub fn enrich_chat_for_list(
 /// the enrichment of the ones it discards (P4.64 — the home dashboard). Kept as
 /// the single home of the comparator so the two spellings cannot drift.
 pub fn sort_chats_for_list(chats: &mut [Value]) {
-    chats.sort_by(|a, b| {
-        let key = |c: &Value| -> i64 {
-            let ts = c
-                .get("lastMessageAt")
-                .and_then(Value::as_str)
-                .or_else(|| c.get("updatedAt").and_then(Value::as_str));
-            ts.and_then(crate::clock::iso_to_ms).unwrap_or(0)
-        };
-        // Descending.
-        key(b).cmp(&key(a))
-    });
+    // Newest conversational activity first — when a character last posted, NOT
+    // when the row last changed (v4 `735d9408c`; see `crate::chat_activity`).
+    // `sort_by` is stable, as v4's `Array.prototype.sort` is.
+    chats.sort_by(crate::chat_activity::by_chat_activity_desc);
 }
 
 /// v4 `enrichChatsForList(chats, repos)` (`:620-687`): sort descending by
-/// `lastMessageAt ?? updatedAt` (stable — ties keep the input order), build the
+/// `lastMessageAt ?? createdAt` (stable — ties keep the input order), build the
 /// [`ChatListPreloaded`] maps with ONE batched read per repository, then
 /// per-chat enrich on the preload.
 ///

@@ -66,7 +66,7 @@ interface Spec {
   roleplayTemplate: { id: string; name: string; systemPrompt: string };
   project: { id: string; name: string };
   group: { id: string; name: string };
-  chat: { id: string; title: string; participants: Array<Record<string, unknown>> };
+  chat: { id: string; title: string; touchedUpdatedAt: string; participants: Array<Record<string, unknown>> };
   llmLog: {
     id: string;
     provider: string;
@@ -356,6 +356,16 @@ async function main(): Promise<void> {
     } as never,
     { id: spec.llmLog.id, createdAt: spec.llmLog.createdAt, updatedAt: spec.llmLog.createdAt }
   );
+
+  // P4.D140 (v4 `735d9408c`): the chat has NO messages, so `lastMessageAt` is
+  // NULL and `chatActivityAt` must fall back to `createdAt`. Push `updatedAt`
+  // well past it so the chats section's `latestActivityAt` DISCRIMINATES: the
+  // retired `lastMessageAt ?? updatedAt ?? createdAt` spelling would report this
+  // value, the shipped one reports `createdAt`.
+  await rawQuery('UPDATE chats SET updatedAt = ? WHERE id = ?', [
+    spec.chat.touchedUpdatedAt,
+    spec.chat.id,
+  ]);
 
   closeMountIndexSQLiteClient();
   closeLLMLogsSQLiteClient();

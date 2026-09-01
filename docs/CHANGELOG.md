@@ -157,6 +157,38 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+#### 2026-09-01 — fix(chats): every chat list dates by activity, not by the row changing (v4 735d9408c, bug 112)
+
+_Versions: core 0.0.722, harness 0.0.618._
+
+All six server readers routed through the chokepoint. The Salon-list and home
+sort (one home, `sort_chats_for_list`), the projects chat list and the Brahma
+console list all take `by_chat_activity_desc`; `RecentChat` gains `createdAt`
+between `title` and `updatedAt` so the home client's fallback can reach it; the
+Brahma console's enriched row gains `createdAt` in v4's exact slot; and
+self-inventory's prompt-visible activity line drops its `updatedAt` middle
+fallback.
+
+The characters `?action=chats` route loses its hand-rolled re-derivation
+entirely — its own independent copy of the same bug, taking the max
+`type === 'message'` createdAt over the whole transcript and counting every
+Staff announcement. Activity is now the stored `lastMessageAt`, and the ISO
+round-trip through `new Date(ms).toISOString()` disappears with the block, as
+v4's does.
+
+Six mutation proofs, each verified applied. Two exposed corpus blind spots and
+both were closed rather than noted: the projects list could not tell the two
+fallbacks apart (both its chats were created the same day), so the oracle case
+and the Rust side gained a matching `list_chats_activity_fallback` mutation that
+pushes the never-spoken-in chat's `updatedAt` past the other's activity; and the
+self-inventory fixture's one chat had `updatedAt == createdAt`, so the builder
+now touches it to a later pinned value, which makes `latestActivityAt`
+discriminate.
+
+Also corrected: the `mutate_null_last_message` header comment in the home-routes
+oracle case, which said the null case "falls back to updatedAt" — the sentence
+this commit makes false.
+
 #### 2026-09-01 — fix(chats): lastMessageAt moves only when a character spoke (v4 735d9408c, bug 112)
 
 _Versions: core 0.0.721._

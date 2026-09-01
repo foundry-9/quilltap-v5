@@ -1284,10 +1284,9 @@ fn build_chats_section(db: &Db, character_id: &str) -> Result<ChatSection, DbErr
             }
         }
 
-        // activityIso = lastMessageAt ?? updatedAt ?? createdAt
-        let activity_iso = json_str(chat, "lastMessageAt")
-            .or_else(|| json_str(chat, "updatedAt"))
-            .or_else(|| json_str(chat, "createdAt"));
+        // activityIso = chatActivityAt(chat) = lastMessageAt ?? createdAt
+        // (v4 `735d9408c` — `updatedAt` is no longer consulted anywhere).
+        let activity_iso = json_str(chat, "lastMessageAt").or_else(|| json_str(chat, "createdAt"));
         if let Some(activity) = activity_iso {
             if let Some(ms) = parse_iso_ms(&activity) {
                 if ms > latest_ms {

@@ -54,6 +54,10 @@ pub struct HomeData {
 pub struct RecentChat {
     pub id: String,
     pub title: String,
+    /// v4 `735d9408c` — the client displays `lastMessageAt ?? createdAt`, so the
+    /// fallback has to reach it. v4 places the key here, between `title` and
+    /// `updatedAt`.
+    pub created_at: String,
     pub updated_at: String,
     pub last_message_at: Option<String>,
     pub is_dangerous_chat: bool,
@@ -214,7 +218,7 @@ pub fn get_home_data(
         .cloned()
         .collect();
 
-    // enrichChatsForList (sorts by lastMessageAt ?? updatedAt desc internally)
+    // enrichChatsForList (sorts by lastMessageAt ?? createdAt desc internally)
     // → cleanEnrichedChats (the `#[serde(skip)]` field) → slice(0, 12).
     //
     // ⚠ ORDER OF OPERATIONS, deliberately not v4's: v4 enriches EVERY salon
@@ -443,6 +447,7 @@ fn map_recent_chat(chat: &EnrichedChatSummary) -> RecentChat {
     RecentChat {
         id: chat.id.clone(),
         title: chat.title.clone(),
+        created_at: chat.created_at.clone(),
         updated_at: chat.updated_at.clone(),
         last_message_at: chat.last_message_at.clone(),
         is_dangerous_chat: chat.is_dangerous_chat,

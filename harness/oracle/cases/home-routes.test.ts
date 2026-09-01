@@ -20,7 +20,8 @@
  *     identically on the Rust side): a salon chat reclassified `help` leaves
  *     recentChats but keeps its character counts (counts run over allChatsRaw);
  *     an EMPTY-STRING chatType stays (JS `!c.chatType` — falsy, not just
- *     absent); a nulled lastMessageAt falls back to updatedAt; a touched file
+ *     absent); a nulled lastMessageAt falls back to createdAt (v4 `735d9408c`
+ *     — NEVER to updatedAt, which is the whole point of `chatActivityAt`); a touched file
  *     re-ranks its project (the file source, dynamically); a re-projected chat
  *     moves count + activity between projects; a cleared and an ORPHANED story
  *     background both resolve to null (the unset arm vs the lookup MISS arm).

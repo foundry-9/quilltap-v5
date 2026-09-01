@@ -198,7 +198,8 @@ fn message_count(db: &Db, chat_id: &str) -> Result<usize, Response> {
 // ===========================================================================
 
 /// v4 `handleList` (`route.ts:37-60`): the user's brahma chats, most-recent first
-/// (`lastMessageAt || updatedAt` desc), each enriched with its message count.
+/// by conversational activity (`lastMessageAt ?? createdAt` desc — v4
+/// `735d9408c`), each enriched with its message count.
 pub fn brahma_console_list(db: &Db, user_id: &str) -> Response {
     let uid = user_id.to_string();
     let all = match db.read_main(move |c| chats_read::find_by_user_id(c, &uid)) {
@@ -209,19 +210,13 @@ pub fn brahma_console_list(db: &Db, user_id: &str) -> Response {
         .into_iter()
         .filter(|c| s(c, "chatType").as_deref() == Some("brahma"))
         .collect();
-    // v4 sorts by `new Date(lastMessageAt || updatedAt).getTime()` desc; ISO-Z
-    // strings sort chronologically, and the sort is stable (matching v4's
-    // stable Array.sort over the same `findByUserId` order).
-    let effective = |c: &Value| -> String {
-        s(c, "lastMessageAt")
-            .filter(|v| !v.is_empty())
-            .or_else(|| s(c, "updatedAt"))
-            .unwrap_or_default()
-    };
-    // Stable sort, descending by the effective timestamp (v4's `getTime()` desc
-    // over ISO-Z strings, and a stable Array.sort over the same `findByUserId`
-    // order for ties).
-    brahma.sort_by_key(|c| std::cmp::Reverse(effective(c)));
+    // v4 `735d9408c` sorts with the shared `byChatActivityDesc`. Note the
+    // semantics moved with it: `lastMessageAt || updatedAt` (JS truthiness, so
+    // an empty string fell through) became `lastMessageAt ?? createdAt`
+    // (nullish, so an empty string wins and reads as time 0). `sort_by` is
+    // stable, matching v4's stable Array.sort over the same `findByUserId`
+    // order for ties.
+    brahma.sort_by(crate::chat_activity::by_chat_activity_desc);
 
     let mut enriched = Vec::with_capacity(brahma.len());
     for chat in &brahma {
@@ -233,6 +228,7 @@ pub fn brahma_console_list(db: &Db, user_id: &str) -> Response {
         enriched.push(json!({
             "id": id,
             "title": chat.get("title").cloned().unwrap_or(Value::Null),
+            "createdAt": chat.get("createdAt").cloned().unwrap_or(Value::Null),
             "updatedAt": chat.get("updatedAt").cloned().unwrap_or(Value::Null),
             "lastMessageAt": chat.get("lastMessageAt").cloned().unwrap_or(Value::Null),
             "messageCount": count,

@@ -507,6 +507,32 @@ fn restore_on_writer(
                     )),
                 }
             }
+
+            // `add_message` stamps `lastMessageAt` with the wall clock, so
+            // replaying a transcript dates every restored chat to the instant of
+            // the restore — which is the timestamp every list sorts and displays
+            // by, so the whole history would land in one flat heap. Re-derive it
+            // from the transcript we just wrote, under the one predicate that
+            // defines it (`crate::chat_activity`). NULL when no character ever
+            // posted, where readers fall back to `createdAt`. (v4 `735d9408c` —
+            // its own try, post-write, `updatedAt` preserved by omission.)
+            let restamp = crate::db::chats_messages_read::get_last_played_message_at(main, &id)
+                .and_then(|last| {
+                    chats
+                        .update(
+                            &id,
+                            &crate::db::chats::ChatUpdate {
+                                last_message_at: Some(last),
+                                ..Default::default()
+                            },
+                        )
+                        .map(|_| ())
+                });
+            if let Err(e) = restamp {
+                w.push(format!(
+                    "Failed to restore last-activity date for chat \"{title}\": {e}"
+                ));
+            }
         }
     }
 

@@ -467,13 +467,18 @@ pub fn character_stats(db: &Db, _user_id: &str, character_id: &str) -> Response 
 /// v4 `?action=chats` (`characters/[id]/handlers/get.ts` `chats`) — the enriched
 /// recent-chats DTO. Ownership (overlaid `findById`) → `chats.findByCharacterId`
 /// → filter to the caller's `userId` → per-chat `getMessages` + `lastMessageAt`
-/// (the max `type==='message'` createdAt, round-tripped through
-/// `new Date(...).toISOString()`; else `chat.updatedAt`) → **stable** desc sort
-/// by `lastMessageAt` → optional case-insensitive `search` over title + message
-/// content → `slice(offset, offset+limit)` (defaults limit 10 / offset 0) → per
-/// chat enrich (project map / tags / `_count` / scriptorium status / 3 most-recent
-/// messages / story background / `isDangerousChat`). Body:
+/// = `chatActivityAt(chat)` → **stable** desc sort by `byChatActivityDesc` →
+/// optional case-insensitive `search` over title + message content →
+/// `slice(offset, offset+limit)` (defaults limit 10 / offset 0) → per chat enrich
+/// (project map / tags / `_count` / scriptorium status / 3 most-recent messages /
+/// story background / `isDangerousChat`). Body:
 /// `{ chats, total: filteredChats.length }`.
+///
+/// v4 `735d9408c` DELETED this route's hand-rolled re-derivation (the max
+/// `type === 'message'` createdAt, round-tripped through
+/// `new Date(...).toISOString()`, else `chat.updatedAt`) — its own copy of the
+/// bug, counting every Staff announcement. Activity is now the STORED
+/// `lastMessageAt`, and the ISO round-trip disappeared with the block.
 pub fn character_chats(
     db: &Db,
     user_id: &str,
@@ -482,7 +487,7 @@ pub fn character_chats(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Response {
-    use crate::clock::{iso_from_unix_ms, iso_to_ms};
+    use crate::clock::iso_to_ms;
     use crate::db::conversation_chunks::ConversationChunksRepository;
     use crate::db::files::FilesRepository;
     use crate::db::projects::ProjectsRepository;
@@ -517,31 +522,13 @@ pub fn character_chats(
                 .unwrap_or("")
                 .to_string();
             let messages = crate::db::chats_messages_read::get_messages(main, &chat_id)?;
-            // lastMessageAt = max(type==='message' createdAt) round-tripped through
-            // JS `new Date(ms).toISOString()`, else chat.updatedAt (raw).
-            let max_ms = messages
-                .iter()
-                .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
-                .filter_map(|m| m.get("createdAt").and_then(Value::as_str))
-                .filter_map(iso_to_ms)
-                .max();
-            let last_message_at = match max_ms {
-                Some(ms) => iso_from_unix_ms(ms),
-                None => chat
-                    .get("updatedAt")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-            };
+            let last_message_at = crate::chat_activity::chat_activity_at(&chat).to_string();
             with_messages.push((chat, messages, last_message_at));
         }
 
-        // Stable desc sort by lastMessageAt (v4 `new Date(b) - new Date(a)`).
-        with_messages.sort_by(|a, b| {
-            let ta = iso_to_ms(&a.2).unwrap_or(0);
-            let tb = iso_to_ms(&b.2).unwrap_or(0);
-            tb.cmp(&ta)
-        });
+        // Stable desc sort by the chat's own activity (v4 sorts the CHAT rows,
+        // `byChatActivityDesc(a.chat, b.chat)`, not the derived strings).
+        with_messages.sort_by(|a, b| crate::chat_activity::by_chat_activity_desc(&a.0, &b.0));
 
         // Optional search over title + message content (both already lowercased).
         let filtered: Vec<&(Value, Vec<Value>, String)> = match &search {

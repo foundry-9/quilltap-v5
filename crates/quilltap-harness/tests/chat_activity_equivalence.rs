@@ -21,11 +21,8 @@
 //!     TRANSLATES v4's object into the fragment mechanically and compares —
 //!     nothing is transcribed by hand.
 //!
-//! Generate the oracle output (from the PINNED v4 worktree — ledger §5.1):
-//!   PIN=/tmp/qt-v4-pin-p4d140-735d9408c
-//!   git -C ~/source/quilltap-server worktree add --detach "$PIN" 735d9408c
-//!   ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
-//!   cd "$PIN"
+//! Generate the oracle output:
+//!   cd ~/source/quilltap-server
 //!   ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
 //!     ~/source/quilltap-v5/harness/oracle/cases/chat-activity.ts \
 //!     > /tmp/oracle-chat-activity.ndjson

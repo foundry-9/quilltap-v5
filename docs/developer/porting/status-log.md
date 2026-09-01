@@ -95383,3 +95383,91 @@ matches it and neither chat's staleness moves.
 `build-retention-caches-fixture.ts`'s `dressChat` sets `lastMessageAt` by raw
 `UPDATE` after the adds, so it is immune to the write-gate change by
 construction.
+
+### Unit 3 — the six server readers
+
+- **`services/chat_enrichment.rs` `sort_chats_for_list`** → `by_chat_activity_desc`.
+  ONE edit covers the Salon list AND home (the single-home comment stands, and
+  the `:216-244` home ordering comment's "RAW chat field" claim stays true —
+  `createdAt` is as raw as `lastMessageAt`).
+- **`services/home.rs`** — `RecentChat` gains `created_at` (v4's slot, between
+  `title` and `updatedAt`) and `map_recent_chat` carries it. A WIRE change; the
+  family's `check_key_order` pin went green against the fresh oracle, whose
+  `recentChats[0]` key order now reads `id, title, createdAt, updatedAt,
+  lastMessageAt`.
+- **`api/characters.rs` `?action=chats`** — the hand-rolled max-over-transcript
+  block DELETED (v4 deleted its twin: the route's own independent copy of the
+  bug). `lastMessageAt` is `chat_activity_at(&chat)`; the sort is
+  `by_chat_activity_desc` over the CHAT rows, as v4's
+  `byChatActivityDesc(a.chat, b.chat)` is; the `iso_from_unix_ms` round-trip
+  disappeared with the block, as v4's did. Doc comment rewritten with the
+  deletion recorded.
+- **`api/projects.rs`** — both key closures replaced by the shared comparator.
+  The projected object already carried `createdAt` (v4 did not change that).
+- **`api/brahma.rs`** — `effective` retired for the shared comparator, and the
+  enriched row gains `"createdAt"` between `"title"` and `"updatedAt"` (key order
+  matters — the fresh oracle confirms the slot). A recorded semantic move rides
+  along: `lastMessageAt || updatedAt` (JS truthiness) became `lastMessageAt ??
+  createdAt` (nullish), so an empty-string stamp now WINS and reads as time 0.
+  Commented at the site.
+- **`tools/self_inventory.rs`** — the middle `.or_else(updatedAt)` dropped
+  (PROMPT-VISIBLE).
+
+**Mutation proofs (six, each verified applied):** the enrichment sort back to
+the `updatedAt` fallback → `home_routes_equivalence` red; `RecentChat` without
+`createdAt` → red; the characters block restored → `characters_reads` red on
+`chats_plain` / `chats_search_title` / `chats_search_content`; the projects sort
+reverted → red (see below); the brahma `createdAt` dropped → red on `list`; the
+self-inventory middle fallback restored → red.
+
+**Two corpus blind spots found by mutation and CLOSED, not noted:**
+
+1. `projects_routes_equivalence` did not discriminate — the fixture's two
+   project chats were created the same day, so both fallbacks order them the
+   same way. Added a matching `list_chats_activity_fallback` case to BOTH sides:
+   it pushes the never-spoken-in Chat B's `updatedAt` to `2026-12-01` (raw SQL on
+   the case's own fixture copy, the home-routes `mutate` idiom, newly borrowed
+   into this family) and lists. v4 measured: `[Chat A, Chat B]`. The reverted
+   sort now reddens exactly that case.
+2. `self_inventory_equivalence` did not discriminate — its single chat had
+   `updatedAt == createdAt`. `build-self-inventory-fixture.ts` now touches the
+   chat's `updatedAt` to a pinned `2026-06-06T06:06:06.000Z` after the seed (spec
+   key `chat.touchedUpdatedAt`), which makes the chats section's
+   `latestActivityAt` discriminate. v4 measured `2026-01-02T03:04:05.000Z` (the
+   `createdAt`), and the restored middle fallback now reddens.
+   ⚠ **The 0.00 s tell:** the first attempt at this mutation "passed" because the
+   run was missing the three `QT_FIXTURE_SELFINV_*` vars and the family had
+   SKIPPED. Re-run with the full env before believing any green here.
+
+**Also corrected:** `harness/oracle/cases/home-routes.test.ts`'s header, which
+described `mutate_null_last_message` as "a nulled lastMessageAt falls back to
+updatedAt" — the sentence this port makes false — plus three v5 doc comments
+carrying the old `?? updatedAt` spelling.
+
+#### Finding — a PRE-EXISTING standing red in `salon_reads_equivalence [settings]` (NOT this lane)
+
+Regenerating `salon_reads` turned its `settings` case red on
+`cheapLLMSettings`: v4 answers
+`{strategy, fallbackToLocal, embeddingProvider, allowCheapFallback}`, v5 answers
+the first three. **Two-pin attribution (ledger §5.2/§5.4):** the oracle
+regenerated from a worktree pinned at the BASELINE `7fb668263` produces the
+IDENTICAL four-key bag, so this is neither this lane's drift nor its code — and
+nothing this lane touches is on that path (`api::salon::chat_settings` →
+`db::chat_settings::find_by_user_id`, both untouched).
+
+The cause is the P4.D135 remainder: v4 `65f5021c8` appended `allowCheapFallback`
+to the `CheapLLMSettings` Zod schema with a `.default(false)`, so v4's read fills
+it in for any stored bag missing the key. v5's `find_by_user_id` returns the
+stored `cheapLLMSettings` cell VERBATIM (`parse_json`, not
+`parse_json_or_default`), and `db::chat_settings::CheapLlmSettings` has no such
+field, so a pre-4.9-vintage bag — which is exactly what the committed
+`salon-main.db` carries — comes back three-keyed. **This is a real divergence on
+real instances, not only a fixture artifact**, which is why regenerating the
+committed fixture would MASK it rather than fix it.
+
+Left unfixed on purpose: `db/chat_settings.rs` belongs to no lane this round, the
+fix is a key-level Zod-default read tolerance with its own differential, and
+five sibling lanes are in flight. **Ordered follow-up for the next round.** Every
+other arm of the family — `list_all`, both exclude-tag arms, `list_limit1`, the
+three `get_*` arms and the 30-object key-order pin — is GREEN, and those are the
+arms this lane moves.

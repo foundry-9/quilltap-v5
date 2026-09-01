@@ -25,8 +25,9 @@
  * its WHERE-fragment spelling encodes exactly those four clauses (the two
  * spellings are prose in v4 and SQL in v5, so they cannot be byte-diffed).
  *
- * Run from inside the server checkout (pinned worktree — ledger §5.1):
- *   cd /tmp/qt-v4-pin-p4d140-735d9408c
+ * Run from inside the server checkout (pin it per ledger §5.1 whenever v4 HEAD
+ * is past the lane's baseline — the sweep driver's `--v4` retargets this line):
+ *   cd ~/source/quilltap-server
  *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/chat-activity.ts \
  *     > /tmp/oracle-chat-activity.ndjson
  */

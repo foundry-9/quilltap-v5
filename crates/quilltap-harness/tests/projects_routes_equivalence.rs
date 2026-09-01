@@ -31,6 +31,8 @@ const EDDA: &str = "a1000000-0000-4000-8000-000000000005";
 const GAMMA_EXTRA_MP: &str = "b0000000-0000-4000-8000-000000000001";
 const IOTA_DANGLING_MP: &str = "b0000000-0000-4000-8000-0000000000df";
 const CHAT_A: &str = "c1000000-0000-4000-8000-000000000001";
+/// P4.D140: the never-spoken-in project chat (`lastMessageAt` NULL).
+const CHAT_B: &str = "c1000000-0000-4000-8000-000000000002";
 const CLOAK: &str = "aa000000-0000-4000-8000-000000000001";
 const ENSEMBLE: &str = "aa000000-0000-4000-8000-000000000002";
 const BG_FILE: &str = "f0000001-0000-4000-8000-000000000001";
@@ -158,6 +160,18 @@ fn first_diff(got: &str, want: &str) -> String {
 fn response_data(r: &Response) -> Value {
     let v = serde_json::to_value(r).unwrap();
     v.get("data").cloned().unwrap_or(Value::Null)
+}
+
+/// Raw SQL against a case's own copy (the home-routes idiom), so a case can
+/// stage a shape the committed fixture cannot express.
+fn mutate(db: &Db, sql: &'static str, params: Vec<String>) {
+    db.write_blocking(move |ws| {
+        let bound: Vec<&dyn rusqlite::ToSql> =
+            params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+        ws.main().connection().execute(sql, bound.as_slice())?;
+        Ok(())
+    })
+    .expect("mutation SQL");
 }
 
 fn fresh_db(spec: &Spec, tag: &str) -> Db {
@@ -351,6 +365,23 @@ fn projects_routes_match_oracle() {
         check(
             "list_chats_page",
             &response_data(&projects::project_chat_list(&db, IOTA, Some(1), Some(0))),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        // P4.D140 / v4 `735d9408c`: push the never-spoken-in chat's `updatedAt`
+        // past the other chat's activity. The OLD `lastMessageAt ?? updatedAt`
+        // spelling floats it to the top; `chatActivityAt` leaves it below.
+        let db = fresh_db(&spec, "lchaf");
+        mutate(
+            &db,
+            r#"UPDATE "chats" SET "updatedAt" = ?1 WHERE "id" = ?2"#,
+            vec!["2026-12-01T00:00:00.000Z".into(), CHAT_B.into()],
+        );
+        check(
+            "list_chats_activity_fallback",
+            &response_data(&projects::project_chat_list(&db, IOTA, None, None)),
             false,
             &mut failed,
         );

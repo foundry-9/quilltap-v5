@@ -7,7 +7,8 @@
  * (`api::projects::*`) can be diffed byte-for-byte.
  *
  * Unit-2 coverage: list (O(n²) _count), detail (rich roster + empty), roster
- * list, list-chats (sort fallback + pagination), get-state, mount-points
+ * list, list-chats (activity sort + its createdAt fallback + pagination),
+ * get-state, mount-points
  * (dangling filtered + empty); create (default injection), update, delete
  * (chats/files nulled, mount links UNTOUCHED), roster add/remove, chat
  * add/remove, set/reset-state, tool-settings, mount link/unlink.
@@ -47,6 +48,8 @@ const EDDA = 'a1000000-0000-4000-8000-000000000005';
 const GAMMA_EXTRA_MP = 'b0000000-0000-4000-8000-000000000001';
 const IOTA_DANGLING_MP = 'b0000000-0000-4000-8000-0000000000df';
 const CHAT_A = 'c1000000-0000-4000-8000-000000000001';
+/** P4.D140: the never-spoken-in project chat (`lastMessageAt` NULL). */
+const CHAT_B = 'c1000000-0000-4000-8000-000000000002';
 const CLOAK = 'aa000000-0000-4000-8000-000000000001';
 const ENSEMBLE = 'aa000000-0000-4000-8000-000000000002';
 const BG_FILE = 'f0000001-0000-4000-8000-000000000001'; // legacy image, projectId null
@@ -207,6 +210,26 @@ async function main(): Promise<void> {
     { name: 'list_characters', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-characters`), p(IOTA))) },
     { name: 'list_chats', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats`), p(IOTA))) },
     { name: 'list_chats_page', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats&limit=1&offset=0`), p(IOTA))) },
+    // P4.D140 / v4 `735d9408c`: the activity sort's fallback is `createdAt`,
+    // NEVER `updatedAt`. Chat B has never been spoken in; push its `updatedAt`
+    // past Chat A's activity and the OLD `lastMessageAt ?? updatedAt` spelling
+    // would float it to the top, while `chatActivityAt` leaves it below. The
+    // committed fixture cannot express this on its own (both chats were created
+    // the same day), so the case mutates its own copy — replayed identically on
+    // the Rust side.
+    {
+      name: 'list_chats_activity_fallback',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        await rawQuery('UPDATE "chats" SET "updatedAt" = ? WHERE "id" = ?', [
+          '2026-12-01T00:00:00.000Z',
+          CHAT_B,
+        ]);
+        return respond(
+          await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats`), p(IOTA)),
+        );
+      },
+    },
     { name: 'get_state', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-state`), p(IOTA))) },
     { name: 'background_iota', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-background`), p(IOTA))) },
     { name: 'background_kappa', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${KAPPA}?action=get-background`), p(KAPPA))) },

@@ -661,7 +661,7 @@ pub async fn project_character_remove(db: &Db, project_id: &str, character_id: &
 // Chats (v4 chats.ts)
 // ===========================================================================
 
-/// v4 `handleListChats`: paginated, `lastMessageAt ?? updatedAt` sort fallback,
+/// v4 `handleListChats`: paginated, `lastMessageAt ?? createdAt` activity sort,
 /// enriched participants/tags/storyBackground. Body `{ chats, pagination }`.
 pub fn project_chat_list(
     db: &Db,
@@ -669,7 +669,6 @@ pub fn project_chat_list(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Response {
-    use crate::clock::iso_to_ms;
     let pid = project_id.to_string();
     let limit = limit.unwrap_or(20);
     let offset = offset.unwrap_or(0);
@@ -679,22 +678,9 @@ pub fn project_chat_list(
             return Ok(None);
         }
         let mut chats = project_chats(main, &pid)?;
-        // Sort desc by lastMessageAt ?? updatedAt (v4 `new Date(...).getTime()`).
-        chats.sort_by(|a, b| {
-            let ta = a
-                .get("lastMessageAt")
-                .and_then(Value::as_str)
-                .or_else(|| a.get("updatedAt").and_then(Value::as_str))
-                .and_then(iso_to_ms)
-                .unwrap_or(0);
-            let tb = b
-                .get("lastMessageAt")
-                .and_then(Value::as_str)
-                .or_else(|| b.get("updatedAt").and_then(Value::as_str))
-                .and_then(iso_to_ms)
-                .unwrap_or(0);
-            tb.cmp(&ta)
-        });
+        // Newest conversational activity first — see `crate::chat_activity`
+        // (v4 `735d9408c`).
+        chats.sort_by(crate::chat_activity::by_chat_activity_desc);
         let total = chats.len();
         let start = offset.max(0) as usize;
         let page: Vec<&Value> = if start >= chats.len() || limit <= 0 {
