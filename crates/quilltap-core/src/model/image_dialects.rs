@@ -83,13 +83,28 @@ pub fn build_image_request(
     provider: &str,
     params: &ImageGenParams,
 ) -> Result<BuiltRequest, ImageGenError> {
+    build_image_request_with_extras(provider, params).map(|(request, _)| request)
+}
+
+/// [`build_image_request`] plus NanoGPT's composed-body summary, for the one
+/// caller that needs it: [`RealImageProvider`]'s debug + bug-111 failure logs
+/// (`648d5c8aa`). `None` for every other provider.
+pub fn build_image_request_with_extras(
+    provider: &str,
+    params: &ImageGenParams,
+) -> Result<(BuiltRequest, Option<NanoGptWireExtras>), ImageGenError> {
+    let mut nanogpt_extras: Option<NanoGptWireExtras> = None;
     let (url, body) = match provider {
         "OPENAI" => build_openai(params),
         "GROK" => build_grok(params),
         "Z_AI" => build_zai(params),
         "GOOGLE" => build_google(params),
         "OPENROUTER" => build_openrouter(params),
-        "NANOGPT" => build_nanogpt(params),
+        "NANOGPT" => {
+            let (url, body, extras) = build_nanogpt(params);
+            nanogpt_extras = Some(extras);
+            (url, body)
+        }
         other => {
             return Err(ImageGenError::new(format!(
                 "Unknown image provider: {other}"
@@ -104,13 +119,16 @@ pub fn build_image_request(
         ));
         headers.push(("X-Title".to_string(), "Quilltap".to_string()));
     }
-    Ok(BuiltRequest {
-        method: "POST".to_string(),
-        url,
-        headers,
-        body,
-        attachment_results: Default::default(),
-    })
+    Ok((
+        BuiltRequest {
+            method: "POST".to_string(),
+            url,
+            headers,
+            body,
+            attachment_results: Default::default(),
+        },
+        nanogpt_extras,
+    ))
 }
 
 fn is_gpt_image_model(model: &str) -> bool {
@@ -457,7 +475,7 @@ fn parse_zai(resp: &WireResponse) -> Result<ImageGenResponse, ImageGenError> {
 /// `size` is passed through VERBATIM and only when supplied: v4 casts it
 /// without validating or normalizing, so none of the OpenAI path's
 /// size-coercion applies. `seed` rides only when the caller set it.
-fn build_nanogpt(params: &ImageGenParams) -> (String, Value) {
+fn build_nanogpt(params: &ImageGenParams) -> (String, Value, NanoGptWireExtras) {
     // `params.model ?? 'hidream'` — hidream is NanoGPT's own server-side
     // default, made explicit.
     let model = model_or_default(params, "hidream");
@@ -489,9 +507,9 @@ fn build_nanogpt(params: &ImageGenParams) -> (String, Value) {
     if let Some(np) = params.negative_prompt.as_deref().filter(|s| !s.is_empty()) {
         body.insert("negative_prompt".into(), Value::String(np.to_string()));
     }
-    let _passthrough_keys =
+    let passthrough_keys =
         apply_passthrough_parameters(&mut body, params.profile_parameters.as_ref());
-    let _applied = apply_loras(
+    let applied = apply_loras(
         &mut body,
         model,
         &params.loras,
@@ -500,7 +518,26 @@ fn build_nanogpt(params: &ImageGenParams) -> (String, Value) {
     (
         "https://nano-gpt.com/api/v1/images/generations".to_string(),
         Value::Object(body),
+        NanoGptWireExtras {
+            passthrough_keys,
+            applied,
+        },
     )
+}
+
+/// What `build_nanogpt` composed onto the body beyond the common fields — v4's
+/// `{ passthroughKeys, applied }` pair, which its provider logs by NAME on the
+/// debug line and (since `648d5c8aa`, bug 111) on the failure line too.
+///
+/// **Returned from the builder rather than recomputed at the provider.**
+/// Running `apply_loras` a second time would fire its capping / unknown-family
+/// warnings twice, and a second computation could silently drift from the one
+/// that actually built the body — which is the only thing the log is worth
+/// anything for.
+#[derive(Debug, Clone, Default)]
+pub struct NanoGptWireExtras {
+    pub passthrough_keys: Vec<String>,
+    pub applied: crate::model::nanogpt_loras::AppliedLoras,
 }
 
 /// v4 NanoGPT image parse (P4.D101): the OpenAI-compatible `data[]`, keeping
@@ -1457,8 +1494,26 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
         params: &ImageGenParams,
     ) -> Result<ImageGenResponse, ImageGenError> {
         Self::require_api_key(provider, api_key)?;
-        let mut request = build_image_request(provider, params)?;
+        let (mut request, nanogpt_extras) = build_image_request_with_extras(provider, params)?;
         request.headers.push(Self::auth_header(provider, api_key));
+        // v4 `84f33ce94`, at the provider: "Named rather than counted: when the
+        // dogfood run checks whether the flat keys survived NanoGPT's legacy
+        // route, this line is the record of exactly what was posted. A response
+        // identical to the no-LoRA one, with these keys present in the log, is
+        // the signature of a silently-dropped key."
+        if let Some(extras) = &nanogpt_extras {
+            tracing::debug!(
+                context = "NanoGPTImageProvider.generateImage",
+                model = %params.model,
+                size = ?params.size,
+                n = params.n.unwrap_or(1.0),
+                lora_dialect = ?extras.applied.dialect.map(|d| d.as_str()),
+                lora_keys = ?extras.applied.keys,
+                lora_dropped = ?extras.applied.dropped,
+                passthrough_keys = ?extras.passthrough_keys,
+                "Posting NanoGPT image request"
+            );
+        }
         // The Google dialect is selected by model on the parse side too.
         let model = params.model.clone();
         let body = request.body_string();
@@ -1492,7 +1547,44 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
             Ok(resp) => parse_image_response(provider, &model, &resp),
             // The SDK/transport throw (network) surfaces verbatim.
             Err(message) => Err(ImageGenError::new(message)),
-        }?;
+        };
+        // `648d5c8aa` (bug 111): the failure path needs this more than the
+        // success path does. NanoGPT answers a rejected adapter, an unreachable
+        // weights repo, a bad resolution and a filtered prompt with the SAME
+        // generic 400 — "try a different prompt or image" — so the body that was
+        // POSTED is the only thing separating those causes, and it was logged at
+        // `debug`, which no packaged instance keeps. Three consecutive failures
+        // were indistinguishable in the logs and had to be told apart by reading
+        // the profile row out of the database.
+        //
+        // Key NAMES only: `lora_keys` never carries a value, which is what keeps
+        // `hf_api_token` out of the log while still recording that it was sent.
+        // The error is rethrown UNCHANGED.
+        //
+        // v4 wraps only `client.images.generate`, so this covers the transport
+        // throw and the non-2xx gate above — NOT the `Invalid response from
+        // NanoGPT Images API` sentence, which v4 raises after its try/catch.
+        let parsed = match parsed {
+            Ok(v) => v,
+            Err(error) => {
+                if let Some(extras) = &nanogpt_extras {
+                    tracing::error!(
+                        context = "NanoGPTImageProvider.generateImage",
+                        model = %model,
+                        size = ?params.size,
+                        // v4 logs `requestParams.n`, i.e. the RESOLVED count.
+                        n = params.n.unwrap_or(1.0),
+                        lora_dialect = ?extras.applied.dialect.map(|d| d.as_str()),
+                        lora_keys = ?extras.applied.keys,
+                        lora_dropped = ?extras.applied.dropped,
+                        passthrough_keys = ?extras.passthrough_keys,
+                        error = %error.message,
+                        "NanoGPT image request failed"
+                    );
+                }
+                return Err(error);
+            }
+        };
         // `ca22ec45`: Z.AI returns URLs (valid ~30 days), not base64 — but every
         // Quilltap consumer (chat handler, avatar/background jobs) reads only
         // base64 `data`. Download each image here so the response is usable.

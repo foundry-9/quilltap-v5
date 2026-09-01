@@ -96903,6 +96903,79 @@ required).
 
 ---
 
+## P4.D138 unit 5 — the NanoGPT LoRA dialect restructure + the failed-request log (v4 `648d5c8aa`, bugs 110 + 111)
+
+Resumed from the round-2 unification's OPEN list. One v4 commit, one v5 commit.
+
+**Bug 110 — `apply_loras` restructured.** v4 resolves the LoRA family FIRST and
+drops the empty-list early return, so a known family reports `Some(dialect)`
+even when it contributes zero keys, and an UNKNOWN family with a non-empty
+`loras` list still warns and drops. The weights/url key writes are gated on
+`kept` being non-empty; the `lora_preset` attachment sits OUTSIDE that guard.
+Both of v4's asymmetry comments are carried verbatim in the port — the
+HuggingFace credential is gated on there being weights to authenticate, the
+preset stands alone because it names a server-side preset that needs no adapter
+— so a later reader does not "consistency"-fix the shape back.
+
+The `image-dialects` corpus was re-recorded from the tip pin
+(`/tmp/qt-v4-pin-p4d138-2ece98c90`). Exactly the two predicted rows move —
+`lora_preset_without_adapters` and `lora_preset_no_loras_key` go `{}` →
+`{"lora_preset": "anime"}` — and `lora_weights_token_without_weights` stays
+`{}`, matching the order's stated expectation. 97 rows in, 97 rows out.
+
+**Bug 111 — the failure log.** `RealImageProvider::generate_image` logs
+`NanoGPT image request failed` at ERROR with `{context, model, size, n,
+loraDialect, loraKeys, loraDropped, passthroughKeys, error}` and rethrows
+unchanged. Key NAMES only reach the log, never LoRA values or the HuggingFace
+token. It covers the transport throw and the non-2xx gate, NOT the
+`Invalid response from NanoGPT Images API` arm — v4 raises that after its own
+try/catch, so the log line cannot see it. v4's DEBUG
+`Posting NanoGPT image request` line lands on every request alongside it.
+
+The carrying seam matters: composing the log fields naively would mean calling
+`apply_loras` a second time at the log site, which would fire its drop warnings
+twice. Instead `build_nanogpt` returns its `{passthrough_keys, applied}` pair
+through a new `build_image_request_with_extras(provider, params)`, and
+`build_image_request` delegates to it — so the existing signature is unchanged
+for every other caller and the facts are computed exactly once.
+
+**The proof.** Bug 110 rides the re-recorded `image_dialects_equivalence`. Bug
+111 is log-only and differential-invisible, so it is pinned by a capturing
+`tracing` layer in the new `nanogpt_lora_wire_log` harness test (the
+`title_update_tier3` idiom; `tracing::subscriber::set_default` is
+thread-scoped): three tests assert the ERROR line's field names on the failure
+branch, the DEBUG line on every request, and silence of the failure line on the
+success branch.
+
+Six mutations, each verified applied and each reddening a named arm:
+
+| mutation | reddens |
+| --- | --- |
+| preset moved back INSIDE the kept guard | `lora_preset_without_adapters` |
+| the plugin capper widened away | `lora_indexed_over_cap` |
+| the failure sentence corrupted (`… failed (muted)`) | the bug-111 line assert |
+| the log carries VALUES instead of key names | the field-name assert |
+| the debug line moved off the failure path | the debug-line assert |
+| the error line demoted to `warn!` | the bug-111 line assert |
+
+**A trap banked from the mutation run.** Two of the six came back GREEN on their
+first attempt and both were the runner's fault, not weak coverage. The failure
+sentence was asserted with a bare `contains("NanoGPT image request failed")`,
+which the corrupted `"… failed (muted)"` still satisfies — `tracing` renders a
+static message UNQUOTED (it goes through `record_debug` on a `format_args!`), so
+the fix was to anchor on the first field that follows it, ` context=`. The other
+mutation wrapped a block in `if false {` and produced an unbalanced brace, so
+the "no red" reading was really a compile failure; it was rewritten as an
+`.filter(|_| false)` on the existing `Option` so it compiles and actually
+measures the branch.
+
+**Lane status: P4.D138 stays OPEN at units 6–7** (the `list-models`
+`loraSupport` read side + the `options-schema` arm + the detailed-catalog cache;
+the HuggingFace `lora-metadata` lookup). Their gates — the routes family's
+`LORA_SUPPORT_PENDING_P4D138_UNIT6` strip and the SPA's two gated beats — are
+untouched by this unit.
+
+
 ## Round record — the drift catch-up round 2 of 2 unification (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66), 2026-09-01
 
 **FIVE OF SIX ORDERS CLOSED; P4.D138 OPEN at units 5–7; the oracle baseline

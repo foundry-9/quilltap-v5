@@ -1,0 +1,178 @@
+//! P4.D138 unit 5 — the bug-111 capturing pin (v4 `648d5c8aa`).
+//!
+//! A log-only fix is invisible to a differential: the wire bytes, the parsed
+//! response and every DB row are byte-identical whether or not the line fires.
+//! So the sanctioned proof is a capturing `tracing::Layer` over the REAL
+//! [`RealImageProvider`] — asserting BOTH that the ERROR line fires on the
+//! failure branch with v4's field set, and that the failure line stays SILENT
+//! on the success branch, because a line attached to the wrong branch is
+//! exactly the defect a presence-only assertion cannot catch.
+//!
+//! `tracing::subscriber::set_default` is thread-scoped, which is what keeps
+//! this from colouring the rest of the harness (the standing note).
+//!
+//! Run: `cargo test -p quilltap-harness --test nanogpt_lora_wire_log`
+
+use std::sync::{Arc, Mutex};
+
+use quilltap_core::image_gen::lora_support::ImageLoraSpec;
+use quilltap_core::model::image::{ImageGenParams, ImageProvider};
+use quilltap_core::model::image_dialects::{build_image_request, RealImageProvider};
+use quilltap_core::model::wire::{wire_key, CannedWireTransport, WireResponse};
+use serde_json::json;
+
+/// v4's two sentences, anchored to the first field that follows them.
+///
+/// `tracing` renders a static message through `record_debug` on a
+/// `format_args!`, so it lands UNQUOTED and a bare `contains` on the sentence
+/// would accept a corrupted one — `"… failed (muted)"` contains `"… failed"`,
+/// and a mutation that renamed the message slipped through exactly that way.
+/// Pinning the trailing ` context=` makes the match exact at the end.
+const FAILED_MSG: &str = "NanoGPT image request failed context=";
+const POSTING_MSG: &str = "Posting NanoGPT image request context=";
+use tracing_subscriber::layer::SubscriberExt;
+
+struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+struct FieldVisitor(String);
+impl tracing::field::Visit for FieldVisitor {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.0.push_str(&format!(" {}={}", field.name(), value));
+    }
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.0.push_str(&format!(" {}={}", field.name(), value));
+    }
+    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
+        self.0.push_str(&format!(" {}={}", field.name(), value));
+    }
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            self.0.push_str(&format!(" {value:?}"));
+        } else {
+            self.0.push_str(&format!(" {}={value:?}", field.name()));
+        }
+    }
+}
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let meta = event.metadata();
+        let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+        event.record(&mut visitor);
+        self.0.lock().unwrap().push(visitor.0);
+    }
+}
+
+/// A `url`-family NanoGPT request carrying an adapter, a scale, a preset and a
+/// passthrough key — so every field of the two log lines has something to say.
+fn params() -> ImageGenParams {
+    ImageGenParams {
+        prompt: "a cat".into(),
+        model: "flux-lora".into(),
+        n: Some(1.0),
+        size: Some("1024x1024".into()),
+        loras: vec![ImageLoraSpec {
+            source: "https://fal.test/w.safetensors".into(),
+            scale: Some(1.2),
+            ..Default::default()
+        }],
+        profile_parameters: Some(json!({
+            "lora_preset": "anime",
+            "num_inference_steps": 20
+        })),
+        ..Default::default()
+    }
+}
+
+fn run(status: u16, body: &str) -> Vec<String> {
+    let p = params();
+    let request = build_image_request("NANOGPT", &p).expect("build");
+    let transport = CannedWireTransport::new().with_raw_response(
+        wire_key(&request.method, &request.url, &request.body_string()),
+        WireResponse::new(status, body),
+    );
+    let provider = RealImageProvider::new(transport);
+    let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+    {
+        let _guard = tracing::subscriber::set_default(subscriber);
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _ = rt.block_on(provider.generate_image("NANOGPT", "sk-test", &p));
+    }
+    let out = logs.lock().unwrap().clone();
+    out
+}
+
+/// The composed-body fields both lines carry, by KEY NAME only.
+fn assert_composed_body_fields(line: &str) {
+    assert!(
+        line.contains("context=NanoGPTImageProvider.generateImage"),
+        "{line}"
+    );
+    assert!(line.contains("model=flux-lora"), "{line}");
+    assert!(line.contains("size=Some(\"1024x1024\")"), "{line}");
+    assert!(line.contains("n=1"), "{line}");
+    assert!(line.contains("lora_dialect=Some(\"url\")"), "{line}");
+    assert!(line.contains("lora_url"), "{line}");
+    assert!(line.contains("lora_strength"), "{line}");
+    assert!(line.contains("lora_preset"), "{line}");
+    assert!(line.contains("lora_dropped=[]"), "{line}");
+    assert!(
+        line.contains("passthrough_keys=[\"num_inference_steps\"]"),
+        "{line}"
+    );
+    // NEVER the values — this is what keeps a credential out of the log.
+    assert!(
+        !line.contains("fal.test") && !line.contains("anime"),
+        "the line must carry key NAMES, not values: {line}"
+    );
+}
+
+#[test]
+fn nanogpt_failure_logs_the_composed_body_by_key_name() {
+    let lines = run(
+        400,
+        r#"{"error":{"message":"try a different prompt or image"}}"#,
+    );
+    let line = lines
+        .iter()
+        .find(|l| l.contains(FAILED_MSG))
+        .unwrap_or_else(|| panic!("bug-111 line missing; captured: {lines:#?}"));
+    assert!(line.starts_with("ERROR "), "must be at ERROR level: {line}");
+    assert_composed_body_fields(line);
+    assert!(
+        line.contains("try a different prompt or image"),
+        "the provider's own sentence must ride the line: {line}"
+    );
+}
+
+#[test]
+fn nanogpt_posts_the_debug_line_on_every_request() {
+    // v4 `84f33ce94` logs this BEFORE the call, on success and failure alike.
+    for (status, body) in [
+        (200u16, r#"{"data":[{"b64_json":"QUJD"}]}"#),
+        (400, r#"{"error":{"message":"nope"}}"#),
+    ] {
+        let lines = run(status, body);
+        let line = lines
+            .iter()
+            .find(|l| l.contains(POSTING_MSG))
+            .unwrap_or_else(|| panic!("debug line missing for {status}; got: {lines:#?}"));
+        assert!(line.starts_with("DEBUG "), "must be at DEBUG level: {line}");
+        assert_composed_body_fields(line);
+    }
+}
+
+#[test]
+fn nanogpt_success_does_not_log_the_failure_line() {
+    let lines = run(200, r#"{"data":[{"b64_json":"QUJD"}]}"#);
+    assert!(
+        !lines.iter().any(|l| l.contains(FAILED_MSG)),
+        "the failure line must not fire on a 2xx: {lines:#?}"
+    );
+}

@@ -256,6 +256,10 @@ pub struct AppliedLoras {
     /// Sources that did not fit the model's cap, named for the log.
     pub dropped: Vec<String>,
     /// The family that decided the spelling, or `None` when none is known.
+    /// A KNOWN family reports its dialect even when it wrote no keys
+    /// (`648d5c8aa`), since "nothing was configured" and "nothing could be
+    /// spelled" are different diagnoses — the reported dialect used to collapse
+    /// the two.
     pub dialect: Option<NanoGptLoraDialect>,
 }
 
@@ -274,33 +278,51 @@ pub struct AppliedLoras {
 /// [`crate::image_gen::lora_support::cap_loras`] and once here, with different
 /// log sentences (`the model's` vs `this model's`). Do not collapse them: this
 /// one is the unknown-family safety net.
+///
+/// **An empty adapter list is not an early exit** (v4 `648d5c8aa`, bug 110).
+/// `lora_preset` names a style the host already hosts and is valid on its own,
+/// so it is applied whenever the family is `url` — the alternative, and the
+/// original shape of bug 110, was to discard a configured preset in silence
+/// because no adapter happened to sit next to it. The failure mode was a
+/// SUCCESS: no error, no dropped entry, a completed and billed job returning a
+/// stock image.
+///
+/// `hf_api_token` keeps the OPPOSITE rule for the opposite reason: it
+/// authorises the fetch of caller-supplied weights, so with no weights there is
+/// nothing for it to authorise, and a credential with no errand should not go
+/// on the wire. **The asymmetry is deliberate — do not "consistency"-fix the
+/// two back together.** The conflation of those two keys is the mistake
+/// underneath the bug: they look alike in the options panel, and the code
+/// applied one rule to both.
 pub fn apply_loras(
     body: &mut Map<String, Value>,
     model: &str,
     loras: &[ImageLoraSpec],
     profile_parameters: Option<&Value>,
 ) -> AppliedLoras {
-    // v4 `if (!loras || loras.length === 0)` — an empty adapter list is an
-    // early exit, which is bug 110: `lora_preset`'s attachment lives BELOW this
-    // inside the url-dialect branch, so a configured preset with no adapter
-    // beside it is discarded in silence. Ported as-is at `84f33ce94`; moved at
-    // `648d5c8aa`.
-    if loras.is_empty() {
-        return AppliedLoras::default();
-    }
-
+    // `648d5c8aa` (bug 110): resolve the family FIRST. The early return on an
+    // empty adapter list used to sit above this, and `lora_preset`'s attachment
+    // lives below it inside the url-dialect branch — two correct decisions with
+    // nothing covering the seam.
     let Some(family) = match_lora_family(Some(model)) else {
-        tracing::warn!(
-            context = "NanoGPTImageProvider.applyLoras",
-            model = %model,
-            dropped = ?loras.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
-            "LoRA family unknown for this model; dropping the adapters rather than guessing a dialect"
-        );
-        return AppliedLoras {
-            keys: Vec::new(),
-            dropped: loras.iter().map(|l| l.source.clone()).collect(),
-            dialect: None,
-        };
+        // An unknown family has no spelling for anything — adapters or preset —
+        // so it writes nothing at all. Guessing posts a body the model silently
+        // ignores, which is the one failure mode nobody can see. This refusal
+        // was already right and is untouched by the fix.
+        if !loras.is_empty() {
+            tracing::warn!(
+                context = "NanoGPTImageProvider.applyLoras",
+                model = %model,
+                dropped = ?loras.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
+                "LoRA family unknown for this model; dropping the adapters rather than guessing a dialect"
+            );
+            return AppliedLoras {
+                keys: Vec::new(),
+                dropped: loras.iter().map(|l| l.source.clone()).collect(),
+                dialect: None,
+            };
+        }
+        return AppliedLoras::default();
     };
 
     let max = family.support.max_loras.max(0.0) as usize;
@@ -341,29 +363,46 @@ pub fn apply_loras(
                 }
             }
         }
+        // `648d5c8aa` guards both single-adapter arms on `kept` being
+        // non-empty. That guard is also what retires v5's unguarded `kept[0]`
+        // (the unification carried it forward as an owed item): with the empty
+        // early return gone, an empty list now REACHES these arms.
         NanoGptLoraDialect::Weights => {
-            body.insert("lora_weights".into(), Value::String(kept[0].source.clone()));
-            keys.push("lora_weights".into());
-            if let Some(scale) = kept[0].scale {
-                body.insert("lora_scale".into(), js_number_to_json(scale));
-                keys.push("lora_scale".into());
-            }
-            // Private / gated HuggingFace weights need a token, which rides the
-            // options panel as an ordinary parameter rather than living on the
-            // LoRA row — one token serves whatever weights the profile points
-            // at.
-            if let Some(token) = scoped("hf_api_token") {
-                body.insert("hf_api_token".into(), Value::String(token));
-                keys.push("hf_api_token".into());
+            if let Some(first) = kept.first() {
+                body.insert("lora_weights".into(), Value::String(first.source.clone()));
+                keys.push("lora_weights".into());
+                if let Some(scale) = first.scale {
+                    body.insert("lora_scale".into(), js_number_to_json(scale));
+                    keys.push("lora_scale".into());
+                }
+                // Private / gated HuggingFace weights need a token, which rides
+                // the options panel as an ordinary parameter rather than living
+                // on the LoRA row — one token serves whatever weights the
+                // profile points at. It stays gated on there BEING weights: it
+                // is a credential for *fetching them*, and means nothing
+                // without a source to fetch. Unlike the preset below, an unsent
+                // token is not a silent loss — there is nothing it could have
+                // authorised.
+                if let Some(token) = scoped("hf_api_token") {
+                    body.insert("hf_api_token".into(), Value::String(token));
+                    keys.push("hf_api_token".into());
+                }
             }
         }
         NanoGptLoraDialect::Url => {
-            body.insert("lora_url".into(), Value::String(kept[0].source.clone()));
-            keys.push("lora_url".into());
-            if let Some(scale) = kept[0].scale {
-                body.insert("lora_strength".into(), js_number_to_json(scale));
-                keys.push("lora_strength".into());
+            if let Some(first) = kept.first() {
+                body.insert("lora_url".into(), Value::String(first.source.clone()));
+                keys.push("lora_url".into());
+                if let Some(scale) = first.scale {
+                    body.insert("lora_strength".into(), js_number_to_json(scale));
+                    keys.push("lora_strength".into());
+                }
             }
+            // A preset is a named style the *host* offers, not an adapter the
+            // caller supplies, so it stands on its own — with or without a LoRA
+            // row beside it. Gating it on the adapter list is how bug 110
+            // discarded a configured preset in silence: the request succeeded,
+            // and the only evidence that anything was dropped was a plain image.
             if let Some(preset) = scoped("lora_preset") {
                 body.insert("lora_preset".into(), Value::String(preset));
                 keys.push("lora_preset".into());

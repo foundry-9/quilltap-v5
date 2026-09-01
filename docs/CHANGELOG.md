@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — fix(image): the NanoGPT LoRA dialect restructure + the failed-request log line (P4.D138 unit 5)
+
+_Versions: core 0.0.733, harness 0.0.627._
+
+P4.D138 unit 5 — v4's `648d5c8aa` (bugs 110 and 111), one v4 commit and so one
+v5 commit.
+
+Bug 110 restructures `model::nanogpt_loras::apply_loras`: the LoRA family is
+resolved FIRST, the empty-list early return is gone, the weights/url key writes
+are gated on `kept` being non-empty, the `lora_preset` attachment moves OUTSIDE
+that guard, and a known family now reports `Some(dialect)` even when it
+contributes zero keys. Both of v4's asymmetry comments are carried so the shape
+is not "consistency"-fixed back: the HuggingFace credential is gated on there
+being weights to authenticate, while the preset stands alone because it names a
+server-side preset that needs no adapter. The `image-dialects` corpus was
+re-recorded from the tip pin; exactly two rows move
+(`lora_preset_without_adapters` and `lora_preset_no_loras_key` gain
+`lora_preset`), and `lora_weights_token_without_weights` stays `{}` as v4 keeps
+it.
+
+Bug 111 logs the composed request at ERROR `NanoGPT image request failed` with
+`{context, model, size, n, loraDialect, loraKeys, loraDropped, passthroughKeys,
+error}` — key NAMES only, never LoRA values — and rethrows unchanged. It covers
+the transport throw and the non-2xx gate, not the `Invalid response from NanoGPT
+Images API` arm, which v4 raises after its own try/catch. To carry the dialect
+facts to the log site without firing `apply_loras`'s warnings twice,
+`build_nanogpt` now returns its `{passthrough_keys, applied}` pair through a new
+`build_image_request_with_extras`; `build_image_request` delegates to it. v4's
+DEBUG `Posting NanoGPT image request` line lands on every request alongside it.
+
+Bug 111 is log-only and differential-invisible, so it is pinned by a capturing
+`tracing` layer (the `title_update_tier3` idiom, thread-scoped) asserting the
+ERROR line's field names on the failure branch, the DEBUG line on every request,
+and silence on the success branch. Six mutations, each reddening a named arm.
+
 #### 2026-09-01 — chore(unify): the drift catch-up round 2 of 2 — P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66
 
 _Versions: core 0.0.732, harness 0.0.626, host 0.0.89, web 0.0.101, SPA 0.5.614; cli/tauri unchanged._
