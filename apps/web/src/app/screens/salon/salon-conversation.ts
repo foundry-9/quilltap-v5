@@ -169,6 +169,38 @@ export function readActiveTyping(data: Record<string, unknown>): string | null {
 }
 
 /**
+ * True when `candidate` is the persisted row {@link displayMessages}'s
+ * optimistic user bubble is standing in for — dogfood finding #106.
+ *
+ * v4 holds ONE array (`useChatData.ts:14`); `fetchChat()` (`:83`) replaces it
+ * wholesale on every refetch, which overwrites the temp bubble
+ * (`useSSEStreaming.ts:728-751`) out of existence by construction — a
+ * mid-turn refetch can never show it twice. v5's optimistic bubble instead
+ * lives in the separate {@link optimisticUser} signal, appended at render
+ * over the canonical server list; a mid-turn `chatKeys.detail(id)`
+ * invalidation (`realtime/job_topics.rs:81-88`, ~15 further call sites in
+ * this file) now refetches that canonical list while the turn is still
+ * running, and once the sent message lands in it, both the persisted row and
+ * the still-uncleared bubble rendered — the user's own message appeared
+ * twice. This is the documented mechanism divergence (the {@link
+ * turnOverride} precedent): rather than v4's wholesale replace, v5 drops the
+ * bubble the moment a matching persisted row exists, by content rather than
+ * id (a temp id never matches a server id) — same author, same content,
+ * created no earlier than the send that minted the bubble (so a repeated
+ * send mid-conversation gets its OWN bubble, not the earlier persisted row
+ * of the same content).
+ */
+export function messageIsOptimisticEcho(candidate: MessageDto, temp: MessageDto): boolean {
+  return (
+    candidate.role === 'USER' &&
+    candidate.id !== temp.id &&
+    candidate.participantId === temp.participantId &&
+    candidate.content === temp.content &&
+    candidate.createdAt >= temp.createdAt
+  );
+}
+
+/**
  * The LLM document tools whose success invalidates an open pane's cached
  * content / mtime / path, so the pane reloads from the server (v4 SalonView
  * `onToolResult`): open/close reconcile the open set; the write/move/delete
@@ -1738,7 +1770,10 @@ export class SalonConversation {
   /**
    * The rendered flow: the collapsed messages (with swipe override), whisper-
    * filtered for the operator (v4 SalonView `visibleMessages`), + the optimistic
-   * user bubble (always the human's own, so it never filters out).
+   * user bubble (always the human's own, so it never filters out) — UNLESS a
+   * mid-turn refetch has already landed the persisted row it stands in for
+   * ({@link messageIsOptimisticEcho}, dogfood #106): rendering both would
+   * show the human's own message twice.
    */
   protected readonly displayMessages = computed<MessageDto[]>(() => {
     const states = this.effectiveSwipeStates();
@@ -1756,7 +1791,9 @@ export class SalonConversation {
         isMessageVisibleToOperator(m, { showAllWhispers: showAll, userParticipantIds: userIds }),
       );
     const temp = this.optimisticUser();
-    return temp ? [...msgs, temp] : msgs;
+    if (!temp) return msgs;
+    const alreadyPersisted = msgs.some((m) => messageIsOptimisticEcho(m, temp));
+    return alreadyPersisted ? msgs : [...msgs, temp];
   });
 
   protected readonly hasActiveCharacters = computed(() =>

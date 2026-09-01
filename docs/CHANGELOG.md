@@ -855,6 +855,23 @@ block`. One build-forced deviation from the literal frame classes: three of
 them (`qt-border-default`, `qt-bg-card`, `qt-shadow-sm`) are plain classes,
 not Tailwind `@utility` declarations, so `@apply` refused them — inlined as
 the equivalent raw properties instead, with the computed style unchanged.
+#### 2026-09-01 — fix(salon): reconcile the optimistic user bubble against a mid-turn refetch (dogfood #106)
+
+_Versions: SPA 0.5.601; no crate touched._
+
+The user's own message could render twice during a multi-character turn.
+v4 holds the whole transcript in one array that a refetch replaces wholesale,
+so a mid-turn refetch can never duplicate anything; v5's optimistic bubble
+lives in a separate signal appended at render, which was latent until the
+realtime work started refetching the chat mid-turn. `displayMessages` now
+drops the optimistic bubble the moment a matching persisted row exists
+(same author, same content, not older than the send) instead of always
+appending it. Added the suite's first mid-turn observation beat
+(`salon-optimistic-bubble-reconcile.spec.ts`), which injects a realtime hint
+at the wire (the same handler a real server frame calls) rather than racing
+a background job's scheduling against the mock's reply timing, and proves
+the fix by sampling the rendered count across the refetch window rather than
+a single racy assertion. Red-first captured and restored before landing.
 
 #### 2026-09-01 — docs(setupphase): the round-2 drift catch-up work orders — P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66
 

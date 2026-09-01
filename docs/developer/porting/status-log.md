@@ -96742,3 +96742,161 @@ order (P4.66 owns port 4319).
 Two commits (Tier 1: `.qt-range` + tokens + twelve adoptions + finding #107;
 Tier 2: the guard extension). Versions: SPA 0.5.600 → 0.5.602; core/harness/
 host/web/cli/tauri unchanged.
+## P4.66 — the duplicate optimistic user bubble + the suite's first mid-turn
+observation beat (dogfood finding #106)
+
+**A v5-only mechanism defect, not a drift port.** v4 holds the whole
+transcript in ONE array (`useChatData.ts:14`) that `fetchChat()` (`:83`)
+replaces wholesale on every refetch, which overwrites the temp optimistic
+bubble (`useSSEStreaming.ts:728-751`) out of existence by construction — a
+mid-turn refetch can never show the human's own message twice on v4. v5's
+optimistic bubble instead lives in a SEPARATE `optimisticUser` signal,
+appended at render over the canonical server list in `displayMessages`
+(`salon-conversation.ts`). That was latent until P4.D123–D125 wired the
+realtime hub to refetch `chatKeys.detail(id)` mid-turn (`realtime/
+job_topics.rs:81-88`: TITLE_UPDATE / CONTEXT_SUMMARY /
+CHAT_DANGER_CLASSIFICATION / SCENE_STATE_TRACKING /
+WARDROBE_OUTFIT_ANNOUNCEMENT all resolve to the same `{v:1, topic:'chats',
+id}` hint) — once the persisted user row landed via that refetch, both it
+and the still-uncleared bubble rendered.
+
+### The fix
+
+`messageIsOptimisticEcho(candidate, temp)` (`salon-conversation.ts`, exported,
+placed beside the file's other pure helpers): true when `candidate` is a
+`USER` row from the SAME participant, with the SAME content, whose
+`createdAt` is `>=` the bubble's own `createdAt` — content-matching because
+the temp id (`temp-user-<Date.now()>`) never matches a server id, and
+timestamp-scoped so an EARLIER persisted row with identical content (the
+user repeating themselves) does not eat the new bubble. `displayMessages`
+now drops `temp` whenever `msgs` already contains a matching row, instead of
+appending it unconditionally. This is v5's documented mechanism divergence
+from v4's wholesale-replace (the `turnOverride` precedent) — recorded in the
+predicate's own doc comment, naming v4's exact files/lines.
+
+Considered and rejected: clearing `optimisticUser` in an effect keyed on the
+query settling (nearer v4's replace-shape) — the drop-on-render approach in
+`displayMessages` is cheaper and timing-independent, and needs the identical
+predicate either way, so there was no reason to prefer the effect shape.
+
+### Unit / TestBed proof (`salon-conversation.spec.ts`)
+
+Two new `describe` blocks:
+- **`messageIsOptimisticEcho` (8 cases):** matches the persisted echo;
+  matches at exact `createdAt` equality; rejects a non-USER row; rejects a
+  different seat (multi-user / impersonation); rejects different content;
+  **rejects an EARLIER row with identical content** (the repeated-message
+  case the order called out by name); matches an attachments-only send
+  (empty content both sides); never matches itself.
+- **`displayMessages` end to end (3 cases)**, against a controllable client
+  whose `chatSend` never resolves (holding the turn genuinely "in flight")
+  and whose `chatGet` reads a mutable `state.messages`: a mid-turn
+  `invalidateQueries({queryKey: chatKeys.detail(...)})` that lands the
+  persisted row shows the content exactly once; a turn with NO mid-turn
+  refetch still appends the bubble (the append arm is unchanged); an
+  EARLIER persisted row with the same content leaves the new send's bubble
+  intact (2 rows, not 1) — the over-eager-predicate guard.
+
+**Mutation-proven:** reverted `displayMessages` to the old unconditional
+append, reran the `dogfood #106` filter — exactly the "mid-turn refetch"
+test reddened (`Expected: 1, Received: 2`); the "no refetch" and
+"repeated-message" cases stayed green (they don't discriminate the fix,
+by design). Restored; all 11 green again. Full `salon-conversation.spec.ts`
+99/99 green; full `npm test` 366 files / 5,488 tests green.
+
+### The e2e beat (`e2e/salon-optimistic-bubble-reconcile.spec.ts`) — the round's
+only Playwright slot
+
+**Why the hint is injected at the wire, not provoked from a real job.** All
+five job kinds at `job_topics.rs:81-88` resolve to the byte-identical client
+wire shape (`TopicHint::scoped(RealtimeTopic::Chats, chat_id)`), so there is
+no client-observable difference between "TITLE_UPDATE fired" and
+"CONTEXT_SUMMARY fired" — and v4's own title checkpoint never fires before
+conversational interchange 2 (`context_summary.rs::should_check_title_at_interchange`),
+so reproducing it genuinely would mean racing job-queue scheduling against
+the mock's reply timing for no additional proof. Applied the 2026-08-01
+deflake precedent instead: reproduce deterministically, keep every assertion
+faithful to the real mechanism. `page.addInitScript` (the
+`salon-attachment-ledger-flow.spec.ts` idiom) captures the app's REAL
+`EventSource.prototype.onmessage` handler (`core-transport.ts:150` — the
+SAME handler a genuine server frame would call) and exposes
+`window.__qtInjectRealtimeHint(topic, id)` to feed it a synthetic
+`MessageEvent` shaped exactly like `RealtimeHint`. Everything downstream is
+real: the live `EventSource`, `parseEventData`, `RealtimeService.acceptFrame`,
+`queryKeysForTopic`, the TanStack invalidation, the REAL `chatGet` refetch
+against the real binary — only the trigger's origin is faked.
+
+**A methodology trap found and fixed while writing this beat, worth a
+memory note:** the first draft asserted `await expect(bubbles).toHaveCount(1,
+{timeout: 10_000})` immediately after firing the injected hint. That is a
+RACE, not a guard — Playwright's auto-retrying `toHaveCount` resolves the
+INSTANT any poll matches, including the very first poll taken before the
+injected refetch's network round trip has even landed; since the duplicate
+is transient (it self-heals the moment the turn's own end-of-turn reconcile
+clears `optimisticUser`), that assertion can observe "1" both because the
+bug is fixed AND because the assertion got lucky and polled before the bug
+had a chance to manifest. Fixed with two pieces: `waitForChatRefetch`
+(`page.waitForResponse` matched on the REQUEST BODY — `type === 'chatGet' &&
+chatId === ...` — not just the shared `/api/dispatch` URL) to prove the
+triggered refetch has actually round-tripped before asserting anything, and
+`sampleCounts` (a small hand-rolled poll loop, 12 samples @ 150 ms) whose
+`Math.max(...counts)` is asserted `=== 1` — because `toHaveCount` cannot
+prove a negative ("never became 2") when the true count is a moving target.
+Confirmed the flaw concretely: the FIRST version of this beat, run pre-fix,
+had ONE of its two tests pass anyway (a false green) and only failed on the
+final post-settle assertion of the second test, for reasons that took real
+investigation to trace — the corrected version reddens BOTH tests cleanly,
+every one of the 12 samples reading `2`.
+
+**Red-first, recorded:** both tests, reverted fix, rebuilt SPA:
+`bubble counts sampled across the refetch window: 2, 2, 2, 2, 2, 2, 2, 2, 2,
+2, 2, 2` — 12/12 samples duplicated, both tests. Restored the fix, rebuilt,
+reran: **2 passed** (28.3 s / 2.1 s). Logs: `/tmp/e2e-p466-redfirst-final.log`
+(red), the final green run (13.8 m incl. global setup).
+
+Tier 2 (should-land, delivered): a second test drives a SEPARATE turn and a
+separate injected hint, proving the reconcile isn't wired to the first
+test's exact sequencing — labeled in-file as standing in for
+CONTEXT_SUMMARY (the mechanism is identical for all five job kinds, per the
+above).
+
+### The gate
+
+- `apps/web`: `npm test` **366 files / 5,488 tests, 0 failed**; `npm run
+  build` clean; `node scripts/check-qt-classes.mjs` clean (941 classes, all
+  references resolve).
+- New beat in isolation: **2 passed** (green, post-fix); red-first captured
+  and restored (above).
+- **Full Playwright, this lane's worktree (port 4319, one at a time):**
+  **256 passed / 2 failed / 1 skipped** (27.4 m). Both failures are
+  PRE-EXISTING and unrelated to this lane —
+  `settings-flow.spec.ts` → "the Commonplace Book cards render over the
+  fixture" (its own dedicated server on port 4328; a startup-timing race
+  under the 27-minute full-suite load) reran GREEN in isolation;
+  `workspace-search-documents-flow.spec.ts` → "with a Salon focused the
+  card opens IN the chat — the arm dogfood #105 broke" reran and FAILED
+  AGAIN in a recheck run that did **not include this lane's spec file at
+  all** — conclusive proof the failure has nothing to do with this lane's
+  change (the recheck command was `npx playwright test e2e/settings-flow.spec.ts
+  e2e/workspace-search-documents-flow.spec.ts`, no `salon-optimistic-bubble-
+  reconcile.spec.ts` in the invocation). Neither touches
+  `salon-conversation.ts`, `message-list.ts`, or the realtime machinery;
+  neither is a chat-content-ordering effect (Group Expedition's recency is
+  already bumped by a dozen pre-existing specs that send into it, so a new
+  sender changes nothing about which specs were already exposed to that
+  risk). Left for the standing e2e-flake ledger; not a P4.66 regression.
+- `cargo fmt --all --check` exit 0; `cargo clippy --workspace --all-targets
+  -- -D warnings` exit 0, plain AND `--features
+  quilltap-core/native-transport`; `cargo test --workspace`
+  (`CARGO_INCREMENTAL=0`) exit 0, zero `FAILED` lines. No crate source
+  touched by this lane (`git status` confirms: only
+  `salon-conversation.ts`, `salon-conversation.spec.ts`, and the new e2e
+  spec) — no oracle family, no crate version bump.
+
+Versions: SPA 0.5.601 (patch bump — this lane's only version-carrying
+artifact); core/harness/host/web/cli/tauri unchanged (no crate touched).
+
+**Deferred: none.** Both tiers the order asked for landed; Tier 3 named no
+refusal-arm deferrals and none were needed (the deterministic wire-injection
+technique reproduced the defect on the first corrected attempt, no fallback
+required).

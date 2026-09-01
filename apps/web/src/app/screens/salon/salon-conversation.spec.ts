@@ -45,8 +45,9 @@ import {
   type ChatStreamState,
 } from '../../core/chat-stream.reducer';
 import type { ToolExecutionStatus } from '../../chat/chat-composer';
-import { SalonConversation } from './salon-conversation';
+import { SalonConversation, messageIsOptimisticEcho } from './salon-conversation';
 import { ToastService } from '../../ui/toast.service';
+import { chatKeys } from '../../chat/chat-keys';
 
 function participant(over: Partial<ParticipantDetail>): ParticipantDetail {
   return {
@@ -2789,5 +2790,236 @@ describe('SalonConversation rescue-stage toasts (65f5021c8)', () => {
     const n = toasts().length;
     report(fixture, initialChatStreamState(), withStatus('thinking', 'Composing...'));
     expect(toasts().slice(n)).toEqual([]);
+  });
+});
+
+/**
+ * `messageIsOptimisticEcho` — the reconcile predicate behind {@link
+ * SalonConversation.displayMessages} (dogfood finding #106, P4.66). Pure-
+ * function cases; the wiring itself is proven separately below against the
+ * real component.
+ */
+describe('messageIsOptimisticEcho (dogfood #106)', () => {
+  function temp(over: Partial<MessageDto> = {}): MessageDto {
+    return message({
+      id: 'temp-user-1000',
+      role: 'USER',
+      participantId: 'pu',
+      content: 'Are we there yet?',
+      createdAt: '2026-01-01T00:00:10.000Z',
+      ...over,
+    });
+  }
+
+  it('matches the persisted row a send is standing in for', () => {
+    const persisted = message({
+      id: 'srv-1',
+      role: 'USER',
+      participantId: 'pu',
+      content: 'Are we there yet?',
+      createdAt: '2026-01-01T00:00:11.000Z',
+    });
+    expect(messageIsOptimisticEcho(persisted, temp())).toBe(true);
+  });
+
+  it('matches at the exact same instant (createdAt equality)', () => {
+    const persisted = message({
+      id: 'srv-1',
+      role: 'USER',
+      participantId: 'pu',
+      content: 'Are we there yet?',
+      createdAt: '2026-01-01T00:00:10.000Z',
+    });
+    expect(messageIsOptimisticEcho(persisted, temp())).toBe(true);
+  });
+
+  it('does not match a non-USER row', () => {
+    const persisted = message({
+      id: 'srv-1',
+      role: 'ASSISTANT',
+      participantId: 'pu',
+      content: 'Are we there yet?',
+      createdAt: '2026-01-01T00:00:11.000Z',
+    });
+    expect(messageIsOptimisticEcho(persisted, temp())).toBe(false);
+  });
+
+  it('does not match a different seat — multi-user chats, or an impersonated author', () => {
+    const persisted = message({
+      id: 'srv-1',
+      role: 'USER',
+      participantId: 'other-user',
+      content: 'Are we there yet?',
+      createdAt: '2026-01-01T00:00:11.000Z',
+    });
+    expect(messageIsOptimisticEcho(persisted, temp())).toBe(false);
+  });
+
+  it('does not match different content', () => {
+    const persisted = message({
+      id: 'srv-1',
+      role: 'USER',
+      participantId: 'pu',
+      content: 'Almost there.',
+      createdAt: '2026-01-01T00:00:11.000Z',
+    });
+    expect(messageIsOptimisticEcho(persisted, temp())).toBe(false);
+  });
+
+  it('does not match a row older than the send (a REPEATED message keeps its own bubble)', () => {
+    // The user sent the identical content earlier in the conversation; that
+    // persisted row must not eat the new bubble it now looks like a duplicate of.
+    const earlier = message({
+      id: 'srv-0',
+      role: 'USER',
+      participantId: 'pu',
+      content: 'Are we there yet?',
+      createdAt: '2026-01-01T00:00:05.000Z',
+    });
+    expect(messageIsOptimisticEcho(earlier, temp())).toBe(false);
+  });
+
+  it('matches an attachments-only send (empty content on both sides)', () => {
+    const bubble = temp({ content: '' });
+    const persisted = message({
+      id: 'srv-1',
+      role: 'USER',
+      participantId: 'pu',
+      content: '',
+      createdAt: '2026-01-01T00:00:11.000Z',
+    });
+    expect(messageIsOptimisticEcho(persisted, bubble)).toBe(true);
+  });
+
+  it('never matches itself', () => {
+    const t = temp();
+    expect(messageIsOptimisticEcho(t, t)).toBe(false);
+  });
+});
+
+/**
+ * `displayMessages` end to end (dogfood #106, P4.66): a mid-turn refetch —
+ * the exact shape `realtime/job_topics.rs:81-88` fires while a turn is still
+ * streaming (TITLE_UPDATE / CONTEXT_SUMMARY / CHAT_DANGER_CLASSIFICATION /
+ * SCENE_STATE_TRACKING / WARDROBE_OUTFIT_ANNOUNCEMENT → `chatKeys.detail(id)`)
+ * — must not render the human's own message twice. `chatSend` never resolves
+ * in this client, so the turn genuinely looks "still running" while the
+ * invalidation lands, matching the shape a real streaming reply has.
+ */
+describe('SalonConversation — the optimistic bubble reconciles against a mid-turn refetch (dogfood #106)', () => {
+  type Host = {
+    send(p: { content: string; fileIds: string[] }): void;
+    displayMessages(): MessageDto[];
+    optimisticUser(): MessageDto | null;
+  };
+
+  function reconcileClient(state: { messages: MessageDto[] }): Partial<CoreClient> {
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') {
+        return { type: 'chat', data: { chat: { ...chatDetail(), messages: state.messages } } };
+      }
+      if (req.type === 'chatSettings') {
+        return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
+      }
+      if (req.type === 'chatSend') {
+        // Held in flight for the life of the test — a real turn stays "busy"
+        // for as long as the reply streams, which is exactly the window the
+        // mid-turn refetch under test needs to land in.
+        return new Promise<CoreResponse>(() => {});
+      }
+      return { type: 'ack', data: {} };
+    });
+    const dispatchData = vi.fn(async () => ({
+      backgroundUrl: null,
+      fileId: null,
+      filename: null,
+      sha256: null,
+      linkSummary: null,
+    }));
+    return {
+      events$: new Subject<ScopedEvent>().asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
+      dispatch,
+      dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expect: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expect) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+  }
+
+  it('shows the sent content exactly once when a mid-turn refetch lands the persisted row', async () => {
+    const state = { messages: [...chatDetail().messages] };
+    const fixture = await render(reconcileClient(state));
+    const inst = fixture.componentInstance as unknown as Host;
+
+    inst.send({ content: 'Are we there yet?', fileIds: [] });
+    const temp = inst.optimisticUser();
+    expect(temp?.content).toBe('Are we there yet?');
+
+    const echoes = () => inst.displayMessages().filter((m) => m.content === 'Are we there yet?');
+    expect(echoes()).toHaveLength(1); // just the optimistic bubble so far
+
+    // The mid-turn refetch: the persisted row lands while chatSend is STILL
+    // pending — a story-background/danger-classification/title-update job's
+    // hint invalidating chatKeys.detail while the reply keeps streaming.
+    state.messages = [
+      ...state.messages,
+      message({
+        id: 'srv-1',
+        role: 'USER',
+        participantId: temp!.participantId,
+        content: 'Are we there yet?',
+        createdAt: new Date(Date.parse(temp!.createdAt) + 1000).toISOString(),
+      }),
+    ];
+    await TestBed.inject(QueryClient).invalidateQueries({ queryKey: chatKeys.detail('chat-1') });
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    // THE GUARD: exactly one bubble, not two.
+    expect(echoes()).toHaveLength(1);
+  });
+
+  it('still appends the optimistic bubble when no mid-turn refetch ever lands', async () => {
+    // A turn with NO mid-turn invalidation must render exactly as today — the
+    // append arm still fires until the server row lands.
+    const state = { messages: [...chatDetail().messages] };
+    const fixture = await render(reconcileClient(state));
+    const inst = fixture.componentInstance as unknown as Host;
+
+    inst.send({ content: 'Steady as she goes.', fileIds: [] });
+    const echoes = inst
+      .displayMessages()
+      .filter((m) => m.content === 'Steady as she goes.');
+    expect(echoes).toHaveLength(1);
+  });
+
+  it('keeps its own bubble when the user repeats an earlier message mid-conversation', async () => {
+    // An OLDER persisted row with the identical content must not eat the NEW
+    // bubble — the predicate is scoped to rows newer than the send.
+    const state = {
+      messages: [
+        ...chatDetail().messages,
+        message({
+          id: 'earlier-echo',
+          role: 'USER',
+          participantId: 'pu',
+          content: 'Are we there yet?',
+          createdAt: '2020-01-01T00:00:00.000Z',
+        }),
+      ],
+    };
+    const fixture = await render(reconcileClient(state));
+    const inst = fixture.componentInstance as unknown as Host;
+
+    inst.send({ content: 'Are we there yet?', fileIds: [] });
+
+    const echoes = inst.displayMessages().filter((m) => m.content === 'Are we there yet?');
+    expect(echoes).toHaveLength(2); // the earlier persisted row + this send's own bubble
   });
 });
