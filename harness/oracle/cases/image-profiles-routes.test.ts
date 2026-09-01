@@ -132,6 +132,21 @@ async function dumpProfiles(): Promise<unknown> {
 }
 
 /**
+ * `parameters` as stored, for the P4.D138 LoRA arms: an over-cap adapter list is
+ * KEPT, never trimmed at the write, so "narrow the model and widen it again and
+ * nothing is lost" is a storage claim rather than a response-shape one.
+ */
+async function dumpProfileParameters(): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const main = getRawDatabase() as unknown as { prepare: (s: string) => { all: () => unknown } };
+  return {
+    profileParameters: main
+      .prepare('SELECT name, parameters FROM image_profiles ORDER BY name')
+      .all(),
+  };
+}
+
+/**
  * The `provider_models` cache side-effect of `?action=list-models`. Only
  * genuinely live-fetched lists may be cached — a built-in list would masquerade
  * as provider-confirmed on later reads — so this dump is what makes the
@@ -504,6 +519,194 @@ async function main(): Promise<void> {
         const { status, body } = await respond(r);
         return { status, body, tables: await dumpProfiles() };
       },
+    },
+    // === 84f33ce94: the write-side `parameters.loras` guard ===
+    // The refusal is the Zod ENVELOPE (`{error:'Validation error', details}`),
+    // never a bespoke sentence, so every arm below compares `details` too.
+    {
+      // A well-formed list saves; the echoed row carries it back verbatim.
+      name: 'create_loras_ok',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, {
+              name: 'LoRA Profile',
+              provider: 'NANOGPT',
+              modelName: 'flux-2-dev-lora',
+              parameters: {
+                loras: [
+                  { source: 'owner/adapter', scale: 0.8, triggerPhrase: 'shou_xin', label: 'Shou Xin' },
+                  { source: 'https://example.test/w.safetensors' },
+                ],
+              },
+            }),
+          ),
+        ),
+    },
+    {
+      // NO cap check on the write path: three adapters against a one-adapter
+      // model save intact. Capping happens at request time, in the builder.
+      name: 'create_loras_over_cap_kept',
+      run: async () => {
+        const r = await (await coll()).POST(
+          mockRequest(B, {
+            name: 'Over Cap',
+            provider: 'NANOGPT',
+            modelName: 'flux-lora',
+            parameters: { loras: [{ source: 'a/1' }, { source: 'a/2' }, { source: 'a/3' }] },
+          }),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProfileParameters() };
+      },
+    },
+    {
+      name: 'create_loras_not_a_list',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, {
+              name: 'X', provider: 'OPENAI', modelName: 'm',
+              parameters: { loras: 'owner/adapter' },
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_loras_null',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', parameters: { loras: null } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_loras_entry_not_object',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', parameters: { loras: ['a/b'] } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_loras_missing_source',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', parameters: { loras: [{ scale: 1 }] } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_loras_blank_source',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', parameters: { loras: [{ source: '   ' }] } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_loras_scale_negative',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', parameters: { loras: [{ source: 'a/b', scale: -1 }] } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_loras_scale_too_big',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', parameters: { loras: [{ source: 'a/b', scale: 10.5 }] } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_loras_scale_not_a_number',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', parameters: { loras: [{ source: 'a/b', scale: '1' }] } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_loras_two_bad_entries',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, {
+              name: 'X', provider: 'OPENAI', modelName: 'm',
+              parameters: { loras: [{ source: '' }, { source: 'a/b', scale: 99 }] },
+            }),
+          ),
+        ),
+    },
+    {
+      // ORDER PIN: the LoRA guard sits between the parameters-object check and
+      // the apiKeyId lookup, so a body that is wrong in BOTH ways answers the
+      // LoRA 400 and never reaches the 404.
+      name: 'create_loras_guard_precedes_apikey',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, {
+              name: 'X', provider: 'OPENAI', modelName: 'm',
+              parameters: { loras: [{ source: '' }] },
+              apiKeyId: '00000000-0000-4000-8000-0000000000ff',
+            }),
+          ),
+        ),
+    },
+    {
+      // ORDER PIN (the other side): parameters is not an object at all, so the
+      // caller's own check owns it and the LoRA validator never runs.
+      name: 'create_params_array_still_wins',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(B, { name: 'X', provider: 'OPENAI', modelName: 'm', parameters: [{ loras: [] }] }),
+          ),
+        ),
+    },
+    {
+      name: 'update_loras_ok',
+      run: async () => {
+        const r = await (await idRoute()).PUT(
+          mockRequest(`${B}/${IP_1}`, {
+            parameters: { quality: 'hd', loras: [{ source: 'owner/adapter', triggerPhrase: 'magic' }] },
+          }),
+          params(IP_1),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProfileParameters() };
+      },
+    },
+    {
+      name: 'update_loras_malformed',
+      run: async () => {
+        const r = await (await idRoute()).PUT(
+          mockRequest(`${B}/${IP_1}`, { parameters: { loras: [{ source: 'a/b', scale: 42 }] } }),
+          params(IP_1),
+        );
+        const { status, body } = await respond(r);
+        return { status, body, tables: await dumpProfileParameters() };
+      },
+    },
+    {
+      name: 'update_loras_not_a_list',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${IP_1}`, { parameters: { loras: 7 } }),
+            params(IP_1),
+          ),
+        ),
     },
     {
       name: 'delete',

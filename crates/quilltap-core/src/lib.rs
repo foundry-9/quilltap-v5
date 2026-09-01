@@ -205,6 +205,7 @@ pub mod mime;
 pub mod model;
 pub mod model_classes;
 pub mod model_context;
+pub mod model_matchers;
 pub mod moderation_finish_reason;
 pub mod participant_filters;
 pub mod pascal;

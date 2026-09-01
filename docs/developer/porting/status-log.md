@@ -94722,3 +94722,118 @@ providers (recipe in the P4.D135 record), the reroute-with-an-image walk +
 the re-measured compression row (P4.D136 record — the old 75 s C4 numbers
 are SUPERSEDED per ledger §5.5), the live curly-quote doc-edit resolve
 (P4.D137), and the failing-over toast naming each stand-in.
+
+---
+
+## P4.D138 — the LoRA train, server half (v4 `84f33ce94` → `648d5c8aa` → `2ece98c90`)
+
+Lane branch `claude/lora-train-server-porting-bac6de`. v4 oracle baseline
+`7fb668263`; the drift-ledger §2 freshness probe PASSED at lane start
+(checkout on `main`, tree clean, both logs empty), so the ledger's §1
+**PIN REQUIRED** regen rule is in force: every oracle in this lane is
+regenerated from the lane-unique detached worktree
+`/tmp/qt-v4-pin-p4d138-2ece98c90`, pinned at the train's tip `2ece98c90`
+(verified by `lib/image-gen/huggingface-lookup.ts` existing in it), with all
+three symlink classes per ledger §5.1.
+
+**Docs ratification rider (`e41fcb12e`) — NO-PORT, evidence re-measured
+2026-09-01:** `git show --stat e41fcb12e` is exactly three files —
+`docs/CHANGELOG.md`, `help/dangerous-content.md`,
+`help/image-generation-profiles.md` — +34 insertions, 0 deletions, and zero
+`lib/` / `app/` / `packages/` / `plugins/` hunks. The two help hunks (the
+"why a correctly-configured LoRA can still paint a tame picture"
+troubleshooting section and the two-ways-a-candid-adapter-stays-demure note)
+are banked to the `p4.9i2` help-docs list with the rest of the train's help
+rows.
+
+### Unit 1 — the model matchers + the LoRA support resolver
+
+v4 sources: `lib/plugins/model-matchers.ts` (NEW, 51 lines),
+`lib/image-gen/lora-support.ts` (NEW, 212), plus the declaration halves of
+`plugins/dist/qtap-plugin-nanogpt/{image-loras,models}.ts`.
+
+v5: NEW `crates/quilltap-core/src/model_matchers.rs`, NEW
+`crates/quilltap-core/src/image_gen/lora_support.rs`, NEW
+`crates/quilltap-core/src/model/nanogpt_loras.rs`, plus
+`image_gen.rs` (`ModelInfo.lora_support`; `match_model` promoted to `pub`)
+and `image_gen_data.rs` (`lora_data_for`).
+
+Three things worth recording:
+
+- **The JS-`.` question was decided by measurement, not by assumption.** v4's
+  glob arm builds `^…join('.*')…$` and tests it against the model id. JS's `.`
+  (no `s` flag) excludes `\n`, `\r`, U+2028 and U+2029; Rust's `regex` `.`
+  excludes only `\n`. Three corpus rows put a LF, a CR and a literal U+2028
+  across a `*` — v4 answers `false` on all three — so the Rust join is spelled
+  `[^\n\r\u{2028}\u{2029}]*`. A mutation back to `.*` reddens `mm_cr_star`
+  and `mm_ls_star`.
+- **`Number()` and `String()` are the ported ECMAScript ones.**
+  `read_loras_from_parameters` reads `scale` through
+  `pascal::js_value::to_number` and names a dropped non-object entry through
+  `to_js_string`, so `"1.5"` → 1.5, `true` → 1, `null` → 0, `[2]` → 2,
+  `[1,2]` → NaN and `{}` → NaN all land where v4 lands. Eleven corpus rows
+  cover the coercion table.
+- **A NaN cap keeps nothing.** v4's `Math.max(0, Math.floor(maxLoras))` is NaN
+  for a NaN cap, `length <= NaN` is false, and both `slice(0, NaN)` and
+  `slice(NaN)` coerce to 0 — so the whole list is named as dropped. Rust's
+  `f64::max` returns the non-NaN operand, giving `max = 0`, which lands on
+  exactly that; the comment says so at the site.
+
+One deliberate narrowing is recorded in `lora_data_for`'s doc: v4's
+`getNanoGPTImageModels()` also augments the declaration list from the plugin's
+module-level detailed-catalog cache (a live `lora`-tagged model outside the
+table gets `{maxLoras: 1, sourceKinds: ['url','hf-repo']}` and no dialect).
+That arm is runtime state rather than compiled data and lands with the
+catalog port in a later unit of this lane.
+
+**Differential.** `image_gen_leaves_equivalence` (tier-1, DB-free) grows
+18 → 101 rows against v4's REAL `modelMatchesPattern` / `fieldAppliesToModel`
+/ `resolveLoraSupport` / `resolveLoraScaleBounds` /
+`readLorasFromParameters` / `capLoras` / `loraTriggerPhrases` /
+`joinLoraTriggerPhrases` and the `DEFAULT_LORA_SCALE` constant. Every new row
+emits its own INPUT (models, constraints, bag, list), so the Rust side
+rebuilds the case from the row rather than transcribing the canned data — the
+`a-differential-cannot-see-a-dropped-batch` lesson applied forward. Two
+shape-assert floors (`matcher_rows >= 30`, `lora_rows >= 45`) guard against a
+stale oracle going vacuously green.
+
+Regen (from the pin, per ledger §5.1):
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; WT=<worktree>
+PIN=/tmp/qt-v4-pin-p4d138-2ece98c90 ; STAGE=/tmp/qt-oracle-stage-p4d138
+rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases
+cp $WT/harness/oracle/cases/image-gen-leaves.test.ts $STAGE/harness/oracle/cases/
+cd $PIN
+QT_ORACLE_OUT=/tmp/oracle-image-gen-leaves.ndjson \
+  $N/npx jest --silent --watchman=false --roots "$PWD" \
+    --roots "$STAGE/harness/oracle/cases" -- image-gen-leaves
+QT_ORACLE_IMAGE_GEN_LEAVES=/tmp/oracle-image-gen-leaves.ndjson \
+  cargo test -p quilltap-harness --test image_gen_leaves_equivalence
+```
+
+**Mutation proofs (six, each applied-and-verified, each reddening exactly one
+named arm):** the `.`-class → `.*` (`mm_cr_star` / `mm_ls_star`); the cap's
+`floor` → `ceil` (`lc_cap_fractional`); the stored-scale range `0..=10` →
+`0..10` (`lr_scale_ok`); the trigger-phrase dedupe key un-lowercased
+(`lp_dedupe_case_insensitive`); the support resolution order reversed to
+provider-first (`ls_model_beats_provider`); the source trim dropped
+(`lr_blank_source`).
+
+Versions: core 0.0.720, harness 0.0.617.
+
+**Gate (unit 1):** `cargo fmt --all --check` clean; `cargo clippy --workspace
+--all-targets -- -D warnings` clean on BOTH feature sets; `cargo test
+--workspace` = 178 test binaries / 2,134 passed / 1 failed, and the one
+failure is **RED-FIRST BY DESIGN**: `image_profiles_routes_equivalence` run
+against the pin-fresh (`2ece98c90`) oracle fails exactly five arms —
+`list_providers` (NanoGPT's `supportedModels` gains the ten LoRA family ids,
+this lane's unit 5) and the four `list_models` arms (the new `loraSupport`
+map, unit 8). Nothing else moved. The routes oracle env var is therefore left
+OUT of units 1–4's gates and required green from unit 8 onward.
+
+Corpus authored ahead of its units in this same commit (they are oracle-side
+only, so the rows simply sit unread until their unit lands): the
+`image-profiles-routes` LoRA-guard cases (unit 2), the `image-gen-leaves`
+`params_builder` cases (unit 3), and the `record-image-fixtures.mjs` NanoGPT
+LoRA/passthrough rows (units 5–7).

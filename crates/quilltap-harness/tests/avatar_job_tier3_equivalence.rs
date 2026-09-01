@@ -155,6 +155,7 @@ fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<OrientationSu
             let s = size_support("1024x1792", "1792x1024", "1024x1024");
             (
                 vec![ModelInfo {
+                    lora_support: None,
                     id: "dall-e-3".to_string(),
                     orientation_support: Some(s.clone()),
                 }],

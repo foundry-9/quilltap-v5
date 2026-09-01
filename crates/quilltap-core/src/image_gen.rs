@@ -30,6 +30,10 @@ use serde::{Serialize, Serializer};
 
 use crate::db::js_number_to_json;
 
+pub mod lora_support;
+
+pub use lora_support::{ImageLoraSpec, ImageLoraSupport, LoraScale};
+
 // ===========================================================================
 // prompt-expansion: parsePlaceholders
 // ===========================================================================
@@ -113,11 +117,16 @@ impl OrientationSupport {
     }
 }
 
-/// The subset of v4 `ImageGenerationModelInfo` `resolveOrientation` reads.
-#[derive(Debug, Clone)]
+/// The subset of v4 `ImageGenerationModelInfo` the host resolvers read.
+///
+/// `84f33ce94` added `loraSupport` beside `orientationSupport` — one matcher,
+/// two capabilities: [`match_model`] answers both questions, so a family prefix
+/// that resolves an orientation resolves a LoRA capability the same way.
+#[derive(Debug, Clone, Default)]
 pub struct ModelInfo {
     pub id: String,
     pub orientation_support: Option<OrientationSupport>,
+    pub lora_support: Option<ImageLoraSupport>,
 }
 
 /// v4 `ImageOrientation`.
@@ -208,7 +217,14 @@ impl Serialize for Params<'_> {
 }
 
 /// v4 `matchModel`: exact id match wins; else the longest-prefix family match.
-fn match_model<'a>(models: Option<&'a [ModelInfo]>, model: Option<&str>) -> Option<&'a ModelInfo> {
+///
+/// `pub` since `84f33ce94`: `resolveLoraSupport` walks the SAME matcher
+/// `resolveOrientation` does, and v4's comment for that is explicit — one
+/// matcher, two capabilities.
+pub fn match_model<'a>(
+    models: Option<&'a [ModelInfo]>,
+    model: Option<&str>,
+) -> Option<&'a ModelInfo> {
     let (models, model) = (models?, model?);
     if let Some(exact) = models.iter().find(|m| m.id == model) {
         return Some(exact);
@@ -351,6 +367,7 @@ mod tests {
     fn orientation_size_strategy_and_prefix_match() {
         let models = vec![ModelInfo {
             id: "dall-e-3".into(),
+            lora_support: None,
             orientation_support: Some(OrientationSupport {
                 strategy: OrientationStrategy::Size,
                 portrait: OrientationMapping {

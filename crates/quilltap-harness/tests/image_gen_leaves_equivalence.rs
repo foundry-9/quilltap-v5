@@ -1,8 +1,19 @@
 //! Differential test (W4.1d5, tier-1, DB-free): the image-generation pure leaves
-//! `parse_placeholders` + `resolve_orientation`
-//! (`quilltap_core::image_gen`) vs v4's REAL `parsePlaceholders` / `resolveOrientation`
-//! (with the plugin registry mocked to canned declarations). Diffs
-//! `serde_json::to_string` against v4's `JSON.stringify`.
+//! `parse_placeholders` + `resolve_orientation` (`quilltap_core::image_gen`) vs
+//! v4's REAL `parsePlaceholders` / `resolveOrientation` (with the plugin registry
+//! mocked to canned declarations). Diffs `serde_json::to_string` against v4's
+//! `JSON.stringify`.
+//!
+//! P4.D138 (`84f33ce94`) grows it by two families, both driven from the row's own
+//! recorded INPUT (no transcription of the canned data into Rust):
+//!   - `quilltap_core::model_matchers` vs v4's REAL `modelMatchesPattern` /
+//!     `fieldAppliesToModel` — including the JS-`.`-semantics trio (`\n`, `\r`,
+//!     U+2028 across a `*`), which is what pins the negated character class the
+//!     Rust glob is built from;
+//!   - `quilltap_core::image_gen::lora_support` vs v4's REAL `resolveLoraSupport`
+//!     / `resolveLoraScaleBounds` / `readLorasFromParameters` / `capLoras` /
+//!     `loraTriggerPhrases` / `joinLoraTriggerPhrases`, plus the
+//!     `DEFAULT_LORA_SCALE` constant.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout; STAGE outside `.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<worktree> ; STAGE=/tmp/qt-oracle-stage
@@ -17,10 +28,16 @@
 
 use std::collections::HashMap;
 
+use quilltap_core::image_gen::lora_support::{
+    cap_loras, join_lora_trigger_phrases, lora_trigger_phrases, read_loras_from_parameters,
+    resolve_lora_scale_bounds, resolve_lora_support, ImageLoraSpec, ImageLoraSupport,
+    LoraLogContext, LoraScale, DEFAULT_LORA_SCALE,
+};
 use quilltap_core::image_gen::{
     parse_placeholders, resolve_orientation, ModelInfo, Orientation, OrientationMapping,
     OrientationStrategy, OrientationSupport,
 };
+use quilltap_core::model_matchers::{field_applies_to_model, model_matches_pattern};
 use serde_json::Value;
 
 fn load_oracle(path: &str) -> HashMap<String, Value> {
@@ -96,7 +113,51 @@ fn model(id: &str, support: OrientationSupport) -> ModelInfo {
     ModelInfo {
         id: id.to_string(),
         orientation_support: Some(support),
+        lora_support: None,
     }
+}
+
+/// Rebuild an `ImageLoraSupport` from the row's recorded declaration — the
+/// oracle emits the exact object it handed v4, so nothing is transcribed.
+fn support_from_json(v: &Value) -> ImageLoraSupport {
+    ImageLoraSupport {
+        max_loras: v["maxLoras"].as_f64().expect("maxLoras is a number"),
+        scale: v.get("scale").filter(|s| !s.is_null()).map(|s| LoraScale {
+            min: s["min"].as_f64().unwrap(),
+            max: s["max"].as_f64().unwrap(),
+            default: s["default"].as_f64().unwrap(),
+            step: s.get("step").and_then(Value::as_f64),
+        }),
+        source_kinds: v["sourceKinds"]
+            .as_array()
+            .expect("sourceKinds is an array")
+            .iter()
+            .map(|k| k.as_str().unwrap().to_string())
+            .collect(),
+        supports_private_weights_token: v
+            .get("supportsPrivateWeightsToken")
+            .and_then(Value::as_bool),
+    }
+}
+
+/// Rebuild the `ImageLoraSpec[]` a `lora_cap` / `lora_phrases` row was given.
+/// Deliberately NOT `read_loras_from_parameters`: these rows hand v4 a
+/// well-formed list directly, so reading it through the sanitizer would make
+/// the capper's arms depend on the reader's.
+fn specs_from_json(v: &Value) -> Vec<ImageLoraSpec> {
+    v.as_array()
+        .expect("loras is an array")
+        .iter()
+        .map(|e| ImageLoraSpec {
+            source: e["source"].as_str().unwrap().to_string(),
+            scale: e.get("scale").and_then(Value::as_f64),
+            trigger_phrase: e
+                .get("triggerPhrase")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            label: e.get("label").and_then(Value::as_str).map(str::to_string),
+        })
+        .collect()
 }
 
 #[test]
@@ -238,5 +299,146 @@ fn image_gen_leaves_matches_oracle() {
         );
     }
 
-    eprintln!("OK: image-gen-leaves differential matched the oracle.");
+    // ---- model matchers (P4.D138) ----
+    let mut matcher_rows = 0usize;
+    for (label, row) in &oracle {
+        match row["kind"].as_str() {
+            Some("matcher_pattern") => {
+                let got = serde_json::to_string(&model_matches_pattern(
+                    row["model"].as_str().unwrap(),
+                    row["pattern"].as_str().unwrap(),
+                ))
+                .unwrap();
+                assert_eq!(
+                    got.as_str(),
+                    row["json"].as_str().unwrap(),
+                    "matcher_pattern {label}"
+                );
+                matcher_rows += 1;
+            }
+            Some("matcher_field") => {
+                let list: Option<Vec<String>> = row["list"].as_array().map(|a| {
+                    a.iter()
+                        .map(|v| v.as_str().unwrap().to_string())
+                        .collect::<Vec<_>>()
+                });
+                let got = serde_json::to_string(&field_applies_to_model(
+                    list.as_deref(),
+                    row["model"].as_str(),
+                ))
+                .unwrap();
+                assert_eq!(
+                    got.as_str(),
+                    row["json"].as_str().unwrap(),
+                    "matcher_field {label}"
+                );
+                matcher_rows += 1;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        matcher_rows >= 30,
+        "the matcher corpus shrank ({matcher_rows} rows) — a stale oracle"
+    );
+
+    // ---- LoRA support (P4.D138) ----
+    let ctx = LoraLogContext {
+        provider: "NANOGPT".to_string(),
+        model: Some("flux-2-dev-lora".to_string()),
+    };
+    let mut lora_rows = 0usize;
+    for (label, row) in &oracle {
+        let kind = row["kind"].as_str().unwrap_or_default();
+        let want = row["json"].as_str().unwrap();
+        match kind {
+            "lora_const" => {
+                assert_eq!(
+                    serde_json::to_string(&DEFAULT_LORA_SCALE).unwrap().as_str(),
+                    want,
+                    "lora_const {label}"
+                );
+                lora_rows += 1;
+            }
+            "lora_support" => {
+                let models: Option<Vec<ModelInfo>> = row["models"].as_array().map(|a| {
+                    a.iter()
+                        .map(|m| ModelInfo {
+                            id: m["id"].as_str().unwrap().to_string(),
+                            orientation_support: None,
+                            lora_support: m
+                                .get("loraSupport")
+                                .filter(|s| !s.is_null())
+                                .map(support_from_json),
+                        })
+                        .collect()
+                });
+                let constraints = row["constraints"]
+                    .as_object()
+                    .map(|_| support_from_json(&row["constraints"]));
+                let support = resolve_lora_support(
+                    models.as_deref(),
+                    row["model"].as_str(),
+                    constraints.as_ref(),
+                );
+                let bounds = support.as_ref().map(resolve_lora_scale_bounds);
+                let got = serde_json::json!({
+                    "support": support,
+                    "bounds": bounds,
+                });
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap().as_str(),
+                    want,
+                    "lora_support {label}"
+                );
+                lora_rows += 1;
+            }
+            "lora_read" => {
+                let bag = row["bag"].clone();
+                let got =
+                    read_loras_from_parameters(if bag.is_null() { None } else { Some(&bag) }, &ctx);
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap().as_str(),
+                    want,
+                    "lora_read {label}"
+                );
+                lora_rows += 1;
+            }
+            "lora_cap" => {
+                let loras = specs_from_json(&row["loras"]);
+                let support = row["support"]
+                    .as_object()
+                    .map(|_| support_from_json(&row["support"]));
+                let got = cap_loras(loras, support.as_ref(), &ctx);
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap().as_str(),
+                    want,
+                    "lora_cap {label}"
+                );
+                lora_rows += 1;
+            }
+            "lora_phrases" => {
+                let loras = specs_from_json(&row["loras"]);
+                let got = serde_json::json!({
+                    "phrases": lora_trigger_phrases(&loras),
+                    "joined": join_lora_trigger_phrases(&loras),
+                });
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap().as_str(),
+                    want,
+                    "lora_phrases {label}"
+                );
+                lora_rows += 1;
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        lora_rows >= 45,
+        "the LoRA corpus shrank ({lora_rows} rows) — a stale oracle"
+    );
+
+    eprintln!(
+        "OK: image-gen-leaves differential matched the oracle ({matcher_rows} matcher + {lora_rows} LoRA rows)."
+    );
 }

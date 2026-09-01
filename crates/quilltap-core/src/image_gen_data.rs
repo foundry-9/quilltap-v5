@@ -15,7 +15,9 @@
 //! openrouter,z-ai}/index.ts`. The transcription is verified against v4's REAL
 //! `resolveOrientation` in `image_dialects_equivalence`.
 
+use crate::image_gen::lora_support::ImageLoraSupport;
 use crate::image_gen::{ModelInfo, OrientationMapping, OrientationStrategy, OrientationSupport};
+use crate::model::nanogpt_loras::{nanogpt_lora_families, NANOGPT_FLAGSHIP_IMAGE_MODEL_IDS};
 
 /// A `{ size, nominalWidth, nominalHeight }` mapping (the OpenAI / Z-AI shape).
 fn size_map(size: &str, w: f64, h: f64) -> OrientationMapping {
@@ -104,6 +106,7 @@ fn model(id: &str, support: OrientationSupport) -> ModelInfo {
     ModelInfo {
         id: id.to_string(),
         orientation_support: Some(support),
+        lora_support: None,
     }
 }
 
@@ -151,6 +154,46 @@ pub fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<Orientati
         "GROK" => (Vec::new(), Some(aspect_orientation())),
         "Z_AI" => (Vec::new(), Some(zai_orientation())),
         "NANOGPT" => (Vec::new(), Some(nanogpt_orientation())),
+        _ => (Vec::new(), None),
+    }
+}
+
+/// The injected **LoRA** declarations for a provider: `(per-model info,
+/// provider-level default support)` — v4 `getImageGenerationModels(provider)`'s
+/// `loraSupport` plus `getImageProviderConstraints(provider)?.loraSupport`
+/// (`84f33ce94`). Read by
+/// [`crate::image_gen::lora_support::resolve_lora_support`] through the SAME
+/// [`crate::image_gen::match_model`] the orientation resolver walks.
+///
+/// NanoGPT is the only declaring provider: its curated image list carries one
+/// entry per LoRA family (generated from the dialect table, exactly as v4's
+/// `models.ts` generates `STATIC_IMAGE_MODELS` from `NANOGPT_LORA_FAMILIES`),
+/// and the flagships declare nothing. `NANOGPT_IMAGE_CONSTRAINTS` declares no
+/// provider-level `loraSupport`, so an unknown NanoGPT model resolves `None`.
+///
+/// ⚠ **Narrower than v4 by one arm, deliberately.** v4's
+/// `getNanoGPTImageModels()` also augments this list from the module-level
+/// detailed-catalog cache, giving a live-catalog `lora`-tagged model outside
+/// the table `{ maxLoras: 1, sourceKinds: ['url','hf-repo'] }`. v5 carries that
+/// arm too, but the cache is runtime state rather than compiled data (the
+/// `model::nanogpt_catalog` module).
+pub fn lora_data_for(provider: &str) -> (Vec<ModelInfo>, Option<ImageLoraSupport>) {
+    match provider {
+        "NANOGPT" => {
+            let mut models: Vec<ModelInfo> = NANOGPT_FLAGSHIP_IMAGE_MODEL_IDS
+                .iter()
+                .map(|id| ModelInfo {
+                    id: (*id).to_string(),
+                    ..Default::default()
+                })
+                .collect();
+            models.extend(nanogpt_lora_families().into_iter().map(|f| ModelInfo {
+                id: f.prefix.to_string(),
+                orientation_support: None,
+                lora_support: Some(f.support),
+            }));
+            (models, None)
+        }
         _ => (Vec::new(), None),
     }
 }

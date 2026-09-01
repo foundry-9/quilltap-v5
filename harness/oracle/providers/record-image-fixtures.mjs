@@ -198,6 +198,74 @@ function casesFor(provider) {
     // Neither field → NanoGPT's own rejection sentence.
     add('entry_without_data_or_url', { prompt: 'a cat', model: 'hidream', n: 1 },
       ok(200, { data: [{ revised_prompt: 'rp' }] }));
+    // === 84f33ce94 + 648d5c8aa: the LoRA dialects and the passthrough bag ===
+    // The flat model-specific controls the OpenAI SDK forwards verbatim.
+    add('lora_extra_body_fields', { prompt: 'a cat', model: 'hidream', n: 1, guidanceScale: 3.5, steps: 28, negativePrompt: 'blurry' },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // The passthrough allow-list: four keys ride, a blank is "unset" and is
+    // SKIPPED, and anything off the list never reaches the wire.
+    add('lora_passthrough_allowlist', { prompt: 'a cat', model: 'hidream', n: 1,
+      profileParameters: { num_inference_steps: 20, guidance_scale: 2, steps: '', strength: 0.6, not_allowed: 'x', hf_api_token: 'tok', lora_preset: 'p' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // indexed: lora_url_N / lora_scale_N; a scale-less adapter writes only the url.
+    add('lora_indexed_two', { prompt: 'a cat', model: 'flux-2-dev-lora', n: 1,
+      loras: [{ source: 'owner/one', scale: 0.8 }, { source: 'https://x.test/two.safetensors' }] },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // The plugin caps too (the unknown-family safety net), with its OWN sentence.
+    add('lora_indexed_over_cap', { prompt: 'a cat', model: 'flux-2-klein-4b', n: 1,
+      loras: [{ source: 'a/1' }, { source: 'a/2' }, { source: 'a/3' }, { source: 'a/4' }] },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // A longest-prefix child lands on its family's dialect.
+    add('lora_indexed_prefix_child', { prompt: 'a cat', model: 'flux-2-dev-lora-image-to-image', n: 1,
+      loras: [{ source: 'a/1', scale: 1.5 }] },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // weights: lora_weights / lora_scale, and hf_api_token ONLY beside weights.
+    add('lora_weights_with_token', { prompt: 'a cat', model: 'pruna-ai/p-image/edit-lora', n: 1,
+      loras: [{ source: 'owner/gated', scale: 0.5 }],
+      profileParameters: { hf_api_token: 'hf_secret', lora_preset: 'ignored-here' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    add('lora_weights_blank_token', { prompt: 'a cat', model: 'pruna-ai/p-image/text-to-image-lora', n: 1,
+      loras: [{ source: 'owner/w' }], profileParameters: { hf_api_token: '' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // BUG 110's opposite rule: a credential with no weights to fetch stays home.
+    add('lora_weights_token_without_weights', { prompt: 'a cat', model: 'pruna-ai/p-image/edit-lora', n: 1,
+      loras: [], profileParameters: { hf_api_token: 'hf_secret' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // url: lora_url / lora_strength, plus the preset.
+    add('lora_url_with_preset', { prompt: 'a cat', model: 'flux-lora', n: 1,
+      loras: [{ source: 'https://fal.test/w.safetensors', scale: 1.2 }],
+      profileParameters: { lora_preset: 'anime' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // BUG 110 itself: a configured preset with NO adapter beside it. Before the
+    // fix the empty-list early return threw it away in silence; after it, the
+    // family is resolved FIRST and the preset stands alone.
+    add('lora_preset_without_adapters', { prompt: 'a cat', model: 'flux-lora', n: 1,
+      loras: [], profileParameters: { lora_preset: 'anime' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // …and with no `loras` key at all, which is how every non-LoRA call site
+    // reaches this code (v4's suite passed `undefined` here — the blind spot).
+    add('lora_preset_no_loras_key', { prompt: 'a cat', model: 'flux-lora', n: 1,
+      profileParameters: { lora_preset: 'anime' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // A known family with nothing configured still REPORTS its dialect —
+    // "nothing was configured" and "nothing could be spelled" are different
+    // diagnoses. (Visible in the log fields, not the body: the body is bare.)
+    add('lora_known_family_empty', { prompt: 'a cat', model: 'z-image-turbo-lora', n: 1, loras: [] },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // An unknown family writes NOTHING — not the adapters, not the preset.
+    add('lora_unknown_family_drops', { prompt: 'a cat', model: 'hidream', n: 1,
+      loras: [{ source: 'a/1' }, { source: 'a/2' }],
+      profileParameters: { lora_preset: 'anime', hf_api_token: 'tok' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    add('lora_unknown_family_empty', { prompt: 'a cat', model: 'recraft-v3', n: 1, loras: [],
+      profileParameters: { lora_preset: 'anime' } },
+      ok(200, { data: [{ b64_json: 'QUJD' }] }));
+    // BUG 111: the wrapped generate call logs the composed body's key NAMES at
+    // error before rethrowing the SDK error UNCHANGED.
+    add('lora_request_failed', { prompt: 'a cat', model: 'flux-lora', n: 1,
+      loras: [{ source: 'https://fal.test/w.safetensors', scale: 1.2 }],
+      profileParameters: { lora_preset: 'anime', num_inference_steps: 20 } },
+      ok(400, { error: { message: 'try a different prompt or image' } }));
     add('generic_error', { prompt: 'x', model: 'hidream', n: 1 },
       ok(400, { error: { message: 'Bad request' } }));
   } else if (provider === 'google') {

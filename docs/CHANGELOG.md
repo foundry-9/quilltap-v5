@@ -12,6 +12,47 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — feat(images): the model matchers + the LoRA support resolver (P4.D138 unit 1)
+
+_Versions: core 0.0.720, harness 0.0.617._
+
+The first unit of the LoRA train's server half (v4 `84f33ce94`). Two new pure
+modules and one new data table, all differential-verified against v4's real
+`lib/` code.
+
+`quilltap_core::model_matchers` is v4's `lib/plugins/model-matchers.ts`:
+`model_matches_pattern` (exact id, then a `*` glob, then a plain family
+prefix) and `field_applies_to_model` (an absent/empty list, or an unknown
+model, resolves toward showing the field). The glob arm reproduces v4's
+`new RegExp` faithfully on two axes the corpus now pins: the literal parts go
+through `regex::escape` (a superset of v4's own escape set, so
+`gpt-image-125` still fails `gpt-image-1.5*`), and the `*` join is spelled as
+an explicit negated class rather than `.*`, because JS's `.` excludes CR and
+U+2028/U+2029 where Rust's excludes only LF.
+
+`quilltap_core::image_gen::lora_support` is v4's `lib/image-gen/lora-support.ts`:
+`resolve_lora_support` (per-model `loraSupport` through the same `match_model`
+the orientation resolver walks, then the provider-level declaration, then
+none), `resolve_lora_scale_bounds`, `read_loras_from_parameters` (the read-side
+re-check of an opaque bag — non-object entries, blank sources and out-of-range
+scales dropped and named in the log), `cap_loras` (a `None` support strips, an
+over-cap list keeps the leading entries and names what fell off) and the
+trigger-phrase pair. `ModelInfo` gains `lora_support` and `match_model` becomes
+`pub` — one matcher, two capabilities, exactly as v4's comment says.
+
+`image_gen_data::lora_data_for` is the compiled declaration table (NanoGPT
+only: six flagships with no support, plus one entry per LoRA family generated
+from the dialect table), and `model::nanogpt_loras` carries that dialect table
+(ten families, three dialects, longest-prefix matching) as compiled data —
+v5 reimplements the NanoGPT plugin natively, so its `image-loras.ts` lands
+beside the wire builder that will consume it.
+
+`image_gen_leaves_equivalence` grows from 18 to 101 rows over the same jest
+oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
+own input, so nothing is transcribed into Rust. Six mutations were applied and
+each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
+the phrase-dedupe fold, the resolution order, and the source trim).
+
 #### 2026-09-01 — docs(setupphase): the round-2 drift catch-up work orders — P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66
 
 _Docs-only; no version bumps._
