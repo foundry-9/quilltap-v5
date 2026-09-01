@@ -95678,3 +95678,57 @@ copies.)
 the `execute_batch` string literal (the DDL is a `\`-continued Rust string, so
 `//` lines land in the SQL). That turned 7 failures into 13 across both modules.
 The comment belongs above the call.
+
+### The P4.D140 lane gate
+
+Freshness probe re-run at lane start, mid-lane and at the gate: **PASS** every
+time (checkout on `main`, tree clean, both logs empty). Every oracle regenerated
+from the lane-unique pinned worktree `/tmp/qt-v4-pin-p4d140-735d9408c`; a second
+worktree pinned at the BASELINE `7fb668263` was built solely for the two-pin
+attribution of the `salon_reads [settings]` red, and both were removed at
+teardown.
+
+- `cargo fmt --all --check` exit 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` exit 0, plain AND with
+  `--features quilltap-core/native-transport`. (The first plain run caught an
+  `iter_cloned_collect` in the new family; fixed.)
+- **The 21-family sweep by name through the sanctioned driver, from the pin:
+  21 ok / 0 failed / 0 warnings** —
+  `chat_activity_equivalence`, `chat_activity_heal_equivalence`,
+  `chats_messages_tier2_equivalence`, `chats_messages_ops_tier2_equivalence`,
+  `salon_reads_equivalence`, `home_routes_equivalence`,
+  `characters_reads_equivalence`, `projects_routes_equivalence`,
+  `brahma_console_routes_equivalence`, `self_inventory_equivalence`,
+  `system_restore_equivalence`, `system_restore_state`, `restore_vintage_state`,
+  `system_restore_guards_equivalence`, `maintenance_sweep_tier2_equivalence`,
+  `maintenance_ops_tier2_equivalence`, `chat_admin_routes_equivalence`,
+  `provisioning_equivalence`, `chat_settings_tier2_equivalence`,
+  `settings_routes_equivalence`, `chat_settings_composer_web_routes`.
+- **Changed-bytes greps (ledger §5.2), all nine confirmed:** the `''`-sender
+  predicate row reads TRUE and the SQL-mirror row is present; the heal message
+  reads `Recomputed last-activity for 10 chats (8 with no character-authored
+  messages)` and the no-drift sentence is present with an EMPTY ledger; the home
+  `recentChats[0]` key order is `id, title, createdAt, updatedAt, lastMessageAt`;
+  the brahma `list` row carries `createdAt` between `title` and `updatedAt`; the
+  four new add-path chats read NULL/NULL/NULL/stamped; the delete-path chats read
+  `2026-02-02T00:00:01.000Z` and NULL; `list_chats_activity_fallback` orders
+  `[Chat A, Chat B]`; self-inventory's `latestActivityAt` is the `createdAt`, not
+  the touched `updatedAt`; and `restore_replace`'s first chat carries the archive
+  value `2026-03-04T00:00:00.000Z` rather than a minted `<ts>`.
+- **`cargo test --workspace`** with the lane's 30-variable env block: **477 test
+  binaries / 2,640 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines** — exit 0.
+  All ten of the lane's by-name families positively confirmed to have RUN.
+- **SPA:** `npm test` **368 files / 5,486 tests, 0 failed**; `npm run build`
+  clean.
+- **NO Playwright** (P4.66 owns port 4319). The e2e seed repair is reasoned and
+  commented; the unified suite is its proof.
+
+Versions at lane close: core 0.0.726, harness 0.0.619, host 0.0.87, SPA 0.5.601;
+web 0.0.100 / cli 0.0.17 / tauri 0.0.7 unchanged.
+
+**💸 the dogfood queue gains:** the boot recompute's first run on the Friday copy
+(v4 measured 608 of 871 chats mis-dated there — measure the population BEFORE
+building a step around it, ledger §5.5, since v4 runs daily on that instance and
+may have healed it already), a Salon list dated by real conversation rather than
+by background renders, and a restore whose chats keep their own dates instead of
+landing in one flat heap.
