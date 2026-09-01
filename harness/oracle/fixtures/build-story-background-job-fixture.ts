@@ -57,6 +57,12 @@ interface ChatSpec {
   /** [decd8ef9] Seeds the chat's Concierge classification label. */
   isDangerousChat?: boolean;
   /**
+   * [P4.D141 / v4 `60e3c4a0a`] Seeds the operator override. `'UNCENSORED'` is
+   * the four-state feature's motivating regression: the operator asserts the
+   * chat spicy, the global mode is OFF, and the prompt must still go out candid.
+   */
+  conciergeOverride?: 'OFF' | 'UNCENSORED';
+  /**
    * [decd8ef9] The per-case `chat_settings.dangerousContentSettings` bag. NOT
    * baked in here (one row, one user): both sides UPDATE it on their own fresh
    * copy before the case runs. Declared so the shape lives in one place.
@@ -304,6 +310,7 @@ async function main(): Promise<void> {
     const extra: Record<string, unknown> = {};
     if (chat.projectId) extra.projectId = chat.projectId;
     if (chat.isDangerousChat) extra.isDangerousChat = true;
+    if (chat.conciergeOverride) extra.conciergeOverride = chat.conciergeOverride;
     if (chat.sceneState) extra.sceneState = chat.sceneState;
     // Equip Fern's Green Cloak so the appearance-resolution wardrobe path is
     // exercised (all four slots present — v4 requires the full slot map).

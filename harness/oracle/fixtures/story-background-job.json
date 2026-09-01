@@ -30,10 +30,10 @@
     "  - Date.now() frozen so the provider filename + minted timestamps are pinned",
     "",
     "The completion mock branches on a STORYCASE:<label> marker carried in the chat title",
-    "(→ derive/resolve prompts) and echoed by the derive result / scene-state location (→",
+    "(\u2192 derive/resolve prompts) and echoed by the derive result / scene-state location (\u2192",
     "the craft prompt), plus the provider (cheap OPENAI vs uncensored OLLAMA) for the retry",
-    "cases. It returns [] on the cheap provider for appearance_retry (llmResolved false →",
-    "uncensored retry) and '' on the cheap provider for empty_craft_retry (silent refusal →",
+    "cases. It returns [] on the cheap provider for appearance_retry (llmResolved false \u2192",
+    "uncensored retry) and '' on the cheap provider for empty_craft_retry (silent refusal \u2192",
     "uncensored retry).",
     "",
     "SCOPE: the first eight cases run with danger mode OFF, so no classify/sanitize LLM",
@@ -68,31 +68,34 @@
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seedTimestamp": "2020-01-01T00:00:00.000Z",
   "frozenNowMs": 1735732800000,
-
   "userId": "5a000000-0000-4000-8000-0000000000aa",
-  "user": { "username": "story-user", "name": "Story User", "email": "s@example.com" },
-
+  "user": {
+    "username": "story-user",
+    "name": "Story User",
+    "email": "s@example.com"
+  },
   "generalMountPointId": "96000000-0000-4000-8000-0000000000e1",
   "lanternMountPointId": "1a5e0000-0000-4000-8000-00000000fee1",
   "projectId": "40000000-0000-4000-8000-0000000000f1",
   "projectName": "Autumn Project",
-
   "generalLanternAesthetic": "GLOBAL SCENE STYLE: soft volumetric light, muted autumnal palette, painterly atmosphere, gentle depth of field.",
   "generalAuroraAesthetic": "GLOBAL FIGURE STYLE: natural skin, believable fabric weight, expressive faces, intimate framing.",
   "projectLanternAesthetic": "PROJECT SCENE STYLE: crisp cinematic contrast, teal-and-amber grade, wide establishing framing.",
   "projectAuroraAesthetic": "PROJECT FIGURE STYLE: heroic three-quarter lighting, saturated costume colour, sharp catchlights.",
   "depictionGuidelinesX": "ARIEL CLAUSE (Fern): always depict with wind-swept copper hair and a single freckle over the left brow; never add tattoos.",
-
   "apiKeys": {
     "a5000000-0000-4000-8000-0000000000c1": "IMGKEY_STORY"
   },
-
   "characters": [
     {
       "id": "c5000000-0000-4000-8000-000000000001",
       "name": "Fern",
       "participant": true,
-      "pronouns": { "subject": "she", "object": "her", "possessive": "her" },
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
       "physicalDescription": {
         "id": "d5000000-0000-4000-8000-000000000001",
         "name": "Portrait",
@@ -102,14 +105,25 @@
       },
       "depictionGuidelines": true,
       "wardrobe": [
-        { "id": "aw000000-0000-4000-8000-000000000001", "title": "Green Cloak", "types": ["top"], "imagePrompt": "a moss-green travelling cloak" }
+        {
+          "id": "aw000000-0000-4000-8000-000000000001",
+          "title": "Green Cloak",
+          "types": [
+            "top"
+          ],
+          "imagePrompt": "a moss-green travelling cloak"
+        }
       ]
     },
     {
       "id": "c5000000-0000-4000-8000-0000000000ee",
       "name": "Zelda",
       "participant": false,
-      "pronouns": { "subject": "she", "object": "her", "possessive": "her" },
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
       "physicalDescription": {
         "id": "d5000000-0000-4000-8000-0000000000ee",
         "name": "Portrait",
@@ -117,7 +131,6 @@
       }
     }
   ],
-
   "imageProfiles": [
     { "id": "e5000000-0000-4000-8000-000000000001", "name": "OpenAI Images", "provider": "OPENAI", "modelName": "dall-e-3", "apiKeyId": "a5000000-0000-4000-8000-0000000000c1", "baseUrl": null, "parameters": {
         "quality": "hd",
@@ -142,91 +155,173 @@
         "lora_preset": "noir"
       }, "isDefault": false, "isDangerousCompatible": true, "tags": [] }
   ],
-
   "connectionProfiles": [
-    { "id": "cc000000-0000-4000-8000-000000000001", "name": "Cheap Default", "provider": "OPENAI", "modelName": "gpt-4o-mini", "isCheap": true, "isDefault": true, "apiKeyId": "a5000000-0000-4000-8000-0000000000c1" },
-    { "id": "cc000000-0000-4000-8000-000000000002", "name": "Local Uncensored", "provider": "OLLAMA", "modelName": "dolphin-mixtral", "isCheap": false, "isDefault": false, "baseUrl": "http://localhost:11434" }
+    {
+      "id": "cc000000-0000-4000-8000-000000000001",
+      "name": "Cheap Default",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "isCheap": true,
+      "isDefault": true,
+      "apiKeyId": "a5000000-0000-4000-8000-0000000000c1"
+    },
+    {
+      "id": "cc000000-0000-4000-8000-000000000002",
+      "name": "Local Uncensored",
+      "provider": "OLLAMA",
+      "modelName": "dolphin-mixtral",
+      "isCheap": false,
+      "isDefault": false,
+      "baseUrl": "http://localhost:11434"
+    }
   ],
-
   "chatSettings": {
     "id": "55000000-0000-4000-8000-0000000000f0",
-    "dangerousContentSettings": { "mode": "OFF", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": true, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true },
-    "cheapLLMSettings": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false, "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002" }
+    "dangerousContentSettings": {
+      "mode": "OFF",
+      "threshold": 0.7,
+      "scanTextChat": true,
+      "scanImagePrompts": true,
+      "scanImageGeneration": false,
+      "displayMode": "SHOW",
+      "showWarningBadges": true
+    },
+    "cheapLLMSettings": {
+      "strategy": "PROVIDER_CHEAPEST",
+      "fallbackToLocal": false,
+      "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002"
+    }
   },
-
   "chats": {
     "stale_derive": {
       "id": "5c000001-0000-4000-8000-000000000001",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
-      "recentMessages": ["Fern lit the lantern and stepped onto the terrace.", "The night air was cold."],
+      "recentMessages": [
+        "Fern lit the lantern and stepped onto the terrace.",
+        "The night air was cold."
+      ],
       "expectWrite": true,
       "expectDerive": true
     },
     "fresh_scene": {
       "id": "5c000002-0000-4000-8000-000000000002",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
-      "sceneState": { "location": "A moonlit terrace", "updatedAt": "2020-01-01T00:00:00.000Z", "updatedAtMessageCount": 0, "characters": [{ "characterId": "c5000000-0000-4000-8000-000000000001", "characterName": "Fern", "action": "gazing at the stars", "appearance": "windblown and calm", "clothing": "a green travelling cloak" }] },
+      "sceneState": {
+        "location": "A moonlit terrace",
+        "updatedAt": "2020-01-01T00:00:00.000Z",
+        "updatedAtMessageCount": 0,
+        "characters": [
+          {
+            "characterId": "c5000000-0000-4000-8000-000000000001",
+            "characterName": "Fern",
+            "action": "gazing at the stars",
+            "appearance": "windblown and calm",
+            "clothing": "a green travelling cloak"
+          }
+        ]
+      },
       "expectWrite": true,
       "expectDerive": false
     },
     "grok_length": {
       "id": "5c000003-0000-4000-8000-000000000003",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000002",
-      "recentMessages": ["They crossed the bridge at dusk."],
+      "recentMessages": [
+        "They crossed the bridge at dusk."
+      ],
       "expectWrite": true,
       "expectDerive": true
     },
     "empty_craft_retry": {
       "id": "5c000004-0000-4000-8000-000000000004",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
-      "recentMessages": ["A hush fell over the hall."],
+      "recentMessages": [
+        "A hush fell over the hall."
+      ],
       "expectWrite": true,
       "expectDerive": true
     },
     "appearance_retry": {
       "id": "5c000005-0000-4000-8000-000000000005",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
-      "recentMessages": ["She adjusted her cloak by the fire."],
+      "recentMessages": [
+        "She adjusted her cloak by the fire."
+      ],
       "expectWrite": true,
       "expectDerive": true
     },
     "missing_char_enum": {
       "id": "5c000006-0000-4000-8000-000000000006",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
-      "recentMessages": ["A messenger arrived from the north."],
+      "recentMessages": [
+        "A messenger arrived from the north."
+      ],
       "expectWrite": true,
       "expectDerive": true
     },
     "project_latest": {
       "id": "5c000007-0000-4000-8000-000000000007",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
       "projectId": "40000000-0000-4000-8000-0000000000f1",
-      "recentMessages": ["The council convened at midnight."],
+      "recentMessages": [
+        "The council convened at midnight."
+      ],
       "expectWrite": true,
       "expectDerive": true
     },
     "no_images": {
       "id": "5c000008-0000-4000-8000-000000000008",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
-      "recentMessages": ["Silence."],
+      "recentMessages": [
+        "Silence."
+      ],
       "expectWrite": false,
       "expectDerive": true
     },
     "danger_candid": {
       "id": "5c000009-0000-4000-8000-000000000009",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
-      "recentMessages": ["The bath had gone cold hours ago."],
+      "recentMessages": [
+        "The bath had gone cold hours ago."
+      ],
       "isDangerousChat": true,
-      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true, "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004" },
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004"
+      },
       "expectWrite": true,
       "expectDerive": true
     },
@@ -234,9 +329,19 @@
       "id": "5c00000a-0000-4000-8000-00000000000a",
       "characterIds": [],
       "imageProfileId": "e5000000-0000-4000-8000-000000000001",
-      "recentMessages": ["Steam clouded the mirror."],
+      "recentMessages": [
+        "Steam clouded the mirror."
+      ],
       "isDangerousChat": true,
-      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true },
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true
+      },
       "expectWrite": true,
       "expectDerive": true
     },
@@ -244,8 +349,19 @@
       "id": "5c00000b-0000-4000-8000-00000000000b",
       "characterIds": [],
       "imageProfileId": "e5000000-0000-4000-8000-000000000003",
-      "recentMessages": ["The great doors stood open all night."],
-      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true, "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004" },
+      "recentMessages": [
+        "The great doors stood open all night."
+      ],
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004"
+      },
       "expectWrite": true,
       "expectDerive": true
     },
@@ -253,18 +369,67 @@
       "id": "5c00000c-0000-4000-8000-00000000000c",
       "characterIds": [],
       "imageProfileId": "e5000000-0000-4000-8000-000000000003",
-      "recentMessages": ["Rain drummed on the conservatory glass."],
-      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true, "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004" },
+      "recentMessages": [
+        "Rain drummed on the conservatory glass."
+      ],
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004"
+      },
       "expectWrite": true,
       "expectDerive": true
     },
     "moderation_already_candid": {
       "id": "5c00000d-0000-4000-8000-00000000000d",
-      "characterIds": ["c5000000-0000-4000-8000-000000000001"],
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
       "imageProfileId": "e5000000-0000-4000-8000-000000000003",
-      "recentMessages": ["She let the robe fall by the hearth."],
+      "recentMessages": [
+        "She let the robe fall by the hearth."
+      ],
       "isDangerousChat": true,
-      "dangerousContentSettings": { "mode": "AUTO_ROUTE", "threshold": 0.7, "scanTextChat": true, "scanImagePrompts": false, "scanImageGeneration": false, "displayMode": "SHOW", "showWarningBadges": true, "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004" },
+      "dangerousContentSettings": {
+        "mode": "AUTO_ROUTE",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": false,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004"
+      },
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "uncensored_override_candid": {
+      "$comment": "P4.D141 / v4 60e3c4a0a \u2014 the four-state feature's MOTIVATING regression, mirroring v4's own new test in story-background-uncensored-target.test.ts: the operator asserts the chat spicy (conciergeOverride='UNCENSORED') while the CLASSIFIER label is false and the GLOBAL Concierge mode is OFF. The resolver must still force AUTO_ROUTE with every scan off, and shouldUseUncensoredRoute must still be true, so the prompt goes out CANDID and bound for the uncensored image profile. Before the four-state port this corner was unreachable.",
+      "id": "5c00000e-0000-4000-8000-00000000000e",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": [
+        "The robe stayed where it fell."
+      ],
+      "isDangerousChat": false,
+      "conciergeOverride": "UNCENSORED",
+      "dangerousContentSettings": {
+        "mode": "OFF",
+        "threshold": 0.7,
+        "scanTextChat": true,
+        "scanImagePrompts": true,
+        "scanImageGeneration": false,
+        "displayMode": "SHOW",
+        "showWarningBadges": true,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004"
+      },
       "expectWrite": true,
       "expectDerive": true
     }

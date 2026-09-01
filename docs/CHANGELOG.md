@@ -362,6 +362,32 @@ mutations, each reddening exactly the arm it should.
 
 Nothing calls the module yet — the write gates, readers, restore and the boot
 heal follow in their own units.
+#### 2026-09-01 — test(concierge): the uncensored route reaches the spine, and one corpus that looked like coverage does not (v4 `60e3c4a0a`)
+
+_Versions: harness 0.0.620._
+
+Adds v4's own motivating regression to the story-background corpus:
+`uncensored_override_candid` — the operator asserts a chat spicy
+(`conciergeOverride: 'UNCENSORED'`) while the classifier label is `false` and the
+GLOBAL Concierge mode is `OFF`, and the image prompt must still go out candid and
+bound for the uncensored profile. Before the four-state port that corner was
+unreachable. The discriminator is byte-visible: the `IMAGE_PROMPT_CRAFTING`
+request is 5,487 characters where the concealed sibling is 6,347. Dropping the
+Uncensored arm from `should_use_uncensored_route` reddens it.
+
+Recorded, and the more useful half: **`precompute_equivalence` is structurally
+blind to that predicate.** Its `dangerous-chat-reroute-runs` case reads as
+coverage of the uncensored cheap-LLM swap, but both sides pass `allProfiles: []`,
+so the resolver has nothing to swap to and the emitted row never carries the
+selection. Measured — forcing the predicate to return `false` unconditionally
+leaves the family green, that case included. The family header now says so, and
+making it discriminating (seeding an uncensored profile and threading
+`allProfiles` through both sides) is deferred loudly rather than done here.
+
+Also measured and recorded: the resolver's forced `AUTO_ROUTE` is NOT observable
+from the story-background path, which never gates on `mode`. That arm's coverage
+lives in `danger_resolver_equivalence` section 1, where its own mutation reddens.
+
 #### 2026-09-01 — feat(salon): the chat PUT's conciergeState arm closes v5's long-named deferral (v4 `60e3c4a0a`)
 
 _Versions: core 0.0.721, harness 0.0.619._

@@ -18,6 +18,23 @@
 //! recallAdjustment — the recall-context multipliers prove the assembled search
 //! invocation transitively) and `recallSignals` (the parsed distill).
 //!
+//! ## ⚠ Measured blind spot — the uncensored reroute (P4.D141)
+//!
+//! The corpus case `dangerous-chat-reroute-runs` reads as coverage of
+//! `pre_compute.rs`'s uncensored-cheap-LLM swap. **It is not.** Both sides pass
+//! `allProfiles: []`, so `resolve_uncensored_cheap_llm_selection` has nothing to
+//! swap to and returns the selection unchanged — and the emitted row never
+//! carries the selection anyway. Measured 2026-09-01: forcing
+//! `should_use_uncensored_route` to return `false` unconditionally leaves this
+//! family **GREEN**, that case included.
+//!
+//! So the predicate's live coverage is `story_background_job_tier3_equivalence`'s
+//! `uncensored_override_candid` (v4's own motivating regression — the candid vs
+//! concealed prompt is byte-visible there) plus the pure truth table in
+//! `danger_resolver_equivalence`. Making THIS family discriminating means seeding
+//! the corpus with an uncensored profile and threading `allProfiles` through both
+//! sides — a corpus-shape change deferred loudly by P4.D141, not done here.
+//!
 //! **Why `distillPrompt` is diffed (P4.20).** The canned distill answers the same
 //! text whatever prompt it is given, so until the prompt itself was compared this
 //! family could not see the WINDOW: `messages_since_last_spoke` could have

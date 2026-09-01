@@ -95975,3 +95975,35 @@ earlier than v5's and v4's inside the fixture epoch, which is what the
 measurement asserts before masking; `message_delete_swipe` and
 `message_delete_cascade` are affected as well as the four flip cases, and the
 run prints the masked-case list.
+
+### Unit 4 — spine coverage for the uncensored route (and a corpus that only looked like coverage)
+
+**Landed.** `harness/oracle/fixtures/story-background-job.json` gains
+`uncensored_override_candid`, mirroring v4's own new test in
+`story-background-uncensored-target.test.ts`: `conciergeOverride: 'UNCENSORED'`
+with `isDangerousChat: false` and a GLOBAL `dangerousContentSettings.mode: 'OFF'`,
+plus an `uncensoredImageProfileId`. The builder learned to seed
+`conciergeOverride` (it only knew `isDangerousChat`). The discriminator is
+byte-visible in the regenerated NDJSON — the `IMAGE_PROMPT_CRAFTING` request is
+**5,487** characters against the concealed `stale_derive`'s **6,347** and the
+already-flagged `danger_candid`'s **5,474**. Mutation M15 (drop the Uncensored
+arm from `should_use_uncensored_route`) reddens the family; restored, green.
+
+**Measured and recorded, not fixed: `precompute_equivalence` is BLIND to the
+predicate.** Its case `dangerous-chat-reroute-runs` reads as coverage of
+`pre_compute.rs:236`'s uncensored cheap-LLM swap — the order's own map names that
+line — but the corpus passes `allProfiles: []` on both sides, so
+`resolve_uncensored_cheap_llm_selection` has nothing to swap to, and the emitted
+row never carries the selection in any case. Proof: with
+`should_use_uncensored_route` forced to `false` unconditionally, the family runs
+**GREEN**, that case included. The family header now records the measurement so
+the case is not mistaken for coverage again. Making it discriminating needs an
+uncensored profile seeded into `episodic-recall-*.db` and `allProfiles` threaded
+through both sides — a corpus-shape change to another family, **DEFERRED LOUDLY**
+here and named for a follow-up order.
+
+**Also measured:** mutation M16 (the resolver stops forcing `AUTO_ROUTE` under a
+global `OFF`) leaves the story-background family GREEN — that path never gates on
+`dangerSettings.mode`. The forced-AUTO_ROUTE arm's coverage is
+`danger_resolver_equivalence` §1, where mutation M3 reddens it. Recorded so the
+two mutations' different outcomes are not read as a gap.
