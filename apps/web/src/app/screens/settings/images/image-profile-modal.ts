@@ -16,10 +16,19 @@ import {
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
-import type { ApiKeyDto, ImageProfileDto, ImageProviderInfo } from '../../../core/core-contract';
+import type {
+  ApiKeyDto,
+  ImageLoraSpec,
+  ImageLoraSupport,
+  ImageProfileDto,
+  ImageProviderInfo,
+} from '../../../core/core-contract';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
+import { ProviderOptionsPanel } from '../providers/provider-options-panel';
+import type { ProviderOptionsSchema } from '../providers/provider-options-schema';
+import { LoraListEditor } from './lora-list-editor';
 import {
   availableApiKeys,
   defaultModelsFor,
@@ -32,6 +41,7 @@ import {
 import {
   createImageProfile,
   fetchImageModels,
+  fetchImageOptionsSchema,
   fetchImageProviders,
   updateImageProfile,
 } from './image-profiles.api';
@@ -54,20 +64,33 @@ import {
  * (`ImageProfileParameters.tsx:126-181`), the two the round's drift commits
  * added.
  *
+ * P4.D139 (v4 `84f33ce94`) put the SCHEMA-DRIVEN panel in front of both: a
+ * provider whose plugin declares an image options schema now gets the shared,
+ * model-aware `ProviderOptionsPanel` — the same renderer the connection-profile
+ * editor uses — and the hand-written arms below it become the fallback for
+ * plugins that have not adopted the hook yet, and for a failed schema fetch.
+ * v4's own comment gives the reason to keep them: a provider whose editor
+ * offers nothing at all would be worse than a slightly stale size list.
+ *
+ * Note the shape of that fallback differs between the apps and the difference
+ * is v5's, not v4's: v4's legacy arm is `ImageProfileParameters` alone, whose
+ * `default:` case renders NOTHING; v5's is the size panel OR the JSON
+ * textarea, the textarea being a v5 invention. The schema arm is identical.
+ *
  * STILL DEFERRED LOUDLY: the `Validate` key button (its wire pair,
  * `imageProfileValidateKey`, is refusal-armed) renders disabled-with-title —
  * v4 did not move it this round. And v4's OTHER structured cases are still
  * unported: `OPENAI` (`:28-83` — Quality, Style, Size, Response Format),
  * `GOOGLE`/`GOOGLE_IMAGEN` (`:84-125` — Aspect Ratio, Person Generation,
  * Sample Count) and `GROK` (`:183-192` — a static "minimal parameters"
- * paragraph). Those four providers still get v5's JSON textarea stand-in,
- * which is a v5 invention: v4 has no textarea, and its `default:` case renders
- * NOTHING. Unknown keys survive editing on both sides.
+ * paragraph). Those four providers get the schema panel when their plugin
+ * declares one and v5's JSON textarea stand-in otherwise. Unknown keys survive
+ * editing on both sides.
  */
 @Component({
   selector: 'qt-image-profile-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, FormActions, ErrorAlert],
+  imports: [Modal, FormActions, ErrorAlert, ProviderOptionsPanel, LoraListEditor],
   template: `
     <qt-modal [title]="title()" maxWidth="2xl" (close)="close.emit()">
       @if (error()) {
@@ -160,7 +183,22 @@ import {
           }
         </div>
 
-        @if (sizePanel(); as panel) {
+        <!-- Provider-Specific Parameters.
+             A plugin that declares an image options schema gets the shared,
+             model-aware renderer — the same one the connection-profile editor
+             uses. The hand-written arms below are only for providers whose
+             plugins have not adopted the hook yet, and for the case where the
+             schema fetch itself fails: a provider whose editor offers nothing
+             at all would be worse than a slightly stale size list. -->
+        @if (optionsSchema(); as schema) {
+          <qt-provider-options-panel
+            [schema]="schema"
+            [parameters]="parametersBag()"
+            [fetchedModels]="availableModels()"
+            [modelName]="modelName()"
+            (setParameter)="setParameter($event)"
+          />
+        } @else if (sizePanel(); as panel) {
           <div class="space-y-4 border-t qt-border-default pt-4">
             <h3 class="text-sm qt-text-primary">Image Parameters (Optional)</h3>
             <div>
@@ -193,6 +231,14 @@ import {
             }
           </div>
         }
+
+        <!-- LoRA adapters — shown only when this provider/model declares support -->
+        <qt-lora-list-editor
+          [support]="loraSupport()"
+          [loras]="currentLoras()"
+          [hfToken]="hfToken()"
+          (lorasChange)="setLoras($event)"
+        />
 
         <label class="flex items-center gap-2 qt-text-small">
           <input
@@ -251,6 +297,22 @@ export class ImageProfileModal implements OnInit {
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly parametersError = signal<string | null>(null);
+
+  /**
+   * Per-model options schema and LoRA support, resolved server-side (v4
+   * `ImageProfileForm.tsx:101-111`). The schema is the plugin's answer for
+   * *this* model — image gateways route to hundreds of models with different
+   * legal sizes — so both refetch whenever the provider or the model changes.
+   */
+  protected readonly optionsSchema = signal<ProviderOptionsSchema | null>(null);
+  protected readonly loraSupport = signal<ImageLoraSupport | null>(null);
+  /**
+   * Bumped whenever a live model fetch succeeds. A plugin may build its
+   * options schema from a catalog it can only load with an API key, so the
+   * first schema fetch on a cold cache gets the generic answer; this makes
+   * the editor ask again once that catalog exists.
+   */
+  private readonly catalogVersion = signal(0);
 
   protected readonly providersQuery = injectQuery(() => ({
     queryKey: ['image-profiles', 'providers'],
@@ -345,10 +407,16 @@ export class ImageProfileModal implements OnInit {
 
   /**
    * The parameters bag as an object. Lenient on purpose: the textarea can hold
-   * mid-edit garbage, and the size panel must not be the thing that reports it
-   * (submit still refuses, through `parseParameters`).
+   * mid-edit garbage, and neither the size panel nor the schema-driven one
+   * must be the thing that reports it (submit still refuses, through
+   * `parseParameters`).
+   *
+   * This is v5's `formData.parameters`. v4 holds an object and renders the raw
+   * JSON nowhere; v5's legacy arm IS a textarea, so the string is the source of
+   * truth and every structured write round-trips through here — the same
+   * spelling `setSize` has used since P4.D102.
    */
-  private parametersBag(): Record<string, unknown> {
+  protected readonly parametersBag = computed<Record<string, unknown>>(() => {
     try {
       const parsed = JSON.parse(this.parametersText() || '{}') as unknown;
       return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
@@ -357,7 +425,27 @@ export class ImageProfileModal implements OnInit {
     } catch {
       return {};
     }
-  }
+  });
+
+  /**
+   * v4 `currentLoras` (`:329-331`) — only an ARRAY under the reserved key is a
+   * LoRA list. A bag holding something else there reads as no adapters, which
+   * is also what the editor shows when the model declares no support.
+   */
+  protected readonly currentLoras = computed<ImageLoraSpec[]>(() => {
+    const raw = this.parametersBag()['loras'];
+    return Array.isArray(raw) ? (raw as ImageLoraSpec[]) : [];
+  });
+
+  /**
+   * v4 `:564-568` — the profile's configured `hf_api_token`, when it has one
+   * and it is a string. It rides the lookup's request body so gated weights
+   * resolve for the people entitled to see them.
+   */
+  protected readonly hfToken = computed<string | undefined>(() => {
+    const raw = this.parametersBag()['hf_api_token'];
+    return typeof raw === 'string' ? raw : undefined;
+  });
 
   /**
    * v4 `handleChange` (`:14-19`) — `{...parameters, [key]: value}`. The spread
@@ -366,6 +454,30 @@ export class ImageProfileModal implements OnInit {
    */
   protected setSize(value: string): void {
     this.parametersText.set(JSON.stringify({ ...this.parametersBag(), size: value }, null, 2));
+  }
+
+  /** v4 `handleSetParameter` (`:317-329`). */
+  protected setParameter(write: { key: string; value: unknown }): void {
+    const next = { ...this.parametersBag() };
+    // An empty box means "unset": storing '' would send a blank string to a
+    // provider that reads the key's presence, not its truthiness.
+    if (write.value === undefined || write.value === '') {
+      delete next[write.key];
+    } else {
+      next[write.key] = write.value;
+    }
+    this.parametersText.set(JSON.stringify(next, null, 2));
+  }
+
+  /** v4 `handleLorasChange` (`:333-343`) — an empty list DELETES the key. */
+  protected setLoras(loras: ImageLoraSpec[]): void {
+    const next = { ...this.parametersBag() };
+    if (loras.length === 0) {
+      delete next['loras'];
+    } else {
+      next['loras'] = loras;
+    }
+    this.parametersText.set(JSON.stringify(next, null, 2));
   }
 
   constructor() {
@@ -398,6 +510,39 @@ export class ImageProfileModal implements OnInit {
       this.apiKeyId();
       this.providers();
       untracked(() => void this.fetchModels());
+    });
+
+    /**
+     * v4 `:194-231` — ask the provider's plugin what this model's options look
+     * like, and whether it takes LoRA adapters. v4's effect deps are
+     * `[providerKey, modelKey, catalogVersion]`, where `providerKey` is the
+     * NORMALIZED provider; reading those three here reproduces that set.
+     *
+     * The cancelled flag is v4's: a slower answer for a provider the user has
+     * already left must not land on top of a newer one.
+     */
+    effect((onCleanup) => {
+      const providerKey = normalizeProviderName(this.provider(), this.providers());
+      const modelKey = this.modelName();
+      this.catalogVersion();
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+      void (async () => {
+        try {
+          const answer = await fetchImageOptionsSchema(this.core, providerKey, modelKey || undefined);
+          if (cancelled) return;
+          this.optionsSchema.set(answer.optionsSchema);
+          this.loraSupport.set(answer.loraSupport);
+        } catch {
+          if (cancelled) return;
+          // Fall back to the legacy panel and no LoRA editor rather than
+          // leaving a stale schema from the previous provider on screen.
+          this.optionsSchema.set(null);
+          this.loraSupport.set(null);
+        }
+      })();
     });
 
     /**
@@ -447,6 +592,10 @@ export class ImageProfileModal implements OnInit {
       this.availableModels.set(listing.models);
       this.modelsSource.set(listing.source);
       this.modelsFetchError.set(listing.fetchError ?? null);
+      if (listing.source === 'provider') {
+        // v4 `:168-170` — the catalog now exists, so re-ask for the schema.
+        this.catalogVersion.update((v) => v + 1);
+      }
     } catch {
       const info = providers.find((p) => p.value === normalized || p.value === raw);
       this.availableModels.set(info?.defaultModels ?? []);
@@ -481,6 +630,11 @@ export class ImageProfileModal implements OnInit {
     this.apiKeyId.set('');
     this.parametersText.set('{}');
     this.parametersError.set(null);
+    // v4 `:268-272` — the old provider's schema and LoRA cap describe a
+    // provider we have just left; clear them rather than render them against
+    // the new one until the refetch lands.
+    this.optionsSchema.set(null);
+    this.loraSupport.set(null);
   }
 
   private parseParameters(): Record<string, unknown> | null {

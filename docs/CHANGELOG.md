@@ -586,6 +586,36 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — feat(spa): the image-profile editor asks the plugin what to render (P4.D139 unit 7)
+
+_Versions: SPA 0.5.608._
+
+v4 `84f33ce94`'s `ImageProfileForm` hunks plus `2ece98c90`'s `hfToken` prop,
+ported into `image-profile-modal.ts`: the `optionsSchema`/`loraSupport`/
+`catalogVersion` state, the options-schema fetch effect keyed on
+`[normalized provider, model, catalogVersion]` with v4's cancelled flag, the
+render swap that puts the shared model-aware panel in front of the legacy
+arms, and the LoRA editor beneath both.
+
+The semantics that make it safe are all here: a failed fetch CLEARS both
+rather than leaving a stale schema on screen; a provider change clears them
+eagerly, before any answer lands; `catalogVersion` bumps when a model fetch
+answers `source: 'provider'`, so a plugin that builds its schema from a
+key-gated catalog is asked again once that catalog exists;
+`handleSetParameter` deletes the key on `undefined` or `''`; `handleLorasChange`
+deletes `parameters.loras` when the list empties; `currentLoras` reads only an
+array; and `hfToken` is the bag's `hf_api_token` only when it is a string.
+
+v5's parameters live in a JSON textarea rather than an object, so every
+structured write round-trips through the bag exactly as `setSize` has since
+P4.D102 — the legacy arm IS the textarea, which is v5's own invention;
+v4's `default:` case renders nothing. Recorded in the class doc.
+
+Nine mutations redden the spec. Two needed the cases rewritten to be measured
+at all: the failed-fetch clear was masked by the eager provider-change clear
+until the case was rebuilt around a MODEL change, and the cancelled flag was
+unpinned until a case raced two answers by holding the first open.
+
 #### 2026-09-01 — feat(spa): the LoRA list editor (P4.D139 unit 6)
 
 _Versions: SPA 0.5.607._

@@ -96529,3 +96529,62 @@ the same class as unit 1's escape-class widening.
 
 **Gate:** editor spec 44/44; full SPA suite **370 files / 5,686 tests / 0**;
 `npm run build` clean.
+
+### Unit 7 — the image-profile editor's options-schema + LoRA wiring
+
+v4 `84f33ce94`'s `ImageProfileForm.tsx` hunks plus `2ece98c90`'s five-line
+`hfToken` prop, ported into
+`apps/web/src/app/screens/settings/images/image-profile-modal.ts`.
+
+**Landed:** the `optionsSchema` / `loraSupport` / `catalogVersion` state with
+v4's cold-cache rationale carried; the fetch effect keyed on
+`[normalized provider, model, catalogVersion]` with v4's cancelled flag (an
+Angular `effect(onCleanup)`); the eager clear on provider change; the
+`catalogVersion` bump when a model fetch answers `source === 'provider'`; the
+render swap; `setParameter` (delete on `undefined | ''`); `setLoras` (delete
+the reserved key when the list empties); `currentLoras` (`Array.isArray` only);
+and `hfToken` (string only).
+
+**One structural difference from v4, recorded in the class doc.** v4 holds
+`formData.parameters` as an object and renders raw JSON nowhere; v5's legacy
+arm IS a JSON textarea (a v5 invention — v4's `ImageProfileParameters`
+`default:` case renders NOTHING), so `parametersText` stays the source of
+truth and every structured write round-trips through `parametersBag()` — the
+same spelling `setSize` has used since P4.D102. The schema arm is identical to
+v4's. Also recorded: v5's fallback is two-armed (size panel OR textarea) where
+v4's is one; the ordered Tier-3 escape hatch (rendering the size panel
+ALONGSIDE the schema panel) was NOT needed — the whole legacy branch is v5's
+`ImageProfileParameters` analog, so it sits under the same `@else`.
+
+**Mutation proofs (nine, each verified applied).** A failed fetch leaving the
+stale schema: 1 red. No eager clear on provider change: 1 red. No
+`catalogVersion` bump: 1 red. `setParameter` not deleting on `''`: 1 red.
+`setParameter` deleting on ANY falsy value: 1 red. `setLoras` storing `[]`
+instead of deleting: 1 red. `currentLoras` trusting a non-array: 1 red.
+`hfToken` passing any type through: 1 red. The options-schema fetch sending the
+RAW provider instead of the normalized one: 1 red. The cancelled flag dropped:
+1 red.
+
+**Two cases had to be REBUILT before they measured anything — both worth the
+record.**
+
+1. **The failed-fetch clear was masked by the eager clear.** The first
+   spelling changed the PROVIDER to trigger a failing refetch — but
+   `onProviderChange` already clears both signals synchronously, so the panel
+   was gone whatever the catch arm did, and the mutation stayed green. Only a
+   same-provider MODEL change reaches the catch arm alone. The two arms now
+   have a case each: the model-change case measures the catch, and a
+   provider-change case measures the eager clear by asserting SYNCHRONOUSLY,
+   before anything can answer.
+2. **The cancelled flag was unpinned** until a case raced two answers — the
+   stub now holds the FIRST options-schema answer open on a deferred promise,
+   lets the second land, then releases the first carrying a schema and asserts
+   it is dropped on the floor. Without the race, deleting the flag entirely
+   changes nothing observable.
+
+The existing 24 modal specs stayed green throughout, which is the check that
+the swap did not disturb the Fetch Models flow, the size panel or the
+legacy textarea.
+
+**Gate:** modal spec 44/44; full SPA suite **370 files / 5,706 tests / 0**;
+`npm run build` clean.

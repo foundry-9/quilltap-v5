@@ -113,6 +113,13 @@ function fetchButton(fixture: ComponentFixture<ImageProfileModal>): HTMLButtonEl
   return button;
 }
 
+function providerSelect(fixture: ComponentFixture<ImageProfileModal>): HTMLSelectElement {
+  const selects = Array.from(
+    fixture.nativeElement.querySelectorAll('select'),
+  ) as HTMLSelectElement[];
+  return selects[0];
+}
+
 function modelSelect(fixture: ComponentFixture<ImageProfileModal>): HTMLSelectElement {
   const selects = Array.from(
     fixture.nativeElement.querySelectorAll('select'),
@@ -487,5 +494,338 @@ describe('ImageProfileModal — the Default Size panel', () => {
       profile({ provider: 'Z_AI' }),
     );
     expect(textarea(fixture)).toBeNull();
+  });
+});
+
+/**
+ * The options-schema / LoRA wiring (v4 `84f33ce94`'s `ImageProfileForm.tsx`
+ * hunks plus `2ece98c90`'s `hfToken` prop).
+ *
+ * ⚠ `imageProfileOptionsSchema` is P4.D138's verb, running in a parallel lane,
+ * so every case here drives a scripted `CoreClient` rather than a live server.
+ */
+
+interface SchemaDispatch {
+  type: string;
+  provider?: string;
+  model?: string;
+  apiKeyId?: string;
+}
+
+const TINY_SCHEMA = {
+  groups: [{ title: 'Rendering', fields: [{ key: 'steps', label: 'Steps', type: 'number' }] }],
+};
+
+const SUPPORT_2 = { maxLoras: 2, sourceKinds: ['hf-repo'] };
+
+/**
+ * A client whose `options-schema` answer is scripted per call, so a case can
+ * script "generic first, then the real thing once the catalog lands".
+ */
+function schemaClient(opts: {
+  answers: Array<Record<string, unknown> | 'reject'>;
+  listModels?: Record<string, unknown>;
+  seen?: SchemaDispatch[];
+}): Partial<CoreClient> {
+  let n = 0;
+  return {
+    dispatchData: (async (req: SchemaDispatch) => {
+      opts.seen?.push(req);
+      if (req.type === 'imageProfileOptionsSchema') {
+        const answer = opts.answers[Math.min(n, opts.answers.length - 1)];
+        n += 1;
+        if (answer === 'reject') throw new Error('boom');
+        return answer;
+      }
+      if (req.type === 'imageProfileListModels') {
+        return opts.listModels ?? { provider: 'OPENAI', models: [], source: 'builtin' };
+      }
+      if (req.type === 'imageProviderList') return { providers: [] };
+      return {};
+    }) as unknown as CoreClient['dispatchData'],
+    dispatchExpect: (async () => ({ data: { apiKeys: [KEY] } })) as unknown as CoreClient['dispatchExpect'],
+  };
+}
+
+/** The hosted LoRA editor instance, for the inputs the DOM cannot show. */
+function loraEditor(fixture: ComponentFixture<ImageProfileModal>): {
+  hfToken: () => string | undefined;
+} {
+  const node = (fixture.nativeElement as HTMLElement).querySelector('qt-lora-list-editor');
+  if (!node) throw new Error('LoRA editor not rendered');
+  return fixture.debugElement.query((d) => d.nativeElement === node).componentInstance as {
+    hfToken: () => string | undefined;
+  };
+}
+
+function has(fixture: ComponentFixture<ImageProfileModal>, selector: string): boolean {
+  return (fixture.nativeElement as HTMLElement).querySelector(selector) !== null;
+}
+
+/** The raw-JSON textarea — v5's legacy arm, v4's `ImageProfileParameters`. */
+function hasLegacyTextarea(fixture: ComponentFixture<ImageProfileModal>): boolean {
+  return has(fixture, 'textarea');
+}
+
+describe('ImageProfileModal — the options-schema swap', () => {
+  it('renders the shared panel when the plugin declares a schema, and NOT the legacy arm', async () => {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: TINY_SCHEMA, loraSupport: null }] }),
+    );
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(true);
+    expect(hasLegacyTextarea(fixture)).toBe(false);
+  });
+
+  it('falls back to the legacy arm when the plugin declares none (v4 `:537-556`)', async () => {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: null }] }),
+    );
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(false);
+    // "A provider whose editor offers nothing at all would be worse than a
+    // slightly stale size list."
+    expect(hasLegacyTextarea(fixture)).toBe(true);
+  });
+
+  it('falls back to the legacy arm when the FETCH itself fails (v4 `:214-220`)', async () => {
+    const fixture = await render(schemaClient({ answers: ['reject'] }));
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(false);
+    expect(hasLegacyTextarea(fixture)).toBe(true);
+  });
+
+  it('a failed fetch CLEARS a schema already on screen rather than leaving it stale', async () => {
+    // v4's comment is the assertion: "rather than leaving a stale schema from
+    // the previous provider on screen".
+    //
+    // ⚠ This case changes the MODEL, not the provider, and that is the whole
+    // point: `onProviderChange` clears both eagerly, so a provider switch
+    // would show a cleared panel even if the catch arm did nothing at all.
+    // Only a same-provider model change reaches the catch arm alone.
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: TINY_SCHEMA, loraSupport: SUPPORT_2 }, 'reject'] }),
+      profile({ modelName: 'dall-e-3' }),
+    );
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(true);
+    expect(has(fixture, 'qt-lora-list-editor div')).toBe(true);
+
+    const select = modelSelect(fixture);
+    select.value = 'dall-e-2';
+    select.dispatchEvent(new Event('change'));
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(false);
+    expect(has(fixture, 'qt-lora-list-editor div')).toBe(false);
+  });
+
+  it('a provider change clears BOTH eagerly, before any answer lands (v4 `:268-272`)', async () => {
+    // The companion arm: the old provider's schema and LoRA cap describe a
+    // provider we have just left. This one is measured by never letting the
+    // refetch resolve at all.
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: TINY_SCHEMA, loraSupport: SUPPORT_2 }] }),
+    );
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(true);
+
+    const select = providerSelect(fixture);
+    select.value = 'NANOGPT';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    // Synchronously after the change — no awaits, so nothing has answered.
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(false);
+    expect(has(fixture, 'qt-lora-list-editor div')).toBe(false);
+  });
+
+  it('asks again once a live model fetch lands, because the catalog now exists', async () => {
+    // v4 `:168-170` + `:101-111`: a plugin may build its schema from a catalog
+    // it can only load with a key, so the cold-cache answer is generic.
+    const seen: SchemaDispatch[] = [];
+    const fixture = await render(
+      schemaClient({
+        answers: [{ optionsSchema: null, loraSupport: null }, { optionsSchema: TINY_SCHEMA, loraSupport: null }],
+        listModels: { provider: 'OPENAI', models: ['m1'], source: 'provider' },
+        seen,
+      }),
+      profile({ apiKeyId: 'k1' }),
+    );
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(seen.filter((r) => r.type === 'imageProfileOptionsSchema').length).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(true);
+  });
+
+  it('sends the NORMALIZED provider and the selected model', async () => {
+    const seen: SchemaDispatch[] = [];
+    await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: null }], seen }),
+      profile({ provider: 'GOOGLE_IMAGEN', modelName: 'imagen-4.0-generate-001', apiKeyId: null }),
+    );
+    const asked = seen.filter((r) => r.type === 'imageProfileOptionsSchema');
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.some((r) => r.provider === 'GOOGLE')).toBe(true);
+    expect(asked.some((r) => r.model === 'imagen-4.0-generate-001')).toBe(true);
+    // The legacy alias is never what reaches the wire.
+    expect(asked.some((r) => r.provider === 'GOOGLE_IMAGEN')).toBe(false);
+  });
+
+  it('a superseded answer never lands — the cancelled flag (v4 `:195,209,216`)', async () => {
+    // The race the flag exists for: a slow answer for a model the user has
+    // already left must not overwrite the newer one. Scripted by holding the
+    // FIRST answer open until after the second has landed.
+    let releaseFirst: ((v: Record<string, unknown>) => void) | null = null;
+    const first = new Promise<Record<string, unknown>>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let n = 0;
+    const client: Partial<CoreClient> = {
+      dispatchData: (async (req: SchemaDispatch) => {
+        if (req.type === 'imageProfileOptionsSchema') {
+          n += 1;
+          return n === 1 ? first : { optionsSchema: null, loraSupport: null };
+        }
+        if (req.type === 'imageProfileListModels') {
+          return { provider: 'OPENAI', models: [], source: 'builtin' };
+        }
+        if (req.type === 'imageProviderList') return { providers: [] };
+        return {};
+      }) as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async () => ({
+        data: { apiKeys: [KEY] },
+      })) as unknown as CoreClient['dispatchExpect'],
+    };
+
+    const fixture = await render(client, profile({ modelName: 'dall-e-3' }));
+    const select = modelSelect(fixture);
+    select.value = 'dall-e-2';
+    select.dispatchEvent(new Event('change'));
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    // The second answer has landed: no schema.
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(false);
+
+    // Now the first, stale answer arrives carrying a schema. It must be
+    // dropped on the floor.
+    releaseFirst!({ optionsSchema: TINY_SCHEMA, loraSupport: SUPPORT_2 });
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(false);
+    expect(has(fixture, 'qt-lora-list-editor div')).toBe(false);
+  });
+});
+
+describe('ImageProfileModal — the LoRA editor', () => {
+  it('draws nothing when the model declares no support', async () => {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: null }] }),
+    );
+    expect(text(fixture)).not.toContain('LoRA Adapters (Optional)');
+  });
+
+  it('draws the editor when it does', async () => {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: SUPPORT_2 }] }),
+    );
+    expect(text(fixture)).toContain('LoRA Adapters (Optional)');
+    expect(text(fixture)).toContain('This model accepts up to 2 adapters.');
+  });
+
+  it('hands it the stored list', async () => {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: SUPPORT_2 }] }),
+      profile({ parameters: { loras: [{ source: 'owner/one' }] } }),
+    );
+    expect(text(fixture)).toContain('Adapter 1');
+  });
+
+  it('...and only when the bag holds an ARRAY under the key (v4 `:329-331`)', async () => {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: SUPPORT_2 }] }),
+      profile({ parameters: { loras: 'not-a-list' } }),
+    );
+    expect(text(fixture)).toContain(
+      'No adapters attached — the model generates in its own native manner.',
+    );
+  });
+
+  it('passes the profile’s hf_api_token down', async () => {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: SUPPORT_2 }] }),
+      profile({ parameters: { hf_api_token: 'hf_secret' } }),
+    );
+    expect(loraEditor(fixture).hfToken()).toBe('hf_secret');
+  });
+
+  it('...and only when it is a string (v4 `:564-568`)', async () => {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: null, loraSupport: SUPPORT_2 }] }),
+      profile({ parameters: { hf_api_token: 42 } }),
+    );
+    expect(loraEditor(fixture).hfToken()).toBeUndefined();
+  });
+});
+
+describe('ImageProfileModal — writing the parameters bag', () => {
+  type Writer = {
+    setParameter: (w: { key: string; value: unknown }) => void;
+    setLoras: (l: Array<{ source: string }>) => void;
+    parametersBag: () => Record<string, unknown>;
+  };
+
+  async function writer(parameters: Record<string, unknown> = {}): Promise<Writer> {
+    const fixture = await render(
+      schemaClient({ answers: [{ optionsSchema: TINY_SCHEMA, loraSupport: SUPPORT_2 }] }),
+      profile({ parameters }),
+    );
+    return fixture.componentInstance as unknown as Writer;
+  }
+
+  it('writes a value into the bag, preserving its neighbours', async () => {
+    const w = await writer({ size: '1024x1024' });
+    w.setParameter({ key: 'steps', value: 30 });
+    expect(w.parametersBag()).toEqual({ size: '1024x1024', steps: 30 });
+  });
+
+  it('DELETES the key on undefined — an empty box means "unset" (v4 `:320-324`)', async () => {
+    const w = await writer({ steps: 30, size: '1024x1024' });
+    w.setParameter({ key: 'steps', value: undefined });
+    expect(w.parametersBag()).toEqual({ size: '1024x1024' });
+  });
+
+  it('...and on the empty string, which is the shape a cleared text box sends', async () => {
+    // Storing '' would send a blank string to a provider that reads the key's
+    // presence, not its truthiness.
+    const w = await writer({ hf_api_token: 'hf_secret' });
+    w.setParameter({ key: 'hf_api_token', value: '' });
+    expect(w.parametersBag()).toEqual({});
+  });
+
+  it('keeps a falsy value that is NOT undefined or empty', async () => {
+    const w = await writer({});
+    w.setParameter({ key: 'steps', value: 0 });
+    w.setParameter({ key: 'flag', value: false });
+    expect(w.parametersBag()).toEqual({ steps: 0, flag: false });
+  });
+
+  it('writes the LoRA list under the reserved key', async () => {
+    const w = await writer({ size: '1024x1024' });
+    w.setLoras([{ source: 'owner/one' }]);
+    expect(w.parametersBag()).toEqual({ size: '1024x1024', loras: [{ source: 'owner/one' }] });
+  });
+
+  it('DELETES the reserved key when the list empties (v4 `:333-343`)', async () => {
+    const w = await writer({ size: '1024x1024', loras: [{ source: 'owner/one' }] });
+    w.setLoras([]);
+    expect(w.parametersBag()).toEqual({ size: '1024x1024' });
+    // Not `loras: []` — an empty array would ride to the provider as a
+    // declared-and-empty list rather than as no list at all.
+    expect('loras' in w.parametersBag()).toBe(false);
   });
 });
