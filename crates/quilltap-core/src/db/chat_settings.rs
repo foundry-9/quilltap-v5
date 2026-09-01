@@ -1385,10 +1385,20 @@ mod tests {
             "embeddingProvider": "local"
         });
         let read = default_cheap_llm_keys(stored);
-        let keys: Vec<&str> = read.as_object().unwrap().keys().map(String::as_str).collect();
+        let keys: Vec<&str> = read
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
         assert_eq!(
             keys,
-            ["strategy", "fallbackToLocal", "embeddingProvider", "allowCheapFallback"]
+            [
+                "strategy",
+                "fallbackToLocal",
+                "embeddingProvider",
+                "allowCheapFallback"
+            ]
         );
         assert_eq!(read["allowCheapFallback"], serde_json::Value::Bool(false));
         // A bag that already carries the key is untouched — value AND position.
@@ -1404,7 +1414,12 @@ mod tests {
         assert!(!typed.allow_cheap_fallback);
         let written = serde_json::to_value(&typed).unwrap();
         assert_eq!(
-            written.as_object().unwrap().keys().last().map(String::as_str),
+            written
+                .as_object()
+                .unwrap()
+                .keys()
+                .last()
+                .map(String::as_str),
             Some("allowCheapFallback")
         );
     }

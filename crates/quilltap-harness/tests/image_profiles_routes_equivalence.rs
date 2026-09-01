@@ -345,24 +345,25 @@ fn image_profiles_routes_match_oracle() {
     };
     // The four success arms of `list-models` compare against v4's body with the
     // pending `loraSupport` key measured-then-stripped (P4.D138 unit 6 OPEN).
-    let ok_pending_lora = |name: &str, resp: &Response, blank: &[&str], failed: &mut Vec<String>| {
-        if let Response::Error(e) = resp {
-            eprintln!("[{name}] expected success, got {:?}: {}", e.kind, e.message);
-            failed.push(name.to_string());
-            return;
-        }
-        let got = response_data(resp);
-        let want = strip_pending_lora_support(name, &got, &oracle[name]["body"]);
-        if norm(&got, blank) != norm(&want, blank) {
-            eprintln!(
-                "[{name}] MISMATCH:\n{}",
-                first_diff(&norm(&got, blank), &norm(&want, blank))
-            );
-            failed.push(name.to_string());
-        } else {
-            eprintln!("[{name}] OK (loraSupport pending P4.D138 unit 6).");
-        }
-    };
+    let ok_pending_lora =
+        |name: &str, resp: &Response, blank: &[&str], failed: &mut Vec<String>| {
+            if let Response::Error(e) = resp {
+                eprintln!("[{name}] expected success, got {:?}: {}", e.kind, e.message);
+                failed.push(name.to_string());
+                return;
+            }
+            let got = response_data(resp);
+            let want = strip_pending_lora_support(name, &got, &oracle[name]["body"]);
+            if norm(&got, blank) != norm(&want, blank) {
+                eprintln!(
+                    "[{name}] MISMATCH:\n{}",
+                    first_diff(&norm(&got, blank), &norm(&want, blank))
+                );
+                failed.push(name.to_string());
+            } else {
+                eprintln!("[{name}] OK (loraSupport pending P4.D138 unit 6).");
+            }
+        };
     let check_tables_at = |name: &str, key: &str, got: &Value, failed: &mut Vec<String>| {
         let want = json!({ key: oracle[name]["tables"][key].clone() });
         if norm(got, &[]) != norm(&want, &[]) {
