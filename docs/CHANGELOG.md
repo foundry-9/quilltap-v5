@@ -157,6 +157,27 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+#### 2026-09-01 — fix(restore): re-derive a restored chat's last-activity date from its transcript (v4 735d9408c)
+
+_Versions: core 0.0.724._
+
+`add_message` stamps `lastMessageAt` with the wall clock, so replaying a
+transcript dated every restored chat to the instant of the restore — and that
+column is what every list sorts and displays by, so an entire history landed in
+one flat heap at the top. Restore now re-derives the column from the transcript
+it just wrote, through the one predicate that defines it, in its own try
+immediately after the per-chat message loop. Failure degrades to v4's exact
+warning sentence; `updatedAt` is preserved by omission; NULL is a legitimate
+answer, where readers fall back to `createdAt`.
+
+Pre-existing, and previously masked because `updatedAt` was flattened by the
+same replay.
+
+Recorded as a no-counterpart: v4's `ai-import.service.ts` `assembleQtapExport`
+twin (whose last-row read becomes a filter through the predicate, with the empty
+case moving from `now` to `null`) has no v5 surface to port into — v5 ships no
+AI-import wizard.
+
 #### 2026-09-01 — fix(settings): chat settings carry allowCheapFallback, as v4's schema default does
 
 _Versions: core 0.0.723._

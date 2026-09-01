@@ -95499,3 +95499,41 @@ written before the key existed. v5 had neither half.
 green:** `provisioning_equivalence`, `chat_settings_tier2_equivalence`,
 `settings_routes_equivalence`, `chat_settings_composer_web_routes`,
 `system_restore_equivalence`, `system_restore_state`, `salon_reads_equivalence`.
+
+### Unit 4 — restore re-derivation, and the ai-import twin ratified UNPORTED
+
+**Restore.** `services/backup/restore/orchestrator.rs` gains, immediately after
+the per-chat message-replay loop closes and INSIDE the per-chat scope, a
+re-derivation of `lastMessageAt` from the transcript just written
+(`get_last_played_message_at` → `chats.update`). v4's whole comment block is
+carried. Own try; post-write; `updatedAt` preserved by omission; NULL is a
+legitimate answer, where readers fall back to `createdAt`. Failure pushes v4's
+exact sentence: `Failed to restore last-activity date for chat "{title}": {e}`.
+
+The `system_restore_state` family sees it directly — `restore_replace`'s first
+chat now reads `lastMessageAt: 2026-03-04T00:00:00.000Z`, a value that appears
+in the archive, where before the replay's wall clock made it a minted `<ts>`.
+That is the order's predicted normalization-class change, re-measured rather
+than patched: both sides moved, and the family is green with the value PINNED
+instead of normalized away.
+
+**Mutation proof:** dropping the re-derivation → `system_restore_state` red on
+`main.chats` across `restore_replace` / `restore_legacy_archive` /
+`restore_minimal` (and more).
+
+Families green after the change: `system_restore_equivalence`,
+`system_restore_state`, `restore_vintage_state`,
+`system_restore_guards_equivalence`.
+
+**The ai-import twin — NO COUNTERPART, with evidence.** v4's change is in
+`lib/services/ai-import.service.ts` `assembleQtapExport` (its
+`chatMessages[last].createdAt ?? now` becomes
+`chatMessages.filter(isCharacterAuthoredMessage).pop()?.createdAt ?? null` — a
+behavior change beyond the filter, since the empty case moves from `now` to
+`null`). `assembleQtapExport` is referenced only from inside that one v4 file,
+and v5 has no AI-import surface at all: the only thing v5 ports out of
+`ai-import.service.ts` is `stripCodeFences` (`memory_tasks.rs:547`), and "Summon
+From Lore" is a documented disabled stub
+(`apps/web/src/app/chat/cast/add-character-dialog.ts:66,250`, which names
+`components/settings/ai-import/AIImportWizard` as unported). Nothing to port;
+recorded here rather than stubbed.
