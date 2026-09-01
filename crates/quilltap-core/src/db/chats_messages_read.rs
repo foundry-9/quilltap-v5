@@ -279,20 +279,27 @@ pub fn get_message_count(conn: &Connection, chat_id: &str) -> Result<i64, DbErro
 }
 
 /// v4 `getLastPlayedMessageAt(chatId)` (`chats-messages.ops.ts`, the SQLite
-/// branch): the `createdAt` of the newest **played** message — a `type:'message'`
-/// row authored by a participant character or the human user, i.e. with
-/// `systemSender IS NULL` (excludes Staff / personified-feature announcements that
-/// persist as `type:'message'` and would otherwise keep a quiet chat's assets
-/// alive). `None` when the chat has no played messages. Consumed only by the
-/// stale-chat maintenance sweep (v4 `42242a3e`).
+/// branch): the `createdAt` of the newest message a character posted as
+/// content, per [`crate::chat_activity::is_character_authored_message`], which
+/// is THE definition of chat activity and the thing to change if this needs to
+/// move. In short: `type === 'message'`, role `USER`/`ASSISTANT`, no
+/// `systemSender`, no `customAnnouncer`. Whispers count; Staff announcements,
+/// announcement bubbles, and raw tool rows don't.
+///
+/// `None` when the chat has no character-authored messages at all. This is the
+/// value mirrored into the chat's `lastMessageAt` column (which every list and
+/// sort reads — v4 `735d9408c`), and the value the stale-chat maintenance sweep
+/// uses to decide whether a chat has gone quiet (v4 `42242a3e`).
 pub fn get_last_played_message_at(
     conn: &Connection,
     chat_id: &str,
 ) -> Result<Option<String>, DbError> {
     conn.query_row(
-        "SELECT createdAt FROM chat_messages \
-         WHERE chatId = ?1 AND type = 'message' AND systemSender IS NULL \
-         ORDER BY createdAt DESC LIMIT 1",
+        &format!(
+            "SELECT createdAt FROM chat_messages WHERE chatId = ?1 AND {} \
+             ORDER BY createdAt DESC LIMIT 1",
+            crate::chat_activity::CHARACTER_AUTHORED_MESSAGE_FILTER
+        ),
         [chat_id],
         |r| r.get::<_, String>(0),
     )

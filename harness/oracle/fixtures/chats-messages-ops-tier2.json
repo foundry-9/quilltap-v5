@@ -62,6 +62,52 @@
           "updatedAt": "2026-02-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "c0000040-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Delete-Walks-Back-Past-Staff Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "c0000050-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Delete-Clears-To-Null Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fb000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "bbbb2222-2222-4222-8222-222222222222",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fc000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "seedMessages": [
@@ -75,7 +121,13 @@
           "content": "original reply",
           "participantId": "fb000001-0000-4000-8000-000000000001",
           "tokenCount": 10,
-          "reasoningSegments": [{ "anchorOffset": 0, "content": "think", "seq": 1 }],
+          "reasoningSegments": [
+            {
+              "anchorOffset": 0,
+              "content": "think",
+              "seq": 1
+            }
+          ],
           "createdAt": "2026-02-02T00:00:01.000Z"
         },
         {
@@ -134,6 +186,75 @@
           "createdAt": "2026-02-02T00:00:02.000Z"
         }
       ]
+    },
+    {
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "the earliest thing anyone said",
+          "createdAt": "2026-02-02T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The background is ready.",
+          "systemSender": "lantern",
+          "systemKind": "story-background",
+          "createdAt": "2026-02-02T00:00:02.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "the newest thing a character said",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:03.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000004",
+          "role": "TOOL",
+          "content": "{\"toolName\":\"doc_read\",\"result\":\"ok\"}",
+          "createdAt": "2026-02-02T00:00:04.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000040-0000-4000-8000-000000000005",
+          "role": "USER",
+          "content": "And so the storm broke.",
+          "customAnnouncer": {
+            "kind": "custom",
+            "displayName": "The Narrator"
+          },
+          "createdAt": "2026-02-02T00:00:05.000Z"
+        }
+      ]
+    },
+    {
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000050-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "the only thing a character said",
+          "participantId": "fb000001-0000-4000-8000-000000000001",
+          "createdAt": "2026-02-02T00:00:01.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000050-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "Someone has arrived.",
+          "systemSender": "host",
+          "systemKind": "add",
+          "createdAt": "2026-02-02T00:00:02.000Z"
+        }
+      ]
     }
   ],
   "ops": [
@@ -144,20 +265,29 @@
       "updates": {
         "content": "edited reply",
         "tokenCount": 99,
-        "dangerFlags": [{ "category": "nsfw", "score": 0.5 }]
+        "dangerFlags": [
+          {
+            "category": "nsfw",
+            "score": 0.5
+          }
+        ]
       }
     },
     {
       "kind": "updateMessage",
       "chatId": "c0000010-0000-4000-8000-000000000001",
       "messageId": "e0000010-0000-4000-8000-000000000002",
-      "updates": { "context": "edited summary" }
+      "updates": {
+        "context": "edited summary"
+      }
     },
     {
       "kind": "updateMessage",
       "chatId": "c0000010-0000-4000-8000-000000000001",
       "messageId": "e0000000-0000-4000-8000-0000000000ff",
-      "updates": { "content": "should not apply" }
+      "updates": {
+        "content": "should not apply"
+      }
     },
     {
       "kind": "deleteMessagesByIds",
@@ -170,11 +300,27 @@
     {
       "kind": "deleteMessagesByIds",
       "chatId": "c0000020-0000-4000-8000-000000000001",
-      "messageIds": ["e0000000-0000-4000-8000-0000000000ff"]
+      "messageIds": [
+        "e0000000-0000-4000-8000-0000000000ff"
+      ]
     },
     {
       "kind": "clearMessages",
       "chatId": "c0000030-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "deleteMessagesByIds",
+      "chatId": "c0000040-0000-4000-8000-000000000001",
+      "messageIds": [
+        "e0000040-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "kind": "deleteMessagesByIds",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "messageIds": [
+        "e0000050-0000-4000-8000-000000000001"
+      ]
     }
   ]
 }

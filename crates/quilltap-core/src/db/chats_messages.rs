@@ -8,9 +8,11 @@
 //!
 //! v4 `addMessage` runs `ChatEventSchema.parse(message)` then
 //! `insertOne({...validated, chatId})`, and afterwards updates the **chat** row's
-//! metadata — `messageCount` (recounted from the live message set), and, **only
-//! for an actual `type:'message'` event**, `lastMessageAt` + `updatedAt` (both
-//! minted `now`), plus `spokenThisCycleParticipantIds` when the turn cycle
+//! metadata — `messageCount` (recounted from the live message set), `updatedAt`
+//! **only for an actual `type:'message'` event** and `lastMessageAt` **only for a
+//! character-authored one** (`crate::chat_activity`, v4 `735d9408c` — a Staff
+//! announcement is a message row but not conversational activity), both minted
+//! from the same `now`, plus `spokenThisCycleParticipantIds` when the turn cycle
 //! advances (`computeSpokenThisCycleAfterMessage`, already ported in
 //! [`crate::turn_state`]). `addMessages` is the batch form: insert each, then one
 //! metadata update with `spokenThisCycle` **folded** over the batch in order.
@@ -470,8 +472,9 @@ impl<'c> ChatMessagesRepository<'c> {
     }
 
     /// `deleteMessagesByIds` — delete each `(id, chatId)` row, returning the count
-    /// removed. When any were removed, recount `messageCount` on the chat (v4 sets
-    /// ONLY `messageCount`, so `update` preserves `updatedAt`). Empty input → `0`.
+    /// removed. When any were removed, recount `messageCount` on the chat AND
+    /// recompute `lastMessageAt` from what survives (v4 `735d9408c`); `updatedAt`
+    /// is still not written, so `update` preserves it. Empty input → `0`.
     pub fn delete_messages_by_ids(
         &self,
         chat_id: &str,
@@ -490,8 +493,15 @@ impl<'c> ChatMessagesRepository<'c> {
         }
         if removed > 0 && chats_read::find_by_id(self.conn, chat_id)?.is_some() {
             let all = chats_messages_read::get_messages(self.conn, chat_id)?;
+            // Deleting the newest character-authored message must walk
+            // `lastMessageAt` *backwards*, not leave it pointing at a row that
+            // no longer exists — recompute from what survives (v4 `735d9408c`).
+            // It can go to NULL. `updatedAt` is still deliberately not bumped.
             let update = ChatUpdate {
                 message_count: Some(count_visible_messages(&all) as f64),
+                last_message_at: Some(chats_messages_read::get_last_played_message_at(
+                    self.conn, chat_id,
+                )?),
                 ..Default::default()
             };
             ChatsRepository::new(self.conn).update(chat_id, &update)?;
@@ -528,9 +538,18 @@ impl<'c> ChatMessagesRepository<'c> {
             .find(|e| e.get("id").and_then(Value::as_str) == Some(message_id)))
     }
 
-    /// The shared metadata side-effect: recount visible messages; for a batch that
-    /// contains any actual message bump `lastMessageAt`/`updatedAt` to a freshly
-    /// minted `now`; fold `spokenThisCycle` over the batch in order.
+    /// The shared metadata side-effect: recount visible messages; bump
+    /// `updatedAt` for a batch that contains any actual message and
+    /// `lastMessageAt` only when the batch actually carried **character-authored**
+    /// content (v4 `735d9408c`) — both to the SAME freshly minted `now`; fold
+    /// `spokenThisCycle` over the batch in order.
+    ///
+    /// v4 splits this across `addMessage` (`isCharacterAuthoredMessage(validated)`)
+    /// and `addMessages` (`validated.some(isCharacterAuthoredMessage)`); v5
+    /// collapsed the two into this one batch-shaped helper, and `.any()` over a
+    /// one-event slice is exactly v4's single-event test. A Staff announcement is
+    /// a message row but not conversational activity, and must not resurrect a
+    /// quiet chat at the top of the list.
     fn update_chat_metadata(
         &self,
         chat_id: &str,
@@ -551,9 +570,14 @@ impl<'c> ChatMessagesRepository<'c> {
         let has_actual = events
             .iter()
             .any(|e| matches!(e, ChatEventInput::Message(_)));
+        // Character-authored implies actual (the predicate demands
+        // `type: 'message'`), so one mint serves both — as v4's single `now` does.
+        let has_character_authored = events.iter().any(is_character_authored_input);
         if has_actual {
             let now = now_iso();
-            update.last_message_at = Some(Some(now.clone()));
+            if has_character_authored {
+                update.last_message_at = Some(Some(now.clone()));
+            }
             update.updated_at = Some(now);
         }
 
@@ -602,6 +626,20 @@ fn count_visible_messages(messages: &[Value]) -> usize {
 /// Build the turn-machine view for the spoken-this-cycle helper. Only
 /// `type:'message'` events affect the cycle; the others resolve to `None` inside
 /// the helper (its first `type` check), so a placeholder role is fine.
+/// [`crate::chat_activity::is_character_authored_message`] over the typed write
+/// shape. The `type === 'message'` half is the enum arm; the field-level half is
+/// the shared predicate body, so the two spellings cannot drift.
+fn is_character_authored_input(event: &ChatEventInput) -> bool {
+    let ChatEventInput::Message(m) = event else {
+        return false;
+    };
+    let sender = m.system_sender.as_deref().map(Value::from);
+    // A present `customAnnouncer` is a parsed object, which is truthy in JS
+    // however empty it is.
+    let announcer = m.custom_announcer.as_ref().map(|_| Value::Bool(true));
+    crate::chat_activity::is_character_authored_parts(&m.role, sender.as_ref(), announcer.as_ref())
+}
+
 fn message_view(event: &ChatEventInput) -> MessageView {
     match event {
         ChatEventInput::Message(m) => MessageView {

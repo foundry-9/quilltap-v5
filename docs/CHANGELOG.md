@@ -157,6 +157,35 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+#### 2026-09-01 — fix(chats): lastMessageAt moves only when a character spoke (v4 735d9408c, bug 112)
+
+_Versions: core 0.0.721._
+
+The write side of P4.D140. `update_chat_metadata` splits the one gate v5 had
+into two: `updatedAt` still moves for any actual message row, `lastMessageAt`
+only when the batch carried character-authored content. Both still take the
+same single minted `now`, since a character-authored event is necessarily an
+actual one.
+
+`delete_messages_by_ids` now recomputes `lastMessageAt` from what survives, so
+deleting the newest character message walks the date backwards instead of
+leaving it pointing at a row that no longer exists; it can go to NULL, and
+`updatedAt` is still deliberately not bumped. `get_last_played_message_at`
+takes the shared `CHARACTER_AUTHORED_MESSAGE_FILTER`, so staleness and display
+now agree by construction.
+
+Red-first: regenerating `chats_messages_tier2` at the pin turned the existing
+kitchen-sink `systemSender: "host"` case red — v5 stamped `lastMessageAt`
+where v4 leaves it NULL — and the fix turned it green. Both corpora then grew
+the arms v4's own new test file pins: a Staff-only batch, a mixed batch, an
+announcement bubble and a raw TOOL row on the add side; on the delete side a
+chat whose date walks back PAST a Staff row (with a newer tool row and
+announcement bubble present, so the old narrow filter would pick the wrong
+one) and a chat that clears to NULL. Three mutations, each reddening the arm
+it should. The two maintenance families were re-measured rather than assumed:
+their fixture's played messages are plain ASSISTANT rows, so the widened
+predicate does not flip their staleness.
+
 #### 2026-09-01 — feat(chat-activity): the character-authored chokepoint (v4 735d9408c, bug 112)
 
 _Versions: core 0.0.720, harness 0.0.617._

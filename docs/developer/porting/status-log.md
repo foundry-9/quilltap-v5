@@ -95322,3 +95322,64 @@ cd /tmp/qt-v4-pin-p4d140-735d9408c
 QT_ORACLE_CHAT_ACTIVITY=/tmp/oracle-chat-activity.ndjson \
   cargo test -p quilltap-harness --test chat_activity_equivalence
 ```
+
+### Unit 2 — the write gates, the delete recompute, and the widened played-message predicate
+
+**Red-first, measured before a line of the fix.** Regenerating
+`chats_messages_tier2_equivalence` from the `735d9408c` pin turned the family
+RED on exactly one cell: the corpus's kitchen-sink `addMessage` already carries
+`systemSender: "host"`, and v5 stamped `lastMessageAt` where v4 (post-fix)
+leaves it NULL. That is bug 112 in v5, reproduced by the existing corpus without
+adding anything.
+
+Three edits, all in `crates/quilltap-core/src/db`:
+
+- **`chats_messages.rs` `update_chat_metadata`** — v5 collapsed v4's two write
+  sites into one batch-shaped helper, so the split is one gate becoming two:
+  `updatedAt` on `has_actual`, `lastMessageAt` on
+  `events.iter().any(is_character_authored_input)`. `.any()` over a one-event
+  slice IS v4's single-event `isCharacterAuthoredMessage(validated)` test.
+  Character-authored implies actual (the predicate demands `type: 'message'`),
+  so ONE minted `now` still serves both, exactly as v4's single `now` does. The
+  module doc and both replaced comments carry v4's replacement text.
+- **`chats_messages.rs` `delete_messages_by_ids`** — the `removed > 0` arm gains
+  `last_message_at: Some(get_last_played_message_at(...))` (it can set NULL);
+  `updatedAt` is still not written, so `update` preserves it. `clear_messages`
+  already nulled — untouched, as in v4.
+- **`chats_messages_read.rs` `get_last_played_message_at`** — the WHERE clause
+  is now `crate::chat_activity::CHARACTER_AUTHORED_MESSAGE_FILTER` interpolated,
+  not a hand-written duplicate, so the live lookup and the recompute pass cannot
+  drift. v4's new doc comment ported.
+
+**Corpus growth** (both specs, both fixtures /tmp-built — nothing committed
+here is a shipped `.db`):
+
+- `chats-messages-tier2.json` — four new chats/ops covering v4's own new test
+  file: a **Staff-only batch** (`lantern` + `commonplaceBook` → `lastMessageAt`
+  NULL, `updatedAt` bumped), a **mixed batch** (`host` then USER → both bumped),
+  an **announcement bubble**, and a **raw TOOL row**. Measured post-fix: E NULL /
+  F stamped / G NULL / H NULL.
+- `chats-messages-ops-tier2.json` — two new chats: one whose newest
+  character message is deleted and whose date must walk back **past a Staff
+  announcement** to `2026-02-02T00:00:01.000Z` (seeded with a newer raw TOOL row
+  and a newer announcement bubble on purpose, so the OLD narrow
+  `systemSender IS NULL` spelling would pick the wrong survivor), and one where
+  deleting the only character message clears the column to NULL with a Staff row
+  still present.
+
+**Mutation proofs (three, each verified applied):** reverting the write-gate
+split → `chats_messages_tier2` red on the chats dump; dropping the delete
+recompute → `chats_messages_ops_tier2` red; narrowing
+`get_last_played_message_at` back to `type = 'message' AND systemSender IS NULL`
+→ `chats_messages_ops_tier2` red (the widening itself is discriminating, not
+just inherited).
+
+**Blast radius re-measured, not assumed.** `maintenance_sweep_tier2` and
+`maintenance_ops_tier2` regenerated fresh at the pin and re-run: both GREEN. The
+order flagged `build-maintenance-sweep-fixture.ts:223`'s "RECENT participant
+message" as a possible flip — measured, it is a plain `ASSISTANT` row with
+`systemSender NULL` and no `customAnnouncer`, so the widened predicate still
+matches it and neither chat's staleness moves.
+`build-retention-caches-fixture.ts`'s `dressChat` sets `lastMessageAt` by raw
+`UPDATE` after the adds, so it is immune to the write-gate change by
+construction.
