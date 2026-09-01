@@ -157,6 +157,35 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+#### 2026-09-01 — feat(boot): recompute existing chats' last-activity dates once (v4 735d9408c, bug 112)
+
+_Versions: core 0.0.725, harness 0.0.619, host 0.0.87._
+
+Bug 112's data pass, re-homed from v4's migration runner into the boot repair
+chain in the P4.D97 shape. `recompute_chat_last_message_at` rewrites
+`lastMessageAt` for every existing chat under the shipped predicate — the date
+walks backwards off a Staff announcement, and a chat where only the Staff ever
+spoke clears to NULL, where readers fall back to `createdAt`. `updatedAt` is
+never written. One transaction. On the real instance v4 measured 608 of 871
+chats mis-dated.
+
+The drift query uses `IS NOT`, not `<>`, so a NULL on either side counts as a
+difference — the chats that must be CLEARED are exactly the rows going to NULL,
+and `<>` would never find them.
+
+Once-only through v4's own `migrations_state` ledger, in both directions. A boot
+that finds NO drift writes NO ledger row and simply re-checks next time, exactly
+as v4's `shouldRun()` gate makes its runner behave: a v5 stamp on a clean boot
+would make a later v4 boot skip a migration it never ran.
+
+The new `chat_activity_heal_equivalence` family drives v4's REAL migration plus
+its REAL ledger write over two scenarios — a mixed instance carrying every shape
+from v4's own integration suite, and a clean one. It measures the `''`-
+systemSender seam rather than guessing at it: the SQL mirror reads `IS NULL`, so
+that chat clears, even though the in-memory predicate would have counted it.
+Four mutation proofs, plus three unit tests. v4's prettify label is a recorded
+non-port (no v5 runner UI).
+
 #### 2026-09-01 — fix(restore): re-derive a restored chat's last-activity date from its transcript (v4 735d9408c)
 
 _Versions: core 0.0.724._

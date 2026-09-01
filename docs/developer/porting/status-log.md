@@ -95537,3 +95537,62 @@ From Lore" is a documented disabled stub
 (`apps/web/src/app/chat/cast/add-character-dialog.ts:66,250`, which names
 `components/settings/ai-import/AIImportWizard` as unported). Nothing to port;
 recorded here rather than stubbed.
+
+### Unit 5 — the recompute boot heal + its NEW family
+
+`crates/quilltap-core/src/db/chat_activity_recompute_heal.rs` (NEW), in the
+P4.D97 `thinking_prefill_retire_heal` shape: completed-check FIRST (v4's runner
+orders `isMigrationCompleted` before `shouldRun`), then v4's `shouldRun` gates
+(both tables, the `chats` column, all six `REQUIRED_MESSAGE_COLUMNS`), then the
+drift query, then ONE transaction of `UPDATE`s, then the lazy
+`migrations_state`/`migrations_metadata` creation and the row.
+
+Faithful details worth naming:
+
+- **The drift query uses `IS NOT`, not `<>`** — a NULL on either side counts as
+  a difference, and the rows that must be CLEARED are exactly the ones going to
+  NULL. The correlated subquery's predicate is the shared
+  `CHARACTER_AUTHORED_MESSAGE_FILTER`, not a second copy (the whole point of the
+  chokepoint; unqualified column names are unambiguous because `chats` has none
+  of `type`/`role`/`systemSender`/`customAnnouncer`).
+- **A no-drift boot writes NO ledger row.** v4's `shouldRun()` is false when
+  nothing drifted, so its runner never records the migration and retries it
+  cheaply next boot. A v5 stamp there would make a LATER v4 boot skip a
+  migration it never ran — the cross-app hazard this whole ledger mechanism
+  exists to avoid. `RecomputeOutcome::NoDrift` is its own variant so the boot
+  log and the differential can both see it.
+- v4's success sentences byte-exact (the pluralized `chat`/`chats`);
+  `NO_DRIFT_MESSAGE` carried and pinned even though neither runner reaches it.
+- **Deliberate non-port:** v4's `lib/startup/prettify.ts` label
+  ("Re-reading each conversation to find when a soul last actually spoke in
+  it…") is migration-runner UI with no v5 counterpart.
+
+**Call site:** `quilltap-host/src/host.rs`, in the boot repair chain right after
+the P4.D97 data pass, logging `updated`/`cleared` on the `Ran` arm only.
+
+**NEW family `chat_activity_heal_equivalence`** over
+`harness/oracle/cases/chat-activity-heal.test.ts`, which drives v4's REAL
+migration AND its REAL `recordCompletedMigration`, following the runner's exact
+sequence. Two scenarios from the committed spec
+`harness/oracle/fixtures/chat-activity-heal.json`:
+
+- `mixed` — twelve chats: the walk-back past a Lantern announcement
+  (→ `2026-08-16`), the whisper kept, six clears-to-NULL arms (Staff /
+  announcement bubble / TOOL / SYSTEM / context-summary / system event), the
+  already-correct row untouched, the never-stamped row filled (→ `2026-03-03`),
+  a chat with no messages at all, and the **`''`-systemSender seam**. v4
+  measured **10 updated / 8 cleared**, and the seam chat CLEARS — the SQL
+  mirror's `IS NULL` wins where the in-memory predicate's truthiness would have
+  counted it. Measured, not assumed. The oracle also emits `shouldRunAfter`
+  (false — the rewrite is its own fixed point) and `skippedOnRerun` (true), and
+  the Rust arm re-runs v5's heal to prove it answers `AlreadyCompleted` over the
+  row **v4's runner wrote**.
+- `no-drift` — v4 skips, `ledger` and `metadata` are EMPTY on both sides, and
+  `noDriftRunMessage` pins v4's own no-op sentence against `NO_DRIFT_MESSAGE`.
+
+**Mutation proofs (four, each verified applied):** stamping the ledger on
+no-drift → `[no-drift] v4 skipped; v5 must too`; `<>` for `IS NOT` →
+`[mixed] itemsAffected` 1 vs 10; dropping `customAnnouncer` from the predicate →
+9 vs 10; skipping the completed guard → `[mixed] v5 must skip on the ledger
+row`. Plus three unit tests (clean instance stamps nothing; the ledger row makes
+it once-only; a missing table is NotApplicable and stamps nothing).
