@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — chore(unify): the drift catch-up round 2 of 2 — P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66
+
+_Versions: core 0.0.732, harness 0.0.626, host 0.0.89, web 0.0.101, SPA 0.5.614; cli/tauri unchanged._
+
+Five of six orders unified onto main and P4.D138 left OPEN at units 5–7; the
+oracle baseline moves `7fb668263` → `4622411fd` (v4 HEAD, zero commits past
+it) with the LoRA train's three rows kept PARTIAL in the drift ledger. Landed:
+the LoRA train's whole client half + server units 1–4 (matchers, the `loras`
+write guard with the Zod envelope and `CoreError.details`, the params builder
++ five-site consolidation, the NanoGPT dialects at the commit-1 pin), bug
+112's `lastMessageAt` redefinition whole (the chokepoint, both write sites,
+six readers, restore, the boot recompute heal, the SPA flips), the Concierge
+four-state whole (predicate family, resolver, flips + sentences, the
+`conciergeState` PUT arm, the SPA control/badge/twin, the live walk),
+`qt-range` + finding #107 + the host-class guard, and finding #106's
+optimistic-bubble reconcile with the suite's first mid-turn beat. Wires: the
+sidebar `conciergeOverride` binding (spec-pinned), §C measured a NO-OP with
+evidence (message-bubble danger styling was never ported — a candidate), the
+three P4.D140 masks deleted, the pending-`loraSupport` measured strip. The §3
+review (five parallel readers) fixed six groups on the unify branch — three
+would have shipped: the sidebar select's permanent optimistic latch (v4
+derives from props; a refetch/auto-flip/other tab can now win), the
+optimistic-bubble echo scoped across two clocks (now an id snapshot of the
+rows on screen at send time), and a harness family the Concierge kind rename
+had silently broken; plus v4's `safeQuery` fallback at both new
+last-played-read sites, the orientation-inserted `size` key slot (corpus
+row red-first), the qt-class guard's one-line-header regex + its ordered
+self-test, the modal's providerKey dependency, and small doc/byte repairs.
+The gate caught one more: v4's `overflow-hidden` markdown frame clips its own
+toolbar pickers (a v4 filing candidate; v5 keeps the frame without it,
+recorded). Gate: the 36-family sweep from the `4622411fd` pin 36/36 zero SKIP
+(+ the two repaired families); fmt/clippy both feature sets; release build;
+**477 test binaries / 2,655 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines — exit 0** (the first full run stopped fail-fast at binary 26 on `avatar_job_tier3`, the second at `image_generation_tier3` — the key-mirror catch and the `/tmp/qt-imggen-*` pair collision recorded above; `image_generate_route_equivalence` shares that pair AND its env-var names with the tier-3 family, so its oracle var was withheld from the block and it ran GREEN by name against its own snapshot under `/tmp/unify-r2/route/`); ng test 373 files / 5,782; ng build clean; full Playwright
+**259 passed / 0 failed / 3 skipped** (the standing store-probe park + the two D138-gated LoRA beats; the suite grew 256 → 262 with the two LoRA beats, the four-state walk, the two mid-turn bubble beats and their siblings — the first run went 257/2/3 on the two gate catches above, both repaired and re-run whole).
+
 #### 2026-09-01 — feat(nanogpt): the LoRA wire dialects + the passthrough allow-list (P4.D138 unit 4)
 
 _Versions: core 0.0.723._

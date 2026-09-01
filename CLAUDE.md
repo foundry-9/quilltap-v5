@@ -2496,9 +2496,73 @@ records THERE. Update this summary only when a phase or round completes.
   re-measured compression row (the 75 s C4 numbers are SUPERSEDED), the
   live curly-quote resolve, and the stand-in toasts. Round record:
   `status-log.md`.
-- **Oracle baseline: `7fb668263` (2026-08-29, v4 main — the Discord-link
-  doc commit), adopted at the round-1 drift catch-up unification
-  (2026-09-01).**
+- **The round-2 drift catch-up (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥
+  P4.D142 ∥ P4.66): UNIFIED on main (2026-09-01) — FIVE CLOSED, P4.D138
+  OPEN at units 5–7; the oracle baseline MOVES to `4622411fd` (v4 HEAD —
+  zero drift) with the LoRA train's three ledger rows PARTIAL.** The LoRA
+  train's client half whole + server units 1–4 (the model matchers + LoRA
+  support resolver over a 101-row tier-1 family with the JS-`.` class
+  measured; the `loras` write guard answering v4's Zod ENVELOPE through a
+  new `CoreError.details` carry; the params builder + the five-site
+  consolidation — v5 measurably HAD v4's "three sites read only quality"
+  drift, and the widened corpora found a second pre-existing defect, the
+  tool-input schema DEFAULTS v5 never applied; the NanoGPT dialects recorded
+  at the commit-1 pin with bug 110 PRE-fix by name; the manifest regen);
+  **units 5–7 OPEN** (bugs 110/111, the `list-models` `loraSupport` read
+  side + `options-schema` + the catalog cache, the HuggingFace
+  `lora-metadata` lookup) — the routes family strips v4's key behind a
+  MEASURED tripwire, the SPA's beats stay gated, and its options-schema
+  fetch 400s silently into the legacy panel until they land ∥ bug 112 whole
+  (`chat_activity` chokepoint — the in-memory truthiness and SQL `IS NULL`
+  spellings mirrored, not unified, the `''`-sender seam MEASURED; both
+  write sites red-first; the six readers; restore re-deriving from the
+  replayed transcript; the ai-import twin NO-COUNTERPART; the boot recompute
+  heal in the P4.D97 ledger shape — a no-drift boot writes NO row, the
+  cross-app hazard; the four SPA flips; the e2e seed landmine; plus the
+  `allowCheapFallback` P4.D135 remainder fixed out of mandate) ∥ the
+  Concierge four-state whole (the predicate family reshaped at every call
+  site with the two overloaded predicates DELETED as v4 deleted them; the
+  resolver's operator arms; the flips + five sentences byte-exact; the
+  `conciergeState` PUT arm closing v5's long-named deferral with the
+  guard order and `double_option` tri-state pinned; the classifier-gate
+  corpora that can finally SEE the gate — both families were green on a
+  reverted gate before; the SPA control in v4's slot, the single-pill
+  badge, the client twin, the four-state walk LIVE at unification) ∥
+  `qt-range` byte-identical across all twelve v5 range hosts + finding
+  #107's `qt-markdown-field` rule + the host-class guard at the ordered
+  NARROW scope ∥ finding #106 FIXED with the suite's first mid-turn
+  observation beat (the realtime hint injected at the wire through the
+  app's REAL `EventSource` handler; 12/12 samples duplicated pre-fix).
+  **The §3 review (five parallel readers) fixed six groups — three would
+  have shipped:** the sidebar select's PERMANENT optimistic latch (a
+  refetch, an auto-flip or another tab could never win after the first
+  pick; v4 derives from props and re-applies — now the P4.D115 idiom,
+  pinned both ways), the bubble-echo predicate scoped across two CLOCKS
+  (browser vs server — the Docker deployment splits them; now an id
+  snapshot of the rows on screen at send time), and
+  `post_office_writers_tier3` silently BROKEN by the kind rename (its
+  fixture drove the retired strings; the lane record credited coverage to
+  a family that never mentions them); also v4's `safeQuery` FALLBACK at
+  both new last-played reads, `to_key_value`'s orientation-inserted `size`
+  slot (corpus-blind until the new row), the qt guard's one-line-header
+  regex + the ordered self-test that had not landed, the modal's
+  providerKey dep, and byte/doc repairs. **The gate's own catch:** v4's
+  `overflow-hidden` markdown frame clips its OWN toolbar pickers (v4
+  filing candidate; v5 keeps the frame without it, recorded). Gate: the
+  36-family sweep 36/36 zero SKIP from the `4622411fd` pin; **477 test binaries / 2,655 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines — exit 0** (the first full run stopped fail-fast at binary 26 on `avatar_job_tier3`, the second at `image_generation_tier3` — the key-mirror catch and the `/tmp/qt-imggen-*` pair collision recorded above; `image_generate_route_equivalence` shares that pair AND its env-var names with the tier-3 family, so its oracle var was withheld from the block and it ran GREEN by name against its own snapshot under `/tmp/unify-r2/route/`);
+  clippy both feature sets; release build; ng 373 files / 5,782; full
+  Playwright **259 passed / 0 failed / 3 skipped** (the standing store-probe park + the two D138-gated LoRA beats; the suite grew 256 → 262 with the two LoRA beats, the four-state walk, the two mid-turn bubble beats and their siblings — the first run went 257/2/3 on the two gate catches above, both repaired and re-run whole). Versions: core 0.0.732, harness 0.0.626, host
+  0.0.89, web 0.0.101, SPA 0.5.614. 💸 the dogfood queue gains the bug-112
+  boot recompute on the Friday copy (measure the population FIRST), the
+  four-state walk on a real chat, the Uncensored route without danger
+  paint, the themed sliders, the clock-free mid-turn bubble. **Next: finish
+  P4.D138 (units 5–7), then the owed dogfood pass.** Round record:
+  `status-log.md`.
+- **Oracle baseline: `4622411fd` (2026-08-31, v4 main — the 4.9.0
+  release-notes doc commit), adopted at the round-2 drift catch-up
+  unification (2026-09-01); the LoRA train's three ledger rows stay
+  PARTIAL (P4.D138 units 5–7) and are tracked by that order, not by
+  `/driftcheck`.**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

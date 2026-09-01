@@ -96900,3 +96900,228 @@ artifact); core/harness/host/web/cli/tauri unchanged (no crate touched).
 refusal-arm deferrals and none were needed (the deterministic wire-injection
 technique reproduced the defect on the first corrected attempt, no fallback
 required).
+
+---
+
+## Round record — the drift catch-up round 2 of 2 unification (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66), 2026-09-01
+
+**FIVE OF SIX ORDERS CLOSED; P4.D138 OPEN at units 5–7; the oracle baseline
+MOVES `7fb668263` → `4622411fd`** — `5f56f7a7d` ABSORBED(p4.d142),
+`735d9408c` ABSORBED(p4.d140), `e41fcb12e` NO-PORT-RATIFIED(p4.d138's rider),
+`4622411fd` NO-PORT-RATIFIED(the unify — `docs/releases/4.9.0.md` alone,
++70/−6, re-measured), `60e3c4a0a` ABSORBED(p4.d141); the LoRA train
+`84f33ce94` → `648d5c8aa` → `2ece98c90` PARTIAL (the whole client half +
+server units 1–4; units 5–7 — bugs 110/111, the `list-models` `loraSupport`
+read side + `options-schema` + the NanoGPT catalog cache, the HuggingFace
+`lora-metadata` lookup — stay in the ledger §3 as PARTIAL rows and in
+P4.D138's resume list). v4 HEAD at the move IS the baseline: zero commits
+past it, regen rule NO PIN REQUIRED (with the two standing exceptions the
+ledger §1 names). The §2 probe passed at survey and again at the move.
+
+**Reconciliation.** `unify/round2-drift-catchup` from main; 33 lane commits
+cherry-picked (6 + 9 + 6 + 9 + 2 + 1) in dependency order — D138 → D140 →
+D141 (§E: D138 before D141) → D139 → D142 → P4.66 — under union-merge
+attributes on the two append-only docs. Every manifest delta verified
+version-only before any resolution; versions recounted base + bumps by an
+incremental resolver (ours + the lane commit's own delta): core 719+4+7+2 →
+0.0.732, harness 616+3+3+4 → 0.0.626, host 86+2+1 → 0.0.89, web 100+1 →
+0.0.101, SPA 600+9+1+1+2+1 → **0.5.614** — the silent auto-merge trap fired
+again (two identical 600→601 bumps from D140 and D141 collapsed; the
+recount caught it). ONE genuine both-sides conflict:
+`harness/oracle/fixtures/story-background-job.json` — D138 widened the
+image-profile bags, D141 pretty-printed the file and added
+`uncensored_override_candid`; resolved to D138's widened profiles inside
+D141's file. The §E region split held: `generate_image.rs`,
+`story_background_job.rs` and `api/types.rs` auto-merged clean. Both
+lockfiles resynced once at the end.
+
+### The unification wires
+
+- **§C measured as a NO-OP with evidence.** v4 `SalonView.tsx:1496` flips
+  the `VirtualizedMessageList → MessageRow → bubble` `dangerous` prop to
+  `shouldShowDangerStyling(chat)`; the order mapped that onto v5's
+  `salon-conversation.ts:311` — which is the SIDEBAR's raw `isDangerousChat`
+  (v4's own `:1883` keeps that raw for the control's sake). v5's
+  `qt-message-list` has no danger input: message-bubble danger styling was
+  never ported. Recorded as a candidate (phase-4 §3); when ported it binds
+  the predicate, never the raw label.
+- The `[conciergeOverride]="c.conciergeOverride ?? null"` binding on
+  `<qt-chat-sidebar>` (the D141 ↔ P4.66 wire), pinned by a new Salon spec
+  reading the sidebar instance's inputs; `P4D141_SALON_WIRE_LANDED` → true.
+- The three `LAST_MESSAGE_AT_PENDING_P4D140` masks + their measurement
+  helpers DELETED (D140 landed on the branch; `danger_resolver`,
+  `danger_gatekeeper_tier3`, `salon_mutations` back on plain equalities and
+  green from the pin).
+- `image_profiles_routes_equivalence`: the four `list_models` success arms
+  run through a MEASURED strip of v4's `loraSupport` key behind
+  `LORA_SUPPORT_PENDING_P4D138_UNIT6` — v4 must carry an object, v5 must
+  carry no key, nothing else may differ; it reddens the moment unit 6 lands.
+- `generate_image.rs:1585`'s §E comment; the `chat-sidebar.ts` doc.
+- §D name-for-name: D139's `imageProfileOptionsSchema` /
+  `imageProfileLoraMetadata` verbs exist ONLY client-side by design (units
+  6–7); D141's `conciergeState` + widened unions match `api/types.rs`;
+  D140's `RecentChat.createdAt` lives in `home.api.ts` (the order's §D
+  reservation was stale — zero D140 contract hunks, as its record said).
+- `4622411fd` NO-PORT ratified by `git show --stat` at the unify.
+
+### The §3 review (five parallel reviewers — D138 / D139 / D140 / D141 / D142+P4.66 — each byte-comparing against v4's real source at the lanes' pins; the verdict owned at the unify)
+
+**THREE findings would have shipped; six groups fixed on the unify branch
+(`f01d0392` + the flag/lint follow-up `6cf1eac2` + the CSS follow-up):**
+
+1. **The headline: the sidebar Concierge select held a PERMANENT optimistic
+   latch (P4.D141).** `localConciergeState` was set on every pick and
+   cleared only in the `catch`; the displayed state was `latch ?? derived`.
+   After the first successful flip a refetch, a classifier auto-flip or
+   another tab's change could never win for the rest of the session, and
+   the control could disagree with the header badge derived from the same
+   two fields — the exact failure the shared predicate module exists to
+   prevent. v4 (`ChatSidebar.tsx:1123`) derives from props and React
+   RE-APPLIES the controlled value on every render. Fixed to v4's shape:
+   no latch, the derived value re-written to the element after each render
+   (the P4.D115 ScenarioSelect idiom) — which is also what reverts a
+   rejected pick. The invented `if (next === previous) return` removed (v4
+   fires the PUT unconditionally). Spec-pinned both directions (after a
+   successful pick the element reads the STORED state, then follows the
+   refetch, then follows an auto-flip); the gated walk's
+   `toHaveValue(step.pick)` assertion is now REAL (it used to re-read the
+   latch).
+2. **The optimistic-bubble echo was scoped across two CLOCKS (P4.66).**
+   `candidate.createdAt >= temp.createdAt` compared the server's
+   `clock::now_iso()` against the browser's `Date.now()`; the first-class
+   HTTP/Docker deployment puts them on different machines. A server behind
+   the browser makes the echo sort before the bubble — finding #106 returns
+   for the whole turn; a server ahead makes an EARLIER duplicate sort after
+   it — the live bubble vanishes on a repeated send. Every spec fixture
+   minted both stamps from one clock, so the block was structurally blind.
+   Fixed with an id snapshot of the rows on screen at send time
+   (`optimisticPriorIds`), clock-free; the predicate and the TestBed cases
+   now pin both skew directions (a persisted echo stamped EARLIER than the
+   bubble matches; an earlier duplicate stamped LATER does not eat it).
+3. **`post_office_writers_tier3_equivalence` was BROKEN by the kind rename
+   (P4.D141).** The fixture still drove `manual-off-duty` / `manual-on-duty`;
+   `ConciergeManualKind::from_wire(...).expect(...)` panicked on the first
+   Concierge case, and v4's exhaustive `buildManualContent` switch would
+   have written `undefined`. The lane never opened the family, and its
+   record credited the sentence coverage to
+   `post_office_concierge_lantern_suparna_equivalence` — which does not
+   mention the kinds at all (the sentences WERE pinned, by
+   `danger_resolver_equivalence` §2's bubble diff). Fixed: the two cases
+   renamed to `manual-vouched` / `manual-resumed`, `manual-uncensored`
+   added, the family regenerated at the pin (22 rows, the uncensored-door
+   sentence present in the NDJSON). Corollary: the lane's "ZERO SKIP lines"
+   gate claim could not have been true as written — the family SKIPs
+   without its three env vars and panics with them.
+4. **Both NEW `get_last_played_message_at` call sites propagated a DB error
+   (P4.D140)** where v4 wraps the lookup in `safeQuery(…, null)` — FALLBACK
+   mode: a failed read logs and yields NULL; the delete still lands its
+   `messageCount`, and restore writes NULL with no warning pushed (only
+   `repos.chats.update` reaches v4's catch). Now v4's shape at both sites
+   (error-level log with v4's sentence, NULL). No input reaches the arm, so
+   it is pinned by reading v4 rather than by a corpus (the
+   force-a-swallowed-catch-by-breaking-the-table shape, recorded).
+5. **`ImageGenParams::to_key_value` emitted `size`/`aspectRatio` in
+   DECLARATION order (P4.D138)** where v4 sets `params.size` conditionally
+   in the merge AND again in the orientation pass — when only the second
+   fires, JS inserts `size` after `steps`. The `pb_*` rows are the only
+   place insertion order is measured, and every orientation row carried a
+   stored size; the four tier-3 families normalize insertion order away by
+   construction. Fixed with per-slot `*_inserted_by_orientation` flags the
+   builder sets, plus the missing corpus shape
+   (`pb_orientation_inserts_size_last` — RED first, GREEN after, the
+   builder mutation reddens exactly it). Also on D138: the NanoGPT static
+   id list is DERIVED from the dialect table (a hand copy that had already
+   drifted once); `lora_data_for`'s doc named a module that does not
+   exist; the routes family header names the pending strip; a dead
+   `log_context` parameter dropped.
+6. **The qt-class guard's `COMPONENT_HEADER` regex missed one-line
+   `@Component({ …, template: '' })` headers (P4.D142)** — two spec hosts
+   write exactly that — and, worse, a lazy `[\s\S]*?` bounded on the
+   indented `template:` could span INTO the next component and attribute
+   its `host:` block to the wrong site. Bounded on `\btemplate:`. **The
+   ordered `+ its spec/self-test` had not landed** — a `--self-test` with
+   five red-first shapes (an unruled host class; the one-line header not
+   swallowing the next host; a `[class.qt-…]` binding; an all-resolving
+   host; the selector-vs-class collision) now runs ahead of `npm test` and
+   `npm run lint`. The inlined `qt-markdown-field` frame names the three
+   utility rules it copies; the comment-scan false-pass shape is documented
+   at the script.
+7. Smaller: the image-profile modal's options-schema effect depended on
+   the providers LIST where v4's dep is the normalized `providerKey` STRING
+   (two identical dispatches per open; hoisted to a computed, pinned at
+   exactly one dispatch); `failureSentence` renamed apart from the module
+   function it calls; the Flagged pill's no-category title byte (no
+   trailing period, v4 `SalonView :1090`); the doc comment
+   `is_character_authored_input` had stolen from `message_view`; three
+   stale `?? updatedAt` docs; a local unit test for the `allowCheapFallback`
+   read/write halves; the `chat-sidebar.ts` cross-lane note retired.
+
+**The gate's own catch:** the first full Playwright run went red on
+`composer-char-insert-flow`'s markdown-field emoji picker — D142's
+`.qt-markdown-field` rule carried v4's `overflow-hidden`, and the toolbar
+sits INSIDE that frame on both sides with its pickers opening ABOVE it
+(`absolute bottom-full`), i.e. outside the frame's box. v4's CSS is
+byte-identical and has no escape, so **v4 clips its own toolbar pickers in
+every framed markdown editor** (a v4-side filing candidate); v5's beat had
+passed only because the host had NO rule before #107. Landed as a recorded
+divergence: the frame minus `overflow-hidden`, the beat as its pin.
+The four-state walk's first live run reached step 10 of ten and fell to a
+strict-mode locator (`manual-resumed` fires twice in the walk, so its
+phrase sat in two expanded bubbles) — repaired as a COUNT of phrase bubbles
+so far (a `.last()` would have been satisfied by the earlier bubble alone);
+nine live transitions, the stored pairs and the badge were already green.
+And the second workspace run caught the `to_key_value` fix's own shadow: the
+avatar/story oracle cases' `canonicalImageKey` mirrors rebuilt the canned
+key in a FIXED order (size early), so v5's now-correct late `size` on the
+orientation-only avatar path missed the canned provider — the mirrors now
+walk the built object's OWN key order (it is the very object
+`buildImageGenParams` made), all four image tier-3 families regenerated and
+green.
+
+**Recorded, not fixed (the round's follow-ups, in phase-4's candidates):**
+the temp bubble's seat vs the server's resolution; `waitForChatRefetch`'s
+unscoped `chatGet` match and the injection hook's silent degradation; the
+workspace-search Documents beat's positional chat pick; the modal's
+structured writers replacing a mid-edit JSON textarea once `loraSupport`
+renders without a schema; `ImageModelListing.loraSupport` with no reader on
+either side; the options-schema RESPONSE shape outside the contract; v4's
+in-flight Source edit re-inserting a stale answer (v4-faithful); the dozen
+residue hosts and six unpinned slider suffix strings; an executable
+bare-column guard for the shared SQL filter; `help/chats.md` → `p4.9i2`;
+`precompute_equivalence`'s blindness (D141's measurement); v4's unported
+`Posting NanoGPT image request` debug line, the `[Image LoRA]` warnings'
+dropped log context, the prompt-only `validate_image_generation_input`,
+`kept[0]` — all carried into D138's resume list.
+
+### The gate (2026-09-01, on the unify branch)
+
+- **Oracles:** the 36-family regen+run sweep through the sanctioned driver
+  from the pinned worktree `/tmp/qt-v4-pin-unify-r2-4622411fd` (built per
+  ledger §5.1, markers verified): **36/36 ok, zero SKIP** — the D138 set
+  (`image_gen_leaves`, `image_profiles_routes` [through the strip],
+  `image_dialects` [committed corpus at the `84f33ce94` pin], the four image
+  tier-3 families, `provider_registry`), D140's 21, D141's 8 (incl. the
+  three formerly-masked families back on plain equalities); plus
+  `post_office_writers_tier3` regenerated after the fixture repair (22
+  rows) and `image_gen_leaves` regenerated with the new row (red-first
+  proven, then green).
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean on BOTH feature sets; release build clean.
+- **`cargo test --workspace`** with the round's 82-variable env block (the
+  37 families' recipe `Run:` lines, the four oracle-side build vars
+  excluded, every path verified present), `TZ=UTC`: **477 test binaries / 2,655 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines — exit 0** (the first full run stopped fail-fast at binary 26 on `avatar_job_tier3`, the second at `image_generation_tier3` — the key-mirror catch and the `/tmp/qt-imggen-*` pair collision recorded above; `image_generate_route_equivalence` shares that pair AND its env-var names with the tier-3 family, so its oracle var was withheld from the block and it ran GREEN by name against its own snapshot under `/tmp/unify-r2/route/`).
+- **SPA:** `check-qt-classes --self-test` 5/5 + the guard 945 classes;
+  `npm test` **373 files / 5,782 tests / 0 failed**; `npm run build` clean.
+- **Full Playwright** (port 4319, one suite at a time, against the fresh
+  build): **259 passed / 0 failed / 3 skipped** (the standing store-probe park + the two D138-gated LoRA beats; the suite grew 256 → 262 with the two LoRA beats, the four-state walk, the two mid-turn bubble beats and their siblings — the first run went 257/2/3 on the two gate catches above, both repaired and re-run whole).
+
+Versions at unification: core 0.0.732, harness 0.0.626, host 0.0.89, web
+0.0.101, SPA 0.5.614; cli 0.0.17 / tauri 0.0.7 unchanged.
+
+**💸 the dogfood queue gains:** the bug-112 boot recompute on the Friday copy
+(measure the mis-dated population FIRST — v4 has run daily there since
+`735d9408c`, ledger §5.5), a Salon list dated by conversation and a restore
+keeping its chats' dates; the four-state Concierge walk on a real chat with
+the sentences and the stored pair; an Uncensored chat taking the uncensored
+route with no danger paint; the sliders' themed accent; the mid-turn user
+bubble on a real multi-character turn; the LoRA editor once D138 finishes.
