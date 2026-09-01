@@ -17,6 +17,7 @@ import type {
   ProviderOptionField,
   ProviderOptionsSchema,
 } from './provider-options-schema';
+import { fieldAppliesToModel } from './model-matchers';
 
 /**
  * A stored value (or a schema default) as the string an `<input>` displays
@@ -342,11 +343,12 @@ export class ProviderOptionsPanel {
     const schema = this.schema();
     if (!schema || schema.groups.length === 0) return [];
     const parameters = this.parameters();
+    const modelName = this.modelName();
     return schema.groups.map((group) => ({
       title: group.title,
       helpText: group.helpText,
       fields: group.fields
-        .filter((field) => this.shouldRender(field, parameters))
+        .filter((field) => this.shouldRender(field, parameters, modelName))
         .map((field) => this.prepare(field, parameters))
         // v4's `MultiEnumField` bails to null when nothing is selectable
         // (`ProviderOptionsPanel.tsx:232`), which draws no row.
@@ -354,8 +356,17 @@ export class ProviderOptionsPanel {
     }));
   });
 
-  /** v4 `shouldRenderField` (`:35-41`) — the RAW bag value, defaults excluded. */
-  private shouldRender(field: ProviderOptionField, parameters: Record<string, unknown>): boolean {
+  /** v4 `shouldRenderField` (`:36-46`) — the RAW bag value, defaults excluded. */
+  private shouldRender(
+    field: ProviderOptionField,
+    parameters: Record<string, unknown>,
+    modelName: string | undefined,
+  ): boolean {
+    // Model gating first: a field this model has no use for is not offered at
+    // all, whatever its sibling fields say. `appliesToModels` is advisory in the
+    // sense that a field without it renders everywhere — but once a plugin has
+    // named the models, an unnamed one is a deliberate no.
+    if (!fieldAppliesToModel(field.appliesToModels, modelName)) return false;
     if (!field.showIf) return true;
     return parameters[field.showIf.field] === field.showIf.equals;
   }

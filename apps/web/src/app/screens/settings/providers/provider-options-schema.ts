@@ -73,9 +73,17 @@ export interface ProviderOptionField {
   /** Mark this field as affecting an external piece of the host UI. */
   affects?: ProviderOptionDirective;
   /**
-   * Reserved for the model-keyed gating follow-up. Intentionally not consumed
-   * by either renderer (v4's comment: "Renderers that don't understand this
-   * field should render unconditionally").
+   * Restrict this field to a subset of models: a list of matchers, each an
+   * exact model id, a `*` glob (`flux-2-*`), or a family prefix (the longest
+   * matching prefix wins, so `flux-lora` also covers `flux-lora/inpainting`).
+   * The field renders when *any* matcher hits, and unconditionally when the
+   * list is omitted or the host does not know the selected model.
+   *
+   * Renderers that don't understand this field render unconditionally, so
+   * declaring it never breaks an older host.
+   *
+   * Live since v4 `84f33ce94`: {@link ProviderOptionsPanel} consults it
+   * through `fieldAppliesToModel` (`./model-matchers`) BEFORE `showIf`.
    */
   appliesToModels?: string[];
 }

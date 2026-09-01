@@ -673,3 +673,156 @@ describe('ProviderOptionsPanel (showIf)', () => {
     expect(el(fixture, '#pof-thinking_effort')).not.toBeNull();
   });
 });
+
+/**
+ * The model gate (v4 `84f33ce94`, `ProviderOptionsPanel.tsx:36-46`).
+ *
+ * `appliesToModels` stopped being reserved: `shouldRenderField` now consults
+ * `fieldAppliesToModel` FIRST, before `showIf`. This panel serves BOTH the
+ * connection-profile editor (P4.D84) and, from `84f33ce94`, the image-profile
+ * editor — so these cases are written against an LLM-side schema on purpose:
+ * the gate is live for connection profiles whether or not an image plugin ever
+ * declares a matcher list.
+ */
+describe('ProviderOptionsPanel (appliesToModels)', () => {
+  const schema: ProviderOptionsSchema = {
+    groups: [
+      {
+        fields: [
+          { key: 'always', label: 'Always', type: 'string' },
+          {
+            key: 'thinking_budget',
+            label: 'Thinking Budget',
+            type: 'number',
+            appliesToModels: ['deepseek-reasoner', 'glm-4.6-*'],
+          },
+        ],
+      },
+    ],
+  };
+
+  it('hides a field the selected model is not named by (v4 `:41`)', async () => {
+    const { fixture } = await render({ schema, modelName: 'deepseek-chat' });
+    expect(el(fixture, '#pof-always')).not.toBeNull();
+    expect(el(fixture, '#pof-thinking_budget')).toBeNull();
+    expect(text(fixture)).not.toContain('Thinking Budget');
+  });
+
+  it('shows it on an exact-id match (v4 `:41` → `modelMatchesPattern`)', async () => {
+    const { fixture } = await render({ schema, modelName: 'deepseek-reasoner' });
+    expect(el(fixture, '#pof-thinking_budget')).not.toBeNull();
+  });
+
+  it('shows it on a glob match', async () => {
+    const { fixture } = await render({ schema, modelName: 'glm-4.6-flash' });
+    expect(el(fixture, '#pof-thinking_budget')).not.toBeNull();
+  });
+
+  it('shows it when the host does not know the model — v5 passes `` for that', async () => {
+    // v5's `modelName` input is a non-nullable string defaulting to ''; v4's
+    // prop is `string | undefined`. Both are falsy, and the rule is that a
+    // setting the user cannot see is one they cannot reach.
+    const { fixture } = await render({ schema, modelName: '' });
+    expect(el(fixture, '#pof-thinking_budget')).not.toBeNull();
+  });
+
+  it('re-evaluates when the model changes (the editor swaps models in place)', async () => {
+    const { fixture } = await render({ schema, modelName: 'deepseek-reasoner' });
+    expect(el(fixture, '#pof-thinking_budget')).not.toBeNull();
+    fixture.componentRef.setInput('modelName', 'deepseek-chat');
+    fixture.detectChanges();
+    expect(el(fixture, '#pof-thinking_budget')).toBeNull();
+  });
+
+  it('gates BEFORE showIf — a non-matching model hides an open guard (v4 `:41` above `:42`)', async () => {
+    // The order matters: with the gate second, an open `showIf` would render a
+    // field this model has no use for.
+    const gated: ProviderOptionsSchema = {
+      groups: [
+        {
+          fields: [
+            { key: 'enable_thinking', label: 'Enable Thinking', type: 'boolean' },
+            {
+              key: 'thinking_effort',
+              label: 'Thinking Effort',
+              type: 'string',
+              showIf: { field: 'enable_thinking', equals: true },
+              appliesToModels: ['glm-4.6-*'],
+            },
+          ],
+        },
+      ],
+    };
+    const open = await render({
+      schema: gated,
+      parameters: { enable_thinking: true },
+      modelName: 'deepseek-chat',
+    });
+    expect(el(open.fixture, '#pof-thinking_effort')).toBeNull();
+
+    const both = await render({
+      schema: gated,
+      parameters: { enable_thinking: true },
+      modelName: 'glm-4.6-flash',
+    });
+    expect(el(both.fixture, '#pof-thinking_effort')).not.toBeNull();
+  });
+
+  it('a matching model does NOT override a closed showIf (both must pass)', async () => {
+    const gated: ProviderOptionsSchema = {
+      groups: [
+        {
+          fields: [
+            { key: 'enable_thinking', label: 'Enable Thinking', type: 'boolean' },
+            {
+              key: 'thinking_effort',
+              label: 'Thinking Effort',
+              type: 'string',
+              showIf: { field: 'enable_thinking', equals: true },
+              appliesToModels: ['glm-4.6-*'],
+            },
+          ],
+        },
+      ],
+    };
+    const { fixture } = await render({ schema: gated, parameters: {}, modelName: 'glm-4.6-flash' });
+    expect(el(fixture, '#pof-thinking_effort')).toBeNull();
+  });
+
+  it('an empty list renders everywhere, like an absent one', async () => {
+    const { fixture } = await render({
+      schema: {
+        groups: [
+          { fields: [{ key: 'wide', label: 'Wide', type: 'string', appliesToModels: [] }] },
+        ],
+      },
+      modelName: 'anything-at-all',
+    });
+    expect(el(fixture, '#pof-wide')).not.toBeNull();
+  });
+
+  it('the gate also removes a multi-enum row before its choices are counted', async () => {
+    // The multi-enum bail (`choices.length > 0`) runs after `shouldRender`;
+    // a gated-out multi-enum must not reach it at all.
+    const { fixture } = await render({
+      schema: {
+        groups: [
+          {
+            fields: [
+              {
+                key: 'understudies',
+                label: 'Understudies',
+                type: 'multi-enum',
+                multiEnumSource: 'fetchedModels',
+                appliesToModels: ['glm-4.6-*'],
+              },
+            ],
+          },
+        ],
+      },
+      fetchedModels: ['a', 'b'],
+      modelName: 'deepseek-chat',
+    });
+    expect(text(fixture)).not.toContain('Understudies');
+  });
+});

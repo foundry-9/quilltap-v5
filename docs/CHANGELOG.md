@@ -586,6 +586,30 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — feat(spa): the shared options renderer honours `appliesToModels` (P4.D139 unit 2)
+
+_Versions: SPA 0.5.602._
+
+v4 `84f33ce94` retired `appliesToModels`'s reserved status: `shouldRenderField`
+now consults `fieldAppliesToModel` FIRST, before `showIf`. Ported into
+`provider-options-panel.ts` with v4's rationale comment verbatim — once a
+plugin has named the models, an unnamed one is a deliberate no. The
+"Reserved … Intentionally not consumed" doc on
+`ProviderOptionField.appliesToModels` is replaced by v4's live semantics text.
+
+The gate is live for the LLM side too: this panel serves the connection-profile
+editor (P4.D84) as well as the image-profile editor the LoRA train points at
+it, so the nine new cases are written against an LLM-side schema on purpose.
+No v5 provider manifest declares a matcher list today, so nothing observable
+moves until one does.
+
+Written RED first: against the pre-gate renderer the block ran 4 failed / 5
+passed, the four being exactly the gate-dependent cases. Three mutations
+redden it again — moving the gate below `showIf` (3 red, incl. the
+order-specific case), reading `modelName` untracked so a model swap leaves a
+stale gate (1 red), and removing the gate entirely (4 red, reproducing the
+red-first split exactly).
+
 #### 2026-09-01 — feat(spa): the client model-matcher twin for `appliesToModels` (P4.D139 unit 1)
 
 _Versions: SPA 0.5.601._

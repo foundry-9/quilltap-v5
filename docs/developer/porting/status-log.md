@@ -96233,3 +96233,51 @@ on PATH, `QT_ORACLE_OUT=<v5>/apps/web/src/app/screens/settings/providers/__fixtu
 npx jest --silent --roots "$PWD" --roots /tmp/qt-oracle-model-matchers --
 "model-matchers\.test\.ts$"`. Pin verification: the module does not exist
 before `84f33ce94`, so a baseline-pinned run fails to resolve the import.
+
+### Unit 2 — the shared renderer's model gate
+
+v4 `84f33ce94`'s `ProviderOptionsPanel.tsx:36-46` hunk ported into
+`apps/web/src/app/screens/settings/providers/provider-options-panel.ts`:
+`shouldRender` gained a `modelName` parameter and consults
+`fieldAppliesToModel` **before** `showIf`, carrying v4's rationale comment
+verbatim ("a field this model has no use for is not offered at all, whatever
+its sibling fields say… once a plugin has named the models, an unnamed one is
+a deliberate no"). The call site reads `this.modelName()` inside the `groups`
+computed so the gate is reactive to a model swap — the editor changes models
+in place, which is the only way the gate is ever seen to move.
+
+`provider-options-schema.ts`'s `appliesToModels` doc — "Reserved for the
+model-keyed gating follow-up. Intentionally not consumed by either renderer" —
+is REPLACED by v4's post-commit semantics text (`packages/plugin-types/src/
+plugins/provider-options.ts:109-118`), plus a v5 line naming the panel that
+now consults it.
+
+**This gate is live for the LLM side, not only for images.** The panel is
+P4.D84's connection-profile renderer, so the nine new spec cases are written
+against an LLM-side schema (`thinking_budget` gated to
+`['deepseek-reasoner', 'glm-4.6-*']`) on purpose. Measured: **no v5 provider
+manifest declares `appliesToModels` today** (grep over `apps/web/src` and
+`crates/` finds only the type declaration and this consumer), so nothing
+observable moves until a manifest names one — the gate arrives ahead of its
+first declarer exactly as v4's did.
+
+**Red-first evidence.** The spec block was written and run against the
+PRE-gate renderer: **4 failed / 5 passed**, the four being exactly the
+gate-dependent cases (hide-on-non-match, re-evaluate-on-model-change,
+gate-before-showIf, the gated multi-enum). The five that passed are the
+"shows" arms, which pass trivially when nothing gates.
+
+**Mutation proofs (three, each verified applied by grep before the run).**
+Gate moved BELOW `showIf` → 3 red, including the case written specifically for
+the order (an open `showIf` on a non-matching model would render). `modelName`
+read through `untracked` → 1 red, the model-swap case (the gate would compute
+once and never again). Gate removed entirely → 4 red, reproducing the
+red-first split case-for-case.
+
+One arm the cases pin that v4's hunk does not spell out: the gate runs before
+the `multi-enum` empty-choices bail, so a gated-out multi-enum never reaches
+the choice count.
+
+**Gate:** panel spec 49/49; full SPA suite **367 files / 5,548 tests / 0**
+(5,477 → 5,548 = the 62 unit-1 matcher cases plus these 9); `npm run build`
+clean.
