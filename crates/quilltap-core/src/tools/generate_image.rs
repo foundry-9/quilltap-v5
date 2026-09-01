@@ -1582,7 +1582,7 @@ where
         Err(out) => return out,
     };
 
-    // 4b. Resolve dangerous-content settings (chat may be off-duty).
+    // 4b. Resolve dangerous-content settings (chat may carry an operator override).
     // Gather the DB context in one both-connections read.
     let db_ctx = match gather_db_context_via_db(db, ctx, input).await {
         Ok(c) => c,

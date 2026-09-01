@@ -341,6 +341,7 @@ interface CascadePrompt {
           [impersonatingParticipantIds]="impersonatingIds()"
           [activeTypingParticipantId]="activeSpeakerId()"
           [isDangerousChat]="c.isDangerousChat === true"
+          [conciergeOverride]="c.conciergeOverride ?? null"
           [chatId]="c.id"
           [chatSectionState]="chatSectionState()"
           [storyBackgroundsEnabled]="storyBackgroundsEnabled()"

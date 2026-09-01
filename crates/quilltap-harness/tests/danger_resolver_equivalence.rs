@@ -218,29 +218,14 @@ fn state_from_str(s: &str) -> ConciergeState {
 
 const FLIP_SEED_TS: &str = "2020-01-01T00:00:00.000Z";
 
-/// ⚠ CROSS-LANE DIVERGENCE — retire this when P4.D140 lands.
-///
-/// This lane regenerates from a worktree pinned at v4 `60e3c4a0a`, and bug 112
-/// (`735d9408c`, "date a chat by when a character last spoke") is an ANCESTOR of
-/// that commit. At the pin, v4's `addMessage` moves `lastMessageAt` only for a
-/// *character-authored* row (`isCharacterAuthoredMessage`), and the Concierge
-/// manual bubble carries `systemSender: 'concierge'` — so v4 leaves the column
-/// NULL where v5 still mints a timestamp.
-///
-/// The fix lives in `db/chats_messages.rs`, which **P4.D140 owns** (§Ownership),
-/// so this lane may not make it. The column is therefore masked on both sides —
-/// but only after [`assert_last_message_at_cross_lane_divergence`] MEASURES the
-/// divergence in the exact shape bug 112 predicts, so the mask can never hide a
-/// different failure. When P4.D140 lands, this constant flips to `false`, the
-/// mask disappears, and the plain equality returns; if v5 converges early the
-/// measurement itself reddens.
-const LAST_MESSAGE_AT_PENDING_P4D140: bool = true;
-
 /// Placeholder the minted `dangerClassifiedAt` (present-non-null → `<ts>`) so the
-/// flagged-path mint compares. `updatedAt` / `lastMessageAt` are bumped by the
-/// Concierge manual-announcement's `addMessage` (v4 `repos.chats.addMessage`) on a
+/// flagged-path mint compares. `updatedAt` is bumped by the Concierge
+/// manual-announcement's `addMessage` (v4 `repos.chats.addMessage`) on a
 /// **changed** flip — sentinel-aware, so a value equal to the `2020` seed stays
 /// (proving the noop path posted nothing) and a mint collapses to `<ts>`.
+/// `lastMessageAt` rides the same rule but is NOT expected to move: since bug
+/// 112 (v4 `735d9408c`, P4.D140) a Concierge bubble is system-authored, so both
+/// sides leave it at the seed — a mint here on either side is a real defect.
 fn normalize_chat_rows(rows: &mut [Value]) {
     for row in rows.iter_mut() {
         if let Some(obj) = row.as_object_mut() {
@@ -256,9 +241,6 @@ fn normalize_chat_rows(rows: &mut [Value]) {
                 if minted {
                     obj.insert(col.into(), Value::String("<ts>".into()));
                 }
-            }
-            if LAST_MESSAGE_AT_PENDING_P4D140 {
-                obj.insert("lastMessageAt".into(), Value::String("<p4d140>".into()));
             }
         }
     }
@@ -375,7 +357,6 @@ async fn danger_manual_flip_matches_oracle() {
         .clone();
 
     // MEASURE the cross-lane divergence before the normalizer masks it.
-    assert_last_message_at_cross_lane_divergence(&spec, &got_rows, &want_rows);
 
     normalize_chat_rows(&mut got_rows);
     normalize_chat_rows(&mut want_rows);
@@ -415,54 +396,6 @@ async fn danger_manual_flip_matches_oracle() {
         "OK: danger manual-flip chats + chat_messages dumps matched oracle ({} ops).",
         spec.ops.len()
     );
-}
-
-/// The [`LAST_MESSAGE_AT_PENDING_P4D140`] measurement. For every op that CHANGED
-/// state (and therefore posted a Concierge bubble), v4 at the `60e3c4a0a` pin
-/// must leave `lastMessageAt` untouched (NULL — the seed never set it) while v5
-/// mints a timestamp. Anything else means the mask is covering a different bug.
-fn assert_last_message_at_cross_lane_divergence(
-    spec: &FlipSpec,
-    got_rows: &[Value],
-    want_rows: &[Value],
-) {
-    if !LAST_MESSAGE_AT_PENDING_P4D140 {
-        return;
-    }
-    let find = |rows: &[Value], id: &str| -> Value {
-        rows.iter()
-            .find(|r| r.get("id").and_then(Value::as_str) == Some(id))
-            .unwrap_or_else(|| panic!("chat {id} missing from the dump"))
-            .get("lastMessageAt")
-            .cloned()
-            .unwrap_or(Value::Null)
-    };
-    let mut changed = 0usize;
-    for op in &spec.ops {
-        // The no-op ops post nothing, so neither side writes the column.
-        if op.id.ends_with("-noop") {
-            assert_eq!(find(got_rows, &op.chat_id), Value::Null, "op {} v5", op.id);
-            assert_eq!(find(want_rows, &op.chat_id), Value::Null, "op {} v4", op.id);
-            continue;
-        }
-        assert_eq!(
-            find(want_rows, &op.chat_id),
-            Value::Null,
-            "op {}: v4 at 60e3c4a0a must NOT bump lastMessageAt for a Concierge \
-             bubble (bug 112, 735d9408c). A non-null here means the mask is \
-             hiding something else.",
-            op.id
-        );
-        assert!(
-            find(got_rows, &op.chat_id).is_string(),
-            "op {}: v5 still bumps lastMessageAt (bug 112 unported — P4.D140). \
-             If this is null, P4.D140 has landed: flip \
-             LAST_MESSAGE_AT_PENDING_P4D140 to false and drop the mask.",
-            op.id
-        );
-        changed += 1;
-    }
-    assert!(changed > 0, "no changed flip to measure the divergence on");
 }
 
 /// Every op that ASKED for an operator state (`vouched` / `uncensored`) must

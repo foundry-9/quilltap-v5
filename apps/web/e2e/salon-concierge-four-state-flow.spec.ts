@@ -49,7 +49,7 @@ import {
  * about the feature. The unifier flips {@link P4D141_SALON_WIRE_LANDED} to
  * `true` with that binding.
  */
-const P4D141_SALON_WIRE_LANDED = false;
+const P4D141_SALON_WIRE_LANDED = true;
 
 const CONCIERGE_PORT = 4331;
 const BASE = `http://127.0.0.1:${CONCIERGE_PORT}`;

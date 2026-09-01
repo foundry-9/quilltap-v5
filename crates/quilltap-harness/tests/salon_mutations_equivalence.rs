@@ -176,83 +176,6 @@ fn table_rows(dump: &Value) -> Value {
     Value::Array(rows)
 }
 
-/// ⚠ CROSS-LANE DIVERGENCE — retire this when P4.D140 lands.
-///
-/// P4.D141 regenerates from a worktree pinned at v4 `60e3c4a0a`, and bug 112
-/// (`735d9408c`) is an ANCESTOR of that commit: v4 now moves `lastMessageAt` only
-/// for a *character-authored* row and RECOMPUTES it on delete. So v4 leaves the
-/// column at its seeded value where v5 mints — both when a Concierge bubble is
-/// posted and when a message is deleted. The fix lives in `db/chats_messages.rs`,
-/// which **P4.D140 owns**, so this lane may not make it. The column is masked on
-/// both sides only AFTER [`measure_last_message_at_divergence`] confirms the
-/// divergence has the shape bug 112 predicts. When P4.D140 lands, flip this to
-/// `false`. (Twins live in `danger_resolver_equivalence.rs` and
-/// `danger_gatekeeper_tier3_equivalence.rs`.)
-const LAST_MESSAGE_AT_PENDING_P4D140: bool = true;
-
-/// Every `lastMessageAt` the salon fixture seeds sits in this epoch
-/// (`2026-01-31` … `2026-02-01`); a wall-clock mint never does.
-const FIXTURE_EPOCH: &str = "2026-0";
-
-/// Confirm every `lastMessageAt` disagreement is "v5 minted a fresh stamp, v4 did
-/// not" — never the reverse, and never a disagreement between two real stamps.
-/// Returns the number of diverging rows so the caller can report it.
-fn measure_last_message_at_divergence(name: &str, got: &Value, want: &Value) -> usize {
-    let (Some(g), Some(w)) = (got.as_array(), want.as_array()) else {
-        return 0;
-    };
-    let mut n = 0;
-    for gr in g {
-        let id = gr.get("id").and_then(Value::as_str).unwrap_or("");
-        let Some(wr) = w
-            .iter()
-            .find(|r| r.get("id").and_then(Value::as_str) == Some(id))
-        else {
-            continue;
-        };
-        let gv = gr.get("lastMessageAt").cloned().unwrap_or(Value::Null);
-        let wv = wr.get("lastMessageAt").cloned().unwrap_or(Value::Null);
-        if gv == wv {
-            continue;
-        }
-        // Bug 112 shows up here in TWO shapes, and both leave v4's stamp EARLIER
-        // than v5's:
-        //   (a) a posted Concierge bubble — v4 no longer bumps a system-authored
-        //       row, so v4 keeps the seeded stamp while v5 mints a wall-clock one;
-        //   (b) a message DELETE — v4 now RECOMPUTES the column from the surviving
-        //       character-authored rows, so it walks BACKWARDS to an earlier
-        //       fixture stamp while v5 leaves the later stale one in place.
-        // The unifying claim is therefore "v4 is strictly earlier, and v4's value
-        // is one of the fixture's own (never a wall-clock mint)". v4 minting, v5
-        // being earlier, or v5 dropping the column are all DIFFERENT failures and
-        // must not be masked.
-        let w_is_fixture_epoch = wv.as_str().is_some_and(|t| t.starts_with(FIXTURE_EPOCH));
-        let g_is_later = match (gv.as_str(), wv.as_str()) {
-            (Some(g), Some(w)) => g > w,
-            _ => false,
-        };
-        assert!(
-            w_is_fixture_epoch && g_is_later,
-            "[{name}] chat {id}: lastMessageAt diverges in a shape bug 112 does \
-             NOT predict (v5 {gv} vs v4 {wv}) — the P4.D140 mask is hiding \
-             something else"
-        );
-        n += 1;
-    }
-    n
-}
-
-fn mask_last_message_at(rows: &Value) -> Value {
-    let mut rows = rows.clone();
-    if let Some(a) = rows.as_array_mut() {
-        for r in a.iter_mut() {
-            if let Some(o) = r.as_object_mut() {
-                o.insert("lastMessageAt".into(), Value::String("<p4d140>".into()));
-            }
-        }
-    }
-    rows
-}
 fn response_data(r: &Response) -> Value {
     let v = serde_json::to_value(r).unwrap();
     v.get("data").cloned().unwrap_or(Value::Null)
@@ -649,7 +572,6 @@ fn salon_mutations_match_oracle() {
     ];
 
     let mut failed = Vec::new();
-    let mut p4d140_masked_cases: Vec<String> = Vec::new();
     for (name, f) in &cases {
         let want = &oracle[*name];
         let (got_body, got_chats, got_msgs) = run(name, f.as_ref());
@@ -674,17 +596,8 @@ fn salon_mutations_match_oracle() {
                 failed.push(format!("{name}/body"));
             }
         }
-        let mut got_chat_rows = table_rows(&got_chats);
-        let mut want_chat_rows = table_rows(&want["tables"]["chats"]);
-        if LAST_MESSAGE_AT_PENDING_P4D140 {
-            // MEASURE the cross-lane divergence, then mask the one column.
-            let n = measure_last_message_at_divergence(name, &got_chat_rows, &want_chat_rows);
-            if n > 0 {
-                p4d140_masked_cases.push(format!("{name}({n})"));
-            }
-            got_chat_rows = mask_last_message_at(&got_chat_rows);
-            want_chat_rows = mask_last_message_at(&want_chat_rows);
-        }
+        let got_chat_rows = table_rows(&got_chats);
+        let want_chat_rows = table_rows(&want["tables"]["chats"]);
         let sections: [(&str, Value, Value); 2] = [
             ("chats", got_chat_rows, want_chat_rows),
             (
@@ -705,15 +618,6 @@ fn salon_mutations_match_oracle() {
             }
         }
         eprintln!("[{name}] done.");
-    }
-    if LAST_MESSAGE_AT_PENDING_P4D140 {
-        // If nothing diverges any more, P4.D140 has landed — drop the mask.
-        assert!(
-            !p4d140_masked_cases.is_empty(),
-            "no lastMessageAt divergence left: P4.D140 has landed — flip \
-             LAST_MESSAGE_AT_PENDING_P4D140 to false and drop the mask"
-        );
-        eprintln!("P4.D140 lastMessageAt mask applied to: {p4d140_masked_cases:?}");
     }
     assert!(failed.is_empty(), "salon-mutations FAILED: {failed:?}");
 }

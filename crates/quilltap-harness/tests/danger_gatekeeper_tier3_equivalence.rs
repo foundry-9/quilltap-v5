@@ -61,20 +61,6 @@ mod common;
 
 const SEED_TS: &str = "2020-01-01T00:00:00.000Z";
 
-/// ⚠ CROSS-LANE DIVERGENCE — retire this when P4.D140 lands.
-///
-/// P4.D141 regenerates from a worktree pinned at v4 `60e3c4a0a`, and bug 112
-/// (`735d9408c`, "date a chat by when a character last spoke") is an ANCESTOR of
-/// that commit. At the pin, v4's `addMessage` moves `lastMessageAt` only for a
-/// *character-authored* row, and the Concierge danger bubble carries
-/// `systemSender: 'concierge'` — so v4 leaves the column at the seed where v5
-/// still mints. The fix is in `db/chats_messages.rs`, which **P4.D140 owns**, so
-/// this lane may not make it. The column is masked on both sides only AFTER
-/// [`assert_last_message_at_cross_lane_divergence`] measures the divergence in
-/// the exact shape bug 112 predicts. When P4.D140 lands, flip this to `false`.
-/// (The twin of this constant lives in `danger_resolver_equivalence.rs`.)
-const LAST_MESSAGE_AT_PENDING_P4D140: bool = true;
-
 // --- spec ---
 #[derive(Deserialize)]
 struct Spec {
@@ -284,56 +270,9 @@ fn normalize_chats(rows: &mut [Value]) {
                     obj.insert(col.into(), Value::String("<ts>".into()));
                 }
             }
-            if LAST_MESSAGE_AT_PENDING_P4D140 {
-                obj.insert("lastMessageAt".into(), Value::String("<p4d140>".into()));
-            }
         }
         canon_numbers(row);
     }
-}
-
-/// The [`LAST_MESSAGE_AT_PENDING_P4D140`] measurement: at least one chat must
-/// show v5 minting `lastMessageAt` where v4 (at the pin) leaves the seed, and no
-/// chat may show the reverse. Anything else means the mask is covering a
-/// different failure.
-fn assert_last_message_at_cross_lane_divergence(got: &[Value], want: &[Value]) {
-    if !LAST_MESSAGE_AT_PENDING_P4D140 {
-        return;
-    }
-    let col = |row: &Value| -> Option<String> {
-        row.get("lastMessageAt")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-    };
-    let id = |row: &Value| {
-        row.get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("?")
-            .to_string()
-    };
-    let mut diverged = 0usize;
-    for g in got {
-        let Some(w) = want.iter().find(|w| id(w) == id(g)) else {
-            continue;
-        };
-        let (gv, wv) = (col(g), col(w));
-        if gv == wv {
-            continue;
-        }
-        assert!(
-            gv.as_deref().is_some_and(|v| v != SEED_TS)
-                && (wv.is_none() || wv.as_deref() == Some(SEED_TS)),
-            "chat {}: lastMessageAt diverges in a shape bug 112 does NOT predict \
-             (v5 {gv:?} vs v4 {wv:?}) — the P4.D140 mask is hiding something else",
-            id(g)
-        );
-        diverged += 1;
-    }
-    assert!(
-        diverged > 0,
-        "no lastMessageAt divergence left: P4.D140 has landed — flip \
-         LAST_MESSAGE_AT_PENDING_P4D140 to false and drop the mask"
-    );
 }
 
 /// The minted system-event `id` + `createdAt` are placeholdered (not referenced
@@ -521,13 +460,6 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
             .get_mut("rows")
             .and_then(Value::as_array_mut)
             .unwrap();
-        let w_snapshot = want_chats
-            .get("rows")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        // MEASURE the cross-lane divergence before the normalizer masks it.
-        assert_last_message_at_cross_lane_divergence(g, &w_snapshot);
         normalize_chats(g);
         let w = want_chats
             .get_mut("rows")
