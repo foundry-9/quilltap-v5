@@ -95254,3 +95254,71 @@ Standing for whoever resumes: BOTH v4 pins are lane-unique detached worktrees
 `/tmp/qt-v4-pin-p4d138-2ece98c90` for the tip) and may have been reaped —
 rebuild them per drift-ledger §5.1 and re-verify the marker file before any
 regen. The lane's fixture+oracle snapshot for the gate lives in `/tmp/p4d138/`.
+## P4.D140 — chat activity dates by when a character last spoke (v4 `735d9408c`, bug 112)
+
+Lane branch `claude/chat-activity-bug-p4-d140-bf2c69`; v4 baseline `7fb668263`,
+lane target `735d9408c`. Ledger §2 freshness probe at lane start: **PASS**
+(checkout on `main`, tree clean, both logs empty) → regen rule **PIN REQUIRED**,
+every regen from the lane-unique detached worktree
+`/tmp/qt-v4-pin-p4d140-735d9408c`.
+
+### Unit 1 — the chokepoint module + its tier-1 family
+
+`crates/quilltap-core/src/chat_activity.rs` (NEW) ports v4's new
+`lib/chat/chat-activity.ts` (90 lines, five exports) whole:
+`is_character_authored_message`, `CHARACTER_AUTHORED_MESSAGE_FILTER`,
+`chat_activity_at`, `chat_activity_time`, `by_chat_activity_desc`. The module
+header and both doc lists (what counts, what deliberately does not, and why the
+Staff-announcement rationale IS the bug) carry over verbatim.
+
+Two shape decisions worth recording:
+
+- **The two spellings are mirrored, not unified.** v4's in-memory predicate
+  tests JS truthiness (`if (m.systemSender)`), its SQL mirror tests `IS NULL`;
+  an empty-string `systemSender` therefore passes one and fails the other. v4
+  ships the pair knowingly. The oracle **measured** the direction rather than
+  assuming it — `system-sender-empty-string` → `true` — and the module header
+  names the seam so it is not "consistency"-fixed later.
+- **v4's `QueryFilter` object becomes a SQL WHERE fragment** (v5's repositories
+  write SQL directly, so there is no filter-object layer to mirror). The
+  differential's `filter` arm translates v4's own object into the fragment
+  mechanically and compares, so the mirror is derived from v4's value rather
+  than hand-transcribed — a hand-copied constant is exactly the drift the
+  module exists to prevent.
+- The predicate's field-level core is exposed as `is_character_authored_parts`
+  so the typed write path (`ChatEventInput`, already narrowed to the `message`
+  arm) and the JSON readers share ONE body.
+
+**Family `chat_activity_equivalence`** (NEW, tier 1) over
+`harness/oracle/cases/chat-activity.ts`, which imports v4's REAL module. Corpus:
+v4's own test table (all eleven Staff senders by name, the whisper and
+silent-message inclusions, the announcement bubble, TOOL/SYSTEM roles, both
+non-message event types) **plus** the edges v4's table leaves unstated — the
+`''` sender, `customAnnouncer: {}` (truthy in JS) and `null`, an empty whisper
+array, a lowercase role, missing `role`/`type`, a Staff whisper, the nullish
+empty-string `lastMessageAt` win, an `updatedAt`-is-ignored row, and
+unparseable timestamps sorting as 0. 42 rows: 1 filter / 26 predicate / 7
+activity / 8 sort, each count floor-asserted so a shrinking corpus cannot read
+as green.
+
+**Mutation proofs (five, each verified applied, each reddening exactly one
+arm):** dropping the `customAnnouncer` check → `[announcement-bubble]`;
+falling back to `updatedAt` → `[null-last-message-at]`; `unwrap_or(i64::MAX)`
+for the NaN clamp → `[unparseable-both]`; giving `systemSender` IS-NULL
+semantics → `[system-sender-empty-string]`; dropping a clause from the SQL
+mirror → `[sql-mirror]`.
+
+Nothing calls the module yet — deliberate: the write gates, the six readers,
+restore, the import twin and the boot heal each land as their own unit with
+their own differential.
+
+**Regen recipe** (from the pinned worktree, ledger §5.1):
+
+```bash
+cd /tmp/qt-v4-pin-p4d140-735d9408c
+~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  ~/source/quilltap-v5/harness/oracle/cases/chat-activity.ts \
+  > /tmp/oracle-chat-activity.ndjson
+QT_ORACLE_CHAT_ACTIVITY=/tmp/oracle-chat-activity.ndjson \
+  cargo test -p quilltap-harness --test chat_activity_equivalence
+```

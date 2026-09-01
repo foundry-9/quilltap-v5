@@ -157,6 +157,33 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+#### 2026-09-01 — feat(chat-activity): the character-authored chokepoint (v4 735d9408c, bug 112)
+
+_Versions: core 0.0.720, harness 0.0.617._
+
+The first unit of P4.D140. `crates/quilltap-core/src/chat_activity.rs` ports
+v4's new `lib/chat/chat-activity.ts` whole: `is_character_authored_message`
+(role USER/ASSISTANT, no `systemSender`, no `customAnnouncer` — whispers count
+by omission), the SQL mirror `CHARACTER_AUTHORED_MESSAGE_FILTER`,
+`chat_activity_at` (`lastMessageAt ?? createdAt`, never `updatedAt`),
+`chat_activity_time` (NaN clamped to 0 so comparators stay total) and
+`by_chat_activity_desc`.
+
+Both of v4's spellings are mirrored rather than unified: the in-memory
+predicate tests JS truthiness (an empty-string `systemSender` reads as absent),
+the SQL mirror tests `IS NULL` (it does not). v4 ships the pair knowingly; the
+new `chat_activity_equivalence` family measures the seam against v4's real
+module instead of guessing at it.
+
+The differential drives v4's real exports over its own test table plus the
+edges that table leaves unstated (the `''` sender, an empty announcer object,
+a lowercase role, the nullish empty-string win, unparseable timestamps sorting
+as 0). The SQL-mirror arm translates v4's `QueryFilter` object into a WHERE
+fragment mechanically and compares, so nothing is transcribed by hand. Five
+mutations, each reddening exactly the arm it should.
+
+Nothing calls the module yet — the write gates, readers, restore and the boot
+heal follow in their own units.
 
 #### 2026-09-01 — docs(setupphase): the round-2 drift catch-up work orders — P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66
 

@@ -152,6 +152,7 @@ pub mod canon;
 pub mod canonicalize;
 pub mod carina_parser;
 pub mod char_count;
+pub mod chat_activity;
 pub mod chat_predicates;
 pub mod chat_tasks;
 pub mod chat_timestamp;
