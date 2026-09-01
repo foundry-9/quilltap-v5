@@ -87,6 +87,10 @@ fn params_from_json(input: &Value) -> ImageGenParams {
             .map(|a| a.iter().map(lora_spec_from_json).collect())
             .unwrap_or_default(),
         profile_parameters: input.get("profileParameters").cloned(),
+        // The insertion-order flags only steer `to_key_value`; a params object
+        // rebuilt from a canned key never re-emits one.
+        size_inserted_by_orientation: false,
+        aspect_ratio_inserted_by_orientation: false,
         steps: input.get("steps").and_then(Value::as_f64),
     }
 }

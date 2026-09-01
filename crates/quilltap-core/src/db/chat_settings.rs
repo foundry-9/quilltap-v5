@@ -1418,7 +1418,7 @@ mod tests {
                 .as_object()
                 .unwrap()
                 .keys()
-                .last()
+                .next_back()
                 .map(String::as_str),
             Some("allowCheapFallback")
         );

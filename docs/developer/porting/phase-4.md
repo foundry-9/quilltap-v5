@@ -6256,6 +6256,79 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The round-2 drift catch-up (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66) — UNIFIED 2026-09-01
+
+Five of six orders CLOSED; **P4.D138 OPEN at units 5–7** (its resume list is
+in `status-log.md` → "P4.D138 — lane status: OPEN at units 5–7", extended at
+the unify with the §3 review's carried items). The oracle baseline MOVES
+`7fb668263` → `4622411fd`; the ledger's three LoRA-train rows stay as
+PARTIAL. Round record: `status-log.md` → "Round record — the drift catch-up
+round 2 of 2 unification".
+
+**Next candidates, in rough value order** (updated at the round-2 drift
+catch-up unification, 2026-09-01):
+
+1. **Finish P4.D138 (units 5–7) — the LoRA train's server remainder:** bug
+   110's family-first `apply_loras` + bug 111's error-level request log
+   (and v4's unported `Posting NanoGPT image request` DEBUG line — port
+   both), the `list-models` `loraSupport` read side + the `options-schema`
+   verb + the NanoGPT detailed-catalog cache (which retires the
+   `LORA_SUPPORT_PENDING_P4D138_UNIT6` strip and flips
+   `P4D138_LORA_SERVER_LANDED` live), and the HuggingFace lookup behind
+   `POST ?action=lora-metadata` (the repo's second mocked non-LLM HTTP
+   provider). Carried into its resume list by the review: the `[Image
+   LoRA]` warnings' dropped `{context, chatId, jobId, profileId}` spread +
+   the missing `style-options` anchor (capture pins), the prompt-only
+   `validate_image_generation_input` divergence row, `kept[0]`'s guard,
+   the shared-stage recipe header. Until it lands the image-profile modal's
+   options-schema fetch fails silently into the legacy panel on every open
+   (one 400 line per open in the server log).
+2. **The owed dogfood pass** — the standing 💸 queue plus this round's
+   surfaces: the bug-112 boot recompute on the Friday copy (measure the
+   population FIRST, ledger §5.5 — v4 has run daily there since
+   `735d9408c`), a Salon list dated by conversation, a restore keeping its
+   chats' own dates; the four-state Concierge walk on a real chat (Vouched
+   → Uncensored → Monitored with the sentences, the pair read back, the
+   header pill), an Uncensored chat taking the uncensored route with no
+   danger paint; the LoRA editor on a real NanoGPT profile (blocked on
+   candidate 1); the sliders' themed accent + focus ring; the mid-turn
+   user bubble on a real multi-character turn (finding #106, now
+   clock-free); plus the round-1 items carried (understudy, reroute-with-
+   an-image, curly-quote resolve, stand-in toasts) and the older queue.
+3. **Message-bubble danger styling was never ported** (found by the §C
+   wire measurement): v4's `VirtualizedMessageList → MessageRow →` bubble
+   `dangerous` prop has no v5 twin on `qt-message-list`. When it is ported
+   it binds `shouldShowDangerStyling(chat)` — never the raw label.
+4. **`precompute_equivalence` is blind to the uncensored predicate**
+   (P4.D141's recorded measurement): seed an uncensored profile into
+   `episodic-recall-*.db` and thread `allProfiles` on both sides so the
+   cheap-LLM swap arm discriminates.
+5. **The host-side gateway resolver** (P4.D134's follow-up, carried), the
+   empty-response failover legs' `llm_logs` rows + chain-walk corpus
+   blind spots (round 1, carried), `CheapLlmTaskExecutor::new()`'s missing
+   chain (carried).
+6. **Small review follow-ups recorded this round:** the temp bubble's seat
+   vs the server's resolution (P4.66); `waitForChatRefetch`'s unscoped
+   `chatGet` match + the injection hook's silent degradation (P4.66's
+   beat); the workspace-search Documents beat's positional `.first()`
+   chat pick; the modal's structured writers replacing a mid-edit JSON
+   textarea once `loraSupport` renders without a schema (P4.D139); the
+   dozen residue component hosts with no display rule + the unpinned
+   slider suffix bytes (P4.D142); an executable bare-column guard for the
+   shared `CHARACTER_AUTHORED_MESSAGE_FILTER` (P4.D140); `help/chats.md`
+   (+22 at `735d9408c`) → the `p4.9i2` bank.
+7. P4.62's escalations, the `system-data-main.db` widening, the
+   component-transfer beat un-park, the present-but-null lead, `p4.9i2`,
+   the handler-logging sweep, the SPA-wide `title=` sweep (all carried).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json`
+file port remains a NAMED standalone flag (this round recorded two more
+no-counterpart hunks against it: the `loras` entry and the widened
+`conciergeOverride` enum).
+
+**The superseded candidates list from the round-1 unification follows for
+history:**
+
 **Next candidates, in rough value order** (updated at the round-1 drift
 catch-up unification, P4.D134 ∥ P4.D135→P4.D136 ∥ P4.D137, 2026-09-01 —
 the eight-row drift prefix is CLEARED and the baseline moves to
