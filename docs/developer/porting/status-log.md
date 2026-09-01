@@ -95870,3 +95870,37 @@ reddens the moment P4.D140 lands — that is the signal to flip the constant to
 **For the unifier:** if P4.D140 is cherry-picked before this lane, flip both
 constants to `false` and re-run the two families; the plain equality should
 return with no other change.
+
+### Unit 2 — the two classifier gates get a corpus that can see them
+
+`is_classifier_on_duty` landed in unit 1, but neither gate family could observe
+it: both corpora carried a `conciergeOverride: 'OFF'` chat and nothing else, and
+on an OFF-only corpus the old raw test and the new helper agree exactly. So each
+fixture gains one operator-Uncensored chat:
+
+- **`danger-scan.json` builder** — chat `cb` (id `…0000000000cb`; `c9`/`ca` were
+  already taken, caught by the whole-id-set check, ledger §5.2): salon, never
+  classified, one LLM participant on the resolvable fallback profile — otherwise
+  identical to `c7`, so it WOULD be enqueued but for the gate. `chatsEnqueued`
+  stays 4.
+- **`danger-gatekeeper.json`** — case `skip-uncensored` (chat `…00000000000c`),
+  deliberately carrying the **`dangerous-llm`** token, so a reverted gate would
+  classify it dangerous, stamp the columns and post a Concierge bubble. A quiet
+  skip would have been a weak discriminator; this one fails loudly.
+
+**The blind-spot proof (the point of the unit).** Both pre-change fixtures were
+rebuilt from the pin and both gates reverted to the raw
+`conciergeOverride === 'OFF'` test: **both families stayed GREEN**. On the new
+corpora the same two mutations (M8 = danger-scan's gate, M9 = the gatekeeper's)
+each redden **exactly** their own family and leave the sibling green — the order's
+stated requirement, measured rather than asserted.
+
+**A refuted order premise.** The order names `danger_routing_equivalence` as the
+home for "the resolver's two operator arms incl. forces-AUTO_ROUTE-under-global-OFF
+and exempt-beats-uncensored". That family drives `provider_routing`
+(`resolve_provider_for_dangerous_content` and friends) and is handed a
+`DangerousContentSettings` struct directly, so the resolver's branch structure is
+invisible to it. Those arms live in `danger_resolver_equivalence` §1 instead — six
+new resolve rows, with mutations M3 (drop the forced AUTO_ROUTE) and M4 (check
+vouched before uncensored) reddening them. `danger_routing_equivalence` is re-run
+at the pin, unchanged and green.

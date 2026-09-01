@@ -125,6 +125,14 @@
       "contextSummary": "Off duty chat. token=skip-offduty"
     },
     {
+      "id": "d0000000-0000-4000-8000-00000000000c",
+      "user": "A",
+      "chatType": "salon",
+      "conciergeOverride": "UNCENSORED",
+      "messageCount": 3,
+      "contextSummary": "Uncensored by the operator's own hand. token=dangerous-llm"
+    },
+    {
       "id": "d0000000-0000-4000-8000-00000000000a",
       "user": "A",
       "chatType": "salon",
@@ -251,6 +259,12 @@
     {
       "name": "skip-offduty",
       "chatId": "d0000000-0000-4000-8000-000000000009",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "skip-uncensored",
+      "chatId": "d0000000-0000-4000-8000-00000000000c",
       "user": "A",
       "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
     },

@@ -362,6 +362,30 @@ mutations, each reddening exactly the arm it should.
 
 Nothing calls the module yet — the write gates, readers, restore and the boot
 heal follow in their own units.
+#### 2026-09-01 — test(concierge): the two classifier gates prove the Uncensored skip (v4 `60e3c4a0a`)
+
+_Versions: harness 0.0.618._
+
+Grows the two danger-gate fixtures with an operator-Uncensored chat, so the
+`is_classifier_on_duty` change landed in the previous commit is actually
+measured. `danger-scan` gains chat `cb` — never classified, salon, with a
+resolvable profile, so it would be enqueued but for the gate — and
+`danger-gatekeeper` gains `skip-uncensored`, deliberately carrying the
+`dangerous-llm` token so a reverted gate would flag it and post a Concierge
+bubble rather than fail quietly.
+
+Both corpora were BLIND before this: rebuilding the pre-change fixtures and
+reverting each gate to the raw `conciergeOverride === 'OFF'` test left both
+families GREEN. On the new corpora the same two mutations redden **exactly**
+their own family and leave the sibling green.
+
+Recorded, a refuted order premise: `danger_routing_equivalence` was named as the
+home for the resolver's two operator arms, but that family drives
+`provider_routing` and is fed `DangerousContentSettings` directly — the resolver
+is invisible to it. Those arms are covered in `danger_resolver_equivalence`
+section 1 instead (six new resolve rows, mutation-proven), and
+`danger_routing_equivalence` is re-run unchanged and green.
+
 #### 2026-09-01 — feat(concierge): the four-state per-chat control's predicate family, resolver and flips (v4 `60e3c4a0a`)
 
 _Versions: core 0.0.720, harness 0.0.617._

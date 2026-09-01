@@ -9,7 +9,9 @@
  *     `availableProfiles[0]`, P2 the participant-referenced one);
  *   - the per-chat gate matrix under userOn:
  *       c1 help (exempt)                          → skipped
- *       c2 conciergeOverride OFF (operator wave)   → skipped
+ *       c2 conciergeOverride OFF (Vouched Safe)     → skipped
+ *       cb conciergeOverride UNCENSORED             → skipped (P4.D141: the
+ *          operator already returned the verdict; otherwise enqueueable)
  *       c3 sticky dangerous                        → skipped
  *       c4 safe, not grown (count == classifiedAt) → skipped
  *       c5 never classified + summary; participants [user-controlled w/ P1,
@@ -183,6 +185,20 @@ async function main(): Promise<void> {
       data: {
         chatType: 'salon',
         messageCount: 51,
+        participants: [participant('llm', spec.profileP1)],
+      },
+    },
+    {
+      // P4.D141: the operator's Uncensored assertion. Never classified and
+      // otherwise identical to c7, so it WOULD be enqueued but for the
+      // `isClassifierOnDuty` gate — nothing may reclassify a chat out from
+      // under the operator.
+      id: 'c0000000-0000-4000-8000-0000000000cb',
+      user: spec.userOn,
+      data: {
+        chatType: 'salon',
+        conciergeOverride: 'UNCENSORED',
+        messageCount: 3,
         participants: [participant('llm', spec.profileP1)],
       },
     },
