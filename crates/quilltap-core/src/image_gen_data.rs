@@ -154,7 +154,14 @@ pub fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<Orientati
         // Provider-level only.
         "GROK" => (Vec::new(), Some(aspect_orientation())),
         "Z_AI" => (Vec::new(), Some(zai_orientation())),
-        "NANOGPT" => (Vec::new(), Some(nanogpt_orientation())),
+        // NanoGPT declares no per-model ORIENTATION, but since `84f33ce94` it
+        // does declare `getImageGenerationModels` (for the LoRA half), and this
+        // function transcribes that list — so the ids appear here carrying
+        // `orientation_support: None`, exactly as v4's entries do. Behaviour is
+        // unchanged: `match_model` finds an entry with no orientation support
+        // and `resolve_orientation` falls through to the provider-level
+        // constraint, which is where NanoGPT's shape has always lived.
+        "NANOGPT" => (nanogpt_model_ids(), Some(nanogpt_orientation())),
         _ => (Vec::new(), None),
     }
 }
@@ -181,22 +188,35 @@ pub fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<Orientati
 pub fn lora_data_for(provider: &str) -> (Vec<ModelInfo>, Option<ImageLoraSupport>) {
     match provider {
         "NANOGPT" => {
-            let mut models: Vec<ModelInfo> = NANOGPT_FLAGSHIP_IMAGE_MODEL_IDS
-                .iter()
-                .map(|id| ModelInfo {
-                    id: (*id).to_string(),
-                    ..Default::default()
-                })
-                .collect();
-            models.extend(nanogpt_lora_families().into_iter().map(|f| ModelInfo {
-                id: f.prefix.to_string(),
-                orientation_support: None,
-                lora_support: Some(f.support),
-            }));
+            let mut models = nanogpt_model_ids();
+            for family in nanogpt_lora_families() {
+                if let Some(entry) = models.iter_mut().find(|m| m.id == family.prefix) {
+                    entry.lora_support = Some(family.support);
+                }
+            }
             (models, None)
         }
         _ => (Vec::new(), None),
     }
+}
+
+/// v4 `models.ts` `STATIC_IMAGE_MODEL_IDS` in ORDER — the six documented
+/// flagships followed by one entry per LoRA family, which is exactly what
+/// `STATIC_IMAGE_MODELS.map(m => m.id)` yields since `84f33ce94`.
+fn nanogpt_model_ids() -> Vec<ModelInfo> {
+    NANOGPT_FLAGSHIP_IMAGE_MODEL_IDS
+        .iter()
+        .map(|id| (*id).to_string())
+        .chain(
+            nanogpt_lora_families()
+                .into_iter()
+                .map(|f| f.prefix.to_string()),
+        )
+        .map(|id| ModelInfo {
+            id,
+            ..Default::default()
+        })
+        .collect()
 }
 
 /// v4's ONE `getImageGenerationModels(provider)` list plus BOTH provider-level

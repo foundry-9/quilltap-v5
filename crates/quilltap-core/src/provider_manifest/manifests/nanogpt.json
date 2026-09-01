@@ -161,7 +161,7 @@
   },
   "charsPerToken": 3.5,
   "defaultContextWindow": 131072,
-  "imageGenerationModels": ["hidream", "flux-2-flash", "flux-2-dev", "flux-2-pro", "recraft-v3", "gpt-image-1.5"],
+  "imageGenerationModels": ["hidream", "flux-2-flash", "flux-2-dev", "flux-2-pro", "recraft-v3", "gpt-image-1.5", "flux-2-dev-lora", "flux-2-klein-4b", "flux-2-klein-9b", "wavespeed-ai/flux-2-klein-base-4b", "wavespeed-ai/flux-2-klein-base-9b", "z-image-turbo-lora", "wavespeed-ai/krea-v2/turbo-lora", "pruna-ai/p-image/text-to-image-lora", "pruna-ai/p-image/edit-lora", "flux-lora"],
   "fallbackModels": [
     "auto-model",
     "auto-model-basic",

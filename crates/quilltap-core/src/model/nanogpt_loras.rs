@@ -25,7 +25,10 @@
 //! a "family unknown" warning: guessing a dialect would post a body the model
 //! silently ignores, which is the one failure mode nobody can see.
 
-use crate::image_gen::lora_support::{ImageLoraSupport, LoraScale};
+use serde_json::{Map, Value};
+
+use crate::db::js_number_to_json;
+use crate::image_gen::lora_support::{ImageLoraSpec, ImageLoraSupport, LoraScale};
 
 /// How a model family spells its LoRA fields on the wire (v4
 /// `NanoGPTLoraDialect`).
@@ -200,6 +203,180 @@ pub const NANOGPT_FLAGSHIP_IMAGE_MODEL_IDS: [&str; 6] = [
     "recraft-v3",
     "gpt-image-1.5",
 ];
+
+/// The `profileParameters` keys the NanoGPT dialect forwards, and nothing else
+/// (v4 `NANOGPT_PASSTHROUGH_KEYS`).
+///
+/// The host hands over the profile's whole residual bag on purpose — deciding
+/// what reaches the wire is the provider's job, and an allow-list is the only
+/// version of that decision that cannot leak a stray key into someone's bill.
+pub const NANOGPT_PASSTHROUGH_KEYS: [&str; 4] =
+    ["num_inference_steps", "guidance_scale", "steps", "strength"];
+
+/// The two LoRA-adjacent keys deliberately *absent* from the list above
+/// (v4 `NANOGPT_LORA_SCOPED_KEYS`).
+///
+/// `hf_api_token` is a credential: it goes on the wire only when a `weights`
+/// family model is actually loading gated weights, never broadcast to whatever
+/// model the profile happens to point at. `lora_preset` means something only to
+/// the fal-hosted `url` family. Both are attached inside [`apply_loras`], where
+/// the dialect is known.
+pub const NANOGPT_LORA_SCOPED_KEYS: [&str; 2] = ["hf_api_token", "lora_preset"];
+
+/// Copy the allow-listed profile parameters onto a request body, skipping
+/// blanks (an empty string is how the options panel spells "unset"). Returns
+/// the keys it actually attached, for the debug log
+/// (v4 `applyPassthroughParameters`).
+pub fn apply_passthrough_parameters(
+    body: &mut Map<String, Value>,
+    profile_parameters: Option<&Value>,
+) -> Vec<String> {
+    let Some(bag) = profile_parameters.and_then(Value::as_object) else {
+        return Vec::new();
+    };
+    let mut attached = Vec::new();
+    for key in NANOGPT_PASSTHROUGH_KEYS {
+        // v4 `value === undefined || value === null || value === ''`.
+        let value = match bag.get(key) {
+            None | Some(Value::Null) => continue,
+            Some(Value::String(s)) if s.is_empty() => continue,
+            Some(v) => v,
+        };
+        body.insert(key.to_string(), value.clone());
+        attached.push(key.to_string());
+    }
+    attached
+}
+
+/// v4 `AppliedLoras`.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct AppliedLoras {
+    /// Wire keys written onto the body.
+    pub keys: Vec<String>,
+    /// Sources that did not fit the model's cap, named for the log.
+    pub dropped: Vec<String>,
+    /// The family that decided the spelling, or `None` when none is known.
+    pub dialect: Option<NanoGptLoraDialect>,
+}
+
+/// Translate the host's canonical `loras` list — and the two LoRA-scoped
+/// profile parameters that travel beside it — into NanoGPT's wire dialect for
+/// `model`, mutating `body` (v4 `applyLoras`).
+///
+/// The host has already capped the list against whatever `loraSupport` this
+/// provider declared for the model, so an over-cap list should not reach here —
+/// but a model whose family this table does not know resolves capability from
+/// the live catalog's `lora` tag alone, and then there is no cap and no
+/// spelling. That case drops the whole list loudly rather than posting a body
+/// the model will ignore.
+///
+/// **Capping therefore happens TWICE by design** — once host-side in
+/// [`crate::image_gen::lora_support::cap_loras`] and once here, with different
+/// log sentences (`the model's` vs `this model's`). Do not collapse them: this
+/// one is the unknown-family safety net.
+pub fn apply_loras(
+    body: &mut Map<String, Value>,
+    model: &str,
+    loras: &[ImageLoraSpec],
+    profile_parameters: Option<&Value>,
+) -> AppliedLoras {
+    // v4 `if (!loras || loras.length === 0)` — an empty adapter list is an
+    // early exit, which is bug 110: `lora_preset`'s attachment lives BELOW this
+    // inside the url-dialect branch, so a configured preset with no adapter
+    // beside it is discarded in silence. Ported as-is at `84f33ce94`; moved at
+    // `648d5c8aa`.
+    if loras.is_empty() {
+        return AppliedLoras::default();
+    }
+
+    let Some(family) = match_lora_family(Some(model)) else {
+        tracing::warn!(
+            context = "NanoGPTImageProvider.applyLoras",
+            model = %model,
+            dropped = ?loras.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
+            "LoRA family unknown for this model; dropping the adapters rather than guessing a dialect"
+        );
+        return AppliedLoras {
+            keys: Vec::new(),
+            dropped: loras.iter().map(|l| l.source.clone()).collect(),
+            dialect: None,
+        };
+    };
+
+    let max = family.support.max_loras.max(0.0) as usize;
+    let kept: Vec<&ImageLoraSpec> = loras.iter().take(max).collect();
+    let dropped: Vec<String> = loras.iter().skip(max).map(|l| l.source.clone()).collect();
+    if !dropped.is_empty() {
+        tracing::warn!(
+            context = "NanoGPTImageProvider.applyLoras",
+            model = %model,
+            dialect = %family.dialect.as_str(),
+            max_loras = max,
+            kept = ?kept.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
+            dropped = ?dropped,
+            "Capping the LoRA list to this model's limit"
+        );
+    }
+
+    let mut keys: Vec<String> = Vec::new();
+    let scoped = |key: &str| -> Option<String> {
+        profile_parameters
+            .and_then(Value::as_object)
+            .and_then(|b| b.get(key))
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+
+    match family.dialect {
+        NanoGptLoraDialect::Indexed => {
+            for (index, lora) in kept.iter().enumerate() {
+                let url_key = format!("lora_url_{}", index + 1);
+                body.insert(url_key.clone(), Value::String(lora.source.clone()));
+                keys.push(url_key);
+                if let Some(scale) = lora.scale {
+                    let scale_key = format!("lora_scale_{}", index + 1);
+                    body.insert(scale_key.clone(), js_number_to_json(scale));
+                    keys.push(scale_key);
+                }
+            }
+        }
+        NanoGptLoraDialect::Weights => {
+            body.insert("lora_weights".into(), Value::String(kept[0].source.clone()));
+            keys.push("lora_weights".into());
+            if let Some(scale) = kept[0].scale {
+                body.insert("lora_scale".into(), js_number_to_json(scale));
+                keys.push("lora_scale".into());
+            }
+            // Private / gated HuggingFace weights need a token, which rides the
+            // options panel as an ordinary parameter rather than living on the
+            // LoRA row — one token serves whatever weights the profile points
+            // at.
+            if let Some(token) = scoped("hf_api_token") {
+                body.insert("hf_api_token".into(), Value::String(token));
+                keys.push("hf_api_token".into());
+            }
+        }
+        NanoGptLoraDialect::Url => {
+            body.insert("lora_url".into(), Value::String(kept[0].source.clone()));
+            keys.push("lora_url".into());
+            if let Some(scale) = kept[0].scale {
+                body.insert("lora_strength".into(), js_number_to_json(scale));
+                keys.push("lora_strength".into());
+            }
+            if let Some(preset) = scoped("lora_preset") {
+                body.insert("lora_preset".into(), Value::String(preset));
+                keys.push("lora_preset".into());
+            }
+        }
+    }
+
+    AppliedLoras {
+        keys,
+        dropped,
+        dialect: Some(family.dialect),
+    }
+}
 
 #[cfg(test)]
 mod tests {

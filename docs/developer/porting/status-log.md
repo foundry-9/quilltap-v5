@@ -95090,3 +95090,97 @@ deliberately red, the default fail-fast stopped the run at 176 of 475 binaries
 while still printing a plausible pass total.
 
 Versions: core 0.0.722, harness 0.0.619, host 0.0.88.
+
+### Unit 4 — the NanoGPT LoRA wire dialects (the train's commit 1, wire half)
+
+v4 sources (at `84f33ce94`, NOT the train tip):
+`plugins/dist/qtap-plugin-nanogpt/image-loras.ts` (NEW, 287) and the
+`image-provider.ts` / `models.ts` hunks that consume it.
+
+v5: `model/nanogpt_loras.rs` (the wire half beside the unit-1 table),
+`model/image_dialects.rs` (`build_nanogpt`, `supported_image_models`, the
+model-listing URL).
+
+**Recorded at the FIRST commit's pin, deliberately.** The train is D-stacked
+and the order forbids blending bug 110's fix into commit 1, so this unit's
+`image-dialects` corpus rows are recorded from
+`/tmp/qt-v4-pin-p4d138-84f33ce94` — a second lane-unique detached worktree,
+verified by `lib/image-gen/huggingface-lookup.ts` being ABSENT from it and the
+`if (!loras || loras.length === 0)` early return being PRESENT. That early
+return IS bug 110, ported here as-is with a comment naming both shas; unit 5
+moves it and re-records at the tip, so the two commits' corpora each describe
+the code that ships with them.
+
+Three carried invariants:
+
+- **Capping happens TWICE by design.** The host caps in `cap_loras` against the
+  declared `loraSupport`; the plugin caps again here, with a DIFFERENT sentence
+  (`the model's` vs `this model's`). They are not redundant: a model whose
+  family the static table does not know resolves its capability from the live
+  catalog's `lora` tag alone, so there is no host cap to have applied.
+- **`hf_api_token` and `lora_preset` are scoped, not passed through.** They are
+  deliberately absent from `NANOGPT_PASSTHROUGH_KEYS` and attached inside
+  `apply_loras` where the dialect is known — a credential must not be broadcast
+  to whatever model a profile happens to name.
+- **The static table is static because the catalog cannot answer.** NanoGPT
+  tags a model `lora` but leaves `allowed_passthrough_parameters` empty, so the
+  tag can say a model takes adapters and never which spelling it wants; an
+  unknown family drops the whole list loudly rather than posting a body the
+  model silently ignores.
+
+**Differential.** `image_dialects_equivalence` (committed corpus) 82 → 97 rows:
+fifteen NEW nanogpt `dialect` rows and six CHANGED pre-existing nanogpt rows
+(the five `models` rows — the listing URL gains `?detailed=true` and the static
+union grows to sixteen ids — plus the `orientation` row, which now carries
+v4's whole `getImageGenerationModels('NANOGPT')` list with
+`orientationSupport: null` on every entry). **Zero rows removed and no
+non-nanogpt row changed**, which is what makes recording the whole corpus at
+the commit-1 pin safe: the other five plugins are untouched by the train.
+
+`image_gen_data::orientation_data_for("NANOGPT")` therefore stops returning an
+empty model list — the differential compares it against v4's real
+`getImageGenerationModels`, and since `84f33ce94` that hook exists for NanoGPT.
+Behaviour is unchanged (every entry declares no orientation support, so
+`resolve_orientation` still falls through to the provider-level constraint
+where NanoGPT's shape has always lived), and `lora_data_for` now decorates that
+same ordered list rather than rebuilding it.
+
+**Bug 110 is captured in the corpus, pre-fix, by name.** The recorded bodies
+show `lora_preset_without_adapters` and `lora_preset_no_loras_key` posting
+`{}` — a configured preset discarded in silence — and
+`lora_weights_token_without_weights` likewise `{}`. Unit 5 re-records at the
+train tip; the first two rows gain `lora_preset` and the third stays empty
+(the credential's opposite rule), which is the whole shape of the fix made
+falsifiable.
+
+Regen recipe (note the SECOND pin):
+
+```
+V4=/tmp/qt-v4-pin-p4d138-84f33ce94 V5=<worktree> \
+  bash harness/oracle/providers/regenerate-image-fixtures.sh
+cargo test -p quilltap-harness --test image_dialects_equivalence
+```
+
+Versions: core 0.0.723.
+
+**The manifest rode with it.** `list-providers` answers from the compiled
+provider MANIFEST's `imageGenerationModels`, not from
+`supported_image_models`, so widening one without the other left that arm red.
+The manifests were regenerated from the same commit-1 pin through the shipped
+generator (never by hand — the standing augmentation-rot rule):
+`cd /tmp/qt-v4-pin-p4d138-84f33ce94 && node
+harness/oracle/providers/gen-provider-manifests.mjs <manifests-dir>`. Exactly
+ONE line in ONE file moved (`nanogpt.json`'s `imageGenerationModels`, six ids →
+sixteen); the other ten manifests came back byte-identical.
+`provider_registry_equivalence` green, and the routes family's
+`list_providers` arm flipped from red to green, leaving only the four
+`list_models` arms (unit 8's `loraSupport` map) outstanding.
+
+**Gate (unit 4):** fmt clean; clippy clean on BOTH feature sets;
+`cargo test --workspace --no-fail-fast` = **475 test binaries / 2,640 passed /
+1 failed**, that one failure being the routes family's remaining FOUR
+`list_models` arms (unit 8's `loraSupport` map) — `list_providers` flipped
+green with the manifest regen, so the lane's red-first set shrank from five to
+four.
+
+Versions: core 0.0.723.

@@ -39,6 +39,7 @@ use serde_json::{Map, Value};
 use crate::db::js_number_to_json;
 use crate::jsstr;
 use crate::model::image::{GeneratedImageData, ImageGenError, ImageGenParams, ImageGenResponse};
+use crate::model::nanogpt_loras::{apply_loras, apply_passthrough_parameters};
 use crate::model::request_builder::BuiltRequest;
 use crate::model::wire::WireResponse;
 
@@ -468,9 +469,34 @@ fn build_nanogpt(params: &ImageGenParams) -> (String, Value) {
     if let Some(size) = params.size.as_deref().filter(|s| !s.is_empty()) {
         body.insert("size".into(), Value::String(size.to_string()));
     }
+    // v4 `84f33ce94`: NanoGPT's model-specific generation controls ride the
+    // request body as FLAT keys alongside the OpenAI-compatible fields — the
+    // documented mechanism for `guidance_scale` / `num_inference_steps` /
+    // `strength` / `seed`, and the same channel the LoRA fields use. The OpenAI
+    // SDK serialises the params object as given, so extra keys travel; this is
+    // the existing `seed` cast pattern, widened. Insertion order is v4's.
     if let Some(seed) = params.seed {
         body.insert("seed".into(), js_number_to_json(seed));
     }
+    if let Some(gs) = params.guidance_scale {
+        body.insert("guidance_scale".into(), js_number_to_json(gs));
+    }
+    if let Some(steps) = params.steps {
+        body.insert("num_inference_steps".into(), js_number_to_json(steps));
+    }
+    // `if (params.negativePrompt)` — a JS truthy test, so an EMPTY string is
+    // "unset" and never reaches the wire.
+    if let Some(np) = params.negative_prompt.as_deref().filter(|s| !s.is_empty()) {
+        body.insert("negative_prompt".into(), Value::String(np.to_string()));
+    }
+    let _passthrough_keys =
+        apply_passthrough_parameters(&mut body, params.profile_parameters.as_ref());
+    let _applied = apply_loras(
+        &mut body,
+        model,
+        &params.loras,
+        params.profile_parameters.as_ref(),
+    );
     (
         "https://nano-gpt.com/api/v1/images/generations".to_string(),
         Value::Object(body),
@@ -749,6 +775,11 @@ pub fn supported_image_models(provider: &str) -> Result<&'static [&'static str],
     Ok(match provider {
         // P4.D101 — NanoGPT's `STATIC_IMAGE_MODEL_IDS` (from `models.ts`, which
         // `image-provider.ts` imports as its `supportedModels`).
+        // `84f33ce94`: `STATIC_IMAGE_MODEL_IDS` is now
+        // `STATIC_IMAGE_MODELS.map(m => m.id)` — the six documented flagships
+        // FOLLOWED by one entry per LoRA family, generated from the dialect
+        // table (`models.ts` imports `NANOGPT_LORA_FAMILIES` rather than
+        // repeating the list, so a family added there appears here for free).
         "NANOGPT" => &[
             "hidream",
             "flux-2-flash",
@@ -756,6 +787,16 @@ pub fn supported_image_models(provider: &str) -> Result<&'static [&'static str],
             "flux-2-pro",
             "recraft-v3",
             "gpt-image-1.5",
+            "flux-2-dev-lora",
+            "flux-2-klein-4b",
+            "flux-2-klein-9b",
+            "wavespeed-ai/flux-2-klein-base-4b",
+            "wavespeed-ai/flux-2-klein-base-9b",
+            "z-image-turbo-lora",
+            "wavespeed-ai/krea-v2/turbo-lora",
+            "pruna-ai/p-image/text-to-image-lora",
+            "pruna-ai/p-image/edit-lora",
+            "flux-lora",
         ],
         "OPENAI" => &[
             "gpt-image-2",
@@ -821,7 +862,7 @@ pub fn build_models_request(
         // NanoGPT's dedicated image listing, with per-model capability flags
         // (the listing also carries edit-only and upscale-only entries).
         "NANOGPT" => (
-            "https://nano-gpt.com/api/v1/image-models".to_string(),
+            "https://nano-gpt.com/api/v1/image-models?detailed=true".to_string(),
             vec![bearer()],
         ),
         // xAI's dedicated image-only endpoint (no name filtering needed).

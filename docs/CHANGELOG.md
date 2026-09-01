@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — feat(nanogpt): the LoRA wire dialects + the passthrough allow-list (P4.D138 unit 4)
+
+_Versions: core 0.0.723._
+
+The NanoGPT half of v4 `84f33ce94`, ported at that commit's exact state (the
+train is D-stacked, so bug 110's fix arrives in its own commit next).
+
+`model::nanogpt_loras` gains the wire half of v4's
+`plugins/dist/qtap-plugin-nanogpt/image-loras.ts`: `apply_loras` (three
+dialects — indexed `lora_url_N`/`lora_scale_N`, a single
+`lora_weights`/`lora_scale` plus an optional `hf_api_token`, and
+`lora_url`/`lora_strength` plus an optional `lora_preset`), the
+`NANOGPT_PASSTHROUGH_KEYS` allow-list with its blank-skipping applier, and the
+`NANOGPT_LORA_SCOPED_KEYS` pair the host deliberately keeps OFF that list so a
+credential is never broadcast to whatever model a profile happens to name.
+
+Capping happens twice by design — host-side in `cap_loras` and again here with
+a different sentence — because a model whose family the static table does not
+know resolves its capability from the live catalog's `lora` tag alone, and then
+there is no cap and no spelling.
+
+`build_nanogpt` grows the flat model-specific controls the same channel
+carries (`guidance_scale`, `num_inference_steps`, `negative_prompt` beside the
+existing `seed`), then the passthrough bag, then the LoRA keys, in v4's
+insertion order. `supported_image_models("NANOGPT")` gains the ten LoRA family
+ids (v4's `STATIC_IMAGE_MODEL_IDS` is now generated from the dialect table),
+and the model-listing request asks for `?detailed=true`.
+
+The `image-dialects` recorded corpus grows the dialect rows, the passthrough
+allow-list arm and bug 110's own shapes, recorded against a worktree pinned at
+`84f33ce94` so this commit's rows are the pre-fix behaviour.
+
 #### 2026-09-01 — feat(images): one params builder for every image call site (P4.D138 unit 3)
 
 _Versions: core 0.0.722, harness 0.0.619, host 0.0.88._
