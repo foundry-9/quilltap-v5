@@ -36,7 +36,7 @@ use crate::model::embedding::EmbeddingProvider;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::cost_estimation::MessageCostEstimator;
 use crate::services::cost_events::{create_memory_extraction_event, TokenUsage};
-use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::memory_processor::{
     process_turn_for_memory, CheapLlmSettings, MemoryExtractionLimits, TurnMemoryExtractionContext,
@@ -234,7 +234,7 @@ where
                 .collect(),
         ),
         danger_settings: Some(danger_settings),
-        is_dangerous_chat: is_chat_active_dangerous(Some(&chat)),
+        is_dangerous_chat: should_use_uncensored_route(Some(&chat)),
         memory_extraction_limits,
         source_message_timestamp,
         // v4's Carina path passes no `timelineMode` — the processor defaults

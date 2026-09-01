@@ -57,7 +57,7 @@ use crate::services::context_summary::tasks::{
 use crate::services::context_summary::title_verdict::TitleVerdict;
 // === end P4.D110 ===
 use crate::services::cost_estimation::{MessageCostEstimator, NoMessageCost};
-use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::image_profile_resolution::queue_story_background_if_enabled;
 use crate::services::job_runner::{JobFuture, JobHandler, JobOutcome};
@@ -256,7 +256,7 @@ where
         mode: resolved_danger.mode,
         uncensored_text_profile_id: resolved_danger.uncensored_text_profile_id,
     };
-    if is_chat_active_dangerous(Some(&chat)) {
+    if should_use_uncensored_route(Some(&chat)) {
         selection = resolve_uncensored_cheap_llm_selection(
             selection,
             true,

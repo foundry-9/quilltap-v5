@@ -1,8 +1,9 @@
 /**
  * Fixture builder for the W4.2 manual Concierge-flip differential
- * (v4 `applyConciergeFlip`). Bakes a set of `chats` rows in the three tri-states
- * (safe / flagged / off-duty), one per flip scenario, with pinned ids +
- * timestamps so both sides read the identical seed.
+ * (v4 `applyConciergeFlip`). Bakes a set of `chats` rows in the four states
+ * (monitored / flagged / vouched / uncensored), one per flip scenario — all 12
+ * ordered transitions plus the four no-ops — with pinned ids + timestamps so
+ * both sides read the identical seed.
  *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -56,7 +57,9 @@ async function main(): Promise<void> {
   for (const c of spec.chats) {
     const { id, ...danger } = c;
     n += 1;
-    const participantId = `fb00000${n}-0000-4000-8000-000000000001`;
+    // Zero-pad: the corpus is 16 chats, so a bare `${n}` would overflow the
+    // 8-hex-digit UUID head at n=10.
+    const participantId = `fb0000${String(n).padStart(2, '0')}-0000-4000-8000-000000000001`;
     await repo.create(
       {
         userId: spec.userId,

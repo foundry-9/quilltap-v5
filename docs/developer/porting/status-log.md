@@ -95732,3 +95732,141 @@ building a step around it, ledger §5.5, since v4 runs daily on that instance an
 may have healed it already), a Salon list dated by real conversation rather than
 by background renders, and a restore whose chats keep their own dates instead of
 landing in one flat heap.
+## P4.D141 — the Concierge four-state per-chat control (v4 `60e3c4a0a`)
+
+Lane branch `claude/p4-d141-concierge-four-state-eedf47`. Freshness probe at
+lane start (drift-ledger §2): v4 checkout on `main`, tree clean,
+`4622411fd..main` and `3a76b17df..bugfix` both empty — **PASS**. Regen rule
+**PIN REQUIRED**; every regen in this lane runs from the lane-unique detached
+worktree `/tmp/qt-v4-pin-p4d141-60e3c4a0a` (three symlink classes, ledger §5.1).
+
+### Unit 1 — the predicate family, the resolver, the flips and the writer
+
+**The reshape.** `chat_override.rs` is rewritten to v4's post-state API:
+`ConciergeState { Monitored, Flagged, Vouched, Uncensored }` with the four wire
+strings, `get_concierge_state` (UNCENSORED → uncensored; OFF → vouched; else the
+label decides — the old None-chat guard DISAPPEARS, so `None` is `Monitored`),
+and three purpose-named predicates. The two overloaded ones
+(`is_concierge_off_duty`, `is_chat_active_dangerous`) are **deleted, not
+re-pointed** — v4's stated reason is that every call site should be forced to
+state which question it is asking, and the port keeps that. The module header
+carries v4's 2×2 table verbatim.
+
+**Call sites (v5's map, all verified by grep after the edit).** Eight sites take
+`should_use_uncensored_route`: `orchestrator.rs:1246`, `pre_compute.rs:236`,
+`story_background_job.rs:365` (§E), `title_update_job.rs:259`,
+`memory_extraction_job.rs:294`, `carina_memory_extraction.rs:237`,
+`pascal/llm_consult.rs:260`, `tools/generate_image.rs:1337` (§E).
+`context_summary.rs` had a PRIVATE copy of the old predicate at `:483` — deleted
+in favour of the shared helper, with the module header's
+`isDangerousChat && conciergeOverride != 'OFF'` prose replaced by the
+uncensored-row wording. The two raw gates (`danger_scan.rs:113`,
+`dangerous_content/gatekeeper_job.rs:129`) now read `!is_classifier_on_duty`,
+each carrying v4's new comment. `message_finalizer.rs`'s raw sticky
+`isDangerousChat` check is LEFT (v4 parity — v4 keeps the same raw check after
+the helper gate), and `api/salon.rs:474-476`'s raw projection is unchanged.
+
+**The stale-comment decision, recorded once as the order asks.** v4 deliberately
+left its "Off-duty" prose in place at five ported sites — measured at the pin:
+`pre-compute.service.ts:240`, `title-update.ts:106`, `memory-regenerate-all.ts:58`,
+`orchestrator.service.ts:1150`, and `chats/[id]/actions/memories.ts:235,237`.
+This port takes the **conservative** call and MIRRORS that staleness: v5's twins
+(`pre_compute.rs:234`, `title_update_job.rs:247`, `orchestrator.rs:1223`, and the
+`message_finalizer.rs` neighbours v4 never touched) keep their wording. The
+comments v4 itself rewrote in this commit — the danger-scan filter and the
+gatekeeper bail — are carried in their NEW wording.
+
+**One comment gap left for the unifier (§E).** v4 also rewrote
+`image-generation-handler.ts:1146` (`"chat may be Off-duty"` → `"chat may carry
+an operator override"`) and widened two of its inline chat-view types to
+`'OFF' | 'UNCENSORED' | null`. v5's twin is `tools/generate_image.rs:1584`, and
+§E limits this lane in that file to **one import line plus the `:1337` call** —
+so the comment is deliberately NOT touched here. It is a one-line cosmetic wire
+for whoever holds the file after P4.D138 lands; nothing behavioral depends on it
+(the v5 twin's type is `Option<&Value>`, already domain-agnostic).
+
+**Resolver.** `DangerSource` gains `ChatVouched` (`"chat-vouched"`, renamed from
+`ChatOffDuty`) and `ChatUncensored` (`"chat-uncensored"`);
+`off_duty_dangerous_content_settings` → `vouched_safe_dangerous_content_settings`
+with v4's new "deliberately carries no uncensored profile IDs" doc. Branch order
+is exempt → uncensored → vouched → global → default. The uncensored arm spreads
+the global settings (v5's narrower `Option<DangerousContentSettings>` signature
+stays; the `?? DEFAULT` fallback becomes `unwrap_or_else(default_…)`), forces
+`AUTO_ROUTE` / threshold 1.0 / all three scans false / `showWarningBadges` false,
+and carries v4's two inline comments verbatim.
+
+**Flips + writer.** `manual_flip.rs` grows the `Uncensored` arm on the `Vouched`
+arm's standalone-write shape (`UPDATE chats SET "conciergeOverride" =
+'UNCENSORED' WHERE id = ?1`, no `updatedAt` — the standing convention), both
+operator arms carry v4's preserve-`isDangerousChat` comments, and the Monitored
+arm's kind selection becomes `current ∈ {vouched, uncensored} ? manual-resumed :
+manual-safe`. The stale "four wire strings" docs are corrected to five.
+`concierge_notifications.rs` grows `ManualVouched`/`ManualResumed`/
+`ManualUncensored` (from_wire/as_wire both updated; unknown → `None` stays) with
+v4's exact sentences — the vouched persona copy reworded, `manual-resumed`
+keeping the old "returns to his post" line under its renamed kind, the new
+uncensored-door sentence, and the vouched advisory extended with "Ordinary
+providers still apply." **Correcting the drift-ledger row:** the uncensored-door
+sentence is NOT shared by `manual-resumed`; what is shared is the TRANSITION
+trigger (vouched→monitored and uncensored→monitored both emit `manual-resumed`).
+
+### The differentials (all regenerated from the `60e3c4a0a` pin)
+
+- **`danger_resolver_equivalence` §1** — 30 pure rows (was 19). The override
+  table is v4's own `chat-override.test.ts` TABLE row for row plus the
+  null/empty/absent-key guards, and each row now asks all THREE purpose-named
+  questions (`uncensoredRoute` / `dangerStyling` / `classifierOnDuty`) instead of
+  the retired `offDuty`/`active` pair; an in-band assert pins the 2×2's corner
+  (uncensored routes yet is never painted). The resolve rows gain six cases:
+  AUTO_ROUTE forced under a global `OFF` with the profile ids riding through,
+  uncensored over a global AUTO_ROUTE, uncensored with no global at all, and
+  exempt-beats-uncensored on both `brahma` and `help`.
+  ⚠ the family's `state_from_str` at `:186` hard-coded `"safe"|"flagged"|"off"`
+  and panicked on anything else — it now delegates to `ConciergeState::from_wire`.
+- **`danger_resolver_equivalence` §2** — 7 ops → **16**: all 12 ordered
+  four-state transitions (v4's own `TRANSITIONS` table) plus the four no-ops,
+  over a rebuilt `danger-manual-flip.json` whose four starting shapes are v4's
+  `FROM` fixtures. v4's `expect(update).not.toHaveProperty('isDangerousChat')`
+  becomes `assert_operator_states_preserve_the_label`, a COLUMN-level assert run
+  against BOTH sides (so it cannot pass vacuously) that also refuses a corpus
+  which stopped exercising both operator targets. Bubble counts in the
+  regenerated NDJSON: 3 flagged / 1 safe / 3 vouched / 2 resumed / 3 uncensored
+  = the 12 changed transitions; the U+2019 in `operator’s` verified present ×3.
+- **`danger_scan_tier2_equivalence`**, **`danger_routing_equivalence`**,
+  **`post_office_concierge_lantern_suparna_equivalence`** (`TZ=UTC`) — re-run
+  green at the pin; the post-office family is what pins the five sentences
+  through the real writer.
+- **Changed-bytes greps (ledger §5.2):** `"chat-uncensored"` 3, `"chat-vouched"`
+  3, `"classifierOnDuty"` 13, and the retired spellings `"chat-off-duty"` /
+  `"offDuty"` / `"state":"safe"` / `"state":"off"` all **0**.
+- **Mutations, each verified applied, each reddening the family, all reverted:**
+  (1) `should_use_uncensored_route` drops its Uncensored arm; (2)
+  `is_classifier_on_duty` returns true for Vouched; (3) the resolver drops the
+  forced `AUTO_ROUTE`; (4) the resolver checks vouched BEFORE uncensored;
+  (5) `manual-resumed`'s scope narrowed back to vouched-only; (6) the vouched
+  advisory loses its new final sentence; (7) the cross-lane mask below is
+  dropped.
+
+### ⚠ Recorded cross-lane divergence — `LAST_MESSAGE_AT_PENDING_P4D140`
+
+This lane's pin `60e3c4a0a` has **bug 112 (`735d9408c`) as an ancestor**
+(`git merge-base --is-ancestor` → YES), so the pinned v4 tree already dates a
+chat by character-authored activity: `chats-messages.ops.ts:311` moves
+`lastMessageAt` only when `isCharacterAuthoredMessage(validated)`, and both the
+Concierge manual bubble and the danger bubble carry `systemSender: 'concierge'`.
+v5 still bumps unconditionally. The fix belongs to `db/chats_messages.rs`, a
+**P4.D140-owned** file, so this lane does not make it.
+
+Two families are affected — `danger_resolver_equivalence` (the manual bubble)
+and `danger_gatekeeper_tier3_equivalence` (the danger bubble; its ONLY diverging
+column, established by a key-by-key diff of the two row sets: 2 of 11 rows,
+`lastMessageAt` alone). Both mask the column behind
+`LAST_MESSAGE_AT_PENDING_P4D140`, but **only after a measurement asserts the
+divergence has exactly the shape bug 112 predicts** (v4 at the seed/NULL, v5
+minted, on every changed op; the no-op rows null on both sides). The measurement
+reddens the moment P4.D140 lands — that is the signal to flip the constant to
+`false` and drop the mask. Mutation (7) proves the mask is load-bearing.
+
+**For the unifier:** if P4.D140 is cherry-picked before this lane, flip both
+constants to `false` and re-run the two families; the plain equality should
+return with no other change.

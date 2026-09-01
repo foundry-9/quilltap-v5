@@ -6,84 +6,289 @@
   "chats": [
     {
       "id": "c0000010-0000-4000-8000-000000000001",
-      "title": "safe to flagged",
+      "title": "monitored -> flagged",
       "chatType": "salon",
-      "messageCount": 5,
       "isDangerousChat": false,
       "conciergeOverride": null,
-      "dangerScore": null,
-      "dangerCategories": [],
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 5
+      "messageCount": 11
     },
     {
       "id": "c0000010-0000-4000-8000-000000000002",
-      "title": "flagged to safe",
+      "title": "monitored -> vouched",
       "chatType": "salon",
-      "messageCount": 8,
-      "isDangerousChat": true,
+      "isDangerousChat": false,
       "conciergeOverride": null,
-      "dangerScore": 0.9,
-      "dangerCategories": ["nsfw"],
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 8
+      "messageCount": 12
     },
     {
       "id": "c0000010-0000-4000-8000-000000000003",
-      "title": "off to safe on-duty",
+      "title": "monitored -> uncensored",
       "chatType": "salon",
-      "messageCount": 3,
-      "isDangerousChat": true,
-      "conciergeOverride": "OFF",
-      "dangerScore": 0.8,
-      "dangerCategories": ["violence"],
-      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 3
+      "isDangerousChat": false,
+      "conciergeOverride": null,
+      "messageCount": 13
     },
     {
       "id": "c0000010-0000-4000-8000-000000000004",
-      "title": "safe to off",
+      "title": "flagged -> monitored",
       "chatType": "salon",
-      "messageCount": 2,
-      "isDangerousChat": false,
-      "conciergeOverride": null
+      "isDangerousChat": true,
+      "conciergeOverride": null,
+      "dangerScore": 0.9,
+      "dangerCategories": [
+        "nsfw"
+      ],
+      "messageCount": 14,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 14
     },
     {
       "id": "c0000010-0000-4000-8000-000000000005",
-      "title": "flagged to off",
+      "title": "flagged -> vouched",
       "chatType": "salon",
-      "messageCount": 4,
       "isDangerousChat": true,
       "conciergeOverride": null,
-      "dangerScore": 0.95,
-      "dangerCategories": ["nsfw", "violence"],
+      "dangerScore": 0.9,
+      "dangerCategories": [
+        "nsfw"
+      ],
+      "messageCount": 15,
       "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
-      "dangerClassifiedAtMessageCount": 4
+      "dangerClassifiedAtMessageCount": 15
     },
     {
       "id": "c0000010-0000-4000-8000-000000000006",
-      "title": "safe noop",
+      "title": "flagged -> uncensored",
       "chatType": "salon",
-      "messageCount": 1,
-      "isDangerousChat": false,
-      "conciergeOverride": null
+      "isDangerousChat": true,
+      "conciergeOverride": null,
+      "dangerScore": 0.9,
+      "dangerCategories": [
+        "nsfw"
+      ],
+      "messageCount": 16,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 16
     },
     {
       "id": "c0000010-0000-4000-8000-000000000007",
-      "title": "off to flagged",
+      "title": "vouched -> monitored",
       "chatType": "salon",
-      "messageCount": 6,
+      "isDangerousChat": true,
+      "conciergeOverride": "OFF",
+      "dangerScore": 0.8,
+      "dangerCategories": [
+        "violence"
+      ],
+      "messageCount": 17,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 17
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000008",
+      "title": "vouched -> flagged",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": "OFF",
+      "dangerScore": 0.8,
+      "dangerCategories": [
+        "violence"
+      ],
+      "messageCount": 18,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 18
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000009",
+      "title": "vouched -> uncensored",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": "OFF",
+      "dangerScore": 0.8,
+      "dangerCategories": [
+        "violence"
+      ],
+      "messageCount": 19,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 19
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000010",
+      "title": "uncensored -> monitored",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": "UNCENSORED",
+      "dangerScore": 0.95,
+      "dangerCategories": [
+        "nsfw",
+        "violence"
+      ],
+      "messageCount": 20,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 20
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000011",
+      "title": "uncensored -> flagged",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": "UNCENSORED",
+      "dangerScore": 0.95,
+      "dangerCategories": [
+        "nsfw",
+        "violence"
+      ],
+      "messageCount": 21,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 21
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000012",
+      "title": "uncensored -> vouched",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": "UNCENSORED",
+      "dangerScore": 0.95,
+      "dangerCategories": [
+        "nsfw",
+        "violence"
+      ],
+      "messageCount": 22,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 22
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000013",
+      "title": "monitored -> monitored (no-op)",
+      "chatType": "salon",
       "isDangerousChat": false,
-      "conciergeOverride": "OFF"
+      "conciergeOverride": null,
+      "messageCount": 23
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000014",
+      "title": "flagged -> flagged (no-op)",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": null,
+      "dangerScore": 0.9,
+      "dangerCategories": [
+        "nsfw"
+      ],
+      "messageCount": 24,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 24
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000015",
+      "title": "vouched -> vouched (no-op)",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": "OFF",
+      "dangerScore": 0.8,
+      "dangerCategories": [
+        "violence"
+      ],
+      "messageCount": 25,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 25
+    },
+    {
+      "id": "c0000010-0000-4000-8000-000000000016",
+      "title": "uncensored -> uncensored (no-op)",
+      "chatType": "salon",
+      "isDangerousChat": true,
+      "conciergeOverride": "UNCENSORED",
+      "dangerScore": 0.95,
+      "dangerCategories": [
+        "nsfw",
+        "violence"
+      ],
+      "messageCount": 26,
+      "dangerClassifiedAt": "2020-01-01T00:00:00.000Z",
+      "dangerClassifiedAtMessageCount": 26
     }
   ],
   "ops": [
-    { "id": "safe-to-flagged", "chatId": "c0000010-0000-4000-8000-000000000001", "requested": "flagged" },
-    { "id": "flagged-to-safe", "chatId": "c0000010-0000-4000-8000-000000000002", "requested": "safe" },
-    { "id": "off-to-safe", "chatId": "c0000010-0000-4000-8000-000000000003", "requested": "safe" },
-    { "id": "safe-to-off", "chatId": "c0000010-0000-4000-8000-000000000004", "requested": "off" },
-    { "id": "flagged-to-off", "chatId": "c0000010-0000-4000-8000-000000000005", "requested": "off" },
-    { "id": "safe-noop", "chatId": "c0000010-0000-4000-8000-000000000006", "requested": "safe" },
-    { "id": "off-to-flagged", "chatId": "c0000010-0000-4000-8000-000000000007", "requested": "flagged" }
+    {
+      "id": "monitored-to-flagged",
+      "chatId": "c0000010-0000-4000-8000-000000000001",
+      "requested": "flagged"
+    },
+    {
+      "id": "monitored-to-vouched",
+      "chatId": "c0000010-0000-4000-8000-000000000002",
+      "requested": "vouched"
+    },
+    {
+      "id": "monitored-to-uncensored",
+      "chatId": "c0000010-0000-4000-8000-000000000003",
+      "requested": "uncensored"
+    },
+    {
+      "id": "flagged-to-monitored",
+      "chatId": "c0000010-0000-4000-8000-000000000004",
+      "requested": "monitored"
+    },
+    {
+      "id": "flagged-to-vouched",
+      "chatId": "c0000010-0000-4000-8000-000000000005",
+      "requested": "vouched"
+    },
+    {
+      "id": "flagged-to-uncensored",
+      "chatId": "c0000010-0000-4000-8000-000000000006",
+      "requested": "uncensored"
+    },
+    {
+      "id": "vouched-to-monitored",
+      "chatId": "c0000010-0000-4000-8000-000000000007",
+      "requested": "monitored"
+    },
+    {
+      "id": "vouched-to-flagged",
+      "chatId": "c0000010-0000-4000-8000-000000000008",
+      "requested": "flagged"
+    },
+    {
+      "id": "vouched-to-uncensored",
+      "chatId": "c0000010-0000-4000-8000-000000000009",
+      "requested": "uncensored"
+    },
+    {
+      "id": "uncensored-to-monitored",
+      "chatId": "c0000010-0000-4000-8000-000000000010",
+      "requested": "monitored"
+    },
+    {
+      "id": "uncensored-to-flagged",
+      "chatId": "c0000010-0000-4000-8000-000000000011",
+      "requested": "flagged"
+    },
+    {
+      "id": "uncensored-to-vouched",
+      "chatId": "c0000010-0000-4000-8000-000000000012",
+      "requested": "vouched"
+    },
+    {
+      "id": "monitored-to-monitored-noop",
+      "chatId": "c0000010-0000-4000-8000-000000000013",
+      "requested": "monitored"
+    },
+    {
+      "id": "flagged-to-flagged-noop",
+      "chatId": "c0000010-0000-4000-8000-000000000014",
+      "requested": "flagged"
+    },
+    {
+      "id": "vouched-to-vouched-noop",
+      "chatId": "c0000010-0000-4000-8000-000000000015",
+      "requested": "vouched"
+    },
+    {
+      "id": "uncensored-to-uncensored-noop",
+      "chatId": "c0000010-0000-4000-8000-000000000016",
+      "requested": "uncensored"
+    }
   ]
 }

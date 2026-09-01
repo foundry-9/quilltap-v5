@@ -2,11 +2,18 @@
  * Oracle case (W4.2 dangerous-content): the mode resolver + the per-chat
  * override truth table. Pure functions — exact equality.
  *
+ * P4.D141 (v4 `60e3c4a0a`) widened both halves to the four-state control: the
+ * override table now asks all THREE purpose-named questions over the full
+ * stored-field 2x2 (v4's own `chat-override.test.ts` TABLE, row for row), and
+ * the resolver grows the `chat-uncensored` arm alongside the renamed
+ * `chat-vouched`.
+ *
  * Drives the REAL exports from v4:
  *   lib/services/dangerous-content/resolver.service.ts:
  *     resolveDangerousContentSettings
  *   lib/services/dangerous-content/chat-override.ts:
- *     isConciergeOffDuty, getConciergeState, isChatActiveDangerous
+ *     getConciergeState, shouldUseUncensoredRoute, shouldShowDangerStyling,
+ *     isClassifierOnDuty
  *
  * Run from inside the server checkout:
  *   cd ~/source/quilltap-server
@@ -18,9 +25,10 @@ import {
   resolveDangerousContentSettings,
 } from '@/lib/services/dangerous-content/resolver.service'
 import {
-  isConciergeOffDuty,
   getConciergeState,
-  isChatActiveDangerous,
+  shouldUseUncensoredRoute,
+  shouldShowDangerStyling,
+  isClassifierOnDuty,
 } from '@/lib/services/dangerous-content/chat-override'
 import type { DangerousContentSettings } from '@/lib/schemas/settings.types'
 
@@ -41,7 +49,7 @@ function settings(mode: string, extra: Partial<DangerousContentSettings> = {}): 
   }
 }
 
-type ChatView = { conciergeOverride?: 'OFF' | null; chatType?: string | null; isDangerousChat?: boolean | null }
+type ChatView = { conciergeOverride?: 'OFF' | 'UNCENSORED' | null; chatType?: string | null; isDangerousChat?: boolean | null }
 
 // --- resolver matrix ---
 const resolveCases: Array<{ id: string; global: DangerousContentSettings | null; chat: ChatView | null }> = [
@@ -56,6 +64,38 @@ const resolveCases: Array<{ id: string; global: DangerousContentSettings | null;
   { id: 'default-no-global-plain-chat', global: null, chat: { chatType: 'salon' } },
   { id: 'global-with-uncensored', global: settings('AUTO_ROUTE', { uncensoredTextProfileId: 'prof-unc-1' }), chat: { chatType: 'salon' } },
   { id: 'global-with-custom-prompt', global: settings('DETECT_ONLY', { customClassificationPrompt: 'Also flag squick.' }), chat: null },
+  // --- P4.D141: the operator's Uncensored assertion (v4 `60e3c4a0a`) ---
+  // The motivating regression: AUTO_ROUTE is forced even under a global OFF, so
+  // asking for uncensored routing on one chat needs no global switch.
+  {
+    id: 'uncensored-forces-auto-route-under-global-off',
+    global: settings('OFF', {
+      scanImageGeneration: true,
+      uncensoredTextProfileId: '11111111-1111-4111-8111-111111111111',
+      uncensoredImageProfileId: '22222222-2222-4222-8222-222222222222',
+    }),
+    chat: { chatType: 'salon', conciergeOverride: 'UNCENSORED' },
+  },
+  {
+    id: 'uncensored-over-global-auto-route',
+    global: settings('AUTO_ROUTE', { uncensoredTextProfileId: 'prof-unc-1' }),
+    chat: { chatType: 'salon', conciergeOverride: 'UNCENSORED', isDangerousChat: true },
+  },
+  // No global settings at all: v4 spreads DEFAULT_DANGEROUS_CONTENT_SETTINGS.
+  { id: 'uncensored-no-global', global: null, chat: { conciergeOverride: 'UNCENSORED' } },
+  // Branch order: exempt beats uncensored (v4's own test pins this).
+  {
+    id: 'brahma-exempt-beats-uncensored',
+    global: settings('AUTO_ROUTE', { uncensoredTextProfileId: 'prof-unc-1' }),
+    chat: { chatType: 'brahma', conciergeOverride: 'UNCENSORED' },
+  },
+  {
+    id: 'help-exempt-beats-uncensored',
+    global: settings('DETECT_ONLY'),
+    chat: { chatType: 'help', conciergeOverride: 'UNCENSORED' },
+  },
+  // Vouched Safe still collapses, and the label underneath is preserved/ignored.
+  { id: 'vouched-with-label-collapses', global: settings('AUTO_ROUTE'), chat: { chatType: 'salon', conciergeOverride: 'OFF', isDangerousChat: true } },
 ]
 
 for (const c of resolveCases) {
@@ -66,16 +106,25 @@ for (const c of resolveCases) {
   )
 }
 
-// --- override truth table ---
+// --- override truth table (the full four-state 2x2) ---
+// Rows 3-9 are v4's own `chat-override.test.ts` TABLE, in its order: both
+// stored fields across all four states, with the preserved `isDangerousChat`
+// label in each operator position (the label must not leak into any predicate).
 const overrideCases: Array<{ id: string; chat: ChatView | null }> = [
   { id: 'null-chat', chat: null },
   { id: 'empty', chat: {} },
-  { id: 'off-and-flagged', chat: { conciergeOverride: 'OFF', isDangerousChat: true } },
-  { id: 'off-and-safe', chat: { conciergeOverride: 'OFF', isDangerousChat: false } },
-  { id: 'flagged-on-duty', chat: { conciergeOverride: null, isDangerousChat: true } },
-  { id: 'safe-on-duty', chat: { conciergeOverride: null, isDangerousChat: false } },
-  { id: 'flagged-no-override', chat: { isDangerousChat: true } },
-  { id: 'danger-null', chat: { isDangerousChat: null } },
+  { id: 'monitored-explicit-false', chat: { conciergeOverride: null, isDangerousChat: false } },
+  { id: 'monitored-label-null', chat: { conciergeOverride: null, isDangerousChat: null } },
+  { id: 'flagged', chat: { conciergeOverride: null, isDangerousChat: true } },
+  { id: 'vouched-label-false', chat: { conciergeOverride: 'OFF', isDangerousChat: false } },
+  { id: 'vouched-label-true', chat: { conciergeOverride: 'OFF', isDangerousChat: true } },
+  { id: 'uncensored-label-false', chat: { conciergeOverride: 'UNCENSORED', isDangerousChat: false } },
+  { id: 'uncensored-label-true', chat: { conciergeOverride: 'UNCENSORED', isDangerousChat: true } },
+  // Absent keys (the hydrated read OMITS a NULL nullable-optional).
+  { id: 'flagged-no-override-key', chat: { isDangerousChat: true } },
+  { id: 'danger-null-no-override-key', chat: { isDangerousChat: null } },
+  { id: 'vouched-no-label-key', chat: { conciergeOverride: 'OFF' } },
+  { id: 'uncensored-no-label-key', chat: { conciergeOverride: 'UNCENSORED' } },
 ]
 
 for (const c of overrideCases) {
@@ -84,9 +133,10 @@ for (const c of overrideCases) {
       kind: 'override',
       id: c.id,
       chat: c.chat,
-      offDuty: isConciergeOffDuty(c.chat as any),
       state: getConciergeState(c.chat as any),
-      active: isChatActiveDangerous(c.chat as any),
+      uncensoredRoute: shouldUseUncensoredRoute(c.chat as any),
+      dangerStyling: shouldShowDangerStyling(c.chat as any),
+      classifierOnDuty: isClassifierOnDuty(c.chat as any),
     }) + '\n'
   )
 }

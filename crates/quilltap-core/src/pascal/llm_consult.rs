@@ -39,7 +39,7 @@ use crate::pascal::custom_tools::{LlmInvokeOptions, LlmInvokeResult, LlmInvoker}
 use crate::services::cheap_llm_exec::{
     CheapLlmLogConfig, CheapLlmTaskExecutor, CheapLlmTaskOptions,
 };
-use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::image_job_common::{
     cheap_llm_config_from_settings, cheap_llm_profile_from_value,
@@ -257,7 +257,7 @@ where
         };
         // A null chat is NEVER dangerous, which is exactly why the Workbench
         // bench run is never rerouted.
-        let dangerous = is_chat_active_dangerous(chat.as_ref());
+        let dangerous = should_use_uncensored_route(chat.as_ref());
         if dangerous {
             selection = resolve_uncensored_cheap_llm_selection(
                 selection,

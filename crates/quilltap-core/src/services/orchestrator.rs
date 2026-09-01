@@ -114,7 +114,7 @@ use crate::services::chat_events::{
     TurnStartPayload,
 };
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::llm_logging::LogContext;
 use crate::services::message_context;
@@ -1243,7 +1243,7 @@ where
         Some(&chat),
     );
     let danger_settings = danger_resolved.settings;
-    let is_dangerous_chat = is_chat_active_dangerous(Some(&chat));
+    let is_dangerous_chat = should_use_uncensored_route(Some(&chat));
 
     // --- Cheap-LLM selection (orchestrator.service.ts:390–415; Round-3 Group 8) ---
     // v4 resolves ONE `cheapLLMSelection` here — the provider/model the compression,

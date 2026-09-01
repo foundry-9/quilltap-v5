@@ -23,6 +23,7 @@ use crate::db::{chat_settings, chats_messages_read, chats_read, connection_profi
 use crate::jsnum::to_fixed;
 use crate::model::completion::CompletionProvider;
 
+use super::chat_override::is_classifier_on_duty;
 use super::gatekeeper::{classify_content, DangerCategory, ModerationProvider};
 use super::resolver::resolve_dangerous_content_settings;
 
@@ -125,8 +126,10 @@ where
     if is_moderation_exempt_chat_type(chat.get("chatType").and_then(Value::as_str)) {
         return Ok(());
     }
-    // Off-duty: a job may already be in the queue from before the flip — bail.
-    if chat.get("conciergeOverride").and_then(Value::as_str) == Some("OFF") {
+    // Vouched Safe / Uncensored: the operator has already returned the verdict
+    // for this chat. A job may already be in the queue from before that flip —
+    // bail.
+    if !is_classifier_on_duty(Some(&chat)) {
         return Ok(());
     }
     // Sticky: if already classified dangerous, never re-check.

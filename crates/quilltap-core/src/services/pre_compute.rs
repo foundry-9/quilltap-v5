@@ -51,7 +51,7 @@ use crate::model::embedding::EmbeddingProvider;
 use crate::recall_tags::ScopePolicy;
 use crate::services::build_context::read_memory_recall_settings;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::memory_recap::distill::{
     distill_memory_search, DistillMessage, DistilledSearch, ExtractionClock,
 };
@@ -233,7 +233,7 @@ where
     // For dangerous chats, use the uncensored provider for keyword extraction.
     // Gate on the canonical accessor so an Off-duty chat never reroutes here,
     // independent of how `dangerSettings` was resolved upstream (v4:225-234).
-    let recall_selection = if is_chat_active_dangerous(Some(input.chat)) {
+    let recall_selection = if should_use_uncensored_route(Some(input.chat)) {
         resolve_uncensored_cheap_llm_selection(
             selection.clone(),
             true,

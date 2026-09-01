@@ -9,8 +9,9 @@
 //!
 //! 1. read the chat; resolve the cheap-LLM selection (priority order via
 //!    [`crate::cheap_llm::get_cheap_llm_provider`]); if the chat is
-//!    *active-dangerous* (`isDangerousChat && conciergeOverride != 'OFF'`), swap
-//!    to the uncensored selection.
+//!    on the *uncensored row* of the Concierge 2×2 (Flagged or the operator's
+//!    own Uncensored — [`crate::services::dangerous_content::chat_override::should_use_uncensored_route`]),
+//!    swap to the uncensored selection.
 //! 2. read all messages, partition into turns ([`crate::context_summary::partition_messages_into_turns`]),
 //!    pick the fold range (T-hard: turns 1..currentTurn-TAIL; regular: the next
 //!    FOLD_TURN_BATCH after the prior fold), fold via the cheap LLM.
@@ -91,6 +92,7 @@ use crate::services::commonplace_notifications::{
 use crate::services::conversation_summary_vault_bridge::{
     compute_conversation_stats, write_conversation_summary_to_vaults, WriteConversationSummaryInput,
 };
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::fold_episode_pass::{
     run_fold_episode_pass, FoldWindowMessage, RunFoldEpisodePassInput,
 };
@@ -479,16 +481,6 @@ fn to_cheap_llm_config(settings: &CheapLlmSettings) -> CheapLlmConfig {
     }
 }
 
-/// v4 `isChatActiveDangerous`: `isDangerousChat === true && conciergeOverride !== 'OFF'`.
-fn is_chat_active_dangerous(chat: &Value) -> bool {
-    let flagged = chat
-        .get("isDangerousChat")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let off_duty = chat.get("conciergeOverride").and_then(Value::as_str) == Some("OFF");
-    flagged && !off_duty
-}
-
 /// v4 `turnsToChatMessages` over the fold range: flatten each turn's messages to
 /// `{ role: role.toLowerCase(), content, createdAt }` — the message dates feed
 /// the fold summary's Timeline section. The ported [`FoldedTurn`] carries only
@@ -611,7 +603,7 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
     // v4 returns early when the selection is falsy; `get_cheap_llm_provider`
     // always yields a selection (its priority-5 fallback), matching v4's own
     // behavior on the differential (a valid current profile is always present).
-    let selection = if is_chat_active_dangerous(&chat) {
+    let selection = if should_use_uncensored_route(Some(&chat)) {
         resolve_uncensored_cheap_llm_selection(
             selection,
             true,

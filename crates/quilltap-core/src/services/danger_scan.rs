@@ -42,6 +42,7 @@ use crate::chat_predicates::is_moderation_exempt_chat_type;
 use crate::db::chat_settings::DangerousContentSettings;
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::services::dangerous_content::chat_override::is_classifier_on_duty;
 use crate::services::dangerous_content::resolver::resolve_dangerous_content_settings;
 use crate::services::queue_service::{
     enqueue_chat_danger_classification_with_priority, enqueue_context_summary,
@@ -98,8 +99,8 @@ pub async fn any_user_danger_enabled(db: &Db) -> Result<bool, DbError> {
 /// a pure function over the hydrated chat `Value`):
 ///
 /// 1. Moderation-exempt chat types (Help Chat, Brahma Console) → never.
-/// 2. Off-duty chats (`conciergeOverride === 'OFF'`) → never (the operator has
-///    explicitly waved the Concierge off).
+/// 2. Operator-decided chats (Vouched Safe or Uncensored) → never; nothing may
+///    reclassify a chat out from under the operator.
 /// 3. Never classified (`isDangerousChat == null` — absent OR JSON null) → yes.
 /// 4. Classified SAFE but grown (`isDangerousChat === false` AND
 ///    `dangerClassifiedAtMessageCount != null` AND `(messageCount ?? 0) >
@@ -110,7 +111,9 @@ pub fn chat_needs_classification(chat: &Value) -> bool {
     if is_moderation_exempt_chat_type(chat_type) {
         return false;
     }
-    if chat.get("conciergeOverride").and_then(Value::as_str) == Some("OFF") {
+    // Operator-decided chats (Vouched Safe or Uncensored) are always skipped —
+    // nothing may reclassify a chat out from under the operator.
+    if !is_classifier_on_duty(Some(chat)) {
         return false;
     }
     // `isDangerousChat == null` covers JS undefined (absent key — the hydrated

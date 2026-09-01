@@ -71,7 +71,7 @@ use crate::services::appearance_resolution::{
     PhysicalDescription, ResolvedCharacterAppearance, SceneStateCharacter, WardrobeItemInput,
 };
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::gatekeeper::{classify_content, ModerationProvider};
 use crate::services::dangerous_content::provider_routing::{
     is_image_moderation_error, resolve_image_provider_for_dangerous_content,
@@ -1331,7 +1331,7 @@ fn gather_db_context(
         .as_deref()
         .and_then(|id| crate::db::chats_read::find_by_id(main, id).ok().flatten());
 
-    let is_dangerous_chat = is_chat_active_dangerous(chat.as_ref());
+    let is_dangerous_chat = should_use_uncensored_route(chat.as_ref());
 
     // Recent chat messages: last 20 USER/ASSISTANT message events.
     let recent_chat_messages: Vec<ChatMessage> = ctx

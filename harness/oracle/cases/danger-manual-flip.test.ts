@@ -5,7 +5,8 @@
  * `lib/services/dangerous-content/manual-flip.ts`).
  *
  * Drives v4's REAL `applyConciergeFlip` over a baked `chats` fixture (one chat
- * per flip scenario), then dumps `chats` + `chat_messages`. The synthetic
+ * per flip scenario — all 12 ordered four-state transitions plus the four
+ * no-ops, P4.D141 / v4 `60e3c4a0a`), then dumps `chats` + `chat_messages`. The synthetic
  * Concierge announcement (`postConciergeManualAnnouncement`) runs REAL now
  * (W4.6b): every changed flip posts the manual bubble into `chat_messages`
  * (bumping the chat's `updatedAt`/`lastMessageAt`/`messageCount` via
@@ -38,7 +39,7 @@ function canonValue(v: unknown): unknown {
   return v;
 }
 
-interface Op { id: string; chatId: string; requested: 'safe' | 'flagged' | 'off' }
+interface Op { id: string; chatId: string; requested: 'monitored' | 'flagged' | 'vouched' | 'uncensored' }
 interface Spec { testPepperBase64: string; ops: Op[] }
 
 async function main(): Promise<void> {

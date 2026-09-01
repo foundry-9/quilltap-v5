@@ -38,7 +38,7 @@ use crate::services::appearance_resolution::{
     PhysicalDescription, ResolvedCharacterAppearance, SceneStateCharacter, WardrobeItemInput,
 };
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
-use crate::services::dangerous_content::chat_override::is_chat_active_dangerous;
+use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::gatekeeper::ModerationProvider;
 use crate::services::dangerous_content::provider_routing::ApiKeyResolver;
 use crate::services::image_job_common as common;
@@ -365,7 +365,7 @@ where
 
     // Concierge settings.
     let danger_settings = common::resolve_danger_settings_for_chat(chat_settings.as_ref(), &chat);
-    let is_dangerous_chat = is_chat_active_dangerous(Some(&chat));
+    let is_dangerous_chat = should_use_uncensored_route(Some(&chat));
     let has_uncensored_image_provider = danger_settings
         .uncensored_image_profile_id
         .as_deref()

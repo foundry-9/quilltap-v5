@@ -7,6 +7,11 @@
 //!   1. `QT_ORACLE_DANGER_RESOLVER` — the pure NDJSON from
 //!      `harness/oracle/cases/danger-resolver.ts` (drives v4's REAL
 //!      `resolveDangerousContentSettings` + the `chat-override` predicates).
+//!      P4.D141 widened it to the four-state control (v4 `60e3c4a0a`): the
+//!      override rows carry v4's own `chat-override.test.ts` truth table and ask
+//!      all three purpose-named questions, and the resolve rows cover the new
+//!      `chat-uncensored` arm (incl. AUTO_ROUTE forced under a global OFF and
+//!      exempt-beats-uncensored).
 //!   2. `QT_ORACLE_DANGER_MANUAL_FLIP` + `QT_FIXTURE_MANUAL_FLIP` — the tier-2
 //!      NDJSON from `harness/oracle/cases/danger-manual-flip.test.ts` (drives
 //!      v4's REAL `applyConciergeFlip`) + the baked seed fixture. The ported
@@ -40,7 +45,8 @@ use quilltap_core::db::chat_settings::DangerousContentSettings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::db::{chats_read, dump_table_json_conn};
 use quilltap_core::services::dangerous_content::chat_override::{
-    get_concierge_state, is_chat_active_dangerous, is_concierge_off_duty, ConciergeState,
+    get_concierge_state, is_classifier_on_duty, should_show_danger_styling,
+    should_use_uncensored_route, ConciergeState,
 };
 use quilltap_core::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
@@ -89,10 +95,13 @@ enum PureRow {
     Override {
         id: String,
         chat: Option<Value>,
-        #[serde(rename = "offDuty")]
-        off_duty: bool,
         state: String,
-        active: bool,
+        #[serde(rename = "uncensoredRoute")]
+        uncensored_route: bool,
+        #[serde(rename = "dangerStyling")]
+        danger_styling: bool,
+        #[serde(rename = "classifierOnDuty")]
+        classifier_on_duty: bool,
     },
 }
 
@@ -125,25 +134,36 @@ fn danger_resolver_pure_matches_oracle() {
             PureRow::Override {
                 id,
                 chat,
-                off_duty,
                 state,
-                active,
+                uncensored_route,
+                danger_styling,
+                classifier_on_duty,
             } => {
-                assert_eq!(
-                    is_concierge_off_duty(chat.as_ref()),
-                    off_duty,
-                    "override[{id}] offDuty"
-                );
                 assert_eq!(
                     get_concierge_state(chat.as_ref()).as_str(),
                     state,
                     "override[{id}] state"
                 );
                 assert_eq!(
-                    is_chat_active_dangerous(chat.as_ref()),
-                    active,
-                    "override[{id}] active"
+                    should_use_uncensored_route(chat.as_ref()),
+                    uncensored_route,
+                    "override[{id}] uncensoredRoute"
                 );
+                assert_eq!(
+                    should_show_danger_styling(chat.as_ref()),
+                    danger_styling,
+                    "override[{id}] dangerStyling"
+                );
+                assert_eq!(
+                    is_classifier_on_duty(chat.as_ref()),
+                    classifier_on_duty,
+                    "override[{id}] classifierOnDuty"
+                );
+                // The 2x2's diagonal: uncensored is the one state that routes
+                // uncensored yet is never painted as a hazard.
+                if state == "uncensored" {
+                    assert!(uncensored_route && !danger_styling, "override[{id}] corner");
+                }
             }
         }
         count += 1;
@@ -158,7 +178,16 @@ fn danger_resolver_pure_matches_oracle() {
 struct FlipSpec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
+    chats: Vec<FlipSeedChat>,
     ops: Vec<FlipOp>,
+}
+
+/// Only the two fields the preservation assert needs; the builder owns the rest.
+#[derive(Deserialize)]
+struct FlipSeedChat {
+    id: String,
+    #[serde(rename = "isDangerousChat")]
+    is_dangerous_chat: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -184,15 +213,28 @@ enum FlipOracleRow {
 }
 
 fn state_from_str(s: &str) -> ConciergeState {
-    match s {
-        "safe" => ConciergeState::Safe,
-        "flagged" => ConciergeState::Flagged,
-        "off" => ConciergeState::Off,
-        other => panic!("unknown ConciergeState {other}"),
-    }
+    ConciergeState::from_wire(s).unwrap_or_else(|| panic!("unknown ConciergeState {s}"))
 }
 
 const FLIP_SEED_TS: &str = "2020-01-01T00:00:00.000Z";
+
+/// ⚠ CROSS-LANE DIVERGENCE — retire this when P4.D140 lands.
+///
+/// This lane regenerates from a worktree pinned at v4 `60e3c4a0a`, and bug 112
+/// (`735d9408c`, "date a chat by when a character last spoke") is an ANCESTOR of
+/// that commit. At the pin, v4's `addMessage` moves `lastMessageAt` only for a
+/// *character-authored* row (`isCharacterAuthoredMessage`), and the Concierge
+/// manual bubble carries `systemSender: 'concierge'` — so v4 leaves the column
+/// NULL where v5 still mints a timestamp.
+///
+/// The fix lives in `db/chats_messages.rs`, which **P4.D140 owns** (§Ownership),
+/// so this lane may not make it. The column is therefore masked on both sides —
+/// but only after [`assert_last_message_at_cross_lane_divergence`] MEASURES the
+/// divergence in the exact shape bug 112 predicts, so the mask can never hide a
+/// different failure. When P4.D140 lands, this constant flips to `false`, the
+/// mask disappears, and the plain equality returns; if v5 converges early the
+/// measurement itself reddens.
+const LAST_MESSAGE_AT_PENDING_P4D140: bool = true;
 
 /// Placeholder the minted `dangerClassifiedAt` (present-non-null → `<ts>`) so the
 /// flagged-path mint compares. `updatedAt` / `lastMessageAt` are bumped by the
@@ -214,6 +256,9 @@ fn normalize_chat_rows(rows: &mut [Value]) {
                 if minted {
                     obj.insert(col.into(), Value::String("<ts>".into()));
                 }
+            }
+            if LAST_MESSAGE_AT_PENDING_P4D140 {
+                obj.insert("lastMessageAt".into(), Value::String("<p4d140>".into()));
             }
         }
     }
@@ -329,6 +374,9 @@ async fn danger_manual_flip_matches_oracle() {
         .expect("dump rows")
         .clone();
 
+    // MEASURE the cross-lane divergence before the normalizer masks it.
+    assert_last_message_at_cross_lane_divergence(&spec, &got_rows, &want_rows);
+
     normalize_chat_rows(&mut got_rows);
     normalize_chat_rows(&mut want_rows);
     // Numeric canonicalization so INTEGER/REAL rendering agrees across sides.
@@ -354,5 +402,108 @@ async fn danger_manual_flip_matches_oracle() {
         "chat_messages rows diverge after manual flips"
     );
 
-    eprintln!("OK: danger manual-flip chats + chat_messages dumps matched oracle.");
+    // v4 pins "operator states preserve isDangerousChat (the update never
+    // touches the label)" by asserting the update object lacks the key. v5's
+    // standalone write has no update object to inspect, so the equivalent claim
+    // is made at COLUMN level over the dumped rows — and it is checked against
+    // BOTH sides, so it can never pass vacuously on a corpus that stopped
+    // carrying an operator target.
+    assert_operator_states_preserve_the_label(&spec, &got_rows);
+    assert_operator_states_preserve_the_label(&spec, &want_rows);
+
+    eprintln!(
+        "OK: danger manual-flip chats + chat_messages dumps matched oracle ({} ops).",
+        spec.ops.len()
+    );
+}
+
+/// The [`LAST_MESSAGE_AT_PENDING_P4D140`] measurement. For every op that CHANGED
+/// state (and therefore posted a Concierge bubble), v4 at the `60e3c4a0a` pin
+/// must leave `lastMessageAt` untouched (NULL — the seed never set it) while v5
+/// mints a timestamp. Anything else means the mask is covering a different bug.
+fn assert_last_message_at_cross_lane_divergence(
+    spec: &FlipSpec,
+    got_rows: &[Value],
+    want_rows: &[Value],
+) {
+    if !LAST_MESSAGE_AT_PENDING_P4D140 {
+        return;
+    }
+    let find = |rows: &[Value], id: &str| -> Value {
+        rows.iter()
+            .find(|r| r.get("id").and_then(Value::as_str) == Some(id))
+            .unwrap_or_else(|| panic!("chat {id} missing from the dump"))
+            .get("lastMessageAt")
+            .cloned()
+            .unwrap_or(Value::Null)
+    };
+    let mut changed = 0usize;
+    for op in &spec.ops {
+        // The no-op ops post nothing, so neither side writes the column.
+        if op.id.ends_with("-noop") {
+            assert_eq!(find(got_rows, &op.chat_id), Value::Null, "op {} v5", op.id);
+            assert_eq!(find(want_rows, &op.chat_id), Value::Null, "op {} v4", op.id);
+            continue;
+        }
+        assert_eq!(
+            find(want_rows, &op.chat_id),
+            Value::Null,
+            "op {}: v4 at 60e3c4a0a must NOT bump lastMessageAt for a Concierge \
+             bubble (bug 112, 735d9408c). A non-null here means the mask is \
+             hiding something else.",
+            op.id
+        );
+        assert!(
+            find(got_rows, &op.chat_id).is_string(),
+            "op {}: v5 still bumps lastMessageAt (bug 112 unported — P4.D140). \
+             If this is null, P4.D140 has landed: flip \
+             LAST_MESSAGE_AT_PENDING_P4D140 to false and drop the mask.",
+            op.id
+        );
+        changed += 1;
+    }
+    assert!(changed > 0, "no changed flip to measure the divergence on");
+}
+
+/// Every op that ASKED for an operator state (`vouched` / `uncensored`) must
+/// leave `isDangerousChat` exactly as the seed left it — the label is preserved
+/// underneath so returning to Monitored/Flagged picks up where the classifier
+/// left off. Fails loudly if the corpus carries no such op at all.
+fn assert_operator_states_preserve_the_label(spec: &FlipSpec, rows: &[Value]) {
+    let seeded: std::collections::HashMap<&str, Option<bool>> = spec
+        .chats
+        .iter()
+        .map(|c| (c.id.as_str(), c.is_dangerous_chat))
+        .collect();
+    let mut checked = 0usize;
+    for op in &spec.ops {
+        if op.requested != "vouched" && op.requested != "uncensored" {
+            continue;
+        }
+        let seed = *seeded
+            .get(op.chat_id.as_str())
+            .unwrap_or_else(|| panic!("op {} names an unseeded chat", op.id));
+        let row = rows
+            .iter()
+            .find(|r| r.get("id").and_then(Value::as_str) == Some(op.chat_id.as_str()))
+            .unwrap_or_else(|| panic!("op {}: chat row missing from the dump", op.id));
+        // The column is stored as 0/1; the seed spec speaks booleans.
+        let stored = match row.get("isDangerousChat") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(v.as_i64().map(|n| n != 0).unwrap_or_else(|| {
+                v.as_bool()
+                    .unwrap_or_else(|| panic!("op {}: odd isDangerousChat {v}", op.id))
+            })),
+        };
+        assert_eq!(
+            stored, seed,
+            "op {} requested {} and must not touch isDangerousChat",
+            op.id, op.requested
+        );
+        checked += 1;
+    }
+    assert!(
+        checked >= 2,
+        "the corpus must exercise BOTH operator states as flip targets (found {checked})"
+    );
 }

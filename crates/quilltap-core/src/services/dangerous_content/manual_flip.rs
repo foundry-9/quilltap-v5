@@ -1,16 +1,21 @@
 //! Manual Concierge state transitions (v4
 //! `lib/services/dangerous-content/manual-flip.ts`).
 //!
-//! The single chokepoint that translates the requested UI tri-state into the
-//! right combination of database writes + a synthetic Concierge announcement.
+//! The Salon sidebar exposes a four-state per-chat Concierge control. This
+//! module is the single chokepoint that translates the requested UI state into
+//! the right combination of database writes + a synthetic Concierge
+//! announcement, so the PUT handler doesn't have to know the rules.
 //!
 //! State mapping (UI → storage):
-//!   - `safe`    → `conciergeOverride = NULL`, `isDangerousChat = false`
-//!   - `flagged` → `conciergeOverride = NULL`, `isDangerousChat = true`
-//!   - `off`     → `conciergeOverride = 'OFF'`, `isDangerousChat` preserved
+//!   - `monitored`  → `conciergeOverride = NULL`, `isDangerousChat = false`
+//!   - `flagged`    → `conciergeOverride = NULL`, `isDangerousChat = true`
+//!   - `vouched`    → `conciergeOverride = 'OFF'`, `isDangerousChat` preserved
+//!   - `uncensored` → `conciergeOverride = 'UNCENSORED'`, `isDangerousChat` preserved
 //!
-//! Returning to Safe clears the classifier metadata so the scheduled scanner
-//! re-evaluates on the next user message.
+//! Returning to Monitored clears the classifier metadata so the scheduled
+//! scanner re-evaluates on the next user message. Every transition posts a brief
+//! Concierge bubble into the chat so the history remains honest about which mode
+//! was in effect when.
 //!
 //! ## Writes without the frozen `ChatUpdate`
 //!
@@ -39,8 +44,8 @@ use crate::db::DbError;
 use super::chat_override::{get_concierge_state, ConciergeState};
 
 /// The manual Concierge announcement seam (v4 `postConciergeManualAnnouncement`).
-/// `kind` is one of `manual-flagged` / `manual-safe` / `manual-on-duty` /
-/// `manual-off-duty`.
+/// `kind` is one of the FIVE manual wire strings: `manual-flagged` /
+/// `manual-safe` / `manual-vouched` / `manual-resumed` / `manual-uncensored`.
 /// Now closed by [`RealConciergeAnnouncer`] (W4.6b — the ported
 /// `concierge_notifications` writer). Async (the writer awaits the single-writer
 /// channel); RPITIT so the future is `Send` without boxing.
@@ -61,7 +66,7 @@ impl ConciergeAnnouncer for NoConciergeAnnouncer {
 /// The real manual Concierge announcer (v4 `postConciergeManualAnnouncement`) —
 /// posts the personified bubble through the ported
 /// [`crate::services::concierge_notifications`] writer. A `kind` that is not one
-/// of the four manual wire strings is ignored (v4's exhaustive switch never emits
+/// of the five manual wire strings is ignored (v4's exhaustive switch never emits
 /// another).
 pub struct RealConciergeAnnouncer<'a> {
     pub db: &'a crate::db::runtime::Db,
@@ -82,7 +87,7 @@ pub struct ApplyConciergeFlipResult {
     pub changed: bool,
 }
 
-/// v4 `applyConciergeFlip`. Persists the requested tri-state (a no-op when it
+/// v4 `applyConciergeFlip`. Persists the requested four-state (a no-op when it
 /// already matches the stored state) and posts the matching announcement.
 ///
 /// `chat` is the current chat row (v4's `chat: ChatMetadata`), read once by the
@@ -132,9 +137,12 @@ pub async fn apply_concierge_flip<An: ConciergeAnnouncer>(
             .await?;
             announcer.post_manual(chat_id, "manual-flagged").await;
         }
-        ConciergeState::Safe => {
+        ConciergeState::Monitored => {
             db.write(move |writers| {
-                // Clear classification metadata so the scheduled scan re-evaluates.
+                // Returning to Monitored from Flagged or from an operator state.
+                // Clearing the classification metadata lets the scheduled scan
+                // re-evaluate on the next user message — the user wants future
+                // moderation to behave as if we'd never settled the question.
                 writers.main().connection().execute(
                     "UPDATE chats SET \
                        \"conciergeOverride\" = NULL, \
@@ -149,14 +157,18 @@ pub async fn apply_concierge_flip<An: ConciergeAnnouncer>(
                 Ok(())
             })
             .await?;
-            let kind = if current == ConciergeState::Off {
-                "manual-on-duty"
-            } else {
-                "manual-safe"
-            };
+            let kind =
+                if current == ConciergeState::Vouched || current == ConciergeState::Uncensored {
+                    "manual-resumed"
+                } else {
+                    "manual-safe"
+                };
             announcer.post_manual(chat_id, kind).await;
         }
-        ConciergeState::Off => {
+        ConciergeState::Vouched => {
+            // Vouched Safe preserves the prior isDangerousChat so the operator
+            // can return to Monitored or Flagged later and pick up where they
+            // were: the UPDATE names the override column and nothing else.
             db.write(move |writers| {
                 writers.main().connection().execute(
                     "UPDATE chats SET \"conciergeOverride\" = 'OFF' WHERE id = ?1",
@@ -165,7 +177,20 @@ pub async fn apply_concierge_flip<An: ConciergeAnnouncer>(
                 Ok(())
             })
             .await?;
-            announcer.post_manual(chat_id, "manual-off-duty").await;
+            announcer.post_manual(chat_id, "manual-vouched").await;
+        }
+        ConciergeState::Uncensored => {
+            // Uncensored likewise preserves isDangerousChat, so returning to
+            // Monitored re-enters the classifier cleanly.
+            db.write(move |writers| {
+                writers.main().connection().execute(
+                    "UPDATE chats SET \"conciergeOverride\" = 'UNCENSORED' WHERE id = ?1",
+                    rusqlite::params![chat_id_owned],
+                )?;
+                Ok(())
+            })
+            .await?;
+            announcer.post_manual(chat_id, "manual-uncensored").await;
         }
     }
 

@@ -262,29 +262,34 @@ pub fn build_danger_opaque_content(details: Option<&ConciergeDangerDetails>) -> 
     format!("{opener} {specifics} {closer}")
 }
 
-/// The four operator-driven Concierge transitions (v4 `ConciergeManualKind`).
+/// The five operator-driven Concierge transitions (v4 `ConciergeManualKind`,
+/// widened from four at v4 `60e3c4a0a` for the four-state control).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConciergeManualKind {
-    /// Safe → Flagged (the operator flipped the switch themselves).
+    /// → Flagged (the operator flipped the switch themselves).
     ManualFlagged,
-    /// Flagged → Safe (the operator says all clear).
+    /// Flagged → Monitored (the operator says all clear).
     ManualSafe,
-    /// anything → Off-duty (operator waves the Concierge off).
-    ManualOffDuty,
-    /// Off-duty → back on (operator calls the Concierge back).
-    ManualOnDuty,
+    /// anything → Vouched Safe (operator vouches; the Concierge stops watching).
+    ManualVouched,
+    /// Vouched/Uncensored → Monitored (operator calls the Concierge back).
+    ManualResumed,
+    /// anything → Uncensored (operator opens the uncensored door themselves).
+    ManualUncensored,
 }
 
 impl ConciergeManualKind {
     /// Parse the wire form (`"manual-flagged"` / `"manual-safe"` /
-    /// `"manual-off-duty"` / `"manual-on-duty"`) the `ConciergeAnnouncer` seam
-    /// passes, for the parent's wiring. Unknown → `None`.
+    /// `"manual-vouched"` / `"manual-resumed"` / `"manual-uncensored"`) the
+    /// `ConciergeAnnouncer` seam passes, for the parent's wiring. Unknown →
+    /// `None`.
     pub fn from_wire(s: &str) -> Option<Self> {
         match s {
             "manual-flagged" => Some(Self::ManualFlagged),
             "manual-safe" => Some(Self::ManualSafe),
-            "manual-off-duty" => Some(Self::ManualOffDuty),
-            "manual-on-duty" => Some(Self::ManualOnDuty),
+            "manual-vouched" => Some(Self::ManualVouched),
+            "manual-resumed" => Some(Self::ManualResumed),
+            "manual-uncensored" => Some(Self::ManualUncensored),
             _ => None,
         }
     }
@@ -294,8 +299,9 @@ impl ConciergeManualKind {
         match self {
             Self::ManualFlagged => "manual-flagged",
             Self::ManualSafe => "manual-safe",
-            Self::ManualOffDuty => "manual-off-duty",
-            Self::ManualOnDuty => "manual-on-duty",
+            Self::ManualVouched => "manual-vouched",
+            Self::ManualResumed => "manual-resumed",
+            Self::ManualUncensored => "manual-uncensored",
         }
     }
 }
@@ -307,10 +313,12 @@ pub fn build_manual_content(kind: ConciergeManualKind) -> String {
             "By the operator's own hand, the Concierge has thrown the switch: the conversation is to be entrusted henceforth to a desk better appointed to subjects of its particular character. Pray continue at your leisure.",
         ConciergeManualKind::ManualSafe =>
             "By the operator's own hand, the Concierge stands down for the moment. Routine arrangements are restored; he shall, of course, return to his post should the matter again take a turn.",
-        ConciergeManualKind::ManualOffDuty =>
-            "By the operator's own direction, the Concierge takes the afternoon off. No moderation, no rerouting, no quiet interventions; the present conversation proceeds entirely on the operator's own recognizance.",
-        ConciergeManualKind::ManualOnDuty =>
+        ConciergeManualKind::ManualVouched =>
+            "The operator has vouched for the present company, and the Concierge, satisfied, takes the afternoon off. No moderation, no rerouting, no quiet interventions; the ordinary desks remain in service, on the operator's own recognizance.",
+        ConciergeManualKind::ManualResumed =>
             "The Concierge returns to his post. Customary watch is resumed; the present arrangements are once again subject to his discreet attentions.",
+        ConciergeManualKind::ManualUncensored =>
+            "By the operator's own hand, the Concierge has been sent away and the uncensored door stands open. Nothing is to be examined, nothing softened; the conversation and its errands go henceforth to the frank desk, entirely on the operator's own recognizance.",
     }
     .to_string()
 }
@@ -322,10 +330,12 @@ pub fn build_manual_opaque_content(kind: ConciergeManualKind) -> String {
             "Operator advisory: this conversation has been manually marked for handling by an uncensored provider. Subsequent traffic may be routed accordingly.",
         ConciergeManualKind::ManualSafe =>
             "Operator advisory: the prior dangerous-content mark has been manually cleared. Standard routing is restored.",
-        ConciergeManualKind::ManualOffDuty =>
-            "Operator advisory: moderation is disabled for this conversation. No classification, scanning, or provider rerouting will run on the operator’s behalf.",
-        ConciergeManualKind::ManualOnDuty =>
+        ConciergeManualKind::ManualVouched =>
+            "Operator advisory: moderation is disabled for this conversation. No classification, scanning, or provider rerouting will run on the operator’s behalf. Ordinary providers still apply.",
+        ConciergeManualKind::ManualResumed =>
             "Operator advisory: standard moderation is restored for this conversation.",
+        ConciergeManualKind::ManualUncensored =>
+            "Operator advisory: this conversation has been manually routed to the uncensored providers. No classification or scanning will run; prompts go out unaltered.",
     }
     .to_string()
 }
