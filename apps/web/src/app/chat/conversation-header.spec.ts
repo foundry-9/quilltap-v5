@@ -218,3 +218,70 @@ describe('ConversationHeader — the sidebar reclaimed its entries (P4.9H1)', ()
     expect(header.querySelector('qt-copy-chat-id-button')).not.toBeNull();
   });
 });
+
+describe('ConversationHeader — the Concierge badge (P4.D141, v4 SalonView.tsx:1082-1120)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function badges(fixture: ComponentFixture<ConversationHeader>): HTMLElement[] {
+    return Array.from(
+      fixture.nativeElement.querySelectorAll('.qt-danger-badge'),
+    ) as HTMLElement[];
+  }
+
+  it('renders NO badge for Monitored — the pill means "something other than the default"', () => {
+    expect(badges(render(chatDetail()))).toHaveLength(0);
+    // `render` configures a fresh TestBed, so the second case needs its own.
+    TestBed.resetTestingModule();
+    expect(badges(render(chatDetail({ isDangerousChat: null })))).toHaveLength(0);
+  });
+
+  it('renders the red Flagged pill, with the categories in its title', () => {
+    const fixture = render(
+      chatDetail({ isDangerousChat: true, dangerCategories: ['nsfw', 'violence'] }),
+    );
+    const [pill, ...rest] = badges(fixture);
+    expect(rest).toHaveLength(0);
+    expect(pill.textContent?.trim()).toBe('Flagged');
+    expect(pill.getAttribute('title')).toBe(
+      'The Concierge has flagged this chat: nsfw, violence',
+    );
+    expect(pill.className).not.toContain('qt-danger-badge-muted');
+    expect(pill.className).not.toContain('qt-danger-badge-info');
+    expect(pill.querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
+      'alert-triangle',
+    );
+  });
+
+  it('renders ONE muted Vouched Safe pill even when the label underneath is true', () => {
+    // The pre-existing v5 divergence this fixes: two INDEPENDENT `@if` pills
+    // rendered BOTH an off-duty and a flagged badge for this exact chat, where
+    // v4's ternary renders one.
+    const fixture = render(chatDetail({ isDangerousChat: true, conciergeOverride: 'OFF' }));
+    const pills = badges(fixture);
+    expect(pills).toHaveLength(1);
+    expect(pills[0].textContent?.trim()).toBe('Vouched Safe');
+    expect(pills[0].className).toContain('qt-danger-badge-muted');
+    expect(pills[0].getAttribute('title')).toBe(
+      "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply — set from the sidebar's Chat section.",
+    );
+    expect(pills[0].querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
+      'check-circle',
+    );
+  });
+
+  it('renders ONE info Uncensored pill, never the danger one', () => {
+    const fixture = render(
+      chatDetail({ isDangerousChat: true, conciergeOverride: 'UNCENSORED' }),
+    );
+    const pills = badges(fixture);
+    expect(pills).toHaveLength(1);
+    expect(pills[0].textContent?.trim()).toBe('Uncensored');
+    expect(pills[0].className).toContain('qt-danger-badge-info');
+    expect(pills[0].getAttribute('title')).toBe(
+      "You have opened the uncensored door yourself. Nothing is scanned, nothing is softened — set from the sidebar's Chat section.",
+    );
+    expect(pills[0].querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
+      'eye-off',
+    );
+  });
+});

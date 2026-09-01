@@ -96007,3 +96007,112 @@ global `OFF`) leaves the story-background family GREEN — that path never gates
 `dangerSettings.mode`. The forced-AUTO_ROUTE arm's coverage is
 `danger_resolver_equivalence` §1, where mutation M3 reddens it. Recorded so the
 two mutations' different outcomes are not read as a gap.
+
+### Unit 5 — the SPA: the client predicate twin, the header badge, the CSS, the control
+
+**`apps/web/src/app/chat/concierge-state.ts` (NEW, §C).** The client twin of v4's
+`chat-override.ts` — `getConciergeState`, `shouldUseUncensoredRoute`,
+`shouldShowDangerStyling`, `isClassifierOnDuty`, transcribed 1:1 (v4 imports the
+same module into both its server code and its React components; v5's Rust core is
+the differential-proven authority, so the twin gets a parity spec instead). The
+spec is v4's own `chat-override.test.ts`, its TABLE row for row, plus the
+null/undefined guards and the "diverge exactly on uncensored" assertion.
+
+**The header badge (`chat/conversation-header.ts`) — a pre-existing divergence
+fixed.** v5 rendered TWO independent `@if` pills, so a chat that was both
+off-duty AND flagged showed both where v4's ternary shows one. It is now a single
+`@switch` over `conciergeState()`: flagged (`qt-danger-badge`, alert-triangle) /
+vouched (`+ -muted`, check-circle, "Vouched Safe") / uncensored (`+ -info`,
+eye-off, "Uncensored") / **monitored renders no badge at all** — v4's own comment:
+"the pill means something other than the default is set." Four new specs, and
+mutation M17 (restore the two-pill render) reddens two of them, which is this
+lane's red-first proof for the fix.
+
+**`styles/qt-components/_chat.css`.** `.qt-danger-badge` is parameterized over
+`--qt-concierge-badge-color`, with `-muted` and `-info` recolors — v4's "a
+recolor, not four rules", comments included. `check-qt-classes` passes (943
+classes defined, every guarded reference resolving).
+
+**`core-contract.ts` (§D region only).** Both `conciergeOverride` unions widen to
+`'OFF' | 'UNCENSORED' | null` (:2590, :2908 after the edit), a new
+`ConciergeState` wire type, and `ChatUpdateRequest` gains the `conciergeState`
+sibling.
+
+**The control (`chat/sidebar/chat-section.ts`), built from scratch in its marked
+slot.** The `<select>` with v4's two optgroups in v4's order, the four helper
+sentences byte for byte, the four state icons with their tints, the four success
+toasts, and the PUT wiring with v4's error path (revert the optimistic value AND
+the element's own value — the standing controlled-select idiom). The section's
+six-round-old "Tier-3 deferral" paragraph is retired. Eight specs; mutations M18
+(send `conciergeState` inside the bag), M19 (ignore the override), M20 (leave the
+rejected choice on screen) each redden exactly their own arms.
+
+**⚠ ONE CROSS-LANE WIRE, and why it is shaped this way.** The control needs BOTH
+stored fields. `ChatSidebar` already carries `isDangerousChat`; it now also takes
+`conciergeOverride` (mirroring v4's own `ChatSidebarProps`, which carries the pair
+for exactly this reason) and passes both into `ChatSection`. That leaves **one
+line** in P4.66's `screens/salon/salon-conversation.ts`:
+
+```html
+[conciergeOverride]="c.conciergeOverride ?? null"
+```
+
+on the `<qt-chat-sidebar>` element. Until the unifier adds it the input defaults
+to `null` and the control can DISPLAY only Monitored/Flagged — writing an operator
+state works end to end, but the select will not read one back. This is recorded in
+the component doc, the sidebar doc, the beat's gate and this record rather than
+hidden behind a silent default. (Routing the pair through `ChatSectionState`
+instead would have needed TWO lines in the same file; this shape is both smaller
+and v4's own.)
+
+**Also landed from v4's hunks:** `ChatSidebar`'s `ParticipantsSection` now paints
+participant cards from `shouldShowDangerStyling(...)` rather than the raw label,
+so an operator-Uncensored chat takes the uncensored routes without its cast being
+painted as a hazard.
+
+**Files opened outside any lane's Ownership table** (flagged for the unifier; no
+sibling lane touches them): `chat/sidebar/chat-sidebar.ts` (the
+`conciergeOverride` input + the participant-styling computed).
+
+**⚠ Commit-boundary slip, recorded not rewritten.** Five of this unit's files
+(`chat/concierge-state.ts` + spec, `chat/conversation-header.ts`,
+`core/core-contract.ts`, `styles/qt-components/_chat.css`) were swept into unit
+3's commit by a `git add -A` run while they were already on disk. Everything is on
+the branch and correct; only the commit boundary — and therefore unit 3's
+changelog scope — is off. Noted for the unifier so the two commits are read
+together.
+
+**Recorded non-ports:** v4's `packages/theme-storybook` mirror of the badge CSS
+has no v5 twin (v5 ships no storybook), and v4's `qtap-export.schema.json` enum
+hunk has no v5 twin (no schema JSON); `schema-key-order.json` already lists
+`conciergeOverride`, ordering only, so no change. The `help/dangerous-content.md`
+hunk banks to `p4.9i2`.
+
+### Unit 6 — the gated four-state walk
+
+`apps/web/e2e/salon-concierge-four-state-flow.spec.ts` (NEW, port 4331), authored
+from v4's own `concierge-four-state-test.sh`. Ten transitions driven through the
+SIDEBAR CONTROL, each asserting three independent things:
+
+1. **the stored pair** `(conciergeOverride, isDangerousChat)`, read out of the DB
+   through the CLI — the assertion the UI cannot make, since both operator states
+   render identically whatever the label underneath is. This is where the CT-2
+   preserve pairs live: `OFF,1` after Flagged → Vouched, and `UNCENSORED,1` after
+   Vouched → Uncensored;
+2. **the announcement phrase** — the five kinds have five distinct sentences, and
+   `manual-resumed` vs `manual-safe` (both returning to Monitored) can be told
+   apart ONLY by their sentence;
+3. **the header badge** — nothing at all for Monitored, one pill otherwise.
+
+**ACTIVATE-AT-UNIFY**, gated on `P4D141_SALON_WIRE_LANDED`: every step reads an
+operator state back out of the control, which cannot happen until the unifier
+adds the one `[conciergeOverride]` binding in P4.66's `salon-conversation.ts`.
+Running it before then would fail for a reason that says nothing about the
+feature. **No Playwright ran in-lane** (P4.66 owns port 4319), so the beat's first
+live run is at unification — expect the usual gesture repairs.
+
+**Deliberately NOT reproduced:** v4's e2e `--arm`/`--recheck` scan-tick guard,
+which waits ten minutes to prove the classifier does not run on an operator-state
+chat. Its substance is pinned at the differential instead — the two gate families'
+`skip-uncensored` / `cb` rows (unit 2), where reverting either gate reddens
+exactly that family. Recorded as the order asks.

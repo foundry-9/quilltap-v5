@@ -13,6 +13,10 @@ import {
 } from '@angular/core';
 
 import type { ParticipantDetail, ParticipantStatusWire } from '../../core/core-contract';
+import {
+  shouldShowDangerStyling,
+  type ConciergeOverrideValue,
+} from '../concierge-state';
 import { Avatar } from '../../ui/avatar';
 import { normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { CollapsibleCard } from '../../ui/collapsible-card';
@@ -247,7 +251,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [activeCharacterCount]="activeCharacterCount()"
             [impersonatingParticipantIds]="impersonatingParticipantIds()"
             [activeTypingParticipantId]="activeTypingParticipantId()"
-            [isDangerousChat]="isDangerousChat()"
+            [isDangerousChat]="participantDangerStyling()"
             [chatId]="chatId()"
             [connectionProfiles]="connectionProfiles()"
             (togglePause)="togglePause.emit()"
@@ -283,6 +287,8 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [sectionOpen]="openSection() === 'chat'"
             [llmCharacterIds]="llmCharacterIds()"
             [singleLlmCharacterId]="singleLlmCharacterId()"
+            [isDangerousChat]="isDangerousChat()"
+            [conciergeOverride]="conciergeOverride()"
             (chatUpdated)="chatUpdated.emit()"
             (regenerateBackground)="regenerateBackground.emit()"
             (openProject)="openProject.emit()"
@@ -366,6 +372,30 @@ export class ChatSidebar implements OnInit {
   readonly impersonatingParticipantIds = input<string[]>([]);
   readonly activeTypingParticipantId = input<string | null>(null);
   readonly isDangerousChat = input(false);
+  /**
+   * The operator's per-chat Concierge override (P4.D141), the sibling of
+   * `isDangerousChat` — v4's `ChatSidebarProps` carries both for the same
+   * reason: neither field is meaningful alone.
+   *
+   * ⚠ **Needs a cross-lane binding.** The value lives in
+   * `screens/salon/salon-conversation.ts`, which **P4.66 owns**; until the
+   * unifier adds `[conciergeOverride]="c.conciergeOverride ?? null"` to the
+   * `<qt-chat-sidebar>` element, this stays `null`.
+   */
+  readonly conciergeOverride = input<ConciergeOverrideValue | null>(null);
+
+  /**
+   * What the participant cards paint. v4 `60e3c4a0a` switched
+   * `ParticipantsSection` from the raw label to `shouldShowDangerStyling`, so an
+   * operator-Uncensored chat takes the uncensored routes without the cards being
+   * painted as a hazard.
+   */
+  protected readonly participantDangerStyling = computed(() =>
+    shouldShowDangerStyling({
+      isDangerousChat: this.isDangerousChat(),
+      conciergeOverride: this.conciergeOverride(),
+    }),
+  );
   readonly chatId = input<string | null>(null);
   /** The user's connection profiles, threaded to each participant card. */
   readonly connectionProfiles = input<ConnectionProfileOption[]>([]);

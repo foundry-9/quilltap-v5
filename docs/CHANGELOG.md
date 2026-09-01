@@ -362,6 +362,54 @@ mutations, each reddening exactly the arm it should.
 
 Nothing calls the module yet — the write gates, readers, restore and the boot
 heal follow in their own units.
+#### 2026-09-01 — feat(salon): the Concierge four-state control, the single-pill header badge and the client predicate twin (v4 `60e3c4a0a`)
+
+_Versions: SPA 0.5.601._
+
+The SPA half of the four-state control. NEW `chat/concierge-state.ts` is the
+client twin of v4's `chat-override.ts` — the same four purpose-named predicates,
+transcribed 1:1, with a parity spec that is v4's own `chat-override.test.ts`
+table row for row. v4 imports one module into both its server and its
+components; v5's Rust core is the differential-proven authority, so the twin gets
+the spec instead.
+
+The header badge is rewritten as ONE pill derived from `getConciergeState`,
+fixing a pre-existing divergence: v5 rendered two independent `@if` pills, so a
+chat that was both off-duty and flagged showed BOTH where v4's ternary shows one.
+Monitored now renders no badge at all — "the pill means something other than the
+default is set". Restoring the two-pill render reddens two of the four new specs.
+
+`_chat.css` parameterizes `.qt-danger-badge` over `--qt-concierge-badge-color`
+and adds the `-muted` and `-info` recolors, with v4's comments: a recolor, not
+four rules.
+
+The sidebar control is built from scratch in its marked slot, retiring a
+six-round-old named deferral: v4's two optgroups in v4's order, the four helper
+sentences byte for byte, the four state icons with their tints, the four success
+toasts, and the PUT wiring with v4's error path. `conciergeState` goes on the
+wire as a SIBLING of the `chat` bag — sent as a bag key it would be stripped by
+`updateChatSchema` and silently do nothing. `ChatSidebar` gains the
+`conciergeOverride` input beside its existing `isDangerousChat` (v4's own prop
+shape) and its participant cards now paint from `shouldShowDangerStyling`.
+
+⚠ One cross-lane wire remains, recorded loudly rather than defaulted silently:
+`conciergeOverride` originates in `screens/salon/salon-conversation.ts`, which
+P4.66 owns, so one binding line is left for the unifier. Until it lands the
+control can display only Monitored/Flagged; writing an operator state works end to
+end. The four-state e2e walk is authored and gated on that wire.
+
+⚠ Commit-boundary note: five of these SPA files —
+`chat/concierge-state.ts` and its spec, `chat/conversation-header.ts`,
+`core/core-contract.ts` and `styles/qt-components/_chat.css` — were swept into
+the PRECEDING commit (the server `conciergeState` arm) by a `git add -A` while
+this work was already on disk. The content is this change's; only the boundary is
+wrong, and it is recorded here rather than rewritten.
+
+Riding along: a sibling spec that destructured the section's `<select>` list
+POSITIONALLY is now label-scoped. It broke the moment the Concierge control took
+v4's slot at the head of the panel — and before that it would have driven the
+wrong control silently.
+
 #### 2026-09-01 — test(concierge): the uncensored route reaches the spine, and one corpus that looked like coverage does not (v4 `60e3c4a0a`)
 
 _Versions: harness 0.0.620._

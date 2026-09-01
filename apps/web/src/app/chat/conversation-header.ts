@@ -50,10 +50,10 @@ import { ChatCostSummary } from './chat-cost-summary';
         >{{ chat().title || 'Untitled chat' }}</a
       >
 
-      <!-- The Concierge badge (v4 `SalonView.tsx:1082-1120`). ONE pill, derived
+      <!-- The Concierge badge (v4 SalonView.tsx:1082-1120). ONE pill, derived
            from the four-state; Monitored is the default and renders no badge at
            all — "the pill means something other than the default is set". Until
-           P4.D141 v5 rendered two INDEPENDENT `@if` pills, so an off-duty chat
+           P4.D141 v5 rendered two INDEPENDENT @if pills, so an off-duty chat
            that was also flagged showed both where v4's ternary shows one. -->
       @switch (conciergeState()) {
         @case ('flagged') {

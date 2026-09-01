@@ -82,6 +82,8 @@ function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
       [chatId]="'chat-1'"
       [state]="chatState()"
       [sectionOpen]="true"
+      [isDangerousChat]="isDangerousChat()"
+      [conciergeOverride]="conciergeOverride()"
       (chatUpdated)="refetched = refetched + 1"
       (openProject)="projectOpened = projectOpened + 1"
       (openToolSettings)="toolSettingsOpened = toolSettingsOpened + 1"
@@ -90,6 +92,8 @@ function state(over: Partial<ChatSectionState> = {}): ChatSectionState {
 })
 class Host {
   readonly chatState = signal<ChatSectionState>(state());
+  readonly isDangerousChat = signal<boolean | null>(null);
+  readonly conciergeOverride = signal<'OFF' | 'UNCENSORED' | null>(null);
   refetched = 0;
   projectOpened = 0;
   toolSettingsOpened = 0;
@@ -240,11 +244,19 @@ describe('ChatSection — the other per-chat controls', () => {
 
   it('writes the roleplay template, the image profile and the announce tri-state through the chat bag', async () => {
     const fixture = await render();
-    const selects = Array.from(
-      fixture.nativeElement.querySelectorAll('select'),
-    ) as HTMLSelectElement[];
-    // Order follows v4's panel: template, clock, image provider, announce.
-    const [template, , imageProvider, announce] = selects;
+    // Scoped by LABEL, not by index. This used to destructure the section's
+    // `<select>` list positionally, which broke the moment P4.D141 added the
+    // Concierge control at the head of the panel (v4's own slot) — and worse,
+    // silently drove the wrong control before it broke.
+    const byLabel = (text: string): HTMLSelectElement => {
+      const labels = Array.from(fixture.nativeElement.querySelectorAll('label')) as HTMLElement[];
+      const label = labels.find((l) => l.textContent?.includes(text));
+      if (!label) throw new Error(`no <label> containing ${JSON.stringify(text)}`);
+      return label.querySelector('select') as HTMLSelectElement;
+    };
+    const template = byLabel('Roleplay Template');
+    const imageProvider = byLabel('Image Provider');
+    const announce = byLabel('Announce Generated Images');
 
     await choose(fixture, template, '');
     await choose(fixture, imageProvider, '');
@@ -438,5 +450,161 @@ describe('ChatSection — the Tools… entry', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.toolSettingsOpened).toBe(1);
     expect(fixture.nativeElement.textContent).not.toContain('has not been ported');
+  });
+});
+
+/** The Concierge control's `<select>` (P4.D141). */
+function conciergeSelect(fixture: ComponentFixture<Host>): HTMLSelectElement {
+  const labels = Array.from(fixture.nativeElement.querySelectorAll('label')) as HTMLElement[];
+  const label = labels.find((l) => l.textContent?.includes('The Concierge'))!;
+  return label.querySelector('select') as HTMLSelectElement;
+}
+
+function conciergeHelp(fixture: ComponentFixture<Host>): string {
+  const labels = Array.from(fixture.nativeElement.querySelectorAll('label')) as HTMLElement[];
+  const label = labels.find((l) => l.textContent?.includes('The Concierge'))!;
+  return (label.querySelector('span.qt-text-secondary') as HTMLElement)
+    .textContent!.replace(/\s+/g, ' ')
+    .trim();
+}
+
+describe('ChatSection — the Concierge four-state (P4.D141, v4 60e3c4a0a)', () => {
+  beforeEach(() => {
+    sent.length = 0;
+    failNext = false;
+  });
+
+  it('offers v4’s two optgroups and four options, in v4’s order', async () => {
+    const fixture = await render();
+    const select = conciergeSelect(fixture);
+    const groups = Array.from(select.querySelectorAll('optgroup')) as HTMLOptGroupElement[];
+    expect(groups.map((g) => g.label)).toEqual(['The Concierge decides', 'You decide']);
+    expect(Array.from(select.options).map((o) => [o.value, o.textContent?.trim()])).toEqual([
+      ['monitored', 'Monitored'],
+      ['flagged', 'Flagged'],
+      ['vouched', 'Vouched Safe'],
+      ['uncensored', 'Uncensored'],
+    ]);
+  });
+
+  it('derives the shown state from BOTH stored fields, operator override winning', async () => {
+    const fixture = await render();
+    const set = async (dangerous: boolean | null, over: 'OFF' | 'UNCENSORED' | null) => {
+      fixture.componentInstance.isDangerousChat.set(dangerous);
+      fixture.componentInstance.conciergeOverride.set(over);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      return conciergeSelect(fixture).value;
+    };
+    expect(await set(null, null)).toBe('monitored');
+    expect(await set(false, null)).toBe('monitored');
+    expect(await set(true, null)).toBe('flagged');
+    // Both operator states PRESERVE the label underneath and win over it.
+    expect(await set(true, 'OFF')).toBe('vouched');
+    expect(await set(false, 'OFF')).toBe('vouched');
+    expect(await set(true, 'UNCENSORED')).toBe('uncensored');
+    expect(await set(false, 'UNCENSORED')).toBe('uncensored');
+  });
+
+  it('carries v4’s four helper sentences, byte for byte', async () => {
+    const fixture = await render();
+    const help = async (dangerous: boolean | null, over: 'OFF' | 'UNCENSORED' | null) => {
+      fixture.componentInstance.isDangerousChat.set(dangerous);
+      fixture.componentInstance.conciergeOverride.set(over);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      return conciergeHelp(fixture);
+    };
+    expect(await help(false, null)).toBe(
+      'The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.',
+    );
+    expect(await help(true, null)).toBe(
+      'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.',
+    );
+    expect(await help(true, 'OFF')).toBe(
+      'You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.',
+    );
+    expect(await help(true, 'UNCENSORED')).toBe(
+      'You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.',
+    );
+  });
+
+  it('gives each state its own icon — the third, colorblind-safe channel', async () => {
+    const fixture = await render();
+    const icon = async (dangerous: boolean | null, over: 'OFF' | 'UNCENSORED' | null) => {
+      fixture.componentInstance.isDangerousChat.set(dangerous);
+      fixture.componentInstance.conciergeOverride.set(over);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const labels = Array.from(fixture.nativeElement.querySelectorAll('label')) as HTMLElement[];
+      const label = labels.find((l) => l.textContent?.includes('The Concierge'))!;
+      // `qt-icon` aliases `class` to an INPUT that lands on the inner span (the
+      // host itself is `display: contents`), so the tint is read there.
+      const span = label.querySelector('qt-icon span[data-icon]') as HTMLElement;
+      return { name: span.getAttribute('data-icon'), tint: span.className };
+    };
+    expect(await icon(false, null)).toMatchObject({ name: 'eye' });
+    expect((await icon(false, null)).tint).toContain('qt-text-success');
+    expect(await icon(true, null)).toMatchObject({ name: 'alert-triangle' });
+    expect((await icon(true, null)).tint).toContain('qt-text-danger');
+    expect(await icon(true, 'OFF')).toMatchObject({ name: 'check-circle' });
+    expect((await icon(true, 'OFF')).tint).toContain('qt-text-muted');
+    expect(await icon(true, 'UNCENSORED')).toMatchObject({ name: 'eye-off' });
+    expect((await icon(true, 'UNCENSORED')).tint).toContain('qt-text-info');
+  });
+
+  it('PUTs conciergeState as a SIBLING of the chat bag, not a bag key', async () => {
+    const fixture = await render();
+    await choose(fixture, conciergeSelect(fixture), 'uncensored');
+    const put = sent.find((r) => r['type'] === 'chatUpdate')!;
+    expect(put['conciergeState']).toBe('uncensored');
+    // v4's `chatUpdateRequestSchema` declares it at the TOP level; a bag key
+    // would be stripped by `updateChatSchema` and silently do nothing.
+    expect(put['chat']).toEqual({});
+    expect(fixture.componentInstance.refetched).toBe(1);
+  });
+
+  it('raises v4’s own success sentence for each state', async () => {
+    for (const [value, message] of [
+      ['flagged', 'Marked as flagged'],
+      ['vouched', 'You have vouched for this chat'],
+      ['uncensored', 'The uncensored door stands open'],
+      ['monitored', 'The Concierge is on watch'],
+    ] as const) {
+      const fixture = await render();
+      // Start somewhere else so every pick is a real change.
+      fixture.componentInstance.conciergeOverride.set(value === 'vouched' ? 'UNCENSORED' : 'OFF');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+      await choose(fixture, conciergeSelect(fixture), value);
+      expect(toasts().at(-1)).toEqual({ type: 'success', message });
+    }
+  });
+
+  it('reverts the select AND the model when the write fails', async () => {
+    const fixture = await render();
+    fixture.componentInstance.isDangerousChat.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(conciergeSelect(fixture).value).toBe('flagged');
+
+    failNext = true;
+    await choose(fixture, conciergeSelect(fixture), 'uncensored');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'the clock is stuck' });
+    // The rejected choice must not be left on screen (the standing
+    // controlled-select idiom: reverting the signal alone is not enough).
+    expect(conciergeSelect(fixture).value).toBe('flagged');
+    expect(fixture.componentInstance.refetched).toBe(0);
+  });
+
+  it('sends nothing when the pick already matches the stored state', async () => {
+    const fixture = await render();
+    await choose(fixture, conciergeSelect(fixture), 'monitored');
+    expect(sent.filter((r) => r['type'] === 'chatUpdate')).toEqual([]);
   });
 });
