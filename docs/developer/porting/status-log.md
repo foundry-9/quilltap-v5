@@ -95655,3 +95655,26 @@ widened predicate still matches it (both maintenance families green);
 note describes the behaviour this port removes — the family was regenerated and
 re-run and is green, so the clock-minted normalization still holds for the cases
 that carry it.
+
+### Gate finding — the two reduced `chat_messages` test DDLs
+
+The full workspace run turned up **seven failures no family could see**:
+`services::conversation_render_reconcile` (6) and
+`services::embedding_dimension_reconcile` (1). Both modules hand-roll a reduced
+`chat_messages` table listing exactly the columns the OLD played-message
+predicate needed (`id, chatId, type, role, systemSender, createdAt`). Unit 2
+widened `get_last_played_message_at` to read `customAnnouncer` as well, so the
+staleness gate's query began erroring against those tables and both modules
+misjudged every chat.
+
+Fixed by giving both DDLs the column — the real `chat_messages` table has always
+had it, so this is the reduced fixture catching up, not a schema change — with a
+note at each site explaining why a column nothing in the module names is
+load-bearing. (Two of the three hand-rolled DDLs elsewhere in the tree already
+carry it: `enclave/step.rs`'s and `chats_messages_read.rs`'s are full-column
+copies.)
+
+⚠ **A trap worth carrying:** the first repair put the explanatory comment INSIDE
+the `execute_batch` string literal (the DDL is a `\`-continued Rust string, so
+`//` lines land in the SQL). That turned 7 failures into 13 across both modules.
+The comment belongs above the call.

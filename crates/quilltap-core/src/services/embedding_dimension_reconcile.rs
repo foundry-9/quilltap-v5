@@ -673,6 +673,10 @@ mod tests {
     /// this module's mount-chunk arm is exercised here and pinned at 0 in the
     /// differential.
     fn main_conn() -> Connection {
+        // ⚠ `chat_messages.customAnnouncer` is load-bearing: the staleness gate
+        // calls `get_last_played_message_at`, whose predicate reads it since
+        // P4.D140 (v4 `735d9408c`). See the same note in
+        // `conversation_render_reconcile`.
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE embedding_profiles (\
@@ -683,7 +687,7 @@ mod tests {
              CREATE TABLE chats (id TEXT PRIMARY KEY, updatedAt TEXT);\
              CREATE TABLE chat_messages (\
                 id TEXT PRIMARY KEY, chatId TEXT, type TEXT, role TEXT, \
-                systemSender TEXT, createdAt TEXT);\
+                systemSender TEXT, customAnnouncer TEXT, createdAt TEXT);\
              CREATE TABLE conversation_chunks (id TEXT PRIMARY KEY, chatId TEXT, embedding BLOB);\
              CREATE TABLE memories (id TEXT PRIMARY KEY, characterId TEXT, embedding BLOB);\
              CREATE TABLE help_docs (id TEXT PRIMARY KEY, embedding BLOB);\

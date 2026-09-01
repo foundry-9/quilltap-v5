@@ -121,12 +121,7 @@ fn chat_activity_matches_v4() {
                 activities += 1;
             }
             "sort" => {
-                let mut chats: Vec<Value> = row["chats"]
-                    .as_array()
-                    .expect("chats")
-                    .iter()
-                    .cloned()
-                    .collect();
+                let mut chats: Vec<Value> = row["chats"].as_array().expect("chats").to_vec();
                 // `sort_by` is stable, as `Array.prototype.sort` is.
                 chats.sort_by(by_chat_activity_desc);
                 let got: Vec<&str> = chats

@@ -157,6 +157,20 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+#### 2026-09-01 — fix(tests): the two reduced chat_messages DDLs carry customAnnouncer
+
+_Versions: core 0.0.726._
+
+Caught by the full workspace gate, not by any differential. The
+`conversation_render_reconcile` and `embedding_dimension_reconcile` test modules
+hand-roll a reduced `chat_messages` table listing exactly the columns the OLD
+played-message predicate needed. P4.D140 widened that predicate to read
+`customAnnouncer`, so the staleness gate's query started erroring against those
+tables and both modules misjudged every chat — seven failures, none of them
+visible to a family. Both DDLs gain the column (the real schema has always had
+it) with a note at each site saying why a column nothing in the module names is
+load-bearing.
+
 #### 2026-09-01 — fix(spa): chat cards show when a character last spoke (v4 735d9408c, bug 112)
 
 _Versions: SPA 0.5.601._

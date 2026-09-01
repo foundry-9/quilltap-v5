@@ -311,6 +311,12 @@ mod tests {
     /// The schema subset the scan + the staleness gate read. Deliberately
     /// hand-rolled rather than provisioned: the point is to exercise the SQL,
     /// and a missing table is one of the cases under test.
+    ///
+    /// ⚠ `chat_messages.customAnnouncer` is load-bearing here even though nothing
+    /// in this module names it: the staleness gate calls
+    /// `get_last_played_message_at`, whose predicate reads it since P4.D140 (v4
+    /// `735d9408c`). A reduced DDL that omits the column makes that query error
+    /// and the gate misjudge every chat.
     fn test_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
@@ -318,7 +324,7 @@ mod tests {
                 id TEXT PRIMARY KEY, userId TEXT, renderedMarkdown TEXT, updatedAt TEXT);\
              CREATE TABLE chat_messages (\
                 id TEXT PRIMARY KEY, chatId TEXT, type TEXT, role TEXT, \
-                systemSender TEXT, createdAt TEXT);\
+                systemSender TEXT, customAnnouncer TEXT, createdAt TEXT);\
              CREATE TABLE conversation_chunks (\
                 id TEXT PRIMARY KEY, chatId TEXT, content TEXT, embedding BLOB);\
              CREATE TABLE embedding_status (\
