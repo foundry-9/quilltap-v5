@@ -1031,6 +1031,7 @@ fn chat_update_surface_cannot_reach_scenario_text() {
         "f0000000-0000-4000-8000-00000000000f",
         CHAT,
         &json!({ "scenarioText": "hijacked", "title": "A New Title" }),
+        None, // conciergeState (P4.D141)
         None,
         None,
         None,

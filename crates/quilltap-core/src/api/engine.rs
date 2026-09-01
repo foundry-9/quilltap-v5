@@ -1681,6 +1681,8 @@ impl CoreEngine {
             Request::ChatUpdate {
                 chat_id,
                 chat,
+                // ── P4.D141: the per-chat Concierge four-state ──
+                concierge_state,
                 // ── P4.9E1A: the bag's participant families ──
                 update_participant,
                 add_participant,
@@ -1692,6 +1694,12 @@ impl CoreEngine {
                         SINGLE_USER_ID,
                         &chat_id,
                         &chat,
+                        // `Some(None)` is an explicit JSON `null` — flattened to
+                        // `Value::Null` so the handler answers v4's 400 rather
+                        // than treating it as absent (P4.D141).
+                        concierge_state
+                            .map(|v| v.unwrap_or(serde_json::Value::Null))
+                            .as_ref(),
                         update_participant.as_ref(),
                         add_participant.as_ref(),
                         remove_participant_id.as_deref(),

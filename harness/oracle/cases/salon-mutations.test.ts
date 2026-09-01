@@ -274,6 +274,31 @@ async function main(): Promise<void> {
     { name: 'chat_update_timeline_set', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: 'narrative' } } },
     { name: 'chat_update_timeline_null', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: null } } },
     { name: 'chat_update_timeline_invalid', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { timelineMode: 'dreamtime' } } },
+    // P4.D141 (v4 `60e3c4a0a`): the `conciergeState` arm of the chat PUT — a
+    // SIBLING of `chat`, routed through `applyConciergeFlip`. Each accepted value
+    // writes the stored pair AND posts a Concierge bubble; the no-op writes
+    // nothing; the two refusals are `chatUpdateRequestSchema.parse` throwing
+    // before `processChatUpdates` runs, so nothing is written at all.
+    { name: 'chat_update_concierge_flagged', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'flagged' } },
+    { name: 'chat_update_concierge_vouched', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'vouched' } },
+    { name: 'chat_update_concierge_uncensored', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'uncensored' } },
+    // The seeded chat is already Monitored, so this is the no-op arm.
+    { name: 'chat_update_concierge_noop', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'monitored' } },
+    // `'off'` is the RETIRED tri-state spelling — the most valuable invalid value
+    // there is, because a port that forgot to widen the enum would accept it.
+    { name: 'chat_update_concierge_invalid', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 'off' } },
+    // `.optional()` is not `.nullish()`: an explicit null is a ZodError too.
+    { name: 'chat_update_concierge_null', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: null } },
+    // A wrong TYPE must reach the same Zod refusal, not a transport-level decode
+    // error (the P4.60 wrong-type-collapse convention).
+    { name: 'chat_update_concierge_wrong_type', method: 'chatPut', url: cbase, paramId: GROUP, body: { conciergeState: 42 } },
+    // Both families in one request: the `chat` bag is applied first, then the flip.
+    { name: 'chat_update_concierge_with_bag', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { title: 'Vouched And Renamed' }, conciergeState: 'vouched' } },
+    // GUARD ORDER — the arm that matters most. v4 parses the WHOLE body before
+    // `processChatUpdates` runs, so an invalid `conciergeState` refuses the
+    // request with the `chat` bag UNWRITTEN. A port that validated the state at
+    // the flip (after the bag write) would rename the chat and then 400.
+    { name: 'chat_update_concierge_invalid_with_bag', method: 'chatPut', url: cbase, paramId: GROUP, body: { chat: { title: 'Should Not Land' }, conciergeState: 'off' } },
     { name: 'message_delete_cascade', method: 'messageDelete', url: `${mbase(EDIT_MSG)}?memoryAction=DELETE_MEMORIES`, paramId: EDIT_MSG },
   ];
 

@@ -280,6 +280,24 @@ pub enum Request {
     ChatUpdate {
         chat_id: String,
         chat: serde_json::Value,
+        /// The per-chat Concierge four-state (v4 `chatUpdateRequestSchema`'s
+        /// `conciergeState`, a SIBLING of `chat`, widened from three values at v4
+        /// [`60e3c4a0a`]). Typed `Option<Value>` rather than a Rust enum on
+        /// purpose: v4 validates with Zod inside its handler, so a wrong-TYPED or
+        /// out-of-domain value must reach v4's flat `Validation error` 400 rather
+        /// than failing at the serde boundary, where the transport would answer
+        /// its own `Invalid request: …` (the P4.60 wrong-type-collapse
+        /// convention). `.optional()` is not `.nullish()`, so an explicit `null`
+        /// is a refusal too — which is exactly why the tri-state must survive to
+        /// the handler, and why this carries `double_option`: plain
+        /// `Option<Value>` collapses JSON `null` to key-absent and the refusal
+        /// would silently become a success.
+        #[serde(
+            default,
+            deserialize_with = "double_option",
+            skip_serializing_if = "Option::is_none"
+        )]
+        concierge_state: Option<Option<serde_json::Value>>,
         // ── P4.9E1A: the bag's participant families (additive, all defaulted) ──
         // v4's `chatUpdateRequestSchema` carries these as SIBLINGS of `chat`, and
         // `processChatUpdates` runs them in this order after the `chat` bag. They
@@ -4242,6 +4260,51 @@ mod tests {
     use super::{
         brahma_console_update_request, data_retention_update_request, taboo_update_request, Request,
     };
+
+    /// P4.D141: the chat PUT's `conciergeState` must survive SERDE decoding in
+    /// all four shapes, because v4 validates it with Zod INSIDE the handler and
+    /// answers `Validation error` — a boundary that refused the wrong-typed or
+    /// out-of-domain value with its own `Invalid request: …` would never reach
+    /// v4's 400 (the P4.60 wrong-type-collapse convention). Absent, a valid
+    /// string, an explicit `null` (a ZodError, since `.optional()` is not
+    /// `.nullish()`) and a wrong type must ALL decode.
+    #[test]
+    fn chat_update_concierge_state_reaches_the_handler_in_every_shape() {
+        let decode = |body: &str| -> Option<serde_json::Value> {
+            match serde_json::from_str::<Request>(body).expect("must decode at the boundary") {
+                // `Some(None)` is an explicit JSON null; flattened here to the
+                // `Option<Value>` the handler actually receives.
+                Request::ChatUpdate {
+                    concierge_state, ..
+                } => concierge_state.map(|v| v.unwrap_or(serde_json::Value::Null)),
+                other => panic!("wrong variant: {other:?}"),
+            }
+        };
+        let base = r#""type":"chatUpdate","chatId":"c1","chat":{}"#;
+        assert_eq!(decode(&format!("{{{base}}}")), None, "absent");
+        assert_eq!(
+            decode(&format!(r#"{{{base},"conciergeState":"uncensored"}}"#)),
+            Some(serde_json::json!("uncensored")),
+            "a valid four-state value"
+        );
+        // The retired tri-state spelling must reach the handler to be REFUSED
+        // there, not be swallowed at the boundary.
+        assert_eq!(
+            decode(&format!(r#"{{{base},"conciergeState":"off"}}"#)),
+            Some(serde_json::json!("off")),
+            "the retired 'off' spelling"
+        );
+        assert_eq!(
+            decode(&format!(r#"{{{base},"conciergeState":null}}"#)),
+            Some(serde_json::Value::Null),
+            "an explicit null must NOT collapse to absent"
+        );
+        assert_eq!(
+            decode(&format!(r#"{{{base},"conciergeState":42}}"#)),
+            Some(serde_json::json!(42)),
+            "a wrong type must reach the handler's Zod refusal"
+        );
+    }
 
     /// P4.D50 §3-review pin: the `TabooSettingsUpdate.phrases` tri-state must
     /// survive SERDE deserialization. (When this pin was written the web edge

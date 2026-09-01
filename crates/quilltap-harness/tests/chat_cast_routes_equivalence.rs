@@ -1086,6 +1086,7 @@ fn chat_cast_routes_match_oracle() {
                 &spec.user_id,
                 chat,
                 &chat_bag,
+                None, // conciergeState (P4.D141) — this family drives the cast verbs
                 upd.as_ref(),
                 add.as_ref(),
                 rm,

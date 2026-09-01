@@ -68,11 +68,26 @@ export interface ChatGetRequest {
   chatId: string;
 }
 
+/**
+ * The four-state per-chat Concierge control's wire values (P4.D141). The
+ * canonical derivation from the two stored fields lives in
+ * `app/chat/concierge-state.ts`; this is only the PUT's accepted domain.
+ */
+export type ConciergeState = 'monitored' | 'flagged' | 'vouched' | 'uncensored';
+
 /** A partial chat update (v4 PUT `/chats/:id`). */
 export interface ChatUpdateRequest {
   type: 'chatUpdate';
   chatId: string;
   chat: Record<string, unknown>;
+  /**
+   * The per-chat Concierge four-state (P4.D141, v4 `60e3c4a0a`). A SIBLING of
+   * `chat`, not a bag key — v4's `chatUpdateRequestSchema` declares it at the
+   * top level and `processChatUpdates` routes it through `applyConciergeFlip`.
+   * Anything outside the four values is a 400 `Validation error` with nothing
+   * written, so the client must never send a free-form string.
+   */
+  conciergeState?: ConciergeState;
 }
 
 /** Turn-management actions (v4 `handleTurnAction`). */
@@ -2571,7 +2586,8 @@ export interface EnrichedChatSummary {
   project: EnrichedProject | null;
   storyBackground: EnrichedStoryBackground | null;
   isDangerousChat: boolean;
-  conciergeOverride: 'OFF' | null;
+  /** NULL = follow global, 'OFF' = Vouched Safe, 'UNCENSORED' = operator-asserted uncensored (P4.D141). */
+  conciergeOverride: 'OFF' | 'UNCENSORED' | null;
   chatType: 'salon' | 'help' | 'autonomous' | 'brahma';
   scriptoriumStatus: 'none' | 'rendered' | 'embedded';
   _count: { messages: number; memories: number };
@@ -2888,7 +2904,8 @@ export interface ChatDetail {
   agentModeSource: string;
   isDangerousChat: boolean | null;
   dangerCategories: string[];
-  conciergeOverride: 'OFF' | null;
+  /** NULL = follow global, 'OFF' = Vouched Safe, 'UNCENSORED' = operator-asserted uncensored (P4.D141). */
+  conciergeOverride: 'OFF' | 'UNCENSORED' | null;
   /**
    * The chat sidebar's slice of the record (P4.9H1). All of these are in the
    * server's projection (`api/salon.rs:303-422`, v4 `handlers/get.ts:528-568`).

@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 import { RouterLink } from '@angular/router';
 
 import type { ChatDetail, ChatSettingsDto } from '../core/core-contract';
+import { getConciergeState } from './concierge-state';
 import { CopyChatIdButton } from '../ui/copy-chat-id-button';
 import { Icon } from '../ui/icon';
 import { ChatCostSummary } from './chat-cost-summary';
@@ -49,18 +50,33 @@ import { ChatCostSummary } from './chat-cost-summary';
         >{{ chat().title || 'Untitled chat' }}</a
       >
 
-      @if (isOffDuty()) {
-        <span
-          class="qt-danger-badge flex-shrink-0"
-          title="The Concierge is off-duty for this chat."
-        >
-          <qt-icon name="check-circle" class="w-3 h-3" />Off-duty
-        </span>
-      }
-      @if (chat().isDangerousChat) {
-        <span class="qt-danger-badge flex-shrink-0" [title]="dangerTitle()">
-          <qt-icon name="alert-triangle" class="w-3 h-3" />Flagged
-        </span>
+      <!-- The Concierge badge (v4 `SalonView.tsx:1082-1120`). ONE pill, derived
+           from the four-state; Monitored is the default and renders no badge at
+           all — "the pill means something other than the default is set". Until
+           P4.D141 v5 rendered two INDEPENDENT `@if` pills, so an off-duty chat
+           that was also flagged showed both where v4's ternary shows one. -->
+      @switch (conciergeState()) {
+        @case ('flagged') {
+          <span class="qt-danger-badge flex-shrink-0" [title]="dangerTitle()">
+            <qt-icon name="alert-triangle" class="w-3 h-3" />Flagged
+          </span>
+        }
+        @case ('vouched') {
+          <span
+            class="qt-danger-badge qt-danger-badge-muted flex-shrink-0"
+            title="You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply — set from the sidebar's Chat section."
+          >
+            <qt-icon name="check-circle" class="w-3 h-3" />Vouched Safe
+          </span>
+        }
+        @case ('uncensored') {
+          <span
+            class="qt-danger-badge qt-danger-badge-info flex-shrink-0"
+            title="You have opened the uncensored door yourself. Nothing is scanned, nothing is softened — set from the sidebar's Chat section."
+          >
+            <qt-icon name="eye-off" class="w-3 h-3" />Uncensored
+          </span>
+        }
       }
 
       <span class="flex-1"></span>
@@ -129,7 +145,12 @@ export class ConversationHeader {
 
   protected readonly isAutonomous = computed(() => this.chat().chatType === 'autonomous');
 
-  protected readonly isOffDuty = computed(() => this.chat().conciergeOverride === 'OFF');
+  /**
+   * The four-state, derived through the shared predicate module so the badge can
+   * never disagree with the sidebar control or the message-list danger styling
+   * (P4.D141, v4 `getConciergeState`).
+   */
+  protected readonly conciergeState = computed(() => getConciergeState(this.chat()));
 
   protected readonly dangerTitle = computed(() => {
     const cats = this.chat().dangerCategories ?? [];

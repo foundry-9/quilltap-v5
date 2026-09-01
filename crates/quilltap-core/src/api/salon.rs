@@ -17,6 +17,10 @@ use serde_json::{json, Map, Value};
 use crate::db::runtime::Db;
 use crate::db::{chat_settings, chats_read, DbError};
 use crate::services::carina_query::BRAHMA_CARINA_ANSWERER_ID;
+use crate::services::dangerous_content::chat_override::ConciergeState;
+use crate::services::dangerous_content::manual_flip::{
+    apply_concierge_flip, RealConciergeAnnouncer,
+};
 use crate::services::{
     ariel_notifications, chat_enrichment, cold_chunk_reembed, suparna_notifications,
 };
@@ -1290,16 +1294,28 @@ pub fn message_swipe_switch(
 /// the remove arm has no last-CHARACTER guard and no impersonation clean-up —
 /// those live in `actions/participants.ts`, not in `processChatUpdates`.
 ///
-/// Deferrals (named in the report): `conciergeState`, the top-level
+/// **P4.D141 — the `conciergeState` arm is now LIVE here.** v4's PUT carries
+/// `conciergeState` as a SIBLING of `chat` and routes it through
+/// [`apply_concierge_flip`] with the real Concierge announcer, after the
+/// participant add and before the remove. The four-value enum is validated up
+/// front (v4 parses the whole body before `processChatUpdates` runs), so an
+/// invalid value refuses the request with nothing written.
+///
+/// Deferrals (named in the report): the top-level
 /// `roleplayTemplateId`/`imageProfileId` shortcuts (not in the v5 `chatUpdate`
 /// contract — it carries the `chat` bag plus the three participant families),
 /// and the `projectId` `characterRoster` auto-add (a store-backed
 /// properties.json RMW).
+// v4's `processChatUpdates` takes one validated-body object; the port spells its
+// families out as parameters so each arm's presence is a type-level fact. Eight
+// is one over clippy's default and the shape mirrors v4's schema deliberately.
+#[allow(clippy::too_many_arguments)]
 pub async fn chat_update(
     db: &Db,
     user_id: &str,
     chat_id: &str,
     chat_bag: &Value,
+    concierge_state: Option<&Value>,
     update_participant: Option<&Value>,
     add_participant: Option<&Value>,
     remove_participant_id: Option<&str>,
@@ -1309,6 +1325,22 @@ pub async fn chat_update(
         Ok(Some(c)) => c,
         Ok(None) => return not_found("Chat"),
         Err(e) => return internal(e),
+    };
+
+    // v4's PUT handler runs `chatUpdateRequestSchema.parse(body)` AFTER the 404
+    // and BEFORE `processChatUpdates`, so a `conciergeState` outside
+    // `z.enum(['monitored','flagged','vouched','uncensored'])` refuses the WHOLE
+    // request with nothing written. `.parse` is uncaught, so the middleware's
+    // `validationError` answers 400 `{error: 'Validation error'}` (the `details`
+    // issue array is the standing project-wide deferral). `.optional()` is not
+    // `.nullish()`: an explicit `null` is a ZodError too.
+    let requested_state = match concierge_state {
+        None => None,
+        Some(Value::String(sv)) => match ConciergeState::from_wire(sv) {
+            Some(st) => Some(st),
+            None => return bad_request("Validation error"),
+        },
+        Some(_) => return bad_request("Validation error"),
     };
 
     // Existence gates (v4 `processChatUpdates`): a non-null roleplayTemplateId /
@@ -1474,6 +1506,40 @@ pub async fn chat_update(
             }
         }
     }
+    // Per-chat Concierge four-state. Routed through the manual-flip helper so each
+    // transition does the right combination of DB updates + Concierge announcement
+    // in one place. v4 runs this AFTER `addParticipant` and BEFORE
+    // `removeParticipantId` (`helpers.ts:587`), and re-reads the chat only when the
+    // flip actually CHANGED something.
+    //
+    // v4 gates on `if (validatedData.conciergeState)` — a truthiness test, but the
+    // Zod enum admits no falsy member, so "present" and "truthy" coincide.
+    if let Some(requested) = requested_state {
+        let flip = apply_concierge_flip(
+            db,
+            &RealConciergeAnnouncer { db },
+            chat_id,
+            requested,
+            &chat,
+        )
+        .await;
+        match flip {
+            Ok(result) => {
+                if result.changed {
+                    let cid = chat_id.to_string();
+                    match db.read_main(move |conn| chats_read::find_by_id(conn, &cid)) {
+                        Ok(Some(refetched)) => chat = refetched,
+                        // v4: `if (refetched) updatedChat = refetched` — a chat that
+                        // vanished mid-request leaves the in-hand copy standing.
+                        Ok(None) => {}
+                        Err(e) => return internal(e),
+                    }
+                }
+            }
+            Err(e) => return internal(e),
+        }
+    }
+
     if let Some(participant_id) = remove_participant_id {
         // v4 resolves the character name BEFORE the removal (the participant is
         // still readable then) and announces only when it resolved.

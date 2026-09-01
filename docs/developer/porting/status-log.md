@@ -95904,3 +95904,74 @@ invisible to it. Those arms live in `danger_resolver_equivalence` §1 instead �
 new resolve rows, with mutations M3 (drop the forced AUTO_ROUTE) and M4 (check
 vouched before uncensored) reddening them. `danger_routing_equivalence` is re-run
 at the pin, unchanged and green.
+
+### Unit 3 — the `conciergeState` PUT arm (the deferral closes)
+
+v5 had NO production caller of `apply_concierge_flip`: `api/salon.rs:1216/:1293`
+named `conciergeState` a deferral and only the harness drove the flip. This unit
+closes it.
+
+**The port.** `chat_update` gains a `concierge_state: Option<&Value>` parameter
+and applies the flip through [`apply_concierge_flip`] with
+`RealConciergeAnnouncer`, in v4's exact position (`helpers.ts:587` — after
+`addParticipant`, before `removeParticipantId`), re-reading the chat only when
+`changed` (v4's `if (refetched) updatedChat = refetched` keeps the in-hand copy
+when the row vanished mid-request; ported verbatim).
+
+**Guard order — the recurring class, got right by measurement.** v4's
+`handlers/put.ts` runs `findById` → 404, then `req.json()`, then
+`chatUpdateRequestSchema.parse(body)`, and only then `processChatUpdates`. So an
+out-of-domain `conciergeState` refuses the WHOLE request with the `chat` bag
+UNWRITTEN. v5 validates immediately after its own 404 for the same reason. The
+corpus carries the arm that proves it (`chat_update_concierge_invalid_with_bag`),
+and mutation M11 — moving the validation down to the flip — reddens exactly that
+arm and nothing else.
+
+**The refusal envelope, MEASURED not assumed.** `.parse` is uncaught, so v4's
+middleware answers 400 `{error: 'Validation error', details: [...]}` — the
+DETAILED body, not the flat one. v5 answers the flat sentence; the `details`
+issue array is the standing project-wide deferral (the P4.6ay-unit-12 / wardrobe
+precedent). The family compares v4's `error` sentence against v5's `message`, so
+the sentence itself is asserted.
+
+**The tri-state, and why the corpus alone could not see it.** `concierge_state`
+is `Option<Option<Value>>` with `double_option`. Plain `Option<Value>` collapses
+JSON `null` to key-absent — and since v4's `.optional()` is NOT `.nullish()`, an
+explicit null is a ZodError, so the collapse would have turned a refusal into a
+silent success. `salon_mutations_equivalence` calls `salon::chat_update`
+directly, so it is blind to the serde boundary; the pin is therefore a unit test
+in `api/types.rs` covering all five shapes (absent / a valid value / the retired
+`'off'` spelling / null / a wrong type), and mutation M14 (drop `double_option`)
+reddens it. The field is `Value`, not a Rust enum, on purpose: the P4.60
+wrong-type-collapse convention keeps a bad value reaching v4's 400 instead of the
+transport's own `Invalid request: …`.
+
+**`api/types.rs` is not in any lane's Ownership table.** This lane opened it for
+exactly one field on `ChatUpdate` (plus its test) because the order requires
+decoding through the `Request` enum and forbids a hand-built variant. Flagged for
+the unifier; no sibling lane touches the variant.
+
+**The differential** — `salon_mutations_equivalence`, 17 → 26 cases, all driving
+v4's REAL `PUT /api/v1/chats/[id]` route:
+`chat_update_concierge_{flagged,vouched,uncensored}` (stored pair + bubble),
+`_noop` (nothing written), `_invalid` / `_null` / `_wrong_type` (400,
+nothing written), `_with_bag` (both families, bag first), and
+`_invalid_with_bag` (the guard-order arm). Mutations, each verified applied and
+each reddening exactly its own arms: M10 `from_wire` accepts `'off'`
+(→ both invalid arms), M11 validate-after-write (→ the guard-order arm ALONE),
+M12 null-treated-as-absent (→ the null arm), M13 the flip never runs (→ all four
+value arms × body/chats/chat_messages), M14 drop `double_option` (→ the boundary
+pin).
+
+**Two harness repairs the new cases forced.** (1) The Concierge bubble mints an
+id, so `table_rows` now placeholders any id lacking the fixture's pinned
+`-0000-4000-8000-` middle and sorts minted rows LAST — otherwise a random first
+hex group would put the two sides' rows in different orders. (2) The third
+`LAST_MESSAGE_AT_PENDING_P4D140` mask, and here bug 112 shows TWO shapes:
+a posted bubble (v4 no longer bumps a system-authored row) and a message DELETE
+(v4 now RECOMPUTES the column backwards from the surviving character-authored
+rows, where v5 leaves the later stale value). Both leave v4's stamp strictly
+earlier than v5's and v4's inside the fixture epoch, which is what the
+measurement asserts before masking; `message_delete_swipe` and
+`message_delete_cascade` are affected as well as the four flip cases, and the
+run prints the masked-case list.

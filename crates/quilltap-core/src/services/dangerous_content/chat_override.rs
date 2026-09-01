@@ -48,13 +48,12 @@ pub const CONCIERGE_OVERRIDE_UNCENSORED: &str = "UNCENSORED";
 /// manual-flip control (`PUT /api/v1/chats/[id]` `conciergeState`), so they must
 /// stay `'monitored' | 'flagged' | 'vouched' | 'uncensored'`.
 ///
-/// - `Monitored`  — not classified dangerous; the classifier keeps watch and
-///   may auto-flip to `Flagged`.
-/// - `Flagged`    — classified dangerous (auto or manual): uncensored routes,
+/// - `Monitored` — not classified dangerous; the classifier keeps watch and may
+///   auto-flip to `Flagged`.
+/// - `Flagged` — classified dangerous (auto or manual): uncensored routes,
 ///   danger styling, the works.
-/// - `Vouched`    — operator vouched the chat safe (`conciergeOverride ===
-///   'OFF'`). No classification, no uncensored routes; the label is preserved
-///   underneath.
+/// - `Vouched` — operator vouched the chat safe (`conciergeOverride === 'OFF'`).
+///   No classification, no uncensored routes; the label is preserved underneath.
 /// - `Uncensored` — operator asserted the chat spicy (`conciergeOverride ===
 ///   'UNCENSORED'`). Every uncensored route, zero classification, zero danger
 ///   styling; the label is preserved underneath.

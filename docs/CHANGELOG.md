@@ -362,6 +362,47 @@ mutations, each reddening exactly the arm it should.
 
 Nothing calls the module yet — the write gates, readers, restore and the boot
 heal follow in their own units.
+#### 2026-09-01 — feat(salon): the chat PUT's conciergeState arm closes v5's long-named deferral (v4 `60e3c4a0a`)
+
+_Versions: core 0.0.721, harness 0.0.619._
+
+v5 had no production caller of `apply_concierge_flip` — only the harness drove
+it, and `api/salon.rs` named `conciergeState` a deferral. That closes here. The
+PUT's `conciergeState` key (a SIBLING of `chat`, not a bag field) dispatches
+through `apply_concierge_flip` with the real Concierge announcer, in v4's exact
+position: after the participant add, before the remove, re-reading the chat only
+when the flip actually changed something.
+
+Guard order follows v4's handler, which parses the whole body after the 404 and
+before `processChatUpdates` runs: an out-of-domain `conciergeState` refuses the
+entire request with the `chat` bag UNWRITTEN. Measured on v4: the refusal is
+`.parse` uncaught, so the middleware answers 400 `{error: 'Validation error',
+details: [...]}`; v5 answers the flat sentence, the `details` issue array being
+the standing project-wide deferral.
+
+The field is typed `Option<Option<Value>>` with `double_option`. `Option<Value>`
+alone collapses JSON `null` to key-absent, and since v4's `.optional()` is not
+`.nullish()`, an explicit null is a ZodError — the collapse would have turned a
+refusal into a silent success. A serde-boundary unit test pins all five shapes
+(absent, a valid value, the retired `'off'` spelling, null, and a wrong type),
+because `salon_mutations_equivalence` calls the handler directly and cannot see
+the boundary at all.
+
+The differential grows nine cases over v4's REAL PUT route: the four accepted
+values (three writing the stored pair and posting a bubble, one a no-op), three
+refusals, both families in one request, and — the arm that matters most — an
+invalid state alongside a valid `chat` bag, proving nothing is written. Five
+mutations were verified applied: accepting `'off'`, moving the validation after
+the bag write, treating null as absent, skipping the flip, and dropping
+`double_option`. Each reddened exactly the arms it should.
+
+Two harness fixes rode along: minted Concierge-bubble ids are placeholdered and
+sorted last (they differ between implementations by construction), and the
+`lastMessageAt` column is masked behind `LAST_MESSAGE_AT_PENDING_P4D140` after a
+measurement — bug 112 shows up here in two shapes, a system bubble v4 no longer
+bumps for and a delete v4 now recomputes backwards from, and both leave v4's
+stamp earlier than v5's.
+
 #### 2026-09-01 — test(concierge): the two classifier gates prove the Uncensored skip (v4 `60e3c4a0a`)
 
 _Versions: harness 0.0.618._
