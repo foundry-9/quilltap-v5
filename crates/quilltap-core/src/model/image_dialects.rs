@@ -1716,6 +1716,15 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageModelDiscovery for RealImageProv
                 .send(&request.method, &request.url, &request.headers, &body)
                 .await
                 .map_err(ImageGenError::new)?;
+            // v4 fills the detailed-catalog cache inside `fetchDetailedCatalog`
+            // — the IO method, not the parser — because the synchronous
+            // options-schema hook gets no API key and can only ever READ it.
+            // v5 keeps `parse_models_page` sans-IO, so the same write lands
+            // here, on the same body, before the parse. Only NanoGPT's listing
+            // is `?detailed=true`; no other provider has a catalog to remember.
+            if provider == "NANOGPT" && resp.ok() {
+                crate::model::nanogpt_catalog::remember_detailed_catalog(&resp.body);
+            }
             let page = parse_models_page(provider, &resp)?;
             collected.extend(page.ids);
             match page.next_page_token {

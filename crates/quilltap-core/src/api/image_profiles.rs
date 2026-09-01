@@ -15,11 +15,14 @@ use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{api_keys, image_profiles as ip, provider_models, tags};
+use crate::image_gen::lora_support::resolve_lora_support;
 use crate::image_gen::lora_validation::{
     lora_issue_details, lora_issue_log_lines, validate_profile_loras,
 };
+use crate::image_gen_data::image_declarations_for;
 use crate::model::image::ErasedImageDiscovery;
 use crate::model::image_dialects::supported_image_models;
+use crate::model::nanogpt_catalog::image_provider_options_schema;
 use crate::provider_manifest::Registry;
 use crate::tools::generate_image::{
     self, ErasedImageGeneration, ImageGenerationToolInput, ImageToolExecutionContext,
@@ -793,19 +796,124 @@ pub async fn image_profile_list_models(
 
     let mut body = Map::new();
     body.insert("provider".into(), Value::String(provider.to_string()));
+    let model_ids = models;
     body.insert(
         "models".into(),
-        Value::Array(models.into_iter().map(Value::String).collect()),
+        Value::Array(model_ids.iter().cloned().map(Value::String).collect()),
     );
     body.insert(
         "supportedModels".into(),
         Value::Array(supported.into_iter().map(Value::String).collect()),
     );
     body.insert("source".into(), Value::String(source.to_string()));
+    // `84f33ce94`: resolve LoRA support HERE rather than in the browser — the
+    // resolution order (exact id → longest-prefix family → provider constraint)
+    // lives in one host module, and the declarations it reads are server-side
+    // only. Models that resolve nothing are simply ABSENT from the map, which
+    // is the editor's signal to offer no LoRA rows at all.
+    //
+    // ⚠ The RAW provider string, not `resolved`: v4 calls
+    // `resolveLoraSupport(provider, modelId)` with what the query string said,
+    // so a `GOOGLE_IMAGEN` request resolves against `GOOGLE_IMAGEN` (which
+    // declares nothing) even though its MODELS came from `GOOGLE`. Pinned by
+    // the `list_models_legacy_alias` arm.
+    let declarations = image_declarations_for(provider);
+    let mut lora_support = Map::new();
+    for model_id in &model_ids {
+        if let Some(support) = resolve_lora_support(
+            Some(&declarations.models),
+            Some(model_id),
+            declarations.lora_provider.as_ref(),
+        ) {
+            lora_support.insert(
+                model_id.clone(),
+                serde_json::to_value(&support).unwrap_or(Value::Null),
+            );
+        }
+    }
+    tracing::debug!(
+        provider = %provider,
+        model_count = model_ids.len(),
+        lora_capable_count = lora_support.len(),
+        "[Image Profiles v1] Resolved LoRA support for the model list"
+    );
+    body.insert("loraSupport".into(), Value::Object(lora_support));
     // `...(fetchError ? { fetchError } : {})` — OMITTED, never null.
     if let Some(e) = fetch_error {
         body.insert("fetchError".into(), Value::String(e));
     }
+    Response::ImageProfile(Value::Object(body))
+}
+
+/// v4 `handleOptionsSchema` (`84f33ce94`) — the per-provider (and per-model)
+/// image options schema plus that model's LoRA support.
+///
+/// Two things differ from `list-models` and both are v4's, not v5's:
+///   - the provider gate is the plain registry lookup
+///     (`providerRegistry.getProvider`), NOT `createImageProvider` — so a
+///     text-only provider is "available" here and answers a null schema, where
+///     `list-models` would refuse it;
+///   - the legacy `GOOGLE_IMAGEN` alias is NOT resolved, because nothing here
+///     asks a plugin for models.
+///
+/// `optionsSchema` and `loraSupport` are `null` — never a zero-cap object —
+/// when nothing is declared: the editor reads null as "fall back to the legacy
+/// hand-written panel" and "offer no LoRA rows at all".
+pub fn image_profile_options_schema(provider: Option<&str>, model: Option<&str>) -> Response {
+    // v4 `searchParams.get('provider')` then `if (!provider)` — a JS falsy
+    // test, so an EMPTY `provider=` is "required", not "not available".
+    let Some(provider) = provider.filter(|p| !p.is_empty()) else {
+        return bad_request("Provider is required");
+    };
+    if Registry::built_in().get_provider(provider).is_none() {
+        return bad_request(format!("Provider {provider} is not available"));
+    }
+    // v4 `searchParams.get('model') ?? undefined` — `??` catches only null, so
+    // an EMPTY `model=` stays the empty string and echoes back as `""`.
+    let options_schema = image_provider_options_schema(provider, model);
+    let declarations = image_declarations_for(provider);
+    let support = resolve_lora_support(
+        Some(&declarations.models),
+        model,
+        declarations.lora_provider.as_ref(),
+    );
+
+    // Hoisted out of the macro: a `tracing` field expression cannot name
+    // `Value::as_array` — inside the macro `Value` resolves to the `tracing`
+    // trait of that name (the standing note).
+    let group_count = options_schema
+        .as_ref()
+        .and_then(|s| s.get("groups"))
+        .and_then(|g| g.as_array())
+        .map(Vec::len)
+        .unwrap_or(0);
+    tracing::debug!(
+        provider = %provider,
+        model = ?model,
+        has_schema = options_schema.is_some(),
+        group_count,
+        lora_support = ?support.as_ref().map(|s| s.max_loras),
+        "[Image Profiles v1] Served image options schema"
+    );
+
+    let mut body = Map::new();
+    body.insert("provider".into(), Value::String(provider.to_string()));
+    // `model: model ?? null`.
+    body.insert(
+        "model".into(),
+        model.map_or(Value::Null, |m| Value::String(m.to_string())),
+    );
+    body.insert(
+        "optionsSchema".into(),
+        options_schema.unwrap_or(Value::Null),
+    );
+    body.insert(
+        "loraSupport".into(),
+        support
+            .as_ref()
+            .map(|s| serde_json::to_value(s).unwrap_or(Value::Null))
+            .unwrap_or(Value::Null),
+    );
     Response::ImageProfile(Value::Object(body))
 }
 

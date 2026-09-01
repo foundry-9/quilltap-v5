@@ -1,3 +1,5 @@
+import { type Locator } from '@playwright/test';
+
 import { expect, test, type Page } from './support/fixtures';
 
 import { E2E_PASSPHRASE } from './support/env';
@@ -28,7 +30,7 @@ import { E2E_PASSPHRASE } from './support/env';
  * list rather than refusing it. Until then the editor correctly draws no LoRA
  * section (a model that resolves no support is ABSENT from the map, which IS
  * the "offer no rows" signal) and the beats would fail on a section that never
- * appears. Flip this to `true` at unification.
+ * appears. FLIPPED TRUE by P4.D138 unit 6, which serves the map.
  *
  * A NAMED constant, deliberately, not a capability probe: a probe cannot tell
  * a model that legitimately declares no LoRA support — which is most of them,
@@ -41,29 +43,55 @@ import { E2E_PASSPHRASE } from './support/env';
  * as nothing at all and the reload assertion would fail for a reason that says
  * nothing about this lane.
  */
-const P4D138_LORA_SERVER_LANDED = false;
+const P4D138_LORA_SERVER_LANDED = true;
 
 /**
  * A NanoGPT model that declares LoRA support. NanoGPT is the feature's first
  * consumer (v4 `84f33ce94`), and this is the model whose family the static
- * dialect table covers. If P4.D138's manifest names a different one, change it
- * here — the beat asserts the SECTION, not this string.
+ * dialect table covers. The beat asserts the SECTION, not this string.
+ *
+ * ⚠ It is the family PREFIX, not the flagship it resembles. `flux-2-dev` is one
+ * of the six flagship ids and declares NO LoRA support (v4 `models.ts` builds
+ * the declaring entries from `NANOGPT_LORA_FAMILIES`, whose prefix here is
+ * `flux-2-dev-lora`), and `'flux-2-dev'.startsWith('flux-2-dev-lora')` is false,
+ * so the prefix matcher never reaches it either. P4.D138 unit 6 measured that
+ * when it served the map: the earlier value would have skipped the section this
+ * beat exists to see.
  */
-const LORA_MODEL = 'flux-2-dev';
+const LORA_MODEL = 'flux-2-dev-lora';
+
+/**
+ * A second LoRA family with a SMALLER declared cap (3 against `flux-2-dev-lora`'s
+ * 4), so narrowing to it leaves the last row over-cap and flagged. It must
+ * declare support of its own — see the narrowing step for why a flagship will
+ * not do.
+ */
+const NARROWER_LORA_MODEL = 'flux-2-klein-4b';
 
 const PROFILE_NAME = 'P4.D139 LoRA walk';
 const CAP_PROFILE_NAME = 'P4.D139 LoRA over-cap walk';
 const ADAPTER_SOURCE = 'XLabs-AI/flux-RealismLora';
 
-/** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
-async function maybeUnlock(page: Page): Promise<void> {
+/**
+ * Unlock only when the passphrase screen is showing (the shared server stays
+ * unlocked).
+ *
+ * `ready` is the landmark that means "this page finished loading unlocked", and
+ * it is a parameter because the two call sites land on DIFFERENT routes: the
+ * opener starts at `/salon`, where the shell's "Chats" heading is the landmark,
+ * while the reload step lands back on Settings → Images, where that heading can
+ * never appear. Waiting for the Salon's landmark there is a fifteen-second wait
+ * for an element that does not exist — which is exactly how this beat's first
+ * live run failed.
+ */
+async function maybeUnlock(page: Page, ready?: Locator): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
-  const chats = page.getByRole('heading', { name: 'Chats', exact: true });
-  await expect(passphrase.or(chats).first()).toBeVisible({ timeout: 15_000 });
+  const landmark = ready ?? page.getByRole('heading', { name: 'Chats', exact: true });
+  await expect(passphrase.or(landmark).first()).toBeVisible({ timeout: 15_000 });
   if (await passphrase.count()) {
     await passphrase.fill(E2E_PASSPHRASE);
     await page.getByRole('button', { name: 'Unlock' }).click();
-    await expect(chats).toBeVisible({ timeout: 15_000 });
+    await expect(landmark).toBeVisible({ timeout: 15_000 });
   }
 }
 
@@ -86,8 +114,24 @@ function providerSelect(page: Page) {
   return page.locator('select').nth(0);
 }
 
+function apiKeySelect(page: Page) {
+  return page.locator('select').nth(1);
+}
+
 function modelSelect(page: Page) {
   return page.locator('select').nth(2);
+}
+
+/**
+ * Pick the seeded NanoGPT key. The modal's Create is gated on `apiKeyId`
+ * (`image-profile-modal.ts` `isValid`), and the eligible list is filtered by
+ * provider — so this must run AFTER the provider is chosen. Global setup seeds
+ * the row; the beats never send a request with it.
+ */
+async function pickNanoGptKey(page: Page): Promise<void> {
+  await expect(apiKeySelect(page).locator('option')).toHaveCount(2, { timeout: 15_000 });
+  const value = await apiKeySelect(page).locator('option').nth(1).getAttribute('value');
+  await apiKeySelect(page).selectOption(value!);
 }
 
 function nameInput(page: Page) {
@@ -119,6 +163,7 @@ test.describe('P4.D139 — LoRA adapters on an image profile', () => {
 
     await nameInput(page).fill(PROFILE_NAME);
     await providerSelect(page).selectOption('NANOGPT');
+    await pickNanoGptKey(page);
     await modelSelect(page).selectOption(LORA_MODEL);
 
     // The section appears only because the server resolved support for THIS
@@ -146,12 +191,13 @@ test.describe('P4.D139 — LoRA adapters on an image profile', () => {
       timeout: 15_000,
     });
 
-    // The round trip that matters: a full reload, then re-open the editor.
+    // The round trip that matters: a full reload, then re-open the editor. The
+    // reload stays on Settings → Images, so THIS screen's own anchor is what
+    // "loaded and unlocked" looks like here.
+    const newProfile = page.getByRole('button', { name: 'New Profile' });
     await page.reload();
-    await maybeUnlock(page);
-    await expect(page.getByRole('button', { name: 'New Profile' })).toBeVisible({
-      timeout: 15_000,
-    });
+    await maybeUnlock(page, newProfile);
+    await expect(newProfile).toBeVisible({ timeout: 15_000 });
     await page
       .locator('div.qt-card', { hasText: PROFILE_NAME })
       .getByRole('button', { name: 'Edit' })
@@ -201,10 +247,20 @@ test.describe('P4.D139 — LoRA adapters on an image profile', () => {
 
     // Now narrow to a model whose cap is smaller. Every row survives: the list
     // is FLAGGED, never trimmed, so widening again loses nothing.
+    //
+    // ⚠ It must be a model that STILL DECLARES LoRA support. A model resolving
+    // none is absent from the server's map, which is the editor's signal to
+    // offer no LoRA rows AT ALL — the section disappears and the count is zero,
+    // which would read as "the rows were deleted" when it is the absent-not-
+    // empty rule working correctly. (This beat's first live run picked the
+    // first option in the list, `hidream`, and measured exactly that.)
     const options = await modelSelect(page).locator('option').allTextContents();
-    const narrower = options.find((o) => o !== LORA_MODEL && o.trim().length > 0);
-    expect(narrower, 'the fixture needs a second NanoGPT model to narrow to').toBeTruthy();
-    await modelSelect(page).selectOption(narrower!);
+    const narrower = options.find((o) => o.trim() === NARROWER_LORA_MODEL);
+    expect(
+      narrower,
+      `the fixture needs ${NARROWER_LORA_MODEL} in the NanoGPT model list to narrow to`,
+    ).toBeTruthy();
+    await modelSelect(page).selectOption(NARROWER_LORA_MODEL);
 
     // Whatever the second model's cap turns out to be, the rows are all still
     // there — that is the invariant, not any particular warning count.

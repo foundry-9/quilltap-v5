@@ -368,6 +368,134 @@ async function main(): Promise<void> {
         return { status, body, tables: await dumpProviderModels() };
       },
     },
+    // === 84f33ce94 (P4.D138 unit 6): the list's loraSupport map + the new
+    // options-schema action. NanoGPT is the only provider declaring either.
+    {
+      // The one provider with real per-model LoRA support: ten family prefixes
+      // carry a support object, the six flagships resolve nothing and are
+      // ABSENT from the map (the editor's "offer no LoRA rows" signal).
+      name: 'list_models_nanogpt_lora_support',
+      run: async () =>
+        respond(await (await coll()).GET(mockRequest(`${B}?action=list-models&provider=NANOGPT`))),
+    },
+    {
+      name: 'options_schema_missing_provider',
+      run: async () => respond(await (await coll()).GET(mockRequest(`${B}?action=options-schema`))),
+    },
+    {
+      // An EMPTY provider is JS-falsy: "required", not "not available".
+      name: 'options_schema_empty_provider',
+      run: async () =>
+        respond(await (await coll()).GET(mockRequest(`${B}?action=options-schema&provider=`))),
+    },
+    {
+      name: 'options_schema_unknown_provider',
+      run: async () =>
+        respond(await (await coll()).GET(mockRequest(`${B}?action=options-schema&provider=NOPE`))),
+    },
+    {
+      // The legacy alias is NOT resolved here (nothing asks a plugin for
+      // models), so it is simply not a registered provider.
+      name: 'options_schema_legacy_alias',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=GOOGLE_IMAGEN`),
+          ),
+        ),
+    },
+    {
+      // A TEXT-only provider: the gate here is the plain registry lookup, not
+      // `createImageProvider`, so this is 200 with both fields null — where
+      // `list-models` would refuse it.
+      name: 'options_schema_text_only_provider',
+      run: async () =>
+        respond(
+          await (await coll()).GET(mockRequest(`${B}?action=options-schema&provider=ANTHROPIC`)),
+        ),
+    },
+    {
+      // An image provider that declares no hook: null schema, null support.
+      name: 'options_schema_schemaless_image_provider',
+      run: async () =>
+        respond(
+          await (await coll()).GET(mockRequest(`${B}?action=options-schema&provider=OPENAI`)),
+        ),
+    },
+    {
+      // NanoGPT with no model: the cold-cache fallback sizes, no `n` field, and
+      // a null loraSupport (nothing to match).
+      name: 'options_schema_nanogpt_no_model',
+      run: async () =>
+        respond(
+          await (await coll()).GET(mockRequest(`${B}?action=options-schema&provider=NANOGPT`)),
+        ),
+    },
+    {
+      // `model=` empty: `?? undefined` catches only null, so the empty string
+      // survives and echoes back as `""` — and matches no model.
+      name: 'options_schema_nanogpt_empty_model',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=NANOGPT&model=`),
+          ),
+        ),
+    },
+    {
+      // A flagship: the schema renders, but it declares NO LoRA support.
+      name: 'options_schema_nanogpt_flagship',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=NANOGPT&model=flux-2-dev`),
+          ),
+        ),
+    },
+    {
+      // An INDEXED family — four adapters, the indexed scale band.
+      name: 'options_schema_nanogpt_indexed_family',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=NANOGPT&model=flux-2-dev-lora`),
+          ),
+        ),
+    },
+    {
+      // A longest-PREFIX match, not an exact id.
+      name: 'options_schema_nanogpt_prefix_match',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(
+              `${B}?action=options-schema&provider=NANOGPT&model=flux-2-dev-lora-image-to-image`,
+            ),
+          ),
+        ),
+    },
+    {
+      // The WEIGHTS family — the only one carrying supportsPrivateWeightsToken.
+      name: 'options_schema_nanogpt_weights_family',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(
+              `${B}?action=options-schema&provider=NANOGPT&model=pruna-ai/p-image/edit-lora`,
+            ),
+          ),
+        ),
+    },
+    {
+      // The URL family — the only model the `lora_preset` field applies to.
+      name: 'options_schema_nanogpt_url_family',
+      run: async () =>
+        respond(
+          await (await coll()).GET(
+            mockRequest(`${B}?action=options-schema&provider=NANOGPT&model=flux-lora`),
+          ),
+        ),
+    },
     {
       name: 'list_models_dangling_key',
       run: async () =>

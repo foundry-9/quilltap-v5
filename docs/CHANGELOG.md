@@ -12,6 +12,53 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — feat(image): the list-models LoRA map, the options-schema action, and the NanoGPT catalog cache (P4.D138 unit 6)
+
+_Versions: core 0.0.734, harness 0.0.628, SPA 0.5.615._
+
+P4.D138 unit 6 — v4 `84f33ce94`'s READ side, the half units 1–4 declared but
+never served.
+
+`GET ?action=list-models` now answers `loraSupport`, a `Record<modelId,
+ImageLoraSupport>` between `source` and the conditional `fetchError`; a model
+resolving nothing is ABSENT from the map, which is the editor's signal to offer
+no LoRA rows at all. It resolves against the RAW provider string, as v4 does, so
+a `GOOGLE_IMAGEN` request resolves against `GOOGLE_IMAGEN` even though its models
+came from `GOOGLE`.
+
+The new `imageProfileOptionsSchema` verb serves v4's `?action=options-schema` —
+the SPA has dispatched it since P4.D139 and has been 400ing silently into its
+legacy panel. Its provider gate is the plain registry lookup, not
+`createImageProvider`, so a text-only provider answers a null schema where
+`list-models` would refuse it; both payload fields are `null`, never a zero-cap
+object.
+
+NanoGPT is the only provider declaring the hook and its schema is per-model, so
+this also lands v4's module-global detailed-catalog cache (60-minute TTL): the
+synchronous schema hook gets no API key and cannot fetch, so the keyed model
+listing fills the cache and the hook reads it. v5 keeps `parse_models_page`
+sans-IO, so the write lands in `RealImageProvider::available_models` — the IO
+layer, where v4 puts it too. A cold cache falls back to the provider-wide size
+list.
+
+That cache also retires the `lora_data_for` narrowing recorded in unit 1: a live
+`lora`-tagged model outside the static dialect table now earns capability without
+a dialect, with v4's four skips arm for arm.
+
+`image_profiles_routes_equivalence` grows 44 → 58 cases. The unit ran RED FIRST
+through the tripwire the previous round installed: `strip_pending_lora_support`
+asserted v5 answered no `loraSupport` key, and fired the moment it did. The
+constant and the helper are now deleted and the four masked arms compare whole.
+
+P4.D139's `P4D138_LORA_SERVER_LANDED` e2e gate is flipped, and the two beats it
+activates caught three gesture defects on their first live run, none of them a
+product defect: `LORA_MODEL` was a flagship id (`flux-2-dev`) that declares no
+LoRA support, so the beat would have activated onto a section that never
+appears; Create is gated on an API key the beat never picked, and the fixture
+seeds no NanoGPT key, so global setup now seeds one; and the post-reload
+`maybeUnlock` waited on the Salon's landmark from a Settings route, so the
+landmark is a parameter now. Both beats pass.
+
 #### 2026-09-01 — fix(image): the NanoGPT LoRA dialect restructure + the failed-request log line (P4.D138 unit 5)
 
 _Versions: core 0.0.733, harness 0.0.627._

@@ -1031,6 +1031,22 @@ pub enum Request {
         #[serde(default)]
         api_key_id: Option<String>,
     },
+    /// v4 `GET /api/v1/image-profiles?action=options-schema&provider=…[&model=…]`
+    /// (`84f33ce94`) — the fields the image-profile editor should render for the
+    /// selected model, plus that model's LoRA support.
+    ///
+    /// The model matters here in a way it does not on the LLM side: a gateway
+    /// routing to hundreds of image models legitimately answers with different
+    /// legal sizes and a different `n` ceiling per model, so the editor refetches
+    /// whenever the model changes. A provider without the hook answers a `null`
+    /// schema and the editor falls back to its legacy hand-written panel.
+    #[serde(rename_all = "camelCase")]
+    ImageProfileOptionsSchema {
+        #[serde(default)]
+        provider: Option<String>,
+        #[serde(default)]
+        model: Option<String>,
+    },
     // --- Embedding profiles management (P4.9H2A) ---
     /// v4 `GET /api/v1/embedding-profiles` → `{profiles, count}` (enriched +
     /// default-first / createdAt-DESC sorted).

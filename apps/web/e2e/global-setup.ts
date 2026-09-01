@@ -526,6 +526,19 @@ export default async function globalSetup(): Promise<void> {
       `'e2e-mock-serper-key', 1, '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z' ` +
       `FROM connection_profiles LIMIT 1;`,
   );
+  // P4.D138 unit 6: the LoRA beats create a NANOGPT image profile, and the
+  // modal's Create is gated on an API key whose `provider` matches the chosen
+  // one. Fixture keys inherit their provider from the connection profile that
+  // references them, and nothing here speaks NanoGPT — so seed the row the way
+  // the Serper one above is seeded. The value is synthetic and never leaves the
+  // instance: no LoRA beat sends a request, they only read declarations.
+  runCliWrite(
+    cli,
+    `INSERT INTO api_keys (id, userId, label, provider, key_value, isActive, createdAt, updatedAt) ` +
+      `SELECT 'a1000000-0000-4000-8000-0000000005e7', userId, 'E2E NanoGPT', 'NANOGPT', ` +
+      `'e2e-synthetic-nanogpt-key', 1, '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z' ` +
+      `FROM connection_profiles LIMIT 1;`,
+  );
   runCliWrite(
     cli,
     `UPDATE chats SET participants = (` +

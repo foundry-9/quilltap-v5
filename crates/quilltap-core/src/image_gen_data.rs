@@ -179,14 +179,15 @@ pub fn orientation_data_for(provider: &str) -> (Vec<ModelInfo>, Option<Orientati
 /// and the flagships declare nothing. `NANOGPT_IMAGE_CONSTRAINTS` declares no
 /// provider-level `loraSupport`, so an unknown NanoGPT model resolves `None`.
 ///
-/// ⚠ **Narrower than v4 by one arm, deliberately.** v4's
-/// `getNanoGPTImageModels()` also augments this list from the module-level
-/// detailed-catalog cache, giving a live-catalog `lora`-tagged model outside
-/// the table `{ maxLoras: 1, sourceKinds: ['url','hf-repo'] }`. v5 does NOT
-/// carry that arm yet: the cache is runtime state rather than compiled data and
-/// lands with P4.D138 unit 6 (the routes' read side + the detailed-catalog
-/// cache, OPEN — see the order's status header). Until then a live-tagged model
-/// outside the table resolves no LoRA support here.
+/// The list also carries v4's LIVE-CATALOG augmentation arm
+/// (`getNanoGPTImageModels()`): a `lora`-tagged model the detailed catalog
+/// names, outside the static table and not already covered by a table prefix,
+/// earns capability WITHOUT a dialect — one adapter, permissive scale, and
+/// `apply_loras` refuses to guess a spelling for it and says so. That arm is
+/// the one piece of this data that is runtime state rather than compiled: it
+/// reads [`crate::model::nanogpt_catalog`], whose cache the keyed model listing
+/// fills and whose TTL is v4's sixty minutes. A cold or stale cache contributes
+/// nothing, which is exactly v4's `if (!catalogIsFresh()) return models;`.
 pub fn lora_data_for(provider: &str) -> (Vec<ModelInfo>, Option<ImageLoraSupport>) {
     match provider {
         "NANOGPT" => {
@@ -195,6 +196,14 @@ pub fn lora_data_for(provider: &str) -> (Vec<ModelInfo>, Option<ImageLoraSupport
                 if let Some(entry) = models.iter_mut().find(|m| m.id == family.prefix) {
                     entry.lora_support = Some(family.support);
                 }
+            }
+            let known: Vec<String> = models.iter().map(|m| m.id.clone()).collect();
+            for id in crate::model::nanogpt_catalog::augmenting_lora_model_ids(&known) {
+                models.push(ModelInfo {
+                    id,
+                    orientation_support: None,
+                    lora_support: Some(crate::model::nanogpt_catalog::live_tagged_lora_support()),
+                });
             }
             (models, None)
         }

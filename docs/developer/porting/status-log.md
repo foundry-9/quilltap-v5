@@ -96976,6 +96976,144 @@ the HuggingFace `lora-metadata` lookup). Their gates — the routes family's
 untouched by this unit.
 
 
+## P4.D138 unit 6 — the `list-models` LoRA map, the `options-schema` action, and the detailed-catalog cache (v4 `84f33ce94`)
+
+The routes' READ side, the half unit 1–4 declared but never served.
+
+**`list-models` gains `loraSupport`.** A `Record<modelId, ImageLoraSupport>`
+between `source` and the conditional `fetchError`; a model resolving nothing is
+ABSENT from the map, which is the editor's signal to offer no LoRA rows at all.
+v4 resolves it host-side on purpose — the resolution order (exact id →
+longest-prefix family → provider constraint) lives in one module and the
+declarations it reads are server-side only.
+
+One subtlety carried deliberately: v4 calls `resolveLoraSupport(provider,
+modelId)` with the **RAW** provider from the query string, so a `GOOGLE_IMAGEN`
+request resolves against `GOOGLE_IMAGEN` even though its MODELS came from
+`GOOGLE`. v5 does the same and says so at the site.
+
+**The `options-schema` action.** A new `imageProfileOptionsSchema` verb — the
+SPA has dispatched it since P4.D139 and has been 400ing silently into its legacy
+panel. Two things differ from `list-models`, both v4's: the provider gate is the
+plain registry lookup (`providerRegistry.getProvider`), NOT `createImageProvider`
+— so a text-only provider like ANTHROPIC is "available" here and answers a null
+schema where `list-models` would refuse it — and the legacy `GOOGLE_IMAGEN` alias
+is NOT resolved, because nothing here asks a plugin for models. `optionsSchema`
+and `loraSupport` are `null`, never a zero-cap object.
+
+**The detailed-catalog cache.** NanoGPT is the only provider declaring the hook,
+and its schema is per-model: sizes and the image cap come from
+`/image-models?detailed=true`. The hook is synchronous and gets no API key, so
+it cannot fetch — the keyed listing fills a module-global cache (60-minute TTL)
+and the hook reads it. v5 keeps `parse_models_page` sans-IO, so the write lands
+in `RealImageProvider::available_models` — the IO layer, which is where v4 puts
+it too (`fetchDetailedCatalog`). A cold cache is not a failure: the schema falls
+back to `FALLBACK_SIZES`, which is what the hand-written panel offered before
+this existed.
+
+**The recorded narrowing is RETIRED AT SOURCE.** `lora_data_for("NANOGPT")` had
+carried a `⚠ Narrower than v4 by one arm` note since unit 1: v4's
+`getNanoGPTImageModels()` augments its list from the same cache, so a live
+`lora`-tagged model outside the static table earns capability WITHOUT a dialect
+(one adapter, permissive scale, and `apply_loras` refuses to guess a spelling and
+says so). That arm now exists, with v4's four skips arm for arm — already-static
+ids, non-generators, untagged rows, and anything the dialect table already covers
+BY PREFIX.
+
+**The proof.** `image_profiles_routes_equivalence` 44 → 58 cases over an oracle
+regenerated at the baseline through the sweep driver: the NanoGPT list arm (ten
+family prefixes carry support, the six flagships are absent), the four
+options-schema guard arms, and nine schema arms across a text-only provider, a
+schema-less image provider, both empty-string edges, a flagship, all three
+dialect families and a longest-PREFIX match.
+
+**Red-first, by the tripwire the previous round installed.**
+`LORA_SUPPORT_PENDING_P4D138_UNIT6` measured the divergence in exactly the shape
+this unit predicted, and its assertion fired the moment v5 answered the key —
+`v5 now answers 'loraSupport': P4.D138 unit 6 has landed`. That failing run is
+the red-first evidence; the constant and `strip_pending_lora_support` are now
+deleted and the four masked arms compare whole.
+
+The cache itself is runtime state the differential cannot reach — its NanoGPT
+arms use no API key, so the listing never runs and the cache stays cold. That is
+exactly why `the_live_catalog_drives_augmentation_and_the_warm_schema` exists: it
+fills the cache, asserts all four augmentation skips, the dialect-less support
+shape, the WARM schema (advertised resolutions replacing the fallback list, the
+help text switching, `max_images > 1` adding the `n` field the cold path omits),
+and the malformed-payload arm that stamps a fresh EMPTY cache rather than leaving
+a stale one. It is one test on purpose: the cache is a process global and a
+second test writing it could race this one's reads.
+
+**Eight mutations, each verified applied and each reddening a named arm:**
+
+| mutation | reddens |
+| --- | --- |
+| the declarations are not passed to the list resolver | `list_models_nanogpt_lora_support` |
+| options-schema gates on image capability, not the registry | `options_schema_text_only_provider` |
+| the `n` field is emitted for a single-image model | the nanogpt schema arms |
+| the token field applies to every family | the nanogpt schema arms |
+| the preset field names the wrong family | the nanogpt schema arms |
+| the echoed `model` collapses to null | the nanogpt schema arms |
+| the wide/landscape ratio band moves 1.6 → 1.4 | the nanogpt schema arms |
+| the augmentation stops skipping prefix-covered families | `the_live_catalog_drives_augmentation_and_the_warm_schema` |
+
+**A recorded coverage limit, not faked.** A mutation swapping the raw provider
+for the resolved one in `list-models` cannot redden anything at this pin:
+`GOOGLE_IMAGEN` and `GOOGLE` both declare no LoRA support, so the two spellings
+are indistinguishable in the answer. The site carries the comment and the
+`list_models_legacy_alias` arm pins the echo; the day a legacy alias points at a
+declaring provider, the distinction becomes measurable.
+
+**The e2e gate is flipped — and its model was wrong.** P4.D139's
+`P4D138_LORA_SERVER_LANDED` goes true, and `LORA_MODEL` moves `flux-2-dev` →
+`flux-2-dev-lora`. `flux-2-dev` is one of the six FLAGSHIP ids and declares no
+LoRA support (v4 builds the declaring entries from `NANOGPT_LORA_FAMILIES`, whose
+prefix is `flux-2-dev-lora`), and `'flux-2-dev'.startsWith('flux-2-dev-lora')` is
+false, so the prefix matcher never reaches it either. Serving the map is what
+made that measurable: the beat would have activated onto a section that never
+appears.
+
+**The beats' first live run caught three gesture defects — none a product
+defect, all diagnosed by measurement.** Flipping `P4D138_LORA_SERVER_LANDED`
+activated two beats written blind against a server that did not exist yet, and
+they earned their keep immediately:
+
+1. **Create was disabled**, because the modal's `isValid` requires an
+   `apiKeyId` and the beat never picked one. The e2e fixture seeds no NanoGPT
+   key at all — fixture keys inherit their provider from the connection profile
+   that references them, and nothing there speaks NanoGPT — so global setup now
+   seeds one the way the Serper row is seeded, and the beat selects it. The
+   value is synthetic and no beat sends a request with it.
+2. **The narrowing step measured zero rows** and read it as "the rows were
+   deleted". It picked "the first option that is not `LORA_MODEL`", which is
+   `hidream` — a FLAGSHIP declaring no LoRA support, so the section correctly
+   disappeared. That is the absent-not-empty rule working. It now narrows to
+   `flux-2-klein-4b` (cap 3 against 4), and the trap is written down at the
+   site.
+3. **`maybeUnlock` waited fifteen seconds for an element that cannot exist**
+   after the reload: it anchored on the Salon's "Chats" heading, but the reload
+   lands back on Settings → Images. The landmark is a parameter now, and each
+   call site passes the one its own route actually shows.
+
+`LORA_MODEL` moved with them, for the reason in the note above. Both beats pass
+(2.8 s and 862 ms).
+
+**Three unrelated reds in the same full-suite run were classified, not
+assumed** — `salon-documents-flow` ×2 and the `workspace-flow` terminal pop-out,
+all on surfaces this lane does not touch. Re-run in isolation they are green,
+which puts them in the standing full-suite intermittent class rather than
+anything units 5–6 caused.
+
+**Gate.** 478 test binaries / 2,662 passed / 0 failed / 1 ignored, zero `SKIP:`
+lines, cargo exit 0; clippy clean on both feature sets; fmt clean; release
+build; ng test 373 files / 5,782; ng build clean; full Playwright **261 passed /
+0 failed / 1 skipped** (the standing store-probe park) — the two LoRA beats
+active and green, and the three intermittents green in the same run.
+
+**Lane status: P4.D138 stays OPEN at unit 7** (the HuggingFace `lora-metadata`
+lookup).
+
+
 ## Round record — the drift catch-up round 2 of 2 unification (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66), 2026-09-01
 
 **FIVE OF SIX ORDERS CLOSED; P4.D138 OPEN at units 5–7; the oracle baseline

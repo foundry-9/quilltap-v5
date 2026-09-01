@@ -11,12 +11,10 @@
 //!   QT_ORACLE_IMAGE_ROUTES=/tmp/oracle-image-profiles-routes.ndjson \
 //!     cargo test -p quilltap-harness --test image_profiles_routes_equivalence
 //!
-//! ⚠ P4.D138 (the LoRA train) grew this family 28 → 44 cases; its `loras`
-//! write guards are live, but the `list-models` READ side (`loraSupport`) is
-//! unit 6 of that order and OPEN — the four success arms strip v4's key behind
-//! `LORA_SUPPORT_PENDING_P4D138_UNIT6` after measuring the shape (see the
-//! constant's doc). The `options-schema` / `lora-metadata` actions (§A) have
-//! no arms here yet; they arrive with units 6–7.
+//! P4.D138 (the LoRA train) grew this family 28 → 44 → 58 cases: the `loras`
+//! write guards (units 1–4), then the `list-models` READ side (`loraSupport`)
+//! and the whole `options-schema` action (unit 6). The `lora-metadata` action
+//! (§A) arrives with unit 7.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -96,43 +94,6 @@ fn blank_keys(v: &mut Value, keys: &[&str]) {
         _ => {}
     }
 }
-/// ⚠ PENDING P4.D138 UNIT 6 — retire this when the `list-models` read side lands.
-///
-/// v4 `84f33ce94` made `GET ?action=list-models` answer a `loraSupport` map
-/// (`Record<modelId, ImageLoraSupport>`, between `source` and the conditional
-/// `fetchError`; models resolving no support are ABSENT). The oracle for this
-/// family is regenerated from a v4 pin that carries it; v5's read side is
-/// P4.D138's unit 6, which is OPEN (the lane landed units 1–4 only — see the
-/// order's status header). Rather than leave the four success arms red for the
-/// unified gate, the key is stripped from v4's body — but ONLY after
-/// [`strip_pending_lora_support`] measures the divergence in exactly the shape
-/// the open unit predicts: v4 carries an OBJECT under `loraSupport`, v5 carries
-/// no key at all, and nothing else differs. The moment v5 answers the key this
-/// measurement reddens: flip the constant to `false` and delete the helper.
-const LORA_SUPPORT_PENDING_P4D138_UNIT6: bool = true;
-
-/// The [`LORA_SUPPORT_PENDING_P4D138_UNIT6`] measurement + strip. Returns v4's
-/// body without `loraSupport` so the plain comparison can run on the rest.
-fn strip_pending_lora_support(name: &str, got: &Value, want: &Value) -> Value {
-    if !LORA_SUPPORT_PENDING_P4D138_UNIT6 {
-        return want.clone();
-    }
-    assert!(
-        want.get("loraSupport").is_some_and(Value::is_object),
-        "[{name}] v4's list-models body must carry a `loraSupport` object at the \
-         pin (84f33ce94) — a missing key means the oracle predates the LoRA train \
-         and the mask is hiding something else"
-    );
-    assert!(
-        got.get("loraSupport").is_none(),
-        "[{name}] v5 now answers `loraSupport`: P4.D138 unit 6 has landed — flip \
-         LORA_SUPPORT_PENDING_P4D138_UNIT6 to false and drop the strip"
-    );
-    let mut w = want.clone();
-    w.as_object_mut().unwrap().remove("loraSupport");
-    w
-}
-
 fn norm(v: &Value, blank: &[&str]) -> String {
     let mut v = v.clone();
     canon_numbers(&mut v);
@@ -312,6 +273,22 @@ fn image_profiles_routes_match_oracle() {
         "create_loras_two_bad_entries",
         "create_loras_guard_precedes_apikey",
         "update_loras_malformed",
+        // P4.D138 unit 6 (`84f33ce94`) — the list's loraSupport map + the
+        // options-schema action.
+        "list_models_nanogpt_lora_support",
+        "options_schema_missing_provider",
+        "options_schema_empty_provider",
+        "options_schema_unknown_provider",
+        "options_schema_legacy_alias",
+        "options_schema_text_only_provider",
+        "options_schema_schemaless_image_provider",
+        "options_schema_nanogpt_no_model",
+        "options_schema_nanogpt_empty_model",
+        "options_schema_nanogpt_flagship",
+        "options_schema_nanogpt_indexed_family",
+        "options_schema_nanogpt_prefix_match",
+        "options_schema_nanogpt_weights_family",
+        "options_schema_nanogpt_url_family",
     ] {
         assert!(
             oracle.contains_key(required),
@@ -345,25 +322,6 @@ fn image_profiles_routes_match_oracle() {
     };
     // The four success arms of `list-models` compare against v4's body with the
     // pending `loraSupport` key measured-then-stripped (P4.D138 unit 6 OPEN).
-    let ok_pending_lora =
-        |name: &str, resp: &Response, blank: &[&str], failed: &mut Vec<String>| {
-            if let Response::Error(e) = resp {
-                eprintln!("[{name}] expected success, got {:?}: {}", e.kind, e.message);
-                failed.push(name.to_string());
-                return;
-            }
-            let got = response_data(resp);
-            let want = strip_pending_lora_support(name, &got, &oracle[name]["body"]);
-            if norm(&got, blank) != norm(&want, blank) {
-                eprintln!(
-                    "[{name}] MISMATCH:\n{}",
-                    first_diff(&norm(&got, blank), &norm(&want, blank))
-                );
-                failed.push(name.to_string());
-            } else {
-                eprintln!("[{name}] OK (loraSupport pending P4.D138 unit 6).");
-            }
-        };
     let check_tables_at = |name: &str, key: &str, got: &Value, failed: &mut Vec<String>| {
         let want = json!({ key: oracle[name]["tables"][key].clone() });
         if norm(got, &[]) != norm(&want, &[]) {
@@ -528,7 +486,7 @@ fn image_profiles_routes_match_oracle() {
         {
             let db = fresh_db(&spec, "lm_nk");
             ensure_provider_models(&db, &ddl);
-            ok_pending_lora(
+            ok(
                 "list_models_no_key",
                 &rt.block_on(ip::image_profile_list_models(
                     &db,
@@ -551,7 +509,7 @@ fn image_profiles_routes_match_oracle() {
             // response echoes the RAW provider string.
             let db = fresh_db(&spec, "lm_alias");
             ensure_provider_models(&db, &ddl);
-            ok_pending_lora(
+            ok(
                 "list_models_legacy_alias",
                 &rt.block_on(ip::image_profile_list_models(
                     &db,
@@ -572,7 +530,7 @@ fn image_profiles_routes_match_oracle() {
         {
             let db = fresh_db(&spec, "lm_ok");
             ensure_provider_models(&db, &ddl);
-            ok_pending_lora(
+            ok(
                 "list_models_live_ok",
                 &rt.block_on(ip::image_profile_list_models(
                     &db,
@@ -593,7 +551,7 @@ fn image_profiles_routes_match_oracle() {
         {
             let db = fresh_db(&spec, "lm_fail");
             ensure_provider_models(&db, &ddl);
-            ok_pending_lora(
+            ok(
                 "list_models_live_failure",
                 &rt.block_on(ip::image_profile_list_models(
                     &db,
@@ -621,6 +579,82 @@ fn image_profiles_routes_match_oracle() {
             )),
             &mut failed,
         );
+        {
+            // `84f33ce94` — the only provider with real per-model LoRA support:
+            // ten family prefixes carry a support object and the six flagships
+            // are ABSENT from the map. No key, so the discovery seam is never
+            // reached and nothing is cached.
+            let db = fresh_db(&spec, "lm_ng");
+            ensure_provider_models(&db, &ddl);
+            ok(
+                "list_models_nanogpt_lora_support",
+                &rt.block_on(ip::image_profile_list_models(
+                    &db,
+                    &unreachable(),
+                    Some("NANOGPT"),
+                    None,
+                )),
+                &[],
+                &mut failed,
+            );
+        }
+    }
+
+    // ---- `84f33ce94` unit 6: the options-schema action ---------------------
+    {
+        // Every guard arm, then the schema itself across the three dialect
+        // families, a flagship, a longest-prefix match and both empty-string
+        // edges. The handler reads no repository, so no fixture is needed.
+        for (name, provider, model) in [
+            ("options_schema_missing_provider", None, None),
+            ("options_schema_empty_provider", Some(""), None),
+            ("options_schema_unknown_provider", Some("NOPE"), None),
+            ("options_schema_legacy_alias", Some("GOOGLE_IMAGEN"), None),
+        ] {
+            err(
+                name,
+                &ip::image_profile_options_schema(provider, model),
+                &mut failed,
+            );
+        }
+        for (name, provider, model) in [
+            ("options_schema_text_only_provider", "ANTHROPIC", None),
+            ("options_schema_schemaless_image_provider", "OPENAI", None),
+            ("options_schema_nanogpt_no_model", "NANOGPT", None),
+            ("options_schema_nanogpt_empty_model", "NANOGPT", Some("")),
+            (
+                "options_schema_nanogpt_flagship",
+                "NANOGPT",
+                Some("flux-2-dev"),
+            ),
+            (
+                "options_schema_nanogpt_indexed_family",
+                "NANOGPT",
+                Some("flux-2-dev-lora"),
+            ),
+            (
+                "options_schema_nanogpt_prefix_match",
+                "NANOGPT",
+                Some("flux-2-dev-lora-image-to-image"),
+            ),
+            (
+                "options_schema_nanogpt_weights_family",
+                "NANOGPT",
+                Some("pruna-ai/p-image/edit-lora"),
+            ),
+            (
+                "options_schema_nanogpt_url_family",
+                "NANOGPT",
+                Some("flux-lora"),
+            ),
+        ] {
+            ok(
+                name,
+                &ip::image_profile_options_schema(Some(provider), model),
+                &[],
+                &mut failed,
+            );
+        }
     }
 
     // --- Create ---

@@ -29,6 +29,7 @@ pub mod embedding_wire;
 pub mod image;
 pub mod image_bytes;
 pub mod image_dialects;
+pub mod nanogpt_catalog;
 pub mod nanogpt_loras;
 pub mod ollama_think_parser;
 pub mod ollama_think_retry;

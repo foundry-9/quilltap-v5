@@ -2757,6 +2757,16 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             }, // === end P4.D100 ===
+            Request::ImageProfileOptionsSchema { provider, model } => match self.ready_db() {
+                // v4 `handleOptionsSchema(req)` reads no repository, but it sits
+                // inside `createContextHandler` — so a locked instance refuses
+                // before it, exactly as the sibling listing actions do.
+                Ok(_) => super::image_profiles::image_profile_options_schema(
+                    provider.as_deref(),
+                    model.as_deref(),
+                ),
+                Err(r) => r,
+            },
 
             // --- Embedding profiles management (P4.9H2A) --------------------
             Request::EmbeddingProfileList => match self.ready_db() {
