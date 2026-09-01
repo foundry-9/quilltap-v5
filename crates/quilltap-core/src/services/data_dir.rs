@@ -426,7 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn host_path_override_only_inside_a_vm_or_container() {
+    fn host_path_override_only_inside_a_container() {
         let mut env = base_env();
         env.quilltap_host_data_dir = Some("/host/side".to_string());
         // Not in a container: the override is ignored.

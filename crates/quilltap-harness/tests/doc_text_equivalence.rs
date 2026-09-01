@@ -411,6 +411,11 @@ fn doc_text_matches_oracle() {
         "insert_position_null",
         "insert_position_array",
         "insert_content_missing",
+        // Round-1 unification (2026-09-01): the guard-PLACEMENT discriminator
+        // the str_replace family had and insert lacked — a position-less call
+        // at a non-text path must answer the file-format sentence (the guard
+        // sits AFTER the file-type check), so a hoisted guard reddens here.
+        "insert_position_missing_non_text",
         "str_replace_curly_apostrophe",
         "str_replace_em_dash",
         "str_replace_exact_says_nothing",

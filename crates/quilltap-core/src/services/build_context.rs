@@ -2737,6 +2737,15 @@ where
     // the task itself lands, at which point the prompt must be transcribed from
     // `8bf3cb5f`, not from the older text.
     //
+    // P4.D136 (v4 `a1d88aa3a`, bug 107): a SECOND rider. v4's two
+    // `compressMemories` call sites here both pass `latency: 'interactive'` —
+    // they run inside a visible turn, and the interactive class is what keeps
+    // their deadlines under `MEMORY_RECAP_PHASE_TIMEOUT_MS`-style outer
+    // ceilings. When this task lands, thread
+    // `CheapLlmTaskOptions { latency: CheapLlmLatencyClass::Interactive }`
+    // from both call sites — taking the background default would silently
+    // diverge (90 s/120 s budgets where v4 runs 45 s/75 s).
+    //
     // MEMORY_BUDGET_RATIO is referenced here to keep the constant live.
     let _memory_budget_ratio = MEMORY_BUDGET_RATIO;
 

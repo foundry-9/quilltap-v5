@@ -151,10 +151,15 @@ pub fn seed_legacy_connection_profile_fields(raw: &Value) -> SeededLegacyFields 
         .and_then(Value::as_str)
         .map(str::to_string)
         // v4's gate is JS-truthy (`seeded.fallbackProfileId &&`), so an empty
-        // string is neither checked nor cleared — it rides through as the empty
-        // string it was. Reproduced by treating only a non-empty value as
-        // carried; an empty one falls to the same `None` v5's `os()` reader
-        // would produce for it anyway.
+        // string is neither checked nor cleared — it rides through the seeder
+        // unchanged, and then fails `UUIDSchema.nullable().optional()` at the
+        // repo's Zod parse: v4 REFUSES the whole profile with a warning; it
+        // never writes the cell. v5 folds `""` to None and lands the profile
+        // with NULL — a member of the module's standing recorded Zod-format
+        // gap (see `quilltap_import/profiles.rs`'s `fallback_profile_id`
+        // note), not an equivalent write. Corrected at the round-1 unification
+        // review (2026-09-01); the earlier claim that both sides land the same
+        // NULL cell was wrong about v4.
         .filter(|id| !id.is_empty());
     let stored_allow_tier = raw.get("allowTierFallback");
     let seeded_allow_tier_fallback = stored_allow_tier.is_none();

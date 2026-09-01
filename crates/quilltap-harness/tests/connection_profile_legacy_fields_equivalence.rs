@@ -146,9 +146,15 @@ fn connection_profile_legacy_fields_matches_oracle() {
                     .clone()
                     .map(Value::String)
                     .unwrap_or(Value::Null);
-                // v5 folds the empty string to None (its `os()` reader would
-                // too); v4 keeps it. Both write the same NULL cell, so the
-                // comparison is on the CELL, not the in-memory shape.
+                // v5 folds the empty string to None; v4 keeps it — and then
+                // its repo's `UUIDSchema` parse REFUSES the whole profile, so
+                // v4 never writes the cell at all where v5 lands NULL. That
+                // divergence is a member of the recorded `.qtap` Zod-format
+                // gap (`quilltap_import/profiles.rs`), reachable only from a
+                // hand-edited bundle; this carve-out deliberately blinds the
+                // comparison to it so the rest of the row stays
+                // discriminating. (Justification corrected at the round-1
+                // unification review, 2026-09-01.)
                 let oracle_cell = if oracle_fallback.as_str() == Some("") {
                     Value::Null
                 } else {

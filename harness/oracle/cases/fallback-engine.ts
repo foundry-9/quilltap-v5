@@ -228,6 +228,14 @@ const CLASSIFY: Array<[string, unknown]> = [
   ['content-limit-message', new Error('image is too large')],
   ['tool-unsupported', new Error('Function calling is not supported')],
   ['zod', named('ZodError', 'Invalid input')],
+  // Ladder ORDER: the non-trigger checks run BEFORE the typed ladder (v4's
+  // own comment — several non-triggers arrive AS LLMProviderError subclasses),
+  // so a typed error whose MESSAGE matches a non-trigger pattern is a
+  // non-trigger. Without these rows a mutation hoisting the typed arms above
+  // the non-trigger checks stays green (round-1 unification, 2026-09-01).
+  ['non-trigger-beats-typed-network', (() => { const e = new NetworkError('OPENAI'); e.message = 'prompt is too long'; return e; })()],
+  ['non-trigger-beats-typed-rate', (() => { const e = new RateLimitError('OPENAI'); e.message = 'Function calling is not supported'; return e; })()],
+  ['zod-beats-network-message', named('ZodError', 'fetch failed')],
   ['unattributed-4xx', new Error('400 Bad Request: unknown field')],
   ['unattributed-403', new Error('403 Forbidden')],
   // The cheap path's own deadline.
