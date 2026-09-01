@@ -586,6 +586,20 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+#### 2026-09-01 — test(spa): transcribe v4's repo-id table, which does exist (P4.D139 unit 3 correction)
+
+_Versions: SPA 0.5.605._
+
+Unit 3 recorded that "v4 ships no unit test for this module". Wrong: v4's four
+repo-id cases live inside `__tests__/unit/image-gen/huggingface-lookup.test.ts`
+— the module is re-exported from the lookup, so its tests sit with the
+re-exporter rather than the source, and a search beside the module finds
+nothing. They are now transcribed 1:1 alongside the recorded vectors, and the
+oracle case's and lane record's claims are corrected.
+
+The recording still earns its place: v4's four cases cover the happy shapes and
+eight refusals, none of the machinery the corpus reaches.
+
 #### 2026-09-01 — feat(spa): the LoRA / options-schema DTOs and client API (P4.D139 unit 4)
 
 _Versions: SPA 0.5.604._

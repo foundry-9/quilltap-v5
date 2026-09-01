@@ -96293,10 +96293,15 @@ editor decides in the browser whether a source is askable-about before it
 offers a Query button, and the module must not drag the logger into the client
 bundle. P4.D138 carries the Rust twin for the host-side lookup.
 
-**The differential is a recording, because there is nothing to transcribe.**
-v4 ships no unit test for this module — `2ece98c90`'s only test file is
-`__tests__/unit/image-gen/huggingface-lookup.test.ts`, which drives the network
-path. New oracle case `harness/oracle/cases/huggingface-repo-id.test.ts`,
+**The differential is two halves — a correction to this record's first
+draft.** It initially said "v4 ships no unit test for this module"; that is
+WRONG. v4's four repo-id cases live inside
+`__tests__/unit/image-gen/huggingface-lookup.test.ts` (the module is
+re-exported from the lookup, so the tests sit with the re-exporter, not the
+source). They are now transcribed 1:1 into the spec — the happy bare/URL/
+deep-link shapes plus eight refusals plus `huggingFaceCardUrl`. They do not
+reach the machinery, which is what the recording below is for. New oracle case
+`harness/oracle/cases/huggingface-repo-id.test.ts`,
 **49 rows** into
 `apps/web/src/app/screens/settings/images/__fixtures__/huggingface-repo-id-vectors.json`.
 
@@ -96333,7 +96338,7 @@ assertion that reads a missing row gets `undefined`, and `toBe` catches that
 but a `toBeNull`-shaped one would not have. The corpus's own
 both-outcomes-in-quantity guard exists for the same class of silent collapse.
 
-**Gate:** repo-id spec 54/54.
+**Gate:** repo-id spec 58/58 (4 transcribed + 49 recorded rows + 5 corpus guards).
 
 **Regen recipe** (in the oracle case's header, verbatim): mirror to
 `/tmp/qt-oracle-hf-repo-id`, `cd /tmp/qt-v4-pin-p4d139-2ece98c90`, Node 24,

@@ -5,11 +5,13 @@
  * `extractHuggingFaceRepoId` / `huggingFaceCardUrl` actually return over a
  * fixed corpus. Nothing here reimplements the parse.
  *
- * WHY a recording rather than a transcribed table: v4 ships NO unit test for
- * this module (`2ece98c90`'s only test file is
- * `__tests__/unit/image-gen/huggingface-lookup.test.ts`, which drives the
- * network path). The client half decides whether the Query button is offered
- * at all, so its edges have to come from somewhere — and every interesting one
+ * WHY a recording ON TOP of v4's own table: v4's four repo-id cases live not
+ * beside the module but inside `__tests__/unit/image-gen/huggingface-lookup.test.ts`
+ * (the module is re-exported from the lookup), and they are transcribed 1:1 in
+ * the consuming spec. They cover the happy shapes and eight refusals; they do
+ * not reach the machinery. The client half decides whether the Query button is
+ * offered at all, so its edges have to come from somewhere — and every
+ * interesting one
  * is a question about `new URL(...)` and a hostname regex rather than about
  * the source string: what `URL` does to a userinfo `@`, a port, a trailing
  * dot, an uppercase host, a `//` path, percent-encoding, and whether

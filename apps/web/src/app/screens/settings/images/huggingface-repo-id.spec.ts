@@ -7,14 +7,54 @@ import vectors from './__fixtures__/huggingface-repo-id-vectors.json';
  * Parity spec for the LoRA-source repo-id twin. The oracle is v4's PURE module
  * `lib/image-gen/huggingface-repo-id.ts` at `2ece98c90`.
  *
- * v4 ships no unit test for this module, so there is nothing to transcribe:
- * the whole differential is the recording below, taken from v4's REAL
- * functions run at the pin (recipe:
- * `harness/oracle/cases/huggingface-repo-id.test.ts`). Every interesting edge
- * is a question about `new URL(...)` and the hostname regex rather than about
- * the source string, which is exactly the kind a hand-written table invents
- * answers for.
+ * Two halves. v4's own table lives not beside the module but inside
+ * `__tests__/unit/image-gen/huggingface-lookup.test.ts` (the module is
+ * re-exported from the lookup), and is transcribed 1:1 below. The recording
+ * that follows it is taken from v4's REAL functions run at the pin (recipe:
+ * `harness/oracle/cases/huggingface-repo-id.test.ts`), and reaches what those
+ * three cases cannot: every interesting edge here is a question about
+ * `new URL(...)` and the hostname regex rather than about the source string,
+ * which is exactly the kind a hand-written table invents answers for.
  */
+describe('huggingface-repo-id (v4 unit table 1:1)', () => {
+  it('accepts a bare owner/name', () => {
+    expect(extractHuggingFaceRepoId('XLabs-AI/flux-RealismLora')).toBe(
+      'XLabs-AI/flux-RealismLora',
+    );
+    expect(extractHuggingFaceRepoId('  Datou1111/shou_xin  ')).toBe('Datou1111/shou_xin');
+    expect(extractHuggingFaceRepoId('ostris/flux2_berthe_morisot')).toBe(
+      'ostris/flux2_berthe_morisot',
+    );
+  });
+
+  it('recovers the repository from a huggingface.co weights URL', () => {
+    expect(
+      extractHuggingFaceRepoId(
+        'https://huggingface.co/lovis93/Flux-2-Multi-Angles-LoRA-v2/resolve/main/weights-fal.safetensors',
+      ),
+    ).toBe('lovis93/Flux-2-Multi-Angles-LoRA-v2');
+    expect(extractHuggingFaceRepoId('https://huggingface.co/owner/name')).toBe('owner/name');
+  });
+
+  it('declines anything with no repository behind it', () => {
+    // Weights hosted elsewhere have no card to read, so the editor must not
+    // offer a button that could only ever fail.
+    expect(extractHuggingFaceRepoId('https://cdn.example.com/weights.safetensors')).toBeNull();
+    expect(extractHuggingFaceRepoId('')).toBeNull();
+    expect(extractHuggingFaceRepoId('   ')).toBeNull();
+    expect(extractHuggingFaceRepoId('justonesegment')).toBeNull();
+    expect(extractHuggingFaceRepoId('too/many/segments')).toBeNull();
+    expect(extractHuggingFaceRepoId('owner name/with space')).toBeNull();
+    expect(extractHuggingFaceRepoId('https://huggingface.co/owner')).toBeNull();
+    // A lookalike host must not be mistaken for the registry.
+    expect(extractHuggingFaceRepoId('https://nothuggingface.co/owner/name')).toBeNull();
+  });
+
+  it('points at the public model card', () => {
+    expect(huggingFaceCardUrl('owner/name')).toBe('https://huggingface.co/owner/name');
+  });
+});
+
 describe('huggingface-repo-id vs v4’s recorded output (2ece98c90)', () => {
   for (const v of vectors) {
     it(`extractHuggingFaceRepoId(${JSON.stringify(v.source)})`, () => {
