@@ -1155,6 +1155,17 @@
    * Character" footer below the fold, so the button could not be pressed at all
    * once the cast was long enough to overflow. (Found at the P4.9E1B unification
    * by the cast walk's first live run; the sidebar has been shipping with it.)
+   *
+   * The family: this is the FIRST of several unstyled-custom-element-host bugs
+   * this port has shipped and then found by consequence — same root cause each
+   * time (an Angular component with a `host: { class: '…' }` and no matching
+   * CSS rule renders `display: inline`), different symptom each time. Also:
+   * `qt-tab-view`'s `qt-standalone-document-view` host (dogfood finding #97 —
+   * `flex-1` was inert in a non-flex parent; Document Mode's source textarea
+   * rendered 77px in a 788px pane), `qt-entity-tabs` above (the Almanack walk),
+   * and the markdown-field host below (finding #107 — a centred, non-wrapping
+   * toolbar row hung out equally on both sides of its column because nothing
+   * gave its host a block box).
    */
   qt-collapsible-card {
     display: block;
@@ -1171,6 +1182,32 @@
   qt-entity-tabs,
   qt-settings-providers {
     display: block;
+  }
+
+  /**
+   * Markdown form-field HOST element (`editor/markdown-field.ts`,
+   * `host: { class: 'qt-markdown-field' }`) — the same inline-host bug class
+   * as above (dogfood finding #107). Unlike the bare `display: block` fixes
+   * above, this host was never given ANY frame at all: v4 wraps its Lexical
+   * editor in an explicitly styled block div
+   * (`MarkdownLexicalEditor.tsx:194-206`) that v5 rendered nothing for, so the
+   * fix is v4's frame class list transcribed onto the host selector, not just
+   * a display rule. `focus-within` (not `focus`) matches v4 — the frame rings
+   * when anything inside it (the toolbar, the editor, the source textarea) has
+   * focus, not just the host itself.
+   *
+   * `qt-border-default`/`qt-bg-card`/`qt-shadow-sm` are plain classes in
+   * `_utilities.css`, not Tailwind `@utility` declarations, so Tailwind v4's
+   * `@apply` cannot reach them (`Cannot apply unknown utility class`) — the
+   * three are inlined here as the exact properties those classes set, instead
+   * of applying them by name.
+   */
+  .qt-markdown-field {
+    @apply block rounded-lg border overflow-hidden;
+    border-color: var(--color-border);
+    background-color: var(--color-card);
+    box-shadow: var(--qt-card-shadow, 0 1px 3px hsl(225 18% 10% / 0.06), 0 1px 2px hsl(225 18% 10% / 0.04));
+    @apply focus-within:outline-none focus-within:ring-2 focus-within:ring-ring;
   }
 
   /**

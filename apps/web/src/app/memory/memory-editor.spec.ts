@@ -83,6 +83,11 @@ describe('MemoryEditor', () => {
     expect(editor.style.minHeight).toBe('10rem');
   });
 
+  it('the importance slider wears qt-range, not the old appearance-none idiom (v4 5f56f7a7d)', () => {
+    const fixture = render(mem({}), async () => ({}));
+    expect(fieldByLabel(fixture, 'importance').className).toBe('qt-range w-full');
+  });
+
   it('titles Add Memory on create and Edit Memory on edit', () => {
     expect(render(null, async () => ({})).nativeElement.textContent).toContain('Add Memory');
     expect(render(mem({}), async () => ({})).nativeElement.textContent).toContain('Edit Memory');

@@ -242,7 +242,7 @@ export interface ConnectionProfileOption {
                 min="0.1"
                 max="1"
                 step="0.1"
-                class="qt-input w-full h-1 rounded-lg appearance-none cursor-pointer accent-primary"
+                class="qt-range w-full"
                 [attr.aria-label]="'Talkativeness for ' + name()"
                 [value]="localTalkativeness()"
                 (input)="onTalkativenessInput($any($event.target).value)"
@@ -261,7 +261,7 @@ export interface ConnectionProfileOption {
                 step="0.1"
                 value="0.5"
                 disabled
-                class="qt-input w-full h-1 rounded-lg appearance-none cursor-not-allowed"
+                class="qt-range w-full"
               />
             </div>
           }

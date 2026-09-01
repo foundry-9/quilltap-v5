@@ -64,7 +64,7 @@ function errText(err: unknown, fallback: string): string {
           [min]="min"
           [max]="max"
           step="1"
-          class="w-full cursor-pointer mt-2"
+          class="qt-range w-full mt-2"
           [value]="displayConcurrency()"
           (mousedown)="onDragStart()"
           (touchstart)="onDragStart()"

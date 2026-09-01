@@ -47,7 +47,7 @@ type Step = 'idle' | 'analyzing' | 'preview' | 'running' | 'complete';
           min="0.70"
           max="0.95"
           step="0.01"
-          class="w-full accent-primary"
+          class="qt-range w-full"
           [value]="threshold()"
           (input)="threshold.set(parseThreshold($any($event.target).value))"
         />

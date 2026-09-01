@@ -812,6 +812,27 @@ inverting the unknown-model arm each redden the corpus and not the
 transcription. One mutation (WIDENING the escape class to cover `-` and
 `/`) stays green and is recorded as behaviour-neutral rather than a
 coverage gap: `\-` and `\/` mean themselves outside a character class.
+#### 2026-09-01 — fix(theme): give sliders a real qt-range class, and fix finding #107's toolbar overflow
+
+_Versions: SPA 0.5.601; core/harness/host/web/cli/tauri unchanged._
+
+Ported v4 `5f56f7a7d` (P4.D142): the `.qt-range` class (token-driven via
+`--qt-range-accent`/`--qt-range-focus-ring`, natively rendered on purpose —
+`accent-color` paints both the filled track and the thumb, which
+`appearance: none` would lose in Chrome/Safari) and its adoption across all
+twelve v5 range-input hosts, replacing five ad-hoc idioms (a text-field
+style on both talkativeness sliders, `appearance-none` with no replacement
+track on two memory sliders, and six unaccented sliders). Also fixed
+dogfood finding #107: `qt-markdown-field`'s Angular host had no CSS rule at
+all (the third instance of the unstyled-custom-element-host family, after
+#97 and the Almanack's `qt-entity-tabs`), so the formatting toolbar's
+centred row hung out equally on both sides of the New Chat scenario field
+and every other markdown form field. Fixed with one rule giving the host
+v4's exact frame (`MarkdownLexicalEditor.tsx:194-206`) plus `display:
+block`. One build-forced deviation from the literal frame classes: three of
+them (`qt-border-default`, `qt-bg-card`, `qt-shadow-sm`) are plain classes,
+not Tailwind `@utility` declarations, so `@apply` refused them — inlined as
+the equivalent raw properties instead, with the computed style unchanged.
 
 #### 2026-09-01 — docs(setupphase): the round-2 drift catch-up work orders — P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66
 

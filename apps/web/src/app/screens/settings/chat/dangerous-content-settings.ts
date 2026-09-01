@@ -81,7 +81,7 @@ import { SettingsCard } from './settings-card';
               <input
                 id="danger-threshold"
                 type="range"
-                class="w-full max-w-xs"
+                class="qt-range w-full max-w-xs"
                 min="0.1"
                 max="1.0"
                 step="0.1"

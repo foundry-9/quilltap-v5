@@ -81,7 +81,7 @@ const PREVIEW_DEBOUNCE_MS = 300;
             min="0"
             max="0.7"
             step="0.1"
-            class="w-full h-2 qt-bg-muted rounded-lg appearance-none cursor-pointer"
+            class="qt-range w-full"
             [value]="minImportance()"
             (input)="minImportance.set(+$any($event.target).value)"
           />

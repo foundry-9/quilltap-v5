@@ -417,7 +417,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                   min="0"
                   max="2"
                   step="0.1"
-                  class="w-full"
+                  class="qt-range w-full"
                   [value]="form().temperature"
                   (input)="setField('temperature', parseNum($any($event.target).value))"
                 />
@@ -445,7 +445,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                   min="0"
                   max="1"
                   step="0.05"
-                  class="w-full"
+                  class="qt-range w-full"
                   [value]="form().topP"
                   (input)="setField('topP', parseNum($any($event.target).value))"
                 />

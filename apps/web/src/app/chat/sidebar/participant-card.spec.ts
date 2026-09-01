@@ -217,6 +217,18 @@ describe('ParticipantCard — the restored cast controls', () => {
     );
   });
 
+  it('the slider wears qt-range, not the old qt-input text-field idiom (v4 5f56f7a7d)', () => {
+    const active = mount({});
+    expect(
+      (active.nativeElement.querySelector('input[type="range"]') as HTMLInputElement).className,
+    ).toBe('qt-range w-full');
+
+    const disabled = mount({ isUserParticipant: true });
+    expect(
+      (disabled.nativeElement.querySelector('input[type="range"]') as HTMLInputElement).className,
+    ).toBe('qt-range w-full');
+  });
+
   it('offers three of the four statuses, and reports the chosen one', () => {
     const fixture = mount({});
     const select = selectByLabel(fixture, 'Participation status for Bram');

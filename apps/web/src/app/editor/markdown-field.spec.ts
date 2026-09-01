@@ -72,6 +72,20 @@ function markdown(fixture: ComponentFixture<Host>): string {
 describe('MarkdownField — shared form-field editor', () => {
   afterEach(() => TestBed.resetTestingModule());
 
+  // Dogfood #107. `qt-markdown-field` is an unstyled Angular custom-element
+  // host — same bug class as `qt-tab-view` (#97) and `qt-entity-tabs` (the
+  // Almanack walk): with no matching CSS rule the host defaults to
+  // `display: inline`, so the non-wrapping centred toolbar row hung out
+  // equally on both sides of its column. jsdom computes no layout, so the
+  // reachable pin is the host carrying the exact class the CSS rule targets —
+  // a future rename here would silently orphan `.qt-markdown-field` in
+  // `_surfaces.css` and reopen the bug with no red anywhere else.
+  it('the host carries the qt-markdown-field class the frame rule targets (dogfood #107)', async () => {
+    const fixture = await render('body');
+    const host = fixture.nativeElement.querySelector('qt-markdown-field') as HTMLElement;
+    expect(host.className).toBe('qt-markdown-field');
+  });
+
   it('renders the toolbar button inventory (v4 MARKDOWN_FORMATS + code block)', async () => {
     const fixture = await render('body');
     for (const t of ['bold', 'italic', 'h1', 'h2', 'h3', 'blockquote', 'code-block', 'indent', 'outdent']) {

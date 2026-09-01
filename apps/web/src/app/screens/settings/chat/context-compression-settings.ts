@@ -97,7 +97,7 @@ const INTERVAL_FALLBACK = 5;
             <input
               id="compression-window"
               type="range"
-              class="w-full cursor-pointer"
+              class="qt-range w-full"
               [min]="WINDOW_MIN"
               [max]="WINDOW_MAX"
               [value]="displayWindowSize()"
@@ -129,7 +129,7 @@ const INTERVAL_FALLBACK = 5;
             <input
               id="compression-target"
               type="range"
-              class="w-full cursor-pointer"
+              class="qt-range w-full"
               [min]="TARGET_MIN"
               [max]="TARGET_MAX"
               step="100"
@@ -166,7 +166,7 @@ const INTERVAL_FALLBACK = 5;
             <input
               id="compression-interval"
               type="range"
-              class="w-full cursor-pointer"
+              class="qt-range w-full"
               [min]="displayWindowSize()"
               [max]="INTERVAL_MAX"
               [value]="

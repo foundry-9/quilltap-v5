@@ -96,6 +96,15 @@ function typeName(fixture: ComponentFixture<ProfileModal>, value: string): void 
   fixture.detectChanges();
 }
 
+describe('ProfileModal (qt-range sliders, v4 5f56f7a7d)', () => {
+  it('the temperature and top-p sliders wear qt-range, not the old unaccented idiom', async () => {
+    const fixture = await render({});
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector<HTMLInputElement>('#qt-pf-temp')!.className).toBe('qt-range w-full');
+    expect(el.querySelector<HTMLInputElement>('#qt-pf-topp')!.className).toBe('qt-range w-full');
+  });
+});
+
 describe('ProfileModal (duplicate-name validation)', () => {
   it('flags a name already taken by another profile and disables submit', async () => {
     const fixture = await render({ takenNames: new Set(['my gpt-4 profile']) });

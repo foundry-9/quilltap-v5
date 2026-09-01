@@ -87,6 +87,13 @@ describe('TasksQueueCard', () => {
     expect(fixture.nativeElement.querySelector('input[type="range"]')?.getAttribute('max')).toBe('32');
   });
 
+  it('the concurrency slider wears qt-range, not the old unaccented idiom (v4 5f56f7a7d)', async () => {
+    const fixture = await mount(stub(queueData()));
+    expect(
+      (fixture.nativeElement.querySelector('input[type="range"]') as HTMLInputElement).className,
+    ).toBe('qt-range w-full mt-2');
+  });
+
   it('start is enabled when stopped with active jobs, and dispatches control', async () => {
     const s = stub(queueData());
     const fixture = await mount(s);

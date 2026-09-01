@@ -89,7 +89,7 @@ import { ToastService } from '../ui/toast.service';
             min="0"
             max="1"
             step="0.1"
-            class="w-full h-2 qt-bg-muted rounded-lg appearance-none cursor-pointer"
+            class="qt-range w-full"
             [value]="importance()"
             (input)="importance.set(+$any($event.target).value)"
           />
