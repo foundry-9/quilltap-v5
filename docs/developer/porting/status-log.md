@@ -99022,9 +99022,22 @@ files REST upload leg answers v4's `{data: FileEntry}` envelope, not a
 
 **No Rust gate: no crate was touched.** SPA: `npm test` (which runs
 `check-qt-classes --self-test` and the guard first) **374 files / 5,797 tests /
-0 failed**; `npm run build` clean; the full Playwright suite once (numbers in
-the round record). The picker's host carries `class: 'block'`, no `qt-*`, so the
-guard's host rule is satisfied trivially.
+0 failed**; `npm run build` clean; the full Playwright suite once —
+**262 passed / 0 failed / 1 skipped (7.0 m), exit 0**, the suite grown 262 → 263
+with this lane's beat and the one skip the standing `p4d122` store-probe park.
+The picker's host carries `class: 'block'`, no `qt-*`, so the guard's host rule
+is satisfied trivially. The drift-ledger §2 probe was re-run at lane end and
+still PASSES (branch `main`, tree clean, both logs empty).
+
+Two lane-mechanics notes for the round record: the worktree had no
+`apps/web/node_modules` (an `npm ci`, never a `cp -a`), and the whole repo had
+no built Rust binaries, so the e2e needed `cargo build -p quilltap-web -p
+quilltap-cli`. The first attempt used the **debug** binaries and global setup
+crawled — past seven minutes and still seeding, because every fixture step is
+its own CLI invocation that opens and decrypts the DB. Rebuilt `--release` and
+the same setup finished in about a minute. **For an SPA-only lane that owns the
+Playwright port, build the release binaries first; debug is not merely slower,
+it makes the setup look hung.**
 
 **Banked, loudly:** the commit's `help/file-organization.md` hunk goes to
 `p4.9i2` with the round's other help drift — this lane ports no help content.

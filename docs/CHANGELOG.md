@@ -622,6 +622,18 @@ Shared contract §B of the round: the same predicate lands server-side as
 `concierge_state_uses_uncensored_route`, and each side is pinned by its own
 transcription of v4's truth table. The parity spec grows v4's new
 `conciergeStateUsesUncensoredRoute` block, TABLE row for row.
+#### 2026-09-02 — docs(orders): P4.D147's gate numbers
+
+_Docs-only change._
+
+The lane's verification gate, recorded in `status-log.md`: no Rust gate (no
+crate touched), `npm test` 374 files / 5,797 tests / 0 failed, `npm run build`
+clean, and the full Playwright suite 262 passed / 0 failed / 1 skipped (7.0 m)
+— the suite grown 262 to 263 with the new Move-to-Project beat, the one skip
+the standing store-probe park. Also notes, for future SPA-only lanes that own
+the Playwright port, that the e2e global setup on debug binaries takes many
+minutes and reads as a hang; build release first.
+
 #### 2026-09-02 — test(files): the LIVE Move-to-Project folder-picker walk
 
 _No crate versions bumped._
