@@ -127,7 +127,7 @@ async function installRealtimeHintHook(page: Page): Promise<void> {
 }
 
 /**
- * A running tally of the `chatGet` refetches this chat has issued.
+ * A running tally of the `chatGet` refetches this chat has issued AND completed.
  *
  * Matching on the request BODY (not just the URL — every dispatch verb shares
  * `POST /api/dispatch`) keeps unrelated verbs out. But the body match ALONE is
@@ -137,43 +137,56 @@ async function installRealtimeHintHook(page: Page): Promise<void> {
  * request that was already in flight when the hint was injected — the beat
  * would then measure the app's ordinary refetch and never the injected one.
  *
- * P4.69 scopes it by SEQUENCE instead: snapshot the count at injection time and
- * wait for a request issued strictly after that. Requests are counted from
- * `page.on('request')`, which fires at issue time, so the ordering is the
- * client's own.
+ * P4.69 scopes it by SEQUENCE: take a wall-clock mark immediately before the
+ * injection and wait for a refetch ISSUED after that mark (issue time is read
+ * from `page.on('request')`, the client's own ordering) whose RESPONSE has also
+ * landed (`page.on('requestfinished')`). Both halves matter: the §3 unification
+ * review found the first draft counting at issue time and snapshotting the
+ * mark from a freshly-constructed tally, so `mark` was always 0, "wait past
+ * the mark" was "count ≥ 1", and the wait could resolve before the refetch's
+ * response — the exact window under test — had even arrived.
  */
 class ChatRefetchTally {
-  private count = 0;
-  private readonly handler: (req: Request) => void;
+  /** Issue time of every matching request still in flight or finished. */
+  private readonly issuedAt = new Map<Request, number>();
+  /** Issue times of matching requests whose response has landed. */
+  private readonly finished: number[] = [];
+  private readonly onRequest: (req: Request) => void;
+  private readonly onFinished: (req: Request) => void;
 
   constructor(
     private readonly page: Page,
     chatId: string,
   ) {
-    this.handler = (req: Request) => {
+    this.onRequest = (req: Request) => {
       if (req.method() !== 'POST' || !req.url().endsWith('/api/dispatch')) return;
       try {
         const body = JSON.parse(req.postData() ?? '{}') as { type?: string; chatId?: string };
-        if (body.type === 'chatGet' && body.chatId === chatId) this.count += 1;
+        if (body.type === 'chatGet' && body.chatId === chatId) this.issuedAt.set(req, Date.now());
       } catch {
         // not JSON — not a dispatch body we care about
       }
     };
-    page.on('request', this.handler);
+    this.onFinished = (req: Request) => {
+      const at = this.issuedAt.get(req);
+      if (at !== undefined) this.finished.push(at);
+    };
+    page.on('request', this.onRequest);
+    page.on('requestfinished', this.onFinished);
   }
 
-  /** The number of matching refetches seen so far. */
-  seen(): number {
-    return this.count;
+  /** A wall-clock mark; a refetch counts only if it was issued at or after it. */
+  mark(): number {
+    return Date.now();
   }
 
-  /** Wait until a refetch issued AFTER `mark` has been seen. */
+  /** Wait until a refetch issued at or after `mark` has ROUND-TRIPPED. */
   async waitPast(mark: number, timeoutMs = 10_000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
-    while (this.count <= mark) {
+    while (!this.finished.some((at) => at >= mark)) {
       if (Date.now() > deadline) {
         throw new Error(
-          `no chatGet refetch was issued after the injected hint (still ${this.count}, wanted > ${mark})`,
+          `no chatGet refetch issued after the injected hint has completed (issued: ${this.issuedAt.size}, finished: ${this.finished.length})`,
         );
       }
       await this.page.waitForTimeout(50);
@@ -181,7 +194,8 @@ class ChatRefetchTally {
   }
 
   dispose(): void {
-    this.page.off('request', this.handler);
+    this.page.off('request', this.onRequest);
+    this.page.off('requestfinished', this.onFinished);
   }
 }
 
@@ -253,7 +267,7 @@ test.describe('P4.66 — the optimistic bubble survives a mid-turn refetch (LIVE
   ): Promise<void> {
     const tally = new ChatRefetchTally(page, chatId);
     try {
-      const mark = tally.seen();
+      const mark = tally.mark();
       // Throws inside the page if the hook never captured a handler — a silent
       // no-op here used to be indistinguishable from a healthy run.
       await page.evaluate(
@@ -263,10 +277,11 @@ test.describe('P4.66 — the optimistic bubble survives a mid-turn refetch (LIVE
           ).__qtInjectRealtimeHint(t, id),
         [topic, chatId] as const,
       );
-      // A refetch the INJECTED hint caused — issued strictly after the mark, so
-      // an already-in-flight `chatGet` cannot stand in for it. This is the exact
-      // window the bug lived in (the persisted row now in `msgs`, the optimistic
-      // bubble not yet cleared because the turn is still streaming).
+      // A refetch the INJECTED hint caused — issued after the mark, so an
+      // already-in-flight `chatGet` cannot stand in for it — AND its response
+      // has landed. Only then is the window the bug lived in actually open (the
+      // persisted row now in `msgs`, the optimistic bubble not yet cleared
+      // because the turn is still streaming); the sampling below starts there.
       await tally.waitPast(mark);
     } finally {
       tally.dispose();

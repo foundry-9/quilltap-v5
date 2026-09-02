@@ -699,6 +699,14 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(characterOptions).toHaveCount(4);
     const optionText = (await characterOptions.allTextContents()).join(' | ');
     expect(optionText, `character destinations offered: ${optionText}`).not.toContain('Aria');
+    // The §3 unification review: the omission alone is a NEGATIVE pin — a
+    // renderer that stopped labelling the options would leave four blank rows
+    // and both lines above green. The fixture's other four characters (the
+    // `build-characters-fixture.ts` roster: Bram, Cleo, Dax, Echo) must be the
+    // ones on offer, by name.
+    for (const name of ['Bram', 'Cleo', 'Dax', 'Echo']) {
+      expect(optionText, `${name}'s vault must be offered as a copy destination`).toContain(name);
+    }
     await copyDialog.getByRole('button', { name: 'Cancel' }).click();
 
     // Move: three choices, defaulting to moving them along.

@@ -4562,8 +4562,13 @@ export interface ImageLoraSupport {
 export interface ImageOptionsSchemaResponse {
   provider: string;
   model: string | null;
-  /** `null` exactly when the provider's plugin declares no schema. */
-  optionsSchema?: unknown | null;
+  /**
+   * Always present (the server inserts it unconditionally —
+   * `api/image_profiles.rs`'s `options_schema.unwrap_or(Value::Null)`); the
+   * VALUE is `null` exactly when the provider's plugin declares no schema.
+   * `unknown` already admits `null`, so no union is spelled here.
+   */
+  optionsSchema: unknown;
   /** `null`, never a zero-cap object, when the model resolves no support. */
   loraSupport: ImageLoraSupport | null;
 }

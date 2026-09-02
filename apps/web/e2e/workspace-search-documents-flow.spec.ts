@@ -222,9 +222,9 @@ test('with a Salon focused the card opens IN the chat — the arm dogfood #105 b
   // shape that broke the marks beat at the `f3892158d` unification. Any of the
   // fixture's chats would serve here, so the beat asserts the one it names.
   await page.locator('.qt-nav-rail a[href="/salon"], a[href="/salon"]').first().click();
-  const soloCard = page.locator('.chat-card-stack a.qt-entity-card', {
-    hasText: 'Solo Voyage',
-  });
+  const soloCard = page
+    .locator('.chat-card-stack a.qt-entity-card')
+    .filter({ has: page.getByText('Solo Voyage', { exact: true }) });
   await expect(soloCard).toBeVisible({ timeout: 15_000 });
   await soloCard.click();
   await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });

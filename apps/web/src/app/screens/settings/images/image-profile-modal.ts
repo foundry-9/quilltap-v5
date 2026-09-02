@@ -320,7 +320,7 @@ export class ImageProfileModal implements OnInit {
    * write during a broken edit still merges into the real bag, and
    * {@link writeBag} leaves the draft text alone rather than clobbering it.
    */
-  private readonly parametersBagState = signal<Record<string, unknown>>({});
+  protected readonly parametersBag = signal<Record<string, unknown>>({});
   protected readonly isDefault = signal(false);
   protected readonly isDangerousCompatible = signal(false);
 
@@ -458,9 +458,8 @@ export class ImageProfileModal implements OnInit {
    * must be the thing that reports it (submit still refuses, through
    * `parseParameters`) — it simply keeps showing the last good bag.
    */
-  protected readonly parametersBag = computed<Record<string, unknown>>(() =>
-    this.parametersBagState(),
-  );
+  // (`parametersBag` is declared above, with the form state — a §3 review
+  // retired the pass-through `computed` that used to wrap it here.)
 
   /** Whether the textarea currently holds a parseable JSON object. */
   private textIsValid(): boolean {
@@ -474,7 +473,7 @@ export class ImageProfileModal implements OnInit {
    * broken anyway, so nothing is silently persisted either way.
    */
   private writeBag(next: Record<string, unknown>): void {
-    this.parametersBagState.set(next);
+    this.parametersBag.set(next);
     if (this.textIsValid()) {
       this.parametersText.set(JSON.stringify(next, null, 2));
     }
@@ -489,14 +488,14 @@ export class ImageProfileModal implements OnInit {
     this.parametersText.set(text);
     const parsed = parseParametersObject(text);
     if (parsed !== null) {
-      this.parametersBagState.set(parsed);
+      this.parametersBag.set(parsed);
       this.parametersError.set(null);
     }
   }
 
   /** Set both halves — the load / reset path, where the text IS the bag. */
   private setParameters(bag: Record<string, unknown>): void {
-    this.parametersBagState.set(bag);
+    this.parametersBag.set(bag);
     this.parametersText.set(JSON.stringify(bag, null, 2));
   }
 
