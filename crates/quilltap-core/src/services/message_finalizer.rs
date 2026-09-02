@@ -94,6 +94,7 @@ use super::chat_events::{
     Omittable,
 };
 use super::cheap_llm_exec::CheapLlmTaskExecutor;
+use super::dangerous_content::chat_override::is_classifier_on_duty;
 use super::primary_stream::{
     save_assistant_message, AssistantMessageContext, ConfirmationField, ConfirmationFields,
     ReasoningSegment,
@@ -1438,10 +1439,19 @@ pub(crate) async fn trigger_turn_memory_extraction(
 // `services::turn_transcript` (P4.6bj) — the turn machinery has one home.
 
 /// v4 `triggerChatDangerClassification` gate + enqueue: read the fresh chat; bail
-/// on danger-mode-OFF (W4.2u) / sticky-dangerous / already-classified-at-this-count
-/// / no-summary, else enqueue. The `danger_mode_off` flag is the resolved
+/// on danger-mode-OFF (W4.2u) / operator-off-duty (v4 `c43d3b1b4`) /
+/// sticky-dangerous / already-classified-at-this-count / no-summary, else
+/// enqueue. The `danger_mode_off` flag is the resolved
 /// `resolveDangerousContentSettings(...).settings.mode === 'OFF'` (v4 bails first
 /// on it — an off-duty / moderation-exempt / globally-OFF chat is never enqueued).
+///
+/// **Shape divergence, recorded:** v4 computes the resolved mode INSIDE this
+/// function, after the chat read, so its own test can assert that an operator
+/// override bails "before any setting lookup at all". v5's `danger_mode_off`
+/// is computed by the two producers (`orchestrator`, `courier_transport`)
+/// BEFORE the call, so that assertion has no v5 counterpart — the observable
+/// this port pins is the enqueue itself.
+///
 /// The enqueue's own `findPendingForChat` dedupe is in [`super::queue_service`].
 pub(crate) async fn trigger_chat_danger_classification(
     db: &Db,
@@ -1460,6 +1470,15 @@ pub(crate) async fn trigger_chat_danger_classification(
     let Some(chat) = db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned))? else {
         return Ok(());
     };
+
+    // Once the operator has spoken — Vouched Safe or Uncensored — the classifier
+    // is off the case, and the handler would discard the job at its own guard.
+    // Bail here so an Uncensored chat stops enqueueing a doomed job on every
+    // turn (v4 `c43d3b1b4`). Vouched Safe was fine by accident — the resolver
+    // collapses it to OFF — but Uncensored resolves to AUTO_ROUTE on purpose.
+    if !is_classifier_on_duty(Some(&chat)) {
+        return Ok(());
+    }
 
     // Sticky: already dangerous → never re-check.
     if chat.get("isDangerousChat").and_then(Value::as_bool) == Some(true) {

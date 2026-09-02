@@ -335,6 +335,30 @@ with one participant per status, and a chat where everyone has left.
 `cost_background_routes_equivalence` gains two arms and
 `title_update_tier3_equivalence` two cases, all four measured against v4's
 real code at the `70505745a` pin.
+#### 2026-09-02 — fix(concierge): stop an Uncensored chat enqueueing a doomed classification every turn
+
+_Versions: core 0.0.738._
+
+Ports the trigger half of v4 `c43d3b1b4`. `trigger_chat_danger_classification`
+now asks `is_classifier_on_duty` immediately after the chat read and before the
+sticky-label check: once the operator has spoken — Vouched Safe or Uncensored —
+the classifier is off the case and the handler would discard the job at its own
+guard anyway.
+
+v5 measurably had the bug, proven red-first in two families. Vouched Safe was
+fine by accident in production (the resolver collapses it to OFF before the
+call), but Uncensored resolves to AUTO_ROUTE on purpose and its preserved label
+is usually false, so every turn enqueued a `CHAT_DANGER_CLASSIFICATION` job that
+was immediately thrown away — the behaviour the 2026-08-27 dogfood pass saw as
+"completed six times in four minutes".
+
+`message-finalizer-tier3` gains two chats and two calls (an `UNCENSORED` and an
+`OFF` chat, each with a context summary and the label `false`), and
+`orchestrator-tier3` gains `danger_uncensored_no_enqueue` — the end-to-end arm,
+where the REAL resolver hands the finalizer `dangerMode: AUTO_ROUTE` and the new
+guard is the only thing that stops the enqueue. Reverting the guard puts a
+`CHAT_DANGER_CLASSIFICATION` row for that chat in both dumps.
+
 #### 2026-09-02 — feat(concierge): name the uncensored row once, in a state-only predicate
 
 _Versions: core 0.0.737, harness 0.0.631._

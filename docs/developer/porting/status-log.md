@@ -98343,3 +98343,45 @@ Note on `stateRoute`'s marginal value: because the `override` corpus already
 reaches all four states, the four literal-state rows are redundant *as
 coverage* — they exist to keep v4's own standalone assertion, and their shape
 guard is what stops a stale regen from quietly dropping the whole new field.
+
+### Unit 2 — the `isClassifierOnDuty` enqueue guard (the wasted-work fix)
+
+v4 `memory-trigger.service.ts:157-180`: `triggerChatDangerClassification` gains
+`if (!isClassifierOnDuty(chat)) return` immediately after the chat lookup and
+BEFORE the settings lookup, with two "Off-duty" comments rewritten. Landed at
+the same position in v5's `services/message_finalizer.rs:
+trigger_chat_danger_classification` — right after the chat read, before the
+sticky check — carrying v4's comment.
+
+**Recorded shape divergence (as the order predicted).** v4 resolves the danger
+mode INSIDE the function, so its own test can assert the operator bail happens
+"before any setting lookup at all" (`chat-danger-trigger.test.ts:139-153`).
+v5's `danger_mode_off` is computed by the two producers (`orchestrator.rs`,
+`courier_transport.rs`) BEFORE the call, so that assertion has NO v5
+counterpart; the observable this port pins is the enqueue itself. The doc
+comment now says so at the function.
+
+**The differentials — red-first in both.**
+
+- `message_finalizer_tier3_equivalence`: the fixture builder learned
+  `conciergeOverride` + `isDangerousChat` (a ChatSpec widening), and the corpus
+  gained chats `f3…` (`UNCENSORED`) and `f4…` (`OFF`), each with a context
+  summary and the label `false` so no other gate can catch them, plus the two
+  calls `operator-uncensored-no-danger-enqueue` /
+  `operator-vouched-no-danger-enqueue`. v4's `background_jobs` dump carries no
+  `CHAT_DANGER_CLASSIFICATION` row for either. Note that in THIS family both
+  arms discriminate, because the harness hard-codes `danger_mode_off: false` —
+  the resolver collapse that saves Vouched Safe in production is not in play.
+- `orchestrator_tier3_equivalence` (`TZ=UTC`): the end-to-end arm.
+  `danger_uncensored_no_enqueue` on the new chat `dc000003…` (`UNCENSORED`,
+  label `false`, a context summary) runs through the REAL resolver, which
+  forces `AUTO_ROUTE` — so `danger_mode_off` is genuinely `false` and the new
+  guard is the ONLY thing standing between the turn and the enqueue. The
+  corpus's pre-existing `danger_off_short_circuit` (an `OFF` chat with a
+  summary) covers the Vouched arm through the resolver collapse, and did not
+  move — as predicted.
+
+**Mutation proof (verified applied, reverted by file backup).** Neutering the
+guard (`if false && !is_classifier_on_duty(...)`) reddens BOTH families:
+`message_finalizer` grows `CHAT_DANGER_CLASSIFICATION` rows for `f3…` and
+`f4…`, `orchestrator` grows one for `dc000003…`. Restored → both green.

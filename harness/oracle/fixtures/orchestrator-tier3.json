@@ -867,6 +867,28 @@
    "messages": []
   },
   {
+   "id": "dc000003-0000-4000-8000-000000000003",
+   "chatType": "salon",
+   "contextSummary": "A prior summary exists for this chat.",
+   "conciergeOverride": "UNCENSORED",
+   "isDangerousChat": false,
+   "participants": [
+    {
+     "id": "dc0000c1-0000-4000-8000-0000000000c1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "dc0000c2-0000-4000-8000-0000000000c2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
    "id": "d0000003-0000-4000-8000-0000000000d3",
    "chatType": "salon",
    "contextSummary": null,
@@ -1403,6 +1425,16 @@
    "content": "Something the Concierge flagged.",
    "continueMode": false,
    "streamLabel": "danger_reroute",
+   "cheapLLMSettings": true,
+   "summaryCheck": false
+  },
+  {
+   "name": "danger_uncensored_no_enqueue",
+   "kind": "single",
+   "chatId": "dc000003-0000-4000-8000-000000000003",
+   "content": "Something the operator opened the door for.",
+   "continueMode": false,
+   "streamLabel": "danger_uncensored",
    "cheapLLMSettings": true,
    "summaryCheck": false
   },
@@ -2425,6 +2457,21 @@
         "finish_reason": "sensitive"
        }
       ]
+     }
+    }
+   ]
+  ],
+  "danger_uncensored": [
+   [
+    {
+     "content": "A reply on the operator's own authority."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 20,
+      "completionTokens": 5,
+      "totalTokens": 25
      }
     }
    ]

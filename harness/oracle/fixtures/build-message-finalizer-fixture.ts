@@ -62,6 +62,14 @@ interface ChatSpec {
   participants: ParticipantSpec[];
   contextSummary: string | null;
   messages: MessageSpec[];
+  /** P4.D143 (v4 `c43d3b1b4`): the operator's Concierge override, so the
+   * danger-classification trigger's new `isClassifierOnDuty` gate has states
+   * to bail on. Absent = the classifier decides. */
+  conciergeOverride?: 'OFF' | 'UNCENSORED';
+  /** The preserved classification label underneath an override. Kept `false`
+   * on the operator chats: the sticky check would otherwise catch them and the
+   * new gate would prove nothing. */
+  isDangerousChat?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -229,6 +237,12 @@ async function main(): Promise<void> {
         chatType: chat.chatType,
         contextSummary: chat.contextSummary,
         impersonatingParticipantIds: chat.impersonatingParticipantIds ?? [],
+        ...(chat.conciergeOverride !== undefined
+          ? { conciergeOverride: chat.conciergeOverride }
+          : {}),
+        ...(chat.isDangerousChat !== undefined
+          ? { isDangerousChat: chat.isDangerousChat }
+          : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );

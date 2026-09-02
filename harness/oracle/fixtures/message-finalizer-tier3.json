@@ -267,6 +267,60 @@
           "participantId": "f2000000-0000-4000-8000-0000000000a2"
         }
       ]
+    },
+    {
+      "id": "f3000000-0000-4000-8000-000000000003",
+      "chatType": "salon",
+      "participants": [
+        {
+          "userParticipant": true,
+          "id": "f3000000-0000-4000-8000-0000000000a3"
+        },
+        {
+          "character": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+          "id": "f3000000-0000-4000-8000-0000000000b3",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "contextSummary": "A prior summary so danger classification can fire.",
+      "conciergeOverride": "UNCENSORED",
+      "isDangerousChat": false,
+      "messages": [
+        {
+          "id": "f3000000-0000-4000-8000-0000000000c3",
+          "role": "USER",
+          "content": "Carry on.",
+          "participantId": "f3000000-0000-4000-8000-0000000000a3"
+        }
+      ]
+    },
+    {
+      "id": "f4000000-0000-4000-8000-000000000004",
+      "chatType": "salon",
+      "participants": [
+        {
+          "userParticipant": true,
+          "id": "f4000000-0000-4000-8000-0000000000a4"
+        },
+        {
+          "character": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+          "id": "f4000000-0000-4000-8000-0000000000b4",
+          "controlledBy": "llm",
+          "status": "active"
+        }
+      ],
+      "contextSummary": "A prior summary so danger classification can fire.",
+      "conciergeOverride": "OFF",
+      "isDangerousChat": false,
+      "messages": [
+        {
+          "id": "f4000000-0000-4000-8000-0000000000c4",
+          "role": "USER",
+          "content": "Carry on.",
+          "participantId": "f4000000-0000-4000-8000-0000000000a4"
+        }
+      ]
     }
   ],
   "calls": [
@@ -672,6 +726,62 @@
       "isMultiCharacter": false,
       "preGeneratedAssistantMessageId": "f2000000-0000-4000-8000-0000000000d2",
       "fullResponse": "Just a calm reply, nothing random here.",
+      "usage": {
+        "promptTokens": 30,
+        "completionTokens": 8,
+        "totalTokens": 38
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ]
+    },
+    {
+      "name": "operator-uncensored-no-danger-enqueue",
+      "chatId": "f3000000-0000-4000-8000-000000000003",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "f3000000-0000-4000-8000-0000000000b3",
+      "userParticipantId": "f3000000-0000-4000-8000-0000000000a3",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "f3000000-0000-4000-8000-0000000000d3",
+      "fullResponse": "As you wish.",
+      "usage": {
+        "promptTokens": 30,
+        "completionTokens": 8,
+        "totalTokens": 38
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ]
+    },
+    {
+      "name": "operator-vouched-no-danger-enqueue",
+      "chatId": "f4000000-0000-4000-8000-000000000004",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "f4000000-0000-4000-8000-0000000000b4",
+      "userParticipantId": "f4000000-0000-4000-8000-0000000000a4",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "f4000000-0000-4000-8000-0000000000d4",
+      "fullResponse": "As you wish.",
       "usage": {
         "promptTokens": 30,
         "completionTokens": 8,
