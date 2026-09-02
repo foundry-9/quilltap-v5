@@ -24,6 +24,7 @@
  * {@link getConciergeState}, or ask one of the purpose-named questions:
  *
  *   - "Take the uncensored routes right now?" → {@link shouldUseUncensoredRoute}
+ *     (or {@link conciergeStateUsesUncensoredRoute}, given a derived state)
  *   - "Paint danger styling in the UI?"        → {@link shouldShowDangerStyling}
  *   - "May the classifier run at all?"          → {@link isClassifierOnDuty}
  *
@@ -82,6 +83,23 @@ export function getConciergeState(chat: ConciergeChatView | null | undefined): C
 }
 
 /**
+ * Is this state on the uncensored row of the 2×2 — `'flagged'` (the
+ * classifier's verdict) or `'uncensored'` (the operator's assertion)?
+ *
+ * The state-only twin of {@link shouldUseUncensoredRoute}, for callers that
+ * already hold a derived state (list payloads carry `conciergeState` rather
+ * than the raw pair) and would otherwise have to fabricate a chat-like to ask
+ * the question. This is THE one place that says which states take the
+ * uncensored route; `shouldUseUncensoredRoute` delegates to it.
+ *
+ * The shared-contract §B twin of the Rust core's
+ * `concierge_state_uses_uncensored_route` (v4 `c43d3b1b4`).
+ */
+export function conciergeStateUsesUncensoredRoute(state: ConciergeState): boolean {
+  return state === 'flagged' || state === 'uncensored';
+}
+
+/**
  * Should this chat take the Concierge's uncensored routes right now?
  *
  * True for `'flagged'` (the classifier's verdict) and `'uncensored'` (the
@@ -90,8 +108,7 @@ export function getConciergeState(chat: ConciergeChatView | null | undefined): C
 export function shouldUseUncensoredRoute(
   chat: ConciergeChatView | null | undefined,
 ): boolean {
-  const s = getConciergeState(chat);
-  return s === 'flagged' || s === 'uncensored';
+  return conciergeStateUsesUncensoredRoute(getConciergeState(chat));
 }
 
 /**

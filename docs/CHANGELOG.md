@@ -494,6 +494,20 @@ through `getConciergeState(chat)`) plus four `stateRoute` rows that drive the
 twin on each literal state with no chat anywhere, and the Rust family asserts
 both. A shape guard fails the run if a stale oracle carries fewer than the four
 `stateRoute` rows.
+#### 2026-09-02 — feat(concierge): name the uncensored row once, on the client twin
+
+_Versions: SPA 0.5.617._
+
+`conciergeStateUsesUncensoredRoute(state)` lands in the SPA's
+`chat/concierge-state.ts`, and `shouldUseUncensoredRoute` now delegates to it
+(v4 `c43d3b1b4`). Callers that already hold a derived four-state — the chat
+list payloads carry `conciergeState` rather than the two stored fields — can
+ask which states take the uncensored route without fabricating a chat-like.
+
+Shared contract §B of the round: the same predicate lands server-side as
+`concierge_state_uses_uncensored_route`, and each side is pinned by its own
+transcription of v4's truth table. The parity spec grows v4's new
+`conciergeStateUsesUncensoredRoute` block, TABLE row for row.
 
 #### 2026-09-02 — docs(orders): the `6d2a50382` drift catch-up round — five work orders (P4.D143–P4.D147)
 

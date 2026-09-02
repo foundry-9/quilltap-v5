@@ -7,6 +7,7 @@
  * this file pins that the client twin cannot drift from it.
  */
 import {
+  conciergeStateUsesUncensoredRoute,
   getConciergeState,
   isClassifierOnDuty,
   shouldShowDangerStyling,
@@ -65,6 +66,24 @@ describe('shouldUseUncensoredRoute', () => {
   for (const row of TABLE) {
     it(`returns ${row.uncensoredRoute} for ${label(row)}`, () => {
       expect(shouldUseUncensoredRoute(row.chat)).toBe(row.uncensoredRoute);
+    });
+  }
+});
+
+describe('conciergeStateUsesUncensoredRoute', () => {
+  it('is the bottom row of the 2×2 and nothing else', () => {
+    expect(conciergeStateUsesUncensoredRoute('monitored')).toBe(false);
+    expect(conciergeStateUsesUncensoredRoute('vouched')).toBe(false);
+    expect(conciergeStateUsesUncensoredRoute('flagged')).toBe(true);
+    expect(conciergeStateUsesUncensoredRoute('uncensored')).toBe(true);
+  });
+
+  for (const row of TABLE) {
+    it(`agrees with shouldUseUncensoredRoute for ${label(row)}`, () => {
+      expect(conciergeStateUsesUncensoredRoute(row.state)).toBe(row.uncensoredRoute);
+      expect(conciergeStateUsesUncensoredRoute(getConciergeState(row.chat))).toBe(
+        shouldUseUncensoredRoute(row.chat),
+      );
     });
   }
 });
