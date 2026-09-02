@@ -1668,13 +1668,9 @@ fn to_message_views(messages: &[Value]) -> Vec<MessageView> {
 }
 
 fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
-    use crate::chat_predicates::ParticipantStatus;
-    let status = match p.get("status").and_then(Value::as_str).unwrap_or("active") {
-        "active" => ParticipantStatus::Active,
-        "silent" => ParticipantStatus::Silent,
-        "removed" => ParticipantStatus::Removed,
-        _ => ParticipantStatus::Absent,
-    };
+    let status = crate::chat_predicates::participant_status_from_str(
+        p.get("status").and_then(Value::as_str),
+    );
     SpeakerParticipant {
         id: p
             .get("id")

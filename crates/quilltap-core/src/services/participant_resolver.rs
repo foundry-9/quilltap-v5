@@ -62,7 +62,7 @@
 
 use serde_json::Value;
 
-use crate::chat_predicates::{is_participant_present, ParticipantStatus};
+use crate::chat_predicates::{is_participant_present, participant_status_from_str};
 use crate::db::document_store_overlay::OverlayError;
 use crate::db::runtime::Db;
 use crate::db::{
@@ -150,15 +150,6 @@ pub struct ParticipantResolution {
 // Shared participant / message marshaling (chat JSON → the pure view structs).
 // ---------------------------------------------------------------------------
 
-fn parse_status(s: Option<&str>) -> ParticipantStatus {
-    match s.unwrap_or("active") {
-        "active" => ParticipantStatus::Active,
-        "silent" => ParticipantStatus::Silent,
-        "removed" => ParticipantStatus::Removed,
-        _ => ParticipantStatus::Absent,
-    }
-}
-
 fn str_field<'a>(p: &'a Value, key: &str) -> Option<&'a str> {
     p.get(key).and_then(Value::as_str)
 }
@@ -173,7 +164,7 @@ fn nonempty_character_id(p: &Value) -> Option<String> {
 pub(crate) fn to_filter_participant(p: &Value) -> FilterParticipant {
     FilterParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
-        status: parse_status(str_field(p, "status")),
+        status: participant_status_from_str(str_field(p, "status")),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         character_id: nonempty_character_id(p),
     }
@@ -183,7 +174,7 @@ pub(crate) fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
     SpeakerParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
         participant_type: str_field(p, "type").unwrap_or_default().to_string(),
-        status: parse_status(str_field(p, "status")),
+        status: participant_status_from_str(str_field(p, "status")),
         character_id: nonempty_character_id(p),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         talkativeness: p.get("talkativeness").and_then(Value::as_f64),
@@ -194,7 +185,7 @@ pub(crate) fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
 /// character id.
 pub(crate) fn is_active_character(p: &Value) -> bool {
     str_field(p, "type") == Some("CHARACTER")
-        && is_participant_present(parse_status(str_field(p, "status")))
+        && is_participant_present(participant_status_from_str(str_field(p, "status")))
         && nonempty_character_id(p).is_some()
 }
 
@@ -346,7 +337,7 @@ pub async fn resolve_responding_participant(
             .find(|p| {
                 str_field(p, "id") == Some(requested)
                     && str_field(p, "type") == Some("CHARACTER")
-                    && is_participant_present(parse_status(str_field(p, "status")))
+                    && is_participant_present(participant_status_from_str(str_field(p, "status")))
                     && nonempty_character_id(p).is_some()
             })
             .cloned();
@@ -512,7 +503,7 @@ pub fn load_all_participant_data(
         let Some(cid) = nonempty_character_id(&p) else {
             continue;
         };
-        if !is_participant_present(parse_status(str_field(&p, "status"))) {
+        if !is_participant_present(participant_status_from_str(str_field(&p, "status"))) {
             continue;
         }
         if Some(&cid) == primary_id.as_ref() {

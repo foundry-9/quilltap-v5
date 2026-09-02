@@ -108,9 +108,12 @@ pub fn sanitize_whisper_message(message: &str) -> String {
 }
 
 /// v4 `canReceiveWhisper` — a participant can receive a whisper iff present
-/// (`active` or `silent`).
+/// (`active` or `silent`). The canonical parse + presence pair; equal to the
+/// former `status == "active" || status == "silent"` for every input.
 fn can_receive_whisper(status: &str) -> bool {
-    status == "active" || status == "silent"
+    crate::chat_predicates::can_receive_whisper(
+        crate::chat_predicates::participant_status_from_str(Some(status)),
+    )
 }
 
 /// v4 `validateWhisperInput` — `z.object({ target: string().min(1), message:

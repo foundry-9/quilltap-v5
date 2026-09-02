@@ -17,7 +17,7 @@
 
 use serde_json::Value;
 
-use crate::chat_predicates::{is_participant_present, ParticipantStatus};
+use crate::chat_predicates::{is_participant_present, participant_status_from_str};
 use crate::cheap_llm::CheapLlmSelection;
 use crate::db::memories::MemUpdate;
 use crate::db::runtime::Db;
@@ -76,15 +76,6 @@ fn str_field<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v.get(key).and_then(Value::as_str)
 }
 
-fn parse_status(s: Option<&str>) -> ParticipantStatus {
-    match s.unwrap_or("active") {
-        "active" => ParticipantStatus::Active,
-        "silent" => ParticipantStatus::Silent,
-        "removed" => ParticipantStatus::Removed,
-        _ => ParticipantStatus::Absent,
-    }
-}
-
 fn related_ids(memory: &Value) -> Vec<String> {
     memory
         .get("relatedMemoryIds")
@@ -131,7 +122,7 @@ pub async fn run_fold_episode_pass<C: CompletionProvider, E: EmbeddingProvider>(
         .iter()
         .filter(|p| {
             str_field(p, "type") == Some("CHARACTER")
-                && is_participant_present(parse_status(str_field(p, "status")))
+                && is_participant_present(participant_status_from_str(str_field(p, "status")))
                 && str_field(p, "characterId").is_some_and(|c| !c.is_empty())
         })
         .collect();

@@ -78,12 +78,45 @@ pub fn migrate_is_active_to_status(is_active: bool, removed_at: Option<&str>) ->
 ///   refuse the row outright, and "not in the scene" is the safe reading of a
 ///   status nobody can name.
 ///
-/// (Eight sites carry a private copy of exactly this match — `enclave::announce`,
-/// `services::{commonplace_notifications, fold_episode_pass, participant_resolver,
-/// turn_orchestrator, user_identity_resolver}`, and at string level
-/// `tools::self_inventory` + `tools::doc_edit::shared`. Consolidating them onto
-/// this one is a behaviour-neutral sweep across eight files no single lane owns;
-/// recorded as a follow-up rather than smuggled into P4.D146.)
+/// **P4.68 consolidated every private copy of this exact rule onto this one.**
+/// The ten swept sites — `enclave::announce`, `services::{commonplace_notifications,
+/// fold_episode_pass, message_finalizer, participant_resolver, turn_orchestrator,
+/// user_identity_resolver}`, and at string level `tools::{self_inventory,
+/// whisper}` plus `tools::doc_edit::shared` — each carried a match
+/// byte-identical to this one, so the sweep was behaviour-neutral by
+/// measurement.
+///
+/// **Sites deliberately NOT consolidated** (each parses status, but to a
+/// DIFFERENT rule that its own v4 twin fixes — a differing `_ =>` arm is a
+/// measurement, not a typo):
+///
+/// - `services::build_context::parse_sys_status` — returns
+///   `Option<system_prompt::ParticipantStatus>` (a different enum) and maps an
+///   unknown value to `None`. Its v4 twin `buildOtherParticipantsInfo`
+///   (`lib/chat/context/system-prompt-builder.ts:455`) never parses at all: it
+///   skips only `status === 'removed'` and passes the raw string through as
+///   `participant.status as ParticipantStatus`.
+/// - `services::build_context::parse_attr_status` and
+///   `services::answer_confirmation` (the inline match feeding
+///   `AttributionParticipant`) — both map an unknown value to `Active`. Their
+///   only status consumer is `find_user_participant_name`, whose v4 twin
+///   (`lib/chat/context/message-attribution.ts:274`) gates on
+///   `isParticipantPresent(p.status)` — v4's `chat.types.ts:557`
+///   `status === 'active' || status === 'silent'`, i.e. unknown → NOT present,
+///   which is what THIS function's `Absent` arm produces. See the P4.68 lane
+///   record: `parse_attr_status` was consolidated on that measurement;
+///   `answer_confirmation`'s twin copy is outside P4.68's ownership and is
+///   RECORDED for its owning lane.
+/// - `skip_signal::participant_is_present` — deliberately does NOT default a
+///   missing `status` (an absent field returns `false` outright); its own doc
+///   comment carries the reason.
+/// - `db::chats_messages`, `turn_order`, `api::salon`,
+///   `services::{chat_participants, regenerate_swipe, orchestrator}`,
+///   `services::announcer::character_voiced`, `db::chats_participants` — outside
+///   P4.68's ownership; measured and listed in the lane record.
+///
+/// `services::host_notifications` and `services::chat_participants`'s status→prose
+/// maps are LABEL tables, not parsers.
 pub fn participant_status_from_str(s: Option<&str>) -> ParticipantStatus {
     match s.unwrap_or("active") {
         "active" => ParticipantStatus::Active,

@@ -99342,3 +99342,97 @@ the NanoGPT caching cost question (#101), and the LoRA wire-byte look (blocked �
 One record correction: drift-ledger §1 calls `6d2a50382` v4 `4.9.0-dev.113`;
 the commit's own `package.json` says **`4.9.0-dev.115`** (origin/main is not
 ahead, so the verdict stands).
+
+---
+
+## Lane record — P4.68 (the participant-status parser consolidation + the cheap-LLM / failover remainder)
+
+Branch `claude/p4.68-status-parsers-and-cheap-llm`. v4 oracle baseline
+`6d2a50382`; the lane's §2 probe FAILED on its first run (v4 HEAD had moved to
+`303288fb4` and the checkout was dirty in `lib/`/`app/`/`components/`), the lane
+STOPped and reported as ordered, and resumed against the rewritten ledger §1 —
+**regen rule PIN REQUIRED**, so every oracle in this lane was regenerated from
+the detached worktree `/tmp/qt-v4-pin-p4.68-6d2a50382`. The pin was verified by
+grepping the drift's own marker (`conciergeState` in `app/api/v1/chats/route.ts`)
+and finding it ABSENT.
+
+### Unit 1 — the ten status parsers consolidated; the `build_context` pair adjudicated
+
+**The census first, because the order's was incomplete.** The order named eight
+sites; a tree-wide sweep for the status strings found **nineteen**, of which ten
+carry the canonical rule, four carry a DIFFERENT deliberate rule, two are label
+tables, and three are outside this lane's ownership with rules of their own. The
+order's own warning — "a copy whose `_ =>` arm differs is a measurement, not a
+typo" — is what the extra rows turned out to be.
+
+| site | rule | v4 twin | consolidated |
+|---|---|---|---|
+| `enclave/announce.rs:215` | canonical | — | **yes** |
+| `services/commonplace_notifications.rs:453` | canonical | — | **yes** |
+| `services/user_identity_resolver.rs:68` | canonical | — | **yes** |
+| `services/fold_episode_pass.rs:79` | canonical | — | **yes** |
+| `services/turn_orchestrator.rs:192` | canonical | — | **yes** (its unit test retargeted at the canonical, as ordered) |
+| `services/participant_resolver.rs:153` | canonical | — | **yes** |
+| `services/message_finalizer.rs:1672` (inline) | canonical | — | **yes** |
+| `tools/self_inventory.rs:815` | `matches!(s,"active"\|"silent")` | `isParticipantPresent`, `chat.types.ts:557` | **yes** (equal for every input) |
+| `tools/whisper.rs:113` | `s=="active"\|\|s=="silent"` | `canReceiveWhisper`, `chat.types.ts:564` | **yes** |
+| `tools/doc_edit/shared.rs:320` | `s=="active"\|\|s=="silent"` | `isParticipantPresent`, `chat.types.ts:557` | **yes** (the caller's `.unwrap_or("")` boundary deliberately left; see below) |
+| `services/build_context.rs:3525 parse_attr_status` | unknown → **Active** | `findUserParticipantName` → `isParticipantPresent` (`message-attribution.ts:274` → `chat.types.ts:557`) — unknown is NOT present | **yes, as a fidelity FIX** |
+| `services/build_context.rs:3514 parse_sys_status` | unknown → `None`, different enum | `buildOtherParticipantsInfo` (`system-prompt-builder.ts:455`) never parses; skips only `=== 'removed'` | **no** — recorded, the `None` reproduces v4 exactly at the one read |
+| `services/answer_confirmation.rs:336` | unknown → **Active** | same twin as `parse_attr_status` | **no** — outside this lane's ownership; RECORDED (see Findings) |
+| `skip_signal.rs:61` | missing status → `false`, NO defaulting | its own doc comment carries the reason | **no** — deliberate, out of ownership |
+| `db/chats_messages.rs:692` | unknown → Active | — | **no** — out of ownership |
+| `turn_order.rs:29` | empty/None → `"active"` | — | **no** — out of ownership |
+| `api/salon.rs:756` | `Some("active")\|Some("silent")\|None` | — | **no** — out of ownership (measurably equal to the canonical composition) |
+| `db/chats_participants.rs:40`, `services/chat_participants.rs:562` | canonical-equivalent | — | **no** — out of ownership |
+| `services/host_notifications.rs:70`, `services/chat_participants.rs:666` | status → prose | — | **no** — LABEL tables, as the order says |
+
+The canonical's doc comment now carries this disposition, so the next reader
+does not have to re-derive it.
+
+**`parse_attr_status` is the one behaviour change in the unit, and it is a
+fidelity fix.** It mapped every unrecognised status to `Active`, i.e. PRESENT.
+Its only consumer is `find_user_participant_name`, and v4's twin gates on
+`isParticipantPresent(p.status)` — `status === 'active' || status === 'silent'`
+— which is false for any other string. `to_full_participant` already defaults a
+MISSING status to `"active"` at the marshaling boundary (v4's Zod
+`.default('active')`), so the two rules can only disagree on a status string
+neither schema can name; on that input v5 could have picked a corrupt seat as
+the user's speaker where v4 skips it. Pinned by
+`build_context::attribution_status_tests`, quoting v4's function; restoring the
+old arm reddens `an_unrecognised_status_is_not_present_as_in_v4` (verified
+red, then green after revert by file backup).
+
+**Proof.** Nineteen families over the touched modules, regenerated from the pin
+through the sweep driver and re-run: **19/19 ok, zero SKIP**
+(`announcement_attribution`, `build_context_tier3`, `core_whisper`,
+`doc_edit_leaves`, `enclave_lifecycle_tier2`, `fold_episode_tier3`,
+`message_attribution`, `message_finalizer_tier3`, `orchestrator_tier3`,
+`participant_resolver_tier2`, `post_office_commonplace`,
+`post_office_writers_tier3`, `self_inventory`, `skip_signal`,
+`turn_orchestrator_tier2`, `user_identity_resolver`, `whisper_tool`,
+`precompute`, `primary_stream_tier3`).
+
+**The mutation proof, and what it measured.** Inverting the canonical's arms
+(`"silent" => Absent`, `_ => Active`) and re-running all nineteen reddens
+exactly **three**: `fold_episode_tier3`, `message_finalizer_tier3`,
+`whisper_tool`. The cutover is therefore load-bearing — those three read the
+canonical through the swept sites. It also measures a **coverage fact worth
+writing down: the other sixteen families have no corpus row carrying a `silent`
+or unrecognised participant status**, so they cannot see this rule at all. A
+green sweep alone would have been weak evidence; the three reds are the real
+ones. Reverted by file backup.
+
+### Findings recorded, not acted on
+
+- **`services/answer_confirmation.rs:336` is an eleventh copy the order's census
+  missed** — an inline match with `parse_attr_status`'s old unknown → `Active`
+  rule, feeding the same `AttributionParticipant` → `find_user_participant_name`
+  path, and therefore carrying the same divergence from v4's
+  `isParticipantPresent`. The file is outside P4.68's Ownership row, so this
+  lane RECORDS it rather than editing it. It wants the same one-line change
+  `parse_attr_status` just took.
+- **`crates/quilltap-harness/tests/message_attribution_equivalence.rs:27` is a
+  twelfth copy**, in the harness, and it `panic!`s on any unrecognised status —
+  which is why no differential arm can reach the `parse_attr_status` divergence
+  and the pin above had to be a unit test.

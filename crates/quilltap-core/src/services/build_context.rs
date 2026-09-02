@@ -3511,6 +3511,14 @@ fn debug_memory_json(d: &DebugMemoryInfo) -> Value {
     Value::Object(m)
 }
 
+/// NOT the canonical parse, deliberately. v4's consumer
+/// `buildOtherParticipantsInfo` (`lib/chat/context/system-prompt-builder.ts:455`)
+/// never parses: it skips only `participant.status === 'removed'` and passes the
+/// raw string through as `participant.status as ParticipantStatus`. Mapping an
+/// unrecognised value to `None` reproduces that exactly at the one place the
+/// value is read — `build_other_participants_info`'s
+/// `status == Some(ParticipantStatus::Removed)` skip — and the enum is
+/// `system_prompt`'s, not `chat_predicates`'.
 fn parse_sys_status(s: &str) -> Option<crate::system_prompt::ParticipantStatus> {
     use crate::system_prompt::ParticipantStatus as P;
     match s {
@@ -3522,14 +3530,19 @@ fn parse_sys_status(s: &str) -> Option<crate::system_prompt::ParticipantStatus> 
     }
 }
 
+/// The status carried on an [`AttributionParticipant`]. Its ONLY consumer is
+/// `find_user_participant_name`, whose v4 twin
+/// (`lib/chat/context/message-attribution.ts:274`) gates on
+/// `isParticipantPresent(p.status)` — v4 `lib/schemas/chat.types.ts:557`,
+/// `status === 'active' || status === 'silent'`. So v4's rule for an
+/// unrecognised status is NOT-present, which is exactly what the canonical
+/// parse's `Absent` arm yields; this used to map an unknown value to `Active`
+/// (present), the opposite. `to_full_participant` already defaults a MISSING
+/// status to `"active"` at the marshaling boundary (v4's Zod
+/// `.default('active')`), so the two rules can only ever disagree on a status
+/// string neither schema can name. P4.68 consolidated it onto the canonical.
 fn parse_attr_status(s: &str) -> crate::chat_predicates::ParticipantStatus {
-    use crate::chat_predicates::ParticipantStatus as P;
-    match s {
-        "silent" => P::Silent,
-        "absent" => P::Absent,
-        "removed" => P::Removed,
-        _ => P::Active,
-    }
+    crate::chat_predicates::participant_status_from_str(Some(s))
 }
 
 /// Parse the chat's raw `sceneState` (JSON string or object) → [`SceneState`],
@@ -3629,6 +3642,56 @@ fn build_timestamp_content(formatted: &str) -> String {
 // from `crate::services::commonplace_notifications` (Group 5 dedup) — the private
 // copies that used to live here were byte-identical for the per-turn consolidated
 // whisper (which never sets `relevant_conversations`).
+
+#[cfg(test)]
+mod attribution_status_tests {
+    use super::parse_attr_status;
+    use crate::chat_predicates::{is_participant_present, ParticipantStatus};
+
+    /// The status on an [`super::AttributionParticipant`] is read by exactly one
+    /// consumer, `find_user_participant_name`, whose v4 twin
+    /// (`lib/chat/context/message-attribution.ts:274`) gates on
+    /// `isParticipantPresent(p.status)` — v4 `lib/schemas/chat.types.ts:557`:
+    ///
+    /// ```text
+    /// export function isParticipantPresent(status: ParticipantStatus): boolean {
+    ///   return status === 'active' || status === 'silent';
+    /// }
+    /// ```
+    ///
+    /// So in v4 a status string that is neither `'active'` nor `'silent'` is NOT
+    /// present, whatever it is. This pins that rule: the pre-P4.68 mapping sent
+    /// every unrecognised value to `Active` (present), which would have let a
+    /// corrupt seat be picked as the user's speaker where v4 skips it.
+    #[test]
+    fn an_unrecognised_status_is_not_present_as_in_v4() {
+        for unknown in ["bogus", "ACTIVE", "Active", "", "present", "online"] {
+            assert_eq!(
+                parse_attr_status(unknown),
+                ParticipantStatus::Absent,
+                "unrecognised status {unknown:?} must not parse as present"
+            );
+            assert!(
+                !is_participant_present(parse_attr_status(unknown)),
+                "v4 isParticipantPresent({unknown:?}) is false"
+            );
+        }
+    }
+
+    /// The four names v4's `ParticipantStatusEnum` can hold, plus the marshaling
+    /// boundary's default. `to_full_participant` turns a MISSING status into
+    /// `"active"` (v4's Zod `.default('active')`) before this is ever called, so
+    /// the two rules cannot disagree on an absent field.
+    #[test]
+    fn the_four_named_statuses_are_unchanged() {
+        assert_eq!(parse_attr_status("active"), ParticipantStatus::Active);
+        assert_eq!(parse_attr_status("silent"), ParticipantStatus::Silent);
+        assert_eq!(parse_attr_status("absent"), ParticipantStatus::Absent);
+        assert_eq!(parse_attr_status("removed"), ParticipantStatus::Removed);
+        assert!(is_participant_present(parse_attr_status("active")));
+        assert!(is_participant_present(parse_attr_status("silent")));
+    }
+}
 
 #[cfg(test)]
 mod phase_ceiling_tests {

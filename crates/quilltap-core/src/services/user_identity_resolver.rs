@@ -25,7 +25,7 @@
 
 use serde_json::Value;
 
-use crate::chat_predicates::ParticipantStatus;
+use crate::chat_predicates::participant_status_from_str;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, users, DbError};
 use crate::participant_filters::{find_active_user_participant, ParticipantView};
@@ -65,15 +65,6 @@ pub struct ResolvedUserIdentity {
 // Shared participant marshaling (chat JSON → the pure-filter view).
 // ---------------------------------------------------------------------------
 
-fn parse_status(s: Option<&str>) -> ParticipantStatus {
-    match s.unwrap_or("active") {
-        "active" => ParticipantStatus::Active,
-        "silent" => ParticipantStatus::Silent,
-        "removed" => ParticipantStatus::Removed,
-        _ => ParticipantStatus::Absent,
-    }
-}
-
 fn str_field<'a>(p: &'a Value, key: &str) -> Option<&'a str> {
     p.get(key).and_then(Value::as_str)
 }
@@ -88,7 +79,7 @@ fn nonempty_character_id(p: &Value) -> Option<String> {
 fn to_filter_participant(p: &Value) -> ParticipantView {
     ParticipantView {
         id: str_field(p, "id").unwrap_or_default().to_string(),
-        status: parse_status(str_field(p, "status")),
+        status: participant_status_from_str(str_field(p, "status")),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         character_id: nonempty_character_id(p),
     }

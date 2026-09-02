@@ -324,9 +324,11 @@ pub async fn refresh_relevant_conversations_on_fold<E: EmbeddingProvider>(
         .map(|ps| {
             ps.iter()
                 .filter_map(|p| {
-                    let status = crate::chat_predicates::is_participant_present(parse_status(
-                        p.get("status").and_then(serde_json::Value::as_str),
-                    ));
+                    let status = crate::chat_predicates::is_participant_present(
+                        crate::chat_predicates::participant_status_from_str(
+                            p.get("status").and_then(serde_json::Value::as_str),
+                        ),
+                    );
                     if !status {
                         return None;
                     }
@@ -445,18 +447,6 @@ pub async fn refresh_relevant_conversations_on_fold<E: EmbeddingProvider>(
             target_participant_id.as_deref(),
         )
         .await;
-    }
-}
-
-/// Parse a participant status string (default `"active"`) into the enum — mirrors
-/// the shared `parse_status` used across the participant resolvers.
-fn parse_status(s: Option<&str>) -> crate::chat_predicates::ParticipantStatus {
-    use crate::chat_predicates::ParticipantStatus;
-    match s.unwrap_or("active") {
-        "active" => ParticipantStatus::Active,
-        "silent" => ParticipantStatus::Silent,
-        "removed" => ParticipantStatus::Removed,
-        _ => ParticipantStatus::Absent,
     }
 }
 

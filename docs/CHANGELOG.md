@@ -29,6 +29,35 @@ arrived), 117 (a chat upload's sha256 is the pre-transcode hash) and 118
 and each now carrying a v5-side measurement to owe. Ledger §1 rewritten
 (regen rule PIN REQUIRED at `6d2a50382`), §3 gains two UNPROCESSED rows; no
 row is a convergence. The five lanes are unaffected — every regen ran pinned.
+#### 2026-09-02 — refactor(chat): participant-status parsing has one home
+
+_Versions: core 0.0.751._
+
+Ten private copies of the participant-status match are gone; every one now
+calls `chat_predicates::participant_status_from_str`. The seven that returned
+`ParticipantStatus` (`enclave::announce`, `services::{commonplace_notifications,
+fold_episode_pass, message_finalizer, participant_resolver, turn_orchestrator,
+user_identity_resolver}`) were each verified byte-identical to the canonical
+before replacement, and the three string-level presence predicates
+(`tools::{self_inventory, whisper}`, `tools::doc_edit::shared`) are equal to
+`is_participant_present(participant_status_from_str(Some(s)))` for every input,
+so the sweep is behaviour-neutral. Nineteen differential families over the
+touched modules were regenerated from a worktree pinned at `6d2a50382` and
+re-run: 19/19 green, zero skips. Inverting the canonical's `silent` and unknown
+arms reddens `fold_episode_tier3`, `message_finalizer_tier3` and
+`whisper_tool` — the cutover is load-bearing, and the other sixteen families
+have no corpus row that exercises a non-`active` status.
+
+`build_context::parse_attr_status` was adjudicated rather than swept. It mapped
+an unrecognised status to `Active`; its only consumer is
+`find_user_participant_name`, whose v4 twin gates on
+`isParticipantPresent(p.status)` (`lib/schemas/chat.types.ts:557`), which is
+false for any string that is not `active` or `silent`. So v4's rule at that
+site is the canonical's, and the old mapping could have let a corrupt seat be
+picked as the user's speaker where v4 skips it. Consolidated, with a unit pin
+on v4's rule that reddens if the old arm returns. `parse_sys_status` is left
+alone and documented: v4's `buildOtherParticipantsInfo` never parses at all, and
+mapping unknown to `None` reproduces its `=== 'removed'` skip exactly.
 
 #### 2026-09-02 — docs(driftcheck): v4 drifted ONE commit past `6d2a50382` (`303288fb4`, the Concierge state on the New Chat form) — PIN REQUIRED
 

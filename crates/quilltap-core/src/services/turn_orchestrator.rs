@@ -53,7 +53,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::all_llm_pause::should_pause_for_all_llm;
-use crate::chat_predicates::ParticipantStatus;
+use crate::chat_predicates::participant_status_from_str;
 use crate::db::runtime::Db;
 use crate::db::{chats_messages_read, chats_read, DbError};
 use crate::participant_filters::{
@@ -186,18 +186,6 @@ impl ChainDecision {
 // Shared marshaling: chat JSON → the pure turn-manager view structs.
 // ---------------------------------------------------------------------------
 
-/// Parse a status string (default `"active"`) into a [`ParticipantStatus`].
-/// Unknown values map to `Absent` (not present), matching v4's Zod enum + the
-/// present-set membership check.
-fn parse_status(s: Option<&str>) -> ParticipantStatus {
-    match s.unwrap_or("active") {
-        "active" => ParticipantStatus::Active,
-        "silent" => ParticipantStatus::Silent,
-        "removed" => ParticipantStatus::Removed,
-        _ => ParticipantStatus::Absent,
-    }
-}
-
 fn str_field<'a>(p: &'a Value, key: &str) -> Option<&'a str> {
     p.get(key).and_then(Value::as_str)
 }
@@ -214,7 +202,7 @@ pub(crate) fn to_turnstate_participant(p: &Value) -> ParticipantView {
     ParticipantView {
         id: str_field(p, "id").unwrap_or_default().to_string(),
         participant_type: str_field(p, "type").unwrap_or_default().to_string(),
-        status: parse_status(str_field(p, "status")),
+        status: participant_status_from_str(str_field(p, "status")),
         character_id: nonempty_character_id(p),
     }
 }
@@ -223,7 +211,7 @@ pub(crate) fn to_turnstate_participant(p: &Value) -> ParticipantView {
 pub(crate) fn to_filter_participant(p: &Value) -> FilterParticipant {
     FilterParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
-        status: parse_status(str_field(p, "status")),
+        status: participant_status_from_str(str_field(p, "status")),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         character_id: nonempty_character_id(p),
     }
@@ -234,7 +222,7 @@ pub(crate) fn to_speaker_participant(p: &Value) -> SpeakerParticipant {
     SpeakerParticipant {
         id: str_field(p, "id").unwrap_or_default().to_string(),
         participant_type: str_field(p, "type").unwrap_or_default().to_string(),
-        status: parse_status(str_field(p, "status")),
+        status: participant_status_from_str(str_field(p, "status")),
         character_id: nonempty_character_id(p),
         controlled_by: str_field(p, "controlledBy").unwrap_or("llm").to_string(),
         talkativeness: p.get("talkativeness").and_then(Value::as_f64),
@@ -842,12 +830,25 @@ mod tests {
 
     #[test]
     fn parse_status_defaults_and_unknown() {
-        assert_eq!(parse_status(None), ParticipantStatus::Active);
-        assert_eq!(parse_status(Some("active")), ParticipantStatus::Active);
-        assert_eq!(parse_status(Some("silent")), ParticipantStatus::Silent);
-        assert_eq!(parse_status(Some("removed")), ParticipantStatus::Removed);
+        use crate::chat_predicates::ParticipantStatus;
+        assert_eq!(participant_status_from_str(None), ParticipantStatus::Active);
+        assert_eq!(
+            participant_status_from_str(Some("active")),
+            ParticipantStatus::Active
+        );
+        assert_eq!(
+            participant_status_from_str(Some("silent")),
+            ParticipantStatus::Silent
+        );
+        assert_eq!(
+            participant_status_from_str(Some("removed")),
+            ParticipantStatus::Removed
+        );
         // Unknown → Absent (not present).
-        assert_eq!(parse_status(Some("bogus")), ParticipantStatus::Absent);
+        assert_eq!(
+            participant_status_from_str(Some("bogus")),
+            ParticipantStatus::Absent
+        );
     }
 
     #[test]

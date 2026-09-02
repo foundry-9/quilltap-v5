@@ -810,9 +810,13 @@ fn parse_iso_ms(iso: &str) -> Option<i64> {
     crate::clock::iso_to_ms(iso)
 }
 
-/// v4 `isParticipantPresent(status)` — active or silent.
+/// v4 `isParticipantPresent(status)` — active or silent. The canonical parse +
+/// presence pair; equal to the former private `matches!(status, "active" |
+/// "silent")` for every input (unknown → `Absent` → not present).
 fn is_participant_present(status: &str) -> bool {
-    matches!(status, "active" | "silent")
+    crate::chat_predicates::is_participant_present(
+        crate::chat_predicates::participant_status_from_str(Some(status)),
+    )
 }
 
 // ===========================================================================

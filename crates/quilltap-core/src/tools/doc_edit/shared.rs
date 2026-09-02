@@ -315,9 +315,16 @@ pub fn collect_peer_character_ids_for_reads(
     peers
 }
 
-/// v4 `isParticipantPresent` (`chat.types.ts:444`): present == `active` | `silent`.
+/// v4 `isParticipantPresent` (`chat.types.ts:557`): present == `active` |
+/// `silent`. The canonical parse + presence pair; equal to the former
+/// `status == "active" || status == "silent"` for every input. ⚠ The caller
+/// passes `.unwrap_or("")` — an absent `status` reaches here as `""` (→ `Absent`
+/// → not present), NOT as `None` (which the canonical defaults to `Active`).
+/// That boundary is the caller's and is deliberately left as it stands.
 fn is_participant_present(status: &str) -> bool {
-    status == "active" || status == "silent"
+    crate::chat_predicates::is_participant_present(
+        crate::chat_predicates::participant_status_from_str(Some(status)),
+    )
 }
 
 /// v4 `actingCharacterIsOpaqueToVaults`: a character with `systemTransparency !==

@@ -195,7 +195,9 @@ fn participant_views(chat: &Value) -> Vec<ParticipantView> {
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
-            status: parse_status(p.get("status").and_then(Value::as_str)),
+            status: crate::chat_predicates::participant_status_from_str(
+                p.get("status").and_then(Value::as_str),
+            ),
             controlled_by: p
                 .get("controlledBy")
                 .and_then(Value::as_str)
@@ -208,18 +210,6 @@ fn participant_views(chat: &Value) -> Vec<ParticipantView> {
                 .map(String::from),
         })
         .collect()
-}
-
-/// v4 participant `status` parse (the turn-orchestrator mapping: default
-/// `active`; unknown → not-present).
-fn parse_status(s: Option<&str>) -> crate::chat_predicates::ParticipantStatus {
-    use crate::chat_predicates::ParticipantStatus;
-    match s.unwrap_or("active") {
-        "active" => ParticipantStatus::Active,
-        "silent" => ParticipantStatus::Silent,
-        "removed" => ParticipantStatus::Removed,
-        _ => ParticipantStatus::Absent,
-    }
 }
 
 /// The pure content assembly of the run-start banner (v4
