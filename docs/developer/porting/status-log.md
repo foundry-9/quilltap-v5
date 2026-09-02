@@ -100395,3 +100395,201 @@ this lane ran from the lane-unique detached worktree
 `/tmp/qt-v4-pin-p4.70-6d2a50382`, verified still at `6d2a50382` at close. That
 is exactly the case §5.1's pin exists for. **The unifier must `/driftcheck`
 before moving the baseline.**
+## Lane record — P4.67 (the query-parameter semantics sweep)
+
+**Branch:** `claude/p4.67-query-param-semantics`. **Baseline:** `6d2a50382`,
+**regen PIN REQUIRED** (v4 `main` moved to `303288fb4` before the lane
+started; every oracle run in this lane came out of the lane-unique pinned
+worktree `/tmp/qt-v4-pin-p4.67-6d2a50382`, verified by the drift marker
+`applyRequestedConciergeState` being ABSENT from the pin and present in the
+checkout).
+
+### The lane STOPPED once, as ordered
+
+The first §2 probe FAILED: v4 HEAD had not moved but the checkout was dirty in
+`lib/`, `app/` and `components/` (+476/−86 across 16 files plus 955 untracked
+lines — the in-flight Concierge-default-at-creation feature). The dirt sat on
+this lane's own oracle surface: `app/api/v1/chats/route.ts` is one of the
+fourteen route modules the new oracle imports, and it had a 244-line diff. The
+lane reported and did not port. `/driftcheck` then recorded `303288fb4` and
+flipped the regen rule to PIN REQUIRED; the lane resumed against that §1.
+
+### Unit 1 — the shared reader + the `?action=` sweep (16 route files)
+
+**The class.** v5 extracted every query as `Query<HashMap<String, String>>`.
+Under `serde_urlencoded` that keeps the **last** value of a repeated key and
+yields `Some("")` for a present-but-empty `?action=`. v4 reads
+`searchParams.get('action')` — the **first** value — and then gates on JS
+truthiness (`if (action)`, `lib/api/middleware/actions.ts:88`), so `''` is no
+action at all. No family sent either shape, so the whole class was invisible.
+
+**`crates/quilltap-web/src/query.rs`** is the one home: `first`, `all`,
+`action` (the dispatch gate, folding the empty string), `first_map` (the
+documented FIRST-wins adapter for routes whose every key is a
+`searchParams.get`), plus `unknown_action_response` / `action_required_response`
+carrying v4's two envelopes and its two `actionLogger.warn` lines. The
+P4.D122-era `unknown_action_response` moved here from `wardrobe_routes.rs`, and
+`photos_routes.rs`'s private `string_param`/`all_params` folded in.
+
+**Three order premises were refuted by the survey, all by measurement:**
+
+1. **v4 does not have one action shape, it has three.** Only 14 route files use
+   `withActionDispatch`'s `{error, availableActions}` envelope. Most hand-roll
+   `isValidAction` with a `Unknown action: <x>. Available actions: …` tail, and
+   several — `characters` (collection POST and item GET), `chats/[id]` GET,
+   `user/profile` GET/PUT, `settings/text-replacements` POST — silently FALL
+   THROUGH to the default handler on an unknown action rather than refusing.
+   The order's Tier 1 ("unknown → v4's exact `Unknown action:` +
+   `availableActions` envelope") is true only for the middleware routes.
+2. **`fold` is not universally true, and asserting it would have been a port
+   bug.** `system/tools` GET+POST and `user/profile` PATCH hand-roll
+   `isValidAction` with NO `!action` carve-out and render the action into the
+   sentence, so v4 answers `Unknown action: null` for an absent action and
+   `Unknown action: ` for `?action=`. v5 must distinguish them, not fold. The
+   family reads the expected fold per endpoint out of the oracle.
+3. **There is no LAST-wins site.** `getQueryParamsWithoutAction` (the
+   `forEach`-into-a-bag reader, `actions.ts:180-193`) is exported and
+   re-exported but has **zero call sites** in `app/` or `lib/` at the baseline.
+   The order's Tier 1 asked for a `last(key)` helper; shipping one would have
+   been a rule with nothing to obey it, so it was deleted and the finding
+   recorded in the module header.
+
+**What actually changed** (see the CHANGELOG entry for the per-route list): the
+three middleware-envelope edges and `system/data-dir` now answer v4's two-key
+envelopes instead of invented sentences; `system/tools` GET/POST gained v4's
+`Available GET/POST actions:` tail and the `null`-vs-empty render;
+`user/profile` GET and PUT stopped refusing unknown actions v4 ignores; and
+`?action=` folds onto the no-action leg on the chats collection, the Brahma
+PATCH, the custom-tools library and the embedding-profile item. Every remaining
+edge moved onto the reader for FIRST-wins alone.
+
+### The new family — `query_param_semantics_equivalence`
+
+Fourteen endpoints × six shapes (`bare`, `empty`, `unknown`, `known`,
+`known_then_unknown`, `empty_then_known`) against v4's REAL route modules
+through its REAL dispatch code, DB-free (only the leaves below the dispatcher
+are stubbed). Oracle:
+`harness/oracle/cases/query-param-semantics.test.ts`.
+
+**Two comparands, deliberately.** Dispatcher refusals are compared across the
+trees byte-for-byte, status + whole body with key order. Default-leg rows
+cannot be: v4's no-action leg is a payload over its own database, so comparing
+bodies would compare fixtures rather than dispatch. Those rows are carried as
+**within-tree equalities** — `fold`, `firstWins`, `emptyFirstWins` — computed
+on each side over its own state and compared as booleans. The classification is
+derived from the recorded v4 body (a dispatcher refusal opens with `Unknown
+action:`, `Action parameter required` or `Missing action parameter`), not
+declared per endpoint, so it cannot drift out of step with v4 — and both
+buckets carry a non-empty floor assert, because a change to v4's refusal
+wording would otherwise silently stop the family comparing bytes.
+
+**Red-first: 79 of 98 rows failed.** Notably `firstWins` failed on almost every
+endpoint — the duplicate-key half of the class had been reasoned from
+`serde_urlencoded`'s behaviour but never executed until this family ran.
+
+**Mutation proofs** (file-backup revert, both verified applied):
+
+- Removing the empty-string fold from `query::action` reddens **18** rows —
+  every `empty` / `empty_then_known` / `fold` row on the endpoints where v4
+  folds, and *nothing* on `system_tools_*` or `user_profile_patch`, the routes
+  where v4 deliberately does not. The family discriminates the fold in the
+  right direction, per endpoint.
+- Making `first` read the last occurrence reddens **33** rows, every one a
+  `firstWins` / `emptyFirstWins` / `empty_then_known` row and not one a fold
+  row.
+
+**Recorded divergences.** `character_item_post` — v4's `handlePost` runs
+`repos.characters.findById` → `notFound('Character')` BEFORE the action gate
+while v5's edge refuses without a lookup, so the two gate in different orders;
+the oracle mocks the character into existence to put v4's sentence on the
+record, and v5's answers (including its fold, which v4 does not share) are
+pinned instead of cross-compared. The SUBSET edges — `user/profile` GET/PUT
+(v5 serves no action; `theme-preference` is a named non-port),
+`system/data-dir` (`?action=open` is a named refusal), `mount-points/[id]` (v5
+serves only the multipart `write-file`) — keep v5's own answer for the served
+shape, which is why `known` is never cross-compared.
+
+### Oracle regen recipe
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+PIN=/tmp/qt-v4-pin-p4.67-6d2a50382
+TMPO=/tmp/qt-queryparam-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+cp "$V5W/harness/oracle/cases/query-param-semantics.test.ts" "$TMPO/cases/"
+cd "$PIN"
+QT_ORACLE_OUT=/tmp/oracle-query-param-semantics.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- query-param-semantics
+```
+Run: `QT_ORACLE_QUERY_PARAM_SEMANTICS=/tmp/oracle-query-param-semantics.ndjson
+cargo test -p quilltap-web --test query_param_semantics_equivalence`.
+
+Two instrument traps the oracle hit and now guards against, both worth
+remembering: several routes gate ownership BEFORE the action gate
+(`characters/[id]` POST, `brahma-console/[id]` PATCH), so a repository stub
+returning `null` makes all six shapes answer one 404 and the rows measure
+nothing — the stubs return existing entities on purpose. And
+`system/data-dir?action=open` really shells out to `open`, so the oracle mocks
+`child_process` rather than launching a file browser on the developer's
+machine.
+
+### Unit 2 — P4.62's deferred shape (b), and the correction it needed
+
+**The order's premise was wrong, and the differential is what showed it.** P4.62
+banked shape (b) as "v4 accepts `payload: []` on `POST /api/v1/system/jobs`
+(201: `typeof [] === 'object'` and `![]` is false); v5 400s at
+`api/system_data.rs`'s `!payload.is_object()`; shape: reject only
+falsy-or-scalar". That reading stops at the ROUTE gate. The first version of
+this unit implemented it as written — accept arrays, enqueue them — and the
+freshly generated oracle immediately disagreed:
+
+```
+{"name":"jobs_collection_post_payload_array","status":500,
+ "body":{"error":"[\n  {\n    \"expected\": \"record\", …"}},"extra":{"row":null}}
+```
+
+The array passes v4's route gate and dies one call later: `enqueueJob`
+validates against `z.record(z.string(), z.unknown())`
+(`lib/schemas/job.types.ts:66`), an array fails it, and the route's `catch`
+relays `getErrorMessage(error)` — the whole `ZodError.message` — through
+`serverError`. So v4 answers a **500** carrying Zod's formatted issue list, and
+writes nothing (`extra.row` is `null`, measured).
+
+v5 now reproduces that answer byte-for-byte. The array is the ONLY shape that
+can reach Zod — every other non-record JSON value is falsy or not
+`typeof 'object'` and stops at the gate — so a single byte-copied literal
+covers the case, and the sibling `no_payload` / `payload_not_object` arms
+(which still stop at the gate) stay green as the proof of that reasoning.
+
+`jobs_collection_post_payload_array` compares the STORED ROW as well as the
+status, so a gate that admitted the array but mangled the write would still be
+caught. The family's case-count guard fired on the new arm (11 → 12) exactly as
+designed. **Had this unit shipped as ordered, v5 would have enqueued a job v4
+refuses** — a silent write divergence no existing arm could see.
+
+### Two gate incidents, both caught rather than shipped
+
+**A sibling lane clobbered this lane's oracle.** The
+`system-jobs-collection` regen wrote 12 rows to the recipe's canonical
+`/tmp/oracle-system-jobs-collection.ndjson` at 15:08 and the family ran green
+by name. At 15:16 a sibling lane in this round regenerated the SAME path with
+its own 11-row output, and the new `payload_array` arm silently vanished — the
+family's own case-count guard is what caught it at the unified gate (`expected
+12 cases to run, ran 11`). This is the memory note verbatim: *an earlier green
+by-name run is not evidence the fixture is still yours; check the mtime.* The
+lane's gate of record therefore reads
+`/tmp/p467-oracle-system-jobs-collection.ndjson`, a LANE-UNIQUE path; the
+committed recipe header keeps the canonical name, because the unifier runs
+lanes serially. The `query-param-semantics` NDJSON was verified untouched (98
+rows, 14 endpoints, mtime unchanged since its own regen).
+
+**P4.60's body-read census fired on the new `query.rs`.** `CLOSURE_CENSUS`'s
+needle is textual (`.as_str())`), and the reader's `first`/`all` map a
+`&String` off the URL pair list to `&str` — no JSON value, so no wrong-type
+collapse is possible. Rather than make the file invisible to the guard, the
+verdict is RECORDED as a census row carrying the count, so `query.rs` stays
+UNDER the census: a real body read landing there later moves the count and the
+guard fires. ⚠ `crates/quilltap-harness/tests/web_edge_body_parse_guard.rs` is
+not in any lane's ownership table this round; this lane edited it because this
+lane created the condition, and flags the touch for the unifier.

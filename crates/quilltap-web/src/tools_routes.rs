@@ -3,8 +3,6 @@
 //! SPA fetches it directly): query params `chatId` and `includeSchemas`
 //! (string-compared to `"true"`, exactly as v4 does).
 
-use std::collections::HashMap;
-
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -17,11 +15,11 @@ use crate::text_replacements_routes::{dispatch_core, error_to_http};
 /// `GET /api/v1/tools?chatId=…&includeSchemas=true`
 pub async fn tools_get(
     state: State<SharedState>,
-    query: Query<HashMap<String, String>>,
+    query: Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    let chat_id = query.0.get("chatId").cloned();
+    let chat_id = crate::query::first(&query.0, "chatId").map(str::to_string);
     // v4: `searchParams.get('includeSchemas') === 'true'`.
-    let include_schemas = query.0.get("includeSchemas").map(String::as_str) == Some("true");
+    let include_schemas = crate::query::first(&query.0, "includeSchemas") == Some("true");
     let req = CoreRequest::ToolsList {
         chat_id,
         include_schemas: Some(include_schemas),

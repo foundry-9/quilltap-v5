@@ -14,8 +14,6 @@
 //! - `GET  /api/v1/chats/{id}?action=cost[&detailed=true]`   → the cost breakdown (P4.6ao)
 //! - `GET/PUT /api/v1/settings/data-retention`               → `{staleChatDays}` (P4.56)
 
-use std::collections::HashMap;
-
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -109,9 +107,12 @@ pub async fn text_replacements_get(State(state): State<SharedState>) -> AxumResp
 
 pub async fn text_replacements_post(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let json_body: Value = if body.is_empty() {
         Value::Object(Default::default())
     } else {
@@ -286,8 +287,11 @@ pub async fn brahma_console_settings_put(
 pub async fn chat_get_background(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let req = match query.get("action").map(String::as_str) {
         Some("get-background") => CoreRequest::ChatGetBackground { chat_id: id },
         Some("cost") => CoreRequest::ChatGetCost {

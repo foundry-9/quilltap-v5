@@ -14,7 +14,6 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 
 use quilltap_core::db::doc_mount_blobs::DocMountBlobsRepository;
 use quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository;
@@ -50,7 +49,7 @@ fn scope_from_str(s: &str) -> DocEditScope {
 pub async fn qtap_target_get(
     State(state): State<SharedState>,
     Path(chat_id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
     let (db, _backend) = match db_and_backend(&state) {
         Ok(v) => v,
@@ -58,14 +57,17 @@ pub async fn qtap_target_get(
     };
 
     // v4 `querySchema`: filePath (min 1), scope enum default 'project', mountPoint?.
-    let Some(file_path) = query.get("filePath").filter(|s| !s.is_empty()).cloned() else {
+    let Some(file_path) = crate::query::first(&query, "filePath")
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+    else {
         return error_json(
             StatusCode::BAD_REQUEST,
             "Invalid query: filePath is required",
         );
     };
-    let scope = scope_from_str(query.get("scope").map(String::as_str).unwrap_or("project"));
-    let mount_point = query.get("mountPoint").cloned();
+    let scope = scope_from_str(crate::query::first(&query, "scope").unwrap_or("project"));
+    let mount_point = crate::query::first(&query, "mountPoint").map(str::to_string);
 
     let db = &db;
     let outcome: Result<Outcome, DbError> = db.read_main(move |main| {

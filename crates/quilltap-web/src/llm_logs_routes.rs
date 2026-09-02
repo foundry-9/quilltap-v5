@@ -11,8 +11,6 @@
 //! - `GET    /api/v1/system/image-aesthetics?kind=` → `{content}`
 //! - `PUT    /api/v1/system/image-aesthetics?kind=` → `{success: true}`
 
-use std::collections::HashMap;
-
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -46,8 +44,11 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
 
 pub async fn llm_logs_get(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let get = |k: &str| query.get(k).cloned();
     let req = CoreRequest::LlmLogsList {
         message_id: get("messageId"),
@@ -98,11 +99,13 @@ pub async fn llm_log_delete(
 
 pub async fn system_image_aesthetics_get(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
     // An absent `kind` reaches the handler as `''`, which fails its literal test
     // and answers v4's 400 — the same place v4's `parseAestheticKind` lands it.
-    let kind = query.get("kind").cloned().unwrap_or_default();
+    let kind = crate::query::first(&pairs, "kind")
+        .unwrap_or_default()
+        .to_string();
     match dispatch_core(&state, CoreRequest::SystemImageAestheticsGet { kind }).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
@@ -111,10 +114,12 @@ pub async fn system_image_aesthetics_get(
 
 pub async fn system_image_aesthetics_put(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let kind = query.get("kind").cloned().unwrap_or_default();
+    let kind = crate::query::first(&pairs, "kind")
+        .unwrap_or_default()
+        .to_string();
     // v4: `aestheticContentSchema.safeParse(await req.json().catch(() => ({})))
     //      .data?.content ?? ''`
     // — a malformed body, an absent `content`, and a NON-STRING `content` all

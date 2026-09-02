@@ -424,6 +424,54 @@ reading the source would not have told you.
 `image_generation_tier3_equivalence` grew 22 rows (four accepts, eighteen
 refusals) over a raw `toolInput` the case spec now carries; fourteen of them
 reddened against the pre-fix behavior, six tables each, before the fix landed.
+#### 2026-09-02 — fix(web): `?action=` and duplicate query keys answer as v4's readers do
+
+_Versions: web 0.0.104._
+
+P4.67, Tier 1 + Tier 2. Every v5 REST edge read its query through
+`Query<HashMap<String, String>>`, which keeps the **last** value of a repeated
+key and yields `Some("")` for a present-but-empty `?action=`. v4 reads
+`searchParams.get('action')` — the **first** value — and then gates on JS
+truthiness, so `''` is no action at all. No existing family sent either shape,
+so neither difference was visible anywhere.
+
+The new `crates/quilltap-web/src/query.rs` is the one home for the rule:
+`first` (v4 `searchParams.get`), `all` (`getAll`), `action` (the
+`withActionDispatch` gate, folding the JS-falsy empty string onto the no-action
+leg), `first_map` (the documented FIRST-wins adapter for routes whose every key
+is a `searchParams.get`), and v4's two refusal envelopes. There is deliberately
+no LAST-wins helper: `getQueryParamsWithoutAction` is exported from v4's
+middleware but has zero call sites at the baseline, so no v5 read mirrors it.
+
+Sixteen route files moved onto it. The behaviour that changed:
+
+- `custom-tools` (both collection verbs and the chat-scoped POST),
+  `mount-points/[id]`, and `embedding-profiles/[id]` now answer v4's
+  `withActionDispatch` envelopes — `{"error":"Unknown action: <x>",
+  "availableActions":[…]}` and `{"error":"Action parameter required",
+  "availableActions":[…]}` — instead of invented sentences, with
+  `availableActions` carrying v4's whole handler map in literal order.
+- `system/data-dir` POST likewise; its `?action=open` refusal is unchanged.
+- `system/tools` GET and POST gained v4's `. Available GET actions: …` /
+  `. Available POST actions: …` tail, and now render an ABSENT action as the
+  literal `null` v4 interpolates while `?action=` renders empty — v4
+  distinguishes the two and so does v5.
+- `user/profile` GET and PUT no longer refuse an unknown action: v4's gate is a
+  bare `if (action === 'theme-preference')` with no else-refusal, so every other
+  shape falls through to the profile read.
+- `?action=` now takes the same leg as an absent action on the chats
+  collection, the Brahma console PATCH, the custom-tools library and the
+  embedding-profile item — matching v4's `if (!action)`.
+
+The new `query_param_semantics_equivalence` family drives fourteen endpoints ×
+six query shapes against v4's real route modules through its real dispatch
+code. It compares dispatcher refusals across the trees byte-for-byte, and
+carries the default-leg rows as within-tree equalities (`fold`, `firstWins`,
+`emptyFirstWins`) because v4's no-action leg is a payload over its own
+database. Red-first: 79 of 98 rows failed before the fix. Two mutations pin it
+— removing the empty-string fold reddens 18 rows and nothing on the two routes
+where v4 deliberately does not fold; reading the last duplicate instead of the
+first reddens 33, all of them duplicate-key rows.
 
 #### 2026-09-02 — docs(driftcheck): v4 drifted ONE commit past `6d2a50382` (`303288fb4`, the Concierge state on the New Chat form) — PIN REQUIRED
 

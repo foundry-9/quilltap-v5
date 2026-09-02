@@ -73,38 +73,6 @@ fn parse_body(body: &str, on_bad_json: &str) -> Result<Value, Box<AxumResponse>>
         .map_err(|_| Box::new(error_json(StatusCode::INTERNAL_SERVER_ERROR, on_bad_json)))
 }
 
-/// v4 `withActionDispatch`'s unknown-action refusal, byte-shaped:
-/// `{"error":"Unknown action: <x>","availableActions":[…]}` 400 (plus v4's
-/// warn). v4's `if (action)` gate is JS truthiness, so a PRESENT-but-empty
-/// `?action=` falls through to the default handler exactly like an absent one
-/// — callers must route only a non-empty unknown action here (unify §3: the
-/// fallthrough used to serve the COLLECTION verb, so `POST ?action=bogus`
-/// could create an archetype where v4 refuses).
-pub(crate) fn unknown_action_response(
-    action: &str,
-    available: &[&str],
-    method: &str,
-    path: &str,
-) -> AxumResponse {
-    tracing::warn!(
-        action,
-        available_actions = ?available,
-        method,
-        path,
-        "Unknown action requested"
-    );
-    (
-        StatusCode::BAD_REQUEST,
-        [("content-type", "application/json")],
-        serde_json::json!({
-            "error": format!("Unknown action: {action}"),
-            "availableActions": available,
-        })
-        .to_string(),
-    )
-        .into_response()
-}
-
 // ===========================================================================
 // /api/v1/wardrobe
 // ===========================================================================
@@ -114,12 +82,20 @@ pub(crate) fn unknown_action_response(
 /// everything else is the archetype listing.
 pub async fn wardrobe_get(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let req = match query.get("action").map(String::as_str) {
         Some("instructions") => CoreRequest::WardrobeInstructionsGet,
         Some(other) if !other.is_empty() => {
-            return unknown_action_response(other, &["instructions"], "GET", "/api/v1/wardrobe")
+            return crate::query::unknown_action_response(
+                other,
+                &["instructions"],
+                "GET",
+                "/api/v1/wardrobe",
+            )
         }
         _ => CoreRequest::WardrobeList {
             include_archived: read_include_archived(&query),
@@ -133,12 +109,20 @@ pub async fn wardrobe_get(
 
 pub async fn wardrobe_post(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     if let Some(other) = query.get("action").map(String::as_str) {
         if other != "instructions" && !other.is_empty() {
-            return unknown_action_response(other, &["instructions"], "POST", "/api/v1/wardrobe");
+            return crate::query::unknown_action_response(
+                other,
+                &["instructions"],
+                "POST",
+                "/api/v1/wardrobe",
+            );
         }
     }
     if query.get("action").map(String::as_str) == Some("instructions") {
@@ -280,9 +264,12 @@ pub async fn wardrobe_analyze_image_post(
 pub async fn chat_action_get(
     state: State<SharedState>,
     path: Path<String>,
-    query: Query<HashMap<String, String>>,
+    query: Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    match query.0.get("action").map(String::as_str) {
+    // v4's chat GET is a plain `if (action === '…')` chain whose fallthrough is
+    // the full chat payload, so absent / `?action=` / unknown all delegate the
+    // same way here; only FIRST-wins had to change.
+    match crate::query::first(&query.0, "action") {
         Some("outfit") => {
             let req = CoreRequest::ChatOutfitGet { chat_id: path.0 };
             match dispatch_core(&state.0, req).await {
@@ -356,9 +343,12 @@ pub async fn chat_action_get(
 pub async fn chat_action_post(
     State(state): State<SharedState>,
     Path(chat_id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let req = match query.get("action").map(String::as_str) {
         Some("equip") => {
             let body = match parse_body(&body, "Failed to equip wardrobe slot") {

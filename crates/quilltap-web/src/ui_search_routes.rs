@@ -9,8 +9,6 @@
 //! dispatch and REST agree byte-for-byte. The JSON verb also rides
 //! `POST /api/dispatch`; this edge gives v4-URL parity for the SPA's SearchBar.
 
-use std::collections::HashMap;
-
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -22,8 +20,11 @@ use crate::text_replacements_routes::{dispatch_core, error_to_http};
 
 pub async fn ui_search_get(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let get = |k: &str| query.get(k).cloned();
     let req = CoreRequest::UiSearch {
         q: get("q"),

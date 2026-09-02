@@ -157,7 +157,11 @@ async fn mount_write_and_read_edges() {
     assert_eq!(body["destPath"], "raw/edge.md");
     assert!(body["sha256"].as_str().unwrap().len() == 64);
 
-    // A non-write-file action on this route gets the loud dispatch pointer.
+    // A v4-KNOWN action this edge does not serve gets v4's own dispatcher
+    // envelope (P4.67 — it used to get a v5-invented "…ride POST /api/dispatch"
+    // sentence). `availableActions` is v4's whole handler map in literal order,
+    // not the subset v5 dispatches; the byte-level pin is
+    // `query_param_semantics_equivalence`.
     let resp = client
         .post(format!(
             "http://{addr}/api/v1/mount-points/{db_id}?action=scan"
@@ -168,7 +172,21 @@ async fn mount_write_and_read_edges() {
         .unwrap();
     assert_eq!(resp.status(), 400);
     let body: Value = resp.json().await.unwrap();
-    assert!(body["error"].as_str().unwrap().contains("/api/dispatch"));
+    assert_eq!(body["error"], "Unknown action: scan");
+    assert_eq!(body["availableActions"][0], "scan");
+    assert_eq!(body["availableActions"][6], "write-file");
+    assert_eq!(body["availableActions"].as_array().unwrap().len(), 12);
+
+    // …and a request with NO action reaches the other envelope.
+    let resp = client
+        .post(format!("http://{addr}/api/v1/mount-points/{db_id}"))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error"], "Action parameter required");
 
     // --- the multipart blob upload (201) ---
     let form = reqwest::multipart::Form::new()

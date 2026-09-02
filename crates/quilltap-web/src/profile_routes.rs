@@ -22,8 +22,6 @@
 //!   than `set-avatar` — including an ABSENT one, which interpolates as the
 //!   literal `null` — is a 400 naming what is available.
 
-use std::collections::HashMap;
-
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -66,10 +64,14 @@ fn unported_action(action: &str, available: &str) -> AxumResponse {
     )
 }
 
-/// v4 reads `?action=` with `searchParams.get('action')`, which is `null` when
-/// absent — and v4 interpolates that `null` straight into its message.
-fn action_of(params: &HashMap<String, String>) -> Option<&str> {
-    params.get("action").map(String::as_str)
+/// v4 reads `?action=` with `searchParams.get('action')`: the FIRST value of a
+/// repeated key, `null` when absent — and v4 interpolates that `null` straight
+/// into its message. The empty string is PRESERVED here (not folded onto
+/// `None`) because `user_profile_patch` renders it: v4 answers `Unknown action:
+/// null` for an absent action and `Unknown action: ` for `?action=`, and the
+/// two must stay distinguishable.
+fn action_of(params: &crate::query::QueryPairs) -> Option<&str> {
+    crate::query::first(params, "action")
 }
 
 // ===========================================================================
@@ -78,11 +80,14 @@ fn action_of(params: &HashMap<String, String>) -> Option<&str> {
 
 pub async fn user_profile_get(
     State(state): State<SharedState>,
-    Query(params): Query<HashMap<String, String>>,
+    Query(params): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    // The theme-preference arm belongs to `theme.service`, not here.
-    if let Some(action) = action_of(&params) {
-        return unported_action(action, "(none)");
+    // The theme-preference arm belongs to `theme.service`, not here. v4's gate
+    // is a bare `if (action === 'theme-preference')` with NO else-refusal, so
+    // every other shape — absent, `?action=`, an unknown action — falls
+    // through to the profile read exactly as it does in v4.
+    if action_of(&params) == Some("theme-preference") {
+        return unported_action("theme-preference", "(none)");
     }
     match dispatch_core(&state, CoreRequest::UserProfileGet).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
@@ -92,11 +97,13 @@ pub async fn user_profile_get(
 
 pub async fn user_profile_put(
     State(state): State<SharedState>,
-    Query(params): Query<HashMap<String, String>>,
+    Query(params): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
-    if let Some(action) = action_of(&params) {
-        return unported_action(action, "(none)");
+    // As on the GET: v4 refuses nothing here, so only the named non-port arm
+    // answers; everything else falls through to the update.
+    if action_of(&params) == Some("theme-preference") {
+        return unported_action("theme-preference", "(none)");
     }
 
     // Decode through the Request itself so the absent / explicit-null / value
@@ -119,7 +126,7 @@ pub async fn user_profile_put(
 
 pub async fn user_profile_patch(
     State(state): State<SharedState>,
-    Query(params): Query<HashMap<String, String>>,
+    Query(params): Query<crate::query::QueryPairs>,
     body: String,
 ) -> AxumResponse {
     // v4 `route.ts:234-236`, verbatim — including the literal "null" an absent
@@ -167,8 +174,8 @@ pub async fn system_data_dir_get(State(state): State<SharedState>) -> AxumRespon
 /// `open`/`explorer`/`xdg-open`. v5 REFUSES, loudly and by name — a Tauri
 /// shell-open is a named future native nicety, and the HTTP deployment has no
 /// business opening a file browser on the server's desktop.
-pub async fn system_data_dir_post(Query(params): Query<HashMap<String, String>>) -> AxumResponse {
-    match action_of(&params) {
+pub async fn system_data_dir_post(Query(params): Query<crate::query::QueryPairs>) -> AxumResponse {
+    match crate::query::action(&params) {
         // The refusal's wording lives in the core (one source of truth) — this
         // edge only carries it out to HTTP.
         Some("open") => match quilltap_core::api::data_dir::not_available("open") {
@@ -178,6 +185,19 @@ pub async fn system_data_dir_post(Query(params): Query<HashMap<String, String>>)
                 "Unexpected core response",
             ),
         },
-        other => unported_action(other.unwrap_or("null"), "open"),
+        // v4 `withCollectionActionDispatch({ open: handleOpen })` passes NO
+        // default handler, so the middleware's own envelopes answer: a truthy
+        // unknown action gets `Unknown action: <x>` + `availableActions`, and
+        // absent — or the JS-falsy `?action=` — gets `Action parameter
+        // required` + the same list.
+        Some(other) => crate::query::unknown_action_response(
+            other,
+            &["open"],
+            "POST",
+            "/api/v1/system/data-dir",
+        ),
+        None => {
+            crate::query::action_required_response(&["open"], "POST", "/api/v1/system/data-dir")
+        }
     }
 }

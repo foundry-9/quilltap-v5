@@ -71,6 +71,10 @@ pub mod tools_routes;
 pub mod wardrobe_routes;
 // ── P4.9G4 ──
 pub mod qtap_routes;
+
+/// P4.67 — the shared query-parameter reader (FIRST / LAST / ALL + v4's
+/// `withActionDispatch` truthiness and its two refusal envelopes).
+mod query;
 // ── end P4.9G4 ──
 // === end P4.9f1 ===
 

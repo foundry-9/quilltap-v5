@@ -17,8 +17,6 @@
 //! - `GET    /api/v1/brahma-console/{id}/messages`       → `{ messages }`
 //! - `POST   /api/v1/brahma-console/{id}/messages`       → `{ messageId }`
 
-use std::collections::HashMap;
-
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -96,11 +94,13 @@ pub async fn brahma_console_item_get(
 pub async fn brahma_console_item_patch(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
     let parsed = parse_body(&body);
-    match query.get("action").map(String::as_str) {
+    // v4's gate is `if (!action) return handleRename(...)` — JS truthiness, so
+    // a present-but-empty `?action=` renames exactly like an absent one.
+    match crate::query::action(&query) {
         None => {
             // v4 `handleRename` parses `renameSchema` AFTER `verifyBrahmaChat`,
             // so the title rides raw and the dispatch arm refuses it in v4's

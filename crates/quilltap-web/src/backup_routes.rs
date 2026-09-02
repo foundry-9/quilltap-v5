@@ -29,7 +29,6 @@
 //! restore side's upload leg (unported) is the place that decision gets
 //! revisited if archives get large enough to matter.
 
-use std::collections::HashMap;
 use std::io::Write;
 
 use axum::extract::{Path as AxumPath, Query, State};
@@ -114,10 +113,13 @@ pub async fn system_backup_download(
 /// leg can stream it to disk; the two JSON actions collect it first.
 pub async fn system_restore_post(
     State(state): State<SharedState>,
-    Query(q): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     body: axum::body::Body,
 ) -> AxumResponse {
-    match q.get("action").map(String::as_str).unwrap_or("") {
+    // v4 `system/restore/route.ts` hand-rolls `if (action === 'upload')` /
+    // `'preview'` / else `handleRestore`, so absent, `?action=` and an unknown
+    // action all reach the restore leg; only FIRST-wins had to change.
+    match crate::query::first(&pairs, "action").unwrap_or("") {
         "upload" => handle_upload(&state, body).await,
         "preview" => {
             let Some(parsed) = collect_json(body).await else {

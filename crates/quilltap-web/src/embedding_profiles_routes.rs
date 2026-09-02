@@ -11,13 +11,11 @@
 //! - `GET/PUT/DELETE /api/v1/embedding-profiles/{id}` → get / updated / `{message}`.
 //! - `POST /api/v1/embedding-profiles/{id}?action=refit|reindex|reapply`.
 
-use std::collections::HashMap;
-
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
 use quilltap_core::api::{Request as CoreRequest, Response as CoreResponse};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::files_routes::error_json;
 use crate::state::SharedState;
@@ -82,18 +80,23 @@ fn parse_body_lenient(body: &axum::body::Bytes) -> Value {
 
 pub async fn collection_get(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    let req = match query.get("action").map(String::as_str) {
+    // v4 is a plain `if (action === '…')` chain whose fallthrough is the
+    // listing, so absent / `?action=` / unknown all list — `crate::query::action`
+    // only has to keep FIRST-wins and fold the empty string.
+    let req = match crate::query::action(&query) {
         Some("list-providers") => CoreRequest::EmbeddingProfileListProviders,
         Some("list-models") => CoreRequest::EmbeddingProfileListModels {
-            provider: query.get("provider").cloned(),
+            provider: crate::query::first(&query, "provider").map(str::to_string),
         },
         Some("fetch-models") => CoreRequest::EmbeddingProfileFetchModels {
             // v4 400s on a missing provider before the refusal, but the arm is a
             // loud refusal either way; carry the provider through if present.
-            provider: query.get("provider").cloned().unwrap_or_default(),
-            base_url: query.get("baseUrl").cloned(),
+            provider: crate::query::first(&query, "provider")
+                .unwrap_or_default()
+                .to_string(),
+            base_url: crate::query::first(&query, "baseUrl").map(str::to_string),
         },
         _ => CoreRequest::EmbeddingProfileList,
     };
@@ -168,11 +171,12 @@ pub async fn item_delete(State(state): State<SharedState>, Path(id): Path<String
 pub async fn item_post(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let available = json!(["refit", "reindex", "reapply"]);
-    let req = match query.get("action").map(String::as_str) {
+    const AVAILABLE: &[&str] = &["refit", "reindex", "reapply"];
+    const PATH: &str = "/api/v1/embedding-profiles/[id]";
+    let req = match crate::query::action(&query) {
         // v4's refit/reapply handlers never read the body; only reindex parses
         // it, leniently (see `parse_body_lenient`).
         Some("refit") => CoreRequest::EmbeddingProfileRefit { profile_id: id },
@@ -188,23 +192,12 @@ pub async fn item_post(
         }
         Some("reapply") => CoreRequest::EmbeddingProfileReapply { profile_id: id },
         // v4 `withActionDispatch`: unknown action / missing action → 400 with the
-        // dispatcher's exact sentence + availableActions.
-        Some(other) => return (
-            StatusCode::BAD_REQUEST,
-            [("content-type", "application/json")],
-            json!({ "error": format!("Unknown action: {other}"), "availableActions": available })
-                .to_string(),
-        )
-            .into_response(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                [("content-type", "application/json")],
-                json!({ "error": "Action parameter required", "availableActions": available })
-                    .to_string(),
-            )
-                .into_response()
+        // dispatcher's exact sentence + availableActions. `?action=` is JS-falsy,
+        // so `crate::query::action` has already folded it onto `None` here.
+        Some(other) => {
+            return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
         }
+        None => return crate::query::action_required_response(AVAILABLE, "POST", PATH),
     };
     match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),

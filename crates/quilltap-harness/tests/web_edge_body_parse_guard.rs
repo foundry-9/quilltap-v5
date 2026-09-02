@@ -177,10 +177,21 @@ const NEEDLE: &str = "and_then(Value::as_";
 const CLOSURE_NEEDLE: &str = ".as_str())";
 
 /// `(routes file, expected closure-form sites, the adjudication)`.
-const CLOSURE_CENSUS: &[(&str, usize, &str)] = &[(
-    "crates/quilltap-web/src/files_routes.rs",
-    5,
-    "ADJUDICATED (P4.62), down from SEVEN: `content` and `encoding` on the \
+const CLOSURE_CENSUS: &[(&str, usize, &str)] = &[
+    (
+        "crates/quilltap-web/src/query.rs",
+        2,
+        "NOT a body read — the only two sites are the shared query reader's \
+         `first` and `all` (P4.67), which map a `&String` from the URL pair \
+         list to `&str`. There is no JSON value here, so no type can collapse: \
+         a query parameter is a string or it is absent, full stop. The row \
+         exists so the file stays UNDER the census — if a real body read ever \
+         lands in it, the count moves and this guard fires.",
+    ),
+    (
+        "crates/quilltap-web/src/files_routes.rs",
+        5,
+        "ADJUDICATED (P4.62), down from SEVEN: `content` and `encoding` on the \
      mount-file write left the needle entirely when they moved into \
      `parse_mount_write_body` (wired above). Of the five that remain, TWO are \
      the 201-vs-200 `createdAt`/`updatedAt` pick — FAITHFUL entity reads off \
@@ -196,7 +207,8 @@ const CLOSURE_CENSUS: &[(&str, usize, &str)] = &[(
      closing it needs `Request::FileUpload.tags` widened past `Vec<String>` in \
      `quilltap-core/src/api/types.rs`). Arms: \
      `files_body_guards_equivalence`.",
-)];
+    ),
+];
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

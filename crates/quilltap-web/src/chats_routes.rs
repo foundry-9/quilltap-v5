@@ -16,8 +16,6 @@
 //! they were never part of this lane and have no v5 REST edge today; the SPA
 //! reaches them through `/api/dispatch`.
 
-use std::collections::HashMap;
-
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -33,9 +31,11 @@ const CHAT_GET_ACTIONS: &[&str] = &["has-dangerous"];
 
 pub async fn chats_collection_get(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    match query.get("action").map(String::as_str) {
+    // v4's gate is `if (!action) return handleList(...)` — JS truthiness, so a
+    // present-but-empty `?action=` lists exactly like an absent one.
+    match crate::query::action(&query) {
         Some("has-dangerous") => {
             match dispatch_core(&state, CoreRequest::ChatsHasDangerous).await {
                 Ok(CoreResponse::ChatsHasDangerous(v)) => (
@@ -67,8 +67,7 @@ pub async fn chats_collection_get(
         // `limit && limit > 0` is then false — `None` here (unification
         // review, 2026-09-02); `includeAutonomous` is a strict `=== 'true'`.
         None => {
-            let exclude_tag_ids = query
-                .get("excludeTagIds")
+            let exclude_tag_ids = crate::query::first(&query, "excludeTagIds")
                 .map(|s| {
                     s.split(',')
                         .filter(|p| !p.is_empty())
@@ -76,12 +75,12 @@ pub async fn chats_collection_get(
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            let limit = query.get("limit").and_then(|s| {
+            let limit = crate::query::first(&query, "limit").and_then(|s| {
                 let n = quilltap_core::api::llm_logs::js_parse_int_10(s);
                 n.is_finite().then_some(n as i64)
             });
             let include_autonomous =
-                query.get("includeAutonomous").map(String::as_str) == Some("true");
+                crate::query::first(&query, "includeAutonomous") == Some("true");
             let req = CoreRequest::ListChats {
                 exclude_tag_ids,
                 limit,

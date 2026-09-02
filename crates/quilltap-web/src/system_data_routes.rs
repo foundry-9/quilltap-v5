@@ -15,8 +15,6 @@
 //! The export/import/backup/restore edges (streaming NDJSON, multipart, byte
 //! legs) land in the sibling P4.9G4 / P4.9G5 lanes.
 
-use std::collections::HashMap;
-
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -60,6 +58,51 @@ async fn dispatch_system(
         Ok(resp) => system_body(resp, status),
         Err(r) => r,
     }
+}
+
+/// v4 `TOOLS_GET_ACTIONS` / `TOOLS_POST_ACTIONS` (`app/api/v1/system/tools/
+/// route.ts`) — the whole lists, and the source of the 400's tail. v5 does not
+/// serve `capabilities-report-progress` (GET) or `ai-import-stream` (POST);
+/// they stay in the tail because the tail is v4's `join(', ')` over the
+/// CONSTANT, not over what this edge dispatches.
+const TOOLS_GET_ACTIONS: &[&str] = &[
+    "tasks-queue",
+    "job-concurrency",
+    "delete-data-preview",
+    "export-entities",
+    "export-preview",
+    "capabilities-report-list",
+    "capabilities-report-progress",
+    "capabilities-report-get",
+    "memory-dedup-preview",
+];
+
+const TOOLS_POST_ACTIONS: &[&str] = &[
+    "delete-data",
+    "tasks-queue",
+    "job-concurrency",
+    "export",
+    "import-preview",
+    "import-execute",
+    "capabilities-report-generate",
+    "capabilities-report-delete",
+    "memory-dedup",
+    "ai-import-stream",
+];
+
+/// v4's `system/tools` refusal: `isValidAction` with NO `!action` carve-out, so
+/// an ABSENT action reaches the same sentence and interpolates as the literal
+/// `null` — while `?action=` interpolates as the empty string. The two must
+/// stay distinguishable, which is why this takes `Option`.
+fn tools_unknown_action(action: Option<&str>, verb: &str, available: &[&str]) -> AxumResponse {
+    error_json(
+        StatusCode::BAD_REQUEST,
+        &format!(
+            "Unknown action: {}. Available {verb} actions: {}",
+            action.unwrap_or("null"),
+            available.join(", ")
+        ),
+    )
 }
 
 fn unknown_action(action: &str) -> AxumResponse {
@@ -204,10 +247,12 @@ async fn dispatch_memory_maintenance(state: &SharedState, req: CoreRequest) -> A
 
 pub async fn system_tools_get(
     State(state): State<SharedState>,
-    Query(q): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    let action = q.get("action").map(String::as_str).unwrap_or("");
-    match action {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins.
+    let q = crate::query::first_map(&pairs);
+    let action = crate::query::first(&pairs, "action");
+    match action.unwrap_or("") {
         "tasks-queue" => {
             dispatch_system(&state, CoreRequest::SystemTasksQueue, StatusCode::OK).await
         }
@@ -330,7 +375,7 @@ pub async fn system_tools_get(
                 .map(|s| s.parse::<f64>().unwrap_or(f64::NAN));
             dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupPreview { threshold }).await
         }
-        other => unknown_action(other),
+        _ => tools_unknown_action(action, "GET", TOOLS_GET_ACTIONS),
     }
 }
 
@@ -338,13 +383,15 @@ pub async fn system_tools_get(
 
 pub async fn system_tools_post(
     State(state): State<SharedState>,
-    Query(q): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     // P4.9G4: the import legs need the raw headers so they can re-drive the
     // multipart parser over the buffered body (v4 branches on `content-type`).
     headers: axum::http::HeaderMap,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let action = q.get("action").map(String::as_str).unwrap_or("");
+    // `action` is the only key this verb reads off the URL (every other value
+    // comes out of the body); v4 reads it with `searchParams.get` — FIRST wins.
+    let action = crate::query::first(&pairs, "action");
     // v4 reads the body with `await req.json()` INSIDE each handler's own try,
     // so a malformed body is not a 400 — it escapes to that handler's catch as
     // a 500 carrying the leg's own sentence. `job-concurrency` alone survives
@@ -353,7 +400,7 @@ pub async fn system_tools_post(
     // way; `Value::Null` would have collapsed the two.
     let parsed: Option<Value> = serde_json::from_slice(&body).ok();
     let body_or_null = parsed.clone().unwrap_or(Value::Null);
-    match action {
+    match action.unwrap_or("") {
         "tasks-queue" => {
             let Some(parsed) = parsed.as_ref() else {
                 return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to control queue");
@@ -497,7 +544,7 @@ pub async fn system_tools_post(
             let threshold = parsed.get("threshold").and_then(Value::as_f64);
             dispatch_memory_maintenance(&state, CoreRequest::MemoryDedupRun { threshold }).await
         }
-        other => unknown_action(other),
+        _ => tools_unknown_action(action, "POST", TOOLS_POST_ACTIONS),
     }
 }
 
@@ -508,8 +555,11 @@ pub async fn system_tools_post(
 
 pub async fn system_conversation_summaries_get(
     State(state): State<SharedState>,
-    Query(q): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let q = crate::query::first_map(&pairs);
     if q.get("action").map(String::as_str) != Some("regenerate") {
         return error_json(StatusCode::BAD_REQUEST, "Unknown or missing action.");
     }
@@ -518,8 +568,11 @@ pub async fn system_conversation_summaries_get(
 
 pub async fn system_conversation_summaries_post(
     State(state): State<SharedState>,
-    Query(q): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let q = crate::query::first_map(&pairs);
     if q.get("action").map(String::as_str) != Some("regenerate") {
         return error_json(StatusCode::BAD_REQUEST, "Unknown or missing action.");
     }
@@ -550,8 +603,11 @@ pub async fn system_job_delete(
 pub async fn system_job_post(
     State(state): State<SharedState>,
     Path(job_id): Path<String>,
-    Query(q): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let q = crate::query::first_map(&pairs);
     let action = q.get("action").cloned().unwrap_or_default();
     dispatch_system(
         &state,
@@ -610,8 +666,11 @@ fn db_and_pump(state: &SharedState) -> Result<(Db, Arc<dyn JobPumpControl>), Box
 /// `ensureProcessorRunning()` first; here that is the pump's idempotent `start`.
 pub async fn system_jobs_collection_get(
     State(state): State<SharedState>,
-    Query(q): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let q = crate::query::first_map(&pairs);
     let (db, pump) = match db_and_pump(&state) {
         Ok(v) => v,
         Err(r) => return *r,
@@ -685,9 +744,12 @@ pub async fn system_jobs_collection_post(
 /// they get no REST alias in this lane and answer `unknown_action` here.
 pub async fn system_unlock_post(
     State(state): State<SharedState>,
-    Query(q): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let q = crate::query::first_map(&pairs);
     // [P4.62] v4's POST gates in three steps, in this order
     // (`system/unlock/route.ts:75-119`): an ABSENT action gets its own long
     // sentence naming all five, an unrecognized one gets `Unknown action: X`,

@@ -7,8 +7,6 @@
 //! - `GET  /api/v1/chats/{id}/custom-tools`            → `{tools, errors, droppedForCap?}`
 //! - `POST /api/v1/chats/{id}/custom-tools?action=run` → `{messages, result}`
 
-use std::collections::HashMap;
-
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -50,16 +48,20 @@ pub async fn custom_tools_get(
 pub async fn custom_tools_post(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    // v4: `POST` is `withActionDispatch({ run: handleRun })` — only `?action=run`
-    // is served; anything else is not a valid action.
-    if query.get("action").map(String::as_str) != Some("run") {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            "Only the run action is served on this route",
-        );
+    // v4: `POST` is `withActionDispatch({ run: handleRun })` with NO default
+    // handler, so the middleware answers its own two envelopes — a
+    // present-but-empty `?action=` is JS-falsy and lands on the no-action leg.
+    const AVAILABLE: &[&str] = &["run"];
+    const PATH: &str = "/api/v1/chats/[id]/custom-tools";
+    match crate::query::action(&query) {
+        Some("run") => {}
+        Some(other) => {
+            return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
+        }
+        None => return crate::query::action_required_response(AVAILABLE, "POST", PATH),
     }
     let json_body: Value = if body.is_empty() {
         Value::Object(Default::default())
@@ -126,15 +128,19 @@ fn workbench_unwrap(resp: CoreResponse) -> AxumResponse {
 /// `GET /api/v1/custom-tools` (the library) and `?action=destinations`.
 pub async fn workbench_get(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    let req = match query.get("action").map(String::as_str) {
+    // v4 `withCollectionActionDispatch({destinations}, handleLibrary)` — the
+    // library IS the default handler, so absent AND `?action=` both list it.
+    let req = match crate::query::action(&query) {
         Some("destinations") => CoreRequest::CustomToolsDestinations,
         None => CoreRequest::CustomToolsLibrary,
-        Some(_) => {
-            return error_json(
-                StatusCode::BAD_REQUEST,
-                "Only the destinations action is served on this route",
+        Some(other) => {
+            return crate::query::unknown_action_response(
+                other,
+                &["destinations"],
+                "GET",
+                "/api/v1/custom-tools",
             )
         }
     };
@@ -147,15 +153,18 @@ pub async fn workbench_get(
 /// `POST /api/v1/custom-tools?action=preview` / `?action=audit`.
 pub async fn workbench_post(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    let action = query.get("action").map(String::as_str);
-    if !matches!(action, Some("preview") | Some("audit")) {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            "Only the preview and audit actions are served on this route",
-        );
+    const AVAILABLE: &[&str] = &["preview", "audit"];
+    const PATH: &str = "/api/v1/custom-tools";
+    let action = crate::query::action(&query);
+    match action {
+        Some("preview") | Some("audit") => {}
+        Some(other) => {
+            return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
+        }
+        None => return crate::query::action_required_response(AVAILABLE, "POST", PATH),
     }
 
     // v4 `parseBody`: `await req.json()` throwing is the ONLY arm handled here.

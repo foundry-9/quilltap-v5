@@ -14,8 +14,6 @@
 //!   not on `/api/dispatch`: the avatar re-seed needs the host pixel codec,
 //!   which (like every codec-needing leg) is wired at the web edge.
 
-use std::collections::HashMap;
-
 use axum::extract::{Path, Query, Request, State};
 use axum::http::{header::CONTENT_TYPE, StatusCode};
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -307,8 +305,11 @@ where
 pub async fn characters_action_post(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     use quilltap_core::api::Request as CoreRequest;
 
     let req = match query.get("action").map(String::as_str) {
@@ -355,8 +356,11 @@ pub async fn characters_action_post(
 pub async fn characters_wardrobe_get(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     // v4 `b86bb1a5` puts the dressing-instructions read on the SAME collection
     // route behind `?action=instructions` (`withActionDispatch`). The POST half
     // has no REST edge here because v5 never registered `.post` on this path —
@@ -367,7 +371,7 @@ pub async fn characters_wardrobe_get(
             quilltap_core::api::Request::CharacterWardrobeInstructionsGet { character_id: id }
         }
         Some(other) if !other.is_empty() => {
-            return crate::wardrobe_routes::unknown_action_response(
+            return crate::query::unknown_action_response(
                 other,
                 &["instructions"],
                 "GET",
@@ -409,8 +413,11 @@ pub async fn characters_wardrobe_get(
 pub async fn characters_get(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let (db, backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
@@ -509,9 +516,12 @@ fn resolve_character(db: &Db, id: &str) -> Result<Option<Value>, quilltap_core::
 /// the SPA's dispatch `character_import` path; this route is the multipart leg.
 pub async fn characters_import_post(
     State(state): State<SharedState>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     req: Request,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let (db, _backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,

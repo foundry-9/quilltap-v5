@@ -52,9 +52,7 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
 /// `searchParams.has(k) ? Number(searchParams.get(k)) : undefined`, over the
 /// repeat-preserving pair list. `has`/`get` read the FIRST occurrence.
 fn number_param(pairs: &[(String, String)], key: &str) -> Option<f64> {
-    pairs
-        .iter()
-        .find(|(k, _)| k == key)
+    crate::query::first(pairs, key)
         // §3 of the consult-wire round: the local `js_number` twin retired at
         // unification in favour of the canonical `jsnum::number_from_str`
         // (lane P4.6bd lifted it; both lanes recorded this rider). The
@@ -62,21 +60,7 @@ fn number_param(pairs: &[(String, String)], key: &str) -> Option<f64> {
         // JS takes no sign on a radix literal, so `Number('+0x10')` is NaN,
         // where the twin returned 16. NaN is a VALUE here, not a failure — v4
         // hands it to Zod, which produces its own message.
-        .map(|(_, v)| quilltap_core::jsnum::number_from_str(v))
-}
-
-/// `searchParams.get(k)` — the first occurrence, or absent.
-fn string_param(pairs: &[(String, String)], key: &str) -> Option<String> {
-    pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
-}
-
-/// `searchParams.getAll(k)` — every occurrence, in order.
-fn all_params(pairs: &[(String, String)], key: &str) -> Vec<String> {
-    pairs
-        .iter()
-        .filter(|(k, _)| k == key)
-        .map(|(_, v)| v.clone())
-        .collect()
+        .map(quilltap_core::jsnum::number_from_str)
 }
 
 // ===========================================================================
@@ -85,11 +69,14 @@ fn all_params(pairs: &[(String, String)], key: &str) -> Vec<String> {
 
 pub async fn photos_list(
     State(state): State<SharedState>,
-    Query(pairs): Query<Vec<(String, String)>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    let tag = all_params(&pairs, "tag");
+    let tag: Vec<String> = crate::query::all(&pairs, "tag")
+        .into_iter()
+        .map(str::to_string)
+        .collect();
     let req = CoreRequest::PhotoGalleryList {
-        q: string_param(&pairs, "q"),
+        q: crate::query::first(&pairs, "q").map(str::to_string),
         // v4: `rawTags.length > 0 ? rawTags : undefined`.
         tag: if tag.is_empty() { None } else { Some(tag) },
         limit: number_param(&pairs, "limit"),

@@ -17,8 +17,6 @@
 //! `X-File-Sha256`/`X-Blob-Sha256` hashes. No Range support (v4 has none).
 //! Themes assets/fonts + `characters/{id}/photos` are P4.4 deferrals.
 
-use std::collections::HashMap;
-
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response as AxumResponse};
@@ -197,8 +195,11 @@ pub async fn files_proxy(
 pub async fn files_get(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let (db, backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
@@ -302,9 +303,12 @@ pub async fn files_get(
 pub async fn mount_file_get(
     State(state): State<SharedState>,
     Path((id, path)): Path<(String, String)>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     headers: HeaderMap,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let query = crate::query::first_map(&pairs);
     let (db, _backend) = match db_and_backend(&state) {
         Ok(v) => v,
         Err(resp) => return *resp,
@@ -800,15 +804,36 @@ pub async fn mount_file_put(
 pub async fn mount_point_action_post(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
+    Query(query): Query<crate::query::QueryPairs>,
     req: axum::extract::Request,
 ) -> AxumResponse {
-    let action = query.get("action").map(String::as_str).unwrap_or("");
-    if action != "write-file" {
-        return error_json(
-            StatusCode::BAD_REQUEST,
-            "Only the multipart 'write-file' action is served on this route; JSON mount actions ride POST /api/dispatch",
-        );
+    // v4 is `withActionDispatch({...twelve...})` with NO default handler, so the
+    // middleware's own two envelopes answer every shape this edge does not
+    // serve. `availableActions` is v4's `Object.keys(actions)` — the whole map
+    // in literal order, NOT the subset v5 dispatches: the eleven JSON actions
+    // ride `POST /api/dispatch`, and narrowing the list here would answer a
+    // question v4 never asked.
+    const AVAILABLE: &[&str] = &[
+        "scan",
+        "convert",
+        "deconvert",
+        "move-file",
+        "copy-file",
+        "link-file",
+        "write-file",
+        "delete-file",
+        "delete-folder",
+        "move-folder",
+        "reindex",
+        "embed",
+    ];
+    const PATH: &str = "/api/v1/mount-points/[id]";
+    match crate::query::action(&query) {
+        Some("write-file") => {}
+        Some(other) => {
+            return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
+        }
+        None => return crate::query::action_required_response(AVAILABLE, "POST", PATH),
     }
     let content_type = req
         .headers()
@@ -995,9 +1020,12 @@ pub async fn files_upload_post(
 pub async fn chat_files_post(
     State(state): State<SharedState>,
     Path(chat_id): Path<String>,
-    Query(params): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
     req: axum::extract::Request,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let params = crate::query::first_map(&pairs);
     // P4.9E4A: v4's `?action=attach-mount-file` leg (files/route.ts:250). The
     // two fields are read as raw JSON and coerced to `""` when absent or
     // non-string, because v4's validation is hand-rolled (`!v || typeof v !==
@@ -1110,8 +1138,11 @@ pub async fn chat_files_post(
 pub async fn files_delete(
     State(state): State<SharedState>,
     Path(id): Path<String>,
-    Query(params): Query<HashMap<String, String>>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
+    // so the pair list collapses to the map the rest of the handler expects.
+    let params = crate::query::first_map(&pairs);
     let core_req = CoreRequest::FileDelete {
         file_id: id,
         force: params.get("force").map(String::as_str) == Some("true"),
