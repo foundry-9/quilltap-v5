@@ -13,6 +13,7 @@ import { CoreClient } from '../../core/core-client';
 import type { ProjectSummary } from '../../core/core-contract';
 import { Modal } from '../../ui/modal';
 import { ToastService } from '../../ui/toast.service';
+import { FolderPicker } from './folder-picker';
 
 const GENERAL_FILES_VALUE = '__general__';
 
@@ -20,13 +21,13 @@ const GENERAL_FILES_VALUE = '__general__';
  * Move a general file into a project (or back to General Files) (v4
  * `components/files/MoveToProjectModal.tsx`). Lists the user's projects (minus
  * the current one), lets the operator pick a destination + a target folder path,
- * and promotes via `filePromote`. The rich `FolderPicker` is deferred (P4.6af
- * tier 3) — a plain folder-path field stands in.
+ * and promotes via `filePromote`. The folder is chosen with the real
+ * `qt-folder-picker` (v4's `FolderPicker`, in its bug-113-fixed shape).
  */
 @Component({
   selector: 'qt-move-to-project-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal],
+  imports: [FolderPicker, Modal],
   template: `
     <qt-modal [title]="modalTitle()" maxWidth="lg" (close)="close.emit()">
       <div class="space-y-4">
@@ -66,14 +67,11 @@ const GENERAL_FILES_VALUE = '__general__';
         @if (selectedProjectId() && !isGeneralFilesSelected()) {
           <div>
             <label for="move-folder" class="qt-label mb-2">Folder</label>
-            <input
-              id="move-folder"
-              type="text"
-              class="qt-input w-full font-mono"
-              placeholder="/"
+            <qt-folder-picker
               [value]="folderPath()"
+              [projectId]="selectedProjectId()"
               [disabled]="saving()"
-              (input)="folderPath.set($any($event.target).value)"
+              (valueChange)="folderPath.set($event)"
             />
           </div>
         }

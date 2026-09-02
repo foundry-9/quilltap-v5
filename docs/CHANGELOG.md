@@ -622,6 +622,36 @@ Shared contract §B of the round: the same predicate lands server-side as
 `concierge_state_uses_uncensored_route`, and each side is pinned by its own
 transcription of v4's truth table. The parity spec grows v4's new
 `conciergeStateUsesUncensoredRoute` block, TABLE row for row.
+#### 2026-09-02 — feat(files): the Move-to-Project folder picker over the project's real folders (v4 bug 113)
+
+_Versions: SPA 0.5.617._
+
+Port of v4 `a00e18f0d`. The Move to Project dialog's Folder field was a
+free-text path input standing in for v4's `FolderPicker`, deferred at P4.6af
+tier 3. It is now the real picker: a `qt-folder-picker` component whose
+dropdown lists Root, the destination project's DB folders, and every folder
+implied by a file's `folderPath` (each ancestor included), sorted by path,
+each row carrying its file count and a two-non-breaking-space indent per
+level below the first — ordinary spaces are collapsed by `<option>`.
+
+The list is a `computed` over the two queries, rendered directly. v4's
+pre-fix version mirrored it into component state behind an "only if empty"
+guard; because Root is seeded before any data is consulted, the still-loading
+first render satisfied the guard and sealed the mirror against every later
+update, including a change of destination. v5 never carried that latch — it
+had no picker at all — so this lands v4's post-fix shape rather than a diff,
+and the parity specs pin the re-derivation either way.
+
+The create-folder affordance comes with it: a successful create refetches the
+folder list (a snapshot copy could not contain the folder just created), and
+a failed one falls back to a local entry scoped to the project it was created
+under, so switching destinations drops it rather than offering a folder that
+belongs somewhere else.
+
+Four parity specs transcribed 1:1 from v4's `FolderPicker.test.tsx`, plus a
+whole-label byte-equality arm v4's corpus lacks: v4 asserts the nested indent
+with `toContain`, which a wider indent also satisfies, so dropping its
+`depth - 1` leaves all four of v4's cases green.
 
 #### 2026-09-02 — docs(orders): the `6d2a50382` drift catch-up round — five work orders (P4.D143–P4.D147)
 
