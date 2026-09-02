@@ -99225,3 +99225,120 @@ is `pub` for one harness family, with its doc saying why.
 ### Cleanup
 
 Performed after the fast-forward: the five lane worktrees removed and their branches deleted with the temp branch, the `.git/info/attributes` union rule removed, the `/tmp` oracle NDJSONs / fixture mirrors / sweep and gate logs / the four Playwright logs removed, no debug servers left running; disk reclaimed as reported in the unification message.
+
+## Dogfood pass — the `6d2a50382` drift catch-up round, 2026-09-02
+
+Agent-driven, on the standing Friday copy (`~/qt-dogfood-friday`). Walk doc:
+`dogfood-walks/2026-09-02-concierge-marks-folders-pass.md`.
+**22 rows, 22 PASS, ZERO v5 defects, and all six of the round's 💸 items
+discharged.** The drift ledger's §2 probe **passed** at walk start (v4 `main`
+at `6d2a50382`, tree clean, both logs empty, §3 empty), so nothing here had the
+"it may be the drift" excuse and every regen rule stayed pin-free.
+
+**The pre-walk measurement reshaped two steps and improved one (ledger §5.5).**
+`folders` held **24** rows, not P4.D145's 607: v4 ran its **own**
+`collapse-duplicate-folders-v1` on the real instance at
+`2026-09-02T11:55:11.796Z` (`4.9.0-dev.115`), *"Collapsed 583 duplicate folder
+rows into 24 folders"* — **exactly the 607/24/583 shape the lane measured**, a
+free cross-implementation agreement with
+`folders_collapse_heal_equivalence`'s Friday scenario. The banked "watch v5
+heal 583 rows" proof was therefore dead, and was replaced by a stronger pair:
+v5 **booted against v4's already-healed database** — no collapse line, `folders`
+still 24, `migrations_state` still holding **only v4's row, byte-unchanged**
+(v5's port deliberately writes none) — and then **collapsed a planted set**
+(3 duplicate `/reports/` + 1 project-scoped `/Gary/`, index dropped, plus a
+child whose `parentFolderId` named a row destined for deletion):
+`scanned=30 surviving=26 deleted=4 repointed=1`, the child repointed onto the
+**survivor**, oldest-`createdAt` winning on both the NULL and
+`COALESCE(projectId,'')` legs, the unique index recreated, and **still no ledger
+row**. The index's enforcement was confirmed separately —
+`UNIQUE constraint failed: index 'idx_folders_userId_projectId_path'`, the exact
+driver message `db/sqlite_errors.rs` parses. Likewise **zero projects carried a
+retired `backgroundDisplayMode`**, so that subject was planted too.
+
+**Concierge marks + quick-hide, proven to the row.** The Salon list rendered
+**73 Flagged / 10 Vouched Safe / 2 Uncensored** over 799 cards — matching the
+DB-derived counts exactly, with all Monitored chats bare — and all four §A
+payloads carry `conciergeState` + `dangerCategories` (`listChats` 799,
+`projectChatList` 20, `characterChats` 10, home Recent Chats by DOM). Turning
+**Hide Dangerous Chats** on took the list 799 → **724**, exactly −75, leaving
+only the ten Vouched marks; ⭐ **all three `OFF` + `isDangerousChat=1` chats
+survived** (*Holding Hands Over Cold Tea*, *The Blue-White Ultimatum*, *The
+Amber Singularity*) — the pre-fix raw-label rule would have hidden them, which
+is `c43d3b1b4`'s whole point. The footer's **third arm was isolated**:
+`localStorage` held no hidden-tag key and no `hideDangerous` key at first open,
+so arms 1 and 2 were false and only the live `chatsHasDangerous` probe could
+have kept the section visible — without P4.D144's unification flip it would
+have hidden the only way to turn the filter on. Mark, header pill and sidebar
+all read the presentation table with zero string drift, and clicking the 4×12 px
+asterisk still opened the chat (v4's case the §3 review rescued from a comment).
+
+**The enqueue guard closed as a same-chat A/B.** *Chat with Vault Test Harness*
+on cheap DeepSeek: Monitored turn → `messageCount` 6→9, **1**
+`CHAT_DANGER_CLASSIFICATION` job. Flipped to Uncensored (label preserved at
+`isDangerousChat=0`, `dangerClassifiedAtMessageCount` still 6) → turn →
+`messageCount` 10→12, jobs **still 1** over 48 s. Both other guards held open,
+so `is_classifier_on_duty` is provably the only thing that blocked it.
+
+**Absent participants, on three real chats.** *The Weight of the Plumb Line*:
+the figure payload held **exactly** Friday/Amy/Charlie while `Scene context`
+correctly narrated *"Jackie and Ariel have left"* — so both absent names were in
+the prompt text, the precise condition that would have handed the pre-fix
+back-fill their portraits, and **neither got an appearance line**. *Warmth,
+Resentment, and the Return* proved both arms at once: **Ariel (silent) IN**,
+**Charlie (absent) OUT**. With both characters set Absent, the refusal was
+byte-exact — `No characters present in chat to generate background for.` —
+matching `story-background.ts:50` and `70505745a`'s own rewording hunk. Bonus:
+the system message measured **5,114** chars, the concealed variant, matching
+P4.D94's recorded count.
+
+**The folder picker, over real folders and a planted one.** Four projects'
+option lists matched the DB exactly (7 / 2 / 1 / **0**, each + Root), re-derived
+on every switch. ⭐ Real data supplied the nested case for free —
+*Quilltap Plans*' `/Foundry-9/Quilltap/` renders with lead code points
+**`[160, 160, 9492]`**, the two-U+00A0 indent — and a live create of
+`/Dogfood/Nested/` on a zero-folder project produced **both** it and its derived
+ancestor, auto-selected, with the same bytes. Re-creating the same path returned
+the **same two ids** (total unmoved, zero duplicate identity groups anywhere) —
+the seven-site `ensure_by_path` cutover, invisible to every sequential
+differential, proven through the UI. A Root move persisted `folderPath = "/"`.
+Deleting *Church*'s `/character-avatars/` **row** while leaving its 8 files left
+the picker still offering `└ character-avatars (8 files)` — the implied-folder
+branch with the DB row genuinely absent.
+
+**Three §3-review fixes were proven live**, each against the shape that would
+have broken: `?limit=1abc` → exactly **1** of 799 (the `parseInt` **prefix**
+parse), a genuinely *paused* offline query falling through to Root rather than
+"Loading…" forever (`isLoading`, not `isPending`), and the toast reading
+`Background set to latest chat background` rather than `… undefined`
+(`modeLabels` exhaustiveness). The narrowed schema refuses `project`, `static`
+and `bogus` with v4's `Validation error` envelope while `theme` succeeds, and a
+project **planted** with the retired `"project"` still **loads**, reads back
+`'theme'`, and keeps the retired value on disk — a read coerces, it does not
+rewrite.
+
+**Three corrections, none of them app bugs**, are in the walk's Findings and in
+`dogfood-findings.md` → Standing notes: the plan's mark-scope expectation was
+too narrow (the mark draws for all three non-Monitored states); the plan's
+enqueue contrast was invalid (a Flagged chat is **sticky, never re-checked**, so
+it can never be the positive arm — and the three conditions that gate the
+enqueue are not visible on screen); and the standing "store-overlay properties
+cannot be SQL-seeded" note is too strong — the plant works when
+`contentSha256`/`plainTextLength` **and** the file row's
+`sha256`/`fileSizeBytes` move with the content.
+
+**Deferred with a recipe:** Pascal's **group** tier (owed since 2026-08-26).
+The instance's only effects-bearing tool targets the character-vault metadata
+tier already proven. Reaching group state needs two conditions together, and
+the first is the trap: `pascal/side_effects.rs` searches **chat → project →
+group** for a key that **already exists**, so a new key lands in chat state and
+never reaches the group tier — it must be **pre-seeded via `groupStateSet`** —
+and the chat must satisfy the exactly-one rule (`groupTier.status == "single"`)
+against one of the instance's two groups. Still owed beyond that: the
+re-measured 90 s/120 s compression row, the Brahma deep query, dedup/summaries,
+the NanoGPT caching cost question (#101), and the LoRA wire-byte look (blocked —
+`wire-tap.py` cannot tap HTTPS).
+
+One record correction: drift-ledger §1 calls `6d2a50382` v4 `4.9.0-dev.113`;
+the commit's own `package.json` says **`4.9.0-dev.115`** (origin/main is not
+ahead, so the verdict stands).

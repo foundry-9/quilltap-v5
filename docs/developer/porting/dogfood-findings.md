@@ -591,6 +591,38 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **A store-overlay property CAN be SQL-seeded — the standing "it is silently
+  invisible" note is too strong (2026-09-02, the `6d2a50382` walk, C4).** A
+  naive `UPDATE doc_mount_documents SET content=…` really is ignored, which is
+  where the old note came from. The plant becomes fully visible to the overlay
+  when the *four* integrity fields move with it: `contentSha256` and
+  `plainTextLength` on `doc_mount_documents`, **and** `sha256` and
+  `fileSizeBytes` on `doc_mount_files`. This is how the walk posed a
+  retired-`backgroundDisplayMode` project that real data no longer contained.
+  Useful whenever a walk needs a data shape v4 has already migrated away.
+
+- **A banked 💸 proof over damaged rows can be replaced by a BETTER pair, not
+  just lost (2026-09-02).** P4.D145's "watch v5 collapse 583 duplicate folder
+  rows" expired — v4 ran its own bug-114 migration on the real instance hours
+  before the copy was taken. What replaced it is stronger: (a) v5 booting
+  against a database another implementation has already healed, honouring the
+  index and writing **no** ledger row of its own — a cross-app hazard only real
+  data can pose — and (b) a *planted* duplicate set, which can carry shapes the
+  natural data never did (a child `parentFolderId` naming a row destined for
+  deletion, so the repoint leg is exercised, and a project-scoped duplicate for
+  the `COALESCE(projectId,'')` leg). **When ledger §5.5 kills a proof, ask what
+  the healed state now makes provable** before writing the item off.
+
+- **Three conditions gate the danger-classification enqueue, and only one is
+  visible on screen (2026-09-02, B6/B6b).** Picking a chat for the "a job IS
+  enqueued" arm needs: genuinely **Monitored** (not Flagged — `isDangerousChat
+  === true` is **sticky, never re-checked**), `dangerClassifiedAtMessageCount
+  != messageCount`, and a non-empty `contextSummary`. The walk's first attempt
+  used a Flagged chat and read its correct silence as a candidate defect. The
+  same three conditions are what make the *negative* arm meaningful: flip that
+  chat to Uncensored and both other guards stay open, so `is_classifier_on_duty`
+  is provably the only thing that blocked it.
+
 - **Findings #106 and #107 both need orders (2026-08-29), and #107 suggests a
   sweep.** #107 is the **third** instance of "an Angular custom-element host
   with no CSS rule is `display: inline` and constrains nothing" — after

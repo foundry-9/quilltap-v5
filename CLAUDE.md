@@ -2656,11 +2656,53 @@ records THERE. Update this summary only when a phase or round completes.
   click-passthrough case transcribed. The activated D144 beat's first live
   run caught its own seeding reading `data.chats` off an array response.
   Gate: 33/33 families fresh at the new baseline zero SKIP; 484 test binaries / 2,694 / 0 zero SKIP; clippy both feature sets; release build; ng 376 files / 5,883; full Playwright **268/0/1** (the standing store-probe park). Versions: core 0.0.750, harness 0.0.642,
-  web 0.0.103, host 0.0.92, SPA 0.5.623; cli/tauri unchanged. 💸 the
-  dogfood queue gains the real 607-row collapse, the marks + hide deltas +
-  footer probe, the enqueue guard on a real Uncensored chat, the
-  absent-participant gate, a real retired-mode project, the picker over real
-  folders. Round record: `status-log.md`.
+  web 0.0.103, host 0.0.92, SPA 0.5.623; cli/tauri unchanged. 💸 **ALL SIX
+  items DISCHARGED by the 2026-09-02 dogfood pass** (below). Round record:
+  `status-log.md`.
+- **The `6d2a50382`-round dogfood pass RAN (2026-09-02, agent-driven, on the
+  Friday copy) — 22 rows, 22 PASS, ZERO v5 defects, and the round's whole 💸
+  queue discharged.** Walk doc:
+  `dogfood-walks/2026-09-02-concierge-marks-folders-pass.md`; record in
+  `status-log.md`. The ledger's §2 probe **passed** at walk start, so no step
+  had the "it may be the drift" excuse. **The pre-walk measurement killed one
+  banked proof and bought two better ones (ledger §5.5):** `folders` held **24**
+  rows, not P4.D145's 607 — v4 ran its **own** bug-114 collapse hours earlier
+  (`583 → 24`, *exactly* the shape `folders_collapse_heal_equivalence`'s Friday
+  scenario asserts, a free cross-implementation agreement). So v5 was proven
+  instead by (a) booting on v4's healed DB writing **nothing** — the ledger
+  still holds only v4's row, byte-unchanged, which is the port's deliberate
+  no-ledger-row design meeting a real cross-app ledger — and (b) collapsing a
+  **planted** set (`scanned=30 surviving=26 deleted=4 repointed=1`) whose child
+  `parentFolderId` was repointed onto the **survivor**, oldest-`createdAt`
+  winning on both the NULL and `COALESCE(projectId,'')` legs. **Proven on real
+  data:** the Salon's **73 Flagged / 10 Vouched / 2 Uncensored** marks matching
+  the DB row for row across all four §A payloads; the hide delta **799 → 724,
+  exactly −75**, with ⭐ **all three `OFF`+`isDangerousChat=1` chats surviving**
+  (the pre-fix raw-label rule would have hidden them — `c43d3b1b4`'s whole
+  point); the footer's **third arm isolated** (no hidden-tag key and no
+  `hideDangerous` key at first open, so only the live `chatsHasDangerous` probe
+  could keep the section visible); the enqueue guard as a **same-chat A/B** with
+  both other guards held open; the absent-participant gate on three chats
+  (payload filtered, scene context intact, **back-fill side door closed**,
+  silent counts as present, nobody-present refusing byte-exact); and the folder
+  picker's four option lists matching the DB exactly, with real data supplying
+  the nested `[160, 160, 9492]` indent for free and a re-create returning the
+  **same ids** (the `ensure_by_path` cutover, invisible to every sequential
+  differential). **Three §3-review fixes proven live:** `?limit=1abc` → exactly
+  1 of 799 (`parseInt` PREFIX parse), a paused offline query falling through to
+  Root (`isLoading`), and the `modeLabels` toast reading a real label. **Three
+  corrections, none an app bug** (walk Findings + `dogfood-findings.md` Standing
+  notes): the mark draws for **all three** non-Monitored states; a Flagged chat
+  is **sticky, never re-checked**, so it cannot be the enqueue positive arm; and
+  the standing "store-overlay properties cannot be SQL-seeded" note is too
+  strong — the plant works when `contentSha256`/`plainTextLength` **and** the
+  file row's `sha256`/`fileSizeBytes` move with the content (that is how the
+  retired-mode project, absent from real data, was posed). **Deferred with its
+  recipe:** Pascal's **group** tier — the effects cascade searches chat →
+  project → group for a key that **already exists**, so it must be pre-seeded
+  via `groupStateSet`, and the chat must satisfy `groupTier.status == "single"`.
+  Still owed: the re-measured 90 s/120 s compression row, the Brahma deep query,
+  dedup/summaries, #101, and the LoRA wire-byte look (blocked).
 - **Oracle baseline: `6d2a50382` (2026-09-02, v4 main — the Concierge
   state-view version bump), adopted at the `6d2a50382` drift catch-up round
   unification (2026-09-02); the ledger's §3 is EMPTY.**

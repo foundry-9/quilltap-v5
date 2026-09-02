@@ -20,7 +20,9 @@ _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
 - **Oracle baseline:** `6d2a50382` — "docs(update): version bump for
-  Concierge state view changes" (v4 main, 2026-09-02, v4 `4.9.0-dev.113`),
+  Concierge state view changes" (v4 main, 2026-09-02, v4 `4.9.0-dev.115` — the commit's own
+  `package.json`; an earlier `dev.113` here was a slip, corrected at the
+  2026-09-02 dogfood pass),
   adopted at the `6d2a50382` drift catch-up round unification (P4.D143 ∥
   P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147, 2026-09-02).
 - **Checked:** 2026-09-02 (at the unification — the §2 probe re-run against
