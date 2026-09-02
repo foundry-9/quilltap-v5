@@ -99957,3 +99957,33 @@ rewritten (finding 2 above).
 - **The Tauri shell** needs no answer by construction: it is bare metal, so
   `is_vm_environment()` is false and `resolve_injected_gateway()` returns `None`
   without resolving or logging — the same silence v4 has. Recorded, not built.
+
+### Unit 4 — the recipe, corrected
+
+The family's first regen recipe hard-coded this lane's pinned worktree. The
+sweep driver refuses that by name (`stale_v4_pin_path`) and is right to — a
+`/tmp` pin does not outlive its round. Recipes always say
+`cd ~/source/quilltap-server`; the pin is the DRIVER's job
+(`recipe_sweep.py --run <family> --v4 "$PIN"` rewrites that line). The
+requirement moved into prose at the `//!` margin, in BOTH headers, since the
+driver falls back to the `.test.ts` one.
+
+`--show` is now clean and `--run host_gateway_equivalence --v4 <pin>` was run
+end to end: the `cd` is rewritten to the pin, the oracle regenerates to the
+same 57 rows, the family passes. Changed-bytes greps on that fresh NDJSON:
+`host.docker.internal` x10, `Host gateway from QUILLTAP_HOST_IP` x20,
+`Docker environment detected` x10, `Rewrote localhost URL` x30 — and
+`Could not resolve host gateway` **x0**, which is the unreachability finding
+confirmed empirically rather than by reading v4.
+
+A caution banked with it: the first draft silently LOST its
+`git worktree add` line in extraction while keeping the `ln -sfn` beside it,
+so the recipe would have `cd`-ed into a directory nothing created. A family
+being green proves the oracle you built by hand is good — not that the recipe
+can rebuild it. `--show` every NEW header.
+
+**One order correction, recorded honestly.** Tier-2 deliverable 6 names
+`model/provider_models_api.rs` as the model-listing injection site. That module
+has no base URL at all — it is pure request-shape plus response parsing, and
+the caller joins the base. The actual seam is `WireModelsFetcher` in
+`api/provider_actions.rs`, which is where the injection went.

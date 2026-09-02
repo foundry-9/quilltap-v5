@@ -37,7 +37,10 @@
  * what the corpus pins.
  *
  * Run (Node 24, from the v4 checkout — copied to a /tmp mirror; jest ignores
- * `.claude/` venues):
+ * `.claude/` venues). While v4 HEAD is past the oracle baseline, drive this
+ * through `recipe_sweep.py --run host_gateway_equivalence --v4 "$PIN"`, which
+ * rewrites the `cd` below to a pinned worktree; the recipe names no pin of its
+ * own on purpose (a /tmp pin does not outlive its round):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   TMPO=/tmp/qt-host-gateway-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"

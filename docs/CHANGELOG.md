@@ -170,6 +170,29 @@ picked as the user's speaker where v4 skips it. Consolidated, with a unit pin
 on v4's rule that reddens if the old arm returns. `parse_sys_status` is left
 alone and documented: v4's `buildOtherParticipantsInfo` never parses at all, and
 mapping unknown to `None` reproduces its `=== 'removed'` skip exactly.
+#### 2026-09-02 — fix(harness): the host-gateway recipe names no /tmp pin
+
+_Versions: harness 0.0.645._
+
+The new family's regen recipe was written during a PIN REQUIRED round and
+hard-coded the lane's pinned worktree (`PIN=/tmp/qt-v4-pin-p471-6d2a50382` +
+`cd "$PIN"`). The sweep driver refuses that — `stale_v4_pin_path` — and is
+right to: a `/tmp` pin does not outlive the round that made it, so the recipe
+would be dead by the next sweep. Recipes say `cd ~/source/quilltap-server`; the
+pin is the driver's job, applied by `--v4 "$PIN"`, which rewrites that line.
+
+The pin requirement moved into prose at the `//!` margin, where it is not
+extracted, in both the `.rs` header and the `.test.ts` one (they have to agree
+— the driver falls back to the case file's header). Verified by `--show` and
+then by an end-to-end `--run host_gateway_equivalence --v4 <pin>`: the `cd` is
+rewritten to the pin, the oracle regenerates to the same 57 rows, and the
+family passes.
+
+The first draft also silently lost its `git worktree add` line in extraction
+while keeping the `ln -sfn` beside it, so the recipe would have `cd`-ed into a
+directory nothing created — a reminder that a family being green proves the
+oracle you built by hand is good, not that the recipe can rebuild it.
+
 #### 2026-09-02 — feat(host): inject the resolved host gateway at every provider construction site
 
 _Versions: core 0.0.752, harness 0.0.644, host 0.0.94._

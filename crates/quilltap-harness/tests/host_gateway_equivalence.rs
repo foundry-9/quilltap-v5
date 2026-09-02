@@ -24,18 +24,20 @@
 //! rows are compared as "the first call's lines, then the debug line alone".
 //!
 //! Regenerate the oracle (Node 24; jest ignores `.claude/` venues, so the case
-//! is copied to a /tmp mirror. v4 HEAD is past the baseline, so this runs from
-//! a pinned worktree — drift-ledger 5.1):
+//! is copied to a /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
-//!   PIN=/tmp/qt-v4-pin-p471-6d2a50382
-//!   git -C ~/source/quilltap-server worktree add --detach "$PIN" 6d2a50382 || true
-//!   ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
 //!   TMPO=/tmp/qt-host-gateway-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
 //!   cp "$V5W/harness/oracle/cases/host-gateway.test.ts" "$TMPO/cases/"
-//!   cd "$PIN"
+//!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-host-gateway.ndjson \
 //!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" -- host-gateway
+//!
+//! While v4 HEAD is past the oracle baseline, regenerate through the sweep
+//! driver with a pinned worktree — `python3 harness/tools/recipe_sweep.py --run
+//! host_gateway_equivalence --v4 "$PIN"` — which rewrites the `cd` above. The
+//! recipe deliberately names no pin: a `/tmp` pin does not outlive the round
+//! that made it (the driver's own `stale_v4_pin_path` refusal).
 //!
 //! Run:
 //!   QT_ORACLE_HOST_GATEWAY=/tmp/oracle-host-gateway.ndjson \
