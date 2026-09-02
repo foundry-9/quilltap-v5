@@ -20,36 +20,42 @@ _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
 - **Oracle baseline:** `6d2a50382` — "docs(update): version bump for
-  Concierge state view changes" (v4 main, 2026-09-02, v4 `4.9.0-dev.115` — the commit's own
-  `package.json`; an earlier `dev.113` here was a slip, corrected at the
-  2026-09-02 dogfood pass),
+  Concierge state view changes" (v4 main, 2026-09-02, v4 `4.9.0-dev.115`),
   adopted at the `6d2a50382` drift catch-up round unification (P4.D143 ∥
   P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147, 2026-09-02).
-- **Checked:** 2026-09-02 (at the unification — the §2 probe re-run against
-  the new baseline: branch `main`, tree clean, both logs empty).
-- **v4 `main` HEAD at check:** `6d2a50382` — **ZERO commits past the
-  baseline.**
-- **v4 `bugfix` tip at check:** `3a76b17df` — unmoved since the 2026-08-27
-  content measurement (the bare 4.8.4 fork marker; its long `main..bugfix`
-  list is the squash-topology lie, §4 step 2).
+- **Checked:** 2026-09-02 (evening — the `/driftcheck` the five follow-ups
+  lanes STOPped on: each lane's §2 probe found `git log 6d2a50382..main`
+  non-empty and reported, as ordered).
+- **v4 `main` HEAD at check:** `303288fb4` — "Choose the Concierge state on
+  the New Chat form" (2026-09-02 14:25 -0500, v4 `4.9.0-dev.116`) — **ONE
+  commit past the baseline.** `origin/main` is not ahead of `main`.
+- **v4 `bugfix` tip at check:** `3a76b17df` — unmoved (the bare 4.8.4 fork
+  marker; its `main..bugfix` content list is the squash-topology lie, §4
+  step 2 — the five rows it shows are the 4.8.x items absorbed long ago).
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
 - **Checkout at check:** branch `main`, **tree CLEAN**.
-- **Verdict: DRIFT CLEARED — 0 commits past the baseline; §3 is EMPTY.**
-  The four PORT rows are ABSORBED and the two NO-PORT? rows RATIFIED (§6).
-- **Regen rule in force: NO PIN NEEDED** — v4 HEAD IS the baseline and the
-  checkout is clean, so a regen from the checkout imports exactly the
-  baseline's lib. The moment either fact changes, §5.1's pinned worktree at
-  `6d2a50382` becomes required.
+- **Verdict: DRIFT PENDING — 1 commit past the baseline; §3 holds ONE
+  UNPROCESSED PORT-NEW row** (`303288fb4`). Not a convergence (v4's
+  `docs/developer/bugs.md` is untouched by the commit).
+- **Regen rule in force: PIN REQUIRED** — v4 HEAD is past the baseline, so
+  every oracle/fixture regen runs from §5.1's pinned detached worktree at
+  **`6d2a50382`** (lane-unique path, three symlink classes), through the
+  sweep driver with `--v4 "$PIN"`. A regen from the bare checkout would
+  import `303288fb4`'s chat-create route + greeting ladder and red the
+  `chat_create_capstone` / `initial_greeting` families for reasons that are
+  v4 drift, not v5 bugs.
+- **The five in-flight follow-ups lanes (P4.67–P4.71) resume against THIS
+  §1:** their probe now expects `main` at `303288fb4`, tree clean, and
+  `git log 303288fb4..main` empty; none of them owns the drift's surfaces
+  (`services/chat_create.rs`, the SPA `screens/new-chat/**`, the
+  `chat_create_capstone` / `initial_greeting` families), so the row is
+  UNPROCESSED for a catch-up order, not folded into a running lane.
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
   fork; v4 develops on `main` alone. Keep probing BOTH branches.
-- _Superseded (the 2026-09-02 setupphase verdict): DRIFT PENDING — 6
-  commits past `4622411fd`, all ORDERED._
-- _Read by `/setupphase` 2026-09-02 (the follow-ups round, P4.67 ∥ P4.68 ∥
-  P4.69 ∥ P4.70 ∥ P4.71): the §2 probe PASSED against this §1 (branch
-  `main`, tree clean, both logs empty); §3 EMPTY, so no row was marked
-  ORDERED — a NON-drift round; every order's preamble carries this regen
-  rule (NO PIN NEEDED, flipping to §5.1 the moment a lane's own probe
-  fails)._
+- _Superseded (the 2026-09-02 unification verdict): DRIFT CLEARED — 0
+  commits past `6d2a50382`, §3 EMPTY, NO PIN NEEDED. The 2026-09-02
+  `/setupphase` read (the follow-ups round) happened under that verdict;
+  every order's preamble carries the flip clause and a dated drift line._
 
 ## §2 The freshness probe
 
@@ -89,7 +95,7 @@ when absorbed/ratified.
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
 
-_(empty — every row absorbed or ratified at the `6d2a50382` round unification, 2026-09-02; see §6)_
+| `303288fb4` | 2026-09-02 | Choose the Concierge state on the New Chat form | **PORT-NEW** | **Server:** `app/api/v1/chats/route.ts` (244 lines changed) + the NEW `__tests__/unit/app/api/v1/chats/route.concierge-state.test.ts` (444 lines): `createChatSchema` gains `conciergeState: z.enum(['monitored','flagged','vouched','uncensored']).optional()`; NEW `applyRequestedConciergeState` (no-op on absent/`'monitored'`; else `progress.status('Briefing the Concierge…')` → the P4.D141 `applyConciergeFlip` chokepoint + a `[Chats v1] Applied Concierge state at creation` debug) called at ALL THREE create branches immediately after `writeSystemPromptMessage` and before scenario/staff/greeting; the `createInitialMessages` wrapper DELETED (both call sites now write the prompt themselves); `autoGenerateFirstMessage` reads the fresh chat row and gains "attempt 0" — `shouldUseUncensoredRoute(chatRow)` → the NEW `generateViaUncensoredDesk(trigger)` closure (resolver asked WITH the chat: Vouched → `OFF` never reroutes, Uncensored reroutes under a global `OFF`); the content-filter attempt 3 now reuses the closure and SKIPS when attempt 0 ran (`uncensoredDeskTried`); five log lines (two new `trigger` fields, one new "unavailable or empty" info, one new "attempt failed" warn). `orchestrator.service.ts`: comment only. → v5 `services/chat_create.rs` (`write_system_prompt_message` `:989`, `create_initial_messages_scenario_and_staff` `:1011`, `auto_generate_first_message` `:1390` — the P4.4 unit-2 chat-create port + the P4.D44 flatten seam), `api/types.rs` `ChatCreate` (`:381`), `services/dangerous_content/manual_flip.rs` `apply_concierge_flip` (P4.D141 — today's ONLY production caller is the chat PUT), the danger resolver's chat-aware arm (P4.D141/P4.D143). Families: `chat_create_capstone_equivalence` (19 cases), `initial_greeting_equivalence`, `first_message_context_equivalence`, the danger-resolver/manual-flip families. **SPA:** `NewChatForm.tsx` (the dropdown above Starting Scenario — two optgroups, `Monitored (default)`, helper `detail` from `CONCIERGE_STATE_PRESENTATION`, the `hint` deliberately NOT shown), `useNewChat.ts` (`conciergeState` OMITTED from the POST body when `'monitored'` — a plain create stays byte-identical), `types.ts` (`conciergeState: ConciergeState`, default `'monitored'`), `NewChatModal.tsx` + `new-chat-provider.tsx` (`initialConciergeState` prop), `SalonView.tsx:1730` (Continue Elsewhere seeds it from `getConciergeState(chat)`), two client test files (the scenario test now reaches its select by id because the form has two). → v5 `screens/new-chat/{new-chat-form, new-chat.state, new-chat.logic, new-chat.types}.ts` (the P4.9 New-Chat vertical + the P4.D44 template picker), the Continue Elsewhere dialog (P4.9E3), `chat/concierge-state-presentation.ts` (P4.D144's ONE table — the `detail` sentences already there). **Help:** `help/chats.md` (+15, "A Word With the Concierge, Before the Doors Open"), `help/dangerous-content.md` (two sentences) → the `p4.9i2` bank. **Docs/infra (NO-PORT):** `API.md`, the feature design doc `docs/developer/features/complete/concierge-default-at-creation.md` (read it — §3 "Wire contract", §4 "Applying the state", §5 "Greeting routing"), `releases/4.9.0.md`, `README.md`, `scripts/concierge-four-state-test.sh` CT-3, `.claude/commands/update-documentation.md`, `package-lock.json`. No schema / migration / export-schema / backup change (the commit's own claim, CONFIRMED by the file list — no `generateDDL`, no D23 re-dump). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

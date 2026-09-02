@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(driftcheck): v4 drifted ONE commit past `6d2a50382` (`303288fb4`, the Concierge state on the New Chat form) — PIN REQUIRED
+
+_Docs-only change._
+
+The five follow-ups lanes stopped on their §2 probe as ordered; this check
+records why. v4 `main` is at `303288fb4` (`4.9.0-dev.116`): a PORT-NEW row
+— `conciergeState` on `POST /api/v1/chats` applied through
+`applyConciergeFlip` right after the system-prompt message, the greeting
+ladder's new "attempt 0" on the uncensored desk for Flagged/Uncensored
+chats (Vouched never rerouted), the New Chat form's Concierge dropdown,
+Continue Elsewhere seeding it — with the intersection mapped onto
+`services/chat_create.rs`, `manual_flip.rs`, the `chat_create_capstone` /
+`initial_greeting` families and the SPA `screens/new-chat/**`. The
+ledger's §1 is rewritten (regen rule PIN REQUIRED at `6d2a50382`); each of
+the five orders gains a dated drift line so the lanes resume against the
+new §1. No lane owns the drift's surfaces; the catch-up is the next
+`/setupphase` candidate.
+
 #### 2026-09-02 — docs(setupphase): the follow-ups round ordered (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71)
 
 _Docs-only change._
