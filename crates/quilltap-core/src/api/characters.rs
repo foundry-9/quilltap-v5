@@ -38,6 +38,7 @@ use crate::db::{
 use crate::photos::resolve_character_avatar::resolve_character_avatar;
 use crate::services::aesthetics::DEPICTION_GUIDELINES_FILENAME;
 use crate::services::character_enrichment;
+use crate::services::dangerous_content::chat_override::get_concierge_state;
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_instructions::{
@@ -681,7 +682,14 @@ pub fn character_chats(
                 _ => Value::Null,
             };
 
-            let is_dangerous = chat.get("isDangerousChat").and_then(Value::as_bool) == Some(true);
+            // v4 `c43d3b1b4`: the conversations row carries the DERIVED state
+            // and the classifier's categories, never the raw label.
+            let concierge_state = get_concierge_state(Some(chat)).as_str();
+            let danger_categories = chat
+                .get("dangerCategories")
+                .filter(|v| v.is_array())
+                .cloned()
+                .unwrap_or_else(|| json!([]));
 
             enriched.push(json!({
                 "id": chat.get("id").cloned().unwrap_or(Value::Null),
@@ -694,7 +702,8 @@ pub fn character_chats(
                 "storyBackground": story_background,
                 "messages": recent_messages,
                 "tags": tag_data,
-                "isDangerousChat": is_dangerous,
+                "conciergeState": concierge_state,
+                "dangerCategories": danger_categories,
                 "_count": { "messages": message_count, "memories": memory_count },
                 "scriptoriumStatus": scriptorium_status,
             }));

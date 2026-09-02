@@ -265,6 +265,7 @@ fn projects_routes_match_oracle() {
 
     let check = |name: &str, got: &Value, blank: bool, failed: &mut Vec<String>| {
         let want = &oracle[name]["body"];
+        let got = &background_mode_pending_p4d146(name, got, want, failed);
         let (g, w) = if blank {
             (norm_blanked(got), norm_blanked(want))
         } else {
@@ -381,6 +382,46 @@ fn projects_routes_match_oracle() {
         );
         check(
             "list_chats_activity_fallback",
+            &response_data(&projects::project_chat_list(&db, IOTA, None, None)),
+            false,
+            &mut failed,
+        );
+    }
+    // P4.D143 (v4 `c43d3b1b4`): the project chats row carries the DERIVED
+    // `conciergeState` + `dangerCategories`, never the raw label. Both project
+    // chats painted at once — Chat A Vouched over a TRUE label, Chat B
+    // Uncensored over a FALSE one — plus a Flagged pass with categories, the
+    // labels set the wrong way round on the operator rows so a leaked
+    // `isDangerousChat` would be visibly wrong. `list_chats` above is the
+    // Monitored arm. Mirrors the oracle's raw UPDATEs exactly.
+    {
+        let db = fresh_db(&spec, "lcos");
+        mutate(
+            &db,
+            r#"UPDATE "chats" SET "conciergeOverride" = ?1, "isDangerousChat" = 1 WHERE "id" = ?2"#,
+            vec!["OFF".into(), CHAT_A.into()],
+        );
+        mutate(
+            &db,
+            r#"UPDATE "chats" SET "conciergeOverride" = ?1, "isDangerousChat" = 0 WHERE "id" = ?2"#,
+            vec!["UNCENSORED".into(), CHAT_B.into()],
+        );
+        check(
+            "list_chats_operator_states",
+            &response_data(&projects::project_chat_list(&db, IOTA, None, None)),
+            false,
+            &mut failed,
+        );
+    }
+    {
+        let db = fresh_db(&spec, "lcfc");
+        mutate(
+            &db,
+            r#"UPDATE "chats" SET "isDangerousChat" = 1, "dangerCategories" = ?1 WHERE "id" = ?2"#,
+            vec![r#"["Violence","Substance Use"]"#.into(), CHAT_A.into()],
+        );
+        check(
+            "list_chats_flagged_categories",
             &response_data(&projects::project_chat_list(&db, IOTA, None, None)),
             false,
             &mut failed,
@@ -1134,4 +1175,104 @@ fn projects_routes_match_oracle() {
     }
 
     assert!(failed.is_empty(), "projects-routes FAILED: {failed:?}");
+}
+
+/// **`BACKGROUND_MODE_PENDING_P4D146` — a named, shape-asserted tripwire, NOT a
+/// normalizer.**
+///
+/// This lane (P4.D143) regenerates its oracles from the pin `c43d3b1b4`, which
+/// has v4's `70505745a` as an ancestor. That commit — P4.D146's row, not this
+/// lane's — retires the `'project'` and `'static'` project background display
+/// modes and coerces a stored retired value to `'theme'` on every read. The
+/// committed `groups-projects` fixture seeds project Iota with
+/// `backgroundDisplayMode: 'project'` + a `storyBackgroundImageId`, so five of
+/// this family's cases move under the pin while P4.D146's port is still on its
+/// own branch. §D of the round's shared contract: measure the shape first, mask
+/// it BY NAME with a shape assertion, and let the unifier delete this function
+/// once both lanes sit on one branch and the oracle is regenerated at the new
+/// baseline.
+///
+/// The measured shape is exactly two keys, and nothing else:
+///   - the four project-read payloads (`list`, `get_iota`,
+///     `update_unknown_key_stripped`, `update_clear_description`) answer
+///     `backgroundDisplayMode: "project"` in v5 and `"theme"` in v4;
+///   - `background_iota` answers the seeded file URL in v5 and `null` in v4, and
+///     echoes `displayMode: "project"` where v4 now echoes `"theme"` (v4
+///     stopped serving a retired mode's picture and reports the coerced mode).
+/// Anything else — a different case, a different pair of values — falls through
+/// unmasked and reddens the family, which is the tripwire firing.
+fn background_mode_pending_p4d146(
+    name: &str,
+    got: &Value,
+    want: &Value,
+    failed: &mut Vec<String>,
+) -> Value {
+    const MODE_CASES: &[&str] = &[
+        "list",
+        "get_iota",
+        "update_unknown_key_stripped",
+        "update_clear_description",
+    ];
+    let mut out = got.clone();
+    if MODE_CASES.contains(&name) {
+        let mut patched = 0usize;
+        patch_background_mode(&mut out, want, &mut patched);
+        if patched == 0 {
+            eprintln!(
+                "[{name}] BACKGROUND_MODE_PENDING_P4D146: expected a \
+                 'project' -> 'theme' pair to mask and found none — the \
+                 divergence changed shape, or P4.D146 has landed and this \
+                 tripwire must be deleted."
+            );
+            failed.push(format!("{name}_backgroundModeTripwire"));
+        }
+    }
+    if name == "background_iota" {
+        let g = out.get("backgroundUrl").cloned().unwrap_or(Value::Null);
+        let w = want.get("backgroundUrl").cloned().unwrap_or(Value::Null);
+        let gm = out.get("displayMode").and_then(Value::as_str);
+        let wm = want.get("displayMode").and_then(Value::as_str);
+        if g.is_string() && w.is_null() && gm == Some("project") && wm == Some("theme") {
+            out["backgroundUrl"] = Value::Null;
+            out["displayMode"] = Value::String("theme".into());
+        } else {
+            eprintln!(
+                "[{name}] BACKGROUND_MODE_PENDING_P4D146: expected a \
+                 url -> null + 'project' -> 'theme' pair to mask and found \
+                 {g:?} -> {w:?} / {gm:?} -> {wm:?} — the \
+                 divergence changed shape, or P4.D146 has landed and this \
+                 tripwire must be deleted."
+            );
+            failed.push(format!("{name}_backgroundModeTripwire"));
+        }
+    }
+    out
+}
+
+/// Rewrite every `backgroundDisplayMode: "project"` in `got` to `"theme"`, but
+/// ONLY where the oracle at the same path says `"theme"` — so the mask cannot
+/// paper over a value pair it was not written for.
+fn patch_background_mode(got: &mut Value, want: &Value, patched: &mut usize) {
+    match (got, want) {
+        (Value::Object(g), Value::Object(w)) => {
+            for (k, gv) in g.iter_mut() {
+                let Some(wv) = w.get(k) else { continue };
+                if k == "backgroundDisplayMode"
+                    && gv.as_str() == Some("project")
+                    && wv.as_str() == Some("theme")
+                {
+                    *gv = Value::String("theme".into());
+                    *patched += 1;
+                } else {
+                    patch_background_mode(gv, wv, patched);
+                }
+            }
+        }
+        (Value::Array(g), Value::Array(w)) => {
+            for (gv, wv) in g.iter_mut().zip(w.iter()) {
+                patch_background_mode(gv, wv, patched);
+            }
+        }
+        _ => {}
+    }
 }

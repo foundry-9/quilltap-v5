@@ -335,6 +335,32 @@ with one participant per status, and a chat where everyone has left.
 `cost_background_routes_equivalence` gains two arms and
 `title_update_tier3_equivalence` two cases, all four measured against v4's
 real code at the `70505745a` pin.
+#### 2026-09-02 — feat(concierge): the character conversations and project chats rows carry the derived state
+
+_Versions: core 0.0.740, harness 0.0.633._
+
+The last two of v4 `c43d3b1b4`'s list payloads. `characters/{id}?action=chats`
+and `projects/{id}?action=chats` drop `isDangerousChat` for `conciergeState` +
+`dangerCategories` in the same slot; both envelopes (`{chats, total}` and
+`{chats, pagination}`) are unchanged.
+
+Both oracle cases gained per-case Concierge mutations rather than a fixture
+regen: characters gets a `setConcierge` UPDATE in the `setImpersonation` idiom
+(three new cases over the single seeded chat — the fixture is read by eight
+families, and none of them re-runs on this account), projects reuses the
+`list_chats_activity_fallback` mutation pattern for two more cases.
+
+`projects_routes_equivalence` also gains `BACKGROUND_MODE_PENDING_P4D146`, a
+named §D tripwire. This lane's pin has `70505745a` as an ancestor, and that
+commit — P4.D146's row — retires the `'project'` background display mode, so
+five of this family's cases move against a v5 that has not ported it. The
+divergence was measured first and is masked by name in exactly its measured
+shape (`backgroundDisplayMode` / `displayMode` `"project"` → `"theme"` in four
+project-read payloads, plus `backgroundUrl` url → null on `get-background`); any
+other pair falls through and reddens the family. The unifier deletes the
+function once P4.D146 is on the same branch and the oracle is regenerated at the
+new baseline.
+
 #### 2026-09-02 — feat(concierge): the Salon list and home dashboard carry the derived state, not the raw label
 
 _Versions: core 0.0.739, harness 0.0.632._

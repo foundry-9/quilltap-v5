@@ -22,6 +22,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
+const CHAT: &str = "c1000000-0000-4000-8000-000000000001";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -382,6 +383,45 @@ fn characters_reads_match_oracle() {
         "cascade_preview",
         response_data(&characters::character_cascade_preview(&db, uid, ARIA)),
     );
+
+    // P4.D143 (v4 `c43d3b1b4`): the conversations row carries the DERIVED
+    // `conciergeState` + `dangerCategories`, never the raw label. One case per
+    // non-Monitored state over the single seeded chat, with the preserved label
+    // set the wrong way round on both operator rows so a leaked
+    // `isDangerousChat` would be visibly wrong rather than accidentally right.
+    // `chats_plain` above is the Monitored arm. These mutate the shared Db, so
+    // they come LAST (jest copies the fixture per case; the Rust side does not).
+    for (name, over, danger, categories) in [
+        ("chats_vouched_over_true_label", "'OFF'", "1", "NULL"),
+        (
+            "chats_uncensored_over_false_label",
+            "'UNCENSORED'",
+            "0",
+            "NULL",
+        ),
+        (
+            "chats_flagged_with_categories",
+            "NULL",
+            "1",
+            "'[\"Violence\",\"Substance Use\"]'",
+        ),
+    ] {
+        let sql = format!(
+            "UPDATE \"chats\" SET \"conciergeOverride\" = {over}, \"isDangerousChat\" = {danger}, \
+             \"dangerCategories\" = {categories} WHERE \"id\" = '{CHAT}'"
+        );
+        db.write_blocking(move |w| {
+            w.main().connection().execute_batch(&sql)?;
+            Ok(())
+        })
+        .expect("paint concierge state");
+        push(
+            name,
+            response_data(&characters::character_chats(
+                &db, uid, ARIA, None, None, None,
+            )),
+        );
+    }
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);

@@ -230,6 +230,37 @@ async function main(): Promise<void> {
         );
       },
     },
+    // P4.D143 (v4 `c43d3b1b4`): the project chats row carries the DERIVED
+    // `conciergeState` + `dangerCategories`, never the raw label. Both project
+    // chats painted at once — Chat A Vouched over a TRUE label, Chat B
+    // Uncensored over a FALSE one — plus a Flagged pass with categories. The
+    // labels are set the wrong way round on the operator rows, so a row that
+    // leaked `isDangerousChat` would be visibly wrong, not accidentally right.
+    // `list_chats` above is the Monitored arm.
+    {
+      name: 'list_chats_operator_states',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        await rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = 1 WHERE "id" = ?', ['OFF', CHAT_A]);
+        await rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = 0 WHERE "id" = ?', ['UNCENSORED', CHAT_B]);
+        return respond(
+          await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats`), p(IOTA)),
+        );
+      },
+    },
+    {
+      name: 'list_chats_flagged_categories',
+      run: async () => {
+        const { rawQuery } = await import('@/lib/database/manager');
+        await rawQuery('UPDATE "chats" SET "isDangerousChat" = 1, "dangerCategories" = ? WHERE "id" = ?', [
+          JSON.stringify(['Violence', 'Substance Use']),
+          CHAT_A,
+        ]);
+        return respond(
+          await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=list-chats`), p(IOTA)),
+        );
+      },
+    },
     { name: 'get_state', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-state`), p(IOTA))) },
     { name: 'background_iota', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-background`), p(IOTA))) },
     { name: 'background_kappa', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${KAPPA}?action=get-background`), p(KAPPA))) },

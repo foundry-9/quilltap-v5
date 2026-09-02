@@ -50,6 +50,16 @@ interface CaseSpec {
    * text as a STRING. Parse it back to the card object so the differential
    * compares the semantic card (the SPA downloads it client-side). */
   parseStringBody?: boolean;
+  /** P4.D143 (v4 `c43d3b1b4`): paint the chat into a Concierge state before the
+   * read, so the conversations row's derived `conciergeState` +
+   * `dangerCategories` pair has more than `'monitored'` to say. A raw UPDATE on
+   * the fresh fixture copy, mirrored on the Rust side. */
+  setConcierge?: {
+    chatId: string;
+    conciergeOverride: 'OFF' | 'UNCENSORED' | null;
+    isDangerousChat: boolean | null;
+    dangerCategories: string[] | null;
+  };
 }
 
 function mockRequest(url: string): unknown {
@@ -121,12 +131,22 @@ async function runCase(
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
 
   await initializeDatabase();
+
+  // P4.D143: paint the Concierge state the committed fixture cannot express.
+  if (c.setConcierge) {
+    rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = ?, "dangerCategories" = ? WHERE "id" = ?', [
+      c.setConcierge.conciergeOverride,
+      c.setConcierge.isDangerousChat === null ? null : c.setConcierge.isDangerousChat ? 1 : 0,
+      c.setConcierge.dangerCategories === null ? null : JSON.stringify(c.setConcierge.dangerCategories),
+      c.setConcierge.chatId,
+    ]);
+  }
 
   try {
     const mod = (await import(c.module)) as { GET: (...a: unknown[]) => Promise<unknown> };
@@ -168,6 +188,7 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'error';
 
   const aria = 'a1000000-0000-4000-8000-000000000001';
+  const CHAT = 'c1000000-0000-4000-8000-000000000001';
   const B = 'http://localhost/api/v1/characters';
   const cases: CaseSpec[] = [
     { name: 'list_all', module: '@/app/api/v1/characters/route', url: B },
@@ -202,6 +223,34 @@ async function main(): Promise<void> {
     { name: 'chats_search_miss', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&search=zzzznope`, params: { id: aria } },
     { name: 'chats_limit0', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&limit=0`, params: { id: aria } },
     { name: 'chats_offset1', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=chats&offset=1`, params: { id: aria } },
+    // P4.D143 (v4 `c43d3b1b4`): the conversations row carries the DERIVED state
+    // and the classifier's categories, never the raw label. One case per
+    // non-Monitored state over the single seeded chat, with the preserved label
+    // set the wrong way round on both operator rows — Vouched over a TRUE
+    // label, Uncensored over a FALSE one — so a row that leaked
+    // `isDangerousChat` would be visibly wrong, not accidentally right.
+    // `chats_plain` above is the Monitored arm.
+    {
+      name: 'chats_vouched_over_true_label',
+      module: '@/app/api/v1/characters/[id]/route',
+      url: `${B}/${aria}?action=chats`,
+      params: { id: aria },
+      setConcierge: { chatId: CHAT, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null },
+    },
+    {
+      name: 'chats_uncensored_over_false_label',
+      module: '@/app/api/v1/characters/[id]/route',
+      url: `${B}/${aria}?action=chats`,
+      params: { id: aria },
+      setConcierge: { chatId: CHAT, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null },
+    },
+    {
+      name: 'chats_flagged_with_categories',
+      module: '@/app/api/v1/characters/[id]/route',
+      url: `${B}/${aria}?action=chats`,
+      params: { id: aria },
+      setConcierge: { chatId: CHAT, conciergeOverride: null, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'] },
+    },
     // P4.6i: ST export (JSON leg) — the chara_card_v2 card. The handler returns a
     // raw `JSON.stringify(card)` NextResponse; `response.json()` reparses it.
     { name: 'export_json', module: '@/app/api/v1/characters/[id]/route', url: `${B}/${aria}?action=export&format=json`, params: { id: aria }, parseStringBody: true },
