@@ -194,3 +194,24 @@ Free proofs picked up along the way, not planned:
   → exactly 1 of 799).
 - **The §3 review's `isLoading` fix**, proven against a genuinely paused query.
 - **The §3 review's `modeLabels` exhaustiveness fix**, proven by the toast.
+
+---
+
+## State of the copy at walk end
+
+The dogfood copy is deliberately dirty — the next rsync restores it. Recorded
+so nothing here is mistaken for real Friday data:
+
+- **Planted and healed:** 4 duplicate `folders` rows (collapsed by v5 on
+  restart) + the child `/reports/sub/` (kept, repointed at the survivor).
+- **Planted, still present:** `The Estate`'s `properties.json` carries the
+  retired `"backgroundDisplayMode": "project"`; *Church*'s
+  `/character-avatars/` **folder row is deleted** (its 8 files remain).
+- **Created:** `/Dogfood/` + `/Dogfood/Nested/` in *Wardrobe Design*.
+- **Moved:** `Amy.md` from General Files to *Wardrobe Design* Root.
+- **Turns sent (real LLM spend, all cheap):** two in *Chat with Vault Test
+  Harness* (DeepSeek V4 Flash), one in *Chat with Sunny Brevity* (Haiku 4.5).
+- **Backgrounds regenerated:** *The Weight of the Plumb Line* and *Warmth,
+  Resentment, and the Return* (one Grok image each).
+- **Restored after use:** every participant status flipped for C3, the
+  Concierge state on the B6 chat, and the Hide Dangerous Chats toggle.
