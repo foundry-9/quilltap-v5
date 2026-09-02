@@ -296,21 +296,28 @@ fn assert_and_strip_clock(
         failed.push(format!("{name}_{label}_updatedAt"));
     }
     chat.remove("updatedAt");
-    // Bug 112: a Staff announcement is not activity — the stamp must be
-    // ABSENT (v4's projection omits the NULL) or still the seed.
-    let last = chat
-        .get("lastMessageAt")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    if !(last.is_empty() || last == SEED_ISO) {
-        eprintln!(
-            "[{name}] {label} lastMessageAt = {last:?} — a Staff announcement stamped chat \
-             activity, which v4 bug 112 forbids"
-        );
-        failed.push(format!("{name}_{label}_lastMessageAt"));
+    // Bug 112: a Staff announcement is not activity — `lastMessageAt` must be
+    // whatever the fixture already held (absent for a chat with no character
+    // turn; the fixture's own stamp otherwise), NEVER a fresh stamp. v4's side
+    // is checked against the frozen instant; the key is deliberately LEFT in
+    // the row so the byte compare below proves v5 left it alone too (a v5
+    // wall-clock stamp could not equal v4's untouched value).
+    if v4 {
+        let last = chat
+            .get("lastMessageAt")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        // A fresh v4 stamp comes off the frozen clock, i.e. shares the frozen
+        // instant's second (`updatedAt` reads `…T00:00:00.006Z` on these rows);
+        // the fixture's own stamp is months later and passes.
+        if !last.is_empty() && last.starts_with(&FROZEN_NOW_ISO[..19]) {
+            eprintln!(
+                "[{name}] v4 lastMessageAt = {last:?} — a Staff announcement stamped chat \
+                 activity, which v4 bug 112 forbids"
+            );
+            failed.push(format!("{name}_v4_lastMessageAt"));
+        }
     }
-    chat.remove("lastMessageAt");
     failed
 }
 
