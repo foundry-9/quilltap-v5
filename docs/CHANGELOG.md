@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(porting): the P4.D145 lane record + the DDL.md mirror refresh
+
+_Docs-only; no version bumps._
+
+The bug-114 lane record appended to `status-log.md`: what landed unit by unit,
+the two refuted order premises (the provisioning call reddens
+`provisioning_equivalence`; the pre-planted-duplicate routes arm is unreachable
+once the index exists), the measured-absent §C sibling-drift risk on the image
+tier-3 families and the measured-present one on the restore family, the §10
+read-only Friday-copy measurement, the NO-COUNTERPART rows, every fixture
+changed with the siblings re-run, the mutation proofs, and the regen recipes.
+
+`docs/v4/developer/DDL.md` refreshed from the pin. The diff is 50 insertions,
+not the six this commit added — the mirror was also stale for six earlier
+absorbed rounds. `70505745a` (P4.D146's row, an ancestor of this lane's pin)
+does not touch the file, so no sibling-lane content rode along. v4's CLAUDE.md
+chokepoint line has no mirror row to update: `docs/v4/` mirrors the `docs/` tree
+only.
+
 #### 2026-09-02 — fix(restore): drop a pre-collapse backup's duplicate folder rows quietly (v4 bug 114, P4.D145 unit 5)
 
 _Versions: core 0.0.741, harness 0.0.633._

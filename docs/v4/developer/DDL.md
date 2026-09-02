@@ -30,7 +30,6 @@ All three databases live in `<data-dir>/data/`. Alongside them:
 | Linux | `~/.quilltap/` |
 | Windows | `%APPDATA%\Quilltap\` |
 | Docker | `/app/quilltap/` |
-| Lima VM | `/data/quilltap/` (VirtioFS mount) |
 
 Override with `QUILLTAP_DATA_DIR` env var, `--data-dir` CLI flag, or `SQLITE_PATH` / `SQLITE_LLM_LOGS_PATH` / `SQLITE_MOUNT_INDEX_PATH` for individual databases.
 
@@ -301,7 +300,7 @@ keyed by `(mountPointId, relativePath)` where `mountPointId` matches
 | physicalDescription.fullDescription | `physical-description.md` |
 | physicalDescription.{headAndShoulders,short,medium,long,complete}Prompt | `physical-prompts.json` |
 | systemPrompts[] | `Prompts/<sanitized-name>.md` (one file per record) |
-| scenarios[] | `Scenarios/<sanitized-title>.md` (one file per record) |
+| scenarios[] | `Scenarios/<sanitized-title>.md` (one file per record). Frontmatter carries `description` and, since 4.9, `archived: true` — omitted entirely while the scenario is active. The same `archived` key marks a scenario archived in the other three scopes (general, project, group `Scenarios/` folders). |
 
 Reads go through `applyDocumentStoreOverlay()` in
 `lib/database/repositories/character-properties-overlay.ts`; writes through
@@ -333,6 +332,17 @@ document store:
   shared archetypes there before the table was dropped.
 - **Project stores** may shadow shared archetypes under their own `Wardrobe/`
   folders (project tier wins over Quilltap General on id collision).
+
+A `Wardrobe/` folder in any tier may also hold one **non-garment** file,
+`instructions.md` (4.9+): optional second-person dressing guidance read when a
+character dresses themselves at chat start or on joining a chat. Resolution is
+nearest-tier-first — character vault, group store, project store, Quilltap
+General — and the first non-blank file wins (`lib/wardrobe/wardrobe-instructions.ts`).
+It is never parsed as an item: the shared wardrobe reader skips it by name
+(`vault-readers.ts`), the projection sweep preserves it (`vault-projection.ts`),
+and a garment titled "Instructions" projects to `instructions-1.md` rather than
+overwriting it. It is an ordinary document-store document, so it rides in
+`doc_mount_documents` for backup and `.qtap` export like any other vault file.
 
 Reads flow through the vault overlay (`getOverlaidWardrobeItems` /
 `WardrobeRepository`); writes go through the vault-first writers
@@ -450,7 +460,7 @@ CREATE TABLE "chats" (
   "timestampConfig" TEXT,
   "lastTurnParticipantId" TEXT,
   "messageCount" INTEGER DEFAULT 0,
-  "lastMessageAt" TEXT,
+  "lastMessageAt" TEXT,                       -- When a CHARACTER last posted content: type='message', role IN ('USER','ASSISTANT'), systemSender IS NULL, customAnnouncer IS NULL. Whispers count; Staff announcements (Lantern/Host/Prospero/…), announcement bubbles, and raw TOOL rows do NOT — they are message rows but not conversational activity. THE definition lives in `isCharacterAuthoredMessage` (lib/chat/chat-activity.ts); this column is its mirror. NULL when no character has ever posted, where readers fall back to `createdAt` via `chatActivityAt` — NOT to `updatedAt`. Every chat list, sort, and card dates a chat by this, not by `updatedAt`. Recomputed for existing rows by recompute-chat-last-message-at-v1.
   "lastRenameCheckInterchange" INTEGER DEFAULT 0,
   "compactionGeneration" INTEGER DEFAULT 0,
   "lastSummaryTurn" INTEGER DEFAULT 0,
@@ -471,7 +481,7 @@ CREATE TABLE "chats" (
   "showSystemEventsOverride" INTEGER,
   "requestFullContextOnNextMessage" INTEGER DEFAULT 0,
   "createdAt" TEXT NOT NULL,
-  "updatedAt" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL,                  -- "Anything about this row changed" — a background image landing, a summary folded, a cost tally. Deliberately NOT what the reader is shown; use `lastMessageAt` for that.
   "disabledTools" TEXT DEFAULT '[]',
   "disabledToolGroups" TEXT DEFAULT '[]',
   "forceToolsOnNextMessage" INTEGER DEFAULT 0,
@@ -487,7 +497,7 @@ CREATE TABLE "chats" (
   "dangerCategories" TEXT DEFAULT '[]',
   "dangerClassifiedAt" TEXT DEFAULT NULL,
   "dangerClassifiedAtMessageCount" INTEGER DEFAULT NULL,
-  "conciergeOverride" TEXT DEFAULT NULL,  -- per-chat Concierge mode: NULL = follow global; 'OFF' = off-duty (skip every Concierge effect)
+  "conciergeOverride" TEXT DEFAULT NULL,  -- per-chat Concierge mode: NULL = follow global; 'OFF' = Vouched Safe (skip every Concierge effect, ordinary providers); 'UNCENSORED' = operator-asserted uncensored routing (no classification, no scanning)
   "answerConfirmationOverride" TEXT DEFAULT NULL,  -- per-chat answer-confirmation override: NULL = inherit (project override, then global); 'ON'/'OFF' = force the Salon consistency check on/off. Added by add-answer-confirmation-columns-v2.
   "turnQueue" TEXT DEFAULT '[]',
   "spokenThisCycleParticipantIds" TEXT DEFAULT '[]',  -- JSON array of participantIds that have spoken in the current rotation cycle (includes user-controlled characters)
@@ -842,7 +852,20 @@ CREATE TABLE "connection_profiles" (
   -- bundle) and resolves to the provider default — off for Anthropic, on
   -- elsewhere. Read it only through profileUsesNamePrefill()
   -- (lib/llm/multi-character-prefill.ts).
-  "multiCharacterPrefill" INTEGER DEFAULT 1
+  "multiCharacterPrefill" INTEGER DEFAULT 1,
+  -- The understudy: another connection_profiles.id to try when a call through
+  -- this profile fails outright (auth, rate limit, network, missing model,
+  -- 5xx, empty response, moderation refusal). NULL = none named. Deliberately
+  -- NOT a foreign key: the reference is nulled by the repository delete path,
+  -- and buildFallbackChain() drops a target that has since vanished or turned
+  -- Courier anyway. Chains never recurse — the understudy's own understudy is
+  -- not followed, which is what makes an A->B, B->A cycle harmless.
+  "fallbackProfileId" TEXT,
+  -- Whether, once both this profile and its named understudy have failed,
+  -- Quilltap may draft ONE further candidate of the same or better modelClass
+  -- quality. Off by default (an auto-pick spends money at a provider the user
+  -- did not choose for this call). See lib/llm/fallback/tier-picker.ts.
+  "allowTierFallback" INTEGER DEFAULT 0
 );
 
 CREATE INDEX "idx_connection_profiles_createdAt" ON "connection_profiles" ("createdAt" DESC);
@@ -978,7 +1001,13 @@ CREATE INDEX "idx_folders_createdAt" ON "folders" ("createdAt" DESC);
 CREATE INDEX "idx_folders_parentFolderId" ON "folders" ("parentFolderId");
 CREATE INDEX "idx_folders_projectId" ON "folders" ("projectId");
 CREATE INDEX "idx_folders_userId" ON "folders" ("userId");
+CREATE UNIQUE INDEX "idx_folders_userId_projectId_path"
+  ON "folders" ("userId", COALESCE("projectId", ''), "path");
 ```
+
+A folder's identity is `(userId, projectId, path)`, and the UNIQUE index enforces one row per identity. `projectId` is nullable — general (non-project) files carry NULL — and SQLite treats every NULL as distinct in a UNIQUE index, so it is coalesced to `''` to make "no project" a single value; same reason as the `doc_mount_folders` index below.
+
+The index arrived in 4.9.0 (migration `collapse-duplicate-folders-v1`, which first collapses each group down to its oldest row and repoints any `parentFolderId` naming a discarded one). Before it, every writer hand-rolled `findByPath` → `create`, which is neither atomic across concurrent background jobs nor able to tell a failed read from an absent folder, and the machine-written paths (`/character-avatars/`, `/story-backgrounds/`) accumulated a row per generated image — bug 114. **All folder creation for a path that may already exist now goes through `FoldersRepository.ensureByPath`**, which resolves a constraint violation to the winning row. `folders.parentFolderId` is the only column in this database that references `folders.id`; `files` locates its folder by `folderPath` + `projectId`, not by id.
 
 ### help_docs
 
@@ -1264,6 +1293,21 @@ CREATE TABLE "image_profiles" (
 CREATE INDEX "idx_image_profiles_createdAt" ON "image_profiles" ("createdAt" DESC);
 CREATE INDEX "idx_image_profiles_userId" ON "image_profiles" ("userId");
 ```
+
+> **`parameters` JSON shape:** an open bag, deliberately. Host-owned keys
+> (`size`, `aspectRatio`, `quality`, `style`, `n`, `seed`, `guidanceScale`,
+> `steps`, `negativePrompt`) map onto named `ImageGenParams` fields; every other
+> key is forwarded to the provider plugin verbatim as
+> `ImageGenParams.profileParameters`, and the plugin decides what reaches the
+> wire. One key is reserved and structured: **`loras`**, an array of
+> `{ source, scale?, triggerPhrase?, label? }` LoRA adapters (since 4.9). It is
+> validated on write by `ImageLoraSpecSchema` (`lib/schemas/profile.types.ts`) —
+> `source` non-empty, `scale` finite within `0..10` — so a malformed list is a
+> 400 rather than a row that fails at generation time. Per-model caps are *not*
+> enforced here: an over-cap list is stored as given and capped at request time
+> by `lib/image-gen/params-builder.ts`, so narrowing the model and widening it
+> again loses nothing. No column change was needed for any of this; the bag
+> absorbed it.
 
 ### provider_models
 

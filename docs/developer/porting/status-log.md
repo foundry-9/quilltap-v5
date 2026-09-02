@@ -97647,3 +97647,228 @@ byte-identical string; a leaf-text scan counting the **composer** as a message
 bubble (a false PASS in waiting); **composition mode** swallowing two sends
 entirely (the DB, not the screen, exposed it); and a `--` needle for an em dash
 the fold table maps to one hyphen.
+
+
+---
+
+## P4.D145 — one folder row per path: the unique index, the collapse ensure, and the `ensure_by_path` chokepoint (v4 `a5df98b3f`, bug 114)
+
+**Lane branch:** `claude/p4-folders-unique-path-bug-cd4073`. **Pin:**
+`/tmp/qt-v4-pin-p4d145-a5df98b3f` (detached at `a5df98b3f`; the ledger's regen
+rule was PIN REQUIRED and the §2 freshness probe passed at lane start — branch
+`main`, tree clean, both logs empty). **Status: CLOSED**, Tier 1 and Tier 2
+complete; Tier 3 was refusal-arm-free by design and its three rows are recorded
+in the chokepoint census.
+
+### What landed, unit by unit
+
+1. **The predicate** (`db/sqlite_errors.rs`, v4's new `lib/database/sqlite-errors.ts`).
+   The structured driver code first — rusqlite folds every `SQLITE_CONSTRAINT_*`
+   extended code onto `ErrorCode::ConstraintViolation`, so the set matches v4's
+   `code.startsWith('SQLITE_CONSTRAINT')` exactly, not a narrowing — then v4's
+   `/UNIQUE constraint failed/i` message fallback for a wrapped or re-thrown
+   error. Seven unit tests over REAL driver errors from an index-bearing table.
+   v4's applier de-dup could not be a re-export (v5's applier half classifies a
+   replayed JSON error shape, not a live `rusqlite::Error`), so only the one
+   sentence they share moved. `write_partition_equivalence` gained v4's two
+   folder classify rows over v4's REAL `classifyWriteTarget`: both answer
+   `main`, so v5's default-to-Main routing already covers `folders.ensureByPath`.
+
+2. **`FoldersRepository::ensure_by_path`** with v4's six-case spy suite carried
+   onto a real table (nine tests). A repository cannot be spied, so two arms
+   needed a v5 mechanism: the lost-race arm drives a `before_insert` seam that
+   plants the winner in the one instant a competing writer could commit in, and
+   the non-constraint arm became an error-IDENTITY assertion (the seam reshapes
+   the table so the INSERT and a hypothetical recovery re-read fail with
+   different SQLite sentences) standing in for v4's "findByPath called ONCE".
+   **Measured on the way:** with the index present, dropping the read-first
+   branch still converges — the insert violates and the re-read resolves to the
+   same row — so the existing-row case is pinned WITHOUT the index, where the
+   early return is the only thing that can prevent a duplicate. `create` gained
+   a private `create_returning` twin so the chokepoint returns the persisted
+   row with no second query and no second insert path.
+
+3. **The collapse-then-index boot ensure** (`db/folders_unique_path_repair.rs`),
+   wired into `seed_built_ins`'s repair chain beside the P4.D140 fence. The
+   guard is the INDEX, not the `migrations_state` ledger — v4's own
+   `shouldRun()` is `!indexExists()` and never reads the ledger, so the index is
+   the cross-app once-only marker in both directions and a v5 ledger row would
+   claim a completion v5's guard cannot check. NEW
+   `folders_collapse_heal_equivalence` drives v4's REAL migration plus its REAL
+   ledger write over ten shared scenarios (v4's own five test cases, four
+   widened arms, and the real instance's measured shape), diffing the whole
+   post-pass table, the index SQL byte-for-byte, the `MigrationResult` message,
+   a forced second run, and post-pass insert probes.
+
+4. **The five-site cutover** + the two private `find_folder_by_path` copies
+   deleted, `files_folder_create`'s post-create re-read retired (the chokepoint
+   returns the row), the wire shape unchanged. `folders_remap_tier2` gained the
+   four `ensureByPath` arms over v4's REAL repository;
+   `files_routes_equivalence` gained a same-path-inside-a-project create arm;
+   `files-main.db`/`files-mount.db` were regenerated to the post-bug-114 vintage.
+
+5. **The restore drop arm** + the NEW `restore-archive-duplicate-folders.zip`,
+   with the `BACKGROUND_MODE_PENDING_P4D146` sibling-drift tripwire.
+
+### Findings
+
+- **The order's provisioning premise is REFUTED by measurement.** §1 proposed
+  calling the ensure from `services/provisioning` as well. v4's `generateDDL`
+  builds indexes from a plain column list and cannot express `COALESCE(...)`, so
+  `provisioning_equivalence` compares v5's provisioned `sqlite_master` against a
+  v4 fresh dump that does not carry the index — creating it there reddens the
+  family on `schema mismatch in partition main` (measured at the pin, then
+  reverted). It is also unnecessary: `Host::assemble` runs the boot chain on
+  every open, including the first after Setup, which is where every other
+  re-homed v4 migration in v5 lives. `folders_chokepoint_wiring_guard` holds
+  both halves. (The re-dump half of §1 is CONFIRMED: v4's fresh main schema
+  carries `idx_folders_createdAt` + `idx_folders_userId` and nothing else on
+  `folders`, so no D23 re-dump is owed.)
+
+- **The cutover is invisible to every differential.** `create` and
+  `ensure_by_path` differ only under a race, or when the read and the index
+  disagree — neither reachable from a sequential op list — so reverting a call
+  site to `create` is MEASURED green across `qtap_import_equivalence`,
+  `files_routes_equivalence` and both image tier-3 families. The five sites are
+  therefore held by a source census, mutation-proven, in the
+  `a-differential-cannot-see-a-dropped-batch` idiom.
+
+- **v4's `FolderSchema.projectId` is UUID-validated**, so an empty-string
+  `projectId` cannot be written through v4's repository (measured — the fixture
+  builder died on a ZodError). That row is the ONLY shape where `findByPath`
+  (reading `projectId IS NULL`) and the index (reading `COALESCE(projectId,'')`)
+  disagree, and therefore the only way to reach `ensureByPath`'s "conflict with
+  nothing to reconcile to" arm without a race, so it is seeded with raw SQL and
+  documented as synthetic.
+
+- **The order's pre-planted-duplicate routes arm is unreachable by
+  construction.** Once the index exists a duplicate cannot be planted, and a
+  create that loses a race requires a race. The race-resolution behaviour is
+  pinned instead by `folders_remap_tier2`'s constraint arm and the nine
+  `db::folders` unit tests; the routes family got the reachable arm (the same
+  path inside a project) plus the post-bug-114 fixture vintage.
+
+- **The §C sibling-drift risk was MEASURED ABSENT for the image tier-3
+  families.** `avatar_job_tier3` and `story_background_job_tier3` are green
+  regenerated from this pin, because the committed story fixture seeds every
+  participant `status: 'active'` / `isActive: true`, so D146's
+  `isParticipantPresent` predicate cannot discriminate. No
+  `ABSENT_PARTICIPANTS_PENDING_P4D146` tripwire was needed. It DID bite the
+  restore family — see below.
+
+- **`BACKGROUND_MODE_PENDING_P4D146`** (`system_restore_state`): the pin carries
+  `70505745a`, so v4 writes a project's `backgroundDisplayMode` as the coerced
+  `theme` where v5 writes the stored `project`. Measured as 46 differences
+  across four mount-index tables in eleven cases — every one of them that value
+  or something derived from it (the content, `plainTextLength`, `fileSizeBytes`,
+  `sha256`). The mask is keyed off the file ids of the documents whose two sides
+  disagree, asserts the disagreement is still v5 `project` vs v4 `theme`, and
+  **fails loudly if it ever masks nothing**, so it retires itself when P4.D146
+  lands. Two mutation proofs. ⚠ **The unifier deletes it** once both lanes sit
+  on one branch and the oracle is regenerated at the new baseline.
+
+- **Riding the tripwire, a pre-existing hole:** `system_restore_state`'s four
+  comparison branches read three different views of the rows — the plain diff
+  used the masked copies while `assert_phase_order_residual` and
+  `assert_orphan_divergence` took the raw ones, so any carve-out silently did
+  not apply to them. All four now read one masked view per side.
+
+- **§10, the read-only measurement on the dogfood copy** (new
+  `p4d145_folder_population` example): **607 folder rows describing 24 distinct
+  `(userId, COALESCE(projectId,''), path)` identities — 583 duplicates — and the
+  index absent.** v4's own 2026-09-02 number to the row, so the 💸 proof has NOT
+  expired. Every duplicated identity is `/story-backgrounds/` or
+  `/character-avatars/` (worst: 207 rows for one project's story backgrounds);
+  no hand-created folder duplicated, exactly as v4's diagnosis says. The
+  collapse family's Friday-shaped scenario reproduces 607/24/583 exactly.
+
+### NO-COUNTERPART / non-port rows (recorded, not built)
+
+Held mechanically in `folders_chokepoint_wiring_guard::the_no_counterpart_rows_are_recorded`:
+
+- **v4's `lib/file-storage/watcher.ts` `handleDirAdd`** — v5 ships no
+  file-storage watcher at all. v4 also relabelled its log line
+  `Created folder record for new directory on disk` → `Ensured folder record
+  for directory on disk`; nothing to relabel here.
+- **v4's `child-repositories-proxy.ts` `'folders.ensureByPath': 'write'`** —
+  v5's job runner is in-process with the real connection, so there is nothing to
+  buffer. The routing half IS pinned (`write_partition_equivalence`).
+- **v4's `lib/startup/prettify.ts` label** (`Sweeping up the duplicate folders
+  that crept into the filing cabinet…`) — the standing deliberate non-port,
+  v5 has no migration-runner progress screen.
+
+### Fixtures changed → siblings re-run
+
+- **`crates/quilltap-web/tests/fixtures/files-main.db` + `files-mount.db`**
+  regenerated at the pin (they gain v4's unique index — the post-bug-114
+  vintage). Siblings re-run green by name: `files_routes_equivalence`,
+  `embedding_reapply_equivalence`, `embedding_profiles_routes_equivalence`,
+  `memory_dedup_equivalence`.
+- **`/tmp/qt-folders-remap-fixture.db`** (built, not committed) gains the index
+  and the raw-seeded `''`-projectId row.
+- **NEW committed `crates/quilltap-web/tests/fixtures/restore-archives/restore-archive-duplicate-folders.zip`**
+  (+ its committed builder). Siblings re-run green: `system_restore_state`,
+  `system_restore_equivalence`, `system_restore_guards_equivalence`,
+  `restore_vintage_state`.
+- **NEW committed `harness/oracle/fixtures/folders-collapse-heal.json`**
+  (10 scenarios, 607-row Friday shape included).
+
+### Mutation proofs (each verified applied, reverted by file backup)
+
+Chokepoint: drop the existing early-return → the no-index existing-row case;
+drop the no-winner re-raise → the unresolvable-conflict case; skip the
+constraint check → the non-constraint case. Collapse: NULL projectId
+all-distinct in the grouping → the null-group scenario; drop the COALESCE from
+the index → the index-SQL byte compare; skip the repoint → the repoint
+scenario; write a `migrations_state` row → the ledger-empty arm; newest-wins
+→ the oldest-wins scenario. Wiring: delete the boot block → the boot census;
+revert the importer to `create` → the call-site census. Restore: revert the
+drop arm → the case's warnings comparison. Tripwire: an unexpected v5 value,
+and masking nothing → both arms.
+
+⚠ **Two mutations proved nothing at first and were redone**: `ENSURE_MUTATED(`
+did not compile, so the guard never ran (the `if (false && …)` lesson in another
+form — a mutation must COMPILE), and `git checkout -- <file>` silently fails on
+an untracked new file, which left one mutation applied and stacked the next on
+top of it. File-backup revert only.
+
+### Regen recipes (all from the pin, `PIN=/tmp/qt-v4-pin-p4d145-a5df98b3f`)
+
+```bash
+# folders_collapse_heal_equivalence  (NEW)
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+TMPO=/tmp/qt-folders-collapse-heal-oracle
+rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp "$V5W/harness/oracle/cases/folders-collapse-heal.test.ts"     "$TMPO/cases/"
+cp "$V5W/harness/oracle/fixtures/folders-collapse-heal.json"     "$TMPO/fixtures/"
+cd "$PIN"
+QT_ORACLE_OUT=/tmp/oracle-folders-collapse-heal.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "folders-collapse-heal\.test\.ts$"
+# run:  QT_ORACLE_FOLDERS_COLLAPSE=/tmp/oracle-folders-collapse-heal.ndjson \
+#         cargo test -p quilltap-harness --test folders_collapse_heal_equivalence
+
+# the committed web fixture (regenerates files-main.db + files-mount.db)
+cd "$PIN"
+QT_FIXTURE_FILES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/files-main.db \
+QT_FIXTURE_FILES_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/files-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-files-web-fixture.ts
+
+# the NEW restore archive
+cd "$PIN"
+QT_ARCHIVE_DIR=$V5W/crates/quilltap-web/tests/fixtures/restore-archives \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-restore-archive-duplicate-folders.ts
+
+# everything else through the sanctioned driver
+python3 harness/tools/recipe_sweep.py --run <family> --v4 "$PIN" --v5w "$PWD"
+```
+
+Guards that need no oracle: `folders_chokepoint_wiring_guard`.
+
+### Docs
+
+`docs/v4/developer/DDL.md` refreshed from the pin (50 insertions — the mirror
+was also stale for six earlier absorbed rounds; `70505745a` does not touch it,
+so no sibling-lane content rode along). v4's CLAUDE.md chokepoint line has no
+v5 mirror row: `docs/v4/` mirrors only the `docs/` tree, not v4's CLAUDE.md —
+recorded, nothing to do.
