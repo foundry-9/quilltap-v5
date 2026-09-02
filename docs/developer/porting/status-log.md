@@ -99503,3 +99503,34 @@ way: it claimed the failover rows carry `characterId = NULL` "because v4's
 already passed `Some(&character_id)` — the comment had been contradicting the
 code four lines into the file it was describing.
 
+### Unit 3 — the bare-executor gap: closed BY MEASUREMENT, kept executable
+
+The order says to measure item 7 against today's tree before fixing anything.
+Measured, and **the gap is already closed**: a zone-aware census of every
+`CheapLlmTaskExecutor::new()` / `::default()` finds **zero in production**.
+Both sites P4.D135's record named as production —
+`tools/generate_image.rs:2614` and `enclave/step.rs:1810-1811` — sit inside
+`#[cfg(test)]` modules (markers at `:2534` and `:1427`), and all **sixteen**
+host construction sites in `quilltap-host/src/spine.rs` call `with_logging`.
+The two remaining core production sites (`pascal/llm_consult.rs:289`,
+`services/initial_greeting.rs:18`) both call `with_logging` too.
+
+So there is **nothing to record for P4.71 under §E** — no host-side finding.
+
+`crates/quilltap-harness/tests/bare_cheap_llm_executor_guard.rs` keeps the
+measurement executable in the `db_error_key_guard` idiom, with an **empty
+census**: a bare construction in any production `src/` tree fails it. It is
+zone-aware (a file's first `#[cfg(test)]` line ends the production zone) and
+comment-aware (prose naming the needle is not a site), and it carries two
+anti-vacuity asserts — a file-count floor, and a check that the type is still
+mentioned at all, so a rename cannot leave it silently measuring nothing.
+
+Three mutation proofs: a bare site planted in `services/image_scene_tasks.rs`
+(production) **reddens** it with the right file named; the same site planted
+inside a `#[cfg(test)]` module in `services/compression.rs` leaves it **green**
+(test code is exempt by design); and simulating a type rename trips the
+anti-vacuity assert ("only 0 production file(s) mention …").
+
+`cheap_llm_exec.rs`'s doc comment claimed the two now-test-only sites were
+production and called the gap "NAMED, not an accident". That claim was stale;
+it now records the measurement and points at the guard.

@@ -487,11 +487,20 @@ pub struct CheapLlmTaskExecutor {
     /// user id the chain reads — so `with_logging` supplies BOTH and no call
     /// site changes.
     ///
-    /// ⚠ `CheapLlmTaskExecutor::new()` therefore has no chain: the two
-    /// production sites that use it (`tools::generate_image`'s prompt expansion
-    /// and one `enclave::step` leg) keep the pre-4.10 behaviour, and so do the
-    /// differentials. A NAMED gap, not an accident — closing it means giving
-    /// those two a `Db`.
+    /// ⚠ A bare `CheapLlmTaskExecutor::new()` therefore has no chain, and no
+    /// `llm_logs` writer either. **P4.68 re-measured the tree and there are no
+    /// production callers left**: the two this comment used to name
+    /// (`tools::generate_image`'s prompt expansion and one `enclave::step` leg)
+    /// are both inside `#[cfg(test)]` modules now, and all sixteen of the host's
+    /// construction sites in `quilltap-host/src/spine.rs` call `with_logging`.
+    /// `new()` survives for tests and differentials, which inject their own
+    /// canned providers and have no chain to walk.
+    ///
+    /// That is a fact about the tree, not a property of the type, so it is kept
+    /// executable by `quilltap-harness`'s `bare_cheap_llm_executor_guard`: a
+    /// bare construction in any production `src/` tree fails that test. Without
+    /// it the regression is silent — no compile error, no failing test, just a
+    /// cheap-LLM task that quietly stops failing over.
     fallback: Option<CheapFallbackHandle>,
 }
 

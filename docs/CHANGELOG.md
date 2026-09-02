@@ -29,6 +29,31 @@ arrived), 117 (a chat upload's sha256 is the pre-transcode hash) and 118
 and each now carrying a v5-side measurement to owe. Ledger §1 rewritten
 (regen rule PIN REQUIRED at `6d2a50382`), §3 gains two UNPROCESSED rows; no
 row is a convergence. The five lanes are unaffected — every regen ran pinned.
+#### 2026-09-02 — test(harness): a production path cannot build a chain-less cheap-LLM executor
+
+_Versions: core 0.0.753, harness 0.0.644._
+
+P4.D135 recorded `CheapLlmTaskExecutor::new()`'s missing fallback chain as a
+live gap, naming `tools::generate_image`'s prompt expansion and one
+`enclave::step` leg as bare production sites. Re-measured against the tree:
+both are inside `#[cfg(test)]` modules now, all sixteen host construction sites
+in `quilltap-host/src/spine.rs` call `with_logging`, and the two remaining core
+production sites do too. There are no bare production executors, so the gap
+closed by measurement rather than by a fix.
+
+That is a fact about the tree, not a property of the type, so
+`bare_cheap_llm_executor_guard` keeps it executable with an empty census: a bare
+`::new()` / `::default()` in any production `src/` tree fails it. The guard is
+zone-aware (a file's first `#[cfg(test)]` line ends the production zone) and
+comment-aware, and it carries a file-count floor plus a check that the type is
+still mentioned, so a rename cannot leave it measuring nothing. Three mutation
+proofs: a planted production site reddens it, the same site inside a
+`#[cfg(test)]` module does not, and a simulated rename trips the anti-vacuity
+assert.
+
+`cheap_llm_exec.rs`'s doc comment claimed the two now-test-only sites were
+production; it records the measurement instead.
+
 #### 2026-09-02 — fix(chat): the orchestrator's failover legs log their llm_logs rows
 
 _Versions: core 0.0.752, harness 0.0.643._
