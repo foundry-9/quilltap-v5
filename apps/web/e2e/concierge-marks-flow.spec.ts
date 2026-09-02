@@ -276,21 +276,52 @@ test.describe('P4.D144 — "Dangerous Chats" follows the uncensored row', () => 
     await maybeUnlock(page);
 
     const section = page.locator('qt-recent-chats-section');
-    const flaggedRow = section.locator('qt-recent-chat-item', { hasText: titleOf('flagged') });
+    await expect(section.locator('qt-recent-chat-item').first()).toBeVisible({ timeout: 15_000 });
+
+    // Recent Chats is the twelve most recently active chats, and in a FULL
+    // run sibling specs seed newer chats after beforeAll ran, so the chat it
+    // flagged may have scrolled off (this beat's first full-suite run — green
+    // in isolation — caught exactly that). So flag whichever chat IS on the
+    // list, through the same verb, and put it back afterwards; the delta is
+    // what the beat asserts, never membership.
+    const onList = await section.locator('qt-recent-chat-item').allTextContents();
+    const chats = (await dispatch({ type: 'listChats' })) as unknown as Array<{
+      id: string;
+      title: string;
+    }>;
+    const skip = new Set([titleOf('vouched'), titleOf('uncensored')]);
+    const target = chats.find(
+      (c) => !skip.has(c.title) && onList.some((text) => text.includes(c.title)),
+    );
+    expect(target, 'some non-operator chat must be on Recent Chats to flag').toBeTruthy();
+    const restoreTo = seeded.get(target!.id)?.state ?? 'monitored';
+    if (restoreTo !== 'flagged') {
+      await dispatch({ type: 'chatUpdate', chatId: target!.id, chat: {}, conciergeState: 'flagged' });
+      await page.reload();
+      await maybeUnlock(page);
+    }
+    const flaggedRow = section.locator('qt-recent-chat-item', { hasText: target!.title });
     const vouchedRow = section.locator('qt-recent-chat-item', { hasText: titleOf('vouched') });
-
-    // Recent Chats is a short, activity-ordered projection; assert the delta
-    // rather than membership, so a fixture that grows cannot make this vacuous.
-    const flaggedBefore = await flaggedRow.count();
-    const vouchedBefore = await vouchedRow.count();
-    expect(flaggedBefore, 'the flagged chat must be on Recent Chats to test hiding it').toBe(1);
-
-    await toggleDangerousChats(page, true);
-    await expect(flaggedRow).toHaveCount(0, { timeout: 15_000 });
-    await expect(vouchedRow).toHaveCount(vouchedBefore);
-
-    await toggleDangerousChats(page, false);
     await expect(flaggedRow).toHaveCount(1, { timeout: 15_000 });
+    const vouchedBefore = await vouchedRow.count();
+
+    try {
+      await toggleDangerousChats(page, true);
+      await expect(flaggedRow).toHaveCount(0, { timeout: 15_000 });
+      await expect(vouchedRow).toHaveCount(vouchedBefore);
+
+      await toggleDangerousChats(page, false);
+      await expect(flaggedRow).toHaveCount(1, { timeout: 15_000 });
+    } finally {
+      if (restoreTo !== 'flagged') {
+        await dispatch({
+          type: 'chatUpdate',
+          chatId: target!.id,
+          chat: {},
+          conciergeState: restoreTo,
+        }).catch(() => undefined);
+      }
+    }
   });
 });
 
