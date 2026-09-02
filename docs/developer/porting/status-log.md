@@ -99436,3 +99436,70 @@ ones. Reverted by file backup.
   twelfth copy**, in the harness, and it `panic!`s on any unrecognised status —
   which is why no differential arm can reach the `parse_attr_status` divergence
   and the pin above had to be a unit test.
+### Unit 2 — the failover `llm_logs` thread at the orchestrator's recovery call
+
+**The order's named instrument is refuted by measurement.** Tier-1 item 2 asks
+for the pin to be `orchestrator_tier3`'s `llm_logs` comparand. That family
+**strips every `CHAT_MESSAGE` row from BOTH sides** (its own comment says why:
+v4's service-level `streamMessage` mock swallows its own log, so the oracle
+writes none), which means it cannot see this fix at all. Measured on the
+branch: **57 `CHAT_MESSAGE` rows with the log unwired, 59 with it, and the
+family is GREEN either way.** So the row SHAPE stays `primary_stream_tier3`'s
+job (where `attempt_empty_response_recovery` is driven with a `FailoverLogCtx`
+directly), and the WIRING — the thing that was actually broken — gets a
+v5-side census in this family.
+
+**What was broken was wider than "the spine doesn't pass a `db`".**
+
+1. `attempt_empty_response_recovery` was a convenience wrapper that passed
+   `log: None` and delegated to `attempt_empty_response_recovery_with_log`. The
+   orchestrator called the wrapper. So every failover leg on the production
+   path wrote no `llm_logs` row, while the differential — calling the logging
+   entry directly — proved a row shape nothing in production produced. **The
+   two entry points are now ONE**: a caller has to look at the `log` argument
+   and decide. There is no no-logging sibling to fall through to.
+2. Both failover paths hard-coded `LogContext::none()`. v4 has no parameter
+   there because `runWithAutonomousRunId(runId, …)` is an `AsyncLocalStorage`
+   scope wrapping the WHOLE generation, retries included; v5 replaced that
+   ambient scope with an explicit `LogContext` (U4.4, spec decision #4). So a
+   failover leg inside an autonomous turn would have written
+   `autonomousRunId = NULL` and dropped that retry's spend out of the room's
+   per-run token accounting. `FailoverLogCtx` now carries the context — which
+   is exactly what the code comment at the old `none_ctx` predicted ("when that
+   threading lands, `FailoverLogCtx` grows the context field").
+
+**Pins, both mutation-proven.**
+
+- The WIRING census in `orchestrator_tier3`: group `CHAT_MESSAGE` rows by
+  `(chatId, messageId)`; a repeated pair is a re-stream into the same
+  pre-generated assistant message, which only a failover leg does. Structural
+  rather than a magic count, so the corpus can grow. Unwiring the orchestrator
+  (`None` for the log) reddens it by name with the row count in the message
+  (57); rewiring greens it. Every row's `characterId` is asserted non-NULL —
+  v4 `65f5021c8` passes it on every `restreamInto` leg.
+- The `log_context` carry: the in-file logging test now runs with
+  `autonomous_run_id: Some("run-7")` and asserts it reaches both legs' rows.
+  Reverting the empty-response path to a local `none_ctx` reddens it
+  (`left: None, right: Some("run-7")`). ⚠ The first attempt at that mutation
+  did not COMPILE (a temporary's lifetime), which proves nothing — redone as a
+  compiling one.
+
+**Proof.** Six families over the touched spine, regenerated from the pin and
+re-run: `orchestrator_tier3`, `primary_stream_tier3`, `enclave_step_tier3`,
+`brahma_orchestrator_tier3`, `regenerate_swipe_tier3`,
+`salon_swipe_generate` — **6/6 ok, zero SKIP.**
+
+**⚠ One out-of-ownership edit, recorded loudly.** Adding the field to
+`FailoverLogCtx` (this lane's file) forces its construction sites to change,
+and one of them is `services/primary_stream.rs:1282` — outside P4.68's
+Ownership row. No lane owns that file this round, so it is not a collision,
+but it is a one-line edit this lane made outside its listed area and the
+unifier should see it named rather than discover it in the diff. It passes
+`l.log_context` through, so the hard-error chain legs get the same fix.
+
+A stale comment in `primary_stream_tier3_equivalence.rs` was corrected on the
+way: it claimed the failover rows carry `characterId = NULL` "because v4's
+`restreamInto` passes none". v4 `65f5021c8` added it, and `provider_failover`
+already passed `Some(&character_id)` — the comment had been contradicting the
+code four lines into the file it was describing.
+

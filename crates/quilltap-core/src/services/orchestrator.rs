@@ -3007,6 +3007,19 @@ where
                 needs_tools: !actual_tools.is_empty(),
             }),
         },
+        // v4 `orchestrator.service.ts:1572` passes `preGeneratedAssistantMessageId`
+        // into `attemptEmptyResponseRecovery`, and every `restreamInto` leg hands it
+        // to `streamMessage` as `messageId` — so each retry that reaches its terminal
+        // chunk logs its own `CHAT_MESSAGE` row through the same wrapper the primary
+        // stream uses. v5 called the no-logging entry point here until P4.68, so a
+        // recovered turn's failover legs were invisible in the LLM Inspector. The
+        // `log_context` rides along because v4's `runWithAutonomousRunId` scope wraps
+        // the whole generation, retries included.
+        Some(provider_failover::FailoverLogCtx {
+            db,
+            message_id: &pre_generated_assistant_message_id,
+            log_context: &input.log_context,
+        }),
     )
     .await;
 

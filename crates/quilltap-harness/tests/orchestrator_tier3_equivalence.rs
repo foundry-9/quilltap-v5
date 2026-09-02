@@ -1135,7 +1135,60 @@ fn orchestrator_tier3_matches_oracle() {
             })
             .collect()
     };
-    let got_logs = strip_seam_rows(common::dump_llm_logs(&db));
+    let all_got_logs = common::dump_llm_logs(&db);
+
+    // --- the failover-logging WIRING pin (P4.68) ---
+    //
+    // v4 `orchestrator.service.ts:1572` hands `preGeneratedAssistantMessageId`
+    // to `attemptEmptyResponseRecovery`, and every `restreamInto` leg passes it
+    // to `streamMessage` as `messageId` — so a turn whose primary answers empty
+    // logs the primary's `CHAT_MESSAGE` row AND one per retry leg, all sharing
+    // that one message id. v5 called a no-logging entry point here until P4.68,
+    // so the retry legs wrote nothing.
+    //
+    // The `strip_seam_rows` filter below removes `CHAT_MESSAGE` from BOTH sides
+    // (v4's service-level `streamMessage` mock swallows its own log, so the
+    // oracle has none to compare against), which means the differential CANNOT
+    // see this wiring — measured: 57 rows with the log unwired, 59 with it, and
+    // the family is green either way. Hence a v5-side census here. It is not an
+    // equivalence claim; the failover row SHAPE is proven byte-exact by
+    // `primary_stream_tier3`.
+    //
+    // The discriminator is structural rather than a magic count, so the corpus
+    // can grow: a repeated `(chatId, messageId)` pair is a re-stream into the
+    // same pre-generated assistant message, which only a failover leg does.
+    {
+        let mut by_key: HashMap<(String, String), usize> = HashMap::new();
+        let mut missing_character = Vec::new();
+        for row in all_got_logs
+            .iter()
+            .filter(|r| r["type"].as_str() == Some("CHAT_MESSAGE"))
+        {
+            let chat = row["chatId"].as_str().unwrap_or_default().to_string();
+            let msg = row["messageId"].as_str().unwrap_or_default().to_string();
+            if row["characterId"].as_str().is_none() {
+                missing_character.push((chat.clone(), msg.clone()));
+            }
+            *by_key.entry((chat, msg)).or_default() += 1;
+        }
+        let failover_legs: usize = by_key.values().filter(|n| **n > 1).map(|n| n - 1).sum();
+        assert!(
+            failover_legs > 0,
+            "no CHAT_MESSAGE row shares a (chatId, messageId) with another, so no \
+             failover leg logged one. The orchestrator's empty-response recovery \
+             is not being handed its `FailoverLogCtx` (v4 \
+             `orchestrator.service.ts:1572`), or the corpus lost its \
+             empty-primary case. Rows seen: {}",
+            by_key.len()
+        );
+        assert!(
+            missing_character.is_empty(),
+            "v4 `65f5021c8` passes `characterId` on every `restreamInto` leg, so \
+             no `CHAT_MESSAGE` row may carry a NULL character: {missing_character:?}"
+        );
+    }
+
+    let got_logs = strip_seam_rows(all_got_logs);
     let want_logs = strip_seam_rows(want_llm_logs.expect("oracle emitted no llmlogs row"));
     assert_eq!(
         got_logs.len(),

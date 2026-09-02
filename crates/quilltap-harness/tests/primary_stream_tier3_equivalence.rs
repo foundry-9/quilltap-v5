@@ -770,11 +770,17 @@ async fn primary_stream_tier3_matches_oracle() {
                         needs_tools: false,
                     }),
                 };
-                // W4.11b: drive the logging entry point so the failover CHAT_MESSAGE
-                // rows are written (messageId = the pre-generated id; characterId is
-                // NULL — v4's `restreamInto` passes none).
+                // W4.11b: drive the recovery with its log context so the failover
+                // CHAT_MESSAGE rows are written (messageId = the pre-generated id).
+                // ⚠ `characterId` is NOT null: v4 `65f5021c8` added
+                // `characterId: opts.character.id` to `restreamInto`'s
+                // `streamMessage` call, and `attempt_empty_response_recovery`
+                // passes `Some(&character_id)` to match. (This comment claimed the
+                // opposite until P4.68 — the code four lines into
+                // `provider_failover` had said so all along.)
                 let msg_id = call.pre_generated_message_id.clone().unwrap();
-                let flags = provider_failover::attempt_empty_response_recovery_with_log::<
+                let log_ctx = quilltap_core::services::llm_logging::LogContext::none();
+                let flags = provider_failover::attempt_empty_response_recovery::<
                     _,
                     _,
                     _,
@@ -797,6 +803,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     Some(FailoverLogCtx {
                         db: &db,
                         message_id: &msg_id,
+                        log_context: &log_ctx,
                     }),
                 )
                 .await;

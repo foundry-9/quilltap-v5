@@ -157,45 +157,38 @@ pub struct EmptyResponseRecoveryFlags {
 /// from [`AttemptEmptyResponseRecoveryOptions`]; `db` + `message_id` (v4's
 /// `preGeneratedAssistantMessageId`) are supplied here.
 ///
-/// The orchestrator spine does not yet thread this (its
-/// [`AttemptEmptyResponseRecoveryOptions`] construction carries no `db` /
-/// `preGeneratedAssistantMessageId`), so its failover call uses the no-logging
-/// entry point [`attempt_empty_response_recovery`] — wiring the spine's failover
-/// log is a spine-owner follow-up. The differential drives
-/// [`attempt_empty_response_recovery_with_log`] to prove the row shape.
+/// **P4.68 threaded this at the orchestrator's recovery call**, so every failover
+/// leg on the production spine now logs its row; there is no longer a
+/// no-logging entry point to fall through to. `log` stays an `Option` because a
+/// caller with an empty `user_id` has nothing to attribute a row to (v4's
+/// wrapper needs `userId`), and because the differential passes its own.
 #[derive(Clone, Copy)]
 pub struct FailoverLogCtx<'a> {
     pub db: &'a Db,
     /// v4 `preGeneratedAssistantMessageId` (the `messageId` on the log row).
     pub message_id: &'a str,
+    /// The run-id context for the rows these legs write. v4 has no parameter
+    /// here: `runWithAutonomousRunId(runId, …)` is an `AsyncLocalStorage` scope
+    /// wrapping the WHOLE generation, so a failover leg inside an autonomous
+    /// turn logs with the run stamped exactly like the primary attempt does.
+    /// v5 replaced that ambient scope with an explicit [`LogContext`] (U4.4,
+    /// spec decision #4), which means the failover paths have to carry it or a
+    /// retried autonomous turn writes `autonomousRunId = NULL` and drops out of
+    /// the room's per-run token accounting.
+    pub log_context: &'a crate::services::llm_logging::LogContext,
 }
 
-/// v4 `attemptEmptyResponseRecovery` — the orchestrator entry point. Delegates to
-/// [`attempt_empty_response_recovery_with_log`] with no `llm_logs` writer (the
-/// spine does not yet thread the db + pre-generated message id into the failover).
+/// v4 `attemptEmptyResponseRecovery` — the orchestrator entry point, with the
+/// failover `CHAT_MESSAGE` logging v4's `restreamInto` does per `streamMessage`
+/// call. Mutates `state` in place.
+///
+/// There is deliberately no no-logging sibling. Until P4.68 this function had a
+/// convenience wrapper that passed `log: None`, and the orchestrator spine
+/// called THAT — so every failover leg on the production path wrote no
+/// `llm_logs` row at all while the differential, calling the logging entry
+/// directly, proved a row shape nothing in production produced. Collapsing the
+/// pair means a caller has to look at the `log` argument and decide.
 pub async fn attempt_empty_response_recovery<P, S, R, FR, CMP>(
-    provider: &P,
-    sink: &S,
-    router: &R,
-    repos: Option<&FR>,
-    adapter: Option<&crate::services::file_fallback::FallbackDeps<'_, CMP>>,
-    opts: AttemptEmptyResponseRecoveryOptions<'_>,
-) -> EmptyResponseRecoveryFlags
-where
-    P: StreamingCompletionProvider,
-    S: EventSink,
-    R: DangerousContentRouter,
-    FR: FallbackChainRepos,
-    CMP: crate::model::completion::CompletionProvider,
-{
-    attempt_empty_response_recovery_with_log(provider, sink, router, repos, adapter, opts, None)
-        .await
-}
-
-/// v4 `attemptEmptyResponseRecovery`, with the optional failover `CHAT_MESSAGE`
-/// logging (v4's `restreamInto` logs per `streamMessage` call). Mutates `state` in
-/// place.
-pub async fn attempt_empty_response_recovery_with_log<P, S, R, FR, CMP>(
     provider: &P,
     sink: &S,
     router: &R,
@@ -233,10 +226,9 @@ where
     // (real) userId, and no `characterId`.
     //
     // LogContext: none. Threading a run-id context into the failover legs rides
-    // the standing spine follow-up (W4.11b — the orchestrator does not wire
-    // failover logging at all yet, so no autonomous caller reaches this today);
-    // when that threading lands, `FailoverLogCtx` grows the context field.
-    let none_ctx = crate::services::llm_logging::LogContext::none();
+    // P4.68: the orchestrator now threads its own `log_context` in, so an
+    // autonomous turn's failover legs carry the run id exactly as v4's ambient
+    // `runWithAutonomousRunId` scope gives them.
     let stream_log = log.filter(|_| !user_id.is_empty()).map(|l| StreamLogCtx {
         db: l.db,
         user_id: &user_id,
@@ -249,7 +241,7 @@ where
         // the character. Caught by the tier-3 `llm_logs` dump — the results and
         // the event traces both matched, and only the log rows disagreed.
         character_id: Some(&character_id),
-        log_context: &none_ctx,
+        log_context: l.log_context,
         started_at_ms: crate::clock::now_unix_ms(),
     });
 
@@ -796,7 +788,6 @@ where
     // v4's `restreamInto` always passes `userId`, so its wrapper logs a
     // `CHAT_MESSAGE` row per attempt — with no `characterId` (the call site
     // passes none). Same construction as the empty-response legs above.
-    let none_ctx = crate::services::llm_logging::LogContext::none();
     let stream_log = log
         .filter(|_| !context.user_id.is_empty())
         .map(|l| StreamLogCtx {
@@ -807,7 +798,7 @@ where
             // v4 `65f5021c8` passes `characterId` on every `restreamInto` call,
             // the chain legs included.
             character_id: Some(&character_id),
-            log_context: &none_ctx,
+            log_context: l.log_context,
             started_at_ms: crate::clock::now_unix_ms(),
         });
 
@@ -1261,6 +1252,8 @@ mod tests {
                 character_name: "Friday".into(),
                 fallback_context: None,
             },
+            // P4.68: no failover `llm_logs` writer in this unit test.
+            None,
         )
         .await;
         assert!(flags.same_provider_retry_attempted);
@@ -1323,6 +1316,8 @@ mod tests {
                 character_name: "Friday".into(),
                 fallback_context: None,
             },
+            // P4.68: no failover `llm_logs` writer in this unit test.
+            None,
         )
         .await;
         // The canned retry reports no ledger — the stale one must be CLEARED,
@@ -1381,6 +1376,8 @@ mod tests {
                 character_name: "Friday".into(),
                 fallback_context: None,
             },
+            // P4.68: no failover `llm_logs` writer in this unit test.
+            None,
         )
         .await;
         assert!(
@@ -1431,6 +1428,8 @@ mod tests {
                 character_name: "Friday".into(),
                 fallback_context: None,
             },
+            // P4.68: no failover `llm_logs` writer in this unit test.
+            None,
         )
         .await;
         assert_eq!(flags, EmptyResponseRecoveryFlags::default());
@@ -1481,6 +1480,8 @@ mod tests {
                 character_name: "Friday".into(),
                 fallback_context: None,
             },
+            // P4.68: no failover `llm_logs` writer in this unit test.
+            None,
         )
         .await;
         assert!(flags.same_provider_retry_attempted);
@@ -1664,7 +1665,7 @@ mod tests {
             effective_api_key: "k".into(),
             ..Default::default()
         };
-        let flags = attempt_empty_response_recovery_with_log::<
+        let flags = attempt_empty_response_recovery::<
             _,
             _,
             _,
@@ -1698,6 +1699,16 @@ mod tests {
             Some(FailoverLogCtx {
                 db: &db,
                 message_id: "msg-1",
+                // P4.68: a non-empty run id, so the rows below can prove the
+                // context is CARRIED. v4 has no parameter here — its
+                // `runWithAutonomousRunId(runId, …)` `AsyncLocalStorage` scope
+                // wraps the whole generation, retries included — so a v5
+                // failover leg that logged `LogContext::none()` would drop an
+                // autonomous turn's retry spend out of the room's per-run
+                // token accounting.
+                log_context: &crate::services::llm_logging::LogContext {
+                    autonomous_run_id: Some("run-7".into()),
+                },
             }),
         )
         .await;
@@ -1705,15 +1716,29 @@ mod tests {
         assert!(flags.uncensored_retry_attempted);
 
         #[allow(clippy::type_complexity)]
-        let rows: Vec<(String, String, Option<String>, Option<String>, String)> = db
+        let rows: Vec<(
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+            Option<String>,
+        )> = db
             .read_llm_logs(|conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT type, provider, characterId, messageId, chatId \
-                     FROM llm_logs ORDER BY provider",
+                    "SELECT type, provider, characterId, messageId, chatId, \
+                     autonomousRunId FROM llm_logs ORDER BY provider",
                 )?;
                 let out = stmt
                     .query_map([], |r| {
-                        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                        Ok((
+                            r.get(0)?,
+                            r.get(1)?,
+                            r.get(2)?,
+                            r.get(3)?,
+                            r.get(4)?,
+                            r.get(5)?,
+                        ))
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(out)
@@ -1735,6 +1760,12 @@ mod tests {
             );
             assert_eq!(r.3.as_deref(), Some("msg-1"));
             assert_eq!(r.4, "c");
+            assert_eq!(
+                r.5.as_deref(),
+                Some("run-7"),
+                "the caller's `log_context` must reach the leg's row — v4's \
+                 `runWithAutonomousRunId` scope covers every retry"
+            );
         }
     }
 }

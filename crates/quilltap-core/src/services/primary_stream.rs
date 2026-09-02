@@ -1282,6 +1282,11 @@ where
                     .map(|l| super::provider_failover::FailoverLogCtx {
                         db: l.db,
                         message_id: l.message_id,
+                        // P4.68: carry the primary stream's own run-id context
+                        // into the chain legs — v4's `runWithAutonomousRunId`
+                        // scope covers them, so an autonomous turn that fails
+                        // over must still stamp `autonomousRunId`.
+                        log_context: l.log_context,
                     }),
             )
             .await

@@ -29,6 +29,32 @@ arrived), 117 (a chat upload's sha256 is the pre-transcode hash) and 118
 and each now carrying a v5-side measurement to owe. Ledger §1 rewritten
 (regen rule PIN REQUIRED at `6d2a50382`), §3 gains two UNPROCESSED rows; no
 row is a convergence. The five lanes are unaffected — every regen ran pinned.
+#### 2026-09-02 — fix(chat): the orchestrator's failover legs log their llm_logs rows
+
+_Versions: core 0.0.752, harness 0.0.643._
+
+v4 `orchestrator.service.ts:1572` hands `preGeneratedAssistantMessageId` to
+`attemptEmptyResponseRecovery`, and every `restreamInto` leg passes it to
+`streamMessage` as `messageId`, so each retry that reaches its terminal chunk
+logs a `CHAT_MESSAGE` row through the same wrapper the primary stream uses.
+v5 called a convenience wrapper that passed `log: None`, so no failover leg on
+the production spine wrote a row — while the differential, calling the logging
+entry point directly, proved a row shape nothing in production produced. The
+two entry points are now one function with a `log` argument.
+
+`FailoverLogCtx` also gains the run-id context. v4 needs no parameter there
+because `runWithAutonomousRunId` is an `AsyncLocalStorage` scope wrapping the
+whole generation, retries included; v5 replaced that with an explicit
+`LogContext`, and both failover paths were hard-coding `LogContext::none()`. A
+retry inside an autonomous turn would have written `autonomousRunId = NULL` and
+dropped that spend out of the room's per-run token accounting.
+
+The wiring is pinned in `orchestrator_tier3` by a v5-side census, because that
+family strips `CHAT_MESSAGE` from both sides and cannot see the fix: 57 rows
+with the log unwired, 59 with it, green either way. The census keys on a
+repeated `(chatId, messageId)`, which only a failover leg produces. Six spine
+families re-run from a worktree pinned at `6d2a50382`, all green.
+
 #### 2026-09-02 — refactor(chat): participant-status parsing has one home
 
 _Versions: core 0.0.751._
