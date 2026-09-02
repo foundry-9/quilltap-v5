@@ -98690,3 +98690,176 @@ SPA unchanged.
    trio.
 3. §H's SPA half (`hasQuickHideFeatures`' third arm) is P4.D144's, behind its
    ACTIVATE-AT-UNIFY constant. This lane's verb and REST edge are live.
+---
+
+## Lane record — P4.D144, the Concierge mark on every chat list + Quick-hide on the uncensored row (SPA half), 2026-09-02
+
+**Branch:** `claude/concierge-list-marks-spa-eb4ae1`. **v4 target:** `c43d3b1b4`
+(PR #46, *"Chat lists and Quick-hide follow Concierge state, not raw danger
+label"*). **Oracle baseline:** `4622411fd`; the §2 freshness probe PASSED at
+lane start (branch `main`, tree clean, both drift logs empty). Client-only: no
+Rust crate touched, so **no Rust gate was run** — said plainly, per the order.
+
+**Status: Tier 1 CLOSED (points 1–7 and 9). Tier 2 CLOSED (point 8 and point
+10's three beats, both ACTIVATE-AT-UNIFY).** Tier 3 was empty by plan.
+
+### The six commits
+
+1. `feat(concierge): name the uncensored row once, on the client twin` —
+   `conciergeStateUsesUncensoredRoute(state)`, `shouldUseUncensoredRoute`
+   delegating (§B). Parity spec grows v4's new block, TABLE row for row.
+2. `feat(concierge): the presentation table and the list mark` — the two new
+   modules, the `.qt-concierge-mark` CSS family, both corpora transcribed, and
+   the executed-v4 oracle.
+3. `feat(concierge): the chat lists follow the Concierge state, not the raw
+   label` — the §A DTOs, the three card sites, `shouldHideChat` + the four
+   filters.
+4. `feat(concierge): the header pill and the sidebar read the presentation
+   table` — the last two consumers.
+5. `feat(quick-hide): the footer affordance follows the uncensored row` — §H's
+   client arm and the three gated beats.
+
+(Five commits; the second carries units 2 and 3 together because the mark
+cannot compile without the table.)
+
+### The oracle — v4's module EXECUTED, not transcribed
+
+`harness/oracle/cases/concierge-presentation.mjs` reads v4's
+`concierge-state-presentation.ts` at `c43d3b1b4` through `git show`, writes it
+to a scratch dir, and **imports it**: every one of its imports is `import type`,
+which Node 24's type stripping erases outright, so the module runs with no
+bundler, no path aliases and no jest. It emits the whole table, both tone
+functions over all four tones, and all twelve `describeConciergeState` shapes to
+the committed `apps/web/src/app/chat/concierge-state-presentation.v4.json`,
+which the SPA spec diffs against string for string.
+
+This is a deliberate strengthening of the order's shape. The order asked for a
+spec reading v4's module out of a scratch dir staged by the recipe; a committed
+recording ALWAYS runs, where a scratch read silently skips when the file is
+absent. Reading through `git show` at the pin also satisfies the PIN REQUIRED
+rule by construction — no working-tree read, so a moved v4 checkout cannot
+poison it.
+
+**Regen recipe** (writes the committed oracle in place):
+
+```bash
+export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH
+node ~/source/quilltap-v5/harness/oracle/cases/concierge-presentation.mjs \
+  > ~/source/quilltap-v5/apps/web/src/app/chat/concierge-state-presentation.v4.json
+```
+
+`QT_V4_CHECKOUT` and `QT_V4_PIN` override the checkout and the sha.
+
+### Red-first runs, recorded
+
+- **The predicate (unit 1):** the spec block was written first and failed to
+  build — `TS2305: Module './concierge-state' has no exported member
+  'conciergeStateUsesUncensoredRoute'`. Green after: 8 tests.
+- **The §A DTO change (unit 4):** dropping `isDangerousChat` (and
+  `conciergeOverride`) reddened **13 spec sites** across seven files —
+  `TS2353`, the honest red for a removed field.
+- **The header's retired `title` (unit 5):** the pre-lane spec asserted three
+  exact `title` strings; the rewritten block asserts their absence, and putting
+  a native `title` back reddens it.
+
+### Mutation proofs (all verified applied, all reverted by file backup)
+
+| mutation | reddens |
+|---|---|
+| `conciergeStateUsesUncensoredRoute` → `'flagged'` alone | 3 of 8 parity cases |
+| one `detail` sentence edited | the transcribed case AND the executed-v4 diff |
+| `conciergeMarkClasses` drops the empty-suffix guard | the Flagged class-string pin |
+| a native `title` back on the mark | the no-title case |
+| a native `title` back on the header pill | the retired-titles case |
+| the header's tone forced to `danger` | both operator pills |
+| the sidebar icon's tone forced to `danger` | the existing four-state icon case |
+| `shouldHideChat` back to PRE-LANE raw-label semantics | the three hide-delta cases, nothing else |
+| the mark's `@if` narrowed to `'flagged'` | the tone case |
+| the footer gate removed | the new no-flagged-tag case |
+| `quickHideFeaturesVisible` drops its third arm | the three-way-OR case |
+
+The delta proof deserves its own line. The pre-lane code cannot compile against
+the §A payload, so "red against pre-lane code" is unavailable for the two
+behaviour changes; instead `shouldHideChat` was mutated back to the **exact**
+pre-lane semantics (hide Flagged and Vouched — the states a raw `isDangerousChat`
+label is true on — never Uncensored), which reddens precisely the three cases
+that name the deltas and nothing else. That isolates the semantic more sharply
+than a whole-file revert would.
+
+### Two measured findings
+
+**Angular's `[class]` binding deduplicates and reorders its tokens.** v4's
+corpus pins the mark with `expect(mark.className).toBe('qt-concierge-mark')`,
+whose whole point is that the base class is not emitted twice for Flagged. The
+first mutation of that guard — dropping the empty-suffix check so the template
+builds `'qt-concierge-mark qt-concierge-mark'` — stayed **GREEN**: Angular
+parses the bound string into tokens and applies them through `classList`, so a
+duplicate collapses and the DOM is identical either way. The guard was restored
+by extracting the string into an exported `conciergeMarkClasses` and asserting
+it at its source; the same mutation then reddens. The same mechanism reorders
+the attribute (`flex-shrink-0 qt-concierge-mark text-sm` where v4 writes
+`qt-concierge-mark text-sm flex-shrink-0`), so the DOM-side assertions compare
+the class SET. Behaviour-neutral in CSS; recorded because it silently disarms a
+transcribed v4 assertion.
+
+**A backtick inside an Angular inline-template comment terminates the
+TypeScript template literal.** The header's new HTML comment quoted
+`` `c43d3b1b4` `` and produced seven unrelated-looking errors (`TS18004: No
+value exists in scope for the shorthand property 'c43d3b1b4'`, `TS2304: Cannot
+find name 'title'`). Worth a memory note: never put a backtick in a `template:`
+string, comment or not.
+
+### Recorded divergences and gaps
+
+- **Arm order** in `shouldHideChat`: v4 asks the TAG question first, and three
+  of v5's four inline filters asked danger first. Both arms are pure and neither
+  short-circuits anything observable — behaviour-neutral, recorded rather than
+  reasoned about again.
+- **The P4.9d non-port ruling on `shouldHideChat` is RETIRED at source.** It
+  read v4 right at the time (the method took a `chat.isDangerous` no payload
+  carried, and every consumer inlined the check on the real field); `c43d3b1b4`
+  is v4 fixing exactly that, so v5 lands it.
+- **`concierge-state.ts`'s ⚠ note** — that the chat card and the quick-hide gate
+  read `isDangerousChat` raw and were "v4-FAITHFUL" — is rewritten. It is now
+  true only of the single-chat `ChatDetail` readers.
+- **Monitored renders nothing:** v4 asserts `toBeEmptyDOMElement()` on the
+  container; an Angular component always has a host, so the case asserts the
+  host renders no child. The host is `display: contents` (the ConfirmationBadge
+  idiom), which is also what keeps it clear of the inline-host trap.
+- **theme-storybook mirror: NO-PORT** — v5 has no twin package (v4 bumps it to
+  1.0.69).
+- **The help hunks** bank to `p4.9i2`, as ordered.
+- **e2e coverage gap, named:** the bubble's `Categories` line is not asserted in
+  any beat. Nothing a walk can reach writes `chats.dangerCategories` — the
+  classifier job writes it and the manual flip clears it, and `ChatPatch` is an
+  internal Rust struct, not a request bag, so no dispatch verb carries the
+  field. Asserting it would author a beat guaranteed to fail on first activation
+  for a reason that is not the feature. Three unit specs assert it instead
+  (`concierge-mark.spec.ts`, `conversation-header.spec.ts`,
+  `concierge-state-presentation.spec.ts`); seeding it in a walk needs the
+  own-server + CLI-SQL pattern of `salon-concierge-four-state-flow.spec.ts`.
+- **One out-of-ownership edit, flagged loudly:** `shell/user-menu.ts` is not in
+  this order's SPA ownership list, but §H directs the footer gate here and no
+  other lane in the round claims the file.
+
+### FOR THE UNIFIER — two constants to flip, in the same unification
+
+1. `P4D143_LIST_PAYLOAD_LANDED` in `apps/web/e2e/concierge-marks-flow.spec.ts`
+   → `true`, once P4.D143's `conciergeState` reaches the list payloads.
+2. `CHATS_HAS_DANGEROUS_VERB_LANDED` in
+   `apps/web/src/app/quick-hide/quick-hide.service.ts` → `true`, once P4.D143's
+   `chatsHasDangerous` verb is on the branch.
+
+**Both are needed together.** The footer's quick-hide section is now gated on
+`hasQuickHideFeatures`, and on a fixture with no flagged tag and the toggle off
+the ONLY arm that can open it is the uncensored-row probe — so without flip 2,
+beat 2 cannot reach the "Dangerous Chats" toggle at all. Run the file at first
+activation (the gated-beat first-run rot class).
+
+### Gate
+
+`npm test` **375 files / 5,869 tests / 0 failed** (`check-qt-classes` self-test
+and scan run inside it) and `npm run build` clean, both from `apps/web`, on the
+final tree. Every commit was gated the same way before it landed. **No
+Playwright run in-lane** (P4.D147 owns port 4319), and **no Rust gate** — the
+lane touches no crate. SPA version 0.5.616 → **0.5.621**; no crate bumped.
