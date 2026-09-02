@@ -18,22 +18,35 @@
 //! recallAdjustment — the recall-context multipliers prove the assembled search
 //! invocation transitively) and `recallSignals` (the parsed distill).
 //!
-//! ## ⚠ Measured blind spot — the uncensored reroute (P4.D141)
+//! ## The uncensored reroute — the P4.D141 blind spot, CLOSED (P4.68)
 //!
-//! The corpus case `dangerous-chat-reroute-runs` reads as coverage of
-//! `pre_compute.rs`'s uncensored-cheap-LLM swap. **It is not.** Both sides pass
-//! `allProfiles: []`, so `resolve_uncensored_cheap_llm_selection` has nothing to
-//! swap to and returns the selection unchanged — and the emitted row never
-//! carries the selection anyway. Measured 2026-09-01: forcing
-//! `should_use_uncensored_route` to return `false` unconditionally leaves this
-//! family **GREEN**, that case included.
+//! `dangerous-chat-reroute-runs` used to read as coverage of `pre_compute.rs`'s
+//! uncensored-cheap-LLM swap without being any. Both sides passed
+//! `allProfiles: []`, so `resolve_uncensored_cheap_llm_selection` had nothing to
+//! swap to, and the emitted row carried no selection to compare — measured
+//! 2026-09-01: forcing `should_use_uncensored_route` to `false` left the family
+//! GREEN, that case included.
 //!
-//! So the predicate's live coverage is `story_background_job_tier3_equivalence`'s
-//! `uncensored_override_candid` (v4's own motivating regression — the candid vs
-//! concealed prompt is byte-visible there) plus the pure truth table in
-//! `danger_resolver_equivalence`. Making THIS family discriminating means seeding
-//! the corpus with an uncensored profile and threading `allProfiles` through both
-//! sides — a corpus-shape change deferred loudly by P4.D141, not done here.
+//! Two things closed it, and neither needed the fixture widening P4.D141
+//! expected. `allProfiles` is a PARAMETER on both sides (v4 takes it as an
+//! argument to `runPreContextPreCompute`; it is not a DB read), so the profiles
+//! live in `precompute-cases.json` — which only this family consumes, so the
+//! committed `episodic-recall-*` pair and its two other consumers were never
+//! involved. And the swap is observable through `cheapSelectionUsed`: v4's
+//! `executeCheapLLMTask` mock captures the `selection` argument it used to
+//! ignore, and the Rust `CannedDistillProvider` captures the provider/base-URL/
+//! model of the call it received.
+//!
+//! The case now carries the CONFIGURED uncensored profile plus a second
+//! `isDangerousCompatible` decoy, so the row shows which branch ran: the
+//! configured-id branch picks `OPENROUTER/dolphin-uncensored`, the
+//! any-compatible fallback would pick the `OLLAMA` decoy, and no reroute leaves
+//! the spec's `OPENAI/gpt-4.1-mini`. The old mutation now fails by name
+//! (`dangerous-chat-reroute-runs: /cheapSelectionUsed/provider diverges`).
+//!
+//! `story_background_job_tier3_equivalence`'s `uncensored_override_candid` and
+//! `danger_resolver_equivalence`'s truth table remain the predicate's other
+//! coverage.
 //!
 //! **Why `distillPrompt` is diffed (P4.20).** The canned distill answers the same
 //! text whatever prompt it is given, so until the prompt itself was compared this
@@ -131,6 +144,11 @@ struct CaseSpec {
     chat: Value,
     #[serde(default)]
     danger_settings: Option<Value>,
+    /// P4.68: the connection profiles `resolveUncensoredCheapLLMSelection` may
+    /// swap to. v4 takes these as a PARAMETER (`allProfiles`), not a DB read, so
+    /// the corpus carries them and no fixture DB needs widening.
+    #[serde(default)]
+    all_profiles: Vec<Value>,
     existing_messages: Vec<Value>,
     distill: DistillSpec,
 }
@@ -169,6 +187,12 @@ struct OracleRow {
     /// parse by name.
     #[serde(rename = "queryEmbedding")]
     query_embedding: Value,
+    /// P4.68: `{provider, modelName, baseUrl}` the cheap-LLM executor ran with,
+    /// or `null` when no distill happened. REQUIRED for the same reason
+    /// `queryEmbedding` is — a stale NDJSON must fail to parse by name rather
+    /// than silently compare `null`.
+    #[serde(rename = "cheapSelectionUsed")]
+    cheap_selection_used: Value,
 }
 
 /// A completion provider that always answers the canned distill text or always
@@ -184,6 +208,12 @@ struct OracleRow {
 struct CannedDistillProvider {
     response: Option<String>,
     prompt: Mutex<Option<Vec<(String, String)>>>,
+    /// P4.68: `(provider, base_url, model)` of the call the executor actually
+    /// made. The uncensored reroute changes WHICH profile distills, not the
+    /// prompt or the canned answer, so this is the only place it is visible.
+    /// v4's twin captures the same three fields off the `selection` argument
+    /// its `executeCheapLLMTask` mock used to ignore.
+    selection: Mutex<Option<(String, Option<String>, String)>>,
 }
 
 impl CompletionProvider for CannedDistillProvider {
@@ -193,6 +223,11 @@ impl CompletionProvider for CannedDistillProvider {
         _base_url: Option<&str>,
         params: &CompletionParams,
     ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send {
+        *self.selection.lock().expect("selection lock") = Some((
+            _provider.to_string(),
+            _base_url.map(str::to_string),
+            params.model.clone(),
+        ));
         *self.prompt.lock().expect("prompt lock") = Some(
             params
                 .messages
@@ -304,6 +339,23 @@ fn selection_from(v: &Value) -> CheapLlmSelection {
     }
 }
 
+/// The corpus's `allProfiles` rows → the swap's candidate list. Only the fields
+/// v4's `resolveUncensoredCheapLLMSelection` reads are carried.
+fn profiles_from(rows: &[Value]) -> Vec<quilltap_core::cheap_llm::CheapLlmProfile> {
+    rows.iter()
+        .map(|p| quilltap_core::cheap_llm::CheapLlmProfile {
+            id: p["id"].as_str().unwrap_or_default().to_string(),
+            provider: p["provider"].as_str().unwrap_or_default().to_string(),
+            model_name: p["modelName"].as_str().unwrap_or_default().to_string(),
+            base_url: p["baseUrl"].as_str().map(str::to_string),
+            is_cheap: p["isCheap"].as_bool().unwrap_or(false),
+            is_dangerous_compatible: p["isDangerousCompatible"].as_bool().unwrap_or(false),
+            parameters: p.get("parameters").cloned(),
+            ..Default::default()
+        })
+        .collect()
+}
+
 fn danger_from(v: Option<&Value>) -> DangerousContentSettings {
     match v {
         Some(d) => DangerousContentSettings {
@@ -387,6 +439,7 @@ async fn precompute_matches_oracle() {
                 _ => None,
             },
             prompt: Mutex::new(None),
+            selection: Mutex::new(None),
         };
         let executor = CheapLlmTaskExecutor::new();
         let embedding = ErasedEmbeddingProvider::new(ApiEmbeddingProvider::new(
@@ -396,6 +449,7 @@ async fn precompute_matches_oracle() {
 
         let selection = selection_from(&spec.cheap_selection);
         let danger = danger_from(case.danger_settings.as_ref());
+        let profiles = profiles_from(&case.all_profiles);
         let input = ProactiveRecallInput {
             chat: &case.chat,
             character_id: &case.character_id,
@@ -407,7 +461,7 @@ async fn precompute_matches_oracle() {
             existing_messages: &case.existing_messages,
             cheap_llm_selection: Some(&selection),
             danger_settings: &danger,
-            available_profiles: &[],
+            available_profiles: &profiles,
             user_id: &spec.user_id,
             chat_id: case
                 .chat
@@ -469,6 +523,22 @@ async fn precompute_matches_oracle() {
                 None => Value::Null,
             },
         );
+        got.insert(
+            "cheapSelectionUsed".to_string(),
+            match completion
+                .selection
+                .lock()
+                .expect("selection lock")
+                .as_ref()
+            {
+                Some((provider, base_url, model)) => json!({
+                    "provider": provider,
+                    "modelName": model,
+                    "baseUrl": base_url,
+                }),
+                None => Value::Null,
+            },
+        );
         let got = Value::Object(got);
 
         let want = json!({
@@ -476,6 +546,7 @@ async fn precompute_matches_oracle() {
             "preSearchedMemories": oracle.pre_searched_memories,
             "recallSignals": oracle.recall_signals,
             "queryEmbedding": oracle.query_embedding,
+            "cheapSelectionUsed": oracle.cheap_selection_used,
         });
 
         assert_value_eq(&got, &want, "", name);

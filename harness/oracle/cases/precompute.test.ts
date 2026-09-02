@@ -65,6 +65,7 @@ interface Spec {
   $nowMs: number;
   userId: string;
   cheapSelection: Record<string, unknown>;
+  allProfiles?: Record<string, unknown>[];
   cases: CaseSpec[];
 }
 
@@ -164,10 +165,24 @@ async function main(): Promise<void> {
     // place the windowed conversation becomes observable, since the canned answer
     // is the same whatever the prompt says.
     let distillPrompt: Array<{ role: string; content: string }> | null = null;
+    // P4.68: the selection the executor actually ran with. This is the ONLY
+    // place the uncensored reroute becomes observable — the swap changes WHICH
+    // profile does the distill, not the prompt or the canned answer, so with
+    // `_sel` ignored the family could not see `resolveUncensoredCheapLLMSelection`
+    // at all (P4.D141 measured that: forcing `shouldUseUncensoredRoute` false
+    // left it GREEN). Only the fields the Rust side can also see are recorded.
+    let cheapSelectionUsed: { provider: unknown; modelName: unknown; baseUrl: unknown } | null =
+      null;
     jest.doMock('@/lib/memory/cheap-llm-tasks/core-execution', () => ({
       __esModule: true,
       executeCheapLLMTask: jest.fn(
         async (_sel: unknown, messages: unknown, _uid: unknown, parse: unknown) => {
+          const sel = _sel as { provider?: unknown; modelName?: unknown; baseUrl?: unknown };
+          cheapSelectionUsed = {
+            provider: sel?.provider ?? null,
+            modelName: sel?.modelName ?? null,
+            baseUrl: sel?.baseUrl ?? null,
+          };
           distillPrompt = (messages as Array<{ role: string; content: string }>).map((m) => ({
             role: m.role,
             content: m.content,
@@ -211,7 +226,7 @@ async function main(): Promise<void> {
       bypassCompression: false,
       cheapLLMSelection: spec.cheapSelection as never,
       dangerSettings: (c.dangerSettings ?? { mode: 'OFF' }) as never,
-      allProfiles: [],
+      allProfiles: (c.allProfiles ?? []) as never,
       controller,
       encoder,
     });
@@ -225,6 +240,7 @@ async function main(): Promise<void> {
       JSON.stringify({
         name: c.name,
         distillPrompt,
+        cheapSelectionUsed,
         preSearchedMemories: normalizeMemories(result.preSearchedMemories),
         recallSignals: result.recallSignals ?? null,
         // P4.D95 (v4 `870a57fa`): the vector the proactive search embedded,

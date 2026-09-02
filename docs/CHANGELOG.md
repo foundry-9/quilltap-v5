@@ -29,6 +29,31 @@ arrived), 117 (a chat upload's sha256 is the pre-transcode hash) and 118
 and each now carrying a v5-side measurement to owe. Ledger §1 rewritten
 (regen rule PIN REQUIRED at `6d2a50382`), §3 gains two UNPROCESSED rows; no
 row is a convergence. The five lanes are unaffected — every regen ran pinned.
+#### 2026-09-02 — test(harness): precompute sees the uncensored reroute, and the episodic-recall fixture is un-staled
+
+_Versions: harness 0.0.646._
+
+P4.D141 measured `precompute_equivalence` as blind to the uncensored
+cheap-LLM swap: both sides passed `allProfiles: []`, and forcing
+`should_use_uncensored_route` to `false` left the family green. Closed, and
+without the fixture widening that finding expected — `allProfiles` is a
+parameter on both sides rather than a DB read, and the cases live in
+`precompute-cases.json`, which only this family consumes.
+
+The swap changes which profile distills, not the prompt or the canned answer, so
+it needed a comparand: v4's `executeCheapLLMTask` mock captures the selection
+argument it used to ignore, and the Rust canned provider captures the provider,
+base URL and model it was called with. `dangerous-chat-reroute-runs` now carries
+the configured uncensored profile plus an `isDangerousCompatible` decoy, so the
+row shows which branch ran. The old mutation fails by name.
+
+Re-running the pair's two other consumers surfaced a pre-existing standing red:
+`recall_replay_equivalence` could not regenerate at all, because the committed
+`episodic-recall-*` pair predates v4 adding `connection_profiles.fallbackProfileId`
+and its oracle reads it. Every input to that oracle was at main's content, so the
+failure was not this lane's. The pair is rebuilt with its shipped builder from a
+worktree pinned at `6d2a50382`; all three consumers now run green.
+
 #### 2026-09-02 — test(harness): the fallback chain's error and exhaustion arms get corpus rows
 
 _Versions: harness 0.0.645._

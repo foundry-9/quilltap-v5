@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.19 proactive pre-compute distill differential — case specs. Runs over a fresh copy of the committed episodic-recall-{main,mount}.db fixture (Elowen = the searched character with 7 memories incl. dated/entity episodic rows; Pip = a character with NO memories, for the search-empty arm). The chat/character/messages are synthetic inputs to runPreContextPreCompute / proactive_recall_task; the DB provides memories (by characterId) + the fitted BUILTIN TF-IDF embedding profile + the instance recall settings. ONLY the cheap-LLM distill is canned (per case), routed through each side's REAL parse. The clock is frozen to $nowMs on both sides.",
+  "$comment": "P4.19 proactive pre-compute distill differential \u2014 case specs. Runs over a fresh copy of the committed episodic-recall-{main,mount}.db fixture (Elowen = the searched character with 7 memories incl. dated/entity episodic rows; Pip = a character with NO memories, for the search-empty arm). The chat/character/messages are synthetic inputs to runPreContextPreCompute / proactive_recall_task; the DB provides memories (by characterId) + the fitted BUILTIN TF-IDF embedding profile + the instance recall settings. ONLY the cheap-LLM distill is canned (per case), routed through each side's REAL parse. The clock is frozen to $nowMs on both sides.",
   "$nowMs": 1780574400000,
   "userId": "a0000000-0000-4000-8000-000000000001",
   "elowenId": "c1000000-0000-4000-8000-0000000000e1",
@@ -17,218 +17,624 @@
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": false,
       "content": "Tell me about the quay.",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "USER", "content": "Tell me about the quay.", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Tell me about the quay.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\":[\"quay\"]}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\":[\"quay\"]}"
+      }
     },
     {
       "name": "spoke-then-window-searches",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": false,
       "content": "And the dawn market?",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "USER", "content": "What about dawn?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The quay was quiet.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "What about dawn?",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn and watched the fleet.\"}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn and watched the fleet.\"}"
+      }
     },
     {
       "name": "continue-mode-empty-window-yields-nothing",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": true,
       "content": "this is not pushed in continue mode",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "USER", "content": "Say more.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" }
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Say more.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The quay was quiet.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\":[\"quay\"]}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\":[\"quay\"]}"
+      }
     },
     {
       "name": "dangerous-chat-reroute-runs",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": false,
       "content": "And the dawn market?",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime", "isDangerousChat": true },
-      "dangerSettings": { "mode": "AUTO_ROUTE" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime",
+        "isDangerousChat": true
+      },
+      "dangerSettings": {
+        "mode": "AUTO_ROUTE",
+        "uncensoredTextProfileId": "ac000001-0000-4000-8000-0000000000a1"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "USER", "content": "What about dawn?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The quay was quiet.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "What about dawn?",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn and watched the fleet.\"}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn and watched the fleet.\"}"
+      },
+      "allProfiles": [
+        {
+          "id": "ac000001-0000-4000-8000-0000000000a1",
+          "provider": "OPENROUTER",
+          "modelName": "dolphin-uncensored",
+          "baseUrl": null,
+          "isCheap": true,
+          "isDangerousCompatible": true,
+          "parameters": {}
+        },
+        {
+          "id": "ac000002-0000-4000-8000-0000000000a2",
+          "provider": "OLLAMA",
+          "modelName": "decoy-local",
+          "baseUrl": null,
+          "isCheap": true,
+          "isDangerousCompatible": true,
+          "parameters": {}
+        }
+      ],
+      "$comment": "P4.68 \u2014 this case used to pass `allProfiles: []` on BOTH sides, so `resolveUncensoredCheapLLMSelection` had nothing to swap to and forcing `shouldUseUncensoredRoute` to false left the family GREEN (measured, P4.D141). It now carries the configured uncensored profile AND a second isDangerousCompatible decoy, so the emitted `cheapSelectionUsed` shows which branch ran: the configured-id branch picks OPENROUTER/dolphin-uncensored, the any-compatible fallback would pick the OLLAMA decoy, and no reroute at all leaves the spec's standard selection."
     },
     {
       "name": "extraction-fail-yields-nothing",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": false,
       "content": "And the dawn market?",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "USER", "content": "What about dawn?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The quay was quiet.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "What about dawn?",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "fail" }
+      "distill": {
+        "kind": "fail"
+      }
     },
     {
       "name": "search-empty-signals-still-flow",
       "characterId": "c1000000-0000-4000-8000-0000000000f1",
       "characterName": "Pip",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000002",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000f1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000f1"
+      ],
       "isContinueMode": false,
       "content": "Do you remember anything?",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "I hum a shanty.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Anything at all?", "participantId": "e1000000-0000-4000-8000-000000000001" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "I hum a shanty.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Anything at all?",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn.\"}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn.\"}"
+      }
     },
     {
       "name": "retrospective-multi-probe",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": false,
       "content": "Remember the lighthouse walk last week?",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "USER", "content": "Remember last week?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The quay was quiet.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Remember last week?",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\":[\"lighthouse\",\"quay\"],\"paraphrase\":\"we walked toward the lighthouse from the quay last week\",\"retrospective\":true,\"timeRange\":{\"from\":\"2026-06-01\",\"to\":\"2026-06-07\"},\"entities\":[\"Gullwing Quay\"]}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\":[\"lighthouse\",\"quay\"],\"paraphrase\":\"we walked toward the lighthouse from the quay last week\",\"retrospective\":true,\"timeRange\":{\"from\":\"2026-06-01\",\"to\":\"2026-06-07\"},\"entities\":[\"Gullwing Quay\"]}"
+      }
     },
     {
       "name": "multi-character-participant-boost",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1", "c1000000-0000-4000-8000-0000000000f1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1",
+        "c1000000-0000-4000-8000-0000000000f1"
+      ],
       "isContinueMode": false,
       "content": "And the dawn market?",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "ASSISTANT", "content": "I hummed along.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "What about dawn?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The quay was quiet.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "I hummed along.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "What about dawn?",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn and watched the fleet.\"}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\":[\"quay\",\"dawn\"],\"paraphrase\":\"We visited the quay at dawn and watched the fleet.\"}"
+      }
     },
     {
-      "$comment": "P4.d26: the classifier says NOT retrospective and offers no window; the turn plainly says 'today'. The deterministic resolver overrides both — retrospective flips true and the window becomes local midnight..now.",
+      "$comment": "P4.d26: the classifier says NOT retrospective and offers no window; the turn plainly says 'today'. The deterministic resolver overrides both \u2014 retrospective flips true and the window becomes local midnight..now.",
       "name": "day-reference-same-day-override",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": false,
       "content": "No, no. I mean the mission today. I want to hear about it.",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "USER", "content": "What about the mission?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The quay was quiet.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "What about the mission?",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\": [\"mission\", \"quay\"], \"paraphrase\": \"Charlie is asking how the mission at the quay went.\", \"retrospective\": false, \"timeRange\": null, \"entities\": [\"Gullwing Quay\"]}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"mission\", \"quay\"], \"paraphrase\": \"Charlie is asking how the mission at the quay went.\", \"retrospective\": false, \"timeRange\": null, \"entities\": [\"Gullwing Quay\"]}"
+      }
     },
     {
-      "$comment": "P4.d26: no day reference anywhere in the turn, so the resolver stays silent and retrospective:false survives — the model's own window must still ride along (the occurredWithin ungating). Reverting the ungating reddens this case.",
+      "$comment": "P4.d26: no day reference anywhere in the turn, so the resolver stays silent and retrospective:false survives \u2014 the model's own window must still ride along (the occurredWithin ungating). Reverting the ungating reddens this case.",
       "name": "window-forwarded-when-not-retrospective",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": false,
       "content": "And the dawn market?",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "The quay was quiet.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "USER", "content": "What about dawn?", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "The quay was quiet.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "What about dawn?",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\": [\"quay\", \"dawn\"], \"paraphrase\": \"We visited the quay at dawn and watched the fleet.\", \"retrospective\": false, \"timeRange\": {\"from\": \"2026-06-03\", \"to\": \"2026-06-04\"}, \"entities\": []}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"quay\", \"dawn\"], \"paraphrase\": \"We visited the quay at dawn and watched the fleet.\", \"retrospective\": false, \"timeRange\": {\"from\": \"2026-06-03\", \"to\": \"2026-06-04\"}, \"entities\": []}"
+      }
     },
     {
-      "$comment": "P4.20: the Fold-room shape — the ONLY window in the enclave-step fixture where the since-last-spoke window and buildContext's last-12 window differ, and therefore the only shape that could ever expose a pre-compute windowing divergence. Eleven alternating ASSISTANT seeds; the responder (Elowen) last spoke at line 10, so the window is the SINGLE trailing line 11 while the last-12 window is all eleven. Continue mode with empty content — the autonomous turn's exact inputs, recorded from v4 instrumentation. The `distillPrompt` assertion is what makes this case load-bearing: the canned distill answers regardless of its input, so before P4.20 a window divergence changed nothing observable.",
+      "$comment": "P4.20: the Fold-room shape \u2014 the ONLY window in the enclave-step fixture where the since-last-spoke window and buildContext's last-12 window differ, and therefore the only shape that could ever expose a pre-compute windowing divergence. Eleven alternating ASSISTANT seeds; the responder (Elowen) last spoke at line 10, so the window is the SINGLE trailing line 11 while the last-12 window is all eleven. Continue mode with empty content \u2014 the autonomous turn's exact inputs, recorded from v4 instrumentation. The `distillPrompt` assertion is what makes this case load-bearing: the canned distill answers regardless of its input, so before P4.20 a window divergence changed nothing observable.",
       "name": "fold-room-window-is-tail-only",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": true,
       "content": "",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 1.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 2.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 3.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 4.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 5.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 6.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 7.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 8.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 9.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 10.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "ASSISTANT", "content": "Fold seed line 11.", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 1.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 2.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 3.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 4.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 5.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 6.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 7.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 8.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 9.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 10.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Fold seed line 11.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\": [\"fold\", \"quay\"], \"paraphrase\": \"The company keeps folding the same thread back on itself.\", \"retrospective\": false, \"timeRange\": null, \"entities\": []}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"fold\", \"quay\"], \"paraphrase\": \"The company keeps folding the same thread back on itself.\", \"retrospective\": false, \"timeRange\": null, \"entities\": []}"
+      }
     },
     {
-      "$comment": "P4.20: a 25-message window since the responder last spoke. v4 caps the prompt at `recentMessages.slice(-20)` and truncates any single message past 500 UTF-16 units to `substring(0, 500) + '...'`; entry 12 is deliberately longer than 500. Both rules are pure prompt shaping, so they were invisible to this family until `distillPrompt` was diffed — this case is what pins them.",
+      "$comment": "P4.20: a 25-message window since the responder last spoke. v4 caps the prompt at `recentMessages.slice(-20)` and truncates any single message past 500 UTF-16 units to `substring(0, 500) + '...'`; entry 12 is deliberately longer than 500. Both rules are pure prompt shaping, so they were invisible to this family until `distillPrompt` was diffed \u2014 this case is what pins them.",
       "name": "long-window-caps-at-twenty-and-truncates",
       "characterId": "c1000000-0000-4000-8000-0000000000e1",
       "characterName": "Elowen",
       "characterParticipantId": "e1000000-0000-4000-8000-000000000001",
-      "presentAboutCharacterIds": ["c1000000-0000-4000-8000-0000000000e1"],
+      "presentAboutCharacterIds": [
+        "c1000000-0000-4000-8000-0000000000e1"
+      ],
       "isContinueMode": true,
       "content": "",
-      "chat": { "id": "cd000000-0000-4000-8000-000000000001", "timelineMode": "realtime" },
+      "chat": {
+        "id": "cd000000-0000-4000-8000-000000000001",
+        "timelineMode": "realtime"
+      },
       "existingMessages": [
-        { "type": "message", "role": "ASSISTANT", "content": "Elowen speaks, then falls silent.", "participantId": "e1000000-0000-4000-8000-000000000001" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 1.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 2.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 3.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 4.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 5.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 6.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 7.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 8.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 9.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 10.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 11.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry twelve: the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. ", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 13.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 14.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 15.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 16.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 17.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 18.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 19.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 20.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 21.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 22.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 23.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "ASSISTANT", "content": "Ledger entry 24.", "participantId": "e1000000-0000-4000-8000-000000000002" },
-        { "type": "message", "role": "USER", "content": "Ledger entry 25.", "participantId": "e1000000-0000-4000-8000-000000000002" }
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Elowen speaks, then falls silent.",
+          "participantId": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 1.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 2.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 3.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 4.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 5.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 6.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 7.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 8.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 9.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 10.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 11.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry twelve: the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. the harbourmaster tallied the crates and read the count aloud. ",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 13.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 14.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 15.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 16.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 17.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 18.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 19.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 20.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 21.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 22.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 23.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "ASSISTANT",
+          "content": "Ledger entry 24.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        },
+        {
+          "type": "message",
+          "role": "USER",
+          "content": "Ledger entry 25.",
+          "participantId": "e1000000-0000-4000-8000-000000000002"
+        }
       ],
-      "distill": { "kind": "json", "text": "{\"keywords\": [\"ledger\", \"harbour\"], \"paraphrase\": \"A long tally of ledger entries at the harbour.\", \"retrospective\": false, \"timeRange\": null, \"entities\": []}" }
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"ledger\", \"harbour\"], \"paraphrase\": \"A long tally of ledger entries at the harbour.\", \"retrospective\": false, \"timeRange\": null, \"entities\": []}"
+      }
     }
   ]
 }
