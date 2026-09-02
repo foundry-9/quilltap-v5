@@ -1035,6 +1035,47 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 );
             }
             // === end P4.D140 ===
+            // === P4.D145 (v4 `a5df98b3f`, migration
+            // `collapse-duplicate-folders-v1`, bug 114) ===
+            // One `folders` row per (userId, COALESCE(projectId,''), path),
+            // enforced by a unique index. Collapses the duplicates a
+            // pre-4.9 instance carries (607 rows describing 24 folders on
+            // the real one) — oldest wins, children repointed at the
+            // survivor before the deletes — then creates the index that
+            // makes a repeat impossible.
+            //
+            // Unlike the two ledger-guarded passes above, this one's
+            // once-only marker is the INDEX, because that is v4's own
+            // guard (`shouldRun()` is `!indexExists()`): a
+            // `migrations_state` row here would claim a completion v4
+            // never claims for this migration. See the module header.
+            //
+            // This ALSO covers fresh instances. v4's `generateDDL` cannot
+            // express a COALESCE index, so `fresh_schema.json` correctly
+            // does not carry it (no D23 re-dump) — and `assemble` runs
+            // this chain on EVERY open, including the first one after
+            // provisioning.
+            if let quilltap_core::db::folders_unique_path_repair::CollapseOutcome::Ran {
+                scanned,
+                surviving,
+                deleted,
+                repointed,
+            } = quilltap_core::db::folders_unique_path_repair::ensure_folders_unique_path_index(
+                main,
+                &quilltap_core::clock::now_iso(),
+            )? {
+                if deleted > 0 || repointed > 0 {
+                    tracing::info!(
+                        target: "quilltap::boot",
+                        scanned,
+                        surviving,
+                        deleted,
+                        repointed,
+                        "Collapsed duplicate folder rows"
+                    );
+                }
+            }
+            // === end P4.D145 ===
             // === P4.D77 (v4 `24633026`, migration
             // `create-help-doc-chunks-table-v1`) ===
             // The `help_doc_chunks` table itself, re-homed from v4's migration

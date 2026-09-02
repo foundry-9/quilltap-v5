@@ -66,6 +66,7 @@ pub mod ensure_official_store;
 pub mod fictional_clock_anchor_repair;
 pub mod files;
 pub mod folders;
+pub mod folders_unique_path_repair;
 pub mod group_character_members;
 pub mod group_doc_mount_links;
 pub mod groups;

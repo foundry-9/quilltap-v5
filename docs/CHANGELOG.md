@@ -12,6 +12,45 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — feat(db): collapse duplicate folder rows and add the unique path index at boot (v4 bug 114, P4.D145 unit 3)
+
+_Versions: core 0.0.739, harness 0.0.631, host 0.0.92._
+
+Ports v4 `a5df98b3f`'s `collapse-duplicate-folders-v1` migration as a v5 boot
+repair. Groups `folders` rows by `(userId, COALESCE(projectId, ''), path)` with
+the oldest surviving (`ORDER BY createdAt ASC, id ASC`), repoints every
+`parentFolderId` naming a discarded row at its group's survivor, deletes the
+rest, and creates the unique index. Wired into the boot repair chain beside the
+P4.D140 fence, on the main partition.
+
+The guard is the INDEX, not the `migrations_state` ledger — v4's own
+`shouldRun()` is `!indexExists()` and never reads the ledger, so the index is
+the cross-app once-only marker in both directions. v5 therefore writes no ledger
+row, and the differential asserts that as a measured divergence: v4's runner
+does write one (informational for this migration), while the created index is
+proven byte-identical, which is what actually makes a later v4 boot skip.
+
+New `folders_collapse_heal_equivalence` drives v4's REAL migration plus its REAL
+ledger write over ten shared scenarios — v4's own five test cases, four widened
+arms (a clean instance, an empty table, the createdAt tie-break, a second user),
+and the real instance's measured shape (607 rows describing 24 folders, v4's
+2026-09-02 measurement). The diff covers the whole post-pass table, the index
+SQL byte-for-byte, the `MigrationResult` message, the forced second run, and
+post-pass insert probes covering both what the index now rejects (including the
+coalesced-NULL arm) and the different-project sibling it must still allow. Five
+mutation proofs, each reddening exactly one arm.
+
+**An order premise was refuted by measurement.** The order proposed calling the
+ensure from `services/provisioning` as well. v4's `generateDDL` cannot express a
+COALESCE index, so `provisioning_equivalence` compares v5's provisioned
+`sqlite_master` against a v4 fresh dump that does not carry it — creating it
+there reddens that family on `schema mismatch in partition main` (measured at
+the pin, then reverted). It is also unnecessary: `Host::assemble` runs the boot
+chain on every open, including the first one after Setup. A new
+`folders_index_boot_wiring_guard` holds both halves — the boot call must exist,
+provisioning must not create the index — since no differential can see a
+deleted call site.
+
 #### 2026-09-02 — feat(db): FoldersRepository::ensure_by_path, the find-or-create chokepoint (v4 bug 114, P4.D145 unit 2)
 
 _Versions: core 0.0.738._
