@@ -34,7 +34,19 @@
 //!      dogfood finding #100 — every streamed chat message logged a zero duration
 //!      where v4 logs a real one.) Rows:
 //!      clean_stream + tool_unsupported_retry_success (characterId set), the four
-//!      failover legs (characterId NULL); NONE for recovery (v4 passes no userId).
+//!      failover legs (characterId SET — v4 `65f5021c8`); NONE for recovery (v4 passes no userId).
+//!
+//! ## ⚠ Measured blind spot — the credential-gate chain arm (P4.68)
+//!
+//! A chain candidate refused by `resolveConnectionProfileApiKey` records
+//! `auth` with `no-api-key-configured` (v4 `provider-failover.service.ts:583-591`;
+//! v5 `provider_failover.rs`'s `FallbackTrigger::Auth` arm). NO case in this
+//! corpus reaches it — every call shares one chain whose three profiles all
+//! carry keys. The shape that would: a per-call primary override plus a second
+//! primary with `allowTierFallback: false` pointing at a KEYLESS understudy,
+//! both `modelClass: null` so they stay out of every existing case's tier pool
+//! (the P4.68 lane record spells it out). Until that lands, the `auth` bytes are
+//! pinned by nothing here.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -932,7 +944,7 @@ async fn primary_stream_tier3_matches_oracle() {
         .read_main(|c| quilltap_core::db::dump_table_json_conn(c, "chats", "id"))
         .expect("dump chats");
     // W4.11b: the CHAT_MESSAGE `llm_logs` rows — the primary + tool-retry rows
-    // (characterId set) and the four failover-leg rows (characterId NULL); none for
+    // (characterId set) and the failover-leg rows (characterId SET — v4 `65f5021c8`); none for
     // recovery (v4 passes no userId there). requestHashes are part of the row diff.
     let got_logs = common::dump_llm_logs(&db);
     drop(db);

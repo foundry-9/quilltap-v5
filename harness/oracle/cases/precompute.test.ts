@@ -60,12 +60,15 @@ interface CaseSpec {
   dangerSettings?: Record<string, unknown>;
   existingMessages: Array<Record<string, unknown>>;
   distill: DistillSpec;
+  /** The candidate cheap-LLM pool `runPreContextPreCompute` is handed (P4.68 —
+   *  per CASE, so the reroute case can carry the configured uncensored profile
+   *  plus a decoy without touching its siblings). */
+  allProfiles?: Record<string, unknown>[];
 }
 interface Spec {
   $nowMs: number;
   userId: string;
   cheapSelection: Record<string, unknown>;
-  allProfiles?: Record<string, unknown>[];
   cases: CaseSpec[];
 }
 

@@ -1158,33 +1158,42 @@ fn orchestrator_tier3_matches_oracle() {
     // can grow: a repeated `(chatId, messageId)` pair is a re-stream into the
     // same pre-generated assistant message, which only a failover leg does.
     {
-        let mut by_key: HashMap<(String, String), usize> = HashMap::new();
-        let mut missing_character = Vec::new();
+        // A re-stream into the same pre-generated assistant message is either a
+        // FAILOVER leg (v4 `restreamInto` — `characterId` SET since `65f5021c8`)
+        // or the tool-unsupported RETRY (v4 `primary-stream.service.ts:246-256`,
+        // which passes NO `characterId`; v5 reproduces that at
+        // `primary_stream.rs`'s retry ctx). Only the former is this wiring's
+        // evidence, so the census counts repeated-pair rows WITH a character —
+        // the §3 unification review found the first draft counting every
+        // repeat and asserting NULL-free characters on every row, which a
+        // retry case landing in the corpus would have reddened on a correct
+        // tree.
+        let mut by_key: HashMap<(String, String), (usize, usize)> = HashMap::new();
         for row in all_got_logs
             .iter()
             .filter(|r| r["type"].as_str() == Some("CHAT_MESSAGE"))
         {
             let chat = row["chatId"].as_str().unwrap_or_default().to_string();
             let msg = row["messageId"].as_str().unwrap_or_default().to_string();
-            if row["characterId"].as_str().is_none() {
-                missing_character.push((chat.clone(), msg.clone()));
+            let e = by_key.entry((chat, msg)).or_default();
+            e.0 += 1;
+            if row["characterId"].as_str().is_some() {
+                e.1 += 1;
             }
-            *by_key.entry((chat, msg)).or_default() += 1;
         }
-        let failover_legs: usize = by_key.values().filter(|n| **n > 1).map(|n| n - 1).sum();
+        let failover_legs: usize = by_key
+            .values()
+            .filter(|(total, _)| *total > 1)
+            .map(|(_, with_character)| with_character.saturating_sub(1))
+            .sum();
         assert!(
             failover_legs > 0,
-            "no CHAT_MESSAGE row shares a (chatId, messageId) with another, so no \
-             failover leg logged one. The orchestrator's empty-response recovery \
-             is not being handed its `FailoverLogCtx` (v4 \
-             `orchestrator.service.ts:1572`), or the corpus lost its \
-             empty-primary case. Rows seen: {}",
+            "no CHAT_MESSAGE row with a characterId shares a (chatId, messageId) \
+             with another, so no failover leg logged one. The orchestrator's \
+             empty-response recovery is not being handed its `FailoverLogCtx` \
+             (v4 `orchestrator.service.ts:1572`), or the corpus lost its \
+             empty-primary case. Pairs seen: {}",
             by_key.len()
-        );
-        assert!(
-            missing_character.is_empty(),
-            "v4 `65f5021c8` passes `characterId` on every `restreamInto` leg, so \
-             no `CHAT_MESSAGE` row may carry a NULL character: {missing_character:?}"
         );
     }
 

@@ -95,10 +95,27 @@ fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
 /// constructors) is not a site.
 fn production_bare_sites(text: &str) -> usize {
     let mut count = 0;
-    for line in text.lines() {
+    let lines: Vec<&str> = text.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
         let trimmed = line.trim_start();
+        // The production zone ends at the `#[cfg(test)]` that opens the test
+        // MODULE — not at a `#[cfg(test)]` on a single item (three production
+        // files carry one on a helper fn mid-file; breaking there would hide the
+        // rest of the file from the census — the §3 unification review).
         if trimmed.starts_with("#[cfg(test)]") {
-            break;
+            let opens_module = lines[i + 1..]
+                .iter()
+                .map(|l| l.trim_start())
+                .find(|l| !l.is_empty() && !l.starts_with("#["))
+                .is_some_and(|l| {
+                    l.starts_with("mod ")
+                        || l.starts_with("pub mod ")
+                        || l.starts_with("pub(crate) mod ")
+                });
+            if opens_module {
+                break;
+            }
+            continue;
         }
         if trimmed.starts_with("//") {
             continue;
