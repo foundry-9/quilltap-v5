@@ -230,6 +230,24 @@ The `write-partition` oracle case gains v4's two folder classify rows
 `classifyWriteTarget`: both answer `main`, so v5's default-to-Main routing
 already covers the chokepoint's non-conforming method name — the assertion v4
 added to its own suite, landed as a differential row instead.
+#### 2026-09-02 — fix(prospero): drop the two retired background modes from the project card (P4.D146 unit 4)
+
+_Versions: SPA 0.5.617._
+
+v4 `70505745a`, the client half. "Project-generated background" and "Static
+uploaded image" leave the Story Backgrounds select along with their hint
+sentences and their `modeLabels` toast entries; the two `backgroundDisplayMode`
+unions in `core-contract.ts` narrow to `'latest_chat' | 'theme'`. The server's
+update schema now refuses both values, so a stale option would have been a
+control that could only 400.
+
+Specs: a new pin on the select's exact two options and labels, and one on each
+surviving hint sentence. The two existing specs that drove a retired value moved
+to a surviving one. An ACTIVATE-AT-UNIFY e2e beat in
+`workspace-project-backdrop-flow` asserts the same two options in a real
+browser; it is authored gated because this lane does not own Playwright for the
+round.
+
 #### 2026-09-02 — fix(projects): narrow the background display mode to latest_chat | theme (P4.D146 unit 3)
 
 _Versions: core 0.0.739, harness 0.0.632._

@@ -735,15 +735,54 @@ describe('ProjectImageGenerationCard', () => {
     const bg = fixture.nativeElement.querySelector(
       'select[aria-label="Story Backgrounds"]',
     ) as HTMLSelectElement;
-    bg.value = 'project';
+    bg.value = 'latest_chat';
     bg.dispatchEvent(new Event('change'));
     await settle(fixture);
     expect(seen.find((r) => r.type === 'projectUpdate')).toMatchObject({
       projectId: 'p1',
-      project: { backgroundDisplayMode: 'project' },
+      project: { backgroundDisplayMode: 'latest_chat' },
     });
     expect(fixture.nativeElement.querySelector('.qt-alert-error')).toBeNull();
     expect(toasts()).toEqual([{ type: 'error', message: 'bg fail' }]);
+  });
+
+  it('offers only the two modes that survived 4.9, with their hints (P4.D146, v4 70505745a)', async () => {
+    // 'project' read a field only the Latest chat path ever wrote and 'static'
+    // read a field nothing writes; both were retired. A stale option here would
+    // let a user pick a mode the server's update schema now refuses outright.
+    const fixture = await render(
+      stubClient((r) => (r.type === 'projectAestheticGet' ? { content: '' } : {})),
+      project({ backgroundDisplayMode: 'latest_chat' }),
+    );
+    const bg = fixture.nativeElement.querySelector(
+      'select[aria-label="Story Backgrounds"]',
+    ) as HTMLSelectElement;
+    expect([...bg.options].map((o) => o.value)).toEqual(['theme', 'latest_chat']);
+    expect([...bg.options].map((o) => o.textContent?.trim())).toEqual([
+      'Use theme background (no image)',
+      'Latest chat background',
+    ]);
+    // The hint follows the selected mode; only two survive. It is the `p`
+    // immediately after the select (the card's own description is a different
+    // `p.qt-text-xs` further up, which is why this is not a descendant query).
+    expect((bg.nextElementSibling as HTMLElement | null)?.textContent?.trim()).toBe(
+      'Shows the most recent background from any chat in this project.',
+    );
+  });
+
+  it("the theme hint is the other survivor's (P4.D146)", async () => {
+    // Its own `it` because `render` configures the TestBed, which may be
+    // configured once per test.
+    const themed = await render(
+      stubClient((r) => (r.type === 'projectAestheticGet' ? { content: '' } : {})),
+      project({ backgroundDisplayMode: 'theme' }),
+    );
+    const themedSelect = themed.nativeElement.querySelector(
+      'select[aria-label="Story Backgrounds"]',
+    ) as HTMLSelectElement;
+    expect((themedSelect.nextElementSibling as HTMLElement | null)?.textContent?.trim()).toBe(
+      'No background image, uses your theme colors.',
+    );
   });
 
   it('the Default Image Profile select is live (P4.6r) and enabled', async () => {
@@ -842,15 +881,17 @@ describe('ProjectImageGenerationCard', () => {
     const bg = fixture.nativeElement.querySelector(
       'select[aria-label="Story Backgrounds"]',
     ) as HTMLSelectElement;
+    // [P4.D146 / v4 70505745a] Two labels, not four: `modeLabels` lost its
+    // 'project' and 'static' entries with the options they named.
     bg.value = 'latest_chat';
     bg.dispatchEvent(new Event('change'));
     await settle(fixture);
-    bg.value = 'static';
+    bg.value = 'theme';
     bg.dispatchEvent(new Event('change'));
     await settle(fixture);
     expect(toasts()).toEqual([
       { type: 'success', message: 'Background set to latest chat background' },
-      { type: 'success', message: 'Background set to static background' },
+      { type: 'success', message: 'Background set to theme background' },
     ]);
   });
 

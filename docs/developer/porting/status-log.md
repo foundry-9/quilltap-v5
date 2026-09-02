@@ -303,6 +303,71 @@ QT_ORACLE_PROJECT_BACKGROUND_MODE=/tmp/oracle-project-background-mode.ndjson \
 # the rest: each family's own recipe header, or the sweep driver with --v4 "$PIN"
 ```
 
+### Unit 4 — the SPA card + the contract unions (SPA 0.5.617)
+
+v4 `ImageGenerationCard.tsx:140-147` / `useProjectDetail.ts:256-260` /
+`types.ts:70`, ported 1:1: the `project` and `static` `<option>`s go, with their
+two hint sentences and their two `modeLabels` toast entries; both
+`backgroundDisplayMode` unions in `core-contract.ts` (§E region — the only part
+of that file this lane touched) narrow to `'latest_chat' | 'theme'`.
+
+The server's update schema now REFUSES both values, so a stale option would have
+been a control that could only 400 — which is what makes this half load-bearing
+rather than cosmetic.
+
+**Specs.** Two new: the select's exact two option values AND labels in v4's
+order, plus the `latest_chat` hint; and the `theme` hint (its own `it`, because
+`render` configures the TestBed and that may happen once per test — the first
+draft did it twice in one block and failed with `Cannot configure the test
+module when the test module has already been instantiated`). Two existing specs
+drove a retired value and moved: the immediate-save spec to `latest_chat`, and
+the mode-label toast spec to `theme` — note the first would have passed
+VACUOUSLY if left alone, because setting `select.value` to a removed option
+silently yields `''` (the toast then read `Background set to undefined`, which
+is how it was caught). The hint assertions read `select.nextElementSibling`, not
+a descendant query on the wrapping `div`: the card's own description is another
+`p.qt-text-xs` further up and the first draft matched it instead.
+
+**The e2e beat is authored GATED** behind `P4D146_MODE_NARROWING_LANDED = false`
+in `workspace-project-backdrop-flow.spec.ts` (ACTIVATE-AT-UNIFY): this lane does
+not own Playwright for the round (port 4319 is P4.D147's). It asserts the same
+two options in a real browser and needs no seeding the shared fixture does not
+already do. **Flip it to `true` at unification and run it.** The two existing
+backdrop beats select only `latest_chat` / `theme`, so removing the options
+breaks neither — verified by reading, not by running.
+
+`project-detail.ts:221-227` (the workspace-backdrop reporter's `mode !== 'theme'`
+gate) was verified value-agnostic and NOT changed, as the order says.
+
+### What this lane did NOT touch (§C/§D/§E/§F boundaries held)
+
+- `services/story_background_job.rs` folder region (`ensure_legacy_folder` +
+  `find_folder_by_path`) — P4.D145's.
+- `api/projects.rs` `?action=chats` serializer — P4.D143's.
+- `services/backup/restore/orchestrator.rs` — neither region: the folders loop
+  is P4.D145's and the `project_properties` carry needed no change (measured).
+- `core-contract.ts` outside the two `backgroundDisplayMode` unions.
+- `qtap_export/schema-key-order.json` — key order only, no change (v4 added a
+  `description` to its published export schema and KEPT the four-value enum so
+  older bundles still validate; v5 has no local copy of that schema).
+- Playwright / port 4319.
+
+### Deferrals and follow-ups recorded by this lane
+
+1. **The six private `parse_status` copies** (`enclave::announce`,
+   `services::{commonplace_notifications, fold_episode_pass,
+   participant_resolver, turn_orchestrator, user_identity_resolver}`) are
+   unchanged; the new `chat_predicates::participant_status_from_str` is a
+   seventh with the same two rules. Consolidating them is behaviour-neutral and
+   spans six files no lane in this round owns.
+2. **The GET's own normalize is a non-discriminating line** (mutation D above) —
+   ported for fidelity, pinned by inspection.
+3. **`projects_routes_equivalence` has no `latest_chat` background arm** — see
+   unit 3.
+4. **`help/story-backgrounds.md`** banks to `p4.9i2` and the
+   `SYSTEM_FLOWCHARTS.md` hunk to the next `docs/v4/` mirror refresh, per the
+   order's Tier 3.
+
 ## Lane record — P4.D133 (the `b121ac77f` CLI `instances restore-key`)
 
 Ordered against round baseline **`aec86a613`**; the lane's target commit is

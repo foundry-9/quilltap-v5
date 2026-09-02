@@ -1501,7 +1501,7 @@ export interface ProjectUpdatePatch {
   defaultRoleplayTemplateId?: string | null;
   defaultAlertCharactersOfLanternImages?: boolean | null;
   answerConfirmationOverride?: 'ON' | 'OFF' | null;
-  backgroundDisplayMode?: 'latest_chat' | 'project' | 'static' | 'theme';
+  backgroundDisplayMode?: 'latest_chat' | 'theme';
 }
 
 /**
@@ -3619,7 +3619,7 @@ export interface ProjectDetail {
    */
   defaultDisabledTools: string[];
   defaultDisabledToolGroups: string[];
-  backgroundDisplayMode: 'latest_chat' | 'project' | 'static' | 'theme';
+  backgroundDisplayMode: 'latest_chat' | 'theme';
   state: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;

@@ -41,6 +41,16 @@ import { E2E_PASSPHRASE } from './support/env';
  * write, which is also how a user sees it.
  */
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D146 / v4 `70505745a`). The beat below asserts that the
+ * Story Backgrounds select offers exactly the two modes that survived 4.9. It
+ * is authored gated because this lane does not own Playwright (port 4319 is
+ * P4.D147's for the round); flip to `true` at unification and run it — nothing
+ * else about it is conditional, and it needs no seeding the shared fixture does
+ * not already do.
+ */
+const P4D146_MODE_NARROWING_LANDED = false;
+
 const SKYHAVEN_ID = '70000002-0000-4000-8000-000000000001';
 const BG_FILE_ID = 'bg-e2e-file';
 
@@ -115,3 +125,26 @@ test('a deep-linked project paints its latest-chat background on the workspace b
   await openProjectTab(page);
   await expect(page.locator('.qt-workspace-backdrop-layer')).toHaveCount(0, { timeout: 10_000 });
 });
+
+// [P4.D146 / v4 `70505745a`] "Project-generated background" read a field only
+// the Latest chat path ever wrote, and "Static uploaded image" read a field
+// nothing writes. Both were retired, and the server's update schema now REFUSES
+// them — so a stale option here would be a control that can only 400. The
+// select is the whole surface; two options, in v4's order, with v4's labels.
+(P4D146_MODE_NARROWING_LANDED ? test : test.skip)(
+  'the Story Backgrounds select offers only the two modes that survived 4.9',
+  async ({ page }) => {
+    test.setTimeout(60_000);
+    await openProjectTab(page);
+    const select = await backgroundModeSelect(page);
+    await expect(select.locator('option')).toHaveText([
+      'Use theme background (no image)',
+      'Latest chat background',
+    ]);
+    expect(
+      await select
+        .locator('option')
+        .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value)),
+    ).toEqual(['theme', 'latest_chat']);
+  },
+);

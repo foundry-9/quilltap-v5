@@ -124,12 +124,6 @@ import { ProjectAestheticField } from './project-aesthetic-field';
             <option value="latest_chat" [selected]="backgroundValue() === 'latest_chat'">
               Latest chat background
             </option>
-            <option value="project" [selected]="backgroundValue() === 'project'">
-              Project-generated background
-            </option>
-            <option value="static" [selected]="backgroundValue() === 'static'">
-              Static uploaded image
-            </option>
           </select>
           <p class="qt-text-xs qt-text-secondary mt-2">{{ backgroundHint() }}</p>
         </div>
@@ -186,14 +180,14 @@ export class ProjectImageGenerationCard {
     () => this.project().backgroundDisplayMode ?? 'theme',
   );
 
+  /**
+   * [70505745a] Two of the four hints went with their options: 'project' and
+   * 'static' were retired in 4.9 because neither ever produced an image.
+   */
   protected readonly backgroundHint = computed(() => {
     switch (this.backgroundValue()) {
       case 'latest_chat':
         return 'Shows the most recent background from any chat in this project.';
-      case 'project':
-        return 'Uses a background generated specifically for this project.';
-      case 'static':
-        return 'Uses a manually uploaded background image.';
       default:
         return 'No background image, uses your theme colors.';
     }
@@ -235,8 +229,6 @@ export class ProjectImageGenerationCard {
     const modeLabels: Record<string, string> = {
       theme: 'theme background',
       latest_chat: 'latest chat background',
-      project: 'project background',
-      static: 'static background',
     };
     void this.save(
       { backgroundDisplayMode: v },
