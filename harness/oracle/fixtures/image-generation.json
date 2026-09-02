@@ -130,6 +130,17 @@
     "completePrompt": "a tall elegant woman with flowing silver hair, sharp grey eyes, and a poised bearing"
   },
 
+  "$schemaComment": [
+    "P4.70 — the WHOLE tool-input schema (v4 imageGenerationToolInputSchema, a Zod",
+    "safeParse over the RAW arguments). `toolInput` is handed to the handler verbatim,",
+    "as v4's dispatcher hands `toolCall.arguments`. Every expectation below was MEASURED",
+    "against v4's real schema before the rows were written, never read off the source:",
+    "the two `.default().optional()` fields still default, unknown keys are stripped,",
+    "`null` refuses everywhere Zod's `.optional()` admits only `undefined`, string",
+    "bounds count UTF-16 units, and llmNumber's Number() grammar accepts \"0x3\"/\"1e1\"",
+    "while `.int()`/min/max still judge the converted value. Refusals write NOTHING and",
+    "answer ONE fixed error pair whatever field failed."
+  ],
   "chats": {
     "plain": {
       "id": "aaaa0001-0000-4000-8000-000000000001",
@@ -148,6 +159,116 @@
       "op": "generate",
       "prompt": "A portrait of {{Aurora}} standing in a rose garden",
       "orientation": "square"
+    },
+    "schema_defaults_only": {
+      "id": "aaaa0010-0000-4000-8000-000000000010",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water"}
+    },
+    "schema_count_quoted": {
+      "id": "aaaa0011-0000-4000-8000-000000000011",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "square", "count": "2"}
+    },
+    "schema_full_enums": {
+      "id": "aaaa0012-0000-4000-8000-000000000012",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "landscape", "size": "1792x1024", "style": "natural", "quality": "hd", "negativePrompt": "blurry, low quality, watermark", "count": 3}
+    },
+    "schema_unknown_key_stripped": {
+      "id": "aaaa0013-0000-4000-8000-000000000013",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "square", "count": 1, "bogusKey": "zzz"}
+    },
+    "schema_refuse_count_over_max": {
+      "id": "aaaa0020-0000-4000-8000-000000000020",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": 20}
+    },
+    "schema_refuse_count_zero": {
+      "id": "aaaa0021-0000-4000-8000-000000000021",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": 0}
+    },
+    "schema_refuse_count_fractional": {
+      "id": "aaaa0022-0000-4000-8000-000000000022",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": 1.5}
+    },
+    "schema_refuse_count_quoted_frac": {
+      "id": "aaaa0023-0000-4000-8000-000000000023",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": "6.5"}
+    },
+    "schema_refuse_count_empty_string": {
+      "id": "aaaa0024-0000-4000-8000-000000000024",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": ""}
+    },
+    "schema_refuse_count_boolean": {
+      "id": "aaaa0025-0000-4000-8000-000000000025",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": true}
+    },
+    "schema_refuse_count_null": {
+      "id": "aaaa0026-0000-4000-8000-000000000026",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "count": null}
+    },
+    "schema_refuse_style": {
+      "id": "aaaa0027-0000-4000-8000-000000000027",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "style": "bogus"}
+    },
+    "schema_refuse_style_null": {
+      "id": "aaaa0028-0000-4000-8000-000000000028",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "style": null}
+    },
+    "schema_refuse_quality": {
+      "id": "aaaa0029-0000-4000-8000-000000000029",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "quality": "ultra"}
+    },
+    "schema_refuse_orientation": {
+      "id": "aaaa002a-0000-4000-8000-00000000002a",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "orientation": "wide"}
+    },
+    "schema_refuse_aspect_ratio": {
+      "id": "aaaa002b-0000-4000-8000-00000000002b",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "aspectRatio": "2:3"}
+    },
+    "schema_refuse_size": {
+      "id": "aaaa002c-0000-4000-8000-00000000002c",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "size": "512x512"}
+    },
+    "schema_refuse_negative_prompt_long": {
+      "id": "aaaa002d-0000-4000-8000-00000000002d",
+      "op": "generate",
+      "toolInput": {"prompt": "A serene mountain lake at dawn, mist over the water", "negativePrompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    },
+    "schema_refuse_prompt_too_long": {
+      "id": "aaaa002e-0000-4000-8000-00000000002e",
+      "op": "generate",
+      "toolInput": {"prompt": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+    },
+    "schema_refuse_prompt_empty": {
+      "id": "aaaa002f-0000-4000-8000-00000000002f",
+      "op": "generate",
+      "toolInput": {"prompt": ""}
+    },
+    "schema_refuse_prompt_non_string": {
+      "id": "aaaa0030-0000-4000-8000-000000000030",
+      "op": "generate",
+      "toolInput": {"prompt": 123}
+    },
+    "schema_refuse_not_an_object": {
+      "id": "aaaa0031-0000-4000-8000-000000000031",
+      "op": "generate",
+      "toolInput": "A serene mountain lake"
     },
     "unprovisioned": {
       "id": "aaaa0007-0000-4000-8000-000000000007",

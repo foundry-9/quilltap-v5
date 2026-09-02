@@ -655,6 +655,10 @@ pub async fn image_profile_generate(
         quality: None,
         aspect_ratio: None,
         count: Some(count.unwrap_or(1)),
+        // Built in-process from the route's own validated body, exactly as v4's
+        // `?action=generate` route assembles its object — there is no model JSON
+        // to carry, so the validator synthesizes the equivalent one.
+        raw_arguments: None,
     };
     let ctx = ImageToolExecutionContext {
         user_id: user_id.to_string(),

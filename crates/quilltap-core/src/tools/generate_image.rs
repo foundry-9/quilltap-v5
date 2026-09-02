@@ -46,7 +46,9 @@
 //!   - The Lantern store's WebP `transcodeImages` uses the injected seam; the real
 //!     encoder is W4.7f-adjacent host work.
 
-use serde_json::Value;
+use std::borrow::Cow;
+
+use serde_json::{Map, Value};
 
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
@@ -121,7 +123,7 @@ pub struct GeneratedImageResult {
 /// — the validated Zod shape). Every field is as the CALLER supplied it: the
 /// schema's `size`/`style`/`quality`/`count` defaults are materialized by the
 /// handler itself, exactly as v4's `validateImageGenerationInput` (a Zod
-/// `safeParse`) does — see `apply_tool_input_schema_defaults`. (This comment
+/// `safeParse`) does — see [`validate_image_generation_input`]. (This comment
 /// used to claim the dispatcher materialized them; it does not, and P4.D138's
 /// corpus widening is what made the gap visible.)
 #[derive(Clone, Debug)]
@@ -135,42 +137,226 @@ pub struct ImageGenerationToolInput {
     pub quality: Option<String>,
     pub aspect_ratio: Option<String>,
     pub count: Option<i64>,
+    /// The tool-call arguments **exactly as the caller supplied them**.
+    ///
+    /// v4's dispatcher hands `toolCall.arguments` — an `unknown` — straight to
+    /// `executeImageGenerationTool`, and the handler's first act is a Zod
+    /// `safeParse` over that raw value (`lib/chat/tool-executor.ts:408`,
+    /// `lib/tools/handlers/image-generation-handler.ts:729`). Refusal is
+    /// therefore decided on the RAW value, and a typed decode destroys the
+    /// evidence: a `style` of `123`, a `count` of `20` / `1.5` / `""` / `true`
+    /// and a 1001-unit `negativePrompt` all collapse into "absent" or "capped"
+    /// the moment they pass through `Option<String>` / `Option<i64>`. So the
+    /// raw object rides along and [`validate_image_generation_input`] parses
+    /// THAT.
+    ///
+    /// `None` for a caller that built the struct in-process rather than from a
+    /// model's JSON (v4's `?action=generate` route does the same — it hands the
+    /// handler an object it assembled from its OWN validated body). The
+    /// validator then synthesizes the equivalent object from the typed fields,
+    /// which is lossless in that direction: those fields are already `String` /
+    /// `i64`, so there is nothing a raw value could have said that the typed
+    /// one cannot.
+    pub raw_arguments: Option<Value>,
 }
 
-/// v4 `validateImageGenerationInput`: prompt required, non-empty, ≤4000 (UTF-16).
-pub fn validate_image_generation_input(input: &ImageGenerationToolInput) -> bool {
-    let n = crate::jsstr::utf16_len(&input.prompt);
-    (1..=4000).contains(&n)
-}
-
-/// v4's `imageGenerationToolInputSchema` DEFAULTS, applied by the handler's own
-/// `validateImageGenerationInput` (`safeParse(...).data`) before anything reads
-/// the input: `size: '1024x1024'`, `style: 'vivid'`, `quality: 'standard'`,
-/// `count: 1`.
-///
-/// **This was a latent v5 divergence, exposed by `84f33ce94`'s corpus
-/// widening.** v5 only ever checked the prompt here, so those four fields
-/// stayed `None` — invisible for as long as the profile's stored bag was empty,
-/// because the OpenAI dialect applies the same `standard`/`vivid` defaults at
-/// the wire. The moment a profile stores `quality: 'hd'`, v4 keeps `standard`
-/// (the schema default is an OVERRIDE and outranks the stored default) and v5
-/// took `hd`. Measured against v4's real handler, not reasoned about.
-///
-/// The enum/length VALIDATION half of `safeParse` is deliberately not
-/// reproduced here: v5's tool input is already typed by the time it reaches
-/// this handler, and v4's refusal-on-bad-enum has no v5 corpus. Recorded rather
-/// than silently narrowed.
-fn apply_tool_input_schema_defaults(input: &ImageGenerationToolInput) -> ImageGenerationToolInput {
-    ImageGenerationToolInput {
-        size: input.size.clone().or_else(|| Some("1024x1024".to_string())),
-        style: input.style.clone().or_else(|| Some("vivid".to_string())),
-        quality: input
-            .quality
-            .clone()
-            .or_else(|| Some("standard".to_string())),
-        count: input.count.or(Some(1)),
-        ..input.clone()
+impl ImageGenerationToolInput {
+    /// Build the handler's input from RAW tool-call arguments — v4's dispatcher
+    /// seam (`lib/chat/tool-executor.ts:408`, which passes `toolCall.arguments`
+    /// through untouched).
+    ///
+    /// The typed fields are filled leniently (a non-string `style` reads as
+    /// absent) purely so a caller that inspects them before validation sees
+    /// something sane; they are NOT what decides refusal.
+    /// [`validate_image_generation_input`] re-derives every one of them from
+    /// [`Self::raw_arguments`], exactly as v4 reads `parsed.data` and never the
+    /// input again.
+    pub fn from_arguments(arguments: &Value) -> Self {
+        let s = |k: &str| arguments.get(k).and_then(Value::as_str).map(str::to_string);
+        Self {
+            prompt: arguments
+                .get("prompt")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            negative_prompt: s("negativePrompt"),
+            orientation: s("orientation"),
+            size: s("size"),
+            style: s("style"),
+            quality: s("quality"),
+            aspect_ratio: s("aspectRatio"),
+            // `count` is an llmNumber(...) field (v4 image-generation-tool.ts:65)
+            // and the Zod parse REPLACES the value — so a model that sent
+            // `{"count": "3"}` must generate 3 images, not fall back to 1.
+            count: arguments
+                .get("count")
+                .and_then(|raw| zod_integer(&crate::tools::llm_number::llm_number(raw))),
+            raw_arguments: Some(arguments.clone()),
+        }
     }
+}
+
+/// The `size` enum (v4 `imageGenerationToolInputSchema.size`).
+const SCHEMA_SIZES: [&str; 3] = ["1024x1024", "1792x1024", "1024x1792"];
+/// The `orientation` enum.
+const SCHEMA_ORIENTATIONS: [&str; 3] = ["portrait", "landscape", "square"];
+/// The `style` enum.
+const SCHEMA_STYLES: [&str; 2] = ["vivid", "natural"];
+/// The `quality` enum.
+const SCHEMA_QUALITIES: [&str; 2] = ["standard", "hd"];
+/// The `aspectRatio` enum.
+const SCHEMA_ASPECT_RATIOS: [&str; 5] = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+
+/// `z.number().int()` over a value the `llmNumber` preprocess has already been
+/// through: the integer it carries, or `None` for anything `.int()` refuses.
+///
+/// JSON has one number type, so a model's `{"count": 3.0}` arrives as a float
+/// where `JSON.parse` would have produced the integer 3 — v4's `.int()` accepts
+/// it (`Number.isInteger(3.0)` is true), so an integral float is an integer
+/// here too. A fractional value, a non-finite one and every non-number are
+/// refused, exactly as Zod refuses them.
+fn zod_integer(value: &Value) -> Option<i64> {
+    let n = value.as_number()?;
+    if let Some(i) = n.as_i64() {
+        return Some(i);
+    }
+    let f = n.as_f64()?;
+    (f.is_finite() && f.fract() == 0.0 && f >= i64::MIN as f64 && f <= i64::MAX as f64)
+        .then_some(f as i64)
+}
+
+/// `z.string().max(max_utf16).optional()` — `Err` = the schema refuses,
+/// `Ok(None)` = the key is absent.
+///
+/// A JSON `null` lands in the `Some(_)` arm and refuses: Zod's `.optional()`
+/// admits `undefined`, never `null` (measured against v4's real schema —
+/// `{style: null}` fails).
+fn zod_optional_string(value: Option<&Value>, max_utf16: usize) -> Result<Option<String>, ()> {
+    match value {
+        None => Ok(None),
+        Some(Value::String(s)) if crate::jsstr::utf16_len(s) <= max_utf16 => Ok(Some(s.clone())),
+        Some(_) => Err(()),
+    }
+}
+
+/// `z.enum([...]).optional()` — same `Err`/`Ok(None)` split as
+/// [`zod_optional_string`].
+fn zod_optional_enum(value: Option<&Value>, allowed: &[&str]) -> Result<Option<String>, ()> {
+    match value {
+        None => Ok(None),
+        Some(Value::String(s)) if allowed.contains(&s.as_str()) => Ok(Some(s.clone())),
+        Some(_) => Err(()),
+    }
+}
+
+/// The raw object [`validate_image_generation_input`] parses: the caller's own
+/// arguments when it had them, else the equivalent object synthesized from the
+/// typed fields (see [`ImageGenerationToolInput::raw_arguments`]).
+fn raw_arguments_of(input: &ImageGenerationToolInput) -> Cow<'_, Value> {
+    if let Some(raw) = &input.raw_arguments {
+        return Cow::Borrowed(raw);
+    }
+    let mut obj = Map::new();
+    obj.insert("prompt".into(), Value::String(input.prompt.clone()));
+    // Only PRESENT fields are inserted: an absent optional must read as absent,
+    // not as the `null` that Zod's `.optional()` refuses.
+    for (key, value) in [
+        ("negativePrompt", &input.negative_prompt),
+        ("orientation", &input.orientation),
+        ("size", &input.size),
+        ("style", &input.style),
+        ("quality", &input.quality),
+        ("aspectRatio", &input.aspect_ratio),
+    ] {
+        if let Some(v) = value {
+            obj.insert(key.into(), Value::String(v.clone()));
+        }
+    }
+    if let Some(c) = input.count {
+        obj.insert("count".into(), Value::from(c));
+    }
+    Cow::Owned(Value::Object(obj))
+}
+
+/// v4 `validateImageGenerationInput` (`lib/tools/image-generation-tool.ts:128`):
+/// `imageGenerationToolInputSchema.safeParse(input)` — the parsed data on
+/// success, `null` on any failure. The handler answers ONE fixed error pair
+/// whatever field failed, so the whole schema is a single yes/no here.
+///
+/// **This reproduces the WHOLE schema, not just the prompt.** Until P4.70 v5
+/// checked the prompt's length and nothing else, and applied the four defaults
+/// in a separate pass — so `count: 20` generated twenty images where v4
+/// refuses, `style: "bogus"` sailed through to the wire, and a `count` of
+/// `1.5` / `""` / `true` silently became the default 1 instead of a refusal.
+/// Every arm below is measured against v4's real schema, not read off the
+/// source: the two `.default().optional()` fields (`size`, `count`) DO default,
+/// unknown keys are stripped without complaint, `null` refuses everywhere, and
+/// the string bounds count UTF-16 units (2000 astral characters = 4000 units
+/// passes; 2001 refuses).
+///
+/// The returned value is v4's `parsed.data`: the caller's fields with the
+/// `llmNumber` conversion applied to `count` and the schema's four defaults
+/// materialized (`size: '1024x1024'`, `style: 'vivid'`, `quality: 'standard'`,
+/// `count: 1`). The handler reads THAT from here on, exactly as v4 does — the
+/// defaults are an OVERRIDE and outrank the profile's stored bag, which is why
+/// a profile storing `quality: 'hd'` still generates `standard`.
+pub fn validate_image_generation_input(
+    input: &ImageGenerationToolInput,
+) -> Option<ImageGenerationToolInput> {
+    let raw = raw_arguments_of(input);
+    // `z.object(...)` refuses a non-object outright (a string, an array, null).
+    let obj = raw.as_object()?;
+    parse_schema(obj).ok()
+}
+
+fn parse_schema(obj: &Map<String, Value>) -> Result<ImageGenerationToolInput, ()> {
+    // prompt: z.string().min(1).max(4000) — required.
+    let prompt = match obj.get("prompt") {
+        Some(Value::String(s)) => s.clone(),
+        _ => return Err(()),
+    };
+    if !(1..=4000).contains(&crate::jsstr::utf16_len(&prompt)) {
+        return Err(());
+    }
+
+    let negative_prompt = zod_optional_string(obj.get("negativePrompt"), 1000)?;
+    let orientation = zod_optional_enum(obj.get("orientation"), &SCHEMA_ORIENTATIONS)?;
+    let aspect_ratio = zod_optional_enum(obj.get("aspectRatio"), &SCHEMA_ASPECT_RATIOS)?;
+    // The four `.default(...)` fields: absent takes the schema's value.
+    let size = zod_optional_enum(obj.get("size"), &SCHEMA_SIZES)?
+        .unwrap_or_else(|| SCHEMA_SIZES[0].to_string());
+    let style = zod_optional_enum(obj.get("style"), &SCHEMA_STYLES)?
+        .unwrap_or_else(|| SCHEMA_STYLES[0].to_string());
+    let quality = zod_optional_enum(obj.get("quality"), &SCHEMA_QUALITIES)?
+        .unwrap_or_else(|| SCHEMA_QUALITIES[0].to_string());
+
+    // count: llmNumber(z.number().int().min(1).max(10)).default(1).optional().
+    // The preprocess runs FIRST, so `"3"` becomes 3 and the bounds then apply to
+    // the converted value exactly as they do to a number the model sent bare.
+    let count = match obj.get("count") {
+        None => 1,
+        Some(raw) => {
+            let converted = crate::tools::llm_number::llm_number(raw);
+            let n = zod_integer(&converted).ok_or(())?;
+            if !(1..=10).contains(&n) {
+                return Err(());
+            }
+            n
+        }
+    };
+
+    Ok(ImageGenerationToolInput {
+        prompt,
+        negative_prompt,
+        orientation,
+        size: Some(size),
+        style: Some(style),
+        quality: Some(quality),
+        aspect_ratio,
+        count: Some(count),
+        // The parse is done; the raw has no further reader.
+        raw_arguments: None,
+    })
 }
 
 /// The execution context (v4 `ImageToolExecutionContext`).
@@ -1555,16 +1741,17 @@ where
     L: LanternNotificationSink,
 {
     // 1. Validate input. v4's `validateImageGenerationInput` is a Zod
-    // `safeParse`, so it also APPLIES the schema's defaults and the handler
-    // reads `parsed` from here on — see `apply_tool_input_schema_defaults`.
-    if !validate_image_generation_input(input) {
+    // `safeParse` over the RAW arguments, so it decides refusal on every field
+    // and also APPLIES the schema's defaults; the handler reads `parsed` from
+    // here on. One fixed error pair whatever failed (v4
+    // `image-generation-handler.ts:729-736`).
+    let Some(parsed) = validate_image_generation_input(input) else {
         return output_error(
             "Invalid input: prompt is required and must be a non-empty string",
             "Image generation tool received invalid parameters",
         );
-    }
-    let defaulted = apply_tool_input_schema_defaults(input);
-    let input = &defaulted;
+    };
+    let input = &parsed;
 
     // 2. Load + validate the profile (API key via the seam).
     let load = match load_and_validate_profile(db, deps.api_keys, &ctx.profile_id, &ctx.user_id) {
@@ -2624,6 +2811,7 @@ mod duration_tests {
             quality: None,
             aspect_ratio: None,
             count: Some(1),
+            raw_arguments: None,
         };
         let image_profile = LoadedProfile {
             id: "profile-1".to_string(),
@@ -2691,5 +2879,218 @@ mod duration_tests {
             d >= 20.0,
             "durationMs must bracket the ~30 ms provider call, got {d}"
         );
+    }
+}
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+    use serde_json::json;
+
+    // === P4.70: the tool-input schema, MEASURED against v4's real Zod ===
+    //
+    // Every expectation below is a row of a probe run against v4's REAL
+    // `imageGenerationToolInputSchema` at the `6d2a50382` baseline — not read
+    // off the source. `.default()` under `.optional()` was the question that
+    // made the probe necessary (Zod's `.optional()` short-circuits on
+    // `undefined`, so `size`/`count` looked like they should NOT default; they
+    // do). Re-run it from a pinned v4 worktree with:
+    //
+    // ```ts
+    // // /tmp/p470-zod-probe.ts, run as: node --import tsx /tmp/p470-zod-probe.ts
+    // import { imageGenerationToolInputSchema } from '@/lib/tools/image-generation-tool';
+    // for (const [label, input] of CASES) {
+    //   const r = imageGenerationToolInputSchema.safeParse(input);
+    //   console.log(JSON.stringify({ label, ok: r.success, data: r.success ? r.data : undefined }));
+    // }
+    // ```
+    //
+    // The tier-3 family (`image_generation_tier3_equivalence`) is the
+    // differential; these are the unit-level pins for the arms a corpus row
+    // would be an expensive way to state.
+
+    fn parse(raw: Value) -> Option<ImageGenerationToolInput> {
+        validate_image_generation_input(&ImageGenerationToolInput::from_arguments(&raw))
+    }
+
+    #[test]
+    fn absent_fields_take_the_schema_defaults() {
+        let p = parse(json!({ "prompt": "a cat" })).expect("accepted");
+        assert_eq!(p.prompt, "a cat");
+        assert_eq!(p.size.as_deref(), Some("1024x1024"));
+        assert_eq!(p.style.as_deref(), Some("vivid"));
+        assert_eq!(p.quality.as_deref(), Some("standard"));
+        assert_eq!(p.count, Some(1));
+        // The three fields with no `.default()` stay absent.
+        assert_eq!(p.negative_prompt, None);
+        assert_eq!(p.orientation, None);
+        assert_eq!(p.aspect_ratio, None);
+    }
+
+    #[test]
+    fn supplied_enum_values_outrank_the_defaults() {
+        let p = parse(json!({
+            "prompt": "a cat",
+            "negativePrompt": "blurry",
+            "orientation": "portrait",
+            "size": "1792x1024",
+            "style": "natural",
+            "quality": "hd",
+            "aspectRatio": "16:9",
+            "count": 4
+        }))
+        .expect("accepted");
+        assert_eq!(p.negative_prompt.as_deref(), Some("blurry"));
+        assert_eq!(p.orientation.as_deref(), Some("portrait"));
+        assert_eq!(p.size.as_deref(), Some("1792x1024"));
+        assert_eq!(p.style.as_deref(), Some("natural"));
+        assert_eq!(p.quality.as_deref(), Some("hd"));
+        assert_eq!(p.aspect_ratio.as_deref(), Some("16:9"));
+        assert_eq!(p.count, Some(4));
+    }
+
+    #[test]
+    fn unknown_keys_are_stripped_not_refused() {
+        // `z.object()` strips by default — a model's stray key is not a refusal.
+        let p = parse(json!({ "prompt": "a cat", "bogusKey": "zzz" })).expect("accepted");
+        assert_eq!(p.count, Some(1));
+    }
+
+    #[test]
+    fn llm_number_converts_a_quoted_count_and_the_bounds_judge_the_result() {
+        // v4's `Number()` grammar, not `parseInt` and not Rust's `parse::<f64>`.
+        for (raw, want) in [
+            (json!("2"), 2),
+            (json!(" 3 "), 3),
+            (json!("3.0"), 3),
+            (json!("0x3"), 3),
+            (json!("1e1"), 10),
+            (json!(3.0), 3),
+        ] {
+            let p = parse(json!({ "prompt": "a cat", "count": raw.clone() }))
+                .unwrap_or_else(|| panic!("count {raw} should have been accepted"));
+            assert_eq!(p.count, Some(want), "count {raw}");
+        }
+    }
+
+    #[test]
+    fn the_whole_schema_refuses_what_v4_refuses() {
+        // Each row is a measured v4 `safeParse` failure. The handler answers ONE
+        // fixed error pair for every one of them, so the only thing that can
+        // vary here is accepted-vs-refused.
+        let refused = [
+            // count: llmNumber(z.number().int().min(1).max(10))
+            ("count over max", json!({ "prompt": "a cat", "count": 20 })),
+            ("count zero", json!({ "prompt": "a cat", "count": 0 })),
+            (
+                "count fractional",
+                json!({ "prompt": "a cat", "count": 1.5 }),
+            ),
+            (
+                "count quoted fractional",
+                json!({ "prompt": "a cat", "count": "6.5" }),
+            ),
+            // '' is a MISSING value, not a zero — llmNumber hands it back untouched.
+            (
+                "count empty string",
+                json!({ "prompt": "a cat", "count": "" }),
+            ),
+            // Non-strings fall through llmNumber untouched (the z.coerce divergence).
+            ("count boolean", json!({ "prompt": "a cat", "count": true })),
+            ("count null", json!({ "prompt": "a cat", "count": null })),
+            ("count array", json!({ "prompt": "a cat", "count": [] })),
+            // Number('Infinity') is not finite, so the ORIGINAL string is refused.
+            (
+                "count Infinity",
+                json!({ "prompt": "a cat", "count": "Infinity" }),
+            ),
+            (
+                "count nonsense",
+                json!({ "prompt": "a cat", "count": "5px" }),
+            ),
+            // The enums.
+            (
+                "style bogus",
+                json!({ "prompt": "a cat", "style": "bogus" }),
+            ),
+            (
+                "quality ultra",
+                json!({ "prompt": "a cat", "quality": "ultra" }),
+            ),
+            (
+                "orientation wide",
+                json!({ "prompt": "a cat", "orientation": "wide" }),
+            ),
+            (
+                "aspectRatio 2:3",
+                json!({ "prompt": "a cat", "aspectRatio": "2:3" }),
+            ),
+            (
+                "size 512x512",
+                json!({ "prompt": "a cat", "size": "512x512" }),
+            ),
+            // `.optional()` admits `undefined`, never `null`.
+            ("style null", json!({ "prompt": "a cat", "style": null })),
+            (
+                "negativePrompt null",
+                json!({ "prompt": "a cat", "negativePrompt": null }),
+            ),
+            // The prompt itself.
+            ("prompt missing", json!({})),
+            ("prompt empty", json!({ "prompt": "" })),
+            ("prompt non-string", json!({ "prompt": 123 })),
+            ("prompt null", json!({ "prompt": null })),
+            // z.object() refuses a non-object outright.
+            ("not an object", json!("a cat")),
+            ("null input", json!(null)),
+            ("array input", json!(["a cat"])),
+        ];
+        for (label, raw) in refused {
+            assert!(parse(raw).is_none(), "{label} should have been REFUSED");
+        }
+    }
+
+    #[test]
+    fn string_bounds_count_utf16_units() {
+        // 2000 astral characters are 4000 UTF-16 units and pass; 2001 (4002) do
+        // not. Measured on v4 — `String.prototype.length` is UTF-16, and this is
+        // the whole reason `jsstr::utf16_len` exists.
+        assert!(parse(json!({ "prompt": "x".repeat(4000) })).is_some());
+        assert!(parse(json!({ "prompt": "x".repeat(4001) })).is_none());
+        assert!(parse(json!({ "prompt": "\u{1F600}".repeat(2000) })).is_some());
+        assert!(parse(json!({ "prompt": "\u{1F600}".repeat(2001) })).is_none());
+        let p = "a cat";
+        assert!(parse(json!({ "prompt": p, "negativePrompt": "x".repeat(1000) })).is_some());
+        assert!(parse(json!({ "prompt": p, "negativePrompt": "x".repeat(1001) })).is_none());
+    }
+
+    #[test]
+    fn an_in_process_caller_without_raw_arguments_is_judged_the_same_way() {
+        // The synthesized-object path (`raw_arguments: None`) must reach the same
+        // verdict as the raw one — an absent optional reads as ABSENT, never as
+        // the `null` the schema refuses.
+        let built = ImageGenerationToolInput {
+            prompt: "a cat".to_string(),
+            negative_prompt: None,
+            orientation: None,
+            size: None,
+            style: None,
+            quality: None,
+            aspect_ratio: None,
+            count: Some(1),
+            raw_arguments: None,
+        };
+        let p = validate_image_generation_input(&built).expect("accepted");
+        assert_eq!(p.size.as_deref(), Some("1024x1024"));
+        assert_eq!(p.style.as_deref(), Some("vivid"));
+        assert_eq!(p.quality.as_deref(), Some("standard"));
+        assert_eq!(p.count, Some(1));
+
+        // And an out-of-bounds count refuses on this path too.
+        let bad = ImageGenerationToolInput {
+            count: Some(20),
+            ..built.clone()
+        };
+        assert!(validate_image_generation_input(&bad).is_none());
     }
 }

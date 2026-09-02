@@ -1660,51 +1660,10 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             }
         };
 
-        let input = generate_image::ImageGenerationToolInput {
-            prompt: tc
-                .arguments
-                .get("prompt")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            negative_prompt: tc
-                .arguments
-                .get("negativePrompt")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            orientation: tc
-                .arguments
-                .get("orientation")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            size: tc
-                .arguments
-                .get("size")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            style: tc
-                .arguments
-                .get("style")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            quality: tc
-                .arguments
-                .get("quality")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            aspect_ratio: tc
-                .arguments
-                .get("aspectRatio")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            // `count` is an llmNumber(...) field (v4 image-generation-tool.ts:65),
-            // and the Zod parse REPLACES the value — so a model that sent
-            // `{"count": "3"}` must generate 3 images, not fall back to 1.
-            count: tc
-                .arguments
-                .get("count")
-                .and_then(|raw| crate::tools::llm_number::llm_number(raw).as_i64()),
-        };
+        // v4 hands `toolCall.arguments` to the handler untouched
+        // (`lib/chat/tool-executor.ts:408`) and the handler's Zod `safeParse`
+        // decides refusal on the RAW value — so the arguments ride along whole.
+        let input = generate_image::ImageGenerationToolInput::from_arguments(&tc.arguments);
 
         let image_ctx = generate_image::ImageToolExecutionContext {
             user_id: ctx.user_id.clone(),

@@ -293,6 +293,35 @@ The core gains `is_localhost_url` — the same parse and `LOCALHOST_HOSTS` test
 `rewrite_localhost_url` already did, extracted to one home and exposed so the
 host can ask before resolving. No URL semantics changed (P4.D134's corpus is
 the pin).
+#### 2026-09-02 — fix(tools): the WHOLE generate_image input schema, not just the prompt
+
+_Versions: core 0.0.751, harness 0.0.643._
+
+v4's `validateImageGenerationInput` is a Zod `safeParse` over the RAW tool-call
+arguments (`lib/tools/image-generation-tool.ts:128`), and v4's dispatcher hands
+`toolCall.arguments` to the handler untouched. v5 reproduced only the prompt's
+length check and applied the four schema defaults in a separate pass, so
+`count: 20` generated twenty images where v4 refuses, `style: "bogus"` reached
+the wire, and a `count` of `1.5` / `""` / `true` silently became the default 1
+instead of a refusal.
+
+The whole schema is now ported: every enum, both string bounds (UTF-16 units),
+the `llmNumber` string coercion on `count` with `.int()`/min/max judging the
+CONVERTED value, `null` refused wherever Zod's `.optional()` admits only
+`undefined`, unknown keys stripped without complaint, and a non-object input
+refused outright — all answering v4's one fixed error pair whatever field
+failed. `ImageGenerationToolInput` gained `raw_arguments` so the handler parses
+what the model actually sent rather than a typed decode that had already thrown
+the evidence away; the executor's lenient decode moved into
+`ImageGenerationToolInput::from_arguments`, its one home.
+
+Every expectation was measured against v4's real schema before a line was
+written — the two `.default().optional()` fields do still default, which
+reading the source would not have told you.
+
+`image_generation_tier3_equivalence` grew 22 rows (four accepts, eighteen
+refusals) over a raw `toolInput` the case spec now carries; fourteen of them
+reddened against the pre-fix behavior, six tables each, before the fix landed.
 
 #### 2026-09-02 — docs(driftcheck): v4 drifted ONE commit past `6d2a50382` (`303288fb4`, the Concierge state on the New Chat form) — PIN REQUIRED
 

@@ -93,6 +93,8 @@ interface ChatSpec {
   prompt?: string;
   orientation?: 'portrait' | 'landscape' | 'square';
   clearLantern?: boolean;
+  /** RAW tool arguments (see the call site) — deliberately `unknown`. */
+  toolInput?: unknown;
 }
 interface Spec {
   testPepperBase64: string;
@@ -355,8 +357,15 @@ async function main(): Promise<void> {
         const { executeImageGenerationTool } = await import(
           '@/lib/tools/handlers/image-generation-handler'
         );
+        // `toolInput`, when the case carries one, is the RAW arguments object —
+        // v4's dispatcher hands `toolCall.arguments` to the handler untouched
+        // (lib/chat/tool-executor.ts:408), so refusal is decided on exactly
+        // these bytes. Absent = the historic three-key shape, which keeps every
+        // pre-P4.70 row byte-identical.
+        const toolInput =
+          chat.toolInput ?? { prompt: chat.prompt, orientation: chat.orientation, count: 1 };
         const out = await executeImageGenerationTool(
-          { prompt: chat.prompt, orientation: chat.orientation, count: 1 },
+          toolInput,
           {
             userId: spec.userId,
             profileId: spec.profileId,

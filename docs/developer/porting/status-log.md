@@ -100023,3 +100023,106 @@ the caller joins the base. The actual seam is `WireModelsFetcher` in
   full `cargo test -p quilltap-host`, and 3/3 in isolation. It uses a private
   `tempfile::tempdir()` and this lane touches nothing in LLM-log retention.
   Not diagnosed further; named here so a recurrence has a prior.
+### Lane record — P4.70 unit 1: the whole `generate_image` tool-input schema
+
+**Branch** `claude/p4.70-image-schema-fixture-debts`. v4 pin
+`6d2a50382` (drift-ledger §1 regen rule = PIN REQUIRED; lane-unique worktree
+`/tmp/qt-v4-pin-p4.70-6d2a50382`).
+
+**The gap.** v4 `validateImageGenerationInput` (`lib/tools/image-generation-tool.ts:128`)
+is `imageGenerationToolInputSchema.safeParse(input).success ? data : null`, and
+v4's dispatcher (`lib/chat/tool-executor.ts:408`) hands `toolCall.arguments`
+through untouched — so refusal is decided on the RAW value. v5 checked the
+prompt's UTF-16 length and nothing else, then applied the four defaults in a
+separate `apply_tool_input_schema_defaults` pass whose own comment recorded the
+narrowing ("the enum/length VALIDATION half of `safeParse` is deliberately not
+reproduced"). The typed decode in `tools/executor.rs` was where the evidence
+died: `and_then(Value::as_str)` turned a `style` of `123` into "absent", and
+`.as_i64()` turned `count: 1.5` / `""` / `true` into "absent" and thence into
+the default 1.
+
+**Measured first, ported second.** The whole schema's behaviour was probed
+against v4's REAL Zod at the pin before a line of Rust was written (the probe
+is transcribed into the `schema_tests` module header so it can be re-run). Two
+results would not have survived reading the source:
+
+- **the two `.default().optional()` fields (`size`, `count`) DO default** —
+  `.optional()` short-circuiting on `undefined` would say otherwise;
+- **`llmNumber`'s `Number()` grammar reaches the bounds**: `"0x3"` → 3,
+  `"1e1"` → 10, `"3.0"` → 3, `" 3 "` → 3, while `"Infinity"` and `"5px"` are
+  handed back as strings and refused.
+
+Also measured: unknown keys are stripped without complaint; `null` refuses
+everywhere (Zod's `.optional()` admits `undefined` only); string bounds count
+UTF-16 units (2000 astral characters = 4000 units passes, 2001 refuses); a
+non-object input refuses outright.
+
+**The port.** `ImageGenerationToolInput` gained `raw_arguments: Option<Value>`
+— the arguments as the caller supplied them — and
+`ImageGenerationToolInput::from_arguments` is now the ONE home for the lenient
+decode (moved out of `tools/executor.rs`). `validate_image_generation_input`
+became v4's `safeParse`: it parses the raw (or, for an in-process caller that
+never had one, an object synthesized losslessly from the typed fields — v4's
+`?action=generate` route assembles its object the same way) and returns
+`Option<ImageGenerationToolInput>` = `parsed.data`, defaults materialized.
+`apply_tool_input_schema_defaults` is gone, folded into the parse exactly as
+Zod folds it.
+
+**The differential (red-first).** `image_generation_tier3_equivalence` grew a
+raw `toolInput` on the case spec — kept a raw `Value` on BOTH sides deliberately,
+since a typed Option would collapse the absent/null/wrong-type distinctions
+these rows exist to make. 22 rows added (corpus 7 → 29); every pre-existing row
+is byte-identical (the JSON edit is a pure insertion, zero deletions).
+
+Pre-fix reds, by name — 14 of the 22, each diverging on the result JSON AND on
+`llm_logs`, and 11 of them ALSO on all five store tables because pre-fix v5
+went on to generate and SAVE an image where v4 wrote nothing:
+
+    schema_refuse_aspect_ratio        schema_refuse_count_null
+    schema_refuse_count_boolean       schema_refuse_count_over_max
+    schema_refuse_count_empty_string  schema_refuse_count_quoted_frac
+    schema_refuse_count_fractional    schema_refuse_count_zero
+    schema_refuse_negative_prompt_long  schema_refuse_orientation
+    schema_refuse_quality             schema_refuse_size
+    schema_refuse_style               schema_refuse_style_null
+
+The other eight are honest non-discriminators and are recorded as such: four
+accepts (`schema_defaults_only`, `schema_count_quoted`, `schema_full_enums`,
+`schema_unknown_key_stripped` — positives proving the defaults, the coercion
+and the non-default enums reach the provider params) and four prompt refusals
+the pre-fix length check already caught (`schema_refuse_prompt_empty`,
+`_too_long`, `_non_string`, `_not_an_object`).
+
+`image_generate_route_equivalence` regenerated at the pin over the widened
+fixture and re-run: green, 7 oracle lines.
+
+**Unit pins.** Seven tests in `tools::generate_image::schema_tests` transcribe
+the probe's measured table (defaults, enum overrides, unknown-key stripping,
+the six `llmNumber` conversions, 24 refusal shapes, the UTF-16 bounds, and the
+synthesized-raw path reaching the same verdict).
+
+**Regen recipe** (from the pinned worktree; the header carries it):
+
+    N=~/.nvm/versions/node/v24.13.1/bin ; WT=<worktree> ; STAGE=/tmp/qt-imggen-oracle
+    rm -rf $STAGE && mkdir -p $STAGE/cases $STAGE/fixtures
+    cp $WT/harness/oracle/cases/image-generation.test.ts $STAGE/cases/
+    cp $WT/harness/oracle/fixtures/image-generation.json  $STAGE/fixtures/
+    cd ~/source/quilltap-server   # or the pin
+    QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
+      $N/node --import tsx $WT/harness/oracle/fixtures/build-image-generation-fixture.ts
+    QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
+    QT_ORACLE_OUT=/tmp/oracle-image-generation.ndjson \
+      $N/npx jest --silent --watchman=false --testTimeout=120000 \
+        --roots "$PWD" --roots "$STAGE/cases" -- image-generation
+
+**Trap banked.** A `$comment` key added INSIDE the `chats` map is parsed as a
+case on both sides — the Rust side dies in serde ("invalid type: string …,
+expected a boolean"), and the oracle silently builds a chat with `id:
+undefined`. Corpus commentary belongs at the spec's top level.
+
+**Finding for the unifier (not fixed — `image_generate_route_equivalence` is
+re-run-only under this order):** that family's header recipe elides its regen
+stage as prose (`… build-image-generation-fixture.ts (QT_FIXTURE_IMGGEN_MAIN/MOUNT) …`),
+so the sweep driver cannot regenerate it. The runnable recipe lives in the
+oracle case's own header (`harness/oracle/cases/image-generate-route.test.ts`)
+and is what this lane used.

@@ -119,6 +119,15 @@ struct ChatSpec {
     orientation: Option<String>,
     #[serde(default, rename = "clearLantern")]
     clear_lantern: bool,
+    /// The RAW tool arguments handed to the handler, when the case wants a shape
+    /// the `prompt`/`orientation` pair cannot express (a quoted `count`, an
+    /// out-of-enum `style`, a `null`). Absent = the historic
+    /// `{prompt, orientation, count: 1}` shape, so every pre-P4.70 row is
+    /// byte-identical on both sides. Kept a raw `Value` deliberately: a typed
+    /// Option here would collapse the absent/null/wrong-type distinctions that
+    /// are the whole point of these rows.
+    #[serde(default, rename = "toolInput")]
+    tool_input: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -781,15 +790,20 @@ fn image_generation_matches_oracle() {
                 now_ms: spec.frozen_now_ms,
                 declarations_for: &declarations_for,
             };
-            let input = ImageGenerationToolInput {
-                prompt: case.prompt.clone().unwrap_or_default(),
-                negative_prompt: None,
-                orientation: case.orientation.clone(),
-                size: None,
-                style: None,
-                quality: None,
-                aspect_ratio: None,
-                count: Some(1),
+            let input = match &case.tool_input {
+                // v4's dispatcher hands the model's arguments through untouched.
+                Some(raw) => ImageGenerationToolInput::from_arguments(raw),
+                None => ImageGenerationToolInput {
+                    prompt: case.prompt.clone().unwrap_or_default(),
+                    negative_prompt: None,
+                    orientation: case.orientation.clone(),
+                    size: None,
+                    style: None,
+                    quality: None,
+                    aspect_ratio: None,
+                    count: Some(1),
+                    raw_arguments: None,
+                },
             };
             let ctx = ImageToolExecutionContext {
                 user_id: spec.user_id.clone(),
