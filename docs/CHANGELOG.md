@@ -12,6 +12,54 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — fix(restore): drop a pre-collapse backup's duplicate folder rows quietly (v4 bug 114, P4.D145 unit 5)
+
+_Versions: core 0.0.741, harness 0.0.633._
+
+Ports v4 `a5df98b3f`'s restore arm. Restore keeps `create` — ids must be
+preserved, which the chokepoint cannot do — and gains one branch ahead of the
+standard warning: a backup taken before `collapse-duplicate-folders-v1` ran can
+carry many rows for one `(userId, projectId, path)`, the unique index rejects
+the extras, and the first one restored is the survivor. No warning, no skipped
+counter, `foldersRestored` simply not incremented, which is why `warn_row!`
+cannot express it and this one site is written out.
+
+A NEW committed archive, `restore-archive-duplicate-folders.zip`, carries six
+folder rows where all eleven existing archives carry exactly one (measured, so
+the arm was structurally invisible — the P4.D31 lesson). Three survive (the
+first `/notes`, a different path, and the same path inside a project — a
+`projectId`-blind index would drop that one), and three are dropped: two UNIQUE
+and one PRIMARY KEY, because v4's predicate names the whole constraint family.
+Measured against v4's real restore: `foldersRestored` 3, warnings unchanged.
+Reverting the arm reddens the case's warnings comparison.
+
+Both sides materialize the index on the fresh target before restoring — v4 by
+running its REAL migration, v5 by calling the boot ensure — because a
+generateDDL target is pre-index by construction and the arm would otherwise be
+silently unreachable. It also models reality: both apps boot before anyone
+restores into them.
+
+**A named tripwire rides with it.** This lane's pin (`a5df98b3f`) has P4.D146's
+`70505745a` as an ancestor, so v4's restore writes a project's
+`backgroundDisplayMode` as the coerced `theme` while v5, which has not ported
+that commit, writes the stored `project`. Measured: 46 differences, every one of
+them that value or something derived from it (the content, its two lengths, its
+sha). `BACKGROUND_MODE_PENDING_P4D146` masks exactly those, keyed off the file
+ids of the documents whose two sides disagree — after asserting the disagreement
+is still v5 `project` vs v4 `theme`, and refusing to mask anything else. It
+fails loudly if it ever masks nothing, so it retires itself when P4.D146 lands.
+
+Riding the fix: the four comparison branches (plain diff, phase-order residual,
+#58 orphan assertion) now read one masked view of each side instead of three
+different ones — the first two took the raw rows, where a carve-out silently did
+not apply.
+
+The order's §10 measurement, run read-only on the dogfood copy via a new
+`p4d145_folder_population` example: **607 rows describing 24 identities, 583
+duplicates, index absent** — v4's own 2026-09-02 number to the row. Every
+duplicate is under `/story-backgrounds/` or `/character-avatars/`; no
+hand-created folder duplicated.
+
 #### 2026-09-02 — refactor(files): every folder writer goes through ensure_by_path (v4 bug 114, P4.D145 unit 4)
 
 _Versions: core 0.0.740, harness 0.0.632, web 0.0.102._

@@ -863,19 +863,39 @@ fn restore_on_writer(
                 parent_folder_id: os(f, "parentFolderId"),
                 project_id: os(f, "projectId"),
             };
-            warn_row!(
-                w,
-                c.folders,
-                format!("Failed to restore folder \"{}\"", s(f, "name")),
-                repo.create(
-                    &create,
-                    &crate::db::folders::CreateOptions {
-                        id: Some(id_of(f)),
-                        created_at: Some(now()),
-                        updated_at: Some(now()),
-                    },
-                )
-            );
+            // v4 `a5df98b3f` (bug 114). Restore KEEPS `create` — ids must be
+            // preserved, which the `ensure_by_path` chokepoint cannot do — and
+            // gains one arm ahead of the standard warning: a backup taken
+            // before bug 114 was collapsed can carry many rows for one
+            // (userId, projectId, path). The unique index rejects the extras;
+            // the first one restored is the survivor and the rest are noise, so
+            // they're dropped QUIETLY rather than filling the report with
+            // warnings. No warning, no skipped counter, `foldersRestored`
+            // simply not incremented — which is why `warn_row!` cannot express
+            // it and this one site is written out.
+            match repo.create(
+                &create,
+                &crate::db::folders::CreateOptions {
+                    id: Some(id_of(f)),
+                    created_at: Some(now()),
+                    updated_at: Some(now()),
+                },
+            ) {
+                Ok(_) => c.folders += 1,
+                Err(e) if crate::db::sqlite_errors::is_unique_constraint_error(&e) => {
+                    tracing::debug!(
+                        target: "quilltap::restore",
+                        folder_id = %id_of(f),
+                        path = %s(f, "path"),
+                        "Skipped duplicate folder row during restore",
+                    );
+                    continue;
+                }
+                Err(e) => w.push(format!(
+                    "Failed to restore folder \"{}\": {e}",
+                    s(f, "name")
+                )),
+            }
         }
     }
 

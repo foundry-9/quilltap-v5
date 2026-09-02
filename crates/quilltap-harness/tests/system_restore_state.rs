@@ -857,6 +857,10 @@ fn archive_for(name: &str) -> &'static str {
         // why the `multiCharacterPrefill` half is pinned in
         // `restore_vintage_state` instead.
         "restore_legacy_profiles_replace" => "restore-archive-legacy-profiles.zip",
+        // [P4.D145] bug 114 — the quiet duplicate-folder drop. All eleven other
+        // committed archives carry exactly ONE folder row (measured
+        // 2026-09-02), so none of them can see it.
+        "restore_duplicate_folders_replace" => "restore-archive-duplicate-folders.zip",
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -890,6 +894,12 @@ fn mode_for(name: &str) -> RestoreMode {
 /// longer exists. There the replay correctly lands in the target's OWN uploads
 /// mount, which still shares the archive's CONTENT rows because `doc_mount_files`
 /// is global and keyed by sha.
+/// [P4.D145] Does this case need the bug-114 unique index on the TARGET before
+/// restoring? Mirrors the oracle's `collapseFolders` flag exactly.
+fn collapses_folders(name: &str) -> bool {
+    name == "restore_duplicate_folders_replace"
+}
+
 fn aligns_uploads_pointer(name: &str) -> bool {
     matches!(
         name,
@@ -1089,6 +1099,32 @@ fn system_restore_state_equivalence() {
         // provisioning difference is reported as a provisioning difference instead
         // of masquerading as a restore difference in every downstream table.
         drop(db);
+        // [P4.D145] Give the target the bug-114 unique index before the
+        // baseline is dumped, exactly as v4's oracle runs its own migration at
+        // the same point. `generateDDL` cannot express a COALESCE index, so a
+        // freshly-provisioned target is pre-index by construction and the quiet
+        // drop arm would be silently unreachable; both apps really do boot
+        // (v4's migration runner / v5's boot ensure) before anyone restores.
+        if collapses_folders(name) {
+            let w = quilltap_core::db::Writer::open_writable(
+                &instance.join("quilltap.db"),
+                TEST_PEPPER,
+            )
+            .expect("open target to materialize the folders index");
+            let outcome =
+                quilltap_core::db::folders_unique_path_repair::ensure_folders_unique_path_index(
+                    w.connection(),
+                    "2026-09-02T00:00:00.000Z",
+                )
+                .expect("collapse ensure on target");
+            assert!(
+                matches!(
+                    outcome,
+                    quilltap_core::db::folders_unique_path_repair::CollapseOutcome::Ran { .. }
+                ),
+                "[{name}] a fresh target must be pre-index — got {outcome:?}"
+            );
+        }
         if aligns_uploads_pointer(name) {
             align_uploads_pointer(&instance, &zip, &host.temp_dir());
         }
@@ -1134,10 +1170,18 @@ fn system_restore_state_equivalence() {
         );
     }
 
+    // The P4.D146 sibling-drift carve-out must still describe something.
+    assert!(
+        BACKGROUND_MODE_MASKED.load(std::sync::atomic::Ordering::Relaxed) > 0,
+        "BACKGROUND_MODE_PENDING_P4D146 masked NOTHING — v5 has gained the \
+         `backgroundDisplayMode` coercion (P4.D146 landed) or the pin moved past \
+         `70505745a`. Delete the carve-out and let the column go back under diff."
+    );
     assert_eq!(
-        seen, 14,
-        "expected all fourteen restore cases in the oracle (ten + the #58 orphan-links arm \
-         + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm)"
+        seen, 15,
+        "expected all fifteen restore cases in the oracle (ten + the #58 orphan-links arm \
+         + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
+         + P4.D145's bug-114 duplicate-folders arm)"
     );
     assert!(
         failures.is_empty(),
@@ -1719,6 +1763,210 @@ fn assert_phase_order_residual(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// The P4.D146 sibling-drift tripwire (P4.D145's pin carries `70505745a`)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// ## ⚠ `BACKGROUND_MODE_PENDING_P4D146` — a PIN artefact, not a divergence.
+///
+/// P4.D145 regenerates this oracle from a worktree pinned at `a5df98b3f`
+/// (bug 114), and `70505745a` — P4.D146's row, which retires the `project` and
+/// `static` project background modes and coerces a stored one to `theme` — is
+/// an ANCESTOR of that pin. So v4's restore writes the project's
+/// `properties.json` with `backgroundDisplayMode: "theme"` while v5, which has
+/// not ported that commit, writes the archive's stored `"project"`.
+///
+/// MEASURED (2026-09-02, the first run of this lane's restore regen): 46
+/// differences across four mount-index tables in eleven cases, and **every one
+/// of them is exactly this pair of fields** — the `content` value and the
+/// `plainTextLength` derived from it (272 vs 270, the two-character delta
+/// between `project` and `theme`). Zero differences in `main.folders` or any
+/// other main table.
+///
+/// So both sides' value is replaced with one token, and the derived length with
+/// another — but ONLY after [`assert_background_mode_shape`] confirms the two
+/// sides still say exactly `project` and `theme`. If v5 gains the coercion
+/// (P4.D146 lands) the shape assertion fires and this whole carve-out must be
+/// deleted; if either side says anything else, it fires too. The unifier
+/// retires it once both lanes sit on one branch.
+const V5_BACKGROUND_MODE_PENDING: &str = "project";
+const V4_BACKGROUND_MODE_PENDING: &str = "theme";
+
+/// The `content` value for the key, if present. The stored `properties.json` is
+/// PRETTY-PRINTED (`"key": "value"`, with a space); only the normalized display
+/// form is compact, so the scan skips whitespace rather than matching a literal.
+fn background_mode_span(content: &str) -> Option<(usize, usize, String)> {
+    let key = "\"backgroundDisplayMode\"";
+    let at = content.find(key)?;
+    let mut i = at + key.len();
+    let bytes = content.as_bytes();
+    while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b':') {
+        return None;
+    }
+    i += 1;
+    while i < bytes.len() && (bytes[i] as char).is_whitespace() {
+        i += 1;
+    }
+    if bytes.get(i) != Some(&b'"') {
+        return None;
+    }
+    let start = i + 1;
+    let end = start + content[start..].find('"')?;
+    Some((start, end, content[start..end].to_string()))
+}
+
+fn background_mode_of(row: &Value) -> Option<String> {
+    background_mode_span(row.get("content")?.as_str()?).map(|(_, _, v)| v)
+}
+
+/// Replace one row's mode value and the length derived from it.
+fn mask_background_mode_row(row: &mut Value) {
+    let Some(obj) = row.as_object_mut() else {
+        return;
+    };
+    if let Some(Value::String(content)) = obj.get("content") {
+        if let Some((start, end, _)) = background_mode_span(content) {
+            let mut masked = String::with_capacity(content.len());
+            masked.push_str(&content[..start]);
+            masked.push_str("<PENDING_P4D146>");
+            masked.push_str(&content[end..]);
+            obj.insert("content".to_string(), Value::String(masked));
+        }
+    }
+    // `plainTextLength` is derived from the content, so it carries the
+    // two-character delta between `project` and `theme`.
+    if obj.contains_key("plainTextLength") {
+        obj.insert(
+            "plainTextLength".to_string(),
+            Value::String("<len-pending-p4d146>".into()),
+        );
+    }
+}
+
+/// How many rows this run actually masked. Zero at the end means the carve-out
+/// no longer describes anything and must be deleted (P4.D146 landed, or the pin
+/// moved past it).
+static BACKGROUND_MODE_MASKED: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+/// The file ids whose stored `properties.json` differs ONLY by the pending
+/// `backgroundDisplayMode` value — computed per side, so the derived columns in
+/// the sibling tables (`doc_mount_files.sha256` / `fileSizeBytes`,
+/// `doc_mount_file_links.plainTextLength`) can be masked on exactly those rows
+/// and nothing else.
+#[derive(Default)]
+struct BackgroundModePending {
+    got_file_ids: HashSet<String>,
+    want_file_ids: HashSet<String>,
+}
+
+impl BackgroundModePending {
+    fn is_empty(&self) -> bool {
+        self.got_file_ids.is_empty() && self.want_file_ids.is_empty()
+    }
+}
+
+fn str_field(row: &Value, key: &str) -> Option<String> {
+    row.get(key)?.as_str().map(str::to_string)
+}
+
+/// Align the two sides' `doc_mount_documents` ROW BY ROW (the archive carries
+/// more than one document with this key, so a global pairing mis-matches them),
+/// and record only the pairs that disagree in exactly the measured shape.
+/// Anything else is a failure, not a mask.
+fn background_mode_pending(
+    name: &str,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) -> BackgroundModePending {
+    let empty: Vec<Value> = Vec::new();
+    let g_docs = got
+        .get("mountIndex")
+        .and_then(|p| p.get("doc_mount_documents"))
+        .unwrap_or(&empty);
+    let w_docs = want["mountIndex"]["doc_mount_documents"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mut out = BackgroundModePending::default();
+    if g_docs.len() != w_docs.len() {
+        // A row-count difference is a real difference; let the plain diff say so.
+        return out;
+    }
+    for (g, w) in g_docs.iter().zip(&w_docs) {
+        match (background_mode_of(g), background_mode_of(w)) {
+            (Some(gv), Some(wv)) if gv != wv => {
+                if gv != V5_BACKGROUND_MODE_PENDING || wv != V4_BACKGROUND_MODE_PENDING {
+                    failures.push(format!(
+                        "[{name}] BACKGROUND_MODE_PENDING_P4D146 masks exactly v5 \
+                         `{V5_BACKGROUND_MODE_PENDING}` vs v4 `{V4_BACKGROUND_MODE_PENDING}`, \
+                         but this run saw v5 `{gv}` vs v4 `{wv}` — the mask must not absorb it"
+                    ));
+                    continue;
+                }
+                if let Some(id) = str_field(g, "fileId") {
+                    out.got_file_ids.insert(id);
+                }
+                if let Some(id) = str_field(w, "fileId") {
+                    out.want_file_ids.insert(id);
+                }
+                BACKGROUND_MODE_MASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            // Agreeing rows are left alone and diffed normally.
+            (Some(_), Some(_)) | (None, None) => {}
+            (g_mode, w_mode) => failures.push(format!(
+                "[{name}] BACKGROUND_MODE_PENDING_P4D146 — one side lost the key entirely \
+                 (v5 {g_mode:?}, v4 {w_mode:?}); re-measure before masking"
+            )),
+        }
+    }
+    out
+}
+
+/// Blank the pending value and everything derived from it, on one table's rows.
+///
+/// `documents`/`chunks` carry the text itself; `files` and `file_links` carry
+/// only the sha and the lengths, so those are keyed off the file-id set
+/// [`background_mode_pending`] measured.
+fn mask_background_mode_table(table: &str, rows: &mut [Value], file_ids: &HashSet<String>) {
+    for row in rows.iter_mut() {
+        let hit = match table {
+            "doc_mount_documents" | "doc_mount_chunks" => background_mode_of(row).is_some(),
+            "doc_mount_files" => str_field(row, "id").is_some_and(|id| file_ids.contains(&id)),
+            "doc_mount_file_links" => {
+                str_field(row, "fileId").is_some_and(|id| file_ids.contains(&id))
+            }
+            _ => false,
+        };
+        if !hit {
+            continue;
+        }
+        let Some(obj) = row.as_object_mut() else {
+            continue;
+        };
+        if let Some(Value::String(content)) = obj.get("content") {
+            if let Some((start, end, _)) = background_mode_span(content) {
+                let mut masked = String::with_capacity(content.len());
+                masked.push_str(&content[..start]);
+                masked.push_str("<PENDING_P4D146>");
+                masked.push_str(&content[end..]);
+                obj.insert("content".to_string(), Value::String(masked));
+            }
+        }
+        // Everything derived from those bytes: the two-character delta between
+        // `project` and `theme` moves both lengths and the content hash.
+        for col in ["plainTextLength", "fileSizeBytes", "sha256"] {
+            if obj.contains_key(col) {
+                obj.insert(col.to_string(), Value::String("<pending-p4d146>".into()));
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // The #58 orphaned-rows divergence (P4.28 + this round's unification wire)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2092,6 +2340,11 @@ fn compare_case(
         Default::default()
     };
 
+    // The P4.D146 sibling-drift tripwire — the measured shape first, computed
+    // once per case so the derived columns in the sibling tables can be keyed
+    // off exactly the affected file ids. See BACKGROUND_MODE_PENDING_P4D146.
+    let bg_pending = background_mode_pending(name, got, want, failures);
+
     for (partition, tables) in got {
         for (table, rows) in tables {
             // The ruled dedupe divergence: these five hold different rows by
@@ -2116,6 +2369,20 @@ fn compare_case(
             {
                 continue;
             }
+            // The masked view of both sides, computed ONCE per table so every
+            // branch below — the plain diff, the phase-order residual and the
+            // #58 orphan assertion — reads the same rows. Computing it later
+            // left the two helpers on the raw rows, where the P4.D146 carve-out
+            // silently did not apply.
+            let mut g_rows = rows.clone();
+            let mut w_rows = want[partition][table]
+                .as_array()
+                .cloned()
+                .unwrap_or_default();
+            if partition == "mountIndex" && !bg_pending.is_empty() {
+                mask_background_mode_table(table, &mut g_rows, &bg_pending.got_file_ids);
+                mask_background_mode_table(table, &mut w_rows, &bg_pending.want_file_ids);
+            }
             // The #58 orphan divergence: three tables asserted in both
             // directions instead of diffed; the healthy remainder still
             // compared row for row inside the helper.
@@ -2123,11 +2390,8 @@ fn compare_case(
                 failures.extend(assert_orphan_divergence(
                     name,
                     table,
-                    rows,
-                    &want[partition][table]
-                        .as_array()
-                        .cloned()
-                        .unwrap_or_default(),
+                    &g_rows,
+                    &w_rows,
                     &got_points,
                     &want_points,
                     &got_links,
@@ -2140,32 +2404,17 @@ fn compare_case(
             }
             let mut n_got = Normalizer::new(literals.clone(), shas_got.clone());
             let mut n_want = Normalizer::new(literals.clone(), shas_want.clone());
-            let want_rows = want[partition][table]
-                .as_array()
-                .cloned()
-                .unwrap_or_default();
-            let mut g_rows = rows.clone();
-            let mut w_rows = want_rows;
             if table == "doc_mount_points" && !stats_masked.is_empty() {
                 mask_stats(&mut g_rows);
                 mask_stats(&mut w_rows);
             }
-            let g = n_got.value(&Value::Array(g_rows));
-            let wnt = n_want.value(&Value::Array(w_rows));
+            let g = n_got.value(&Value::Array(g_rows.clone()));
+            let wnt = n_want.value(&Value::Array(w_rows.clone()));
             // The documented phase-order residual: same rows, different
             // insertion order. Asserted in both directions instead of diffed.
             if partition == "mountIndex" && residual.contains(table.as_str()) {
                 failures.extend(assert_phase_order_residual(
-                    name,
-                    table,
-                    rows,
-                    &want[partition][table]
-                        .as_array()
-                        .cloned()
-                        .unwrap_or_default(),
-                    &literals,
-                    &shas_got,
-                    &shas_want,
+                    name, table, &g_rows, &w_rows, &literals, &shas_got, &shas_want,
                 ));
                 continue;
             }

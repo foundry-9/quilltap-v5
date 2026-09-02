@@ -117,6 +117,8 @@ const RESTORE_CASES: Array<{
   archive: string;
   mode?: 'replace' | 'new-account';
   alignUploadsPointer?: boolean;
+  /** Run `collapse-duplicate-folders-v1` on the TARGET first (see the case). */
+  collapseFolders?: boolean;
 }> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
@@ -215,6 +217,26 @@ const RESTORE_CASES: Array<{
   // omitting it and writing an explicit NULL land the same cell. Its pin is
   // `restore_vintage_state`, against the migrated shape's `DEFAULT 1`.
   { name: 'restore_legacy_profiles_replace', archive: 'restore-archive-legacy-profiles.zip' },
+
+  // ── P4.D145 (`a5df98b3f`, bug 114): the quiet duplicate-folder drop ───────
+  //
+  // A backup taken before `collapse-duplicate-folders-v1` ran can carry many
+  // rows for one (userId, projectId, path). The unique index rejects the
+  // extras; the first one restored survives and the rest are dropped QUIETLY —
+  // no warning, no skipped counter, `foldersRestored` not incremented.
+  //
+  // `collapseFolders` runs v4's REAL migration on the freshly-provisioned
+  // TARGET before the baseline is dumped, which is the only way the index gets
+  // there: `generateDDL` builds indexes from a plain column list and cannot
+  // express `COALESCE(...)`, so a fresh target is pre-index by construction and
+  // the arm would be silently unreachable. It also models reality on both
+  // sides — an instance has booted (v4's runner / v5's boot ensure) before
+  // anyone restores into it. The v5 harness calls
+  // `ensure_folders_unique_path_index` at the same point.
+  //
+  // All eleven other committed archives carry exactly ONE folder row, so none
+  // of them can see this (measured 2026-09-02).
+  { name: 'restore_duplicate_folders_replace', archive: 'restore-archive-duplicate-folders.zip', collapseFolders: true },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the
@@ -303,7 +325,13 @@ function dumpPartition(db: import('better-sqlite3').Database): Record<string, un
 }
 
 async function runRestoreCase(
-  c: { name: string; archive: string; mode?: string; alignUploadsPointer?: boolean },
+  c: {
+    name: string;
+    archive: string;
+    mode?: string;
+    alignUploadsPointer?: boolean;
+    collapseFolders?: boolean;
+  },
   archives: string,
   scratchRoot: string,
 ): Promise<Record<string, unknown>> {
@@ -411,6 +439,15 @@ async function runRestoreCase(
     // baseline is dumped so the two sides' baselines still describe the same
     // instance. `lib/instance-settings` exports no setter for this key (the
     // provisioning migration writes it directly), so use its own raw upsert.
+    // P4.D145: give the target the bug-114 unique index, exactly as a booted
+    // instance would have it — v4's own migration, run on v4's own target.
+    if (c.collapseFolders) {
+      const { collapseDuplicateFoldersMigration } = await import(
+        '@/migrations/scripts/collapse-duplicate-folders'
+      );
+      const r = await collapseDuplicateFoldersMigration.run();
+      if (!r.success) throw new Error(`collapse migration failed on target: ${r.message}`);
+    }
     if (c.alignUploadsPointer) {
       const { parseBackupZip } = await import('@/lib/backup/restore/archive');
       const parsed = await parseBackupZip(join(archives, c.archive));
