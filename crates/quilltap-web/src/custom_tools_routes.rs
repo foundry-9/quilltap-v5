@@ -34,10 +34,25 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
 }
 
 /// `GET /api/v1/chats/{id}/custom-tools` — the popup roster.
+///
+/// v4 is `withActionDispatch({}, handleList)` (`custom-tools/route.ts:585`): an
+/// EMPTY action map with a default, so a truthy `?action=` answers v4's
+/// `Unknown action: <x>` envelope with an empty `availableActions` while a bare
+/// or `?action=` request lists. (The §3 unification review: this edge read no
+/// query at all and listed for every action.)
 pub async fn custom_tools_get(
     State(state): State<SharedState>,
     Path(id): Path<String>,
+    Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    if let Some(other) = crate::query::action(&pairs) {
+        return crate::query::unknown_action_response(
+            other,
+            &[],
+            "GET",
+            "/api/v1/chats/[id]/custom-tools",
+        );
+    }
     match dispatch_core(&state, CoreRequest::ChatCustomToolsList { chat_id: id }).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,

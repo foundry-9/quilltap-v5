@@ -117,4 +117,25 @@ async fn chats_collection_get_edges() {
         Some(all),
         "an empty `limit=` is no limit"
     );
+
+    // P4.67 — the duplicate-key class on a NON-action key. v4 reads
+    // `searchParams.get('limit')`, the FIRST occurrence; v5's old
+    // `Query<HashMap>` extractor kept the LAST, so `?limit=1&limit=5` answered
+    // 5. The module's own motivating example had no arm anywhere until the §3
+    // unification review of the follow-ups round; this is it, over the same
+    // two-chat floor the prefix-parse arm above already demands.
+    let (status, body) = get(&client, &addr, "/api/v1/chats?limit=1&limit=2").await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body["chats"].as_array().map(Vec::len),
+        Some(1),
+        "`?limit=1&limit=2` must read the FIRST occurrence (v4 `searchParams.get`)"
+    );
+    let (status, body) = get(&client, &addr, "/api/v1/chats?limit=2&limit=1").await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body["chats"].as_array().map(Vec::len),
+        Some(2),
+        "`?limit=2&limit=1` must read the FIRST occurrence (v4 `searchParams.get`)"
+    );
 }

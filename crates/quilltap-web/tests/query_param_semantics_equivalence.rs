@@ -257,9 +257,11 @@ fn is_dispatcher_refusal(v4_body: &Value) -> bool {
 }
 
 /// Shapes never cross-compared regardless: `known` runs the endpoint's real
-/// work (and §A of the round's shared contract pins it unchanged anyway), and
-/// `character_item_post` gates ownership in a different order on the two sides
-/// — see the header's "Recorded divergences".
+/// work (a payload over each tree's own database — and on the SUBSET edges,
+/// where v5 does not serve the action v4 dispatches, a RECORDED divergence
+/// pinned v5-side by [`UNSERVED_KNOWN_ACTIONS`]), and `character_item_post`
+/// gates ownership in a different order on the two sides — see the header's
+/// "Recorded divergences".
 fn cross_comparable_shape(key: &str, shape: &str) -> bool {
     shape != "known" && shape != "known_then_unknown" && key != "character_item_post"
 }
@@ -286,6 +288,37 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
         "character_item_post__empty_then_known",
         400,
         "This route serves ?action=archive and ?action=rehydrate only",
+    ),
+];
+
+/// v4-KNOWN actions this edge does NOT serve (they ride `/api/dispatch`): v4
+/// dispatches them (the oracle's `known` rows are v4's handlers running), v5
+/// answers a loud refusal that names the fact — NEVER v4's `Unknown action:`
+/// envelope, which would list the action as available in the sentence that
+/// refuses it. `(method, path, action, status, exact error)`. The §3
+/// unification review of the follow-ups round put these back after the lane
+/// had replaced them with the envelope.
+const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
+    (
+        "POST",
+        "/api/v1/mount-points/00000000-0000-4000-8000-000000000001",
+        "scan",
+        400,
+        "Only the multipart 'write-file' action is served on this route; JSON mount actions ride POST /api/dispatch",
+    ),
+    (
+        "GET",
+        "/api/v1/system/tools",
+        "capabilities-report-progress",
+        400,
+        "The 'capabilities-report-progress' action is not served on this route; it rides POST /api/dispatch",
+    ),
+    (
+        "POST",
+        "/api/v1/system/tools",
+        "ai-import-stream",
+        400,
+        "The 'ai-import-stream' action is not served on this route; it rides POST /api/dispatch",
     ),
 ];
 
@@ -328,6 +361,19 @@ async fn query_param_semantics_match_oracle() {
     let mut oracle: HashMap<String, Value> = HashMap::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).unwrap();
+        // The oracle records a stub gap as a NEGATIVE status (-1 no export, -2
+        // the handler threw). Such a row is not a measurement — every equality
+        // computed over it is vacuously true — so it fails here by name
+        // rather than counting toward `handler_rows` (the §3 unification
+        // review).
+        if let Some(st) = v.get("status").and_then(Value::as_i64) {
+            assert!(
+                st > 0,
+                "oracle row {} recorded status {st} — a stub gap, not v4's answer: {}",
+                v["name"],
+                v["body"]
+            );
+        }
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
 
@@ -460,4 +506,66 @@ async fn query_param_semantics_match_oracle() {
         "{} row(s) failed: {failed:?}",
         failed.len()
     );
+}
+
+/// The v5-side pins no oracle row can carry: the subset edges' unserved
+/// actions (`UNSERVED_KNOWN_ACTIONS`), the custom-tools roster's empty action
+/// map (v4 `withActionDispatch({}, handleList)` — a truthy action refuses with
+/// an EMPTY `availableActions`; the endpoint is not in the oracle's list), and
+/// (the duplicate-key class for a NON-action key — `?limit=1&limit=2` — is
+/// pinned in `chats_collection_route.rs`, whose venue seeds chats). Runs
+/// without an oracle so `cargo test --workspace` always sees it.
+#[tokio::test]
+async fn unserved_known_actions_are_pinned_v5_side() {
+    let base = materialize_instance();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    for (method, path, action, want_status, want_error) in UNSERVED_KNOWN_ACTIONS {
+        let url = format!("http://{addr}{path}?action={action}");
+        let req = match *method {
+            "GET" => client.get(&url),
+            "POST" => client.post(&url).body("{}"),
+            m => panic!("unhandled method {m}"),
+        }
+        .header("content-type", "application/json");
+        let resp = req.send().await.unwrap();
+        let status = resp.status().as_u16();
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(
+            status, *want_status,
+            "{method} {path}?action={action}: {body}"
+        );
+        assert_eq!(
+            body["error"].as_str(),
+            Some(*want_error),
+            "{method} {path}?action={action}"
+        );
+        assert!(
+            body.get("availableActions").is_none(),
+            "an unserved-but-known action must not be refused with v4's envelope: {body}"
+        );
+    }
+
+    // custom-tools GET: v4's EMPTY map — `Unknown action: <x>` with `[]`.
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/chats/00000000-0000-4000-8000-000000000002/custom-tools?action=foo"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error"], "Unknown action: foo");
+    assert_eq!(body["availableActions"], json!([]));
+
+    // The duplicate-key class on a NON-action key is pinned where the venue
+    // can discriminate it: `chats_collection_route.rs` (`?limit=1&limit=2`
+    // answers `?limit=1`'s count) — this family's `system-data-*` venue lists
+    // no chats for the fixture user.
 }

@@ -87,9 +87,9 @@ pub async fn wardrobe_get(
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
-    let req = match query.get("action").map(String::as_str) {
+    let req = match crate::query::action(&pairs) {
         Some("instructions") => CoreRequest::WardrobeInstructionsGet,
-        Some(other) if !other.is_empty() => {
+        Some(other) => {
             return crate::query::unknown_action_response(
                 other,
                 &["instructions"],
@@ -115,8 +115,8 @@ pub async fn wardrobe_post(
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
-    if let Some(other) = query.get("action").map(String::as_str) {
-        if other != "instructions" && !other.is_empty() {
+    if let Some(other) = crate::query::action(&pairs) {
+        if other != "instructions" {
             return crate::query::unknown_action_response(
                 other,
                 &["instructions"],

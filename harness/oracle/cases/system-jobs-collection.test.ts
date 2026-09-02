@@ -224,9 +224,10 @@ function buildCases(): CaseSpec[] {
       run: () => jobsPost({ type: 'MEMORY_HOUSEKEEPING', payload: 'nope' }),
     },
     // P4.67 / P4.62(b): v4's gate is `!payload || typeof payload !== 'object'`.
-    // An ARRAY is neither falsy nor a non-object, so v4 ENQUEUES it — and the
-    // stored row is what proves the array survived the write, not just the
-    // gate. (v5 refused: `!payload.is_object()` counted an array as no object.)
+    // An ARRAY is neither falsy nor a non-object, so it passes the ROUTE gate — and
+    // then fails `enqueueJob`'s `z.record` schema: v4 answers a 500 carrying the
+    // whole ZodError message and writes no row. (v5 used to 400 at its own gate;
+    // after P4.67 it reproduces the 500 byte-for-byte.)
     {
       name: 'jobs_collection_post_payload_array',
       normalize: ['jobId'],

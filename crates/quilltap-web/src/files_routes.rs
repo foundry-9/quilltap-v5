@@ -830,6 +830,20 @@ pub async fn mount_point_action_post(
     const PATH: &str = "/api/v1/mount-points/[id]";
     match crate::query::action(&query) {
         Some("write-file") => {}
+        // A v4-KNOWN action this edge does not serve: v4 would DISPATCH it (the
+        // oracle's `known` row is v4's `handleScan` running), so v4's
+        // `Unknown action:` envelope would be a lie here — and one that lists
+        // `scan` as available in the sentence that refuses it. The §3
+        // unification review restored the loud v5 refusal the order asked
+        // for; the divergence is RECORDED in `query_param_semantics_equivalence`
+        // (`UNSERVED_KNOWN_ACTIONS`).
+        Some(other) if AVAILABLE.contains(&other) => {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "Only the multipart 'write-file' action is served on this route; \
+                 JSON mount actions ride POST /api/dispatch",
+            )
+        }
         Some(other) => {
             return crate::query::unknown_action_response(other, AVAILABLE, "POST", PATH)
         }

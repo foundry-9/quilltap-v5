@@ -366,11 +366,11 @@ pub async fn characters_wardrobe_get(
     // has no REST edge here because v5 never registered `.post` on this path —
     // it rides `POST /api/dispatch` as `characterWardrobeInstructionsSet`
     // (recorded, the P4.D112 dispatch-only precedent).
-    let req = match query.get("action").map(String::as_str) {
+    let req = match crate::query::action(&pairs) {
         Some("instructions") => {
             quilltap_core::api::Request::CharacterWardrobeInstructionsGet { character_id: id }
         }
-        Some(other) if !other.is_empty() => {
+        Some(other) => {
             return crate::query::unknown_action_response(
                 other,
                 &["instructions"],

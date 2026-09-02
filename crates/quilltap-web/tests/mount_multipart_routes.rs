@@ -157,11 +157,10 @@ async fn mount_write_and_read_edges() {
     assert_eq!(body["destPath"], "raw/edge.md");
     assert!(body["sha256"].as_str().unwrap().len() == 64);
 
-    // A v4-KNOWN action this edge does not serve gets v4's own dispatcher
-    // envelope (P4.67 — it used to get a v5-invented "…ride POST /api/dispatch"
-    // sentence). `availableActions` is v4's whole handler map in literal order,
-    // not the subset v5 dispatches; the byte-level pin is
-    // `query_param_semantics_equivalence`.
+    // A v4-KNOWN action this edge does not serve keeps the loud v5 refusal
+    // (v4 DISPATCHES `scan`; answering "Unknown action: scan" while listing
+    // `scan` as available would be a lie — the §3 unification review). The
+    // divergence is RECORDED in `query_param_semantics_equivalence`.
     let resp = client
         .post(format!(
             "http://{addr}/api/v1/mount-points/{db_id}?action=scan"
@@ -172,7 +171,27 @@ async fn mount_write_and_read_edges() {
         .unwrap();
     assert_eq!(resp.status(), 400);
     let body: Value = resp.json().await.unwrap();
-    assert_eq!(body["error"], "Unknown action: scan");
+    assert_eq!(
+        body["error"],
+        "Only the multipart 'write-file' action is served on this route; JSON mount actions ride POST /api/dispatch"
+    );
+    assert!(body.get("availableActions").is_none());
+
+    // A truly UNKNOWN action gets v4's own dispatcher envelope (P4.67).
+    // `availableActions` is v4's whole handler map in literal order, not the
+    // subset v5 dispatches; the byte-level pin is
+    // `query_param_semantics_equivalence`.
+    let resp = client
+        .post(format!(
+            "http://{addr}/api/v1/mount-points/{db_id}?action=zzz-not-an-action"
+        ))
+        .json(&json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error"], "Unknown action: zzz-not-an-action");
     assert_eq!(body["availableActions"][0], "scan");
     assert_eq!(body["availableActions"][6], "write-file");
     assert_eq!(body["availableActions"].as_array().unwrap().len(), 12);

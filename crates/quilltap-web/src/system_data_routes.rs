@@ -95,6 +95,17 @@ const TOOLS_POST_ACTIONS: &[&str] = &[
 /// `null` — while `?action=` interpolates as the empty string. The two must
 /// stay distinguishable, which is why this takes `Option`.
 fn tools_unknown_action(action: Option<&str>, verb: &str, available: &[&str]) -> AxumResponse {
+    // A v4-KNOWN action this edge does not serve (`capabilities-report-progress`
+    // on GET, `ai-import-stream` on POST — both ride `/api/dispatch` in v5) must
+    // not be refused as "unknown" by a sentence that lists it as available. The
+    // §3 unification review put the loud, honest refusal back; the divergence is
+    // RECORDED in `query_param_semantics_equivalence` (`UNSERVED_KNOWN_ACTIONS`).
+    if let Some(a) = action.filter(|a| available.contains(a)) {
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            &format!("The '{a}' action is not served on this route; it rides POST /api/dispatch"),
+        );
+    }
     error_json(
         StatusCode::BAD_REQUEST,
         &format!(
@@ -747,9 +758,6 @@ pub async fn system_unlock_post(
     Query(pairs): Query<crate::query::QueryPairs>,
     body: axum::body::Bytes,
 ) -> AxumResponse {
-    // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
-    // so the pair list collapses to the map the rest of the handler expects.
-    let q = crate::query::first_map(&pairs);
     // [P4.62] v4's POST gates in three steps, in this order
     // (`system/unlock/route.ts:75-119`): an ABSENT action gets its own long
     // sentence naming all five, an unrecognized one gets `Unknown action: X`,
@@ -758,11 +766,7 @@ pub async fn system_unlock_post(
     // absent-action sentence (it answered `Unknown action: ` with an empty name)
     // nor the body gate at all, so a body of `42` or `[]` rode straight through
     // to a passphrase change with two empty strings.
-    let Some(action) = q
-        .get("action")
-        .map(String::as_str)
-        .filter(|a| !a.is_empty())
-    else {
+    let Some(action) = crate::query::action(&pairs) else {
         return error_json(
             StatusCode::BAD_REQUEST,
             "Missing action parameter. Use ?action=setup, ?action=unlock, \

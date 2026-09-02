@@ -306,10 +306,15 @@ fn system_jobs_collection_matches_oracle() {
         check("jobs_collection_post_payload_not_object", s, b, None);
     }
 
-    // --- P4.67 / P4.62(b): an ARRAY payload is ENQUEUED, not refused ---
-    // v4's gate is `!payload || typeof payload !== 'object'`, and `typeof []`
-    // is `'object'` while `![]` is false — so v4 accepts. The comparand is the
-    // STORED ROW, not just the 201: a gate that let the array through but a
+    // --- P4.67 / P4.62(b): an ARRAY payload passes the ROUTE gate and dies at Zod ---
+    // v4's `!payload || typeof payload !== 'object'` admits an array, but
+    // `enqueueJob` validates against `z.record(z.string(), z.unknown())`
+    // (`lib/schemas/job.types.ts:66`), an array fails it, and the route's catch
+    // relays the whole `ZodError.message` through `serverError` — a 500 with
+    // Zod's issue list and NOTHING written. (The order predicted a 201; the
+    // measurement said otherwise.) The comparand is the STORED ROW as well as
+    // the status, so a gate that admitted the array but mangled the write is
+    // still caught: `extra.row` must be `null` on both sides.
     // write that mangled it would still be a divergence.
     {
         let db = fresh_db("payload_array");
