@@ -22,13 +22,13 @@ probe verifies against._
 - **Oracle baseline:** `4622411fd` — "docs(release): Update to 4.9.0 release
   notes" (v4 main, 2026-08-31), adopted at the round-2 drift catch-up
   unification (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66,
-  2026-09-01). The round absorbed five of the eight rows past `7fb668263`
-  whole and the three-commit LoRA train PARTIALLY (see below).
-- **Checked:** 2026-09-02 (full `/driftcheck`, run from the `/dogfood`
-  freshness probe finding the ledger stale; the previous check was
-  2026-09-01 at the P4.D138 follow-up `/unify`).
-- **v4 `main` HEAD at check:** `70505745a` — **ONE commit past the
-  baseline** (v4 `4.9.0-dev.110`).
+  2026-09-01); the LoRA train's three PARTIAL rows completed at the P4.D138
+  follow-up unification the same day.
+- **Checked:** 2026-09-02 (full `/driftcheck`; the previous check was
+  2026-09-02 earlier the same day, which recorded ONE commit —
+  `70505745a` — and v4 has landed **five more since**).
+- **v4 `main` HEAD at check:** `6d2a50382` — **SIX commits past the
+  baseline** (v4 `4.9.0-dev.113`).
 - **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** since the
   2026-08-27 content measurement (the bare 4.8.4 fork marker; its long
   `main..bugfix` commit list is the squash-topology lie, §4 step 2 —
@@ -36,53 +36,51 @@ probe verifies against._
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — same tip
   as the prior checks, ancestry previously verified.
 - **Checkout at check:** branch `main`, **tree CLEAN**.
-- **Verdict: DRIFT PENDING — 1 commit past the baseline.** `70505745a`
-  "fix(images): keep absent characters out of story backgrounds" (2026-09-01
-  23:07 CDT, v4 `4.9.0-dev.110`) — a PORT row landing on two already-ported
-  families: the story-background enqueue/back-fill spine (P4.D94's crafter
-  lane + the title-update job's `queueStoryBackgroundIfEnabled`) and the
-  project background-display-mode enum (the groups/projects vertical +
-  `api/projects.rs`'s `handleGetBackground` twin + the SPA
-  ImageGenerationCard). Not a convergence — v4's `docs/developer/bugs.md`
-  is untouched by the commit and no v5 filing matches; this is v4 finding
-  its own bug. See §3.
-- _Superseded (the P4.D138-follow-up verdict): DRIFT CLEARED — 0 commits
-  past the baseline, §3 EMPTY._ The
-  LoRA train's three rows, PARTIAL at the round-2 unification earlier the
-  same day, were completed by the resumed P4.D138 lane (units 5–7) and
-  absorbed at its follow-up unification (2026-09-01): the `image-dialects`
-  corpus is re-recorded at the train's tip, and the
-  `LORA_SUPPORT_PENDING_P4D138_UNIT6` tripwire fired as designed and is
-  deleted. (The superseded verdict paragraphs follow for history.)
-- _Superseded (the round-2 verdict): DRIFT CLEARED — 0 commits past the
-  baseline; THREE §3 rows PARTIAL (the LoRA train's server units 5–7,
-  tracked by P4.D138's resume list); the committed `image-dialects` corpus
-  pinned at `84f33ce94` and the routes family's measured `loraSupport`
-  strip standing until those units landed._
-- _Superseded (the round-1 verdict): DRIFT PENDING — 8 commits (round 2 of
-  the pre-planned pair)._
-  Two substantial ports: **`735d9408c` (bug 112 — `lastMessageAt`
-  redefined to character-authored activity: a new chokepoint predicate,
-  both write sites, every chat-list sort, and a recompute migration — it
-  lands on the P4.64/P4.65 home + Salon-list surfaces this port just
-  rebuilt)** and **`60e3c4a0a` (the Concierge four-state per-chat
-  control — `conciergeOverride` widens to `'OFF' | 'UNCENSORED'`, the
-  chat-override/manual-flip/resolver family reshapes across ~14 ported
-  call sites, new Concierge notice sentences)**. The THREE-commit
-  D-stacked LoRA train: `84f33ce94` (LoRA adapters + per-model image
-  options — PORT-NEW, with the five-call-site image-params consolidation
-  that fixes drift v5 likely inherited) → `648d5c8aa` (bugs 110/111) →
-  `2ece98c90` (the HuggingFace LoRA lookup — PORT-NEW). One smaller port:
-  `5f56f7a7d` (the `qt-range` class). Two docs-only NO-PORT? candidates:
-  `e41fcb12e` (banks help hunks to `p4.9i2`) and `4622411fd`.
-- **Regen rule in force: PIN REQUIRED** — v4 HEAD (`70505745a`) is past
-  the baseline, so every oracle regen runs from §5.1's pinned worktree at
-  `4622411fd`. (The checkout itself is on `main` and clean; the pin is
-  required by the moved HEAD, not by the tree.)
+- **Verdict: DRIFT PENDING — 6 commits past the baseline**, four of them
+  PORT rows on already-ported surfaces, two docs/version-only NO-PORT
+  candidates. **No CONVERGENCE rows** — v4's `docs/developer/bugs.md` grew
+  by bugs **113** and **114**, both of them v4's OWN findings (each row's
+  v5-relevance column reads "Not investigated. **The shape applies** …"),
+  not this port's filings coming back. The four ports, newest first:
+  - **`c43d3b1b4`** (PR #46, the largest — 40 files, +1296/−199): chat
+    lists and Quick-hide derive their mark from the four-state Concierge
+    status instead of the raw `isDangerousChat` label. Lands squarely on
+    **P4.D141**'s Concierge four-state lane (the `chat-override` predicate
+    family), **P4.64/P4.65**'s home + Salon list payload work, the
+    quick-hide vertical, the **P4.D132** Tooltip primitive (the mark
+    explains itself through the Quilltap-drawn Tooltip, explicitly *not* a
+    native `title`), and the qt-* class family + `check-qt-classes` guard
+    (a new `.qt-concierge-mark` family, theme-storybook → 1.0.69). Also
+    carries a real behaviour fix outside the marks: an Uncensored chat was
+    enqueuing a `CHAT_DANGER_CLASSIFICATION` job **every turn** that the
+    handler immediately discarded, because the trigger never asked
+    `isClassifierOnDuty`.
+  - **`a5df98b3f`** (bug 114): one `folders` row per path, enforced by a
+    **new UNIQUE index** — so this is a **D23 re-dump row** (v5's
+    `services/provisioning/fresh_schema.json` today carries only
+    `idx_folders_createdAt` + `idx_folders_userId`; `idx_folders_userId_
+    projectId_path` is absent), plus a `collapse-duplicate-folders-v1`
+    migration v5 must land in its boot-repair idiom, an `ensureByPath`
+    chokepoint replacing **six** hand-rolled `findByPath` → `create` sites
+    that v5 inherited one-for-one, and a restore arm.
+  - **`a00e18f0d`** (bug 113): the Move-to-Project folder picker latched
+    onto its own loading state. Client-only; v5's counterpart is
+    `screens/files/move-to-project-dialog.ts`.
+  - **`70505745a`**: absent characters out of story backgrounds + the
+    project background-mode enum narrowing (carried from the previous
+    check, still UNPROCESSED).
+- **Regen rule in force: PIN REQUIRED** — v4 HEAD (`6d2a50382`) is six
+  commits past the baseline, so every oracle regen runs from §5.1's pinned
+  worktree at `4622411fd`. (The checkout itself is on `main` and clean; the
+  pin is required by the moved HEAD, not by the tree.)
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
-  fork; v4 develops on `main` alone (the 4.9.0 release-notes file moved
-  again at `4622411fd` on 2026-08-31, so the squash may be imminent).
-  Keep probing BOTH branches.
+  fork; v4 develops on `main` alone. Keep probing BOTH branches.
+- _Superseded (the earlier 2026-09-02 verdict): DRIFT PENDING — 1 commit
+  past the baseline (`70505745a` alone)._
+- _Superseded (the P4.D138-follow-up verdict): DRIFT CLEARED — 0 commits
+  past the baseline, §3 EMPTY._
+- _Superseded (the round-2 verdict): DRIFT CLEARED — 0 commits past the
+  baseline; THREE §3 rows PARTIAL (the LoRA train's server units 5–7)._
 
 ## §2 The freshness probe
 
@@ -122,6 +120,11 @@ when absorbed/ratified.
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
 | `70505745a` | 2026-09-01 | fix(images): keep absent characters out of story backgrounds | **PORT** | (a) `lib/background-jobs/handlers/story-background.ts` + `title-update.ts` + `app/api/v1/chats/[id]/actions/story-background.ts` → v5 `services/story_background_job.rs`, `services/title_update_job.rs`, `api/chat_media.rs` (P4.D94 crafter lane; P4.61 title-update logging lane). (b) `lib/schemas/project.types.ts` + `app/api/v1/projects/[id]/{actions/background.ts,schemas.ts}` + `migrations/scripts/cutover-projects-to-store.ts` + `public/schemas/qtap-export.schema.json` → v5 `db/projects.rs`, `api/projects.rs::handleGetBackground` twin, `qtap_export/schema-key-order.json`, `provisioning/fresh_schema.json` (the groups/projects vertical + P4.D91's project-backdrop wiring). (c) SPA `app/prospero/[id]/**` → the v5 project detail Image Generation card. | UNPROCESSED |
+| `a00e18f0d` | 2026-09-01 | fix(files): show a project's real folders in the Move to Project picker (**bug 113**) | **PORT** | Client-only (zero `lib/`, zero `app/api/`). `components/files/FolderPicker.tsx` → v5 `apps/web/src/app/screens/files/move-to-project-dialog.ts` (the bespoke file manager, D18 / the Scriptorium vertical). v4 mirrored a derived folder list into component state behind `result.length > 0 && folders.length === 0`; Root is seeded unconditionally, so the loading render satisfies the guard and seals the mirror forever — a destination change was inert too. Fix deletes the mirror (`useMemo` rendered directly, module-level `NO_FILES`/`NO_FOLDERS`/`NO_PATHS` identities, `refetch` after a successful create, `localFolders` scoped to its `projectId`) and switches the nesting indent to non-breaking spaces because `<option>` collapses ordinary ones. ⚠ **Measure before porting:** v4's bug row says only that "the shape applies" to any port doing the same mirroring — v5's Angular signal/`computed` idiom may or may not carry the latch, and which half is a port vs a v5-only fix must be decided by measurement, red-first. `help/file-organization.md` banks to `p4.9i2`. | UNPROCESSED |
+| `a5df98b3f` | 2026-09-02 | fix(files): one folder row per path, enforced by a unique index (**bug 114**) | **PORT** | **A D23 re-dump row.** (a) `migrations/scripts/sqlite-initial-schema.ts` adds `CREATE UNIQUE INDEX idx_folders_userId_projectId_path ON folders (userId, COALESCE(projectId,''), path)` — v5's `crates/quilltap-core/src/services/provisioning/fresh_schema.json` carries only `idx_folders_createdAt` + `idx_folders_userId` today, so the re-dump plus a boot ensure (v5 has no migration runner) in the `builtin_mounts.rs` / `mount_index_case_repair.rs` idiom. (b) `migrations/scripts/collapse-duplicate-folders.ts` (+194) → a v5 boot repair in the P4.D97 `migrations_state` ledger idiom (cf. `db/chat_activity_recompute_heal.rs`): keep the oldest row per group, repoint any `parentFolderId` naming a discarded one, delete the rest, create the index. (c) `FoldersRepository.ensureByPath` → v5 `db/folders.rs` (the Phase-2 pilot repo), replacing the hand-rolled guard at **six** sites v5 inherited one-for-one: `services/character_avatar_job.rs:671`, `services/story_background_job.rs:1425`, the file-storage watcher (`services/file_storage.rs`), both create paths in `api/files.rs` (:909 idempotent, :937), and `services/quilltap_import/files.rs:97`. (d) `lib/backup/restore/restore.ts` keeps `create` (ids must be preserved) but now drops a pre-collapse backup's duplicate rows *quietly* → v5's restore folder loop (the P4.9G / P4.28–P4.30 restore family) — a warnings-list change the restore differentials will see. (e) `lib/database/sqlite-errors.ts` `isUniqueConstraintError` + `write-partition.ts`'s buffered `'folders.ensureByPath': 'write'` → v5's partitioned write applier; the child-IPC leg is a standing NO-PORT, so expect the buffering half to be NO-COUNTERPART and the index to do the work directly. (f) `lib/startup/prettify.ts` gains the migration's pretty label → v5's boot-progress labels. (g) `docs/developer/DDL.md` + v4's CLAUDE.md chokepoint list → the `docs/v4/` mirror. ⚠ **The trigger may not exist in v5:** v4's amplifier was a *soft-failing read* (`FolderSchema.parentFolderId` `.nullable()` without `.optional()` vs a hydrator that yields `undefined`, so `findByPath` returned its `safeQuery` `null`) — v5's `find_by_path` is plain Rust with no Zod validate, so v5 may never have amplified. Measure the v5 population before claiming either way; the structural fix (index + chokepoint + collapse) is required regardless, for schema parity. 💸 the real Friday instance carried **607 rows for 24 folders** at v4's measurement (2026-09-02) — a dogfood proof that **expires** the moment v4 runs the collapse migration on it (§5.5): measure first. | UNPROCESSED |
+| `f3351d54f` | 2026-09-02 | docs(concierge): plan for state-derived marks on chat lists | **NO-PORT?** | Docs-only, zero `lib/`/`app/`/`packages/`/`plugins/`: adds `docs/developer/features/concierge-list-marks.md` (+441), a CHANGELOG entry, and one line in `.claude/commands/update-documentation.md`. It is the PLAN for `c43d3b1b4` (which then moves the doc to `features/complete/`), and records v4's decision that `isDangerousChat` keeps its meaning as the classifier's tri-state label rather than being redefined as the route — worth reading as the design rationale when porting the next row. Ratify with the file list. | UNPROCESSED |
+| `c43d3b1b4` | 2026-09-02 | Chat lists and Quick-hide follow Concierge state, not raw danger label (#46) | **PORT** | The round's largest row (40 files, +1296/−199) and it lands on four recently-ported surfaces at once. (a) **New** `lib/services/dangerous-content/concierge-state-presentation.ts` (+142) — the single source for every word, icon and tone the four states wear (the four detail sentences moved verbatim from the sidebar); the list mark, the Salon header pill and the sidebar helper text all read it → v5 must consolidate what **P4.D141** landed split between `services/dangerous_content/` and `apps/web/src/app/chat/concierge-state.ts`. (b) `lib/services/dangerous-content/chat-override.ts`: `conciergeStateUsesUncensoredRoute(state)` becomes the one place naming the uncensored row and `shouldUseUncensoredRoute` delegates to it → v5 `services/dangerous_content/chat_override.rs` (P4.D141). (c) List payloads carry a derived `conciergeState` + `dangerCategories` instead of the raw pair: `lib/services/chat-enrichment.service.ts` (**P4.65**'s `ChatListPreloaded` batching lane), `lib/services/home-data.service.ts` (**P4.64**), `app/api/v1/chats/route.ts`, `app/api/v1/characters/[id]/handlers/get.ts`, `app/api/v1/projects/[id]/actions/chats.ts` → v5 `services/chat_enrichment.rs`, `services/home.rs`, `api/salon.rs`, the characters conversations serializer, the projects chats serializer (**wire-shape changes the home/salon/chat-list differentials will see**). (d) `lib/chat-utils.ts` `shouldHideChat({characterTags, conciergeState})` + the four inline filters that bypassed it → v5 `apps/web/src/app/quick-hide/should-hide.ts` + `quick-hide.service.ts` and its call sites. (e) `lib/services/chat-message/memory-trigger.service.ts`: `triggerChatDangerClassification` gains the missing `isClassifierOnDuty` guard — an Uncensored chat resolves to AUTO_ROUTE on purpose and enqueued a `CHAT_DANGER_CLASSIFICATION` job **every turn** that the handler discarded at its own guard → v5 `services/message_finalizer.rs` / `services/danger_scan.rs` (a real wasted-work fix, and the exact behaviour the 2026-08-27 dogfood pass observed as "completed six times in four minutes"). (f) SPA: new `components/chat/ConciergeMark.tsx` (+97) + ChatCard, ChatSidebar, RecentChatItem/Section, SalonListView, SalonView, prospero ChatsSection, character-conversations-tab, quick-hide-provider → v5 `screens/home/recent-chats-section.ts`, `screens/salon/salon-list.ts`, `chat/sidebar/chat-section.ts`, `screens/prospero/cards/project-chats-section.ts`, `screens/characters/view/tabs/conversations-tab.ts`, `quick-hide/**`; the mark explains itself through the **P4.D132 Tooltip primitive**, explicitly not a native `title`. (g) `app/styles/qt-components/_chat.css` + `packages/theme-storybook` (→ 1.0.69) add a `.qt-concierge-mark` family beside `.qt-danger-badge` → the qt-* class family + the `check-qt-classes` guard (P4.D128 / P4.D142). (h) three help files bank to `p4.9i2`; `features/concierge-list-marks.md` moves to `features/complete/`. Behaviour deltas to port red-first: a vouched chat loses its red asterisk for a grey one and stops being hidden by "Dangerous Chats"; an uncensored chat gains a blue asterisk and starts being hidden; the sidebar footer's hide affordance keys on the uncensored row. No schema/migration/DDL/export/backup change. | UNPROCESSED |
+| `6d2a50382` | 2026-09-02 | docs(update): version bump for Concierge state view changes | **NO-PORT?** | Version bump only — `README.md`, `package.json`, `package-lock.json`, `packages/quilltap/package.json` (v4 `4.9.0-dev.113`). Zero `lib/`/`app/`/`components/`/`plugins/`. Ratify with the file list; the About-screen version string is derived, not transcribed. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

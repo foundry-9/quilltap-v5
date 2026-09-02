@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(drift): six commits past the baseline — bugs 113/114 and the Concierge list marks
+
+_Docs-only; no version bumps._
+
+`/driftcheck` re-run after the same-day check that recorded one commit: v4 has
+landed five more. §1 rewritten (main HEAD `6d2a50382`, v4 4.9.0-dev.113; bugfix
+tip `3a76b17df` unmoved; checkout on main and clean; verdict DRIFT PENDING — 6
+commits; regen rule stays PIN REQUIRED at `4622411fd`), and five rows appended
+to §3.
+
+Four PORT rows, no convergences — v4's bugs 113 and 114 are both v4's own
+findings, not this port's filings coming back. `c43d3b1b4` (PR #46) derives the
+chat-list mark and Quick-hide from the four-state Concierge status instead of
+the raw `isDangerousChat` label, landing on P4.D141, P4.64/P4.65's list
+payloads, the quick-hide vertical, the P4.D132 Tooltip primitive and the qt-*
+class family, and fixes a per-turn `CHAT_DANGER_CLASSIFICATION` enqueue on
+Uncensored chats that the handler discarded. `a5df98b3f` (bug 114) is a D23
+re-dump row: a new unique index on `folders (userId, COALESCE(projectId,''),
+path)` plus a collapse migration, an `ensureByPath` chokepoint over the six
+hand-rolled `findByPath` → `create` sites v5 inherited, and a restore arm.
+`a00e18f0d` (bug 113) is the client-only folder-picker latch. `70505745a`
+carries forward unprocessed. `f3351d54f` (the plan doc) and `6d2a50382` (a
+version bump) are NO-PORT candidates awaiting ratification.
+
 #### 2026-09-02 — docs(dogfood): the round-2 + P4.D138-follow-up walk record
 
 _Docs-only; no version bumps._
