@@ -424,6 +424,17 @@ reading the source would not have told you.
 `image_generation_tier3_equivalence` grew 22 rows (four accepts, eighteen
 refusals) over a raw `toolInput` the case spec now carries; fourteen of them
 reddened against the pre-fix behavior, six tables each, before the fix landed.
+#### 2026-09-02 — docs(p4.67): the order's status header — Tier 1/2 + P4.62(b) closed, (a) and (c) still open
+
+_Docs-only change._
+
+Records what the lane landed and what it did not: `api/types.rs` and
+`api/chat_media.rs` were never opened, so P4.62's shapes (a) and (c) stay
+open. Also records the three order premises the survey refuted — v4 has
+three dispatch shapes rather than one, `fold` is not universally true, and
+`getQueryParamsWithoutAction` has no call site — plus P4.62(b)'s corrected
+premise.
+
 #### 2026-09-02 — fix(core): an array job payload answers v4's 500, not a 400
 
 _Versions: core 0.0.751, harness 0.0.643._
