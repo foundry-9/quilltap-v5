@@ -1,11 +1,11 @@
 {
   "$comment": [
-    "Tier-2 DB-state fixture spec for the `folders` repo MINTED-VALUES path —",
+    "Tier-2 DB-state fixture spec for the `folders` repo MINTED-VALUES path \u2014",
     "the generated-UUID remap + timestamp-placeholder normalization slice.",
     "Unlike folders-tier2.json / tags-tier2.json (which pin every id + timestamp,",
     "the zero-normalization form), these ops supply NO `options`, so both v4 and",
     "the Rust port independently mint random UUIDs (crypto.randomUUID / uuid v4)",
-    "and wall-clock timestamps. The dumps therefore CANNOT match outright — they",
+    "and wall-clock timestamps. The dumps therefore CANNOT match outright \u2014 they",
     "are compared after normalization (see the harness test + cases file):",
     "  - id columns (`id`, `parentFolderId`) -> first-seen canonical tokens, rows",
     "    walked in natural-key (`path`) order, so FK RELATIONSHIPS are verified",
@@ -13,15 +13,40 @@
     "  - timestamps (`createdAt`, `updatedAt`) -> a `<ts>` placeholder, with the",
     "    per-row createdAt == updatedAt create-invariant asserted separately.",
     "",
-    "op[1] uses `parentFromOp: 0` — set parentFolderId to the id RETURNED by op 0.",
+    "op[1] uses `parentFromOp: 0` \u2014 set parentFolderId to the id RETURNED by op 0.",
     "This exercises a generated id referencing another generated id (the case the",
     "remap exists for). Seed is empty so the only rows are the two minted ones.",
     "",
-    "SAFETY: testPepperBase64 is the same THROWAWAY key the other fixtures use."
+    "SAFETY: testPepperBase64 is the same THROWAWAY key the other fixtures use.",
+    "",
+    "P4.D145 (v4 `a5df98b3f`, bug 114): the builder now also creates v4's",
+    "`idx_folders_userId_projectId_path` UNIQUE index \u2014 `ensureCollection` builds",
+    "the table from generateDDL, which cannot express a COALESCE index, so the",
+    "fixture was pre-index by construction and the constraint arm unreachable.",
+    "The seeded row carries the EMPTY STRING as its projectId: that is the only",
+    "shape where `findByPath` (reading `projectId IS NULL`) and the index",
+    "(reading `COALESCE(projectId,'')`) disagree, which makes `ensureByPath`'s",
+    "'unique conflict with nothing to reconcile to' arm reachable from a plain",
+    "sequential op list, no race required.",
+    "",
+    "Each `ensureByPath` op records `threw`, the returned row's `path`, and",
+    "whether the table grew \u2014 so 'returns the existing row without inserting' and",
+    "'creates when absent' are comparands, not inferences."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
-  "seed": [],
+  "seed": [
+    {
+      "id": "b1f2c3d4-0000-4000-8000-000000000001",
+      "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+      "path": "/empty-string-project/",
+      "name": "empty-string-project",
+      "parentFolderId": null,
+      "projectId": "",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
   "ops": [
     {
       "kind": "create",
@@ -42,6 +67,49 @@
         "path": "/a/b/",
         "name": "b",
         "parentFromOp": 0,
+        "projectId": null
+      }
+    },
+    {
+      "kind": "ensureByPath",
+      "comment": "Existing path: returns op[0]'s row, inserts nothing.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "path": "/a/",
+        "name": "a-again",
+        "parentFolderId": null,
+        "projectId": null
+      }
+    },
+    {
+      "kind": "ensureByPath",
+      "comment": "Absent path: creates, minting id + timestamps.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "path": "/plates/",
+        "name": "plates",
+        "parentFolderId": null,
+        "projectId": null
+      }
+    },
+    {
+      "kind": "ensureByPath",
+      "comment": "projectId KEY ABSENT \u2014 v4's `data.projectId ?? null` must normalize it on BOTH the read and the write, so this lands as SQL NULL.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "path": "/etchings/",
+        "name": "etchings",
+        "parentFolderId": null
+      }
+    },
+    {
+      "kind": "ensureByPath",
+      "comment": "The constraint arm: the seeded row's projectId is '', so the read (projectId IS NULL) misses, the insert violates the COALESCE index, and the re-read still misses \u2014 the original error is re-raised and NOTHING is written.",
+      "data": {
+        "userId": "f7a930f6-b81d-4b57-a151-44f6c730542b",
+        "path": "/empty-string-project/",
+        "name": "collides",
+        "parentFolderId": null,
         "projectId": null
       }
     }

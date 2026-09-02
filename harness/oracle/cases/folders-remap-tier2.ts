@@ -37,7 +37,7 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create';
+  kind: 'create' | 'ensureByPath';
   data: Record<string, unknown> & { parentFromOp?: number };
 }
 
@@ -82,17 +82,51 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repo = new FoldersRepository();
 
+  const countRows = async (): Promise<number> =>
+    ((await rawQuery('SELECT COUNT(*) AS n FROM folders')) as Array<{ n: number }>)[0].n;
+
   // Capture each create's minted id so a later op can reference it.
   const mintedIds: string[] = [];
+  // P4.D145 (bug 114): per-op outcomes for the `ensureByPath` chokepoint. The
+  // table dump alone cannot distinguish "returned the existing row" from
+  // "inserted and the index happened to collapse it", so each op records
+  // whether it threw, which path came back, and whether the table grew.
+  const opResults: Array<Record<string, unknown>> = [];
   for (const op of spec.ops) {
     const data = { ...op.data };
     if (typeof data.parentFromOp === 'number') {
       data.parentFolderId = mintedIds[data.parentFromOp];
       delete data.parentFromOp;
     }
+    if (op.kind === 'ensureByPath') {
+      const before = await countRows();
+      try {
+        const folder = await repo.ensureByPath(data as never);
+        mintedIds.push(folder.id);
+        opResults.push({
+          kind: 'ensureByPath',
+          threw: false,
+          returnedPath: folder.path,
+          returnedProjectId: folder.projectId ?? null,
+          createdNew: (await countRows()) > before,
+        });
+      } catch (error) {
+        mintedIds.push('');
+        opResults.push({
+          kind: 'ensureByPath',
+          threw: true,
+          uniqueConstraint: /UNIQUE constraint failed/i.test(
+            error instanceof Error ? error.message : String(error)
+          ),
+          rowsAdded: (await countRows()) - before,
+        });
+      }
+      continue;
+    }
     // No options -> v4 mints id + timestamps.
     const created = await repo.create(data as never);
     mintedIds.push(created.id);
+    opResults.push({ kind: 'create', threw: false });
   }
 
   const columns = (
@@ -114,7 +148,7 @@ async function main(): Promise<void> {
   });
 
   process.stdout.write(
-    JSON.stringify({ case: 'folders-remap-tier2', ...dump }) + '\n'
+    JSON.stringify({ case: 'folders-remap-tier2', ops: opResults, ...dump }) + '\n'
   );
   process.exit(0);
 }

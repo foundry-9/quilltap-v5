@@ -12,6 +12,52 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — refactor(files): every folder writer goes through ensure_by_path (v4 bug 114, P4.D145 unit 4)
+
+_Versions: core 0.0.740, harness 0.0.632, web 0.0.102._
+
+The five v5 folder-create sites v4 `a5df98b3f` converted now write through the
+chokepoint: both image handlers' legacy-folder ensure (and with them the two
+private `find_folder_by_path` copies v5 carried, deleted), the folders route's
+recursive parent chain, `files_folder_create`'s create branch, and the .qtap
+importer. The idempotent 200 `alreadyExists: true` arm and the importer's reuse
+branch both stay — they are reporting, not the uniqueness guarantee. Because the
+chokepoint returns the persisted row, `files_folder_create`'s post-create
+re-read and its "folder vanished after create" arm are gone; the wire shape and
+statuses are unchanged.
+
+Three v4 sites have no v5 counterpart and are recorded rather than converted:
+the file-storage watcher (v5 ships none), the forked child's buffered-write
+override (v5's job runner is in-process; the routing half is pinned by
+`write_partition_equivalence`'s `folders.ensureByPath` classify row), and the
+migration-runner progress label.
+
+**Measured: the cutover is invisible to every differential.** `create` and
+`ensure_by_path` differ only under a race, or when the read and the index
+disagree — neither reachable from a sequential op list — so reverting a call
+site to `create` is green across `qtap_import_equivalence`,
+`files_routes_equivalence` and both image tier-3 families. The census in
+`folders_chokepoint_wiring_guard` (renamed and widened from unit 3's boot guard)
+therefore holds all five sites by name, mutation-proven, alongside the boot
+wiring and the no-counterpart rows.
+
+`folders_remap_tier2_equivalence` gains the four `ensureByPath` arms over v4's
+REAL repository — existing returns the same row without inserting, absent
+creates, an ABSENT `projectId` key normalizes to SQL NULL on both the read and
+the write, and the constraint arm re-raises with nothing written. Its fixture
+gains v4's unique index (generateDDL cannot express a COALESCE index, so the
+fixture was pre-index by construction and that arm unreachable) plus a seeded
+row whose `projectId` is the empty string — the one shape where `findByPath` and
+the index disagree, which is what makes the conflict reachable with no race. It
+is seeded with raw SQL because v4's `FolderSchema.projectId` is UUID-validated
+and refuses `''` (measured at the pin).
+
+`files-main.db` / `files-mount.db` were regenerated at the pin to carry the same
+index — the post-bug-114 vintage every real instance will be in — and
+`files_routes_equivalence` gains a same-path-inside-a-project create arm proving
+the general row does not shadow it. The three sibling families that read those
+fixtures were re-run green by name.
+
 #### 2026-09-02 — feat(db): collapse duplicate folder rows and add the unique path index at boot (v4 bug 114, P4.D145 unit 3)
 
 _Versions: core 0.0.739, harness 0.0.631, host 0.0.92._

@@ -668,8 +668,17 @@ fn write_avatar_file(
     Ok(())
 }
 
-/// v4 `repos.folders.findByPath` + create — the legacy file-tree folder row (only
-/// for project-mount / disk writes; vault writes own their `doc_mount_folders`).
+/// v4 `repos.folders.ensureByPath` — the legacy file-tree folder row (only for
+/// disk-backed / project-mount-backed writes; vault writes own their folder
+/// structure inside `doc_mount_folders`).
+///
+/// v4 `a5df98b3f` (bug 114) replaced the hand-rolled `findByPath` -> `create`
+/// guard here with the repository chokepoint, and discards the return: in v4
+/// this runs in the forked child, where the call is buffered whole and replayed
+/// on the parent's RW connection, so the child's caller only ever sees a
+/// synthetic `undefined`. v5's job runner is in-process, so the row IS available
+/// — but nothing here wants it, and dropping it keeps the two readable side by
+/// side.
 fn ensure_legacy_folder(
     main: &rusqlite::Connection,
     user_id: &str,
@@ -677,47 +686,16 @@ fn ensure_legacy_folder(
     name: &str,
     project_id: Option<&str>,
 ) -> Result<(), DbError> {
-    let existing = find_folder_by_path(main, user_id, path, project_id)?;
-    if existing.is_none() {
-        let repo = crate::db::folders::FoldersRepository::new(main);
-        repo.create(
-            &crate::db::folders::FolderCreate {
-                user_id: user_id.to_string(),
-                path: path.to_string(),
-                name: name.to_string(),
-                parent_folder_id: None,
-                project_id: project_id.map(str::to_string),
-            },
-            &crate::db::folders::CreateOptions::default(),
-        )?;
-    }
+    crate::db::folders::FoldersRepository::new(main).ensure_by_path(
+        &crate::db::folders::FolderCreate {
+            user_id: user_id.to_string(),
+            path: path.to_string(),
+            name: name.to_string(),
+            parent_folder_id: None,
+            project_id: project_id.map(str::to_string),
+        },
+    )?;
     Ok(())
-}
-
-/// v4 `repos.folders.findByPath(userId, path, projectId)` — the legacy folder row
-/// by (user, path, project), matching NULL project on `None`.
-fn find_folder_by_path(
-    main: &rusqlite::Connection,
-    user_id: &str,
-    path: &str,
-    project_id: Option<&str>,
-) -> Result<Option<String>, DbError> {
-    let result = match project_id {
-        Some(pid) => main.query_row(
-            "SELECT id FROM folders WHERE userId = ?1 AND path = ?2 AND projectId = ?3 LIMIT 1",
-            rusqlite::params![user_id, path, pid],
-            |r| r.get::<_, String>(0),
-        ),
-        None => main.query_row(
-            "SELECT id FROM folders WHERE userId = ?1 AND path = ?2 AND projectId IS NULL LIMIT 1",
-            rusqlite::params![user_id, path],
-            |r| r.get::<_, String>(0),
-        ),
-    };
-    result.map(Some).or_else(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => Ok(None),
-        other => Err(other.into()),
-    })
 }
 
 /// v4 `character.name.replace(/[^a-zA-Z0-9]/g, '_')` for the provider filename.

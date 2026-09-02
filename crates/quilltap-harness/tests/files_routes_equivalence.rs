@@ -659,6 +659,25 @@ fn files_routes_match_oracle() {
         );
     }
     {
+        // P4.D145 (v4 `a5df98b3f`, bug 114): the same path inside a project is a
+        // different folder — the index keys on (userId, COALESCE(projectId,''),
+        // path), so the general `/docs/` row must not shadow this one.
+        let db = fresh_db(&spec, "fcp");
+        let resp = rt.block_on(files::files_folder_create(
+            &db,
+            USER_A,
+            "/docs/",
+            Some(PROJECT),
+        ));
+        check_ok(
+            "folder_create_same_path_in_project",
+            response_data(&resp),
+            &["id", "createdAt", "updatedAt", "parentFolderId"],
+            Some(dump_tables(&db)),
+            &mut failed,
+        );
+    }
+    {
         let db = fresh_db(&spec, "fcc");
         let resp = rt.block_on(files::files_folder_create(&db, USER_A, "/a/b/c/", None));
         check_ok(

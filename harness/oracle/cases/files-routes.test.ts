@@ -340,6 +340,14 @@ async function main(): Promise<void> {
     // ── folders ──
     { name: 'folder_create_new', dump: true, run: foldersPost('create', { path: '/new/' }) },
     { name: 'folder_create_idempotent', run: foldersPost('create', { path: '/docs/' }) },
+    // P4.D145 (v4 `a5df98b3f`, bug 114): the same path INSIDE a project is a
+    // different folder — the unique index keys on (userId, COALESCE(projectId,
+    // ''), path), so the general `/docs/` row must not make this one look like a
+    // duplicate. Reaching the chokepoint's create branch with a colliding path
+    // is the closest a sequential route call gets to the race it exists for; a
+    // literal pre-planted duplicate is unreachable now that the index forbids
+    // one (see the folders remap family's constraint arm).
+    { name: 'folder_create_same_path_in_project', dump: true, run: foldersPost('create', { path: '/docs/', projectId: PROJECT }) },
     { name: 'folder_create_parent_chain', dump: true, run: foldersPost('create', { path: '/a/b/c/' }) },
     { name: 'folder_rename', dump: true, run: foldersPost('rename', { path: '/docs/', newName: 'documents' }) },
     { name: 'folder_rename_root', run: foldersPost('rename', { path: '/', newName: 'x' }) },

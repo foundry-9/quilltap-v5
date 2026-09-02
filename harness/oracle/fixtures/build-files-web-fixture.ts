@@ -292,6 +292,18 @@ async function main(): Promise<void> {
   await mkFolder({ id: FLD_SUBDEEP, path: '/sub/deep/', name: 'deep', parentFolderId: FLD_SUB });
   await mkFolder({ id: FLD_PLANS, path: '/plans/', name: 'plans', projectId: PROJECT_1 });
 
+  // THE POST-BUG-114 VINTAGE (v4 `a5df98b3f`). `ensureCollection` builds the
+  // table from `generateDDL`, which builds indexes from a plain column list and
+  // CANNOT express `COALESCE(...)` — so without this the routes venue would test
+  // a state no real instance is in: v4 creates this index from
+  // `sqlite-initial-schema`'s `SQLITE_TABLES` on a fresh instance and from the
+  // `collapse-duplicate-folders-v1` migration on an existing one, and v5's boot
+  // ensure creates the byte-identical index. The statement is v4's, verbatim.
+  await rawQuery(
+    `CREATE UNIQUE INDEX IF NOT EXISTS "idx_folders_userId_projectId_path" ` +
+      `ON "folders" ("userId", COALESCE("projectId", ''), "path")`
+  );
+
   // ── P4.6ah: write + maintenance fixtures ──────────────────────────────────
 
   // 5. The Quilltap Uploads mount (non-project uploads) + PROJECT_1's linked

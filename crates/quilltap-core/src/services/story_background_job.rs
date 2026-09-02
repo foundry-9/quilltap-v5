@@ -1422,7 +1422,13 @@ fn is_char_ws(c: char) -> bool {
     crate::jsstr::is_js_ws(c)
 }
 
-/// v4 `repos.folders.findByPath` + create — the legacy folder row.
+/// v4 `repos.folders.ensureByPath` — the legacy folder row for the project-mount
+/// tree (the Lantern mount manages its own hierarchy in `doc_mount_folders`).
+///
+/// v4 `a5df98b3f` (bug 114) replaced the hand-rolled `findByPath` -> `create`
+/// guard here with the repository chokepoint, and discards the return — see the
+/// twin in `character_avatar_job`. These two machine-written paths are what grew
+/// the duplicates the collapse pass exists to clean up.
 fn ensure_legacy_folder(
     main: &rusqlite::Connection,
     user_id: &str,
@@ -1430,45 +1436,16 @@ fn ensure_legacy_folder(
     name: &str,
     project_id: Option<&str>,
 ) -> Result<(), DbError> {
-    let existing = find_folder_by_path(main, user_id, path, project_id)?;
-    if existing.is_none() {
-        let repo = crate::db::folders::FoldersRepository::new(main);
-        repo.create(
-            &crate::db::folders::FolderCreate {
-                user_id: user_id.to_string(),
-                path: path.to_string(),
-                name: name.to_string(),
-                parent_folder_id: None,
-                project_id: project_id.map(str::to_string),
-            },
-            &crate::db::folders::CreateOptions::default(),
-        )?;
-    }
+    crate::db::folders::FoldersRepository::new(main).ensure_by_path(
+        &crate::db::folders::FolderCreate {
+            user_id: user_id.to_string(),
+            path: path.to_string(),
+            name: name.to_string(),
+            parent_folder_id: None,
+            project_id: project_id.map(str::to_string),
+        },
+    )?;
     Ok(())
-}
-
-fn find_folder_by_path(
-    main: &rusqlite::Connection,
-    user_id: &str,
-    path: &str,
-    project_id: Option<&str>,
-) -> Result<Option<String>, DbError> {
-    let result = match project_id {
-        Some(pid) => main.query_row(
-            "SELECT id FROM folders WHERE userId = ?1 AND path = ?2 AND projectId = ?3 LIMIT 1",
-            rusqlite::params![user_id, path, pid],
-            |r| r.get::<_, String>(0),
-        ),
-        None => main.query_row(
-            "SELECT id FROM folders WHERE userId = ?1 AND path = ?2 AND projectId IS NULL LIMIT 1",
-            rusqlite::params![user_id, path],
-            |r| r.get::<_, String>(0),
-        ),
-    };
-    result.map(Some).or_else(|e| match e {
-        rusqlite::Error::QueryReturnedNoRows => Ok(None),
-        other => Err(other.into()),
-    })
 }
 
 /// Lowercase hex SHA-256.

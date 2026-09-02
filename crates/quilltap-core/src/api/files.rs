@@ -922,27 +922,29 @@ pub async fn files_folder_create(
                     n
                 }
             };
-            repo.create(
-                &FolderCreate {
-                    user_id: uid.clone(),
-                    path: normalized.clone(),
-                    name,
-                    parent_folder_id: parent_id,
-                    project_id: pid.clone(),
-                },
-                &Default::default(),
-            )?;
-            // Re-read for the minted id + timestamps; echo with the CREATED shape
-            // (present nulls — v4 returns the created entity, not a fresh read).
-            let created = repo.find_by_path(&uid, &normalized, pid.as_deref())?;
-            Ok(match created {
-                Some(f) => Response::Files(json!({
-                    "folder": serialize_folder_created(&f),
-                    "alreadyExists": false,
-                    "message": "Folder created successfully",
-                })),
-                None => internal("folder vanished after create"),
-            })
+            // Find-or-create at the chokepoint (v4 `a5df98b3f`, bug 114). The
+            // idempotent `findByPath` arm above STAYS — it is what answers 200
+            // `alreadyExists: true` — but it is reporting, not the uniqueness
+            // guarantee: that lives here and in the unique index behind it. The
+            // one semantic shift is that a create losing a race now answers 201
+            // with the PRE-EXISTING row rather than inserting a duplicate.
+            //
+            // The chokepoint returns the persisted row, so v4's post-create
+            // re-read (and its "folder vanished after create" arm) is gone. The
+            // CREATED shape still echoes present nulls — v4 returns the created
+            // entity, not a fresh read.
+            let created = repo.ensure_by_path(&FolderCreate {
+                user_id: uid.clone(),
+                path: normalized.clone(),
+                name,
+                parent_folder_id: parent_id,
+                project_id: pid.clone(),
+            })?;
+            Ok(Response::Files(json!({
+                "folder": serialize_folder_created(&created),
+                "alreadyExists": false,
+                "message": "Folder created successfully",
+            })))
         })
         .await;
     match out {
@@ -1768,17 +1770,18 @@ fn ensure_parent_folders_exist(
             n
         }
     };
-    let id = repo.create(
-        &FolderCreate {
-            user_id: user_id.to_string(),
-            path: parent_path,
-            name,
-            parent_folder_id: grandparent_id,
-            project_id: project_id.map(str::to_string),
-        },
-        &Default::default(),
-    )?;
-    Ok(Some(id))
+    // Find-or-create at the chokepoint (v4 `a5df98b3f`, bug 114): the read above
+    // and this write are not atomic, and a concurrent creator would otherwise
+    // leave a duplicate row for the same path. v4 keeps the surrounding guard
+    // and the recursion exactly as they were.
+    let parent = repo.ensure_by_path(&FolderCreate {
+        user_id: user_id.to_string(),
+        path: parent_path,
+        name,
+        parent_folder_id: grandparent_id,
+        project_id: project_id.map(str::to_string),
+    })?;
+    Ok(Some(parent.id))
 }
 
 /// v4 `projects.findByIdRaw(id)` existence gate (never reads the store — a degraded

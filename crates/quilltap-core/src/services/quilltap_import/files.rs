@@ -106,21 +106,18 @@ fn import_folders(
                     .map(|(_, v)| v.clone())
             });
 
-            let created = repo.create(
-                &FolderCreate {
-                    user_id: user_id.to_string(),
-                    path: path.clone(),
-                    name: s(folder, "name"),
-                    parent_folder_id,
-                    project_id,
-                },
-                &crate::db::folders::CreateOptions {
-                    id: None,
-                    created_at: None,
-                    updated_at: None,
-                },
-            )?;
-            id_by_old_id.push((id_of(folder), created));
+            // Find-or-create at the chokepoint (v4 `a5df98b3f`, bug 114). The
+            // `find_by_path` above is the reuse-REPORTING branch, not the
+            // uniqueness guarantee — that lives in `ensure_by_path` and the
+            // unique index behind it.
+            let created = repo.ensure_by_path(&FolderCreate {
+                user_id: user_id.to_string(),
+                path: path.clone(),
+                name: s(folder, "name"),
+                parent_folder_id,
+                project_id,
+            })?;
+            id_by_old_id.push((id_of(folder), created.id));
             imported += 1;
             Ok(())
         })();
