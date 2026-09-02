@@ -210,10 +210,18 @@ impl<T: SyncWireTransport> ConnectionValidator for WireConnectionValidator<'_, T
                     return Ok(false);
                 };
                 let headers = transport_headers(provider, &[], self.user_agent, self.base_url_env);
+                // v4's Ollama plugin raw-concats `${this.baseUrl}/api/tags`
+                // (`qtap-plugin-ollama/index.js:11673`) — no slash trim. A
+                // gateway-rewritten base ALWAYS carries WHATWG's trailing slash
+                // (`http://localhost:11434` → `http://host.docker.internal:11434/`),
+                // so inside a container v4 really sends `…:11434//api/tags`; v5
+                // reproduces the bytes rather than repairing them (the §3
+                // unification review — a v4 filing candidate, not a v5 fix).
+                // OPENAI keeps its own `.replace(/\/$/, '')` below, as v4 does.
                 probe_ok(
                     self.transport,
                     "GET",
-                    join_url(&base, "/api/tags"),
+                    format!("{base}/api/tags"),
                     headers,
                     "",
                 )
@@ -365,7 +373,13 @@ impl<T: SyncWireTransport> ModelsFetcher for WireModelsFetcher<'_, T> {
         }
         let base = effective_base(registry, provider, base_url).unwrap_or_default();
         let req = models_list_request(provider);
-        let mut url = join_url(&base, req.path);
+        // OLLAMA raw-concats in v4 (see the validator arm above); every other
+        // provider lists through an SDK that de-duplicates the slash itself.
+        let mut url = if provider == "OLLAMA" {
+            format!("{base}{}", req.path)
+        } else {
+            join_url(&base, req.path)
+        };
         // v4 lists models through the vendor SDK, which carries the provider's
         // fixed headers on every call; this path builds the request by hand, so
         // the manifest's `auth.extra` has to come from the registry. Without
@@ -789,7 +803,9 @@ mod tests {
             .unwrap();
         assert_eq!(
             wire.seen.lock().unwrap()[0].1,
-            "http://gw.test:11434/api/tags"
+            // v4's bytes: the rewritten base carries WHATWG's trailing slash and
+            // the plugin raw-concats, so the wire sees a DOUBLE slash.
+            "http://gw.test:11434//api/tags"
         );
 
         let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{}"))]);

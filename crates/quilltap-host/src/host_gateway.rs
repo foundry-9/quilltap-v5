@@ -599,6 +599,16 @@ mod tests {
 
     const PROVIDERS_RS: &str = include_str!("providers.rs");
     const SPINE_RS: &str = include_str!("spine.rs");
+    /// The host files that are NOT construction homes — a wire provider built
+    /// in any of them would bypass the injection and the two censuses above
+    /// (the §3 unification review: the census read `spine.rs` and
+    /// `providers.rs` alone).
+    const OTHER_HOST_FILES: &[(&str, &str)] = &[
+        ("host.rs", include_str!("host.rs")),
+        ("avatar_preview.rs", include_str!("avatar_preview.rs")),
+        ("almanack_services.rs", include_str!("almanack_services.rs")),
+        ("lib.rs", include_str!("lib.rs")),
+    ];
 
     /// Count non-comment occurrences of `needle` (a `//`-led line is prose, and
     /// several of this module's own comments name these very symbols).
@@ -649,6 +659,27 @@ mod tests {
         );
     }
 
+    /// No wire provider is constructed outside the two census files: a site
+    /// in `host.rs` (where the image provider is built) or a new module would
+    /// otherwise slip past every arm above.
+    #[test]
+    fn no_wire_provider_is_built_outside_the_census_files() {
+        for (name, text) in OTHER_HOST_FILES {
+            for needle in [
+                "ApiEmbeddingProvider::new(",
+                "WireStreamingProvider::new(",
+                "WireCompletionProvider::new(",
+            ] {
+                assert_eq!(
+                    code_hits(text, needle),
+                    0,
+                    "{name} constructs {needle} outside the injection homes — \
+                     route it through WireConfig / the provider bundle"
+                );
+            }
+        }
+    }
+
     #[test]
     fn every_completion_construction_injects() {
         // One construction (WireConfig::completion) — the factory every job
@@ -656,8 +687,9 @@ mod tests {
         assert_eq!(
             code_hits(SPINE_RS, "WireCompletionProvider::new("),
             2,
-            "a new completion construction site appeared (expected the \
-             constructor's own `impl` line and WireConfig::completion)"
+            "a new completion construction site appeared (expected exactly \
+             WireConfig::completion and the `profile_timeout_tests` \
+             construction in spine.rs's test module)"
         );
         assert!(
             snippet(SPINE_RS, "fn completion(&self, db: &Db)")
