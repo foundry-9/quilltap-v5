@@ -26,6 +26,10 @@ import {
   getConciergeState,
   type ConciergeOverrideValue,
 } from '../concierge-state';
+import {
+  CONCIERGE_STATE_PRESENTATION,
+  conciergeToneTextClass,
+} from '../concierge-state-presentation';
 import { fetchImageProfiles, imageProfileKeys } from '../../screens/settings/images/image-profiles.api';
 import { fetchRoleplayTemplates, templateKeys } from '../../screens/settings/templates/templates.api';
 import { Icon, type IconName } from '../../ui/icon';
@@ -634,32 +638,26 @@ export class ChatSection {
   protected readonly conciergeSaving = signal(false);
   private readonly conciergeSelectRef = viewChild<ElementRef<HTMLSelectElement>>('conciergeSelect');
 
+  /**
+   * v4's helper text and its icon/colour pair, both off the ONE presentation
+   * table (v4 `ChatSidebar.tsx:1132-1140` at `c43d3b1b4`).
+   *
+   * These four sentences seeded that table — they were moved into it verbatim
+   * — so this is two table reads with ZERO visible string change; the list
+   * marks and the Salon header pill now say the same words, and a copy edit
+   * lands in all three at once.
+   */
+  private readonly conciergePresentation = computed(
+    () => CONCIERGE_STATE_PRESENTATION[this.conciergeState()],
+  );
+
   /** v4's helper text, byte for byte — it names the ACTOR, not the effect. */
-  protected readonly conciergeHelperText = computed(() => {
-    switch (this.conciergeState()) {
-      case 'monitored':
-        return 'The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.';
-      case 'flagged':
-        return 'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.';
-      case 'vouched':
-        return 'You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.';
-      default:
-        return 'You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.';
-    }
-  });
+  protected readonly conciergeHelperText = computed(() => this.conciergePresentation().detail);
 
   /** The third, colorblind-safe channel (v4 `conciergeStateIcon`). */
   protected readonly conciergeStateIcon = computed<{ name: IconName; className: string }>(() => {
-    switch (this.conciergeState()) {
-      case 'monitored':
-        return { name: 'eye', className: 'qt-text-success' };
-      case 'flagged':
-        return { name: 'alert-triangle', className: 'qt-text-danger' };
-      case 'vouched':
-        return { name: 'check-circle', className: 'qt-text-muted' };
-      default:
-        return { name: 'eye-off', className: 'qt-text-info' };
-    }
+    const presentation = this.conciergePresentation();
+    return { name: presentation.icon, className: conciergeToneTextClass(presentation.tone) };
   });
 
   /**

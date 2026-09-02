@@ -494,6 +494,29 @@ through `getConciergeState(chat)`) plus four `stateRoute` rows that drive the
 twin on each literal state with no chat anywhere, and the Rust family asserts
 both. A shape guard fails the run if a stale oracle carries fewer than the four
 `stateRoute` rows.
+#### 2026-09-02 — feat(concierge): the header pill and the sidebar read the presentation table
+
+_Versions: SPA 0.5.620._
+
+The last two consumers of v4 `c43d3b1b4`'s presentation table.
+
+The Salon header's Concierge pill is one table lookup — label, icon and tone —
+wrapped in the drawn Tooltip at `placement="bottom"`, with `role="img"` and
+`aria-label="Concierge: {label}"`. Its four native `title` strings are retired
+as v4 retires them; the Flagged one was the only place the classifier's
+categories were named, and the bubble's `Categories` section is where they
+live now. The pill keeps its `.qt-danger-badge` class family, so the existing
+four-state walk still finds it.
+
+The sidebar's Chat section reads its helper sentence and its icon/colour pair
+off the same table. Those four sentences seeded it — they were moved into it
+verbatim — so this is two table reads with zero visible string change, and the
+existing sidebar spec passes untouched.
+
+The header spec is rewritten to the new shape: red-first against the retired
+`title`, and mutation-proven — putting a native `title` back reddens the
+no-title case, and forcing the tone to `danger` reddens both operator pills.
+
 #### 2026-09-02 — feat(concierge): the chat lists follow the Concierge state, not the raw label
 
 _Versions: SPA 0.5.619._

@@ -3,6 +3,13 @@ import { RouterLink } from '@angular/router';
 
 import type { ChatDetail, ChatSettingsDto } from '../core/core-contract';
 import { getConciergeState } from './concierge-state';
+import { ConciergeTooltipBody } from './concierge-mark';
+import {
+  CONCIERGE_STATE_PRESENTATION,
+  conciergeToneSuffix,
+  describeConciergeState,
+} from './concierge-state-presentation';
+import { Tooltip } from '../ui/tooltip';
 import { CopyChatIdButton } from '../ui/copy-chat-id-button';
 import { Icon } from '../ui/icon';
 import { ChatCostSummary } from './chat-cost-summary';
@@ -29,7 +36,7 @@ import { ChatCostSummary } from './chat-cost-summary';
 @Component({
   selector: 'qt-conversation-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, CopyChatIdButton, ChatCostSummary],
+  imports: [RouterLink, Icon, CopyChatIdButton, ChatCostSummary, Tooltip, ConciergeTooltipBody],
   template: `
     <header class="flex items-center gap-2 text-sm min-w-0 px-4 py-3 border-b qt-border-default">
       @if (chat().projectId && chat().projectName) {
@@ -50,33 +57,32 @@ import { ChatCostSummary } from './chat-cost-summary';
         >{{ chat().title || 'Untitled chat' }}</a
       >
 
-      <!-- The Concierge badge (v4 SalonView.tsx:1082-1120). ONE pill, derived
+      <!-- The Concierge badge (v4 SalonView.tsx:1088-1112). ONE pill, derived
            from the four-state; Monitored is the default and renders no badge at
            all — "the pill means something other than the default is set". Until
            P4.D141 v5 rendered two INDEPENDENT @if pills, so an off-duty chat
-           that was also flagged showed both where v4's ternary shows one. -->
-      @switch (conciergeState()) {
-        @case ('flagged') {
-          <span class="qt-danger-badge flex-shrink-0" [title]="dangerTitle()">
-            <qt-icon name="alert-triangle" class="w-3 h-3" />Flagged
-          </span>
-        }
-        @case ('vouched') {
+           that was also flagged showed both where v4's ternary shows one.
+
+           Since v4 c43d3b1b4 every word, icon and tone comes from the ONE
+           presentation table, so the pill speaks the same sentences as the list
+           marks and the sidebar's helper text; and the four native title
+           strings are retired in favour of the drawn bubble, which is also the
+           only place the classifier's categories are named now. -->
+      @if (conciergeState() !== 'monitored') {
+        <qt-tooltip [contentTemplate]="conciergeTip" placement="bottom">
           <span
-            class="qt-danger-badge qt-danger-badge-muted flex-shrink-0"
-            title="You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply — set from the sidebar's Chat section."
+            [class]="'qt-danger-badge' + badgeSuffixClass() + ' flex-shrink-0'"
+            role="img"
+            [attr.aria-label]="'Concierge: ' + conciergePresentation().label"
           >
-            <qt-icon name="check-circle" class="w-3 h-3" />Vouched Safe
+            <qt-icon [name]="conciergePresentation().icon" class="w-3 h-3" />{{
+              conciergePresentation().label
+            }}
           </span>
-        }
-        @case ('uncensored') {
-          <span
-            class="qt-danger-badge qt-danger-badge-info flex-shrink-0"
-            title="You have opened the uncensored door yourself. Nothing is scanned, nothing is softened — set from the sidebar's Chat section."
-          >
-            <qt-icon name="eye-off" class="w-3 h-3" />Uncensored
-          </span>
-        }
+        </qt-tooltip>
+        <ng-template #conciergeTip>
+          <qt-concierge-tooltip-body [description]="conciergeDescription()" />
+        </ng-template>
       }
 
       <span class="flex-1"></span>
@@ -152,10 +158,28 @@ export class ConversationHeader {
    */
   protected readonly conciergeState = computed(() => getConciergeState(this.chat()));
 
-  protected readonly dangerTitle = computed(() => {
-    const cats = this.chat().dangerCategories ?? [];
-    return cats.length > 0
-      ? `The Concierge has flagged this chat: ${cats.join(', ')}`
-      : 'The Concierge has flagged this chat';
+  /** The state's row of the ONE presentation table (v4 `c43d3b1b4`). */
+  protected readonly conciergePresentation = computed(
+    () => CONCIERGE_STATE_PRESENTATION[this.conciergeState()],
+  );
+
+  /**
+   * The bubble's contents. The categories reach it only on Flagged — on the
+   * two operator states a preserved list is a stale artefact of an earlier
+   * scan, not a live verdict — which is what retires the old Flagged `title`
+   * without losing what it said.
+   */
+  protected readonly conciergeDescription = computed(() =>
+    describeConciergeState(this.conciergeState(), this.chat().dangerCategories ?? undefined),
+  );
+
+  /**
+   * `danger` is the base rule, so it adds nothing; only the two operator tones
+   * carry a modifier. Kept as its own class-name expression rather than a
+   * template interpolation so `check-qt-classes` can still resolve the family.
+   */
+  protected readonly badgeSuffixClass = computed(() => {
+    const suffix = conciergeToneSuffix(this.conciergePresentation().tone);
+    return suffix ? ` qt-danger-badge${suffix}` : '';
   });
 }

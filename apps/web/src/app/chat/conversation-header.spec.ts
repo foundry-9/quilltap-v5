@@ -1,7 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import type { ChatDetail, ChatSettingsDto } from '../core/core-contract';
@@ -219,7 +219,7 @@ describe('ConversationHeader — the sidebar reclaimed its entries (P4.9H1)', ()
   });
 });
 
-describe('ConversationHeader — the Concierge badge (P4.D141, v4 SalonView.tsx:1082-1120)', () => {
+describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1088-1112 @ c43d3b1b4)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   function badges(fixture: ComponentFixture<ConversationHeader>): HTMLElement[] {
@@ -228,6 +228,23 @@ describe('ConversationHeader — the Concierge badge (P4.D141, v4 SalonView.tsx:
     ) as HTMLElement[];
   }
 
+  /** Advance fake time, then let the render + afterRenderEffect passes run. */
+  async function tick(fixture: ComponentFixture<unknown>, ms: number): Promise<void> {
+    await vi.advanceTimersByTimeAsync(ms);
+    fixture.detectChanges();
+    await vi.advanceTimersByTimeAsync(0);
+    fixture.detectChanges();
+  }
+
+  async function hover(fixture: ComponentFixture<unknown>): Promise<void> {
+    (fixture.nativeElement as HTMLElement)
+      .querySelector('qt-tooltip')!
+      .dispatchEvent(new Event('pointerenter'));
+    await tick(fixture, 250);
+  }
+
+  const bubble = (): HTMLElement | null => document.body.querySelector('.qt-tooltip');
+
   it('renders NO badge for Monitored — the pill means "something other than the default"', () => {
     expect(badges(render(chatDetail()))).toHaveLength(0);
     // `render` configures a fresh TestBed, so the second case needs its own.
@@ -235,21 +252,24 @@ describe('ConversationHeader — the Concierge badge (P4.D141, v4 SalonView.tsx:
     expect(badges(render(chatDetail({ isDangerousChat: null })))).toHaveLength(0);
   });
 
-  it('the Flagged pill with no categories carries v4’s title byte for byte — no trailing period (SalonView :1090)', () => {
-    const [pill] = badges(render(chatDetail({ isDangerousChat: true, dangerCategories: [] })));
-    expect(pill.getAttribute('title')).toBe('The Concierge has flagged this chat');
+  it('retires the four native titles in favour of the drawn bubble (v4 c43d3b1b4)', () => {
+    // The Flagged title used to be the only place the categories were named;
+    // the bubble's Categories section is where they live now.
+    const [pill] = badges(
+      render(chatDetail({ isDangerousChat: true, dangerCategories: ['nsfw', 'violence'] })),
+    );
+    expect(pill.hasAttribute('title')).toBe(false);
   });
 
-  it('renders the red Flagged pill, with the categories in its title', () => {
+  it('renders the red Flagged pill, labelled and iconed off the presentation table', () => {
     const fixture = render(
       chatDetail({ isDangerousChat: true, dangerCategories: ['nsfw', 'violence'] }),
     );
     const [pill, ...rest] = badges(fixture);
     expect(rest).toHaveLength(0);
     expect(pill.textContent?.trim()).toBe('Flagged');
-    expect(pill.getAttribute('title')).toBe(
-      'The Concierge has flagged this chat: nsfw, violence',
-    );
+    expect(pill.getAttribute('role')).toBe('img');
+    expect(pill.getAttribute('aria-label')).toBe('Concierge: Flagged');
     expect(pill.className).not.toContain('qt-danger-badge-muted');
     expect(pill.className).not.toContain('qt-danger-badge-info');
     expect(pill.querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
@@ -258,17 +278,15 @@ describe('ConversationHeader — the Concierge badge (P4.D141, v4 SalonView.tsx:
   });
 
   it('renders ONE muted Vouched Safe pill even when the label underneath is true', () => {
-    // The pre-existing v5 divergence this fixes: two INDEPENDENT `@if` pills
+    // The pre-existing v5 divergence P4.D141 fixed: two INDEPENDENT `@if` pills
     // rendered BOTH an off-duty and a flagged badge for this exact chat, where
-    // v4's ternary renders one.
+    // v4 renders one.
     const fixture = render(chatDetail({ isDangerousChat: true, conciergeOverride: 'OFF' }));
     const pills = badges(fixture);
     expect(pills).toHaveLength(1);
     expect(pills[0].textContent?.trim()).toBe('Vouched Safe');
     expect(pills[0].className).toContain('qt-danger-badge-muted');
-    expect(pills[0].getAttribute('title')).toBe(
-      "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply — set from the sidebar's Chat section.",
-    );
+    expect(pills[0].getAttribute('aria-label')).toBe('Concierge: Vouched Safe');
     expect(pills[0].querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
       'check-circle',
     );
@@ -282,11 +300,67 @@ describe('ConversationHeader — the Concierge badge (P4.D141, v4 SalonView.tsx:
     expect(pills).toHaveLength(1);
     expect(pills[0].textContent?.trim()).toBe('Uncensored');
     expect(pills[0].className).toContain('qt-danger-badge-info');
-    expect(pills[0].getAttribute('title')).toBe(
-      "You have opened the uncensored door yourself. Nothing is scanned, nothing is softened — set from the sidebar's Chat section.",
-    );
+    expect(pills[0].getAttribute('aria-label')).toBe('Concierge: Uncensored');
     expect(pills[0].querySelector('qt-icon span[data-icon]')?.getAttribute('data-icon')).toBe(
       'eye-off',
     );
+  });
+
+  describe('the bubble (placement="bottom")', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({
+        toFake: [
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'requestAnimationFrame',
+          'cancelAnimationFrame',
+        ],
+      });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      TestBed.resetTestingModule();
+    });
+
+    it("speaks the presentation table's words, and names the categories on Flagged", async () => {
+      const fixture = render(
+        chatDetail({ isDangerousChat: true, dangerCategories: ['nsfw', 'violence'] }),
+      );
+
+      await hover(fixture);
+
+      const text = bubble()!.textContent ?? '';
+      expect(text).toContain('Flagged');
+      expect(text).toContain(
+        'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.',
+      );
+      expect(text).toContain('Categories');
+      expect(text).toContain('nsfw, violence');
+      expect(text).toContain("Change it from the Salon sidebar's Chat section.");
+      // v4 asks for the bubble BELOW the toolbar; the primitive may still flip
+      // it away from a viewport edge, which is why the attribute is read
+      // rather than the input.
+      expect(bubble()!.getAttribute('data-placement')).toBe('bottom');
+    });
+
+    it('never surfaces a preserved category list on an operator state', async () => {
+      const fixture = render(
+        chatDetail({
+          isDangerousChat: true,
+          conciergeOverride: 'OFF',
+          dangerCategories: ['nsfw'],
+        }),
+      );
+
+      await hover(fixture);
+
+      const text = bubble()!.textContent ?? '';
+      expect(text).toContain(
+        'You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.',
+      );
+      expect(text).not.toContain('Categories');
+    });
   });
 });
