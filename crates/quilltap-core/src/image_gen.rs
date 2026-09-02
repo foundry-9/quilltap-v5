@@ -30,6 +30,8 @@ use serde::{Serialize, Serializer};
 
 use crate::db::js_number_to_json;
 
+pub mod huggingface_lookup;
+pub mod huggingface_repo_id;
 pub mod lora_support;
 pub mod lora_validation;
 pub mod params_builder;

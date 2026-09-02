@@ -130,6 +130,9 @@ pub struct EngineAssembly {
     /// loud not-assembled refusal; a keyless list would silently masquerade as
     /// an honest one, which is exactly what `ca22ec45` set out to stop.
     pub image_discovery: Option<crate::model::image::ErasedImageDiscovery>,
+    /// The HuggingFace LoRA-metadata transport (P4.D138 unit 7). `None` on a
+    /// spine-less assembly → the loud not-assembled refusal.
+    pub lora_metadata: Option<crate::image_gen::huggingface_lookup::ErasedLoraMetadata>,
     // === end P4.6ai ===
     // === P4.6bd: the custom-tool consult seam ===
     /// The custom-tool consult runner (P4.6bd, wired LIVE in the host — the
@@ -280,6 +283,7 @@ impl EngineAssembly {
         EngineAssembly {
             shutdown,
             chat_send: None,
+            lora_metadata: None,
             brahma_console_send: None,
             chat_create: None,
             swipe_generate: None,
@@ -487,6 +491,7 @@ struct ReadyEngine {
     /// the arm answers the loud not-assembled refusal).
     image_generation: Option<crate::tools::generate_image::ErasedImageGeneration>,
     image_discovery: Option<crate::model::image::ErasedImageDiscovery>,
+    lora_metadata: Option<crate::image_gen::huggingface_lookup::ErasedLoraMetadata>,
     /// The custom-tool consult runner (P4.6bd; `None` for spine-less assemblies —
     /// the composer/bench arms answer the loud not-assembled error).
     consult: Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
@@ -2757,6 +2762,16 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             }, // === end P4.D100 ===
+            Request::ImageProfileLoraMetadata { body } => match self.ready_lora_metadata() {
+                Ok(l) => {
+                    super::image_profiles::image_profile_lora_metadata(
+                        &l,
+                        &serde_json::Value::Object(body),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::ImageProfileOptionsSchema { provider, model } => match self.ready_db() {
                 // v4 `handleOptionsSchema(req)` reads no repository, but it sits
                 // inside `createContextHandler` — so a locked instance refuses
@@ -5102,6 +5117,23 @@ impl CoreEngine {
         }
     }
 
+    /// The HuggingFace LoRA-metadata transport, or the loud not-assembled
+    /// refusal (the `ready_list_models` precedent).
+    fn ready_lora_metadata(
+        &self,
+    ) -> Result<crate::image_gen::huggingface_lookup::ErasedLoraMetadata, Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.lora_metadata {
+                Some(l) => Ok(l.clone()),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "LoRA metadata lookup not assembled (image-generation seam deferral)",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
     fn ready_generate_image(
         &self,
     ) -> Result<(Db, crate::tools::generate_image::ErasedImageGeneration), Response> {
@@ -5830,6 +5862,7 @@ fn open_ready(
         pepper_state,
         has_user_passphrase,
         shutdown: assembly.shutdown,
+        lora_metadata: assembly.lora_metadata,
         chat_send: assembly.chat_send,
         chat_create: assembly.chat_create,
         swipe_generate: assembly.swipe_generate,

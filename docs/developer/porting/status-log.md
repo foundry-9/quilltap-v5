@@ -97114,6 +97114,102 @@ active and green, and the three intermittents green in the same run.
 lookup).
 
 
+## P4.D138 unit 7 — the HuggingFace LoRA lookup (v4 `2ece98c90`)
+
+The LoRA train's third commit, and the order's last unit. Tier 2 landed as the
+port, not the refusal.
+
+**Two modules, split the way v4 splits them.**
+`image_gen::huggingface_repo_id` is pure and dependency-free for v4's stated
+reason — the LoRA editor decides whether a source is even askable-about before
+it offers a Query button, and that decision runs in the browser; the SPA already
+carries its own transcription (P4.D139) and this is the host-side twin.
+`image_gen::huggingface_lookup` is the one place that asks HuggingFace, and it
+**renders no compatibility verdict**: matching NanoGPT's model ids against
+HuggingFace's `base_model` strings would mean trusting two naming conventions
+neither of which owes us stability, and a false "this will not work" on an
+adapter that works is worse than the silence it replaced.
+
+**The `new URL()` stand-in is bounded and says so.** The caller has already
+matched `^https?://`, so the scheme is special and WHATWG's special-scheme rules
+apply; the parser reproduces the arms the corpus can reach (an empty host, an
+unterminated IPv6 literal, a forbidden code point in the host) and documents
+what it does NOT do — path percent-encoding, IDNA, dot-segment resolution. Every
+one of those would change a candidate the repo-id pattern rejects anyway, since
+the pattern admits only ASCII alphanumerics, dot, underscore and hyphen.
+
+**The transport is its own seam, for a reason the shared one cannot serve.**
+`lookupHuggingFaceLora` splits timeout from network on the THROWN error's NAME
+(`TimeoutError` / `AbortError` → timeout, anything else → network), and
+[`crate::model::wire::WireTransport`] collapses a throw to a message. So
+`LoraMetadataTransport` carries a `ThrownError { name, message }` — a JS `Error`
+as this module reads one — and the host maps `reqwest`'s `is_timeout()` onto
+that name. v4 spends its ten seconds as `AbortSignal.timeout`; v5's host spends
+them as the transport's per-request timeout, the same bound in the same place.
+
+**The proof.** A new `huggingface_lora_lookup_equivalence` over an oracle
+driving v4's REAL modules with `global.fetch` canned: **32 repo-id + 25 lookup
+rows**. Each network row carries the canned wire WITH it, so both sides drive
+the identical response instead of restating a table, and each records the
+REQUEST v4 made — so v5's URL and its `Authorization` header are comparands
+rather than assumptions. The repo-id corpus takes v4's own suite as its SHAPE
+and adds the edges that suite leaves implicit: an uppercase host, a
+`cdn-lfs.huggingface.co` subdomain, an explicit `:443`, a trailing slash, a
+percent-encoded slash, dot-leading segments, and the three `new URL()` throw
+arms.
+
+The route half rides `image_profiles_routes_equivalence`, 58 → 69 cases: v4's
+four guards in their exact order with their exact sentences, both empty-string
+edges, the source that never reaches the network (proven by a transport that
+PANICS if reached), and the success/declined pair — a declined lookup answering
+HTTP **200** with `ok: false`, because "HuggingFace would not tell us" is a
+result the editor displays, not an error the form should treat as a broken
+request.
+
+**A vacuous corpus arm, caught by reading v4's answer rather than by a red.**
+`lora_metadata_null_body` was measuring the missing-`source` guard, not the
+null-body one: the shared `mockRequest` resolves `body ?? {}`, so `null` arrived
+as `{}` and never reached `typeof body !== 'object' || body === null`. The tell
+was v4 answering `A LoRA source is required` where the case's name promised the
+JSON-body sentence. A verbatim-resolving mock now delivers the null, and the
+reason is written at the site.
+
+**Ten mutations, each verified applied and each reddening a named arm:**
+
+| mutation | reddens |
+| --- | --- |
+| the host suffix test drops its dot anchor | the `nothuggingface.co` lookalike row |
+| the repo-id pattern admits a leading punctuation char | the dot-leading rows |
+| a three-segment path becomes a repo id | `too/many/segments` |
+| the 401 arm claims the repository is missing | the 401 row |
+| an abort stops counting as a timeout | the `AbortError` row |
+| the token rides as a bare header, not a bearer | the recorded REQUEST |
+| the adapter tags win over the card declaration | the merge-order row |
+| the lora tag is matched case-sensitively | the `LoRA` row |
+| a non-object payload reaches `readFacts` | the array/null payload rows |
+| weight files stop filtering on the extension | the ambiguous-siblings row |
+
+**⚠ One recorded divergence.** v4's `detail` on a non-JSON body is the message
+V8 puts on the `SyntaxError` that `response.json()` throws — the JSON parser's
+own wording, not v4's, and no Rust parser produces it. Everything else about
+that arm is compared whole; only the string is exempt, and BOTH spellings are
+asserted so the exemption cannot widen unnoticed.
+
+**Wired LIVE.** The `imageProfileLoraMetadata` verb (the SPA has dispatched it
+since P4.D139), the handler, the engine arm behind a `ready_lora_metadata` gate
+in the `ready_list_models` shape, and the host's `ReqwestLoraMetadata`. No e2e
+beat clicks Query: doing so would mean real HuggingFace egress from the suite,
+which v4's own tests avoid too — the button's enablement is the client twin's
+decision and the beats already assert it.
+
+**Gate.** 479 test binaries / 2,663 passed / 0 failed / 1 ignored, zero `SKIP:`
+lines, cargo exit 0; clippy clean on both feature sets; fmt clean; release build
+clean. The routes family regenerated at the baseline through the sweep driver,
+69/69.
+
+**P4.D138 is now CLOSED.**
+
+
 ## Round record — the drift catch-up round 2 of 2 unification (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66), 2026-09-01
 
 **FIVE OF SIX ORDERS CLOSED; P4.D138 OPEN at units 5–7; the oracle baseline

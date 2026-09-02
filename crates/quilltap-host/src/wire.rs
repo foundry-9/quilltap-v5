@@ -27,6 +27,9 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use quilltap_core::image_gen::huggingface_lookup::{
+    LoraMetadataTransport, ThrownError, LOOKUP_TIMEOUT_MS,
+};
 use quilltap_core::model::image_bytes::{FetchedImageBytes, ImageBytesFetch};
 use quilltap_core::model::wire::{SyncWireTransport, WireResponse, WireTransport};
 
@@ -237,6 +240,72 @@ impl SyncWireTransport for BlockingWireTransport {
             let text = resp.text().map_err(|e| e.to_string())?;
             Ok(wire_response(status, status_text, text))
         })?
+    }
+}
+
+/// The HuggingFace LoRA-metadata transport (P4.D138 unit 7).
+///
+/// Its own transport rather than [`ReqwestWireTransport`] because
+/// `lookupHuggingFaceLora` splits timeout from network on the THROWN error's
+/// name, and the shared seam collapses a throw to a message. v4 spends its
+/// ten-second bound as `AbortSignal.timeout(LOOKUP_TIMEOUT_MS)`, which rejects
+/// with a `TimeoutError`; reqwest's `is_timeout()` is the same condition, so it
+/// is mapped to that name and everything else keeps reqwest's own wording as
+/// v4 keeps undici's.
+pub struct ReqwestLoraMetadata {
+    client: reqwest::Client,
+}
+
+impl ReqwestLoraMetadata {
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::Client::new(),
+        }
+    }
+}
+
+impl Default for ReqwestLoraMetadata {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LoraMetadataTransport for ReqwestLoraMetadata {
+    async fn get(
+        &self,
+        url: &str,
+        headers: &[(String, String)],
+    ) -> Result<WireResponse, ThrownError> {
+        let mut req = self
+            .client
+            .get(url)
+            .timeout(Duration::from_millis(LOOKUP_TIMEOUT_MS));
+        for (k, v) in headers {
+            req = req.header(k, v);
+        }
+        let resp = req.send().await.map_err(|e| ThrownError {
+            name: if e.is_timeout() {
+                "TimeoutError".to_string()
+            } else {
+                "TypeError".to_string()
+            },
+            message: e.to_string(),
+        })?;
+        let status = resp.status().as_u16();
+        let status_text = resp
+            .status()
+            .canonical_reason()
+            .unwrap_or_default()
+            .to_string();
+        let body = resp.text().await.map_err(|e| ThrownError {
+            name: "TypeError".to_string(),
+            message: e.to_string(),
+        })?;
+        Ok(WireResponse {
+            status,
+            status_text,
+            body,
+        })
     }
 }
 

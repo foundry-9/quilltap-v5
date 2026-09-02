@@ -15,6 +15,7 @@ use serde_json::{json, Map, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{api_keys, image_profiles as ip, provider_models, tags};
+use crate::image_gen::huggingface_lookup::ErasedLoraMetadata;
 use crate::image_gen::lora_support::resolve_lora_support;
 use crate::image_gen::lora_validation::{
     lora_issue_details, lora_issue_log_lines, validate_profile_loras,
@@ -915,6 +916,62 @@ pub fn image_profile_options_schema(provider: Option<&str>, model: Option<&str>)
             .unwrap_or(Value::Null),
     );
     Response::ImageProfile(Value::Object(body))
+}
+
+/// v4 `handleLoraMetadata` (`2ece98c90`) — asks HuggingFace what it knows about
+/// a LoRA source and hands the answer back verbatim.
+///
+/// It renders **no compatibility verdict** — see
+/// [`crate::image_gen::huggingface_lookup`] for why guessing at one would be
+/// worse than silence — so this is a read-out the user interprets, not a gate.
+///
+/// POST rather than GET for one reason: the optional `hfToken` is a credential,
+/// and a credential does not belong in a query string where it would land in
+/// every access log between here and the browser.
+///
+/// The body arrives RAW because all four guards are type checks and v5's
+/// wrong-type-collapse rule forbids narrowing them at the edge. Two of the four
+/// are unreachable through v5's only entrance — the dispatch verb, whose body
+/// is an object by construction, so a non-JSON or non-object body cannot occur
+/// (there is no REST edge for image-profiles). They are ported anyway and the
+/// differential drives this function directly, so all four are measured.
+pub async fn image_profile_lora_metadata(lookup: &ErasedLoraMetadata, body: &Value) -> Response {
+    // v4's `catch` on `req.json()` AND its `typeof body !== 'object' || null ||
+    // Array.isArray` guard answer the SAME sentence.
+    if !body.is_object() {
+        return bad_request("A JSON body with a `source` is required");
+    }
+    let source = body.get("source");
+    // `typeof source !== 'string' || source.trim().length === 0`.
+    let Some(source) = source
+        .and_then(Value::as_str)
+        .filter(|s| !crate::jsstr::js_trim(s).is_empty())
+    else {
+        return bad_request("A LoRA source is required");
+    };
+    // `hfToken !== undefined && typeof hfToken !== 'string'` — an explicit
+    // `null` is NOT undefined, so it refuses; absent passes.
+    let hf_token = match body.get("hfToken") {
+        None => None,
+        Some(v) => match v.as_str() {
+            Some(s) => Some(s),
+            None => return bad_request("hfToken must be a string when supplied"),
+        },
+    };
+
+    let result = lookup
+        .lookup(
+            source,
+            // `typeof hfToken === 'string' && hfToken.length > 0 ? hfToken :
+            // undefined` — an EMPTY token is passed as absent.
+            hf_token.filter(|t| !t.is_empty()),
+        )
+        .await;
+
+    // Failures answer 200 with `ok: false`: "HuggingFace would not tell us" is a
+    // result the editor displays, not an error the form should treat as a broken
+    // request.
+    Response::ImageProfile(serde_json::to_value(&result).unwrap_or(Value::Null))
 }
 
 /// v4's `providerModels.upsertModelsForProvider(provider, models.map(modelId =>

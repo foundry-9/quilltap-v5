@@ -22,6 +22,9 @@ use std::path::PathBuf;
 use quilltap_core::api::image_profiles as ip;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::image_gen::huggingface_lookup::{
+    ErasedLoraMetadata, LoraMetadataTransport, ThrownError,
+};
 use quilltap_core::model::image::ErasedImageDiscovery;
 use quilltap_core::model::image_dialects::RealImageProvider;
 use quilltap_core::model::wire::{CannedWireTransport, WireResponse};
@@ -94,6 +97,33 @@ fn blank_keys(v: &mut Value, keys: &[&str]) {
         _ => {}
     }
 }
+/// A one-shot HuggingFace transport for the `lora-metadata` route arms.
+/// `unreachable()` PANICS if reached, which is how the guard arms prove they
+/// refuse before any egress.
+struct CannedLoraTransport(Option<(u16, String)>);
+
+impl CannedLoraTransport {
+    fn unreachable() -> Self {
+        Self(None)
+    }
+    fn answering(status: u16, body: &str) -> Self {
+        Self(Some((status, body.to_string())))
+    }
+}
+
+impl LoraMetadataTransport for CannedLoraTransport {
+    async fn get(
+        &self,
+        _url: &str,
+        _headers: &[(String, String)],
+    ) -> Result<WireResponse, ThrownError> {
+        match &self.0 {
+            Some((status, body)) => Ok(WireResponse::new(*status, body.clone())),
+            None => panic!("this arm must refuse before reaching HuggingFace"),
+        }
+    }
+}
+
 fn norm(v: &Value, blank: &[&str]) -> String {
     let mut v = v.clone();
     canon_numbers(&mut v);
@@ -289,6 +319,18 @@ fn image_profiles_routes_match_oracle() {
         "options_schema_nanogpt_prefix_match",
         "options_schema_nanogpt_weights_family",
         "options_schema_nanogpt_url_family",
+        // P4.D138 unit 7 (`2ece98c90`) — the lora-metadata action.
+        "lora_metadata_bad_json",
+        "lora_metadata_non_object_body",
+        "lora_metadata_null_body",
+        "lora_metadata_missing_source",
+        "lora_metadata_blank_source",
+        "lora_metadata_non_string_source",
+        "lora_metadata_non_string_token",
+        "lora_metadata_null_token",
+        "lora_metadata_not_a_repo_id",
+        "lora_metadata_success",
+        "lora_metadata_declined",
     ] {
         assert!(
             oracle.contains_key(required),
@@ -598,6 +640,74 @@ fn image_profiles_routes_match_oracle() {
                 &mut failed,
             );
         }
+    }
+
+    // ---- `2ece98c90` unit 7: the lora-metadata action ----------------------
+    {
+        // v4's four guards in order, then the two arms that reach the network.
+        // The canned wire is named per case here rather than carried in the row
+        // because these arms exercise the ROUTE's guards; the lookup module's
+        // own wire behaviour is the `huggingface_lora_lookup` family's job, and
+        // that corpus does carry it.
+        let no_wire = || ErasedLoraMetadata::new(CannedLoraTransport::unreachable());
+        for (name, body) in [
+            ("lora_metadata_bad_json", json!("not an object at all")),
+            (
+                "lora_metadata_non_object_body",
+                json!(["not", "an", "object"]),
+            ),
+            ("lora_metadata_null_body", Value::Null),
+            ("lora_metadata_missing_source", json!({})),
+            ("lora_metadata_blank_source", json!({ "source": "   " })),
+            ("lora_metadata_non_string_source", json!({ "source": 42 })),
+            (
+                "lora_metadata_non_string_token",
+                json!({ "source": "owner/name", "hfToken": 42 }),
+            ),
+            (
+                "lora_metadata_null_token",
+                json!({ "source": "owner/name", "hfToken": null }),
+            ),
+        ] {
+            err(
+                name,
+                &rt.block_on(ip::image_profile_lora_metadata(&no_wire(), &body)),
+                &mut failed,
+            );
+        }
+        // A source with no repository behind it never reaches the network — the
+        // unreachable transport is the proof, and the answer is 200 `ok:false`.
+        ok(
+            "lora_metadata_not_a_repo_id",
+            &rt.block_on(ip::image_profile_lora_metadata(
+                &no_wire(),
+                &json!({ "source": "https://cdn.example.com/weights.safetensors" }),
+            )),
+            &[],
+            &mut failed,
+        );
+        ok(
+            "lora_metadata_success",
+            &rt.block_on(ip::image_profile_lora_metadata(
+                &ErasedLoraMetadata::new(CannedLoraTransport::answering(
+                    200,
+                    r#"{"id":"XLabs-AI/flux-RealismLora","tags":["lora","base_model:adapter:black-forest-labs/FLUX.1-dev"],"pipeline_tag":"text-to-image","cardData":{"instance_prompt":"ohwx style"},"siblings":[{"rfilename":"lora.safetensors"}],"likes":1232}"#,
+                )),
+                &json!({ "source": "XLabs-AI/flux-RealismLora", "hfToken": "" }),
+            )),
+            &[],
+            &mut failed,
+        );
+        // A declined lookup is still HTTP 200 — the editor displays it.
+        ok(
+            "lora_metadata_declined",
+            &rt.block_on(ip::image_profile_lora_metadata(
+                &ErasedLoraMetadata::new(CannedLoraTransport::answering(404, "{}")),
+                &json!({ "source": "owner/gone" }),
+            )),
+            &[],
+            &mut failed,
+        );
     }
 
     // ---- `84f33ce94` unit 6: the options-schema action ---------------------

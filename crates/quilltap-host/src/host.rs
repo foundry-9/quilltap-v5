@@ -787,6 +787,15 @@ impl EngineAssembler for HostAssembler {
             // P4.D100: the honest Fetch Models discovery seam. Independent of
             // the spine bundle — it needs only the host's HTTP client and the
             // `ca22ec45` image-download seam, so it is built here directly.
+            // P4.D138 unit 7: the HuggingFace LoRA lookup. Like the discovery
+            // seam above it needs only the host's HTTP client, so it is built
+            // here directly — with v4's ten-second bound as the transport's
+            // per-request timeout.
+            lora_metadata: Some(
+                quilltap_core::image_gen::huggingface_lookup::ErasedLoraMetadata::new(
+                    crate::wire::ReqwestLoraMetadata::new(),
+                ),
+            ),
             image_discovery: Some(quilltap_core::model::image::ErasedImageDiscovery::new(
                 quilltap_core::model::image_dialects::RealImageProvider::with_bytes_fetch(
                     crate::wire::ReqwestWireTransport::new(),

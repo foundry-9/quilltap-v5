@@ -12,6 +12,48 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — feat(image): the HuggingFace LoRA lookup and the lora-metadata action (P4.D138 unit 7)
+
+_Versions: core 0.0.735, harness 0.0.629, host 0.0.90._
+
+P4.D138 unit 7 — v4 `2ece98c90`, the LoRA train's third commit and the order's
+last unit. It closes P4.D138.
+
+Two modules, split the way v4 splits them: `huggingface_repo_id` is pure and
+dependency-free because the editor decides whether a source is askable-about
+before offering a Query button, and that decision runs in the browser;
+`huggingface_lookup` is the one place that asks HuggingFace, and it renders no
+compatibility verdict — a false "this will not work" on an adapter that works is
+worse than the silence it replaced.
+
+The lookup gets its own transport seam rather than the shared `WireTransport`:
+v4 splits timeout from network on the thrown error's NAME, and the shared seam
+collapses a throw to a message. `LoraMetadataTransport` carries a
+`ThrownError { name, message }`, and the host maps reqwest's `is_timeout()` onto
+it. v4's ten-second `AbortSignal.timeout` becomes the transport's per-request
+timeout.
+
+The new `huggingface_lora_lookup_equivalence` drives v4's real modules with
+`global.fetch` canned: 32 repo-id + 25 lookup rows, each network row carrying
+the canned wire WITH it and recording the request v4 made, so v5's URL and
+`Authorization` header are comparands. `image_profiles_routes_equivalence` grows
+58 → 69 with v4's four guards in order, the source that never reaches the
+network (proven by a transport that panics if reached), and the success/declined
+pair — a declined lookup answering 200 with `ok:false`. Ten mutations, each
+reddening a named arm.
+
+One corpus arm was found vacuous by reading v4's answer rather than by a red:
+`lora_metadata_null_body` measured the missing-source guard, because the shared
+mock resolves `body ?? {}` and `null` arrived as `{}`. A verbatim-resolving mock
+now delivers it.
+
+Recorded divergence: v4's `detail` on a non-JSON body is V8's own `SyntaxError`
+wording, which no Rust parser reproduces. Only that string is exempt, and both
+spellings are asserted so the exemption cannot widen unnoticed.
+
+The verb, handler, engine arm and the host's `ReqwestLoraMetadata` are wired
+live.
+
 #### 2026-09-01 — feat(image): the list-models LoRA map, the options-schema action, and the NanoGPT catalog cache (P4.D138 unit 6)
 
 _Versions: core 0.0.734, harness 0.0.628, SPA 0.5.615._

@@ -62,6 +62,59 @@ function mockRequest(url: string, body?: unknown): unknown {
   };
 }
 
+/**
+ * A request whose `json()` resolves the body VERBATIM.
+ *
+ * `mockRequest` above resolves `body ?? {}`, so a `null` body arrives as `{}`
+ * and can never reach v4's `typeof body !== 'object' || body === null` guard —
+ * the case would silently measure the missing-`source` arm instead. (It did:
+ * the first regen answered "A LoRA source is required" for the null-body case.)
+ */
+function mockVerbatimRequest(url: string, body: unknown): unknown {
+  return {
+    method: 'POST',
+    url,
+    nextUrl: new URL(url),
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    json: jest.fn().mockResolvedValue(body),
+  };
+}
+
+/** A request whose `json()` REJECTS — v4's `catch` arm on an unparseable body. */
+function mockBadJsonRequest(url: string): unknown {
+  return {
+    method: 'POST',
+    url,
+    nextUrl: new URL(url),
+    headers: new Headers({ 'Content-Type': 'application/json' }),
+    json: jest.fn().mockRejectedValue(new SyntaxError('Unexpected end of JSON input')),
+  };
+}
+
+/**
+ * Run `fn` with `global.fetch` answering ONE canned response — the
+ * `lora-metadata` action reaches HuggingFace through `lookupHuggingFaceLora`,
+ * and mocking fetch (rather than the module) keeps v4's real lookup, its real
+ * guards and its real status→reason table in the loop.
+ */
+async function withCannedHuggingFace<T>(
+  status: number,
+  body: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const original = global.fetch;
+  global.fetch = (async () =>
+    new Response(body, {
+      status,
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof global.fetch;
+  try {
+    return await fn();
+  } finally {
+    global.fetch = original;
+  }
+}
+
 function applyMocks(spec: Spec): void {
   const cipherDriverPath = require('node:path').join(
     process.cwd(),
@@ -493,6 +546,113 @@ async function main(): Promise<void> {
         respond(
           await (await coll()).GET(
             mockRequest(`${B}?action=options-schema&provider=NANOGPT&model=flux-lora`),
+          ),
+        ),
+    },
+    // === 2ece98c90 (P4.D138 unit 7): the lora-metadata action ===
+    {
+      name: 'lora_metadata_bad_json',
+      run: async () =>
+        respond(await (await coll()).POST(mockBadJsonRequest(`${B}?action=lora-metadata`))),
+    },
+    {
+      name: 'lora_metadata_non_object_body',
+      run: async () =>
+        respond(
+          await (await coll()).POST(mockRequest(`${B}?action=lora-metadata`, ['not', 'an', 'object'])),
+        ),
+    },
+    {
+      name: 'lora_metadata_null_body',
+      run: async () =>
+        respond(
+          await (await coll()).POST(mockVerbatimRequest(`${B}?action=lora-metadata`, null)),
+        ),
+    },
+    {
+      name: 'lora_metadata_missing_source',
+      run: async () =>
+        respond(await (await coll()).POST(mockRequest(`${B}?action=lora-metadata`, {}))),
+    },
+    {
+      name: 'lora_metadata_blank_source',
+      run: async () =>
+        respond(
+          await (await coll()).POST(mockRequest(`${B}?action=lora-metadata`, { source: '   ' })),
+        ),
+    },
+    {
+      name: 'lora_metadata_non_string_source',
+      run: async () =>
+        respond(
+          await (await coll()).POST(mockRequest(`${B}?action=lora-metadata`, { source: 42 })),
+        ),
+    },
+    {
+      name: 'lora_metadata_non_string_token',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(`${B}?action=lora-metadata`, { source: 'owner/name', hfToken: 42 }),
+          ),
+        ),
+    },
+    {
+      // An explicit null is NOT undefined, so it refuses too.
+      name: 'lora_metadata_null_token',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(`${B}?action=lora-metadata`, { source: 'owner/name', hfToken: null }),
+          ),
+        ),
+    },
+    {
+      // A source with no repository behind it never reaches the network, and
+      // the failure answers 200 with `ok: false`.
+      name: 'lora_metadata_not_a_repo_id',
+      run: async () =>
+        respond(
+          await (await coll()).POST(
+            mockRequest(`${B}?action=lora-metadata`, {
+              source: 'https://cdn.example.com/weights.safetensors',
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'lora_metadata_success',
+      run: async () =>
+        withCannedHuggingFace(
+          200,
+          JSON.stringify({
+            id: 'XLabs-AI/flux-RealismLora',
+            tags: ['lora', 'base_model:adapter:black-forest-labs/FLUX.1-dev'],
+            pipeline_tag: 'text-to-image',
+            cardData: { instance_prompt: 'ohwx style' },
+            siblings: [{ rfilename: 'lora.safetensors' }],
+            likes: 1232,
+          }),
+          async () =>
+            respond(
+              await (await coll()).POST(
+                mockRequest(`${B}?action=lora-metadata`, {
+                  source: 'XLabs-AI/flux-RealismLora',
+                  hfToken: '',
+                }),
+              ),
+            ),
+        ),
+    },
+    {
+      // A declined lookup is still HTTP 200 — the editor displays it.
+      name: 'lora_metadata_declined',
+      run: async () =>
+        withCannedHuggingFace(404, '{}', async () =>
+          respond(
+            await (await coll()).POST(
+              mockRequest(`${B}?action=lora-metadata`, { source: 'owner/gone' }),
+            ),
           ),
         ),
     },

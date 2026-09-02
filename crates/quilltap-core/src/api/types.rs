@@ -1047,6 +1047,20 @@ pub enum Request {
         #[serde(default)]
         model: Option<String>,
     },
+    /// v4 `POST /api/v1/image-profiles?action=lora-metadata` (`2ece98c90`) —
+    /// ask HuggingFace what it knows about a LoRA source.
+    ///
+    /// POST rather than GET **because `hfToken` is a credential** and does not
+    /// belong in a query string; the lookup runs host-side so the browser never
+    /// contacts HuggingFace, and the token is logged only as `hasToken`.
+    ///
+    /// The body is carried RAW: v4's guards are type checks on `source` and
+    /// `hfToken`, and a typed pair would collapse absent / null / wrong-type
+    /// into one shape (the standing wrong-type-collapse rule).
+    ImageProfileLoraMetadata {
+        #[serde(flatten)]
+        body: serde_json::Map<String, serde_json::Value>,
+    },
     // --- Embedding profiles management (P4.9H2A) ---
     /// v4 `GET /api/v1/embedding-profiles` → `{profiles, count}` (enriched +
     /// default-first / createdAt-DESC sorted).
