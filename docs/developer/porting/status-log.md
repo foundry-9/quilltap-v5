@@ -99743,3 +99743,107 @@ rm -f $W/crates/quilltap-web/tests/fixtures/episodic-recall-*.db-journal
   makes "reddens exactly its row" a measurement rather than a hope.
 - **The fixture builder leaves zero-length `-journal` files** beside the `.db`s.
   No committed fixture carries one.
+## Lane record — P4.71 (the host gateway resolver)
+
+Branch `claude/p4.71-host-gateway`. Order:
+`work-orders/p4.71-host-gateway-resolver.md`. v4 baseline `6d2a50382`;
+**the lane's §2 probe FAILED on its first run** (the checkout was dirty in
+`lib/`/`app/`/`components/` with v4's then-unfinished Concierge-at-creation
+work) and the lane STOPped and reported, as ordered. It resumed against the
+rewritten ledger §1 (v4 `main` at `303288fb4`, tree clean) under **PIN
+REQUIRED**: every regen in this lane ran from the lane-unique detached
+worktree `/tmp/qt-v4-pin-p471-6d2a50382`.
+
+### Unit 1 — `host_gateway.rs`, the resolver v5 never had
+
+P4.D134's lane record named the gap and `rewrite.rs`'s header carried it: the
+core's pure `rewrite_localhost_url` was corpus-pinned, but nothing outside the
+crate ever called `with_localhost_gateway`, so the injected gateway was `None`
+on every production path. A user who configures `http://localhost:11434`
+inside the container reaches the container's own loopback. v4 rewrites it.
+
+The new host module ports `lib/host-rewrite.ts` whole, split so the
+differential can reach it:
+
+- `is_vm_environment_pure(host_ip, is_docker)` and
+  `resolve_host_gateway_pure(host_ip, is_docker)` — the predicate and the
+  two-strategy ladder, environment injected, each returning the log lines v4's
+  logger emits for the branch taken.
+- `rewrite_localhost_url_pure(host_ip, is_docker, url)` — v4's whole public
+  function in v4's order, returning the URL plus every emitted line. This is
+  the differential's top-level comparand: one call reproduces v4 on a
+  freshly-reset module, which is how the oracle drives each row.
+- `resolve_host_gateway()` — the process resolver over a `OnceLock` (v4's
+  module-level `cachedGatewayHost`; `undefined` is the empty lock, `null` a
+  stored `None`), emitting each line through `tracing` once, from inside
+  `get_or_init` so only the winning thread logs.
+- `rewrite_localhost_url_logged(url)` — the logged wrapper, so the core's
+  rewrite stays pure.
+- `resolve_injected_gateway()` — what the construction sites read (unit 3).
+
+**Order is the subtle part, and it is now pinned.** v4 returns from
+`rewriteLocalhostUrl` three times before resolving: not a VM environment,
+unparseable URL, non-localhost host. So `https://api.openai.com/v1` emits
+NOTHING even with `QUILLTAP_HOST_IP=10.0.0.5` set. A wrapper that resolved
+first would log where v4 is silent, which is why the core now exposes
+`is_localhost_url` (the same parse + `LOCALHOST_HOSTS` test
+`rewrite_localhost_url` already ran, extracted to one home — `is_localhost_host`
+— so the two cannot drift). **No URL semantics changed**; P4.D134's corpus is
+the pin and it is untouched.
+
+**Two facts MEASURED, not assumed.**
+
+1. **An empty `QUILLTAP_HOST_IP` is unset.** v4 tests it `!!process.env.X` and
+   `if (envIP)`. Rust's `std::env::var` answers `Ok("")` for `QUILLTAP_HOST_IP=`
+   in a compose file, so a port checking `Option::is_some` would flip rewriting
+   on outside Docker and then resolve to nothing. The corpus carries the
+   `env-empty` arm across all twelve of its combinations.
+2. **v4's `Could not resolve host gateway` warn is UNREACHABLE.**
+   `resolveHostGateway` is module-private with exactly one caller, sitting
+   behind the `isVMEnvironment()` gate — and that gate is true exactly when one
+   of the two strategies succeeds. Confirmed by the corpus: no row in 57 emits
+   it. That matters for v5's SHAPE, because v5 hoists resolution out of the
+   per-URL rewrite: a construction site calling `resolve_host_gateway()`
+   directly would write that warn to `combined.log` once per process on every
+   desktop install — a line v4 never writes. `resolve_injected_gateway()`
+   reproduces v4's gate-then-resolve order instead, and a capture test pins the
+   silence. The dead branch is carried anyway, because v4 carries it. (v4's
+   separate `packages/plugin-utils` copy *exports* `resolveHostGateway`, so a
+   plugin could reach it; nothing in v5 does.)
+
+The four message strings are `const`s shared by the differential's rendering
+and the production emitter, and a capture test pins that the emitter actually
+puts them on the wire with v4's field names (`host`, `original`, `rewritten`,
+`gatewayHost`) and v4's child-logger field `module = "host-rewrite"` — the
+P4.D108 "a seam without its wire is a no-op" lesson.
+
+### The differential — `host_gateway_equivalence` (tier 1, EXACT), NEW
+
+`harness/oracle/cases/host-gateway.test.ts` drives v4's REAL
+`lib/host-rewrite.ts` with `@/lib/paths`'s `isDockerEnvironment` and
+`@/lib/logger` both `jest.doMock`ed (once — a `doMock` survives
+`resetModules`, so the row's environment is a mutable flag the mock closure
+reads), and `jest.resetModules()` + a fresh `require` per row so every row
+measures the uncached path.
+
+57 rows: the 4x2x6 matrix (`{unset, '', 10.0.0.5, my-host}` x `{docker,
+not}` x `{ollama, lmstudio-127, ipv6-full, remote, unparseable,
+uppercase-host}`), eight `cache` rows, and the child-logger context.
+Comparand per row: `isVMEnvironment()`, the returned string, and **every log
+line in order** with level, message bytes and context bag.
+
+Arms worth naming: `ipv6-full` (`http://[::1]:8080/x?y=1#f`) proves the
+re-serialization keeps path, query and fragment; `uppercase-host`
+(`http://LOCALHOST:11434`) rewrites because WHATWG lowercases the host — the
+arm a naive `==` port fails; `remote` and `unparseable` in a resolving
+environment are the SILENCE arms that pin the order, and the family asserts
+their count by shape so a corpus that lost them cannot pass green.
+
+Green on its first run, 57/57. **Mutation-proven three ways**, each reverted:
+swapping the strategy ladder (Docker before the env override) → RED; reading
+an empty `QUILLTAP_HOST_IP` as set → RED; resolving before the localhost check
+(the log-order defect) → RED. The module's own unit tests were mutation-proven
+separately: the ladder swap reds `env_override_wins_over_docker` alone, and
+the resolve-first mutation reds exactly the two silence tests.
+
+Regen (PIN REQUIRED — the recipe is in the family's header, self-contained).

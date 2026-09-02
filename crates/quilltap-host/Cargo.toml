@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-host"
-version = "0.0.92"
+version = "0.0.93"
 edition = "2021"
 publish = false
 
@@ -56,5 +56,8 @@ base64 = "0.22"
 
 [dev-dependencies]
 tempfile = "3"
+# P4.71: the capture-layer pins for the host-gateway resolver's four v4 log
+# lines (the core/harness idiom — same pinned line, `registry` only).
+tracing-subscriber = { version = "0.3", features = ["registry"] }
 # Fixture seeding in the integration tests (same pinned line as the core).
 rusqlite = { workspace = true }

@@ -170,6 +170,42 @@ picked as the user's speaker where v4 skips it. Consolidated, with a unit pin
 on v4's rule that reddens if the old arm returns. `parse_sys_status` is left
 alone and documented: v4's `buildOtherParticipantsInfo` never parses at all, and
 mapping unknown to `None` reproduces its `=== 'removed'` skip exactly.
+#### 2026-09-02 — feat(host): port v4's host-gateway resolver (`QUILLTAP_HOST_IP` + Docker `host.docker.internal`)
+
+_Versions: core 0.0.751, harness 0.0.643, host 0.0.93._
+
+The new `quilltap-host` module `host_gateway` is a whole port of v4's
+`lib/host-rewrite.ts`: `isVMEnvironment()`, the two-strategy gateway ladder
+(`QUILLTAP_HOST_IP` first, then Docker's `host.docker.internal`), and the
+logged rewrite wrapper. v5 has never had a resolver — the core's pure
+`rewrite_localhost_url` (P4.D134) was only ever handed `None`, so a
+`http://localhost:11434` configured inside the container reached the
+container's own loopback. This commit lands the resolver; the injection at
+each provider construction site follows.
+
+The ladder and the whole rewrite are pure functions taking the environment as
+arguments, so both are diffed EXACT against v4's real module by the new
+`host_gateway_equivalence` family (57 rows: the 4x2x6 matrix of
+{env unset, empty, an IP, a hostname} x {Docker, not} x six URL shapes, plus
+eight cache rows and the child-logger context). Every log line v4 emits — its
+level, its message bytes and its context bag — is part of the comparand, which
+is what pins the ORDER: v4 returns from `rewriteLocalhostUrl` before resolving
+for a non-localhost or unparseable URL, so those rows are silent even in an
+environment that would have resolved happily.
+
+Two facts worth recording. An EMPTY `QUILLTAP_HOST_IP` reads as unset, because
+v4 tests it with `!!` and `if (envIP)` — a Rust port checking `Option::is_some`
+diverges, and the corpus has that arm. And v4's `Could not resolve host
+gateway` warn is UNREACHABLE: `resolveHostGateway` is module-private with one
+caller sitting behind the `isVMEnvironment()` gate, and that gate is true
+exactly when one of the two strategies will succeed. `resolve_injected_gateway`
+reproduces the gate-then-resolve order so v5 stays as silent as v4 on bare
+metal; the dead branch is carried because v4 carries it.
+
+The core gains `is_localhost_url` — the same parse and `LOCALHOST_HOSTS` test
+`rewrite_localhost_url` already did, extracted to one home and exposed so the
+host can ask before resolving. No URL semantics changed (P4.D134's corpus is
+the pin).
 
 #### 2026-09-02 — docs(driftcheck): v4 drifted ONE commit past `6d2a50382` (`303288fb4`, the Concierge state on the New Chat form) — PIN REQUIRED
 

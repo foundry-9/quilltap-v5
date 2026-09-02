@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-pub use rewrite::rewrite_localhost_url;
+pub use rewrite::{is_localhost_url, rewrite_localhost_url};
 
 // ============================================================================
 // Enum discriminators (closed sets — W4.7b/c implement against these; renaming

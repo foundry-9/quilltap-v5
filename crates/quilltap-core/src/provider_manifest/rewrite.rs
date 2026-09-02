@@ -34,12 +34,14 @@
 //! host's own loopback are not reachable through it. That is why the collapsed
 //! order has no `/proc/net/route` fallback under the Docker arm.
 //!
-//! ⚠ **v5 has never had a gateway resolver.** Nothing outside this crate calls
-//! `with_localhost_gateway`, so the injected gateway is `None` on every
-//! production path and no localhost URL is ever rewritten — a PRE-EXISTING gap
-//! this deletion lane deliberately does not close (adding the two strategies
-//! would be new wire behavior, not a retirement). Named as a follow-up in the
-//! P4.D134 lane record.
+//! **The resolver lives in the host** (P4.71): `quilltap_host::host_gateway`
+//! ports v4's `isVMEnvironment()` + `resolveHostGateway()` — the environment
+//! probe and the two-strategy ladder — and injects the result here through
+//! `with_localhost_gateway` at every provider construction site. Until P4.71
+//! that injection did not exist and the gateway was `None` on every production
+//! path; the gap is closed, and `is_localhost_url` below exists so the host can
+//! reproduce v4's LOG ORDER (v4 checks the host BEFORE it resolves, so a
+//! non-localhost URL never emits a resolution line).
 //!
 //! **Reproducing `new URL(url).toString()`.** v4 does `new URL(url)`, swaps
 //! `.hostname`, and re-serializes. That serialization normalizes: it lowercases
@@ -131,6 +133,25 @@ fn split_url(url: &str) -> Option<SplitUrl<'_>> {
     })
 }
 
+/// Whether `host` (already lowercased by [`split_url`]) is one of v4's
+/// `LOCALHOST_HOSTS`. The single home for the test, shared by
+/// [`rewrite_localhost_url`] and [`is_localhost_url`] so the two cannot drift.
+fn is_localhost_host(host: &str) -> bool {
+    LOCALHOST_HOSTS.contains(&host)
+}
+
+/// Whether `url` is a URL v4's `rewriteLocalhostUrl` would rewrite — i.e. it
+/// parses AND its host is a localhost variant.
+///
+/// Exposed for the host's logged wrapper, which must reproduce v4's ORDER:
+/// `rewriteLocalhostUrl` returns early for a non-localhost URL *before* calling
+/// `resolveHostGateway()`, so resolution — and its `info`/`warn` line — never
+/// happens for `https://api.openai.com/v1`. A wrapper that resolved first would
+/// log where v4 is silent.
+pub fn is_localhost_url(url: &str) -> bool {
+    split_url(url).is_some_and(|p| is_localhost_host(&p.host))
+}
+
 /// Rewrite a localhost URL to point at the host gateway.
 ///
 /// No-ops when `gateway` is `None` (no rewriting environment / resolution failed), when the
@@ -152,7 +173,7 @@ pub fn rewrite_localhost_url(url: &str, gateway: Option<&str>) -> String {
     // Only localhost variants are rewritten. The parsed host is lowercased; the
     // `::1` variant is compared unbracketed but a bare `::1` authority parses as
     // host `[` ... — so we compare against both the bracketed and bare forms.
-    if !LOCALHOST_HOSTS.contains(&parts.host.as_str()) {
+    if !is_localhost_host(&parts.host) {
         return url.to_string();
     }
 

@@ -40,6 +40,7 @@ pub mod backup_services;
 pub mod env;
 pub mod files_store;
 pub mod host;
+pub mod host_gateway;
 pub mod image_codec;
 pub mod instances;
 pub mod job_pump;
