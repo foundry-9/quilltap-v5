@@ -56,6 +56,8 @@ interface Spec {
   chatDetailedId: string;
   chatRegenId: string;
   chatNoCharsId: string;
+  chatMixedStatusId: string;
+  chatAllLeftId: string;
   missingId: string;
 }
 
@@ -247,6 +249,23 @@ function buildCases(): CaseSpec[] {
         if (jobId(first) === undefined) throw new Error('jobId missing from the success body');
         return { ...second, extra: { sameJobId: jobId(first) === jobId(second) } };
       },
+    },
+    {
+      // [P4.D146 / v4 70505745a] One participant per status. Only the present
+      // ones (active + silent) may reach the payload; absent and soft-removed
+      // participants must never be painted into the background.
+      name: 'regen_present_participants_only',
+      emitJobs: true,
+      blank: ['id', 'jobId'],
+      run: (s) => regen(s.chatMixedStatusId),
+    },
+    {
+      // [P4.D146] Everyone has left the scene: the character list is empty AFTER
+      // the presence filter, so the route answers the REWORDED 400 ("No
+      // characters present in chat…") and enqueues nothing.
+      name: 'regen_all_participants_left',
+      emitJobs: true,
+      run: (s) => regen(s.chatAllLeftId),
     },
     {
       name: 'regen_chat_missing',

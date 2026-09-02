@@ -230,6 +230,32 @@ The `write-partition` oracle case gains v4's two folder classify rows
 `classifyWriteTarget`: both answer `main`, so v5's default-to-Main routing
 already covers the chokepoint's non-conforming method name — the assertion v4
 added to its own suite, landed as a differential row instead.
+#### 2026-09-02 — fix(images): keep absent characters out of story-background enqueues (P4.D146 unit 1)
+
+_Versions: core 0.0.737, harness 0.0.631._
+
+v4 `70505745a`, both enqueue sites. The story-background prompt crafter is
+told to place every enumerated character as a figure in the frame, so a
+participant marked Absent — or soft-removed from the chat — was being painted
+back into a room they had walked out of. Both sites now filter on
+`isParticipantPresent`: `active` and `silent` are present (silent characters
+are standing there, just not speaking), `absent` and `removed` are not. With
+nobody present, the auto-trigger enqueues nothing and the manual
+`?action=regenerate-background` route answers the reworded 400 (`No characters
+present in chat to generate background for.`).
+
+The str-to-status step the JSON-reading sites need lands once in
+`chat_predicates` as `participant_status_from_str` +
+`json_participant_is_present`, matching v4's Zod `.default('active')` for an
+absent key and reading an unrecognised status as not-present.
+
+The committed `cost-background-{main,mount}.db` fixture pair was widened for
+this: it seeded every participant `active`, so neither differential could
+discriminate the filter at all. It now carries two more characters, a chat
+with one participant per status, and a chat where everyone has left.
+`cost_background_routes_equivalence` gains two arms and
+`title_update_tier3_equivalence` two cases, all four measured against v4's
+real code at the `70505745a` pin.
 
 #### 2026-09-02 — docs(orders): the `6d2a50382` drift catch-up round — five work orders (P4.D143–P4.D147)
 

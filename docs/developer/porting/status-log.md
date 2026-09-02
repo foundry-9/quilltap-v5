@@ -9,6 +9,127 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D146 (absent characters out of story backgrounds + the project background-mode narrowing) — v4 `70505745a`
+
+Ordered against round baseline **`4622411fd`**; the lane's target commit is
+**`70505745a`** — the OLDEST of the round's four PORT commits, so the pin
+carries no sibling drift. **Drift-ledger §2 freshness probe at lane start
+(2026-09-02):** PASS — v4 checkout on `main`, tree clean,
+`git log 6d2a50382..main` empty, `git log 3a76b17df..bugfix` empty. §1's
+verdict (6 commits pending, **PIN REQUIRED**) stands; the lane never wrote the
+ledger.
+
+**Pin:** one lane-unique detached worktree at
+`/tmp/qt-v4-pin-p4d146-70505745a`, all three symlink classes per ledger §5.1.
+Every oracle regen in this record ran from it.
+
+**Order prose corrected (ledger §5.3, which applies to the ORDER's facts too).**
+The order's point 1 says v4 `lib/chat/chat.types.ts:557` *gains*
+`isParticipantPresent` in this commit. It does not: the predicate has lived in
+**`lib/schemas/chat.types.ts:557`** since v4 3.3.0 (`880ac2482`), and
+`70505745a` touches neither file — it only imports the existing function at
+three call sites. Nothing in the port turned on this, but the path in the order
+is wrong and the "gains" is wrong.
+
+### Unit 1 — the two enqueue sites + the shared status step (core 0.0.737, harness 0.0.631)
+
+v4's hunks: `title-update.ts:276-286` (`queueStoryBackgroundIfEnabled`) and
+`app/api/v1/chats/[id]/actions/story-background.ts:38-49`
+(`handleRegenerateBackground`) both narrow their participant filter from
+`p => p.characterId` to `p => isParticipantPresent(p.status) && p.characterId`,
+and the second's empty-list refusal is reworded from `No characters in chat to
+generate background for.` to **`No characters present in chat to generate
+background for.`**
+
+**Where the sites actually are in v5** (the order got this right, and it is
+worth restating because the name misleads): the auto-trigger twin is NOT in
+`services/title_update_job.rs` — it is
+`services/image_profile_resolution.rs::queue_story_background_if_enabled`,
+called from `title_update_job.rs:470`. `title_update_job.rs` itself needed
+**nothing**; v4's hunk there is confined to the same function.
+
+**The boundary step.** v5's three sites read participants as raw JSON, so each
+needs a str → `ParticipantStatus` step v4 does not (v4's participants arrive
+Zod-parsed, `ParticipantStatusEnum.default('active')`). Landed once in
+`chat_predicates.rs` as `participant_status_from_str` +
+`json_participant_is_present`, with `None → Active` (the Zod default) and an
+unrecognised value → `Absent` (not present) — the same two rules the six
+pre-existing private copies encode. **Recorded, not done:** those six copies
+(`enclave::announce`, `services::{commonplace_notifications, fold_episode_pass,
+participant_resolver, turn_orchestrator, user_identity_resolver}`) still each
+carry the identical match. Consolidating them is a behaviour-neutral sweep
+across six files no single lane in this round owns; it is a follow-up, not
+something to smuggle into P4.D146.
+
+**One incidental fidelity fix, in the exact expression v4 rewrote.** The
+auto-trigger site collected `p.get("characterId")` with no non-empty guard,
+where v4's untouched `&& p.characterId` conjunct is JS truthiness and drops an
+empty string. The manual site already had the guard (`chat_media.rs`); site 1
+now matches. No differential can see it (no fixture carries an empty-string
+`characterId`), so it is recorded here rather than claimed as measured.
+
+**The fixture blind spot — the port's real gap, closed.** The committed
+`cost-background-{main,mount}.db` pair seeded EVERY participant `status:
+'active'`, so neither differential could discriminate the new filter by any
+amount of case-writing. The builder now bakes two more characters (Marisol,
+Teodor) plus two chats:
+
+- `chatMixedStatusId` — one participant per status (active / silent / absent /
+  removed), so a missing filter shows up as extra ids;
+- `chatAllLeftId` — only the absent and removed pair, so the empty-after-filter
+  arm is reachable.
+
+Both carry the standard title corpus (`c7c00000…` / `c7d00000…` message ids) —
+without a visible conversation the TITLE_UPDATE handler returns at the
+empty-conversation arm and never reaches the enqueue at all. The participant
+helper's legacy `isActive` flag is kept consistent with the status
+(`active|silent → true`) so each row is a shape v4's own participant ops would
+produce.
+
+**Differentials** (both regenerated from the `70505745a` pin, both green):
+
+- `cost_background_routes_equivalence` 13 → **15 cases**.
+  `regen_present_participants_only` (mixed chat) — v4's enqueued job payload
+  carries exactly `[char-active, char-silent]`;
+  `regen_all_participants_left` — 400 with the new sentence and `jobs: []`.
+  The pre-existing `regen_no_characters` arm moved to the new sentence too, so
+  the reworded bytes are pinned twice (`grep -c 'present in chat'` = 2).
+- `title_update_tier3_equivalence` 18 → **20 cases**.
+  `present_participants_only` — renamed + the TITLE_GENERATION event + ONE
+  `STORY_BACKGROUND_GENERATION` row whose payload `characterIds` is
+  `[active, silent]`; `all_participants_left` — renamed + the event, `jobs: []`.
+
+**Mutation proofs** (each verified applied by grep, reverted by file backup):
+
+1. Remove the site-1 gate → `title_update_tier3` reddens on exactly
+   `present_participants_only` + `all_participants_left`; `cost_background`
+   stays green (different site).
+2. Remove the site-2 gate → `cost_background_routes` reddens on exactly
+   `regen_present_participants_only:jobs` + `regen_all_participants_left`
+   (+ its jobs dump); `title_update` untouched.
+3. Restore the old 400 sentence → `cost_background_routes` reddens on
+   `regen_no_characters` AND `regen_all_participants_left`, both with the
+   sentence printed side by side.
+
+**Regen recipe** (from the pin; the fixture must be rebuilt BEFORE either
+oracle, since both read it):
+
+```
+PIN=/tmp/qt-v4-pin-p4d146-70505745a ; N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree>
+rm -f "$V5W"/crates/quilltap-web/tests/fixtures/cost-background-{main,mount}.db
+cd "$PIN"
+QT_FIXTURE_CB_MAIN=$V5W/crates/quilltap-web/tests/fixtures/cost-background-main.db \
+QT_FIXTURE_CB_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/cost-background-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-cost-background-fixture.ts
+# then each family's own recipe header (or the sweep driver with --v4 "$PIN")
+```
+
+**Fixture invalidation:** `cost-background-{main,mount}.db` is read by exactly
+two families (`title_update_tier3_equivalence`,
+`cost_background_routes_equivalence`) — both re-run by name in this record and
+at the lane gate.
+
 ## Lane record — P4.D133 (the `b121ac77f` CLI `instances restore-key`)
 
 Ordered against round baseline **`aec86a613`**; the lane's target commit is

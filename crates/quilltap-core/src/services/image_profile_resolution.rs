@@ -165,13 +165,25 @@ pub async fn queue_story_background_if_enabled(
     let Some(image_profile_id) = image_profile_id else {
         return;
     };
-    // 4. Participant characterIds.
+    // 4. Participant characterIds — of participants who are actually in the
+    //    scene. [70505745a] Absent and (soft-)removed participants must never be
+    //    painted into the background; the crafter is told to place every
+    //    enumerated character as a figure in the frame, so a stale enumeration
+    //    puts someone in the room who walked out of it. 'silent' counts as
+    //    present: they are standing there, just not speaking.
+    //
+    //    `.filter(p => isParticipantPresent(p.status) && p.characterId)` — the
+    //    second conjunct is v4's pre-existing JS truthiness, so an empty-string
+    //    characterId drops out here exactly as it does at the manual-regenerate
+    //    twin (`api::chat_media::chat_regenerate_background`).
     let character_ids: Vec<String> = chat
         .get("participants")
         .and_then(Value::as_array)
         .map(|arr| {
             arr.iter()
+                .filter(|p| crate::chat_predicates::json_participant_is_present(p))
                 .filter_map(|p| p.get("characterId").and_then(Value::as_str))
+                .filter(|s| !s.is_empty())
                 .map(str::to_string)
                 .collect()
         })

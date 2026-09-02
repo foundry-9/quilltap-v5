@@ -69,6 +69,8 @@ interface Spec {
   chatHelpId: string;
   chatAutonomousId: string;
   chatRenamedId: string;
+  chatMixedStatusId: string;
+  chatAllLeftId: string;
   chatRegenId: string;
   missingId: string;
   cannedTitles: Record<string, { content: string; promptTokens: number; completionTokens: number }>;
@@ -263,6 +265,14 @@ function buildCases(): CaseSpec[] {
         completionTokens: 9,
       }),
     },
+    // ── [P4.D146 / v4 70505745a] The story-background enqueue's presence gate.
+    // `queueStoryBackgroundIfEnabled` collects `chat.participants.filter(p =>
+    // isParticipantPresent(p.status) && p.characterId)`, so the enqueued job's
+    // payload `characterIds` is the comparand: absent and soft-removed
+    // participants must not appear, and with nobody present no job is enqueued
+    // at all (the rename + its TITLE_GENERATION event still happen).
+    { name: 'present_participants_only', chat: (s) => s.chatMixedStatusId },
+    { name: 'all_participants_left', chat: (s) => s.chatAllLeftId },
     // The throwing read.
     { name: 'chat_missing', chat: (s) => s.missingId, expectThrow: true },
   ];

@@ -50,6 +50,8 @@ struct Spec {
     chat_help_id: String,
     chat_autonomous_id: String,
     chat_renamed_id: String,
+    chat_mixed_status_id: String,
+    chat_all_left_id: String,
     chat_regen_id: String,
     missing_id: String,
     canned_titles: HashMap<String, CannedTitle>,
@@ -452,6 +454,26 @@ fn title_update_matches_oracle() {
                 prompt_tokens: 42,
                 completion_tokens: 9,
             }),
+            false,
+            "",
+        ),
+        // [P4.D146 / v4 70505745a] The story-background enqueue's presence gate.
+        // The enqueued job's payload `characterIds` is the comparand: one
+        // participant per status must yield exactly [active, silent], and a chat
+        // where everyone has left enqueues NO job (the rename still happens).
+        (
+            "present_participants_only",
+            &spec.chat_mixed_status_id,
+            &spec.user_enabled_id,
+            None,
+            false,
+            "",
+        ),
+        (
+            "all_participants_left",
+            &spec.chat_all_left_id,
+            &spec.user_enabled_id,
+            None,
             false,
             "",
         ),

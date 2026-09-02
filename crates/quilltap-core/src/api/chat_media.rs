@@ -1274,8 +1274,9 @@ pub fn chat_get_cost(db: &Db, chat_id: &str, detailed: bool) -> Response {
 ///
 ///   1. chat settings by USER → `!storyBackgroundsSettings?.enabled` → badRequest.
 ///   2. [`resolve_image_profile_for_chat`] → falsy → badRequest.
-///   3. `chat.participants.filter(p => p.characterId)` (the TRUTHY filter — an
-///      empty-string characterId drops out too) → empty → badRequest.
+///   3. `chat.participants.filter(p => isParticipantPresent(p.status) && p.characterId)`
+///      ([70505745a]: present = active/silent; the TRUTHY `characterId` conjunct
+///      still drops an empty string) → empty → badRequest.
 ///   4. [`enqueue_story_background_generation`] — chat-level dedupe: any
 ///      PENDING/PROCESSING story-background job for this chat is REUSED
 ///      (`is_new = false`, same jobId), which is the only difference between the
@@ -1337,12 +1338,20 @@ pub async fn chat_regenerate_background(db: &Db, user_id: &str, chat_id: &str) -
         );
     };
 
-    // `chat.participants.filter(p => p.characterId).map(p => p.characterId!)`.
+    // `chat.participants.filter(p => isParticipantPresent(p.status) && p.characterId)
+    //  .map(p => p.characterId!)`.
+    //
+    // [70505745a] Only participants actually in the scene. Absent and
+    // (soft-)removed participants must never be painted into the background;
+    // 'silent' counts as present — they are standing there, just not speaking.
+    // The truthy `p.characterId` conjunct is unchanged (an empty-string
+    // characterId still drops out).
     let character_ids: Vec<String> = chat
         .get("participants")
         .and_then(Value::as_array)
         .map(|arr| {
             arr.iter()
+                .filter(|p| crate::chat_predicates::json_participant_is_present(p))
                 .filter_map(|p| p.get("characterId").and_then(Value::as_str))
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
@@ -1350,7 +1359,7 @@ pub async fn chat_regenerate_background(db: &Db, user_id: &str, chat_id: &str) -
         })
         .unwrap_or_default();
     if character_ids.is_empty() {
-        return bad_request("No characters in chat to generate background for.");
+        return bad_request("No characters present in chat to generate background for.");
     }
 
     // `sceneContext: chat.title`, `projectId: chat.projectId ?? null`.

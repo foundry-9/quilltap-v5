@@ -33,6 +33,8 @@ struct Spec {
     chat_detailed_id: String,
     chat_regen_id: String,
     chat_no_chars_id: String,
+    chat_mixed_status_id: String,
+    chat_all_left_id: String,
     missing_id: String,
 }
 
@@ -344,6 +346,20 @@ fn cost_background_routes_match_oracle() {
             &spec.chat_no_chars_id,
         ),
         ("regen_queued", &spec.user_enabled_id, &spec.chat_regen_id),
+        // [P4.D146 / v4 70505745a] The presence gate: one participant per status
+        // → only active + silent reach the enqueued payload's `characterIds`
+        // (the job row is the assertion); nobody present → the REWORDED 400 and
+        // no job at all.
+        (
+            "regen_present_participants_only",
+            &spec.user_enabled_id,
+            &spec.chat_mixed_status_id,
+        ),
+        (
+            "regen_all_participants_left",
+            &spec.user_enabled_id,
+            &spec.chat_all_left_id,
+        ),
         (
             "regen_chat_missing",
             &spec.user_enabled_id,

@@ -21,6 +21,12 @@
  * `findById` 404 is the only ownership-ish gate — so a single chat can be driven
  * under different users to select the arm.
  *
+ * [P4.D146 / v4 `70505745a`] `chatMixedStatusId` carries ONE PARTICIPANT PER
+ * STATUS (active / silent / absent / removed) and `chatAllLeftId` carries only
+ * the two who left. Both story-background enqueue sites filter on
+ * `isParticipantPresent`, and a fixture whose participants are all `active`
+ * — which this one was — cannot discriminate that filter at all.
+ *
  * `chatDetailedId` carries the Unit-1 detailed-breakdown corpus, including the two
  * quirks the order calls out: a message whose `tokenCount` DIVERGES from
  * prompt+completion, and a system event with a NULL `estimatedCostUSD` (v4's
@@ -80,6 +86,8 @@ interface Spec {
   connectionProfileId: string;
   characterAId: string;
   characterBId: string;
+  characterCId: string;
+  characterDId: string;
   chatFullId: string;
   chatLegacyId: string;
   chatEmptyId: string;
@@ -90,6 +98,8 @@ interface Spec {
   chatHelpId: string;
   chatAutonomousId: string;
   chatRenamedId: string;
+  chatMixedStatusId: string;
+  chatAllLeftId: string;
   missingId: string;
   detailedMessages: DetailedMessageSeed[];
   titleMessages: PlainMessageSeed[];
@@ -254,6 +264,11 @@ async function main(): Promise<void> {
   for (const [id, name] of [
     [spec.characterAId, 'Lorian'],
     [spec.characterBId, 'Riya'],
+    // [P4.D146 / v4 70505745a] The two who leave the scene: the story-background
+    // enqueue gates on `isParticipantPresent`, so a fixture whose participants
+    // are ALL `active` cannot discriminate the filter at all.
+    [spec.characterCId, 'Marisol'],
+    [spec.characterDId, 'Teodor'],
   ] as const) {
     await repos.characters.create(
       {
@@ -276,15 +291,22 @@ async function main(): Promise<void> {
 
   // 6. Chats.
   let pIdx = 0;
-  const participant = (characterId: string, characterName: string) => ({
+  const participant = (
+    characterId: string,
+    characterName: string,
+    status: 'active' | 'silent' | 'absent' | 'removed' = 'active',
+  ) => ({
     id: `c9000000-0000-4000-8000-${String(++pIdx).padStart(12, '0')}`,
     type: 'CHARACTER',
     characterId,
     characterName,
     controlledBy: 'llm',
     displayOrder: 0,
-    isActive: true,
-    status: 'active',
+    // v4's `isActive` is the LEGACY flag; `status` is what
+    // `isParticipantPresent` reads. Kept consistent with the status so the row
+    // is a shape v4's own participant ops would produce.
+    isActive: status === 'active' || status === 'silent',
+    status,
     hasHistoryAccess: false,
     createdAt: TS,
     updatedAt: TS,
@@ -292,6 +314,18 @@ async function main(): Promise<void> {
   const bothCharacters = () => [
     participant(spec.characterAId, 'Lorian'),
     participant(spec.characterBId, 'Riya'),
+  ];
+  /** [P4.D146] One participant per status — a missing filter shows up as extra ids. */
+  const oneOfEachStatus = () => [
+    participant(spec.characterAId, 'Lorian', 'active'),
+    participant(spec.characterBId, 'Riya', 'silent'),
+    participant(spec.characterCId, 'Marisol', 'absent'),
+    participant(spec.characterDId, 'Teodor', 'removed'),
+  ];
+  /** [P4.D146] Nobody left in the scene — the enqueue must not fire at all. */
+  const nobodyPresent = () => [
+    participant(spec.characterCId, 'Marisol', 'absent'),
+    participant(spec.characterDId, 'Teodor', 'removed'),
   ];
 
   const mkChat = (
@@ -348,6 +382,12 @@ async function main(): Promise<void> {
     isManuallyRenamed: true,
     participants: bothCharacters(),
   });
+
+  // [P4.D146 / v4 70505745a] The participant-presence arms, shared by BOTH
+  // enqueue sites (the auto-trigger inside TITLE_UPDATE and the manual
+  // `?action=regenerate-background` route).
+  await mkChat(spec.chatMixedStatusId, 'New Chat', { participants: oneOfEachStatus() });
+  await mkChat(spec.chatAllLeftId, 'New Chat', { participants: nobodyPresent() });
 
   // 7. Messages. `getMessageCount` first so `chat_messages` exists even if a
   //    later seed loop is empty.
@@ -407,13 +447,23 @@ async function main(): Promise<void> {
     spec.chatRenamedId,
     spec.titleMessages.map((m) => ({ ...m, id: m.id.replace(/^c7000000/, 'c7b00000') })),
   );
+  // [P4.D146] The presence arms need a visible conversation, or the TITLE_UPDATE
+  // handler takes the empty-conversation return and never reaches the enqueue.
+  await seedPlain(
+    spec.chatMixedStatusId,
+    spec.titleMessages.map((m) => ({ ...m, id: m.id.replace(/^c7000000/, 'c7c00000') })),
+  );
+  await seedPlain(
+    spec.chatAllLeftId,
+    spec.titleMessages.map((m) => ({ ...m, id: m.id.replace(/^c7000000/, 'c7d00000') })),
+  );
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
   process.stderr.write(
     `built cost-background fixture: ${mainOut} (+${mountOut}) — 3 users, 1 image profile, ` +
-      `2 characters, 10 chats, ${spec.detailedMessages.length} detailed rows\n`,
+      `4 characters, 12 chats, ${spec.detailedMessages.length} detailed rows\n`,
   );
   process.exit(0);
 }

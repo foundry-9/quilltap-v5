@@ -64,3 +64,89 @@ pub fn migrate_is_active_to_status(is_active: bool, removed_at: Option<&str>) ->
         ParticipantStatus::Absent
     }
 }
+
+/// Parse a participant's stored `status` string into [`ParticipantStatus`].
+///
+/// The shared boundary step for the sites that read participants as raw JSON
+/// rather than through a typed view. v4 has no counterpart: its participants
+/// arrive already Zod-parsed (`ParticipantStatusEnum.default('active')` in
+/// `ChatParticipantBase`), so `p.status` is a `ParticipantStatus` by the time
+/// any predicate sees it. This function is that Zod step:
+///
+/// - absent/`None` → `Active`, matching the `.default('active')`;
+/// - an unrecognised value → `Absent`, i.e. NOT present — v4's enum would
+///   refuse the row outright, and "not in the scene" is the safe reading of a
+///   status nobody can name.
+///
+/// (Six services carry a private copy of exactly this match — `enclave::announce`,
+/// `services::{commonplace_notifications, fold_episode_pass, participant_resolver,
+/// turn_orchestrator, user_identity_resolver}`. Consolidating them onto this one
+/// is a behaviour-neutral sweep across six files no single lane owns; recorded as
+/// a follow-up rather than smuggled into P4.D146.)
+pub fn participant_status_from_str(s: Option<&str>) -> ParticipantStatus {
+    match s.unwrap_or("active") {
+        "active" => ParticipantStatus::Active,
+        "silent" => ParticipantStatus::Silent,
+        "removed" => ParticipantStatus::Removed,
+        _ => ParticipantStatus::Absent,
+    }
+}
+
+/// v4 `[70505745a]`'s story-background participant gate applied to a raw
+/// participant object: `isParticipantPresent(p.status)`.
+///
+/// > Absent and (soft-)removed participants must never be painted into the
+/// > background — the crafter is told to place every enumerated character as a
+/// > figure in the frame, so a stale enumeration puts someone in the room who
+/// > walked out of it. 'silent' counts as present: they are standing there,
+/// > just not speaking.
+pub fn json_participant_is_present(participant: &serde_json::Value) -> bool {
+    is_participant_present(participant_status_from_str(
+        participant
+            .get("status")
+            .and_then(serde_json::Value::as_str),
+    ))
+}
+
+#[cfg(test)]
+mod status_from_str_tests {
+    use super::*;
+
+    #[test]
+    fn parses_the_four_statuses_and_defaults_like_zod() {
+        assert_eq!(
+            participant_status_from_str(Some("active")),
+            ParticipantStatus::Active
+        );
+        assert_eq!(
+            participant_status_from_str(Some("silent")),
+            ParticipantStatus::Silent
+        );
+        assert_eq!(
+            participant_status_from_str(Some("absent")),
+            ParticipantStatus::Absent
+        );
+        assert_eq!(
+            participant_status_from_str(Some("removed")),
+            ParticipantStatus::Removed
+        );
+        // `.default('active')`.
+        assert_eq!(participant_status_from_str(None), ParticipantStatus::Active);
+        // Unrecognised → not present.
+        assert_eq!(
+            participant_status_from_str(Some("wallpaper")),
+            ParticipantStatus::Absent
+        );
+    }
+
+    #[test]
+    fn json_gate_admits_active_and_silent_only() {
+        let p = |s: &str| serde_json::json!({ "status": s });
+        assert!(json_participant_is_present(&p("active")));
+        assert!(json_participant_is_present(&p("silent")));
+        assert!(!json_participant_is_present(&p("absent")));
+        assert!(!json_participant_is_present(&p("removed")));
+        // No `status` key at all → the Zod default → present.
+        assert!(json_participant_is_present(&serde_json::json!({})));
+    }
+}
