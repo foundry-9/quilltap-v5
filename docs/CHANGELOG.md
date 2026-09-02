@@ -424,6 +424,31 @@ reading the source would not have told you.
 `image_generation_tier3_equivalence` grew 22 rows (four accepts, eighteen
 refusals) over a raw `toolInput` the case spec now carries; fourteen of them
 reddened against the pre-fix behavior, six tables each, before the fix landed.
+#### 2026-09-02 — fix(core): an array job payload answers v4's 500, not a 400
+
+_Versions: core 0.0.751, harness 0.0.643._
+
+P4.67 closing P4.62's deferred shape (b) — **and correcting its premise.** P4.62
+recorded that `POST /api/v1/system/jobs` with `payload: []` is accepted by v4
+(201), because v4's route gate is `!payload || typeof payload !== 'object'` and
+an array is neither falsy nor a non-object. That reading stopped at the gate.
+Following it through to the write shows the array passes the gate and then dies
+one call later in `enqueueJob`, whose schema is
+`z.record(z.string(), z.unknown())` (`lib/schemas/job.types.ts:66`); the route's
+`catch` relays `getErrorMessage(error)` through `serverError`, so v4 answers a
+**500** carrying Zod's whole formatted issue list, and writes nothing.
+
+v5 answered its own 400 (`Payload is required and must be an object`) because
+`!payload.is_object()` counted an array as no object at all. It now reproduces
+v4's answer byte-for-byte. The array is the only shape that can reach Zod —
+every other non-record JSON value is falsy or not `typeof 'object'` and stops at
+the gate — so one literal covers it.
+
+The new `jobs_collection_post_payload_array` arm in
+`system_jobs_collection_equivalence` compares the STORED ROW as well as the
+status, so a gate that let the array through but mangled the write would still
+be caught; the family's case-count guard moves 11 → 12.
+
 #### 2026-09-02 — fix(web): `?action=` and duplicate query keys answer as v4's readers do
 
 _Versions: web 0.0.104._

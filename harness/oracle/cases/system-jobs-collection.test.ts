@@ -223,6 +223,24 @@ function buildCases(): CaseSpec[] {
       name: 'jobs_collection_post_payload_not_object',
       run: () => jobsPost({ type: 'MEMORY_HOUSEKEEPING', payload: 'nope' }),
     },
+    // P4.67 / P4.62(b): v4's gate is `!payload || typeof payload !== 'object'`.
+    // An ARRAY is neither falsy nor a non-object, so v4 ENQUEUES it — and the
+    // stored row is what proves the array survived the write, not just the
+    // gate. (v5 refused: `!payload.is_object()` counted an array as no object.)
+    {
+      name: 'jobs_collection_post_payload_array',
+      normalize: ['jobId'],
+      run: async () => {
+        const created = await jobsPost({ type: 'MEMORY_HOUSEKEEPING', payload: [] });
+        const jobId = (created.body as { jobId?: string }).jobId ?? '';
+        const after = await jobsGet('?includeJobs=true');
+        const jobs = ((after.body as { jobs?: Array<Record<string, unknown>> }).jobs ??
+          []) as Array<Record<string, unknown>>;
+        const row = jobs.find((j) => j.id === jobId) ?? null;
+        if (row) for (const k of MINTED) if (k in row) row[k] = '<NORM>';
+        return { ...created, extra: { row } };
+      },
+    },
   ];
 }
 

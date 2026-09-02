@@ -654,6 +654,11 @@ pub const JOB_TYPES: &[&str] = &[
     "REGENERATE_CONVERSATION_SUMMARIES",
 ];
 
+/// v4 `ZodError.message` for an ARRAY `payload` reaching
+/// `z.record(z.string(), z.unknown())` — `JSON.stringify(issues, null, 2)`,
+/// relayed verbatim by the jobs route's catch. Byte-copied from the oracle.
+const JOBS_PAYLOAD_ARRAY_ZOD_MESSAGE: &str = "[\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"payload\"\n    ],\n    \"message\": \"Invalid input: expected record, received array\"\n  }\n]";
+
 /// v4 `POST /api/v1/system/jobs` — enqueue a job (201). Returns the id + the
 /// fixed message. The engine arm nudges the pump after a success.
 #[allow(clippy::too_many_arguments)]
@@ -673,8 +678,27 @@ pub async fn jobs_enqueue(
             JOB_TYPES.join(", ")
         ));
     }
-    if !payload.is_object() {
+    // v4's route gate is `!payload || typeof payload !== 'object'`. The only
+    // JSON values with `typeof === 'object'` are objects, arrays and `null`,
+    // and `null` is caught by the falsiness half — so an ARRAY passes the gate
+    // where `is_object()` alone refused it.
+    if !payload.is_object() && !payload.is_array() {
         return bad_request("Payload is required and must be an object");
+    }
+    // …and then dies one call later. `enqueueJob` validates against
+    // `z.record(z.string(), z.unknown())` (`lib/schemas/job.types.ts:66`),
+    // which an array fails, and the route's `catch` relays
+    // `getErrorMessage(error)` — i.e. the whole `ZodError.message` — through
+    // `serverError`. So v4 answers a **500** carrying Zod's formatted issue
+    // list, and writes nothing.
+    //
+    // P4.62 deferred this shape as "v4 accepts `payload: []` (201)", read off
+    // the route gate alone; following it through to the write showed otherwise.
+    // The array is the ONLY shape that reaches Zod — every other non-record
+    // JSON value is falsy or non-`object` and stops at the gate above — so one
+    // literal covers the case.
+    if payload.is_array() {
+        return Response::error(ErrorKind::Internal, JOBS_PAYLOAD_ARRAY_ZOD_MESSAGE);
     }
     let create = BjCreate {
         user_id: user_id.to_string(),

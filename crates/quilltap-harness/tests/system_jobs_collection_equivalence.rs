@@ -306,11 +306,61 @@ fn system_jobs_collection_matches_oracle() {
         check("jobs_collection_post_payload_not_object", s, b, None);
     }
 
+    // --- P4.67 / P4.62(b): an ARRAY payload is ENQUEUED, not refused ---
+    // v4's gate is `!payload || typeof payload !== 'object'`, and `typeof []`
+    // is `'object'` while `![]` is false — so v4 accepts. The comparand is the
+    // STORED ROW, not just the 201: a gate that let the array through but a
+    // write that mangled it would still be a divergence.
+    {
+        let db = fresh_db("payload_array");
+        let resp = rt.block_on(system_data::jobs_enqueue_now(
+            &db,
+            USER,
+            "MEMORY_HOUSEKEEPING",
+            &json!([]),
+            None,
+            None,
+        ));
+        let (s, b) = outcome(&resp, true);
+        let job_id = b
+            .get("jobId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let (_, after) = outcome(
+            &system_data::jobs_list(&db, USER, true, false, None, &PINNED),
+            false,
+        );
+        let jobs = after
+            .get("jobs")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let mut row = jobs
+            .iter()
+            .find(|j| j.get("id").and_then(Value::as_str) == Some(job_id.as_str()))
+            .cloned()
+            .unwrap_or(Value::Null);
+        if let Some(o) = row.as_object_mut() {
+            for k in MINTED {
+                if o.contains_key(*k) {
+                    o.insert((*k).to_string(), Value::String("<NORM>".into()));
+                }
+            }
+        }
+        check(
+            "jobs_collection_post_payload_array",
+            s,
+            b,
+            Some(json!({ "row": row })),
+        );
+    }
+
     assert!(
         failed.is_empty(),
         "{} case(s) failed:\n{}",
         failed.len(),
         failed.join("\n")
     );
-    assert_eq!(ran, 11, "expected 11 cases to run, ran {ran}");
+    assert_eq!(ran, 12, "expected 12 cases to run, ran {ran}");
 }
