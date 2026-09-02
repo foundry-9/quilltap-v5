@@ -113,24 +113,29 @@ test.beforeAll(async () => {
   // Take the three most recently active chats and put one in each non-default
   // state through the SAME manual-flip verb the sidebar control uses. Never
   // assert an absolute chat count — sibling specs seed their own.
-  const chats = (await dispatch({ type: 'listChats' }))['chats'] as Array<{
+  // `listChats` answers `Response::Chats(Vec<…>)` — the ARRAY is `data` itself,
+  // not a `{chats}` envelope (that envelope is the REST edge's). The beat's
+  // first live run read `data.chats` and saw "0 chats" (unification, 2026-09-02).
+  const chats = (await dispatch({ type: 'listChats' })) as unknown as Array<{
     id: string;
     title: string;
   }>;
-  if (!chats || chats.length < 3) {
+  if (!Array.isArray(chats) || chats.length < 3) {
     throw new Error(`fixture carries ${chats?.length ?? 0} chats; this walk needs 3`);
   }
   const wanted = ['flagged', 'vouched', 'uncensored'];
   for (let i = 0; i < wanted.length; i++) {
     const chat = chats[i];
-    await dispatch({ type: 'chatUpdate', chatId: chat.id, conciergeState: wanted[i] });
+    // `chat` is a REQUIRED sibling bag beside `conciergeState` (the P4.D141 shape);
+    // the beat's second live run tripped on its absence (unification, 2026-09-02).
+    await dispatch({ type: 'chatUpdate', chatId: chat.id, chat: {}, conciergeState: wanted[i] });
     seeded.set(chat.id, { title: chat.title, state: wanted[i] });
   }
 });
 
 test.afterAll(async () => {
   for (const id of seeded.keys()) {
-    await dispatch({ type: 'chatUpdate', chatId: id, conciergeState: 'monitored' }).catch(
+    await dispatch({ type: 'chatUpdate', chatId: id, chat: {}, conciergeState: 'monitored' }).catch(
       () => undefined,
     );
   }
