@@ -613,7 +613,7 @@
             "color": "#334455",
             "defaultDisabledTools": [],
             "defaultDisabledToolGroups": [],
-            "backgroundDisplayMode": "project"
+            "backgroundDisplayMode": "theme"
           }
         ],
         "groups": [

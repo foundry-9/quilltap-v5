@@ -293,6 +293,51 @@ The core gains `is_localhost_url` — the same parse and `LOCALHOST_HOSTS` test
 `rewrite_localhost_url` already did, extracted to one home and exposed so the
 host can ask before resolving. No URL semantics changed (P4.D134's corpus is
 the pin).
+#### 2026-09-02 — fix(harness): migrate the committed system-data fixture to the baseline schema vintage
+
+_Versions: harness 0.0.645._
+
+The committed `system-data-{main,llmlogs}.db` predated eleven columns, and
+three of them made the family's connection-profile import measure nothing:
+v5's `ConnectionProfilesRepository::create` names `fallbackProfileId` /
+`allowTierFallback` unconditionally and v4's `insertOne` names
+`allowTierFallback` (its Zod default makes the key always present), so EVERY
+import threw on both sides. Worse, the two engines threw on DIFFERENT columns
+and `system_import_state`'s `QUOTED_FAMILIES` mask folded both to
+`Failed to import connection profile "<name>": <ENGINE>` — so even the
+sentences agreed while nothing was measured, since v4 bug 68.
+
+`harness/oracle/fixtures/migrate-system-data-schema.ts` closes all eleven
+(`connection_profiles.multiCharacterPrefill`/`fallbackProfileId`/
+`allowTierFallback`, `characters.archivedAt`/`archiveFileId`/
+`archivedAvatarFileId`, `chat_settings.composerEmoji`/`composerUnicode`/
+`smartTypographySettings`, `llm_logs.connectionProfileId`/`imageProfileId`).
+
+It migrates in place rather than rebuilding, because a rebuild cannot preserve
+the rows: the builder does not pin the two character-vault mount-point ids that
+`extend-system-data-archive-substrate.ts` and `system-import-execute.test.ts`
+hard-code, and six committed restore archives plus the sha256-guarded
+`uuid-remap-corpus.json` are projections of this family's exact ids. A rebuild
+plus extend writes the substrate under a mount point that no longer exists, and
+does it silently. The migration runs through v4's OWN `compareSchemas` +
+`generateAlterStatements`, which emit the same column definition `generateDDL`
+does — so the migrated column is character-identical to a freshly created one.
+
+Connection profiles now actually import: `execute_overwrite_all`,
+`execute_duplicate_all`, `execute_cross_instance_skip` and
+`route_replace_remap` carry `connectionProfiles: 1` where they carried 0, and
+`execute_legacy_folds` carries 2. Breaking v5's import now reddens the family;
+before the widening it changed nothing.
+
+A cell-by-cell census over 41 tables and 179 rows confirms every pre-existing
+cell byte-identical and the existing column order unchanged. All ten consuming
+families re-run green. `uuid-remap-corpus.json` moved by one line
+(`backgroundDisplayMode: "project"` to `"theme"`) — attributed by regenerating
+against both the old and new fixtures, which produced byte-identical corpora
+(same sha256): the change is absorbed v4 drift (`70505745a`'s normalizer), not
+this widening, and the committed corpus had simply been stale since the
+`6d2a50382` round.
+
 #### 2026-09-02 — fix(image-gen): restore the `[Image LoRA]` caller context and the style-options anchor
 
 _Versions: core 0.0.752, harness 0.0.644._

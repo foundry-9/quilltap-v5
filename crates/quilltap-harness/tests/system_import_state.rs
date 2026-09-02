@@ -104,23 +104,37 @@
 //! regression guard that one malformed profile is named-and-skipped while the
 //! import carries on to the importers behind it.
 //!
-//! ⚠ **A standing vacuity that arm surfaced.** The committed
-//! `system-data-main.db` predates v4 4.9's
-//! `connection_profiles.multiCharacterPrefill`, so every connection-profile
-//! import in this family fails on BOTH sides with `table connection_profiles
-//! has no column named multiCharacterPrefill` and the arms stay green on
-//! matching failures — the migration-vintage class. That import has measured
-//! nothing since v4 `aa464abf` (bug 68). Widening the fixture is cross-lane
-//! (`system-data-*` is shared with the system-data routes differential), so
-//! P4.63 recorded it rather than doing it.
+//! ✅ **The standing vacuity that arm surfaced is CLOSED (P4.70).** The
+//! committed `system-data-main.db` used to predate three
+//! `connection_profiles` columns — 4.9's `multiCharacterPrefill` (v4 bug 68,
+//! `aa464abf`) and 4.10's `fallbackProfileId` / `allowTierFallback` (v4
+//! `65f5021c8`) — so EVERY connection-profile import in this family threw on
+//! both sides and the arms stayed green on matching failures: the
+//! migration-vintage class. Worse, the two engines threw on DIFFERENT columns
+//! (v4's `insertOne` names `allowTierFallback` first, because its Zod default
+//! makes the key always present; v5's `create` names `fallbackProfileId`, or
+//! `multiCharacterPrefill` when the document carries the key) and the
+//! `QUOTED_FAMILIES` mask below folded both to
+//! `Failed to import connection profile "<name>": <ENGINE>` — so even the
+//! sentences agreed while nothing was measured.
 //!
-//! **P4.D135 lands in the same hole** and takes the same route: the 4.10
-//! `connection_profiles.fallbackProfileId` / `allowTierFallback` columns (v4
-//! `65f5021c8`) are BEYOND this fixture's vintage too, so the understudy remap
-//! the `.qtap` reconcile pass performs is invisible here. It is pinned at the
-//! unit tier instead — `services::quilltap_import::reconcile`'s
-//! `the_understudy_is_remapped_including_a_forward_reference` and its two
-//! siblings, mutation-proven — and the widening stays with the named candidate.
+//! `harness/oracle/fixtures/migrate-system-data-schema.ts` closed all three
+//! (and eight more, across `characters` / `chat_settings` / `llm_logs`) by
+//! migrating the committed family in place through v4's OWN
+//! `compareSchemas` + `generateAlterStatements`. Connection profiles now
+//! actually insert: `execute_overwrite_all`, `execute_duplicate_all`,
+//! `execute_cross_instance_skip` and `route_replace_remap` carry
+//! `connectionProfiles: 1` where they carried 0, and `execute_legacy_folds`
+//! carries 2. The create / overwrite / duplicate / skip strategies over
+//! connection profiles, and the P4.D135 understudy remap the `.qtap` reconcile
+//! pass performs, are differential-covered here for the first time.
+//!
+//! Two arms change meaning with it, for the better:
+//! `execute_named_item_failures`'s `Failed to import connection profile
+//! "Broken Connection"` is now a VALIDATION failure, which is the arm the case
+//! was built for, rather than the schema failure that satisfied it by
+//! accident; and `execute_bug105_seed_abort` no longer rests solely on its
+//! image-profile survivor.
 //!
 //! Generate the oracle (see `system-import-execute.test.ts`), then:
 //!   QT_ORACLE_SYSTEM_IMPORT_EXECUTE=/tmp/oracle-system-import-execute.ndjson \
