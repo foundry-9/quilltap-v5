@@ -62,6 +62,17 @@ export interface ListChatsRequest {
   includeAutonomous?: boolean;
 }
 
+/**
+ * "Is any chat of this user on the Concierge's uncensored row?" (shared
+ * contract §H — v4 `GET /api/v1/chats?action=has-dangerous`, re-based onto the
+ * uncensored route at `c43d3b1b4`). The quick-hide affordance in the shell
+ * footer is worth showing when the answer is yes, even before the user has
+ * flagged a single tag.
+ */
+export interface ChatsHasDangerousRequest {
+  type: 'chatsHasDangerous';
+}
+
 /** Fetch one enriched conversation (v4 `handleGet`). */
 export interface ChatGetRequest {
   type: 'chatGet';
@@ -2225,6 +2236,7 @@ export type CoreRequest =
   | { type: 'lock' }
   | { type: 'listInstances' }
   | ListChatsRequest
+  | ChatsHasDangerousRequest
   | ChatSendRequest
   | { type: 'setup'; passphrase: string }
   | { type: 'storePepper'; passphrase: string }

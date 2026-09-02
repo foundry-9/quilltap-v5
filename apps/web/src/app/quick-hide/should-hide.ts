@@ -64,3 +64,22 @@ export function shouldHideChat(
   }
   return false;
 }
+
+/**
+ * Is the quick-hide affordance worth showing at all (v4 `sidebar-footer.tsx:144`
+ * `hasQuickHideFeatures`)? Three independent reasons, any one of which is
+ * enough: the user has flagged a tag, the danger toggle is already on, or some
+ * chat is on the Concierge's uncensored row (shared contract §H — v4
+ * `c43d3b1b4` re-based that probe from the raw label onto the row).
+ *
+ * Pure and separate from the service so the OR itself stays pinned while the
+ * probe that feeds its third argument is still gated ACTIVATE-AT-UNIFY: a rule
+ * hidden behind an inert wire is a rule nothing measures.
+ */
+export function quickHideFeaturesVisible(
+  hasFlaggedTag: boolean,
+  hideDangerousChats: boolean,
+  hasDangerousChats: boolean,
+): boolean {
+  return hasFlaggedTag || hideDangerousChats || hasDangerousChats;
+}

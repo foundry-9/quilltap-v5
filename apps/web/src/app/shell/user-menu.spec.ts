@@ -11,11 +11,17 @@ interface DispatchReq {
   [k: string]: unknown;
 }
 
+/** Tags the stubbed server reports as flagged `quickHide`, per test. */
+let quickHideTags: Array<Record<string, unknown>> = [];
+
 function stubClient(profile: Record<string, unknown> | null): Partial<CoreClient> {
   return {
     dispatchData: (async (req: DispatchReq) => {
       if (req.type === 'userProfileGet') {
         return { profile: profile ?? {} };
+      }
+      if (req.type === 'tagList') {
+        return { tags: quickHideTags };
       }
       return {};
     }) as CoreClient['dispatchData'],
@@ -53,7 +59,10 @@ function trigger(fixture: ComponentFixture<UserMenu>): HTMLButtonElement {
 }
 
 describe('UserMenu (v4 components/layout/left-sidebar/profile-menu.tsx)', () => {
-  afterEach(() => TestBed.resetTestingModule());
+  afterEach(() => {
+    quickHideTags = [];
+    TestBed.resetTestingModule();
+  });
 
   it('is closed until the trigger is pressed', async () => {
     const fixture = await render({ id: 'u1', username: 'friday', name: 'Friday' });
@@ -127,5 +136,52 @@ describe('UserMenu (v4 components/layout/left-sidebar/profile-menu.tsx)', () => 
     });
     const img = (fixture.nativeElement as HTMLElement).querySelector('img');
     expect(img?.getAttribute('src')).toContain('/api/v1/files/abc');
+  });
+});
+
+/**
+ * The footer's quick-hide gate — v4 `sidebar-footer.tsx:145`, shared contract
+ * §H. v5 mounted the section UNGATED while its third arm (any chat on the
+ * Concierge's uncensored row) had no probe to read; the gate lands with the
+ * probe, so the affordance appears when — and only when — there is something
+ * for it to do.
+ */
+describe('UserMenu — the quick-hide gate (v4 sidebar-footer.tsx:145)', () => {
+  afterEach(() => {
+    quickHideTags = [];
+    window.localStorage.clear();
+    TestBed.resetTestingModule();
+  });
+
+  const section = (fixture: ComponentFixture<UserMenu>): Element | null =>
+    (fixture.nativeElement as HTMLElement).querySelector('qt-quick-hide-menu-section');
+
+  it('hides the section when there is no flagged tag and nothing hidden', async () => {
+    window.localStorage.clear();
+    const fixture = await render({ id: 'u1', username: 'friday' });
+    trigger(fixture).click();
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(section(fixture)).toBeNull();
+  });
+
+  it('shows the section once a tag is flagged for quick-hide', async () => {
+    window.localStorage.clear();
+    quickHideTags = [{ id: 't1', name: 'Spicy', quickHide: true }];
+    const fixture = await render({ id: 'u1', username: 'friday' });
+    trigger(fixture).click();
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(section(fixture)).not.toBeNull();
+  });
+
+  it('shows the section when "Dangerous Chats" is already on', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem('quilltap.quickHide.hideDangerous', 'true');
+    const fixture = await render({ id: 'u1', username: 'friday' });
+    trigger(fixture).click();
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(section(fixture)).not.toBeNull();
   });
 });

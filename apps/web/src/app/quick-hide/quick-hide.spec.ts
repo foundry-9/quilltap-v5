@@ -10,7 +10,7 @@ import {
   INCLUDE_AUTONOMOUS_KEY,
   parseActiveTags,
 } from './quick-hide.storage';
-import { shouldHideByIds } from './should-hide';
+import { quickHideFeaturesVisible, shouldHideByIds } from './should-hide';
 
 // ---------------------------------------------------------------------------
 // The pure predicate (v4 `quick-hide-provider.tsx:183-196`)
@@ -235,6 +235,16 @@ describe('QuickHideService', () => {
       expect(service.hasAnyHidden()).toBe(false);
       service.toggleHideDangerousChats();
       expect(service.hasAnyHidden()).toBe(true);
+    });
+
+    it('hasQuickHideFeatures is the three-way OR, third arm included (v4 :144, §H)', () => {
+      // The service can only reach two of the three today — the uncensored-row
+      // probe is gated ACTIVATE-AT-UNIFY on P4.D143's verb — so the rule is
+      // pinned where it lives rather than through a wire that cannot move.
+      expect(quickHideFeaturesVisible(false, false, false)).toBe(false);
+      expect(quickHideFeaturesVisible(true, false, false)).toBe(true);
+      expect(quickHideFeaturesVisible(false, true, false)).toBe(true);
+      expect(quickHideFeaturesVisible(false, false, true)).toBe(true);
     });
 
     it('hasQuickHideFeatures covers a flagged tag existing OR the danger filter (v4 :144)', async () => {

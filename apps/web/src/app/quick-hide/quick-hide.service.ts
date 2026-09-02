@@ -12,7 +12,16 @@ import {
   writeActiveTags,
   writeBooleanKey,
 } from './quick-hide.storage';
-import { shouldHideByIds, shouldHideChat } from './should-hide';
+import { quickHideFeaturesVisible, shouldHideByIds, shouldHideChat } from './should-hide';
+
+/**
+ * ACTIVATE-AT-UNIFY (shared contract §H): flip to `true` on the branch that
+ * carries P4.D143's `chatsHasDangerous` verb, which is the moment the shell
+ * footer's quick-hide affordance can start following the uncensored row. Until
+ * then the probe is never dispatched — a false constant, not a swallowed
+ * error, because the two are indistinguishable after the fact.
+ */
+export const CHATS_HAS_DANGEROUS_VERB_LANDED = false;
 
 /** A tag flagged for quick-hide (v4 `QuickHideTag`, `quick-hide-provider.tsx:6-9`). */
 export interface QuickHideTag {
@@ -49,6 +58,7 @@ export class QuickHideService {
   private readonly hideDangerousChatsSignal = signal(readBooleanKey(HIDE_DANGEROUS_KEY));
   private readonly includeAutonomousRoomsSignal = signal(readBooleanKey(INCLUDE_AUTONOMOUS_KEY));
   private readonly quickHideTagsSignal = signal<readonly QuickHideTag[]>([]);
+  private readonly hasDangerousChatsSignal = signal(false);
   private readonly loadingSignal = signal(true);
 
   /** Tags the user flagged `quickHide` (v4 `:51`, sourced at `:37-47`). */
@@ -72,17 +82,50 @@ export class QuickHideService {
 
   /**
    * v4 `sidebar-footer.tsx:144` `hasQuickHideFeatures` — whether the quick-hide
-   * affordance is worth showing at all. v4 ORs in a `hasDangerousChats` probe
-   * (`useHasDangerousChats`); v5 has no such probe ported, so the third arm is
-   * omitted and recorded here rather than faked.
+   * affordance is worth showing at all. The third arm is v4's
+   * `useHasDangerousChats` probe, which `c43d3b1b4` re-based onto the uncensored
+   * ROW: the affordance appears when any chat is routed uncensored, not when
+   * any chat merely carries the label (shared contract §H).
+   *
+   * ACTIVATE-AT-UNIFY behind {@link CHATS_HAS_DANGEROUS_VERB_LANDED}. Until
+   * P4.D143's `chatsHasDangerous` verb is on the branch the probe never fires
+   * and this reads exactly as it did before — a named constant rather than a
+   * try/catch, because a swallowed dispatch failure looks identical to an
+   * honest `false` and would hide the arm forever after the flip.
    */
-  readonly hasQuickHideFeatures = computed(
-    () => this.quickHideTagsSignal().length > 0 || this.hideDangerousChatsSignal(),
+  readonly hasQuickHideFeatures = computed(() =>
+    quickHideFeaturesVisible(
+      this.quickHideTagsSignal().length > 0,
+      this.hideDangerousChatsSignal(),
+      this.hasDangerousChatsSignal(),
+    ),
   );
+
+  /** v4 `useHasDangerousChats` — false until the §H probe answers. */
+  readonly hasDangerousChats = this.hasDangerousChatsSignal.asReadonly();
 
   constructor() {
     this.listenForCrossTabChanges();
     void this.refresh();
+    void this.refreshHasDangerousChats();
+  }
+
+  /**
+   * The §H probe (v4 `useHasDangerousChats`). Fail-soft like the tag load: a
+   * refusal leaves the answer `false`, which is the same thing v5 did before
+   * the arm existed.
+   */
+  private async refreshHasDangerousChats(): Promise<void> {
+    if (!CHATS_HAS_DANGEROUS_VERB_LANDED) return;
+    try {
+      const data = await this.core.dispatchData({ type: 'chatsHasDangerous' });
+      this.hasDangerousChatsSignal.set(data['hasDangerous'] === true);
+    } catch (error) {
+      console.warn('Unable to probe for uncensored-route chats', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      this.hasDangerousChatsSignal.set(false);
+    }
   }
 
   /**

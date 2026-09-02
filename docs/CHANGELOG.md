@@ -494,6 +494,36 @@ through `getConciergeState(chat)`) plus four `stateRoute` rows that drive the
 twin on each literal state with no chat anywhere, and the Rust family asserts
 both. A shape guard fails the run if a stale oracle carries fewer than the four
 `stateRoute` rows.
+#### 2026-09-02 — feat(quick-hide): the footer affordance follows the uncensored row
+
+_Versions: SPA 0.5.621._
+
+Tier 2 of P4.D144 — shared contract §H, and the e2e coverage gap it exposes.
+
+`hasQuickHideFeatures` gains its third arm: any chat on the Concierge's
+uncensored row makes the affordance worth showing, even before the user has
+flagged a tag. The shell footer's quick-hide section is gated on it, exactly as
+v4's `sidebar-footer.tsx:145` gates it — v5 mounted the section ungated only
+because the third arm had no probe to read.
+
+The probe itself (`chatsHasDangerous`) is ACTIVATE-AT-UNIFY behind
+`CHATS_HAS_DANGEROUS_VERB_LANDED`, since P4.D143 lands the verb: a named
+constant rather than a swallowed dispatch failure, which would look identical
+to an honest `false` and hide the arm forever after the flip. The three-way OR
+is pulled out as `quickHideFeaturesVisible` and pinned there, so the rule is
+measured today even while the wire that feeds its third argument is inert.
+
+Three gated e2e beats land in a new `concierge-marks-flow.spec.ts`: the marks'
+tones and their bubbles, the "Dangerous Chats" toggle hiding the uncensored row
+on both the Salon list and the homepage, and the header pill's bubble below the
+toolbar. Before this, `quick-hide-flow.spec.ts` drove the TAG arm only and no
+beat anywhere asserted list danger filtering.
+
+Recorded coverage gap: the bubble's `Categories` line is not asserted in e2e.
+Nothing a walk can reach writes `chats.dangerCategories` — the classifier job
+writes it, the manual flip clears it, and `ChatPatch` is an internal Rust
+struct rather than a request bag. It is asserted at unit tier in three specs.
+
 #### 2026-09-02 — feat(concierge): the header pill and the sidebar read the presentation table
 
 _Versions: SPA 0.5.620._
