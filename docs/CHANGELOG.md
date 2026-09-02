@@ -170,6 +170,18 @@ picked as the user's speaker where v4 skips it. Consolidated, with a unit pin
 on v4's rule that reddens if the old arm returns. `parse_sys_status` is left
 alone and documented: v4's `buildOtherParticipantsInfo` never parses at all, and
 mapping unknown to `None` reproduces its `=== 'removed'` skip exactly.
+#### 2026-09-02 — docs(p4.71): close the work order
+
+_Docs-only change._
+
+Status header on `p4.71-host-gateway-resolver.md`: every tier-1 and tier-2
+deliverable landed, tier 3 deferred loudly as ordered. Records the two measured
+faithful non-injections (v4's image path passes no base URL; v4's plugin
+default base URL is never rewritten — a v4 filing candidate), the one order
+correction (`provider_models_api.rs` holds no base URL; the model-listing seam
+is `WireModelsFetcher`), and what is owed: a `docker build` on a quiet machine
+and the container walk.
+
 #### 2026-09-02 — fix(harness): the host-gateway recipe names no /tmp pin
 
 _Versions: harness 0.0.645._
