@@ -293,6 +293,37 @@ The core gains `is_localhost_url` — the same parse and `LOCALHOST_HOSTS` test
 `rewrite_localhost_url` already did, extracted to one home and exposed so the
 host can ask before resolving. No URL semantics changed (P4.D134's corpus is
 the pin).
+#### 2026-09-02 — fix(image-gen): restore the `[Image LoRA]` caller context and the style-options anchor
+
+_Versions: core 0.0.752, harness 0.0.644._
+
+v4 builds each `[Image LoRA]` line's context as `{ provider, model,
+...logContext }` (`lib/image-gen/params-builder.ts:150`), so all five warns
+name the call site and the chat / job / profile they belong to. v5 carried only
+`provider` and `model`, which made every line true but useless: an operator
+reading `combined.log` could see that a malformed adapter had been dropped and
+not which generation dropped it.
+
+`LoraLogContext` gained the caller half, `resolve_profile_loras` now takes the
+`ImageParamsLogContext` its builder already had, and all five warns emit it in
+v4's key order. The `tools.generate_image.style-options` anchor
+(`image-generation-handler.ts:869`) landed at the pre-crafter resolution where
+v4 sets it — without it, a stored-list problem raised during the crafter's
+pre-pass was indistinguishable from one raised at generation time.
+
+A differential cannot see a log-only fix, so the proof is the capture layer:
+five tests, one per line, each asserting the whole spread, each mutation
+(deleting one field from one `warn!`) reddening exactly one. The call-site
+anchors themselves are pinned by a new `lora_log_anchor_guard` source census.
+
+Measured while pinning it: v4's ninth anchor, `api.v1.images.generate`, has no
+v5 call site at all — `POST /api/v1/images?action=generate` has never been
+ported (`quilltap-web` serves only `/api/v1/images/{id}`). Recorded as a
+tripwire rather than invented into existence.
+
+Riding along: `image_gen_leaves_equivalence` moved off the SHARED
+`/tmp/qt-oracle-stage`, which a sibling family's regen could wipe mid-run.
+
 #### 2026-09-02 — fix(tools): the WHOLE generate_image input schema, not just the prompt
 
 _Versions: core 0.0.751, harness 0.0.643._

@@ -172,10 +172,17 @@ fn str_default<'a>(defaults: Option<&'a Map<String, Value>>, key: &str) -> Optio
 pub fn resolve_profile_loras(
     profile: ImageProfileLike<'_>,
     declarations: &ImageDeclarations,
+    log_context: &ImageParamsLogContext,
 ) -> (Option<ImageLoraSupport>, Vec<ImageLoraSpec>, String) {
+    // v4 `{ provider, model, ...logContext }` (params-builder.ts:150) — the
+    // caller's own fields ride into every `[Image LoRA]` line.
     let context = LoraLogContext {
         provider: profile.provider.to_string(),
         model: profile.model_name.map(str::to_string),
+        context: log_context.context,
+        chat_id: log_context.chat_id.clone(),
+        job_id: log_context.job_id.clone(),
+        profile_id: log_context.profile_id.clone(),
     };
     let support = resolve_lora_support(
         Some(&declarations.models),
@@ -294,7 +301,8 @@ pub fn build_image_gen_params(
     }
 
     // ---- 3. LoRAs ----------------------------------------------------------
-    let (support, loras, trigger_phrase) = resolve_profile_loras(profile, declarations);
+    let (support, loras, trigger_phrase) =
+        resolve_profile_loras(profile, declarations, log_context);
     let mut appended_trigger_phrases: Vec<String> = Vec::new();
     if !loras.is_empty() {
         params.loras = loras.clone();

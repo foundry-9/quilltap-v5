@@ -100126,3 +100126,54 @@ stage as prose (`… build-image-generation-fixture.ts (QT_FIXTURE_IMGGEN_MAIN/M
 so the sweep driver cannot regenerate it. The runnable recipe lives in the
 oracle case's own header (`harness/oracle/cases/image-generate-route.test.ts`)
 and is what this lane used.
+
+### Lane record — P4.70 unit 2: the `[Image LoRA]` caller context + the style-options anchor
+
+**The order's premise was half stale, corrected by measurement.** It expected
+v5 to have only TWO of v4's five `[Image LoRA]` warn sites (`lora_support.rs:216`,
+`:254`). v5 has all FIVE, with v4's sentences byte-exact. The real gap was the
+other half of the order's own sentence — "which present ones drop the spread":
+`LoraLogContext` carried `provider` + `model` only, and v4 builds the context as
+`{ provider, model, ...logContext }` (`params-builder.ts:150`), so the caller's
+`{context, chatId, jobId, profileId}` never reached a single line.
+
+**The port.** `LoraLogContext` gained `context`/`chat_id`/`job_id`/`profile_id`;
+`resolve_profile_loras` takes the `ImageParamsLogContext` that
+`build_image_gen_params` already had and passes it down; all five warns emit the
+spread in v4's key order (provider, model, then the caller's fields, then the
+site-specific ones). The `tools.generate_image.style-options` anchor landed at
+`generate_image.rs`'s pre-crafter `resolve_profile_loras` — v4's own site
+(`image-generation-handler.ts:869`). The neighbouring comment about v5 having
+"no style-options surface on this path" stays true and stays: it is about
+COMBINING with `styleOptions.styleTriggerPhrase`, not about the log anchor.
+
+**Pins (a differential cannot see a log-only fix).** Five capture-layer tests in
+`quilltap_core::image_gen::lora_support::log_context_tests`, one per line, each
+asserting the whole six-field spread; the subscriber is installed with
+`set_default`, which is THREAD-scoped, so parallel tests cannot steal it.
+Mutation proof, run as a loop: deleting the `chat_id` field from ONE `warn!`
+reddened exactly the one matching test, five times out of five.
+
+The call sites are pinned by the new `lora_log_anchor_guard` source census
+(`db_error_key_guard` idiom) — the capture tests cannot see a site that reverts
+to `Default::default()` and logs an empty `context`. Mutation-proven: replacing
+the style-options literal with `ImageParamsLogContext::default()` reddens two of
+its three tests.
+
+**Finding, recorded not fixed — v4's NINTH anchor has no v5 site.**
+`api.v1.images.generate` (`app/api/v1/images/route.ts:282`) belongs to
+`POST /api/v1/images?action=generate`, which v5 has never ported —
+`quilltap-web` serves only `/api/v1/images/{id}`, and none of v5's five
+`build_image_gen_params` call sites is that route. Inventing the anchor would
+put a lie in `combined.log`, so the guard asserts its ABSENCE with a tripwire
+that fails loudly the day the route lands. (`params_builder.rs`'s doc comment
+saying "nine literals across the five consolidated sites" was counting v4's
+literals, not v5's sites.)
+
+**Tier 2 item 5 — the leaves header.** `image_gen_leaves_equivalence` staged into
+the SHARED `/tmp/qt-oracle-stage`, which a sibling family's regen can wipe
+mid-run; it now stages into `/tmp/qt-oracle-stage-image-gen-leaves`. The regen
+and run NDJSON paths are character-identical (`recipe-header-conventions`).
+**Three families still share the old stage and were left alone** (not this
+lane's): `mail_carina_tools_equivalence`, `photo_tools_equivalence`, and
+`precompute_equivalence` (P4.68's).

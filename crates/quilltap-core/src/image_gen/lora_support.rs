@@ -140,14 +140,26 @@ impl Serialize for ImageLoraSpec {
     }
 }
 
-/// The log context v4 spreads into every `[Image LoRA]` line
-/// (`{ provider, model? }` plus the caller's extra fields). v5 renders these
+/// The log context v4 spreads into every `[Image LoRA]` line. v5 renders these
 /// through `tracing`; a log-only field is differential-invisible, so the
 /// sentences are pinned by the capturing-layer tests instead.
+///
+/// v4 builds it in `resolveProfileLoras` as `{ provider, model, ...logContext }`
+/// (`lib/image-gen/params-builder.ts:150`) — the profile's provider/model plus
+/// **the caller's own fields**, which is how an operator reading
+/// `combined.log` learns WHICH generation dropped a malformed adapter. Until
+/// P4.70 v5 carried only the first two, so every `[Image LoRA]` line named a
+/// provider and nothing else; the caller half is now here.
 #[derive(Debug, Clone, Default)]
 pub struct LoraLogContext {
     pub provider: String,
     pub model: Option<String>,
+    /// The call-site label — v4's `context` key (`'tools.generate_image'`,
+    /// `'tools.generate_image.style-options'`, `'background-jobs.story-background'`, …).
+    pub context: &'static str,
+    pub chat_id: Option<String>,
+    pub job_id: Option<String>,
+    pub profile_id: Option<String>,
 }
 
 /// Resolve LoRA support for a provider/model pair (v4 `resolveLoraSupport`).
@@ -212,6 +224,10 @@ pub fn read_loras_from_parameters(
         tracing::warn!(
             provider = %log_context.provider,
             model = ?log_context.model,
+            context = %log_context.context,
+            chat_id = ?log_context.chat_id,
+            job_id = ?log_context.job_id,
+            profile_id = ?log_context.profile_id,
             stored_type = %js_typeof(raw),
             "[Image LoRA] Ignoring a `loras` parameter that is not a list"
         );
@@ -249,6 +265,10 @@ pub fn read_loras_from_parameters(
                 tracing::warn!(
                     provider = %log_context.provider,
                     model = ?log_context.model,
+                    context = %log_context.context,
+                    chat_id = ?log_context.chat_id,
+                    job_id = ?log_context.job_id,
+                    profile_id = ?log_context.profile_id,
                     source = %source,
                     stored_scale = %raw_scale,
                     "[Image LoRA] Dropping an out-of-range scale; the provider default applies"
@@ -275,6 +295,10 @@ pub fn read_loras_from_parameters(
         tracing::warn!(
             provider = %log_context.provider,
             model = ?log_context.model,
+            context = %log_context.context,
+            chat_id = ?log_context.chat_id,
+            job_id = ?log_context.job_id,
+            profile_id = ?log_context.profile_id,
             dropped = ?dropped,
             kept_count = kept.len(),
             "[Image LoRA] Dropped malformed entries from a profile's stored LoRA list"
@@ -314,6 +338,10 @@ pub fn cap_loras(
         tracing::warn!(
             provider = %log_context.provider,
             model = ?log_context.model,
+            context = %log_context.context,
+            chat_id = ?log_context.chat_id,
+            job_id = ?log_context.job_id,
+            profile_id = ?log_context.profile_id,
             stripped = ?loras.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
             "[Image LoRA] Stripping LoRAs — this provider/model declares no LoRA support"
         );
@@ -334,6 +362,10 @@ pub fn cap_loras(
     tracing::warn!(
         provider = %log_context.provider,
         model = ?log_context.model,
+        context = %log_context.context,
+        chat_id = ?log_context.chat_id,
+        job_id = ?log_context.job_id,
+        profile_id = ?log_context.profile_id,
         max_loras = max,
         kept = ?kept.iter().map(|l| l.source.clone()).collect::<Vec<_>>(),
         dropped = ?loras.iter().skip(max).map(|l| l.source.clone()).collect::<Vec<_>>(),
@@ -372,4 +404,180 @@ pub fn lora_trigger_phrases(loras: &[ImageLoraSpec]) -> Vec<String> {
 /// (v4 `joinLoraTriggerPhrases`).
 pub fn join_lora_trigger_phrases(loras: &[ImageLoraSpec]) -> String {
     lora_trigger_phrases(loras).join(", ")
+}
+
+#[cfg(test)]
+mod log_context_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    // === P4.70: the `[Image LoRA]` caller spread ===
+    //
+    // v4 builds each line's context as `{ provider, model, ...logContext }`
+    // (`lib/image-gen/params-builder.ts:150`), so every one of the five warns
+    // names the CALL SITE and the chat/job/profile it belongs to. v5 carried
+    // only `provider` and `model`, which made a `combined.log` line true but
+    // useless: an operator could see that a malformed adapter was dropped and
+    // not which generation dropped it.
+    //
+    // A differential cannot see a log-only fix, so the capture layer is the
+    // proof. One test per line, each mutation (deleting one field from one
+    // `tracing::warn!`) reddening exactly one of them.
+
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    /// Run `f` with a capturing subscriber installed and hand back the lines.
+    /// `set_default` is THREAD-scoped, so parallel tests cannot steal each
+    /// other's subscriber.
+    fn captured(f: impl FnOnce()) -> Vec<String> {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            f();
+        }
+        let out = logs.lock().unwrap().clone();
+        out
+    }
+
+    /// The spread a caller supplies — v4's `tools.generate_image` shape.
+    fn ctx() -> LoraLogContext {
+        LoraLogContext {
+            provider: "NANOGPT".to_string(),
+            model: Some("flux-2-dev-lora".to_string()),
+            context: "tools.generate_image",
+            chat_id: Some("chat-77".to_string()),
+            job_id: None,
+            profile_id: Some("profile-9".to_string()),
+        }
+    }
+
+    /// Assert one captured line carries the sentence AND the whole caller
+    /// spread. The sentence match is a substring because the level/target
+    /// prefix and the field list surround it.
+    fn assert_line(lines: &[String], sentence: &str) {
+        let line = lines
+            .iter()
+            .find(|l| l.contains(sentence))
+            .unwrap_or_else(|| panic!("no line carried {sentence:?}; got {lines:#?}"));
+        for field in [
+            "provider=NANOGPT",
+            "model=Some(\"flux-2-dev-lora\")",
+            "context=tools.generate_image",
+            "chat_id=Some(\"chat-77\")",
+            "job_id=None",
+            "profile_id=Some(\"profile-9\")",
+        ] {
+            assert!(
+                line.contains(field),
+                "line is missing {field}: {line}\n(all: {lines:#?})"
+            );
+        }
+    }
+
+    #[test]
+    fn the_not_a_list_warn_carries_the_caller_context() {
+        let params = serde_json::json!({ "loras": "owner/portrait-lora" });
+        let lines = captured(|| {
+            read_loras_from_parameters(Some(&params), &ctx());
+        });
+        assert_line(
+            &lines,
+            "[Image LoRA] Ignoring a `loras` parameter that is not a list",
+        );
+    }
+
+    #[test]
+    fn the_out_of_range_scale_warn_carries_the_caller_context() {
+        let params = serde_json::json!({
+            "loras": [{ "source": "owner/portrait-lora", "scale": 42 }]
+        });
+        let lines = captured(|| {
+            read_loras_from_parameters(Some(&params), &ctx());
+        });
+        assert_line(
+            &lines,
+            "[Image LoRA] Dropping an out-of-range scale; the provider default applies",
+        );
+    }
+
+    #[test]
+    fn the_dropped_entries_warn_carries_the_caller_context() {
+        let params = serde_json::json!({
+            "loras": [{ "source": "owner/portrait-lora" }, "not-an-object", { "scale": 1 }]
+        });
+        let lines = captured(|| {
+            read_loras_from_parameters(Some(&params), &ctx());
+        });
+        assert_line(
+            &lines,
+            "[Image LoRA] Dropped malformed entries from a profile's stored LoRA list",
+        );
+    }
+
+    #[test]
+    fn the_stripping_warn_carries_the_caller_context() {
+        let loras = vec![ImageLoraSpec {
+            source: "owner/portrait-lora".to_string(),
+            ..Default::default()
+        }];
+        let lines = captured(|| {
+            cap_loras(loras, None, &ctx());
+        });
+        assert_line(
+            &lines,
+            "[Image LoRA] Stripping LoRAs — this provider/model declares no LoRA support",
+        );
+    }
+
+    #[test]
+    fn the_capping_warn_carries_the_caller_context() {
+        let loras = (0..3)
+            .map(|i| ImageLoraSpec {
+                source: format!("owner/lora-{i}"),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>();
+        let support = ImageLoraSupport {
+            max_loras: 1.0,
+            scale: None,
+            source_kinds: vec!["hf-repo".to_string()],
+            supports_private_weights_token: None,
+        };
+        let lines = captured(|| {
+            cap_loras(loras, Some(&support), &ctx());
+        });
+        assert_line(
+            &lines,
+            "[Image LoRA] Capping the LoRA list to the model's limit",
+        );
+    }
 }

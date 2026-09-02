@@ -20,7 +20,9 @@
 //!     trigger-phrase append, and the residual bag.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout; STAGE outside `.claude/`):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<worktree> ; STAGE=/tmp/qt-oracle-stage
+//!   # STAGE is family-unique on purpose: the shared /tmp/qt-oracle-stage was
+//!   # a sibling family's regen away from being wiped mid-run (P4.70).
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<worktree> ; STAGE=/tmp/qt-oracle-stage-image-gen-leaves
 //!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases
 //!   cp $WT/harness/oracle/cases/image-gen-leaves.test.ts $STAGE/harness/oracle/cases/
 //!   cd ~/source/quilltap-server
@@ -387,6 +389,10 @@ fn image_gen_leaves_matches_oracle() {
     let ctx = LoraLogContext {
         provider: "NANOGPT".to_string(),
         model: Some("flux-2-dev-lora".to_string()),
+        // The caller-spread half is log-only, so it plays no part in these
+        // value comparands; the lines themselves are pinned by the capture
+        // tests in `quilltap_core::image_gen::lora_support`.
+        ..Default::default()
     };
     let mut lora_rows = 0usize;
     for (label, row) in &oracle {

@@ -2080,6 +2080,12 @@ where
     // v5 has no style-options surface on this path (the crafter seam's
     // `style_trigger_phrase` has always been `None` here), so the LoRA phrases
     // ARE the combined value.
+    //
+    // The log anchor is v4's own (`image-generation-handler.ts:869`
+    // `context: 'tools.generate_image.style-options'`, `chatId`) — this
+    // resolution runs BEFORE the params build, so without it every
+    // `[Image LoRA]` line a stored-list problem raises here would be
+    // indistinguishable from one raised at generation time.
     let (_, _, lora_trigger_phrase) = resolve_profile_loras(
         ImageProfileLike {
             provider: &effective_profile.provider,
@@ -2087,6 +2093,11 @@ where
             parameters: Some(&effective_profile.parameters),
         },
         &(deps.declarations_for)(&effective_profile.provider),
+        &ImageParamsLogContext {
+            context: "tools.generate_image.style-options",
+            chat_id: ctx.chat_id.clone(),
+            ..Default::default()
+        },
     );
     let style_trigger_phrase = if lora_trigger_phrase.is_empty() {
         None
