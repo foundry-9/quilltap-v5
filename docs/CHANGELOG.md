@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(driftcheck): v4 is THREE commits past `6d2a50382` (bug 115 + the inter-character timing log join `303288fb4`); three open v4 filings recorded — PIN REQUIRED
+
+_Docs-only change._
+
+Run at the start of the follow-ups round's `/unify`, whose freshness probe
+failed on both counts: v4 `main` is at `c9faa2c74` (`4.9.0-dev.118`) with
+two commits past the already-recorded `303288fb4` — `02d4efa1b` (bug 115:
+the dynamic-head fallback distillation asks for the interactive budget; v5's
+`build_context.rs` fallback call reproduces the bug today) and `c9faa2c74`
+(a log-only restore of the inter-character memory timing line) — and the
+checkout is dirty with DOCS ONLY: the human's three new open v4 filings,
+bugs 116 (the describer's answer believed without checking the image
+arrived), 117 (a chat upload's sha256 is the pre-transcode hash) and 118
+(the stale NanoGPT manifest attachment block), each marked "Applies" to v5
+and each now carrying a v5-side measurement to owe. Ledger §1 rewritten
+(regen rule PIN REQUIRED at `6d2a50382`), §3 gains two UNPROCESSED rows; no
+row is a convergence. The five lanes are unaffected — every regen ran pinned.
+
 #### 2026-09-02 — docs(driftcheck): v4 drifted ONE commit past `6d2a50382` (`303288fb4`, the Concierge state on the New Chat form) — PIN REQUIRED
 
 _Docs-only change._
