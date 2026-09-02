@@ -508,6 +508,27 @@ database. Red-first: 79 of 98 rows failed before the fix. Two mutations pin it
 — removing the empty-string fold reddens 18 rows and nothing on the two routes
 where v4 deliberately does not fold; reading the last duplicate instead of the
 first reddens 33, all of them duplicate-key rows.
+#### 2026-09-02 — fix(quick-hide): silence the invented has-dangerous probe warn, keep v4's tag-load one
+
+_Versions: SPA 0.5.625._
+
+The order named two `console.warn`s as v5 inventions; measurement against the
+pinned v4 checkout refuted half of it. v4's tag load DOES warn — 
+`quick-hide-provider.tsx:82` is `console.warn('Unable to load quick-hide tags',
+{ error: error instanceof Error ? error.message : String(error) })`, the same
+message and the same payload shape v5 carries — so that line is a faithful port
+and stays. Only the `has-dangerous` probe was invented: v4's
+`useHasDangerousChats` swallows the failure in a bare `catch {}` whose entire
+body is the comment "Silently ignore — worst case the quick-hide button doesn't
+appear" (`use-has-dangerous-chats.ts:27-29`). That warn is retired; the answer
+still falls soft to `false`.
+
+Both halves are pinned by a new spec pair, so neither can drift into the other:
+one asserts the probe's failure produces no warn at all, the other asserts a
+failed tag load still produces exactly v4's message and payload. The stale v4
+citation on the tag path (`:76-78`) is corrected to the file and lines the
+measurement actually found.
+
 #### 2026-09-02 — feat(salon): paint v4's dangerous-chat ring on assistant message avatars
 
 _Versions: SPA 0.5.624._

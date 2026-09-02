@@ -111,19 +111,24 @@ export class QuickHideService {
   }
 
   /**
-   * The §H probe (v4 `useHasDangerousChats`). Fail-soft like the tag load: a
-   * refusal leaves the answer `false`, which is the same thing v5 did before
-   * the arm existed.
+   * The §H probe (v4 `useHasDangerousChats`). Fail-soft, and SILENT: v4's hook
+   * swallows the failure in a bare `catch {}` whose whole body is the comment
+   * "Silently ignore — worst case the quick-hide button doesn't appear"
+   * (`components/hooks/use-has-dangerous-chats.ts:27-29`). v5 used to
+   * `console.warn` here — a v5 invention with no v4 counterpart, retired at
+   * P4.69. The answer stays `false`, which is what v5 did before the arm
+   * existed and what v4's `useState(false)` holds.
+   *
+   * NOT the same call as {@link refresh}: v4 warns on a failed TAG load
+   * (`quick-hide-provider.tsx:82`), and that warn is a faithful port — the two
+   * fail-soft paths deliberately differ, in v4 as here.
    */
   private async refreshHasDangerousChats(): Promise<void> {
     if (!CHATS_HAS_DANGEROUS_VERB_LANDED) return;
     try {
       const data = await this.core.dispatchData({ type: 'chatsHasDangerous' });
       this.hasDangerousChatsSignal.set(data['hasDangerous'] === true);
-    } catch (error) {
-      console.warn('Unable to probe for uncensored-route chats', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+    } catch {
       this.hasDangerousChatsSignal.set(false);
     }
   }
@@ -189,7 +194,9 @@ export class QuickHideService {
    * it after authoring so the menu list updates live.
    *
    * Fail-soft exactly as v4: a failed load logs and empties the list rather than
-   * surfacing an error (`:76-78`).
+   * surfacing an error (`quick-hide-provider.tsx:79-84` — the `console.warn`
+   * below is v4's own line at `:82`, message and payload shape included, so it
+   * STAYS; P4.69 measured it before retiring the probe's invented twin).
    */
   async refresh(): Promise<void> {
     this.loadingSignal.set(true);

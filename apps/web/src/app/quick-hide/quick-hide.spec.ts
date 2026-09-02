@@ -260,6 +260,73 @@ describe('QuickHideService', () => {
     });
   });
 
+  /**
+   * P4.69 — the two fail-soft paths log DIFFERENTLY, in v4 as here.
+   *
+   * v4's tag load warns (`quick-hide-provider.tsx:82` —
+   * `console.warn('Unable to load quick-hide tags', { error: … })`, the exact
+   * line v5 carries), but v4's `has-dangerous` probe is a bare `catch {}` whose
+   * whole body is the comment "Silently ignore — worst case the quick-hide
+   * button doesn't appear" (`use-has-dangerous-chats.ts:27-29`). v5 had invented
+   * a `console.warn` on the probe path; P4.69 retired it and pins both halves
+   * here, so neither can drift back.
+   */
+  describe('the fail-soft logging asymmetry (P4.69)', () => {
+    it('says NOTHING when the has-dangerous probe fails (v4 use-has-dangerous-chats.ts:27-29)', async () => {
+      stubStorage();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      // Every dispatch throws, so BOTH the constructor's probe and its tag load
+      // take their catch arms; `refresh()` is then driven explicitly below so
+      // the tags warn is accounted for separately.
+      const client: Partial<CoreClient> = {
+        dispatchData: (async (req: { type: string }) => {
+          if (req.type === 'chatsHasDangerous') throw new Error('probe down');
+          return { tags: [] };
+        }) as unknown as CoreClient['dispatchData'],
+      };
+      TestBed.configureTestingModule({
+        providers: [{ provide: CoreClient, useValue: client }],
+      });
+      const service = TestBed.inject(QuickHideService);
+      await service.refresh();
+      // The probe failed and the answer stayed false...
+      expect(service.hasDangerousChats()).toBe(false);
+      // ...and not a word about it. The tag load succeeded here, so ANY warn on
+      // this run is the retired invention.
+      expect(warn).not.toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('still warns when the TAG load fails — that one is v4’s own line (v4 :82)', async () => {
+      stubStorage();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const client: Partial<CoreClient> = {
+        dispatchData: (async () => {
+          throw new Error('nope');
+        }) as CoreClient['dispatchData'],
+      };
+      TestBed.configureTestingModule({
+        providers: [{ provide: CoreClient, useValue: client }],
+      });
+      const service = TestBed.inject(QuickHideService);
+      // The constructor fires BOTH the probe and a tag load, fire-and-forget;
+      // let them settle and start the count from zero so the assertion below
+      // measures exactly one `refresh()`.
+      await service.refresh();
+      warn.mockClear();
+
+      await service.refresh();
+      // Exactly one warn for one failed tag load — the tags one. If the probe's
+      // invented warn came back it would not appear here (the probe only runs
+      // in the constructor), which is why the count is pinned in the sibling
+      // case above and the CONTENT is pinned here.
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toBe('Unable to load quick-hide tags');
+      expect(warn.mock.calls[0]?.[1]).toEqual({ error: 'nope' });
+      warn.mockRestore();
+    });
+  });
+
   describe('the cross-tab storage listener (v4 :131-153)', () => {
     it('adopts another tab’s hidden-tag write (v4 :134-143)', async () => {
       stubStorage();
