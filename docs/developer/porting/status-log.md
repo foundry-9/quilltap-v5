@@ -175,6 +175,134 @@ the red-first measurement — v5 measurably HAD the defect.**
 the family's own recipe, not committed; only
 `story_background_job_tier3_equivalence` reads it.
 
+### Unit 3 — the retired background display modes (core 0.0.739, harness 0.0.632)
+
+v4's `RETIRED_BACKGROUND_DISPLAY_MODES = ['project','static']` +
+`normalizeBackgroundDisplayMode` + the narrowed enums, ported as
+`db/projects.rs::{RETIRED_BACKGROUND_DISPLAY_MODES,
+normalize_background_display_mode}`.
+
+**The chokepoint finding — the order's point 7 measured, and the answer is "no
+change".** v5's `ProjectEntity::parse_properties` is reached by the overlay READ
+(`read_properties`), by the write overlay's read-modify-write
+(`serialize_properties`), AND by `write_managed_fields` on create. Putting the
+coercion there covers v4's whole claim — *"Writes route through the same parse,
+so a pre-4.9 .qtap import or backup restore lands on a valid value"* — in ONE
+place, which is why v4's own commit has no `lib/backup/restore/` hunk and why
+`services/backup/restore/orchestrator.rs::project_properties` (§F, this lane's
+region) is **untouched**. Proven, not argued: see the restore mutation below.
+
+**The `null` question, decided by measurement.** v4's field is
+`z.preprocess(normalize…, z.enum([…])).default('theme')`. `ZodDefault`
+short-circuits on `undefined` only, so an explicit `null` reaches the
+preprocess, becomes `undefined`, and then FAILS the enum — v4 does not coerce it
+to the default. The oracle row confirms it (`parse-explicit-null` → `ok:false`).
+v5's `parse_properties` therefore rewrites the key only when it is present and
+non-null: an absent key falls to serde's `default`, and a JSON `null` still
+fails deserialization against the `String` field. Both sides refuse; the arm
+asserts the refusal, not its wording.
+
+**The GET.** `project_background_get` normalizes first and the `'static'` /
+`'project'` resolution branches are DELETED (v4 deletes them, it does not leave
+them unreachable). Both image-id fields are KEPT — `storyBackgroundImageId` is
+still written for a project in Latest chat mode. §D respected: the
+`?action=chats` serializer in the same file (P4.D143's) was not touched.
+
+**The update schema** narrows to `["latest_chat","theme"]`.
+`PROJECT_CREATE_SCHEMA` never accepted the field and still does not, matching
+v4.
+
+**Differentials.**
+
+- **NEW tier-1 `project_background_display_mode_equivalence`**
+  (`QT_ORACLE_PROJECT_BACKGROUND_MODE`, oracle case
+  `harness/oracle/cases/project-background-display-mode.ts`) — 9 `normalize`
+  rows + a `retiredList` row + 8 `parse` rows, driven through v4's REAL
+  `normalizeBackgroundDisplayMode` / `RETIRED_BACKGROUND_DISPLAY_MODES` /
+  `ProjectPropertiesSchema`. One row per assertion in v4's own
+  `project-background-display-mode.test.ts`, plus the two shapes that test does
+  not state: the explicit `null` above, and the empty string (unrecognised →
+  `theme`, NOT a synonym for absent). The retired list is driven off v4's own
+  constant, so a v4-side addition to it shows up as a row rather than as
+  silence. `undefined` travels as the sentinel `"<undefined>"` because NDJSON
+  cannot carry it. Shape guards on both row counts (the corpus-constants idiom).
+- **`projects_tier2_equivalence`** — the corpus already created **alpha** with
+  `backgroundDisplayMode: 'project'`, so the WRITE side needed no new op: its
+  pinned `properties.json` literal in the Rust family moved from `"project"` to
+  `"theme"`, and that byte change IS the proof. Added **zeta** for the READ
+  side: a plain create, then `plantProperties` writing a valid bag carrying
+  `"static"` straight onto disk (the shape a pre-4.9 instance is full of and the
+  post-fix create can no longer produce), then an unrelated `icon` patch — the
+  RMW seeds from the parsed bag, so `theme` lands back. Its own byte-pin was
+  added. The three shape constants moved 5 → 6.
+- **`projects_routes_equivalence`** — `update_retired_mode_project` /
+  `update_retired_mode_static` (400, v4's whole `Validation error` envelope with
+  the `invalid_value` issue naming `["latest_chat","theme"]`) and
+  `update_surviving_mode_latest_chat` (200), so the narrowing is not read as a
+  blanket refusal. **The GET arm needed no fixture change:** the committed
+  `groups-projects` pair was built before the fix, so Iota's stored
+  `properties.json` already carries `'project'` WITH a `storyBackgroundImageId`
+  — exactly the "raw row that bypassed the overlay" v4's guard is for.
+  `background_iota` moves from resolving that image to
+  `{backgroundUrl: null, displayMode: "theme"}`. §D respected: the project-chats
+  arms were left as they are (this lane's pin predates D143's change).
+- **`system_restore_state`** — `restore-archive.zip` already carries
+  `backgroundDisplayMode: "project"` in `projects.json`, so no new archive was
+  built. v4 restores it into a created store whose `properties.json` (and its
+  chunk) read `theme`, while the archive's OWN `doc_mount_documents` rows
+  restore verbatim at step 22a — both shapes present in the oracle (24 coerced
+  vs 26 raw occurrences).
+
+**Mutation proofs** (each verified applied, reverted by file backup):
+
+- **A** — unrecognised strings pass through instead of coercing → the tier-1
+  family reddens at `normalize 'retired-project'`.
+- **B** — `parse_properties` stops normalizing → the tier-1 family reddens at
+  `parse 'parse-retired-project' mode`.
+- **C** — the update enum widened back to four → `projects_routes_equivalence`
+  reddens on exactly `update_retired_mode_project` +
+  `update_retired_mode_static`, printing the 200 v5 would have answered.
+- **G** — `parse_properties` stops normalizing → `system_restore_state` reddens
+  on the restored project's `doc_mount_documents` content AND its
+  `doc_mount_chunks` content, `"project"` vs `"theme"`. **This is the
+  measurement behind "the restore orchestrator needs no change."**
+
+**One arm recorded as NON-discriminating, deliberately.** Mutation **D** —
+removing the GET's own normalize while leaving `parse_properties` intact —
+stayed GREEN, because every project the corpus can reach comes through the
+overlay and is already coerced by the time the GET sees it. v4's line is
+defence-in-depth for *"a raw row that bypassed the overlay"*, and v4's own code
+is equally belt-and-braces there. It is ported for fidelity and pinned by
+inspection, not by a discriminating arm; the combined mutation **E** (both sites
+off) does redden `background_iota`, so the FEATURE is pinned even though that
+one line is not. Recorded rather than left as a silent green.
+
+**Also recorded:** `projects_routes_equivalence` has no `latest_chat` GET arm —
+Iota's `'project'` mode was the family's only image-resolving background case
+and it now normalizes away. The surviving branch's write side is covered by
+`story_background_job_tier3_equivalence`'s `project_latest` case and its read
+side is untouched by this commit, so nothing regressed; but if a later lane
+wants that branch covered here, it needs a `latest_chat` project in the fixture.
+
+**Sibling families over the same committed fixture** (`groups-projects-{main,
+mount}.db`, which this lane did NOT rebuild): `groups_routes_equivalence`,
+`scenarios_routes_equivalence`, `image_profiles_routes_equivalence`,
+`mount_points_routes_equivalence`, `roleplay_templates_routes_equivalence` — all
+five regenerated at the pin and re-run by name, all green.
+
+**Regen recipes** (from the pin):
+
+```
+PIN=/tmp/qt-v4-pin-p4d146-70505745a ; N=~/.nvm/versions/node/v24.13.1/bin
+V5W=<this worktree>
+# the NEW tier-1 family
+cd "$PIN" && $N/npx tsx $V5W/harness/oracle/cases/project-background-display-mode.ts \
+  > /tmp/oracle-project-background-mode.ndjson
+QT_ORACLE_PROJECT_BACKGROUND_MODE=/tmp/oracle-project-background-mode.ndjson \
+  cargo test -p quilltap-harness --test project_background_display_mode_equivalence
+# the rest: each family's own recipe header, or the sweep driver with --v4 "$PIN"
+```
+
 ## Lane record — P4.D133 (the `b121ac77f` CLI `instances restore-key`)
 
 Ordered against round baseline **`aec86a613`**; the lane's target commit is

@@ -27,6 +27,38 @@ fn default_background_display_mode() -> String {
     "theme".to_string()
 }
 
+/// Background display modes retired in 4.9 (v4 `70505745a`,
+/// `RETIRED_BACKGROUND_DISPLAY_MODES`). Both were offered in the UI and neither
+/// ever worked: `'project'` read `storyBackgroundImageId`, which only the
+/// `'latest_chat'` path ever wrote, and `'static'` read
+/// `staticBackgroundImageId`, which nothing anywhere wrote — there was no upload
+/// control and the field was not even accepted by the update schema. Projects
+/// left in either mode are read as `'theme'`, which is the "no image" outcome
+/// they were already producing.
+pub const RETIRED_BACKGROUND_DISPLAY_MODES: [&str; 2] = ["project", "static"];
+
+/// v4 `normalizeBackgroundDisplayMode`: coerce a stored background display mode,
+/// retired or otherwise unrecognised, to a currently-valid one. Anything not
+/// recognised becomes `'theme'`; absent/`null` returns `None` so the schema's own
+/// default still applies.
+///
+/// v4 takes and returns `unknown` because it is a Zod `preprocess`; here the
+/// input is the raw JSON value and the output the string to substitute. Both
+/// `undefined` and `null` map to "leave it to the default" — but note that
+/// v4's `.default('theme')` short-circuits BEFORE the preprocess, so an
+/// **explicit `null`** never reaches the default and fails the enum. v5 keeps
+/// that: [`ProjectEntity::parse_properties`] rewrites the key only when it is
+/// present and non-null, so a JSON `null` still fails deserialization the way
+/// v4's parse throws.
+pub fn normalize_background_display_mode(value: Option<&Value>) -> Option<&'static str> {
+    match value {
+        None | Some(Value::Null) => None,
+        Some(Value::String(s)) if s == "latest_chat" => Some("latest_chat"),
+        Some(Value::String(s)) if s == "theme" => Some("theme"),
+        _ => Some("theme"),
+    }
+}
+
 /// The `properties.json` bag (v4 `ProjectPropertiesSchema`), serialized in
 /// schema-declaration order. Five fields carry Zod `.default(...)` and are
 /// therefore **always materialized** (`allowAnyCharacter`, `characterRoster`,
@@ -145,11 +177,35 @@ impl StoreEntity for ProjectEntity {
         ]
     }
 
+    /// v4 `ProjectPropertiesSchema.parse`. The one chokepoint every project
+    /// property bag passes through — the overlay READ, the write overlay's
+    /// read-modify-write serialize, and `write_managed_fields` on create — which
+    /// is why [`normalize_background_display_mode`] applied here covers v4's
+    /// whole claim in one place: "Writes route through the same parse, so a
+    /// pre-4.9 .qtap import or backup restore lands on a valid value."
     fn parse_properties(value: &Value) -> Result<ProjectProperties, String> {
         if !value.is_object() {
             return Err(format!("expected a JSON object, got: {value}"));
         }
-        serde_json::from_value(value.clone()).map_err(|e| e.to_string())
+        // [70505745a] `z.preprocess(normalizeBackgroundDisplayMode, z.enum([…]))`.
+        // Rewritten only when the key is PRESENT and non-null: an absent key is
+        // left to the serde default (v4's `.default('theme')`, which
+        // short-circuits ahead of the preprocess) and an explicit `null` is left
+        // to fail, as it fails v4's enum.
+        let value = match value.get("backgroundDisplayMode") {
+            Some(v) if !v.is_null() => {
+                let normalized = normalize_background_display_mode(Some(v))
+                    .expect("a present, non-null mode always normalizes to a value");
+                let mut obj = value.as_object().cloned().unwrap_or_default();
+                obj.insert(
+                    "backgroundDisplayMode".to_string(),
+                    Value::String(normalized.to_string()),
+                );
+                Value::Object(obj)
+            }
+            _ => value.clone(),
+        };
+        serde_json::from_value(value).map_err(|e| e.to_string())
     }
 
     fn slim_table() -> &'static str {

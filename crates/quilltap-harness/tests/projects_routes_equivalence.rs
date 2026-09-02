@@ -630,10 +630,41 @@ fn projects_routes_match_oracle() {
             "unn",
             json!({ "backgroundDisplayMode": null }),
         ),
+        // [P4.D146 / v4 70505745a] The update enum narrows to
+        // ['latest_chat','theme']. The two retired modes are refused at the
+        // write gate — the coercion in `ProjectEntity::parse_properties` is for
+        // values already on disk; a write must not be able to put one there
+        // afresh.
+        (
+            "update_retired_mode_project",
+            "urp",
+            json!({ "backgroundDisplayMode": "project" }),
+        ),
+        (
+            "update_retired_mode_static",
+            "urs",
+            json!({ "backgroundDisplayMode": "static" }),
+        ),
     ] {
         let db = fresh_db(&spec, tag);
         let resp = rt.block_on(projects::project_update(&db, IOTA, patch));
         check_error(name, &resp, &mut failed);
+    }
+    {
+        // …and the surviving mode still passes, so the narrowing is not a
+        // blanket refusal.
+        let db = fresh_db(&spec, "usm");
+        let resp = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "backgroundDisplayMode": "latest_chat" }),
+        ));
+        check(
+            "update_surviving_mode_latest_chat",
+            &response_data(&resp),
+            true,
+            &mut failed,
+        );
     }
     {
         // The unknown key is stripped, not refused: 200, absent from the echo,

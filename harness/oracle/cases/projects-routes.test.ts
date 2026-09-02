@@ -401,6 +401,26 @@ async function main(): Promise<void> {
       run: async () =>
         respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { backgroundDisplayMode: null }), p(IOTA))),
     },
+    // [P4.D146 / v4 70505745a] The update enum narrows to
+    // ['latest_chat','theme']: the two retired modes are REFUSED at the write
+    // gate (the coercion lives in the properties schema, for values already on
+    // disk — a write must not be able to put one there afresh). The surviving
+    // mode still passes, so the narrowing is not a blanket refusal.
+    {
+      name: 'update_retired_mode_project',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { backgroundDisplayMode: 'project' }), p(IOTA))),
+    },
+    {
+      name: 'update_retired_mode_static',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { backgroundDisplayMode: 'static' }), p(IOTA))),
+    },
+    {
+      name: 'update_surviving_mode_latest_chat',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { backgroundDisplayMode: 'latest_chat' }), p(IOTA))),
+    },
     {
       // The unknown key is STRIPPED by `z.object`, not refused: the request
       // succeeds and the echo must not carry it. The dump proves nothing of it

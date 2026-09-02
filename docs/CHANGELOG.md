@@ -230,6 +230,36 @@ The `write-partition` oracle case gains v4's two folder classify rows
 `classifyWriteTarget`: both answer `main`, so v5's default-to-Main routing
 already covers the chokepoint's non-conforming method name — the assertion v4
 added to its own suite, landed as a differential row instead.
+#### 2026-09-02 — fix(projects): narrow the background display mode to latest_chat | theme (P4.D146 unit 3)
+
+_Versions: core 0.0.739, harness 0.0.632._
+
+v4 `70505745a`. Two of the four project background display modes never worked:
+"Project-generated background" read a field only the Latest chat path ever
+wrote (there is no project-background generator), and "Static uploaded image"
+read a field nothing writes, with no upload control and no acceptance in the
+update schema. The enum is now `latest_chat | theme`, and the background GET's
+two resolution branches are deleted outright.
+
+Projects stored in a retired mode coerce to `theme` rather than failing.
+`normalize_background_display_mode` lands beside `ProjectProperties` and is
+applied inside `ProjectEntity::parse_properties` — the one chokepoint the
+overlay read, the write overlay's read-modify-write, and `write_managed_fields`
+on create all pass through — so a pre-4.9 `.qtap` import or backup restore also
+lands on a valid value with no change to the restore orchestrator. The absent
+key is still left to the schema default; an explicit `null` still refuses, as
+it does in v4 (measured, not assumed: v4's `.default()` short-circuits only on
+`undefined`, so `null` reaches the preprocess and then fails the enum). The
+update schema refuses both retired values outright — the coercion is for values
+already on disk, not a licence to write a new one.
+
+New tier-1 family `project_background_display_mode_equivalence` over v4's real
+module, one row per assertion in v4's own test plus the shapes it does not
+state. The projects tier-2 corpus gains a planted-retired-mode project for the
+read side; `projects_routes_equivalence` gains the two refusals and a surviving
+mode; the restore-state family already carried a `project`-bearing archive and
+proves the create path coerces.
+
 #### 2026-09-02 — fix(images): exclude absent participants from the story-background back-fill (P4.D146 unit 2)
 
 _Versions: core 0.0.738._

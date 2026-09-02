@@ -120,6 +120,30 @@
       "patch": {
         "color": "#0e0e0e"
       }
+    },
+
+    {
+      "$comment": "[P4.D146 / v4 70505745a] The READ side of the retired-mode coercion. A project stored in 'static' — the shape a pre-4.9 instance is full of, and one that the post-fix create can no longer produce — is planted on disk here, then touched with an unrelated patch. The write overlay's read-modify-write seeds from the parsed bag, so the value that lands back on disk is the NORMALIZED 'theme'. (Gamma's create carries 'project' and covers the WRITE side: the retired value never reaches disk at all.)",
+      "kind": "create",
+      "label": "zeta",
+      "input": {
+        "name": "Zeta",
+        "description": "Desc Z",
+        "state": {},
+        "color": "#dd0000"
+      }
+    },
+    {
+      "kind": "plantProperties",
+      "label": "zeta",
+      "content": "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [],\n  \"color\": \"#dd0000\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"static\"\n}"
+    },
+    {
+      "kind": "update",
+      "label": "zeta",
+      "patch": {
+        "icon": "anchor"
+      }
     }
   ]
 }

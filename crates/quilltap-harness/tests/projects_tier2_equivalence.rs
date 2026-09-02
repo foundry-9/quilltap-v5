@@ -477,9 +477,10 @@ fn projects_tier2_matches_oracle() {
         let i = TABLES.iter().position(|t| t.oracle_key == key).unwrap();
         got[i]["rows"].as_array().unwrap().clone()
     };
-    assert_eq!(rows("projects").len(), 5, "5 project rows");
-    assert_eq!(rows("points").len(), 5, "5 mount-point rows");
-    assert_eq!(rows("projectLinks").len(), 5, "5 project→store links");
+    // [P4.D146] Zeta is the sixth — the planted-retired-mode arm.
+    assert_eq!(rows("projects").len(), 6, "6 project rows");
+    assert_eq!(rows("points").len(), 6, "6 mount-point rows");
+    assert_eq!(rows("projectLinks").len(), 6, "6 project→store links");
 
     // The minimal project's properties.json = the five materialized defaults,
     // in schema order, with backgroundDisplayMode 'theme' (Beta after the
@@ -496,12 +497,33 @@ fn projects_tier2_matches_oracle() {
     // the optional keys (color / defaultImageProfileId / answerConfirmationOverride /
     // backgroundDisplayMode) preserved through the RMWs and interleaved with the
     // defaults in schema order.
+    //
+    // [P4.D146 / v4 70505745a] Alpha's create asks for `backgroundDisplayMode:
+    // 'project'` and lands **'theme'**: writes route through the properties
+    // parse, which coerces the retired modes, so a retired value can no longer
+    // reach disk at all. This literal was `"project"` before the fix — it is the
+    // write-side proof, pinned by bytes.
     let alpha_props =
-        "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"aaaaaaaa-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#778899\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"defaultImageProfileId\": \"11111111-1111-4111-8111-111111111111\",\n  \"answerConfirmationOverride\": \"ON\",\n  \"backgroundDisplayMode\": \"project\"\n}";
+        "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [\n    \"aaaaaaaa-0000-4000-8000-000000000002\"\n  ],\n  \"color\": \"#778899\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"defaultImageProfileId\": \"11111111-1111-4111-8111-111111111111\",\n  \"answerConfirmationOverride\": \"ON\",\n  \"backgroundDisplayMode\": \"theme\"\n}";
     assert!(
         docs.iter()
             .any(|d| d["content"] == Value::String(alpha_props.into())),
         "Alpha RMW-preserved properties.json not found; documents: {docs:?}"
+    );
+
+    // [P4.D146 / v4 70505745a] The READ side. Zeta's `properties.json` was
+    // PLANTED on disk carrying `"backgroundDisplayMode": "static"` — the shape a
+    // pre-4.9 instance is full of, and one the post-fix create can no longer
+    // produce — then touched with an unrelated `icon` patch. The write overlay's
+    // read-modify-write seeds from the PARSED bag, so what lands back on disk is
+    // the normalized 'theme'. Without the coercion in `parse_properties` the
+    // planted `"static"` would have been read back and rewritten verbatim.
+    let zeta_props =
+        "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [],\n  \"color\": \"#dd0000\",\n  \"icon\": \"anchor\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"backgroundDisplayMode\": \"theme\"\n}";
+    assert!(
+        docs.iter()
+            .any(|d| d["content"] == Value::String(zeta_props.into())),
+        "Zeta planted-retired-mode properties.json did not normalize; documents: {docs:?}"
     );
 
     // ── P4.D29: the refusal arms wrote NOTHING ────────────────────────────

@@ -417,9 +417,13 @@ const PROJECT_UPDATE_SCHEMA: &[(&str, FieldRule, bool)] = &[
         FieldRule::Enum(&["ON", "OFF"]),
         true,
     ),
+    // [70505745a] Narrowed to the two modes that work; `project` and `static`
+    // are refused here (the schema is the write gate, not a coercion point —
+    // the coercion lives in `ProjectEntity::parse_properties` so a pre-4.9
+    // import or restore still lands on a valid value).
     (
         "backgroundDisplayMode",
-        FieldRule::Enum(&["latest_chat", "project", "static", "theme"]),
+        FieldRule::Enum(&["latest_chat", "theme"]),
         false,
     ),
 ];
@@ -937,9 +941,10 @@ pub async fn project_tool_settings_update(
 // ===========================================================================
 
 /// v4 `handleGetBackground`: URL resolution by `backgroundDisplayMode`. BARE
-/// envelope. `theme` (or any unresolvable mode) → `{ backgroundUrl: null,
-/// displayMode }`; `static`/`project` resolve their image id; `latest_chat`
-/// scans project chats (desc updatedAt) for the first with a story background.
+/// envelope. The mode is NORMALIZED first ([70505745a]), so `theme` — including
+/// every retired or unrecognised stored value — answers
+/// `{ backgroundUrl: null, displayMode: 'theme' }`; `latest_chat` scans project
+/// chats (desc updatedAt) for the first with a story background.
 pub fn project_background_get(db: &Db, project_id: &str) -> Response {
     use crate::clock::iso_to_ms;
     let pid = project_id.to_string();
@@ -948,12 +953,17 @@ pub fn project_background_get(db: &Db, project_id: &str) -> Response {
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
             return Ok(None);
         };
-        let mode = project
-            .get("backgroundDisplayMode")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .unwrap_or("theme")
-            .to_string();
+        // [70505745a] `normalizeBackgroundDisplayMode(project.backgroundDisplayMode)
+        // ?? 'theme'`. A project stored in a mode retired in 4.9 ('project',
+        // 'static') reads back as 'theme'; the properties schema coerces it, and
+        // this guards a raw row that bypassed the overlay. (v4's pre-fix
+        // `|| 'theme'` truthiness and this normalize agree on the empty string:
+        // `''` is unrecognised, so it too becomes 'theme'.)
+        let mode = crate::db::projects::normalize_background_display_mode(
+            project.get("backgroundDisplayMode"),
+        )
+        .unwrap_or("theme")
+        .to_string();
         let files = FilesRepository::new(main);
         let by_id = |img: Option<&str>| -> Result<Option<String>, DbError> {
             match img {
@@ -961,25 +971,12 @@ pub fn project_background_get(db: &Db, project_id: &str) -> Response {
                 _ => Ok(None),
             }
         };
+        // [70505745a] The `'static'` and `'project'` resolution branches are
+        // DELETED, not merely unreachable: `'project'` read a field only the
+        // `'latest_chat'` path ever wrote, and `'static'` read a field nothing
+        // anywhere wrote. Both image-id fields are KEPT — `storyBackgroundImageId`
+        // is still written for a project in Latest chat mode.
         let body = match mode.as_str() {
-            "static" => match by_id(
-                project
-                    .get("staticBackgroundImageId")
-                    .and_then(Value::as_str),
-            )? {
-                Some(url) => json!({ "backgroundUrl": url, "displayMode": mode }),
-                None => json!({ "backgroundUrl": null, "displayMode": mode }),
-            },
-            "project" => {
-                match by_id(
-                    project
-                        .get("storyBackgroundImageId")
-                        .and_then(Value::as_str),
-                )? {
-                    Some(url) => json!({ "backgroundUrl": url, "displayMode": mode }),
-                    None => json!({ "backgroundUrl": null, "displayMode": mode }),
-                }
-            }
             "latest_chat" => {
                 let mut chats: Vec<Value> = project_chats(main, &pid)?
                     .into_iter()
