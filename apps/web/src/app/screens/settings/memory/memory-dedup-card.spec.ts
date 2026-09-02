@@ -139,3 +139,25 @@ describe('MemoryDedupCard', () => {
     expect(toasts.showSuccess).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * P4.69 — the slider readout beside the similarity slider. v4
+ * `components/tools/memory-dedup-card.tsx:133` renders
+ * `Similarity Threshold: {threshold.toFixed(2)}` — the colon and the TWO
+ * decimals are the string; a bare `0.9` would read wrong. P4.D142 recorded it
+ * as unpinned when `.qt-range` was adopted here.
+ */
+describe('MemoryDedupCard — the slider readout (P4.69, v4 memory-dedup-card.tsx:133)', () => {
+  it('reads "Similarity Threshold: N.NN", two decimals (v4 :133 toFixed(2))', async () => {
+    const stub = stubClient(async () => preview({ totalRemoved: 1 }));
+    const fixture = await mount(stub);
+    const slider = (fixture.nativeElement as HTMLElement).querySelector(
+      'input[type="range"]',
+    ) as HTMLInputElement;
+    expect(slider).not.toBeNull();
+    // Whatever the default is, it is rendered to exactly two decimals.
+    expect(text(fixture).replace(/\s+/g, ' ')).toContain(
+      `Similarity Threshold: ${Number(slider.value).toFixed(2)}`,
+    );
+  });
+});

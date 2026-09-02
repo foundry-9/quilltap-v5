@@ -1986,3 +1986,44 @@ describe('ProfileModal (the fallback understudy picker)', () => {
     );
   });
 });
+
+/**
+ * P4.69 — the two slider readouts in the Model Parameters block. v4
+ * `ProfileModal.tsx:756` renders `Temperature ({form.formData.temperature})`
+ * and `:793` `Top P ({form.formData.topP})` — the value in PARENTHESES beside
+ * the label, unrounded (v4 prints the raw form value, so `0.7` stays `0.7`).
+ * P4.D142 recorded both as unpinned when `.qt-range` was adopted here.
+ */
+describe('ProfileModal — the sampling slider readouts (P4.69, v4 ProfileModal.tsx:756/:793)', () => {
+  const labelFor = (fixture: ComponentFixture<ProfileModal>, id: string): string =>
+    ((fixture.nativeElement as HTMLElement)
+      .querySelector(`label[for="${id}"]`)
+      ?.textContent ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  it('reads "Temperature (N)" and "Top P (N)" off the live form values', async () => {
+    const fixture = await render({});
+    const temp = (fixture.nativeElement as HTMLElement).querySelector(
+      '#qt-pf-temp',
+    ) as HTMLInputElement;
+    const topP = (fixture.nativeElement as HTMLElement).querySelector(
+      '#qt-pf-topp',
+    ) as HTMLInputElement;
+    expect(temp, 'the temperature slider').not.toBeNull();
+    expect(topP, 'the top-p slider').not.toBeNull();
+    expect(labelFor(fixture, 'qt-pf-temp')).toBe(`Temperature (${temp.value})`);
+    expect(labelFor(fixture, 'qt-pf-topp')).toBe(`Top P (${topP.value})`);
+  });
+
+  it('the readout tracks the slider — v4 prints the raw form value, unrounded', async () => {
+    const fixture = await render({});
+    const temp = (fixture.nativeElement as HTMLElement).querySelector(
+      '#qt-pf-temp',
+    ) as HTMLInputElement;
+    temp.value = '1.7';
+    temp.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(labelFor(fixture, 'qt-pf-temp')).toBe('Temperature (1.7)');
+  });
+});

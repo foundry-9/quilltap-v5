@@ -508,6 +508,31 @@ database. Red-first: 79 of 98 rows failed before the fix. Two mutations pin it
 — removing the empty-string fold reddens 18 rows and nothing on the two routes
 where v4 deliberately does not fold; reading the last duplicate instead of the
 first reddens 33, all of them duplicate-key rows.
+#### 2026-09-02 — test(settings): pin the eight unpinned slider readout strings against v4's JSX
+
+_Versions: SPA 0.5.626._
+
+P4.D142 adopted `.qt-range` across twelve hosts and recorded the suffix strings
+beside those sliders as unpinned. Measured: eight readouts across five hosts had
+no assertion anywhere, and every one of them matches v4 today. Each is now
+pinned off the RENDERED label (not the template source, so an interpolation that
+stops interpolating fails too):
+
+- `Sliding Window Size (N messages)` — v4 `ContextCompressionSettings.tsx:171`
+- `History Compression Target (~N tokens)` — v4 `:201` (the tilde is v4's)
+- `Project Context Re-injection (every N messages)` — v4 `:231`, plus its
+  `(every never)` arm at 0: v4's ternary swaps only the inner string, so the
+  ungainly reading is deliberate and preserved
+- `Min Importance: N%` — v4 `housekeeping-dialog.tsx:173`, whole percent
+- `Detection Threshold (N.N)` — v4 `DangerousContentSettings.tsx:118`, one
+  decimal, which is what keeps a 0.1-stepped `0.7000000000000001` legible
+- `Similarity Threshold: N.NN` — v4 `memory-dedup-card.tsx:133`, two decimals
+- `Temperature (N)` / `Top P (N)` — v4 `ProfileModal.tsx:756`/`:793`, raw
+
+The Context Compression card had no readout spec at all and the other four
+hosts' specs never mentioned their suffix; that is the gap the P4.D142 note
+named.
+
 #### 2026-09-02 — fix(quick-hide): silence the invented has-dangerous probe warn, keep v4's tag-load one
 
 _Versions: SPA 0.5.625._

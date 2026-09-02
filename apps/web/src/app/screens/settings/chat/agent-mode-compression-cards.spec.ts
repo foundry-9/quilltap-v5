@@ -236,3 +236,61 @@ describe('ContextCompressionSettings', () => {
     );
   });
 });
+
+
+/**
+ * P4.69 — the three slider READOUTS beside the Context Compression sliders.
+ *
+ * P4.D142 adopted `.qt-range` across twelve hosts and recorded the suffix
+ * strings beside them as unpinned. These three are v4's, transcribed from
+ * `ContextCompressionSettings.tsx`:
+ *
+ *   :171  `({displayWindowSize} messages)`
+ *   :201  `(~{displayCompressionTarget} tokens)`
+ *   :231  `(every {n === 0 ? 'never' : `${n} messages`})`
+ *
+ * The parentheses, the tilde and the word "every" are v4's own — they are what
+ * make the number legible ("~800 tokens", "every 7 messages") and none of them
+ * was asserted anywhere. Read off the rendered label, not the template source,
+ * so an interpolation that stops interpolating fails too.
+ */
+describe('ContextCompressionSettings — the slider readouts (P4.69, v4 :171/:201/:231)', () => {
+  const labelFor = (fixture: ComponentFixture<unknown>, id: string): string =>
+    ((fixture.nativeElement as HTMLElement)
+      .querySelector(`label[for="${id}"]`)
+      ?.textContent ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  it('the window slider reads "(N messages)" (v4 :169-171)', async () => {
+    const stub = cardStub(compressionRow({ windowSize: 7 }));
+    const fixture = await mountCard(ContextCompressionSettings, stub);
+    expect(labelFor(fixture, 'compression-window')).toBe('Sliding Window Size (7 messages)');
+  });
+
+  it('the target slider reads "(~N tokens)" — the tilde is v4\'s (v4 :198-201)', async () => {
+    const stub = cardStub(compressionRow({ compressionTargetTokens: 1200 }));
+    const fixture = await mountCard(ContextCompressionSettings, stub);
+    expect(labelFor(fixture, 'compression-target')).toBe(
+      'History Compression Target (~1200 tokens)',
+    );
+  });
+
+  it('the interval slider reads "(every N messages)" (v4 :228-231)', async () => {
+    const stub = cardStub(compressionRow({ windowSize: 3, projectContextReinjectInterval: 9 }));
+    const fixture = await mountCard(ContextCompressionSettings, stub);
+    expect(labelFor(fixture, 'compression-interval')).toBe(
+      'Project Context Re-injection (every 9 messages)',
+    );
+  });
+
+  it('...and reads "(every never)" at 0 — v4 substitutes the WORD, keeping "every" (v4 :231)', async () => {
+    // v4's ternary swaps only the inner string, so the rendered text really is
+    // "(every never)". Ungainly, and deliberately preserved.
+    const stub = cardStub(compressionRow({ projectContextReinjectInterval: 0 }));
+    const fixture = await mountCard(ContextCompressionSettings, stub);
+    expect(labelFor(fixture, 'compression-interval')).toBe(
+      'Project Context Re-injection (every never)',
+    );
+  });
+});

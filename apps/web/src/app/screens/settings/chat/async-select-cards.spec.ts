@@ -360,3 +360,48 @@ describe('DangerousContentSettings', () => {
     expect(bag['scanTextChat']).toBe(true);
   });
 });
+
+/**
+ * P4.69 — the slider readout beside the detection-threshold slider. v4
+ * `DangerousContentSettings.tsx:118` renders
+ * `Detection Threshold ({dangerSettings.threshold.toFixed(1)})` — ONE decimal,
+ * in parentheses. The single decimal is the whole point: the slider steps by
+ * 0.1, and a raw `0.7000000000000001` (which is what 0.1-stepped float
+ * arithmetic produces) would otherwise reach the label. P4.D142 recorded it as
+ * unpinned when `.qt-range` was adopted here.
+ *
+ * The readout only exists once the mode leaves OFF (v4 `:113 isEnabled &&`).
+ */
+describe('DangerousContentSettings — the threshold readout (P4.69, v4 :118)', () => {
+  const labelText = (fixture: ComponentFixture<unknown>): string =>
+    ((fixture.nativeElement as HTMLElement)
+      .querySelector('label[for="danger-threshold"]')
+      ?.textContent ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  it('reads "Detection Threshold (N.N)" — one decimal (v4 :118 toFixed(1))', async () => {
+    const s = stub(dangerRow({ mode: 'DETECT_ONLY', threshold: 0.7 }), [DANGER_TEXT]);
+    const fixture = await mount(DangerousContentSettings, s);
+    expect(labelText(fixture)).toBe('Detection Threshold (0.7)');
+  });
+
+  it('rounds a float-arithmetic threshold to v4\'s one decimal', async () => {
+    // 0.1-stepped arithmetic really does store values like this; v4's toFixed(1)
+    // is what keeps the label legible.
+    const s = stub(
+      dangerRow({ mode: 'DETECT_ONLY', threshold: 0.7000000000000001 }),
+      [DANGER_TEXT],
+    );
+    const fixture = await mount(DangerousContentSettings, s);
+    expect(labelText(fixture)).toBe('Detection Threshold (0.7)');
+  });
+
+  it('is absent entirely while the mode is OFF (v4 :113 `isEnabled &&`)', async () => {
+    const s = stub(dangerRow(), [DANGER_TEXT]);
+    const fixture = await mount(DangerousContentSettings, s);
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('label[for="danger-threshold"]'),
+    ).toBeNull();
+  });
+});

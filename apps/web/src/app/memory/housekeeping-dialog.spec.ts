@@ -145,3 +145,25 @@ describe('HousekeepingDialog', () => {
     expect(fixture.nativeElement.textContent).toContain('preview boom');
   });
 });
+
+/**
+ * P4.69 — the slider readout beside the importance slider. v4
+ * `components/memory/housekeeping-dialog.tsx:173` renders
+ * `Min Importance: {(minImportance * 100).toFixed(0)}%` — a WHOLE-number
+ * percentage with the `%` sign, off a 0..1 stored value. P4.D142 recorded it as
+ * unpinned when `.qt-range` was adopted here.
+ */
+describe('HousekeepingDialog — the slider readout (P4.69, v4 housekeeping-dialog.tsx:173)', () => {
+  it('reads "Min Importance: N%" — whole percent, no decimals (v4 :173 toFixed(0))', () => {
+    const fixture = render(async () => ({}));
+    const slider = (fixture.nativeElement as HTMLElement).querySelector(
+      'input[type="range"]',
+    ) as HTMLInputElement;
+    expect(slider).not.toBeNull();
+    const label = ((fixture.nativeElement as HTMLElement).textContent ?? '').replace(/\s+/g, ' ');
+    const expected = (Number(slider.value) * 100).toFixed(0);
+    expect(label).toContain(`Min Importance: ${expected}%`);
+    // The percent is whole: no "42.5%" can satisfy the line above by accident.
+    expect(/Min Importance: \d+%/.test(label)).toBe(true);
+  });
+});
