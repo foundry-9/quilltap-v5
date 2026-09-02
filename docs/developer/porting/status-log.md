@@ -100831,7 +100831,16 @@ specs never mentioned their suffix.
 
 ### The gate
 
-`npm run lint` (the qt-class guard), `npm test` (full, no filter), `npm run
-build`, and the full Playwright suite against the final build — numbers in the
-report. No crate file touched, so no Rust gate. Versions: SPA 0.5.623 → 0.5.628;
-no crate bumped.
+- `npm run lint` — **948 qt-* classes defined, every guarded reference
+  resolves**; exit 0.
+- `npm test` (full, no filter) — **376 test files / 5,911 tests, 0 failed**
+  (5,893 → 5,911: +18 this lane).
+- `npm run build` — clean, `Application bundle generation complete`.
+- Full Playwright against the final build — **270 passed / 0 failed / 0
+  skipped (8.1m)**. The suite grew 269 → 270 with the new danger-avatar beat,
+  and **the standing store-probe SKIP is gone**: that park was the
+  component-transfer beat this lane un-parked, so the run is now zero-skip.
+
+No crate file, harness file, or `Cargo.*` touched (verified by
+`git diff --name-only main...HEAD`), so no Rust gate applies. Versions: SPA
+0.5.623 → 0.5.628; no crate bumped.
