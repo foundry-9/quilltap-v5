@@ -23,6 +23,7 @@
 //! the purpose-named questions:
 //!
 //!   - "Take the uncensored routes right now?" → [`should_use_uncensored_route`]
+//!     (or [`concierge_state_uses_uncensored_route`], given a derived state)
 //!   - "Paint danger styling in the UI?"        → [`should_show_danger_styling`]
 //!   - "May the classifier run at all?"          → [`is_classifier_on_duty`]
 //!
@@ -122,6 +123,19 @@ pub fn get_concierge_state(chat: Option<&Value>) -> ConciergeState {
     }
 }
 
+/// Is this state on the uncensored row of the 2×2 — `Flagged` (the classifier's
+/// verdict) or `Uncensored` (the operator's assertion)? (v4
+/// `conciergeStateUsesUncensoredRoute`, `c43d3b1b4`.)
+///
+/// The state-only twin of [`should_use_uncensored_route`], for callers that
+/// already hold a derived state (list payloads carry `conciergeState` rather
+/// than the raw pair) and would otherwise have to fabricate a chat-like to ask
+/// the question. This is THE one place that says which states take the
+/// uncensored route; [`should_use_uncensored_route`] delegates to it.
+pub fn concierge_state_uses_uncensored_route(state: ConciergeState) -> bool {
+    state == ConciergeState::Flagged || state == ConciergeState::Uncensored
+}
+
 /// Should this chat take the Concierge's uncensored routes right now? (v4
 /// `shouldUseUncensoredRoute`.)
 ///
@@ -130,8 +144,7 @@ pub fn get_concierge_state(chat: Option<&Value>) -> ConciergeState {
 /// this everywhere the Concierge would reroute providers, pick candid over
 /// concealed prompt guidance, or select an uncensored cheap-LLM.
 pub fn should_use_uncensored_route(chat: Option<&Value>) -> bool {
-    let s = get_concierge_state(chat);
-    s == ConciergeState::Flagged || s == ConciergeState::Uncensored
+    concierge_state_uses_uncensored_route(get_concierge_state(chat))
 }
 
 /// Should the UI paint this chat with danger styling (red rings, warning
@@ -251,6 +264,40 @@ mod tests {
                 is_classifier_on_duty(c),
                 *on_duty,
                 "onDuty for {over:?}/{danger:?}"
+            );
+        }
+    }
+
+    /// v4 `chat-override.test.ts` `describe('conciergeStateUsesUncensoredRoute')`
+    /// (`c43d3b1b4`): the bottom row of the 2×2 and nothing else, plus the
+    /// `it.each(TABLE)` agreement claim — the state-only twin answers exactly
+    /// what the chat-shaped predicate answers, row for row.
+    #[test]
+    fn state_only_twin_is_the_bottom_row_and_agrees_with_the_chat_predicate() {
+        assert!(!concierge_state_uses_uncensored_route(
+            ConciergeState::Monitored
+        ));
+        assert!(!concierge_state_uses_uncensored_route(
+            ConciergeState::Vouched
+        ));
+        assert!(concierge_state_uses_uncensored_route(
+            ConciergeState::Flagged
+        ));
+        assert!(concierge_state_uses_uncensored_route(
+            ConciergeState::Uncensored
+        ));
+
+        for (over, danger, state, route, _, _) in TABLE {
+            assert_eq!(
+                concierge_state_uses_uncensored_route(*state),
+                *route,
+                "state twin for {over:?}/{danger:?}"
+            );
+            let chat = chat_of(*over, *danger);
+            assert_eq!(
+                concierge_state_uses_uncensored_route(get_concierge_state(Some(&chat))),
+                should_use_uncensored_route(Some(&chat)),
+                "twin agrees with chat predicate for {over:?}/{danger:?}"
             );
         }
     }

@@ -335,6 +335,27 @@ with one participant per status, and a chat where everyone has left.
 `cost_background_routes_equivalence` gains two arms and
 `title_update_tier3_equivalence` two cases, all four measured against v4's
 real code at the `70505745a` pin.
+#### 2026-09-02 — feat(concierge): name the uncensored row once, in a state-only predicate
+
+_Versions: core 0.0.737, harness 0.0.631._
+
+Ports the predicate half of v4 `c43d3b1b4` (PR #46). `concierge_state_uses_
+uncensored_route(state)` is new — the state-only twin of `should_use_uncensored_
+route`, for callers that already hold a derived `ConciergeState` (the chat-list
+payloads this lane goes on to change carry `conciergeState`, not the raw
+`isDangerousChat` / `conciergeOverride` pair) and would otherwise have to
+fabricate a chat-like to ask the question. It is now THE one place naming which
+states take the uncensored route; `should_use_uncensored_route` delegates to it.
+
+No behaviour change: the disjunction moved, it did not change. The differential
+proves that directly — inlining it back leaves `danger_resolver_equivalence`
+green, so the new function is pinned by its own arms rather than by the old
+ones. `harness/oracle/cases/danger-resolver.ts` gained v4's `it.each(TABLE)`
+agreement claim on every override row (`stateUsesUncensoredRoute`, driven
+through `getConciergeState(chat)`) plus four `stateRoute` rows that drive the
+twin on each literal state with no chat anywhere, and the Rust family asserts
+both. A shape guard fails the run if a stale oracle carries fewer than the four
+`stateRoute` rows.
 
 #### 2026-09-02 — docs(orders): the `6d2a50382` drift catch-up round — five work orders (P4.D143–P4.D147)
 

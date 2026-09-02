@@ -2,6 +2,13 @@
  * Oracle case (W4.2 dangerous-content): the mode resolver + the per-chat
  * override truth table. Pure functions — exact equality.
  *
+ * P4.D143 (v4 `c43d3b1b4`) adds the state-only twin
+ * `conciergeStateUsesUncensoredRoute` — THE one place naming the uncensored row,
+ * which `shouldUseUncensoredRoute` now delegates to. Every override row carries
+ * it (driven through `getConciergeState(chat)`, v4's own `it.each(TABLE)`
+ * agreement claim), and a `stateRoute` row drives it DIRECTLY on each of the
+ * four literal states — the arm no chat-shaped case can reach.
+ *
  * P4.D141 (v4 `60e3c4a0a`) widened both halves to the four-state control: the
  * override table now asks all THREE purpose-named questions over the full
  * stored-field 2x2 (v4's own `chat-override.test.ts` TABLE, row for row), and
@@ -12,8 +19,8 @@
  *   lib/services/dangerous-content/resolver.service.ts:
  *     resolveDangerousContentSettings
  *   lib/services/dangerous-content/chat-override.ts:
- *     getConciergeState, shouldUseUncensoredRoute, shouldShowDangerStyling,
- *     isClassifierOnDuty
+ *     getConciergeState, conciergeStateUsesUncensoredRoute,
+ *     shouldUseUncensoredRoute, shouldShowDangerStyling, isClassifierOnDuty
  *
  * Run from inside the server checkout:
  *   cd ~/source/quilltap-server
@@ -26,6 +33,7 @@ import {
 } from '@/lib/services/dangerous-content/resolver.service'
 import {
   getConciergeState,
+  conciergeStateUsesUncensoredRoute,
   shouldUseUncensoredRoute,
   shouldShowDangerStyling,
   isClassifierOnDuty,
@@ -135,8 +143,24 @@ for (const c of overrideCases) {
       chat: c.chat,
       state: getConciergeState(c.chat as any),
       uncensoredRoute: shouldUseUncensoredRoute(c.chat as any),
+      stateUsesUncensoredRoute: conciergeStateUsesUncensoredRoute(getConciergeState(c.chat as any)),
       dangerStyling: shouldShowDangerStyling(c.chat as any),
       classifierOnDuty: isClassifierOnDuty(c.chat as any),
+    }) + '\n'
+  )
+}
+
+// --- the state-only twin, driven directly on each literal state ---
+// v4 `chat-override.test.ts`: "is the bottom row of the 2x2 and nothing else".
+// No chat is involved, so this is the only place the four-state domain of
+// `conciergeStateUsesUncensoredRoute` is exercised on its own.
+for (const state of ['monitored', 'flagged', 'vouched', 'uncensored'] as const) {
+  process.stdout.write(
+    JSON.stringify({
+      kind: 'stateRoute',
+      id: `state-${state}`,
+      state,
+      usesUncensoredRoute: conciergeStateUsesUncensoredRoute(state),
     }) + '\n'
   )
 }

@@ -98290,3 +98290,56 @@ was also stale for six earlier absorbed rounds; `70505745a` does not touch it,
 so no sibling-lane content rode along). v4's CLAUDE.md chokepoint line has no
 v5 mirror row: `docs/v4/` mirrors only the `docs/` tree, not v4's CLAUDE.md —
 recorded, nothing to do.
+---
+
+## P4.D143 — chat lists carry the derived Concierge state, server half (v4 `c43d3b1b4`, PR #46)
+
+Lane branch `claude/concierge-list-marks-server-37a63f`; v4 oracle baseline
+`4622411fd`, lane pin **`c43d3b1b4`** (drift-ledger §5.1 detached worktree at
+`/tmp/qt-v4-pin-p4d143-c43d3b1b4`, three symlink classes). Freshness probe at
+lane start: PASS — checkout on `main`, tree clean, `6d2a50382..main` and
+`3a76b17df..bugfix` both empty. **Regen rule: PIN REQUIRED**; every oracle in
+this record was regenerated through the sweep driver with `--v4 "$PIN"`.
+
+### Unit 1 — the state-only predicate (`concierge_state_uses_uncensored_route`)
+
+v4 `chat-override.ts:86-100`: `conciergeStateUsesUncensoredRoute(state)` is new
+and `shouldUseUncensoredRoute` becomes
+`conciergeStateUsesUncensoredRoute(getConciergeState(chat))`. Ported into
+`services/dangerous_content/chat_override.rs` with v4's doc verbatim in the
+Rust register, the module header's question list gaining v4's added line, and
+the delegation landed exactly as v4 landed it.
+
+**The differential.** `harness/oracle/cases/danger-resolver.ts` now imports the
+fourth `chat-override` export and emits it two ways: `stateUsesUncensoredRoute`
+on every `override` row (through `getConciergeState(chat)` — v4's own
+`it.each(TABLE)` agreement claim, `chat-override.test.ts:65-76`), and four NEW
+`stateRoute` rows driving the twin on each literal state with no chat anywhere,
+the only arms that reach its four-state domain on its own terms.
+`danger_resolver_equivalence` asserts both plus v4's agreement equality
+(`stateUsesUncensoredRoute == uncensoredRoute`), and a shape guard asserts
+exactly four `stateRoute` rows so a stale oracle cannot silently take the new
+arm dark. Regenerated fresh from the pin: `stateRoute` × 4,
+`stateUsesUncensoredRoute` × 13, family green (2/2).
+
+**Mutation proofs (verified applied, reverted by file backup).**
+
+1. Break the twin (drop the `Uncensored` arm) with the delegation in place →
+   `override[uncensored-label-false] uncensoredRoute` reddens. Proves the twin
+   is genuinely load-bearing for the pre-existing arms once the delegation
+   lands.
+2. Break the twin AND inline the disjunction back into
+   `should_use_uncensored_route` (so the old arms stay correct) →
+   `override[uncensored-label-false] stateUsesUncensoredRoute` reddens **and
+   nothing else does**. This is the proof that the NEW assertion, not an old
+   one, pins the new function.
+3. Inline the disjunction back with the twin correct → the family stays
+   **GREEN** (2/2). Recorded as the order predicted: v4's change here is a
+   *delegation*, not a behaviour, and no differential can see it. What the new
+   arms buy is that the twin has its own comparand, so a future edit to it
+   cannot ride out on `shouldUseUncensoredRoute`'s coverage.
+
+Note on `stateRoute`'s marginal value: because the `override` corpus already
+reaches all four states, the four literal-state rows are redundant *as
+coverage* — they exist to keep v4's own standalone assertion, and their shape
+guard is what stops a stale regen from quietly dropping the whole new field.

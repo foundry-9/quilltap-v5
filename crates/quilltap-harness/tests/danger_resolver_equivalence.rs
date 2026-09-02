@@ -11,7 +11,10 @@
 //!      override rows carry v4's own `chat-override.test.ts` truth table and ask
 //!      all three purpose-named questions, and the resolve rows cover the new
 //!      `chat-uncensored` arm (incl. AUTO_ROUTE forced under a global OFF and
-//!      exempt-beats-uncensored).
+//!      exempt-beats-uncensored). P4.D143 (v4 `c43d3b1b4`) adds the state-only
+//!      twin `conciergeStateUsesUncensoredRoute` — asserted per override row
+//!      (through `getConciergeState`, v4's `it.each(TABLE)` agreement claim) and
+//!      on each of the four literal states via the `stateRoute` rows.
 //!   2. `QT_ORACLE_DANGER_MANUAL_FLIP` + `QT_FIXTURE_MANUAL_FLIP` — the tier-2
 //!      NDJSON from `harness/oracle/cases/danger-manual-flip.test.ts` (drives
 //!      v4's REAL `applyConciergeFlip`) + the baked seed fixture. The ported
@@ -45,8 +48,8 @@ use quilltap_core::db::chat_settings::DangerousContentSettings;
 use quilltap_core::db::runtime::Db;
 use quilltap_core::db::{chats_read, dump_table_json_conn};
 use quilltap_core::services::dangerous_content::chat_override::{
-    get_concierge_state, is_classifier_on_duty, should_show_danger_styling,
-    should_use_uncensored_route, ConciergeState,
+    concierge_state_uses_uncensored_route, get_concierge_state, is_classifier_on_duty,
+    should_show_danger_styling, should_use_uncensored_route, ConciergeState,
 };
 use quilltap_core::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
@@ -102,6 +105,19 @@ enum PureRow {
         danger_styling: bool,
         #[serde(rename = "classifierOnDuty")]
         classifier_on_duty: bool,
+        /// P4.D143 (v4 `c43d3b1b4`): the state-only twin, driven through
+        /// `getConciergeState(chat)` — v4's own `it.each(TABLE)` agreement claim.
+        #[serde(rename = "stateUsesUncensoredRoute")]
+        state_uses_uncensored_route: bool,
+    },
+    /// P4.D143: `conciergeStateUsesUncensoredRoute` on a literal state, with no
+    /// chat anywhere — the only rows that exercise its four-state domain alone.
+    #[serde(rename = "stateRoute")]
+    StateRoute {
+        id: String,
+        state: String,
+        #[serde(rename = "usesUncensoredRoute")]
+        uses_uncensored_route: bool,
     },
 }
 
@@ -114,6 +130,7 @@ fn danger_resolver_pure_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
 
     let mut count = 0usize;
+    let mut state_route_rows = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: PureRow = serde_json::from_str(line).expect("parse pure row");
         match row {
@@ -138,6 +155,7 @@ fn danger_resolver_pure_matches_oracle() {
                 uncensored_route,
                 danger_styling,
                 classifier_on_duty,
+                state_uses_uncensored_route,
             } => {
                 assert_eq!(
                     get_concierge_state(chat.as_ref()).as_str(),
@@ -164,11 +182,44 @@ fn danger_resolver_pure_matches_oracle() {
                 if state == "uncensored" {
                     assert!(uncensored_route && !danger_styling, "override[{id}] corner");
                 }
+                // P4.D143: the state-only twin, asked exactly as v4 asks it —
+                // through the derived state — and pinned to agree with the
+                // chat-shaped predicate on this row.
+                assert_eq!(
+                    concierge_state_uses_uncensored_route(get_concierge_state(chat.as_ref())),
+                    state_uses_uncensored_route,
+                    "override[{id}] stateUsesUncensoredRoute"
+                );
+                assert_eq!(
+                    state_uses_uncensored_route, uncensored_route,
+                    "override[{id}] twin agrees with shouldUseUncensoredRoute"
+                );
+            }
+            PureRow::StateRoute {
+                id,
+                state,
+                uses_uncensored_route,
+            } => {
+                let parsed = ConciergeState::from_wire(&state)
+                    .unwrap_or_else(|| panic!("stateRoute[{id}] unknown state {state}"));
+                assert_eq!(
+                    concierge_state_uses_uncensored_route(parsed),
+                    uses_uncensored_route,
+                    "stateRoute[{id}]"
+                );
+                state_route_rows += 1;
             }
         }
         count += 1;
     }
     assert!(count > 0, "resolver oracle looks empty");
+    // Shape guard: a stale oracle (regenerated before P4.D143 widened the case)
+    // would carry ZERO `stateRoute` rows and the twin's own domain would go
+    // untested while everything stayed green.
+    assert_eq!(
+        state_route_rows, 4,
+        "expected the four literal-state rows for conciergeStateUsesUncensoredRoute"
+    );
     eprintln!("OK: danger resolver/override matched oracle ({count} rows).");
 }
 
