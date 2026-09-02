@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(dogfood): the round-2 + P4.D138-follow-up walk record
+
+_Docs-only; no version bumps._
+
+Walk doc, findings rows (#108 FIXED, #109 RECORDED), status-log record and the
+CLAUDE.md status bullet for the 2026-09-02 pass on the Friday copy. 20 CLAUDE
+rows terminal: 18 PASS, one PARTIAL→FAIL(#109), one not attempted with reason.
+The round's whole 💸 queue is discharged, including the live HuggingFace LoRA
+query and the bug-112 boot recompute in both arms (with a free cross-app proof:
+v4 had already written the migration ledger row, so v5's completed-check
+honoured it). Four instrument errors are recorded alongside the results.
+
 #### 2026-09-02 — fix(images): the Provider select shows the profile's own provider (dogfood #108)
 
 _Versions: SPA 0.5.616; no crate touched._

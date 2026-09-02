@@ -97556,3 +97556,94 @@ shape P4.D141 recorded).
 to end — a declaring family's rows, the over-cap flag, a Query against
 HuggingFace with and without a token (the one arm no test may exercise), and
 a real generation carrying `lora_url_N`/`lora_scale_N` on the wire.
+
+## Dogfood pass — the round-2 drift catch-up + the P4.D138 follow-up (2026-09-02)
+
+Agent-driven, on the standing Friday copy (`~/qt-dogfood-friday`). Walk doc:
+`dogfood-walks/2026-09-02-round2-lora-concierge-pass.md`. **20 CLAUDE rows
+terminal — 18 PASS, 1 PARTIAL→FAIL, 1 not-attempted-with-reason; two findings,
+one FIXED and shipped (`b11dce1a`).**
+
+**The ledger was STALE at walk start.** `/driftcheck` ran first (`28245beb`):
+v4 had landed **one** commit past the baseline — `70505745a` *"fix(images):
+keep absent characters out of story backgrounds"*, a **PORT** row on two
+already-ported families (the story-background enqueue/back-fill spine, and the
+project background-display enum narrowing to `latest_chat | theme` with a
+coercing preprocessor). Not a convergence — v4's bugs doc is untouched. The
+regen rule flipped to **PIN REQUIRED** at `4622411fd`, and the walk carried a
+note that an apparent failure on either surface is that drift, not a v5 defect.
+
+**FIXED — finding #108: the image-profile editor named the wrong provider.**
+Editing `FLUXNSFWunlock` (a real NanoGPT profile **v4 wrote**) showed
+*Provider: OpenAI* beside the NanoGPT API key, the `flux-lora` model and a
+NanoGPT options panel — the dialog contradicting itself. Reproduced on
+`Grok Imagine 2`, and deterministic on a re-open with the list cached: **11 of
+14 profiles** on this instance. The Provider select's rows come from an `@for`
+over the async provider list while the value was bound `[value]="provider()"`;
+Angular applies the property binding before the option views exist, so the
+assignment matches nothing and the browser settles on row 0, and the binding
+never re-runs because `provider()` never changed. v4's React controlled select
+re-applies `value` on the render that fills the list. **The same file already
+carried the fix twice** — Model and Size use the post-render `afterRenderEffect`
+idiom with a comment naming this exact hazard. Display-only: `provider()` held
+`NANOGPT` throughout, proven by a live round trip. Fixed with a third
+`afterRenderEffect` keyed on `providers()`; four specs, mutation-proven (the
+naive binding reds exactly the two non-first-row arms); the live LoRA beat,
+which already re-opens a NanoGPT editor after a reload, gained the missing
+assertion. SPA 0.5.616; gate: ng 373/5786, build clean, `check-qt-classes`
+5/5 self-test + 945 classes, **full Playwright 261 passed / 0 failed / 1
+skipped**.
+
+**RECORDED — finding #109: #107's symptom survives its fix.** The
+`qt-markdown-field` host is now a block frame flush with its card (cause
+closed), but the toolbar's seventeen buttons still overhang **62.9 px on each
+side**. `.qt-formatting-toolbar` is byte-identical to v4's, so v4 overhangs
+too — it only hides it behind the frame's `overflow-hidden`, which v5
+deliberately omits so the pickers stay reachable. A v4-first filing.
+
+**💸 discharged.** The LoRA train end to end on a real NanoGPT profile,
+**including the live HuggingFace query** — the round's named owed proof:
+`shahtab/FLUXNSFWunlock` came back *Trained on `black-forest-labs/FLUX.1-dev`
+· Tagged a LoRA adapter · text-to-image · `aidmaNSFWunlock-FLUX-V0.2.safetensors`
+· 2 likes, 6,649 downloads*, with the base-model arm answering honestly
+(`isLora: false`, `gated: "auto"`) — plus the schema-driven options panel, a
+LoRA round trip preserving every sibling key, a real image at 13.4 s, and the
+write guard's Zod envelope (**the order's premise corrected: over-cap is a
+client-side FLAG, not a refusal; malformed entries are what refuse**). The
+**bug-112 boot recompute in both arms** — and a free cross-app proof, since v4
+had already written `recompute-chat-last-message-at-v1` (2026-08-30,
+`4.9.0-dev.103`, 608 chats), so v5's completed-check honoured **v4's own row**
+and left the 13 drifted chats alone; deleting the row made v5 heal exactly
+those 13 with v4's sentence shape, and a no-drift boot then wrote **no** row at
+all (the cross-app hazard closed by measurement). The activity date's largest
+real walk-back is **224 days** and the list renders and *sorts* by it. The
+**Concierge four-state** on real chats (`UNCENSORED` ×2, `OFF` ×10 already in
+the data): all four states, all **ten** manual sentences byte-exact including
+the U+2019, the PUT refusing a bogus state *and* an explicit `null` with 404
+beating 400 in both orders and nothing written, and the permanent latch gone.
+The **Uncensored route measured three ways** — extraction reroutes to the
+configured profile, the recall pre-pass does not, the stream keeps its seat —
+matching v4's call-site map exactly. The **themed sliders** (13 of 13 inputs
+carry `qt-range`; the rule and both tokens byte-identical to v4). The
+**clock-free mid-turn bubble**: 67 samples across a full three-character turn,
+count never above 1. The **dead-endpoint understudy walk**: `[Failover] Primary
+call failed… trigger="provider-error"` → `[Failover] Understudy answered
+kind="configured" failed_attempts_before=1`, the transcript's `CHAT_MESSAGE`
+logged against the understudy, and the toast reading *"DeepSeek V4 Flash Latest
+is standing in for Amy…"*. The **live curly-quote resolve**: three fold classes
+at once (curly quotes, em dash, ellipsis) matched from a plain-ASCII needle and
+reported as such.
+
+**Still owed:** the `[CheapLLM] Task failed` warn ordering (needs the cheap LLM
+itself to fail — deliberately not poisoned on a shared instance), the
+reroute-with-an-image + re-measured compression row, Pascal's group tier, the
+Brahma deep query, dedup/summaries, and the NanoGPT caching cost question
+(#101). A LoRA **wire-byte** look also remains: `llm_logs.request` is a
+pre-builder projection and `wire-tap.py` cannot tap HTTPS.
+
+**Four instrument errors were caught and recorded**, each by checking a second
+source rather than the screen: a `unicode_escape` false DIFFERS on a
+byte-identical string; a leaf-text scan counting the **composer** as a message
+bubble (a false PASS in waiting); **composition mode** swallowing two sends
+entirely (the DB, not the screen, exposed it); and a `--` needle for an em dash
+the fold table maps to one hyphen.

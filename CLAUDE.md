@@ -2584,6 +2584,51 @@ records THERE. Update this summary only when a phase or round completes.
   real NanoGPT profile end to end (a real Query against HuggingFace is the
   one arm no test may exercise). **Next: the owed dogfood pass** — see
   phase-4.md.
+- **The round-2 + P4.D138-follow-up dogfood pass RAN (2026-09-02,
+  agent-driven, on the Friday copy) — 20 rows, 18 PASS, ONE finding found and
+  FIXED, and the round's whole 💸 queue discharged.** Walk doc:
+  `dogfood-walks/2026-09-02-round2-lora-concierge-pass.md`; record in
+  `status-log.md`. **The ledger was STALE at walk start** — `/driftcheck` ran
+  first (`28245beb`) and found ONE commit past the baseline (`70505745a`
+  **PORT** — v4 keeps Absent/removed participants out of story backgrounds
+  and retires two project background modes); **the regen rule flips to PIN
+  REQUIRED** and the catch-up is the next candidate. **FIXED: finding #108** —
+  the image-profile editor named the wrong provider (a real NanoGPT profile
+  read *OpenAI* beside its NanoGPT key, model and options panel; **11 of 14**
+  profiles on real data). The Provider select's rows come from an `@for` over
+  an async list while the value was bound `[value]`, so Angular's binding
+  landed before the options existed and the browser settled on row 0 — the
+  controlled-select class **the same file had already fixed twice** for Model
+  and Size. v4's React re-applies `value` on the render that fills the list.
+  Display-only (a round trip wrote `NANOGPT` back), fixed with a third
+  `afterRenderEffect`, four specs mutation-proven, and the live LoRA beat
+  gaining the missing assertion (`b11dce1a`, SPA 0.5.616; Playwright
+  **261/0/1**). **RECORDED: #109** — #107's *cause* is closed but its
+  *symptom* survives: the formatting toolbar still overhangs by 62.9 px a
+  side, because `.qt-formatting-toolbar` is byte-identical to v4's and v4 only
+  hides it with the `overflow-hidden` v5 deliberately omits to keep the
+  pickers reachable; a **v4-first filing**. **💸 discharged:** the LoRA train
+  end to end incl. **the live HuggingFace query** (the round's named owed
+  proof) and the write guard's Zod envelope (the order's premise corrected —
+  over-cap is a client FLAG, malformed entries are what refuse); the bug-112
+  boot recompute in BOTH arms, with a **free cross-app proof** — v4 had
+  already written the ledger row, so v5 honoured it and healed nothing, then
+  healed exactly the measured 13 once it was removed, then wrote **no** row on
+  a no-drift boot; the four-state Concierge on real `UNCENSORED`/`OFF` chats
+  with all ten sentences byte-exact and the PUT's 404-beats-400 guard order;
+  the Uncensored route measured three ways (extraction reroutes, recall does
+  not, the stream keeps its seat — v4's call-site map exactly); the themed
+  sliders; the clock-free mid-turn bubble (67 samples, never above 1); the
+  dead-endpoint understudy walk with its stand-in toast; and the live
+  curly-quote resolve across three fold classes at once. **Still owed:** the
+  `[CheapLLM] Task failed` warn ordering, the reroute-with-an-image +
+  re-measured compression row, Pascal's group tier, the Brahma deep query,
+  dedup/summaries, #101, and a LoRA **wire-byte** look (`llm_logs.request` is
+  a pre-builder projection; `wire-tap.py` cannot tap HTTPS). **Four instrument
+  errors were caught and recorded** — a `unicode_escape` false DIFFERS, a
+  leaf-text scan counting the composer as a bubble, **composition mode**
+  swallowing two sends outright, and a `--` needle for an em dash the table
+  folds to one hyphen.
 - **Oracle baseline: `4622411fd` (2026-08-31, v4 main — the 4.9.0
   release-notes doc commit), adopted at the round-2 drift catch-up
   unification (2026-09-01); the LoRA train completed at the P4.D138
