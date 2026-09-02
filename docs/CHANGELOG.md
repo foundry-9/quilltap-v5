@@ -335,6 +335,21 @@ with one participant per status, and a chat where everyone has left.
 `cost_background_routes_equivalence` gains two arms and
 `title_update_tier3_equivalence` two cases, all four measured against v4's
 real code at the `70505745a` pin.
+#### 2026-09-02 — docs(concierge): the P4.D143 lane gate record
+
+_Versions: harness 0.0.636._
+
+Records the lane's gate in `status-log.md` and fixes the one thing clippy caught
+in it: `clippy::doc_lazy_continuation` on the §D tripwire's doc comment, where a
+paragraph followed a list item without a blank line.
+
+Gate: fmt clean; clippy both feature sets exit 0; `cargo test --workspace` 481
+binaries / 2,668 passed / 0 failed / 1 ignored with the lane's env block, zero
+SKIP; the nine families by name through the sweep driver at the `c43d3b1b4` pin,
+9 ok. `provisioning_equivalence` is 3/3 at that pin, which measures what
+P4.D145's survey predicted: v4's new folders UNIQUE index does not reach the
+fresh-instance surface, because `generateDDL` cannot emit its `COALESCE(...)`.
+
 #### 2026-09-02 — test(concierge): v4's own trigger corpus becomes a differential
 
 _Versions: core 0.0.742, harness 0.0.635._

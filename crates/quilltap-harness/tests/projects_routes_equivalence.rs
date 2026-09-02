@@ -1199,6 +1199,7 @@ fn projects_routes_match_oracle() {
 ///   - `background_iota` answers the seeded file URL in v5 and `null` in v4, and
 ///     echoes `displayMode: "project"` where v4 now echoes `"theme"` (v4
 ///     stopped serving a retired mode's picture and reports the coerced mode).
+///
 /// Anything else — a different case, a different pair of values — falls through
 /// unmasked and reddens the family, which is the tripwire firing.
 fn background_mode_pending_p4d146(

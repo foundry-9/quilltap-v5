@@ -98609,3 +98609,84 @@ Both ratified with their file lists, per the order:
   Zero `lib/`/`app/`/`components/`/`plugins/`. v5's About-screen version string
   is derived from the crate versions, not transcribed from v4's.
   **NO-PORT-RATIFIED.**
+
+### Lane gate (P4.D143)
+
+Everything below ran from this worktree with the pin
+`/tmp/qt-v4-pin-p4d143-c43d3b1b4` (drift-ledger §5.1) through
+`harness/tools/recipe_sweep.py --run <family> --v4 "$PIN"`. The freshness probe
+was re-run before each regen batch; the checkout stayed on `main` and clean
+throughout.
+
+**The lane's families, by name, zero SKIP:**
+
+| family | result |
+|---|---|
+| `danger_resolver_equivalence` | 2/2 |
+| `danger_trigger_equivalence` (NEW) | 11 compared + 1 no-counterpart |
+| `home_routes_equivalence` (quilltap-web) | 2/2 incl. `check_key_order` |
+| `salon_reads_equivalence` | 15/15 incl. `list_all` key order (30 objects) |
+| `characters_reads_equivalence` | all cases OK |
+| `projects_routes_equivalence` | all cases OK (5 masked, §D) |
+| `message_finalizer_tier3_equivalence` | 1/1 |
+| `orchestrator_tier3_equivalence` (`TZ=UTC`) | 1/1 |
+| `provisioning_equivalence` | run, not changed — see below |
+
+**Changed-bytes greps over the regenerated NDJSONs (ledger §5.2 — a green
+regen is not coverage):**
+
+- `oracle-home.ndjson`: `conciergeState` × 108, `dangerCategories` × 108,
+  `isDangerousChat` × **0**;
+- `oracle-characters-reads.ndjson`: 6 / 6 / **0**;
+- `oracle-projects-routes.ndjson`: 9 / 9 / **0**;
+- `oracle-salon-reads.ndjson`: 10 / 14 / **4** — and the four are exactly the
+  four DETAIL bodies (`get_solo`, `get_group`, `get_impersonated`,
+  `get_vouched_keeps_raw_trio`). The lists carry the derived pair, the detail
+  keeps the raw trio; that split is the whole shape of `c43d3b1b4` and it is
+  visible in one grep.
+- `hasDangerous` × 4 (the four 200 bodies; the 400 arm carries `error`);
+- `oracle-danger-resolver.ndjson`: `stateRoute` × 4,
+  `stateUsesUncensoredRoute` × 13;
+- both tier-3 dumps: **zero** `CHAT_DANGER_CLASSIFICATION` rows for the new
+  operator chats (`f3…`, `f4…`, `dc000003…`), which is the fix.
+
+**The full gate.**
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — **exit 0**; and
+  again with `--features quilltap-core/native-transport` — **exit 0**. (The
+  first run caught one real thing: `clippy::doc_lazy_continuation` on the §D
+  tripwire's doc comment, fixed at source.)
+- `cargo test --workspace` with the lane's 14-variable oracle env block and
+  `TZ=UTC`: **481 test binaries / 2,668 passed / 0 failed / 1 ignored, exit 0,
+  zero `SKIP:` lines.** The binary count is the previous round's 479 plus this
+  lane's two new ones (`danger_trigger_equivalence`,
+  `chats_collection_route`). Each of the lane's families was confirmed to have
+  RUN by name inside that log, not merely to have been silent.
+- The by-name sweep at the pin
+  (`recipe_sweep.py --run-all --families <the nine> --v4 "$PIN"`):
+  **9 ok / 0 failed**, zero SKIP.
+- **`provisioning_equivalence` at the pin: 3/3 green — the recorded result the
+  order asked for.** This lane's pin has P4.D145's `a5df98b3f` (bug 114, the
+  folders UNIQUE index) as an ancestor, so the fresh-instance surface was
+  regenerated from a v4 that has it. It did not move — which is exactly what
+  P4.D145's own ordering survey predicted, on the grounds that v4's
+  `generateDDL` builds indexes from a plain column list and cannot emit the
+  index's `COALESCE(...)`. The prediction is now measured rather than argued.
+- No SPA gate: **this lane touches no `apps/web` file** (`git diff --stat
+  main..HEAD -- apps/web` is empty). The §A contract's SPA half is P4.D144's.
+
+**Versions:** core 0.0.742, harness 0.0.635, web 0.0.102; host / cli / tauri /
+SPA unchanged.
+
+**For the unifier.**
+
+1. Delete `background_mode_pending_p4d146` (and its one call in `check`) from
+   `projects_routes_equivalence` once P4.D146 is on the same branch, and
+   regenerate that family at the new baseline. Until then the five masked cases
+   are the §D tripwire, and it fails loudly if the divergence changes shape.
+2. Diff §A name-for-name against P4.D144's `core-contract.ts`: the four list
+   shapes above, and the `ChatDetail` shape that deliberately keeps the raw
+   trio.
+3. §H's SPA half (`hasQuickHideFeatures`' third arm) is P4.D144's, behind its
+   ACTIVATE-AT-UNIFY constant. This lane's verb and REST edge are live.
