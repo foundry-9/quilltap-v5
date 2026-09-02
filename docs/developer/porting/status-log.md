@@ -100339,3 +100339,59 @@ coverage.
 Recipe: unchanged and runnable through the sweep driver
 (`--show projects_routes_equivalence` restores it from the oracle case's own
 header).
+
+### Lane record — P4.70 unit 5: `ImageModelListing.loraSupport` (Tier 2 item 6)
+
+**Disposition: CARRIED FOR PARITY, no reader on either side. v5 is faithful; no
+v5 reader was invented.** Measured at the `6d2a50382` pin:
+
+  * v4 serves `loraSupport` on TWO surfaces — the `list-models` action as a
+    per-model MAP (`app/api/v1/image-profiles/route.ts:204-223`) and the
+    `options-schema` action as a single resolved object (`:286`);
+  * v4's ONLY client reader is `components/image-profiles/ImageProfileForm.tsx:215`,
+    `setLoraSupport(data.loraSupport ?? null)` — and that reads the
+    **options-schema** response, which it passes to the LoRA rows editor at
+    `:561`. **Nothing in v4 reads the list-models map**;
+  * v5 mirrors both. The SPA's `ImageModelListing.loraSupport`
+    (`image-profiles.api.ts:118`) is populated at `:149` and read nowhere; the
+    modal's `this.loraSupport.set(answer.loraSupport)`
+    (`image-profile-modal.ts:550`) reads the OPTIONS-SCHEMA answer
+    (`ImageOptionsSchemaResponse`, `api.ts:172/198`), exactly as v4's form does.
+
+So the unread field is unread in v4 too, and for the same reason. Its doc
+comment already says why the map is carried (absence from the map is the
+editor's "offer no LoRA rows" signal); nothing to port, nothing to remove.
+
+### Lane record — P4.70 close (gate + drift)
+
+**Gate (from the lane worktree, `CARGO_INCREMENTAL=0`):**
+
+  * `cargo fmt --all --check` — exit 0
+  * `cargo clippy --workspace --all-targets -- -D warnings` — exit 0
+  * the same with `--features quilltap-core/native-transport` — exit 0
+  * `cargo test --workspace --no-fail-fast` with the lane's 16-variable oracle
+    env block — **485 test binaries / 2,709 passed / 0 failed / 1 ignored,
+    ZERO `SKIP:` lines**, exit 0
+  * `cargo build --workspace --release` — exit 0
+
+**Families re-run by name, all green:** `image_generation_tier3_equivalence`,
+`image_generate_route_equivalence`, `image_gen_leaves_equivalence`,
+`projects_routes_equivalence`, `backup_uuid_remap_equivalence`, and the nine
+`system-data` consumers (through the sweep driver at the pin, plus
+`backup_uuid_remap` by hand).
+
+**Versions:** core 0.0.750 → **0.0.752**, harness 0.0.642 → **0.0.646**. No
+other crate touched.
+
+⚠ **v4 DRIFTED DURING THE LANE.** At lane start the §2 probe passed against the
+rewritten §1 (`main` at `303288fb4`, tree clean). At lane close `main` is
+**`02d4efa1b`** — "fix(memory): the turn-blocking distillation asks for the
+interactive budget (bug 115)" — a `lib/` change on an already-ported surface,
+i.e. a PORT candidate, not classified here (lanes never write the ledger).
+
+**This lane is unaffected and needs no re-run.** The regen rule was PIN
+REQUIRED from the first minute, and every oracle, fixture build and sweep in
+this lane ran from the lane-unique detached worktree
+`/tmp/qt-v4-pin-p4.70-6d2a50382`, verified still at `6d2a50382` at close. That
+is exactly the case §5.1's pin exists for. **The unifier must `/driftcheck`
+before moving the baseline.**
