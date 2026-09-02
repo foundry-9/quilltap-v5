@@ -1111,6 +1111,24 @@ fn system_import_execute_state_equivalence() {
     // built to fail one item per arm. Assert the case is present AND that it
     // still names all five — a payload edit that made an item importable would
     // otherwise leave the whole family silently unmeasured.
+    // [P4.70] The connection-profile leg measured NOTHING from v4 bug 68 until
+    // the `system-data-*` fixture was widened to the baseline vintage: both
+    // engines threw on every import, and the masked sentences agreed. This
+    // tripwire keeps the closure self-guarding — a fixture that regresses in
+    // vintage puts the count back to 0 on BOTH sides and this fails by name
+    // instead of going green-and-vacuous (the §3 unification review).
+    for arm in ["execute_overwrite_all", "execute_duplicate_all"] {
+        let row = cases
+            .iter()
+            .find(|c| c["name"] == arm)
+            .unwrap_or_else(|| panic!("the oracle is missing `{arm}` — regenerate it"));
+        let imported = row["result"]["imported"]["connectionProfiles"].as_i64();
+        assert!(
+            imported.is_some_and(|n| n >= 1),
+            "`{arm}` imported {imported:?} connection profiles — the leg has gone \
+             vacuous again (fixture vintage? see the header)"
+        );
+    }
     let named = cases
         .iter()
         .find(|c| c["name"] == "execute_named_item_failures")

@@ -142,6 +142,12 @@ async function main(): Promise<void> {
     { name: 'generate_count2', id: spec.profileId, body: { prompt: 'A tall waterfall in a canyon', chatId: CHAT_ORIENT, count: 2 } },
     // Missing profile → notFound('Image profile') 404.
     { name: 'generate_profile_404', id: BOGUS_PROFILE, body: { prompt: 'anything', count: 1 } },
+    // The route's OWN schema (`generateImageSchema.parse`), after the 404 and
+    // before the tool: `count` over its max → the context handler's
+    // `validationError` (400). v5 used to hand this to the tool's schema.
+    { name: 'generate_count_over_max', id: spec.profileId, body: { prompt: 'A lighthouse at night', count: 20 } },
+    // …and an EMPTY prompt fails `z.string().min(1)` at the same gate.
+    { name: 'generate_prompt_empty', id: spec.profileId, body: { prompt: '', count: 1 } },
   ];
 
   const lines: string[] = [];

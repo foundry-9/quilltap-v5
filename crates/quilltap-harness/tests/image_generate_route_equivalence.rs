@@ -364,6 +364,15 @@ fn norm_uuids_in_string(s: &str) -> String {
 
 fn norm(v: &Value) -> String {
     let mut v = v.clone();
+    // v4's `validationError` carries Zod's `details` issue array beside the
+    // fixed `error`; v5's `Validation error` envelope omits it everywhere (the
+    // autonomous-rooms / characters precedent), so the array is dropped from
+    // the comparand — the sentence and the status are what is pinned.
+    if v.get("error").and_then(Value::as_str) == Some("Validation error") {
+        if let Some(obj) = v.as_object_mut() {
+            obj.remove("details");
+        }
+    }
     canon_numbers(&mut v);
     let s = serde_json::to_string_pretty(&sorted(&v)).unwrap();
     norm_uuids_in_string(&s)
@@ -528,6 +537,24 @@ fn image_generate_route_matches_oracle() {
             name: "generate_profile_404",
             id: BOGUS_PROFILE.to_string(),
             prompt: "anything",
+            chat_id: None,
+            count: Some(1),
+        },
+        // The route's own `generateImageSchema` gate (v4 `route.ts:242`), which
+        // runs after the 404 and before the tool — the §3 unification review of
+        // the follow-ups round: v5 handed `count: 20` to the TOOL's schema and
+        // answered its fixed sentence where v4 answers `Validation error`.
+        Case {
+            name: "generate_count_over_max",
+            id: spec.profile_id.clone(),
+            prompt: "A lighthouse at night",
+            chat_id: None,
+            count: Some(20),
+        },
+        Case {
+            name: "generate_prompt_empty",
+            id: spec.profile_id.clone(),
+            prompt: "",
             chat_id: None,
             count: Some(1),
         },

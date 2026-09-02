@@ -644,6 +644,19 @@ pub async fn image_profile_generate(
         Err(e) => return internal(e),
     }
 
+    // v4 runs `generateImageSchema.parse(body)` HERE — after the 404, before the
+    // tool (`image-profiles/[id]/route.ts:236-242`): `prompt` is
+    // `z.string().min(1).max(4000)` and `count` is `z.int().min(1).max(10)`, and
+    // a ZodError is the context handler's `validationError` — 400
+    // `{"error":"Validation error", details}` (the `details` array is the
+    // sibling routes' recorded omission). Without this gate a `count: 20` fell
+    // through to the TOOL's own schema and answered its fixed sentence instead
+    // (the §3 unification review of the follow-ups round).
+    let prompt_units = crate::jsstr::utf16_len(prompt);
+    if !(1..=4000).contains(&prompt_units) || count.is_some_and(|n| !(1..=10).contains(&n)) {
+        return bad_request("Validation error");
+    }
+
     // v4's `generateImageSchema.count` prefaults to 1 (BEFORE the profile's
     // `parameters.n`), so a missing count pins n=1 exactly as v4 does.
     let input = ImageGenerationToolInput {
