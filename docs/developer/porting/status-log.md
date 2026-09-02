@@ -97432,3 +97432,127 @@ keeping its chats' dates; the four-state Concierge walk on a real chat with
 the sentences and the stored pair; an Uncensored chat taking the uncensored
 route with no danger paint; the sliders' themed accent; the mid-turn user
 bubble on a real multi-character turn; the LoRA editor once D138 finishes.
+
+---
+
+## Round record — the P4.D138 follow-up unification (units 5–7, the resumed LoRA-train lane), 2026-09-01
+
+**P4.D138 CLOSED WHOLE; the drift ledger's §3 is EMPTY; the oracle baseline
+STAYS `4622411fd`** (the §2 probe passed at survey and at the fast-forward —
+v4 HEAD is the baseline, checkout on `main`, clean). The three LoRA-train
+rows left PARTIAL by the round-2 unification earlier the same day are
+ABSORBED: `648d5c8aa` (unit 5), `84f33ce94`'s read side (unit 6),
+`2ece98c90`'s server half (unit 7).
+
+**Reconciliation.** `unify/p4d138-units-5-7` from main; the lane's three
+commits cherry-picked clean (base = main's tip; no version conflicts, no
+source overlap — the lane was the only one in flight). Versions: core
+0.0.735, harness 0.0.629, host 0.0.90, SPA 0.5.615; web/cli/tauri
+unchanged. The lane's 60 GB `target/` reclaimed after the pick.
+
+**What landed (verified against the resume list, not the record's word):**
+bug 110's family-first `apply_loras` with the preset outside the kept guard
+and the credential gated on weights (both asymmetry comments carried; the
+`image-dialects` corpus re-recorded at the tip — exactly the two predicted
+rows moved, `lora_weights_token_without_weights` stayed `{}`; `kept[0]`
+guarded on the way); bug 111's ERROR line with key NAMES only + v4's
+`Posting NanoGPT image request` DEBUG line, both pinned by the capturing
+`nanogpt_lora_wire_log` test (the `build_image_request_with_extras` seam so
+`apply_loras` runs once); the `list-models` `loraSupport` map (v4's RAW
+provider quirk carried and commented), the `options-schema` action with its
+registry-not-image gate and unresolved legacy alias (v4's), the NanoGPT
+detailed-catalog cache filled by the keyed listing in the IO layer (the
+unit-1 narrowing RETIRED at source — the augmentation arm with v4's four
+skips); the `LORA_SUPPORT_PENDING_P4D138_UNIT6` tripwire FIRED on the first
+run and is deleted (the round-2 wire's red-first evidence); the routes family
+44 → 58 → 69; the two SPA beats LIVE (`LORA_MODEL` → `flux-2-dev-lora`, a
+seeded NanoGPT key in global setup, three gesture defects fixed on their first
+run); the HuggingFace repo-id + lookup modules, the `lora-metadata` action
+behind `ready_lora_metadata`, the host's `ReqwestLoraMetadata` mapping
+timeout vs network as v4's error-NAME split does; the new 57-row
+`huggingface_lora_lookup_equivalence` carrying the canned wire per row and
+recording v4's REQUEST (URL + `Authorization`) as comparands; one recorded
+divergence (V8's own `SyntaxError` wording on a non-JSON body, both spellings
+asserted).
+
+**Carried items the resume did NOT take** — recorded in the order header and
+phase-4 candidate 2, not silently dropped: the `[Image LoRA]` warnings'
+`{context, chatId, jobId, profileId}` spread and the
+`tools.generate_image.style-options` anchor (log-only), the prompt-only
+`validate_image_generation_input` divergence row, the `image_gen_leaves`
+header's shared `/tmp/qt-oracle-stage`.
+
+### The §3 review (one reviewer over the three units against v4's real code at `648d5c8aa` / `84f33ce94` / `2ece98c90`; the verdict owned at the unify)
+
+**NO blocking findings.** The contract axis came back clean — §A's wire
+shapes byte-right, the cache's TTL/stamp-on-malformed semantics and four
+augmentation skips arm for arm, `apply_loras` line for line against
+`648d5c8aa`, the engine gate on the `ready_list_models` shape, a real 10 s
+per-request bound, no token in any log, no network from any test or beat.
+Five fidelity findings fixed on the unify branch (one commit):
+
+1. **The bug-111 failure line fired on an arm v4's does not.** v5 wrapped
+   BOTH the transport result and `parse_image_response`, so a NanoGPT 2xx
+   with a malformed body logged `NanoGPT image request failed` — v4 wraps
+   only `client.images.generate` and raises `Invalid response…` AFTER its
+   try/catch. The comment at the site claimed the opposite. Restructured so
+   the parse runs outside the logged match; a new capture arm
+   (`nanogpt_malformed_2xx_does_not_log_the_failure_line`) pins it.
+2. **Both log lines reported the raw model, not the posted one.** v4 logs
+   `params.model ?? 'hidream'`; an absent model read `""` in v5 on the one
+   line whose purpose is "exactly what was posted". Now `model_or_default`;
+   a second capture arm pins `model=hidream`.
+3. **The `new URL()` stand-in's doc claim was wrong in the direction it
+   called impossible.** Dot-segment resolution, `\` as a separator, host
+   percent-decoding and port validation all change candidates the repo-id
+   pattern ACCEPTS — `/./owner/name`, `/a/../owner/name`, `\owner\name`,
+   `huggingface%2Eco` resolve in v4, `:abc`/`:99999` throw — and none of the
+   32 corpus rows reached them. The four arms are implemented, six rows
+   added (32 → 38 repo rows, v4 agreeing on every one), the shape guard
+   tightened, the dot arm mutation-proven.
+4. **The host transport read the body before the status decided.** An
+   unreadable body on a 404 answered `network` where v4 (which reads the
+   body inside `response.json()`, after its gates) answers `not-found`, and
+   on a 2xx v4's own try yields `http`. Now a body-read failure after a
+   known status is not a thrown fetch.
+5. **The over-cap beat did not assert its title.** The flag check sat
+   inside `if (await warning.count())`, so the beat passed with zero flags;
+   both caps are chosen constants, so the assertion is unconditional now.
+   Also: the options-schema hook-throw arm recorded as a NO-PORT by
+   construction (v5's hook is infallible) — the one point-7 item with no
+   trace; the routes header named unit 7 as still pending.
+
+Recorded, not fixed (log-only or unreachable in the differential): the
+options-schema debug logs a bare `maxLoras` number where v4 logs an object;
+`source_length` is bytes where v4's is UTF-16 units; the host transport
+builds its own `reqwest::Client` with no `User-Agent`; the detailed-catalog
+write happens per listing page (last-page-wins only if NanoGPT ever
+paginates, which v4's single fetch does not handle either); a warm cache
+grows v4's model-list FALLBACK but not v5's static list (reachable only on a
+keyed listing failure after a success); `pickNanoGptKey`'s `toHaveCount(2)`
+breaks the day a second NanoGPT key is seeded.
+
+**Commit-boundary slip, recorded not rewritten:** the drift-ledger, phase-4
+and P4.D139-header edits were on disk when the review-fix commit's
+`git add -A` ran, so they ride `d382442f` rather than the docs commit; the
+D138 header, CHANGELOG, CLAUDE.md and this record are in the docs commit.
+Everything is on the branch and correct; only the boundary is off (the same
+shape P4.D141 recorded).
+
+### The gate (2026-09-01, on the unify branch)
+
+- **Oracles:** the nine affected families regenerated fresh from the v4
+  checkout at the baseline (no pin needed; probe green) through the sweep
+  driver: **9/9 ok, zero SKIP** (`image_profiles_routes`, `huggingface_lora_lookup` [regenerated again after the review's six rows — 38 repo rows, v4 agreeing on every one], `image_gen_leaves`, `image_dialects` [the committed corpus, re-recorded at the tip by the lane], `provider_registry`, the four image tier-3 families; `image_generation_tier3` regenerated LAST so the shared `/tmp/qt-imggen-*` pair matches its oracle, the route family snapshotted and run by name).
+- `cargo fmt --all --check` clean; clippy clean on BOTH feature sets;
+  release build clean.
+- **`cargo test --workspace`** with the env block (last round's 82 + the
+  HuggingFace family's; the imggen route var withheld for the shared-pair
+  collision, that family run by name): **479 test binaries / 2,665 passed / 0 failed / 1 ignored — exit 0** with the lane-scoped env block (the eight affected families' recipe vars plus the HuggingFace family; the untouched families' oracle vars deliberately withheld — their /tmp oracles were retired at the round-2 cleanup hours earlier and they were proven at that gate on main; a first run with the stale block failed `brahma_console_routes` on a missing file, the recorded "deleted-path reads like a regression" trap; cargo captures a passing test's SKIP line, so their silence is the capture, not a claim — the affected families' positive proof is the by-name sweep above).
+- **SPA:** `npm test` **373 files / 5,782 tests / 0 failed** (+ `check-qt-classes --self-test` 5/5); `npm run build` clean.
+- **Full Playwright** against the fresh build: **258 passed / 3 failed / 1 skipped** in the full run (the skip is the standing store-probe park; the two LoRA beats LIVE and green) — the three reds are `salon-documents-flow` ×2 and the `workspace-flow` terminal pop-out, Document-Mode/terminal surfaces this lane never touches, the same three the lane record classified, green twice earlier today in this session's full runs and **18/18 green re-run in isolation** — the standing full-suite intermittent class, recorded, not this lane.
+
+**💸 the dogfood queue gains:** the LoRA editor on a real NanoGPT profile end
+to end — a declaring family's rows, the over-cap flag, a Query against
+HuggingFace with and without a token (the one arm no test may exercise), and
+a real generation carrying `lora_url_N`/`lora_scale_N` on the wire.

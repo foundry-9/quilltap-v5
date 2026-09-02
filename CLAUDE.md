@@ -2558,11 +2558,36 @@ records THERE. Update this summary only when a phase or round completes.
   paint, the themed sliders, the clock-free mid-turn bubble. **Next: finish
   P4.D138 (units 5–7), then the owed dogfood pass.** Round record:
   `status-log.md`.
+- **The P4.D138 follow-up (units 5–7, the resumed LoRA-train lane): UNIFIED
+  on main (2026-09-01) — P4.D138 CLOSED WHOLE; the drift ledger's §3 is
+  EMPTY; the baseline stays `4622411fd`.** Bug 110's family-first
+  `apply_loras` with the corpus re-recorded at the tip (exactly the two
+  predicted rows moved) + bug 111's error-level request log and v4's debug
+  line, capture-pinned; the `list-models` `loraSupport` map, the
+  `options-schema` action and the NanoGPT detailed-catalog cache (the unit-1
+  narrowing RETIRED at source; the round-2 tripwire FIRED as designed and is
+  deleted; the two SPA LoRA beats LIVE — their first run corrected
+  `LORA_MODEL` to a declaring family and fixed three gestures); the
+  HuggingFace lookup + `lora-metadata` behind an engine gate and the host
+  transport, over a 57-row differential carrying the canned wire per row
+  (one recorded divergence: V8's own `SyntaxError` wording). **The §3 review:
+  NO blocking findings; five fidelity items fixed on the unify branch** —
+  the bug-111 line fired on the malformed-2xx arm v4 excludes (and said it
+  did not), both log lines printed the raw model where v4 posts `hidream`,
+  the `new URL()` stand-in mis-parsed four WHATWG shapes its doc called
+  unreachable (six corpus rows added, v4 agreeing; mutation-proven), the
+  host transport read the body before the status decided, the over-cap beat
+  passed with zero flags. Gate: 9/9 families fresh at the baseline zero
+  SKIP; **479 test binaries / 2,665 passed / 0 failed / 1 ignored — exit 0** with the lane-scoped env block (the eight affected families' recipe vars plus the HuggingFace family; the untouched families' oracle vars deliberately withheld — their /tmp oracles were retired at the round-2 cleanup hours earlier and they were proven at that gate on main; a first run with the stale block failed `brahma_console_routes` on a missing file, the recorded "deleted-path reads like a regression" trap; cargo captures a passing test's SKIP line, so their silence is the capture, not a claim — the affected families' positive proof is the by-name sweep above); clippy both feature sets; release build; ng 373 files /
+  5,782; full Playwright **258 passed / 3 failed / 1 skipped** in the full run (the skip is the standing store-probe park; the two LoRA beats LIVE and green) — the three reds are `salon-documents-flow` ×2 and the `workspace-flow` terminal pop-out, Document-Mode/terminal surfaces this lane never touches, the same three the lane record classified, green twice earlier today in this session's full runs and **18/18 green re-run in isolation** — the standing full-suite intermittent class, recorded, not this lane. Versions: core 0.0.736, harness 0.0.630,
+  host 0.0.91, SPA 0.5.615. 💸 the dogfood queue gains the LoRA editor on a
+  real NanoGPT profile end to end (a real Query against HuggingFace is the
+  one arm no test may exercise). **Next: the owed dogfood pass** — see
+  phase-4.md.
 - **Oracle baseline: `4622411fd` (2026-08-31, v4 main — the 4.9.0
   release-notes doc commit), adopted at the round-2 drift catch-up
-  unification (2026-09-01); the LoRA train's three ledger rows stay
-  PARTIAL (P4.D138 units 5–7) and are tracked by that order, not by
-  `/driftcheck`.**
+  unification (2026-09-01); the LoRA train completed at the P4.D138
+  follow-up the same day, so the ledger's §3 is EMPTY.**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

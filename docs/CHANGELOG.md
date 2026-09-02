@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-01 — chore(unify): the P4.D138 follow-up — the LoRA train's server units 5–7
+
+_Versions: core 0.0.736, harness 0.0.630, host 0.0.91, SPA 0.5.615; web/cli/tauri unchanged._
+
+The resumed LoRA-train lane unified onto main and P4.D138 CLOSES whole; the
+drift ledger's §3 is empty and the baseline stays `4622411fd`. Landed: bug
+110's family-first `apply_loras` (the `image-dialects` corpus re-recorded at
+the tip — exactly the two predicted rows moved) and bug 111's error-level
+request log plus v4's debug line, both capture-pinned; the `list-models`
+`loraSupport` map, the `options-schema` action and the NanoGPT detailed-
+catalog cache (the unit-1 narrowing retired at source; the round-2
+`LORA_SUPPORT_PENDING_P4D138_UNIT6` tripwire fired as designed and is
+deleted; the two SPA LoRA beats live after their first run corrected the
+model to a declaring family and fixed three gestures); the HuggingFace lookup
++ `lora-metadata` action behind an engine gate with the host transport, over
+a 57-row differential carrying the canned wire per row. The §3 review found
+nothing blocking and five fidelity items were fixed on the unify branch: the
+bug-111 line no longer fires on the malformed-2xx arm v4 excludes, both log
+lines report the posted model (`hidream` default), the `new URL()` stand-in
+gained the WHATWG arms its doc called unreachable (dot segments, backslash,
+host percent-decoding, port validation — six new corpus rows, v4 agreeing),
+the host transport decides status before a body read, and the over-cap beat
+asserts its flag unconditionally. Gate: nine affected families regenerated at
+the baseline 9/9 zero SKIP; fmt/clippy both feature sets; release build;
+**479 test binaries / 2,665 passed / 0 failed / 1 ignored — exit 0** with the lane-scoped env block (the eight affected families' recipe vars plus the HuggingFace family; the untouched families' oracle vars deliberately withheld — their /tmp oracles were retired at the round-2 cleanup hours earlier and they were proven at that gate on main; a first run with the stale block failed `brahma_console_routes` on a missing file, the recorded "deleted-path reads like a regression" trap; cargo captures a passing test's SKIP line, so their silence is the capture, not a claim — the affected families' positive proof is the by-name sweep above); ng test 373 files / 5,782; ng build clean; full Playwright
+**258 passed / 3 failed / 1 skipped** in the full run (the skip is the standing store-probe park; the two LoRA beats LIVE and green) — the three reds are `salon-documents-flow` ×2 and the `workspace-flow` terminal pop-out, Document-Mode/terminal surfaces this lane never touches, the same three the lane record classified, green twice earlier today in this session's full runs and **18/18 green re-run in isolation** — the standing full-suite intermittent class, recorded, not this lane.
+
 #### 2026-09-01 — feat(image): the HuggingFace LoRA lookup and the lora-metadata action (P4.D138 unit 7)
 
 _Versions: core 0.0.735, harness 0.0.629, host 0.0.90._
