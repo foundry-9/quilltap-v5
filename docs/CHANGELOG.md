@@ -335,6 +335,29 @@ with one participant per status, and a chat where everyone has left.
 `cost_background_routes_equivalence` gains two arms and
 `title_update_tier3_equivalence` two cases, all four measured against v4's
 real code at the `70505745a` pin.
+#### 2026-09-02 — test(concierge): v4's own trigger corpus becomes a differential
+
+_Versions: core 0.0.742, harness 0.0.635._
+
+The new `danger_trigger_equivalence` drives v4's REAL
+`triggerChatDangerClassification` over mocked repos (the DB-free
+route-guard-oracle idiom — no fixture, three `jest.doMock`s) and diffs the
+enqueue calls against v5's, which are read back out of `background_jobs`. v4's
+own `chat-danger-trigger.test.ts` is the corpus case for case, plus the two
+operator arms `c43d3b1b4` added and an empty-string context summary.
+
+Until now the gate chain was only ever inferred from the tier-3 spine dumps,
+which exercise one or two gates per op; here each gate has its own case.
+Reverting the on-duty guard reddens exactly the two operator arms whose label is
+`false` — the third, whose preserved label is `true`, is caught by the sticky
+check instead, which is the corpus showing its gates are independent.
+
+Two of v4's observables are recorded and NOT compared, because they have no v5
+counterpart: `chatSettingsLookedUp` and the `settings_lookup_throws` case both
+depend on v4 resolving the danger mode inside the function, where v5's callers
+compute it first. `trigger_chat_danger_classification` becomes `pub` so the
+family can drive it.
+
 #### 2026-09-02 — feat(concierge): the Quick-hide probe, on the uncensored route
 
 _Versions: core 0.0.741, harness 0.0.634, web 0.0.102._

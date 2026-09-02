@@ -1453,7 +1453,11 @@ pub(crate) async fn trigger_turn_memory_extraction(
 /// this port pins is the enqueue itself.
 ///
 /// The enqueue's own `findPendingForChat` dedupe is in [`super::queue_service`].
-pub(crate) async fn trigger_chat_danger_classification(
+///
+/// `pub` (not `pub(crate)`) so `danger_trigger_equivalence` can drive it
+/// directly against v4's own `chat-danger-trigger.test.ts` corpus; the two
+/// production callers are still the only ones in the crate.
+pub async fn trigger_chat_danger_classification(
     db: &Db,
     chat_id: &str,
     user_id: &str,

@@ -98548,3 +98548,64 @@ pre-`c43d3b1b4` spelling) → `has_dangerous_vouched_only` AND
 (2) Ask `should_show_danger_styling` instead → only `has_dangerous_uncensored`
 reddens, which is the 2×2's diagonal doing its job: Uncensored routes uncensored
 but is never painted as a hazard.
+
+### Unit 6 — `danger_trigger_equivalence`, v4's own trigger corpus as a differential (Tier 2)
+
+The gate chain had been inferable only from the tier-3 spine dumps, which
+exercise one or two gates per op. The new family gives each gate its own case.
+
+- **Oracle** `harness/oracle/cases/danger-trigger.test.ts` — the DB-free
+  route-guard-oracle idiom (memory note): no fixture, no database; three
+  `jest.doMock`s stand in for the repos, the resolver and the queue service, and
+  v4's REAL `triggerChatDangerClassification` runs against them. What it emits
+  is the ENQUEUE CALLS. v4's `__tests__/unit/services/chat-danger-trigger.test.ts`
+  is the corpus case for case (12 rows), plus `c43d3b1b4`'s two operator arms, a
+  third operator arm carrying a TRUE preserved label, and an empty-string
+  context summary.
+- **v5 side** `crates/quilltap-harness/tests/danger_trigger_equivalence.rs` —
+  seeds exactly v4's mocked chat into a fresh copy of the committed
+  `chat-scenario-main.db` and reads `background_jobs` back. **Fixture-vintage
+  note:** `chat-send-main.db` was the first choice and is UNUSABLE here —
+  `chats_read`'s SELECT names ~60 columns and that fixture predates
+  `turnSkippingEnabled`, so the read dies on `no such column`. The failure is
+  loud, but it is the reduced-DDL trap wearing a committed fixture's clothes.
+- **Recorded NO-COUNTERPART rows.** `chatSettingsLookedUp` is emitted on every
+  row and never compared, and `settings_lookup_throws` is skipped BY NAME —
+  both depend on v4 resolving the danger mode inside the function (unit 2's
+  recorded shape divergence). The oracle emits them so the divergence lives in
+  the NDJSON rather than in prose.
+- **Shape guards.** The run asserts the oracle carries the
+  `skips_when_operator_uncensored` row (a pre-`c43d3b1b4` regen would take the
+  whole point dark) and that at least one case enqueues something (a corpus in
+  which nothing ever enqueues would pass on an always-bail port).
+
+**Mutation proof.** Neutering the on-duty guard reddens exactly
+`skips_when_operator_vouched` and `skips_when_operator_uncensored` — and NOT
+`skips_when_operator_uncensored_with_label`, which the sticky `isDangerousChat`
+check catches instead. That the third arm stays green is the corpus showing its
+gates are independent, not a hole.
+
+`services::message_finalizer::trigger_chat_danger_classification` is now `pub`
+(it was `pub(crate)`) so the family can drive it; the two production callers are
+still the only ones in the crate, and the doc comment says why.
+
+### The two NO-PORT? ratifications (preamble)
+
+Both ratified with their file lists, per the order:
+
+- **`f3351d54f`** — "docs(concierge): plan for state-derived marks on chat
+  lists". THREE files, zero `lib/`/`app/`/`packages/`/`plugins/`:
+  `.claude/commands/update-documentation.md` (+1),
+  `docs/CHANGELOG.md` (+10), `docs/developer/features/concierge-list-marks.md`
+  (+441). It is the PLAN for `c43d3b1b4`, which then moves the doc to
+  `features/complete/`. Read for rationale during this lane; the design
+  decision it records — that `isDangerousChat` keeps its meaning as the
+  classifier's tri-state label rather than being redefined as the route — is
+  what unit 3's "the detail GET keeps the raw trio" assertion pins.
+  **NO-PORT-RATIFIED.**
+- **`6d2a50382`** — "docs(update): version bump for Concierge state view
+  changes". FOUR files, all version metadata: `README.md`, `package.json`,
+  `package-lock.json`, `packages/quilltap/package.json` (v4 `4.9.0-dev.113`).
+  Zero `lib/`/`app/`/`components/`/`plugins/`. v5's About-screen version string
+  is derived from the crate versions, not transcribed from v4's.
+  **NO-PORT-RATIFIED.**
