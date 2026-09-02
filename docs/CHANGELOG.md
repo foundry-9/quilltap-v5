@@ -494,6 +494,36 @@ through `getConciergeState(chat)`) plus four `stateRoute` rows that drive the
 twin on each literal state with no chat anywhere, and the Rust family asserts
 both. A shape guard fails the run if a stale oracle carries fewer than the four
 `stateRoute` rows.
+#### 2026-09-02 — feat(concierge): the chat lists follow the Concierge state, not the raw label
+
+_Versions: SPA 0.5.619._
+
+The client half of v4 `c43d3b1b4`'s behaviour change. Every chat-LIST payload
+now types the derived pair `conciergeState` + `dangerCategories` in place of
+the raw `isDangerousChat` (and, on the Salon list, `conciergeOverride`) —
+shared contract §A, matching what P4.D143 emits. `ChatDetail` keeps the raw
+trio: the sidebar's Concierge control has to write it.
+
+The three card sites render the Concierge mark instead of the red asterisk,
+and Quick-hide's "Dangerous Chats" toggle now hides the uncensored ROW.
+`shouldHideChat({characterTags, conciergeState})` lands on `should-hide.ts`
+and the service, and all four inline filters — Salon list, home Recent Chats,
+Prospero project chats, character Conversations — call it. The P4.9d non-port
+ruling on `shouldHideChat` is retired at source: it read v4 right at the time
+(the method took a field no payload carried), and `c43d3b1b4` is v4 fixing
+exactly that.
+
+Two behaviour deltas, both pinned: a Vouched Safe chat that keeps a dangerous
+label underneath loses its red asterisk, gains a grey one, and is no longer
+hidden; an Uncensored chat gains a blue asterisk where it had nothing, and is
+now hidden. A payload carrying no state at all draws no mark, which is what
+keeps this half green before the server half lands.
+
+Recorded, behaviour-neutral: v4 checks the tag arm first and three of v5's
+four filters checked danger first — both arms are pure. And Angular's `[class]`
+binding applies its tokens through `classList`, so the mark's class attribute
+is v4's SET in a different order; the ordered string is pinned at its source.
+
 #### 2026-09-02 — feat(concierge): the presentation table and the list mark
 
 _Versions: SPA 0.5.618._

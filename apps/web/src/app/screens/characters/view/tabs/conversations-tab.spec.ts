@@ -26,7 +26,8 @@ function chat(over: Partial<CharacterChatSummary>): CharacterChatSummary {
       },
     ],
     tags: [],
-    isDangerousChat: false,
+    conciergeState: 'monitored',
+    dangerCategories: [],
     _count: { messages: 4, memories: 0 },
     scriptoriumStatus: 'none',
     ...over,
@@ -116,9 +117,18 @@ describe('CharacterConversationsTab', () => {
     expect(link.getAttribute('href')).toBe('/salon/chat-42');
   });
 
-  it('marks a dangerous chat', async () => {
-    const fixture = await render(stubClient([chat({ isDangerousChat: true })]));
-    expect(fixture.nativeElement.querySelector('[title="Flagged as dangerous"]')).toBeTruthy();
+  it('marks a chat with the Concierge asterisk, in the state\u2019s own tone', async () => {
+    const fixture = await render(stubClient([chat({ conciergeState: 'vouched' })]));
+    const mark = fixture.nativeElement.querySelector('.qt-concierge-mark') as HTMLElement;
+    expect(mark).toBeTruthy();
+    expect(mark.getAttribute('aria-label')).toBe('Concierge: Vouched Safe');
+    expect(mark.classList.contains('qt-concierge-mark-muted')).toBe(true);
+    expect(mark.hasAttribute('title')).toBe(false);
+  });
+
+  it('draws no mark for a Monitored chat', async () => {
+    const fixture = await render(stubClient([chat({ conciergeState: 'monitored' })]));
+    expect(fixture.nativeElement.querySelector('.qt-concierge-mark')).toBeNull();
   });
 
   it('paginates: a full page shows "Load more" and appends the next page', async () => {

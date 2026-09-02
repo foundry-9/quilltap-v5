@@ -34,9 +34,14 @@
  * (`isConciergeOffDuty`, `isChatActiveDangerous`) rather than re-pointing them,
  * so every call site is forced to state which question it is asking.
  *
- * ⚠ Two v5 call sites deliberately still read `isDangerousChat` raw — the Salon
- * chat card and the quick-hide gate. v4's commit did not touch `ChatCard` or
- * quick-hide either, so those reads are v4-FAITHFUL and are not "fixed" here.
+ * The two v5 call sites that used to read `isDangerousChat` raw — the chat
+ * cards' asterisk and the quick-hide gate — no longer do. v4 `c43d3b1b4` fixed
+ * both in v4 itself, and this port followed: every chat LIST payload now
+ * carries a `conciergeState` the server derived (shared contract §A), the mark
+ * reads it, and `shouldHideChat` asks
+ * {@link conciergeStateUsesUncensoredRoute} about it. The only raw readers left
+ * are the ones holding a single-chat `ChatDetail`, which keeps the stored trio
+ * on purpose: the sidebar's Concierge control has to write it.
  */
 
 /** The stored `chats.conciergeOverride` domain (NULL = the classifier decides). */

@@ -1,18 +1,22 @@
+import {
+  type ConciergeState,
+  conciergeStateUsesUncensoredRoute,
+} from '../chat/concierge-state';
+
 /**
- * The quick-hide predicate, transcribed from v4
- * `components/providers/quick-hide-provider.tsx:183-196` (`shouldHideByIds`).
+ * The quick-hide predicates, transcribed from v4
+ * `components/providers/quick-hide-provider.tsx` (`shouldHideByIds` `:183-196`
+ * and `shouldHideChat` `:203-215`).
  *
  * Kept pure and separate from the service so every consumer's tag-collection
  * semantics can be unit-pinned without standing up Angular DI.
  *
- * ⚠ PORT DIVERGENCE — the dead method. v4's provider also exports
- * `shouldHideChat` (`:198-209`), which reads `chat.isDangerous`. That field
- * does not exist on any real payload (the classifier writes `isDangerousChat`),
- * so the method can never fire its dangerous arm — and NO v4 consumer calls it.
- * Every v4 consumer instead inlines
- * `shouldHideByIds(tags) || (hideDangerousChats && chat.isDangerousChat)` with
- * the REAL field name. v5 ports the inline consumer pattern and deliberately
- * does NOT reproduce the dead method (work order P4.9d, "Port hazard").
+ * The P4.9d non-port ruling on `shouldHideChat` is RETIRED. It read v4 right at
+ * the time: the method took a `chat.isDangerous` that no real payload carried,
+ * so its dangerous arm could never fire, and every v4 consumer inlined the
+ * check on the REAL field instead. v4 `c43d3b1b4` fixed exactly that — the
+ * method now takes the DERIVED `conciergeState`, all four inline filters call
+ * it, and it is THE rule rather than a dead twin of one. So v5 lands it.
  */
 
 /**
@@ -31,6 +35,32 @@ export function shouldHideByIds(
     if (tagId && hiddenTagIds.has(tagId)) {
       return true;
     }
+  }
+  return false;
+}
+
+/**
+ * THE quick-hide rule for a chat, in one place (v4 `:203-215`). "Dangerous
+ * Chats" hides whatever takes the uncensored route — Flagged (the Concierge's
+ * verdict) and Uncensored (the operator's) — never a Vouched Safe chat that
+ * merely carries a preserved label underneath.
+ *
+ * Note the arm order against v5's four pre-lane filters: v4 asks the TAG
+ * question first and the danger question second, where three of v5's four
+ * inline filters asked danger first. Both arms are pure and neither
+ * short-circuits anything observable, so the reordering is behaviour-neutral —
+ * recorded rather than reasoned about again.
+ */
+export function shouldHideChat(
+  hiddenTagIds: ReadonlySet<string>,
+  hideDangerousChats: boolean,
+  chat: { characterTags?: ReadonlyArray<string | null | undefined>; conciergeState?: ConciergeState },
+): boolean {
+  if (shouldHideByIds(hiddenTagIds, chat.characterTags)) {
+    return true;
+  }
+  if (hideDangerousChats && chat.conciergeState && conciergeStateUsesUncensoredRoute(chat.conciergeState)) {
+    return true;
   }
   return false;
 }

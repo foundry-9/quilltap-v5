@@ -69,9 +69,11 @@ export interface ChatGetRequest {
 }
 
 /**
- * The four-state per-chat Concierge control's wire values (P4.D141). The
- * canonical derivation from the two stored fields lives in
- * `app/chat/concierge-state.ts`; this is only the PUT's accepted domain.
+ * The four-state per-chat Concierge status on the wire (P4.D141, widened at
+ * P4.D144). The canonical derivation from the two stored fields lives in
+ * `app/chat/concierge-state.ts`; this union is both the manual-flip PUT's
+ * accepted domain AND — since v4 `c43d3b1b4` — the DERIVED state every chat
+ * LIST payload carries in place of the raw pair (shared contract §A).
  */
 export type ConciergeState = 'monitored' | 'flagged' | 'vouched' | 'uncensored';
 
@@ -2585,9 +2587,16 @@ export interface EnrichedChatSummary {
   tags: EnrichedTag[];
   project: EnrichedProject | null;
   storyBackground: EnrichedStoryBackground | null;
-  isDangerousChat: boolean;
-  /** NULL = follow global, 'OFF' = Vouched Safe, 'UNCENSORED' = operator-asserted uncensored (P4.D141). */
-  conciergeOverride: 'OFF' | 'UNCENSORED' | null;
+  /**
+   * The DERIVED Concierge four-state — never the raw danger label (shared
+   * contract §A, v4 `c43d3b1b4`). `isDangerousChat` and `conciergeOverride`
+   * were both dropped here: the server derives the state once, so no list has
+   * to read the two stored fields together (and get it wrong). The single-chat
+   * GET keeps the raw trio — the sidebar's control needs it.
+   */
+  conciergeState: ConciergeState;
+  /** The classifier's categories, shown on the mark's tooltip when Flagged. */
+  dangerCategories: string[];
   chatType: 'salon' | 'help' | 'autonomous' | 'brahma';
   scriptoriumStatus: 'none' | 'rendered' | 'embedded';
   _count: { messages: number; memories: number };
@@ -3182,7 +3191,10 @@ export interface CharacterChatSummary {
   /** Up to three most-recent messages, recent-first (v4 `slice(0, 3)`). */
   messages: CharacterChatMessagePreview[];
   tags: Array<{ tag: { id: string; name: string } }>;
-  isDangerousChat: boolean;
+  /** The derived Concierge four-state — never the raw label (§A). */
+  conciergeState: ConciergeState;
+  /** The classifier's categories, shown on the mark's tooltip when Flagged. */
+  dangerCategories: string[];
   _count: { messages: number; memories: number };
   scriptoriumStatus: 'none' | 'rendered' | 'embedded';
 }

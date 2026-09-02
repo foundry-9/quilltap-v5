@@ -11,12 +11,12 @@ import type { RecentChat } from './home.api';
  * Salon, the empty arm, and the chat rows. The server caps the list (§1: max
  * 12); CSS `overflow: hidden` on the section content hides rows that don't fit.
  *
- * Quick-hide filtering is v4 `RecentChatsSection.tsx:20-37` transcribed, and its
+ * Quick-hide filtering is v4 `RecentChatsSection.tsx:20-33` transcribed, and its
  * tag collection is deliberately NARROWER than the Salon list's: this section
- * gathers ONLY participant character tags (`:30-36`) — chat-level tags are not
+ * gathers ONLY participant character tags (`:24-30`) — chat-level tags are not
  * consulted, because the homepage `RecentChat` projection does not carry them.
- * The dangerous arm is checked FIRST (`:22-25`), reading the real payload field
- * `isDangerousChat`.
+ * Both the tags and the chat's derived `conciergeState` go to the one
+ * quick-hide rule (v4 `c43d3b1b4`).
  */
 @Component({
   selector: 'qt-recent-chats-section',
@@ -50,19 +50,23 @@ export class RecentChatsSection {
 
   private readonly quickHide = inject(QuickHideService);
 
-  /** v4 `:20-37` — the dangerous arm first, then participant character tags only. */
+  /**
+   * v4 `RecentChatsSection.tsx:20-33` — participant character tags only (this
+   * payload has no chat-level tag bag), handed with the derived state to the
+   * one quick-hide rule.
+   */
   protected readonly visibleChats = computed(() =>
     this.chats().filter((chat) => {
-      if (this.quickHide.hideDangerousChats() && chat.isDangerousChat) {
-        return false;
-      }
-      const allTagIds: string[] = [];
+      const characterTags: string[] = [];
       for (const participant of chat.participants) {
         if (participant.character?.tags) {
-          allTagIds.push(...participant.character.tags);
+          characterTags.push(...participant.character.tags);
         }
       }
-      return !this.quickHide.shouldHideByIds(allTagIds);
+      return !this.quickHide.shouldHideChat({
+        characterTags,
+        conciergeState: chat.conciergeState,
+      });
     }),
   );
 }

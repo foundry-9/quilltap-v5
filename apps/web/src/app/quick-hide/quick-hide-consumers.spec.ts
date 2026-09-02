@@ -101,8 +101,8 @@ function enrichedChat(over: Partial<EnrichedChatSummary>): EnrichedChatSummary {
     tags: [],
     project: null,
     storyBackground: null,
-    isDangerousChat: false,
-    conciergeOverride: null,
+    conciergeState: 'monitored',
+    dangerCategories: [],
     chatType: 'salon',
     scriptoriumStatus: 'none',
     _count: { messages: 3, memories: 0 },
@@ -200,7 +200,8 @@ function characterChat(over: Partial<CharacterChatSummary>): CharacterChatSummar
     storyBackground: null,
     messages: [],
     tags: [],
-    isDangerousChat: false,
+    conciergeState: 'monitored',
+    dangerCategories: [],
     _count: { messages: 4, memories: 0 },
     scriptoriumStatus: 'none',
     ...over,
@@ -275,21 +276,35 @@ describe('quick-hide consumers', () => {
       expect(text).not.toContain('Dropped');
     });
 
-    it('hides a dangerous chat only when the filter is on (v4 :104-107)', async () => {
+    it('hides a chat on the uncensored row only when the filter is on (v4 :99-103)', async () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
         enrichedChat({ id: 'keep', title: 'Kept' }),
-        enrichedChat({ id: 'drop', title: 'Dropped', isDangerousChat: true }),
+        enrichedChat({ id: 'drop', title: 'Dropped', conciergeState: 'flagged' }),
       ]);
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Kept');
       expect(text).not.toContain('Dropped');
     });
 
+    it('follows the uncensored ROW, not the raw label (v4 c43d3b1b4)', async () => {
+      // The behaviour delta: a Vouched Safe chat keeps its dangerous label
+      // underneath by design and used to vanish; an Uncensored chat takes
+      // every spicy route and never did.
+      seedHidden({ dangerous: true });
+      const fixture = await render([
+        enrichedChat({ id: 'v', title: 'Vouched Kept', conciergeState: 'vouched' }),
+        enrichedChat({ id: 'u', title: 'Uncensored Dropped', conciergeState: 'uncensored' }),
+      ]);
+      const text = fixture.nativeElement.textContent as string;
+      expect(text).toContain('Vouched Kept');
+      expect(text).not.toContain('Uncensored Dropped');
+    });
+
     it('hides nothing by default', async () => {
       seedHidden();
       const fixture = await render([
-        enrichedChat({ id: 'a', title: 'Kept', isDangerousChat: true }),
+        enrichedChat({ id: 'a', title: 'Kept', conciergeState: 'flagged' }),
         enrichedChat({ id: 'b', title: 'Also', tags: [{ tag: { id: HIDDEN, name: 'H' } }] }),
       ]);
       const text = fixture.nativeElement.textContent as string;
@@ -353,21 +368,32 @@ describe('quick-hide consumers', () => {
       expect(fixture.nativeElement.textContent).toContain('Kept');
     });
 
-    it('hides dangerous chats when the filter is on (v4 :22-25)', async () => {
+    it('hides the uncensored row when the filter is on (v4 :20-33)', async () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
         recentChat({ id: 'keep', title: 'Kept' }),
-        recentChat({ id: 'drop', title: 'Dropped', isDangerousChat: true }),
+        recentChat({ id: 'drop', title: 'Dropped', conciergeState: 'flagged' }),
       ]);
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Kept');
       expect(text).not.toContain('Dropped');
     });
 
+    it('keeps a Vouched Safe chat and drops an Uncensored one (v4 c43d3b1b4)', async () => {
+      seedHidden({ dangerous: true });
+      const fixture = await render([
+        recentChat({ id: 'v', title: 'Vouched Kept', conciergeState: 'vouched' }),
+        recentChat({ id: 'u', title: 'Uncensored Dropped', conciergeState: 'uncensored' }),
+      ]);
+      const text = fixture.nativeElement.textContent as string;
+      expect(text).toContain('Vouched Kept');
+      expect(text).not.toContain('Uncensored Dropped');
+    });
+
     it('falls to the empty arm when everything is hidden', async () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
-        recentChat({ id: 'drop', title: 'Dropped', isDangerousChat: true }),
+        recentChat({ id: 'drop', title: 'Dropped', conciergeState: 'uncensored' }),
       ]);
       expect(fixture.nativeElement.textContent).toContain('No chats yet');
     });
@@ -457,15 +483,23 @@ describe('quick-hide consumers', () => {
       expect(text).not.toContain('Dropped');
     });
 
-    it('hides dangerous chats when the filter is on (v4 :40)', async () => {
+    it('hides the uncensored row when the filter is on (v4 :49-55)', async () => {
       seedHidden({ dangerous: true });
       const fixture = await render([
         characterChat({ id: 'keep', title: 'Kept' }),
-        characterChat({ id: 'drop', title: 'Dropped', isDangerousChat: true }),
+        characterChat({ id: 'drop', title: 'Dropped', conciergeState: 'uncensored' }),
       ]);
       const text = fixture.nativeElement.textContent as string;
       expect(text).toContain('Kept');
       expect(text).not.toContain('Dropped');
+    });
+
+    it('keeps a Vouched Safe chat the raw label would have hidden (v4 c43d3b1b4)', async () => {
+      seedHidden({ dangerous: true });
+      const fixture = await render([
+        characterChat({ id: 'v', title: 'Vouched Kept', conciergeState: 'vouched' }),
+      ]);
+      expect(fixture.nativeElement.textContent).toContain('Vouched Kept');
     });
   });
 

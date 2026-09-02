@@ -1,7 +1,7 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import type { TagDto } from '../core/core-contract';
+import type { ConciergeState, TagDto } from '../core/core-contract';
 import {
   ACTIVE_TAGS_KEY,
   HIDE_DANGEROUS_KEY,
@@ -12,7 +12,7 @@ import {
   writeActiveTags,
   writeBooleanKey,
 } from './quick-hide.storage';
-import { shouldHideByIds } from './should-hide';
+import { shouldHideByIds, shouldHideChat } from './should-hide';
 
 /** A tag flagged for quick-hide (v4 `QuickHideTag`, `quick-hide-provider.tsx:6-9`). */
 export interface QuickHideTag {
@@ -26,9 +26,10 @@ export interface QuickHideTag {
  *
  * Holds the three §4 localStorage-backed preferences as signals and the list of
  * tags the user has flagged `quickHide` server-side, and exposes the one
- * predicate every consumer filters through. Consumers combine it with the
- * dangerous-chat arm inline, exactly as v4 does — see `should-hide.ts` for why
- * v4's `shouldHideChat` is deliberately NOT ported.
+ * predicate every consumer filters through: {@link shouldHideChat}. Since v4
+ * `c43d3b1b4` that is genuinely ONE rule — tags, then the Concierge's
+ * uncensored row — rather than a rule plus four inlined copies of its second
+ * half (see `should-hide.ts` for the retired non-port ruling).
  *
  * Divergences from v4, both deliberate:
  *  - localStorage is read EAGERLY in the initializer. v4 defers to a post-mount
@@ -90,6 +91,18 @@ export class QuickHideService {
    */
   shouldHideByIds(tagIds?: ReadonlyArray<string | null | undefined>): boolean {
     return shouldHideByIds(this.hiddenTagIdsSignal(), tagIds);
+  }
+
+  /**
+   * v4 `shouldHideChat` (`:203-215`) — THE rule every chat list filters
+   * through. Reading both signals here is what makes a consumer's `computed`
+   * re-run on either toggle.
+   */
+  shouldHideChat(chat: {
+    characterTags?: ReadonlyArray<string | null | undefined>;
+    conciergeState?: ConciergeState;
+  }): boolean {
+    return shouldHideChat(this.hiddenTagIdsSignal(), this.hideDangerousChatsSignal(), chat);
   }
 
   /** v4 `toggleTag` (`:155-166`). */

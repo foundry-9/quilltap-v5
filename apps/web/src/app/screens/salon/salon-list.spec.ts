@@ -19,8 +19,8 @@ function chat(over: Partial<EnrichedChatSummary>): EnrichedChatSummary {
     tags: [],
     project: null,
     storyBackground: null,
-    isDangerousChat: false,
-    conciergeOverride: null,
+    conciergeState: 'monitored',
+    dangerCategories: [],
     chatType: 'salon',
     scriptoriumStatus: 'none',
     _count: { messages: 3, memories: 0 },
@@ -66,19 +66,33 @@ describe('SalonList', () => {
     expect(text).toContain('Start a new chat');
   });
 
-  it('renders a card per chat with title, message count, and danger flag', async () => {
+  it('renders a card per chat with title, message count, and the Concierge mark', async () => {
     const fixture = await render(
       stubClient([
         chat({ id: 'a', title: 'Tea with Bertie', _count: { messages: 5, memories: 2 } }),
-        chat({ id: 'b', title: 'A Dangerous Salon', isDangerousChat: true }),
+        chat({ id: 'b', title: 'A Dangerous Salon', conciergeState: 'flagged' }),
       ]),
     );
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Tea with Bertie');
     expect(text).toContain('5');
-    // Danger asterisk.
-    const danger = fixture.nativeElement.querySelector('[aria-label="Flagged as dangerous"]');
-    expect(danger).toBeTruthy();
+    // The Concierge asterisk — one, on the flagged chat, in the danger tone
+    // (the base rule, no modifier) and with no native title.
+    const marks = Array.from(
+      fixture.nativeElement.querySelectorAll('.qt-concierge-mark'),
+    ) as HTMLElement[];
+    expect(marks).toHaveLength(1);
+    expect(marks[0].getAttribute('aria-label')).toBe('Concierge: Flagged');
+    // Angular's `[class]` binding applies tokens through `classList`, so the
+    // attribute's ORDER is not v4's; the ordered string is pinned at its
+    // source by `conciergeMarkClasses` (concierge-mark.spec.ts). What matters
+    // in the DOM is the set — base rule, no modifier, plus the caller's two.
+    expect([...marks[0].classList].sort()).toEqual([
+      'flex-shrink-0',
+      'qt-concierge-mark',
+      'text-sm',
+    ]);
+    expect(marks[0].hasAttribute('title')).toBe(false);
   });
 
   it('falls back to "Untitled Chat" for a blank title', async () => {

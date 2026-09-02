@@ -11,6 +11,7 @@ import { Icon } from '../../../../ui/icon';
 import { ScriptoriumBadge } from '../../../../ui/scriptorium-badge';
 import { ToastService } from '../../../../ui/toast.service';
 import { chatActivityAt } from '../../../../chat/chat-activity';
+import { ConciergeMark } from '../../../../chat/concierge-mark';
 
 /** The preview text (v4 `lib/chat-utils.ts` `getCharacterChatPreview`): the LAST
  *  element of the recent-first ≤3 array (i.e. the oldest of the recent three),
@@ -39,7 +40,7 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
 @Component({
   selector: 'qt-character-conversation-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, ScriptoriumBadge],
+  imports: [RouterLink, Icon, ScriptoriumBadge, ConciergeMark],
   template: `
     <a
       class="qt-entity-card chat-card relative block cursor-pointer transition-colors"
@@ -81,13 +82,12 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
                 (render)="renderConversation()"
               />
 
-              @if (chat().isDangerousChat) {
-                <span
-                  class="qt-text-destructive text-sm flex-shrink-0"
-                  title="Flagged as dangerous"
-                  aria-label="Flagged as dangerous"
-                  >*</span
-                >
+              @if (chat().conciergeState; as conciergeState) {
+                <qt-concierge-mark
+                  [conciergeState]="conciergeState"
+                  [dangerCategories]="chat().dangerCategories"
+                  className="text-sm flex-shrink-0"
+                />
               }
             </div>
 

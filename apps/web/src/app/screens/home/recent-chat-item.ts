@@ -4,6 +4,7 @@ import { RouterLink } from '@angular/router';
 import { AvatarStack, type AvatarStackEntity, normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { characterAvatarSrc } from '../characters/characters.api';
 import { chatActivityAt } from '../../chat/chat-activity';
+import { ConciergeMark } from '../../chat/concierge-mark';
 import { formatMessageTime } from './format-time';
 import type { RecentChat } from './home.api';
 
@@ -11,8 +12,9 @@ import type { RecentChat } from './home.api';
  * One chat row in the homepage Recent Chats list (v4
  * `components/homepage/RecentChatItem.tsx`): the story-background thumbnail
  * when present (preferred), else the participant avatar stack; the title +
- * joined character names; the relative time + message count with v4's
- * dangerous-chat `*` marker. v4's workspace-tab `openInWorkspace` glue is not
+ * joined character names; the relative time + message count with the
+ * Concierge mark (v4 `c43d3b1b4` — the derived four-state, never the raw
+ * danger label; Monitored draws nothing). v4's workspace-tab `openInWorkspace` glue is not
  * ported (no tabbed workspace in v5) — the link navigates.
  *
  * §2: every server-relative path resolves through the shared helpers
@@ -22,7 +24,7 @@ import type { RecentChat } from './home.api';
 @Component({
   selector: 'qt-recent-chat-item',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, AvatarStack],
+  imports: [RouterLink, AvatarStack, ConciergeMark],
   template: `
     <a
       [routerLink]="['/salon', chat().id]"
@@ -43,12 +45,12 @@ import type { RecentChat } from './home.api';
       <div class="flex flex-col items-end shrink-0">
         <span class="qt-meta">{{ timeLabel() }}</span>
         <span class="qt-meta text-primary"
-          >{{ chat()._count.messages }} msgs@if (chat().isDangerousChat) {<span
-            class="qt-text-destructive"
-            title="Flagged as dangerous"
-            aria-label="Flagged as dangerous"
-            >*</span
-          >}</span
+          >{{ chat()._count.messages }} msgs@if (chat().conciergeState; as conciergeState) {
+            <qt-concierge-mark
+              [conciergeState]="conciergeState"
+              [dangerCategories]="chat().dangerCategories"
+            />
+          }</span
         >
       </div>
     </a>

@@ -142,17 +142,20 @@ export class CharacterConversationsTab {
   }));
 
   /**
-   * v4 `character-conversations-tab.tsx:38-44`: the dangerous arm first, then
-   * CHAT-level tags only — this consumer does not consult participants (the
-   * page is already scoped to one character).
+   * v4 `character-conversations-tab.tsx:49-55`: CHAT-level tags only — this
+   * consumer does not consult participants (the page is already scoped to one
+   * character) — handed with the derived state to the one quick-hide rule.
    */
   protected readonly chats = computed(() =>
     (this.chatsQuery.data()?.pages ?? [])
       .flatMap((p) => p.chats)
-      .filter((chat) => {
-        if (this.quickHide.hideDangerousChats() && chat.isDangerousChat) return false;
-        return !this.quickHide.shouldHideByIds((chat.tags ?? []).map((ct) => ct.tag.id));
-      }),
+      .filter(
+        (chat) =>
+          !this.quickHide.shouldHideChat({
+            characterTags: (chat.tags ?? []).map((ct) => ct.tag.id),
+            conciergeState: chat.conciergeState,
+          }),
+      ),
   );
 
   constructor() {

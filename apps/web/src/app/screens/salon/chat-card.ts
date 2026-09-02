@@ -12,6 +12,7 @@ import { RouterLink } from '@angular/router';
 import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import type { EnrichedChatSummary } from '../../core/core-contract';
 import { chatActivityAt } from '../../chat/chat-activity';
+import { ConciergeMark } from '../../chat/concierge-mark';
 import { notifyQueueChange } from '../../layout/queue-status.logic';
 import { AvatarStack, type AvatarStackEntity, normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { Icon } from '../../ui/icon';
@@ -35,7 +36,7 @@ import { ToastService } from '../../ui/toast.service';
 @Component({
   selector: 'qt-chat-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, Icon, AvatarStack, ScriptoriumBadge],
+  imports: [RouterLink, Icon, AvatarStack, ScriptoriumBadge, ConciergeMark],
   template: `
     <a
       class="qt-entity-card chat-card relative block cursor-pointer transition-colors"
@@ -90,13 +91,12 @@ import { ToastService } from '../../ui/toast.service';
                 (render)="renderConversation()"
               />
 
-              @if (chat().isDangerousChat) {
-                <span
-                  class="qt-text-destructive text-sm flex-shrink-0"
-                  title="Flagged as dangerous"
-                  aria-label="Flagged as dangerous"
-                  >*</span
-                >
+              @if (chat().conciergeState; as conciergeState) {
+                <qt-concierge-mark
+                  [conciergeState]="conciergeState"
+                  [dangerCategories]="chat().dangerCategories"
+                  className="text-sm flex-shrink-0"
+                />
               }
 
               @if (isAutonomous()) {

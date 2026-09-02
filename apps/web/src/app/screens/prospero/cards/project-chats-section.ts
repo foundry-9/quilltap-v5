@@ -102,10 +102,11 @@ export class ProjectChatsSection {
   protected readonly chats = signal<EnrichedChatSummary[]>([]);
 
   /**
-   * v4 `ChatsSection.tsx:65-83`: the dangerous arm first, then chat tags + every
-   * participant's tags. Note the participant shape differs from the Salon
-   * list's — v4 reads `participant.tags` here (`:76-78`), which in v5's
-   * `EnrichedChatSummary` is `participant.character.tags`.
+   * v4 `ChatsSection.tsx:66-79`: chat tags + every participant's tags, handed
+   * with the derived state to the one quick-hide rule. Note the participant
+   * shape differs from the Salon list's — v4 reads `participant.tags` here
+   * (`:71-75`), which in v5's `EnrichedChatSummary` is
+   * `participant.character.tags`.
    *
    * Deliberately layered OVER the raw `chats` signal rather than replacing it:
    * pagination bookkeeping (`hasMore`, the append) must count what the SERVER
@@ -113,16 +114,16 @@ export class ProjectChatsSection {
    */
   protected readonly visibleChats = computed(() =>
     this.chats().filter((chat) => {
-      if (this.quickHide.hideDangerousChats() && chat.isDangerousChat) {
-        return false;
-      }
-      const allTagIds: string[] = (chat.tags ?? []).map((ct) => ct.tag.id);
+      const characterTags: string[] = (chat.tags ?? []).map((ct) => ct.tag.id);
       for (const participant of chat.participants) {
         if (participant.character?.tags) {
-          allTagIds.push(...participant.character.tags);
+          characterTags.push(...participant.character.tags);
         }
       }
-      return !this.quickHide.shouldHideByIds(allTagIds);
+      return !this.quickHide.shouldHideChat({
+        characterTags,
+        conciergeState: chat.conciergeState,
+      });
     }),
   );
   protected readonly total = signal(0);

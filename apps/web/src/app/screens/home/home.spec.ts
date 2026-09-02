@@ -229,13 +229,43 @@ describe('HomePage', () => {
     expect(generate!.getAttribute('href')).toBe('/generate-image');
   });
 
-  it('marks dangerous chats with the * marker (v4 RecentChatItem)', async () => {
+  it('marks a flagged chat with the Concierge asterisk (v4 RecentChatItem @ c43d3b1b4)', async () => {
     const fixture = await render(
-      homeClient(homeData({ recentChats: [chat({ isDangerousChat: true })] })),
+      homeClient(homeData({ recentChats: [chat({ conciergeState: 'flagged' })] })),
     );
-    const marker = fixture.nativeElement.querySelector('span[title="Flagged as dangerous"]');
+    const marker = fixture.nativeElement.querySelector('.qt-concierge-mark') as HTMLElement;
     expect(marker).not.toBeNull();
-    expect(marker!.textContent).toBe('*');
+    expect(marker.textContent).toBe('*');
+    expect(marker.getAttribute('aria-label')).toBe('Concierge: Flagged');
+    // The bubble replaced the native tooltip; the mark must not carry both.
+    expect(marker.hasAttribute('title')).toBe(false);
+  });
+
+  it('gives Vouched Safe and Uncensored their own tones, and Monitored none', async () => {
+    const fixture = await render(
+      homeClient(
+        homeData({
+          recentChats: [
+            chat({ id: 'm', conciergeState: 'monitored' }),
+            chat({ id: 'v', conciergeState: 'vouched' }),
+            chat({ id: 'u', conciergeState: 'uncensored' }),
+          ],
+        }),
+      ),
+    );
+    const marks = Array.from(
+      fixture.nativeElement.querySelectorAll('.qt-concierge-mark'),
+    ) as HTMLElement[];
+    expect(marks).toHaveLength(2);
+    expect(marks[0].classList.contains('qt-concierge-mark-muted')).toBe(true);
+    expect(marks[1].classList.contains('qt-concierge-mark-info')).toBe(true);
+  });
+
+  it('draws no mark when the payload carries no state at all', async () => {
+    const fixture = await render(
+      homeClient(homeData({ recentChats: [chat({ conciergeState: undefined })] })),
+    );
+    expect(fixture.nativeElement.querySelector('.qt-concierge-mark')).toBeNull();
   });
 
   it('dates a recent chat by activity, falling back to createdAt and never updatedAt (P4.D140)', async () => {

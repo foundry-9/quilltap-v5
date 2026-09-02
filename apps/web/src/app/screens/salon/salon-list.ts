@@ -26,10 +26,13 @@ import { effectiveInclude, hasHiddenAutonomous } from './autonomous-visibility';
  * excluded. Since P4.9d the toggle binds `QuickHideService`, so it and the
  * user-menu section are two views of one persisted value.
  *
- * Quick-hide row filtering is v4 `SalonListView.tsx:89-112` transcribed. This is
+ * Quick-hide row filtering is v4 `SalonListView.tsx:89-104` transcribed. This is
  * the WIDEST tag collection of any consumer: chat-level tags PLUS every
- * participant character's tags (`:91-97`), then the dangerous arm second
- * (`:105`) on the real payload field `isDangerousChat`.
+ * participant character's tags (`:92-99`). Since v4 `c43d3b1b4` the collection
+ * and the chat's derived `conciergeState` go to ONE rule,
+ * `QuickHideService.shouldHideChat` — the four lists no longer each inline the
+ * danger half, and it follows the Concierge's uncensored row rather than the
+ * raw label.
  */
 @Component({
   selector: 'qt-salon-list',
@@ -158,27 +161,23 @@ export class SalonList {
   }
 
   /**
-   * v4 `:89-112`: chat tags + ALL participant character tags, then the
-   * dangerous arm. Kept a `computed` so a toggle repaints the list without a
-   * refetch.
+   * v4 `SalonListView.tsx:89-104`: chat tags + ALL participant character tags,
+   * handed with the derived state to the ONE quick-hide rule. Kept a `computed`
+   * so a toggle repaints the list without a refetch.
    */
   protected readonly visibleChats = computed<EnrichedChatSummary[]>(() =>
     (this.chats.data() ?? []).filter((chat) => {
-      // Collect all tag IDs: chat tags + all participant tags (v4 :91-97)
-      const allTagIds: string[] = chat.tags.map((ct) => ct.tag.id);
+      // Collect all tag IDs: chat tags + all participant tags (v4 :92-99)
+      const characterTags: string[] = chat.tags.map((ct) => ct.tag.id);
       for (const participant of chat.participants) {
         if (participant.character?.tags) {
-          allTagIds.push(...participant.character.tags);
+          characterTags.push(...participant.character.tags);
         }
       }
-      if (this.quickHide.shouldHideByIds(allTagIds)) {
-        return false;
-      }
-      // Check danger filter using full chat metadata (v4 :104-107)
-      if (this.quickHide.hideDangerousChats() && chat.isDangerousChat) {
-        return false;
-      }
-      return true;
+      return !this.quickHide.shouldHideChat({
+        characterTags,
+        conciergeState: chat.conciergeState,
+      });
     }),
   );
 
