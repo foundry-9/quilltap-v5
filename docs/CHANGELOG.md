@@ -230,6 +230,26 @@ The `write-partition` oracle case gains v4's two folder classify rows
 `classifyWriteTarget`: both answer `main`, so v5's default-to-Main routing
 already covers the chokepoint's non-conforming method name — the assertion v4
 added to its own suite, landed as a differential row instead.
+#### 2026-09-02 — fix(images): exclude absent participants from the story-background back-fill (P4.D146 unit 2)
+
+_Versions: core 0.0.738._
+
+v4 `70505745a`, step 9b. The back-fill scans the finished prompt for named
+workspace characters and appends a canonical appearance so the provider does
+not invent one. Its candidate pool was "every user character not in
+`payload.characterIds`" — so the moment unit 1 stopped putting absent
+participants in the payload, they landed squarely in that pool instead: a
+crafter that picked the name out of the transcript would have been handed a
+portrait, restoring by the side door the figure the filter had just removed.
+The exclusion set is now the payload UNION the chat's not-present participants.
+A character absent here can still be enumerated when genuinely unaffiliated
+with the chat, which is what the scan is for.
+
+The `/tmp`-built story-background fixture gains a third character (Bram) and a
+`backfill_absent` chat: Fern present and carrying the payload, Bram an absent
+participant carrying nothing, Zelda unaffiliated. The crafted prompt names all
+three, so the recorded image key says which the scan appended — Zelda only.
+
 #### 2026-09-02 — fix(images): keep absent characters out of story-background enqueues (P4.D146 unit 1)
 
 _Versions: core 0.0.737, harness 0.0.631._

@@ -130,6 +130,51 @@ two families (`title_update_tier3_equivalence`,
 `cost_background_routes_equivalence`) — both re-run by name in this record and
 at the lane gate.
 
+### Unit 2 — the back-fill exclusion set (core 0.0.738)
+
+v4 `story-background.ts:573-593`: `excludedIds = payload.characterIds ∪
+{p.characterId | p ∈ chat.participants, !isParticipantPresent(p.status)}`.
+v5's twin is `services/story_background_job.rs:706-728`, which built the pool
+from `payload.character_ids` alone. Widened exactly; the `[decd8ef9]`
+HELD-past-this-point comment stays (the moderation reroute re-crafts the prompt
+and re-runs this same enrichment over the replacement, so ONE change covers
+both of v4's `appendMissingCharacterEnumerations` call sites). The
+`chat` value is already in scope from step 1, so no extra read. **P4.D145's
+region of this file (the legacy-folder ensure at `:1425-1471`, §C) was not
+touched.**
+
+v4's guard order is `p.characterId && !isParticipantPresent(p.status)` —
+truthiness first, so an empty-string id adds nothing to the set; reproduced.
+
+**The fixture blind spot, again.** `build-story-background-job-fixture.ts:303`
+seeded every participant `status: 'active'` and derived the roster from the
+case's `characterIds` — which is ALSO the job payload. The two lists have to
+differ for this arm to mean anything, so the builder's `ChatSpec` gained an
+optional explicit `participants` roster (`{characterId, status}`) that
+overrides the default, and the spec gained:
+
+- **Bram** (`c5000000-…-0000000000bb`), a character with a `mediumPrompt` so a
+  back-fill enumeration for him is actually possible;
+- **`backfill_absent`** — Fern `active` and alone in the payload, Bram `absent`
+  and in nothing, Zelda unaffiliated with the chat. The completion mock's new
+  `backfill_absent` branch crafts a prompt naming ALL THREE, so the scan is
+  offered all three names and the recorded image key is the verdict.
+
+v4's own three assertions, reproduced as one comparand — the oracle's image key
+reads `… Zelda: A woman. a tall woman with dark braided hair.` and nothing else:
+Bram is NOT enumerated, Zelda IS, Fern is left to the crafter without a
+portrait sidecard.
+
+**Mutation proof.** `if false && …` on the new exclusion arm (verified applied
+by grep, reverted by file backup) → `story_background_job_tier3_equivalence`
+reddens, and the failure prints the bug verbatim: v5's prompt gains
+`Bram: A man. a broad-shouldered man in a salt-stained coat.` **This is also
+the red-first measurement — v5 measurably HAD the defect.**
+
+**Fixture invalidation: none.** `qt-story-{main,mount}.db` is `/tmp`-built by
+the family's own recipe, not committed; only
+`story_background_job_tier3_equivalence` reads it.
+
 ## Lane record — P4.D133 (the `b121ac77f` CLI `instances restore-key`)
 
 Ordered against round baseline **`aec86a613`**; the lane's target commit is

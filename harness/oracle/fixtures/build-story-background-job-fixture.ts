@@ -63,6 +63,16 @@ interface ChatSpec {
    */
   conciergeOverride?: 'OFF' | 'UNCENSORED';
   /**
+   * [P4.D146 / v4 `70505745a`] An EXPLICIT participant roster, `characterId` +
+   * `status`, replacing the default "every payload characterId, all `active`".
+   * The back-fill's exclusion set is `payload.characterIds` ∪ {the chat's
+   * NOT-present participants}, so the two lists have to differ for the new arm
+   * to mean anything: a character can be an absent participant of the chat and
+   * absent from the payload at the same time, which is exactly the shape that
+   * used to slip back into the frame through the enumeration scan.
+   */
+  participants?: Array<{ characterId: string; status: 'active' | 'silent' | 'absent' | 'removed' }>;
+  /**
    * [decd8ef9] The per-case `chat_settings.dangerousContentSettings` bag. NOT
    * baked in here (one row, one user): both sides UPDATE it on their own fresh
    * copy before the case runs. Declared so the shape lives in one place.
@@ -292,15 +302,20 @@ async function main(): Promise<void> {
   // 6. Chats.
   let pIdx = 0;
   const charName = (id: string): string => spec.characters.find((c) => c.id === id)!.name;
-  const mkParticipant = (characterId: string) => ({
+  const mkParticipant = (
+    characterId: string,
+    status: 'active' | 'silent' | 'absent' | 'removed' = 'active',
+  ) => ({
     id: `fb5a0000-0000-4000-8000-${String(++pIdx).padStart(12, '0')}`,
     type: 'CHARACTER',
     characterId,
     characterName: charName(characterId),
     controlledBy: 'llm',
     displayOrder: 0,
-    isActive: true,
-    status: 'active',
+    // The legacy flag kept consistent with the status `isParticipantPresent`
+    // actually reads.
+    isActive: status === 'active' || status === 'silent',
+    status,
     hasHistoryAccess: false,
     createdAt: TS,
     updatedAt: TS,
@@ -327,7 +342,9 @@ async function main(): Promise<void> {
         title: `STORYCASE:${Object.keys(spec.chats).find((k) => spec.chats[k].id === chat.id)}`,
         chatType: 'salon',
         alertCharactersOfLanternImages: true,
-        participants: chat.characterIds.map(mkParticipant),
+        participants: chat.participants
+          ? chat.participants.map((p) => mkParticipant(p.characterId, p.status))
+          : chat.characterIds.map((id) => mkParticipant(id)),
         contextSummary: null,
         ...extra,
       } as never,

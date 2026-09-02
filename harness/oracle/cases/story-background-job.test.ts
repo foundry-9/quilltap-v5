@@ -231,6 +231,13 @@ async function main(): Promise<void> {
                 response = `A candid ${caseLabel} bedroom at dawn, Zelda bare by the window, nothing draped.`;
               } else if (caseLabel === 'missing_char_enum') {
                 response = 'A grand hall at midnight where Zelda waits by the great doors, lanterns glowing warmly.';
+              } else if (caseLabel === 'backfill_absent') {
+                // [P4.D146 / v4 70505745a] All three names, so the enumeration
+                // scan is offered all three and the image key records which it
+                // appended. Fern is a payload participant, Bram an ABSENT
+                // participant of this chat, Zelda unaffiliated with it.
+                response =
+                  'A rainswept quay at dusk. Fern waits by the bollards while Bram hangs back beneath the awning and Zelda watches from the customs house.';
               } else {
                 response = `An atmospheric ${caseLabel} landscape at dusk with soft, painterly light.`;
               }

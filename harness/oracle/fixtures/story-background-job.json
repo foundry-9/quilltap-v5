@@ -129,6 +129,22 @@
         "name": "Portrait",
         "mediumPrompt": "a tall woman with dark braided hair"
       }
+    },
+    {
+      "$comment": "[P4.D146 / v4 70505745a] The ABSENT participant. A participant of backfill_absent whose status is 'absent', so the enqueue leaves him out of payload.characterIds — which used to drop him straight into the back-fill's candidate pool, handing the provider a portrait of the very figure the filter had just removed.",
+      "id": "c5000000-0000-4000-8000-0000000000bb",
+      "name": "Bram",
+      "participant": true,
+      "pronouns": {
+        "subject": "he",
+        "object": "him",
+        "possessive": "his"
+      },
+      "physicalDescription": {
+        "id": "d5000000-0000-4000-8000-0000000000bb",
+        "name": "Portrait",
+        "mediumPrompt": "a broad-shouldered man in a salt-stained coat"
+      }
     }
   ],
   "imageProfiles": [
@@ -430,6 +446,23 @@
         "showWarningBadges": true,
         "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000004"
       },
+      "expectWrite": true,
+      "expectDerive": true
+    },
+    "backfill_absent": {
+      "$comment": "[P4.D146 / v4 70505745a] The step-9b back-fill's exclusion set. Fern is a PRESENT participant and carries the payload; Bram is an ABSENT participant of the same chat and carries nothing; Zelda is unaffiliated with the chat entirely. The crafted prompt names all three (the completion mock's backfill_absent branch), so the enumeration scan is offered all three names and the recorded image key says which it actually appended: Zelda yes, Bram no, Fern no (already handed to the crafter).",
+      "id": "5c00000f-0000-4000-8000-00000000000f",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "participants": [
+        { "characterId": "c5000000-0000-4000-8000-000000000001", "status": "active" },
+        { "characterId": "c5000000-0000-4000-8000-0000000000bb", "status": "absent" }
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": [
+        "The tide came in under the customs house."
+      ],
       "expectWrite": true,
       "expectDerive": true
     }

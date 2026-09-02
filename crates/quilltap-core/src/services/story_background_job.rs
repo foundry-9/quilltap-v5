@@ -704,8 +704,32 @@ where
     };
 
     // 9b. Back-fill mentioned non-participant characters (errors swallowed).
-    let participant_ids: std::collections::HashSet<String> =
+    //
+    // [70505745a] The exclusion set is the payload UNION the chat's NOT-present
+    // participants. v4's comment: absent and removed participants of THIS chat
+    // are excluded "for the opposite reason: they were deliberately kept out of
+    // `payload.characterIds` because they are not in the scene. Back-filling an
+    // appearance for one would undo that — a crafter that picked their name out
+    // of the transcript would be handed a portrait to render, putting them back
+    // in the frame by the side door. A character absent here may still be
+    // enumerated when genuinely unaffiliated with the chat, which is what this
+    // scan is for."
+    let mut participant_ids: std::collections::HashSet<String> =
         payload.character_ids.iter().cloned().collect();
+    for p in chat
+        .get("participants")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+    {
+        // v4: `if (p.characterId && !isParticipantPresent(p.status))` — the
+        // truthy `characterId` first, so an empty string adds nothing.
+        if let Some(cid) = p.get("characterId").and_then(Value::as_str) {
+            if !cid.is_empty() && !crate::chat_predicates::json_participant_is_present(p) {
+                participant_ids.insert(cid.to_string());
+            }
+        }
+    }
     let uid_for_chars = user_id.to_string();
     let user_characters = common::with_both_conns(db, move |main, mount| {
         crate::db::characters_read::find_by_user_id(main, mount, &uid_for_chars)
