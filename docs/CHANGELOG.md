@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — fix(images): the Provider select shows the profile's own provider (dogfood #108)
+
+_Versions: SPA 0.5.616; no crate touched._
+
+Found on the Friday copy during the round-2 dogfood walk: editing a real
+NanoGPT image profile showed **Provider: OpenAI** while the same dialog showed
+the NanoGPT API key, the `flux-lora` model and a NanoGPT options panel. On that
+instance it affected **11 of 14** profiles — every one not on `OPENAI` — and it
+is deterministic, not a cold-paint race.
+
+The select's rows come from an `@for` over the async provider list while the
+value was bound `[value]="provider()"`; Angular applies the property binding
+before the option views exist, so the assignment matches nothing and the browser
+settles on row 0, and the binding never re-runs because `provider()` never
+changed. v4's React controlled select re-applies `value` on the render that
+fills the list, so v4 was never affected. The same file already used the
+post-render `afterRenderEffect` assignment for the Model and Size selects, with
+a comment describing this exact hazard; the Provider select was missed.
+
+Display-only — `provider()` held the real value throughout, proven by a live
+round trip that wrote `NANOGPT` back with the `size` sibling key intact.
+
+Fixed with a third `afterRenderEffect` keyed on `providers()`. Pins: four specs
+(a non-first row with the option list asserted present first so "not row 0"
+cannot pass vacuously, a middle row, row 0 itself, and a user pick still
+winning), mutation-proven — restoring the naive binding reds exactly the two
+non-first-row arms. The live `settings-image-lora-flow` beat, which already
+re-opens a NanoGPT profile's editor after a full reload, gained the assertion
+that was missing.
+
 #### 2026-09-02 — docs(drift): record 70505745a — absent characters out of story backgrounds
 
 _Docs-only; no version bumps._

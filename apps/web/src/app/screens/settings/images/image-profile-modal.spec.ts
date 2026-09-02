@@ -842,3 +842,67 @@ describe('ImageProfileModal — writing the parameters bag', () => {
     expect('loras' in w.parametersBag()).toBe(false);
   });
 });
+
+/**
+ * The Provider select's stored value (dogfood finding #108).
+ *
+ * The options render from an `@for` over `providers()`, so a bound
+ * `[value]` lands before the rows exist and the browser snaps to row 0 —
+ * on the real instance EVERY profile whose provider was not the first row
+ * (11 of 14: NANOGPT, GROK, GOOGLE, WAVESPEED) read "OpenAI" in the editor.
+ * v4 never showed it because React re-applies `value` on the render that
+ * fills the list (`ImageProfileForm.tsx:429`). The fix is the same
+ * post-render assignment the Model and Size selects already used.
+ */
+describe('ImageProfileModal — the Provider select shows the stored provider', () => {
+  function withProviders(): Partial<CoreClient> {
+    return {
+      dispatchData: (async (req: Dispatched) => {
+        if (req.type === 'imageProviderList') {
+          return {
+            providers: [
+              { value: 'OPENAI', label: 'OpenAI', defaultModels: [], apiKeyProvider: 'OPENAI', legacyNames: [] },
+              { value: 'GROK', label: 'Grok (xAI)', defaultModels: [], apiKeyProvider: 'GROK', legacyNames: [] },
+              { value: 'NANOGPT', label: 'NanoGPT', defaultModels: [], apiKeyProvider: 'NANOGPT', legacyNames: [] },
+            ],
+          };
+        }
+        if (req.type === 'imageProfileListModels') return { models: [] };
+        return {};
+      }) as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async () => ({
+        data: { apiKeys: [KEY] },
+      })) as unknown as CoreClient['dispatchExpect'],
+    };
+  }
+
+  it('seeds a NON-first provider rather than falling back to row 0', async () => {
+    const fixture = await render(withProviders(), profile({ provider: 'NANOGPT', modelName: 'flux-lora' }));
+    const select = providerSelect(fixture);
+    // The row must actually exist, or "not row 0" would prove nothing.
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['OPENAI', 'GROK', 'NANOGPT']);
+    expect(select.value).toBe('NANOGPT');
+    expect(select.options[select.selectedIndex].text).toBe('NanoGPT');
+  });
+
+  it('seeds the middle row too (not merely "the last one wins")', async () => {
+    const fixture = await render(withProviders(), profile({ provider: 'GROK', modelName: 'grok-2-image' }));
+    expect(providerSelect(fixture).value).toBe('GROK');
+  });
+
+  it('still shows row 0 for a profile that really is on the first provider', async () => {
+    const fixture = await render(withProviders(), profile({ provider: 'OPENAI' }));
+    expect(providerSelect(fixture).value).toBe('OPENAI');
+  });
+
+  it('a user pick still wins over the stored value', async () => {
+    const fixture = await render(withProviders(), profile({ provider: 'NANOGPT', modelName: 'flux-lora' }));
+    const select = providerSelect(fixture);
+    select.value = 'GROK';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    fixture.detectChanges();
+    expect(select.value).toBe('GROK');
+  });
+});

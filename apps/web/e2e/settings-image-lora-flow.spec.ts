@@ -205,6 +205,12 @@ test.describe('P4.D139 — LoRA adapters on an image profile', () => {
     await expect(page.getByRole('heading', { name: 'LoRA Adapters (Optional)' })).toBeVisible({
       timeout: 15_000,
     });
+    // Dogfood finding #108: the Provider select's options come from an `@for`
+    // over the async provider list, so a bound `[value]` landed before the rows
+    // existed and the browser snapped to row 0 — on real data every non-OPENAI
+    // profile read "OpenAI" here. NANOGPT is not row 0, which is the whole
+    // point of asserting it on THIS re-opened editor.
+    await expect(providerSelect(page)).toHaveValue('NANOGPT');
     await expect(page.locator('#lora-source-0')).toHaveValue(ADAPTER_SOURCE);
     await expect(page.locator('#lora-trigger-0')).toHaveValue('in the style of ohwx');
     await expect(page.getByText('1 of', { exact: false })).toBeVisible();

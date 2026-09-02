@@ -112,9 +112,10 @@ import {
         <div>
           <label class="block qt-text-label mb-1">Provider</label>
           <select
+            #providerSelect
             class="qt-select"
             [disabled]="providersQuery.isPending()"
-            [value]="provider()"
+            [attr.data-qt-value]="provider()"
             (change)="onProviderChange($any($event.target).value)"
           >
             @for (p of providers(); track p.value) {
@@ -399,6 +400,7 @@ export class ImageProfileModal implements OnInit {
       this.apiKeyId().length > 0,
   );
 
+  private readonly providerSelect = viewChild<ElementRef<HTMLSelectElement>>('providerSelect');
   private readonly modelSelect = viewChild<ElementRef<HTMLSelectElement>>('modelSelect');
   private readonly sizeSelect = viewChild<ElementRef<HTMLSelectElement>>('sizeSelect');
 
@@ -554,6 +556,24 @@ export class ImageProfileModal implements OnInit {
           this.loraSupport.set(null);
         }
       })();
+    });
+
+    /**
+     * The Provider select needs the same POST-render assignment as Model and
+     * Size, for the same reason and one more: its `@for` runs over
+     * `providers()`, so a bound `[value]` lands before the options exist and
+     * the browser snaps to row 0 — every profile whose provider is not the
+     * first row rendered as "OpenAI". React re-applies `value` on the render
+     * that fills the list (v4 `ImageProfileForm.tsx:429`), which is why v4
+     * never showed it. Depend on `providers()` so a late `list-providers`
+     * response re-asserts the stored provider too.
+     */
+    afterRenderEffect(() => {
+      this.providers();
+      const select = this.providerSelect()?.nativeElement;
+      if (select) {
+        select.value = this.provider();
+      }
     });
 
     /**
