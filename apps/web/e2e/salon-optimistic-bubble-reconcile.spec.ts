@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from './support/fixtures';
+import { expect, test, type Locator, type Page, type Request } from './support/fixtures';
 
 import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
@@ -74,7 +74,19 @@ async function installRealtimeHintHook(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const proto = window.EventSource?.prototype;
     const desc = proto && Object.getOwnPropertyDescriptor(proto, 'onmessage');
-    if (!proto || !desc?.get || !desc?.set) return;
+    if (!proto || !desc?.get || !desc?.set) {
+      // P4.69: a browser whose EventSource prototype we cannot patch must not
+      // leave the beat looking healthy. Plant a poisoned injector so the first
+      // injection fails LOUDLY instead of silently doing nothing.
+      (
+        window as unknown as { __qtInjectRealtimeHint: (topic: string, id: string) => void }
+      ).__qtInjectRealtimeHint = () => {
+        throw new Error(
+          'realtime-hint hook not installed: EventSource.prototype.onmessage is not patchable',
+        );
+      };
+      return;
+    }
     const nativeGet = desc.get;
     const nativeSet = desc.set;
     Object.defineProperty(proto, 'onmessage', {
@@ -95,7 +107,16 @@ async function installRealtimeHintHook(page: Page): Promise<void> {
       const handler = (
         window as unknown as { __qtEsHandler?: (ev: MessageEvent<string>) => void }
       ).__qtEsHandler;
-      if (!handler) return;
+      // P4.69: this used to `return` on a missing handler. That made the whole
+      // injection a no-op the beat could not feel — the wait below would then
+      // be satisfied by some unrelated refetch and the test would PASS having
+      // exercised nothing (memory note `e2e-inject-wire-bytes-via-eventsource`).
+      // The app's own `EventSource` handler being absent is a hard failure.
+      if (!handler) {
+        throw new Error(
+          'realtime-hint injection had no EventSource handler to feed — the app never opened /api/events',
+        );
+      }
       handler(
         new MessageEvent('message', {
           data: JSON.stringify({ v: 1, topic, id, at: Date.now() }),
@@ -106,29 +127,62 @@ async function installRealtimeHintHook(page: Page): Promise<void> {
 }
 
 /**
- * Wait for the `chatGet` request the injected hint's invalidation triggers to
- * round-trip. Matching on the request BODY (not just the URL — every dispatch
- * verb shares `POST /api/dispatch`) so this can't resolve on some unrelated
- * request that happens to fire around the same time.
+ * A running tally of the `chatGet` refetches this chat has issued.
+ *
+ * Matching on the request BODY (not just the URL — every dispatch verb shares
+ * `POST /api/dispatch`) keeps unrelated verbs out. But the body match ALONE is
+ * still not scoped enough for this beat: the Salon issues `chatGet` for its own
+ * reasons (the send's own reconcile, a turn transition, the realtime hub's
+ * catch-up sweep), so "a chatGet for this chat arrived" can be satisfied by a
+ * request that was already in flight when the hint was injected — the beat
+ * would then measure the app's ordinary refetch and never the injected one.
+ *
+ * P4.69 scopes it by SEQUENCE instead: snapshot the count at injection time and
+ * wait for a request issued strictly after that. Requests are counted from
+ * `page.on('request')`, which fires at issue time, so the ordering is the
+ * client's own.
  */
-function waitForChatRefetch(page: Page, chatId: string) {
-  return page.waitForResponse(
-    (resp) => {
-      if (resp.request().method() !== 'POST' || !resp.url().endsWith('/api/dispatch')) {
-        return false;
-      }
+class ChatRefetchTally {
+  private count = 0;
+  private readonly handler: (req: Request) => void;
+
+  constructor(
+    private readonly page: Page,
+    chatId: string,
+  ) {
+    this.handler = (req: Request) => {
+      if (req.method() !== 'POST' || !req.url().endsWith('/api/dispatch')) return;
       try {
-        const body = JSON.parse(resp.request().postData() ?? '{}') as {
-          type?: string;
-          chatId?: string;
-        };
-        return body.type === 'chatGet' && body.chatId === chatId;
+        const body = JSON.parse(req.postData() ?? '{}') as { type?: string; chatId?: string };
+        if (body.type === 'chatGet' && body.chatId === chatId) this.count += 1;
       } catch {
-        return false;
+        // not JSON — not a dispatch body we care about
       }
-    },
-    { timeout: 10_000 },
-  );
+    };
+    page.on('request', this.handler);
+  }
+
+  /** The number of matching refetches seen so far. */
+  seen(): number {
+    return this.count;
+  }
+
+  /** Wait until a refetch issued AFTER `mark` has been seen. */
+  async waitPast(mark: number, timeoutMs = 10_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.count <= mark) {
+      if (Date.now() > deadline) {
+        throw new Error(
+          `no chatGet refetch was issued after the injected hint (still ${this.count}, wanted > ${mark})`,
+        );
+      }
+      await this.page.waitForTimeout(50);
+    }
+  }
+
+  dispose(): void {
+    this.page.off('request', this.handler);
+  }
 }
 
 /**
@@ -197,18 +251,26 @@ test.describe('P4.66 — the optimistic bubble survives a mid-turn refetch (LIVE
     topic: string,
     bubbles: Locator,
   ): Promise<void> {
-    const refetch = waitForChatRefetch(page, chatId);
-    await page.evaluate(
-      ([t, id]) =>
-        (
-          window as unknown as { __qtInjectRealtimeHint: (topic: string, id: string) => void }
-        ).__qtInjectRealtimeHint(t, id),
-      [topic, chatId] as const,
-    );
-    // The refetch's network round trip has landed — this is the exact window
-    // the bug lived in (the persisted row now in `msgs`, the optimistic
-    // bubble not yet cleared because the turn is still streaming).
-    await refetch;
+    const tally = new ChatRefetchTally(page, chatId);
+    try {
+      const mark = tally.seen();
+      // Throws inside the page if the hook never captured a handler — a silent
+      // no-op here used to be indistinguishable from a healthy run.
+      await page.evaluate(
+        ([t, id]) =>
+          (
+            window as unknown as { __qtInjectRealtimeHint: (topic: string, id: string) => void }
+          ).__qtInjectRealtimeHint(t, id),
+        [topic, chatId] as const,
+      );
+      // A refetch the INJECTED hint caused — issued strictly after the mark, so
+      // an already-in-flight `chatGet` cannot stand in for it. This is the exact
+      // window the bug lived in (the persisted row now in `msgs`, the optimistic
+      // bubble not yet cleared because the turn is still streaming).
+      await tally.waitPast(mark);
+    } finally {
+      tally.dispose();
+    }
 
     const counts = await sampleCounts(bubbles, 12, 150);
     expect(Math.max(...counts), `bubble counts sampled across the refetch window: ${counts.join(', ')}`).toBe(

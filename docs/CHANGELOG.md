@@ -508,6 +508,45 @@ database. Red-first: 79 of 98 rows failed before the fix. Two mutations pin it
 — removing the empty-string fold reddens 18 rows and nothing on the two routes
 where v4 deliberately does not fold; reading the last duplicate instead of the
 first reddens 33, all of them duplicate-key rows.
+#### 2026-09-02 — test(e2e): repair the three fragile beats — the silent hint hook, the unscoped refetch, the positional pick, and un-park the component transfer
+
+_Versions: SPA 0.5.627._
+
+Three repairs the round-2 record named, each run red against the pre-fix shape
+where a red could be posed.
+
+**The realtime-hint injection could pass having done nothing.**
+`__qtInjectRealtimeHint` returned silently when no `EventSource` handler had
+been captured, so the injected frame was a no-op — and the wait below it was
+then satisfied by some unrelated `chatGet`, leaving a green beat that exercised
+nothing (the exact shape memory note `e2e-inject-wire-bytes-via-eventsource`
+warns about). Both degradation paths now throw: the un-patchable-prototype path
+plants a poisoned injector, and a missing handler is a hard failure naming the
+cause.
+
+**The refetch wait was scoped only by body, not by time.** `type === 'chatGet'
+&& chatId` keeps other verbs out but cannot tell the injected hint's refetch
+from one already in flight — the Salon issues `chatGet` for its own reasons. It
+is now a `ChatRefetchTally` over `page.on('request')`: snapshot the count, inject,
+wait for a request issued strictly after that mark.
+
+**The workspace-search Documents beat picked its chat positionally.** `.first()`
+called `soloCard` is only 'Solo Voyage' while nothing newer exists; a sibling
+spec seeding a chat in a full run moves it — the shape that broke the marks beat
+at the `f3892158d` unification. Picked by title now.
+
+**The component-transfer beat is UN-PARKED.** `beforeAll` materializes empty
+`projects` and `groups` from `fresh_schema.json` (instance materialization, not
+a fixture regen — the committed pair is untouched, so the six harness families
+reading it keep their pinned bytes). P4.D130 predicted two consequences and both
+appeared: the Copy arm's `option[value^="character:"]` count went red at
+`Expected 0 / Received 4` — its `0` had been vacuously green because the fetch
+always died — and is now asserted by name as well as count (Aria's own vault,
+the item's known home, is the one omitted); and the move beat walks. No third
+blocker surfaced. The `test.skip` on the probe is now an assertion, so a future
+break in the enumerator fails the beat instead of quietly parking it. Wardrobe
+spec: 11/11, zero skips.
+
 #### 2026-09-02 — test(settings): pin the eight unpinned slider readout strings against v4's JSX
 
 _Versions: SPA 0.5.626._

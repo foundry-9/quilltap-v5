@@ -151,6 +151,47 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       'CREATE TABLE IF NOT EXISTS instance_settings (' +
         '"key" TEXT PRIMARY KEY, "value" TEXT NOT NULL);',
     );
+    // P4.69 — the same materialization, for the two tables the TRANSFER
+    // destinations enumerator reads. The committed `characters-main.db` carries
+    // neither, so `wardrobeTransferDestinations` failed WHOLE (not per-tier) and
+    // the Move dialog could offer nothing; the component-transfer beat parked on
+    // that and the Copy arm's `option[value^="character:"]` count sat vacuously
+    // at 0 because the fetch never returned.
+    //
+    // DDL copied from `crates/quilltap-core/src/services/provisioning/
+    // fresh_schema.json` (v5's D23 re-dump of v4's live `generateDDL`), so the
+    // shape is v4's own rather than a hand-written approximation. Both stay
+    // EMPTY: the enumerator's project/group tiers legitimately contribute no
+    // destinations here, which is what makes the character-tier count below the
+    // thing under test. Instance materialization, not a fixture regen — the
+    // committed pair is untouched and the six harness families that read it keep
+    // their pinned bytes.
+    runCliWrite(
+      cli,
+      'CREATE TABLE IF NOT EXISTS projects (' +
+        '"id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL, ' +
+        '"officialMountPointId" TEXT, "createdAt" TEXT NOT NULL, ' +
+        '"updatedAt" TEXT NOT NULL, "description" TEXT, "instructions" TEXT, ' +
+        '"state" TEXT DEFAULT \'{}\', "allowAnyCharacter" INTEGER DEFAULT 0, ' +
+        '"characterRoster" TEXT DEFAULT \'[]\', "color" TEXT, "icon" TEXT, ' +
+        '"defaultDisabledTools" TEXT DEFAULT \'[]\', ' +
+        '"defaultDisabledToolGroups" TEXT DEFAULT \'[]\', ' +
+        '"defaultAgentModeEnabled" INTEGER, ' +
+        '"defaultAvatarGenerationEnabled" INTEGER, ' +
+        '"defaultImageProfileId" TEXT, "defaultRoleplayTemplateId" TEXT, ' +
+        '"defaultAlertCharactersOfLanternImages" INTEGER, ' +
+        '"answerConfirmationOverride" TEXT, "storyBackgroundsEnabled" INTEGER, ' +
+        '"staticBackgroundImageId" TEXT, "storyBackgroundImageId" TEXT, ' +
+        '"backgroundDisplayMode" TEXT DEFAULT \'theme\');',
+    );
+    runCliWrite(
+      cli,
+      'CREATE TABLE IF NOT EXISTS groups (' +
+        '"id" TEXT PRIMARY KEY NOT NULL, "name" TEXT NOT NULL, ' +
+        '"officialMountPointId" TEXT, "createdAt" TEXT NOT NULL, ' +
+        '"updatedAt" TEXT NOT NULL, "description" TEXT, "instructions" TEXT, ' +
+        '"state" TEXT DEFAULT \'{}\', "color" TEXT, "icon" TEXT);',
+    );
     for (const table of USER_TABLES) {
       runCliWrite(
         cli,
@@ -644,8 +685,20 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(copyDialog.locator('input[name="wardrobe-transfer-components"]')).toHaveCount(2);
     await expect(copyDialog.getByText('Copy the components along with it')).toBeVisible();
     await expect(copyDialog.getByText('Move the components along with it')).toHaveCount(0);
-    // The item's known home — Aria's own vault — is dropped from the list.
-    await expect(copyDialog.locator('option[value^="character:"]')).toHaveCount(0);
+    // The item's known home — Aria's own vault — is dropped from the list, but
+    // every OTHER character's vault is on offer.
+    //
+    // P4.69: this asserted 0 and was vacuously green — `wardrobeTransferDestinations`
+    // died whole on the missing `projects`/`groups` tables, so the select had no
+    // options of any kind and "no character option" measured nothing. With both
+    // tables materialized in `beforeAll` the enumerator returns the real answer:
+    // the fixture's five characters minus Aria herself, whose vault is this
+    // item's known home. Asserting the NAMES, not just the count, is what makes
+    // the omission the thing under test rather than an arithmetic coincidence.
+    const characterOptions = copyDialog.locator('option[value^="character:"]');
+    await expect(characterOptions).toHaveCount(4);
+    const optionText = (await characterOptions.allTextContents()).join(' | ');
+    expect(optionText, `character destinations offered: ${optionText}`).not.toContain('Aria');
     await copyDialog.getByRole('button', { name: 'Cancel' }).click();
 
     // Move: three choices, defaulting to moving them along.
@@ -679,10 +732,15 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     test.setTimeout(90_000);
     await page.goto(`${BASE_URL}/characters`);
     await unlockIfLocked(page);
-    test.skip(
-      !(await hasTransferDestinations(page)),
-      'the committed characters-* fixture has no `projects`/`groups` tables, so `wardrobeTransferDestinations` 500s and the Move dialog can offer nothing (P4.D130 measured; see the probe)',
-    );
+    // P4.69 UN-PARKED. This used to `test.skip` on the probe because the
+    // committed `characters-main.db` has no `projects`/`groups` tables and
+    // `wardrobeTransferDestinations` failed whole. `beforeAll` now materializes
+    // both, so the probe is an ASSERTION rather than a park — if the enumerator
+    // ever breaks again this beat says so instead of quietly not running.
+    expect(
+      await hasTransferDestinations(page),
+      'wardrobeTransferDestinations must answer — see the projects/groups materialization in beforeAll',
+    ).toBe(true);
     await openAriaDetail(page);
     await openWardrobeDialog(page);
 
@@ -1228,14 +1286,14 @@ async function hasGeneralStore(page: Page): Promise<boolean> {
  * it was hidden behind the General-store park until P4.D130 lifted it. It is a
  * pre-existing fixture-vintage gap, not something this lane introduced.
  *
- * DELIBERATELY NOT CLOSED HERE. Materializing empty `projects`/`groups` does
- * make the verb succeed — and then two more things surface, because the beats
- * around it were written against the broken fetch: the Copy arm's
- * `option[value^="character:"]` count, asserted as 0, becomes 4 (four real
- * character destinations — correct product behaviour, a vacuously-green
- * assertion), and the move beat then fails to find its outfit row. Un-parking
- * this beat properly means revisiting those beats too, which is its own scoped
- * job rather than a tail-end patch. Recorded in the P4.D130 lane record.
+ * CLOSED at P4.69. `beforeAll` materializes empty `projects`/`groups` from
+ * `fresh_schema.json`, so the verb answers and the probe below is an assertion,
+ * not a park. P4.D130's two predicted consequences both materialized and were
+ * fixed with it: the Copy arm's `option[value^="character:"]` count really is 4
+ * (its `0` had been vacuously green — the fetch never returned), now asserted
+ * by NAME as well as count; and the move beat, run in the serial chain it
+ * belongs to, walks green. No third blocker surfaced (memory note
+ * `lifting-a-park-is-a-measurement` — it was expected to, and did not).
  */
 async function hasTransferDestinations(page: Page): Promise<boolean> {
   const res = await page.request.post(`${BASE_URL}/api/dispatch`, {
