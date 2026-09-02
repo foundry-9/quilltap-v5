@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(drift): record 70505745a — absent characters out of story backgrounds
+
+_Docs-only; no version bumps._
+
+The `/dogfood` freshness probe found the ledger stale: v4 landed one commit
+past the baseline. `70505745a` "fix(images): keep absent characters out of
+story backgrounds" (v4 `4.9.0-dev.110`) is a **PORT** row on two
+already-ported families. (a) Both story-background enqueue sites now filter
+participants on `isParticipantPresent` — an Absent or soft-removed character
+was being painted into the frame — and the prompt back-fill's candidate pool
+excludes them too, so a crafter that picked the name out of the transcript
+can no longer restore the figure by the side door; the empty case answers
+"No characters **present** in chat…". (b) The project background display
+enum narrows to `latest_chat | theme`: `'project'` and `'static'` never
+worked (one read a field only the latest-chat path writes, the other a field
+nothing writes), and stored rows coerce to `'theme'` through a new
+`normalizeBackgroundDisplayMode` preprocessor rather than failing the
+`.parse` every project read performs. Not a convergence — v4's bugs doc is
+untouched. Ledger §1 rewritten (verdict DRIFT PENDING — 1 commit; **regen
+rule flips to PIN REQUIRED** at `4622411fd`) and the row appended to §3 as
+UNPROCESSED.
+
 #### 2026-09-01 — chore(unify): the P4.D138 follow-up — the LoRA train's server units 5–7
 
 _Versions: core 0.0.736, harness 0.0.630, host 0.0.91, SPA 0.5.615; web/cli/tauri unchanged._

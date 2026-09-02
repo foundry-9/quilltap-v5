@@ -24,11 +24,11 @@ probe verifies against._
   unification (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66,
   2026-09-01). The round absorbed five of the eight rows past `7fb668263`
   whole and the three-commit LoRA train PARTIALLY (see below).
-- **Checked:** 2026-09-01 (at the P4.D138 follow-up `/unify`, after the
-  round-2 `/unify` earlier that day — the §2 probe at survey and at the
-  fast-forward; the previous full `/driftcheck` was 2026-08-31).
-- **v4 `main` HEAD at check:** `4622411fd` — **ZERO commits past the new
-  baseline.**
+- **Checked:** 2026-09-02 (full `/driftcheck`, run from the `/dogfood`
+  freshness probe finding the ledger stale; the previous check was
+  2026-09-01 at the P4.D138 follow-up `/unify`).
+- **v4 `main` HEAD at check:** `70505745a` — **ONE commit past the
+  baseline** (v4 `4.9.0-dev.110`).
 - **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** since the
   2026-08-27 content measurement (the bare 4.8.4 fork marker; its long
   `main..bugfix` commit list is the squash-topology lie, §4 step 2 —
@@ -36,7 +36,18 @@ probe verifies against._
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — same tip
   as the prior checks, ancestry previously verified.
 - **Checkout at check:** branch `main`, **tree CLEAN**.
-- **Verdict: DRIFT CLEARED — 0 commits past the baseline, §3 EMPTY.** The
+- **Verdict: DRIFT PENDING — 1 commit past the baseline.** `70505745a`
+  "fix(images): keep absent characters out of story backgrounds" (2026-09-01
+  23:07 CDT, v4 `4.9.0-dev.110`) — a PORT row landing on two already-ported
+  families: the story-background enqueue/back-fill spine (P4.D94's crafter
+  lane + the title-update job's `queueStoryBackgroundIfEnabled`) and the
+  project background-display-mode enum (the groups/projects vertical +
+  `api/projects.rs`'s `handleGetBackground` twin + the SPA
+  ImageGenerationCard). Not a convergence — v4's `docs/developer/bugs.md`
+  is untouched by the commit and no v5 filing matches; this is v4 finding
+  its own bug. See §3.
+- _Superseded (the P4.D138-follow-up verdict): DRIFT CLEARED — 0 commits
+  past the baseline, §3 EMPTY._ The
   LoRA train's three rows, PARTIAL at the round-2 unification earlier the
   same day, were completed by the resumed P4.D138 lane (units 5–7) and
   absorbed at its follow-up unification (2026-09-01): the `image-dialects`
@@ -64,11 +75,10 @@ probe verifies against._
   `2ece98c90` (the HuggingFace LoRA lookup — PORT-NEW). One smaller port:
   `5f56f7a7d` (the `qt-range` class). Two docs-only NO-PORT? candidates:
   `e41fcb12e` (banks help hunks to `p4.9i2`) and `4622411fd`.
-- **Regen rule in force: NO PIN REQUIRED** — v4 HEAD IS the baseline and
-  the checkout is on `main`, clean. Re-run the §2 probe before every regen
-  batch all the same; the moment v4 moves, §5.1's pinned worktree at
-  `4622411fd` is the rule again. (The `image_dialects` corpus exception
-  ended with P4.D138 unit 5 — it is recorded at the train's tip now.)
+- **Regen rule in force: PIN REQUIRED** — v4 HEAD (`70505745a`) is past
+  the baseline, so every oracle regen runs from §5.1's pinned worktree at
+  `4622411fd`. (The checkout itself is on `main` and clean; the pin is
+  required by the moved HEAD, not by the tree.)
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
   fork; v4 develops on `main` alone (the 4.9.0 release-notes file moved
   again at `4622411fd` on 2026-08-31, so the squash may be imminent).
@@ -111,6 +121,7 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+| `70505745a` | 2026-09-01 | fix(images): keep absent characters out of story backgrounds | **PORT** | (a) `lib/background-jobs/handlers/story-background.ts` + `title-update.ts` + `app/api/v1/chats/[id]/actions/story-background.ts` → v5 `services/story_background_job.rs`, `services/title_update_job.rs`, `api/chat_media.rs` (P4.D94 crafter lane; P4.61 title-update logging lane). (b) `lib/schemas/project.types.ts` + `app/api/v1/projects/[id]/{actions/background.ts,schemas.ts}` + `migrations/scripts/cutover-projects-to-store.ts` + `public/schemas/qtap-export.schema.json` → v5 `db/projects.rs`, `api/projects.rs::handleGetBackground` twin, `qtap_export/schema-key-order.json`, `provisioning/fresh_schema.json` (the groups/projects vertical + P4.D91's project-backdrop wiring). (c) SPA `app/prospero/[id]/**` → the v5 project detail Image Generation card. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
