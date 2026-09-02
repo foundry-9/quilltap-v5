@@ -701,12 +701,20 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     expect(optionText, `character destinations offered: ${optionText}`).not.toContain('Aria');
     // The §3 unification review: the omission alone is a NEGATIVE pin — a
     // renderer that stopped labelling the options would leave four blank rows
-    // and both lines above green. The fixture's other four characters (the
-    // `build-characters-fixture.ts` roster: Bram, Cleo, Dax, Echo) must be the
-    // ones on offer, by name.
-    for (const name of ['Bram', 'Cleo', 'Dax', 'Echo']) {
+    // and both lines above green. The fixture's live siblings with a working
+    // vault (Bram, Cleo, Dax — `build-characters-fixture.ts`) must be on offer
+    // by name; Echo's vault is BROKEN by construction (its mount rows are
+    // dropped for the `findByIdRaw` path) and cannot be a destination. The
+    // fourth option is Fenn, the archive extension's ARCHIVED character with a
+    // real vault — measured at the follow-ups unification; whether v4 offers
+    // an archived vault as a destination at all is a recorded measurement
+    // owed, not asserted here.
+    for (const name of ['Bram', 'Cleo', 'Dax']) {
       expect(optionText, `${name}'s vault must be offered as a copy destination`).toContain(name);
     }
+    expect(optionText, "Echo's vault is broken by construction and must not be offered").not.toContain(
+      'Echo',
+    );
     await copyDialog.getByRole('button', { name: 'Cancel' }).click();
 
     // Move: three choices, defaulting to moving them along.
