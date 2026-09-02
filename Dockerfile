@@ -115,6 +115,18 @@ COPY --from=build /out/quilltap /usr/local/bin/quilltap
 # every image built before this one did.
 COPY --from=spa /spa/dist/quilltap/browser /usr/local/share/quilltap/spa
 
+# The container marker, as v4's Dockerfile sets it. The environment probe
+# (`quilltap_host::env::is_docker_environment`, v4 `lib/paths.ts`) has three
+# arms — this variable, `/.dockerenv`, and an `/app` DIRECTORY — and the last
+# two would both answer true here anyway (Docker writes `/.dockerenv`, and the
+# VOLUME below creates `/app`). Stating it makes the first arm the one that
+# fires, which keeps the probe legible rather than incidental, and matters
+# because the answer decides whether a `localhost` model URL gets rewritten to
+# the host gateway (see the running guide, "Reaching a model server on the
+# host"). Note this is NOT the instance lock's probe, which deliberately omits
+# the `/app` arm.
+ENV DOCKER_CONTAINER=true
+
 # The conventional container data dir (paths.rs resolves it automatically in
 # a container; the env var makes it explicit for spawned terminals too).
 ENV QUILLTAP_DATA_DIR=/app/quilltap

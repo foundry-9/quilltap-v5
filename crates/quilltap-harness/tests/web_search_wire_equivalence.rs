@@ -231,6 +231,10 @@ fn web_search_wire_matches_v4() {
                     transport: &transport,
                     user_agent: UA,
                     base_url_env: None,
+                    // P4.71: no container gateway — this family measures the
+                    // search registry's inherited validateApiKey, whose
+                    // `baseUrl` v4's Serper plugin ignores outright.
+                    localhost_gateway: None,
                 };
                 // v4's plugin ignores `baseUrl` entirely (`_baseUrl`), so a
                 // supplied one must not change the answer — pass one.

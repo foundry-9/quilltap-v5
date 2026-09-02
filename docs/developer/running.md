@@ -30,11 +30,19 @@ docker build -t quilltap .
 ```
 
 ```bash
-docker run --rm -p 127.0.0.1:3000:3000 -v quilltap-data:/app/quilltap quilltap
+docker run --rm -p 127.0.0.1:3000:3000 -v quilltap-data:/app/quilltap \
+  --add-host=host.docker.internal:host-gateway quilltap
 ```
 
 Then open <http://127.0.0.1:3000/>. First run lands on the setup screen; see
 [First run](#first-run-setup-and-unlock).
+
+The `--add-host` flag is what lets a model server on **your machine** —
+Ollama, LM Studio, llama-server — be reachable from inside the container. It
+is harmless on macOS and Windows, where Docker Desktop resolves
+`host.docker.internal` on its own, and **required on Linux**, where Docker
+provides no such name. See [Reaching a model server on the
+host](#reaching-a-model-server-on-the-host).
 
 The image builds the Rust binaries and the Angular SPA in two concurrent
 stages and lays them down FHS-style:
@@ -65,6 +73,7 @@ Leave it unset and a room set for 07:00 rings at 02:00.
 
 ```bash
 docker run --rm -p 127.0.0.1:3000:3000 -v quilltap-data:/app/quilltap \
+  --add-host=host.docker.internal:host-gateway \
   -e QUILLTAP_TIMEZONE=America/Chicago quilltap
 ```
 
@@ -113,6 +122,7 @@ thing on both sides:
 
 ```bash
 docker run --rm -p 127.0.0.1:3000:3000 -v quilltap-data:/app/quilltap \
+  --add-host=host.docker.internal:host-gateway \
   -v /Users/you/Notes:/Users/you/Notes \
   -e QUILLTAP_TIMEZONE=America/Chicago quilltap
 ```
@@ -130,6 +140,48 @@ plans the binds for you (`npm run start:docker`, `quilltap docs
 docker-mounts`). v5 has no equivalent yet: it is packaging, not port surface,
 and it banks with the standing `quilltap docs` CLI deferral. Until it lands,
 the binds are yours to write.
+
+#### Reaching a model server on the host
+
+Inside a container, `localhost` is the *container's* loopback. A connection
+profile pointing at `http://localhost:11434` therefore reaches nothing at all —
+your Ollama is on the machine outside. Quilltap handles this for you: in a
+container it rewrites the host part of any `localhost` / `127.0.0.1` / `[::1]`
+base URL to the host gateway before the request goes out, so you can configure
+the address you would use on bare metal and leave it alone.
+
+What it rewrites *to* depends on how it is running:
+
+| Situation | Gateway used | What you must do |
+| --- | --- | --- |
+| Docker Desktop (macOS, Windows) | `host.docker.internal` | nothing |
+| Docker on Linux | `host.docker.internal` | pass `--add-host=host.docker.internal:host-gateway` |
+| A VM you built and manage yourself | whatever you set | set `QUILLTAP_HOST_IP` |
+| Bare metal (desktop, `cargo run`) | none — URLs are left alone | nothing |
+
+Linux Docker provides no built-in name for the host, which is why the flag is
+on every `docker run` line above. Without it the rewrite still happens and the
+request then fails to resolve — a confusing failure with a one-flag fix.
+
+The bridge gateway address (`172.17.0.1` and friends) is deliberately **not**
+used as a fallback. It is only the bridge interface: a server listening on the
+host's own loopback is not reachable through it, so falling back to it would
+turn "cannot connect" into "connects to the wrong place".
+
+| Variable | What it does | Default |
+| --- | --- | --- |
+| `QUILLTAP_HOST_IP` | The host address to rewrite `localhost` URLs to. Setting it is also what *enables* rewriting outside Docker — a hand-rolled VM cannot be detected, so this is how you opt in. | unset |
+
+```bash
+# A self-managed VM whose host is 10.0.0.5 on the guest network:
+QUILLTAP_HOST_IP=10.0.0.5 quilltap-web
+```
+
+Two limits worth knowing. An **empty** `QUILLTAP_HOST_IP` counts as unset, not
+as "rewrite to nothing". And a profile that carries **no** base URL of its own
+falls back to the provider plugin's built-in default, which is not rewritten —
+so inside a container, give a local-model profile an explicit
+`http://localhost:11434` rather than leaving the field blank.
 
 ### Without Docker
 

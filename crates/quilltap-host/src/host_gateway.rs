@@ -585,6 +585,126 @@ mod tests {
         );
     }
 
+    // ── the WIRING CENSUS (P4.71) ────────────────────────────────────────
+    //
+    // The injections are a chokepoint cutover: no differential can see them
+    // (the memory note `a-chokepoint-cutover-is-differential-invisible`), and
+    // the constructors they live in build a real `reqwest` client, so a
+    // behavioural test would need the network. The behaviour — "a provider
+    // carrying gateway G rewrites a localhost base URL to G" — is pinned in the
+    // core beside each seam. What is pinned HERE is that the host actually
+    // hands the resolved gateway to each one, and that a NEW construction site
+    // cannot be added without one. Reverting any single injection reds exactly
+    // its own arm below.
+
+    const PROVIDERS_RS: &str = include_str!("providers.rs");
+    const SPINE_RS: &str = include_str!("spine.rs");
+
+    /// Count non-comment occurrences of `needle` (a `//`-led line is prose, and
+    /// several of this module's own comments name these very symbols).
+    fn code_hits(haystack: &str, needle: &str) -> usize {
+        haystack
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .filter(|l| l.contains(needle))
+            .count()
+    }
+
+    /// The ~12 lines following `marker` — enough to see a builder chain, so an
+    /// arm can assert about ONE construction site rather than a whole file.
+    fn snippet<'a>(haystack: &'a str, marker: &str) -> String {
+        let at = haystack
+            .find(marker)
+            .unwrap_or_else(|| panic!("the census marker moved: {marker}"));
+        haystack[at..]
+            .lines()
+            .take(12)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn the_bundle_resolves_the_gateway_once() {
+        assert_eq!(
+            code_hits(
+                PROVIDERS_RS,
+                "crate::host_gateway::resolve_injected_gateway()"
+            ),
+            1,
+            "ProviderIo must resolve the gateway exactly once, in with_base_url_env"
+        );
+    }
+
+    #[test]
+    fn every_streaming_construction_injects() {
+        let news = code_hits(PROVIDERS_RS, "WireStreamingProvider::new(");
+        assert_eq!(news, 1, "a new streaming construction site appeared");
+        assert_eq!(
+            code_hits(
+                PROVIDERS_RS,
+                ".with_localhost_gateway(self.localhost_gateway.clone())"
+            ),
+            news,
+            "the streaming provider is built without the host gateway"
+        );
+    }
+
+    #[test]
+    fn every_completion_construction_injects() {
+        // One construction (WireConfig::completion) — the factory every job
+        // handler and the spine bundle go through.
+        assert_eq!(
+            code_hits(SPINE_RS, "WireCompletionProvider::new("),
+            2,
+            "a new completion construction site appeared (expected the \
+             constructor's own `impl` line and WireConfig::completion)"
+        );
+        assert!(
+            snippet(SPINE_RS, "fn completion(&self, db: &Db)")
+                .contains(".with_localhost_gateway(self.localhost_gateway.clone())"),
+            "WireConfig::completion must inject the host gateway"
+        );
+        assert_eq!(
+            code_hits(SPINE_RS, "localhost_gateway: io.localhost_gateway()"),
+            1,
+            "WireConfig::from_io must carry the bundle's resolved gateway"
+        );
+        // The send path must actually hand it to the core composition.
+        assert_eq!(
+            code_hits(SPINE_RS, "self.localhost_gateway.as_deref(),"),
+            1,
+            "the completion send must pass the gateway into execute_completion"
+        );
+    }
+
+    #[test]
+    fn every_embedding_construction_goes_through_the_one_home() {
+        // `ApiEmbeddingProvider::new` may appear ONCE — inside
+        // `WireConfig::embedding`, which injects. Any other call site would be
+        // an embedding provider built without the gateway (there were six
+        // before P4.71).
+        assert_eq!(
+            code_hits(SPINE_RS, "ApiEmbeddingProvider::new("),
+            1,
+            "an embedding provider is being constructed outside WireConfig::embedding"
+        );
+        assert!(
+            snippet(SPINE_RS, "fn embedding(&self, db: &Db)")
+                .contains(".with_localhost_gateway(self.localhost_gateway.clone())"),
+            "WireConfig::embedding must inject the host gateway"
+        );
+    }
+
+    #[test]
+    fn the_provider_actions_driver_carries_the_gateway() {
+        assert_eq!(
+            code_hits(SPINE_RS, "localhost_gateway: self.io.localhost_gateway()"),
+            1,
+            "RealProviderActions must carry the host gateway (v4 rewrites in the \
+             registry for validateApiKey and getAvailableModels)"
+        );
+    }
+
     #[test]
     fn the_logged_wrapper_agrees_with_the_pure_one() {
         // The wrapper reads the live environment; whatever that is, it must

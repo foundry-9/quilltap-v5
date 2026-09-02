@@ -175,6 +175,10 @@ pub struct ProviderIo {
     policy: TransportPolicy,
     user_agent: String,
     base_url_env: Option<String>,
+    /// The container host gateway (P4.71 — v4's `resolveHostGateway()`),
+    /// resolved ONCE here and injected into every provider this bundle builds.
+    /// `None` on bare metal, which is the pure rewrite's no-op arm.
+    localhost_gateway: Option<String>,
 }
 
 impl ProviderIo {
@@ -190,7 +194,26 @@ impl ProviderIo {
             policy: TransportPolicy::default(),
             user_agent: quilltap_user_agent(version),
             base_url_env,
+            // v4 resolves lazily inside each `rewriteLocalhostUrl`; v5 resolves
+            // once per process and injects. `resolve_injected_gateway` keeps
+            // v4's gate-then-resolve order, so a bare-metal host resolves
+            // nothing and logs nothing (see `host_gateway`).
+            localhost_gateway: crate::host_gateway::resolve_injected_gateway(),
         }
+    }
+
+    /// Force the injected gateway (the wiring pins; an embedded host that
+    /// resolves its own). Production reads the process environment via
+    /// [`with_base_url_env`](Self::with_base_url_env).
+    pub fn with_localhost_gateway(mut self, gateway: Option<String>) -> Self {
+        self.localhost_gateway = gateway;
+        self
+    }
+
+    /// The resolved container host gateway, for the construction sites that
+    /// build their providers outside this bundle (the spine's).
+    pub fn localhost_gateway(&self) -> Option<String> {
+        self.localhost_gateway.clone()
     }
 
     /// Override the transport policy (timeout / retry knobs).
@@ -232,6 +255,10 @@ impl ProviderIo {
             self.user_agent.clone(),
         )
         .with_base_url_env(self.base_url_env.clone())
+        // P4.71: v4's `createLLMProvider(name, baseUrl)` runs the profile's
+        // base URL through `rewriteLocalhostUrl` in the registry
+        // (`provider-registry.ts:89`, used at `:103`). This is that site.
+        .with_localhost_gateway(self.localhost_gateway.clone())
     }
 
     /// The async wire for the W4.7f dialects — feed it to

@@ -742,6 +742,58 @@ mod tests {
         assert_eq!(decoder_selection("NOPE", "m"), None);
     }
 
+    /// P4.71 WIRING PIN — the streaming twin of the completion pin. The seam
+    /// (`with_localhost_gateway`) already existed; until P4.71 nothing outside
+    /// this crate ever called it, so the gateway was `None` on every production
+    /// path. Both arms, so the pin cannot pass by rewriting unconditionally.
+    #[tokio::test]
+    async fn a_localhost_base_url_is_rewritten_to_the_injected_gateway() {
+        let p = WireStreamingProvider::new(
+            FakeStreamTransport::new(vec![]),
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        )
+        .with_localhost_gateway(Some("gw.test".to_string()));
+        let _ = drain(
+            p.stream_message(
+                "DEEPSEEK",
+                Some("http://localhost:11434"),
+                &params("deepseek-chat"),
+            )
+            .await,
+        )
+        .await;
+        let seen = p.transport.seen.lock().unwrap().clone().unwrap();
+        assert!(
+            seen.url.starts_with("http://gw.test:11434"),
+            "the injected gateway never reached the wire: {}",
+            seen.url
+        );
+
+        let p = WireStreamingProvider::new(
+            FakeStreamTransport::new(vec![]),
+            keys(),
+            TransportPolicy::default(),
+            "Quilltap/test".to_string(),
+        );
+        let _ = drain(
+            p.stream_message(
+                "DEEPSEEK",
+                Some("http://localhost:11434"),
+                &params("deepseek-chat"),
+            )
+            .await,
+        )
+        .await;
+        let seen = p.transport.seen.lock().unwrap().clone().unwrap();
+        assert!(
+            seen.url.starts_with("http://localhost:11434"),
+            "bare metal must not rewrite: {}",
+            seen.url
+        );
+    }
+
     /// Auth injection per manifest scheme through the streaming path: bearer
     /// (deepseek), named header (anthropic), query param (google), none
     /// (ollama). The User-Agent rides every request.

@@ -138,6 +138,20 @@ fn join_url(base: &str, path: &str) -> String {
     format!("{}{}", base.trim_end_matches('/'), path)
 }
 
+/// v4's `resolveBaseUrl` (`provider-registry.ts:88-89`):
+/// `baseUrl ? rewriteLocalhostUrl(baseUrl) : baseUrl`. The JS truthiness guard
+/// matters — an EMPTY override is falsy, so v4 hands it straight back without
+/// parsing, and every caller's own `filter(|b| !b.is_empty())` still sees an
+/// empty string rather than a normalized one.
+fn rewrite_base_url(base_url: Option<&str>, gateway: Option<&str>) -> Option<String> {
+    match base_url {
+        Some(b) if !b.is_empty() => {
+            Some(crate::provider_manifest::rewrite_localhost_url(b, gateway))
+        }
+        other => other.map(str::to_string),
+    }
+}
+
 /// The effective base for a provider probe: a non-empty override wins, else the
 /// manifest `baseUrl`. `None` when the provider is unknown to the registry.
 fn effective_base(registry: &Registry, provider: &str, base_url: Option<&str>) -> Option<String> {
@@ -168,6 +182,13 @@ pub struct WireConnectionValidator<'a, T> {
     pub transport: &'a T,
     pub user_agent: &'a str,
     pub base_url_env: Option<&'a str>,
+    /// The host-resolved container gateway (P4.71). v4 rewrites the caller's
+    /// `baseUrl` inside the registry, immediately before the plugin's
+    /// `validateApiKey` runs (`provider-registry.ts:261` for the LLM registry,
+    /// `abstract-provider-registry.ts:201` for the search and moderation ones),
+    /// so the route handler above still sees the raw URL. This field puts the
+    /// rewrite in that same position.
+    pub localhost_gateway: Option<&'a str>,
 }
 
 impl<T: SyncWireTransport> ConnectionValidator for WireConnectionValidator<'_, T> {
@@ -177,6 +198,11 @@ impl<T: SyncWireTransport> ConnectionValidator for WireConnectionValidator<'_, T
         api_key: &str,
         base_url: Option<&str>,
     ) -> Result<bool, String> {
+        // v4 `resolveBaseUrl(baseUrl)` = `baseUrl ? rewriteLocalhostUrl(baseUrl)
+        // : baseUrl` — note the falsy guard: an empty string is passed through
+        // untouched rather than parsed.
+        let rewritten = rewrite_base_url(base_url, self.localhost_gateway);
+        let base_url = rewritten.as_deref();
         let registry = Registry::built_in();
         Ok(match provider {
             "OLLAMA" => {
@@ -316,6 +342,10 @@ pub struct WireModelsFetcher<'a, T> {
     pub transport: &'a T,
     pub user_agent: &'a str,
     pub base_url_env: Option<&'a str>,
+    /// The host-resolved container gateway (P4.71) — v4's registry rewrite
+    /// ahead of `getAvailableModels` (`provider-registry.ts:275`, and the same
+    /// helper behind `createLLMProvider` for the `/api/v1/models` route).
+    pub localhost_gateway: Option<&'a str>,
 }
 
 impl<T: SyncWireTransport> ModelsFetcher for WireModelsFetcher<'_, T> {
@@ -325,6 +355,8 @@ impl<T: SyncWireTransport> ModelsFetcher for WireModelsFetcher<'_, T> {
         api_key: &str,
         base_url: Option<&str>,
     ) -> Result<(Vec<String>, Vec<Value>), String> {
+        let rewritten = rewrite_base_url(base_url, self.localhost_gateway);
+        let base_url = rewritten.as_deref();
         let registry = Registry::built_in();
         if !registry.has_provider(provider) {
             // v4 `createLLMProvider(provider, ...)` throws on an unknown
@@ -415,6 +447,12 @@ pub struct RealProviderActions<T, C> {
     pub user_agent: String,
     /// v4 `process.env.BASE_URL` (the openrouter Referer header).
     pub base_url_env: Option<String>,
+    /// The host-resolved container gateway (P4.71), handed to the validator and
+    /// models fetcher below. `connection_test_message` deliberately does NOT
+    /// take it: that arm goes through the completion provider, which carries
+    /// its own injected gateway — exactly as v4's test-message route rewrites
+    /// inside `createLLMProvider` rather than at the route.
+    pub localhost_gateway: Option<String>,
 }
 
 /// Pull the shared `{provider, apiKeyId?, baseUrl?}` fields off a v4 test bag.
@@ -452,6 +490,7 @@ where
                 transport: &self.transport,
                 user_agent: &self.user_agent,
                 base_url_env: self.base_url_env.as_deref(),
+                localhost_gateway: self.localhost_gateway.as_deref(),
             };
             settings::connection_test(
                 &self.db,
@@ -502,6 +541,7 @@ where
                 transport: &self.transport,
                 user_agent: &self.user_agent,
                 base_url_env: self.base_url_env.as_deref(),
+                localhost_gateway: self.localhost_gateway.as_deref(),
             };
             settings::api_key_test(
                 &self.db,
@@ -526,6 +566,7 @@ where
                 transport: &self.transport,
                 user_agent: &self.user_agent,
                 base_url_env: self.base_url_env.as_deref(),
+                localhost_gateway: self.localhost_gateway.as_deref(),
             };
             settings::model_fetch(
                 &self.db,
@@ -600,6 +641,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         assert_eq!(
             v.validate("OPENAI_COMPATIBLE", "sk-x", Some("http://127.0.0.1:9/v1")),
@@ -617,6 +659,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         // GROK requires a key; empty key → false with NO wire call.
         assert_eq!(v.validate("GROK", "", None), Ok(false));
@@ -633,6 +676,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         assert_eq!(v.validate("OPENAI", "sk-x", None), Ok(true));
         let seen = wire.seen.lock().unwrap();
@@ -648,6 +692,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         assert_eq!(v.validate("OPENAI_COMPATIBLE", "k", None), Ok(false));
     }
@@ -662,6 +707,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         let (models, info) = f
             .fetch("OPENAI_COMPATIBLE", "", Some("http://127.0.0.1:9/v1"))
@@ -677,6 +723,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         let (models, _) = f.fetch("ANTHROPIC", "sk-ant", None).unwrap();
         assert_eq!(models.len(), 11);
@@ -699,6 +746,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         let (models, _) = f.fetch("ANTHROPIC", "sk-ant", None).unwrap();
         assert_eq!(models, vec!["claude-live-1".to_string()]);
@@ -722,6 +770,102 @@ mod tests {
         );
     }
 
+    /// P4.71 WIRING PINS — v4 rewrites the caller's `baseUrl` inside the
+    /// registry, just before the plugin runs: `provider-registry.ts:261`
+    /// (`validateApiKey`), `:275` (`getAvailableModels`) and
+    /// `abstract-provider-registry.ts:201` (the search and moderation
+    /// registries' inherited `validateApiKey`). Both arms on both seams, so
+    /// neither can pass by rewriting unconditionally.
+    #[test]
+    fn the_validator_rewrites_a_localhost_base_url_to_the_gateway() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{}"))]);
+        let v = WireConnectionValidator {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+            localhost_gateway: Some("gw.test"),
+        };
+        v.validate("OLLAMA", "", Some("http://localhost:11434"))
+            .unwrap();
+        assert_eq!(
+            wire.seen.lock().unwrap()[0].1,
+            "http://gw.test:11434/api/tags"
+        );
+
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{}"))]);
+        let v = WireConnectionValidator {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+            localhost_gateway: None,
+        };
+        v.validate("OLLAMA", "", Some("http://localhost:11434"))
+            .unwrap();
+        assert_eq!(
+            wire.seen.lock().unwrap()[0].1,
+            "http://localhost:11434/api/tags",
+            "bare metal must not rewrite"
+        );
+    }
+
+    #[test]
+    fn the_models_fetcher_rewrites_a_localhost_base_url_to_the_gateway() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{\"data\":[]}"))]);
+        let f = WireModelsFetcher {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+            localhost_gateway: Some("gw.test"),
+        };
+        f.fetch("OPENAI_COMPATIBLE", "k", Some("http://localhost:1234/v1"))
+            .unwrap();
+        assert!(
+            wire.seen.lock().unwrap()[0]
+                .1
+                .starts_with("http://gw.test:1234"),
+            "got {}",
+            wire.seen.lock().unwrap()[0].1
+        );
+
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{\"data\":[]}"))]);
+        let f = WireModelsFetcher {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+            localhost_gateway: None,
+        };
+        f.fetch("OPENAI_COMPATIBLE", "k", Some("http://localhost:1234/v1"))
+            .unwrap();
+        assert!(
+            wire.seen.lock().unwrap()[0]
+                .1
+                .starts_with("http://localhost:1234"),
+            "bare metal must not rewrite: {}",
+            wire.seen.lock().unwrap()[0].1
+        );
+    }
+
+    /// An EMPTY override stays empty — v4's `baseUrl ? … : baseUrl` is a JS
+    /// truthiness test, so it never reaches `new URL()` and never picks up the
+    /// normalizing trailing slash a rewrite would add.
+    #[test]
+    fn an_empty_base_url_override_is_passed_through_untouched() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{}"))]);
+        let v = WireConnectionValidator {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+            localhost_gateway: Some("gw.test"),
+        };
+        // Empty → `effective_base` falls through to the manifest base.
+        v.validate("OLLAMA", "", Some("")).unwrap();
+        assert_eq!(
+            wire.seen.lock().unwrap()[0].1,
+            "http://localhost:11434/api/tags",
+            "an empty override must fall through to the manifest base untouched"
+        );
+    }
+
     /// The guard on the fix: extras are the manifest's, not a blanket anthropic
     /// header bolted onto every provider.
     #[test]
@@ -731,6 +875,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         f.fetch("OPENAI_COMPATIBLE", "k", Some("http://127.0.0.1:9/v1"))
             .unwrap();
@@ -748,6 +893,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         let (models, _) = f.fetch("GOOGLE", "k", None).unwrap();
         assert_eq!(models.len(), 8);
@@ -766,6 +912,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         let (models, _) = f.fetch("GOOGLE", "k", None).unwrap();
         assert_eq!(
@@ -787,6 +934,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         let (models, _) = f.fetch("GOOGLE", "k", None).unwrap();
         assert_eq!(models, vec!["gemini-2.5-pro".to_string()]);
@@ -801,6 +949,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         let (models, _) = f.fetch("ANTHROPIC", "sk-ant", None).unwrap();
         assert!(models.is_empty());
@@ -813,6 +962,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         assert!(f.fetch("NO_SUCH", "", None).is_err());
     }
@@ -824,6 +974,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         assert_eq!(v.validate("OLLAMA", "", None), Ok(true));
         let seen = wire.seen.lock().unwrap();
@@ -837,6 +988,7 @@ mod tests {
             transport: &wire,
             user_agent: "ua",
             base_url_env: None,
+            localhost_gateway: None,
         };
         assert_eq!(v.validate("ANTHROPIC", "sk-ant", None), Ok(true));
         let seen = wire.seen.lock().unwrap();

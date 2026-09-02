@@ -99847,3 +99847,113 @@ separately: the ladder swap reds `env_override_wins_over_docker` alone, and
 the resolve-first mutation reds exactly the two silence tests.
 
 Regen (PIN REQUIRED — the recipe is in the family's header, self-contained).
+
+### Unit 2 — the injections, and the registry table that decides them
+
+v4 has exactly TWO rewrite call sites in `lib/` (measured, not assumed):
+`provider-registry.ts:89`'s `resolveBaseUrl` helper — `baseUrl ?
+rewriteLocalhostUrl(baseUrl) : baseUrl` — and
+`abstract-provider-registry.ts:201`. Everything else reaches one of them. The
+per-registry table the order asked for:
+
+| v4 entry point | rewrites? | v5 twin | injected? |
+|---|---|---|---|
+| `provider-registry.ts:103` `createLLMProvider` | yes | `WireStreamingProvider` (`providers.rs`), `WireCompletionProvider` (`spine.rs`) | **yes** |
+| `:133` `createImageProvider` | yes, but **no v4 call site passes a baseUrl** | `RealImageProvider` — carries no base URL at all | **no, faithful** |
+| `:163` `createEmbeddingProvider` | yes | `ApiEmbeddingProvider` (six sites → one `WireConfig::embedding`) | **yes** |
+| `:261` `validateApiKey` (LLM override) | yes | `WireConnectionValidator` | **yes** |
+| `:275` `getAvailableModels` | yes | `WireModelsFetcher` | **yes** |
+| `abstract:201` `validateApiKey` (search + moderation inherit) | yes | the same `WireConnectionValidator` (v4's search key test tries the LLM registry then the search one) | **yes** |
+| `moderation-provider-registry.ts` | no own baseUrl factory | — | n/a |
+| `search-provider-registry.ts` | no own baseUrl factory; the Serper plugin ignores `baseUrl` outright (`_baseUrl`, P4.59) | — | n/a |
+
+**Two measured non-injections, both faithful, both worth their own line.**
+
+1. **Image generation does not rewrite in practice.** `createImageProvider`
+   calls `resolveBaseUrl`, but every v4 call site
+   (`image-generation-handler.ts:323/424/750/1370`, `image-profiles/route.ts`'s
+   `list-models`) passes NO `baseUrl`, so the helper returns `undefined`
+   untouched. v5's `RealImageProvider` has no base-URL field at all, so there is
+   nothing to inject. `model/image_dialects.rs` is therefore NOT touched — the
+   order's conditional permission went unused, and P4.70's ownership is intact.
+   (The image handler's `http://localhost:11434` at `:596` is a *text* cheap-LLM
+   selection for prompt crafting; it reaches `createLLMProvider` and rides the
+   completion injection.)
+2. **A profile with no base URL is not rewritten — in either app.** v4's Ollama
+   plugin does `this.baseUrl = baseUrl || "http://localhost:11434"` and never
+   runs that fallback through the rewrite. So inside Docker, a v4 Ollama profile
+   with a blank base URL still points at the container's own loopback; only an
+   explicit override is rewritten. v5 reproduces exactly (the manifest base is
+   never rewritten, pinned by
+   `an_empty_base_url_override_is_passed_through_untouched`). **Recorded as a v4
+   filing candidate, not fixed here** — it is a real usability trap and fixing it
+   unilaterally would be a wire divergence. The running guide tells the operator
+   to give a local-model profile an explicit URL, which is the honest workaround.
+
+`connection_test_message` deliberately takes no gateway of its own: it runs
+through the completion provider, which carries one — exactly as v4 rewrites
+inside `createLLMProvider` rather than at the route. Rewriting at both would
+double-normalize the base before the manifest-base strip sees it.
+
+**The core seam.** `execute_completion` / `execute_completion_with_anchor` gain
+`localhost_gateway`, replacing the hard `None` at
+`completion_provider.rs:184` — the one site the order named as having no seam.
+The seven in-module test call sites and three harness ones pass `None`, which
+is what they mean; no corpus byte moves.
+
+**One home for the embeddings.** The six bare `ApiEmbeddingProvider::new` calls
+became one `WireConfig::embedding`, so a seventh cannot appear without the
+injection. `EmbeddingGenerateJobHandler` (a unit struct) gained the
+`WireConfig` its three siblings already carried, solely for this.
+
+**The pins, and why they are shaped this way.** The injections are a chokepoint
+cutover — differential-invisible by construction — and the constructors build a
+real `reqwest` client, so a behavioural test of the *host* would need the
+network. The proof is split:
+
+- **Behaviour, in the core, over canned transports:** a provider carrying
+  gateway `gw.test` rewrites `http://localhost:11434` to it, and leaves it alone
+  with no gateway. Both arms, so neither can pass by rewriting unconditionally.
+  Four pins: completion, streaming, the validator, the models fetcher — plus the
+  empty-override pass-through.
+- **Wiring, in the host, as an executable census** (`db_error_key_guard`
+  idiom): every construction site is asserted to inject, and the
+  `ApiEmbeddingProvider::new` count is pinned at exactly one.
+
+Mutation-proven, each reverted: reverting the embedding injection reds ONLY
+`every_embedding_construction_goes_through_the_one_home`; the streaming one
+reds ONLY `every_streaming_construction_injects`; the provider-actions one reds
+ONLY `the_provider_actions_driver_carries_the_gateway`; and putting
+`completion_provider.rs:184` back to a hard `None` reds ONLY
+`a_localhost_base_url_is_rewritten_to_the_injected_gateway` — the exact defect
+this lane exists to fix.
+
+### Unit 3 — packaging and the running guide
+
+The `Dockerfile` gained `ENV DOCKER_CONTAINER=true`, as v4's sets. v5's probe
+would have answered true anyway through its other two arms (`/.dockerenv`, and
+`/app` existing as a directory because of the `VOLUME`), so this changes no
+behaviour — it makes the arm that fires the explicit one, which matters for a
+probe whose answer decides whether a user's `localhost` model URL is rewritten.
+
+`docs/developer/running.md` gained `--add-host=host.docker.internal:host-gateway`
+on all three `docker run` lines and a new section, **Reaching a model server on
+the host**: the four-row situation table (Docker Desktop / Docker on Linux /
+a self-managed VM / bare metal), the `QUILLTAP_HOST_IP` variable with its own
+row and example, v4's reason for refusing the bridge-IP fallback, and the two
+limits a user can actually hit — an empty `QUILLTAP_HOST_IP` counts as unset,
+and a profile with a blank base URL falls back to the plugin default and is not
+rewritten (finding 2 above).
+
+### Deferred, loudly
+
+- 💸 **The container walk** — a real Ollama profile at `http://localhost:11434`
+  from inside the image, on Linux and on Docker Desktop. Tier 3 in the order;
+  it joins the dogfood queue with the P4.10 "container walk" recipe. Nothing in
+  this lane has been run against a real container.
+- **A v4 filing candidate:** the un-rewritten plugin default (finding 2). Not
+  filed by this lane; recorded here and in `dogfood-findings.md`'s standing
+  notes so the next `/driftcheck` or dogfood pass can carry it upstream.
+- **The Tauri shell** needs no answer by construction: it is bare metal, so
+  `is_vm_environment()` is false and `resolve_injected_gateway()` returns `None`
+  without resolving or logging — the same silence v4 has. Recorded, not built.

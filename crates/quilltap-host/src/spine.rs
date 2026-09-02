@@ -256,6 +256,11 @@ pub struct WireCompletionProvider<K: ProviderKeySource> {
     policy: quilltap_core::model::transport::TransportPolicy,
     user_agent: String,
     base_url_env: Option<String>,
+    /// The container host gateway (P4.71 — v4's `resolveHostGateway()`),
+    /// injected once at construction and applied to the profile's base URL on
+    /// every send. The streaming twin's shape
+    /// (`WireStreamingProvider::with_localhost_gateway`).
+    localhost_gateway: Option<String>,
 }
 
 impl<K: ProviderKeySource> WireCompletionProvider<K> {
@@ -271,7 +276,15 @@ impl<K: ProviderKeySource> WireCompletionProvider<K> {
             policy,
             user_agent,
             base_url_env,
+            localhost_gateway: None,
         }
+    }
+
+    /// Inject the host-resolved container gateway (P4.71). `None` is the
+    /// bare-metal no-op the pure rewrite already had.
+    pub fn with_localhost_gateway(mut self, gateway: Option<String>) -> Self {
+        self.localhost_gateway = gateway;
+        self
     }
 }
 
@@ -314,6 +327,7 @@ impl<K: ProviderKeySource> WireCompletionProvider<K> {
             &policy,
             &self.user_agent,
             self.base_url_env.as_deref(),
+            self.localhost_gateway.as_deref(),
             attachment_anchor_index,
         )
         .await
@@ -348,6 +362,9 @@ pub struct WireConfig {
     pub policy: quilltap_core::model::transport::TransportPolicy,
     pub user_agent: String,
     pub base_url_env: Option<String>,
+    /// The host-resolved container gateway (P4.71), shared by every provider
+    /// these knobs build.
+    pub localhost_gateway: Option<String>,
 }
 
 impl WireConfig {
@@ -356,6 +373,7 @@ impl WireConfig {
             policy: io.policy(),
             user_agent: io.user_agent().to_string(),
             base_url_env: io.base_url_env().map(String::from),
+            localhost_gateway: io.localhost_gateway(),
         }
     }
 
@@ -366,6 +384,20 @@ impl WireConfig {
             self.user_agent.clone(),
             self.base_url_env.clone(),
         )
+        // P4.71: v4 rewrites the profile base URL in the registry
+        // (`provider-registry.ts:89`, used by `createLLMProvider` at `:103`) —
+        // the same factory the test-message and models routes go through.
+        .with_localhost_gateway(self.localhost_gateway.clone())
+    }
+
+    /// The API-path embedding provider with the host knobs applied — P4.71's
+    /// single home for the six construction sites that used to call
+    /// `ApiEmbeddingProvider::new` bare. v4's twin is
+    /// `createEmbeddingProvider(name, baseUrl)`, which rewrites through the
+    /// same registry helper (`provider-registry.ts:89`, used at `:163`).
+    fn embedding(&self, db: &Db) -> ApiEmbeddingProvider<ReqwestWireTransport> {
+        ApiEmbeddingProvider::new(db.clone(), ReqwestWireTransport::new())
+            .with_localhost_gateway(self.localhost_gateway.clone())
     }
 }
 
@@ -2612,7 +2644,7 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for CarinaMemoryExtrac
                 connection_profile_id: g("connectionProfileId"),
             };
             let completion = self.wire.completion(db);
-            let embedding = ApiEmbeddingProvider::new(db.clone(), ReqwestWireTransport::new());
+            let embedding = self.wire.embedding(db);
             let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
                 db: db.clone(),
                 user_id: job.user_id.clone(),
@@ -2672,7 +2704,7 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for MemoryExtractionJo
             let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
             let decoded = MemoryExtractionPayload::decode(&payload);
             let completion = self.wire.completion(db);
-            let embedding = ApiEmbeddingProvider::new(db.clone(), ReqwestWireTransport::new());
+            let embedding = self.wire.embedding(db);
             let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
                 db: db.clone(),
                 user_id: job.user_id.clone(),
@@ -2720,7 +2752,7 @@ impl JobHandler for ContextSummaryJobHandler {
             let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
             let decoded = ContextSummaryPayload::decode(&payload);
             let completion = self.wire.completion(db);
-            let embedding = ApiEmbeddingProvider::new(db.clone(), ReqwestWireTransport::new());
+            let embedding = self.wire.embedding(db);
             let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
                 db: db.clone(),
                 user_id: job.user_id.clone(),
@@ -2753,14 +2785,18 @@ impl JobHandler for ContextSummaryJobHandler {
 /// with no handler — every job retried three times and died (dogfood finding
 /// #35: 2,088 DEAD rows on the Friday copy, and every chunk/memory written
 /// since v5 took over unembedded).
-pub struct EmbeddingGenerateJobHandler;
+pub struct EmbeddingGenerateJobHandler {
+    /// P4.71: carried solely so the embedding provider this handler builds gets
+    /// the host-resolved container gateway, like its three siblings.
+    pub wire: WireConfig,
+}
 
 impl JobHandler for EmbeddingGenerateJobHandler {
     fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
         Box::pin(async move {
             let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
             let decoded = EmbeddingGeneratePayload::from_json(&payload);
-            let embedding = ApiEmbeddingProvider::new(db.clone(), ReqwestWireTransport::new());
+            let embedding = self.wire.embedding(db);
             match handle_embedding_generate(db, &embedding, &job.user_id, &decoded).await {
                 Ok(()) => JobOutcome::Completed(None),
                 Err(e) => JobOutcome::Failed(e),
@@ -3084,10 +3120,7 @@ impl SpineFactory for ProductionSpineFactory {
         // The provider Arcs are SHARED between the send + create drivers.
         let streaming = Arc::new(self.io.streaming_provider(DbProviderKeys(db.clone())));
         let completion = Arc::new(wire.completion(db));
-        let embedding = Arc::new(ApiEmbeddingProvider::new(
-            db.clone(),
-            self.io.wire_transport(),
-        ));
+        let embedding = Arc::new(wire.embedding(db));
         let env = production_self_inventory_env(&self.version, self.docs_dir.as_deref(), db);
         let backend: Arc<dyn StorageBackend> =
             Arc::new(LocalStorageBackend::new(self.base_dir.join("files")));
@@ -3235,7 +3268,7 @@ impl SpineFactory for ProductionSpineFactory {
             // === P4.6BL ===
             (
                 "EMBEDDING_GENERATE".to_string(),
-                Box::new(EmbeddingGenerateJobHandler),
+                Box::new(EmbeddingGenerateJobHandler { wire: wire.clone() }),
             ),
             // === end P4.6BL ===
             // === P4.24 ===
@@ -3258,13 +3291,15 @@ impl SpineFactory for ProductionSpineFactory {
                 completion: wire.completion(db),
                 user_agent: self.io.user_agent().to_string(),
                 base_url_env: self.io.base_url_env().map(str::to_string),
+                // P4.71: v4 rewrites inside the registry for validateApiKey
+                // (`:261` / abstract `:201`) and getAvailableModels (`:275`).
+                localhost_gateway: self.io.localhost_gateway(),
             });
         // The memory-embedding provider for the dispatch arms (P4.6s): the same
         // API-path provider the spine embeds with, resolved per call against the
         // default embedding profile (the BUILTIN TF-IDF path needs no wire IO).
-        let memory_embedding = quilltap_core::model::embedding::ErasedEmbeddingProvider::new(
-            ApiEmbeddingProvider::new(db.clone(), self.io.wire_transport()),
-        );
+        let memory_embedding =
+            quilltap_core::model::embedding::ErasedEmbeddingProvider::new(wire.embedding(db));
         SpineBundle {
             chat_send: Arc::clone(&spine) as Arc<dyn ChatSendDriver>,
             swipe_generate: Some(Arc::clone(&spine) as _),

@@ -93,6 +93,9 @@ pub fn v5_transport_request(
         &policy,
         "Quilltap/TEST",
         None,
+        // P4.71: no container gateway on the header-pin path (`base_url` is
+        // None here anyway, so the rewrite is a no-op either way).
+        None,
     ));
     let seen = cap.seen.lock().unwrap().clone();
     seen.unwrap_or_else(|| panic!("{provider}: execute_completion made no transport call"))

@@ -128,7 +128,11 @@ pub(crate) fn request_input_from_params(
 /// `base_url_env` feed [`transport_headers`] (the host injects the version +
 /// `BASE_URL`); `base_url` is the connection profile's per-call base override
 /// (v4 `createLLMProvider(provider, baseUrl)`), swapped for the manifest base
-/// like the streaming composer's, localhost-rewritten. Errors carry the
+/// like the streaming composer's, localhost-rewritten against
+/// `localhost_gateway` — the host's resolved container gateway (P4.71;
+/// `quilltap_host::host_gateway`). Until P4.71 this argument did not exist and
+/// the rewrite was called with a hard `None`, so a profile pointing at
+/// `http://localhost:11434` inside a container was never rewritten. Errors carry the
 /// transport message (higher layers classify via
 /// [`handle_provider_error`](crate::services::llm_errors::handle_provider_error)).
 #[allow(clippy::too_many_arguments)]
@@ -141,6 +145,7 @@ pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
     policy: &'a TransportPolicy,
     user_agent: &'a str,
     base_url_env: Option<&'a str>,
+    localhost_gateway: Option<&'a str>,
 ) -> BoxFuture<'a, Result<CompletionResponse, CompletionError>> {
     execute_completion_with_anchor(
         transport,
@@ -151,6 +156,7 @@ pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
         policy,
         user_agent,
         base_url_env,
+        localhost_gateway,
         None,
     )
 }
@@ -168,6 +174,7 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
     policy: &'a TransportPolicy,
     user_agent: &'a str,
     base_url_env: Option<&'a str>,
+    localhost_gateway: Option<&'a str>,
     attachment_anchor_index: Option<usize>,
 ) -> BoxFuture<'a, Result<CompletionResponse, CompletionError>> {
     Box::pin(async move {
@@ -181,7 +188,7 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
         // url and re-root on the override, localhost-rewritten.
         let mut url = match base_url.filter(|b| !b.is_empty()) {
             Some(base) => {
-                let base = crate::provider_manifest::rewrite_localhost_url(base, None);
+                let base = crate::provider_manifest::rewrite_localhost_url(base, localhost_gateway);
                 match registry
                     .get_provider(provider)
                     .and_then(|m| built.url.strip_prefix(m.base_url.as_str()))
@@ -392,6 +399,65 @@ mod tests {
         assert_eq!(bag["data"], "aGVsbG8=");
     }
 
+    /// P4.71 WIRING PIN — the seam this lane added. Before it, this call site
+    /// passed a hard `None` and a profile pointing at `http://localhost:11434`
+    /// inside a container reached the container's own loopback. With the host's
+    /// gateway injected the wire URL must carry the gateway host instead.
+    #[tokio::test]
+    async fn a_localhost_base_url_is_rewritten_to_the_injected_gateway() {
+        let body = br#"{"choices":[{"message":{"content":"answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#.to_vec();
+        let transport = FakeTransport {
+            body: body.clone(),
+            seen: std::sync::Mutex::new(None),
+        };
+        let policy = TransportPolicy::default();
+        execute_completion(
+            &transport,
+            "DEEPSEEK",
+            Some("http://localhost:11434"),
+            "synthetic-key",
+            &params("deepseek-chat"),
+            &policy,
+            "Quilltap/test",
+            None,
+            Some("gw.test"),
+        )
+        .await
+        .expect("completion");
+        let seen = transport.seen.lock().unwrap().clone().unwrap();
+        assert!(
+            seen.url.starts_with("http://gw.test:11434"),
+            "the injected gateway never reached the wire: {}",
+            seen.url
+        );
+
+        // …and with NO gateway (bare metal) the same base URL is untouched —
+        // the no-op arm, so the pin cannot pass by rewriting unconditionally.
+        let transport = FakeTransport {
+            body,
+            seen: std::sync::Mutex::new(None),
+        };
+        execute_completion(
+            &transport,
+            "DEEPSEEK",
+            Some("http://localhost:11434"),
+            "synthetic-key",
+            &params("deepseek-chat"),
+            &policy,
+            "Quilltap/test",
+            None,
+            None,
+        )
+        .await
+        .expect("completion");
+        let seen = transport.seen.lock().unwrap().clone().unwrap();
+        assert!(
+            seen.url.starts_with("http://localhost:11434"),
+            "bare metal must not rewrite: {}",
+            seen.url
+        );
+    }
+
     #[tokio::test]
     async fn composes_deepseek_completion_and_injects_bearer() {
         let body = br#"{"choices":[{"message":{"content":"answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":3,"total_tokens":13}}"#.to_vec();
@@ -408,6 +474,7 @@ mod tests {
             &params("deepseek-chat"),
             &policy,
             "Quilltap/test",
+            None,
             None,
         )
         .await
@@ -461,6 +528,7 @@ mod tests {
             &p,
             &policy,
             "Quilltap/test",
+            None,
             None,
             Some(0),
         )
@@ -517,6 +585,7 @@ mod tests {
                 &policy,
                 "Quilltap/test",
                 None,
+                None,
             )
             .await
             .unwrap_or_else(|e| panic!("{provider}: {}", e.message));
@@ -546,6 +615,7 @@ mod tests {
             &params("gemini-2.5-flash"),
             &policy,
             "Quilltap/test",
+            None,
             None,
         )
         .await
@@ -587,6 +657,7 @@ mod tests {
             &TransportPolicy::default(),
             "Quilltap/test",
             None,
+            None,
         )
         .await
         .expect("completion");
@@ -624,6 +695,7 @@ mod tests {
             &params("gemini-2.5-flash"),
             &policy,
             "Quilltap/test",
+            None,
             None,
         )
         .await
@@ -726,6 +798,7 @@ mod tests {
             &params(model),
             &TransportPolicy::default(),
             "Quilltap/test",
+            None,
             None,
         )
         .await

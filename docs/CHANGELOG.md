@@ -170,6 +170,58 @@ picked as the user's speaker where v4 skips it. Consolidated, with a unit pin
 on v4's rule that reddens if the old arm returns. `parse_sys_status` is left
 alone and documented: v4's `buildOtherParticipantsInfo` never parses at all, and
 mapping unknown to `None` reproduces its `=== 'removed'` skip exactly.
+#### 2026-09-02 — feat(host): inject the resolved host gateway at every provider construction site
+
+_Versions: core 0.0.752, harness 0.0.644, host 0.0.94._
+
+The resolver landed in the previous commit; this is what makes it reach the
+wire. `ProviderIo` resolves the gateway once per process and every provider it
+or `WireConfig` builds now carries it: the streaming composer, the completion
+provider, the API embedding provider, the connection validator and the models
+fetcher. v4's equivalent is one helper — `provider-registry.ts:89`
+`resolveBaseUrl` — used by `createLLMProvider` (`:103`), `createImageProvider`
+(`:133`), `createEmbeddingProvider` (`:163`), `validateApiKey` (`:261`) and
+`getAvailableModels` (`:275`), plus `abstract-provider-registry.ts:201` for the
+search and moderation registries' inherited `validateApiKey`.
+
+`execute_completion` gains a `localhost_gateway` argument, replacing the hard
+`None` at `completion_provider.rs:184` — the one site with no seam at all. The
+six bare `ApiEmbeddingProvider::new` calls in the spine are now one
+`WireConfig::embedding`, so a seventh cannot be added without the injection;
+`EmbeddingGenerateJobHandler` gains the `WireConfig` its three siblings already
+carried, solely for that.
+
+Two measured non-injections, both faithful. **Image generation:** v4's
+`createImageProvider` does run `resolveBaseUrl`, but no v4 call site passes a
+`baseUrl` — and v5's `RealImageProvider` carries no base URL at all, so there is
+nothing to rewrite. **The manifest default:** v4's Ollama plugin does
+`this.baseUrl = baseUrl || "http://localhost:11434"` and never rewrites that
+fallback, so a profile with an empty base URL is not rewritten in either app.
+v5 reproduces both; neither is v5's to fix unilaterally. `connection_test_message`
+also takes no gateway of its own — it goes through the completion provider,
+which carries one, exactly as v4 rewrites inside `createLLMProvider`.
+
+The injections are a chokepoint cutover and therefore differential-invisible,
+so each ships with a pin. The behaviour — a provider carrying gateway G rewrites
+a localhost base URL to G, and leaves it alone without one — is pinned beside
+each seam in the core over canned transports (completion, streaming, the
+validator, the models fetcher), including the arm where an empty override is
+passed through untouched because v4's guard is a JS truthiness test. The wiring
+— that the host actually hands the resolved gateway to each construction — is an
+executable census in `host_gateway`'s tests, since those constructors build a
+real `reqwest` client. Reverting any single injection reds exactly its own
+census arm; reverting the completion threading to `None` reds exactly the
+behavioural pin. Both proven, both reverted.
+
+Packaging and docs come with it, because the rewrite creates an operator
+requirement. The `Dockerfile` sets `ENV DOCKER_CONTAINER=true` as v4's does —
+no behaviour change (the probe's other two arms already answered true here),
+but it makes the arm that fires the explicit one. `docs/developer/running.md`
+gains `--add-host=host.docker.internal:host-gateway` on all three `docker run`
+lines and a new "Reaching a model server on the host" section: the four-row
+situation table, `QUILLTAP_HOST_IP` for self-managed VMs, v4's reason for
+refusing the bridge-IP fallback, and the two limits a user can actually hit.
+
 #### 2026-09-02 — feat(host): port v4's host-gateway resolver (`QUILLTAP_HOST_IP` + Docker `host.docker.internal`)
 
 _Versions: core 0.0.751, harness 0.0.643, host 0.0.93._

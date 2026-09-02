@@ -311,6 +311,9 @@ fn ollama_think_retry_tier3_matches_oracle() {
                     &TransportPolicy::default(),
                     "Quilltap/test",
                     None,
+                    // P4.71: no container gateway (this family sends no base
+                    // URL override, so the rewrite is a no-op either way).
+                    None,
                 ));
                 let attempts = transport.attempts();
                 assert_eq!(
