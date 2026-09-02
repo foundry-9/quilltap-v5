@@ -193,7 +193,7 @@ fn huggingface_lora_lookup_matches_v4() {
 
     // Shape guards: a corpus that silently loses a tier stops proving anything.
     assert!(
-        repo_rows >= 26,
+        repo_rows >= 38,
         "the oracle is stale: only {repo_rows} repo-id rows (regenerate it)"
     );
     assert!(

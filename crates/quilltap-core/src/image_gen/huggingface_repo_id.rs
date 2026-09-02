@@ -97,14 +97,24 @@ struct HttpUrl {
 /// by the corpus: an empty host (`https://`), an unterminated IPv6 literal
 /// (`http://[bad`), and a host carrying a forbidden code point (a space).
 ///
-/// **Scope, said out loud.** This does not percent-encode the path the way
-/// `URL` would (a raw space in a path becomes `%20` there), does not apply
-/// IDNA to a non-ASCII host, and does not resolve `.`/`..` segments. Every one
-/// of those would change a candidate that the repo-id pattern rejects anyway —
-/// the pattern admits only ASCII alphanumerics, dot, underscore and hyphen —
-/// so the answer is `None` either way. The corpus pins the reachable arms.
+/// **Scope, said out loud.** Reproduced from WHATWG's special-scheme parse:
+/// `\` is a path separator and terminates the authority; single- and
+/// double-dot path segments (raw or percent-encoded, case-insensitive) are
+/// resolved; the host is percent-DECODED before the forbidden-code-point check
+/// and lowercased; a non-bracketed port must be empty or decimal ≤ 65535 or the
+/// parse throws. NOT reproduced: percent-ENCODING of the path (a raw space
+/// becomes `%20` there — the pattern rejects both spellings) and IDNA on a
+/// non-ASCII host (the pattern rejects the candidate either way; the host is
+/// compared against an ASCII suffix). The first four DO change candidates the
+/// pattern accepts — `/./owner/name`, `/a/../owner/name`, `\owner\name`,
+/// `huggingface%2Eco` all resolve in v4, and `:abc` / `:99999` throw — which is
+/// why they are arms here and rows in the corpus (the P4.D138 follow-up
+/// review's catch: the first draft called them unreachable).
 fn parse_http_url(url: &str) -> Option<HttpUrl> {
     let after_scheme = url.split_once("://")?.1;
+    // A special scheme treats `\` exactly as `/`.
+    let after_scheme = after_scheme.replace('\\', "/");
+    let after_scheme = after_scheme.as_str();
     let authority_end = after_scheme
         .find(['/', '?', '#'])
         .unwrap_or(after_scheme.len());
@@ -122,13 +132,26 @@ fn parse_http_url(url: &str) -> Option<HttpUrl> {
         &host_port[..close + 2]
     } else {
         match host_port.rfind(':') {
-            Some(i) => &host_port[..i],
+            Some(i) => {
+                // The port must be empty or decimal ≤ 65535, else `new URL` throws.
+                let port = &host_port[i + 1..];
+                if !port.is_empty()
+                    && (!port.bytes().all(|b| b.is_ascii_digit())
+                        || port.parse::<u32>().map(|p| p > 65535).unwrap_or(true))
+                {
+                    return None;
+                }
+                &host_port[..i]
+            }
             None => host_port,
         }
     };
     if host.is_empty() {
         return None; // a special scheme demands a host
     }
+    // The host is percent-DECODED before validation (`huggingface%2Eco` is
+    // `huggingface.co` to `new URL`).
+    let host = percent_decode(host);
     // WHATWG's forbidden host code points (the reachable subset): whitespace and
     // the delimiters that cannot appear in a host.
     if host.chars().any(|c| {
@@ -147,7 +170,59 @@ fn parse_http_url(url: &str) -> Option<HttpUrl> {
         pathname: if pathname.is_empty() {
             "/".to_string()
         } else {
-            pathname.to_string()
+            resolve_dot_segments(pathname)
         },
     })
+}
+
+/// WHATWG path-state dot resolution: a single-dot segment (`.`, `%2e`) is
+/// dropped; a double-dot segment (`..`, `.%2e`, `%2e.`, `%2e%2e`) pops the
+/// previous one. A trailing dot segment keeps the trailing slash.
+fn resolve_dot_segments(pathname: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    let raw: Vec<&str> = pathname.split('/').collect();
+    let n = raw.len();
+    for (i, seg) in raw.iter().enumerate() {
+        if i == 0 {
+            continue; // the empty segment before the leading `/`
+        }
+        let lower = seg.to_ascii_lowercase();
+        let last = i == n - 1;
+        match lower.as_str() {
+            "." | "%2e" => {
+                if last {
+                    out.push("");
+                }
+            }
+            ".." | ".%2e" | "%2e." | "%2e%2e" => {
+                out.pop();
+                if last {
+                    out.push("");
+                }
+            }
+            _ => out.push(seg),
+        }
+    }
+    format!("/{}", out.join("/"))
+}
+
+/// `%XX` → the byte, for the host only (a bad or partial escape is kept as-is,
+/// as the percent-decoder does).
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hex = &s[i + 1..i + 3];
+            if let Ok(b) = u8::from_str_radix(hex, 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }

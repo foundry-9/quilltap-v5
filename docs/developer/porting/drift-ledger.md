@@ -24,9 +24,9 @@ probe verifies against._
   unification (P4.D138 ∥ P4.D139 ∥ P4.D140 ∥ P4.D141 ∥ P4.D142 ∥ P4.66,
   2026-09-01). The round absorbed five of the eight rows past `7fb668263`
   whole and the three-commit LoRA train PARTIALLY (see below).
-- **Checked:** 2026-09-01 (at the round-2 `/unify` — the §2 probe at survey
-  and again at the baseline move; the previous full `/driftcheck` was
-  2026-08-31).
+- **Checked:** 2026-09-01 (at the P4.D138 follow-up `/unify`, after the
+  round-2 `/unify` earlier that day — the §2 probe at survey and at the
+  fast-forward; the previous full `/driftcheck` was 2026-08-31).
 - **v4 `main` HEAD at check:** `4622411fd` — **ZERO commits past the new
   baseline.**
 - **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** since the
@@ -36,22 +36,18 @@ probe verifies against._
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — same tip
   as the prior checks, ancestry previously verified.
 - **Checkout at check:** branch `main`, **tree CLEAN**.
-- **Verdict: DRIFT CLEARED — 0 commits past the baseline. THREE §3 rows
-  remain as PARTIAL** (the LoRA train `84f33ce94` → `648d5c8aa` →
-  `2ece98c90`): their server units 5–7 — bugs 110/111, the `list-models`
-  `loraSupport` read side + `options-schema` + the NanoGPT detailed-catalog
-  cache, and the HuggingFace `lora-metadata` lookup — are tracked by
-  P4.D138's status header and resume list (`status-log.md` → "P4.D138 —
-  lane status: OPEN at units 5–7"), NOT by this ledger: the baseline has
-  moved past them, so `/driftcheck` will not re-surface them. Two standing
-  consequences at the new baseline: (1) the committed `image-dialects`
-  corpus was deliberately recorded at the commit-1 pin `84f33ce94` (bug 110
-  PRE-fix, by name) — a regen of that family at the baseline goes RED by
-  design until unit 5 lands and re-records at the tip; (2)
-  `image_profiles_routes_equivalence`'s four `list_models` success arms
-  strip v4's `loraSupport` key behind `LORA_SUPPORT_PENDING_P4D138_UNIT6`
-  after MEASURING the shape — it reddens the moment v5 answers the key.
-  (The superseded round-2 verdict paragraph follows for history.)
+- **Verdict: DRIFT CLEARED — 0 commits past the baseline, §3 EMPTY.** The
+  LoRA train's three rows, PARTIAL at the round-2 unification earlier the
+  same day, were completed by the resumed P4.D138 lane (units 5–7) and
+  absorbed at its follow-up unification (2026-09-01): the `image-dialects`
+  corpus is re-recorded at the train's tip, and the
+  `LORA_SUPPORT_PENDING_P4D138_UNIT6` tripwire fired as designed and is
+  deleted. (The superseded verdict paragraphs follow for history.)
+- _Superseded (the round-2 verdict): DRIFT CLEARED — 0 commits past the
+  baseline; THREE §3 rows PARTIAL (the LoRA train's server units 5–7,
+  tracked by P4.D138's resume list); the committed `image-dialects` corpus
+  pinned at `84f33ce94` and the routes family's measured `loraSupport`
+  strip standing until those units landed._
 - _Superseded (the round-1 verdict): DRIFT PENDING — 8 commits (round 2 of
   the pre-planned pair)._
   Two substantial ports: **`735d9408c` (bug 112 — `lastMessageAt`
@@ -71,9 +67,8 @@ probe verifies against._
 - **Regen rule in force: NO PIN REQUIRED** — v4 HEAD IS the baseline and
   the checkout is on `main`, clean. Re-run the §2 probe before every regen
   batch all the same; the moment v4 moves, §5.1's pinned worktree at
-  `4622411fd` is the rule again. Exceptions that stay pinned regardless:
-  `image_dialects_equivalence`'s committed corpus is pinned at `84f33ce94`
-  (above) until P4.D138 unit 5 re-records it at `2ece98c90`+.
+  `4622411fd` is the rule again. (The `image_dialects` corpus exception
+  ended with P4.D138 unit 5 — it is recorded at the train's tip now.)
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
   fork; v4 develops on `main` alone (the 4.9.0 release-notes file moved
   again at `4622411fd` on 2026-08-31, so the squash may be imminent).
@@ -116,9 +111,6 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `84f33ce94` | 2026-08-29 | feat(images): LoRA adapters + per-model image options | **PORT-NEW** | **A new feature plus a five-call-site consolidation that fixes long-standing drift v5 very likely inherited.** **(1) LoRA storage — no DDL change.** The existing `parameters` bag gains a reserved `loras` key (`{ source, scale?, triggerPhrase?, label? }`); a provider opts in via a new `loraSupport` declaration, resolved per model exactly like orientation (exact id → longest-prefix family → provider → none) through the same `matchModel` — NEW `lib/plugins/model-matchers.ts` + `lib/image-gen/{lora-support,lora-validation}.ts` → `quilltap-core/src/image_gen.rs` (which already holds v5's `match_model`/orientation) + `model/image_dialects.rs`. Malformed `parameters.loras` is a **400 before any write**; an over-cap list is **kept and flagged, never deleted** (narrow the model and widen it again and nothing is lost), with capping at request time and every dropped adapter named in the log → `api/image_profiles.rs` + `db/image_profiles.rs`, families `image_profiles_routes_equivalence` / `image_profiles_tier2_equivalence`. **(2) NanoGPT is the first consumer** — three wire dialects (indexed `lora_url_N`/`lora_scale_N`, single `lora_weights`/`lora_scale`, `lora_url`/`lora_strength`) chosen from a **static** family table, because NanoGPT's catalog tags a model `lora` but leaves `allowed_passthrough_parameters` empty; an unlisted LoRA-tagged model gets the capability with a "family unknown" warning rather than a guessed body. `hf_api_token` and `lora_preset` are kept OFF the general passthrough allow-list and attached only where the dialect proves they belong (a credential must not be broadcast to whatever model a profile names) → v5 reimplements NanoGPT natively (P4.D100/D101), so this is manifest + builder work, not plugin work. **(3) The consolidation — measure v5 for the same drift.** Five call sites built image params independently and **three read only `quality` off the profile**, so profile settings worked for `generate_image` and vanished for avatars, story backgrounds, `POST /api/v1/images` and the wardrobe preview. All five now share NEW `lib/image-gen/params-builder.ts` (+298), preserving the previous merge semantics key for key; those four paths **gain** the profile's `negativePrompt`/`seed`/`guidanceScale`/`steps`, and the wardrobe preview resolves portrait through the provider's own mechanism instead of a hardcoded 1024×1792 only OpenAI ever accepted → v5's five twins: `tools/generate_image.rs`, `services/character_avatar_job.rs`, `services/story_background_job.rs`, `api/image_profiles.rs`/the images route, and the wardrobe preview-avatar path (`app/api/v1/wardrobe/preview-avatar/route.ts`). **(4) `ProviderOptionField.appliesToModels` is no longer reserved** — the shared renderer honours it (exact id, `*` glob, family prefix), which gates fields on the LLM side too → v5's P4.D84 schema-driven options panel (`apps/web/src/app/screens/settings/providers/provider-options-schema.ts:80` declares the field today and nothing honours it) + `components/settings/connection-profiles/ProviderOptionsPanel.tsx`. **(5) SPA.** NEW `components/image-profiles/LoraListEditor.tsx` (+191), `ImageProfileForm.tsx` (+123) now asking the plugin what to render for the selected model instead of a hand-written per-provider switch, `ImageProfileParameters.tsx`. **(6)** `public/schemas/qtap-export.schema.json` + `lib/schemas/profile.types.ts`. `help/image-generation-profiles.md` → bank `p4.9i2`. NO-PORT remainder: `packages/plugin-types` (2.5.8 → 2.6.0 — v5 has no plugin SDK), the `plugins/dist/qtap-plugin-nanogpt` sources (v5 ports behaviour natively), `playwright.config.ts` (v4's own harness — a fresh `mkdtemp` data dir had no `.dbkey` so every route answered 503), docs, v4's own tests. v4 records "Phase 6 dogfood proofs against a live NanoGPT key remain outstanding" — v5's live proof is owed the same way. | **PARTIAL(round-2 unify, 2026-09-01)** — p4.d139 (the whole client half) + p4.d138 units 1–4 ABSORBED (matchers/support, the `loras` write guard + Zod envelope, the params builder + five-site consolidation, the NanoGPT dialects at THIS commit's pin); the `list-models` `loraSupport` read side + `options-schema` + the detailed-catalog cache = p4.d138 **unit 6, OPEN** (tracked by the order, the baseline has moved past this row) |
-| `648d5c8aa` | 2026-08-30 | fix(nanogpt): the discarded LoRA preset and the unlogged image request (bugs 110, 111) | **PORT** (stacked on `84f33ce94`) | Both v4-filed from one sitting; **order with the LoRA commit, D-stacked.** **Bug 110:** `applyLoras` opened with an early return on an empty `loras` list, and `lora_preset`'s attachment lives BELOW that inside the url-dialect branch — while the other road is closed on purpose (the preset is in `NANOGPT_LORA_SCOPED_KEYS` rather than the general passthrough list, so it reaches only the family that understands it). Two correct decisions with nothing covering the seam. The real mistake underneath is a **conflation**: a preset names a style the host already keeps and stands alone, while `hf_api_token` authorises the fetch of caller-supplied weights and has no errand without them — they look alike in the options panel and the code applied one rule to both. `applyLoras` now resolves the family FIRST and applies each scoped key on its own terms (preset whenever the family is `url`, credential only alongside weights), with the asymmetry commented so it is not "consistency"-fixed back; the unknown-family refusal is untouched; reported dialect no longer collapses "nothing was configured" into "nothing could be spelled". **The failure mode was a success** — no error, no dropped entry, a completed and billed job returning a stock image — and **v4's suite asserted this exact call as correct**, passing `undefined` for `profileParameters` so the preset was never in frame: a corpus blind spot to reproduce deliberately on the v5 side. **Bug 111:** NanoGPT answers a rejected adapter, an unreachable repo, a bad resolution and a filtered prompt with **one generic 400**, so the composed body is the only thing separating those causes — and it was logged at `debug`, which no packaged instance keeps. The generate call is now wrapped and logs model, size, dialect, wire keys, drops and passthrough keys **at error** before rethrowing unchanged; **key names only, never values**, which keeps `hf_api_token` out of the log while still recording that it was sent. → v5's native NanoGPT image path (`model/image_dialects.rs`, `services/image_job_common.rs`) and the P4.49 file logging; a log-only fix is invisible to a differential (the standing note) so it wants a capturing-layer pin. `help/image-generation-profiles.md` → bank `p4.9i2`. NO-PORT remainder: the plugin sources + manifest/package bumps (1.2.0 → 1.2.1), CHANGELOG, bugs docs, v4's own tests. | **PARTIAL(round-2 unify)** — NOT ported: p4.d138 **unit 5, OPEN** (bug 110's family-first `apply_loras` + bug 111's error-level request log; the committed `image-dialects` corpus deliberately carries the PRE-fix bodies from the `84f33ce94` pin, by name) |
-| `2ece98c90` | 2026-08-30 | feat(images): query a LoRA source against HuggingFace from the profile editor | **PORT-NEW** (stacked on `84f33ce94` — the LoRA train's third commit) | **The repo's second mocked non-LLM external HTTP provider after Serper (P4.42's `mock-serper.ts` is the precedent).** NEW `lib/image-gen/huggingface-lookup.ts` (+263): asks `https://huggingface.co/api/models` what it knows about a LoRA source — resolves/gated, weights files, `base_model`, and `cardData.instance_prompt` (the trigger phrase, the reason the feature earns a button) — **deliberately renders NO compatibility verdict** (the module doc says a false "this will not work" is worse than silence); 10 s timeout; host-side only so egress stays in one place and a gated-weights token never reaches the page. NEW `huggingface-repo-id.ts` (+56, `extractHuggingFaceRepoId`/`huggingFaceCardUrl`). **Wire:** `POST /api/v1/image-profiles?action=lora-metadata` (POST not GET **because `hfToken` is a credential and doesn't belong in a query string** — carry that comment); hand-rolled body guards (`'A JSON body with a `source` is required'`, non-object/array refused) → v5 `api/image_profiles.rs` + family `image_profiles_routes_equivalence` (P4.9H2B / `84f33ce94`'s row). **SPA:** NEW `LoraQueryResult.tsx` (+187), `LoraListEditor.tsx` (+120 — the query button + trigger-phrase adoption), `ImageProfileForm.tsx` → the v5 LoRA editor from the `84f33ce94` order. `help/image-generation-profiles.md` → bank `p4.9i2`. NO-PORT remainder: README, CHANGELOG, API/feature docs, v4's own 327-line test file (its fetch-mock shapes are the differential's corpus shape), `package*.json`. | **PARTIAL(round-2 unify)** — p4.d139's client half ABSORBED (the repo-id twin, the query panel over v4's REAL lookup shapes, the editor's Query button); the server lookup + `POST ?action=lora-metadata` = p4.d138 **unit 7, OPEN** |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -274,6 +266,22 @@ don't silently swap it in.
 
 Absorbed drift blocks get one line each here when `/unify` moves the
 baseline; the full story lives in the round record in `status-log.md`.
+
+- **The P4.D138 follow-up (2026-09-01, baseline unchanged at `4622411fd`;
+  the LoRA train's three PARTIAL rows completed):** `84f33ce94`
+  ABSORBED(p4.d138 units 1–4 + unit 6 ∥ p4.d139 — the read side landed:
+  `list-models` `loraSupport`, the `options-schema` action, the NanoGPT
+  detailed-catalog cache with the augmentation arm the unit-1 narrowing had
+  named; the tripwire fired and was deleted; the two SPA beats live),
+  `648d5c8aa` ABSORBED(p4.d138 unit 5 — bug 110's family-first `apply_loras`
+  with the corpus re-recorded at the tip, exactly the two predicted rows
+  moving; bug 111's error-level request log + v4's debug line, both
+  capture-pinned), `2ece98c90` ABSORBED(p4.d138 unit 7 ∥ p4.d139 — the
+  HuggingFace lookup + repo-id twins with a 57-row differential over v4's
+  real modules, the `lora-metadata` action live behind an engine gate, the
+  host transport; one recorded divergence, V8's own `SyntaxError` wording).
+  Round record: `status-log.md` → "Round record — the P4.D138 follow-up
+  unification".
 
 - **The round-2 drift catch-up (2026-09-01, baseline `7fb668263` →
   `4622411fd`):** `5f56f7a7d` ABSORBED(p4.d142 — `.qt-range` + tokens

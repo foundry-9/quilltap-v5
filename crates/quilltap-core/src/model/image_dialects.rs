@@ -1501,10 +1501,13 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
         // route, this line is the record of exactly what was posted. A response
         // identical to the no-LoRA one, with these keys present in the log, is
         // the signature of a silently-dropped key."
+        // v4 logs `params.model ?? 'hidream'` — the model it POSTS — on both
+        // lines (`image-provider.ts:121`); an absent model reads `hidream`.
+        let posted_model = model_or_default(params, "hidream");
         if let Some(extras) = &nanogpt_extras {
             tracing::debug!(
                 context = "NanoGPTImageProvider.generateImage",
-                model = %params.model,
+                model = %posted_model,
                 size = ?params.size,
                 n = params.n.unwrap_or(1.0),
                 lora_dialect = ?extras.applied.dialect.map(|d| d.as_str()),
@@ -1517,7 +1520,7 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
         // The Google dialect is selected by model on the parse side too.
         let model = params.model.clone();
         let body = request.body_string();
-        let parsed = match self
+        let sent = match self
             .transport
             .send(&request.method, &request.url, &request.headers, &body)
             .await
@@ -1544,7 +1547,7 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
             {
                 Err(openai_sdk_error(&resp))
             }
-            Ok(resp) => parse_image_response(provider, &model, &resp),
+            Ok(resp) => Ok(resp),
             // The SDK/transport throw (network) surfaces verbatim.
             Err(message) => Err(ImageGenError::new(message)),
         };
@@ -1563,14 +1566,18 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
         //
         // v4 wraps only `client.images.generate`, so this covers the transport
         // throw and the non-2xx gate above — NOT the `Invalid response from
-        // NanoGPT Images API` sentence, which v4 raises after its try/catch.
-        let parsed = match parsed {
+        // NanoGPT Images API` sentence, which v4 raises AFTER its try/catch:
+        // `parse_image_response` therefore runs below, outside this match (the
+        // P4.D138 follow-up review caught the parse inside it — a malformed 2xx
+        // logged a "request failed" v4 never logs; `nanogpt_malformed_2xx_
+        // does_not_log_the_failure_line` pins the split).
+        let resp = match sent {
             Ok(v) => v,
             Err(error) => {
                 if let Some(extras) = &nanogpt_extras {
                     tracing::error!(
                         context = "NanoGPTImageProvider.generateImage",
-                        model = %model,
+                        model = %posted_model,
                         size = ?params.size,
                         // v4 logs `requestParams.n`, i.e. the RESOLVED count.
                         n = params.n.unwrap_or(1.0),
@@ -1585,6 +1592,7 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
                 return Err(error);
             }
         };
+        let parsed = parse_image_response(provider, &model, &resp)?;
         // `ca22ec45`: Z.AI returns URLs (valid ~30 days), not base64 — but every
         // Quilltap consumer (chat handler, avatar/background jobs) reads only
         // base64 `data`. Download each image here so the response is usable.

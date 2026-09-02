@@ -297,10 +297,13 @@ impl LoraMetadataTransport for ReqwestLoraMetadata {
             .canonical_reason()
             .unwrap_or_default()
             .to_string();
-        let body = resp.text().await.map_err(|e| ThrownError {
-            name: "TypeError".to_string(),
-            message: e.to_string(),
-        })?;
+        // v4 reads the body only inside `response.json()`, AFTER its status
+        // gates, and that read sits in its own try (→ `http`, never `network`).
+        // So a body that cannot be read is not a thrown fetch: the status
+        // still decides (a 404 stays `not-found`), and on a 2xx the empty body
+        // fails the JSON parse into v4's `http` arm — the P4.D138 follow-up
+        // review's catch (v5 answered `network` for both).
+        let body = resp.text().await.unwrap_or_default();
         Ok(WireResponse {
             status,
             status_text,

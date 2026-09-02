@@ -87,7 +87,10 @@ fn params() -> ImageGenParams {
 }
 
 fn run(status: u16, body: &str) -> Vec<String> {
-    let p = params();
+    run_with(params(), status, body)
+}
+
+fn run_with(p: ImageGenParams, status: u16, body: &str) -> Vec<String> {
     let request = build_image_request("NANOGPT", &p).expect("build");
     let transport = CannedWireTransport::new().with_raw_response(
         wire_key(&request.method, &request.url, &request.body_string()),
@@ -175,4 +178,41 @@ fn nanogpt_success_does_not_log_the_failure_line() {
         !lines.iter().any(|l| l.contains(FAILED_MSG)),
         "the failure line must not fire on a 2xx: {lines:#?}"
     );
+}
+
+/// v4 wraps only `client.images.generate` in its try/catch and raises `Invalid
+/// response from NanoGPT Images API` AFTER it, so a malformed 2xx body never
+/// logs the failure line (the P4.D138 follow-up review's catch: v5 logged it).
+#[test]
+fn nanogpt_malformed_2xx_does_not_log_the_failure_line() {
+    let lines = run(200, r#"{"nope":1}"#);
+    assert!(
+        !lines.iter().any(|l| l.contains(FAILED_MSG)),
+        "a malformed 2xx is the invalid-response arm, outside v4's try/catch: {lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.contains("Posting NanoGPT image request")),
+        "the debug line still posts: {lines:?}"
+    );
+}
+
+/// v4 logs `params.model ?? 'hidream'` — the model it POSTS — so an absent
+/// model reads `hidream` on both lines, never an empty string.
+#[test]
+fn nanogpt_logs_the_posted_model_default_when_absent() {
+    let mut p = params();
+    p.model = String::new();
+    let lines = run_with(p, 400, r#"{"error":"nope"}"#);
+    let failed = lines
+        .iter()
+        .find(|l| l.contains(FAILED_MSG))
+        .expect("the failure line");
+    assert!(failed.contains("model=hidream"), "{failed}");
+    let debug = lines
+        .iter()
+        .find(|l| l.contains("Posting NanoGPT image request"))
+        .expect("the debug line");
+    assert!(debug.contains("model=hidream"), "{debug}");
 }

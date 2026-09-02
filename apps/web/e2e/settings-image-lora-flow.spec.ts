@@ -266,12 +266,14 @@ test.describe('P4.D139 — LoRA adapters on an image profile', () => {
     // there — that is the invariant, not any particular warning count.
     await expect(page.locator('input[type=range]')).toHaveCount(rowCount);
 
+    // Both caps are KNOWN constants chosen for this (4 → 3 with four rows), so
+    // the flag is not "whatever appears" — it must appear. A conditional here
+    // passed with zero flags and proved only "not trimmed", half the title.
     const warning = page.getByText(/^Beyond this model's limit of \d+ —/);
-    if (await warning.count()) {
-      await expect(warning.first()).toContainText(
-        'kept on the profile, but left behind on every request until you remove an earlier adapter or return to a model that takes more.',
-      );
-    }
+    await expect(warning.first()).toBeVisible();
+    await expect(warning.first()).toContainText(
+      'kept on the profile, but left behind on every request until you remove an earlier adapter or return to a model that takes more.',
+    );
 
     await page.getByRole('button', { name: 'Cancel' }).click();
     await deleteProfile(page, CAP_PROFILE_NAME);

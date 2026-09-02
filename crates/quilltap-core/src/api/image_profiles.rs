@@ -871,6 +871,13 @@ pub fn image_profile_options_schema(provider: Option<&str>, model: Option<&str>)
     }
     // v4 `searchParams.get('model') ?? undefined` — `??` catches only null, so
     // an EMPTY `model=` stays the empty string and echoes back as `""`.
+    // v4 wraps `getImageProviderOptionsSchema` in a try/catch — a THROWING
+    // plugin hook warns `[Image Profiles v1] getImageProviderOptionsSchema
+    // threw` and answers a null schema. v5's hook is infallible by
+    // construction (the one declaring provider, NanoGPT, reads a cache and
+    // falls back to `FALLBACK_SIZES`), so that arm is structurally
+    // unreachable here — a NO-PORT by construction, not an omission (the
+    // P4.D138 follow-up unification's review).
     let options_schema = image_provider_options_schema(provider, model);
     let declarations = image_declarations_for(provider);
     let support = resolve_lora_support(

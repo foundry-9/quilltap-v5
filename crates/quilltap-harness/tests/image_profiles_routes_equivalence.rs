@@ -13,8 +13,8 @@
 //!
 //! P4.D138 (the LoRA train) grew this family 28 → 44 → 58 cases: the `loras`
 //! write guards (units 1–4), then the `list-models` READ side (`loraSupport`)
-//! and the whole `options-schema` action (unit 6). The `lora-metadata` action
-//! (§A) arrives with unit 7.
+//! and the whole `options-schema` action (unit 6), then 58 → 69 with the
+//! `lora-metadata` action (unit 7, §A).
 
 use std::collections::HashMap;
 use std::path::PathBuf;

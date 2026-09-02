@@ -99,6 +99,15 @@ const REPO_ID_CASES: string[] = [
   // is the encoded text and the pattern decides on THAT.
   'https://huggingface.co/ow%2Fner/name',
   'https://huggingface.co/owner/na%20me',
+  // WHATWG special-scheme arms a hand-written stand-in gets wrong (the
+  // P4.D138 follow-up review): dot segments resolve, `\\` separates, the host
+  // percent-decodes, and a bad port throws.
+  'https://huggingface.co/./owner/name',
+  'https://huggingface.co/a/../owner/name',
+  'https://huggingface.co\\owner\\name',
+  'https://huggingface%2Eco/owner/name',
+  'https://huggingface.co:abc/owner/name',
+  'https://huggingface.co:99999/owner/name',
 ];
 
 REPO_ID_CASES.forEach((source, index) => {
