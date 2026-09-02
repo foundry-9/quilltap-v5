@@ -21,7 +21,7 @@ import { quickHideFeaturesVisible, shouldHideByIds, shouldHideChat } from './sho
  * then the probe is never dispatched — a false constant, not a swallowed
  * error, because the two are indistinguishable after the fact.
  */
-export const CHATS_HAS_DANGEROUS_VERB_LANDED = false;
+export const CHATS_HAS_DANGEROUS_VERB_LANDED = true;
 
 /** A tag flagged for quick-hide (v4 `QuickHideTag`, `quick-hide-provider.tsx:6-9`). */
 export interface QuickHideTag {

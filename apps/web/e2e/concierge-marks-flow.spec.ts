@@ -56,7 +56,7 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * own-server + CLI-SQL pattern of `salon-concierge-four-state-flow.spec.ts`;
  * that is the shape a follow-up would take.
  */
-const P4D143_LIST_PAYLOAD_LANDED = false;
+const P4D143_LIST_PAYLOAD_LANDED = true;
 
 /** The three states this walk drives, and what each should wear. */
 const STATES = [

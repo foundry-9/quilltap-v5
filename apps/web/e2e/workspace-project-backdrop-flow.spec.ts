@@ -49,7 +49,7 @@ import { E2E_PASSPHRASE } from './support/env';
  * else about it is conditional, and it needs no seeding the shared fixture does
  * not already do.
  */
-const P4D146_MODE_NARROWING_LANDED = false;
+const P4D146_MODE_NARROWING_LANDED = true;
 
 const SKYHAVEN_ID = '70000002-0000-4000-8000-000000000001';
 const BG_FILE_ID = 'bg-e2e-file';
