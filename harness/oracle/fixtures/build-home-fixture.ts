@@ -75,6 +75,13 @@ interface ChatSpec {
   projectId?: string;
   storyBackgroundImageId?: string;
   isDangerousChat?: boolean;
+  /** P4.D143 (v4 `c43d3b1b4`): the operator's Concierge override. Without it
+   * the home differential could only ever see `'monitored'` and `'flagged'` —
+   * two of the four states the `RecentChat` payload now carries. */
+  conciergeOverride?: 'OFF' | 'UNCENSORED';
+  /** The classifier's categories, shown on the mark's tooltip when Flagged.
+   * Seeded non-empty on exactly one chat so a dropped `?? []` is visible. */
+  dangerCategories?: string[];
   participants: ParticipantSpec[];
   messages: MessageSpec[];
   lastMessageAt: string | null;
@@ -335,6 +342,12 @@ async function main(): Promise<void> {
         ...(chat.chatType !== undefined ? { chatType: chat.chatType } : {}),
         ...(chat.projectId !== undefined ? { projectId: chat.projectId } : {}),
         ...(chat.isDangerousChat !== undefined ? { isDangerousChat: chat.isDangerousChat } : {}),
+        ...(chat.conciergeOverride !== undefined
+          ? { conciergeOverride: chat.conciergeOverride }
+          : {}),
+        ...(chat.dangerCategories !== undefined
+          ? { dangerCategories: chat.dangerCategories }
+          : {}),
         ...(chat.storyBackgroundImageId !== undefined
           ? { storyBackgroundImageId: chat.storyBackgroundImageId }
           : {}),

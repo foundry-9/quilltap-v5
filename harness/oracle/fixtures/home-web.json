@@ -272,6 +272,8 @@
     {
       "id": "c3000000-0000-4000-8000-000000000001",
       "title": "The Aviary at Dawn",
+      "isDangerousChat": true,
+      "conciergeOverride": "OFF",
       "storyBackgroundImageId": "f2000000-0000-4000-8000-000000000001",
       "participants": [
         {
@@ -319,6 +321,8 @@
     {
       "id": "c3000000-0000-4000-8000-000000000002",
       "title": "Letters from the Fog",
+      "isDangerousChat": false,
+      "conciergeOverride": "UNCENSORED",
       "storyBackgroundImageId": "f2000000-0000-4000-8000-0000000000ff",
       "participants": [
         {
@@ -354,6 +358,7 @@
     {
       "id": "c3000000-0000-4000-8000-000000000003",
       "title": "A Perilous Wager",
+      "dangerCategories": ["Violence", "Substance Use"],
       "isDangerousChat": true,
       "participants": [
         {

@@ -55,6 +55,16 @@ interface CaseSpec {
     impersonatingParticipantIds: string[];
     activeTypingParticipantId: string | null;
   };
+  /** P4.D143 (v4 `c43d3b1b4`): paint the three chats into distinct Concierge
+   * states before the read, so the list payload's derived `conciergeState` +
+   * `dangerCategories` pair has more than `'monitored'` to say. Written as raw
+   * UPDATEs on the `chats` rows (both differential sides mirror them). */
+  setConcierge?: Array<{
+    chatId: string;
+    conciergeOverride: 'OFF' | 'UNCENSORED' | null;
+    isDangerousChat: boolean | null;
+    dangerCategories: string[] | null;
+  }>;
 }
 
 function mockRequest(url: string): unknown {
@@ -144,6 +154,16 @@ async function runCase(
     ]);
   }
 
+  // P4.D143: paint the Concierge states the committed fixture cannot express.
+  for (const set of c.setConcierge ?? []) {
+    rawQuery('UPDATE "chats" SET "conciergeOverride" = ?, "isDangerousChat" = ?, "dangerCategories" = ? WHERE "id" = ?', [
+      set.conciergeOverride,
+      set.isDangerousChat === null ? null : set.isDangerousChat ? 1 : 0,
+      set.dangerCategories === null ? null : JSON.stringify(set.dangerCategories),
+      set.chatId,
+    ]);
+  }
+
   try {
     let response: { status: number; json: () => Promise<unknown> };
     if (c.kind === 'settings') {
@@ -193,6 +213,7 @@ async function main(): Promise<void> {
 
   const soloId = spec.chats[0].id;
   const groupId = spec.chats[1].id;
+  const thirdId = spec.chats[2].id;
   const tag = spec.chats[0].tags?.[0] ?? '';
   // P4.65: the "Mystery" tag lives ONLY on a character (Elm, in the third
   // chat, which carries no chat-level tag) — excluding it exercises the
@@ -232,6 +253,35 @@ async function main(): Promise<void> {
         impersonatingParticipantIds: ['b2000000-0000-4000-8000-000000000001'],
         activeTypingParticipantId: 'b2000000-0000-4000-8000-000000000001',
       },
+    },
+    // P4.D143 (v4 `c43d3b1b4`): the list carries the DERIVED state, not the raw
+    // pair. One chat per non-Monitored state, with the preserved label set the
+    // wrong way round on both operator rows so a payload that leaked
+    // `isDangerousChat` would be visibly wrong: Solo is Vouched Safe over a
+    // TRUE label (v4 drops the red mark), Group is Uncensored over a FALSE one
+    // (v4 gains a blue mark), and Ridge is plainly Flagged with categories.
+    {
+      name: 'list_concierge_states',
+      kind: 'list',
+      url: 'http://localhost/api/v1/chats',
+      setConcierge: [
+        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null },
+        { chatId: groupId, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null },
+        { chatId: thirdId, conciergeOverride: null, isDangerousChat: true, dangerCategories: ['Violence', 'Substance Use'] },
+      ],
+    },
+    // The single-chat GET is UNTOUCHED by `c43d3b1b4` — the detail view still
+    // needs the raw trio for the sidebar control. Same mutation, and the body
+    // must still carry `isDangerousChat` / `dangerCategories` /
+    // `conciergeOverride` and NO `conciergeState`.
+    {
+      name: 'get_vouched_keeps_raw_trio',
+      kind: 'get',
+      url: `http://localhost/api/v1/chats/${soloId}`,
+      chatId: soloId,
+      setConcierge: [
+        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: ['Violence'] },
+      ],
     },
   ];
 

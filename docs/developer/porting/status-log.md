@@ -98385,3 +98385,68 @@ comment now says so at the function.
 guard (`if false && !is_classifier_on_duty(...)`) reddens BOTH families:
 `message_finalizer` grows `CHAT_DANGER_CLASSIFICATION` rows for `f3…` and
 `f4…`, `orchestrator` grows one for `dc000003…`. Restored → both green.
+
+### Unit 3 — the enriched summary + the home `RecentChat` (§A, sites 1 and 2)
+
+The IN-PLACE swap v4 made, at the same slots: `EnrichedChatSummary` drops BOTH
+`isDangerousChat` and `conciergeOverride` and gains `conciergeState` (derived
+through `get_concierge_state`) + `danger_categories`; `RecentChat` drops
+`isDangerousChat` and gains the same pair as a straight PASS-THROUGH — v4 makes
+no `getConciergeState` call and applies no `?? []` there, both already done
+upstream, and neither does v5. Post-state key orders match §A exactly and were
+byte-verified against v4's `JSON.stringify` output:
+
+- summary: `… project, storyBackground, conciergeState, dangerCategories,
+  chatType, scriptoriumStatus, _count` (+ the skipped `_allTagIds`);
+- `RecentChat`: `id, title, createdAt, updatedAt, lastMessageAt, conciergeState,
+  dangerCategories, storyBackgroundUrl, participants, _count`.
+
+`danger_categories` is typed `Vec<Value>` and carried element-for-element as
+stored, NOT coerced to `Vec<String>`: `chats_read`'s hydrator already guarantees
+an array, so v4's `?? []` is absorbed at the reader and this port invents no
+element conversion. The §A contract's `string[]` is what the column holds.
+
+The single-chat GET (`api/salon.rs:472-480`) is UNCHANGED — v4's detail view
+keeps the raw trio for the sidebar control — and the family now asserts that as
+a claim of its own (all three raw keys present on both sides, `conciergeState`
+absent on both), so no future normalizer can make it vacuous.
+
+**Fixtures.**
+
+- `salon-reads.test.ts` gained a per-case `setConcierge` mutation in the
+  `setImpersonation` idiom — raw UPDATEs on the fresh copy, mirrored exactly on
+  the Rust side (which appends them AFTER `get_impersonated`, since the Rust
+  harness shares one Db across cases while jest copies per case). This means the
+  committed `salon-{main,mount}.db` pair did NOT have to be regenerated, so
+  `salon_mutations` / `salon_skip` / `salon_swipe_generate` are untouched — and,
+  more to the point, the three chats' danger state does not shift under those
+  families' provider routing.
+  New cases: `list_concierge_states` (Solo → Vouched over a TRUE label, Group →
+  Uncensored over a FALSE one, Ridge → Flagged with
+  `["Violence","Substance Use"]`) and `get_vouched_keeps_raw_trio`.
+- `build-home-fixture.ts` learned `conciergeOverride` + `dangerCategories`
+  (the P4.D141 story-background widening, repeated), `home-web.json` seeds the
+  same three shapes on chats 01/02/03, and the COMMITTED
+  `home-{main,mount}.db` pair was rebuilt from the pin. **Only
+  `home_routes_equivalence` reads that pair** (grepped, whole tree), so nothing
+  else re-runs on its account.
+
+**The differentials.** `salon_reads_equivalence` 10/10 with the `list_all` key
+order OK (30 objects); `home_routes_equivalence` 2/2 with `check_key_order`
+green. The regenerated home oracle carries all four states across the twelve
+recent chats and `dangerCategories` non-empty on exactly the Flagged one.
+
+Red-first is structural here: the pre-change v5 emitted `isDangerousChat` /
+`conciergeOverride` and the pin's oracle emits the derived pair, so no old
+payload could ever match. On top of that:
+
+**Mutation proofs (verified applied, reverted by file backup).**
+
+1. Move the pair to the END of `EnrichedChatSummary` (values unchanged) →
+   `[list_all] KEY ORDER MISMATCH`, and ONLY the key-order arm fails. The pin
+   does its job; it is not a normalizer to loosen.
+2. Read `dangerCategoriesXX` instead of `dangerCategories` (v4's `?? []` with
+   nothing behind it) → `list_concierge_states` reddens on the Flagged row and
+   five home cases redden.
+3. Pin `RecentChat.concierge_state` to a constant `"monitored"` (the
+   pass-through broken) → five home cases redden.

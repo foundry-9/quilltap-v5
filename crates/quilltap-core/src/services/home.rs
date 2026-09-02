@@ -60,7 +60,12 @@ pub struct RecentChat {
     pub created_at: String,
     pub updated_at: String,
     pub last_message_at: Option<String>,
-    pub is_dangerous_chat: bool,
+    /// The derived Concierge four-state — never the raw danger label (v4
+    /// `c43d3b1b4`). A straight pass-through from the enriched summary: no
+    /// derivation and no `?? []` here, both already done upstream.
+    pub concierge_state: String,
+    /// The classifier's categories, shown on the mark's tooltip when Flagged.
+    pub danger_categories: Vec<Value>,
     /// v4 `chat.storyBackground?.filepath || null` — JS `||`: an empty filepath
     /// coerces to null too, not just an absent background.
     pub story_background_url: Option<String>,
@@ -450,7 +455,8 @@ fn map_recent_chat(chat: &EnrichedChatSummary) -> RecentChat {
         created_at: chat.created_at.clone(),
         updated_at: chat.updated_at.clone(),
         last_message_at: chat.last_message_at.clone(),
-        is_dangerous_chat: chat.is_dangerous_chat,
+        concierge_state: chat.concierge_state.clone(),
+        danger_categories: chat.danger_categories.clone(),
         story_background_url: chat
             .story_background
             .as_ref()

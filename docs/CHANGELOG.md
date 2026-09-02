@@ -335,6 +335,30 @@ with one participant per status, and a chat where everyone has left.
 `cost_background_routes_equivalence` gains two arms and
 `title_update_tier3_equivalence` two cases, all four measured against v4's
 real code at the `70505745a` pin.
+#### 2026-09-02 — feat(concierge): the Salon list and home dashboard carry the derived state, not the raw label
+
+_Versions: core 0.0.739, harness 0.0.632._
+
+Ports the first two of v4 `c43d3b1b4`'s five list payloads. `EnrichedChatSummary`
+drops BOTH `isDangerousChat` and `conciergeOverride` for `conciergeState`
+(derived through `getConciergeState`) plus `dangerCategories`, in the same slot;
+`RecentChat` drops `isDangerousChat` for the same pair as a straight
+pass-through from the summary — no second derivation, no second `?? []`. Key
+order is otherwise untouched, which is what keeps the two key-order pins green.
+
+The single-chat GET is deliberately unchanged: v4's detail view still needs the
+raw trio for the sidebar control, and `salon_reads_equivalence` now asserts that
+in its own right.
+
+`salon-reads` gained a per-case `setConcierge` mutation (the `setImpersonation`
+idiom) so the committed three-chat fixture can be painted into three distinct
+states without a regen: Vouched over a TRUE label, Uncensored over a FALSE one,
+Flagged with categories — the label set the wrong way round on both operator
+rows, so a payload that leaked `isDangerousChat` would be visibly wrong rather
+than accidentally right. The home fixture builder learned `conciergeOverride`
+and `dangerCategories`, `home-web.json` seeds all four states, and the committed
+`home-{main,mount}.db` pair was rebuilt from the pin.
+
 #### 2026-09-02 — fix(concierge): stop an Uncensored chat enqueueing a doomed classification every turn
 
 _Versions: core 0.0.738._

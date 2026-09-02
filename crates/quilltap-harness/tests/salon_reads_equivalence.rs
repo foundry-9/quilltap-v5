@@ -300,6 +300,66 @@ fn salon_reads_match_oracle() {
         strip_rendered_html(&mut want);
         cases.push(("get_impersonated".into(), got, want));
     }
+    // P4.D143 (v4 `c43d3b1b4`): the list carries the DERIVED `conciergeState` +
+    // `dangerCategories`, never the raw pair. Paint one chat per non-Monitored
+    // state with the preserved label set the wrong way round on both operator
+    // rows (Vouched over a TRUE label, Uncensored over a FALSE one), so a
+    // payload that leaked `isDangerousChat` would be visibly wrong rather than
+    // accidentally right. Mirrors the oracle's `setConcierge` UPDATEs exactly.
+    // AFTER `get_impersonated`: the shared-db mutation must not reach it.
+    let third = &spec.chats[2].id;
+    {
+        let sql = format!(
+            "UPDATE \"chats\" SET \"conciergeOverride\" = 'OFF', \"isDangerousChat\" = 1, \
+             \"dangerCategories\" = NULL WHERE \"id\" = '{solo}';              UPDATE \"chats\" SET \"conciergeOverride\" = 'UNCENSORED', \"isDangerousChat\" = 0, \
+             \"dangerCategories\" = NULL WHERE \"id\" = '{group}';              UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = 1, \
+             \"dangerCategories\" = '[\"Violence\",\"Substance Use\"]' WHERE \"id\" = '{third}'"
+        );
+        rt.block_on(db.write(move |w| {
+            w.main().connection().execute_batch(&sql)?;
+            Ok(())
+        }))
+        .expect("paint concierge states");
+        let got = response_data(&salon::list_chats(&db, uid, &[], None, false));
+        let want = oracle["list_concierge_states"]["body"]["chats"].clone();
+        cases.push(("list_concierge_states".into(), got, want));
+    }
+    // The single-chat GET is UNTOUCHED by `c43d3b1b4`: the detail view keeps
+    // the raw trio for the sidebar control. Same painted state, and the body
+    // must still carry `isDangerousChat` / `dangerCategories` /
+    // `conciergeOverride` and NO `conciergeState`.
+    {
+        let sql = format!(
+            "UPDATE \"chats\" SET \"dangerCategories\" = '[\"Violence\"]' WHERE \"id\" = '{solo}'"
+        );
+        rt.block_on(db.write(move |w| {
+            w.main().connection().execute_batch(&sql)?;
+            Ok(())
+        }))
+        .expect("paint solo categories");
+        let got = response_data(&rt.block_on(salon::chat_get(&db, uid, solo, None)));
+        let mut want = oracle["get_vouched_keeps_raw_trio"]["body"].clone();
+        strip_rendered_html(&mut want);
+        // The claim in its own right, so a normalizer change can never make it
+        // vacuous: the detail body keeps all three raw keys and gains none of
+        // the list's derived one.
+        for key in ["isDangerousChat", "dangerCategories", "conciergeOverride"] {
+            assert!(
+                want["chat"].get(key).is_some(),
+                "oracle's detail body lost {key} — v4's detail view is supposed to keep the raw trio"
+            );
+            assert!(
+                got["chat"].get(key).is_some(),
+                "v5's detail body lost {key}"
+            );
+        }
+        assert!(
+            want["chat"].get("conciergeState").is_none()
+                && got["chat"].get("conciergeState").is_none(),
+            "the detail GET must NOT carry the list's derived conciergeState"
+        );
+        cases.push(("get_vouched_keeps_raw_trio".into(), got, want));
+    }
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);

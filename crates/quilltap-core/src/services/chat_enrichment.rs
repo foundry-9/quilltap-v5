@@ -39,6 +39,7 @@ use crate::db::{characters_read, files};
 use crate::photos::resolve_character_avatar::{
     build_legacy_file_url, build_mount_file_url, resolve_character_avatar,
 };
+use crate::services::dangerous_content::chat_override::get_concierge_state;
 
 /// Pre-loaded data for batched list enrichment (v4 `ChatListPreloaded`,
 /// `chat-enrichment.service.ts:38-56`). Populated once by
@@ -589,8 +590,16 @@ pub struct EnrichedChatSummary {
     pub tags: Vec<EnrichedTag>,
     pub project: Option<EnrichedProject>,
     pub story_background: Option<EnrichedStoryBackground>,
-    pub is_dangerous_chat: bool,
-    pub concierge_override: Option<String>,
+    /// The derived Concierge four-state (v4 `c43d3b1b4`). Lists carry this
+    /// instead of the raw `isDangerousChat` / `conciergeOverride` pair so
+    /// nothing downstream has to read the two stored fields together (and get
+    /// it wrong). The wire strings are `ConciergeState::as_str`'s.
+    pub concierge_state: String,
+    /// The classifier's categories, surfaced only for `'flagged'`. `[]` when
+    /// none (v4 `chat.dangerCategories ?? []`). Carried element-for-element as
+    /// stored — `chats_read`'s hydrator already guarantees an array, so v4's
+    /// `?? []` is absorbed there and nothing is coerced here.
+    pub danger_categories: Vec<Value>,
     pub chat_type: String,
     pub scriptorium_status: String,
     #[serde(rename = "_count")]
@@ -743,11 +752,12 @@ pub fn enrich_chat_for_list(
         tags,
         project,
         story_background,
-        is_dangerous_chat: chat
-            .get("isDangerousChat")
-            .and_then(Value::as_bool)
-            .unwrap_or(false),
-        concierge_override: s(chat, "conciergeOverride"),
+        concierge_state: get_concierge_state(Some(chat)).as_str().to_string(),
+        danger_categories: chat
+            .get("dangerCategories")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
         chat_type: s(chat, "chatType").unwrap_or_else(|| "salon".to_string()),
         scriptorium_status,
         count: ChatCountDto { messages, memories },
