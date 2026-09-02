@@ -29,6 +29,17 @@ arrived), 117 (a chat upload's sha256 is the pre-transcode hash) and 118
 and each now carrying a v5-side measurement to owe. Ledger §1 rewritten
 (regen rule PIN REQUIRED at `6d2a50382`), §3 gains two UNPROCESSED rows; no
 row is a convergence. The five lanes are unaffected — every regen ran pinned.
+#### 2026-09-02 — docs(p4.68): the lane record, the close notes, and the order's status header
+
+_Docs-only change._
+
+Closes work order P4.68 — Tier 1 and Tier 2 complete, one item deferred loudly
+(the chain walk's `auth` / `no-api-key-configured` arm, with the shape that
+would reach it). Records the five order premises the lane refuted by
+measurement, and the two v4 commits that landed mid-lane (`02d4efa1b`,
+`c9faa2c74`, both on `lib/chat/context-manager.ts`) — unrecorded in the drift
+ledger, which a lane never writes.
+
 #### 2026-09-02 — test(harness): precompute sees the uncensored reroute, and the episodic-recall fixture is un-staled
 
 _Versions: harness 0.0.646._

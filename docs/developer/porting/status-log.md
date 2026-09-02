@@ -99674,3 +99674,72 @@ green — `recall_replay_equivalence`, `precompute_equivalence`,
 ⚠ The builder leaves zero-length `-journal` files beside both `.db`s. No
 committed fixture has ever carried one; they are deleted, and the families
 re-verified green without them.
+
+### Lane close — P4.68
+
+**Five commits** on `claude/p4.68-status-parsers-and-cheap-llm`:
+
+| sha | unit |
+|---|---|
+| `9f85d030` | 1 — the ten status parsers consolidated; the `build_context` pair adjudicated |
+| `ed5dd067` | 2 — the orchestrator's failover legs log their `llm_logs` rows |
+| `d557e48b` | 3 — the bare-executor census (the gap closed BY MEASUREMENT) |
+| `507a5539` | 4 — the fallback chain's error + exhaustion corpus rows |
+| `d0f7f352` | 5 + 6 — `precompute_equivalence` made discriminating; the `episodic-recall-*` vintage repair |
+
+**Fixtures changed:** the committed `episodic-recall-{main,mount}.db` pair,
+rebuilt with its shipped builder from the pinned worktree (unit 6). Its three
+consumers — `recall_replay_equivalence`, `precompute_equivalence`,
+`vault_conv_search_equivalence` — were all re-run green after the rebuild. No
+other committed fixture was touched; `precompute-cases.json` and
+`primary-stream-tier3.json` are corpus specs, each read by exactly one family.
+
+**⚠ v4 drifted TWO commits mid-lane** — `02d4efa1b` ("the turn-blocking
+distillation asks for the interactive budget", bug 115) and `c9faa2c74`
+("restore the inter-character memory timing log"). Both touch
+`lib/chat/context-manager.ts`; `02d4efa1b` also touches
+`lib/memory/cheap-llm-tasks/memory-tasks.ts`. **This lane's work is unaffected:
+every regen ran from `/tmp/qt-v4-pin-p4.68-6d2a50382` via the sweep driver's
+`--v4`, and the fixture rebuild ran with the pin as its cwd — verified after the
+fact (the lane's run-stage scripts contain no `cd` to the v4 checkout at all).**
+The lane does not write the drift ledger; `/driftcheck` should classify these,
+and `02d4efa1b` plausibly intersects the distillation path
+`precompute_equivalence` drives.
+
+**Regen recipes.** Nothing new was authored — every family this lane touched
+already had a runnable recipe header, and all of them were driven through
+`harness/tools/recipe_sweep.py --run/--run-all --v4 <pin> --v5w <worktree>`. The
+one invocation not in a recipe is unit 6's fixture rebuild, which is the header
+comment of `build-episodic-recall-fixture.ts` verbatim:
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin
+W=<this worktree>
+cd /tmp/qt-v4-pin-p4.68-6d2a50382        # the PIN, not the checkout
+TZ=UTC \
+QT_FIXTURE_ER_MAIN=$W/crates/quilltap-web/tests/fixtures/episodic-recall-main.db \
+QT_FIXTURE_ER_MOUNT=$W/crates/quilltap-web/tests/fixtures/episodic-recall-mount.db \
+  $N/node --import tsx $W/harness/oracle/fixtures/build-episodic-recall-fixture.ts
+rm -f $W/crates/quilltap-web/tests/fixtures/episodic-recall-*.db-journal
+```
+
+**Gotchas worth a memory note:**
+
+- **A `+` at the start of a doc-comment line is a markdown list marker**, and
+  clippy's `doc_lazy_continuation` then reports the NEXT line as the error. The
+  reported line is not the offending one.
+- **`$?` after a pipe is the pipe's exit code.** A gate script written as
+  `cargo clippy … | tail -20; echo "EXIT=$?"` reported `EXIT=0` while clippy was
+  failing. Take the exit code from the command itself, never through `tail` —
+  which the standing rule already forbids for a second reason (it discards the
+  per-binary `test result:` lines).
+- **A mutation that does not COMPILE proves nothing** — hit again here: reverting
+  `log_context: l.log_context` to a temporary `LogContext::none()` fails the
+  borrow checker, so the "red" was a build error. It had to be redone with a
+  local binding to be a real proof.
+- **A family that stops at the first mismatch cannot attribute a mutation to a
+  row appended at the END of its corpus.** Narrowing the corpus to the new rows
+  for the duration of the proof (mutating the SOURCE, never the fixture) is what
+  makes "reddens exactly its row" a measurement rather than a hope.
+- **The fixture builder leaves zero-length `-journal` files** beside the `.db`s.
+  No committed fixture carries one.
