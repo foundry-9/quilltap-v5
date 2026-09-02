@@ -89,6 +89,7 @@ pub mod provider_models;
 pub mod roleplay_templates;
 pub mod runtime;
 pub mod scenarios;
+pub mod sqlite_errors;
 pub mod store_backed;
 pub mod tags;
 pub mod terminal_sessions;

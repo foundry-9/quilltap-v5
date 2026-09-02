@@ -195,6 +195,13 @@ pub fn rewrite_folder_refs(
 /// Takes the error as a `serde_json::Value` to mirror the TS `unknown` parameter;
 /// a non-object (including a JSON array, which carries no `code`/`message`) is
 /// never a constraint error.
+///
+/// v4 `a5df98b3f` moved this predicate to `lib/database/sqlite-errors.ts` and had
+/// the applier re-export it, so the find-or-create chokepoint and the applier
+/// could not drift apart. v5 cannot re-export outright — this half classifies a
+/// *replayed JSON* error shape while [`crate::db::sqlite_errors`] classifies a
+/// live `rusqlite::Error` — so the one sentence they genuinely share, the message
+/// test, is read from there.
 pub fn is_unique_constraint_error(err: &Value) -> bool {
     let obj = match err.as_object() {
         Some(o) => o,
@@ -206,7 +213,7 @@ pub fn is_unique_constraint_error(err: &Value) -> bool {
         }
     }
     if let Some(Value::String(message)) = obj.get("message") {
-        return message.to_lowercase().contains("unique constraint failed");
+        return crate::db::sqlite_errors::message_names_unique_constraint(message);
     }
     false
 }

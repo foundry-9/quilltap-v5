@@ -47,6 +47,11 @@ const classifyCases: Array<[string, string]> = [
   ['finalize-file', '__finalizeFile'],
   ['chats-update', 'chats.update'],
   ['memories-create', 'memories.create'],
+  ['folders-create', 'folders.create'],
+  // v4 `a5df98b3f` (bug 114): the find-or-create chokepoint is a WRITE with a
+  // non-conforming name, buffered whole in v4's forked child. v5 has no child,
+  // but the default-to-Main routing must still answer for the name.
+  ['folders-ensure-by-path', 'folders.ensureByPath'],
   ['mount-folder-create', 'docMountFolders.create'],
   ['mount-file-create', 'docMountFiles.create'],
   ['project-doc-link', 'projectDocMountLinks.create'],

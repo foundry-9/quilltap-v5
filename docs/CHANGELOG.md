@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — feat(db): the SQLite unique-constraint predicate (v4 bug 114, P4.D145 unit 1)
+
+_Versions: core 0.0.737._
+
+The port of v4 `a5df98b3f`'s new `lib/database/sqlite-errors.ts`. A new
+`db::sqlite_errors` module answers whether a failure is a SQLite constraint
+violation — the structured driver code first (rusqlite folds every
+`SQLITE_CONSTRAINT_*` extended code onto `ErrorCode::ConstraintViolation`, so
+the set matches v4's `code.startsWith('SQLITE_CONSTRAINT')` exactly), then the
+`/UNIQUE constraint failed/i` message a wrapped or re-thrown error carries.
+Seven unit tests pin it against REAL driver errors from a table carrying the
+`(userId, COALESCE(projectId, ''), path)` index bug 114 adds, including the
+coalesced-NULL arm and a primary-key violation.
+
+v4 also had its background-job write applier stop keeping a second copy of the
+predicate and re-export the shared one. v5 cannot re-export outright — the
+applier half classifies a replayed JSON error shape, not a live
+`rusqlite::Error` — so the one sentence they genuinely share, the message test,
+now reads from `db::sqlite_errors::message_names_unique_constraint`.
+
+The `write-partition` oracle case gains v4's two folder classify rows
+(`folders.create` and the new `folders.ensureByPath`), driving v4's REAL
+`classifyWriteTarget`: both answer `main`, so v5's default-to-Main routing
+already covers the chokepoint's non-conforming method name — the assertion v4
+added to its own suite, landed as a differential row instead.
+
 #### 2026-09-02 — docs(orders): the `6d2a50382` drift catch-up round — five work orders (P4.D143–P4.D147)
 
 _Docs-only; no version bumps._
