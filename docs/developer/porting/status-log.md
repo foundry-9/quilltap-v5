@@ -368,6 +368,65 @@ gate) was verified value-agnostic and NOT changed, as the order says.
    `SYSTEM_FLOWCHARTS.md` hunk to the next `docs/v4/` mirror refresh, per the
    order's Tier 3.
 
+### The lane gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+-- -D warnings` clean and again with `--features
+quilltap-core/native-transport`; `cargo build --workspace --release` clean;
+`npm test` **373 files / 5,788** and `npm run build` clean in `apps/web`; **no
+Playwright** (the beat is gated, and port 4319 is P4.D147's).
+
+**Full workspace: 480 test binaries / 2,668 passed / 0 failed / 1 ignored,
+ZERO `SKIP:` lines, cargo exit 0**, with the lane's 16-variable oracle env
+block. The one ignored test is the pre-existing workspace ignore.
+
+**The lane's families by name through the sweep driver** at `--v4
+/tmp/qt-v4-pin-p4d146-70505745a`, all green, zero SKIP:
+`project_background_display_mode_equivalence`,
+`cost_background_routes_equivalence`, `title_update_tier3_equivalence`,
+`projects_tier2_equivalence`, `projects_routes_equivalence`.
+`story_background_job_tier3_equivalence` and the four `system_restore_*` /
+`restore_vintage_state` families were regenerated from the same pin and run by
+name **by hand instead of through the driver** — see the collision below; both
+legs are also inside the green workspace run.
+
+**⚠ The /tmp fixture collision, hit for real.** The FIRST full workspace run
+came back with two reds — `story_background_job_tier3_equivalence`
+(`appearance_retry: doc_mount_points rows diverged`) and
+`mount_points_routes_equivalence` (`create_filesystem_denied`: v5 said the
+planted path "does not exist" where v4 said "exists but cannot be read"). Both
+were **cross-lane `/tmp` collisions, not defects**:
+
+- `/tmp/qt-story-{main,mount}.db` had an mtime of 07:55 — 13 minutes AFTER this
+  lane built it. The sibling **P4.D145** lane regenerated the same canonical
+  path from ITS worktree's builder, which has no `participants` roster and no
+  Bram, so v5 was reading a five-mount-point fixture against a six-mount-point
+  oracle. The diff named it exactly: v5's dump was missing `Bram Character
+  Vault`.
+- `mount_points_routes`'s planted `/tmp/qt-bug56-mp/denied` tree is another
+  shared `/tmp` root, and it was green in isolation immediately afterwards.
+
+Fixed by moving this lane's `/tmp`-built fixtures and oracles under
+**`/tmp/p4d146/`** and re-running the whole workspace gate — the numbers above
+are that second run. **This is the memory note's "/tmp fixtures collide across
+parallel lanes" trap, and the lesson to carry: a green by-name run earlier in
+the same session is not evidence the fixture is still yours.** It is also why
+`story_background_job_tier3_equivalence` was NOT put through the sweep driver
+here: the driver regenerates into the canonical `/tmp/qt-story-*.db`, which
+would have clobbered the sibling lane's copy in turn.
+
+**Changed-bytes greps** (ledger §5.2 — a green regen is not coverage):
+
+| family | grepped | result |
+|---|---|---|
+| `cost_background_routes` | `No characters present in chat…` | 2 (the new arm + the pre-existing empty-participants arm) |
+| `cost_background_routes` | mixed-status enqueue payload | `[active, silent]` exactly |
+| `title_update_tier3` | the two new cases' job payloads | `[active, silent]` / `[]` |
+| `story_background_job_tier3` | `Bram: A man` | **0** (and `Zelda: A woman` 13) |
+| `project_background_display_mode` | `"out":"theme"` | 6 coercions |
+| `projects_routes` | v4's narrowed-enum refusal | 3 |
+| `projects_tier2` | stored `backgroundDisplayMode` | 4 × `theme`, **0** retired |
+
 ## Lane record — P4.D133 (the `b121ac77f` CLI `instances restore-key`)
 
 Ordered against round baseline **`aec86a613`**; the lane's target commit is

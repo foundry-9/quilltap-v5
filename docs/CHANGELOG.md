@@ -230,6 +230,17 @@ The `write-partition` oracle case gains v4's two folder classify rows
 `classifyWriteTarget`: both answer `main`, so v5's default-to-Main routing
 already covers the chokepoint's non-conforming method name — the assertion v4
 added to its own suite, landed as a differential row instead.
+#### 2026-09-02 — docs(porting): the P4.D146 lane gate record
+
+_Docs-only; no version bumps._
+
+The lane's verification gate appended to the P4.D146 record: the workspace
+numbers, the by-name sweep-driver run from the `70505745a` pin, the
+changed-bytes greps, and the cross-lane `/tmp` fixture collision the first full
+run exposed (the sibling P4.D145 lane rebuilt the shared
+`/tmp/qt-story-{main,mount}.db` from its own worktree's builder, so this lane
+was diffing a five-mount-point fixture against a six-mount-point oracle).
+
 #### 2026-09-02 — fix(prospero): drop the two retired background modes from the project card (P4.D146 unit 4)
 
 _Versions: SPA 0.5.617._
