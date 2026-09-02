@@ -100593,3 +100593,245 @@ UNDER the census: a real body read landing there later moves the count and the
 guard fires. ⚠ `crates/quilltap-harness/tests/web_edge_body_parse_guard.rs` is
 not in any lane's ownership table this round; this lane edited it because this
 lane created the condition, and flags the touch for the unifier.
+## Lane record — P4.69 (the SPA follow-ups: the danger ring, the invented warn, the modal's writers, the fragile beats)
+
+**Branch:** `claude/p4.69-spa-followups-danger-ring-modal-beats`. **Order:**
+`work-orders/p4.69-spa-followups-danger-ring-modal-beats.md`. **Baseline:**
+`6d2a50382`, read from a pinned detached worktree at `/tmp/qt-v4-pin-p4.69`
+per the order's drift line (v4 `main` had moved to `303288fb4`; the §2 probe
+passed against the rewritten ledger §1 — branch `main`, tree clean, both logs
+empty). No Rust crate touched, so no Rust gate; no oracle regenerated.
+
+### Unit 1 — the assistant-side danger ring (Tier 1, item 1)
+
+v5 shipped the `.qt-chat-avatar-dangerous` rule (`_chat.css:2960`) and nothing
+ever added the class: **byte-compared against v4's `_chat.css:2819` and they are
+identical, comment included**, so the rule was simply dead. The Salon now
+computes v4's verdict once (`shouldShowDangerStyling(chat)`, v4
+`SalonView.tsx:1489`) and threads it through `MessageList`'s new
+`isDangerousChat` input (v4 `VirtualizedMessageList.tsx:106` prop, `:165`
+default false, `:368` forward) to `MessageRow`, which applies the class at
+exactly v4's two ASSISTANT sites (`:232` courier, `:280` regular) and never at
+the user site (`:487`, which passes no `dangerous` at all).
+
+**Two measurements that shaped the unit, both answering open questions in the
+order:**
+
+- **v4's tool-message path does NOT paint.** A census of v4 found exactly two
+  `qt-chat-desktop-avatar` sites (`MessageDesktopAvatar.tsx:21` and
+  `StreamingMessage.tsx:85`); v4's `ToolMessage.tsx:389` avatar slot is a plain
+  `flex-shrink-0 w-10 h-10 rounded-full overflow-hidden border qt-border-default`
+  div with a bare `<img>` — a different element entirely. v5's
+  `tool-message.ts:223` uses `qt-chat-desktop-avatar` there (a pre-existing v5
+  structural divergence, out of this lane's mandate), and it stays unpainted, as
+  v4's does.
+- **v5's streaming bubble has NO AVATAR AT ALL** — so the order's instruction to
+  thread the flag to `streaming-message` has nothing to attach to. v4's
+  `StreamingMessage.tsx:85` opens the row with the avatar wrapper carrying both
+  classes; v5 never ported that column (no `respondingCharacter` plumbing
+  exists). **DEFERRED LOUDLY, recorded at the site** in
+  `chat/streaming-message.ts`'s docblock with the v4 line: the gap is the
+  AVATAR, not the ring, and threading a flag there would only add a dead input.
+  Porting it needs `respondingParticipantId` (already on `ChatStreamState`)
+  resolved against the cast plus v4's `shouldShowAvatars` gate — its own unit,
+  named here as a follow-up.
+
+v5 forwards to BOTH of its `qt-message-row` sites: the virtualized rows and the
+stream-accumulated finished bubbles (dogfood #7), whose v4 counterparts are
+folded into `state.messages` and render through v4's single MessageRow path.
+
+**Specs:** four in `message-row.spec.ts` (courier paints, regular paints, default
+false, user row never) + four in `message-list.spec.ts` (virtualized forward,
+reset arm, default, the stream path). Assertions read `classList`, never the
+`class` string — memory note `angular-class-binding-dedups-and-reorders`.
+
+**Mutation proofs (6, each reddening exactly one test):** drop the regular-site
+binding; drop the courier-site binding; ADD the binding to the user site; flip
+the input default to `true`; drop the list's virtualized forward; drop the list's
+stream forward.
+
+**The LIVE beat** is new: `e2e/salon-danger-avatar-flow.spec.ts` (port 4332, the
+four-state spec's boot idiom, 'Solo Voyage' = 2 USER + 2 ASSISTANT so the counts
+are exact). It walks Monitored → Flagged → Uncensored through `chatUpdate` and
+reads the stored `(conciergeOverride, isDangerousChat)` pair back through the
+CLI. **The Uncensored leg is the discriminator**: that transition PRESERVES the
+stored label as `1` (v4's CT-2 pair), so a Salon bound to the raw
+`chat.isDangerousChat` would still paint. **Proven by mutation:** binding the raw
+flag left `Received: 2` rings where the walk expects 0. Green on its first live
+run.
+
+### Unit 2 — the invented warn (Tier 1, item 2): the order's premise HALF-REFUTED
+
+The order named two `console.warn`s as v5 inventions and told the lane to
+measure the tags twin before retiring it. **The measurement says keep it.** v4's
+`quick-hide-provider.tsx:82` is
+`console.warn('Unable to load quick-hide tags', { error: error instanceof Error ? error.message : String(error) })`
+— the same message and the same payload shape v5 carries, so v5's `:206` is a
+faithful port. Only the probe warn was invented: v4's `useHasDangerousChats`
+swallows that failure in a bare `catch {}` whose entire body is the comment
+"Silently ignore — worst case the quick-hide button doesn't appear"
+(`use-has-dangerous-chats.ts:27-29`). That one is retired; the answer still falls
+soft to `false`.
+
+Both halves are pinned by a new spec pair so neither can drift into the other:
+the probe's failure produces NO warn, and a failed tag load produces exactly
+v4's message and payload. Two mutations, each reddening one: restoring the
+invented warn; rewording v4's message. The stale v4 citation on the tag path
+(`:76-78`) is corrected to the file and lines the measurement found.
+
+### Unit 3 — the fragile-beat trio (Tier 1, item 3)
+
+**(a) The realtime-hint injection could pass having done nothing.**
+`__qtInjectRealtimeHint` returned silently when no `EventSource` handler had been
+captured, so the injected frame was a no-op — and the wait below it was then
+satisfied by some unrelated `chatGet`. Both degradation paths now throw: the
+un-patchable-prototype path plants a poisoned injector, and a missing handler is
+a hard failure naming the cause.
+
+**(a2) The refetch wait was scoped by body but not by time.** `type === 'chatGet'
+&& chatId` cannot tell the injected hint's refetch from one already in flight —
+the Salon issues `chatGet` for its own reasons. Replaced with a
+`ChatRefetchTally` over `page.on('request')` (which fires at ISSUE time):
+snapshot the count, inject, wait for a request issued strictly after that mark.
+
+**(b) The workspace-search Documents beat picked its chat positionally.**
+`.first()` named `soloCard` is only 'Solo Voyage' while nothing newer exists —
+the shape that broke the marks beat at the `f3892158d` unification. Picked by
+title now.
+
+**(c) The component-transfer beat is UN-PARKED.** `beforeAll` materializes empty
+`projects` and `groups` from `fresh_schema.json` (instance materialization, not a
+fixture regen — the committed pair is untouched, so the six harness families
+reading it keep their pinned bytes; the P4.D130 precedent). **Both P4.D130
+predictions appeared and were fixed, red-first:** the Copy arm's
+`option[value^="character:"]` count went red at `Expected: 0 / Received: 4` —
+its `0` had been vacuously green because the fetch always died — and is now
+asserted by NAME as well as count (Aria's own vault, the item's known home, is
+the one omitted); and the move beat walks. **No third blocker surfaced**, which
+memory note `lifting-a-park-is-a-measurement` says to expect and record either
+way. The `test.skip` on the probe is now an `expect(...).toBe(true)`, so a future
+break in the enumerator fails the beat instead of quietly re-parking it. Wardrobe
+spec: **11/11, zero skips.**
+
+⚠ **A trap worth its own note:** these wardrobe beats are SERIAL and stateful —
+beat 6 creates the 'Masquerade Kit' beat 7 moves. Running either under `--grep`
+breaks the chain and produces a failure ('Brass Goggles' not found in the
+component picker) that looks like a product defect and is not. The whole spec
+file is the unit of measurement here.
+
+⚠ **A self-inflicted one:** two Playwright runs were briefly in flight at once
+against the shared `.artifacts/instance`, and the second wiped the first's
+`quilltap.dbkey` mid-run. Both runs' failures were contamination, not findings —
+including a 90 s timeout on the `set_all` beat that had nothing wrong with it.
+Port 4319 is repo-wide; so is that instance directory.
+
+### Unit 4 — the modal's structured writers (Tier 2, item 4)
+
+`parametersBag` was a `computed` that re-parsed the textarea and fell back to
+`{}` on failure, so a structured write made while the operator had the JSON
+part-way through an edit merged into `{}` — discarding their draft AND every
+unknown key. Reachable since P4.D138 exactly as the round-2 record said: a
+provider declaring `loraSupport` but no `optionsSchema`, on a provider with no
+hand-written size panel, puts the LoRA editor and the textarea on screen
+together.
+
+The bag is now real state in v4's shape (`formData.parameters`) with the textarea
+as a view. `writeBag` always updates the bag and rewrites the text only while it
+is valid; `onParametersInput` moves the bag only when the text parses. Submit
+still refuses an unparseable textarea, so nothing is silently persisted. The
+three `JSON.parse` blocks that could have disagreed (about a top-level array) are
+now one `parseParametersObject` home, keeping v4's two distinct sentences.
+
+**Both order-required pins land, plus three supporting cases:** (a) a LoRA write
+with a valid textarea merges and preserves unknown keys; (b) a LoRA write with an
+INVALID textarea neither throws nor loses the text — asserted character for
+character; (b2) the write still lands, MERGED into the last good bag (proven via
+the sibling `hf_api_token` the editor surfaces); plus the render precondition and
+the mid-edit no-wipe case. **Two mutations:** unconditional text clobber reds
+(b); the `{}` fallback on a bad parse reds (b2) and the no-wipe case.
+
+⚠ **(b2) was a weak pin on its first draft** — it asserted only that the adapter
+landed, which stayed green under the `{}`-fallback mutation. Strengthened to
+assert the sibling key survives, which is the actual "merged" claim; it then
+reddened correctly.
+
+The `imageProfileOptionsSchema` response shape moved into `core-contract.ts` as
+`ImageOptionsSchemaResponse`, name-for-name with the server's body
+(`api/image_profiles.rs`'s `image_profile_options_schema`, which inserts
+`provider`, `model`, `optionsSchema`, `loraSupport` in that order).
+`optionsSchema` is `unknown` there, following the `ProviderInfo.optionsSchema`
+precedent: the schema's own types belong to the renderer, and the contract must
+not depend on a screen. The image editor narrows it at its own boundary.
+
+⚠ **A trap that invalidated several intermediate checks:** `npx tsc --noEmit -p
+tsconfig.json` in `apps/web` does **not** type-check these files — a deliberately
+planted `const x: number = "s"` produced no error at all. `npm run build` (the
+Angular compiler) is the real type gate; the contract move's genuine error
+(`TS2304: Cannot find name 'ProviderOptionsSchema'`) only surfaced there.
+
+### Unit 5 — the temp bubble's seat (Tier 2, item 5): CONVERGED, and the order's suspect cleared
+
+Measured against v4's `useSSEStreaming.ts:728-756`. v4 reads
+`activeTypingParticipantIdRef.current` **twice in one block** — once through
+`findActiveUserParticipant` to attribute the temp bubble (`:735-748`), once as
+the request's `speakingAsParticipantId` (`:754`). v5 reads `activeSpeakerId()` in
+both places. One value, so the client cannot paint one seat while telling the
+server another; the server then runs the same resolver over the same three
+inputs.
+
+**The order's hypothesis is refuted:** the impersonation `turnOverride`
+(P4.D61's mechanism divergence) is a TURN — whose go it is — and reaches neither
+`makeTempUserMessage` nor the payload. There is no gap for it to open.
+
+Pinned by two new cases so a future edit cannot make the two read different
+sources; **mutation-proven** by pointing the payload at
+`chat().activeTypingParticipantId` instead of the live seat.
+
+⚠ **The measurement corrected the second case's own first draft.** It expected
+the request to carry the raw `'p1'` when the resolver falls back to the owner
+seat. It does not, and neither does v4: both gate the whole seed block on
+`if (impersonatingIds && impersonatingIds.length > 0)`
+(v4 `useImpersonation.ts:34-44`; v5's `impersonationSync`), so with an empty
+overlay the persisted `activeTypingParticipantId` is never seeded, the request
+carries nothing, and the server applies its own fallback. The case now pins that.
+
+### Unit 6 — the slider readout strings (Tier 2, item 6)
+
+P4.D142 recorded "six unpinned slider suffix strings" without enumerating them.
+**Measured: eight readouts across five hosts had no assertion anywhere**, and
+every one matches v4 today. Each is now pinned off the RENDERED label (not the
+template source, so an interpolation that stops interpolating fails too):
+
+| readout | v4 source |
+|---|---|
+| `Sliding Window Size (N messages)` | `ContextCompressionSettings.tsx:171` |
+| `History Compression Target (~N tokens)` | `:201` — the tilde is v4's |
+| `Project Context Re-injection (every N messages)` | `:231` |
+| ...and its `(every never)` arm at 0 | `:231` — v4's ternary swaps only the inner string, so the ungainly reading is deliberate |
+| `Min Importance: N%` | `housekeeping-dialog.tsx:173`, whole percent |
+| `Detection Threshold (N.N)` | `DangerousContentSettings.tsx:118`, one decimal |
+| `Similarity Threshold: N.NN` | `memory-dedup-card.tsx:133`, two decimals |
+| `Temperature (N)` / `Top P (N)` | `ProfileModal.tsx:756` / `:793`, raw |
+
+The Context Compression card had no readout spec at all; the other four hosts'
+specs never mentioned their suffix.
+
+### Tier 3 — the explicit deferrals, restated loudly
+
+- **The dozen residue hosts with no host class/style** (P4.D142's file-header
+  list) — untouched. This lane's own screens surfaced no new instance: every
+  host it edited already resolves.
+- **The `#move-folder` single-instance id** — recorded, unchanged.
+- **The SPA-wide `title=` sweep** (v4 612 sites vs v5 379) — a census, not this
+  lane.
+- **`help/chats.md` → the `p4.9i2` bank** — note only.
+- **NEW, from this lane's own measurement: the streaming-message avatar** (unit
+  1) — v5 has never rendered it, so the danger ring has no home there. Recorded
+  at the site with v4's line.
+
+### The gate
+
+`npm run lint` (the qt-class guard), `npm test` (full, no filter), `npm run
+build`, and the full Playwright suite against the final build — numbers in the
+report. No crate file touched, so no Rust gate. Versions: SPA 0.5.623 → 0.5.628;
+no crate bumped.

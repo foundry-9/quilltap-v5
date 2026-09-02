@@ -508,6 +508,20 @@ database. Red-first: 79 of 98 rows failed before the fix. Two mutations pin it
 — removing the empty-string fold reddens 18 rows and nothing on the two routes
 where v4 deliberately does not fold; reading the last duplicate instead of the
 first reddens 33, all of them duplicate-key rows.
+#### 2026-09-02 — docs(p4.69): the lane record and the order's close
+
+_No crate versions bumped._
+
+The P4.69 lane record in `status-log.md` — the six units, the two order premises
+refuted by measurement (the quick-hide tags warn is v4's own line; the optimistic
+seat is already converged and `turnOverride` is not on that axis), the new
+deferral the lane's own measurement found (v5's streaming bubble renders no
+avatar, so the danger ring has no home there), and four traps worth carrying:
+the wardrobe beats are serial so `--grep` breaks them, two concurrent Playwright
+runs corrupt the shared instance, `npx tsc -p tsconfig.json` does not type-check
+`apps/web` sources (only `npm run build` does), and a mutation-weak pin can stay
+green while claiming more than it measures.
+
 #### 2026-09-02 — fix(images): hold the profile parameters as an object so a LoRA write cannot eat a mid-edit textarea
 
 _Versions: SPA 0.5.628._
