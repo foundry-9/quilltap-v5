@@ -612,7 +612,7 @@ mod tests {
 
     /// The ~12 lines following `marker` — enough to see a builder chain, so an
     /// arm can assert about ONE construction site rather than a whole file.
-    fn snippet<'a>(haystack: &'a str, marker: &str) -> String {
+    fn snippet(haystack: &str, marker: &str) -> String {
         let at = haystack
             .find(marker)
             .unwrap_or_else(|| panic!("the census marker moved: {marker}"));

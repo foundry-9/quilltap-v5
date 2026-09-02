@@ -99987,3 +99987,39 @@ can rebuild it. `--show` every NEW header.
 has no base URL at all — it is pure request-shape plus response parsing, and
 the caller joins the base. The actual seam is `WireModelsFetcher` in
 `api/provider_actions.rs`, which is where the injection went.
+
+### The lane gate
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — **exit 0**, both
+  feature sets (default, and `--features quilltap-core/native-transport`). The
+  first run of the second pass caught an elidable lifetime in the census's
+  `snippet` helper, added after the earlier clippy; fixed and re-run.
+- `cargo test --workspace` with `QT_ORACLE_HOST_GATEWAY` set — **485 test
+  binaries / 2,719 passed / 0 failed / 1 ignored, exit 0**, and
+  `host_gateway_matches_oracle` positively confirmed to have RUN (it appears
+  in the log as `ok`, not skipped; the by-name run below prints all 57 rows).
+- `host_gateway_equivalence` by name **through the sweep driver at the pin** —
+  `recipe_sweep.py --run host_gateway_equivalence --v4 /tmp/qt-v4-pin-p471-6d2a50382`
+  → `OK: … recipe ran end-to-end`, oracle regenerated to 57 rows, zero SKIP.
+  Changed bytes grepped (counts above in unit 4).
+- The wiring pins and their mutations: applied, verified-applied, reverted (unit 2).
+- `cargo build --workspace --release` — **exit 0**.
+- **`docker build` — BLOCKED BY THE ENVIRONMENT, not by this change.** Twice
+  `ResourceExhausted: cannot allocate memory` in the `cargo build --release`
+  layer: the Docker Desktop VM is 8.3 GB over 14 CPUs, so cargo fans out 14
+  rustc jobs into 8 GB, and four sibling lanes had the host at load ~19–24.
+  **Attributed by control build:** the SAME build from `main`'s *unmodified*
+  `Dockerfile` fails identically at the same layer with the same error, so the
+  failure predates this lane's one-line `ENV`. `docker build --check` on the
+  modified file is clean ("no warnings found"). The `ENV DOCKER_CONTAINER=true`
+  arm itself is covered by `env::is_docker_environment`'s existing unit
+  coverage. **Owed: one `docker build` on a quiet machine** — the unifier's
+  gate, or the 💸 container walk, whichever comes first.
+- One unexplained transient, recorded rather than hidden:
+  `host_llm_log_cleanup` failed ONCE (1 test, 0 passed) in a run launched
+  concurrently with a workspace `cargo clippy` over the same `target/`. It has
+  been green every other time — inside the 485-binary gate, twice more in a
+  full `cargo test -p quilltap-host`, and 3/3 in isolation. It uses a private
+  `tempfile::tempdir()` and this lane touches nothing in LLM-log retention.
+  Not diagnosed further; named here so a recurrence has a prior.
