@@ -29,6 +29,31 @@ arrived), 117 (a chat upload's sha256 is the pre-transcode hash) and 118
 and each now carrying a v5-side measurement to owe. Ledger §1 rewritten
 (regen rule PIN REQUIRED at `6d2a50382`), §3 gains two UNPROCESSED rows; no
 row is a convergence. The five lanes are unaffected — every regen ran pinned.
+#### 2026-09-02 — test(harness): the fallback chain's error and exhaustion arms get corpus rows
+
+_Versions: harness 0.0.645._
+
+A trigger census over `primary_stream_tier3`'s `chainAttempts` found every entry
+in the corpus carried `empty-response`, and no walk ever recorded all three
+candidates. Two rows close that. `empty_walk_exhausts_on_empty` drives the walk
+to exhaustion from the empty path, so the last candidate takes v4
+`provider-failover.service.ts:637` too and the exhausted outcome is pinned.
+`empty_walk_understudy_errors_then_tier_ok` is the corpus's only
+`provider-error` chain trigger and its only fail-then-recover: a candidate
+throws (`:622`) and the walk continues to one that answers.
+
+Each is a discriminating arm, proven against the narrowed corpus so the
+attribution is exact. Collapsing `FallbackTrigger::ProviderError`'s wire string
+reddens the errors-then-tier row alone; turning the empty-candidate arm's
+`continue` into a `break` reddens the exhausts-on-empty row alone.
+
+Two of P4.D135's three named blind spots were already covered, which the census
+also measured: `empty_chain_fallback` is a mid-chain empty that continues the
+walk, and `hard_error_understudy_answers` is a fail-then-recover at the primary.
+The third — a chain candidate refused by the credential gate, recording `auth`
+with `no-api-key-configured` — is still uncovered and is deferred with its
+shape.
+
 #### 2026-09-02 — test(harness): a production path cannot build a chain-less cheap-LLM executor
 
 _Versions: core 0.0.753, harness 0.0.644._

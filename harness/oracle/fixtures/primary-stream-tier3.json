@@ -23,7 +23,7 @@
   },
   "understudyProfile": {
     "$comment": [
-      "P4.D135 — the named understudy `profile` points at.",
+      "P4.D135 \u2014 the named understudy `profile` points at.",
       "OPENAI (a provider that REQUIRES a key), keyed, so the chain's",
       "credential gate passes and the walk actually calls it. modelClass",
       "Standard so the tier spare below is a same-or-better match."
@@ -189,7 +189,7 @@
       "Fri"
     ]
   },
-  "_comment_streams": "Keyed by streamLabel, an ORDERED list of stream attempts. The v4 streamMessage mock finds the call's `originalMessage` MARKER inside any user message (the oracle puts it in the primary/failover messages; the recovery service embeds it in its recovery user message too), resolves the label, then pops the next attempt in order — so a tool-unsupported retry / empty retry / the primary-then-recovery pair, all re-issuing streams, get DIFFERENT sequences. Each chunk: {content}, {reasoning} (cumulative), {done, usage?}, or {error}.",
+  "_comment_streams": "Keyed by streamLabel, an ORDERED list of stream attempts. The v4 streamMessage mock finds the call's `originalMessage` MARKER inside any user message (the oracle puts it in the primary/failover messages; the recovery service embeds it in its recovery user message too), resolves the label, then pops the next attempt in order \u2014 so a tool-unsupported retry / empty retry / the primary-then-recovery pair, all re-issuing streams, get DIFFERENT sequences. Each chunk: {content}, {reasoning} (cumulative), {done, usage?}, or {error}.",
   "streams": {
     "clean": [
       [
@@ -265,7 +265,7 @@
       ],
       [
         {
-          "content": "I'm sorry — that was too long. Try a shorter excerpt."
+          "content": "I'm sorry \u2014 that was too long. Try a shorter excerpt."
         },
         {
           "done": true,
@@ -429,6 +429,43 @@
       [
         {
           "error": "401 Unauthorized"
+        }
+      ]
+    ],
+    "empty_walk_exhausts_on_empty": [
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "done": true
+        }
+      ]
+    ],
+    "empty_walk_understudy_errors_then_tier_ok": [
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "error": "500 Internal Server Error"
+        }
+      ],
+      [
+        {
+          "content": "The tier spare picks up the thread."
+        },
+        {
+          "done": true
         }
       ]
     ]
@@ -658,7 +695,7 @@
       "streamLabel": "reasoning_then_error_then_understudy",
       "attachedFiles": [],
       "originalMessage": "the primary thinks aloud and then collapses",
-      "comment": "P4.D135: the primary emits REASONING and then dies. hasStartedStreaming stays false (only content sets it), so the chain runs — and the understudy's answer must not be glued onto the corpse of the one before it. resetStreamingBuffersForSwap is what makes that true, and only a DIRTY-buffer case can tell it from a no-op: the buffers are compared."
+      "comment": "P4.D135: the primary emits REASONING and then dies. hasStartedStreaming stays false (only content sets it), so the chain runs \u2014 and the understudy's answer must not be glued onto the corpse of the one before it. resetStreamingBuffersForSwap is what makes that true, and only a DIRTY-buffer case can tell it from a no-op: the buffers are compared."
     },
     {
       "name": "hard_error_vision_skips_understudy",
@@ -679,7 +716,35 @@
         }
       ],
       "originalMessage": "the turn is carrying a picture",
-      "comment": "P4.D136 (v4 a1d88aa3a, bug 106): `needsVision` is now read from what the message ARRAY carries, not from what the user uploaded. `attachedFiles` is EMPTY here and the array carries an image — the pre-fix spelling reads the uploads and calls the turn text-only, so the OPENAI understudy (no supportsImageUpload) answers. Post-fix the chain filters it out, the tier pick is filtered too, and the exhausted chain rethrows with summarizeFallbackAttempts' roll. The two spellings disagree on this one case and agree on every other."
+      "comment": "P4.D136 (v4 a1d88aa3a, bug 106): `needsVision` is now read from what the message ARRAY carries, not from what the user uploaded. `attachedFiles` is EMPTY here and the array carries an image \u2014 the pre-fix spelling reads the uploads and calls the turn text-only, so the OPENAI understudy (no supportsImageUpload) answers. Post-fix the chain filters it out, the tier pick is filtered too, and the exhausted chain rethrows with summarizeFallbackAttempts' roll. The two spellings disagree on this one case and agree on every other."
+    },
+    {
+      "name": "empty_walk_exhausts_on_empty",
+      "kind": "failover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000015-0000-4000-8000-000000000015",
+      "hasTools": false,
+      "streamLabel": "empty_walk_exhausts_on_empty",
+      "attachedFiles": [],
+      "originalMessage": "every understudy is as silent as the house",
+      "dangerMode": "OFF",
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.68 \u2014 the chain walk EXHAUSTING from the empty-response path. Measured before adding it: every `chainAttempts` entry in this corpus carried trigger `empty-response` and no walk ever recorded all THREE candidates; `empty_chain_fallback` stops at two because the tier spare answers. This row drives v4 provider-failover.service.ts:637 for the last candidate too, and pins the exhausted outcome (empty `fullResponse`, effectiveProfile left on the primary)."
+    },
+    {
+      "name": "empty_walk_understudy_errors_then_tier_ok",
+      "kind": "failover",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000016-0000-4000-8000-000000000016",
+      "hasTools": false,
+      "streamLabel": "empty_walk_understudy_errors_then_tier_ok",
+      "attachedFiles": [],
+      "originalMessage": "the understudy drops the tray and the spare recovers it",
+      "dangerMode": "OFF",
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.68 \u2014 fail-then-recover INSIDE the walk, and the only `provider-error` chain trigger in the corpus. A candidate THROWS (provider-failover.service.ts:622 records it under its trigger) and the walk continues to one that succeeds. Everything else here either goes empty the whole way down or fails the whole way down; nothing covered a throw followed by a recovery, so `recordAttempt`'s error branch and the post-error effectiveProfile swap were both unmeasured."
     }
   ]
 }

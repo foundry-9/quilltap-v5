@@ -99534,3 +99534,143 @@ anti-vacuity assert ("only 0 production file(s) mention …").
 `cheap_llm_exec.rs`'s doc comment claimed the two now-test-only sites were
 production and called the gap "NAMED, not an accident". That claim was stale;
 it now records the measurement and points at the guard.
+
+### Unit 4 — the fallback chain's error and exhaustion arms (the P4.D135 chain-walk blind spots)
+
+**The census first, and it refuted two of the three named blind spots.** A
+trigger count over every `chainAttempts` entry the corpus emits:
+`{'empty-response': 5}` — one trigger, five entries, and no walk recording all
+three candidates. Against that:
+
+- **"a mid-chain EMPTY answer that continues the walk" was ALREADY covered.**
+  `empty_chain_fallback` records Primary/`empty-response`,
+  Understudy/`empty-response`, and then the tier spare answers — a mid-chain
+  empty that continues the walk, exactly.
+- **"fail-then-recover" was ALREADY covered at the primary.**
+  `hard_error_understudy_answers` throws 401 on the primary and the understudy
+  answers.
+- **The `auth` / `no-api-key-configured` reason bytes are genuinely
+  uncovered** — the census shows no `auth` trigger anywhere. Deferred loudly
+  (see below).
+
+What was NOT covered, and now is:
+
+| row | what it drives | v4 |
+|---|---|---|
+| `empty_walk_exhausts_on_empty` | all THREE candidates answer empty → the walk exhausts from the empty path; empty `fullResponse`, effectiveProfile left on the primary | `provider-failover.service.ts:637` for the LAST candidate |
+| `empty_walk_understudy_errors_then_tier_ok` | a candidate THROWS and the walk continues to one that ANSWERS — the corpus's only `provider-error` chain trigger, and its only fail-then-recover INSIDE the walk | `:622` (`recordAttempt(understudy, understudyTrigger, understudyError)`) + the post-error effectiveProfile swap |
+
+**A measurement that corrected the rows.** The first draft gave each stream four
+attempts, on the assumption that the primary's own empty answer is attempt 1.
+It is not: `attempt_empty_response_recovery` is entered with the primary already
+empty, so attempt 1 is the same-provider retry. Both rows landed as
+chain-exhausted variants until the streams were cut to three. The corrected
+rows were verified by reading the fresh NDJSON, not by the green.
+
+**Mutation proofs, each reddening EXACTLY its row.** The family stops at the
+first mismatching case and names it, and the new rows are last, so a broad
+mutation always trips an earlier case first. Attribution came from narrowing the
+corpus to the two new calls for the duration of the proof (the SOURCE is what
+was mutated; the corpus narrowing only isolates the report), then restoring it:
+
+- `FallbackTrigger::ProviderError`'s wire string collapsed to `"empty-response"`
+  → RED on `empty_walk_understudy_errors_then_tier_ok` only.
+- the empty-candidate arm's `continue` turned into `break` → RED on
+  `empty_walk_exhausts_on_empty` only.
+
+Full corpus restored (21 calls), family green.
+
+**⚠ DEFERRED LOUDLY — the third blind spot.** A chain candidate refused by the
+credential gate (v4 `provider-failover.service.ts:583-591`:
+`resolveConnectionProfileApiKey` fails → `recordAttempt(understudy, 'auth',
+new Error(keyResolution.reason))`) is still unmeasured; no `auth` trigger and
+no `no-api-key-configured` bytes appear anywhere in this corpus.
+
+It is not a row this lane could add cheaply, and the reason is worth recording
+so the next lane does not rediscover it. Every call in this family uses
+`spec.profile` as its primary, so all cases share ONE chain
+(primary → named understudy → tier pick), and the fixture builder creates
+exactly three profiles from three named spec keys. Reaching the credential gate
+needs a keyless candidate, and each cheap route breaks something:
+
+- making the existing tier spare keyless changes `empty_chain_fallback` (it
+  would no longer answer) and `hard_error_chain_exhausted` (its trigger would
+  change from `provider-error` to `auth`);
+- adding a keyless profile to the tier POOL risks the picker choosing it in
+  existing cases, since ranking is by provider difference and model class.
+
+The shape that works: a per-call primary override (a `profileKey` on the call,
+resolved at the oracle's four `toConnectionProfile(spec.profile)` sites and its
+Rust twin), plus a second primary with `allowTierFallback: false` pointing at a
+keyless understudy, both given `modelClass: null` so they stay out of every
+existing case's tier pool.
+
+### Unit 5 — `precompute_equivalence` made discriminating (P4.D141's measured blind spot, CLOSED)
+
+**Two of the order's premises for this item are refuted by measurement, and both
+made the work smaller.**
+
+1. **No fixture widening is needed.** `allProfiles` is a PARAMETER on both sides
+   — v4 takes it as an argument to `runPreContextPreCompute`, and the Rust twin
+   takes `available_profiles: &[CheapLlmProfile]`. It is not a DB read, so no
+   profile has to be seeded into the committed `episodic-recall-*` pair.
+2. **The corpus is not the shared one.** The cases live in
+   `precompute-cases.json`, which ONLY `precompute_equivalence` consumes;
+   `episodic-recall.json` is the shared spec. So the order's instruction to
+   re-run `recall_replay` and `vault_conv_search` after widening did not apply
+   for a corpus reason (they were re-run anyway — see unit 6, which is how the
+   pre-existing red surfaced).
+
+**What made the swap observable.** The reroute changes WHICH profile distills —
+not the prompt, and not the canned answer — so nothing the row carried could see
+it. v4's `executeCheapLLMTask` mock already received the selection as its first
+argument and ignored it (`_sel`); it now captures
+`{provider, modelName, baseUrl}`. The Rust `CannedDistillProvider` likewise
+ignored the `provider` / `base_url` arguments it was handed; it now records them
+with `params.model`. The new `cheapSelectionUsed` comparand is REQUIRED on the
+oracle row, so a stale NDJSON fails to parse by name rather than silently
+comparing `null` (the `queryEmbedding` precedent).
+
+**The case now poses a three-way choice**, so the row shows which branch ran:
+`dangerous-chat-reroute-runs` carries the CONFIGURED uncensored profile
+(`OPENROUTER/dolphin-uncensored`) plus a second `isDangerousCompatible` decoy
+(`OLLAMA/decoy-local`). The configured-id branch picks the first, the
+any-compatible fallback would pick the decoy, and no reroute at all leaves the
+spec's `OPENAI/gpt-4.1-mini`. Measured in the fresh NDJSON: that one case reads
+OPENROUTER, every other case reads OPENAI.
+
+**Red-first.** The exact mutation P4.D141 recorded as leaving the family GREEN —
+forcing `should_use_uncensored_route` to `false` — now fails by name:
+`dangerous-chat-reroute-runs: /cheapSelectionUsed/provider diverges`. Reverted;
+green.
+
+The family's header carried the blind-spot section as a standing warning; it now
+records the closure and how, so the next reader does not re-derive the fixture
+plan the measurement made unnecessary.
+
+### Unit 6 — a PRE-EXISTING standing red: the `episodic-recall-*` fixture had gone vintage-stale
+
+Re-running the pair's other two consumers (unit 5's insurance) surfaced
+`recall_replay_equivalence: regen_failed` —
+**`SqliteError: no such column: fallbackProfileId`**, thrown v4-side by
+`repos.connections.findByUserId` inside `recall-replay.test.ts`.
+
+**Not this lane, and provably so without a rebuild.** The failure is entirely in
+the jest oracle: v4's real `lib/` reading the committed fixture DB. Its only v5
+inputs are the case file, the fixture builder, `episodic-recall.json` and the two
+committed `.db` files — and `git status` shows every one of them at main's
+content in this worktree. The committed pair's `connection_profiles` table
+predates v4 adding `fallbackProfileId`, so the family had become un-regenerable
+at some earlier baseline move and nothing had run it since. (It is not in any
+standing-red list.)
+
+§F makes the `episodic-recall-*` pair this lane's, so it is repaired here rather
+than reported: the pair was rebuilt with the shipped
+`build-episodic-recall-fixture.ts` from the pinned `6d2a50382` worktree, which
+creates the table through v4's current schema. All THREE consumers then run
+green — `recall_replay_equivalence`, `precompute_equivalence`,
+`vault_conv_search_equivalence` — the first for the first time in some while.
+
+⚠ The builder leaves zero-length `-journal` files beside both `.db`s. No
+committed fixture has ever carried one; they are deleted, and the families
+re-verified green without them.
