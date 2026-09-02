@@ -99062,3 +99062,166 @@ One deliberate v5-side retention: v4's `<label className="qt-label mb-2">
 Folder</label>` has no `htmlFor`, while v5's dialog already carried
 `for="move-folder"`. The id moved onto the picker's `<select>` so the existing
 label association (and the spec/e2e handle) survives the component boundary.
+
+---
+
+## Round record — the `6d2a50382` drift catch-up round unification (P4.D143 ∥ P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147), 2026-09-02
+
+**Unify branch `unify/6d2a50382-round` from main `8dedef97` (the orders
+commit); the five lanes cherry-picked in the contracts' order — P4.D145
+(7) → P4.D146 (5) → P4.D143 (7) → P4.D144 (6) → P4.D147 (3) = 28 commits —
+with `merge=union` on the two append-only docs; the only conflicts were the
+version files (every lane's manifest delta verified version-only before a
+`--theirs`), recounted afterwards as base + Σ bumps: core 0.0.736 + 14 →
+**0.0.750**, harness 0.0.630 + 12 → **0.0.642**, web 0.0.101 + 2 →
+**0.0.103**, host 0.0.91 + 1 → **0.0.92**, SPA 0.5.616 + 7 → **0.5.623**;
+both locks synced.** The drift ledger's §2 probe passed at the survey AND
+at the move (v4 `main` at `6d2a50382`, tree clean, both logs empty), so the
+baseline moves `4622411fd` → **`6d2a50382`** with **ZERO drift**: every
+regen in this record ran from the checkout itself (no pin needed — v4 HEAD
+IS the baseline), and the ledger's §3 is EMPTY.
+
+### What landed (verified against each order's tier list, not its header)
+
+- **P4.D143** (server, `c43d3b1b4`): all of Tier 1 + Tier 2 — the
+  state-only predicate with the delegation, the enqueue guard after the
+  chat read (red-first in two tier-3 families), the derived pair on all four
+  list payloads at v4's slots with key order byte-verified and the detail
+  GET's raw trio asserted to STAY, the §H `chatsHasDangerous` verb + the NEW
+  `quilltap-web` chats collection GET dispatcher, the NEW
+  `danger_trigger_equivalence` over v4's REAL trigger, the two NO-PORT
+  ratifications with file lists.
+- **P4.D144** (SPA, `c43d3b1b4`): all of Tier 1 + Tier 2 — the
+  presentation table ONCE in the SPA diffed against a committed recording of
+  v4's module EXECUTED at the sha, `ConciergeMark` over the Tooltip, the
+  pill + sidebar onto the table, `shouldHideChat` as the one rule (the P4.9d
+  non-port ruling retired at source), the four filters, the CSS
+  (byte-identical to v4's `_chat.css` hunk), the §H third arm + footer gate,
+  three gated beats.
+- **P4.D145** (`a5df98b3f`, bug 114): all of Tier 1 + Tier 2 — the
+  predicate, `ensure_by_path`/`create_returning`, the index-guarded
+  collapse ensure with NO ledger row + the NEW `folders_collapse_heal_
+  equivalence` (ten scenarios incl. the 607-row Friday shape), the
+  seven-site cutover with the two private lookups deleted, the restore drop
+  arm + a new committed archive, the provisioning-hook suggestion REFUTED by
+  measurement, the Friday-copy measurement (607/24/583, intact).
+- **P4.D146** (`70505745a`): all of Tier 1 + Tier 2 — the presence gate at
+  three sites + the reworded 400, the normalizer at the overlay parse (ONE
+  chokepoint — restore proven to need nothing), the narrowed schema, the
+  GET's dead arms, the widened `cost-background` pair + story builder, the
+  NEW tier-1 family, the SPA card + unions + gated beat.
+- **P4.D147** (`a00e18f0d`, bug 113): all of Tier 1 + Tier 2 — the picker
+  built fresh in v4's post-fix shape (v5 had none), the dialog cutover, v4's
+  four cases 1:1 plus a byte-equality arm v4's corpus lacks, the LIVE beat.
+
+### The §3 unification review — NO blocking findings (the fourth such round); nine should-fix items fixed on the unify branch (`2be3ab6f`)
+
+Four parallel readers (one per lane group) over the whole combined diff
+against v4's real code, plus the unifier's own reads of the load-bearing
+hunks (the guard, the payload swaps, the chokepoint, the collapse ensure,
+`shouldHideChat`, the mark, the picker derivation). Every lane honoured its
+order at the tier ordered; every deferral is recorded in code (censuses,
+`NO_V5_COUNTERPART` tables), no silent stub anywhere; the region splits
+(§C/§D/§E/§F) held — the unifier diffed `api/projects.rs` lane-vs-lane and
+the 53 differing lines were all D146's background region. Fixed:
+
+1. **A JS `parseInt` is a PREFIX parse (P4.D143).** The new chats
+   collection GET parsed `limit` with Rust's whole-string `parse::<i64>`
+   under a comment claiming "same observable as None" — true only for
+   wholly non-numeric input: v4's `parseInt("12abc", 10)` is 12 and slices
+   the list; v5 answered the WHOLE list. Now core's existing
+   `js_parse_int_10` twin (`api/llm_logs.rs`, made `pub`), pinned by two
+   route arms (`?limit=1abc` → exactly one chat; `?limit=` → no limit).
+2. **The newly-served v4 URL leaked the verb's error (P4.D143).** The list
+   leg at `/api/v1/chats` answered the bare `DbError` where v4's
+   `handleList` catch answers the fixed `Failed to fetch chats` — the
+   sibling `has-dangerous` arm in the same function carried ITS fixed
+   sentence. Mapped at the edge; the dispatch verb keeps its typed error.
+3. **v4's "still opens the chat when the mark itself is clicked" case was
+   dropped (P4.D144)** — the WHY lived in the ported component's comment
+   with no test behind it, so a `pinnable` mark or a `preventDefault()` in
+   the Tooltip would have stopped every list asterisk from navigating
+   unseen. Transcribed: `defaultPrevented` recorded at the LINK before the
+   host cancels.
+4. **A comment stating the opposite of the code (P4.D144)**:
+   `badgeSuffixClass` said "kept as its own expression rather than a
+   template interpolation so check-qt-classes can resolve it" over an
+   interpolation. Rewritten to what the guard actually polices.
+5. **The tier-1 family's v4-constant tripwire row had no count guard
+   (P4.D146)** — its ABSENCE read as a pass. `retired_rows == 1`.
+6. **`modeLabels` lost v4's compile-time exhaustiveness (P4.D146)** —
+   `Record<string,string>` where v4 is `Record<BackgroundDisplayMode,
+   string>`; a retired key became `Background set to undefined` at runtime,
+   the very toast the lane tripped on. Typed over the contract union.
+7. **`isPending` where v4 reads `isLoading` (P4.D147)** — a paused offline
+   query showed `Loading...` forever where v4 falls through to Root.
+8. **A boot-path `expect` (P4.D145)** on the repoint loop → a `continue`;
+   the provisioning guard's negative widened to `builtin_mounts.rs` (the
+   order's own suggested hook site); the reconcile-branch serializer note;
+   the `parse_properties` `expect` → `unwrap_or` (P4.D146).
+9. **Record accuracy**: D145's "siblings re-run" list was a substring-grep
+   artifact (`files-main.db` ⊂ `embedding-profiles-main.db`; exactly ONE
+   reader) and its `ensureByPath` arms landed in `folders_remap_tier2`
+   by necessity (the order named the pinned-id family) — both now in its
+   Findings; the participant-status census is EIGHT sites (six services +
+   two tools), not six; a fixture comment named Gamma where Alpha carries
+   the retired mode; the new wiring guard's recipe run line named the wrong
+   `--test` binary (the driver's `--list` flagged it `unscoped_run_line`).
+
+Recorded, not changed: the `console.warn` on the quick-hide probe has no v4
+counterpart (v4 is silent); the `?action=` present-but-empty and
+duplicate-query-param classes are a repo-wide REST-edge idiom (a
+cross-cutting candidate, phase-4); `trigger_chat_danger_classification`
+is `pub` for one harness family, with its doc saying why.
+
+### The wires
+
+- The three ACTIVATE-AT-UNIFY constants flipped LIVE (`P4D143_LIST_
+  PAYLOAD_LANDED`, `CHATS_HAS_DANGEROUS_VERB_LANDED`, `P4D146_MODE_
+  NARROWING_LANDED`) — the footer's quick-hide section is now GATED on
+  `hasQuickHideFeatures` as v4's is, which without flip 2 would have hidden
+  the only way to turn "Dangerous Chats" on (the SPA reviewer's catch).
+- The two `BACKGROUND_MODE_PENDING_P4D146` tripwires DELETED whole
+  (`projects_routes_equivalence` + `system_restore_state`; the
+  one-view-per-table restructure P4.D145 made stays, its comment now
+  crediting the find).
+- §A diffed name-for-name: `EnrichedChatSummary` / `RecentChat` /
+  `CharacterChatSummary` / the project-chats rows carry
+  `conciergeState` + `dangerCategories` at v4's slots on both sides;
+  `ChatDetail` keeps the raw trio on both. §H: `{type:'chatsHasDangerous'}`
+  → `Request::ChatsHasDangerous` → `{hasDangerous}` read by the service.
+- **The activated D144 beat file needed THREE first-run repairs** — the
+  gated-beat first-run class, one per full-suite run: (1) its seeding read
+  `data.chats` where the `listChats` verb answers the array AS `data` (the
+  `{chats}` envelope is the REST edge's); (2) its `chatUpdate` omitted the
+  REQUIRED `chat` sibling bag beside `conciergeState`; (3) a full-suite-only
+  shape — the Recent Chats hide arm expected the chat `beforeAll` flagged to
+  be on the dashboard's twelve most-recent, but sibling specs seed newer
+  chats after that hook in a full run and pushed it off (green in
+  isolation, 5/5, three times). The beat now flags whichever non-operator
+  chat IS on the list through the same verb, asserts the delta, and
+  restores it. Nothing in product code moved; the fourth full run is the
+  gate of record below.
+
+### The gate
+
+- **Oracles:** the 33 affected families regenerated FRESH from the v4
+  checkout at the new baseline through the sweep driver in ONE detached
+  run: **33/33 ok, zero SKIP** (the driver refuses unknown names before any
+  stage; the driver exceeds the tool's 10-minute cap and ran as a `nohup`
+  script with a sentinel). Changed-bytes greps (ledger §5.2):
+  `oracle-home` `conciergeState` present / `isDangerousChat` **0**;
+  `oracle-salon-reads` `hasDangerous` × 4 and `isDangerousChat` × 4 (the
+  four DETAIL bodies only); the collapse family's index name in all 10
+  scenarios; `oracle-cost-background` `present in chat` × 2; the story
+  family `Bram: A man` **0**; `oracle-danger-trigger`
+  `skips_when_operator_uncensored` present; `retiredList` × 1.
+- **Rust:** `cargo fmt --all --check` clean; `cargo build --workspace --release` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH feature sets (plain + `--features quilltap-core/native-transport`); **`cargo test --workspace` with the round's 54-variable env block (+ `TZ=UTC`): 484 test binaries / 2,694 passed / 0 failed / 1 ignored — exit 0, ZERO `SKIP:` lines** (the binary count is the previous round's 479 + this round's five new ones: `danger_trigger_equivalence`, `chats_collection_route`, `folders_collapse_heal_equivalence`, `folders_chokepoint_wiring_guard`, `project_background_display_mode_equivalence`); each of the round's families confirmed to have RUN by name inside that log.
+- **SPA:** `npm test` **376 files / 5,883 tests / 0 failed** on the final
+  tree (+1: the transcribed click case; `check-qt-classes` 948 classes,
+  every guarded reference resolving), `npm run build` clean.
+- **Full Playwright against the final build (the fourth full run, after the beat repairs):** **268 passed / 0 failed / 1 skipped (7.0 m), exit 0** — the one skip the standing `p4d122` store-probe park; the suite grew 263 → 269 with the round's beats (D144's three marks/hide/pill beats, D146's two-option beat, D147's live picker walk); runs 1–3 each caught one first-run defect in the new marks file (recorded above).
+
+### Cleanup
+
+Performed after the fast-forward: the five lane worktrees removed and their branches deleted with the temp branch, the `.git/info/attributes` union rule removed, the `/tmp` oracle NDJSONs / fixture mirrors / sweep and gate logs / the four Playwright logs removed, no debug servers left running; disk reclaimed as reported in the unification message.

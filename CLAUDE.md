@@ -2629,10 +2629,41 @@ records THERE. Update this summary only when a phase or round completes.
   leaf-text scan counting the composer as a bubble, **composition mode**
   swallowing two sends outright, and a `--` needle for an em dash the table
   folds to one hyphen.
-- **Oracle baseline: `4622411fd` (2026-08-31, v4 main — the 4.9.0
-  release-notes doc commit), adopted at the round-2 drift catch-up
-  unification (2026-09-01); the LoRA train completed at the P4.D138
-  follow-up the same day, so the ledger's §3 is EMPTY.**
+- **The `6d2a50382` drift catch-up round (P4.D143 ∥ P4.D144 ∥ P4.D145 ∥
+  P4.D146 ∥ P4.D147): UNIFIED on main (2026-09-02) — ALL FIVE CLOSED; the
+  oracle baseline MOVES to `6d2a50382` and the drift debt is CLEARED.** v4's
+  six-commit day absorbed whole: the Concierge list marks (server: the
+  derived `conciergeState`/`dangerCategories` pair on all four list payloads
+  at v4's slots, `concierge_state_uses_uncensored_route`, the per-turn
+  `CHAT_DANGER_CLASSIFICATION` enqueue gated on the classifier being on
+  duty — red-first, the "six times in four minutes" symptom — and the
+  `has-dangerous` probe v5 never had; SPA: the presentation table ONCE in
+  the SPA diffed against v4's module EXECUTED at the sha, `ConciergeMark`
+  over the Tooltip, `shouldHideChat` as the one quick-hide rule with the
+  P4.9d non-port ruling retired) ∥ bug 114 (the ledger's "D23 re-dump"
+  premise REFUTED — v4's `generateDDL` cannot emit an expression index; the
+  unique index arrives through an index-guarded collapse boot ensure with NO
+  ledger row, `ensure_by_path` over seven sites with two private lookups
+  deleted, the restore quiet-drop arm; Friday measured intact at 607 rows /
+  24 folders) ∥ absent participants out of story backgrounds + the
+  background-mode normalizer at the overlay parse (the ONE chokepoint —
+  restore needed nothing, proven by mutation) ∥ bug 113 (v5 had NO folder
+  picker; v4's post-fix one built fresh, live beat). **The §3 review: NO
+  blocking findings** (the fourth such round); nine should-fix items fixed
+  — headline: v4's `limit` is a `parseInt` PREFIX parse where the new chats
+  collection GET used Rust's whole-string parse, and its list leg leaked the
+  verb's error where v4 answers a fixed sentence; v4's dropped
+  click-passthrough case transcribed. The activated D144 beat's first live
+  run caught its own seeding reading `data.chats` off an array response.
+  Gate: 33/33 families fresh at the new baseline zero SKIP; 484 test binaries / 2,694 / 0 zero SKIP; clippy both feature sets; release build; ng 376 files / 5,883; full Playwright **268/0/1** (the standing store-probe park). Versions: core 0.0.750, harness 0.0.642,
+  web 0.0.103, host 0.0.92, SPA 0.5.623; cli/tauri unchanged. 💸 the
+  dogfood queue gains the real 607-row collapse, the marks + hide deltas +
+  footer probe, the enqueue guard on a real Uncensored chat, the
+  absent-participant gate, a real retired-mode project, the picker over real
+  folders. Round record: `status-log.md`.
+- **Oracle baseline: `6d2a50382` (2026-09-02, v4 main — the Concierge
+  state-view version bump), adopted at the `6d2a50382` drift catch-up round
+  unification (2026-09-02); the ledger's §3 is EMPTY.**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

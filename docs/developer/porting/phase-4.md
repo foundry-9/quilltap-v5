@@ -6270,7 +6270,7 @@ two route arms; the list leg's leaked error where v4 answers the fixed
 `Failed to fetch chats`; v4's dropped "still opens the chat when the mark
 itself is clicked" case transcribed; the tier-1 background-mode family's
 retired-list row gaining a shape guard; the SPA `modeLabels` typed over the
-contract union as v4's is). Gate: GATE-NUMBERS-PLACEHOLDER.
+contract union as v4's is). Gate: the 33 affected families regenerated fresh at the new baseline through the sweep driver, 33/33 zero SKIP; 484 test binaries / 2,694 / 0 (zero SKIP) with the round's env block; clippy both feature sets; release build; ng 376 files / 5,883; full Playwright 268 passed / 0 failed / 1 skipped (the standing store-probe park).
 
 **Next candidates, in rough value order** (updated at the `6d2a50382` round
 unification, 2026-09-02):

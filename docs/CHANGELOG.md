@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — unify: the `6d2a50382` drift catch-up round (P4.D143 ∥ P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147)
+
+_Versions: core 0.0.750, harness 0.0.642, web 0.0.103, host 0.0.92, SPA 0.5.623._
+
+Five lanes unified; the oracle baseline moves `4622411fd` → `6d2a50382`
+with zero drift (the ledger's §3 is empty). Landed whole: the derived
+`conciergeState`/`dangerCategories` pair on every chat-list payload, the
+state-only uncensored-route predicate, the per-turn danger-classification
+enqueue guard, the `has-dangerous` probe + a chats collection GET, the
+presentation table once in the SPA with the list mark over the Tooltip, the
+header pill/sidebar reads, `shouldHideChat` as the one quick-hide rule
+(P4.D143/P4.D144); bug 114 — the unique-constraint predicate,
+`ensure_by_path` over seven sites, the index-guarded collapse boot ensure
+with no ledger row, the restore quiet-drop arm (P4.D145); the
+absent-participant gate at three story-background sites + the reworded 400,
+the `backgroundDisplayMode` normalizer at the overlay parse, the narrowed
+schema and card (P4.D146); the Move-to-Project folder picker built fresh in
+v4's bug-113-fixed shape (P4.D147). Wires: three ACTIVATE-AT-UNIFY constants
+flipped, the two `BACKGROUND_MODE_PENDING_P4D146` tripwires retired, §A/§H
+diffed name-for-name, the activated D144 beat's first-run seeding fixed.
+Review: no blocking findings; nine should-fix items fixed (headline: v4's
+`limit` is a `parseInt` PREFIX parse; the list leg's leaked error sentence;
+v4's dropped click-passthrough case). Gate: 33 families regenerated fresh at the new baseline (33/33, zero SKIP); 484 test binaries / 2,694 passed / 0 failed / 1 ignored, zero SKIP; clippy both feature sets; release build; SPA 376 files / 5,883 tests; full Playwright 268 passed / 0 failed / 1 skipped (the standing store-probe park).
+
 #### 2026-09-02 — chore(harness): drop the superseded background-mode row masker (P4.D145)
 
 _Versions: harness 0.0.634._
