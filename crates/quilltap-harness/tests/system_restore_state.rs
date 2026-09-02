@@ -1821,30 +1821,6 @@ fn background_mode_of(row: &Value) -> Option<String> {
     background_mode_span(row.get("content")?.as_str()?).map(|(_, _, v)| v)
 }
 
-/// Replace one row's mode value and the length derived from it.
-fn mask_background_mode_row(row: &mut Value) {
-    let Some(obj) = row.as_object_mut() else {
-        return;
-    };
-    if let Some(Value::String(content)) = obj.get("content") {
-        if let Some((start, end, _)) = background_mode_span(content) {
-            let mut masked = String::with_capacity(content.len());
-            masked.push_str(&content[..start]);
-            masked.push_str("<PENDING_P4D146>");
-            masked.push_str(&content[end..]);
-            obj.insert("content".to_string(), Value::String(masked));
-        }
-    }
-    // `plainTextLength` is derived from the content, so it carries the
-    // two-character delta between `project` and `theme`.
-    if obj.contains_key("plainTextLength") {
-        obj.insert(
-            "plainTextLength".to_string(),
-            Value::String("<len-pending-p4d146>".into()),
-        );
-    }
-}
-
 /// How many rows this run actually masked. Zero at the end means the carve-out
 /// no longer describes anything and must be deleted (P4.D146 landed, or the pin
 /// moved past it).

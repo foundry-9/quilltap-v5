@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — chore(harness): drop the superseded background-mode row masker (P4.D145)
+
+_Versions: harness 0.0.634._
+
+`mask_background_mode_row` was left behind when the P4.D146 tripwire was
+restructured to key its mask off the affected file ids rather than per-row
+content. Dead since that rewrite; `mask_background_mode_table` is the live one.
+Caught by the gate's own `dead_code` warning, which `clippy -D warnings` would
+have failed on.
+
 #### 2026-09-02 — docs(porting): the P4.D145 lane record + the DDL.md mirror refresh
 
 _Docs-only; no version bumps._
