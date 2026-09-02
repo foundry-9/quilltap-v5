@@ -49,6 +49,13 @@ interface FolderPathOnly {
  * so switching destinations drops them rather than offering a folder that
  * belongs to somewhere else.
  */
+/**
+ * `#move-folder` is the dialog's `<label for>` target and the specs' handle
+ * (v4's `FolderPicker` carries no id and its label has no `htmlFor`; v5 kept
+ * the pre-existing association across the component boundary). The picker is
+ * single-instance by contract — one Move-to-Project dialog at a time — so the
+ * fixed id cannot collide; a second host would need it as an input.
+ */
 @Component({
   selector: 'qt-folder-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -162,7 +169,7 @@ export class FolderPicker {
   });
 
   protected readonly loading = computed(
-    () => this.filesQuery.isPending() || this.foldersQuery.isPending(),
+    () => this.filesQuery.isLoading() || this.foldersQuery.isLoading(),
   );
 
   private readonly files = computed(() => this.filesQuery.data() ?? []);

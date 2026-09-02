@@ -98159,6 +98159,14 @@ in the chokepoint census.
   nothing to reconcile to" arm without a race, so it is seeded with raw SQL and
   documented as synthetic.
 
+- **The ordered `ensureByPath` arms landed in `folders_remap_tier2`, not the
+  order's `folders_tier2`** (recorded at unification as the refuted order
+  premise it is): `folders_tier2` is the pinned-id family and cannot host an
+  unpinned mint, while the remap family already normalizes minted ids and
+  timestamps — which `ensureByPath` requires. All four ordered arms plus the
+  constraint arm are present in `folders-remap-tier2.json`; coverage is not
+  short, the family name in the order was.
+
 - **The order's pre-planted-duplicate routes arm is unreachable by
   construction.** Once the index exists a duplicate cannot be planted, and a
   create that loses a race requires a race. The race-resolution behaviour is
@@ -98221,7 +98229,11 @@ Held mechanically in `folders_chokepoint_wiring_guard::the_no_counterpart_rows_a
   regenerated at the pin (they gain v4's unique index — the post-bug-114
   vintage). Siblings re-run green by name: `files_routes_equivalence`,
   `embedding_reapply_equivalence`, `embedding_profiles_routes_equivalence`,
-  `memory_dedup_equivalence`.
+  `memory_dedup_equivalence`. **Corrected at unification:** the last three
+  were a grep artifact — they read `embedding-profiles-main.db`, which merely
+  CONTAINS `files-main.db` as a substring; a strict grep gives exactly ONE
+  reader of each regenerated file, `files_routes_equivalence`. Nothing was
+  missed; the list over-claimed.
 - **`/tmp/qt-folders-remap-fixture.db`** (built, not committed) gains the index
   and the raw-seeded `''`-projectId row.
 - **NEW committed `crates/quilltap-web/tests/fixtures/restore-archives/restore-archive-duplicate-folders.zip`**

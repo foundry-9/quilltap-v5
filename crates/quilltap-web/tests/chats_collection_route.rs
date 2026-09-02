@@ -94,4 +94,27 @@ async fn chats_collection_get_edges() {
         body.get("chats").map(Value::is_array).unwrap_or(false),
         "the no-action leg answers v4's {{chats: [...]}} envelope, got {body}"
     );
+
+    // v4's `limit` is `parseInt(limitParam, 10)` — a PREFIX parse. `1abc`
+    // must slice to ONE chat (Rust's whole-string parse would have answered
+    // the whole list), and an empty `limit=` is falsy in v4 → no limit.
+    let all = body["chats"].as_array().map(Vec::len).unwrap_or(0);
+    assert!(
+        all >= 2,
+        "the venue must seed at least two chats for the limit arms to discriminate, got {all}"
+    );
+    let (status, body) = get(&client, &addr, "/api/v1/chats?limit=1abc").await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body["chats"].as_array().map(Vec::len),
+        Some(1),
+        "`limit=1abc` must prefix-parse to 1"
+    );
+    let (status, body) = get(&client, &addr, "/api/v1/chats?limit=").await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        body["chats"].as_array().map(Vec::len),
+        Some(all),
+        "an empty `limit=` is no limit"
+    );
 }

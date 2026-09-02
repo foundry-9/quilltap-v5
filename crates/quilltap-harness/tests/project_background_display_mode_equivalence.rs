@@ -67,6 +67,7 @@ fn project_background_display_mode_matches_oracle() {
 
     let mut normalize_rows = 0usize;
     let mut parse_rows = 0usize;
+    let mut retired_rows = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::Normalize { id, input, out } => {
@@ -86,6 +87,7 @@ fn project_background_display_mode_matches_oracle() {
                 assert_eq!(got_json, out, "normalize '{id}' (input {input})");
             }
             Row::RetiredList { id, out } => {
+                retired_rows += 1;
                 assert_eq!(
                     RETIRED_BACKGROUND_DISPLAY_MODES.to_vec(),
                     out,
@@ -125,6 +127,13 @@ fn project_background_display_mode_matches_oracle() {
     assert!(
         parse_rows >= 8,
         "expected at least 8 parse rows, got {parse_rows} — stale oracle?"
+    );
+    // The retired-list row is the family's v4-constant tripwire (a v4-side
+    // addition shows up as a row, not as silence) — so its ABSENCE must not
+    // read as a pass either (unification review, 2026-09-02).
+    assert!(
+        retired_rows == 1,
+        "expected exactly one retiredList row, got {retired_rows} — stale oracle?"
     );
     eprintln!(
         "project-background-display-mode: {normalize_rows} normalize + {parse_rows} parse rows OK."

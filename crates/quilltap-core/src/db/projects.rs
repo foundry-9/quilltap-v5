@@ -194,8 +194,9 @@ impl StoreEntity for ProjectEntity {
         // to fail, as it fails v4's enum.
         let value = match value.get("backgroundDisplayMode") {
             Some(v) if !v.is_null() => {
-                let normalized = normalize_background_display_mode(Some(v))
-                    .expect("a present, non-null mode always normalizes to a value");
+                // Every present, non-null value normalizes to Some — the
+                // fallback is unreachable, kept so no live path can panic.
+                let normalized = normalize_background_display_mode(Some(v)).unwrap_or("theme");
                 let mut obj = value.as_object().cloned().unwrap_or_default();
                 obj.insert(
                     "backgroundDisplayMode".to_string(),

@@ -60,10 +60,12 @@ pub async fn chats_collection_get(
             ),
         ),
         // v4 `handleList`. `excludeTagIds` splits on `,` and drops empties;
-        // `limit` is v4's `limitParam ? parseInt(limitParam, 10) : undefined`
-        // (an unparsable value is NaN there and `limit && limit > 0` is then
-        // false — same observable as `None` here); `includeAutonomous` is a
-        // strict `=== 'true'`.
+        // `limit` is v4's `limitParam ? parseInt(limitParam, 10) : undefined` —
+        // a PREFIX parse (`"12abc"` → 12, `" 12"` → 12, `"12.9"` → 12), so it
+        // goes through core's `js_parse_int_10` twin rather than Rust's
+        // whole-string `parse`; an empty or digitless value is NaN there and
+        // `limit && limit > 0` is then false — `None` here (unification
+        // review, 2026-09-02); `includeAutonomous` is a strict `=== 'true'`.
         None => {
             let exclude_tag_ids = query
                 .get("excludeTagIds")
@@ -74,7 +76,10 @@ pub async fn chats_collection_get(
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            let limit = query.get("limit").and_then(|s| s.parse::<i64>().ok());
+            let limit = query.get("limit").and_then(|s| {
+                let n = quilltap_core::api::llm_logs::js_parse_int_10(s);
+                n.is_finite().then_some(n as i64)
+            });
             let include_autonomous =
                 query.get("includeAutonomous").map(String::as_str) == Some("true");
             let req = CoreRequest::ListChats {
@@ -89,7 +94,13 @@ pub async fn chats_collection_get(
                     json!({ "chats": chats }).to_string(),
                 )
                     .into_response(),
-                Ok(CoreResponse::Error(e)) => error_to_http(e),
+                // v4 `handleList`'s catch answers the FIXED sentence, never the
+                // error's own text (`route.ts:888-890` `serverError('Failed to
+                // fetch chats')`); the dispatch verb keeps its typed error for
+                // the SPA's own path (unification review, 2026-09-02).
+                Ok(CoreResponse::Error(_)) => {
+                    error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to fetch chats")
+                }
                 Ok(_) => error_json(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Unexpected core response",

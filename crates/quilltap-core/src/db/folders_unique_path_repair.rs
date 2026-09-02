@@ -247,10 +247,12 @@ pub fn ensure_folders_unique_path_index(
             tx.prepare("UPDATE folders SET parentFolderId = ?1, updatedAt = ?2 WHERE id = ?3")?;
         for folder in &needing_repoint {
             let old_parent = folder.parent_folder_id.as_deref().unwrap_or_default();
-            let new_parent = superseded_by
-                .get(old_parent)
-                .expect("filtered on membership")
-                .clone();
+            // `needing_repoint` was filtered on exactly this membership, so the
+            // `else` is unreachable — kept as a `continue` so the boot chain, the
+            // one place a panic is maximally expensive, has none on this path.
+            let Some(new_parent) = superseded_by.get(old_parent).cloned() else {
+                continue;
+            };
             repoint.execute(params![new_parent, now_iso, folder.id])?;
             tracing::debug!(
                 target: "quilltap::boot",

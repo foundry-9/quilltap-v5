@@ -23,6 +23,9 @@ import { ProjectAestheticField } from './project-aesthetic-field';
  * the new mode reaches the backdrop on the next fetch (remount, focus, or the
  * 30s poll). See `project-detail.ts`.
  */
+/** The surviving project background modes, straight off the contract union. */
+type BackgroundMode = NonNullable<ProjectDetail['backgroundDisplayMode']>;
+
 @Component({
   selector: 'qt-project-image-generation-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -225,8 +228,11 @@ export class ProjectImageGenerationCard {
 
   /** v4 `useProjectDetail.ts:245-268`. */
   protected onBackground(event: Event): void {
-    const v = (event.target as HTMLSelectElement).value;
-    const modeLabels: Record<string, string> = {
+    const v = (event.target as HTMLSelectElement).value as BackgroundMode;
+    // Typed over the contract's union, as v4's `Record<BackgroundDisplayMode,
+    // string>` is: retiring a mode there is a compile error here, never a
+    // `Background set to undefined` toast (unification review, 2026-09-02).
+    const modeLabels: Record<BackgroundMode, string> = {
       theme: 'theme background',
       latest_chat: 'latest chat background',
     };

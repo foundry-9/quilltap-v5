@@ -78,11 +78,12 @@ pub fn migrate_is_active_to_status(is_active: bool, removed_at: Option<&str>) ->
 ///   refuse the row outright, and "not in the scene" is the safe reading of a
 ///   status nobody can name.
 ///
-/// (Six services carry a private copy of exactly this match — `enclave::announce`,
+/// (Eight sites carry a private copy of exactly this match — `enclave::announce`,
 /// `services::{commonplace_notifications, fold_episode_pass, participant_resolver,
-/// turn_orchestrator, user_identity_resolver}`. Consolidating them onto this one
-/// is a behaviour-neutral sweep across six files no single lane owns; recorded as
-/// a follow-up rather than smuggled into P4.D146.)
+/// turn_orchestrator, user_identity_resolver}`, and at string level
+/// `tools::self_inventory` + `tools::doc_edit::shared`. Consolidating them onto
+/// this one is a behaviour-neutral sweep across eight files no single lane owns;
+/// recorded as a follow-up rather than smuggled into P4.D146.)
 pub fn participant_status_from_str(s: Option<&str>) -> ParticipantStatus {
     match s.unwrap_or("active") {
         "active" => ParticipantStatus::Active,

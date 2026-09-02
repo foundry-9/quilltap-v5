@@ -69,10 +69,11 @@ fn list_failed() -> Response {
 }
 
 /// JS `parseInt(s, 10)`: skip leading JS whitespace, take an optional sign, then
-/// the leading run of ASCII digits. **`NaN` when no digit follows** — the arm the
+/// the leading run of ASCII digits. `pub` because `quilltap-web`'s chats
+/// collection GET (`chats_routes.rs`) parses v4's `limit` param with it too. **`NaN` when no digit follows** — the arm the
 /// route's garbage-limit quirk rides on. The result is a JS number (`f64`), not an
 /// integer, so the NaN survives the arithmetic below exactly as it does in v4.
-pub(super) fn js_parse_int_10(s: &str) -> f64 {
+pub fn js_parse_int_10(s: &str) -> f64 {
     let t = s.trim_start_matches(|c: char| c.is_whitespace() || c == '\u{feff}');
     let (negative, rest) = match t.strip_prefix('-') {
         Some(r) => (true, r),

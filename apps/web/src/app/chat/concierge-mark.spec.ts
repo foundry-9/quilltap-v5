@@ -210,3 +210,48 @@ describe('ConciergeTooltipBody', () => {
     expect(text).not.toContain('Categories');
   });
 });
+
+/**
+ * v4 `homepage-components.test.tsx:633-643` — "still opens the chat when the
+ * mark itself is clicked". The mark sits inside the row's link; it must not
+ * swallow the click. Transcribed at the round's unification review, which
+ * found the case had been dropped: the behaviour held (the Tooltip's anchor
+ * click returns early when not pinnable and never prevents default), but
+ * nothing pinned it, so a `pinnable` mark or a `preventDefault()` in the
+ * primitive would have stopped every list asterisk from navigating unseen.
+ */
+@Component({
+  imports: [ConciergeMark],
+  template: `<a href="/salon/chat-1" (click)="onClick($event)"
+    ><qt-concierge-mark conciergeState="flagged" [dangerCategories]="['NSFW']"
+  /></a>`,
+})
+class LinkedMarkHost {
+  /** What the LINK saw: one entry per click that reached it, with whether
+   *  anything below it had already cancelled the navigation. */
+  readonly seen: { defaultPrevented: boolean }[] = [];
+  onClick(event: MouseEvent): void {
+    // Record BEFORE cancelling: the mark and the tooltip anchor have had their
+    // turn by the time the event bubbles up here, so `defaultPrevented` at this
+    // instant is theirs alone. The cancel keeps jsdom from navigating.
+    this.seen.push({ defaultPrevented: event.defaultPrevented });
+    event.preventDefault();
+  }
+}
+
+describe('ConciergeMark — inside a link', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('still opens the chat when the mark itself is clicked', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [LinkedMarkHost] });
+    const fixture = TestBed.createComponent(LinkedMarkHost);
+    fixture.detectChanges();
+    const mark = fixture.nativeElement.querySelector('.qt-concierge-mark') as HTMLElement;
+    expect(mark).not.toBeNull();
+    mark.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    // The click reached the link (nothing stopped its propagation) and arrived
+    // un-cancelled (nothing below the link prevented the navigation).
+    expect(fixture.componentInstance.seen).toEqual([{ defaultPrevented: false }]);
+  });
+});

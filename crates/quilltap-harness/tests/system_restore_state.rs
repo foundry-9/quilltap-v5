@@ -1755,7 +1755,6 @@ fn assert_phase_order_residual(
     failures
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // The #58 orphaned-rows divergence (P4.28 + this round's unification wire)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2129,7 +2128,6 @@ fn compare_case(
     } else {
         Default::default()
     };
-
 
     for (partition, tables) in got {
         for (table, rows) in tables {

@@ -1175,4 +1175,3 @@ fn projects_routes_match_oracle() {
 
     assert!(failed.is_empty(), "projects-routes FAILED: {failed:?}");
 }
-

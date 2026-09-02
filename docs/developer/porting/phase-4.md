@@ -6256,7 +6256,57 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
-## The `6d2a50382` drift catch-up round (P4.D143 ∥ P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147) — ORDERED 2026-09-02
+## The `6d2a50382` drift catch-up round (P4.D143 ∥ P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147) — UNIFIED 2026-09-02
+
+**UNIFIED on main (2026-09-02) — ALL FIVE CLOSED; the oracle baseline MOVES
+to `6d2a50382` and the drift debt is CLEARED (the ledger's §3 is EMPTY).**
+Round record: `status-log.md` → "Round record — the `6d2a50382` drift
+catch-up round unification". The §3 unification review (four parallel
+readers + the unifier's own reads of the load-bearing hunks) found NO
+blocking findings — the fourth such round — and fixed nine should-fix items
+on the unify branch (headline: v4's `limit` is a `parseInt` PREFIX parse
+where the new chats collection GET used Rust's whole-string parse, pinned by
+two route arms; the list leg's leaked error where v4 answers the fixed
+`Failed to fetch chats`; v4's dropped "still opens the chat when the mark
+itself is clicked" case transcribed; the tier-1 background-mode family's
+retired-list row gaining a shape guard; the SPA `modeLabels` typed over the
+contract union as v4's is). Gate: GATE-NUMBERS-PLACEHOLDER.
+
+**Next candidates, in rough value order** (updated at the `6d2a50382` round
+unification, 2026-09-02):
+
+1. **The owed dogfood pass over this round's surfaces** on the Friday copy:
+   the bug-114 collapse on the REAL 607-row population (measure FIRST — the
+   💸 proof expires when v4 runs its own migration there; the lane measured
+   it intact on 2026-09-02), the Concierge mark on every list with the four
+   tones + the drawn bubble, "Dangerous Chats" hiding the uncensored row
+   and no longer hiding a vouched chat, the footer affordance keyed on the
+   probe, the per-turn enqueue guard on a real Uncensored chat (the
+   "six times in four minutes" symptom gone), the absent-participant gate on
+   a real story background + the reworded 400, a real `'project'`/`'static'`
+   project reading `theme`, the Move-to-Project picker over real folders +
+   a create through it; plus the standing queue (the `[CheapLLM]` warn
+   ordering, Pascal's group tier, the Brahma deep query, dedup/summaries,
+   #101, the LoRA wire-byte look).
+2. **The eight private participant-status parsers** (six services + two
+   tools) consolidating onto `chat_predicates::participant_status_from_str`
+   — behaviour-neutral, spans files no lane owned (P4.D146's follow-up).
+3. **The `?action=` (present-but-empty) and duplicate-query-param classes**
+   at every v5 REST edge — v4's `searchParams.get` returns `''` (falsy →
+   the no-action leg) and the FIRST duplicate; axum answers `Some("")` and
+   the LAST. Repo-wide idiom, wants a cross-cutting order (P4.D143's
+   review).
+4. **The remaining LoRA follow-ups + the earlier small items** carried
+   verbatim from the P4.D138 follow-up's list (its items 2–6), plus:
+   `projects_routes_equivalence` has no `latest_chat` background GET arm;
+   the GET's own normalize is a non-discriminating line; the picker's
+   `#move-folder` id is single-instance by contract; the `console.warn` on
+   the quick-hide probe has no v4 counterpart (v4 is silent).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json` file
+port remains a NAMED standalone flag.
+
+**The ordering-time section follows for history:**
 
 Five lanes, all drift (the standing rule: drift debt before new scope).
 The ledger's six rows are ORDERED; the four PORT commits map to five

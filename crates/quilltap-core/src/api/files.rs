@@ -932,7 +932,11 @@ pub async fn files_folder_create(
             // The chokepoint returns the persisted row, so v4's post-create
             // re-read (and its "folder vanished after create" arm) is gone. The
             // CREATED shape still echoes present nulls — v4 returns the created
-            // entity, not a fresh read.
+            // entity, not a fresh read. On the reconcile branch (a lost race)
+            // the chokepoint hands back the WINNING row and this same serializer
+            // echoes its nulls present, where v4's raced path returns
+            // `findByPath`'s hydrated object with NULL keys dropped — unreachable
+            // without a real race, so no differential can see it either way.
             let created = repo.ensure_by_path(&FolderCreate {
                 user_id: uid.clone(),
                 path: normalized.clone(),

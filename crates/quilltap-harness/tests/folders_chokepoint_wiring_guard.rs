@@ -29,7 +29,7 @@
 //! every open, including the first one after Setup.
 //!
 //! Run standalone (no oracle):
-//!   cargo test -p quilltap-harness --test folders_index_boot_wiring_guard
+//!   cargo test -p quilltap-harness --test folders_chokepoint_wiring_guard
 
 use std::path::PathBuf;
 
@@ -69,7 +69,11 @@ fn the_boot_chain_runs_the_folders_collapse_ensure() {
 
 #[test]
 fn provisioning_does_not_create_the_index() {
-    let src = read("crates/quilltap-core/src/services/provisioning/mod.rs");
+    // Both routes into a fresh instance's schema: the provisioner itself AND
+    // `ensure_builtin_mounts`, which provisioning calls and which is where the
+    // work order first suggested the hook (unification review, 2026-09-02).
+    let src = read("crates/quilltap-core/src/services/provisioning/mod.rs")
+        + &read("crates/quilltap-core/src/services/builtin_mounts.rs");
     assert!(
         !src.contains("folders_unique_path_repair"),
         "provisioning must NOT create the bug-114 index: v4's fresh generateDDL \

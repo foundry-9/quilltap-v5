@@ -175,8 +175,12 @@ export class ConversationHeader {
 
   /**
    * `danger` is the base rule, so it adds nothing; only the two operator tones
-   * carry a modifier. Kept as its own class-name expression rather than a
-   * template interpolation so `check-qt-classes` can still resolve the family.
+   * carry a modifier. This IS an interpolation — the same one v4's
+   * `SalonView.tsx` builds — so `check-qt-classes` cannot see
+   * `qt-danger-badge-muted` / `-info` from here; the two rules live in
+   * `_chat.css` and are referenced by name only in specs. The guard flags
+   * references without rules, not rules without references, so this is safe
+   * as long as those rules stay (unification review, 2026-09-02).
    */
   protected readonly badgeSuffixClass = computed(() => {
     const suffix = conciergeToneSuffix(this.conciergePresentation().tone);
