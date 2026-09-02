@@ -293,6 +293,32 @@ The core gains `is_localhost_url` — the same parse and `LOCALHOST_HOSTS` test
 `rewrite_localhost_url` already did, extracted to one home and exposed so the
 host can ask before resolving. No URL semantics changed (P4.D134's corpus is
 the pin).
+#### 2026-09-02 — test(harness): the latest-chat background branch, and what the GET's normalize can actually pin
+
+_Versions: harness 0.0.646._
+
+`projects_routes_equivalence` drove `get-background` for Iota and Kappa only,
+and neither reaches v4's latest-chat branch: Iota is stored in the retired
+`'project'` mode and Kappa in `'theme'`. The new `background_iota_latest_chat`
+arm sets the surviving mode through the PUT and then reads the background back,
+so the branch runs without disturbing the committed fixture — Iota owns two
+chats, one carrying `storyBackgroundImageId` and one not, so the filter is
+exercised and `sourceChatId` must name the right one. Both sides now answer
+`{backgroundUrl, displayMode: 'latest_chat', sourceChatId}`. Mutation-proven:
+making no chat qualify reddens exactly this arm.
+
+The order also asked for a planted retired-mode row so the GET's own normalize
+line would discriminate. Measurement says it cannot, and the plant already
+exists: Iota's stored `backgroundDisplayMode` IS the retired `"project"`, and
+reverting the GET's normalize changes nothing, because
+`ProjectsRepository::parse_properties` — the one chokepoint every property bag
+passes through, including the overlay read — has already folded it. Breaking
+THAT normalize reddens four arms (`list`, `get_iota`,
+`update_unknown_key_stripped`, `update_clear_description`) and leaves
+`background_iota` green, which is the measurement: the GET's line is a second
+belt that only matters if the chokepoint fails, defensively present in v4 for
+the same reason. Recorded rather than faked.
+
 #### 2026-09-02 — fix(harness): migrate the committed system-data fixture to the baseline schema vintage
 
 _Versions: harness 0.0.645._

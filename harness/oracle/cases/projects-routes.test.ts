@@ -264,6 +264,28 @@ async function main(): Promise<void> {
     { name: 'get_state', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-state`), p(IOTA))) },
     { name: 'background_iota', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-background`), p(IOTA))) },
     { name: 'background_kappa', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${KAPPA}?action=get-background`), p(KAPPA))) },
+    // P4.70: the latest-chat BRANCH of handleGetBackground, which neither
+    // standing arm reaches — Iota is stored in the retired 'project' mode
+    // (which the GET's normalize folds to 'theme') and Kappa in 'theme'. The
+    // PUT is the only way into 'latest_chat' without touching the committed
+    // fixture, and it is the surviving mode, so this is one arm, not a new
+    // fixture: set the mode, then read the background back. Iota owns two
+    // chats, one carrying `storyBackgroundImageId` and one not, so the FILTER
+    // is exercised and `sourceChatId` must name the right one. (The
+    // sort-by-updatedAt-desc is NOT exercised — one candidate — recorded
+    // rather than faked.)
+    {
+      name: 'background_iota_latest_chat',
+      run: async () => {
+        await (await loadRoute(idRoute)).PUT(
+          mockRequest(`${B}/${IOTA}`, { backgroundDisplayMode: 'latest_chat' }),
+          p(IOTA),
+        );
+        return respond(
+          await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=get-background`), p(IOTA)),
+        );
+      },
+    },
     { name: 'aesthetic_get_lantern', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=aesthetic&kind=lantern`), p(IOTA))) },
     { name: 'aesthetic_get_aurora', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${IOTA}?action=aesthetic&kind=aurora`), p(IOTA))) },
     { name: 'aesthetic_get_empty', run: async () => respond(await (await loadRoute(idRoute)).GET(mockRequest(`${B}/${KAPPA}?action=aesthetic&kind=lantern`), p(KAPPA))) },

@@ -100295,3 +100295,47 @@ deliberate, named follow-up rather than a silent one.
 **Trap banked.** The migrator leaves zero-length `.db-journal` files beside the
 committed fixtures (TRUNCATE journal mode); they are untracked leftovers and
 must be deleted before committing.
+
+### Lane record — P4.70 unit 4: `projects_routes_equivalence` background arms (Tier 2 item 4)
+
+**The latest-chat branch, reached without touching the fixture.** `:459-469`
+drove `project_background_get` for IOTA/KAPPA only, and neither reaches v4's
+latest-chat branch (`app/api/v1/projects/[id]/actions/background.ts`): Iota is
+stored in the retired `'project'` mode and Kappa in `'theme'`. `'latest_chat'`
+is the surviving WRITE mode, so the new `background_iota_latest_chat` arm PUTs
+it and then GETs — one arm on both sides, no fixture change. Iota already owns
+two chats, one carrying `storyBackgroundImageId` and one not, so the filter is
+exercised and `sourceChatId` must name the right one; both sides answer
+`{backgroundUrl: "/api/v1/files/f0000001-…", displayMode: "latest_chat",
+sourceChatId: "c1000000-…"}`. Mutation-proven: `&& false` on the filter reddens
+exactly this arm and nothing else.
+
+**Honest partial:** the sort-by-`updatedAt`-desc is NOT exercised — Iota has
+one qualifying chat, so the sort has nothing to order. Recorded in both
+headers rather than faked with a second seeded chat this lane would have had to
+invent.
+
+**The order's normalize plant is REFUTED — twice over, and the second time
+mattered.** The order asked for a project row planted with a retired mode so
+the GET's own normalize line would discriminate. First measurement: the plant
+already exists — Iota's stored `backgroundDisplayMode` in the mount's
+`properties.json` IS `"project"`. But reverting the GET's normalize
+(`api/projects.rs:970`) changed NOTHING, because
+`ProjectsRepository::parse_properties` (`db/projects.rs:199`) — "the one
+chokepoint every project property bag passes through — the overlay READ, the
+write overlay's read-modify-write serialize, and `write_managed_fields` on
+create" — has already folded it before the reader sees it.
+
+Breaking THAT normalize instead reddens four arms (`list`, `get_iota`,
+`update_unknown_key_stripped`, `update_clear_description`) and leaves
+`background_iota` GREEN. That pair of measurements is the disposition: the
+chokepoint is pinned; the GET's line is a **second belt that can only matter if
+the chokepoint fails**, which is exactly what its own comment claims ("guards a
+raw row that bypassed the overlay") and exactly what v4 does at the same spot.
+No corpus input can isolate it while the chokepoint works, on either side. It
+is defensive depth on both sides, not a gap — recorded, not invented into
+coverage.
+
+Recipe: unchanged and runnable through the sweep driver
+(`--show projects_routes_equivalence` restores it from the oracle case's own
+header).

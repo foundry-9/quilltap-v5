@@ -472,6 +472,33 @@ fn projects_routes_match_oracle() {
         );
     }
     {
+        // P4.70: the latest-chat BRANCH, which neither standing arm reaches —
+        // Iota is stored in the retired `'project'` mode (folded to `'theme'`
+        // by the GET's normalize; that fold is what `background_iota` pins) and
+        // Kappa in `'theme'`. `'latest_chat'` is the surviving write mode, so
+        // the PUT is the way in without disturbing the committed fixture. Iota
+        // owns two chats, one carrying `storyBackgroundImageId` and one not, so
+        // the filter is exercised and `sourceChatId` must name the right one.
+        // The sort-by-`updatedAt`-desc is NOT exercised (one candidate) —
+        // recorded rather than faked.
+        let db = fresh_db(&spec, "bglc");
+        let resp = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "backgroundDisplayMode": "latest_chat" }),
+        ));
+        assert!(
+            !matches!(resp, Response::Error(_)),
+            "the latest_chat PUT must succeed before the GET can reach its branch"
+        );
+        check(
+            "background_iota_latest_chat",
+            &response_data(&projects::project_background_get(&db, IOTA)),
+            false,
+            &mut failed,
+        );
+    }
+    {
         let db = fresh_db(&spec, "agl");
         check(
             "aesthetic_get_lantern",
