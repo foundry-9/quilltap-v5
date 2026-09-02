@@ -259,6 +259,14 @@ fn first_diff(got: &str, want: &str) -> String {
 /// Assert-then-strip the wall-clock-minted `updatedAt` on ONE chat object: v4's
 /// must be at-or-after the frozen instant and v5's must differ from the fixture
 /// seed — i.e. BOTH sides really wrote — before the key is dropped.
+///
+/// `lastMessageAt` is the OPPOSITE pin since v4 bug 112 (`4622411fd`,
+/// P4.D140): the Host's scenario-change announcement is a Staff-authored row
+/// (`systemSender` set), which `lib/chat/chat-activity.ts` excludes from
+/// activity, so the write must NOT stamp it on either side. This arm used to
+/// demand the stamp — written before bug 112 and never re-run at a later pin
+/// until the follow-ups round's unification sweep (2026-09-02), where the
+/// fresh oracle showed the key absent on both sides.
 fn assert_and_strip_clock(
     name: &str,
     chat: &mut serde_json::Map<String, Value>,
@@ -266,30 +274,43 @@ fn assert_and_strip_clock(
 ) -> Vec<String> {
     let mut failed = Vec::new();
     let label = if v4 { "v4" } else { "v5" };
-    for key in ["updatedAt", "lastMessageAt"] {
-        let got = chat
-            .get(key)
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let ok = if v4 {
-            got.as_str() >= FROZEN_NOW_ISO
-        } else {
-            got != SEED_ISO && !got.is_empty()
-        };
-        if !ok {
-            eprintln!(
-                "[{name}] {label} {key} = {got:?} — the write did not stamp it (expected {})",
-                if v4 {
-                    FROZEN_NOW_ISO
-                } else {
-                    "anything but the seed"
-                }
-            );
-            failed.push(format!("{name}_{label}_{key}"));
-        }
-        chat.remove(key);
+    let updated = chat
+        .get("updatedAt")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let ok = if v4 {
+        updated.as_str() >= FROZEN_NOW_ISO
+    } else {
+        updated != SEED_ISO && !updated.is_empty()
+    };
+    if !ok {
+        eprintln!(
+            "[{name}] {label} updatedAt = {updated:?} — the write did not stamp it (expected {})",
+            if v4 {
+                FROZEN_NOW_ISO
+            } else {
+                "anything but the seed"
+            }
+        );
+        failed.push(format!("{name}_{label}_updatedAt"));
     }
+    chat.remove("updatedAt");
+    // Bug 112: a Staff announcement is not activity — the stamp must be
+    // ABSENT (v4's projection omits the NULL) or still the seed.
+    let last = chat
+        .get("lastMessageAt")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if !(last.is_empty() || last == SEED_ISO) {
+        eprintln!(
+            "[{name}] {label} lastMessageAt = {last:?} — a Staff announcement stamped chat \
+             activity, which v4 bug 112 forbids"
+        );
+        failed.push(format!("{name}_{label}_lastMessageAt"));
+    }
+    chat.remove("lastMessageAt");
     failed
 }
 
