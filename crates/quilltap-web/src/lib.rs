@@ -25,6 +25,7 @@ pub mod backup_routes;
 // === end P4.9G5 ===
 pub mod brahma_routes;
 pub mod characters_routes;
+pub mod chats_routes;
 pub mod custom_tools_routes;
 pub mod dispatch;
 pub mod embedding_profiles_routes;
@@ -388,6 +389,10 @@ pub fn build_router(state: SharedState) -> Router {
             axum::routing::patch(text_replacements_routes::text_replacement_patch)
                 .delete(text_replacements_routes::text_replacement_delete),
         )
+        // === P4.D143 §H: the chat-collection GET (v4 route.ts's GET
+        // dispatcher). `?action=has-dangerous` is the Quick-hide probe v5
+        // never had; no action delegates to the ListChats verb. ===
+        .route("/api/v1/chats", get(chats_routes::chats_collection_get))
         .route(
             "/api/v1/chats/{id}",
             // P4.9f1 re-points the GET at the wardrobe fan-out (?action=outfit

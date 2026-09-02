@@ -335,6 +335,32 @@ with one participant per status, and a chat where everyone has left.
 `cost_background_routes_equivalence` gains two arms and
 `title_update_tier3_equivalence` two cases, all four measured against v4's
 real code at the `70505745a` pin.
+#### 2026-09-02 — feat(concierge): the Quick-hide probe, on the uncensored route
+
+_Versions: core 0.0.741, harness 0.0.634, web 0.0.102._
+
+§H of the round's shared contract. v5 never had v4's `GET /api/v1/chats?action=
+has-dangerous` at all, and `c43d3b1b4` re-based it off the raw `isDangerousChat`
+onto the uncensored route: the "Dangerous Chats" toggle hides Flagged (the
+Concierge's verdict) and Uncensored (the operator's), so the affordance appears
+on exactly that set and not on every chat carrying a preserved label.
+
+Landed as the `chatsHasDangerous` verb answering `{hasDangerous: boolean}`, plus
+a new `chats_routes.rs` serving v4's whole collection GET dispatcher: the action,
+v4's exact unknown-action 400, and the no-action list leg delegated to the
+existing `ListChats` verb (v4 serves the list at that URL, so refusing it would
+have been an invention).
+
+`salon_reads_equivalence` gains four arms over v4's REAL GET dispatcher — none,
+vouched-only (a preserved TRUE label that must NOT count), flagged, uncensored —
+plus v4's recorded 400 bytes; the new `chats_collection_route` wire test proves
+the edge is registered, unwraps its response variant, and builds the same
+sentence. Reverting the probe to `isDangerousChat === true` reddens the vouched
+and uncensored arms; asking `shouldShowDangerStyling` instead reddens the
+uncensored one.
+
+P4.D144 consumes the verb as the third arm of `hasQuickHideFeatures`.
+
 #### 2026-09-02 — feat(concierge): the character conversations and project chats rows carry the derived state
 
 _Versions: core 0.0.740, harness 0.0.633._

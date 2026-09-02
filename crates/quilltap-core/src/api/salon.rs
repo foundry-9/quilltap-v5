@@ -17,7 +17,9 @@ use serde_json::{json, Map, Value};
 use crate::db::runtime::Db;
 use crate::db::{chat_settings, chats_read, DbError};
 use crate::services::carina_query::BRAHMA_CARINA_ANSWERER_ID;
-use crate::services::dangerous_content::chat_override::ConciergeState;
+use crate::services::dangerous_content::chat_override::{
+    should_use_uncensored_route, ConciergeState,
+};
 use crate::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
 };
@@ -86,6 +88,34 @@ pub fn chat_settings(db: &Db, user_id: &str) -> Response {
         ),
         Err(e) => internal(e),
     }
+}
+
+// ===========================================================================
+// The Quick-hide probe (v4 GET /api/v1/chats?action=has-dangerous)
+// ===========================================================================
+
+/// v4 `handleHasDangerous`: does the user have anything for "Dangerous Chats"
+/// to hide?
+///
+/// The toggle hides whatever takes the uncensored route — Flagged (the
+/// Concierge's verdict) and Uncensored (the operator's) — so the affordance
+/// appears on exactly that set, not on every chat carrying a preserved label
+/// (v4 `c43d3b1b4` re-based the probe off the raw `isDangerousChat`).
+///
+/// v4 reads EVERY chat of the user with no `chatType` filter — the same
+/// `findByUserId` the list starts from, before `handleList`'s salon/autonomous
+/// narrowing — so a Help Chat or a Brahma Console on the uncensored row counts.
+/// Failures answer v4's fixed `Failed to check dangerous chats` 500.
+pub fn chats_has_dangerous(db: &Db, user_id: &str) -> Response {
+    let user_id_owned = user_id.to_string();
+    let all = match db.read_main(move |conn| chats_read::find_by_user_id(conn, &user_id_owned)) {
+        Ok(v) => v,
+        Err(_) => {
+            return Response::error(ErrorKind::Internal, "Failed to check dangerous chats");
+        }
+    };
+    let has_dangerous = all.iter().any(|c| should_use_uncensored_route(Some(c)));
+    Response::ChatsHasDangerous(json!({ "hasDangerous": has_dangerous }))
 }
 
 // ===========================================================================

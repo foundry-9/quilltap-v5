@@ -360,6 +360,49 @@ fn salon_reads_match_oracle() {
         );
         cases.push(("get_vouched_keeps_raw_trio".into(), got, want));
     }
+    // P4.D143 §H (v4 `c43d3b1b4`): the Quick-hide probe. v4 answers true iff
+    // ANY chat takes the uncensored route — Flagged or Uncensored — so a
+    // preserved TRUE label under a Vouched Safe override must NOT count. The
+    // jest side gets a fresh fixture copy per case; the Rust side shares one
+    // Db, so each arm resets all three chats to Monitored first.
+    let reset = |rt: &tokio::runtime::Runtime, db: &Db| {
+        rt.block_on(db.write(|w| {
+            w.main().connection().execute_batch(
+                "UPDATE \"chats\" SET \"conciergeOverride\" = NULL, \"isDangerousChat\" = 0, \
+                 \"dangerCategories\" = NULL",
+            )?;
+            Ok(())
+        }))
+        .expect("reset concierge states");
+    };
+    for (name, paint) in [
+        ("has_dangerous_none", None),
+        (
+            "has_dangerous_vouched_only",
+            Some("\"conciergeOverride\" = 'OFF', \"isDangerousChat\" = 1"),
+        ),
+        (
+            "has_dangerous_flagged",
+            Some("\"conciergeOverride\" = NULL, \"isDangerousChat\" = 1"),
+        ),
+        (
+            "has_dangerous_uncensored",
+            Some("\"conciergeOverride\" = 'UNCENSORED', \"isDangerousChat\" = 0"),
+        ),
+    ] {
+        reset(&rt, &db);
+        if let Some(set) = paint {
+            let sql = format!("UPDATE \"chats\" SET {set} WHERE \"id\" = '{solo}'");
+            rt.block_on(db.write(move |w| {
+                w.main().connection().execute_batch(&sql)?;
+                Ok(())
+            }))
+            .expect("paint has-dangerous state");
+        }
+        let got = response_data(&salon::chats_has_dangerous(&db, uid));
+        let want = oracle[name]["body"].clone();
+        cases.push((name.into(), got, want));
+    }
 
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
@@ -395,6 +438,27 @@ fn salon_reads_match_oracle() {
         }
     } else {
         failed.push("list_all:keyOrder-case-missing".into());
+    }
+
+    // P4.D143 §H: v4's unknown-action refusal on the same collection route. The
+    // 400 is answered at the REST edge (v5 has no core verb for it), so the
+    // differential's job is to pin v4's exact BYTES; `chats_routes.rs` builds
+    // the same sentence from `CHAT_GET_ACTIONS` and the wire test
+    // `chats_collection_route` proves the edge emits it.
+    {
+        let rec = &oracle["has_dangerous_unknown_action"];
+        let want_status = rec["status"].as_i64().unwrap_or(0);
+        let want_msg = rec["body"]["error"].as_str().unwrap_or("");
+        if want_status != 400
+            || want_msg != "Unknown action: no-such-action. Available actions: has-dangerous"
+        {
+            eprintln!(
+                "[has_dangerous_unknown_action] MISMATCH: v4 answers {want_status} {want_msg:?}"
+            );
+            failed.push("has_dangerous_unknown_action".into());
+        } else {
+            eprintln!("[has_dangerous_unknown_action] OK (400).");
+        }
     }
 
     assert!(failed.is_empty(), "salon-reads FAILED: {failed:?}");

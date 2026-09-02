@@ -800,6 +800,10 @@ impl CoreEngine {
                 ),
                 Err(r) => r,
             },
+            Request::ChatsHasDangerous => match self.ready_db() {
+                Ok(db) => super::salon::chats_has_dangerous(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
             Request::ChatGet { chat_id } => match self.ready_db_and_terminal_probe() {
                 Ok((db, probe)) => {
                     super::salon::chat_get(&db, SINGLE_USER_ID, &chat_id, probe.as_deref()).await

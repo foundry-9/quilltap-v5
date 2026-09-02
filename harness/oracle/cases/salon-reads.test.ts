@@ -44,7 +44,7 @@ interface Spec {
 
 interface CaseSpec {
   name: string;
-  kind: 'settings' | 'list' | 'get';
+  kind: 'settings' | 'list' | 'get' | 'hasDangerous';
   url: string;
   chatId?: string;
   /** P4.D60 (bug 51): inject live impersonation state into the fresh fixture copy
@@ -169,7 +169,9 @@ async function runCase(
     if (c.kind === 'settings') {
       const { GET } = await import('@/app/api/v1/settings/chat/route');
       response = (await GET(mockRequest(c.url) as never)) as never;
-    } else if (c.kind === 'list') {
+    } else if (c.kind === 'list' || c.kind === 'hasDangerous') {
+      // Same REAL route module for both: the `?action=has-dangerous` arm goes
+      // through v4's own GET dispatcher, so the action validation is v4's too.
       const { GET } = await import('@/app/api/v1/chats/route');
       response = (await GET(mockRequest(c.url) as never)) as never;
     } else {
@@ -283,6 +285,37 @@ async function main(): Promise<void> {
         { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: ['Violence'] },
       ],
     },
+    // P4.D143 §H (v4 `c43d3b1b4`): the Quick-hide probe, re-based off the raw
+    // label onto the uncensored route. v5 never had this edge. Four arms over
+    // v4's REAL GET dispatcher: nothing on the row, vouched-only (a preserved
+    // TRUE label that must NOT count), flagged, uncensored. Plus v4's own
+    // unknown-action 400, whose sentence the v5 edge reproduces.
+    { name: 'has_dangerous_none', kind: 'hasDangerous', url: 'http://localhost/api/v1/chats?action=has-dangerous' },
+    {
+      name: 'has_dangerous_vouched_only',
+      kind: 'hasDangerous',
+      url: 'http://localhost/api/v1/chats?action=has-dangerous',
+      setConcierge: [
+        { chatId: soloId, conciergeOverride: 'OFF', isDangerousChat: true, dangerCategories: null },
+      ],
+    },
+    {
+      name: 'has_dangerous_flagged',
+      kind: 'hasDangerous',
+      url: 'http://localhost/api/v1/chats?action=has-dangerous',
+      setConcierge: [
+        { chatId: soloId, conciergeOverride: null, isDangerousChat: true, dangerCategories: null },
+      ],
+    },
+    {
+      name: 'has_dangerous_uncensored',
+      kind: 'hasDangerous',
+      url: 'http://localhost/api/v1/chats?action=has-dangerous',
+      setConcierge: [
+        { chatId: soloId, conciergeOverride: 'UNCENSORED', isDangerousChat: false, dangerCategories: null },
+      ],
+    },
+    { name: 'has_dangerous_unknown_action', kind: 'hasDangerous', url: 'http://localhost/api/v1/chats?action=no-such-action' },
   ];
 
   const outLines: string[] = [];

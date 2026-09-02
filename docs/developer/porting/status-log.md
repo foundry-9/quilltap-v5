@@ -98505,3 +98505,46 @@ the unifier:** once P4.D146 is on the same branch, regenerate
 
 **Mutation proof, characters.** Pin `character_chats`'s `concierge_state` to a
 constant → the three new cases redden, the rest stay green.
+
+### Unit 5 — §H, the `has-dangerous` Quick-hide probe (Tier 2)
+
+v5 had NO counterpart to v4's `GET /api/v1/chats?action=has-dangerous` (zero
+hits for `hasDangerous` in `crates/`; the SPA records the omission at
+`quick-hide.service.ts:72-77`), and `c43d3b1b4` re-based it from
+`c.isDangerousChat === true` onto `shouldUseUncensoredRoute(c)`. Ported whole:
+
+- `Request::ChatsHasDangerous` + `Response::ChatsHasDangerous(Value)` +
+  the `api/engine.rs` arm;
+- `api::salon::chats_has_dangerous` — v4's `findByUserId` over EVERY chat with
+  no `chatType` narrowing (so a Help Chat or Brahma Console on the uncensored
+  row counts, exactly as in v4), `should_use_uncensored_route`, and v4's fixed
+  `Failed to check dangerous chats` 500 on a read failure;
+- NEW `crates/quilltap-web/src/chats_routes.rs` — v4's whole collection GET
+  dispatcher: the action, the unknown-action 400 built from `CHAT_GET_ACTIONS`
+  (never transcribed), and the no-action leg delegated to the existing
+  `ListChats` verb with v4's parameter parsing. **Rider, recorded:** v4 serves
+  its list at that URL, so leaving the no-action leg unserved would have been
+  an invention rather than a deferral; the list leg's own bodies are already
+  pinned by `salon_reads_equivalence`'s `list_*` cases through the same verb.
+  v4's POST/PUT/DELETE legs on this route stay unregistered — the SPA reaches
+  them through `/api/dispatch`, and they were never in this lane.
+
+**The differentials.** `salon_reads_equivalence` gains four arms over v4's REAL
+GET dispatcher (`has_dangerous_none` / `_vouched_only` / `_flagged` /
+`_uncensored`) plus `has_dangerous_unknown_action`, whose 400 bytes the family
+pins against v4. On the Rust side the arms reset all three chats to Monitored
+first, because jest copies the fixture per case while the Rust harness shares
+one Db. NEW `crates/quilltap-web/tests/chats_collection_route.rs` proves the
+plumbing no handler-driving differential can see — that the route is registered,
+that `CoreResponse::ChatsHasDangerous` is actually unwrapped (the P4.56
+`BrahmaConsole` defect class), that the 400 sentence reaches the wire, and that
+the no-action leg still answers `{chats: [...]}`. It is deliberately the
+P4.D65 lesson applied in advance: in that round no lane served the URL its two
+halves had agreed on.
+
+**Mutation proofs.** (1) Revert the probe to `isDangerousChat === true` (v4's
+pre-`c43d3b1b4` spelling) → `has_dangerous_vouched_only` AND
+`has_dangerous_uncensored` redden — v5 would have shipped both of v4's bugs.
+(2) Ask `should_show_danger_styling` instead → only `has_dangerous_uncensored`
+reddens, which is the 2×2's diagonal doing its job: Uncensored routes uncensored
+but is never painted as a hazard.
