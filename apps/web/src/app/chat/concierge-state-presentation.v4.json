@@ -1,0 +1,182 @@
+{
+  "_source": {
+    "checkout": "quilltap-server",
+    "pin": "c43d3b1b4",
+    "file": "lib/services/dangerous-content/concierge-state-presentation.ts"
+  },
+  "presentation": {
+    "monitored": {
+      "label": "Monitored",
+      "icon": "eye",
+      "tone": "success",
+      "detail": "The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.",
+      "hint": "Change it from the Salon sidebar's Chat section."
+    },
+    "flagged": {
+      "label": "Flagged",
+      "icon": "alert-triangle",
+      "tone": "danger",
+      "detail": "The Concierge has this chat down as dangerous, and routes it through the uncensored providers.",
+      "hint": "Change it from the Salon sidebar's Chat section."
+    },
+    "vouched": {
+      "label": "Vouched Safe",
+      "icon": "check-circle",
+      "tone": "muted",
+      "detail": "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.",
+      "hint": "Change it from the Salon sidebar's Chat section."
+    },
+    "uncensored": {
+      "label": "Uncensored",
+      "icon": "eye-off",
+      "tone": "info",
+      "detail": "You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.",
+      "hint": "Change it from the Salon sidebar's Chat section."
+    }
+  },
+  "toneSuffix": {
+    "danger": "",
+    "muted": "-muted",
+    "info": "-info",
+    "success": ""
+  },
+  "toneTextClass": {
+    "danger": "qt-text-danger",
+    "muted": "qt-text-muted",
+    "info": "qt-text-info",
+    "success": "qt-text-success"
+  },
+  "describe": [
+    {
+      "state": "monitored",
+      "result": {
+        "title": "Monitored",
+        "detail": "The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "monitored",
+      "dangerCategories": [],
+      "result": {
+        "title": "Monitored",
+        "detail": "The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "monitored",
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Monitored",
+        "detail": "The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "flagged",
+      "result": {
+        "title": "Flagged",
+        "detail": "The Concierge has this chat down as dangerous, and routes it through the uncensored providers.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "flagged",
+      "dangerCategories": [],
+      "result": {
+        "title": "Flagged",
+        "detail": "The Concierge has this chat down as dangerous, and routes it through the uncensored providers.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "flagged",
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Flagged",
+        "detail": "The Concierge has this chat down as dangerous, and routes it through the uncensored providers.",
+        "categories": [
+          "NSFW",
+          "Violence"
+        ],
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "vouched",
+      "result": {
+        "title": "Vouched Safe",
+        "detail": "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "vouched",
+      "dangerCategories": [],
+      "result": {
+        "title": "Vouched Safe",
+        "detail": "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "vouched",
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Vouched Safe",
+        "detail": "You have vouched for this chat. The Concierge stops watching; the ordinary providers still apply, and may still refuse.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "uncensored",
+      "result": {
+        "title": "Uncensored",
+        "detail": "You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "uncensored",
+      "dangerCategories": [],
+      "result": {
+        "title": "Uncensored",
+        "detail": "You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    },
+    {
+      "state": "uncensored",
+      "dangerCategories": [
+        "NSFW",
+        "Violence"
+      ],
+      "result": {
+        "title": "Uncensored",
+        "detail": "You have sent the Concierge away and opened the uncensored door yourself. Nothing is scanned, nothing is softened — the risk is yours.",
+        "categories": null,
+        "hint": "Change it from the Salon sidebar's Chat section."
+      }
+    }
+  ]
+}

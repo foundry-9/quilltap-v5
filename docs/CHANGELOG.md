@@ -494,6 +494,37 @@ through `getConciergeState(chat)`) plus four `stateRoute` rows that drive the
 twin on each literal state with no chat anywhere, and the Rust family asserts
 both. A shape guard fails the run if a stale oracle carries fewer than the four
 `stateRoute` rows.
+#### 2026-09-02 — feat(concierge): the presentation table and the list mark
+
+_Versions: SPA 0.5.618._
+
+Two new SPA modules, ported from v4 `c43d3b1b4`.
+
+`chat/concierge-state-presentation.ts` is the single source for every word,
+icon and tone the four Concierge states wear: label, icon name, tone, the full
+"what this means" sentence and the one hint that says where to change it, plus
+`conciergeToneSuffix`, `conciergeToneTextClass` and `describeConciergeState`.
+Shared contract §B — the table lives here and nowhere else; the Rust core
+builds no twin. The four detail sentences are the sidebar's, moved verbatim.
+
+`chat/concierge-mark.ts` is the list asterisk and its tooltip body. Monitored
+draws nothing; the other three states each get their tone, and the mark
+explains itself through the Quilltap-drawn Tooltip rather than a native
+`title`. The `.qt-concierge-mark` family lands in `_chat.css` beside
+`.qt-danger-badge`, over the same colour tokens.
+
+Both are pinned twice over: v4's two jest corpora transcribed 1:1, and — for
+the table — a diff against `concierge-state-presentation.v4.json`, emitted by
+`harness/oracle/cases/concierge-presentation.mjs`, which RUNS v4's own module
+(its imports are all `import type`, which Node 24 strips, so it needs no
+bundler). A copy edit on either side reddens.
+
+One recorded adaptation: v4 pins the mark's class string with
+`expect(mark.className).toBe(…)`, but Angular's `[class]` binding deduplicates
+its tokens, so a doubled base class is invisible in the DOM — measured. The
+string is built by an exported `conciergeMarkClasses` and asserted there
+instead, which restores the guard (mutation-proven).
+
 #### 2026-09-02 — feat(concierge): name the uncensored row once, on the client twin
 
 _Versions: SPA 0.5.617._
