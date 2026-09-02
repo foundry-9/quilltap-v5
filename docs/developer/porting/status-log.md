@@ -98863,3 +98863,177 @@ and scan run inside it) and `npm run build` clean, both from `apps/web`, on the
 final tree. Every commit was gated the same way before it landed. **No
 Playwright run in-lane** (P4.D147 owns port 4319), and **no Rust gate** — the
 lane touches no crate. SPA version 0.5.616 → **0.5.621**; no crate bumped.
+## P4.D147 — the Move-to-Project folder picker, in its bug-113-fixed shape (v4 `a00e18f0d`)
+
+**Lane:** `claude/work-orders-folder-picker-1bc2d5`. **Baseline** `4622411fd`;
+**target commit** `a00e18f0d` (v4 bug 113, *"show a project's real folders in the
+Move to Project picker"*). The drift-ledger §2 freshness probe PASSED at lane
+start (checkout on `main`, tree clean, `6d2a50382..main` and `3a76b17df..bugfix`
+both empty). **The lane regenerated NO oracle:** the commit is client-only (zero
+`lib/`, zero `app/api/`), so its one v4 oracle is the jest corpus, read with
+`git show a00e18f0d:__tests__/unit/components/files/FolderPicker.test.tsx` —
+a read at the sha, not from the working tree, so no pinned worktree was needed.
+**No Rust crate was touched, so no Rust gate was run** (the order says so
+explicitly).
+
+### The order's premise, confirmed by measurement
+
+**v5 had no folder picker at all.** `move-to-project-dialog.ts:22-24` named the
+P4.6af tier-3 deferral in as many words and a free-text
+`<input id="move-folder" class="qt-input w-full font-mono" placeholder="/">`
+stood in for it, over a `folderPath = signal('/')` reset in `onSelect()`. No
+query, no derivation, no latch — **a strict subset of the bug (total absence),
+not a wrong latch.** So there was no diff to port and nothing to measure
+red-first against a latch: the deliverable is the component v4 landed at
+`a00e18f0d`, built fresh.
+
+**The red-first run was taken anyway**, as the order requires, against the
+pre-lane build: a probe beat asserting that the dialog's folder control renders
+more than one `<option>` failed with
+
+```
+AssertionError: expected 0 to be greater than 1
+  src/app/screens/files/move-to-project-dialog.spec.ts:109
+```
+
+— the element carrying `#move-folder` was v4's stand-in text input, which has no
+options at all. (Its sibling `expect(folderSelect).not.toBeNull()` PASSED, which
+is the tell: the id existed, the folder list did not.) The probe was deleted once
+the red was recorded; its assertions live on in the shipped
+`MoveToProjectDialog folder picker` specs.
+
+### What landed
+
+**`screens/files/folder-picker.ts` (new).** v4's `components/files/
+FolderPicker.tsx` at its post-fix shape, whole: the two queries (`filesList`
+project-or-general, `filesFoldersList`) as `injectQuery`s keyed off the
+`projectId` input, the derivation as a **`computed`** in v4's exact order (Root
+seeded with its own file count; every DB folder at
+`path.split('/').filter(Boolean).length`; every folder a file's `folderPath`
+implies AND each of its ancestors; the local fallbacks; `sort` by
+`path.localeCompare`), the option label
+(`'  '.repeat(Math.max(0, depth - 1))` + `└ ` above depth 0 + the name
+or `/ (Root)` + ` (N files)` when non-zero), the single `Loading...` option, the
+`+` affordance with v4's `title="Create new folder"`, the create input
+(`placeholder="/path/to/folder/"`, Enter submits, Escape closes and clears), and
+the create arm: normalize to `/…/`, dispatch `filesFolderCreate`, **`await
+refetch()`** then emit; on failure `console.error('[FolderPicker] Failed to
+create folder', {path, error})` byte-faithful to v4's line, push the path into a
+`{projectId, paths}` fallback **scoped to its project**, and emit anyway.
+
+There is deliberately **no `effect` writing a folders signal** — that is exactly
+the latch bug 113 was, and v4's own comment says so. The one Angular-side
+addition is the controlled-value assignment: v4's `<select value={value}>` is
+React-controlled and assigns `select.value` after the children mount, so a value
+naming no option leaves the control blank, while Angular's `[value]`/`[selected]`
+run before the `@for` fills the list. The faithful port is the
+`afterRenderEffect` in `scenario-select.ts`'s idiom, reading `value()`,
+`folders()` and `loading()` so it re-runs whenever the rows move under a
+selection already set. The host carries `class: 'block'` — an unstyled Angular
+custom element is `display: inline`, the trap behind findings #97/#107.
+
+**`screens/files/move-to-project-dialog.ts`.** The text field retired, the
+`qt-folder-picker` in its place, and the P4.6af tier-3 deferral comment retired
+with it. The `filePromote` body is untouched: only the SOURCE of `folderPath`
+changed. v4's `MoveToProjectModal` passes the picker's value straight into the
+promote body and sends `'/'` for Root (never omits it) — matched, and pinned by
+the new promote-body spec.
+
+### The differential — v4's corpus, and the gap in it
+
+**`folder-picker.spec.ts` — v4's four cases transcribed 1:1**, keeping v4's
+`optionLabels()` helper semantics (trim; strip a trailing ` (N files)`):
+`lists the project folders once the queries settle (bug 113)` (labels contain
+`└ Gary` + `└ character-avatars`, and are NOT `['/ (Root)']` — v4's "the bug's
+exact signature"), `re-derives when the destination project changes (bug 113)`
+(`estate` → `plans`: `└ Scenarios` appears, `└ Gary` gone — v4's `rerender` twin
+is `setInput('projectId', …)`), `offers Root alone for a project that genuinely
+has no folders`, and `indents a nested folder beneath its parent`.
+
+**A gap in v4's own corpus, found by mutation and closed:** v4's nested case
+asserts `textContent` *contains* `  └ Quilltap`, which a **wider**
+indent satisfies too. Dropping v4's `depth - 1` — mutation (b) — left **all four
+of v4's cases green**. The rule is therefore pinned by an added arm beyond v4's
+corpus, `renders each label byte-for-byte, two NBSPs per level below the first`,
+asserting whole-label equality over a three-deep tree
+(`/ (Root) (1 files)`, `└ Attic`, `  └ Crates`,
+`    └ Ledgers (1 files)`). Worth carrying: **`.trim()`
+strips U+00A0**, so any assertion that goes through v4's helper is structurally
+blind to the indent — which is why v4 asserts it on raw `textContent`, and why
+the byte arm does not trim.
+
+Three more create-arm specs (Tier 2): the refetch proof (the stub reports the
+new folder ONLY after the create call, so a snapshot copy could not contain it),
+the `  Ledgers  ` → `/Ledgers/` normalization, and the failure fallback with its
+project scoping.
+
+**`move-to-project-dialog.spec.ts`** — its `stubClient` now serves `filesList` +
+`filesFoldersList`, and three beats were added: the destination's real folders
+render (with the indent asserted on raw `textContent`, since the label list is
+trimmed), the promote body carries the folder the picker selected
+(`{type:'filePromote', fileId:'f1', targetProjectId:'p1',
+folderPath:'/Ledgers/Quarterly/'}`), and re-picking the destination resets the
+folder to `'/'`.
+
+### Mutation proofs (each verified-applied, then reverted by file backup)
+
+- **(a) the latch** — `computed` → an `effect`-written signal guarded by
+  `result.length > 0 && folders().length === 0`. **Five specs red**, every list
+  collapsing to `['/ (Root)']`: bug 113 reproduced exactly, the re-derive case
+  included.
+- **(b) `depth - 1` → `depth`.** All four of v4's cases stayed GREEN (above);
+  the added byte-equality arm reddens.
+- **(c) the `await refetch()` after a successful create dropped.** The refetch
+  spec reddens (`expected [ '/ (Root)' ] to include '└ Ledgers'`).
+- **(d) the local fallback's project scoping dropped** (`local.paths` returned
+  unconditionally). The failure spec's second half reddens — the other project's
+  fallback survives a destination change.
+
+### The LIVE Playwright beat
+
+`e2e/move-to-project-flow.spec.ts` (new; the lane OWNS port 4319, so it runs
+LIVE in-lane rather than gated). Against the REAL server, the REAL dispatch
+verbs and the REAL DOM: seed two destinations with DIFFERENT folders
+(`D147 Estate` → `/Gary/`, `D147 Plans` → `/Foundry-9/`) plus a general file
+through the `?action=upload` REST leg; open the file's preview and its Move to
+Project; assert the folder control is ABSENT before a destination is chosen;
+pick the Estate and see `/ (Root)` + `└ Gary` and nothing else; switch to the
+Plans and watch the list re-derive (`└ Gary` gone, `└ Foundry-9` in);
+**create `/Foundry-9/Quilltap/` through the dialog's own Create affordance** —
+the order's suggested route, and the live refetch proof, since a snapshot copy
+could not contain it — assert it arrives indented by two U+00A0 on raw
+`textContent` and that the selection moved onto it; move; then read the
+persisted row back over `filesList` and assert
+`folderPath === '/Foundry-9/Quilltap/'`. **1 passed (55.1 s).**
+
+The beat is discriminating by construction rather than by an e2e-level mutation:
+every one of its assertions (an `<option>` list at all, `└ Gary`, the exact
+two-element list, the NBSP-indented nested option, `toHaveValue`) is
+unsatisfiable by the free-text input this lane replaced.
+
+Two beat-authoring notes worth carrying: the beat must **unlock before it
+seeds** — the shared server is passphrase-locked until some spec opens it, and
+running alone this beat IS the opener, so an API-context dispatch issued first
+answers with no `project` at all (its first run died on exactly that); and the
+files REST upload leg answers v4's `{data: FileEntry}` envelope, not a
+`{files: [...]}` list.
+
+### Gate + deferrals
+
+**No Rust gate: no crate was touched.** SPA: `npm test` (which runs
+`check-qt-classes --self-test` and the guard first) **374 files / 5,797 tests /
+0 failed**; `npm run build` clean; the full Playwright suite once (numbers in
+the round record). The picker's host carries `class: 'block'`, no `qt-*`, so the
+guard's host rule is satisfied trivially.
+
+**Banked, loudly:** the commit's `help/file-organization.md` hunk goes to
+`p4.9i2` with the round's other help drift — this lane ports no help content.
+Two `m6-screen-parity.md` rows (683 and 734) listed "rich FolderPicker" as
+deferred to `p4.9n`; they are now factually stale and were corrected in place.
+That file is in no lane's Ownership table this round — the edit is flagged for
+the unifier, who should drop it if they would rather it ride `p4.9n`.
+
+One deliberate v5-side retention: v4's `<label className="qt-label mb-2">
+Folder</label>` has no `htmlFor`, while v5's dialog already carried
+`for="move-folder"`. The id moved onto the picker's `<select>` so the existing
+label association (and the spec/e2e handle) survives the component boundary.

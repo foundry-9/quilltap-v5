@@ -622,6 +622,26 @@ Shared contract §B of the round: the same predicate lands server-side as
 `concierge_state_uses_uncensored_route`, and each side is pinned by its own
 transcription of v4's truth table. The parity spec grows v4's new
 `conciergeStateUsesUncensoredRoute` block, TABLE row for row.
+#### 2026-09-02 — test(files): the LIVE Move-to-Project folder-picker walk
+
+_No crate versions bumped._
+
+`e2e/move-to-project-flow.spec.ts` — the first Playwright beat for Move to
+Project. Seeds two projects with different folders and a general file, opens
+the dialog on the file's preview, and walks the whole picker against the real
+server: no folder control before a destination is chosen, the Estate's own
+folder and nothing else, the list re-deriving when the destination changes, a
+nested folder created through the dialog's own Create affordance appearing at
+once (the live refetch proof) indented by two non-breaking spaces, and the
+persisted `folderPath` read back after the move.
+
+Two notes for future beats: the shared server is passphrase-locked until a spec
+opens it, so a beat that seeds over the API context must unlock first; and the
+files upload REST leg answers v4's `{data: FileEntry}` envelope.
+
+The two `m6-screen-parity.md` rows listing the rich FolderPicker as deferred to
+`p4.9n` are corrected — it landed here.
+
 #### 2026-09-02 — feat(files): the Move-to-Project folder picker over the project's real folders (v4 bug 113)
 
 _Versions: SPA 0.5.617._
