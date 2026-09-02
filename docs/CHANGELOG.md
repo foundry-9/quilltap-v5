@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(orders): the `6d2a50382` drift catch-up round — five work orders (P4.D143–P4.D147)
+
+_Docs-only; no version bumps._
+
+`/setupphase` over the ledger's six unprocessed rows. Five orders written
+under `docs/developer/porting/work-orders/`, all six ledger rows marked
+`ORDERED(...)`, and a round section added to `phase-4.md`. The Concierge
+list-marks commit (`c43d3b1b4`) splits server (P4.D143 — the derived
+`conciergeState`/`dangerCategories` list pair, the predicate delegation,
+the per-turn enqueue guard, the `has-dangerous` probe) from SPA (P4.D144 —
+the presentation table as the one string home, `ConciergeMark` over the
+Tooltip, `shouldHideChat`, the CSS) under a binding payload contract; bug
+114 (P4.D145), the absent-participants/background-mode commit (P4.D146)
+and bug 113 (P4.D147) are one lane each. Three ledger rows gained
+ordering-survey corrections: bug 114 is NOT a D23 re-dump row (v4's
+`generateDDL` cannot emit an expression index — the index arrives via a
+boot ensure, index-presence-guarded, no ledger row), v5's story-background
+enqueue twin lives in `image_profile_resolution.rs`, and v5 has no folder
+picker at all (bug 113 becomes a build, not a latch fix). Shared contracts
+§A–§H are byte-identical across the five orders; P4.D147 owns Playwright.
+
 #### 2026-09-02 — docs(drift): six commits past the baseline — bugs 113/114 and the Concierge list marks
 
 _Docs-only; no version bumps._

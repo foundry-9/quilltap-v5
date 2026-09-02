@@ -6256,6 +6256,68 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The `6d2a50382` drift catch-up round (P4.D143 ∥ P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147) — ORDERED 2026-09-02
+
+Five lanes, all drift (the standing rule: drift debt before new scope).
+The ledger's six rows are ORDERED; the four PORT commits map to five
+orders and the two NO-PORT? rows ride P4.D143's lane record for
+ratification. Orders under `work-orders/`:
+
+- **P4.D143** `p4.d143-concierge-list-marks-server.md` — v4 `c43d3b1b4`
+  server half: the derived `conciergeState` + `dangerCategories` pair on
+  all four chat-list payloads in place of the raw label (key order
+  preserved), `concierge_state_uses_uncensored_route` with
+  `should_use_uncensored_route` delegating, the per-turn
+  `CHAT_DANGER_CLASSIFICATION` enqueue gated on `is_classifier_on_duty`
+  (the "six times in four minutes" the 2026-08-27 pass saw), and the
+  `has-dangerous` probe v5 never had (§H, Tier 2). Ratifies `f3351d54f`
+  + `6d2a50382`.
+- **P4.D144** `p4.d144-concierge-list-marks-spa.md` — the SPA half: the
+  presentation table as the ONE string home (v4's module has no server
+  consumer — §B), `ConciergeMark` through the P4.D132 Tooltip, the pill
+  and sidebar reads onto the table, `shouldHideChat` as the one
+  quick-hide rule (its recorded non-port ruling retired), the four
+  filters, the `.qt-concierge-mark` CSS, the §A DTOs; beats gated.
+- **P4.D145** `p4.d145-folders-unique-path-bug114.md` — v4 `a5df98b3f`
+  (bug 114): the ledger's "D23 re-dump" premise REFUTED at ordering
+  (generateDDL cannot emit an expression index); the unique index arrives
+  through a collapse-then-index boot ensure in the
+  `mount_index_case_repair` idiom (index-presence guard, NO ledger row —
+  v4's `shouldRun()` is `!indexExists()`), `ensure_by_path` over seven v5
+  create sites + two private `find_folder_by_path` copies deleted, the
+  net-new rusqlite unique-constraint predicate, the restore quiet-drop
+  arm; the watcher site NO-COUNTERPART. Open with the Friday-copy
+  measurement (607 rows / 24 folders at v4's count — expires, §5.5).
+- **P4.D146** `p4.d146-absent-participants-story-background.md` — v4
+  `70505745a`: `is_participant_present` at the three story-background
+  sites (the enqueue twin is `image_profile_resolution.rs`, not the
+  title job), the reworded 400, the `backgroundDisplayMode` narrowing +
+  normalizer at every read/validate/write, the dead GET arms, the SPA
+  card's retired options; the committed story fixture is structurally
+  blind (every participant `active`) and gets widened.
+- **P4.D147** `p4.d147-move-to-project-folder-picker.md` — v4
+  `a00e18f0d` (bug 113): measured at ordering — v5 has NO folder picker
+  (the P4.6af tier-3 text field), so the lane builds v4's post-fix
+  `FolderPicker` over the existing verbs; owns Playwright (the round's
+  only lane whose beat needs no sibling wire).
+
+Shared contracts §A–§H (identical in all five): the list-payload wire,
+the SPA-only presentation table + the shared predicate name, the
+`story_background_job.rs` / `api/projects.rs` / restore-orchestrator
+region splits (with the `ABSENT_PARTICIPANTS_PENDING_P4D146` and
+`BACKGROUND_MODE_PENDING_P4D146` tripwires for the sibling-pin drift),
+`core-contract.ts` regions, the folders route wire, and the
+`chatsHasDangerous` verb. Unifier pick order: D145 → D146 → D143 → D144 →
+D147.
+
+Deliberately left out of the round: phase-4 candidates 2–6 from the
+P4.D138 follow-up (the LoRA log-only follow-ups, message-bubble danger
+styling, the `precompute_equivalence` blindness, the gateway resolver,
+the small follow-ups) — drift debt first; the owed 💸 items (the
+`[CheapLLM]` warn ordering, Pascal's group tier, the Brahma deep query,
+dedup/summaries, #101, the LoRA wire-byte look) stay on the dogfood
+queue; finding #109 is a v4-first filing.
+
 ## The P4.D138 follow-up (units 5–7) — UNIFIED 2026-09-01
 
 The resumed LoRA-train lane closed P4.D138 WHOLE the same day the round-2
