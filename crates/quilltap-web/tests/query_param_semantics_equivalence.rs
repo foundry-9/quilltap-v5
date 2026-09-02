@@ -49,14 +49,17 @@
 //!   shape, which is why `known` is never cross-compared. Their refusal and
 //!   equality rows are.
 //!
-//! Regenerate the oracle (Node 24, from a worktree PINNED at the baseline —
-//! the v4 checkout is past it; see the .test.ts header):
+//! Regenerate the oracle (Node 24). While v4 HEAD is past the oracle baseline
+//! this needs a PINNED worktree — but the recipe below names the CHECKOUT on
+//! purpose: the pin is the sweep driver's job (`recipe_sweep.py --run
+//! query_param_semantics_equivalence --v4 "$PIN"` rewrites the `cd`), and a
+//! committed recipe that names a `/tmp` pin is dead the round after it was
+//! written (the driver refuses it as `stale_v4_pin_path`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
-//!   PIN=/tmp/qt-v4-pin-p4.67-6d2a50382
 //!   TMPO=/tmp/qt-queryparam-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
 //!   cp "$V5W/harness/oracle/cases/query-param-semantics.test.ts" "$TMPO/cases/"
-//!   cd "$PIN"
+//!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-query-param-semantics.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=180000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- query-param-semantics

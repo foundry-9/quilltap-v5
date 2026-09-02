@@ -41,14 +41,15 @@
  * the session, startup state, and the handful of service modules a default
  * handler reaches). Nothing opens a database.
  *
- * Run (Node 24, from a worktree PINNED at the oracle baseline — the checkout is
- * past it; cp to a /tmp mirror because jest ignores `.claude/`):
+ * Run (Node 24; cp to a /tmp mirror because jest ignores `.claude/`). While v4
+ * HEAD is past the oracle baseline the `cd` below must reach a PINNED worktree —
+ * that rewrite is the sweep driver's job (`recipe_sweep.py --run <family> --v4
+ * "$PIN"`); a committed recipe never names a `/tmp` pin:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
- *   PIN=/tmp/qt-v4-pin-p4.67-6d2a50382
  *   TMPO=/tmp/qt-queryparam-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
  *   cp "$V5W/harness/oracle/cases/query-param-semantics.test.ts" "$TMPO/cases/"
- *   cd "$PIN"
+ *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-query-param-semantics.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=180000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- query-param-semantics

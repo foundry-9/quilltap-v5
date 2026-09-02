@@ -64,7 +64,7 @@ pub(crate) fn all<'a>(pairs: &'a [(String, String)], key: &str) -> Vec<&'a str> 
 /// (the common case: v4 hand-rolled routes read all their params that way). A
 /// route that mixes readers — one key through `getAll`, another through
 /// `getQueryParamsWithoutAction` — must not use it; spell those out with
-/// [`first`] / [`last`] / [`all`] so the per-key rule stays visible.
+/// [`first`] / [`all`] so the per-key rule stays visible (there is no LAST-wins helper — see the module header).
 pub(crate) fn first_map(pairs: &[(String, String)]) -> std::collections::HashMap<String, String> {
     let mut out = std::collections::HashMap::with_capacity(pairs.len());
     for (k, v) in pairs {
