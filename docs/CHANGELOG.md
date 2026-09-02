@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(setupphase): the follow-ups round ordered (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71)
+
+_Docs-only change._
+
+Five work orders written for a non-drift round (the ledger's §2 probe
+passed at ordering, §3 empty): P4.67 the query-parameter semantics sweep
+at every REST edge (`?action=` present-but-empty, v4's unknown-action
+envelope, duplicated keys) + P4.62's three deferred core shapes; P4.68
+the participant-status parser consolidation + the failover log thread,
+the chain-walk corpus blind spots, the bare-executor census, and a
+discriminating `precompute_equivalence`; P4.69 the SPA follow-ups (the
+never-ported message-avatar danger ring, the invented quick-hide warns,
+the image-profile modal's structured writers, the fragile/parked beats);
+P4.70 the whole `generate_image` tool-input schema + the `[Image LoRA]`
+log context + the `system-data-*` fixture widening + the `latest_chat`
+background arm; P4.71 the host gateway resolver (`QUILLTAP_HOST_IP` /
+Docker `host.docker.internal`) wired into every provider construction
+site. `phase-4.md` gains the round's ordering section; the drift ledger
+records the setupphase read.
+
 #### 2026-09-02 — unify: the `6d2a50382` drift catch-up round (P4.D143 ∥ P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147)
 
 _Versions: core 0.0.750, harness 0.0.642, web 0.0.103, host 0.0.92, SPA 0.5.623._

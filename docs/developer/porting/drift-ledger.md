@@ -44,6 +44,12 @@ probe verifies against._
   fork; v4 develops on `main` alone. Keep probing BOTH branches.
 - _Superseded (the 2026-09-02 setupphase verdict): DRIFT PENDING — 6
   commits past `4622411fd`, all ORDERED._
+- _Read by `/setupphase` 2026-09-02 (the follow-ups round, P4.67 ∥ P4.68 ∥
+  P4.69 ∥ P4.70 ∥ P4.71): the §2 probe PASSED against this §1 (branch
+  `main`, tree clean, both logs empty); §3 EMPTY, so no row was marked
+  ORDERED — a NON-drift round; every order's preamble carries this regen
+  rule (NO PIN NEEDED, flipping to §5.1 the moment a lane's own probe
+  fails)._
 
 ## §2 The freshness probe
 

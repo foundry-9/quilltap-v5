@@ -6256,6 +6256,108 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71) — ORDERED 2026-09-02
+
+**Not a drift round.** The ledger's §2 probe passed at ordering (v4 `main`
+at `6d2a50382`, tree clean, both logs empty, §3 EMPTY) and the
+`6d2a50382`-round dogfood pass had already discharged the previous
+candidates list's item 1 (22/22 PASS, zero v5 defects), so the round is
+drawn from the carried candidates (items 2–4 above, the P4.D138
+follow-up's items 2–6) plus the P4.62/P4.D135 deferred shapes. Five lanes,
+ownership disjoint at file level, the shared-contract + ownership blocks
+byte-identical across all five orders (md5-checked at ordering). Orders
+under `work-orders/`:
+
+- **P4.67** `p4.67-query-param-semantics-sweep.md` — the query-parameter
+  semantics class at every v5 REST edge: v4's ONE action reader
+  (`lib/api/middleware/actions.ts` — `''` is falsy → the no-action leg;
+  unknown → `{error: "Unknown action: <x>", availableActions}`; the FIRST
+  duplicate wins) vs v5's 31 `Query<HashMap>` reads in 13 route files
+  (LAST wins, `Some("")` reaches the "other" arms with v5-invented
+  sentences). A shared first/last/all reader, every `?action=` site
+  rewritten, every non-action key classified by its v4 reader shape, a
+  NEW web-edge family over the DB-free jest idiom; plus P4.62's three
+  deferred core shapes (`FileUpload.tags` raw carry, `payload: []` on the
+  jobs enqueue, the `chat_file_link` guard tidy).
+- **P4.68** `p4.68-status-parsers-and-cheap-llm-remainder.md` — the
+  behaviour-neutral consolidation of the seven `parse_status` copies +
+  three string-level tool sites onto `chat_predicates::
+  participant_status_from_str` (the two `build_context.rs` parsers use
+  DIFFERENT unknown rules — adjudicated per v4 twin, never unified
+  blind), the failover log thread at the orchestrator's empty-response
+  recovery call (every leg's `CHAT_MESSAGE` row, as v4's `restreamInto`),
+  the three chain-walk corpus blind spots, the `CheapLlmTaskExecutor::
+  new()` gap measured (the 2026-09-02 grep finds every bare site past a
+  `#[cfg(test)]` marker — closed by census if that holds), and
+  `precompute_equivalence` made discriminating on the uncensored reroute
+  (an uncensored profile seeded into the `episodic-recall-*` pair,
+  `allProfiles` threaded both sides).
+- **P4.69** `p4.69-spa-followups-danger-ring-modal-beats.md` — the SPA
+  lane (owns Playwright): v4's assistant-side message-avatar danger ring
+  never ported (`SalonView:1489` → `VirtualizedMessageList` →
+  `MessageRow`/`StreamingMessage` → `MessageDesktopAvatar`'s
+  `qt-chat-avatar-dangerous`, Flagged only — v5's CSS rule exists, no
+  input does), the two v5-invented quick-hide `console.warn`s (v4's probe
+  hook is a bare `catch {}`), the image-profile modal's structured
+  writers (a LoRA write clobbers a mid-edit JSON textarea — a v5-invented
+  control), the temp bubble's seat, `waitForChatRefetch`'s scope + the
+  injection hook's silent degradation, the workspace-search positional
+  pick, the six slider suffix pins, and the component-transfer beat's
+  precisely-scoped un-park (materialize `projects` + `groups` in
+  `beforeAll`; the Copy arm's stale count).
+- **P4.70** `p4.70-image-schema-and-fixture-debts.md` — the whole
+  `generate_image` tool-input schema (v4's Zod `safeParse` incl. the
+  `llmNumber` string coercion on `count`, max 10; v5 validates the
+  prompt only, so `count: 20` generates where v4 refuses), red-first
+  over `image_generation_tier3`; the `[Image LoRA]` warnings' dropped
+  `{context, chatId, jobId, profileId}` spread (v4 has five sites, v5
+  two) + the `style-options` anchor, capture-pinned; the
+  `image_gen_leaves` header's shared `/tmp/qt-oracle-stage`; the
+  committed `system-data-*` fixture widened to the baseline vintage (the
+  connection-profile import leg has measured nothing since bug 68) with
+  a cell census and all nine consumers re-run; the
+  `projects_routes_equivalence` `latest_chat` GET arm + a planted
+  retired-mode row so the normalize line discriminates.
+- **P4.71** `p4.71-host-gateway-resolver.md` — v4 `lib/host-rewrite.ts`
+  whole into `quilltap-host` (`isVMEnvironment`, the once-cached
+  `resolveHostGateway` — `QUILLTAP_HOST_IP` then Docker
+  `host.docker.internal`, no bridge-IP fallback — the three log lines),
+  injected at every construction site whose v4 twin rewrites
+  (`provider-registry.ts`'s five `resolveBaseUrl` sites +
+  `abstract-provider-registry.ts:201`'s `validateApiKey`), the ONE
+  missing core seam (`completion_provider.rs:184`'s hard `None`), a
+  tier-1 family against v4's REAL module with the environment mocked per
+  row, wiring pins per site, and the Linux `--add-host` flag +
+  `QUILLTAP_HOST_IP` in `running.md`. 💸 the container walk with a real
+  Ollama profile joins the dogfood queue.
+
+Shared contracts §A–§F (identical in all five): well-formed actions never
+move (P4.67 ↔ P4.69), ONE participant-status home (P4.68), danger
+styling is a client predicate (P4.69), the `system-data-*` fixture is
+P4.70's this round and P4.67 consumes it at base (the unifier re-runs
+P4.67's three consuming families over the widened pair), the gateway
+seam is P4.71's (P4.68's census RECORDS host findings), the
+`episodic-recall-*` pair is P4.68's. Unifier pick order: P4.68 → P4.71 →
+P4.70 → P4.67 → P4.69 (core consolidation first; the host seam next; the
+fixture widening before the web lane that consumes it; the SPA + full
+Playwright last). Four lanes bump core and harness — recount at
+unification.
+
+**Deliberately left out of the round:** `p4.9i2` (the HelpChat/Guide
+client + the banked help docs — a standalone vertical wanting its own
+round), the handler-logging sweep (log-only; P4.68/P4.70 carry two of
+its rows as Tier 3), the present-but-null validation lead (`api/**`-wide;
+would collide with P4.67's three `api/*.rs` regions), the SPA-wide
+`title=` census (612 v4 sites vs 379 v5 — recorded as Tier 3 in P4.69),
+the dozen residue hosts (visual judgments), finding #109 (a v4-first
+filing), and the standing 💸 queue (Pascal's group tier with its recipe,
+the Brahma deep query, dedup/summaries, #101, the re-measured
+compression row) — the next dogfood pass gains this round's surfaces
+(the danger ring on a real Flagged chat, the unknown-action envelope, the
+Docker Ollama walk). PB1 stays parked by the standing rule; the
+`qtap-export.schema.json` file port remains a NAMED standalone flag.
+
+
 ## The `6d2a50382` drift catch-up round (P4.D143 ∥ P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147) — UNIFIED 2026-09-02
 
 **UNIFIED on main (2026-09-02) — ALL FIVE CLOSED; the oracle baseline MOVES
