@@ -87,6 +87,27 @@ import {
  * declares one and v5's JSON textarea stand-in otherwise. Unknown keys survive
  * editing on both sides.
  */
+/**
+ * Parse the Parameters textarea into v4's `formData.parameters` shape, or
+ * `null` when the text is not a JSON OBJECT (an array, a scalar, or malformed).
+ * Empty text is an empty bag, matching v4's absent-parameters default.
+ *
+ * One home for the rule, read by the textarea's input handler, the validity
+ * probe and submit's own check — they used to be three separate `JSON.parse`
+ * blocks that could disagree about, say, a top-level array.
+ */
+function parseParametersObject(text: string): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (!trimmed) return {};
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 @Component({
   selector: 'qt-image-profile-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -225,7 +246,7 @@ import {
               rows="4"
               placeholder="{}"
               [value]="parametersText()"
-              (input)="parametersText.set($any($event.target).value)"
+              (input)="onParametersInput($any($event.target).value)"
             ></textarea>
             @if (parametersError()) {
               <p class="qt-text-xs qt-text-destructive mt-1">{{ parametersError() }}</p>
@@ -286,6 +307,20 @@ export class ImageProfileModal implements OnInit {
   protected readonly apiKeyId = signal('');
   protected readonly modelName = signal('dall-e-3');
   protected readonly parametersText = signal('{}');
+  /**
+   * The parameters bag as an OBJECT — v4's `formData.parameters`
+   * (`ImageProfileModal.tsx`), and since P4.69 the source of truth for every
+   * structured read and write. The textarea above is a v5-invented VIEW of it.
+   *
+   * The two are separate state on purpose. `parametersBag` used to be a
+   * `computed` that re-parsed the textarea and fell back to `{}` on a parse
+   * failure, which meant a structured write while the operator had the textarea
+   * mid-edit merged into `{}` — silently discarding both their draft and every
+   * unknown key in the profile. Holding the last VALID object here means a LoRA
+   * write during a broken edit still merges into the real bag, and
+   * {@link writeBag} leaves the draft text alone rather than clobbering it.
+   */
+  private readonly parametersBagState = signal<Record<string, unknown>>({});
   protected readonly isDefault = signal(false);
   protected readonly isDangerousCompatible = signal(false);
 
@@ -418,26 +453,52 @@ export class ImageProfileModal implements OnInit {
   });
 
   /**
-   * The parameters bag as an object. Lenient on purpose: the textarea can hold
-   * mid-edit garbage, and neither the size panel nor the schema-driven one
+   * The bag every structured panel reads. Lenient on purpose: the textarea can
+   * hold mid-edit garbage, and neither the size panel nor the schema-driven one
    * must be the thing that reports it (submit still refuses, through
-   * `parseParameters`).
-   *
-   * This is v5's `formData.parameters`. v4 holds an object and renders the raw
-   * JSON nowhere; v5's legacy arm IS a textarea, so the string is the source of
-   * truth and every structured write round-trips through here — the same
-   * spelling `setSize` has used since P4.D102.
+   * `parseParameters`) — it simply keeps showing the last good bag.
    */
-  protected readonly parametersBag = computed<Record<string, unknown>>(() => {
-    try {
-      const parsed = JSON.parse(this.parametersText() || '{}') as unknown;
-      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-        ? (parsed as Record<string, unknown>)
-        : {};
-    } catch {
-      return {};
+  protected readonly parametersBag = computed<Record<string, unknown>>(() =>
+    this.parametersBagState(),
+  );
+
+  /** Whether the textarea currently holds a parseable JSON object. */
+  private textIsValid(): boolean {
+    return parseParametersObject(this.parametersText()) !== null;
+  }
+
+  /**
+   * Commit a structured write. The bag always takes it; the TEXTAREA only
+   * follows when it is currently valid — an operator part-way through hand
+   * editing the JSON keeps their draft (P4.69). They cannot save while it is
+   * broken anyway, so nothing is silently persisted either way.
+   */
+  private writeBag(next: Record<string, unknown>): void {
+    this.parametersBagState.set(next);
+    if (this.textIsValid()) {
+      this.parametersText.set(JSON.stringify(next, null, 2));
     }
-  });
+  }
+
+  /**
+   * The textarea's own input handler. The text is whatever was typed; the bag
+   * follows only when the text parses, so a transient `{"a":` does not wipe the
+   * bag the structured panels are reading.
+   */
+  protected onParametersInput(text: string): void {
+    this.parametersText.set(text);
+    const parsed = parseParametersObject(text);
+    if (parsed !== null) {
+      this.parametersBagState.set(parsed);
+      this.parametersError.set(null);
+    }
+  }
+
+  /** Set both halves — the load / reset path, where the text IS the bag. */
+  private setParameters(bag: Record<string, unknown>): void {
+    this.parametersBagState.set(bag);
+    this.parametersText.set(JSON.stringify(bag, null, 2));
+  }
 
   /**
    * v4 `currentLoras` (`:329-331`) — only an ARRAY under the reserved key is a
@@ -465,7 +526,7 @@ export class ImageProfileModal implements OnInit {
    * edited, exactly as it survives v4's structured cases.
    */
   protected setSize(value: string): void {
-    this.parametersText.set(JSON.stringify({ ...this.parametersBag(), size: value }, null, 2));
+    this.writeBag({ ...this.parametersBag(), size: value });
   }
 
   /** v4 `handleSetParameter` (`:317-329`). */
@@ -478,7 +539,7 @@ export class ImageProfileModal implements OnInit {
     } else {
       next[write.key] = write.value;
     }
-    this.parametersText.set(JSON.stringify(next, null, 2));
+    this.writeBag(next);
   }
 
   /** v4 `handleLorasChange` (`:333-343`) — an empty list DELETES the key. */
@@ -489,7 +550,7 @@ export class ImageProfileModal implements OnInit {
     } else {
       next['loras'] = loras;
     }
-    this.parametersText.set(JSON.stringify(next, null, 2));
+    this.writeBag(next);
   }
 
   constructor() {
@@ -643,7 +704,7 @@ export class ImageProfileModal implements OnInit {
     this.provider.set(form.provider);
     this.apiKeyId.set(form.apiKeyId);
     this.modelName.set(form.modelName);
-    this.parametersText.set(JSON.stringify(form.parameters ?? {}, null, 2));
+    this.setParameters(form.parameters ?? {});
     this.isDefault.set(form.isDefault);
     this.isDangerousCompatible.set(form.isDangerousCompatible);
   }
@@ -659,7 +720,7 @@ export class ImageProfileModal implements OnInit {
     this.modelsSource.set(null);
     this.modelsFetchError.set(null);
     this.apiKeyId.set('');
-    this.parametersText.set('{}');
+    this.setParameters({});
     this.parametersError.set(null);
     // v4 `:268-272` — the old provider's schema and LoRA cap describe a
     // provider we have just left; clear them rather than render them against
@@ -669,21 +730,20 @@ export class ImageProfileModal implements OnInit {
   }
 
   private parseParameters(): Record<string, unknown> | null {
-    const text = this.parametersText().trim();
-    if (!text) {
-      return {};
-    }
+    const parsed = parseParametersObject(this.parametersText());
+    if (parsed !== null) return parsed;
+    // The two messages are distinct on purpose: "valid JSON that is not an
+    // object" and "not JSON at all" are different mistakes to have made.
+    let isJson = true;
     try {
-      const parsed = JSON.parse(text) as unknown;
-      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-        this.parametersError.set('Parameters must be a JSON object');
-        return null;
-      }
-      return parsed as Record<string, unknown>;
+      JSON.parse(this.parametersText().trim());
     } catch {
-      this.parametersError.set('Parameters must be valid JSON');
-      return null;
+      isJson = false;
     }
+    this.parametersError.set(
+      isJson ? 'Parameters must be a JSON object' : 'Parameters must be valid JSON',
+    );
+    return null;
   }
 
   protected async submit(): Promise<void> {

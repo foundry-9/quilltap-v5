@@ -1207,6 +1207,89 @@ describe('SalonConversation — the optimistic bubble matches server attribution
 });
 
 /**
+ * P4.69 — the optimistic bubble's seat and the seat the SERVER is told cannot
+ * disagree. MEASURED, and the answer is convergence by construction.
+ *
+ * v4's `useSSEStreaming.ts:728-756` reads `activeTypingParticipantIdRef.current`
+ * TWICE from the same ref in one block: once through `findActiveUserParticipant`
+ * to attribute the temp bubble (`:735-748`) and once as the request's
+ * `speakingAsParticipantId` (`:754`). v5 does the same with `activeSpeakerId()`
+ * — `makeTempUserMessage` resolves from it, the `chatSend` payload carries it.
+ * One value, so the client can never paint one seat while telling the server
+ * another; the server then runs the same resolver over the same three inputs.
+ *
+ * The round-2 follow-up asked whether the impersonation `turnOverride`
+ * (P4.D61's documented mechanism divergence) could open a gap here. It cannot:
+ * `turnOverride` is a TURN — whose go it is — and never reaches either the
+ * attribution or the payload. This case pins both halves so a future edit
+ * cannot make them read different sources.
+ */
+describe('SalonConversation — the optimistic seat is the seat the server is told (P4.69)', () => {
+  type SendHost = {
+    send(p: { content: string; fileIds: string[] }): void;
+    optimisticUser(): MessageDto | null;
+  };
+
+  const sentSeat = (client: Partial<CoreClient>): unknown => {
+    const calls = (client.dispatch as unknown as { mock: { calls: [CoreRequest][] } }).mock.calls;
+    const send = calls.map((c) => c[0]).find((r) => r.type === 'chatSend');
+    expect(send, 'a chatSend was dispatched').toBeTruthy();
+    return (send as unknown as Record<string, unknown>)['speakingAsParticipantId'];
+  };
+
+  it('sends the SAME id the bubble was resolved from (v4 useSSEStreaming:735 vs :754)', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const chat = {
+      ...chatDetail(),
+      activeTypingParticipantId: 'p1',
+      impersonatingParticipantIds: ['p1'],
+    };
+    const client = stubClient(chat, events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as SendHost;
+
+    inst.send({ content: 'as Friday, then', fileIds: [] });
+    // Read the bubble BEFORE letting the send settle — the optimistic row is
+    // cleared once the turn completes, so a `whenStable()` first would find
+    // nothing and the assertion would measure the teardown, not the seat.
+    const seat = inst.optimisticUser()?.participantId;
+    await fixture.whenStable();
+
+    // The bubble is attributed to the impersonated seat...
+    expect(seat).toBe('p1');
+    // ...and that is exactly what the server was told to resolve against.
+    expect(sentSeat(client)).toBe('p1');
+  });
+
+  it('sends NO seat at all when nothing is being impersonated, and paints the owner', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    // MEASURED against v4, and the answer corrected this case's first draft.
+    // A persisted `activeTypingParticipantId` with an EMPTY overlay is never
+    // seeded into the local speaking-as: v4 gates the whole seed block on
+    // `if (impersonatingIds && impersonatingIds.length > 0)`
+    // (`useImpersonation.ts:34-44`), and v5's `impersonationSync` carries the
+    // same guard. So the request carries no seat, the server applies its own
+    // `findActiveUserParticipant` fallback, and the bubble — resolved from the
+    // same null — shows the owner seat. Both apps, same answer.
+    const chat = {
+      ...chatDetail(),
+      activeTypingParticipantId: 'p1',
+      impersonatingParticipantIds: [],
+    };
+    const client = stubClient(chat, events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as SendHost;
+
+    inst.send({ content: 'back to me', fileIds: [] });
+    const seat = inst.optimisticUser()?.participantId;
+    await fixture.whenStable();
+
+    expect(seat).toBe('pu');
+    expect(sentSeat(client)).toBeUndefined();
+  });
+});
+
+/**
  * The "Speaking As" composer portrait's seat (v4 Bug 46(b), `1bed814f`). It is
  * resolved via `findActiveUserParticipant` (overlay-aware) and hydrated with the
  * character's name + avatar so it matches server attribution.

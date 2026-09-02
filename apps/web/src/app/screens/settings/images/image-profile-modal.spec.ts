@@ -906,3 +906,125 @@ describe('ImageProfileModal — the Provider select shows the stored provider', 
     expect(select.value).toBe('GROK');
   });
 });
+
+/**
+ * P4.69 — the structured writers must not clobber a mid-edit textarea.
+ *
+ * v4 holds `formData.parameters` as an OBJECT and renders the raw JSON nowhere;
+ * v5's legacy arm is a textarea, and `parametersBag` used to be a `computed`
+ * that re-parsed it and fell back to `{}` on failure. So a LoRA write made while
+ * the operator had the JSON part-way through an edit merged into `{}` — losing
+ * their draft AND every unknown key in the profile. The bag is now real state
+ * (v4's shape) with the textarea as a view that a structured write only rewrites
+ * while it is valid.
+ *
+ * The case is reachable exactly as the round-2 record described it: a provider
+ * that declares `loraSupport` but NO `optionsSchema` (P4.D138), on a provider
+ * with no hand-written size panel — so the LoRA editor and the JSON textarea are
+ * on screen together. The write is driven through the editor's own
+ * `lorasChange` output; the editor's chrome is not what is under test.
+ */
+describe('ImageProfileModal — structured writes vs the Parameters textarea (P4.69)', () => {
+  const LORA = { source: 'org/style-v2', scale: 0.8 };
+
+  /** loraSupport WITHOUT a schema — the legacy textarea arm plus the LoRA editor. */
+  const loraOnlyClient = () => schemaClient({ answers: [{ loraSupport: SUPPORT_2 }] });
+
+  function parametersTextarea(fixture: ComponentFixture<ImageProfileModal>): HTMLTextAreaElement {
+    const el = (fixture.nativeElement as HTMLElement).querySelector('textarea');
+    if (!el) throw new Error('Parameters textarea not rendered');
+    return el as HTMLTextAreaElement;
+  }
+
+  function typeParameters(fixture: ComponentFixture<ImageProfileModal>, value: string): void {
+    const area = parametersTextarea(fixture);
+    area.value = value;
+    area.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+  }
+
+  /** Fire the LoRA editor's own output, the way the child does. */
+  function writeLoras(
+    fixture: ComponentFixture<ImageProfileModal>,
+    loras: { source: string; scale: number }[],
+  ): void {
+    const node = (fixture.nativeElement as HTMLElement).querySelector('qt-lora-list-editor');
+    if (!node) throw new Error('LoRA editor not rendered');
+    const instance = fixture.debugElement.query((d) => d.nativeElement === node)
+      .componentInstance as { lorasChange: { emit: (v: unknown) => void } };
+    instance.lorasChange.emit(loras);
+    fixture.detectChanges();
+  }
+
+  function loraList(fixture: ComponentFixture<ImageProfileModal>): unknown {
+    const node = (fixture.nativeElement as HTMLElement).querySelector('qt-lora-list-editor');
+    if (!node) throw new Error('LoRA editor not rendered');
+    return (
+      fixture.debugElement.query((d) => d.nativeElement === node).componentInstance as {
+        loras: () => unknown;
+      }
+    ).loras();
+  }
+
+  it('renders the textarea and the LoRA editor together — the case this pins', async () => {
+    const fixture = await render(loraOnlyClient(), profile({ provider: 'OPENAI' }));
+    expect(has(fixture, 'qt-provider-options-panel')).toBe(false);
+    expect(parametersTextarea(fixture)).not.toBeNull();
+    expect(has(fixture, 'qt-lora-list-editor div')).toBe(true);
+  });
+
+  it('(a) a LoRA write with a VALID textarea merges and preserves unknown keys', async () => {
+    const fixture = await render(loraOnlyClient(), profile({ provider: 'OPENAI' }));
+    typeParameters(fixture, JSON.stringify({ size: '512x512', some_unknown_key: 'kept' }));
+
+    writeLoras(fixture, [LORA]);
+
+    const written = JSON.parse(parametersTextarea(fixture).value) as Record<string, unknown>;
+    expect(written['loras']).toEqual([LORA]);
+    // The whole point of v4's `{...parameters, [key]: value}` spread: a key this
+    // panel never renders survives the write.
+    expect(written['some_unknown_key']).toBe('kept');
+    expect(written['size']).toBe('512x512');
+  });
+
+  it('(b) a LoRA write with an INVALID textarea neither throws nor loses the text', async () => {
+    const fixture = await render(loraOnlyClient(), profile({ provider: 'OPENAI' }));
+    // A good bag first, so there is something real to lose...
+    typeParameters(fixture, JSON.stringify({ size: '512x512', some_unknown_key: 'kept' }));
+    // ...then a mid-edit draft that does not parse.
+    const draft = '{ "size": "512x512", "some_unknown_key": "kept", "steps":';
+    typeParameters(fixture, draft);
+
+    expect(() => writeLoras(fixture, [LORA])).not.toThrow();
+
+    // The operator's draft is still on screen, character for character.
+    expect(parametersTextarea(fixture).value).toBe(draft);
+  });
+
+  it('(b2) ...and the LoRA write still lands, MERGED into the last good bag', async () => {
+    const fixture = await render(loraOnlyClient(), profile({ provider: 'OPENAI' }));
+    // `hf_api_token` is the one non-LoRA key the editor surfaces, so it is how
+    // this case can see that the write MERGED rather than replaced.
+    typeParameters(fixture, JSON.stringify({ hf_api_token: 'hf_kept', size: '512x512' }));
+    typeParameters(fixture, '{ "hf_api_token": "hf_kept", "size": "512x512", "steps":');
+    writeLoras(fixture, [LORA]);
+
+    // The adapter landed: the write went to the bag, not into the void it used
+    // to fall into...
+    expect(loraList(fixture)).toEqual([LORA]);
+    // ...and it merged into the last GOOD bag, not into an empty one — the
+    // sibling key is still there. (Merging into `{}` was the old bug's shape.)
+    expect(loraEditor(fixture).hfToken()).toBe('hf_kept');
+  });
+
+  it('a mid-edit draft does not wipe the bag the structured panels read', async () => {
+    const fixture = await render(loraOnlyClient(), profile({ provider: 'OPENAI' }));
+    typeParameters(fixture, JSON.stringify({ loras: [LORA], some_unknown_key: 'kept' }));
+    expect(loraList(fixture)).toEqual([LORA]);
+
+    // Half-typed: the bag the LoRA editor reads keeps its last good value
+    // rather than emptying mid-keystroke.
+    typeParameters(fixture, '{ "loras": [{ "source": "org/style-v2", "scale": 0.8 }], "steps":');
+    expect(loraList(fixture)).toEqual([LORA]);
+  });
+});

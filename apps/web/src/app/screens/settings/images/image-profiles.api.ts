@@ -11,6 +11,7 @@ import type { CoreClient } from '../../../core/core-client';
 import type {
   HuggingFaceLookupResult,
   ImageLoraSupport,
+  ImageOptionsSchemaResponse,
   ImageProfileCreateBag,
   ImageProfileCreateRequest,
   ImageProfileDeleteRequest,
@@ -162,14 +163,18 @@ function asLoraSupportMap(raw: unknown): Record<string, ImageLoraSupport> {
   return raw as Record<string, ImageLoraSupport>;
 }
 
-/** One `options-schema` answer (Shared contract §A). */
-export interface ImageOptionsSchemaAnswer {
-  provider: string;
-  model: string | null;
-  /** `null` exactly when the provider's plugin declares no schema. */
+/**
+ * One `options-schema` answer, as the image editor consumes it.
+ *
+ * The WIRE shape is {@link ImageOptionsSchemaResponse} in `core-contract.ts`
+ * (moved there at P4.69 — round 2 recorded it as living outside the contract).
+ * This is that shape with `optionsSchema` narrowed to the renderer's own type,
+ * the same narrowing `ProviderInfo.optionsSchema` gets where it is rendered:
+ * the contract stays free of any dependency on a screen, and the editor still
+ * gets a real type.
+ */
+export interface ImageOptionsSchemaAnswer extends Omit<ImageOptionsSchemaResponse, 'optionsSchema'> {
   optionsSchema: ProviderOptionsSchema | null;
-  /** `null`, never a zero-cap object, when the model resolves no support. */
-  loraSupport: ImageLoraSupport | null;
 }
 
 /**

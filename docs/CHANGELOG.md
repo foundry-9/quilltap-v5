@@ -508,6 +508,58 @@ database. Red-first: 79 of 98 rows failed before the fix. Two mutations pin it
 — removing the empty-string fold reddens 18 rows and nothing on the two routes
 where v4 deliberately does not fold; reading the last duplicate instead of the
 first reddens 33, all of them duplicate-key rows.
+#### 2026-09-02 — fix(images): hold the profile parameters as an object so a LoRA write cannot eat a mid-edit textarea
+
+_Versions: SPA 0.5.628._
+
+v4 holds `formData.parameters` as an OBJECT and renders the raw JSON nowhere.
+v5's legacy arm is a JSON textarea, and `parametersBag` was a `computed` that
+re-parsed it and fell back to `{}` on any parse failure — so a structured write
+made while the operator had the JSON part-way through an edit merged into `{}`,
+discarding their draft AND every unknown key in the profile. Reachable since
+P4.D138: a provider that declares `loraSupport` but no `optionsSchema` puts the
+LoRA editor and the textarea on screen together.
+
+The bag is now real state in v4's shape, with the textarea as a view of it. A
+structured write always reaches the bag; it rewrites the textarea only while
+that text is valid, so a broken draft survives untouched. Typing only moves the
+bag when the text parses, so the structured panels keep reading the last good
+bag instead of emptying mid-keystroke. Submit still refuses an unparseable
+textarea, so nothing is silently persisted either way. The three `JSON.parse`
+blocks that could have disagreed (about a top-level array, say) are now one
+`parseParametersObject` home; v4's two distinct error sentences are kept.
+
+Also: the `imageProfileOptionsSchema` response shape moved into
+`core-contract.ts` as `ImageOptionsSchemaResponse` (round 2 recorded it as
+living outside the contract), name-for-name with the server's body in
+`api/image_profiles.rs`. `optionsSchema` is `unknown` there for the same reason
+`ProviderInfo.optionsSchema` is — the schema's types belong to the renderer, and
+the contract must not depend on a screen — with the image editor narrowing it at
+its own boundary.
+
+#### 2026-09-02 — test(salon): pin that the optimistic bubble's seat is the seat the server is told
+
+_Versions: SPA 0.5.628._
+
+Round 2 asked whether the client's optimistic seat and the server's attribution
+could still disagree, naming the impersonation `turnOverride` as the suspect.
+Measured: they cannot, and `turnOverride` is not on this axis at all — it is a
+TURN, and never reaches either the attribution or the request payload.
+
+v4 reads `activeTypingParticipantIdRef.current` twice in one block
+(`useSSEStreaming.ts:735` through `findActiveUserParticipant` for the bubble,
+`:754` as the request's `speakingAsParticipantId`); v5 reads `activeSpeakerId()`
+in both places. One value, so the client cannot paint one seat while telling the
+server another. Pinned so a future edit cannot make the two read different
+sources.
+
+The measurement also corrected the case's own first draft: with an EMPTY
+impersonation overlay neither app seeds the persisted `activeTypingParticipantId`
+into the local speaking-as — v4 gates the whole seed block on
+`if (impersonatingIds && impersonatingIds.length > 0)`
+(`useImpersonation.ts:34-44`) and v5 carries the same guard — so the request
+carries no seat and the server applies its own fallback.
+
 #### 2026-09-02 — test(e2e): repair the three fragile beats — the silent hint hook, the unscoped refetch, the positional pick, and un-park the component transfer
 
 _Versions: SPA 0.5.627._

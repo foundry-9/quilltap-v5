@@ -4540,6 +4540,34 @@ export interface ImageLoraSupport {
   supportsPrivateWeightsToken?: boolean;
 }
 
+/**
+ * One `imageProfileOptionsSchema` answer — what the image-profile editor asks
+ * the provider's plugin about a given model.
+ *
+ * Name-for-name with the server's body (`api/image_profiles.rs`'s
+ * `image_profile_options_schema`, which inserts `provider`, `model`,
+ * `optionsSchema`, `loraSupport` in that order): `model` echoes what was asked
+ * (an empty `model=` echoes back `""`, never null), and BOTH capability fields
+ * are `null` — never a zero-cap object — when nothing is declared. The editor
+ * reads a null schema as "fall back to the legacy hand-written panel" and a
+ * null support as "offer no LoRA rows at all".
+ *
+ * The wire shape lived in `screens/settings/images/image-profiles.api.ts` until
+ * P4.69. `optionsSchema` is `unknown` here for the same reason
+ * {@link ProviderInfo.optionsSchema} is: the schema's own types belong to the
+ * renderer that reads them (`settings/providers/provider-options-panel`), and
+ * the contract must not depend on a screen. The image editor narrows it at its
+ * own boundary.
+ */
+export interface ImageOptionsSchemaResponse {
+  provider: string;
+  model: string | null;
+  /** `null` exactly when the provider's plugin declares no schema. */
+  optionsSchema?: unknown | null;
+  /** `null`, never a zero-cap object, when the model resolves no support. */
+  loraSupport: ImageLoraSupport | null;
+}
+
 /** Why a HuggingFace lookup produced no facts (v4 `HuggingFaceLookupFailure`). */
 export type HuggingFaceLookupFailure =
   | 'not-a-repo-id'
