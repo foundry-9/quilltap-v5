@@ -12,6 +12,37 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — feat(db): FoldersRepository::ensure_by_path, the find-or-create chokepoint (v4 bug 114, P4.D145 unit 2)
+
+_Versions: core 0.0.738._
+
+Ports v4 `a5df98b3f`'s `FoldersRepository.ensureByPath` — the only sanctioned
+way to bring a folder row into being for a path that may already have one. Reads
+by path, returns an existing row, otherwise creates; a unique-constraint
+violation re-reads and resolves to the winning row, a conflict that resolves to
+nothing re-raises the original error rather than answering with a folder that
+does not exist, and a non-constraint failure propagates untouched.
+
+`create` gains a private `create_returning` twin so the chokepoint can hand back
+the persisted `FolderRow` (v4's `create` resolves to the created `Folder`)
+without a second query or a second insert path.
+
+Nine unit tests carry v4's six-case spy suite onto a REAL `folders` table.
+Two arms needed a v5-specific mechanism because a repository cannot be spied:
+the lost-race arm drives a `before_insert` seam that plants the winner in the
+one instant a competing writer could commit in, and the non-constraint arm
+becomes an error-IDENTITY assertion (the seam reshapes the table so the INSERT
+and a hypothetical recovery re-read fail with different SQLite sentences),
+standing in for v4's "findByPath called ONCE". Measured on the way: with the
+index present, dropping the read-first branch still converges — so the
+existing-row case is pinned WITHOUT the index, where the early return is the
+only thing that can prevent a duplicate.
+
+The header records what v5 never had: v4's amplifier was a soft-failing read
+(`findByPath` returning its `safeQuery` null), and v5's `find_by_path`
+validates nothing and propagates every error but `QueryReturnedNoRows`. The
+duplicates v5 meets are v4-written.
+
 #### 2026-09-02 — feat(db): the SQLite unique-constraint predicate (v4 bug 114, P4.D145 unit 1)
 
 _Versions: core 0.0.737._
