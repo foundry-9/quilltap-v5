@@ -87,7 +87,10 @@ function chatDetail(): ChatDetail {
   };
 }
 
-function render(msg: MessageDto): ComponentFixture<MessageRow> {
+function render(
+  msg: MessageDto,
+  inputs: Record<string, unknown> = {},
+): ComponentFixture<MessageRow> {
   TestBed.configureTestingModule({
     imports: [MessageRow],
     providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }],
@@ -95,6 +98,9 @@ function render(msg: MessageDto): ComponentFixture<MessageRow> {
   const fixture = TestBed.createComponent(MessageRow);
   fixture.componentRef.setInput('message', msg);
   fixture.componentRef.setInput('chat', chatDetail());
+  for (const [name, value] of Object.entries(inputs)) {
+    fixture.componentRef.setInput(name, value);
+  }
   fixture.detectChanges();
   return fixture;
 }
@@ -790,5 +796,63 @@ describe('MessageRow — the action-bar tooltip copy (v4 MessageActionBar.tsx @ 
       '.qt-chat-message-action-bar-icons [title]',
     );
     expect(titled.length).toBe(0);
+  });
+});
+
+
+/**
+ * P4.69 — the assistant-side danger ring.
+ *
+ * v4 `MessageDesktopAvatar.tsx:19-21` builds
+ * `flex-shrink-0 qt-chat-desktop-avatar${dangerous ? ' qt-chat-avatar-dangerous' : ''}`
+ * and its doc-comment states the rule outright: "Assistant rows pass a `badge`
+ * (and may light up `dangerous`); user rows pass neither." `MessageRow.tsx`
+ * honours it at exactly three call sites — `:232` (courier, ASSISTANT),
+ * `:278` (regular, ASSISTANT) and `:487` (USER), the last passing no
+ * `dangerous` at all. The default is `false` (`:176`).
+ *
+ * The assertions read the class list rather than the whole `class` string:
+ * Angular's class binding dedups AND reorders, so a transcribed `className`
+ * compare would measure nothing (memory note
+ * `angular-class-binding-dedups-and-reorders`).
+ */
+describe('MessageRow — the dangerous-chat avatar ring (P4.69, v4 MessageDesktopAvatar:19-21)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const avatarOf = (fixture: ComponentFixture<MessageRow>) =>
+    fixture.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement | null;
+
+  it('rings the regular assistant row’s avatar when the chat is flagged (v4 :278-282)', () => {
+    const fixture = render(message({ content: 'A fine morning.' }), { isDangerousChat: true });
+    const avatar = avatarOf(fixture);
+    expect(avatar).not.toBeNull();
+    expect(avatar!.classList.contains('qt-chat-avatar-dangerous')).toBe(true);
+  });
+
+  it('rings the COURIER assistant row’s avatar too (v4 :232-236)', () => {
+    const fixture = render(message({ pendingExternalPrompt: 'PROMPT' }), {
+      isDangerousChat: true,
+    });
+    // The courier branch is the early return — prove we are in it.
+    expect(fixture.nativeElement.querySelector('qt-courier-bubble')).not.toBeNull();
+    const avatar = avatarOf(fixture);
+    expect(avatar).not.toBeNull();
+    expect(avatar!.classList.contains('qt-chat-avatar-dangerous')).toBe(true);
+  });
+
+  it('leaves the assistant avatar unringed by default (v4 :176 — isDangerousChat = false)', () => {
+    const fixture = render(message({ content: 'A fine morning.' }));
+    const avatar = avatarOf(fixture);
+    expect(avatar).not.toBeNull();
+    expect(avatar!.classList.contains('qt-chat-avatar-dangerous')).toBe(false);
+  });
+
+  it('never rings the USER row’s avatar, flagged or not (v4 :487 passes no `dangerous`)', () => {
+    const fixture = render(message({ role: 'USER', participantId: null, content: 'Hullo.' }), {
+      isDangerousChat: true,
+    });
+    const avatar = avatarOf(fixture);
+    expect(avatar).not.toBeNull();
+    expect(avatar!.classList.contains('qt-chat-avatar-dangerous')).toBe(false);
   });
 });

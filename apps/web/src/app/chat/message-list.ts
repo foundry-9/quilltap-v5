@@ -79,6 +79,7 @@ import { VirtualRow } from './virtual-row';
                     [editing]="item.message.id === editingId()"
                     [hasLlmLogs]="messagesWithLogs().has(item.message.id)"
                     [isOverheardWhisper]="overheard(item.message)"
+                    [isDangerousChat]="isDangerousChat()"
                     [renderingPatterns]="renderingPatterns()"
                     [dialogueDetection]="dialogueDetection()"
                     (viewLlmLogs)="viewLlmLogs.emit($event)"
@@ -127,6 +128,7 @@ import { VirtualRow } from './virtual-row';
               [chat]="chat()"
               [settings]="settings()"
               [showAvatar]="showAvatars()"
+              [isDangerousChat]="isDangerousChat()"
               [renderingPatterns]="renderingPatterns()"
               [dialogueDetection]="dialogueDetection()"
               (copyMessage)="copyMessage.emit($event)"
@@ -203,6 +205,14 @@ export class MessageList {
    * for the overheard-whisper dim (v4 `VirtualizedMessageList.tsx:358-373`).
    */
   readonly userParticipantIds = input<ReadonlySet<string>>(new Set<string>());
+  /**
+   * The Salon's `shouldShowDangerStyling(chat)` verdict, threaded straight
+   * through to every row (v4 `VirtualizedMessageList.tsx:106` prop, `:165`
+   * default false, `:368` → `MessageRow`). The list only forwards it — the
+   * predicate lives in `chat/concierge-state.ts` and is applied at the wiring
+   * site, exactly as v4 applies it in `SalonView.tsx:1489`.
+   */
+  readonly isDangerousChat = input(false);
 
   readonly copyMessage = output<MessageDto>();
   readonly edit = output<MessageDto>();

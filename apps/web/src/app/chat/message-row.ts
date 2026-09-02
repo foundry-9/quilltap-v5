@@ -67,7 +67,9 @@ export interface ImageClickEvent {
              of the normal message, skipping the action bar and danger chrome (v4
              MessageRow's early-return courier branch). -->
         @if (showAvatar() && !author().isUser) {
-          <div class="qt-chat-desktop-avatar">
+          <!-- v4 MessageRow.tsx:232-236 — the courier row's assistant avatar
+               takes dangerous={isDangerousChat}. -->
+          <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
             <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
           </div>
         }
@@ -83,7 +85,9 @@ export interface ImageClickEvent {
         </div>
       } @else {
       @if (showAvatar() && !author().isUser) {
-        <div class="qt-chat-desktop-avatar">
+        <!-- v4 MessageRow.tsx:278-282 — the regular row's assistant avatar takes
+             dangerous={isDangerousChat}. -->
+        <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
           <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
         </div>
       }
@@ -415,6 +419,17 @@ export class MessageRow {
    * (`message-list.ts`'s `overheard()`); this row only applies the class.
    */
   readonly isOverheardWhisper = input(false);
+  /**
+   * Whether the Concierge has flagged this chat as dangerous (v4 `MessageRow.tsx:108-109`
+   * — "Whether the Concierge has flagged this chat as dangerous", default `false`
+   * at `:176`). The list passes it down from the Salon's
+   * `shouldShowDangerStyling(chat)`; the row paints the red ring on the
+   * ASSISTANT-side desktop avatar only, exactly as v4's two
+   * `dangerous={isDangerousChat}` call sites do (`:234` courier, `:280`
+   * regular). v4's user-side avatar (`:487`) passes neither `dangerous` nor a
+   * badge, so v5's user site stays unpainted too.
+   */
+  readonly isDangerousChat = input(false);
 
   readonly copyMessage = output<MessageDto>();
   readonly edit = output<MessageDto>();

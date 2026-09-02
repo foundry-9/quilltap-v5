@@ -13,6 +13,18 @@ import { ThinkingBlock } from './thinking-block';
  * pipeline as settled messages), with minimal tool rows. Fed by the P4.5 stream
  * reducer state.
  *
+ * ⚠ NO AVATAR HERE — and therefore no danger ring. v4's `StreamingMessage.tsx:85`
+ * opens the assistant row with
+ * `<div className={\`flex-shrink-0 qt-chat-desktop-avatar${isDangerousChat ? ' qt-chat-avatar-dangerous' : ''}\`}>`
+ * wrapping an `Avatar` for `getRespondingCharacter()`; v5's live bubble has
+ * never rendered that column at all, so there is no element for P4.69's ring to
+ * land on and threading the flag here would only add a dead input. The gap is
+ * the AVATAR, not the ring: settled assistant rows (`message-row.ts`) do carry
+ * the ring, so a flagged chat paints everywhere v5 draws an avatar. Porting the
+ * streaming avatar needs `respondingParticipantId` (already on
+ * `ChatStreamState`) resolved against the cast plus v4's `shouldShowAvatars`
+ * gate — its own unit, named as a follow-up in P4.69's lane record.
+ *
  * The waiting quill (`qt-quill-animation`) appears at v5's analogs of v4's four
  * call sites — v4 spreads them over three components (`StreamingMessage`,
  * `ChatComposer`'s status strip, `PendingToolCalls`), all of which v5 folds into

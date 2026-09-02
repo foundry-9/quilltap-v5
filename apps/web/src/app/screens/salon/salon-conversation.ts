@@ -37,6 +37,7 @@ import {
   type LlmLogDto,
 } from '../../chat/llm-logs.api';
 import { MessageList } from '../../chat/message-list';
+import { shouldShowDangerStyling } from '../../chat/concierge-state';
 import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
 import type { ChatSectionState } from '../../chat/sidebar/chat-section';
 import type { VisibilityState } from '../../chat/sidebar/visibility-section';
@@ -424,6 +425,7 @@ interface CascadePrompt {
           [editingId]="editingId()"
           [messagesWithLogs]="messagesWithLogs()"
           [userParticipantIds]="userParticipantIdSet()"
+          [isDangerousChat]="isDangerousChat()"
           (viewLlmLogs)="onViewLlmLogs($event)"
           (copyMessage)="onCopy($event)"
           (edit)="onEdit($event)"
@@ -1785,6 +1787,18 @@ export class SalonConversation {
           .filter((p) => p.controlledBy === 'user')
           .map((p) => p.id),
       ),
+  );
+
+  /**
+   * What the message rows paint. v4 computes the verdict in the Salon and passes
+   * it down (`SalonView.tsx:1489` — `isDangerousChat={shouldShowDangerStyling(chat)}`
+   * → `VirtualizedMessageList`), so a Flagged chat rings its assistant avatars
+   * while an operator-Uncensored one takes the same routes unpainted. NOT the
+   * raw `chat.isDangerousChat`: `SalonView.tsx:1876` passes THAT to the sidebar,
+   * a different consumer.
+   */
+  protected readonly isDangerousChat = computed(() =>
+    shouldShowDangerStyling(this.chat()),
   );
 
   /**

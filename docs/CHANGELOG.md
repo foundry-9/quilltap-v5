@@ -508,6 +508,35 @@ database. Red-first: 79 of 98 rows failed before the fix. Two mutations pin it
 — removing the empty-string fold reddens 18 rows and nothing on the two routes
 where v4 deliberately does not fold; reading the last duplicate instead of the
 first reddens 33, all of them duplicate-key rows.
+#### 2026-09-02 — feat(salon): paint v4's dangerous-chat ring on assistant message avatars
+
+_Versions: SPA 0.5.624._
+
+v5 shipped the `.qt-chat-avatar-dangerous` CSS rule (`_chat.css:2960`,
+byte-identical to v4's `_chat.css:2819`) but nothing ever added the class, so
+the rule was dead. The Salon now computes v4's verdict once
+(`shouldShowDangerStyling(chat)` — `SalonView.tsx:1489`) and threads it down:
+`MessageList` declares the `isDangerousChat` input v4 declares at
+`VirtualizedMessageList.tsx:106` (default false, `:165`) and forwards it to
+both of v5's `MessageRow` paths — the virtualized rows and the
+stream-accumulated finished bubbles, whose v4 counterparts render through v4's
+single MessageRow path. `MessageRow` applies the class at exactly v4's two
+assistant sites (`:232` courier, `:278` regular) and never at the user site
+(`:487`, which passes no `dangerous` at all).
+
+The predicate is state-only: a Flagged chat paints, an operator-Uncensored one
+does not, even though its stored `isDangerousChat` label survives the override.
+The new `salon-danger-avatar-flow` beat drives exactly that transition against
+the real server and reads the stored pair back through the CLI, so binding the
+raw flag instead of the predicate fails it (proven: the mutation leaves 2 rings
+where the walk expects 0).
+
+Measured on the way, and NOT painted: v4's `ToolMessage` avatar slot is a plain
+`w-10 h-10 rounded-full` div, not `qt-chat-desktop-avatar`, so v5's tool rows
+stay unringed as v4's do. And v5's streaming bubble renders no avatar at all —
+v4's `StreamingMessage.tsx:85` does — so there is no element there for the ring
+to land on; the gap is recorded at the site as its own follow-up rather than
+papered over with a dead input.
 
 #### 2026-09-02 — docs(driftcheck): v4 drifted ONE commit past `6d2a50382` (`303288fb4`, the Concierge state on the New Chat form) — PIN REQUIRED
 

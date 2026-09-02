@@ -479,3 +479,74 @@ describe('streamMessageToMessageDto — the confirmation family (P4.D132)', () =
     expect(msg!.confirmationOriginalContent).toBe('Altitude is reported in metres.');
   });
 });
+
+
+/**
+ * P4.69 — the list forwards the Salon's danger verdict to every row.
+ *
+ * v4 declares the prop at `VirtualizedMessageList.tsx:106`, defaults it false at
+ * `:165` and passes it straight through at `:368` (→ `MessageRow`). v4 has ONE
+ * MessageRow path; v5 has two — the virtualized rows and the
+ * stream-accumulated finished bubbles (dogfood #7), whose v4 counterparts are
+ * folded into `state.messages` and render through that same path — so BOTH must
+ * carry it or a chained reply loses its ring mid-turn.
+ *
+ * `MessageRow`'s own three-site rule (assistant paints, user never) is pinned in
+ * `message-row.spec.ts`; this file pins only the forwarding.
+ */
+describe('MessageList — forwarding the danger verdict (P4.69, v4 VirtualizedMessageList:106/:165/:368)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function render(
+    messages: MessageDto[],
+    stream: ChatStreamState | null,
+    isDangerousChat?: boolean,
+  ): ComponentFixture<MessageList> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [MessageList],
+      providers: [
+        {
+          provide: CoreClient,
+          useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(MessageList);
+    fixture.componentRef.setInput('messages', messages);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput('stream', stream);
+    if (isDangerousChat !== undefined) {
+      fixture.componentRef.setInput('isDangerousChat', isDangerousChat);
+    }
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const rings = (fixture: ComponentFixture<MessageList>): number =>
+    fixture.nativeElement.querySelectorAll('.qt-chat-avatar-dangerous').length;
+
+  const assistant = () => message({ id: 'm1', participantId: 'p1', content: 'A fine morning.' });
+
+  it('rings a virtualized assistant row when flagged (v4 :368)', () => {
+    expect(rings(render([assistant()], null, true))).toBe(1);
+  });
+
+  it('rings nothing on the same row unflagged — the reset arm', () => {
+    expect(rings(render([assistant()], null, false))).toBe(0);
+  });
+
+  it('defaults to unflagged when the Salon passes nothing (v4 :165)', () => {
+    expect(rings(render([assistant()], null))).toBe(0);
+  });
+
+  it('rings the stream-accumulated finished bubbles too (v5’s second MessageRow path)', () => {
+    // foldChain() lands two finished chained replies in the stream state; only
+    // those rows are on screen (no canonical messages), so every ring counted
+    // here comes from the stream path.
+    const flagged = render([], foldChain(), true);
+    expect(flagged.nativeElement.textContent as string).toContain('Hi, I am Ada.');
+    expect(rings(flagged)).toBeGreaterThan(0);
+    expect(rings(render([], foldChain(), false))).toBe(0);
+  });
+});
