@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — unify: the follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71)
+
+_Versions: core 0.0.758, harness 0.0.654, web 0.0.104, host 0.0.94, SPA 0.5.628._
+
+Five lanes unified; the oracle baseline stays `6d2a50382` (a non-drift
+round — v4 moved two more commits mid-round, every regen ran pinned). Landed
+whole: the one query-parameter reader for every REST edge with v4's three
+real action-dispatch shapes and the new `query_param_semantics_equivalence`
+family (79 of 98 rows red before the rewrite); the participant-status parser
+consolidation with one fidelity fix (an unrecognised status is NOT present,
+as v4's `isParticipantPresent` says), the orchestrator's failover legs
+logging their `llm_logs` rows with the run-id context, the bare-executor gap
+closed by an executable census, `precompute_equivalence` finally
+discriminating on the uncensored reroute, the vintage-stale
+`episodic-recall-*` pair rebuilt; v4's assistant-avatar danger ring, the
+invented quick-hide probe warn retired, the image-profile modal holding its
+parameters as an object, the fragile beats repaired and the component-transfer
+beat un-parked (the Playwright suite is zero-skip for the first time); the
+whole `generate_image` tool-input schema as v4's Zod parse (14 of 22 new
+tier-3 rows red pre-fix — eleven of them because v5 generated and saved an
+image v4 refused), the `[Image LoRA]` caller context, the `system-data-*`
+fixture migrated in place through v4's own schema translator so the
+connection-profile import leg measures again after two months of vacuity; and
+the host gateway resolver (`QUILLTAP_HOST_IP`, Docker `host.docker.internal`)
+injected at every provider construction site whose v4 twin rewrites, with a
+57-row tier-1 family over v4's real module. Versions recounted at
+unification (core 0.0.750 → 0.0.758, harness 0.0.642 → 0.0.654 — four lanes
+bumped off one base). The §3 review found two blocking findings (both P4.67:
+the subset edges advertising actions they refused; coverage claims exceeding
+the code) and seventeen should-fix items, all fixed on the unify branch. P4.67
+stays PARTIAL/OPEN per its header. Gate: 43 + 7 + 61 families fresh from the `6d2a50382` pin; clippy both feature sets; release build; ng 376 files / 5,911; full Playwright **270/0/0 (23.7 m)** — the suite's first zero-skip run; **488 test binaries / 2,745 passed / 0 failed / 1 ignored — exit 0, ZERO `SKIP:` lines**.
+
 #### 2026-09-02 — docs(driftcheck): v4 is THREE commits past `6d2a50382` (bug 115 + the inter-character timing log join `303288fb4`); three open v4 filings recorded — PIN REQUIRED
 
 _Docs-only change._

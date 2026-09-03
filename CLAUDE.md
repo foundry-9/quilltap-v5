@@ -2703,6 +2703,44 @@ records THERE. Update this summary only when a phase or round completes.
   via `groupStateSet`, and the chat must satisfy `groupTier.status == "single"`.
   Still owed: the re-measured 90 s/120 s compression row, the Brahma deep query,
   dedup/summaries, #101, and the LoRA wire-byte look (blocked).
+- **The follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71): UNIFIED
+  on main (2026-09-02) — P4.68/P4.69/P4.70/P4.71 CLOSED, P4.67 PARTIAL
+  (its header names the remainder); the baseline STAYS `6d2a50382`, with
+  THREE UNPROCESSED drift rows + three open v4 filings (116–118) in the
+  ledger.** The first non-drift round since P4.59, unified under PIN
+  REQUIRED after v4 moved twice mid-round. Landed: the one query-parameter
+  reader for every REST edge with v4's three real action-dispatch shapes
+  (FIRST wins, `?action=` folds, v4's envelopes byte-exact; 79 of 98 new
+  rows red before the rewrite) ∥ the participant-status parsers consolidated
+  with one fidelity fix, the failover legs' `llm_logs` rows + run-id context,
+  the bare-executor gap closed by census, `precompute_equivalence` finally
+  seeing the uncensored reroute, the vintage-stale `episodic-recall-*` pair
+  rebuilt ∥ v4's assistant-avatar danger ring (the CSS was dead), the
+  invented quick-hide warn retired, the modal's parameters as an object, the
+  fragile beats repaired and the component-transfer beat UN-PARKED — the
+  Playwright suite is zero-skip ∥ the whole `generate_image` schema as v4's
+  Zod parse (v5 generated and SAVED images v4 refuses), the `[Image LoRA]`
+  caller context, the `system-data-*` fixture migrated in place through
+  v4's own schema translator (the connection-profile import leg measured
+  nothing since bug 68) ∥ the host gateway resolver injected at every
+  provider construction site (57-row tier-1 family). **The §3 review: TWO
+  blocking findings, both P4.67, fixed at unification** — the subset edges
+  advertised actions they refused, and the coverage claims exceeded the
+  code — plus seventeen should-fix items (headline: a wiring census a
+  faithful retry would have reddened; a production-zone census ending at a
+  mid-file `#[cfg(test)]`; a refetch mark that was always zero; the
+  image-profile route running the TOOL's schema where v4's ROUTE refuses;
+  the Ollama double slash v5 had "repaired"). The gate's own catches: a
+  committed recipe naming a `/tmp` pin; a stale `lastMessageAt` arm from
+  before bug 112; a pre-existing Pascal fixture vintage rot (recorded).
+  Gate: 43 + 7 + 61 families fresh from the pin, zero SKIP; clippy both feature sets; release build; ng 376 / 5,911; full Playwright 270/0/0 (zero-skip); **488 test binaries / 2,745 passed / 0 failed / 1 ignored — exit 0, ZERO `SKIP:` lines**. Versions: core 0.0.758, harness 0.0.654, web
+  0.0.104, host 0.0.94, SPA 0.5.628. 💸 the dogfood queue gains the danger
+  ring, the subset refusals via a v4-shaped client, the Docker Ollama walk
+  (+ one `docker build` on a quiet machine), the modal's writers on a real
+  NanoGPT profile, `count: 20` through the image-profile route, the
+  failover rows on a real understudy. **Next: the three-row drift catch-up
+  (`303288fb4` + bug 115 + the timing log), then the dogfood pass** — see
+  phase-4.md. Round record: `status-log.md`.
 - **Oracle baseline: `6d2a50382` (2026-09-02, v4 main — the Concierge
   state-view version bump), adopted at the `6d2a50382` drift catch-up round
   unification (2026-09-02); the ledger's §3 is EMPTY.**

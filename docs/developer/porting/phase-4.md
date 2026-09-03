@@ -6256,6 +6256,101 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71) — UNIFIED 2026-09-02
+
+**UNIFIED on main (2026-09-02) — P4.68, P4.69, P4.70 and P4.71 CLOSED; P4.67
+CLOSED for Tier 1 items 1–2/4 + P4.62(b), PARTIAL for Tier 1 item 3 and Tier
+2 item 5, OPEN for P4.62(a)/(c); the oracle baseline STAYS `6d2a50382`.** A
+non-drift round — but v4 drifted TWO more commits DURING it (`02d4efa1b` bug
+115 + `c9faa2c74`, on top of the `303288fb4` the round started against), so
+every regen in every lane and at the unification ran from a pinned worktree at
+`6d2a50382`; the ledger's §3 holds THREE UNPROCESSED rows and its §1 records
+the human's three open v4 filings (bugs 116–118, each "Applies" to v5). Round
+record: `status-log.md` → "Round record — the follow-ups round unification".
+The §3 unification review (five parallel readers + the unifier's reads) found
+TWO blocking findings, both P4.67 — the subset edges answering v4's envelope
+for actions v4 dispatches and v5 does not (advertising `scan` in the sentence
+that refused it), and coverage claims exceeding the code (14 of ~31 sites, no
+duplicate-key row) — both fixed on the unify branch, plus seventeen should-fix
+items across all five lanes (headline: the `orchestrator_tier3` wiring census
+that a tool-unsupported retry in the corpus would have reddened on a correct
+tree; the bare-executor census that ended its production zone at a mid-file
+`#[cfg(test)]`; `ChatRefetchTally`'s mark that was always zero; the
+image-profile generate route running the TOOL's schema where v4's ROUTE
+refuses first; the Ollama key-test URL that repaired v4's double slash). The
+unify's own first catch: P4.67's committed recipe named its `/tmp` pin, the
+rule P4.71 wrote down the same day. Gate: 43 + 7 + 61 families fresh from the pin, zero SKIP; clippy both feature sets; release build; ng 376 / 5,911; full Playwright 270/0/0 (zero-skip); **488 test binaries / 2,745 passed / 0 failed / 1 ignored — exit 0, ZERO `SKIP:` lines**.
+
+**Next candidates, in rough value order** (updated at the follow-ups round
+unification, 2026-09-02):
+
+1. **The three-row drift catch-up** (ledger §3, all UNPROCESSED): `303288fb4`
+   the Concierge state on the New Chat form (PORT-NEW — `conciergeState` on
+   `POST /api/v1/chats` through `applyConciergeFlip` after the system-prompt
+   message at all three create branches, the greeting ladder's "attempt 0" on
+   the uncensored desk, the form's dropdown, Continue Elsewhere seeding;
+   `services/chat_create.rs`, `manual_flip.rs`, the SPA `screens/new-chat/**`,
+   the Continue Elsewhere dialog; families `chat_create_capstone`,
+   `initial_greeting`, `first_message_context`), `02d4efa1b` bug 115 (PORT —
+   the dynamic-head fallback distill passes `interactive`; v5's
+   `build_context.rs:2339` call carries no class today and reproduces the bug;
+   the pin is P4.D136's compile-pin idiom), `c9faa2c74` (PORT log-only — the
+   inter-character memory timing debug line, capture-pinned). One lane; the
+   three rows' surfaces overlap on `build_context.rs`/the chat-create spine.
+2. **The owed dogfood pass over this round's surfaces** on the Friday copy:
+   the danger ring on a real Flagged chat (and its absence on an Uncensored
+   one), the unknown-action envelope + the restored subset refusals through a
+   v4-shaped client, the Docker walk with a real Ollama profile at
+   `localhost:11434` (P4.71's 💸 — and the one `docker build` on a quiet
+   machine the lane could not run: it OOMs here from `main`'s unmodified
+   Dockerfile too), the LoRA modal's structured writers on a real NanoGPT
+   profile, a `count: 20` through the image-profile generate route, the
+   failover legs' `llm_logs` rows on a real understudy; plus the standing
+   queue (Pascal's group tier with its recipe, the Brahma deep query,
+   dedup/summaries, #101, the re-measured compression row, the LoRA
+   wire-byte look).
+3. **The v5-side measurements the three open v4 filings ask for** (ledger
+   §1): bug 116 — does v5's describe tier (`services/file_fallback.rs`) read
+   `attachmentResults.failed` / `usage.promptTokens` before believing a
+   description; bug 117 — which bytes v5's chat-upload path hashes (input vs
+   stored) at `api/chat_media.rs` / the upload bridge; bug 118 — whether the
+   generated NanoGPT manifest carries v4's stale `attachmentSupport` block
+   (the generator's augmentation table is the fix site). Each becomes a
+   CONVERGENCE row when v4 fixes it; measuring first tells the port whether
+   it is already divergent.
+4. **The P4.67 remainder** (its order's OPEN list): the other seventeen
+   `?action=` sites into the family, per-site duplicate-key rows for the
+   classified non-action keys, P4.62(a) the `FileUpload.tags` raw carry,
+   P4.62(c) the `chat_file_link` guard tidy; the recorded `characters_get`
+   fold.
+5. **The follow-ups this round's own measurements opened:** v5's streaming
+   bubble renders NO avatar (P4.69 — porting it needs
+   `respondingParticipantId` resolved against the cast + v4's
+   `shouldShowAvatars` gate; the danger ring then lands there for free); the
+   `auth`/`no-api-key-configured` chain arm (P4.68's named shape: a per-call
+   primary override + a keyless understudy with `allowTierFallback: false`,
+   both `modelClass: null`); `answer_confirmation.rs:336`'s eleventh
+   status-parser copy with `parse_attr_status`'s old unknown→Active rule
+   (out of P4.68's ownership; one line); the harness's twelfth copy that
+   `panic!`s on an unknown status (`message_attribution_equivalence.rs:27`);
+   the `POST /api/v1/images?action=generate` route v5 never ported (v4's
+   ninth `[Image LoRA]` anchor AND the one image call site that rewrites a
+   `baseUrl` — the `lora_log_anchor_guard` tripwire fires the day it lands);
+   the three families still staging into the shared `/tmp/qt-oracle-stage`
+   (`mail_carina_tools`, `photo_tools`, `precompute`); the two v4 filing
+   candidates in `dogfood-findings.md`'s standing notes (the un-rewritten
+   plugin default base URL; the Ollama double slash after a gateway rewrite).
+6. The carried smalls: `p4.9i2` (the HelpChat/Guide client + the banked help
+   docs), the handler-logging sweep (P4.68/P4.70 each added a row), the
+   present-but-null validation lead, the SPA-wide `title=` census (612 v4 /
+   379 v5), the dozen residue hosts, `#move-folder`'s single-instance id,
+   finding #109 (v4-first).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json` file
+port remains a NAMED standalone flag.
+
+**The ordering-time section follows for history:**
+
 ## The follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71) — ORDERED 2026-09-02
 
 **Not a drift round.** The ledger's §2 probe passed at ordering (v4 `main`

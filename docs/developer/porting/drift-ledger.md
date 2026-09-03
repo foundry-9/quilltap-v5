@@ -68,6 +68,12 @@ probe verifies against._
   memory note `manifest-generator-augmentation-rot`).
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
   fork; v4 develops on `main` alone. Keep probing BOTH branches.
+- _The follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71) UNIFIED
+  2026-09-02 under THIS §1 — a non-drift round, the baseline STAYS
+  `6d2a50382`, no §3 row moves. Every lane and the unification regenerated
+  from a pinned worktree (the lanes' own lane-unique pins, then
+  `/tmp/qt-v4-pin-unify-6d2a50382` at the gate: 43 + 62 families zero SKIP).
+  The three UNPROCESSED rows are the next `/setupphase`'s first lane._
 - _Superseded (the 2026-09-02 evening verdict): DRIFT PENDING — 1 commit
   past `6d2a50382` (`303288fb4`), PIN REQUIRED, checkout clean. The five
   follow-ups lanes resumed against that §1 and every one regenerated from

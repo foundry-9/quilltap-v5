@@ -591,6 +591,26 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **Two v4 filing candidates from P4.71's host-gateway port (2026-09-02),
+  both reproduced faithfully in v5 rather than fixed.** (1) **A profile with
+  a BLANK base URL is never rewritten in a container.** v4's Ollama plugin
+  does `this.baseUrl = baseUrl || "http://localhost:11434"` and never runs that
+  fallback through `rewriteLocalhostUrl`, so inside Docker a blank-URL Ollama
+  profile still points at the container's own loopback; only an explicit
+  override is rewritten. v5 reproduces it (the manifest base is never
+  rewritten — pinned by `an_empty_base_url_override_is_passed_through_untouched`);
+  `docs/developer/running.md` tells the operator to give a local-model profile
+  an explicit URL. (2) **The Ollama key test and model fetch send a DOUBLE slash
+  after a gateway rewrite.** v4's plugin raw-concats `${this.baseUrl}/api/tags`
+  and a rewritten base always carries WHATWG's trailing slash
+  (`http://localhost:11434` → `http://host.docker.internal:11434/`), so v4 GETs
+  `…:11434//api/tags` in a container — which Ollama's router may well 404,
+  making "Test connection" fail on exactly the deployment the rewrite exists
+  for. v5 matched the bytes at the unification (`provider_actions.rs`, the
+  OLLAMA validate + models arms; the chat/embedding paths already did). Both
+  want a v4-first fix; the 💸 container walk with a real Ollama profile is the
+  live proof for either.
+
 - **A store-overlay property CAN be SQL-seeded — the standing "it is silently
   invisible" note is too strong (2026-09-02, the `6d2a50382` walk, C4).** A
   naive `UPDATE doc_mount_documents SET content=…` really is ignored, which is

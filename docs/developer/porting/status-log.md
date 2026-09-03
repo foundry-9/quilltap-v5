@@ -99869,16 +99869,27 @@ per-registry table the order asked for:
 
 **Two measured non-injections, both faithful, both worth their own line.**
 
-1. **Image generation does not rewrite in practice.** `createImageProvider`
-   calls `resolveBaseUrl`, but every v4 call site
+1. **Image generation does not rewrite in practice — with one correction from
+   the §3 unification review.** `createImageProvider` calls `resolveBaseUrl`,
+   and the lane record first claimed NO v4 call site passes a `baseUrl`. One
+   does: `app/api/v1/images/route.ts:273` —
+   `createImageProvider(profile.provider, profile.baseUrl ?? undefined)` —
+   which reaches `provider-registry.ts:133` → the rewrite. That route
+   (`POST /api/v1/images?action=generate`) is one v5 has NEVER ported
+   (`quilltap-web` serves only `GET`/`DELETE /api/v1/images/{id}`), and v5's
+   `RealImageProvider` carries no base-URL field at all (every endpoint is
+   hard-coded), so the CONCLUSION stands — there is nothing to inject and
+   `model/image_dialects.rs` stays untouched — but the debt is real and named:
+   **whoever ports `POST /api/v1/images` inherits both the base-URL field and
+   its rewrite.** The other four call sites
    (`image-generation-handler.ts:323/424/750/1370`, `image-profiles/route.ts`'s
-   `list-models`) passes NO `baseUrl`, so the helper returns `undefined`
-   untouched. v5's `RealImageProvider` has no base-URL field at all, so there is
-   nothing to inject. `model/image_dialects.rs` is therefore NOT touched — the
-   order's conditional permission went unused, and P4.70's ownership is intact.
-   (The image handler's `http://localhost:11434` at `:596` is a *text* cheap-LLM
-   selection for prompt crafting; it reaches `createLLMProvider` and rides the
-   completion injection.)
+   `list-models`) pass none. (The image handler's `http://localhost:11434` at
+   `:596` is a *text* cheap-LLM selection for prompt crafting; it reaches
+   `createLLMProvider` and rides the completion injection — v5 matches at
+   `tools/generate_image.rs:2251`.) A further v4 rewrite site OUTSIDE `lib/`
+   turned up in the same review: `plugins/dist/qtap-plugin-mcp/mcp-client.ts:252`
+   — v5 has no MCP client, so nothing to inject today; whoever ports MCP
+   inherits it.
 2. **A profile with no base URL is not rewritten — in either app.** v4's Ollama
    plugin does `this.baseUrl = baseUrl || "http://localhost:11434"` and never
    runs that fallback through the rewrite. So inside Docker, a v4 Ollama profile
@@ -100844,3 +100855,405 @@ specs never mentioned their suffix.
 No crate file, harness file, or `Cargo.*` touched (verified by
 `git diff --name-only main...HEAD`), so no Rust gate applies. Versions: SPA
 0.5.623 → 0.5.628; no crate bumped.
+
+---
+
+## Round record — the follow-ups round unification (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71), 2026-09-02
+
+**UNIFIED on main (2026-09-02) — P4.68/P4.69/P4.70/P4.71 CLOSED, P4.67 PARTIAL/OPEN per its header; the oracle baseline STAYS `6d2a50382`.** The first non-drift round since P4.59. The ledger's §2 probe FAILED at the unify's start on both counts (v4 `main` two commits past the recorded `303288fb4`; the checkout dirty with the human's three new v4 filings), so `/driftcheck` ran first (`89070f1b`): the ledger's §1 now records v4 at `c9faa2c74` (`4.9.0-dev.118`), three UNPROCESSED rows (`303288fb4` PORT-NEW, `02d4efa1b` bug 115 PORT, `c9faa2c74` PORT log-only) and bugs 116–118 with their v5-side measurements owed; every lane and the unification regenerated from a pinned worktree. Unify branch `unify/followups-round`, picked in dependency order P4.68 → P4.71 → P4.70 → P4.67 → P4.69 (26 lane commits, zero source conflicts; version files resolved `--theirs` and recounted; CHANGELOG/status-log by union).
+
+### What landed (verified against each order's tier list, not its header)
+
+- **P4.67 — the query-parameter semantics sweep.** Tier 1 whole, Tier 2
+  items 5 + P4.62(b) whole; **P4.62(a) and (c) stay OPEN, untouched** (the
+  order's own header says so; `api/types.rs` was never opened). The one
+  reader (`quilltap-web/src/query.rs`: `first` / `all` / `action` /
+  `first_map` + v4's two dispatcher envelopes with their `actionLogger.warn`
+  lines), sixteen route files moved onto it, and the NEW
+  `query_param_semantics_equivalence` (14 endpoints × 6 shapes = 98 rows,
+  DB-free over v4's REAL route modules through v4's REAL dispatch code;
+  **79 of 98 red before the rewrite**; two mutations reddening 18 and 33
+  rows respectively, each on the right endpoints). **Three order premises
+  refuted by measurement:** v4 has THREE action-dispatch shapes, not one
+  (14 middleware routes carry `{error, availableActions}`; most hand-roll
+  `isValidAction` with an `Available actions:` tail; several — characters
+  collection/item, `chats/[id]` GET, `user/profile` GET/PUT, text
+  replacements POST — FALL THROUGH to the default on an unknown action);
+  `fold` is NOT universal (`system/tools` and `user/profile` PATCH render
+  `Unknown action: null` vs `Unknown action: ` — v5 now distinguishes
+  them); and `getQueryParamsWithoutAction` has ZERO call sites at the
+  baseline, so the ordered LAST-wins helper was deleted rather than
+  shipped. **P4.62(b)'s premise was wrong too:** an array payload passes
+  v4's route gate and dies at `enqueueJob`'s `z.record` — v4 answers a
+  **500** carrying Zod's issue list, not the 201 the order predicted; v5
+  now byte-matches it, the stored-row comparand proving nothing is
+  written. Recorded divergences: `character_item_post`'s gate order (v4
+  404s before the action gate) and the SUBSET edges' `known` rows (pinned
+  v5-side).
+- **P4.68 — the status parsers + the cheap-LLM / failover remainder.**
+  Tier 1 + Tier 2 whole. The census was **nineteen sites, not eight**: ten
+  consolidated onto `chat_predicates::participant_status_from_str` (seven
+  `ParticipantStatus` copies + the three string-level tool sites), one
+  **fidelity fix** — `build_context::parse_attr_status` mapped an
+  unrecognised status to Active (present) where v4's
+  `findUserParticipantName` → `isParticipantPresent` says NOT present
+  (unit-pinned, quoting v4); `parse_sys_status` left with its reason; an
+  ELEVENTH copy found in `answer_confirmation.rs:336` (same divergence,
+  out of ownership, RECORDED) and a TWELFTH in the harness that `panic!`s
+  on an unknown status. Nineteen families 19/19 at the pin; inverting the
+  canonical reddens exactly three (`fold_episode_tier3`,
+  `message_finalizer_tier3`, `whisper_tool`) — the other sixteen carry NO
+  corpus row with a `silent`/unknown status, a coverage fact now written
+  down. The failover `llm_logs` thread: **the order's named instrument
+  refuted** (`orchestrator_tier3` strips every `CHAT_MESSAGE` row on BOTH
+  sides — 57 rows unwired, 59 wired, green either way), so the WIRING is
+  pinned by a structural census in that family (repeated `(chatId,
+  messageId)` pairs = re-streams) and the row SHAPE stays
+  `primary_stream_tier3`'s; the no-logging wrapper is DELETED (one entry
+  point; a caller must decide), and `FailoverLogCtx` gained the
+  `LogContext` so an autonomous turn's failover legs stamp
+  `autonomousRunId` (both mutation-proven; one edit at
+  `primary_stream.rs:1282` outside ownership, named). The bare-executor
+  gap **closed BY MEASUREMENT** (zero production `::new()` sites — the
+  D135 record's two are inside `#[cfg(test)]`; all sixteen host sites use
+  `with_logging`) and kept executable by
+  `bare_cheap_llm_executor_guard` (zone- and comment-aware, two
+  anti-vacuity asserts, three mutation proofs) — §E has no host finding.
+  The chain-walk census refuted two of three blind spots as already
+  covered and landed the two genuinely missing rows
+  (`empty_walk_exhausts_on_empty`, `empty_walk_understudy_errors_then_
+  tier_ok`); the `auth`/`no-api-key-configured` arm is **DEFERRED LOUDLY**
+  with the shape written out. `precompute_equivalence` made
+  DISCRIMINATING without any fixture widening (`allProfiles` is a
+  parameter on both sides): the new REQUIRED `cheapSelectionUsed`
+  comparand over a three-way profile choice; P4.D141's exact
+  forced-false mutation now fails by name. **Unit 6, unplanned:** the
+  committed `episodic-recall-*` pair had gone vintage-stale
+  (`recall_replay_equivalence` could not regenerate — `no such column:
+  fallbackProfileId`, pre-existing, proven not the lane's) — rebuilt with
+  its shipped builder from the pin; all three consumers green, the first
+  time in a while for one of them.
+- **P4.69 — the SPA follow-ups.** Tier 1 + Tier 2 whole. The danger ring
+  at exactly v4's two ASSISTANT sites (courier + regular), never the user
+  site, tool rows unpainted as v4's are (a census of v4 found exactly two
+  `qt-chat-desktop-avatar` sites); the CSS rule was byte-identical to v4's
+  and simply dead; eight parity specs + six mutations; the LIVE
+  `salon-danger-avatar-flow` beat whose Uncensored leg is the
+  discriminator (the stored label stays `1` — binding the raw flag
+  measured `Received: 2` rings). **NEW deferral from the lane's own
+  measurement: v5's streaming bubble renders NO avatar at all**, so the
+  ring has nothing to attach to there — recorded at the site with v4's
+  line. The quick-hide warn premise HALF-refuted: the tags warn is v4's
+  own line byte-for-byte (`quick-hide-provider.tsx:82`) and stays; only
+  the probe warn was invented and is retired (v4's `catch {}`). The
+  three fragile beats repaired (the injection hook now FAILS on a missing
+  handler; the refetch wait re-scoped; the documents beat picks by title)
+  and **the component-transfer beat UN-PARKED** (`projects` + `groups`
+  materialized in `beforeAll` from `fresh_schema.json`; both P4.D130
+  predictions appeared and were fixed red-first; wardrobe spec 11/11; the
+  standing store-probe skip is GONE — the suite is zero-skip). The modal
+  holds `parameters` as an object in v4's shape with the textarea as a
+  view (both order pins + three cases; a weak first-draft pin
+  strengthened). The temp-bubble seat CONVERGED (v4 reads one ref twice;
+  `turnOverride` is on a different axis — the order's suspect cleared).
+  **Eight** slider readouts pinned (the record said six), all matching v4.
+- **P4.70 — image fidelity + the fixture debts.** All five deliverables.
+  The WHOLE `generate_image` schema as v4's Zod `safeParse`: probed
+  against v4's REAL Zod at the pin before a line of Rust (two results
+  reading the source would not give — `.default().optional()` fields DO
+  default; `llmNumber`'s `Number()` grammar reaches the bounds, `"0x3"` →
+  3, `"1e1"` → 10), the raw arguments carried as the ONE decode home
+  (moved out of `tools/executor.rs`), `apply_tool_input_schema_defaults`
+  folded into the parse; `image_generation_tier3` 7 → 29 cases,
+  **14 red pre-fix**, eleven of them because pre-fix v5 went on to
+  GENERATE AND SAVE an image v4 refused. The `[Image LoRA]` premise half
+  stale: v5 had all FIVE warn sites; the gap was the caller spread
+  (`{context, chatId, jobId, profileId}`) — threaded, five capture pins,
+  the `style-options` anchor at v4's site, and the NEW
+  `lora_log_anchor_guard` census which asserts the ABSENCE of v4's ninth
+  anchor (`api.v1.images.generate` — a route v5 never ported) with a
+  tripwire. **The `system-data-*` rebuild premise REFUTED** (the builder
+  mints unpinned vault ids that the archive extender, an oracle case, six
+  restore archives and the sha-guarded uuid-remap corpus all hard-code —
+  a trial rebuild silently wrote the archive substrate under a vanished
+  mount point); migrated IN PLACE by the NEW committed
+  `migrate-system-data-schema.ts`, which CALLS v4's `compareSchemas` +
+  `generateAlterStatements`: eleven columns across four tables (the
+  measured gap; `connection_profiles` the only FATAL one), 41 tables /
+  179 rows / every pre-existing cell byte-identical, and
+  `system_import_state`'s connection-profile leg finally DISCRIMINATING
+  (profiles importing 1–2 where they imported 0; a write-nothing mutation
+  now reddens it). Ten consumers re-run at the pin (the order named nine;
+  `backup_uuid_remap_equivalence` was the tenth — its corpus moved by
+  exactly one line, attributed by two-pin sandwich to absorbed
+  `70505745a` drift, not the widening). `projects_routes` gained the
+  `latest_chat` branch; the GET's normalize plant already existed and
+  still cannot discriminate (the overlay chokepoint folds first — pinned
+  there, four arms).
+- **P4.71 — the host gateway resolver.** Tier 1 + Tier 2 whole. v4's
+  `lib/host-rewrite.ts` ported whole into `quilltap-host/src/host_gateway.
+  rs` (pure ladder + `OnceLock` process cache + the logged wrapper; four
+  message constants shared by the differential and the emitter), the NEW
+  57-row `host_gateway_equivalence` (tier 1, v4's REAL module with `paths`
+  + `logger` mocked, `resetModules` per row; comparand = the returned
+  URL + every log line with level, bytes and fields; mutation-proven three
+  ways), injections at every v5 site whose v4 twin rewrites (streaming,
+  completion via the NEW `localhost_gateway` seam replacing the hard
+  `None` at `completion_provider.rs:184`, the six embedding sites → ONE
+  `WireConfig::embedding` home, the validator, the models fetcher — the
+  order's `provider_models_api.rs` was the wrong file) with per-site
+  wiring pins reddening exactly one test each. **Two measured, faithful
+  NON-injections:** v4's image path never passes a `baseUrl`
+  (`model/image_dialects.rs` untouched), and v4 never rewrites a plugin's
+  DEFAULT base URL (a blank Ollama profile still hits the container's own
+  loopback in BOTH apps — a v4 filing candidate). **Two measurements that
+  shaped the port:** an empty `QUILLTAP_HOST_IP` is UNSET (JS `!!`), and
+  v4's `Could not resolve host gateway` warn is UNREACHABLE behind the
+  `isVMEnvironment()` gate — carried anyway, with the gate-then-resolve
+  order preserved so no desktop install logs it. `Dockerfile` gains
+  `ENV DOCKER_CONTAINER=true`; `running.md` gains `--add-host` on all
+  three `docker run` lines + "Reaching a model server on the host". The
+  recipe header corrected mid-lane to name no `/tmp` pin (the memory
+  note P4.67's header then violated — caught at the unify sweep). **Owed:
+  one `docker build` on a quiet machine** (it OOMs here from `main`'s
+  unmodified Dockerfile too, attributed by control build) and 💸 the
+  container walk.
+
+### The §3 unification review — TWO blocking findings (both P4.67), fixed on the unify branch; seventeen should-fix items taken
+
+Five parallel readers (one per lane) plus the unifier's own reads of every
+load-bearing hunk (`query.rs`, `host_gateway.rs`, the schema validator, the
+failover thread, the danger binding), each reader given the order, the lane
+record and v4's real code at the pin. The verdict is the unifier's.
+
+**Blocking, would have shipped — P4.67 B1: the subset edges refused v4-known
+actions with v4's envelope, advertising `scan` as available in the sentence
+that called it unknown.** The order said a v4-KNOWN action v5 does not serve
+"keeps a loud refusal, RECORDED as a divergence — do not invent a third
+shape". The lane deleted the loud sentence on `POST /api/v1/mount-points/{id}`
+and answered `{"error":"Unknown action: scan","availableActions":["scan",…]}`
+— and the fresh oracle proves v4 DISPATCHES `scan` there (the `known` row is
+v4's `handleScan` running, a 500 from the stubbed mount, not a 404), so the
+envelope was a lie twice over. Same class at `system/tools`
+(`capabilities-report-progress` on GET, `ai-import-stream` on POST). Fixed:
+the loud v5 refusal is back for v4-known-unserved actions, v4's envelope
+stays for truly UNKNOWN ones, and the divergence is pinned v5-side by the new
+`UNSERVED_KNOWN_ACTIONS` table in `query_param_semantics_equivalence` (three
+rows, exact sentences, `availableActions` asserted ABSENT). The multipart wire
+test that had been rewritten to bless the envelope now asserts both arms.
+
+**Blocking — P4.67 B2: the header claimed Tier 1 item 3 and Tier 2 item 5
+whole; the code covers 14 of the ~31 `?action=` sites and had ZERO
+duplicate-key corpus rows.** The rewritten-but-unmeasured sites: the restore
+POST, three characters edges, the embedding-profiles collection GET, the files
+thumbnail GET, the chat-files POST, both text-replacements edges, four
+system-data edges incl. `system/unlock` (whose own `Missing action parameter`
+refusal class the family's classifier names and no endpoint can reach), four
+wardrobe edges and the chat action GET. The module's motivating example —
+`?limit=1&limit=5` answering 5 where v4 answers 1 — had no arm anywhere.
+Fixed at the unification with what could be proven v5-side today: a new
+oracle-free test in the same family pins the duplicate-key class on the chats
+collection (`?limit=1&limit=2` answers `?limit=1`'s count, `?limit=2&limit=1`
+answers `?limit=2`'s, with a loud floor of two chats in the venue) and the
+custom-tools roster's empty action map; **the order's status header is
+corrected to PARTIAL for both items** and the seventeen uncovered sites are
+the P4.67 remainder in phase-4's candidates. Also fixed from the same review:
+`GET …/custom-tools` read no query at all and listed for every action where
+v4's `withActionDispatch({}, handleList)` refuses a truthy one (S2); every
+oracle row now has a positive-status floor so a stub gap can no longer count
+as a handler leg (S3); the four sites that hand-rolled the `?action=`
+truthiness `query::action` exists to own were moved onto it (S4); the two
+`payload: []` test comments that asserted the OPPOSITE of what shipped
+("ENQUEUED, not refused" — it is a 500 with Zod's issue list and no write)
+were rewritten (S1). Recorded, not changed: `characters_get` folds `?action=`
+onto a 400 where v4 serves the character — a pre-existing narrowing of the
+P4.D66 dispatch-only edge (S5).
+
+**P4.68 (no blocking):** the `orchestrator_tier3` wiring census counted every
+repeated `(chatId, messageId)` pair as a failover leg and asserted every
+`CHAT_MESSAGE` row carries a `characterId` — but v5's tool-unsupported RETRY
+re-logs the same message id with `characterId: None` (faithfully — v4's
+`primary-stream.service.ts:246-256` passes none), so one such corpus case
+would have reddened a CORRECT tree and satisfied the census on a broken one.
+Now failover legs are repeated-pair rows WITH a character (S1/S2). The
+bare-executor census ended its production zone at a file's FIRST
+`#[cfg(test)]`, which three production files carry on a single helper fn
+mid-file — hiding up to 1,700 lines from the count; it now breaks only on the
+`#[cfg(test)]` that opens a `mod` (S4). The two stale "characterId NULL"
+claims in `primary_stream_tier3`'s header (S3), `allProfiles?` declared on the
+wrong TypeScript interface (read from `CaseSpec`, declared on `Spec` — nothing
+type-checks `harness/oracle`; S5), and the deferred `auth` chain arm named
+only in the lane record — now a measured-blind-spot section in the family's
+header (S6). Left as recorded: the retargeted `turn_orchestrator` unit test is
+now a strict subset of the canonical's (S7); the `.unwrap_or("")` boundary
+note lives at one of two sites (S8); both corpus JSONs were re-serialized with
+escaped em dashes (S9, verified semantically identical by parsed compare).
+
+**P4.69 (no blocking):** `ChatRefetchTally` counted at request ISSUE and took
+its mark from a tally built one line earlier — `mark` was always 0, "wait past
+the mark" was "count ≥ 1", and the wait could resolve before the injected
+refetch's response landed (the window under test); it now records issue time
+per matching request, counts completion from `requestfinished`, and waits for
+a refetch issued at or after a wall-clock mark whose response has landed
+(a+b). The un-parked Copy arm asserted only Aria's OMISSION — four blank rows
+would have stayed green; Bram/Cleo/Dax/Echo are pinned by name (c). The
+contract's `optionsSchema?: unknown | null` contradicted the server, which
+inserts the key unconditionally (d). A pass-through `computed` retired (e).
+The documents-search beat's substring title match, a strict-mode violation
+waiting for a "Solo Voyage II" (f). Noted only: the retained-warn spec's
+implicit ordering (g).
+
+**P4.70 (no blocking):** the in-process `image_profile_generate` path now ran
+the whole TOOL schema over its synthesized object, so `count: 20` on the live
+SPA edge answered the tool's fixed sentence where v4's ROUTE refuses first
+with `generateImageSchema.parse` → `Validation error` — a new, unmeasured
+non-v4 answer. Fixed with v4's route gate (prompt 1..4000 UTF-16 units,
+count 1..10, after the 404, before the tool) and two new arms in
+`image_generate_route_equivalence` (`generate_count_over_max`,
+`generate_prompt_empty`; the oracle regenerated by hand from the pin — 7 → 9
+rows — with v4's `details` issue array dropped from the comparand as the
+sibling routes do) (S1). The leaves stage rename was applied to the `.rs`
+header and not the `.test.ts` one (S2). `system_import_state`'s
+connection-profile leg had no vacuity tripwire — a fixture that regresses in
+vintage would take it back to green-and-vacuous silently; two arms now assert
+`imported.connectionProfiles >= 1` (S3). Noted: the cell census is prose
+(the fixtures are cipher-encrypted; `ADD COLUMN` semantics make the claim
+near-structural).
+
+**P4.71 (no blocking):** `join_url` trimmed the trailing slash on the OLLAMA
+validate and models-fetch paths where v4's plugin raw-concats
+`${this.baseUrl}/api/tags` — and a gateway-rewritten base ALWAYS carries
+WHATWG's trailing slash, so on exactly the deployment the lane opened, v4
+sends `…:11434//api/tags` and v5 sent one slash; the lane's own pin encoded
+the divergent expectation. Now byte-faithful (the double slash), the pin
+flipped, and the shape recorded as a v4 filing candidate in
+`dogfood-findings.md`'s standing notes (S1). The lane record's "no v4 call
+site passes a baseUrl to `createImageProvider`" was wrong — `images/route.ts:273`
+does, on a route v5 has never ported; the conclusion stands, the record now
+names the inherited debt, plus the MCP client's rewrite site found the same
+way (S2). The record's "recorded in dogfood-findings" claim was unmet — the
+standing note now exists (S3). A census comment named a nonexistent second
+hit (S4), and the construction censuses read `spine.rs`/`providers.rs` alone
+— a new host file could construct a wire provider unseen; every other host
+file is now asserted to build none (S5).
+
+**The unify's own catch, before any reviewer:** P4.67's committed recipe named
+its lane's `/tmp` pin in BOTH headers, so the sweep driver refused the family
+outright (`stale_v4_pin_path`) — the rule P4.71 wrote a memory note about in
+the same round. Fixed first; the family then regenerated and ran with the
+rest.
+
+### The wires
+
+- **Versions recounted** (the playbook's silent-auto-merge trap fired again,
+  on a pick with zero conflicts of any kind): four lanes bumped core and
+  harness off one base; the picks landed core at 0.0.751 for eight bumps and
+  harness at 0.0.643 for twelve. Recounted to core 0.0.758 / harness
+  0.0.654; web 0.0.104, host 0.0.94, SPA 0.5.628 were right; P4.71's
+  `tracing-subscriber` dev-dependency on the host crate survived the
+  `--theirs` resolutions (audited per lane: every manifest delta was
+  version-only except that one, which the pick kept).
+- **§A (well-formed actions never move):** every web-crate test and every
+  routes family — 61 driver-runnable families — regenerated fresh from the
+  unify pin and re-run after P4.67's rewrite of sixteen route files:
+  **59/61 ok**; the two reds were the stale `lastMessageAt` arm (repaired,
+  re-run green — see the gate) and the pre-existing Pascal fixture rot
+  (recorded, below). The one exempt test (`settings_wire_actions`) ran in the
+  workspace gate. The SPA's only raw `?action=` callers (the Almanack card and
+  report dialog) send single-valued served actions — no SPA change, as §A
+  predicted.
+- **§D (the `system-data-*` fixture):** P4.67's three consuming families
+  (`system_jobs_collection_equivalence`, `system_body_guards_equivalence`,
+  `files_body_guards_equivalence`) regenerated and re-run over P4.70's widened
+  pair — green; the P4.70 reviewer confirmed none of the four widened tables
+  is reachable by those arms.
+- **§E (the gateway seam):** P4.68's census found zero host-side bare
+  executors, so it had nothing to record for P4.71; P4.71's injections touch
+  no P4.68 file (verified by the file lists on both sides).
+- **§F (`episodic-recall-*`):** P4.68's rebuilt pair drove its three consumers
+  green in the first sweep; P4.70's fixture work was the `system-data-*` pair
+  only. Disjoint, as contracted.
+- **The shared-contract and ownership blocks** were byte-identical across the
+  five orders at ordering (md5-checked) and every lane's changed-file list
+  stayed inside its row — the two named exceptions (P4.68's one-line
+  `primary_stream.rs` edit; P4.67's `web_edge_body_parse_guard` census row)
+  were flagged in their lane records and touched no sibling's file.
+- **The unify's own catch, before any reviewer:** P4.67's committed recipe
+  named its lane's `/tmp` pin in both headers and the driver refused the
+  family outright (`stale_v4_pin_path`) — fixed first, then swept with the
+  rest.
+- **A pre-existing fixture vintage rot surfaced by the §A sweep, RECORDED
+  not fixed:** `pascal_custom_tools_route_equivalence` cannot regenerate —
+  v4's REAL `connection_profiles` insert names `allowTierFallback`
+  (P4.D135, round 1) and the committed `pascal-run-custom-{main,mount}.db`
+  pair predates it (`SqliteError: table connection_profiles has no column
+  named allowTierFallback`, v4-side, at the unchanged pin). Exactly the
+  class P4.70 repaired for `system-data-*`; five consumers
+  (`pascal_run_custom_handler`, `pascal_run_custom`,
+  `pascal_definition_reader`, `pascal_custom_tools_route`,
+  `pascal_build_tools_roster`) would need re-running after a widening. A
+  maintenance item, not this round's failure — see phase-4's candidates.
+- **The first full Playwright run's catch (three wardrobe reds, ONE cause):**
+  the positive name pin the §3 review asked for named the builder's roster
+  minus Aria (Bram/Cleo/Dax/**Echo**); the enumerator offers
+  Bram/Cleo/Dax/**Fenn** — Echo's vault is BROKEN by construction (mount rows
+  dropped for the `findByIdRaw` path) and Fenn is the archive extension's
+  ARCHIVED character with a real vault. The other two reds were the serial
+  spec's cascade (the lane record's own warning). The pin now names the
+  three live siblings and Echo's absence. **Measured on the way, both sides
+  faithful:** v4's `GET /api/v1/wardrobe/transfers` builds its character
+  destinations from `characters.findByUserId`, which is the base repository
+  read with NO archived filter — so v4 offers an archived character's vault
+  as a copy/move destination exactly as v5 does (the write guard would refuse
+  the transfer INTO it — a v4-side wart, recorded not filed).
+
+### The gate
+
+- **Oracles, all from the pinned worktree `/tmp/qt-v4-pin-unify-6d2a50382`
+  (regen rule PIN REQUIRED — v4 HEAD three commits past the baseline):** the
+  43 families the five lanes touched or whose fixtures moved, regenerated and
+  run through the sweep driver in one detached run — **43/43 ok, zero SKIP**;
+  the seven families the §3 fixes touched re-run the same way (7/7 after the
+  `chat_scenario` arm repair); the §A wire sweep over every web-crate and
+  routes family — **61 driver-runnable families, 59 ok + the two reds
+  dispositioned above** (the stale `lastMessageAt` arm repaired and re-run
+  green, 50 rows; the pre-existing Pascal fixture rot recorded);
+  `image_generate_route_equivalence` regenerated by hand from the pin
+  (7 → 9 rows) and run green, its count-gate mutation reddening exactly the
+  two new arms.
+- **Rust:** `cargo fmt --all --check` clean; `cargo clippy --workspace
+  --all-targets -- -D warnings` clean on BOTH feature sets (plain +
+  `--features quilltap-core/native-transport`); `cargo build --workspace
+  --release` clean (the lanes' own gates); the guards
+  (`bare_cheap_llm_executor_guard`, `web_edge_body_parse_guard`,
+  `lora_log_anchor_guard`), the core unit filters (`provider_actions`,
+  `image_profiles`, `generate_image`), the host `host_gateway` tests and the
+  web crate's lib tests green by name after the fixes. **`cargo test
+  --workspace` with the 175-variable env block (+ `TZ=UTC`):**
+  **488 test binaries / 2,745 passed / 0 failed / 1 ignored — exit 0, ZERO `SKIP:` lines** — the two earlier full runs stopped fail-fast
+  on binaries compiled BEFORE a fix (the `chat_scenario` arm at binary 71)
+  and on the env block's own collision (the image tier-3 family pointed at
+  the route family's fixture — the round-2 record's exact `QT_FIXTURE_
+  IMGGEN_*` trap, at binary 184; the route family's variable is WITHHELD
+  from the block and that family is proven by name, as round 2 did).
+- **SPA:** `npm run lint` — 948 qt-* classes, every guarded reference
+  resolves; `npm test` **376 files / 5,911 tests / 0 failed**; `npm run
+  build` clean — all three re-run after the P4.69 review fixes.
+- **Full Playwright against the final build:** the first full run went
+  267 passed / 3 failed on the one wardrobe pin (repaired, the serial spec
+  11/11 alone), then **270 passed / 0 failed / 0 skipped (23.7 m), exit 0 —
+  the suite's first zero-skip run** (the standing store-probe park was the
+  component-transfer beat P4.69 un-parked; the suite grew 269 → 270 with
+  the danger-avatar beat).
+- **Not run here, recorded:** one `docker build` on a quiet machine (P4.71 —
+  it OOMs in this environment from `main`'s unmodified Dockerfile too,
+  attributed by control build).
+
+### Cleanup
+
+Performed after the fast-forward: the five lane worktrees removed and their
+branches deleted with the temp branch, the `.git/info/attributes` union rule
+removed, the pinned v4 worktree removed, the `/tmp` oracle NDJSONs / fixture
+mirrors / sweep and gate logs / the Playwright logs and `test-results/`
+removed, no debug servers left running.
+
