@@ -45,7 +45,7 @@ use crate::enclave::lifecycle::{self, LifecycleDeps, StartManualRunResult};
 use crate::jsstr::js_trim;
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
-use crate::model::stream::StreamingCompletionProvider;
+use crate::model::stream::{StreamError, StreamingCompletionProvider};
 use crate::provider_manifest::Registry;
 use crate::services::avatar_generation::{
     trigger_avatar_generation_if_enabled, AvatarGenerationParams,
@@ -55,7 +55,9 @@ use crate::services::chat_enrichment::{enrich_participant_summary, EnrichedParti
 use crate::services::chat_initialize::{build_chat_context, ChatContext};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::creation_progress::CreationProgressEmitter;
-use crate::services::dangerous_content::chat_override::ConciergeState;
+use crate::services::dangerous_content::chat_override::{
+    should_use_uncensored_route, ConciergeState,
+};
 use crate::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
 };
@@ -1662,6 +1664,14 @@ where
     // `undefined` for every key either way.)
     let profile_parameters = crate::cheap_llm::profile_params_value(&connection_profile);
 
+    // v4 `303288fb4`: the chat's own Concierge state decides which desk this
+    // greeting goes to. `apply_requested_concierge_state` has already written
+    // the pair by the time the scenario-and-staff phase reaches the greeting, so
+    // a chat created Uncensored asks the frank desk first instead of discovering
+    // it after a refusal. (v4 `repos.chats.findById` — `None` when the row is
+    // gone, which reads as Monitored everywhere below.)
+    let chat_row = chats_read::find_by_id(main, chat_id).ok().flatten();
+
     let make_log = || -> Option<GreetingLog<'_>> {
         if deps.greeting_log && llm_logs.is_some() {
             Some(GreetingLog {
@@ -1705,6 +1715,47 @@ where
         }
     };
 
+    // Attempt 0 (v4 `303288fb4`): a Flagged or Uncensored chat opens at the
+    // uncensored desk. The three-attempt ladder below (with memories → without →
+    // uncensored on a content filter) stays the path for Monitored and Vouched
+    // Safe chats.
+    let mut uncensored_desk_tried = false;
+    if should_use_uncensored_route(chat_row.as_ref()) {
+        uncensored_desk_tried = true;
+        match generate_via_uncensored_desk(
+            main,
+            deps,
+            context,
+            &connection_profile,
+            &api_key,
+            &parameters,
+            &character_id,
+            &greeting_memories,
+            greeting_project.as_ref(),
+            recent_block_opt(&recent_conversations_block).as_deref(),
+            make_log().as_ref(),
+            "chat-state",
+            chat_row.as_ref(),
+        )
+        .await
+        {
+            Ok(Some(rerouted)) => return rerouted,
+            Ok(None) => tracing::info!(
+                character_id = %character_id,
+                chat_id = %chat_id,
+                "[Chats v1] Uncensored desk unavailable or empty for greeting — using the participant\u{2019}s own profile"
+            ),
+            // v4's try/catch around the closure: a throw is a log line and a
+            // fall-through to the participant's own profile, never a failed create.
+            Err(error) => tracing::warn!(
+                character_id = %character_id,
+                error = %error,
+                "[Chats v1] Concierge uncensored greeting attempt failed"
+            ),
+        }
+    }
+
+    // Track whether any attempt hit a content filter so we can try the Concierge fallback
     let mut content_filter_hit = false;
 
     // Attempt 1: full context (memories + project + recent block).
@@ -1744,9 +1795,16 @@ where
         }
     }
 
-    // Attempt 3: content-filter → Concierge uncensored reroute.
-    if content_filter_hit {
-        if let Some(greeting) = attempt_uncensored_reroute(
+    // Attempt 3: if a content filter was detected, try the Concierge uncensored
+    // provider — unless the chat's own state already sent us there first, in
+    // which case there is nothing new to try. A Vouched Safe chat resolves to
+    // `mode: 'OFF'` inside the helper and never reroutes, whatever the globe says.
+    if content_filter_hit && !uncensored_desk_tried {
+        tracing::info!(
+            character_id = %character_id,
+            "[Chats v1] Content filter detected on greeting — falling back to Concierge uncensored provider"
+        );
+        match generate_via_uncensored_desk(
             main,
             deps,
             context,
@@ -1758,12 +1816,22 @@ where
             greeting_project.as_ref(),
             recent_block_opt(&recent_conversations_block).as_deref(),
             make_log().as_ref(),
+            "content-filter",
+            chat_row.as_ref(),
         )
         .await
         {
-            if !greeting.content.is_empty() {
-                return greeting;
+            Ok(Some(greeting)) => {
+                if !greeting.content.is_empty() {
+                    return greeting;
+                }
             }
+            Ok(None) => {}
+            Err(error) => tracing::warn!(
+                character_id = %character_id,
+                error = %error,
+                "[Chats v1] Concierge fallback for greeting generation failed"
+            ),
         }
     }
 
@@ -1784,8 +1852,10 @@ where
 /// `app/api/v1/chats/route.ts`): each knob resolved from the UNCENSORED
 /// profile's bag falls back to the character's own profile INDEPENDENTLY, so an
 /// uncensored profile that sets only a temperature still borrows the original's
-/// Max Tokens and Top P. Split out so the rule is testable — the capstone corpus
-/// has no dangerous-reroute case, so nothing else pins it.
+/// Max Tokens and Top P. Split out so the rule is testable; since P4.D148 the
+/// capstone corpus also pins it at the wire (the fixture's uncensored profile
+/// sets a temperature and nothing else, so a reroute call must carry that
+/// temperature with the ORIGINAL profile's Max Tokens and Top P).
 fn borrow_sampling(
     uncensored: Option<&Value>,
     outer: &Value,
@@ -1799,11 +1869,26 @@ fn borrow_sampling(
     }
 }
 
-/// v4 attempt-3 body (L748-804): resolve the Concierge uncensored provider and
-/// retry the greeting through it. Every failure resolves to `None` (v4's
-/// try/catch swallow).
+/// v4 `303288fb4` `generateViaUncensoredDesk` (formerly the attempt-3 body,
+/// L748-804): generate the greeting on the Concierge's uncensored desk.
+///
+/// `Ok(None)` when there is nothing to reroute to — the resolved mode isn't
+/// `AUTO_ROUTE`, no uncensored profile is configured, its key is unusable — or
+/// the attempt came back empty, so the caller falls through to the
+/// participant's own profile.
+///
+/// The resolver is asked WITH the chat: a Vouched Safe chat collapses to
+/// `mode: 'OFF'` and never reroutes even under a global `AUTO_ROUTE`, and an
+/// Uncensored chat reroutes even when the global mode is `OFF`. (Before
+/// `303288fb4` this passed `None` and so asked the globe — the bug that made a
+/// per-chat state mean nothing to the opening line.)
+///
+/// ⚠ v4's closure THROWS out of `generateGreetingMessage`, caught by each of
+/// the two call sites; v5's `generate_greeting_message` returns `Err`, so the
+/// error is propagated here and each call site carries v4's own catch. Do not
+/// swallow it — the two catches log different sentences.
 #[allow(clippy::too_many_arguments)]
-async fn attempt_uncensored_reroute<EMB, CMP, STR>(
+async fn generate_via_uncensored_desk<EMB, CMP, STR>(
     main: &Connection,
     deps: &ChatCreateDeps<'_, EMB, CMP, STR>,
     context: &ChatContext,
@@ -1815,7 +1900,12 @@ async fn attempt_uncensored_reroute<EMB, CMP, STR>(
     project: Option<&GreetingProjectContext>,
     recent_block: Option<&str>,
     log: Option<&GreetingLog<'_>>,
-) -> Option<GeneratedGreeting>
+    // `trigger` is v4's `'chat-state' | 'content-filter'` — which of the two
+    // call sites asked. Carried into the two info lines so a log says WHY the
+    // desk was used, not just that it was.
+    trigger: &'static str,
+    chat_row: Option<&Value>,
+) -> Result<Option<GeneratedGreeting>, StreamError>
 where
     EMB: EmbeddingProvider + Send + Sync,
     CMP: CompletionProvider + Send + Sync,
@@ -1827,9 +1917,9 @@ where
         .as_ref()
         .and_then(|s| s.get("dangerousContentSettings"))
         .and_then(|v| serde_json::from_value(v.clone()).ok());
-    let resolved = resolve_dangerous_content_settings(global_settings, None);
+    let resolved = resolve_dangerous_content_settings(global_settings, chat_row);
     if resolved.settings.mode != "AUTO_ROUTE" {
-        return None;
+        return Ok(None);
     }
 
     let original = route_profile_from_value(connection_profile);
@@ -1849,8 +1939,18 @@ where
         &[],
     );
     if !route.rerouted {
-        return None;
+        return Ok(None);
     }
+
+    tracing::info!(
+        character_id = %character_id,
+        trigger = trigger,
+        settings_source = resolved.source.as_str(),
+        uncensored_profile = %route.connection_profile.name,
+        uncensored_provider = %route.connection_profile.provider,
+        uncensored_model = %route.connection_profile.model_name,
+        "[Chats v1] Generating greeting on the Concierge uncensored provider"
+    );
 
     // v4 reads the rerouted profile's own parameters — re-fetch by id.
     let uncensored_params = connection_profiles::find_by_id(main, &route.connection_profile.id)
@@ -1891,10 +1991,18 @@ where
         character_id: Some(character_id.to_string()),
     };
 
-    match generate_greeting_message(deps.streaming, &request, log).await {
-        Ok(res) if !res.content.is_empty() => Some(GeneratedGreeting::from_result(&res)),
-        _ => None,
+    let res = generate_greeting_message(deps.streaming, &request, log).await?;
+    if res.content.is_empty() {
+        return Ok(None);
     }
+    tracing::info!(
+        character_id = %character_id,
+        trigger = trigger,
+        provider = %route.connection_profile.provider,
+        model = %route.connection_profile.model_name,
+        "[Chats v1] Greeting generation succeeded via Concierge uncensored provider"
+    );
+    Ok(Some(GeneratedGreeting::from_result(&res)))
 }
 
 // ============================================================================

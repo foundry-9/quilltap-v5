@@ -9,8 +9,11 @@
  *   - three llm-controlled characters (Aria: firstMessage present, talkativeness 1;
  *     Cleo: firstMessage present, talkativeness 0; Bram: firstMessage EMPTY —
  *     the generated-greeting ladder), each with a real linked vault,
- *   - two connection profiles (one apiKeyId=null, one with an apiKeyId),
- *   - one api key,
+ *   - three connection profiles (one apiKeyId=null, one with an apiKeyId, and
+ *     the uncensored "frank desk" the global AUTO_ROUTE settings name — whose
+ *     `parameters` bag carries ONLY a temperature, so the reroute's knob-by-knob
+ *     borrow from the character's own profile is measurable),
+ *   - two api keys,
  *   - three roleplay templates + the user/global and project defaults that name
  *     two of them (P4.D44 — the create-time template picker).
  * Both v4's real `handleCreate` and the Rust port read a FRESH COPY of the SAME
@@ -42,6 +45,14 @@ interface Spec {
   roleplayTemplateUserDefaultId: string;
   /** The project default, hung on the existing Lantern project. */
   roleplayTemplateProjectDefaultId: string;
+  /**
+   * P4.D148 — the GLOBAL `chat_settings.dangerousContentSettings`. AUTO_ROUTE
+   * with an explicitly named uncensored profile, so the greeting-routing cases
+   * can ask what the CHAT's own state does to a globe that says yes. It changes
+   * nothing for a Monitored chat whose greeting never hits a content filter,
+   * which is every pre-P4.D148 case.
+   */
+  dangerousContentSettings: Record<string, unknown>;
   /**
    * P4.D148 — the source chat `cs_continuation_bubble_before_replay` continues
    * from. Seeded with CLEO (never the greeting character) and NO
@@ -198,6 +209,7 @@ async function main(): Promise<void> {
   // request omits the key walks the real default chain.
   await repos.chatSettings.updateForUser(spec.userId, {
     defaultRoleplayTemplateId: spec.roleplayTemplateUserDefaultId,
+    dangerousContentSettings: spec.dangerousContentSettings,
   } as never);
 
   // 3. Api keys (pinned ids via a direct collection insert — createApiKey mints

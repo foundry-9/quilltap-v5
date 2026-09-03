@@ -55,14 +55,15 @@ use quilltap_core::model::completion::{
 };
 use quilltap_core::model::embedding::CannedEmbeddingProvider;
 use quilltap_core::model::stream::{
-    canned_stream_key, CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamUsage,
+    canned_stream_key, CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamParams,
+    StreamUsage, StreamingCompletionProvider,
 };
 use quilltap_core::services::chat_create::{
     handle_create, ChatCreateDeps, ChatCreateRequest, ChatCreateResult,
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::creation_progress::{CreationProgressBus, CreationProgressEmitter};
-use quilltap_core::services::dangerous_content::provider_routing::NoApiKeys;
+use quilltap_core::services::dangerous_content::provider_routing::ConnApiKeys;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -93,8 +94,24 @@ struct CaseSpec {
     /// non-empty one is persisted onto the stored greeting message.
     #[serde(default)]
     greeting_reasoning: Vec<String>,
+    /// P4.D148: per-MODEL canned greeting (see the oracle case). Any model not
+    /// named here falls back to the case-level trio above.
+    #[serde(default)]
+    greeting_by_model: HashMap<String, CannedGreeting>,
     #[serde(default)]
     outfit_content: Option<String>,
+}
+
+/// One model's canned greeting answer. An empty `content` WITH a `usage` whose
+/// `completion_tokens > 0` is v4's content-filter signature.
+#[derive(Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+struct CannedGreeting {
+    content: String,
+    #[serde(default)]
+    usage: Option<UsageSpec>,
+    #[serde(default)]
+    reasoning: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -122,6 +139,36 @@ struct Recording {
 struct RecMsg {
     role: String,
     content: String,
+}
+
+/// P4.D148 — the ORDERED stream-call log.
+///
+/// The canned providers are a MAP keyed by `(provider, model, temperature,
+/// messages)`, so two calls that resolve to the same key are indistinguishable
+/// downstream: a greeting ladder that asks the uncensored desk one extra time
+/// ends in exactly the same persisted state. The oracle's `recordings` array,
+/// by contrast, is one entry per CALL in order. Diffing the ordered
+/// `(provider, model)` sequence against it is what makes the attempt-0 ordering
+/// and the `uncensored_desk_tried` skip falsifiable at all.
+struct StreamCallLog<P> {
+    inner: P,
+    log: Arc<std::sync::Mutex<Vec<Value>>>,
+}
+
+impl<P: StreamingCompletionProvider> StreamingCompletionProvider for StreamCallLog<P> {
+    fn stream_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &StreamParams,
+    ) -> impl std::future::Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send
+    {
+        self.log
+            .lock()
+            .unwrap()
+            .push(json!([provider, params.model]));
+        self.inner.stream_message(provider, base_url, params)
+    }
 }
 
 fn to_messages(m: &[RecMsg]) -> Vec<CompletionMessage> {
@@ -466,19 +513,35 @@ fn chat_create_capstone_matches_oracle() {
                 );
             }
             if rec.kind == "stream" {
+                // P4.D148: a per-model canned answer wins over the case-level
+                // one, so one create can have the uncensored desk and the
+                // participant's own profile answer differently.
+                let per_model = c.greeting_by_model.get(&rec.model);
+                let content: Option<&str> = match per_model {
+                    Some(g) => Some(g.content.as_str()),
+                    None => c.greeting_content.as_deref(),
+                };
+                let usage_spec: Option<&UsageSpec> = match per_model {
+                    Some(g) => g.usage.as_ref(),
+                    None => c.greeting_usage.as_ref(),
+                };
+                let reasoning: &[String] = match per_model {
+                    Some(g) => &g.reasoning,
+                    None => &c.greeting_reasoning,
+                };
                 let mut chunks: Vec<StreamChunkResult> = Vec::new();
-                for r in &c.greeting_reasoning {
+                for r in reasoning {
                     chunks.push(Ok(StreamChunk {
                         reasoning_content: Some(r.clone()),
                         ..Default::default()
                     }));
                 }
-                if let Some(content) = c.greeting_content.as_deref() {
+                if let Some(content) = content {
                     if !content.is_empty() {
                         chunks.push(Ok(StreamChunk::content(content)));
                     }
                 }
-                let usage = c.greeting_usage.as_ref().map(|u| StreamUsage {
+                let usage = usage_spec.map(|u| StreamUsage {
                     prompt_tokens: u.prompt_tokens,
                     completion_tokens: u.completion_tokens,
                     total_tokens: u.total_tokens,
@@ -503,6 +566,14 @@ fn chat_create_capstone_matches_oracle() {
                 );
             }
         }
+        // P4.D148: log every stream call in ORDER (below the sampling capture,
+        // which is a keyed map and cannot count).
+        let stream_calls: Arc<std::sync::Mutex<Vec<Value>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let streaming = StreamCallLog {
+            inner: streaming,
+            log: Arc::clone(&stream_calls),
+        };
         // P4.D83: record what the PORT put on the greeting stream.
         let streaming =
             sampling_capture::SamplingStreamCapture::new(streaming, |provider, params| {
@@ -514,7 +585,12 @@ fn chat_create_capstone_matches_oracle() {
                 )
             });
         let executor = CheapLlmTaskExecutor::new();
-        let api_keys = NoApiKeys;
+        // P4.D148: the REAL key resolution v4's oracle does (`repos.connections
+        // .findApiKeyByIdAndUserId` over the fixture's own `api_keys` rows), and
+        // what production wires (`DbApiKeys`). With `NoApiKeys` every Concierge
+        // reroute failed open to the original profile, so no corpus case could
+        // ever reach the uncensored desk.
+        let api_keys = ConnApiKeys::new(main_w.connection());
 
         let now_fn = system_now_ms;
         let mint_fn = system_mint_uuid;
@@ -692,7 +768,19 @@ fn chat_create_capstone_matches_oracle() {
         let mut want_frames: Vec<Value> = want["frames"].as_array().cloned().unwrap_or_default();
         strip_frame_ts(&mut want_frames);
 
-        let sections: [(&str, Value, Value); 7] = [
+        // P4.D148: the ordered call trace, against the oracle's per-CALL
+        // recordings (`recordings` is appended once per call, duplicates and
+        // all — unlike the canned map both sides key by).
+        let got_stream_calls = Value::Array(stream_calls.lock().unwrap().clone());
+        let want_stream_calls = Value::Array(
+            recordings
+                .iter()
+                .filter(|r| r.kind == "stream")
+                .map(|r| json!([r.provider, r.model]))
+                .collect(),
+        );
+
+        let sections: [(&str, Value, Value); 8] = [
             (
                 "chats",
                 table_rows("chats", &got_chats),
@@ -718,6 +806,7 @@ fn chat_create_capstone_matches_oracle() {
                 got_message_order.clone(),
                 want["messageOrder"].clone(),
             ),
+            ("stream_calls", got_stream_calls, want_stream_calls),
             (
                 "frames",
                 Value::Array(got_frames.clone()),

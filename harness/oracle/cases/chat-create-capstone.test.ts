@@ -61,6 +61,26 @@ interface CaseSpec {
    * diffed `chat_messages` dump.
    */
   greetingReasoning?: string[];
+  /**
+   * P4.D148: per-MODEL canned greeting, for the cases where the Concierge's
+   * uncensored desk and the participant's own profile must answer DIFFERENTLY
+   * inside one create (the desk comes back empty and the participant answers;
+   * the participant content-filters and the desk is or isn't asked again). Any
+   * model not named here falls back to the case-level
+   * `greetingContent`/`greetingUsage`/`greetingReasoning`.
+   *
+   * An empty `content` WITH a `usage` whose `completionTokens > 0` is v4's
+   * content-filter signature (`initial-greeting.ts`: tokens consumed, nothing
+   * returned); an empty `content` with no `usage` is a plain empty answer.
+   */
+  greetingByModel?: Record<
+    string,
+    {
+      content: string;
+      usage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+      reasoning?: string[];
+    }
+  >;
   /** Canned outfit-choice content the cheap-LLM boundary returns. */
   outfitContent?: string;
 }
@@ -206,12 +226,19 @@ async function runCase(
           // unmeasured — and v5 read them under camelCase names the editor never
           // writes.
           recordings.push({ kind: 'stream', provider, model: params.model, temperature: params.temperature ?? null, sampling: samplingOf(params), messages });
-          if (c.greetingContent === undefined) {
+          // P4.D148: a per-model entry wins over the case-level canned answer,
+          // so one create can have the uncensored desk and the participant's own
+          // profile answer differently.
+          const perModel = c.greetingByModel?.[params.model];
+          const content = perModel ? perModel.content : c.greetingContent;
+          const usage = perModel ? (perModel.usage ?? null) : (c.greetingUsage ?? null);
+          const reasoning = perModel ? (perModel.reasoning ?? []) : (c.greetingReasoning ?? []);
+          if (content === undefined) {
             throw new Error(`unexpected streamMessage call in case ${c.name}`);
           }
-          for (const r of c.greetingReasoning ?? []) yield { reasoningContent: r };
-          if (c.greetingContent) yield { content: c.greetingContent };
-          if (c.greetingUsage) yield { usage: c.greetingUsage };
+          for (const r of reasoning) yield { reasoningContent: r };
+          if (content) yield { content };
+          if (usage) yield { usage };
         },
         sendMessage: async (
           params: {

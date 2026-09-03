@@ -277,6 +277,33 @@ hashes the transcoded bytes and matches the first row, so one FileEntry;
 pre-fix it mints a second. The harness gained `PrefixingPixelCodec`, and the
 folders canonicalizer's `path`-only sort key — a latent coin flip whenever two
 folders share a path — became `(path, projectId)`.
+#### 2026-09-03 — feat(chats): a Flagged or Uncensored chat greets on the Concierge's uncensored desk first (v4 `303288fb4`)
+
+_Versions: core 0.0.760, harness 0.0.656._
+
+`auto_generate_first_message` now reads the fresh chat row and asks the chat,
+not the globe, which desk the opening line belongs at. The reroute body is one
+shared helper (`generate_via_uncensored_desk`) taking the trigger and the chat
+row: the resolver is given the chat, so a Vouched Safe chat collapses to
+`mode: OFF` and never reroutes even under a global `AUTO_ROUTE`, and an
+Uncensored chat reroutes even under a global `OFF`. A Flagged or Uncensored
+chat now generates its greeting there on the FIRST attempt instead of only as
+a content-filter fallback, and the content-filter attempt skips when that first
+attempt already ran. v4's five log sentences are carried byte for byte, plus
+the pre-existing fallback catch v5 had never ported.
+
+The capstone corpus gained five greeting-routing cases and a `stream_calls`
+comparand — the ordered `(provider, model)` sequence of every greeting call,
+diffed against the oracle's per-call recordings. The canned providers are a map
+keyed by prompt, so a ladder that asks the same desk one extra time ends in an
+identical persisted state; only an ordered call trace can see it. The fixture
+gained the uncensored profile the settings name (its `parameters` bag carries
+only a temperature, so the knob-by-knob borrow from the character's own profile
+is measurable at the wire), its api key, and a global `AUTO_ROUTE`
+`dangerousContentSettings`. The harness now resolves api keys through
+`ConnApiKeys` — the real read v4's oracle does and production wires; with
+`NoApiKeys` every reroute failed open and no case could reach the desk at all.
+
 #### 2026-09-03 — feat(chats): apply a Concierge state chosen at chat creation (v4 `303288fb4`)
 
 _Versions: core 0.0.759, harness 0.0.655._

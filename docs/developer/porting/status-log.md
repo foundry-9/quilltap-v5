@@ -102138,3 +102138,117 @@ from a baseline-pinned tree at all).
 
 **Fixtures invalidated:** none outside this family — `chat-create-capstone.json`
 and its builder are consumed only by `chat_create_capstone_equivalence`.
+
+## P4.D148 unit 2 — greeting routing under the chosen state: attempt 0 + the one shared uncensored desk (v4 `303288fb4`)
+
+**Lane:** P4.D148, pinned at `303288fb4`. Continues unit 1 above.
+
+### What landed
+
+- `auto_generate_first_message` reads the FRESH chat row once
+  (`chats_read::find_by_id`, v4's `repos.chats.findById`) right after the
+  profile/sampling setup, and carries it through the greeting ladder.
+- `attempt_uncensored_reroute` became `generate_via_uncensored_desk` — v4's
+  one `generateViaUncensoredDesk` closure — taking `trigger:
+  &'static str` (`"chat-state"` | `"content-filter"`) and `chat_row:
+  Option<&Value>`. The resolver call is `resolve_dangerous_content_settings(
+  global_settings, chat_row)`; the `None` it used to pass WAS the bug v4
+  fixed. A Vouched Safe chat now collapses to `mode: 'OFF'` inside the
+  resolver and never reroutes even under a global `AUTO_ROUTE`; an Uncensored
+  chat resolves to `AUTO_ROUTE` even under a global `OFF`.
+- **Attempt 0:** `should_use_uncensored_route(chat_row)` → set
+  `uncensored_desk_tried`, call the desk with `"chat-state"`, return its
+  greeting. `Ok(None)` logs v4's info sentence (with the U+2019 in
+  `participant’s`); `Err` logs the warn.
+- **Attempt 3** became `content_filter_hit && !uncensored_desk_tried`, with
+  the four profile fields MOVED out of its log line into the helper's own
+  `Generating greeting on the Concierge uncensored provider` (which gained
+  `trigger`, as did the success line).
+- **The Err arm is real, not theoretical.** v4's closure THROWS out of
+  `generateGreetingMessage` and both call sites catch; v5's
+  `generate_greeting_message` returns `Err`, so the helper's return type is
+  `Result<Option<GeneratedGreeting>, StreamError>` and each call site carries
+  v4's own catch. The attempt-3 catch (`Concierge fallback for greeting
+  generation failed`) is v4's pre-existing sentence — v5 had swallowed it; it
+  is ported here because the restructure surfaced it.
+
+### The differential
+
+Corpus 27 → 32; the five new cases are the greeting-routing ladder:
+
+| case | streams (in order) | what it pins |
+|---|---|---|
+| `cs_uncensored_attempt0` | frank | the desk answers FIRST; the participant's profile is never asked |
+| `cs_flagged_greets_on_uncensored_desk` | frank | Flagged takes attempt 0 too, obeying the global `AUTO_ROUTE` |
+| `cs_uncensored_desk_empty_falls_through` | frank, claude | an empty desk answer falls through to the participant's own profile |
+| `cs_vouched_never_reroutes` | claude, claude | a content filter on a VOUCHED chat: the resolver is asked with the chat, collapses to `OFF`, and the desk is never called |
+| `cs_uncensored_content_filter_skips_second` | frank, claude, claude | attempt 3 does NOT ask the desk again after attempt 0 already did |
+
+**The `stream_calls` comparand** (new) is what makes the last two cases
+claims at all. Both sides' canned providers are a MAP keyed by
+`(provider, model, temperature, messages)`, so two calls resolving to the same
+key are indistinguishable downstream: a ladder that asks the desk one extra
+time ends in a byte-identical persisted state. The oracle's `recordings` array
+is one entry per CALL, in order; the harness now logs every stream call in
+order through a `StreamCallLog` wrapper below the sampling capture and diffs
+the `(provider, model)` sequence against it. Mutations 6 and 7 below redden
+`stream_calls` and NOTHING ELSE.
+
+**The api-key seam was the blocker nobody had hit.** The harness passed
+`NoApiKeys`, so `decrypt_profile_api_key` never resolved and EVERY Concierge
+reroute failed open to the original profile — no corpus case could have
+reached the uncensored desk whatever the fixture said. It now uses
+`ConnApiKeys::new(main_w.connection())`, which is v4's own oracle read
+(`repos.connections.findApiKeyByIdAndUserId` over the fixture's `api_keys`
+rows) and the shape production wires (`DbApiKeys`).
+
+**Fixture (widened again):** a third connection profile — "The frank desk",
+`OPENROUTER`/`frank-model`, with its own api key — plus a global
+`dangerousContentSettings` of `mode: AUTO_ROUTE` naming it as
+`uncensoredTextProfileId`. Its `parameters` bag carries ONLY
+`temperature: 0.42`, so every reroute call must arrive with 0.42 AND the
+character profile's `maxTokens: 321` / `topP: 0.87` — which is the first time
+`borrow_sampling`'s knob-by-knob rule (v4 `d89babc4`) has been pinned at the
+wire; its doc comment said "the capstone corpus has no dangerous-reroute case,
+so nothing else pins it", and that sentence is now retired.
+
+**Every pre-widening case was re-run and stayed byte-identical.** The global
+`AUTO_ROUTE` changes nothing for a Monitored chat whose greeting never hits a
+content filter, which is all 27 of them — proven by the red run below, where
+only the five new cases failed.
+
+### Red first, then three mutations
+
+The fixture, oracle case and harness comparands landed BEFORE the port: the
+regenerated oracle ran against the unit-1 tree and `cs_uncensored_attempt0`
+failed on `chat_messages` + `message_order` + `stream_calls` with every earlier
+case green. Port applied → 32/32.
+
+| mutation | reddened |
+|---|---|
+| `resolve_dangerous_content_settings(global_settings, None)` — ask the globe, the pre-`303288fb4` spelling | `cs_vouched_never_reroutes` → `stream_calls` ONLY (the extra desk call has no canned answer, so it errors and falls through to a byte-identical state — nothing but the ordered trace can see it) |
+| attempt 3 drops `&& !uncensored_desk_tried` | `cs_uncensored_content_filter_skips_second` → `stream_calls` ONLY (4 calls where v4 makes 3) |
+| attempt 0 runs but its greeting is dropped instead of returned | `cs_uncensored_attempt0` → `chat_messages` + `message_order` + `stream_calls` |
+
+Each verified APPLIED and reverted from a file backup; the restored file diffs
+clean.
+
+### Notes
+
+- **Log lines are outside the differential contract** (the P4.18 ruling), so
+  the five sentences are carried byte-for-byte by transcription, not pinned by
+  a comparand. They are: `Generating greeting on the Concierge uncensored
+  provider`, `Greeting generation succeeded via Concierge uncensored provider`,
+  `Uncensored desk unavailable or empty for greeting — using the participant’s
+  own profile`, `Concierge uncensored greeting attempt failed`, and `Content
+  filter detected on greeting — falling back to Concierge uncensored
+  provider` (the last with `characterId` ONLY — v4 moved its four profile
+  fields into the helper's own line).
+- **`initial_greeting_equivalence` and `first_message_context_equivalence`:**
+  regenerated at the pin and run by name; NO movement, as expected — v4
+  touched neither `initial-greeting.ts` nor `first-message-context.ts` in
+  `303288fb4`.
+- **`danger_resolver_equivalence`** (incl. the `QT_ORACLE_DANGER_MANUAL_FLIP`
+  arm over v4's REAL `applyConciergeFlip` + REAL announcement writer):
+  regenerated at the pin and run; unchanged — `manual-flip.ts` gained a caller,
+  not an edit.

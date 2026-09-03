@@ -4,6 +4,8 @@
   "cpNoKeyId": "b1000000-0000-4000-8000-000000000001",
   "cpWithKeyId": "b2000000-0000-4000-8000-000000000002",
   "apiKeyId": "d1000000-0000-4000-8000-000000000001",
+  "uncensoredProfileId": "b3000000-0000-4000-8000-000000000003",
+  "uncensoredApiKeyId": "d2000000-0000-4000-8000-000000000002",
   "ariaId": "a1000000-0000-4000-8000-0000000000a1",
   "cleoId": "a2000000-0000-4000-8000-0000000000a2",
   "bramId": "a3000000-0000-4000-8000-0000000000a3",
@@ -96,6 +98,17 @@
         "max_tokens": 321,
         "topP": 0.87
       }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000003",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "name": "The frank desk",
+      "provider": "OPENROUTER",
+      "apiKeyId": "d2000000-0000-4000-8000-000000000002",
+      "modelName": "frank-model",
+      "parameters": {
+        "temperature": 0.42
+      }
     }
   ],
   "apiKeys": [
@@ -105,6 +118,13 @@
       "label": "Anthropic",
       "provider": "ANTHROPIC",
       "key_value": "test-key-anthropic"
+    },
+    {
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+      "label": "The frank desk",
+      "provider": "OPENROUTER",
+      "key_value": "test-key-frank"
     }
   ],
   "characters": {
@@ -831,6 +851,164 @@
         ],
         "conciergeState": "flagged"
       }
+    },
+    {
+      "name": "cs_uncensored_attempt0",
+      "progressId": "e0000000-0000-4000-8000-0000000000f9",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingByModel": {
+        "frank-model": {
+          "content": "Well then. Shall we be frank about it?",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 9,
+            "totalTokens": 49
+          }
+        }
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f9",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "conciergeState": "uncensored"
+      }
+    },
+    {
+      "name": "cs_uncensored_desk_empty_falls_through",
+      "progressId": "e0000000-0000-4000-8000-0000000000fa",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingByModel": {
+        "frank-model": {
+          "content": ""
+        },
+        "claude-sonnet-4-5": {
+          "content": "Greetings from the deep wood. I am Bram.",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 9,
+            "totalTokens": 49
+          }
+        }
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000fa",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "conciergeState": "uncensored"
+      }
+    },
+    {
+      "name": "cs_flagged_greets_on_uncensored_desk",
+      "progressId": "e0000000-0000-4000-8000-0000000000fb",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingByModel": {
+        "frank-model": {
+          "content": "The wood is darker than it looks.",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 9,
+            "totalTokens": 49
+          }
+        }
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000fb",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "conciergeState": "flagged"
+      }
+    },
+    {
+      "name": "cs_vouched_never_reroutes",
+      "progressId": "e0000000-0000-4000-8000-0000000000fc",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingByModel": {
+        "claude-sonnet-4-5": {
+          "content": "",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 9,
+            "totalTokens": 49
+          }
+        }
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000fc",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "conciergeState": "vouched"
+      }
+    },
+    {
+      "name": "cs_uncensored_content_filter_skips_second",
+      "progressId": "e0000000-0000-4000-8000-0000000000fd",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingByModel": {
+        "frank-model": {
+          "content": ""
+        },
+        "claude-sonnet-4-5": {
+          "content": "",
+          "usage": {
+            "promptTokens": 40,
+            "completionTokens": 9,
+            "totalTokens": 49
+          }
+        }
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000fd",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ],
+        "conciergeState": "uncensored"
+      }
     }
-  ]
+  ],
+  "dangerousContentSettings": {
+    "mode": "AUTO_ROUTE",
+    "threshold": 0.7,
+    "scanTextChat": true,
+    "scanImagePrompts": true,
+    "scanImageGeneration": false,
+    "uncensoredTextProfileId": "b3000000-0000-4000-8000-000000000003",
+    "uncensoredImageProfileId": null,
+    "displayMode": "SHOW",
+    "showWarningBadges": true,
+    "customClassificationPrompt": null
+  }
 }
