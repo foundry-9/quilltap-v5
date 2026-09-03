@@ -23,67 +23,35 @@ probe verifies against._
   Concierge state view changes" (v4 main, 2026-09-02, v4 `4.9.0-dev.115`),
   adopted at the `6d2a50382` drift catch-up round unification (P4.D143 ∥
   P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147, 2026-09-02).
-- **Checked:** 2026-09-02 (late evening — a standalone `/driftcheck` run, the
-  first since the follow-ups round unified).
-- **v4 `main` HEAD at check:** `b448eddd7` — "docs(bugs): file bugs 116-118
-  from one mis-described image upload" (2026-09-02 16:59 -0500) — **FOUR
-  commits past the baseline** (`303288fb4`, `02d4efa1b`, `c9faa2c74`,
-  `b448eddd7`). `origin/main` is level with `main` (both `b448eddd7`).
+- **Checked:** 2026-09-02 (late evening, second run — v4 shipped a code fix
+  for bugs 116–118 roughly two hours after filing them).
+- **v4 `main` HEAD at check:** `0b0617fee` — "fix(images): verify a describer
+  saw the image; hash the bytes we store (bugs 116-118)" (2026-09-02
+  21:04 -0500, v4 `4.9.0-dev.120`) — **FIVE commits past the baseline**
+  (`303288fb4`, `02d4efa1b`, `c9faa2c74`, `b448eddd7`, `0b0617fee`).
+  `origin/main` is level with `main`.
 - **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4 fork
   marker; its `main..bugfix` content list is the squash-topology lie, §4
-  step 2 — re-measured by content this check, nothing genuinely unabsorbed).
+  step 2 — re-measured by content, nothing genuinely unabsorbed).
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
-- **Checkout at check:** branch `main`, **tree CLEAN.** The previous §1's
-  docs dirt is **DISCHARGED** — the human committed the three new bug
-  filings as `b448eddd7`, so `docs/CHANGELOG.md`, `docs/developer/bugs.md`
-  and `docs/developer/bugs/bug-11{6,7,8}-*.md` are now tracked and the tree
-  carries nothing uncommitted. Regens are still pinned anyway (HEAD is past
-  the baseline).
-- **Verdict: DRIFT PENDING — 4 commits past the baseline; §3 holds FOUR
-  UNPROCESSED rows** (one PORT-NEW, one PORT, one PORT log-only, one
-  NO-PORT?). **None is a convergence** — `b448eddd7` only FILES bugs 116–118
-  as open; v4's `bugs.md` status line still reads "Bugs **1–115** are
-  **fixed in v4**", and nothing this port filed came back fixed this check.
+- **Checkout at check:** branch `main`, **tree CLEAN.**
+- **Verdict: DRIFT PENDING — 5 commits past the baseline; §3 holds FIVE
+  UNPROCESSED rows** (one PORT-NEW, three PORT — one of them log-only, one
+  of them large — and one NO-PORT?). **None is a convergence**: bugs 115–118
+  are all v4's own filings, and v4's `bugs.md` records no fix for anything
+  this port filed first.
 - **Regen rule in force: PIN REQUIRED** at **`6d2a50382`** (§5.1 — a
   lane-unique detached worktree, the sweep driver's `--v4 "$PIN"`).
-  **Unchanged from the previous check** — HEAD has been past the baseline
-  throughout; the clean tree does not lift the pin.
-- **⚠ Three OPEN v4 bugs, filed 2026-09-02 and now COMMITTED at
-  `b448eddd7`** — all three from one uploaded warship screenshot that
-  Quilltap described as a tabby kitten in 3,175 characters. Every one is
-  marked **"Applies"** to v5 by its own `v5 status` row, so each is a future
-  §3 row the moment v4 fixes it, and each carries a **v5-side measurement
-  owed NOW** (a v5 measurement does not wait on v4's fix):
-  **bug 116** (High) the describer's answer is believed without checking the
-  image ever arrived — `describeImageWithProfile` holds two disproofs and
-  reads neither (`response.usage`, logged then dropped — the offending call
-  reported `promptTokens: 38` — and `LLMResponse.attachmentResults`, which
-  the plugin populates for exactly this); the only check greps the text for
-  refusal words, so it catches a model that admits it cannot see and never
-  one that answers confidently, and the result lands on `files.description`
-  where it short-circuits every later reader permanently. v4's own lesson:
-  **bug 91's gate asks whether we CAN send an image, never whether one
-  ARRIVED.** v5's twin is `services/file_fallback.rs` (the P4.D106/P4.D108
-  describe tier).
-  **bug 117** (Medium) a chat upload's `FileEntry.sha256` is the
-  PRE-transcode hash (`chat-files-v2.ts` hashes the input buffer; the
-  storage bridge then converts to WebP and returns the stored bytes' hash,
-  used for `mimeType`/`size` and discarded for `sha256`), so every
-  files ↔ document-store join fails for converted uploads — descriptions
-  never reach `extractedText`, chunks or embeddings, and
-  `describe_image`/`attach_image` cannot resolve a mount-link uuid;
-  `images-v2` orders the same two operations correctly. Live on Friday:
-  **118 of 239 uploads affected, 0 of 2,541 generated**; v4 says it needs a
-  backfill migration. Measure which bytes v5's chat-upload path hashes
-  (`api/chat_media.rs` / the upload bridge).
-  **bug 118** (Low) the NanoGPT `manifest.json` still declares
-  `attachmentSupport.supported: false` eleven versions after bug 91 —
-  no runtime effect (nothing reads the field) but it is the only one of
-  eleven bundled manifests that disagrees with its own code, and the only
-  declaration `image-transport.test.ts` does not gate. v5's generated
-  NanoGPT manifest is regenerated FROM that file, so it very likely carries
-  the same stale block (measure; the generator's augmentation table is the
-  fix site — memory note `manifest-generator-augmentation-rot`).
+  **Unchanged** — HEAD has been past the baseline since before the last
+  round unified.
+- **⚠ v4 bugs 116–118: FILED and FIXED the same day** (`b448eddd7` files
+  them, `0b0617fee` fixes them — the §3 rows carry the shipped shapes). The
+  §1 note that previously listed them as OPEN measurements owed is
+  superseded by those rows; the v5-side measurements were TAKEN during this
+  check and are recorded in the `0b0617fee` row: **v5 measurably HAS bug 116
+  and all three legs of bug 117, and measurably does NOT have bug 118**
+  (v5's generated NanoGPT manifest already carries the truthful block —
+  v4 converged onto bytes v5 has had since P4.D107).
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
   fork; v4 develops on `main` alone. Keep probing BOTH branches.
 - _The follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71) UNIFIED
@@ -91,8 +59,12 @@ probe verifies against._
   `6d2a50382`, no §3 row moved. Every lane and the unification regenerated
   from a pinned worktree (the lanes' own lane-unique pins, then
   `/tmp/qt-v4-pin-unify-6d2a50382` at the gate: 43 + 62 families zero SKIP).
-  **The four UNPROCESSED rows are the next `/setupphase`'s first lane** —
+  **The five UNPROCESSED rows are the next `/setupphase`'s first lane** —
   the drift catch-up is the recommended next move._
+- _Superseded (the 2026-09-02 late-evening verdict, first run): DRIFT
+  PENDING — 4 commits past `6d2a50382`, PIN REQUIRED, checkout clean, with
+  bugs 116–118 recorded as OPEN v4 filings and their v5 measurements owed.
+  v4 fixed all three about two hours later._
 - _Superseded (the 2026-09-02 night verdict): DRIFT PENDING — 3 commits
   past `6d2a50382`, PIN REQUIRED, checkout DIRTY (docs only — the bug
   116–118 filings, since committed as `b448eddd7`, which is what this
@@ -144,6 +116,7 @@ when absorbed/ratified.
 | `02d4efa1b` | 2026-09-02 | fix(memory): the turn-blocking distillation asks for the interactive budget (bug 115) | **PORT** | v4's own filing (bug 115 — fixed same day, `docs/developer/bugs/fixed/bug-115-interactive-distill-background-budget.md`; NOT a convergence). **Hunks:** `lib/memory/cheap-llm-tasks/memory-tasks.ts` — `extractMemorySearchKeywords` gains a trailing `latency: CheapLLMLatencyClass = 'background'` parameter threaded to `executeCheapLLMTask` as `{ latency }`; `lib/chat/context-manager.ts:1398` — the dynamic-head FALLBACK distill (the branch that runs when no proactive pre-compute pass has a query ready) passes `'interactive'` (45 s, no retry) with a nine-line why-comment; the proactive pass (`pre-compute.service.ts`) and the `recall-replay` diagnostic keep the default. Two new tests (`dynamic-head-distill-latency.test.ts` asserts the 8th argument is `'interactive'`; four `task-deadline.test.ts` cases pin the budget/retry arithmetic bug 107 shipped untested). "Completes bug 107" — the third inline cheap call 107's task-type histogram could not see. → v5: `services/memory_recap/distill.rs:340 distill_memory_search` (no latency parameter — the executor's `execute(…)` takes the budget seam P4.D136 added; today every distill caller passes the same default), its THREE call sites `services/build_context.rs:2339` (the fallback — must become interactive), `services/pre_compute.rs:288` + `services/recall_replay.rs:275` (stay background). The P4.D136 lane record threaded the latency class from 45 call sites and named the recap + compression legs; this is the one v4 itself missed, so v5 reproduces bug 115 today. Families: `build_context_tier3`, `precompute_equivalence`, `recall_replay_equivalence` — a deadline class is differential-INVISIBLE on a canned executor, so the pin is P4.D136's compile-pin/unit idiom (a mutation-proven per-site assertion that the fallback site's class is `Interactive`), not a corpus row. | UNPROCESSED |
 | `c9faa2c74` | 2026-09-02 | fix(context): restore the inter-character memory timing log | **PORT (log-only)** | ONE hunk in `lib/chat/context-manager.ts:1755`: the empty `if (isMultiCharacter) { }` block (emptied by the `96bf74b5b` debug-strip chore) regains `logger.debug('[ContextManager] Inter-character memory retrieval complete', {chatId, characterId, durationMs: Math.round(performance.now() - tInterStart), loadedCount: interCharacterLoadedCount, includedCount: interCharacterMemoriesIncluded})`. Rest is version bumps (`4.9.0-dev.117` → `.118`), README, CHANGELOG. → v5 `services/build_context.rs` has NO such line (grep `Inter-character memory retrieval complete` → nothing) — a log-only port with a thread-scoped capture pin (memory notes `differential-blind-to-a-log-only-fix`, `a-process-global-test-seam-must-be-thread-scoped`); the three fields need v5's inter-character load count + a duration stamp at the site. Joins the handler-logging sweep's row list; small enough to ride the bug-115 catch-up. | UNPROCESSED |
 | `b448eddd7` | 2026-09-02 | docs(bugs): file bugs 116-118 from one mis-described image upload | **NO-PORT?** | **Docs only — ZERO `lib/`, `app/`, `packages/`, `plugins/`.** Five files: `docs/CHANGELOG.md` (+30), `docs/developer/bugs.md` (the Status paragraph rewritten — "Bugs **1–115** are **fixed in v4**. **116–118** are **open**"), and the three NEW filings `docs/developer/bugs/bug-116-describer-answer-never-verified.md` (198), `bug-117-file-entry-sha-pre-transcode.md` (207), `bug-118-nanogpt-manifest-attachment-drift.md` (121). No code hunk to port, so this row ratifies as NO-PORT at the next baseline move — **but it is not inert**: all three bugs are marked **"Applies"** to v5 by their own `v5 status` rows, and the v5-side MEASUREMENTS are owed now (§1's ⚠ bullet carries the shapes and the v5 surfaces: `services/file_fallback.rs` for 116, `api/chat_media.rs` / the upload bridge for 117, the manifest generator's augmentation table for 118). This commit is also what DISCHARGES the previous §1's dirty-tree note — the same three files were the untracked dirt recorded there. **Not a convergence:** it files v4's own new bugs as OPEN; nothing this port filed came back fixed. | UNPROCESSED |
+| `0b0617fee` | 2026-09-02 | fix(images): verify a describer saw the image; hash the bytes we store (bugs 116-118) | **PORT** (three defects, one commit; 28 files, +1445/-65) | **NOT a convergence** — v4's own filings from one mis-described upload (a warship screenshot recorded as 3,175 characters about a tabby kitten), fixed ~2 h after `b448eddd7` filed them. **No `generateDDL`, no new column, no D23 re-dump** (`docs/developer/DDL.md` is prose only; `public/schemas/qtap-export.schema.json` gains a `description` on `files.sha256` and no constraint). **Bug 116 — `lib/chat/file-attachment-fallback.ts` (+124):** new exported `verifyImageReachedModel(response, attachmentId) -> {arrived:true} | {arrived:false, reason}` plus two consts — `MIN_CHARS_PER_TOKEN = 2.5` (deliberately pessimistic) and `INSTRUCTION_TOKEN_CEILING = Math.ceil(IMAGE_DESCRIPTION_INSTRUCTION.length / 2.5)` (= 66; the live bad call reported 38). Order inside the function: `attachmentResults.failed` first (pick the entry matching `attachmentId`, else `failed[0]`; reason = "the provider reported the attachment as not sent: <error|no reason given>"), then `usage.promptTokens` — **absent or `<= 0` is SILENCE, returns `arrived:true`** — then `billedInput = promptTokens + (cacheUsage.cacheReadInputTokens ?? 0) + (cacheUsage.cachedTokens ?? 0)` (cache reads added BACK because every plugin normalises them out; the 4.6.1 invariant), and `billedInput <= 66` refuses. Called in `describeImageWithProfile` **ahead of every content check** (before the empty/refusal detectors) — on refusal, a `logger.warn('[Image Fallback] Describer answered without the image; discarding its description', {provider, model, profileId, filename, reason, promptTokens, contentLength})` and a `type:'unsupported'` result carrying the long sentence "Image description profile (<provider> <model>) did not process the image — <reason>. Pick a describer on a model that genuinely reads images; a gateway may accept an image and route to a model that ignores it." plus the five `processingMetadata` keys. → **v5 MEASURABLY HAS bug 116**: `services/file_fallback.rs` `describe_image_with_profile` `:421` goes straight from the response to the empty check `:585` and the refusal-keyword check `:611` — it reads neither `attachment_results` nor `usage.prompt_tokens` (the usage struct is only projected into the llm-log at `:767`). Ported at P4.D106/P4.D108 (the `a14a1811` vision round — the describe tier + the bug-91 transport predicate). Families: `file_attachment_tier3_equivalence`, `fallback_engine_equivalence`, `attach_mount_file_equivalence`. Note the corpus shape: the refusal is driven by the canned response's `usage`/`attachmentResults`, so the tier-3 canned calls need a low-`promptTokens` arm AND a cache-read arm (the `??` chain is `or_else`, not a `>0` filter). **Bug 117 — the pre-transcode `sha256`, four legs.** (a) `lib/chat-files-v2.ts` (+69): `uploadChatFile` no longer hashes its input — it runs the bridge's own `transcodeToWebP(inputBuffer, inputMimeType)` FIRST (a no-op for non-images and existing WebP), and `buffer`/`mimeType`/`sha256` all come from the transcode result; `detectTextContent`/`getBestMimeType` still read the INPUT bytes. `uploadFileToProject` now also takes `storedSha256` from the bridge (`uploaded.sha256` / `written.sha256`), warns `'Stored-bytes hash differs from the pre-upload hash; recording the stored one'` when the two disagree, and writes `sha256: storedSha256`. (b) `lib/import/quilltap-import/import-files.ts` (+7): the row records `sha256: storedSha256` from the bridge, joining the existing post-bridge `mimeType`/`size` rule. (c) `lib/backup/restore/restore.ts` (+33): the replay branch takes `restoredSha256` from the bridge; the **carried-store-rows branch**, which skips the replay and has no bridge, builds `carriedBlobSha256ById` from `data.docMountBlobs` and resolves it via the NEW import `parseMountBlobStorageKey(carriedStorageKey)?.blobId`, spreading `...(carriedSha256 ? {sha256: carriedSha256} : {})`. (d) NEW `migrations/scripts/realign-file-entry-sha256.ts` (278) + its registration in `migrations/scripts/index.ts` (both the array and the re-export) + the `PRETTY_LABELS` line in `lib/startup/prettify.ts` ('Matching each picture to its fingerprint, so nothing goes missing on the shelves…'); it walks `files` rows whose `storageKey LIKE 'mount-blob:%'`, reads `doc_mount_blobs.sha256` by the encoded blob id, and UPDATEs `files.sha256` + `updatedAt` on disagreement (idempotent; a missing blob is logged and left alone). `migrations/scripts/repair-files-mime-and-size-from-mount-blob.ts` (+16) is doc-only — its `sha256` carve-out is rewritten to say the carve-out WAS bug 117. → **v5 MEASURABLY HAS all three code legs**: `services/chat_files.rs` `:674` hashes `data` (the input) via `sha256_of_buffer` and `:872` writes that value while `:834` already takes `stored_mime`/`stored_size` from the bridge (the exact pre-fix asymmetry v4 describes) — ported at P4.4/P4.9 (`upload_chat_file` + `upload_chat_file_conn` + `upload_file_to_project`); `services/quilltap_import/files.rs:345` takes `sha256` from the archive row beside post-bridge `mime_type`/`size` `:348`; `services/backup/restore/orchestrator.rs:1951` does the same, and its `carried_store_rows` `:1841` is the branch v4 just taught to read the archived blob's own hash — **note the RULED DIVERGENCE comment at `:994`, which must be re-read before touching that branch**. The migration has **no v5 counterpart and no migration runner**: it wants a boot heal in the established `db/*_repair.rs` / `*_heal.rs` idiom (`chat_activity_recompute_heal.rs` for bug 112, `connection_profiles_prefill_repair.rs` for P4.D97, `character_archive_repair.rs`), with the P4.D145 precedent for a heal that writes NO ledger row and the P4.D97 precedent for one that does — **decide which deliberately**; a cross-app hazard exists either way, since v4 running on the same instance will have run its own migration. **The dedup residual is v4's own, carried:** WebP encoding must be deterministic for `findBySha256` to keep matching re-uploads across a sharp version bump — v5's transcoder is a host seam, so the same bargain needs stating at the v5 site. Families: `files_tier2_equivalence`, `character_photo_upload_tier2_equivalence`, `qtap_import_equivalence`, `system_restore_state` / `system_restore_equivalence` / `restore_vintage_state`, `photo_tools_equivalence`, `attach_mount_file_equivalence`. **Bug 118 — `plugins/dist/qtap-plugin-nanogpt/manifest.json`:** `attachmentSupport` flips to `supported: true` with the four image MIME types and "Images (JPEG, PNG, GIF, WebP) — requires a vision-capable routed model" (plugin 1.2.1 → 1.2.2, built output unchanged); `image-transport.test.ts` now gates all three declarations. → **v5 does NOT have this bug — MEASURED this check.** `provider_manifest/manifests/nanogpt.json`'s `attachment` block already reads `supportsAttachments: true` with those exact four MIME types and that exact description string, because v5's generator regenerates from the plugin's built declaration (the truthful one) rather than from `manifest.json` — so **v4 converged onto bytes v5 has carried since P4.D107**. Nothing to port; the lane's obligation is a regen + byte-identity check, and a note that `model/request_builder/chat_completions.rs:48-52`'s "keep the two in step" comment now describes a v4 that agrees. **Help (→ the `p4.9i2` bank):** `help/file-uploads.md` (+10), `help/chat-settings.md` (+3). **NO-PORT:** four v4 test files (189+208+98+252), `README.md`, `.claude/commands/update-documentation.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` + the three bug docs (status → fixed), version bumps. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

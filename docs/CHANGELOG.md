@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(drift): record v4's bugs 116-118 fix as the fifth drift row
+
+_Docs-only change._
+
+Second `/driftcheck` of the evening. v4 shipped `0b0617fee` about two hours
+after filing bugs 116-118, so main is now FIVE commits past the `6d2a50382`
+baseline. The new row is a substantial PORT — three defects in one commit,
+28 files — and it is not a convergence: these are v4's own filings, and v5
+shares two of the three.
+
+Measured during the check rather than assumed. v5 measurably HAS bug 116:
+`services/file_fallback.rs` goes from the response straight to the empty and
+refusal-keyword checks and reads neither `attachment_results` nor
+`usage.prompt_tokens`, so a gateway that accepts an image and discards it
+still yields confident invented prose. v5 measurably HAS all three code legs
+of bug 117: the chat upload hashes its input buffer while taking mimeType and
+size from the bridge, and both the importer and restore take `sha256` from the
+archive row. v5 measurably does NOT have bug 118 — the generated NanoGPT
+manifest already carries `supportsAttachments: true` with the four image MIME
+types and v4's new description string, because v5's generator reads the
+plugin's built declaration rather than the stale `manifest.json`; v4 converged
+onto bytes v5 has carried since P4.D107.
+
+Two things for whoever orders this. v4's new `realign-file-entry-sha256-v1`
+has no v5 counterpart and no migration runner to host it, so it wants a boot
+heal in the existing `db/*_repair.rs` idiom, with a deliberate choice between
+the P4.D145 shape (no ledger row) and the P4.D97 shape (one row) — v4 running
+on the same instance will have run its own migration either way. And bug 117's
+restore leg lands on the carried-store-rows branch, which carries a ruled
+divergence comment that has to be re-read before it is touched.
+
+No `generateDDL` change, so no D23 re-dump. Verdict: DRIFT PENDING, 5 commits,
+5 UNPROCESSED rows; regen rule unchanged (PIN REQUIRED at `6d2a50382`).
+
 #### 2026-09-02 — docs(drift): record the fourth drift row — v4's bugs 116-118 filing
 
 _Docs-only change._
