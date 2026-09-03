@@ -1431,10 +1431,6 @@ fn compare_warnings(name: &str, got: &Value, want: &Value, failures: &mut Vec<St
     }
 }
 
-/// [`V5_STATS_GAP`], asserted in BOTH directions: on the named mount-point row
-/// v4's `refreshStats` must have produced a non-zero `fileCount` and v5's
-/// unported one must still read zero. **Close the deferral and this fails**, at
-/// which point the mask below comes out and the columns go back under diff.
 /// ## [P4.D152] bug 117 — `files.sha256` must name the bytes actually stored
 ///
 /// **The normalized table diff is BLIND to this column.** A `files` row whose
@@ -1510,6 +1506,10 @@ fn assert_bug117_stored_sha(
     }
 }
 
+/// [`V5_STATS_GAP`], asserted in BOTH directions: on the named mount-point row
+/// v4's `refreshStats` must have produced a non-zero `fileCount` and v5's
+/// unported one must still read zero. **Close the deferral and this fails**, at
+/// which point the mask below comes out and the columns go back under diff.
 fn assert_stats_gap(
     name: &str,
     got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,

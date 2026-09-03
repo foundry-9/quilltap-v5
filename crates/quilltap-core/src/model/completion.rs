@@ -154,10 +154,11 @@ pub struct CompletionResponse {
     /// recorded by `logLLMCall`. `None` for callers that don't populate it.
     pub finish_reason: Option<String>,
     /// v4 `response.attachmentResults` (P4.21) — the builder's format-time
-    /// sent/failed report, carried for parity. `Some` from the real
-    /// `execute_completion` composition; `None` from the canned tier-3
-    /// provider (the v4 oracle's mock returns none either — no differential
-    /// diffs it on this path, and no v4 caller consumes it here).
+    /// sent/failed report. `Some` from the real `execute_completion`
+    /// composition; read by `verify_image_reached_model` (P4.D151, bug 116 —
+    /// the plugin ledger is the verdict's FIRST proof), and driven on the canned
+    /// tier-3 path by the `fb_verdict_failed_*` rows of
+    /// `file_attachment_tier3_equivalence`.
     pub attachment_results: Option<crate::model::stream::StreamAttachmentResults>,
     /// v4 `response.cacheUsage` (P4.D151, v4 `0b0617fee` bug 116) — the
     /// normalised cache report the parser already produces. Read by

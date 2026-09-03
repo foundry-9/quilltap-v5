@@ -772,7 +772,7 @@ where
         write_system_prompt_message(main, &chat_context, &chat_id)?;
         // Before the backfill: the Concierge's note must precede the replayed
         // tail, so the history reads "state set, then the previous chapter".
-        apply_requested_concierge_state(db, &chat, requested_concierge_state, emitter)
+        apply_requested_concierge_state(db, &chat_id, &chat, requested_concierge_state, emitter)
             .await
             .map_err(HandleCreateError::Db)?;
         let _ = apply_chat_continuation(db, &chat_id, source_id).await;
@@ -792,7 +792,7 @@ where
         .await;
     } else if is_autonomous {
         write_system_prompt_message(main, &chat_context, &chat_id)?;
-        apply_requested_concierge_state(db, &chat, requested_concierge_state, emitter)
+        apply_requested_concierge_state(db, &chat_id, &chat, requested_concierge_state, emitter)
             .await
             .map_err(HandleCreateError::Db)?;
         create_initial_messages_scenario_and_staff(
@@ -815,7 +815,7 @@ where
         // the greeting, which is then generated under the chosen state.
         emitter.status("Setting the opening scene\u{2026}");
         write_system_prompt_message(main, &chat_context, &chat_id)?;
-        apply_requested_concierge_state(db, &chat, requested_concierge_state, emitter)
+        apply_requested_concierge_state(db, &chat_id, &chat, requested_concierge_state, emitter)
             .await
             .map_err(HandleCreateError::Db)?;
         create_initial_messages_scenario_and_staff(
@@ -1073,12 +1073,15 @@ fn write_system_prompt_message(
 /// immediately — every later reader (the greeting's own `find_by_id`, the
 /// scheduled danger scan, memory extraction, story backgrounds) sees the pair.
 ///
-/// `chat` is the created row the caller already holds (v4's `ChatMetadata` from
+/// `chat_id` is the caller's own id (v4 reads `chat.id` unconditionally — there
+/// is no "row without an id" arm, so none is invented here); `chat` is the
+/// created row the caller already holds (v4's `ChatMetadata` from
 /// `chats.create`; here the step-8 re-read). A fresh chat's
 /// `conciergeOverride`/`isDangerousChat` are null, so `get_concierge_state`
 /// reads Monitored and any non-Monitored request always CHANGES.
 async fn apply_requested_concierge_state(
     db: &Db,
+    chat_id: &str,
     chat: &Value,
     requested: Option<ConciergeState>,
     emitter: &CreationProgressEmitter,
@@ -1089,9 +1092,6 @@ async fn apply_requested_concierge_state(
     if requested == ConciergeState::Monitored {
         return Ok(());
     }
-    let Some(chat_id) = chat.get("id").and_then(Value::as_str) else {
-        return Ok(());
-    };
     emitter.status("Briefing the Concierge\u{2026}");
     let result =
         apply_concierge_flip(db, &RealConciergeAnnouncer { db }, chat_id, requested, chat).await?;
@@ -1821,11 +1821,10 @@ where
         )
         .await
         {
-            Ok(Some(greeting)) => {
-                if !greeting.content.is_empty() {
-                    return greeting;
-                }
-            }
+            // `Ok(Some)` is never empty — the desk answers `Ok(None)` on an empty
+            // greeting (v4's `if (!result.content) return null` inside the
+            // closure), so the call site is v4's bare `if (rerouted) return`.
+            Ok(Some(greeting)) => return greeting,
             Ok(None) => {}
             Err(error) => tracing::warn!(
                 character_id = %character_id,
@@ -1886,7 +1885,11 @@ fn borrow_sampling(
 /// ⚠ v4's closure THROWS out of `generateGreetingMessage`, caught by each of
 /// the two call sites; v5's `generate_greeting_message` returns `Err`, so the
 /// error is propagated here and each call site carries v4's own catch. Do not
-/// swallow it — the two catches log different sentences.
+/// swallow it — the two catches log different sentences. (The parity is for the
+/// GREETING call only: v4's `try` also catches throws from `chatSettings.
+/// findByUserId` / the resolver / `resolveProviderForDangerousContent`, which
+/// this helper `.ok()`-folds into `Ok(None)` — the warn sentence therefore
+/// fires on strictly fewer inputs than v4's. Log-only, pre-existing.)
 #[allow(clippy::too_many_arguments)]
 async fn generate_via_uncensored_desk<EMB, CMP, STR>(
     main: &Connection,

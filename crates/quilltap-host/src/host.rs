@@ -1188,9 +1188,15 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
                 // DATA-only like the P4.D97/P4.D140 passes, so its once-only guard
                 // is v4's own migrations_state ledger in the P4.D140 shape: an
                 // existing row (from either app) is honoured, and a pass that
-                // realigns NOTHING writes no row — exactly as v4's own runner
-                // behaves, where `shouldRun()` gates on mount-blob rows existing
-                // and `run()` returns `itemsAffected: 0` without recording.
+                // realigns NOTHING writes no row. ⚠ That second half DIVERGES
+                // from v4 on an instance whose mount-blob rows exist and all
+                // AGREE: v4's `shouldRun()` for THIS migration tests presence,
+                // not drift, so its runner stamps a zero-`itemsAffected` row
+                // there. Deliberate, pinned both directions by the heal's own
+                // family — see the module header for why (a stamp on a pass
+                // that changed nothing tells a later v4 boot to skip a
+                // migration that never ran). A clean pass is also SILENT here
+                // (no `Ran`, no line); the module header says so.
                 if let quilltap_core::db::files_sha256_realign_heal::RealignOutcome::Ran {
                     scanned,
                     realigned,

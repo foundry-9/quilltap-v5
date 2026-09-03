@@ -77,7 +77,9 @@
 //! 'files')` throttle and the `PRETTY_LABELS` loading-screen sentence
 //! `'Matching each picture to its fingerprint, so nothing goes missing on the
 //! shelves…'` are carried here for the day a loading screen exists. The v5 boot
-//! log line carries the four counts instead.
+//! log line carries the four counts instead — and ONLY on a pass that realigned
+//! something: a scanned-but-clean boot (`NoDrift`) is silent by design, the
+//! P4.D140/P4.D145 boot idiom, where v4 always logs its `Scanned …` summary.
 //!
 //! v4's `dependsOn` (`relink-files-to-mount-blobs-v1`,
 //! `repair-mount-blob-sha256-from-bytes-v1`) is runner ordering with no v5
@@ -243,13 +245,20 @@ pub fn realign_file_entry_sha256(
                 );
                 continue;
             };
-            let blob_sha: Option<String> = mount
-                .query_row(
-                    "SELECT sha256 FROM \"doc_mount_blobs\" WHERE id = ?1",
-                    rusqlite::params![blob_id],
-                    |r| r.get::<_, String>(0),
-                )
-                .ok();
+            // v4's `findBlob.get(blobId)` returning `undefined` is the orphan; a
+            // driver THROW escapes `run()` to its catch (`success: false`, the
+            // runner stops). So only "no such row" is an orphan here — any other
+            // error (a busy mount partition on a contended boot, say) propagates
+            // rather than under-healing behind a warn that says the blob is gone.
+            let blob_sha: Option<String> = match mount.query_row(
+                "SELECT sha256 FROM \"doc_mount_blobs\" WHERE id = ?1",
+                rusqlite::params![blob_id],
+                |r| r.get::<_, String>(0),
+            ) {
+                Ok(sha) => Some(sha),
+                Err(rusqlite::Error::QueryReturnedNoRows) => None,
+                Err(e) => return Err(e.into()),
+            };
             let Some(blob_sha) = blob_sha else {
                 orphaned += 1;
                 tracing::warn!(
