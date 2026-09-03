@@ -3,8 +3,9 @@ import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
+import { CONCIERGE_STATE_PRESENTATION } from '../../chat/concierge-state-presentation';
 import { CoreClient } from '../../core/core-client';
-import type { CharacterListItem } from '../../core/core-contract';
+import type { CharacterListItem, ConciergeState } from '../../core/core-contract';
 import { RichEditor } from '../../editor/rich-editor';
 import { NewChatForm } from './new-chat-form';
 import { NewChatState } from './new-chat.state';
@@ -245,6 +246,105 @@ describe('NewChatForm roleplay template picker', () => {
 
     expect(state.form().roleplayTemplateId).toBeNull();
     expect(state.form().roleplayTemplateTouched).toBe(true);
+  });
+});
+
+
+// --- The Concierge picker (v4 `303288fb4` NewChatForm.test.tsx) ---------------
+
+/**
+ * v4's `NewChatForm.test.tsx` hunk, transcribed 1:1 — the four `it(` names are
+ * v4's own so the mapping is greppable.
+ *
+ * v4's suite reaches the control with
+ * `screen.getByRole('combobox', { name: /The Concierge/i })`; v5 reaches it by
+ * its id, which is the idiom every other select in this spec already uses (Play
+ * As, the roleplay template and the scenario select are all `#`-addressed here,
+ * so v4's own +52 hunk — swapping its bare `getByRole('combobox')` for
+ * `getElementById('new-chat-scenario-select')` now that the form has two
+ * selects — has no v5 counterpart to fix; the scenario specs were never
+ * ambiguous). The final spec below adds what the id-based reach cannot: that a
+ * PROGRAMMATIC state change re-renders the selected option (the finding-#108
+ * controlled-select class).
+ */
+function conciergeSelect(fixture: ComponentFixture<NewChatForm>): HTMLSelectElement {
+  return (fixture.nativeElement as HTMLElement).querySelector(
+    '#new-chat-concierge',
+  ) as HTMLSelectElement;
+}
+
+describe('NewChatForm Concierge picker', () => {
+  it('offers the four states in the sidebar\u2019s two optgroups', () => {
+    const fixture = render(makeState());
+    const select = conciergeSelect(fixture);
+
+    const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.label);
+    expect(groups).toEqual(['The Concierge decides', 'You decide']);
+
+    const options = Array.from(select.querySelectorAll('option')).map((o) => o.value);
+    expect(options).toEqual(['monitored', 'flagged', 'vouched', 'uncensored']);
+  });
+
+  it('starts on Monitored and marks it the default', async () => {
+    const fixture = render(makeState());
+    await settle(fixture);
+    expect(conciergeSelect(fixture).value).toBe('monitored');
+
+    const labels = Array.from(conciergeSelect(fixture).querySelectorAll('option')).map((o) =>
+      o.textContent!.trim(),
+    );
+    expect(labels[0]).toBe('Monitored (default)');
+    // Only Monitored carries the suffix.
+    expect(labels).toEqual(['Monitored (default)', 'Flagged', 'Vouched Safe', 'Uncensored']);
+  });
+
+  it.each(['monitored', 'flagged', 'vouched', 'uncensored'] as const)(
+    'shows the shared presentation helper sentence for %s',
+    (state) => {
+      const s = makeState();
+      s.patchForm({ conciergeState: state });
+      const fixture = render(s);
+      const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+      expect(text).toContain(CONCIERGE_STATE_PRESENTATION[state].detail);
+      // The `hint` is deliberately NOT shown here — the reader is looking at
+      // the control that sets it (v4's own comment).
+      expect(text).not.toContain(CONCIERGE_STATE_PRESENTATION[state].hint);
+    },
+  );
+
+  it('records the chosen state on the form state', async () => {
+    const state = makeState();
+    const fixture = render(state);
+    await settle(fixture);
+
+    const select = conciergeSelect(fixture);
+    select.value = 'uncensored';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+
+    expect(state.form().conciergeState).toBe('uncensored');
+  });
+
+  /**
+   * Not in v4 (React re-applies a controlled `value` on every render for free).
+   * v5 binds `[ngModel]`, so this pins that a state change made anywhere but
+   * the control itself still reaches the DOM — the finding-#108 class, which
+   * this very file has already had to fix three times for other selects.
+   */
+  it('re-renders the selected option after a programmatic state change', async () => {
+    const state = makeState();
+    const fixture = render(state);
+    await settle(fixture);
+    expect(conciergeSelect(fixture).value).toBe('monitored');
+
+    for (const next of ['flagged', 'vouched', 'uncensored'] as ConciergeState[]) {
+      state.patchForm({ conciergeState: next });
+      await settle(fixture);
+      expect(conciergeSelect(fixture).value).toBe(next);
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+        CONCIERGE_STATE_PRESENTATION[next].detail,
+      );
+    }
   });
 });
 

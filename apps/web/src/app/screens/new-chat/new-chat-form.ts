@@ -12,9 +12,14 @@ import { MarkdownField } from '../../editor/markdown-field';
 import type {
   ChatCreateOutfitSelectionInput,
   ChatSettingsDto,
+  ConciergeState,
   TimestampConfig,
 } from '../../core/core-contract';
-import { Icon } from '../../ui/icon';
+import {
+  CONCIERGE_STATE_PRESENTATION,
+  conciergeToneTextClass,
+} from '../../chat/concierge-state-presentation';
+import { Icon, type IconName } from '../../ui/icon';
 import { ImageProfilePicker } from '../../images/image-profile-picker';
 import { ScenarioSelect, hasAnyScenarioOptions } from '../../scenario/scenario-select';
 import type { ScenarioSelection } from '../../scenario/scenario.types';
@@ -173,6 +178,49 @@ interface PlayAsOption {
             [disabled]="creating()"
             (changed)="onImageProfile($event)"
           />
+        </div>
+
+        <!--
+          The Concierge (v4 303288fb4) — settle the chat's state before the
+          first word is spoken, so the opening greeting is generated under it.
+          The same four options in the same two optgroups as the Salon
+          sidebar's control, off the same presentation table, EXCEPT that the
+          first option here says "Monitored (default)" where the sidebar says
+          plain "Monitored" — v4's form deliberately differs, because this is
+          the control that establishes the default rather than reporting it.
+
+          The presentation table's hint ("Change it from the Salon sidebar's
+          Chat section.") is deliberately NOT shown: the reader is looking at
+          the control that sets it. (No backticks in this comment — one would
+          terminate the enclosing template literal.)
+        -->
+        <div>
+          <label for="new-chat-concierge" class="mb-2 block text-sm qt-text-primary">
+            <span class="flex items-center gap-1.5">
+              The Concierge
+              <qt-icon
+                [name]="conciergeIcon().name"
+                [class]="'w-3.5 h-3.5 ' + conciergeIcon().className"
+              />
+            </span>
+          </label>
+          <select
+            id="new-chat-concierge"
+            [ngModel]="form().conciergeState"
+            (ngModelChange)="onConciergeState($event)"
+            [disabled]="creating()"
+            class="qt-select"
+          >
+            <optgroup label="The Concierge decides">
+              <option value="monitored">Monitored (default)</option>
+              <option value="flagged">Flagged</option>
+            </optgroup>
+            <optgroup label="You decide">
+              <option value="vouched">Vouched Safe</option>
+              <option value="uncensored">Uncensored</option>
+            </optgroup>
+          </select>
+          <p class="qt-text-xs qt-text-muted mt-1">{{ conciergeDetail() }}</p>
         </div>
 
         <div>
@@ -364,6 +412,26 @@ export class NewChatForm {
       .selectedCharacters()
       .find((sc) => sc.controlledBy === 'user'),
   );
+
+  // --- The Concierge (v4 `303288fb4`) -----------------------------------------
+
+  /**
+   * Label, icon, tone and helper sentence all come from the shared
+   * presentation table — the same one the Salon sidebar's control reads — so a
+   * copy edit lands on both (v4's own comment).
+   */
+  private readonly conciergePresentation = computed(
+    () => CONCIERGE_STATE_PRESENTATION[this.form().conciergeState],
+  );
+
+  /** The third, colorblind-safe channel; the sidebar's `conciergeStateIcon` shape. */
+  protected readonly conciergeIcon = computed<{ name: IconName; className: string }>(() => {
+    const presentation = this.conciergePresentation();
+    return { name: presentation.icon, className: conciergeToneTextClass(presentation.tone) };
+  });
+
+  /** The helper sentence beneath the control — the table's `detail`, never its `hint`. */
+  protected readonly conciergeDetail = computed(() => this.conciergePresentation().detail);
 
   // --- Autonomous room --------------------------------------------------------
 
@@ -594,6 +662,17 @@ export class NewChatForm {
 
   protected onImageProfile(id: string | null): void {
     this.core().patchForm({ imageProfileId: id || '' });
+  }
+
+  /**
+   * v4 `handleConciergeStateChange` (`NewChatForm.tsx` at `303288fb4`) — a
+   * plain `setState(prev => ({...prev, conciergeState: next}))`. v5's
+   * {@link NewChatState.patchForm} IS that reducer, and is how every one of
+   * this form's twelve fields is written, so the handler goes through it
+   * rather than through a bespoke setter of its own.
+   */
+  protected onConciergeState(next: string): void {
+    this.core().patchForm({ conciergeState: next as ConciergeState });
   }
 
   /**

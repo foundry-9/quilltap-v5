@@ -102362,3 +102362,92 @@ v4, pins the §A never-`null` consequence across all four states.
 reddens exactly `omits conciergeState entirely when Monitored`, 1 failed / 5
 passed. Reverted from a file backup (the memory note's rule — never
 `git checkout` a file mid-unit).
+
+### Unit 2 — the control on the form, and v4's form oracle
+
+The block lands in v4's own slot: after the Image Generation Profile picker,
+directly above "Starting Scenario (Optional)" (v4 `NewChatForm.tsx:571-599`
+at the pin — the order's "between the Roleplay Template block and the
+Starting Scenario block" is right about the *neighbourhood*; the image-profile
+block sits between them in BOTH apps, and v4 puts the Concierge after it).
+
+Shape, against v4 hunk-for-hunk: a `<label for="new-chat-concierge">` whose
+`<span class="flex items-center gap-1.5">` carries the text then the state's
+icon at `w-3.5 h-3.5` in `conciergeToneTextClass(tone)`; a
+`<select id="new-chat-concierge" class="qt-select" [disabled]="creating()">`
+with the two optgroups; a `<p class="qt-text-xs qt-text-muted mt-1">` holding
+the table's `detail`. Two computed signals mirror the sidebar's
+(`conciergeIcon` = v4's `conciergeStateIcon`, `conciergeDetail`), both off one
+private `conciergePresentation` reading the SHARED table — v5 adds no string
+of its own here.
+
+**Recorded deviation from the order's survey (mechanical, behaviour-neutral).**
+The order names a new `setConciergeState(next)` reducer on `NewChatState`. v5
+has no per-field setters: all twelve form fields are written through the
+generic `patchForm(patch)`, which IS the direct counterpart of v4's
+`setState(prev => ({...prev, …}))` — v4's `handleConciergeStateChange` is
+exactly that call. A bespoke setter would be the only one of its kind in the
+file, so the handler (`onConciergeState`) goes through `patchForm`, matching
+the eleven handlers beside it. Same reducer, same write, no new surface.
+
+**The `check-qt-classes` guard.** `qt-select`, `qt-text-primary`,
+`qt-text-xs`, `qt-text-muted` and all four `conciergeToneTextClass` outputs
+(`qt-text-danger`/`-muted`/`-info`/`-success`) were verified defined before
+the block was written, not assumed; `npm run lint` is green at 948 defined
+classes with every guarded reference resolving.
+
+**The trap this unit walked into and out of.** The first build failed with
+`TS1135: Argument expression expected` pointing at a line of prose: the new
+HTML comment contained backticks (`` `303288fb4` ``, `` `hint` ``), each of
+which terminates the enclosing inline-template literal. The known
+`backtick-in-an-angular-inline-template-comment` memory note, hit live. The
+comment now says so in-line so the next editor does not re-add them.
+
+**The differential.** v4's `NewChatForm.test.tsx` Concierge hunk transcribed
+1:1 into `new-chat-form.spec.ts`, its four `it(` names kept verbatim:
+`offers the four states in the sidebar’s two optgroups`, `starts on Monitored
+and marks it the default`, the `it.each` `shows the shared presentation helper
+sentence for %s`, and `records the chosen state on the form state`. Two
+recorded reach differences: v4 uses
+`getByRole('combobox', { name: /The Concierge/i })` where v5 addresses the
+select by id (the idiom every other select in this spec already uses), and
+v4's helper spec asserts `getByText(detail)` where v5 asserts the rendered
+text CONTAINS `detail` and does NOT contain `hint` — the extra negative pins
+v4's deliberate omission, which v4's own suite never checks.
+
+**v4's `+52` hunk also swapped its scenario spec's bare
+`screen.getByRole('combobox')` for `getElementById('new-chat-scenario-select')`,
+now that the form has two selects. That fix has NO v5 counterpart to make:**
+`new-chat-form.spec.ts` already reaches Play As, the roleplay template and the
+scenario select by id at every one of its call sites, and a tree-wide grep for
+`querySelector('select')` / `By.css('select')` / `combobox` across both
+new-chat specs returns nothing. The scenario specs were never ambiguous, so
+adding the Concierge select could not silently re-bind them — verified by
+measurement, not assumed.
+
+**A fifth spec, not in v4:** `re-renders the selected option after a
+programmatic state change`. React re-applies a controlled `value` on every
+render for free; Angular's `[ngModel]` does not, and this exact file has had
+the finding-#108 controlled-select class fixed three times already for other
+selects. The spec walks all three non-default states and checks both the
+select's value and the helper sentence.
+
+**Byte-diff against the pin (the order's requirement), via
+`/tmp/p4d149-strdiff.mjs`:**
+
+```
+optgroup labels  : IDENTICAL ["The Concierge decides","You decide"]
+options          : IDENTICAL [["monitored","Monitored (default)"],["flagged","Flagged"],
+                              ["vouched","Vouched Safe"],["uncensored","Uncensored"]]
+detail sentences : IDENTICAL
+detail byte lengths: {"monitored":93,"flagged":94,"vouched":119,"uncensored":136}
+```
+
+**Mutation proofs (three, each reverted from a file backup):** swapping the
+two optgroups → 2 failed (the option-order spec and the default-label spec);
+appending the table's `hint` to the helper line → 4 failed (every arm of the
+helper `it.each`); freezing the binding to the literal `'monitored'` → 1
+failed (the re-render spec alone).
+
+Gate after unit 2: `npm run lint` green, `npm test` 376 files / 5,925 tests /
+0 failed, `npm run build` clean.

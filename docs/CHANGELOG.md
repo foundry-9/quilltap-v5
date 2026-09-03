@@ -339,6 +339,31 @@ persisted-state diff on the reject arms, which previously proved only the
 status and the sentence. The fixture now bakes a source chat for the
 continuation case; `chats` and `chat_messages` rows are ordered by `createdAt`
 rather than by id, since a minted id sorts differently on each side.
+#### 2026-09-03 — feat(new-chat): the Concierge picker on the New Chat form
+
+_Versions: SPA 0.5.630._
+
+P4.D149 unit 2 (v4 `303288fb4`). The New Chat form gains a "The Concierge"
+dropdown directly above "Starting Scenario (Optional)", in v4's own slot —
+the same four states in the same two optgroups as the Salon sidebar's
+control, read off the same `CONCIERGE_STATE_PRESENTATION` table, with the
+label carrying the state's icon in its tone colour and the helper sentence
+beneath reading the table's `detail`. The first option says "Monitored
+(default)" where the sidebar says plain "Monitored" (v4's form deliberately
+differs), and the table's `hint` is deliberately not shown, since the reader
+is looking at the control that sets it.
+
+v4's `NewChatForm.test.tsx` Concierge hunk is transcribed 1:1 into
+`new-chat-form.spec.ts` with its four `it(` names verbatim, plus a fifth spec
+v4 has no need of: that a programmatic state change re-renders the selected
+option (React re-applies a controlled `value` for free; Angular's `[ngModel]`
+does not). The option labels, optgroup labels and four `detail` sentences
+were byte-diffed against the pinned v4 tree and are identical.
+
+Mutation-proven three ways: swapping the optgroups reddens the option-order
+and default-label specs, appending the `hint` to the helper line reddens all
+four helper specs, and freezing the bound value reddens the re-render spec.
+
 #### 2026-09-03 — feat(new-chat): carry the chosen Concierge state on the create request
 
 _Versions: SPA 0.5.629._
