@@ -101404,3 +101404,57 @@ discriminate at all.
    guard's closing brace, i.e. back where the line already was, and all three
    arms stayed green. Caught by the standing "verify it APPLIED" rule; the real
    mutation then reddened arm 3 alone.
+
+### Gate (P4.D150)
+
+Run twice — once per commit, per `.claude/commands/commit.md`. The numbers below
+are the second (final) run, over the whole lane.
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH feature
+  sets (plain, and `--features quilltap-core/native-transport`). ⚠ The first
+  clippy of the lane FAILED (`manual_async_fn` on the pin's stub
+  `EmbeddingProvider`) — worth naming because the background task's completion
+  notification reported "exit code 0", which was the wrapping subshell's status,
+  not clippy's; the per-step sentinel is what carried the real `101`.
+- `cargo test --workspace` with the lane's env block
+  (`QT_ORACLE_BUILD_CONTEXT`, `QT_FIXTURE_BC_MAIN` / `_MOUNT`,
+  `QT_ORACLE_PRECOMPUTE`, `QT_ORACLE_RECALL_REPLAY`, `QT_FIXTURE_ER_MAIN` /
+  `_MOUNT`): **488 test binaries / 2,750 passed / 0 failed / 1 ignored — exit 0,
+  ZERO `SKIP:` lines.** (Commit 1's run: 488 / 2,747 / 0 / 1. The +3 is exactly
+  unit 2's three capture arms.) All three families confirmed RUN by name in the
+  log, not merely un-failed.
+- **The three families by name through the sweep driver, from the
+  `c9faa2c74` pin, after the final commit:** all three `OK: … recipe ran
+  end-to-end`, zero SKIP — `build_context_tier3_equivalence`,
+  `precompute_equivalence` (12 cases green), `recall_replay_equivalence`
+  (15 cases green).
+- **The ordered pin-vs-baseline measurement: EMPTY DIFF.** The build-context
+  oracle regenerated from the `c9faa2c74` pin and from a second worktree pinned
+  at the `6d2a50382` baseline, over the SAME fixture pair (so v4's lib code is
+  the only variable), are byte-identical: 61 lines / 417,007 bytes,
+  md5 `f240bef4853b2f165b09ca32caabed5f` both sides. That is the proof the
+  corpus cannot see either of this lane's changes and the unit pins are the
+  coverage. Both pins were verified distinct first (§5.1's marker check): the
+  target tree carries `Inter-character memory retrieval complete` and the
+  `'interactive'` literal, the baseline tree carries neither.
+- **No SPA gate: no `apps/web` file was touched.** No Playwright (§F).
+- **No harness file was edited** (§B) — the pins are core unit tests. The lane
+  also adds **no new `CompletionResponse` construction site** (both stub
+  providers return `Err` / `pending()`), deliberately, so P4.D151's §B widening
+  has nothing to reach into this file for.
+
+### Ownership + deferrals
+
+Files touched: `services/memory_recap/distill.rs`, `services/build_context.rs`,
+`services/pre_compute.rs`, `services/recall_replay.rs`,
+`crates/quilltap-core/Cargo.toml`, `Cargo.lock`, and the two append-only docs.
+Nothing outside the order's P4.D150 row.
+
+**Deferrals: NONE.** Tier 1 landed whole; Tier 2 is not-applicable by
+measurement (recorded above, in the module doc, and in the changelog); Tier 3
+was "none expected" and none arose. v4's two new test files are NO-PORT as
+files, as ordered — their behaviour is the unit pins.
+
+Versions: core 0.0.759 (unit 1) → 0.0.760 (unit 2). Harness unchanged, as §B
+requires.
