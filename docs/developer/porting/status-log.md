@@ -101257,3 +101257,94 @@ removed, the pinned v4 worktree removed, the `/tmp` oracle NDJSONs / fixture
 mirrors / sweep and gate logs / the Playwright logs and `test-results/`
 removed, no debug servers left running.
 
+
+---
+
+## P4.D150 — the interactive distill budget (bug 115) + the inter-character timing log
+
+**Lane:** `claude/p4-d150-interactive-distill-timing-31bfb4`. Order:
+`work-orders/p4.d150-interactive-distill-and-timing-log.md`. Oracle baseline
+`6d2a50382`; every regen from the lane-unique pin
+`/tmp/qt-v4-pin-p4d150-c9faa2c74` (regen rule PIN REQUIRED, ledger §1).
+
+**⚠ The §2 freshness probe FAILED at lane start** and the human authorized
+proceeding against the recorded drift. v4 `main` had moved ONE commit past the
+ledger's recorded HEAD: `15573c3a1` "fix(optimizer): a non-array sub-step answer
+no longer kills the run (bug 119)" (2026-09-02 21:59 -0500) — one lib hunk in
+`lib/services/character-optimizer.service.ts` (`coerceSuggestionArray` +
+`runSubStep`'s log-and-continue wrapper), six new test cases, otherwise
+README/CHANGELOG/bugs docs/version bumps. It touches **none** of this lane's v4
+source files (`context-manager.ts`, `memory-tasks.ts`, `pre-compute.service.ts`,
+`recall-replay`), and the lane's pin `c9faa2c74` **predates** it
+(`merge-base --is-ancestor` verified), so no regen here could have seen it.
+**It is an unrecorded §3 row — a genuine PORT candidate — and the next
+`/driftcheck` owes it a row.**
+
+### Unit 1 — `distill_memory_search` takes the latency class (v4 `02d4efa1b`, bug 115)
+
+v4's `extractMemorySearchKeywords` gained a trailing
+`latency: CheapLLMLatencyClass = 'background'` threaded to `executeCheapLLMTask`
+as `{ latency }`; the `context-manager` dynamic-head fallback passes
+`'interactive'` with a nine-line why-comment. Ported per §C: the v5 function
+gains `options: CheapLlmTaskOptions` (Rust has no default arguments, so every
+caller names its class — the `cheap_llm_exec.rs` doc says exactly this), and the
+three call sites take it. **The order's "grep for a fourth caller" check found
+exactly three** production callers, as ordered.
+
+- `services/build_context.rs` (the fallback, `:2350`) → `::interactive()`, with
+  v4's why-comment carried whole.
+- `services/pre_compute.rs` (`:300`) and `services/recall_replay.rs` (`:286`) →
+  `::default()`, each with a sentence saying why the background class is right
+  there (v4's fix deliberately left both alone).
+
+**v5 measurably HAD the bug**: before this change the fallback inherited the
+90 s background ceiling *and* the free timeout retry the executor (P4.D136)
+grants a background pass and withholds from an interactive one.
+
+**The pins (`build_context.rs::distill_latency_tests`).** A latency class is
+differential-INVISIBLE — the tier-3 families answer from a canned executor that
+returns instantly — so both arms drive the **real call sites** through a
+stalling, budget-recording `CompletionProvider` on a paused clock (the P4.D136
+`BudgetRecorder` idiom, moved to the call site because the defect bug 115 names
+lives at the call site, not in the function). Recording on the way IN is what
+lets one run prove both facts at once: the budget handed to the provider, and
+how many attempts a stall costs.
+
+- `the_fallback_distill_asks_for_the_interactive_budget` — drives `build_context`
+  with no pre-searched memories → `[Some(40_000)]`.
+- `the_proactive_distill_keeps_the_background_budget` — drives
+  `proactive_recall_task` → `[Some(85_000), Some(85_000)]` (the budget AND the
+  free retry).
+- Expectations are computed through the production resolver
+  (`provider_budget_for`), never transcribed, with an `assert_ne!` that the two
+  classes differ — otherwise both arms would be vacuous.
+- **The DB is a REAL provisioned instance**, not a hand-rolled DDL: the arms call
+  `provisioning::provision_fresh_instance` and open the result, so the schema is
+  the D23-dumped `fresh_schema.json` and cannot rot against v4's. (A first
+  attempt with a table-less DB got as far as the distill and then died on
+  `no such table: memories` — recorded because it is the cheap version of the
+  reduced-DDL trap.)
+
+**Mutations (verified applied, reverted by file backup):**
+
+1. fallback site → `default()`: the interactive arm reddens with
+   `left: [Some(85000), Some(85000)]` vs `right: [Some(40000)]` — **the wrong
+   budget and the free retry in one assertion, which is bug 115 exactly.**
+2. `pre_compute` → `interactive()`: the background arm reddens with
+   `left: [Some(40000)]` vs `right: [Some(85000), Some(85000)]`.
+
+Both reverted; both arms green afterwards.
+
+**Tier 2 — the compile-time ceiling relation: NOT APPLICABLE, by measurement.**
+The order said to add "the fallback distill's attempt deadline < the recap phase
+ceiling" *if such a ceiling brackets it*, and to measure first. It does not:
+`MEMORY_RECAP_PHASE_TIMEOUT_MS` is the only ceiling in the file and it wraps
+`memory_recap_within_phase_budget` at `:2202` and nothing else — the fallback
+distillation sits in the two-pool retrieval block well outside it. The only
+thing above this call is the operator's patience. The relation the two arms
+actually depend on (interactive strictly under background) is **already** a
+compile-time pin at its own source
+(`cheap_llm_exec.rs`'s `const { assert!(CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS <
+CHEAP_LLM_TASK_TIMEOUT_MS) }`, P4.D136), so a second copy here would be
+redundant rather than protective. The measurement is recorded in the test
+module's doc comment, where the next reader will look.

@@ -50,7 +50,7 @@ use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::recall_tags::ScopePolicy;
 use crate::services::build_context::read_memory_recall_settings;
-use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskOptions};
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::memory_recap::distill::{
     distill_memory_search, DistillMessage, DistilledSearch, ExtractionClock,
@@ -293,6 +293,11 @@ where
         &recall_selection,
         input.character_id,
         Some(&clock),
+        // v4's `background` default, and correct here: this pass runs after
+        // delivery with nobody waiting on it, so it keeps the generous ceiling
+        // and the one free timeout retry (v4 `02d4efa1b`, bug 115 — the fix
+        // deliberately left the proactive pass alone).
+        CheapLlmTaskOptions::default(),
     )
     .await
     {

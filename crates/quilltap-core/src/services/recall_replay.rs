@@ -26,7 +26,7 @@ use crate::memory_injector::{DYNAMIC_HEAD_DEFAULT_SIZE, RETRO_HEAD_SIZE};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::recall_history::recently_whispered_id_set;
-use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskOptions};
 use crate::services::memory_recap::distill::{
     distill_memory_search, DistillMessage, DistilledSearch, ExtractionClock,
 };
@@ -280,6 +280,10 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         &input.cheap_llm,
         &character_id,
         Some(&clock),
+        // The diagnostic replay is not a turn — nobody is watching a composer
+        // while it runs, so it keeps v4's `background` default (v4 `02d4efa1b`,
+        // bug 115).
+        CheapLlmTaskOptions::default(),
     )
     .await;
 

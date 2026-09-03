@@ -12,6 +12,45 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — fix(memory): the turn-blocking distillation asks for the interactive budget (bug 115)
+
+_Versions: core 0.0.759._
+
+Port of v4 `02d4efa1b`. `distill_memory_search` (v4
+`extractMemorySearchKeywords`) gains a trailing `options: CheapLlmTaskOptions`
+threaded to `executor.execute(...)` in place of the `default()` it used to hard-
+code. The dynamic-head FALLBACK call in `build_context` — the branch that runs
+when no proactive pre-compute pass has a query ready (first turn, continue mode,
+an empty proactive result) — now passes `CheapLlmTaskOptions::interactive()`;
+`pre_compute` and the `recall_replay` diagnostic keep v4's `background` default,
+which is correct for both.
+
+v5 measurably had the bug. The fallback call blocks the turn with an empty
+composer in front of the operator but named no latency tier, so it took the
+background 90 s *and* the free timeout retry the executor grants a background
+pass and deliberately withholds from an interactive one — up to three minutes of
+nothing per responding character on a cheap route that accepts a request and
+never answers.
+
+A latency class is differential-invisible (the tier-3 families answer from a
+canned executor that returns instantly), so the proof is two unit pins in
+`build_context.rs` that drive the real call sites through a stalling,
+budget-recording provider on a paused clock: the fallback arm sees one attempt
+at the interactive budget, the proactive arm sees two at the background one.
+Reverting the fallback site to `default()` turns the first arm's recording into
+`[Some(85000), Some(85000)]` — the wrong budget and the free retry, i.e. bug 115
+in one line. `build_context_tier3` / `precompute_equivalence` /
+`recall_replay_equivalence` were regenerated from a worktree pinned at
+`c9faa2c74` and are green; the build-context oracle is byte-identical to one
+regenerated at the `6d2a50382` baseline over the same fixture (61 lines,
+417,007 bytes, md5 `f240bef4853b2f165b09ca32caabed5f`), which is the measurement
+that says the corpus cannot see this and the unit pins are the coverage.
+
+Measured while porting: no outer ceiling brackets this call. The one phase
+ceiling in the file wraps the memory recap and nothing else, so there is no
+"attempt deadline < enclosing ceiling" relation to state here — the relation the
+two arms depend on (interactive strictly under background) is already a compile-
+time pin in `cheap_llm_exec.rs` from P4.D136.
 #### 2026-09-03 — docs(drift): record v4's bug-119 optimizer fix as the sixth drift row
 
 _Docs-only change._

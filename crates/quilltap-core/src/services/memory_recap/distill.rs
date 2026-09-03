@@ -336,6 +336,14 @@ pub fn build_distill_messages(
 /// each capped at 500 chars), call the cheap LLM, and parse the response. Returns
 /// `None` when the task fails (v4 `{ success: false }`) so the caller falls back to
 /// the raw recent-window query.
+///
+/// `options` carries v4's trailing `latency: CheapLLMLatencyClass = 'background'`
+/// (`02d4efa1b`, bug 115). One function serves two consumers with opposite answers
+/// to "is anyone waiting?": the proactive pre-compute pass runs after delivery and
+/// takes the background default, while the dynamic-head fallback in
+/// [`crate::services::build_context`] is awaited inline with the composer empty and
+/// must pass [`CheapLlmTaskOptions::interactive`]. Rust has no default arguments, so
+/// every caller names its class — see [`crate::services::cheap_llm_exec::CheapLlmLatencyClass`].
 #[allow(clippy::too_many_arguments)]
 pub async fn distill_memory_search<C: CompletionProvider>(
     executor: &CheapLlmTaskExecutor,
@@ -345,6 +353,7 @@ pub async fn distill_memory_search<C: CompletionProvider>(
     selection: &CheapLlmSelection,
     character_id: &str,
     clock: Option<&ExtractionClock>,
+    options: CheapLlmTaskOptions,
 ) -> Option<DistilledSearch> {
     let messages = build_distill_messages(recent_messages, character_name, clock);
     // Resolved BEFORE the call, exactly where v4 resolves it, and applied inside
@@ -361,7 +370,7 @@ pub async fn distill_memory_search<C: CompletionProvider>(
             None,
             Some(character_id),
             Some("memory-keyword-extraction"),
-            CheapLlmTaskOptions::default(),
+            options,
         )
         .await;
 

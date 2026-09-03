@@ -2344,6 +2344,16 @@ where
                     selection,
                     &input.character.id,
                     Some(&clock),
+                    // The operator is waiting on this one: it is the fallback
+                    // branch, so no proactive pass pre-computed it and the turn
+                    // is blocked behind the call. Tight budget, and no retry —
+                    // the distillation is an optimisation over
+                    // `memory_search_query`, which is already in hand, so a lost
+                    // pass costs recall quality, not the turn. A background
+                    // budget here is 90 s plus a free retry, i.e. up to three
+                    // minutes of empty composer per responding character on a
+                    // stalled cheap route (v4 `02d4efa1b`, bug 115).
+                    crate::services::cheap_llm_exec::CheapLlmTaskOptions::interactive(),
                 )
                 .await
                 {
@@ -3871,5 +3881,328 @@ mod phase_ceiling_tests {
             event.record(&mut visitor);
             self.0.lock().unwrap().push(visitor.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod distill_latency_tests {
+    //! P4.D150 — bug 115 (v4 `02d4efa1b`): the dynamic-head fallback
+    //! distillation asks for the INTERACTIVE budget.
+    //!
+    //! `distill_memory_search` (v4 `extractMemorySearchKeywords`) serves two
+    //! consumers with opposite answers to "is anyone waiting?": the proactive
+    //! pre-compute pass runs after delivery and takes the background default,
+    //! while the fallback branch below blocks the turn with an empty composer in
+    //! front of the operator. The class is therefore the caller's to name, and
+    //! bug 115 was this caller not naming it — inheriting 90 s *and* the free
+    //! timeout retry a background pass is entitled to, i.e. up to three minutes
+    //! of nothing per responding character on a stalled cheap route.
+    //!
+    //! **Why these are unit pins and not corpus rows.** A latency class is
+    //! differential-INVISIBLE: the tier-3 families answer from a canned executor
+    //! that returns instantly, so `build_context_tier3` / `precompute` /
+    //! `recall_replay` are byte-identical with the class right and with it
+    //! wrong. What can be observed is what the *provider* was handed
+    //! (`CompletionParams::request_timeout_ms`) and how many attempts a stall
+    //! costs — so both arms drive the real call site through a stalling,
+    //! budget-recording provider on a paused clock. This is the P4.D136 idiom
+    //! (`services/compression.rs`'s `BudgetRecorder`), moved to the call site
+    //! because the defect bug 115 names lives at the call site, not in the
+    //! function.
+    //!
+    //! The two arms are deliberately opposed — v4's `task-deadline.test.ts`
+    //! covers "the other direction so the proactive pass is not quietly
+    //! starved" the same way.
+    //!
+    //! **No outer ceiling brackets this call — measured, not assumed.** The one
+    //! phase ceiling in this file, [`MEMORY_RECAP_PHASE_TIMEOUT_MS`], wraps
+    //! `memory_recap_within_phase_budget` and nothing else; the fallback
+    //! distillation sits in the two-pool retrieval block well outside it. So
+    //! there is no "attempt deadline < enclosing ceiling" relation to state here
+    //! the way `phase_ceiling_tests` states one for the recap — the only thing
+    //! above this call is the operator's patience. The relation these two arms
+    //! *do* depend on (interactive strictly under background, or they stop
+    //! discriminating) is already a compile-time pin at its own source,
+    //! `cheap_llm_exec.rs`'s
+    //! `const { assert!(CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS < CHEAP_LLM_TASK_TIMEOUT_MS) }`
+    //! (P4.D136); `expected_budgets` re-checks it on the *resolved* pair, which
+    //! additionally covers the per-task overrides table the constants alone
+    //! cannot see.
+
+    use super::*;
+    use crate::model::completion::{CompletionError, CompletionParams, CompletionResponse};
+    use crate::model::embedding::{EmbeddingError, EmbeddingPriority, EmbeddingResult};
+    use crate::services::cheap_llm_exec::{
+        provider_budget_for, CheapLlmLatencyClass, CheapLlmTaskExecutor,
+    };
+    use serde_json::json;
+    use std::sync::Mutex;
+
+    /// v4's `taskType` for this call — the key `cheap_llm_deadline_for` looks up.
+    /// Not in the overrides table, so both classes fall through to the base
+    /// budgets; named here so the expectation is computed from the same string
+    /// the production call passes.
+    const DISTILL_TASK_TYPE: &str = "memory-keyword-extraction";
+
+    /// A provider that records the budget it was handed and then never answers —
+    /// the stalled cheap route bug 115 was measured on. Recording on the *way in*
+    /// is what makes it work: a call that times out still reached the provider,
+    /// so both facts (the budget, and how many attempts a stall costs) come from
+    /// one run.
+    struct StallingBudgetRecorder(Mutex<Vec<Option<i64>>>);
+
+    impl crate::model::completion::CompletionProvider for StallingBudgetRecorder {
+        fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            params: &CompletionParams,
+        ) -> impl std::future::Future<Output = Result<CompletionResponse, CompletionError>> + Send
+        {
+            self.0.lock().unwrap().push(params.request_timeout_ms);
+            // `pending`, not a long sleep: the deadline is the only timer, so a
+            // paused-clock runtime auto-advances straight to it.
+            std::future::pending()
+        }
+    }
+
+    impl StallingBudgetRecorder {
+        fn new() -> Self {
+            Self(Mutex::new(Vec::new()))
+        }
+        fn budgets(&self) -> Vec<Option<i64>> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    /// The embedding leg is not under test; answer every call the same way so the
+    /// memory search neither fails nor varies.
+    struct StubEmbedding;
+    impl crate::model::embedding::EmbeddingProvider for StubEmbedding {
+        async fn generate_embedding_for_user(
+            &self,
+            _text: &str,
+            _user_id: &str,
+            _profile_id: Option<&str>,
+            _priority: EmbeddingPriority,
+        ) -> Result<EmbeddingResult, EmbeddingError> {
+            Err(EmbeddingError::new("no embedding provider in this pin"))
+        }
+    }
+
+    const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+    /// A freshly PROVISIONED, empty instance — the real schema, replayed from
+    /// the D23-dumped `fresh_schema.json`, rather than a hand-rolled subset that
+    /// would rot the moment v4 moves a column (the standing reduced-DDL trap).
+    /// Empty of rows is all these arms need: every retrieval leg on the way to
+    /// the distillation reads nothing and finds nothing, which is exactly the
+    /// first-turn shape the fallback branch exists for.
+    fn provisioned_db() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+            .expect("provision a fresh instance");
+        let db = Db::open_main(dir.path().join("quilltap.db"), PEPPER).expect("open main");
+        (dir, db)
+    }
+
+    fn selection() -> crate::cheap_llm::CheapLlmSelection {
+        crate::cheap_llm::CheapLlmSelection {
+            provider: "DEEPSEEK".to_string(),
+            model_name: "deepseek-v4-flash".to_string(),
+            base_url: None,
+            connection_profile_id: Some("p1".to_string()),
+            // Deliberately remote: a local selection takes the 180 s local
+            // budget for BOTH classes and the arms would stop discriminating.
+            is_local: false,
+            profile_parameters: None,
+        }
+    }
+
+    /// A turn with no pre-searched memories and a non-empty recent window, so
+    /// the two-pool path takes the FALLBACK branch and the distillation fires
+    /// (v4's `dynamic-head-distill-latency.test.ts` builds the same shape).
+    fn a_blocked_turn() -> BuildContextInput {
+        BuildContextInput {
+            model_context_limit: 128_000,
+            user_id: "user".to_string(),
+            character: ContextCharacter {
+                id: "char-a".to_string(),
+                name: "Lyra".to_string(),
+                character_document_mount_point_id: None,
+                sys: crate::system_prompt::Character {
+                    name: "Lyra".to_string(),
+                    ..Default::default()
+                },
+            },
+            user_character: None,
+            chat: ContextChat {
+                id: "chat-1".to_string(),
+                ..Default::default()
+            },
+            existing_messages: vec![
+                ExistingMessage {
+                    role: "USER".to_string(),
+                    content: "Hello".to_string(),
+                    ..Default::default()
+                },
+                ExistingMessage {
+                    role: "ASSISTANT".to_string(),
+                    content: "Greetings".to_string(),
+                    ..Default::default()
+                },
+            ],
+            new_user_message: Some("No, no. I mean the mission today.".to_string()),
+            active_user_participant_id: None,
+            roleplay_template: None,
+            embedding_profile_id: None,
+            skip_memories: false,
+            min_memory_importance: 0.3,
+            responding_participant: None,
+            all_participants: None,
+            participant_characters: None,
+            messages_with_participants: None,
+            tool_instructions: None,
+            timestamp_config: None,
+            is_initial_message: false,
+            timezone: None,
+            connection_profile: None,
+            context_compression_settings: None,
+            cheap_llm_selection: Some(selection()),
+            bypass_compression: true,
+            cached_compression_result: None,
+            cached_compression_message_count: None,
+            generate_memory_recap: false,
+            uncensored_fallback: None,
+            is_continue_mode: false,
+            now_ms: 1_767_225_600_000,
+            local_offset_minutes: 0,
+            server_tz: Some("UTC".to_string()),
+            minutes_since_last_timestamp_announcement: None,
+            autonomous_context_cap: None,
+            reserved_outgoing_tokens: None,
+            turn_skip: None,
+            // The whole point of the branch: nothing pre-searched, so the
+            // fallback distill runs.
+            pre_searched_memories: None,
+            recall_signals: None,
+            pre_searched_query_embedding: None,
+        }
+    }
+
+    /// The two classes must actually differ, or every assertion below is
+    /// vacuous. Computed from the production resolver rather than transcribed,
+    /// so a constant that moves moves both sides together — what is pinned here
+    /// is which class the call site names, not what the class is worth (that is
+    /// `cheap_llm_exec`'s own pin).
+    fn expected_budgets() -> (i64, i64) {
+        let interactive = provider_budget_for(
+            &selection(),
+            Some(DISTILL_TASK_TYPE),
+            CheapLlmLatencyClass::Interactive,
+        );
+        let background = provider_budget_for(
+            &selection(),
+            Some(DISTILL_TASK_TYPE),
+            CheapLlmLatencyClass::Background,
+        );
+        assert_ne!(
+            interactive, background,
+            "the two classes resolve to the same budget — these arms would not discriminate"
+        );
+        (interactive, background)
+    }
+
+    /// Bug 115's fix, at the site: the turn-blocking distillation hands the
+    /// provider the INTERACTIVE budget, and a stall costs exactly ONE attempt
+    /// (the retry is withheld from an interactive pass — v4 `a1d88aa3a`).
+    #[tokio::test(start_paused = true)]
+    async fn the_fallback_distill_asks_for_the_interactive_budget() {
+        let (_dir, db) = provisioned_db();
+        let provider = StallingBudgetRecorder::new();
+        let exec = CheapLlmTaskExecutor::new();
+        let (interactive, _background) = expected_budgets();
+
+        let out = build_context(
+            &db,
+            &StubEmbedding,
+            &provider,
+            &exec,
+            &NoopSeams,
+            &a_blocked_turn(),
+        )
+        .await;
+        assert!(
+            out.is_ok(),
+            "the turn survives a lost distillation: {out:?}"
+        );
+
+        assert_eq!(
+            provider.budgets(),
+            vec![Some(interactive)],
+            "the fallback distill must reach the provider with the interactive \
+             budget, exactly once — a background class here is bug 115 (90 s, \
+             plus the free retry this vector also pins)"
+        );
+    }
+
+    /// The other direction, so the proactive pass is not quietly starved: the
+    /// pre-compute distillation keeps v4's `background` default — the generous
+    /// budget AND the one free timeout retry, which is correct because nobody is
+    /// waiting on it.
+    #[tokio::test(start_paused = true)]
+    async fn the_proactive_distill_keeps_the_background_budget() {
+        let (_dir, db) = provisioned_db();
+        let provider = StallingBudgetRecorder::new();
+        let exec = CheapLlmTaskExecutor::new();
+        let (_interactive, background) = expected_budgets();
+
+        let sel = selection();
+        let danger = crate::cheap_llm::DangerousContentSettings::default();
+        let chat = json!({ "id": "chat-1", "timelineMode": "realtime" });
+        let existing = vec![
+            json!({ "type": "message", "role": "ASSISTANT", "content": "Greetings",
+                    "participantId": "participant-a" }),
+            json!({ "type": "message", "role": "USER", "content": "No, no. I mean the mission today." }),
+        ];
+        let present: Vec<String> = vec!["char-a".to_string()];
+
+        let outcome = crate::services::pre_compute::proactive_recall_task(
+            &db,
+            &StubEmbedding,
+            &provider,
+            &exec,
+            &crate::services::pre_compute::ProactiveRecallInput {
+                chat: &chat,
+                character_id: "char-a",
+                character_name: "Lyra",
+                character_participant_id: "participant-a",
+                present_about_character_ids: &present,
+                is_continue_mode: false,
+                content: "No, no. I mean the mission today.",
+                existing_messages: &existing,
+                cheap_llm_selection: Some(&sel),
+                danger_settings: &danger,
+                available_profiles: &[],
+                user_id: "user",
+                chat_id: "chat-1",
+                now_ms: 1_767_225_600_000,
+                server_tz: Some("UTC"),
+            },
+            &mut |_k, _v| {},
+        )
+        .await;
+        assert!(
+            outcome.is_none(),
+            "a distillation that never answers yields no proactive outcome"
+        );
+
+        assert_eq!(
+            provider.budgets(),
+            vec![Some(background), Some(background)],
+            "the proactive pass must keep the background budget AND its one free \
+             timeout retry — passing `interactive()` here would starve a pass \
+             nobody is waiting on"
+        );
     }
 }
