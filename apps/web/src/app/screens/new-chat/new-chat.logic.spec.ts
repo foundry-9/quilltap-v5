@@ -322,6 +322,53 @@ describe('buildCreateRequest (v4 handleCreateChat payload)', () => {
   });
 });
 
+/**
+ * P4.D149 — what the create request actually carries (v4 `303288fb4`,
+ * `components/new-chat/__tests__/useNewChat.request-body.test.tsx`).
+ *
+ * The New Chat form gained a Concierge picker whose default (Monitored) is
+ * deliberately *omitted* from the create request, so a plain create stays
+ * byte-identical to what it has always been. This suite pins that: absent on
+ * Monitored, present verbatim on the other three.
+ *
+ * v4's suite drives the whole `useNewChat` hook against a stubbed `fetch` and
+ * reads the POST body back; v5's body is built by the pure
+ * {@link buildCreateRequest}, so the three `it(` names are transcribed 1:1 onto
+ * it and the pristine default is read off {@link INITIAL_FORM_STATE} — the
+ * same two facts, one call further in.
+ */
+describe('useNewChat create request — Concierge state', () => {
+  const cast = [llm(char('char-alice', 'Alice'))];
+
+  it('defaults to Monitored on the form', () => {
+    expect(INITIAL_FORM_STATE.conciergeState).toBe('monitored');
+  });
+
+  it('omits conciergeState entirely when Monitored', () => {
+    const body = buildCreateRequest(cast, form({ conciergeState: 'monitored' }), null, undefined);
+    expect(body).not.toHaveProperty('conciergeState');
+    // The rest of the request is unchanged — the participant still rides along.
+    expect(body.participants).toHaveLength(1);
+  });
+
+  it.each(['flagged', 'vouched', 'uncensored'] as const)(
+    'sends conciergeState verbatim when %s',
+    (state) => {
+      const body = buildCreateRequest(cast, form({ conciergeState: state }), null, undefined);
+      expect(body.conciergeState).toBe(state);
+    },
+  );
+
+  // Never `null`: the key is either absent or one of the four values, because
+  // v4's `createChatSchema` is `.optional()` and NOT nullable (shared §A).
+  it('never sends null', () => {
+    for (const state of ['monitored', 'flagged', 'vouched', 'uncensored'] as const) {
+      const body = buildCreateRequest(cast, form({ conciergeState: state }), null, undefined);
+      expect(body.conciergeState).not.toBeNull();
+    }
+  });
+});
+
 describe('sortRoster + seedSelectedCharacter', () => {
   it('sorts favorites > user-controlled > chat count > name', () => {
     const fav = char('f', 'Zed', { isFavorite: true });

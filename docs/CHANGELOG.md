@@ -339,6 +339,22 @@ persisted-state diff on the reject arms, which previously proved only the
 status and the sentence. The fixture now bakes a source chat for the
 continuation case; `chats` and `chat_messages` rows are ordered by `createdAt`
 rather than by id, since a minted id sorts differently on each side.
+#### 2026-09-03 — feat(new-chat): carry the chosen Concierge state on the create request
+
+_Versions: SPA 0.5.629._
+
+P4.D149 unit 1 (v4 `303288fb4`, the client half). `ChatCreateRequest` gains
+the optional `conciergeState` key (shared contract §A: optional but NOT
+nullable — an explicit JSON `null` rejects like `timestampConfig`'s does),
+`NewChatFormState` gains the field with `'monitored'` as its pristine value,
+and `buildCreateRequest` omits the key whenever the form holds `'monitored'`
+so a plain create stays byte-identical to what it has always been.
+
+v4's client oracle `components/new-chat/__tests__/useNewChat.request-body.test.tsx`
+(new in the same commit) is transcribed 1:1 into `new-chat.logic.spec.ts`,
+its three `it(` names kept verbatim so the mapping is greppable. Mutation-
+proven: sending the key unconditionally reddens the omit spec and nothing
+else.
 
 #### 2026-09-03 — docs(drift): record v4's bug-119 optimizer fix as the sixth drift row
 

@@ -202,6 +202,13 @@ export function buildCreateRequest(
 
   if (form.imageProfileId) body.imageProfileId = form.imageProfileId;
 
+  // Omitted when Monitored so a plain create stays byte-identical to what it has
+  // always been; the server treats absence and 'monitored' the same way (no
+  // write, no Concierge bubble) — v4 `303288fb4`.
+  if (form.conciergeState !== 'monitored') {
+    body.conciergeState = form.conciergeState;
+  }
+
   // Sent — including `null` for "No Template" — so the value the user saw in the
   // dropdown is the value the chat is created with. Omitted entirely when the
   // defaults never loaded and the user didn't choose, leaving the server to walk

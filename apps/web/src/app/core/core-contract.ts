@@ -810,6 +810,21 @@ export interface ChatCreateRequest {
   title: string;
   participants: ChatCreateParticipantInput[];
   imageProfileId?: string;
+  /**
+   * P4.D149 (v4 `303288fb4`) — the Concierge state the chat is CREATED with,
+   * chosen on the New Chat form rather than flipped after the fact, so the
+   * choice is in force for the opening greeting (shared contract §A).
+   *
+   * NOT a tri-state: v4's `createChatSchema` spells it `z.enum([...]).optional()`,
+   * which is optional but NOT nullable, so an explicit JSON `null` is REJECTED
+   * exactly as `timestampConfig`'s is. Absent ≡ `'monitored'`: no write, no
+   * announcement, the request and the created chat byte-identical to what a
+   * plain create has always produced. Anything else is applied server-side
+   * through the existing `applyConciergeFlip` chokepoint, immediately after the
+   * system-prompt message. The CLIENT therefore OMITS the key when the form
+   * holds `'monitored'`.
+   */
+  conciergeState?: ConciergeState;
   scenario?: string;
   scenarioId?: string;
   projectScenarioPath?: string;

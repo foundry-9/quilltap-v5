@@ -12,6 +12,7 @@ import {
 import type {
   CharacterListItem,
   ChatCreateOutfitSelectionInput,
+  ConciergeState,
   TimestampConfig,
 } from '../../core/core-contract';
 
@@ -100,6 +101,14 @@ export interface NewChatSelectedCharacter {
 export interface NewChatFormState {
   imageProfileId: string;
   /**
+   * The Concierge state the chat is created with (v4 `303288fb4`) — the
+   * sidebar's four-state control, moved earlier in time so the choice is in
+   * force for the opening greeting. `'monitored'` is the default and is
+   * omitted from the create request; anything else is applied server-side
+   * through `applyConciergeFlip` right after the system-prompt message.
+   */
+  conciergeState: ConciergeState;
+  /**
    * Roleplay template for the new chat (v4 `4bbeab47`). Seeded with whatever
    * the chat would have defaulted to (project default > user/global default)
    * and sent verbatim at create time — `null` means "no template".
@@ -128,6 +137,7 @@ export interface NewChatFormState {
 /** The pristine form state (v4 `INITIAL_STATE`). */
 export const INITIAL_FORM_STATE: NewChatFormState = {
   imageProfileId: '',
+  conciergeState: 'monitored',
   roleplayTemplateId: null,
   roleplayTemplateTouched: false,
   scenario: '',

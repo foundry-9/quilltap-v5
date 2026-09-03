@@ -102306,3 +102306,59 @@ round's baseline move). PIN REQUIRED honoured: every regen ran from
 by `chat_create_capstone_equivalence`, so no other family is invalidated; the
 three `QT_FIXTURE_CC_*` `.db` files are /tmp-built by the recipe and never
 committed. All 32 capstone cases were re-run after each builder change.
+## Lane record — P4.D149, the Concierge state chosen at chat creation (SPA half, v4 `303288fb4`)
+
+**Branch:** `claude/concierge-creation-spa-01263f`. **v4 pin:**
+`303288fb4`, read from the lane-unique detached worktree
+`/tmp/qt-v4-pin-p4d149-303288fb4` (ledger §5.1 — PIN REQUIRED). **Freshness
+probe at lane start:** PASS against ledger §1 as it stands on 2026-09-03
+(branch `main`, tree clean, `15573c3a1..main` empty, `3a76b17df..bugfix`
+empty). The order's inline probe wording names `0b0617fee..main`, which
+predates the ledger's 2026-09-03 update recording `15573c3a1` as a sixth,
+mid-round row; the ledger explicitly rules that row non-poisoning because
+every lane pins at its own target commit, so the lane proceeded on the
+ledger, not on the order's stale restatement. No `/driftcheck` was run and
+the ledger was not written.
+
+### Unit 1 — the wire key, the form field, and the body rule
+
+`ChatCreateRequest` (SPA `core/core-contract.ts`) gains
+`conciergeState?: ConciergeState` immediately after `imageProfileId`, with
+the shared-§A doc comment: v4's `createChatSchema` spells it
+`z.enum([...]).optional()`, which is optional but **not** nullable, so an
+explicit JSON `null` rejects exactly as `timestampConfig`'s does. The union
+was already declared in `core-contract.ts` (P4.D141/P4.D144) — imported, not
+redeclared, exactly as the order requires.
+
+`NewChatFormState` gains `conciergeState: ConciergeState` beside
+`imageProfileId` carrying v4's own doc comment, and `INITIAL_FORM_STATE`
+seeds `'monitored'` (v4 `INITIAL_STATE.conciergeState`).
+
+`buildCreateRequest` gains v4's rule verbatim, in v4's slot — after
+`imageProfileId`, before the `roleplayTemplateId` tri-state:
+
+```ts
+if (form.conciergeState !== 'monitored') {
+  body.conciergeState = form.conciergeState;
+}
+```
+
+**The differential.** v4's client oracle for this rule is the NEW
+`components/new-chat/__tests__/useNewChat.request-body.test.tsx` (125 lines
+at the pin). Its three `it(` names are transcribed 1:1 into
+`new-chat.logic.spec.ts` under a describe carrying v4's own name
+(`useNewChat create request — Concierge state`), so the mapping is greppable:
+`defaults to Monitored on the form`, `omits conciergeState entirely when
+Monitored` (with v4's "the participant still rides along" assertion), and the
+`it.each` over `flagged`/`vouched`/`uncensored`. **Recorded shape
+difference:** v4's suite drives the whole `useNewChat` hook against a stubbed
+`fetch` and reads the POST body back out of the mock's calls; v5's body is
+built by the pure `buildCreateRequest`, so the same two facts are asserted
+one call further in and the pristine default is read off
+`INITIAL_FORM_STATE` rather than off a rendered hook. A fourth spec, not in
+v4, pins the §A never-`null` consequence across all four states.
+
+**Mutation proof:** widening the guard to `if (true)` (always send the key)
+reddens exactly `omits conciergeState entirely when Monitored`, 1 failed / 5
+passed. Reverted from a file backup (the memory note's rule — never
+`git checkout` a file mid-unit).
