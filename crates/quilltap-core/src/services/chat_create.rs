@@ -55,6 +55,10 @@ use crate::services::chat_enrichment::{enrich_participant_summary, EnrichedParti
 use crate::services::chat_initialize::{build_chat_context, ChatContext};
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::creation_progress::CreationProgressEmitter;
+use crate::services::dangerous_content::chat_override::ConciergeState;
+use crate::services::dangerous_content::manual_flip::{
+    apply_concierge_flip, RealConciergeAnnouncer,
+};
 use crate::services::dangerous_content::provider_routing::{
     resolve_provider_for_dangerous_content, ApiKeyResolver, RouteProfile,
 };
@@ -179,6 +183,27 @@ pub struct ChatCreateRequest {
     /// `.nullable().optional()` makes null a deliberate choice.
     #[serde(deserialize_with = "de_double_opt_string")]
     pub roleplay_template_id: Option<Option<String>>,
+    /// v4 [`303288fb4`] `conciergeState:
+    /// z.enum(['monitored','flagged','vouched','uncensored']).optional()` — the
+    /// per-chat Concierge state to set at creation, using the same enum as the
+    /// sidebar's PUT `conciergeState`. Omitted or `'monitored'` → the chat is
+    /// created Monitored exactly as before (no write, no announcement). Any
+    /// other value is applied through
+    /// [`apply_concierge_flip`](crate::services::dangerous_content::manual_flip::apply_concierge_flip)
+    /// after the system-prompt message and before any staff announcement or
+    /// greeting, so the Concierge's bubble sits where the history says the state
+    /// was set and the opening greeting is generated under the chosen state.
+    ///
+    /// ⚠ `.optional()` is NOT nullable, so an explicit JSON `null` REJECTS —
+    /// the same arm [`Self::timestamp_config`] carries, not
+    /// [`Self::roleplay_template_id`]'s deliberate-null. The double `Option`
+    /// keeps the three arms expressible (absent → `None`, null → `Some(None)`,
+    /// string → `Some(Some(s))`); the string is validated against the four wire
+    /// values inside `handle_create` so an unknown one answers v4's route-level
+    /// `Validation error` 400 rather than failing the dispatch decode with a
+    /// different envelope.
+    #[serde(deserialize_with = "de_double_opt_string")]
+    pub concierge_state: Option<Option<String>>,
     pub outfit_selections: Option<Vec<Value>>,
     pub avatar_generation_enabled: Option<bool>,
     pub continuation_from_chat_id: Option<String>,
@@ -301,6 +326,23 @@ where
 {
     let user_id = SINGLE_USER_ID;
     let is_autonomous = req.chat_type.as_deref() == Some("autonomous");
+
+    // v4 `303288fb4` `createChatSchema.conciergeState` — parsed with the rest of
+    // the body BEFORE any work, so a bad value never reaches `repos.chats.create`
+    // (v4's own suite pins exactly that). `.optional()` is not nullable: an
+    // explicit `null` refuses like `timestampConfig`'s does.
+    let requested_concierge_state: Option<ConciergeState> = match &req.concierge_state {
+        None => None,
+        Some(None) => {
+            return Err(HandleCreateError::BadRequest(
+                "Validation error".to_string(),
+            ))
+        }
+        Some(Some(raw)) => Some(
+            ConciergeState::from_wire(raw)
+                .ok_or_else(|| HandleCreateError::BadRequest("Validation error".to_string()))?,
+        ),
+    };
 
     emitter.status("Assembling the cast\u{2026}");
 
@@ -726,6 +768,11 @@ where
     if let Some(source_id) = req.continuation_from_chat_id.as_deref() {
         emitter.status("Recalling the previous chapter\u{2026}");
         write_system_prompt_message(main, &chat_context, &chat_id)?;
+        // Before the backfill: the Concierge's note must precede the replayed
+        // tail, so the history reads "state set, then the previous chapter".
+        apply_requested_concierge_state(db, &chat, requested_concierge_state, emitter)
+            .await
+            .map_err(HandleCreateError::Db)?;
         let _ = apply_chat_continuation(db, &chat_id, source_id).await;
         create_initial_messages_scenario_and_staff(
             db,
@@ -743,6 +790,9 @@ where
         .await;
     } else if is_autonomous {
         write_system_prompt_message(main, &chat_context, &chat_id)?;
+        apply_requested_concierge_state(db, &chat, requested_concierge_state, emitter)
+            .await
+            .map_err(HandleCreateError::Db)?;
         create_initial_messages_scenario_and_staff(
             db,
             main,
@@ -758,8 +808,14 @@ where
         )
         .await;
     } else {
+        // Ordinary flow: system prompt → the Concierge's note (when a
+        // non-Monitored state was picked on the New Chat form) → the scene and
+        // the greeting, which is then generated under the chosen state.
         emitter.status("Setting the opening scene\u{2026}");
         write_system_prompt_message(main, &chat_context, &chat_id)?;
+        apply_requested_concierge_state(db, &chat, requested_concierge_state, emitter)
+            .await
+            .map_err(HandleCreateError::Db)?;
         create_initial_messages_scenario_and_staff(
             db,
             main,
@@ -1001,6 +1057,49 @@ fn write_system_prompt_message(
     }))
     .map_err(|e| DbError::Internal(format!("system message marshal: {e}")))?;
     ChatMessagesRepository::new(main).add_message(chat_id, &event)
+}
+
+/// v4 `303288fb4` `applyRequestedConciergeState`. Apply a Concierge state
+/// requested at creation. Runs after the system-prompt message and before any
+/// staff announcement or greeting, so the Concierge's bubble is the first thing
+/// in the history after the prompt and the greeting is generated under the
+/// chosen state. Monitored (or absence) is a no-op — v4 returns before it even
+/// emits the progress line, so a Monitored create is byte-identical to one that
+/// never named the field.
+///
+/// The route runs in the parent process, so the announcement's write lands
+/// immediately — every later reader (the greeting's own `find_by_id`, the
+/// scheduled danger scan, memory extraction, story backgrounds) sees the pair.
+///
+/// `chat` is the created row the caller already holds (v4's `ChatMetadata` from
+/// `chats.create`; here the step-8 re-read). A fresh chat's
+/// `conciergeOverride`/`isDangerousChat` are null, so `get_concierge_state`
+/// reads Monitored and any non-Monitored request always CHANGES.
+async fn apply_requested_concierge_state(
+    db: &Db,
+    chat: &Value,
+    requested: Option<ConciergeState>,
+    emitter: &CreationProgressEmitter,
+) -> Result<(), DbError> {
+    let Some(requested) = requested else {
+        return Ok(());
+    };
+    if requested == ConciergeState::Monitored {
+        return Ok(());
+    }
+    let Some(chat_id) = chat.get("id").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    emitter.status("Briefing the Concierge\u{2026}");
+    let result =
+        apply_concierge_flip(db, &RealConciergeAnnouncer { db }, chat_id, requested, chat).await?;
+    tracing::debug!(
+        chat_id = chat_id,
+        requested = requested.as_str(),
+        changed = result.changed,
+        "[Chats v1] Applied Concierge state at creation"
+    );
+    Ok(())
 }
 
 /// v4 `createInitialMessagesScenarioAndStaff`: the Prospero / Host / Aurora seed

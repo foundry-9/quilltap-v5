@@ -102020,3 +102020,121 @@ their recipes.
 - **No Playwright and no SPA gate** — this lane touched no `apps/web` file and
   no spec (order §F).
 - Versions: core 0.0.761, harness 0.0.657, host 0.0.95.
+## P4.D148 unit 1 — the create-time `conciergeState` wire + the flip on all three branches (v4 `303288fb4`)
+
+**Lane:** P4.D148 (`claude/concierge-creation-server-d1d460`), the `0b0617fee`
+drift catch-up round. **v4 pin:** `303288fb4` (a lane-unique detached worktree,
+ledger §5.1 — `/tmp/qt-v4-pin-p4d148-303288fb4`; the freshness probe passed at
+lane start against §1's recorded HEAD `15573c3a1`, branch `main`, tree clean,
+both logs empty).
+
+### What landed
+
+- `ChatCreateRequest.concierge_state: Option<Option<String>>` (v4
+  `conciergeState: z.enum(['monitored','flagged','vouched','uncensored'])
+  .optional()`), through the existing `de_double_opt_string` so absent / null /
+  value stay distinguishable. `.optional()` is NOT nullable, so an explicit
+  `null` refuses — the `timestamp_config` arm, not `roleplay_template_id`'s
+  deliberate-null. The four wire values are validated at the TOP of
+  `handle_create` (v4's Zod parse is the first thing the route does), so a bad
+  value answers `Validation error` 400 with nothing written.
+- `apply_requested_concierge_state(db, chat, requested, emitter)` beside
+  `write_system_prompt_message`: returns on absence or `monitored`, emits the
+  `Briefing the Concierge…` progress line, and calls the EXISTING
+  `apply_concierge_flip` chokepoint with the created row (the step-8 re-read =
+  v4's `chats.create` echo — a fresh chat reads Monitored, so any other state
+  always CHANGES). Announcement kinds are v4's five `manual-*`, via
+  `RealConciergeAnnouncer`; no new sentences.
+- Wired at ALL THREE create branches, immediately after the system prompt:
+  continuation (BEFORE `apply_chat_continuation`, so the bubble precedes the
+  replayed tail), autonomous, ordinary.
+- v4 also DELETED its `createInitialMessages` wrapper. Nothing to delete here —
+  both v5 call sites already wrote the prompt themselves; the only v5 mentions
+  of the name are module doc comments naming v4 functions.
+- **NO-PORT (recorded):** `303288fb4`'s `orchestrator.service.ts` hunk is a
+  comment-only rename of the function the chat-start whisper is attributed to.
+  v5's orchestrator carries no counterpart sentence (grepped: the only
+  `createInitialMessages` strings in the tree are `chat_create.rs`'s own v4
+  cross-references), so there is nothing to update.
+
+### The differential
+
+`chat_create_capstone_equivalence` (`QT_ORACLE_CC`, `QT_FIXTURE_CC_{MAIN,MOUNT,
+LLM}`, `TZ=UTC`), regenerated from the pin through the sweep driver. Corpus
+19 → 27 cases:
+
+| case | what it pins |
+|---|---|
+| `cs_omitted_is_monitored` | no key → every dump identical to a plain create |
+| `cs_monitored_explicit_noop` | `'monitored'` → no bubble AND no progress frame |
+| `cs_flagged_bubble_after_prompt` | the bubble lands SECOND; `isDangerousChat=1`, `dangerCategories='[]'`, `dangerClassifiedAt` stamped |
+| `cs_vouched_bubble_preserves_label` | `conciergeOverride='OFF'` with the label untouched |
+| `cs_invalid_value_400` | `'spicy'` → 400 `Validation error`, nothing written |
+| `cs_null_rejected` | explicit `null` → 400, nothing written |
+| `cs_continuation_bubble_before_replay` | prompt → bubble → Host link → replayed tail |
+| `cs_autonomous_flagged` | the autonomous branch, `skip_first_message`: bubble, no greeting |
+
+**Two new comparands, both load-bearing:**
+
+- **`message_order`** — `SELECT "chatId","type","role","systemSender",
+  "systemKind","content" FROM chat_messages ORDER BY rowid`, on both sides.
+  `tables.chatMessages` is SORTED on both sides (by id in the oracle, by
+  `(systemSender, role, content)` here), so it can say which rows exist and
+  never where one landed — and this whole feature is a claim about position.
+  `rowid` is insertion order on both sides (nothing deletes a message row).
+- **the reject arms' persisted state** — the 400 branch used to compare only
+  the status and the sentence. It now diffs `chats` + `chat_messages` too, so a
+  port that refused AFTER writing can no longer pass.
+
+**Fixture (this lane owns it):** `build-chat-create-capstone.ts` now bakes a
+SOURCE chat for the continuation case — Cleo (never the greeting character) and
+no `contextSummary`, so it stays out of `buildRecentConversationsBlock`'s
+eligible set and cannot perturb any other case's greeting prompt; its two
+messages carry DISTINCT `createdAt` values because `getMessages` sorts on that
+column and a tie leaves the replay order to SQLite's scan.
+
+**Two ordering traps the widened fixture exposed, both fixed symmetrically:**
+
+1. With two `chats` rows, an id sort is nondeterministic BETWEEN the two
+   implementations — the created chat's id is minted at random, the baked one
+   is pinned, so `[source, created]` on one side and `[created, source]` on the
+   other. Every existing case went red on `chats` + `roleplay_template_id`
+   before `sort_rows` gained a `chats` arm keyed on `(createdAt, title)` and
+   `chat_template_ids` started reading through `table_rows`.
+2. A replayed message and the original it was copied from are identical in
+   `(systemSender, role, content)`. `createdAt` (raw, pre-normalization) is now
+   the `chat_messages` tie-break — the baked rows carry pinned stamps, the
+   replayed ones the create's wall clock.
+
+### Red first, then five mutations
+
+The port was reverted by file backup and the regenerated oracle run against the
+pre-port tree: every pre-existing case stayed green and
+`cs_flagged_bubble_after_prompt` went red on `chats` + `chat_messages` +
+`message_order` + `frames`. Restored → 27/27 green.
+
+| mutation | reddened |
+|---|---|
+| ordinary branch: flip BEFORE `write_system_prompt_message` | `cs_flagged_bubble_after_prompt` → `message_order` ONLY (the other five sections stayed green — nothing else can see position) |
+| drop the `requested == Monitored` guard | `cs_monitored_explicit_noop` → `frames` (the flip itself is a no-op when the state already matches, so the progress line is the only observable — v4's guard is a frame difference, not a write difference) |
+| drop the `Briefing the Concierge…` status | `cs_flagged_bubble_after_prompt` → `frames` |
+| continuation branch: flip AFTER `apply_chat_continuation` | `cs_continuation_bubble_before_replay` → `message_order` |
+| tolerate an explicit `null` instead of refusing | `cs_null_rejected` → "v4 answered 400 but the port succeeded" |
+
+Each was verified APPLIED (a no-diff mutation aborts the run) and reverted from
+a file backup; the restored file diffs clean against the pre-mutation copy.
+
+**Regen recipe** (the committed header; run through the sweep driver with
+`--v4 /tmp/qt-v4-pin-p4d148-303288fb4`):
+
+```
+python3 harness/tools/recipe_sweep.py --run chat_create_capstone_equivalence \
+  --v4 /tmp/qt-v4-pin-p4d148-303288fb4 --v5w <worktree>
+```
+
+Pin verified by grepping the fresh NDJSON: `Briefing the Concierge` appears in
+exactly the four cases that request a non-Monitored state (it cannot appear
+from a baseline-pinned tree at all).
+
+**Fixtures invalidated:** none outside this family — `chat-create-capstone.json`
+and its builder are consumed only by `chat_create_capstone_equivalence`.

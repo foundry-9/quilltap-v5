@@ -42,6 +42,20 @@ interface Spec {
   roleplayTemplateUserDefaultId: string;
   /** The project default, hung on the existing Lantern project. */
   roleplayTemplateProjectDefaultId: string;
+  /**
+   * P4.D148 — the source chat `cs_continuation_bubble_before_replay` continues
+   * from. Seeded with CLEO (never the greeting character) and NO
+   * `contextSummary`, so it stays out of `buildRecentConversationsBlock`'s
+   * eligible set and cannot perturb any other case's greeting prompt.
+   */
+  sourceChat: {
+    id: string;
+    title: string;
+    participantId: string;
+    characterId: string;
+    connectionProfileId: string;
+    messages: Array<{ id: string; role: string; content: string; createdAt: string }>;
+  };
 }
 
 const TS = '2026-02-01T00:00:00.000Z';
@@ -361,6 +375,48 @@ async function main(): Promise<void> {
   await ensureCollection('chat_messages', ChatMessageRowSchema);
   await ensureCollection('projects', ProjectSchema);
   await ensureCollection('background_jobs', BackgroundJobSchema);
+
+  // 6. P4.D148 — the source chat the continuation case continues FROM. It must
+  // exist before the case runs: `handleCreate`'s continuation pre-check 404s on
+  // a missing source, and `applyChatContinuation` replays this chat's tail into
+  // the new one — which is where the Concierge bubble's position (prompt →
+  // bubble → replayed tail) becomes visible at all.
+  const src = spec.sourceChat;
+  await repos.chats.create(
+    {
+      userId: spec.userId,
+      title: src.title,
+      participants: [
+        {
+          id: src.participantId,
+          type: 'CHARACTER',
+          characterId: src.characterId,
+          connectionProfileId: src.connectionProfileId,
+          controlledBy: 'llm',
+          displayOrder: 0,
+          isActive: true,
+          status: 'active',
+          createdAt: TS,
+          updatedAt: TS,
+        },
+      ],
+    } as never,
+    { id: src.id, createdAt: TS, updatedAt: TS } as never,
+  );
+  for (const m of src.messages) {
+    await repos.chats.addMessage(src.id, {
+      type: 'message',
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      attachments: [],
+      participantId: m.role === 'ASSISTANT' ? src.participantId : null,
+      // DISTINCT per message: `getMessages` sorts by `createdAt`, and a tie
+      // leaves the replay order to whatever SQLite's scan happens to hand back
+      // — which is not a thing two implementations must agree on.
+      createdAt: m.createdAt,
+    } as never);
+  }
 
   closeMountIndexSQLiteClient();
   closeLLMLogsSQLiteClient();

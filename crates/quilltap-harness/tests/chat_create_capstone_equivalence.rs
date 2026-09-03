@@ -207,25 +207,32 @@ fn sorted(v: &Value) -> Value {
     }
 }
 
-/// Sort a table's rows by an id-free key (chat_messages) or leave as-is.
+/// Sort a table's rows by an id-free key, or leave as-is.
+///
+/// ⚠ Neither key may be an id. The created chat / participant / message ids are
+/// minted at random on each side, so an id sort orders the two dumps
+/// differently the moment a table holds more than one row — and P4.D148's
+/// fixture bakes a SOURCE chat (the continuation case's previous chapter)
+/// alongside the created one. `createdAt` is the stable discriminator: the
+/// baked rows carry pinned timestamps that precede the create's wall clock, and
+/// within one create the insertion sequence is the same on both sides, so it
+/// also breaks the tie between a replayed message and the original it was
+/// copied from (identical `role` + `content`, different clock).
 fn sort_rows(table: &str, rows: &mut [Value]) {
-    if table == "chat_messages" {
-        rows.sort_by_key(|r| {
+    let text = |r: &Value, k: &str| -> String {
+        r.get(k).and_then(Value::as_str).unwrap_or("").to_string()
+    };
+    match table {
+        "chat_messages" => rows.sort_by_key(|r| {
             (
-                r.get("systemSender")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                r.get("role")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
-                r.get("content")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string(),
+                text(r, "systemSender"),
+                text(r, "role"),
+                text(r, "content"),
+                text(r, "createdAt"),
             )
-        });
+        }),
+        "chats" => rows.sort_by_key(|r| (text(r, "createdAt"), text(r, "title"))),
+        _ => {}
     }
 }
 
@@ -297,10 +304,14 @@ fn dto_drop_null_seam(dto: &Value) -> Value {
 /// winning, both left the `chats` section byte-identical. The fixture bakes
 /// these ids on BOTH sides (they are not minted), so comparing them literally is
 /// exact — the remap only ever needed to cover minted values.
+/// (P4.D148: reads the rows through [`table_rows`] so it inherits the same
+/// id-free `chats` ordering every other comparand uses — an id sort would put
+/// the baked source chat and the freshly minted one in a different order on
+/// each side.)
 fn chat_template_ids(dump: &Value) -> Value {
     Value::Array(
-        dump.get("rows")
-            .and_then(Value::as_array)
+        table_rows("chats", dump)
+            .as_array()
             .map(|rows| {
                 rows.iter()
                     .map(|r| r.get("roleplayTemplateId").cloned().unwrap_or(Value::Null))
@@ -308,6 +319,39 @@ fn chat_template_ids(dump: &Value) -> Value {
             })
             .unwrap_or_default(),
     )
+}
+
+/// P4.D148 — the INSERTION-ORDERED message trace, the position proof.
+///
+/// `tables.chatMessages` is sorted on BOTH sides (by id in the oracle, by
+/// `(systemSender, role, content)` here), so it can say WHICH rows exist but
+/// never WHERE one landed. The create-time Concierge flip is a claim about
+/// position and nothing else: its bubble must sit after the SYSTEM prompt and
+/// before the continuation replay / the staff whispers / the greeting. `rowid`
+/// is insertion order on both sides (neither ever deletes a message row), so
+/// this projection — the same six TEXT columns the oracle reads, in `rowid`
+/// order — is what makes that claim falsifiable.
+fn dump_message_order(db: &Db) -> Value {
+    db.read_main(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT \"chatId\", \"type\", \"role\", \"systemSender\", \"systemKind\", \"content\" \
+             FROM chat_messages ORDER BY rowid",
+        )?;
+        let rows: Vec<Value> = stmt
+            .query_map([], |row| {
+                let mut cells: Vec<Value> = Vec::with_capacity(6);
+                for i in 0..6 {
+                    cells.push(match row.get::<_, Option<String>>(i)? {
+                        Some(s) => Value::String(s),
+                        None => Value::Null,
+                    });
+                }
+                Ok(Value::Array(cells))
+            })?
+            .collect::<Result<_, _>>()?;
+        Ok(Value::Array(rows))
+    })
+    .expect("dump message order")
 }
 
 /// Strip the `ts` field off each progress frame (nondeterministic wall clock).
@@ -518,10 +562,22 @@ fn chat_create_capstone_matches_oracle() {
             &emitter,
         ));
 
+        // Dump a MAIN-db table via a fresh read-only pooled connection (sees
+        // every committed write from both the Writer conns and the Db writer
+        // thread). Hoisted above the reject branch so a 400 can prove it wrote
+        // NOTHING rather than only that it answered 400.
+        let dump = |t: &str| -> Value {
+            let t = t.to_string();
+            let t2 = t.clone();
+            db.read_main(move |conn| dump_table_json_conn(conn, &t, "id"))
+                .unwrap_or_else(|e| panic!("dump {t2}: {e}"))
+        };
+
         // P4.9E3B: the request-level rejection arms (a bad / explicit-null
         // timestampConfig — v4's route-level Zod parse → 400 `Validation
-        // error`). The oracle row's status selects the branch; the Zod
-        // `details` array stays the standing error-envelope deferral.
+        // error`; P4.D148 adds the `conciergeState` pair). The oracle row's
+        // status selects the branch; the Zod `details` array stays the standing
+        // error-envelope deferral.
         let want_status = want["status"].as_u64().unwrap_or(201);
         if want_status != 201 {
             let err = match create_result {
@@ -544,8 +600,39 @@ fn chat_create_capstone_matches_oracle() {
             );
             let want_error = want["body"]["error"].as_str().unwrap_or_default();
             assert_eq!(got_msg, want_error, "case {}: error copy mismatch", c.name);
+
+            // A refusal must also have written nothing: v4's Zod parse rejects
+            // before `repos.chats.create` is reached (its own suite asserts
+            // exactly that), so the persisted state must still be the baked
+            // fixture on both sides. Without this the reject arms proved only
+            // the status + sentence, and a port that refused AFTER writing
+            // would have passed.
+            let reject_norm = |v: &Value| -> String {
+                let mut v = v.clone();
+                canon_numbers(&mut v);
+                normalize(&serde_json::to_string_pretty(&sorted(&v)).unwrap())
+            };
+            for (name, got_v, want_v) in [
+                (
+                    "chats",
+                    table_rows("chats", &dump("chats")),
+                    table_rows("chats", &want["tables"]["chats"]),
+                ),
+                (
+                    "chat_messages",
+                    table_rows("chat_messages", &dump("chat_messages")),
+                    table_rows("chat_messages", &want["tables"]["chatMessages"]),
+                ),
+            ] {
+                assert_eq!(
+                    reject_norm(&got_v),
+                    reject_norm(&want_v),
+                    "case {}: reject arm wrote a different `{name}` than v4",
+                    c.name
+                );
+            }
             eprintln!(
-                "OK: chat-create case {} matched oracle (reject arm).",
+                "OK: chat-create case {} matched oracle (reject arm + wrote nothing).",
                 c.name
             );
             drop(db);
@@ -570,19 +657,15 @@ fn chat_create_capstone_matches_oracle() {
         }
         let got_dto = json!({ "chat": chat });
 
-        // Dump the four MAIN-db tables via a fresh read-only pooled connection
-        // (sees every committed write from both the Writer conns and the Db
-        // writer thread).
-        let dump = |t: &str| -> Value {
-            let t = t.to_string();
-            let t2 = t.clone();
-            db.read_main(move |conn| dump_table_json_conn(conn, &t, "id"))
-                .unwrap_or_else(|e| panic!("dump {t2}: {e}"))
-        };
+        // Dump the four MAIN-db tables (the `dump` closure is defined above the
+        // reject branch, which uses it too).
         let got_chats = dump("chats");
         let got_msgs = dump("chat_messages");
         let got_projects = dump("projects");
         let got_bg = dump("background_jobs");
+
+        // P4.D148: the insertion-ordered message trace (position proof).
+        let got_message_order = dump_message_order(&db);
 
         // Frame trace (buffered replay), ts stripped.
         let mut got_frames: Vec<Value> = bus
@@ -609,7 +692,7 @@ fn chat_create_capstone_matches_oracle() {
         let mut want_frames: Vec<Value> = want["frames"].as_array().cloned().unwrap_or_default();
         strip_frame_ts(&mut want_frames);
 
-        let sections: [(&str, Value, Value); 6] = [
+        let sections: [(&str, Value, Value); 7] = [
             (
                 "chats",
                 table_rows("chats", &got_chats),
@@ -629,6 +712,11 @@ fn chat_create_capstone_matches_oracle() {
                 "background_jobs",
                 table_rows("background_jobs", &got_bg),
                 table_rows("background_jobs", &want["tables"]["backgroundJobs"]),
+            ),
+            (
+                "message_order",
+                got_message_order.clone(),
+                want["messageOrder"].clone(),
             ),
             (
                 "frames",

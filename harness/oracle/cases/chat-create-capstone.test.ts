@@ -18,7 +18,7 @@
  *
  * Emits one NDJSON line per case:
  *   { name, status, ok, body, tables:{chats,chatMessages,projects,backgroundJobs},
- *     frames, recordings:[{kind,provider,model,temperature,messages,...}] }
+ *     frames, messageOrder, recordings:[{kind,provider,model,temperature,messages,...}] }
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -292,7 +292,21 @@ async function runCase(
       tables[t.key] = canonicalizeRows({ table: t.table, columns, rawRows, orderBy: t.orderBy });
     }
 
-    return { name: c.name, status, ok, body, tables, frames, recordings };
+    // P4.D148: the INSERTION-ORDERED message trace. `tables.chatMessages` is
+    // sorted (by id here, re-sorted by content on the Rust side), so it cannot
+    // see WHERE a row landed — and the whole point of the create-time Concierge
+    // flip is that its bubble sits between the system prompt and everything
+    // else. `rowid` is insertion order on both sides (neither ever deletes a
+    // message row), so this projection is the position proof.
+    const messageOrder = (
+      mdb
+        .prepare(
+          'SELECT "chatId", "type", "role", "systemSender", "systemKind", "content" FROM chat_messages ORDER BY rowid',
+        )
+        .all() as Array<Record<string, unknown>>
+    ).map((r) => [r.chatId, r.type, r.role, r.systemSender, r.systemKind, r.content].map(canonValue));
+
+    return { name: c.name, status, ok, body, tables, frames, messageOrder, recordings };
   } finally {
     Math.random = origRandom;
     await closeDatabase();

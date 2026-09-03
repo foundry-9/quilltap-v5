@@ -277,6 +277,31 @@ hashes the transcoded bytes and matches the first row, so one FileEntry;
 pre-fix it mints a second. The harness gained `PrefixingPixelCodec`, and the
 folders canonicalizer's `path`-only sort key — a latent coin flip whenever two
 folders share a path — became `(path, projectId)`.
+#### 2026-09-03 — feat(chats): apply a Concierge state chosen at chat creation (v4 `303288fb4`)
+
+_Versions: core 0.0.759, harness 0.0.655._
+
+The create request accepts `conciergeState` (`monitored` | `flagged` |
+`vouched` | `uncensored`), applied through the existing `apply_concierge_flip`
+chokepoint on all three create branches — continuation, autonomous, and
+ordinary — immediately after the system-prompt message and before
+`apply_chat_continuation` / the scenario-and-staff phase, so the Concierge's
+bubble is the first row after the prompt and the opening greeting is generated
+under the chosen state. Omitting the key, or sending `monitored`, produces
+exactly the chat it always did: no write, no announcement, no progress frame.
+An unknown value and an explicit `null` both refuse with v4's `Validation
+error` 400, checked before any work so nothing is written.
+
+The chat-create capstone corpus grew eight cases covering the omitted and
+explicit-Monitored no-ops, the flagged and vouched writes, both refusals, the
+continuation branch (bubble before the replayed tail) and the autonomous
+branch. Two new comparands make the claims falsifiable: `message_order`, an
+insertion-ordered (`rowid`) projection of `chat_messages` — the sorted table
+dump can say which rows exist but never where one landed — and a
+persisted-state diff on the reject arms, which previously proved only the
+status and the sentence. The fixture now bakes a source chat for the
+continuation case; `chats` and `chat_messages` rows are ordered by `createdAt`
+rather than by id, since a minted id sorts differently on each side.
 
 #### 2026-09-03 — docs(drift): record v4's bug-119 optimizer fix as the sixth drift row
 

@@ -11,6 +11,28 @@
   "roleplayTemplateProjectDefaultId": "c2000000-0000-4000-8000-0000000000c2",
   "roleplayTemplateChosenId": "c3000000-0000-4000-8000-0000000000c3",
   "roleplayTemplateMissingId": "c9000000-0000-4000-8000-0000000000c9",
+  "sourceChatId": "cc000000-0000-4000-8000-0000000000cc",
+  "sourceChat": {
+    "id": "cc000000-0000-4000-8000-0000000000cc",
+    "title": "The previous chapter",
+    "participantId": "cc000000-0000-4000-8000-0000000000c1",
+    "characterId": "a2000000-0000-4000-8000-0000000000a2",
+    "connectionProfileId": "b1000000-0000-4000-8000-000000000001",
+    "messages": [
+      {
+        "id": "cc000000-0000-4000-8000-0000000000a1",
+        "role": "USER",
+        "content": "Where were we, Cleo?",
+        "createdAt": "2026-02-01T00:00:00.000Z"
+      },
+      {
+        "id": "cc000000-0000-4000-8000-0000000000a2",
+        "role": "ASSISTANT",
+        "content": "At the archive door, as ever.",
+        "createdAt": "2026-02-01T00:00:01.000Z"
+      }
+    ]
+  },
   "roleplayTemplates": [
     {
       "id": "c1000000-0000-4000-8000-0000000000c1",
@@ -658,6 +680,156 @@
             "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
           }
         ]
+      }
+    },
+    {
+      "name": "cs_omitted_is_monitored",
+      "progressId": "e0000000-0000-4000-8000-0000000000f1",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f1",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      }
+    },
+    {
+      "name": "cs_monitored_explicit_noop",
+      "progressId": "e0000000-0000-4000-8000-0000000000f2",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "monitored"
+      }
+    },
+    {
+      "name": "cs_flagged_bubble_after_prompt",
+      "progressId": "e0000000-0000-4000-8000-0000000000f3",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f3",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "flagged"
+      }
+    },
+    {
+      "name": "cs_vouched_bubble_preserves_label",
+      "progressId": "e0000000-0000-4000-8000-0000000000f4",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f4",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "vouched"
+      }
+    },
+    {
+      "name": "cs_invalid_value_400",
+      "progressId": "e0000000-0000-4000-8000-0000000000f5",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f5",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "spicy"
+      }
+    },
+    {
+      "name": "cs_null_rejected",
+      "progressId": "e0000000-0000-4000-8000-0000000000f6",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f6",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": null
+      }
+    },
+    {
+      "name": "cs_continuation_bubble_before_replay",
+      "progressId": "e0000000-0000-4000-8000-0000000000f7",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f7",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "flagged",
+        "continuationFromChatId": "cc000000-0000-4000-8000-0000000000cc"
+      }
+    },
+    {
+      "name": "cs_autonomous_flagged",
+      "progressId": "e0000000-0000-4000-8000-0000000000f8",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000f8",
+        "chatType": "autonomous",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "type": "CHARACTER",
+            "characterId": "a2000000-0000-4000-8000-0000000000a2",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "conciergeState": "flagged"
       }
     }
   ]
