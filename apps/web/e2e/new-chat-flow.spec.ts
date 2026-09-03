@@ -196,4 +196,162 @@ test.describe('P4.6q — New-Chat vertical (list → /salon/new → create → l
       await ctx.dispose();
     }
   });
+
+  // --- P4.D149: the Concierge picker at creation (v4 `303288fb4`) -------------
+
+  /**
+   * The CLIENT rule alone, and it needs no server: intercept the create
+   * dispatch and read the body off the wire. A plain create carries NO
+   * `conciergeState` key at all (so a create stays byte-identical to what it
+   * has always been), and a picked state rides verbatim.
+   *
+   * The request is allowed to succeed — today's server ignores the unknown
+   * field (memory note `dispatch-verb-ignores-unknown-fields`), which is
+   * exactly why this beat can be UNGATED while its sibling below cannot.
+   */
+  test('the create body omits conciergeState by default and carries the pick verbatim', async ({
+    page,
+  }) => {
+    const bodies: Record<string, unknown>[] = [];
+    await page.route('**/api/dispatch', async (route) => {
+      const data = route.request().postDataJSON() as Record<string, unknown> | null;
+      if (data && data['type'] === 'chatCreate') bodies.push(data);
+      await route.fallback();
+    });
+
+    // 1. The default. The picker starts on Monitored and says so.
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await page.goto('/salon/new');
+    await expect(page.getByRole('heading', { name: 'Select Characters' })).toBeVisible();
+
+    const picker = page.locator('#new-chat-concierge');
+    await expect(picker).toBeVisible();
+    await expect(picker).toHaveValue('monitored');
+    await expect(picker.locator('option', { hasText: 'Monitored (default)' })).toHaveCount(1);
+    // The helper sentence beneath is the shared table's `detail`, not its `hint`.
+    await expect(page.getByText(MONITORED_DETAIL)).toBeVisible();
+    await expect(page.getByText(CONCIERGE_HINT)).toHaveCount(0);
+
+    await page.locator('.new-chat-character-picker button').first().click();
+    await expect(page.getByText('Speaks First')).toBeVisible();
+    await page.getByRole('button', { name: 'Create Chat' }).click();
+    await expect(page).toHaveURL(/\/salon\/[0-9a-f-]{16,}/, { timeout: 20_000 });
+
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).not.toHaveProperty('conciergeState');
+
+    // 2. The pick. Flagged rides verbatim.
+    await page.goto('/salon/new');
+    await expect(page.getByRole('heading', { name: 'Select Characters' })).toBeVisible();
+    const second = page.locator('#new-chat-concierge');
+    await second.selectOption('flagged');
+    await expect(second).toHaveValue('flagged');
+    // The helper sentence follows the selection.
+    await expect(page.getByText(FLAGGED_DETAIL)).toBeVisible();
+
+    await page.locator('.new-chat-character-picker button').first().click();
+    await expect(page.getByText('Speaks First')).toBeVisible();
+    await page.getByRole('button', { name: 'Create Chat' }).click();
+    await expect(page).toHaveURL(/\/salon\/[0-9a-f-]{16,}/, { timeout: 20_000 });
+
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]['conciergeState']).toBe('flagged');
+  });
+
+  /**
+   * The whole loop, once P4.D148 lands: pick Uncensored on the FORM, create,
+   * and the landed chat is already Uncensored — the sidebar control reads it
+   * back, and the Concierge's manual-uncensored bubble is in the transcript
+   * (the sentence `salon-concierge-four-state-flow.spec.ts` asserts for that
+   * kind), which is the proof the flip went through `applyConciergeFlip` at
+   * creation rather than being a client-side display.
+   */
+  test('picking Uncensored at creation lands an Uncensored chat with the Concierge’s bubble', async ({
+    page,
+  }) => {
+    test.skip(
+      !P4D148_SERVER_LANDED,
+      'awaits P4.D148’s `conciergeState` key on the chatCreate verb (flipped at unification)',
+    );
+
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await page.goto('/salon/new');
+    await expect(page.getByRole('heading', { name: 'Select Characters' })).toBeVisible();
+
+    const picker = page.locator('#new-chat-concierge');
+    await picker.selectOption('uncensored');
+    await expect(picker).toHaveValue('uncensored');
+
+    await page.locator('.new-chat-character-picker button').first().click();
+    await expect(page.getByText('Speaks First')).toBeVisible();
+    await page.getByRole('button', { name: 'Create Chat' }).click();
+    await expect(page).toHaveURL(/\/salon\/[0-9a-f-]{16,}/, { timeout: 20_000 });
+
+    // The chat was CREATED Uncensored: the sidebar's control reads it back.
+    await openChatDrawer(page);
+    const sidebar = page
+      .locator('qt-chat-sidebar label')
+      .filter({ hasText: 'The Concierge' })
+      .locator('select');
+    await expect(sidebar).toBeVisible({ timeout: 15_000 });
+    await expect(sidebar).toHaveValue('uncensored', { timeout: 15_000 });
+
+    // …and the Concierge said so, once, in the transcript. The announcement is
+    // chipped (v5 chips Staff-signed announcements), so expand it to read the
+    // sentence — the same locator shape the four-state walk uses.
+    const chips = page.locator('.qt-chat-announcement-chip').filter({ hasText: 'The Concierge' });
+    await expect(chips).toHaveCount(1, { timeout: 15_000 });
+    await chips.first().click();
+    await expect(page.locator('.qt-chat-messages-list').getByText(UNCENSORED_PHRASE)).toHaveCount(
+      1,
+      { timeout: 15_000 },
+    );
+  });
 });
+
+/**
+ * Expand the chat sidebar and open its "Chat" card, where the Concierge
+ * control lives (the same three gestures `salon-concierge-four-state-flow`
+ * and `salon-scenario-flow` each keep a copy of — this spec keeps its own
+ * rather than reaching across into another spec's file).
+ */
+async function openChatDrawer(page: Page): Promise<void> {
+  const sidebar = page.locator('qt-chat-sidebar');
+  await expect(sidebar).toBeVisible({ timeout: 15_000 });
+  const expand = page.getByRole('button', { name: 'Expand chat sidebar' });
+  if (await expand.count()) await expand.click();
+  const header = page
+    .locator('qt-chat-sidebar .qt-collapsible-card-header')
+    .filter({ hasText: 'Chat' })
+    .first();
+  await header.click();
+}
+
+/**
+ * ACTIVATE-AT-UNIFY. The server half — the `conciergeState` key on the
+ * `chatCreate` verb (shared contract §A) — is **P4.D148's**, and does not exist
+ * on `main` until this round unifies. Until then the create-time beat above
+ * would fail for a reason that says nothing about the client: the dispatch verb
+ * ignores unknown fields, so the chat would land Monitored and no Concierge
+ * bubble would ever be written. The unifier flips this to `true` once P4.D148
+ * is in, and runs it live.
+ */
+const P4D148_SERVER_LANDED = false;
+
+/**
+ * The helper sentences this spec reads back, quoted from the ONE shared
+ * presentation table (`app/chat/concierge-state-presentation.ts`, itself pinned
+ * byte-for-byte against v4's module by the harness's `concierge-presentation`
+ * oracle). Copied rather than imported because an e2e spec runs outside the
+ * Angular build graph.
+ */
+const MONITORED_DETAIL =
+  'The Concierge keeps watch, and will flip the switch himself if the conversation calls for it.';
+const FLAGGED_DETAIL =
+  'The Concierge has this chat down as dangerous, and routes it through the uncensored providers.';
+/** The table's `hint` — deliberately NOT rendered under the form's control. */
+const CONCIERGE_HINT = "Change it from the Salon sidebar's Chat section.";
+/** v4's `manual-uncensored` sentence, cut to the phrase that identifies the kind. */
+const UNCENSORED_PHRASE = 'uncensored door stands open';

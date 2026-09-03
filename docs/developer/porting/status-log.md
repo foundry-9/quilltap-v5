@@ -102451,3 +102451,62 @@ failed (the re-render spec alone).
 
 Gate after unit 2: `npm run lint` green, `npm test` 376 files / 5,925 tests /
 0 failed, `npm run build` clean.
+
+### Unit 3 — the two e2e beats, the Tier-3 deferral, and the `p4.9i2` bank
+
+**The UNGATED beat — the client rule alone.** `the create body omits
+conciergeState by default and carries the pick verbatim` intercepts
+`POST /api/dispatch` with `page.route(… route.fallback())`, collects every
+`chatCreate` body, and creates twice: once untouched (the picker reads
+`monitored`, the option says `Monitored (default)`, the helper sentence is the
+table's `detail` and the table's `hint` is absent from the page) and once with
+Flagged picked (the helper sentence follows the selection). The first body has
+NO `conciergeState` property at all; the second carries `"flagged"`. Both
+creates are allowed to SUCCEED — today's server ignores the unknown field
+(memory note `dispatch-verb-ignores-unknown-fields`), which is precisely why
+this beat can be ungated while its sibling cannot.
+
+**The GATED beat — the whole loop.** `picking Uncensored at creation lands an
+Uncensored chat with the Concierge’s bubble` picks Uncensored on the FORM,
+creates, opens the landed chat's sidebar drawer and asserts the sidebar
+control reads `uncensored`, then expands the single Concierge announcement
+chip and asserts v4's `manual-uncensored` phrase (`uncensored door stands
+open`) appears exactly once in the transcript — the proof the flip went
+through `applyConciergeFlip` server-side at creation rather than being a
+client-side display. `const P4D148_SERVER_LANDED = false` (§F,
+ACTIVATE-AT-UNIFY): P4.D148's key does not exist on `main` until this round
+unifies, and because the dispatch verb ignores unknown fields the beat would
+otherwise fail for a reason that says nothing about the client. **Tier 2 was
+NOT proven against a local build of P4.D148's branch — no such branch existed
+in this worktree while this lane ran; the unifier runs it first.** Recorded
+plainly per the order's Tier-2 wording.
+
+The spec keeps its own three-gesture `openChatDrawer` helper (the same copy
+`salon-concierge-four-state-flow` and `salon-scenario-flow` each keep) rather
+than reaching across into another spec's file, and its own four quoted
+strings, because an e2e spec runs outside the Angular build graph and cannot
+import the presentation table. The strings are the table's, which is itself
+pinned byte-for-byte against v4's module by the harness's
+`concierge-presentation` oracle.
+
+**Tier-3 deferral, recorded LOUD in two places (the order's point 5).**
+v4 `SalonView.tsx:1730` seeds the picker from the source chat on **Continue
+Elsewhere** (`initialConciergeState={getConciergeState(chat)}`, threaded
+through `NewChatModal` → `new-chat-provider` → `useNewChat`). v5 has **NO
+COUNTERPART**: `chat/sidebar/organize-section.ts` already records Continue
+Elsewhere as unported, and `new-chat-page.ts` exposes only
+`characterId`/`projectId`/`autonomous` inputs — there is no continuation
+entrance to seed FROM. Nothing is stubbed. The `organize-section.ts` comment
+now names the seeding, the sha, and the full v4 prop chain, so whichever lane
+ports Continue Elsewhere carries it; this record is the second place.
+
+**`p4.9i2` bank (the order's point 7).** Both help hunks are appended to
+`phase-4.md` VERBATIM from the pin under their own `###` bank heading, with
+the sha and their exact insertion points: `help/chats.md`'s new "A Word With
+the Concierge, Before the Doors Open" section (after the roleplay-template
+section, before `## The Chat Interface`) and `help/dangerous-content.md`'s
+two-part change under `## The Per-Chat Concierge Switch` (the opening
+paragraph REPLACED — v4 softens "It is the only place…" to "It is where…",
+now that it is no longer the only place — plus a new second paragraph). Both
+carry a `do not re-word` marker. Nothing else in either file moved at
+`303288fb4`.

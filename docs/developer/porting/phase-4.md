@@ -7011,3 +7011,44 @@ bullet list, before the "### Character Profiles" heading:
 are only true once P4.D152's `sha256` realignment + boot heal have landed. If
 `p4.9i2` runs before P4.D152 closes, bank the paragraph but do not publish it.
 The rest of the `p4.9i2` bank is unchanged.
+### `p4.9i2` bank — `help/chats.md` + `help/dangerous-content.md` (P4.D149, v4 `303288fb4`)
+
+Banked 2026-09-03 by the Concierge-at-creation SPA lane. v5 renders no help
+surface yet (the whole `p4.9i2` pool), so the two hunks below are carried here
+VERBATIM from the `303288fb4` pin for whichever round ports the help docs. The
+house voice is v4's and must not be re-worded.
+
+**1. `help/chats.md` — a NEW `###` section, inserted after the roleplay-template
+section's "(The dropdown keeps its counsel…)" line and immediately before
+`## The Chat Interface`:**
+
+<!-- BANKED VERBATIM FROM v4 303288fb4 — do not re-word -->
+
+### A Word With the Concierge, Before the Doors Open
+
+Some conversations announce their character before the first syllable is spoken, and it has always been a small indignity to have to start such a chat in the ordinary way, wait for the room to be dressed, open the sidebar, and only *then* inform the Concierge of what everybody already knew — by which time the opening line had gone out through the ordinary desk and, on occasion, come back refused.
+
+The new-chat form therefore carries **The Concierge** directly above **Starting Scenario**, offering the same four postures as the chat's own sidebar, in the same two companies:
+
+- **The Concierge decides** — *Monitored* (the default, and the state of every chat that has ever been created without a word on the subject) and *Flagged*.
+- **You decide** — *Vouched Safe* and *Uncensored*.
+
+Beneath the dropdown, the Concierge states plainly what the posture you have selected commits him to. Choose one other than Monitored and he posts a brief note at the top of the new conversation saying so, immediately after the system prompt and before the scene is set — the history is thereby honest about which arrangement was in force from the very first word. The opening greeting is then composed under that arrangement: a chat opened *Uncensored* goes to the frank desk on the first attempt rather than after a refusal, and a chat opened *Vouched Safe* is never rerouted at all.
+
+Two consequences worth knowing before you choose. A chat created *Uncensored* or *Flagged* wears its mark in every list from its first appearance, and vanishes the moment you pull the **Quick-hide** cord with *Dangerous Chats* selected — which is generally the point. And when you take a conversation elsewhere by way of **Continue Elsewhere**, the new venue inherits the old one's posture, so a spirited conversation does not quietly become a decorous one on changing rooms; the dropdown is right there should you wish otherwise.
+
+None of this is a life sentence. The **The Concierge** control in the chat's own sidebar remains exactly where it was, ready to reconsider the matter at any hour.
+
+**2. `help/dangerous-content.md` — under `## The Per-Chat Concierge Switch`, the
+opening paragraph is REPLACED (v4 softens "It is the only place…" to "It is
+where…", now that it is no longer the only place) and a second paragraph is
+added after it, before "Two questions, taken together…":**
+
+<!-- BANKED VERBATIM FROM v4 303288fb4 — do not re-word -->
+
+Every chat keeps a small brass switch in the sidebar — found under the **Chat** section of the Chat Sidebar — bearing four positions arranged under two headings: **The Concierge decides** (Monitored, Flagged) and **You decide** (Vouched Safe, Uncensored). It is where a chat's relationship with the Concierge is adjusted, reconsidered, or — should the operator so insist — dispensed with entirely.
+
+The same four positions, in the same two companies, are also offered on the **new-chat form**, above **Starting Scenario**, for the conversations whose character is not in doubt before they begin. A posture chosen there is in force from the very first word: the Concierge posts his note at the top of the fresh history, and the opening greeting is composed under the arrangement rather than discovering it after a refusal. See [Chats Overview](chats.md) for the particulars. Everything below applies identically whichever of the two controls you reached for.
+
+Nothing else in either file moved at `303288fb4`. The rest of the `p4.9i2` bank
+is unchanged.

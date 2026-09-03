@@ -19,7 +19,14 @@ import { Icon } from '../../ui/icon';
  * P4.9E3A (2026-07-26) landed the whole chat-admin verb family, so what is
  * missing here is UI over a live boundary, not a port.
  *
- * - **Continue Elsewhere** (v4 :1554) — the continue-chat flow is unported.
+ * - **Continue Elsewhere** (v4 :1554) — the continue-chat flow is unported,
+ *   and would seed `conciergeState` from the source chat (v4 `303288fb4`:
+ *   `SalonView.tsx:1730` passes `initialConciergeState={getConciergeState(chat)}`
+ *   through `NewChatModal` → `new-chat-provider` → `useNewChat`, so a spicy
+ *   conversation that changes venue stays spicy by default). P4.D149 landed the
+ *   New Chat picker itself but has NO counterpart for this seeding — there is no
+ *   continuation entrance to seed from. Whichever lane ports Continue Elsewhere
+ *   carries it.
  *
  * **Merge In… is LIVE** (v4 :1566, P4.9E3C) — and, like v4, it is hidden in an
  * autonomous room.

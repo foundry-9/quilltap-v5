@@ -339,6 +339,29 @@ persisted-state diff on the reject arms, which previously proved only the
 status and the sentence. The fixture now bakes a source chat for the
 continuation case; `chats` and `chat_messages` rows are ordered by `createdAt`
 rather than by id, since a minted id sorts differently on each side.
+#### 2026-09-03 — test(e2e): the Concierge picker's create-request body, and the create-time walk
+
+_Versions: SPA 0.5.631._
+
+P4.D149 unit 3 (v4 `303288fb4`). Two beats in `e2e/new-chat-flow.spec.ts`.
+The ungated one intercepts the create dispatch and reads the body off the
+wire: a plain create carries no `conciergeState` key at all and shows the
+table's `detail` (never its `hint`), while picking Flagged sends `"flagged"`
+verbatim and moves the helper sentence. Both creates are allowed to succeed,
+since today's server ignores the unknown field — which is exactly why this
+beat needs no server half.
+
+The second beat picks Uncensored on the form, creates, and asserts the landed
+chat's sidebar control reads `uncensored` with the Concierge's
+manual-uncensored bubble in the transcript. It is authored behind
+`P4D148_SERVER_LANDED = false` (ACTIVATE-AT-UNIFY): the `conciergeState` key
+on the `chatCreate` verb is P4.D148's and does not exist on main yet.
+
+Also: the Continue Elsewhere seeding v4 added in the same commit has no v5
+counterpart (the continue-chat flow is unported), so it is recorded by name
+in `organize-section.ts` with v4's full prop chain for whichever lane ports
+it; and both help hunks are banked verbatim to `p4.9i2` in `phase-4.md`.
+
 #### 2026-09-03 — feat(new-chat): the Concierge picker on the New Chat form
 
 _Versions: SPA 0.5.630._
