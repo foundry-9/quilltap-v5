@@ -102510,3 +102510,48 @@ paragraph REPLACED — v4 softens "It is the only place…" to "It is where…",
 now that it is no longer the only place — plus a new second paragraph). Both
 carry a `do not re-word` marker. Nothing else in either file moved at
 `303288fb4`.
+
+### P4.D149 — lane gate and close
+
+**No crate was touched**, so there is no Rust gate to run and none is claimed
+(`git diff --stat main..HEAD` is twelve files: six under `apps/web/src/app`,
+`apps/web/e2e/new-chat-flow.spec.ts`, `apps/web/package.json`, and three docs).
+`quilltap-web` + `quilltap-cli` were built in the worktree only because
+Playwright's global setup launches the real axum server against the built SPA.
+
+- `npm run lint` — green; `check-qt-classes --self-test` 5/5, **948** qt-*
+  classes defined, every guarded reference resolves.
+- `npm test` — **376 files / 5,925 tests / 0 failed** (up from main's 376 /
+  5,911: +14 = 6 logic-spec arms + 8 form-spec arms, exactly this lane's
+  delta).
+- `npm run build` — clean (the only real type gate; a bare `tsc` checks
+  nothing).
+- **Playwright, full suite on port 4319** (§F, this lane's port; nothing else
+  was running): **271 passed / 0 failed / 1 skipped**, exit 0, 29.6 m. The
+  suite grew 270 → 272 with this lane's two beats. The ONE skip is this lane's
+  own `P4D148_SERVER_LANDED` gate — the standing store-probe park is gone (P4.67
+  un-parked it), so there is no other skip left in the suite. The ungated beat
+  passed on its first live run (`new-chat-flow.spec.ts:212`, 780 ms).
+
+**Tiers delivered.** Tier 1 whole (points 1–4 + the ungated beat + point 7).
+Tier 2 authored but **NOT proven live** — the gated beat exists and skips by
+its flag; no local P4.D148 branch was available to build against, so the
+unifier runs it first (the order's stated fallback). Tier 3 deferred loud and
+recorded twice (Continue Elsewhere seeding), plus the deliberate no-`hint`
+omission stated in the template comment.
+
+**Nothing OPEN under this order.**
+
+**Regen recipe.** This lane authored NO Rust oracle and regenerated NONE — its
+oracles are v4's two CLIENT test files, READ (never executed) from the pinned
+worktree `/tmp/qt-v4-pin-p4d149-303288fb4` at `303288fb4` and transcribed. No
+fixture was changed, so no other family is invalidated. The one measurement worth
+repeating is the string byte-diff, run from a ~40-line transient script
+(`/tmp/p4d149-strdiff.mjs`, deliberately NOT committed and gone with the next
+`/tmp` sweep). Its whole recipe: read v4's `components/new-chat/NewChatForm.tsx`
+from a worktree pinned at `303288fb4` and v5's `new-chat-form.ts`, slice each
+from `id="new-chat-concierge"` to its detail interpolation, regex the
+`<optgroup label="…">` and `<option value="…">…</option>` pairs out of both, and
+compare those two lists plus the four `detail:` sentences pulled from each
+tree's `concierge-state-presentation` module. Anyone re-checking it can rewrite
+it in minutes; the recorded result is above.

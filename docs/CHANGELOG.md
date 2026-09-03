@@ -339,6 +339,18 @@ persisted-state diff on the reject arms, which previously proved only the
 status and the sentence. The fixture now bakes a source chat for the
 continuation case; `chats` and `chat_messages` rows are ordered by `createdAt`
 rather than by id, since a minted id sorts differently on each side.
+#### 2026-09-03 — docs(p4.d149): the lane's gate and close
+
+_Docs-only change._
+
+P4.D149's gate: no crate touched (no Rust gate claimed), `npm run lint` green
+at 948 classes, `npm test` 376 files / 5,925 / 0, `npm run build` clean, and
+the full Playwright suite on port 4319 at 271 passed / 0 failed / 1 skipped —
+the one skip being this lane's own ACTIVATE-AT-UNIFY gate. Tier 1 landed
+whole; Tier 2's beat is authored but unproven live (no local P4.D148 branch
+to build against, so the unifier runs it first); Tier 3's Continue Elsewhere
+seeding is deferred loud and recorded in two places.
+
 #### 2026-09-03 — test(e2e): the Concierge picker's create-request body, and the create-time walk
 
 _Versions: SPA 0.5.631._
