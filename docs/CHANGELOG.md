@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — fix(context): restore the inter-character memory timing log
+
+_Versions: core 0.0.760._
+
+Port of v4 `c9faa2c74`. `build_context`'s inter-character block (2b) now closes
+with v4's `[ContextManager] Inter-character memory retrieval complete` debug
+line carrying `chatId`, `characterId`, `durationMs`, `loadedCount` and
+`includedCount`. v4 was restoring a line its own `96bf74b5b` debug-strip chore
+had emptied out of an `if (isMultiCharacter) { }` block; v5 never had it.
+
+Two details are load-bearing and both are pinned. The conditional stands ALONE,
+outside the `!skip_memories` guard that wraps the retrieval — so a
+multi-character turn that skipped memories still reports, with the zeroes that
+say so. And `loadedCount` is the two pools as LOADED
+(`importance_memories.len() + relevance_results.len()`, set where v4 sets it,
+before the "did we find anything" check), not `formatted.memories_used`, which
+is the `includedCount` field beside it.
+
+`durationMs` is a `std::time::Instant` taken above the guard — the twin of v4's
+`performance.now()`, monotonic rather than the wall clock the P4.D49 llm-log
+durations take — rounded as v4's `Math.round` rounds.
+
+A differential cannot see a log-only change, so the pin is a thread-scoped
+capture layer with three arms: a multi-character turn reports all five fields, a
+single-character turn is silent, and a multi-character turn with
+`skip_memories` still reports zeroes. The first arm seeds past
+`INTER_CHAR_PER_CHARACTER_LIMIT` so the query caps the loaded pool and the
+budget then truncates the formatted one, making `loadedCount` and
+`includedCount` genuinely different numbers — computing the first from
+`memories_used` reddens it. Tucking the line inside the retrieval guard reddens
+only the third arm, which is what that arm is for.
+
 #### 2026-09-03 — fix(memory): the turn-blocking distillation asks for the interactive budget (bug 115)
 
 _Versions: core 0.0.759._

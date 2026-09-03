@@ -2584,6 +2584,12 @@ where
     let mut inter_character_memories_included = 0usize;
     let mut debug_inter_character_memories: Vec<DebugInterCharacterMemoryInfo> = Vec::new();
 
+    // v4 `const tInterStart = performance.now()` and `let interCharacterLoadedCount
+    // = 0`, both declared OUTSIDE the retrieval guard — because the debug line at
+    // the bottom of this section is outside it too (v4 `c9faa2c74`).
+    let t_inter_start = std::time::Instant::now();
+    let mut inter_character_loaded_count = 0usize;
+
     if !input.skip_memories && is_multi_character && !input.character.id.is_empty() {
         let (Some(pc), Some(all)) = (&input.participant_characters, &input.all_participants) else {
             unreachable!("is_multi_character guarantees these are Some");
@@ -2651,6 +2657,11 @@ where
                 }
             }
 
+            // v4 sets this BEFORE the "did we find anything" check, so the count
+            // reports what was LOADED from the two pools — not what survived the
+            // budget, which is the `includedCount` field beside it.
+            inter_character_loaded_count = importance_memories.len() + relevance_results.len();
+
             if !importance_memories.is_empty() || !relevance_results.is_empty() {
                 let names_lookup = |id: &str| other_character_names.get(id).cloned();
                 let formatted = format_inter_character_memories_for_context(
@@ -2668,6 +2679,28 @@ where
                 debug_inter_character_memories = formatted.debug_memories;
             }
         }
+    }
+
+    // v4 `c9faa2c74` — restored after the `96bf74b5b` debug-strip chore emptied
+    // the `if (isMultiCharacter) { }` block and left two locals nothing read.
+    //
+    // Deliberately OUTSIDE the `!skip_memories` guard, exactly as v4 writes it:
+    // the conditional stands alone, so a multi-character turn that skipped
+    // memories still reports — with the zero counts that say it skipped.
+    if is_multi_character {
+        tracing::debug!(
+            target: "quilltap::build_context",
+            chat_id = %input.chat.id,
+            character_id = %input.character.id,
+            // v4 `Math.round(performance.now() - tInterStart)`. `Instant` is
+            // `performance.now()`'s twin — monotonic, and NOT the wall clock the
+            // P4.D49 llm-log durations take — and `f64::round` agrees with JS
+            // `Math.round` over the non-negative range a duration occupies.
+            duration_ms = (t_inter_start.elapsed().as_secs_f64() * 1000.0).round() as u64,
+            loaded_count = inter_character_loaded_count as u64,
+            included_count = inter_character_memories_included as u64,
+            "[ContextManager] Inter-character memory retrieval complete"
+        );
     }
 
     // ---------------------------------------------------------------------
@@ -4204,5 +4237,326 @@ mod distill_latency_tests {
              timeout retry — passing `interactive()` here would starve a pass \
              nobody is waiting on"
         );
+    }
+}
+
+#[cfg(test)]
+mod inter_character_log_tests {
+    //! P4.D150 — v4 `c9faa2c74`: the inter-character memory timing log.
+    //!
+    //! v4's `96bf74b5b` debug-strip chore emptied `buildContext`'s
+    //! `if (isMultiCharacter) { }` block, leaving the conditional plus two locals
+    //! (`tInterStart`, `interCharacterLoadedCount`) that nothing read; `c9faa2c74`
+    //! put the line back rather than deleting the block. v5 never had it at all.
+    //!
+    //! **A differential cannot see a log-only fix** — the `BuiltContext` these ops
+    //! return is byte-identical with the line and without it, which is why
+    //! `build_context_tier3` stayed green through this change. The pin is a
+    //! thread-scoped capture layer, and the three arms below are chosen to pin the
+    //! two things a careless port gets wrong:
+    //!
+    //! 1. **Where the conditional sits.** v4's `if (isMultiCharacter)` stands
+    //!    ALONE, OUTSIDE the `!skipMemories && …` guard that wraps the retrieval —
+    //!    verified against the file at the pin. So a multi-character turn that
+    //!    skipped memories still reports, with zeroes. Tucking the line inside the
+    //!    retrieval guard (the tempting simplification) loses that arm.
+    //! 2. **Which count `loadedCount` is.** v4 sets it from
+    //!    `interCharacterMemories.length + interCharacterRelevance.length` BEFORE
+    //!    the "did we find anything" check — what was LOADED, not what survived
+    //!    the budget. `formatted.memoriesUsed` is the `includedCount` field beside
+    //!    it, and the two are different numbers whenever the budget bites; the
+    //!    first arm seeds exactly that shape so reading the wrong one reddens.
+
+    use super::*;
+    use crate::model::completion::{CompletionError, CompletionParams, CompletionResponse};
+    use crate::model::embedding::{EmbeddingError, EmbeddingPriority, EmbeddingResult};
+    use std::sync::{Arc, Mutex};
+
+    const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+    /// No cheap-LLM selection reaches these arms, so the completion boundary is
+    /// never called; refuse loudly rather than answer, so a future edit that
+    /// starts calling it cannot pass unnoticed.
+    struct UnusedCompletion;
+    impl crate::model::completion::CompletionProvider for UnusedCompletion {
+        async fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &CompletionParams,
+        ) -> Result<CompletionResponse, CompletionError> {
+            Err(CompletionError::new(
+                "no completion provider in the inter-character log pin",
+            ))
+        }
+    }
+
+    /// The relevance half embeds; a failing embedding leaves it empty (v4's
+    /// `catch` → `[]`, v5's `unwrap_or_default`), which keeps `loadedCount`
+    /// entirely the importance pool's and the arithmetic legible.
+    struct FailingEmbedding;
+    impl crate::model::embedding::EmbeddingProvider for FailingEmbedding {
+        async fn generate_embedding_for_user(
+            &self,
+            _text: &str,
+            _user_id: &str,
+            _profile_id: Option<&str>,
+            _priority: EmbeddingPriority,
+        ) -> Result<EmbeddingResult, EmbeddingError> {
+            Err(EmbeddingError::new("no embedding provider in this pin"))
+        }
+    }
+
+    /// A real provisioned instance (the D23-dumped schema), optionally carrying
+    /// `n` memories the responder holds ABOUT `about_id` — the importance pool
+    /// `find_by_character_about_characters` reads.
+    fn db_with_inter_character_memories(n: usize) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+            .expect("provision a fresh instance");
+        let path = dir.path().join("quilltap.db");
+        {
+            let w = crate::db::Writer::open_writable(&path, PEPPER).expect("writable open");
+            for i in 0..n {
+                w.connection()
+                    .execute(
+                        "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, \
+                         importance, createdAt, updatedAt) VALUES (?, 'char-a', 'char-b', ?, ?, ?, \
+                         '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                        rusqlite::params![
+                            format!("mem-{i}"),
+                            // Long enough that the inter-character budget cannot
+                            // fit them all — that is what makes `includedCount`
+                            // differ from `loadedCount`.
+                            format!("Memory {i}: {}", "she said something at length. ".repeat(40)),
+                            format!("Memory {i} summary"),
+                            0.9_f64 - (i as f64) * 0.01,
+                        ],
+                    )
+                    .expect("seed memory");
+            }
+        }
+        let db = Db::open_main(&path, PEPPER).expect("open main");
+        (dir, db)
+    }
+
+    fn character(id: &str, name: &str) -> ContextCharacter {
+        ContextCharacter {
+            id: id.to_string(),
+            name: name.to_string(),
+            character_document_mount_point_id: None,
+            sys: crate::system_prompt::Character {
+                name: name.to_string(),
+                ..Default::default()
+            },
+        }
+    }
+
+    fn participant(id: &str, character_id: &str) -> FullParticipant {
+        FullParticipant {
+            id: id.to_string(),
+            participant_type: "CHARACTER".to_string(),
+            character_id: Some(character_id.to_string()),
+            controlled_by: "llm".to_string(),
+            status: "active".to_string(),
+            created_at: Some("2026-01-01T00:00:00.000Z".to_string()),
+            has_history_access: true,
+        }
+    }
+
+    /// `multi` drives [`is_multi_character`]: two character seats (plus the
+    /// participant map and the message view) or none at all.
+    fn a_turn(multi: bool, skip_memories: bool) -> BuildContextInput {
+        let mut pcs: HashMap<String, ContextCharacter> = HashMap::new();
+        pcs.insert("char-a".to_string(), character("char-a", "Lyra"));
+        pcs.insert("char-b".to_string(), character("char-b", "Marek"));
+
+        BuildContextInput {
+            model_context_limit: 32_000,
+            user_id: "user".to_string(),
+            character: character("char-a", "Lyra"),
+            user_character: None,
+            chat: ContextChat {
+                id: "chat-1".to_string(),
+                ..Default::default()
+            },
+            existing_messages: vec![ExistingMessage {
+                role: "USER".to_string(),
+                content: "What did Marek make of the mission?".to_string(),
+                ..Default::default()
+            }],
+            new_user_message: Some("What did Marek make of the mission?".to_string()),
+            active_user_participant_id: None,
+            roleplay_template: None,
+            embedding_profile_id: None,
+            skip_memories,
+            min_memory_importance: 0.1,
+            responding_participant: multi.then(|| RespondingParticipant {
+                id: "participant-a".to_string(),
+                selected_system_prompt_id: None,
+            }),
+            all_participants: multi.then(|| {
+                vec![
+                    participant("participant-a", "char-a"),
+                    participant("participant-b", "char-b"),
+                ]
+            }),
+            participant_characters: multi.then_some(pcs),
+            messages_with_participants: multi.then(Vec::new),
+            tool_instructions: None,
+            timestamp_config: None,
+            is_initial_message: false,
+            timezone: None,
+            connection_profile: None,
+            context_compression_settings: None,
+            // No cheap-LLM selection: the fallback distillation sits this out, so
+            // these arms exercise only 2b.
+            cheap_llm_selection: None,
+            bypass_compression: true,
+            cached_compression_result: None,
+            cached_compression_message_count: None,
+            generate_memory_recap: false,
+            uncensored_fallback: None,
+            is_continue_mode: false,
+            now_ms: 1_767_225_600_000,
+            local_offset_minutes: 0,
+            server_tz: Some("UTC".to_string()),
+            minutes_since_last_timestamp_announcement: None,
+            autonomous_context_cap: None,
+            reserved_outgoing_tokens: None,
+            turn_skip: None,
+            pre_searched_memories: None,
+            recall_signals: None,
+            pre_searched_query_embedding: None,
+        }
+    }
+
+    async fn captured_build(db: &Db, input: &BuildContextInput) -> Vec<String> {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            let out = build_context(
+                db,
+                &FailingEmbedding,
+                &UnusedCompletion,
+                &crate::services::cheap_llm_exec::CheapLlmTaskExecutor::new(),
+                &NoopSeams,
+                input,
+            )
+            .await;
+            assert!(out.is_ok(), "the turn must build: {out:?}");
+        }
+        let out = logs.lock().unwrap().clone();
+        out
+    }
+
+    fn the_line(lines: &[String]) -> Option<&String> {
+        lines
+            .iter()
+            .find(|l| l.contains("[ContextManager] Inter-character memory retrieval complete"))
+    }
+
+    /// Arm 1 — a multi-character turn reports all five fields, and `loadedCount`
+    /// is the LOADED pool, not the included one.
+    ///
+    /// Two truncations sit between the seed and the log, and the arm names both.
+    /// The importance query takes the top `INTER_CHAR_PER_CHARACTER_LIMIT` rows
+    /// per other character, so seeding beyond it pins `loadedCount` to the cap
+    /// (the query's `rn <= ?`) rather than to the seed — which is what "loaded"
+    /// means. Then the budget truncates again while formatting, so
+    /// `includedCount` lands strictly below it. That gap is the discriminator:
+    /// computing `loadedCount` from `memories_used` reddens here.
+    #[tokio::test]
+    async fn a_multi_character_turn_reports_its_timing_and_both_counts() {
+        let seeded = (INTER_CHAR_PER_CHARACTER_LIMIT as usize) + 3;
+        let (_dir, db) = db_with_inter_character_memories(seeded);
+        let lines = captured_build(&db, &a_turn(true, false)).await;
+        let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
+
+        assert!(line.starts_with("DEBUG quilltap::build_context"), "{line}");
+        for field in [
+            "chat_id=chat-1",
+            "character_id=char-a",
+            "duration_ms=",
+            &format!("loaded_count={INTER_CHAR_PER_CHARACTER_LIMIT}"),
+            "included_count=",
+        ] {
+            assert!(line.contains(field), "missing {field} in: {line}");
+        }
+
+        let field_value = |key: &str| -> usize {
+            line.split(key)
+                .nth(1)
+                .and_then(|t| t.split_whitespace().next())
+                .and_then(|t| t.parse().ok())
+                .unwrap_or_else(|| panic!("no {key} in: {line}"))
+        };
+        let loaded = field_value("loaded_count=");
+        let included = field_value("included_count=");
+        assert!(
+            included > 0 && included < loaded,
+            "the budget must truncate for this arm to discriminate — included={included}, \
+             loaded={loaded}, in: {line}"
+        );
+    }
+
+    /// Arm 2 — a single-character turn says NOTHING. v4 gates on
+    /// `isMultiCharacter`, and a line on every solo turn would be noise in the
+    /// operator's `combined.log`.
+    #[tokio::test]
+    async fn a_single_character_turn_is_silent() {
+        let (_dir, db) = db_with_inter_character_memories(8);
+        let lines = captured_build(&db, &a_turn(false, false)).await;
+        assert!(
+            the_line(&lines).is_none(),
+            "a solo turn must not report inter-character retrieval; captured: {lines:?}"
+        );
+    }
+
+    /// Arm 3 — `skipMemories` bypasses the retrieval block, but NOT the report:
+    /// v4's conditional sits outside that guard, so the line still fires and its
+    /// zeroes are the fact. This is the arm that reddens if the line is tucked
+    /// inside the retrieval guard.
+    #[tokio::test]
+    async fn a_multi_character_turn_that_skipped_memories_still_reports_zeroes() {
+        let (_dir, db) = db_with_inter_character_memories(8);
+        let lines = captured_build(&db, &a_turn(true, true)).await;
+        let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
+        assert!(line.contains("loaded_count=0"), "{line}");
+        assert!(line.contains("included_count=0"), "{line}");
+    }
+
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+    struct FieldVisitor(String);
+
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
     }
 }

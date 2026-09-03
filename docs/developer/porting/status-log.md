@@ -101348,3 +101348,59 @@ compile-time pin at its own source
 CHEAP_LLM_TASK_TIMEOUT_MS) }`, P4.D136), so a second copy here would be
 redundant rather than protective. The measurement is recorded in the test
 module's doc comment, where the next reader will look.
+
+### Unit 2 — the inter-character memory timing log (v4 `c9faa2c74`)
+
+A log-only port. v4's `96bf74b5b` debug-strip chore had emptied `buildContext`'s
+`if (isMultiCharacter) { }` block, leaving the conditional and two locals
+(`tInterStart`, `interCharacterLoadedCount`) that nothing read; `c9faa2c74` put
+the line back rather than deleting the block. **v5 never had the line at all**
+(grep confirmed at planning and again here).
+
+Landed at `build_context.rs` §2b: `t_inter_start` (a `std::time::Instant`) and
+`inter_character_loaded_count` declared ABOVE the retrieval guard where v4
+declares them; the count set from `importance_memories.len() +
+relevance_results.len()` at v4's exact position (before the "did we find
+anything" check); and the `tracing::debug!` after the block with all five fields.
+
+**Two facts verified against the file at the pin, not assumed:**
+
+1. **The conditional stands ALONE, outside `!skipMemories`.** So a
+   multi-character turn that skipped memories still reports — with zeroes. The
+   tempting simplification (tucking the line inside the retrieval guard) loses
+   exactly that arm.
+2. **`loadedCount` is the LOADED pools, not `formatted.memoriesUsed`** — which
+   is the `includedCount` field beside it.
+
+`duration_ms` uses `Instant` because v4 uses `performance.now()` (monotonic) —
+deliberately NOT the wall clock the P4.D49 llm-log durations take — with
+`(elapsed.as_secs_f64() * 1000.0).round()` matching JS `Math.round` over the
+non-negative range a duration occupies.
+
+**The pin (`build_context.rs::inter_character_log_tests`)** is the thread-scoped
+capture-layer idiom (a differential is blind to a log-only fix), three arms over
+a real provisioned instance:
+
+- multi-character → the line with all five fields;
+- single-character → SILENCE;
+- multi-character + `skip_memories` → the line with `loaded_count=0`,
+  `included_count=0`.
+
+The first arm seeds `INTER_CHAR_PER_CHARACTER_LIMIT + 3` memories so **two**
+truncations sit between the seed and the log — the importance query's per-
+character cap (so `loadedCount` pins to the cap, read from the constant, not a
+transcribed number) and then the inter-character budget while formatting (so
+`includedCount` lands strictly below it). That gap is what makes the count arm
+discriminate at all.
+
+**Mutations (verified applied, reverted by file backup):**
+
+3. delete the log block → arms 1 and 3 redden, arm 2 (silence) stays green.
+4. `inter_character_loaded_count = formatted.memories_used` → arm 1 reddens with
+   `loaded_count=2 included_count=2` where it should read 5.
+5. move the line INSIDE the `!skip_memories` retrieval guard → **only arm 3**
+   reddens ("no line" on a skipped turn), arms 1 and 2 green. ⚠ The first attempt
+   at this mutation was a **no-op** — the reinsertion point landed after the
+   guard's closing brace, i.e. back where the line already was, and all three
+   arms stayed green. Caught by the standing "verify it APPLIED" rule; the real
+   mutation then reddened arm 3 alone.
