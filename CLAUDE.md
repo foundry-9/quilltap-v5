@@ -2743,7 +2743,7 @@ records THERE. Update this summary only when a phase or round completes.
   phase-4.md. Round record: `status-log.md`.
 - **Oracle baseline: `6d2a50382` (2026-09-02, v4 main — the Concierge
   state-view version bump), adopted at the `6d2a50382` drift catch-up round
-  unification (2026-09-02); the ledger's §3 is EMPTY.**
+  unification (2026-09-02).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

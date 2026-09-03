@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(drift): record the fourth drift row — v4's bugs 116-118 filing
+
+_Docs-only change._
+
+`/driftcheck` re-run from a clean main checkout. v4 `main` is now
+`b448eddd7` — FOUR commits past the `6d2a50382` baseline. The one new
+commit is docs-only (`docs/CHANGELOG.md`, `docs/developer/bugs.md`, and the
+three new filings bug-116/117/118), so it enters §3 as **NO-PORT?**; it is
+also what discharges the previous check's dirty-tree note, since those same
+three files were the untracked dirt recorded there. `bugfix` is unmoved at
+`3a76b17df` (re-measured by content, nothing unabsorbed); `release` unchanged
+at `8736d7042`.
+
+Not a convergence: v4's bugs.md still reads "Bugs 1-115 are fixed in v4" and
+files 116-118 as open. All three are marked "Applies" to v5 by their own
+`v5 status` rows, so §1 now carries the v5 surfaces each measurement is owed
+against — `services/file_fallback.rs` (116, the describer believing an answer
+without checking the image arrived), `api/chat_media.rs` and the upload bridge
+(117, the pre-transcode `sha256` that breaks every files/document-store join),
+and the manifest generator's augmentation table (118, the stale NanoGPT
+`attachmentSupport` block v5 regenerates from).
+
+Verdict: DRIFT PENDING, 4 commits, 4 UNPROCESSED rows. The regen rule is
+unchanged — PIN REQUIRED at `6d2a50382`. Also dropped a stale "the ledger's
+§3 is EMPTY" restatement from CLAUDE.md's baseline bullet, which is the exact
+restatement that bullet warns against.
+
 #### 2026-09-02 — unify: the follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71)
 
 _Versions: core 0.0.758, harness 0.0.654, web 0.0.104, host 0.0.94, SPA 0.5.628._

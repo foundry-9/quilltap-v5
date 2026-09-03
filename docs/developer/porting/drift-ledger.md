@@ -23,57 +23,80 @@ probe verifies against._
   Concierge state view changes" (v4 main, 2026-09-02, v4 `4.9.0-dev.115`),
   adopted at the `6d2a50382` drift catch-up round unification (P4.D143 ∥
   P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147, 2026-09-02).
-- **Checked:** 2026-09-02 (night — the `/driftcheck` run at the START of the
-  follow-ups round's `/unify`, whose §2 probe failed on both counts).
-- **v4 `main` HEAD at check:** `c9faa2c74` — "fix(context): restore the
-  inter-character memory timing log" (2026-09-02 16:00 -0500, v4
-  `4.9.0-dev.118`) — **THREE commits past the baseline** (`303288fb4`,
-  `02d4efa1b`, `c9faa2c74`). `origin/main` is not ahead of `main`.
-- **v4 `bugfix` tip at check:** `3a76b17df` — unmoved (the bare 4.8.4 fork
+- **Checked:** 2026-09-02 (late evening — a standalone `/driftcheck` run, the
+  first since the follow-ups round unified).
+- **v4 `main` HEAD at check:** `b448eddd7` — "docs(bugs): file bugs 116-118
+  from one mis-described image upload" (2026-09-02 16:59 -0500) — **FOUR
+  commits past the baseline** (`303288fb4`, `02d4efa1b`, `c9faa2c74`,
+  `b448eddd7`). `origin/main` is level with `main` (both `b448eddd7`).
+- **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4 fork
   marker; its `main..bugfix` content list is the squash-topology lie, §4
-  step 2).
+  step 2 — re-measured by content this check, nothing genuinely unabsorbed).
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
-- **Checkout at check:** branch `main`, **tree DIRTY — docs only:** modified
-  `docs/CHANGELOG.md` + `docs/developer/bugs.md`, untracked
-  `docs/developer/bugs/bug-11{6,7,8}-*.md` (the human's three NEW open v4
-  filings, see below). **No `lib/`, `app/`, `packages/` or `plugins/` dirt**,
-  so the dirt does not poison a regen — but every regen is pinned anyway
-  (HEAD is past the baseline). Recorded here so the next probe does not
-  re-alarm on it; it clears when the filings are committed upstream.
-- **Verdict: DRIFT PENDING — 3 commits past the baseline; §3 holds THREE
-  UNPROCESSED rows** (one PORT-NEW, one PORT, one PORT log-only). None is a
-  convergence (bug 115 is v4's own filing, `docs/developer/bugs/fixed/
-  bug-115-…`; nothing this port filed came back).
+- **Checkout at check:** branch `main`, **tree CLEAN.** The previous §1's
+  docs dirt is **DISCHARGED** — the human committed the three new bug
+  filings as `b448eddd7`, so `docs/CHANGELOG.md`, `docs/developer/bugs.md`
+  and `docs/developer/bugs/bug-11{6,7,8}-*.md` are now tracked and the tree
+  carries nothing uncommitted. Regens are still pinned anyway (HEAD is past
+  the baseline).
+- **Verdict: DRIFT PENDING — 4 commits past the baseline; §3 holds FOUR
+  UNPROCESSED rows** (one PORT-NEW, one PORT, one PORT log-only, one
+  NO-PORT?). **None is a convergence** — `b448eddd7` only FILES bugs 116–118
+  as open; v4's `bugs.md` status line still reads "Bugs **1–115** are
+  **fixed in v4**", and nothing this port filed came back fixed this check.
 - **Regen rule in force: PIN REQUIRED** at **`6d2a50382`** (§5.1 — a
-  lane-unique detached worktree, the sweep driver's `--v4 "$PIN"`). Every
-  regen in the follow-ups round's five lanes ran pinned; the round's
-  unification runs pinned too.
-- **⚠ Three OPEN v4 bugs filed 2026-09-02 (uncommitted in the checkout),
-  every one marked "Applies" to v5 by its own `v5 status` row — future §3
-  rows the moment v4 fixes them, and v5-side measurements owed NOW:**
+  lane-unique detached worktree, the sweep driver's `--v4 "$PIN"`).
+  **Unchanged from the previous check** — HEAD has been past the baseline
+  throughout; the clean tree does not lift the pin.
+- **⚠ Three OPEN v4 bugs, filed 2026-09-02 and now COMMITTED at
+  `b448eddd7`** — all three from one uploaded warship screenshot that
+  Quilltap described as a tabby kitten in 3,175 characters. Every one is
+  marked **"Applies"** to v5 by its own `v5 status` row, so each is a future
+  §3 row the moment v4 fixes it, and each carries a **v5-side measurement
+  owed NOW** (a v5 measurement does not wait on v4's fix):
   **bug 116** (High) the describer's answer is believed without checking the
-  image ever arrived (`describeImageWithProfile` reads neither
-  `attachmentResults.failed` nor `usage.promptTokens`; a routed model that
-  drops the bytes answers confident prose that is then persisted to
-  `files.description` and short-circuits every later reader) — v5's twin is
-  `services/file_fallback.rs` (P4.D106/D108's describe tier); **bug 117**
-  (Medium) a chat upload's `FileEntry.sha256` is the PRE-transcode hash
-  (`chat-files-v2.ts:136`; 118 of Friday's 239 uploads, every WebP convert,
-  unjoinable to `doc_mount_files`) — measure which bytes v5's chat-upload
-  path hashes (`api/chat_media.rs` / the upload bridge); **bug 118** (Low)
-  the NanoGPT `manifest.json` still declares `attachmentSupport.supported:
-  false` eleven versions after bug 91 — v5's generated NanoGPT manifest is
-  regenerated FROM that file, so it very likely carries the same stale
-  block (measure; the generator's augmentation table is the fix site,
-  memory note `manifest-generator-augmentation-rot`).
+  image ever arrived — `describeImageWithProfile` holds two disproofs and
+  reads neither (`response.usage`, logged then dropped — the offending call
+  reported `promptTokens: 38` — and `LLMResponse.attachmentResults`, which
+  the plugin populates for exactly this); the only check greps the text for
+  refusal words, so it catches a model that admits it cannot see and never
+  one that answers confidently, and the result lands on `files.description`
+  where it short-circuits every later reader permanently. v4's own lesson:
+  **bug 91's gate asks whether we CAN send an image, never whether one
+  ARRIVED.** v5's twin is `services/file_fallback.rs` (the P4.D106/P4.D108
+  describe tier).
+  **bug 117** (Medium) a chat upload's `FileEntry.sha256` is the
+  PRE-transcode hash (`chat-files-v2.ts` hashes the input buffer; the
+  storage bridge then converts to WebP and returns the stored bytes' hash,
+  used for `mimeType`/`size` and discarded for `sha256`), so every
+  files ↔ document-store join fails for converted uploads — descriptions
+  never reach `extractedText`, chunks or embeddings, and
+  `describe_image`/`attach_image` cannot resolve a mount-link uuid;
+  `images-v2` orders the same two operations correctly. Live on Friday:
+  **118 of 239 uploads affected, 0 of 2,541 generated**; v4 says it needs a
+  backfill migration. Measure which bytes v5's chat-upload path hashes
+  (`api/chat_media.rs` / the upload bridge).
+  **bug 118** (Low) the NanoGPT `manifest.json` still declares
+  `attachmentSupport.supported: false` eleven versions after bug 91 —
+  no runtime effect (nothing reads the field) but it is the only one of
+  eleven bundled manifests that disagrees with its own code, and the only
+  declaration `image-transport.test.ts` does not gate. v5's generated
+  NanoGPT manifest is regenerated FROM that file, so it very likely carries
+  the same stale block (measure; the generator's augmentation table is the
+  fix site — memory note `manifest-generator-augmentation-rot`).
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
   fork; v4 develops on `main` alone. Keep probing BOTH branches.
 - _The follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71) UNIFIED
-  2026-09-02 under THIS §1 — a non-drift round, the baseline STAYS
-  `6d2a50382`, no §3 row moves. Every lane and the unification regenerated
+  2026-09-02, before this check — a non-drift round, the baseline STAYED
+  `6d2a50382`, no §3 row moved. Every lane and the unification regenerated
   from a pinned worktree (the lanes' own lane-unique pins, then
   `/tmp/qt-v4-pin-unify-6d2a50382` at the gate: 43 + 62 families zero SKIP).
-  The three UNPROCESSED rows are the next `/setupphase`'s first lane._
+  **The four UNPROCESSED rows are the next `/setupphase`'s first lane** —
+  the drift catch-up is the recommended next move._
+- _Superseded (the 2026-09-02 night verdict): DRIFT PENDING — 3 commits
+  past `6d2a50382`, PIN REQUIRED, checkout DIRTY (docs only — the bug
+  116–118 filings, since committed as `b448eddd7`, which is what this
+  check's fourth row records)._
 - _Superseded (the 2026-09-02 evening verdict): DRIFT PENDING — 1 commit
   past `6d2a50382` (`303288fb4`), PIN REQUIRED, checkout clean. The five
   follow-ups lanes resumed against that §1 and every one regenerated from
@@ -120,6 +143,7 @@ when absorbed/ratified.
 | `303288fb4` | 2026-09-02 | Choose the Concierge state on the New Chat form | **PORT-NEW** | **Server:** `app/api/v1/chats/route.ts` (244 lines changed) + the NEW `__tests__/unit/app/api/v1/chats/route.concierge-state.test.ts` (444 lines): `createChatSchema` gains `conciergeState: z.enum(['monitored','flagged','vouched','uncensored']).optional()`; NEW `applyRequestedConciergeState` (no-op on absent/`'monitored'`; else `progress.status('Briefing the Concierge…')` → the P4.D141 `applyConciergeFlip` chokepoint + a `[Chats v1] Applied Concierge state at creation` debug) called at ALL THREE create branches immediately after `writeSystemPromptMessage` and before scenario/staff/greeting; the `createInitialMessages` wrapper DELETED (both call sites now write the prompt themselves); `autoGenerateFirstMessage` reads the fresh chat row and gains "attempt 0" — `shouldUseUncensoredRoute(chatRow)` → the NEW `generateViaUncensoredDesk(trigger)` closure (resolver asked WITH the chat: Vouched → `OFF` never reroutes, Uncensored reroutes under a global `OFF`); the content-filter attempt 3 now reuses the closure and SKIPS when attempt 0 ran (`uncensoredDeskTried`); five log lines (two new `trigger` fields, one new "unavailable or empty" info, one new "attempt failed" warn). `orchestrator.service.ts`: comment only. → v5 `services/chat_create.rs` (`write_system_prompt_message` `:989`, `create_initial_messages_scenario_and_staff` `:1011`, `auto_generate_first_message` `:1390` — the P4.4 unit-2 chat-create port + the P4.D44 flatten seam), `api/types.rs` `ChatCreate` (`:381`), `services/dangerous_content/manual_flip.rs` `apply_concierge_flip` (P4.D141 — today's ONLY production caller is the chat PUT), the danger resolver's chat-aware arm (P4.D141/P4.D143). Families: `chat_create_capstone_equivalence` (19 cases), `initial_greeting_equivalence`, `first_message_context_equivalence`, the danger-resolver/manual-flip families. **SPA:** `NewChatForm.tsx` (the dropdown above Starting Scenario — two optgroups, `Monitored (default)`, helper `detail` from `CONCIERGE_STATE_PRESENTATION`, the `hint` deliberately NOT shown), `useNewChat.ts` (`conciergeState` OMITTED from the POST body when `'monitored'` — a plain create stays byte-identical), `types.ts` (`conciergeState: ConciergeState`, default `'monitored'`), `NewChatModal.tsx` + `new-chat-provider.tsx` (`initialConciergeState` prop), `SalonView.tsx:1730` (Continue Elsewhere seeds it from `getConciergeState(chat)`), two client test files (the scenario test now reaches its select by id because the form has two). → v5 `screens/new-chat/{new-chat-form, new-chat.state, new-chat.logic, new-chat.types}.ts` (the P4.9 New-Chat vertical + the P4.D44 template picker), the Continue Elsewhere dialog (P4.9E3), `chat/concierge-state-presentation.ts` (P4.D144's ONE table — the `detail` sentences already there). **Help:** `help/chats.md` (+15, "A Word With the Concierge, Before the Doors Open"), `help/dangerous-content.md` (two sentences) → the `p4.9i2` bank. **Docs/infra (NO-PORT):** `API.md`, the feature design doc `docs/developer/features/complete/concierge-default-at-creation.md` (read it — §3 "Wire contract", §4 "Applying the state", §5 "Greeting routing"), `releases/4.9.0.md`, `README.md`, `scripts/concierge-four-state-test.sh` CT-3, `.claude/commands/update-documentation.md`, `package-lock.json`. No schema / migration / export-schema / backup change (the commit's own claim, CONFIRMED by the file list — no `generateDDL`, no D23 re-dump). | UNPROCESSED |
 | `02d4efa1b` | 2026-09-02 | fix(memory): the turn-blocking distillation asks for the interactive budget (bug 115) | **PORT** | v4's own filing (bug 115 — fixed same day, `docs/developer/bugs/fixed/bug-115-interactive-distill-background-budget.md`; NOT a convergence). **Hunks:** `lib/memory/cheap-llm-tasks/memory-tasks.ts` — `extractMemorySearchKeywords` gains a trailing `latency: CheapLLMLatencyClass = 'background'` parameter threaded to `executeCheapLLMTask` as `{ latency }`; `lib/chat/context-manager.ts:1398` — the dynamic-head FALLBACK distill (the branch that runs when no proactive pre-compute pass has a query ready) passes `'interactive'` (45 s, no retry) with a nine-line why-comment; the proactive pass (`pre-compute.service.ts`) and the `recall-replay` diagnostic keep the default. Two new tests (`dynamic-head-distill-latency.test.ts` asserts the 8th argument is `'interactive'`; four `task-deadline.test.ts` cases pin the budget/retry arithmetic bug 107 shipped untested). "Completes bug 107" — the third inline cheap call 107's task-type histogram could not see. → v5: `services/memory_recap/distill.rs:340 distill_memory_search` (no latency parameter — the executor's `execute(…)` takes the budget seam P4.D136 added; today every distill caller passes the same default), its THREE call sites `services/build_context.rs:2339` (the fallback — must become interactive), `services/pre_compute.rs:288` + `services/recall_replay.rs:275` (stay background). The P4.D136 lane record threaded the latency class from 45 call sites and named the recap + compression legs; this is the one v4 itself missed, so v5 reproduces bug 115 today. Families: `build_context_tier3`, `precompute_equivalence`, `recall_replay_equivalence` — a deadline class is differential-INVISIBLE on a canned executor, so the pin is P4.D136's compile-pin/unit idiom (a mutation-proven per-site assertion that the fallback site's class is `Interactive`), not a corpus row. | UNPROCESSED |
 | `c9faa2c74` | 2026-09-02 | fix(context): restore the inter-character memory timing log | **PORT (log-only)** | ONE hunk in `lib/chat/context-manager.ts:1755`: the empty `if (isMultiCharacter) { }` block (emptied by the `96bf74b5b` debug-strip chore) regains `logger.debug('[ContextManager] Inter-character memory retrieval complete', {chatId, characterId, durationMs: Math.round(performance.now() - tInterStart), loadedCount: interCharacterLoadedCount, includedCount: interCharacterMemoriesIncluded})`. Rest is version bumps (`4.9.0-dev.117` → `.118`), README, CHANGELOG. → v5 `services/build_context.rs` has NO such line (grep `Inter-character memory retrieval complete` → nothing) — a log-only port with a thread-scoped capture pin (memory notes `differential-blind-to-a-log-only-fix`, `a-process-global-test-seam-must-be-thread-scoped`); the three fields need v5's inter-character load count + a duration stamp at the site. Joins the handler-logging sweep's row list; small enough to ride the bug-115 catch-up. | UNPROCESSED |
+| `b448eddd7` | 2026-09-02 | docs(bugs): file bugs 116-118 from one mis-described image upload | **NO-PORT?** | **Docs only — ZERO `lib/`, `app/`, `packages/`, `plugins/`.** Five files: `docs/CHANGELOG.md` (+30), `docs/developer/bugs.md` (the Status paragraph rewritten — "Bugs **1–115** are **fixed in v4**. **116–118** are **open**"), and the three NEW filings `docs/developer/bugs/bug-116-describer-answer-never-verified.md` (198), `bug-117-file-entry-sha-pre-transcode.md` (207), `bug-118-nanogpt-manifest-attachment-drift.md` (121). No code hunk to port, so this row ratifies as NO-PORT at the next baseline move — **but it is not inert**: all three bugs are marked **"Applies"** to v5 by their own `v5 status` rows, and the v5-side MEASUREMENTS are owed now (§1's ⚠ bullet carries the shapes and the v5 surfaces: `services/file_fallback.rs` for 116, `api/chat_media.rs` / the upload bridge for 117, the manifest generator's augmentation table for 118). This commit is also what DISCHARGES the previous §1's dirty-tree note — the same three files were the untracked dirt recorded there. **Not a convergence:** it files v4's own new bugs as OPEN; nothing this port filed came back fixed. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
