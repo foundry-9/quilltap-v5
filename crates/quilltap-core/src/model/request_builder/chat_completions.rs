@@ -49,6 +49,21 @@ const OPENROUTER_IMAGE_MIME_TYPES: &[&str] =
 /// `index.ts` — keep the two in step. In v5 that second home is the generated
 /// manifest (`provider_manifest/manifests/nanogpt.json`), regenerated from the
 /// same plugin object, so the pair cannot drift silently.
+///
+/// **The two homes now agree** (v4 bug 118, `0b0617fee`, plugin 1.2.2). v4 had
+/// a THIRD home the pair did not cover — the shipped
+/// `plugins/dist/qtap-plugin-nanogpt/manifest.json`, which still declared
+/// `attachmentSupport.supported: false` with an empty `mimeTypes` and
+/// "NanoGPT chat requests are text-only in Quilltap; attachments are not
+/// forwarded", unchanged since the plugin was added and contradicted by both
+/// the built declaration and v4's static mirror. `0b0617fee` flipped it onto
+/// these bytes. **v5 never had bug 118**: its generator reads the plugin's
+/// BUILT declaration (the truthful one) and never `manifest.json`, so
+/// `nanogpt.json` has carried `supportsAttachments: true` with these four types
+/// since P4.D107 — v4 converged onto v5's bytes. Re-proven at P4.D151 by
+/// running `harness/oracle/providers/gen-provider-manifests.mjs` from a
+/// worktree pinned at `0b0617fee`: all eleven manifests came back
+/// byte-identical.
 const NANOGPT_IMAGE_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 /// v4 Z.AI `buildUserContent`: no attachments → the plain string; otherwise a

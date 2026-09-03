@@ -10,7 +10,11 @@
       "filename": "undescribed.png",
       "content": "A brass diving bell suspended over a harbour at dusk, its rivets catching the last of the light while three figures in oilskins pay out the cable from a stone quay.",
       "finishReason": "stop",
-      "usage": { "promptTokens": 812, "completionTokens": 41, "totalTokens": 853 }
+      "usage": {
+        "promptTokens": 812,
+        "completionTokens": 41,
+        "totalTokens": 853
+      }
     },
     {
       "provider": "OPENAI",
@@ -18,7 +22,11 @@
       "filename": "refuses.png",
       "content": "I cannot describe this image, as it appears to depict an identifiable person.",
       "finishReason": "stop",
-      "usage": { "promptTokens": 790, "completionTokens": 15, "totalTokens": 805 }
+      "usage": {
+        "promptTokens": 790,
+        "completionTokens": 15,
+        "totalTokens": 805
+      }
     },
     {
       "provider": "OPENAI",
@@ -26,7 +34,11 @@
       "filename": "refuses.png",
       "content": "A daguerreotype portrait of a woman in a high collar, one gloved hand resting on a barometer, the plate scratched along its lower edge.",
       "finishReason": "stop",
-      "usage": { "promptTokens": 771, "completionTokens": 33, "totalTokens": 804 }
+      "usage": {
+        "promptTokens": 771,
+        "completionTokens": 33,
+        "totalTokens": 804
+      }
     },
     {
       "provider": "OPENAI",
@@ -34,7 +46,37 @@
       "filename": "reasoning.png",
       "content": "An orrery of hammered copper, its planets frozen mid-orbit above a lacquered case whose drawers stand a hand's width open.",
       "finishReason": "stop",
-      "usage": { "promptTokens": 733, "completionTokens": 30, "totalTokens": 763 }
+      "usage": {
+        "promptTokens": 733,
+        "completionTokens": 30,
+        "totalTokens": 763
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "mock-vision",
+      "filename": "unseen.png",
+      "content": "A vertical close-up of a small tabby kitten with large round amber eyes, the background falling away into soft bokeh, no watermark anywhere on the plate.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 38,
+        "completionTokens": 683,
+        "totalTokens": 721
+      },
+      "$comment": "P4.D151 (bug 116): 38 prompt tokens is the number off the live llm_logs row — the instruction alone, no image. The answer is long and confident and must be discarded."
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "mock-uncensored",
+      "filename": "unseen.png",
+      "content": "A copper kettle steaming on a windowsill at sunset, the sill's paint blistered, a tabby cat curled beside it with one ear turned toward the street.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 24,
+        "completionTokens": 410,
+        "totalTokens": 434
+      },
+      "$comment": "P4.D151 (bug 116): the stand-in is billed below the ceiling too, so the whole ladder refuses and no description is cached."
     }
   ]
 }

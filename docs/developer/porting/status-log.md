@@ -101594,3 +101594,63 @@ carries the corpus's `cacheUsage`).
 `clippy::large_enum_variant` under `-D warnings` (the workspace test run was
 unaffected — clippy is a separate stage). Both are now `Option<Box<…>>`, with
 a comment saying why: they are present on a handful of rows out of eighteen.
+
+### Unit 4 — bug 118: the manifest convergence (§E)
+
+**v5 never had bug 118, re-proven not assumed.** v4's third home for the
+NanoGPT attachment declaration — the shipped
+`plugins/dist/qtap-plugin-nanogpt/manifest.json` — still said
+`attachmentSupport.supported: false` with an empty `mimeTypes` and "NanoGPT
+chat requests are text-only in Quilltap; attachments are not forwarded",
+contradicted by both the built declaration and v4's static mirror;
+`0b0617fee` flipped it (plugin 1.2.1 → 1.2.2, built output unchanged). v5's
+generator reads the plugin's BUILT declaration and never `manifest.json`, so
+`provider_manifest/manifests/nanogpt.json` has carried
+`supportsAttachments: true` with those four types since P4.D107.
+
+`harness/oracle/providers/gen-provider-manifests.mjs` was run from the
+`0b0617fee` pin into the manifests dir: **all eleven manifests came back
+byte-identical** — `git status --short` on the directory is EMPTY and the
+aggregate md5 of `manifests/*.json` is unchanged at `7923db27…`. The
+"keep the two in step" comment at `model/request_builder/chat_completions.rs`
+now records that the two homes agree and how it was re-proven.
+
+### Unit 5 — the attach path (Tier 2) + the `b448eddd7` ratification
+
+**`attach_mount_file_equivalence` gains `attach_verdict_unseen`.** The order
+allowed a run-only outcome if the family could not express a low-token canned
+call; it CAN, so the row landed: a new `library/unseen.png` in the committed
+`attach-file-{main,mount,llmlogs}.db` fixture (rebuilt in place from the pin
+under `TZ=UTC`; nothing hard-codes its minted link/blob ids — every reader
+takes them from the `.meta.json` sidecar, checked by grep before the rebuild,
+and no other family reads these DBs). Both describers answer confidently
+while billed below the ceiling, so the whole ladder refuses,
+`doc_mount_blobs.description` stays `""`, and TWO `IMAGE_DESCRIPTION` rows are
+logged — v4 logs each call before judging it. This proves the verdict on a
+SECOND caller: the attach path reaches `describe_image_with_profile` through
+the auto-describe module. Red-first confirmed (the tables diverge with the
+call site disabled). The family's canned-call shape gate moved 4 → 6 with its
+sentence updated to name the new pair.
+
+**`b448eddd7` — NO-PORT, RATIFIED with the file list.** Docs only, ZERO
+`lib/` / `app/` / `packages/` / `plugins/`: `docs/CHANGELOG.md` (+30),
+`docs/developer/bugs.md` (+28/−1), and the three new filings
+`docs/developer/bugs/bug-116-describer-answer-never-verified.md` (198),
+`bug-117-file-entry-sha-pre-transcode.md` (207),
+`bug-118-nanogpt-manifest-attachment-drift.md` (121). Five files, +583/−1.
+Not a convergence — it files v4's own new bugs; nothing this port filed came
+back fixed. Its obligations (the v5-side measurements) are discharged by this
+lane for 116 and 118, and by P4.D152 for 117.
+
+**Help → the `p4.9i2` bank:** `help/chat-settings.md` (one new describer
+bullet + one replaced Prerequisites bullet) and `help/file-uploads.md` (the
+"A word on pictures" paragraph), both verbatim in `phase-4.md`. ⚠ The
+file-uploads paragraph is bug **117**'s — its last two sentences are only
+true once P4.D152 lands, and the bank entry says so.
+
+**Deferred loud (Tier 3, as ordered):** v4's four new test files are NO-PORT
+as files — `chat-files-v2-stored-sha256.test.ts` (189) and
+`realign-file-entry-sha256.test.ts` (252) are bug 117's (P4.D152's), and
+`file-attachment-fallback.test.ts` (+208) / `image-transport.test.ts` (+98)
+are represented here by the tier-1 `verdict` rows, the tier-3 corpus and the
+unit tests. No Playwright authored (§F).

@@ -83,6 +83,27 @@ ceiling in the file wraps the memory recap and nothing else, so there is no
 "attempt deadline < enclosing ceiling" relation to state here — the relation the
 two arms depend on (interactive strictly under background) is already a compile-
 time pin in `cheap_llm_exec.rs` from P4.D136.
+#### 2026-09-03 — fix(images): verify a describer saw the image, and ratify the NanoGPT manifest convergence (bugs 116, 118)
+
+_Versions: core 0.0.761, harness 0.0.657._
+
+Bug 118 needed no port and was re-proven rather than assumed: v4's shipped
+NanoGPT `manifest.json` had declared `attachmentSupport.supported: false`
+since the plugin was added, contradicted by its own built declaration, and
+`0b0617fee` corrected it. v5's generator reads the built declaration and
+never `manifest.json`, so `nanogpt.json` has carried the truthful block
+since P4.D107. Running the generator from a worktree pinned at `0b0617fee`
+returned all eleven manifests byte-identical; the "keep the two in step"
+comment in `chat_completions.rs` now records that v4 agrees, and how.
+
+`attach_mount_file_equivalence` gains an `attach_verdict_unseen` row (a new
+`library/unseen.png` in the rebuilt committed fixture) so the verdict is
+proven on the attach caller too: both describers answer confidently while
+billed below the ceiling, the whole ladder refuses, and the blob's cached
+description stays empty. v4's `0b0617fee` help-doc changes are banked for
+`p4.9i2`, and its `b448eddd7` filing commit is ratified NO-PORT with its
+file list.
+
 #### 2026-09-03 — fix(images): the describer's answer is verified before it is believed (bug 116)
 
 _Versions: core 0.0.760, harness 0.0.656._

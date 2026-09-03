@@ -394,6 +394,12 @@ async function main(): Promise<void> {
     attachCase('attach_vision', 'library/undescribed.png'),
     attachCase('attach_refusal_retry', 'library/refuses.png'),
     attachCase('attach_reasoning', 'library/reasoning.png', 'reasoning'),
+    // P4.D151 (v4 `0b0617fee`, bug 116): both describers answer confidently
+    // while billed for the instruction alone, so the arrival verdict refuses
+    // the whole ladder and `doc_mount_blobs.description` stays EMPTY. The
+    // attach path reaches `describeImageWithProfile` through the
+    // auto-describe module, so this row proves the verdict on a second caller.
+    attachCase('attach_verdict_unseen', 'library/unseen.png'),
     attachCase('attach_non_image', 'library/ledger.txt'),
     // Bug 38: a native-text DOCUMENT (no blob) attaches via the document
     // fallback + posts the same Librarian announcement, where ghost.md 404s.

@@ -388,9 +388,9 @@ fn attach_mount_file_matches_oracle() {
     let canned_rows: Vec<CannedRow> =
         serde_json::from_value(oracle["canned"]["canned"].clone()).expect("canned rows parse");
     assert!(
-        canned_rows.len() == 4,
-        "the corpus must carry all four vision calls (primary / refusal / \
-         uncensored retry / reasoning); got {}.\n\
+        canned_rows.len() == 6,
+        "the corpus must carry all six vision calls (primary / refusal / \
+         uncensored retry / reasoning / the bug-116 unseen pair); got {}.\n\
          ⚠ Zero recorded calls means v4 refused every describe attempt BEFORE \
          reaching the provider seam, and the whole vision half of this family \
          is measuring nothing while every table still compares equal (both \
@@ -413,6 +413,10 @@ fn attach_mount_file_matches_oracle() {
         ("attach_vision", 1usize),
         ("attach_refusal_retry", 2),
         ("attach_reasoning", 1),
+        // P4.D151 (bug 116): both describers are asked and both are refused by
+        // the arrival verdict, so TWO IMAGE_DESCRIPTION rows are logged (v4
+        // logs the call before judging it) and nothing is cached.
+        ("attach_verdict_unseen", 2),
     ] {
         let logs = oracle[case]["tables"]["llmLogs"]
             .as_array()
@@ -450,6 +454,7 @@ fn attach_mount_file_matches_oracle() {
                 }),
                 finish_reason: row.finish_reason,
                 attachment_results: None,
+                cache_usage: None,
             },
         );
     }
@@ -525,6 +530,18 @@ fn attach_mount_file_matches_oracle() {
             "reason",
             "library/reasoning.png",
             spec.reasoning_user_id.as_str(),
+        ),
+        // P4.D151 (v4 `0b0617fee`, bug 116): the describer answers confidently
+        // about a picture it never received. The arrival verdict runs ahead of
+        // every content check, refuses BOTH describers (each billed below the
+        // instruction ceiling), and the invention never reaches
+        // `doc_mount_blobs.description` — which is the whole of the bug, since
+        // a cached description short-circuits every later reader forever.
+        (
+            "attach_verdict_unseen",
+            "unseen",
+            "library/unseen.png",
+            spec.user_id.as_str(),
         ),
         (
             "attach_non_image",

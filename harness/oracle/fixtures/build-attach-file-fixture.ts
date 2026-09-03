@@ -171,6 +171,19 @@ const FILES: FileSpec[] = [
     textBody: 'Quay ledger, week 14: three crossings, one barrel short.\n',
   },
   {
+    // P4.D151 (v4 `0b0617fee`, bug 116): the describer answers confidently for
+    // a picture it never received. Both describers are billed below
+    // INSTRUCTION_TOKEN_CEILING for this file, so the arrival verdict refuses
+    // BOTH and nothing is ever cached — the point of the bug is that a
+    // well-formed invention must not reach `doc_mount_blobs.description`,
+    // from where it would short-circuit every later reader forever.
+    path: 'library/unseen.png',
+    folder: 'library',
+    originalFileName: 'unseen.png',
+    mimeType: 'image/png',
+    description: '',
+  },
+  {
     path: 'photos/kept-lantern.webp',
     folder: 'photos',
     originalFileName: 'kept-lantern.webp',

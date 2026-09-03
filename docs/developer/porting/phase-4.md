@@ -6974,3 +6974,40 @@ history:**
 
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
+
+
+### `p4.9i2` bank — `help/file-uploads.md` + `help/chat-settings.md` (P4.D151, v4 `0b0617fee`)
+
+Banked 2026-09-03 by the bug-116 lane. v4's `0b0617fee` touched two help docs.
+Both are carried VERBATIM for the `p4.9i2` help-doc port — the house voice is
+v4's and must not be re-worded.
+
+**`help/chat-settings.md`** — one NEW bullet appended to the
+"These settings govern which model is called upon to do the describing" list,
+after the "Should a describer prove sluggish…" bullet:
+
+> - **The describer's word is checked before it is believed.** A gateway that fronts hundreds of models — NanoGPT, OpenRouter and their kind — may accept your picture with every appearance of politeness and route it to a model that quietly disregards it. The model, asked to describe an image it was never shown, will describe *an* image: fluently, at length, in tidy sections, and entirely out of its own head. Quilltap now examines the bill. A consultation charged for the instruction alone did not look at your picture, whatever prose came back, and the answer is discarded unread rather than filed. So too when the provider itself reports the attachment as never sent. In either case the failure names the offending profile and the fallbacks take their turn as they would after any other refusal.
+
+…and one **Prerequisites** bullet REPLACED (the old text is
+"The describing model must genuinely accept images; ticking the box on a model
+that cannot see produces empty answers rather than descriptions"):
+
+> - The describing model must genuinely accept images. Ticking the box on a model that cannot see is now caught rather than believed — the consultation fails by name and passes to the fallbacks — but it still costs you a wasted call, so tick it only where it is true
+
+**`help/file-uploads.md`** — one NEW paragraph after the message-attachment
+bullet list, before the "### Character Profiles" heading:
+
+> **A word on pictures.** An image attached to a chat is quietly shown to a
+> describing model shortly after it lands (see [Chat Settings](chat-settings.md)),
+> and the description is filed in three places: on the file's own record, on
+> every shelf in the [Scriptorium](scriptorium.md) where those same bytes appear,
+> and in the search index — so *"the photograph of the kettle on the windowsill"*
+> finds the picture later even though a picture holds no words. Until 4.9.0 only
+> the first of the three was reached for any bitmap the house converted to WebP
+> on its way in, which was rather a lot of them; converted uploads made before
+> that release are repaired on first start.
+
+⚠ That second paragraph describes **bug 117**, not 116 — its last two sentences
+are only true once P4.D152's `sha256` realignment + boot heal have landed. If
+`p4.9i2` runs before P4.D152 closes, bank the paragraph but do not publish it.
+The rest of the `p4.9i2` bank is unchanged.
