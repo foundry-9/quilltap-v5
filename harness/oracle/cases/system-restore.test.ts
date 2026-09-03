@@ -101,6 +101,14 @@ const PREVIEW_CASES: PreviewCase[] = [
  *   restore_gen2_replace         / _new_account   a second-generation archive,
  *                            whose files already sit at `restored/…`
  *
+ * P4.D152 adds one over the archive built for bug 117
+ * (`build-restore-archive-bug117.test.ts`), the first whose `files` rows carry a
+ * `sha256` that names bytes existing nowhere — on BOTH file branches:
+ *
+ *   restore_bug117_new_account   a legacy disk-key `portrait.png` through the
+ *                            replay and a store-backed `plate.png` through
+ *                            carried-store-rows
+ *
  * P4.D31 adds two more over the archive built for the memory-id contract
  * (`build-restore-archives-memory-graph.test.ts`), the first carrying memories
  * that reference each other:
@@ -162,6 +170,30 @@ const RESTORE_CASES: Array<{
   // so a correct restore lands a row whose id is the SAME UUID as the edge that
   // points at it — one shared `<minted-N>` label — while a fresh mint splits
   // them into two. That is what makes the `new-account` arm sensitive.
+  // ── P4.D152 (bug 117): the archive that carries a `files.sha256` lie ─────
+  //
+  // `restore-archive-bug117.zip` gives BOTH file branches a row whose `sha256`
+  // names bytes that exist nowhere — the damage v4 `0b0617fee` describes. The
+  // legacy disk-key `portrait.png` goes through the REPLAY (post-fix the row
+  // records the bridge's hash), and the store-backed `plate.png` — a real PNG
+  // whose blob is WebP, so the input and stored hashes genuinely differ — goes
+  // through the CARRIED-STORE-ROWS branch, which never sees a bridge and must
+  // resolve the archived `doc_mount_blobs.sha256` by the parsed blob id. Every
+  // other committed archive carries a `sha256` that already agrees with its
+  // bytes, so a restore that copies the archive's value and one that asks the
+  // bridge write the same row and the arm is vacuous.
+  //
+  // `new-account` only, deliberately. In `replace` mode the archived
+  // `doc_mount_points` row restores verbatim, so v5's uploads mount keeps the
+  // ARCHIVE's cached rollups where v4 refreshes them — the standing
+  // `refreshStats` deferral, in a shape `V5_STATS_GAP`'s zero-fileCount
+  // assertion cannot express. `new-account` restores into the target's OWN
+  // freshly provisioned uploads mount, where the existing carve-out fits, and it
+  // still exercises BOTH of bug 117's branches: `portrait.png` (legacy disk key)
+  // replays through the bridge and `plate.png` (store-backed) takes the carried
+  // branch.
+  { name: 'restore_bug117_new_account', archive: 'restore-archive-bug117.zip', mode: 'new-account' },
+
   { name: 'restore_memory_graph_replace', archive: 'restore-archive-memory-graph.zip' },
   {
     name: 'restore_memory_graph_new_account',

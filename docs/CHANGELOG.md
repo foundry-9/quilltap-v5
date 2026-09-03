@@ -148,6 +148,44 @@ pins the thread through a stub transport (DEEPSEEK's
 `prompt_cache_hit_tokens`) and asserts the subtraction that makes the
 add-back necessary; the tier-3 differential cannot see this thread, because
 the canned provider builds its own response.
+#### 2026-09-03 — fix(import,restore): record the stored bytes' hash (bug 117, legs b and c)
+
+_Versions: core 0.0.761, harness 0.0.657._
+
+The `.qtap` importer takes `sha256` from the bridge, joining the post-bridge
+`mimeType`/`size` rule it already followed. Restore does the same on both
+branches: the replay arm takes the bridge's hash, and the carried-store-rows
+arm — which skips the replay and never sees a bridge — reads the archived
+`doc_mount_blobs.sha256` in the SELECT it was already making, carrying it on
+`CarriedBlob`. A NULL or empty hash there falls back to the archive's
+`files.sha256`, matching v4's `carriedSha256 ? … : {}` JS truthiness test. The
+carry sits inside the 2026-07-26 ruled divergence, not around it: v5 consults
+the restored store where v4 consults the parsed archive, and 22f has already
+written the same rows.
+
+`qtap_import_equivalence` gains a `.qtap` (committed) whose PNG row carries the
+pre-transcode hash. It imports on an ISOLATED second copy of the fixtures —
+two blobs in the shared pair would change the `doc_mount_files` size multiset
+the main diff asserts, and those sizes legitimately differ between sharp's WebP
+and the harness codec's bytes — with the uploads mount planted identically on
+both sides. Comparand: the within-tree boolean, plus a floor on the PNG row.
+
+`system_restore_state` gains `restore_bug117_new_account` over a NEW committed
+`restore-archive-bug117.zip`, built by v4's REAL `createBackup` from an
+instance where a real PNG went through v4's REAL uploads bridge (so its blob is
+WebP) and both files' `sha256` was then rewritten to a fixed sentinel — bug
+117's own damage, on the replay branch and the carried branch at once. Its
+`replace` mode is deliberately not a case: there the archived mount row
+restores verbatim and v5 keeps the archive's rollups, a shape `V5_STATS_GAP`'s
+zero-fileCount assertion cannot express.
+
+**The normalized table diff is BLIND to this column** — a `files` row whose
+composites had to be normalized has every `*sha256` in it replaced. Measured,
+not assumed: restoring bug 117's ordering left the whole table diff green while
+the restored row carried the lie. So the arm is a dedicated assertion over the
+RAW dumps, comparing `originalFilename → sha256` as plain strings, which is
+sound here because neither file can transcode differently on the two engines.
+
 #### 2026-09-03 — feat(boot): realign FileEntry sha256 with the bytes stored (bug 117, leg d)
 
 _Versions: core 0.0.760, harness 0.0.656, host 0.0.95._

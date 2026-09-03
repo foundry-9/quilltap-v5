@@ -1789,6 +1789,10 @@ struct CarriedBlob {
     storage_key: String,
     stored_mime_type: String,
     size_bytes: f64,
+    /// The archived blob's own hash (bug 117, v4 `0b0617fee`). `None` when the
+    /// restored blob row carries no hash — v4's `carriedSha256 ? … : {}` arm,
+    /// where the ARCHIVE's `files.sha256` stands.
+    sha256: Option<String>,
 }
 
 /// ## ⚠ RULED DIVERGENCE (2026-07-26) — the archive's own store rows win
@@ -1860,11 +1864,26 @@ fn carried_store_rows(
 
     // Present, or 22f never got it in. A missing table reads the same as a
     // missing row: re-ingest.
-    let (stored_mime_type, size_bytes) = mount
+    //
+    // `sha256` rides the SAME read (bug 117, v4 `0b0617fee`). This branch skips
+    // the replay, so it never sees a bridge and cannot take a hash from one — and
+    // the archive's own `files.sha256` may be the pre-transcode lie a pre-4.9.0
+    // source instance wrote. v4 indexes `data.docMountBlobs` by id and reads the
+    // hash from there; v5 reads the row 22f has already restored, which is the
+    // same array written to disk — INSIDE the ruled divergence above, which is
+    // precisely the difference: v5 consults the restored store, v4 the parsed
+    // archive. A NULL/empty hash reads as v4's falsy `carriedSha256`.
+    let (stored_mime_type, size_bytes, sha256) = mount
         .query_row(
-            "SELECT storedMimeType, sizeBytes FROM doc_mount_blobs WHERE id = ?1",
+            "SELECT storedMimeType, sizeBytes, sha256 FROM doc_mount_blobs WHERE id = ?1",
             rusqlite::params![blob_id],
-            |r| Ok((r.get::<_, String>(0)?, r.get::<_, f64>(1)?)),
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, f64>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                ))
+            },
         )
         .ok()?;
 
@@ -1886,6 +1905,9 @@ fn carried_store_rows(
         ),
         stored_mime_type,
         size_bytes,
+        // v4's `carriedSha256 ? {sha256} : {}` is a JS truthiness test, so an
+        // empty string is as absent as a NULL.
+        sha256: sha256.filter(|h| !h.is_empty()),
     })
 }
 
@@ -1894,14 +1916,16 @@ fn carried_store_rows(
 /// Project-bound files land in the project's document store; project-less ones in
 /// the Quilltap Uploads store under `restored/` — **not** the catch-all
 /// `_general/`. The bridges may transcode bitmaps, so the row records the
-/// POST-bridge mime and size rather than what the backup claimed (`:167-172`);
-/// re-writing the backup's claim would re-introduce the "media_type X but bytes
-/// are Y" error a pre-fix backup carries.
+/// POST-bridge mime, size AND sha256 rather than what the backup claimed
+/// (v4 `:552-572`); re-writing the backup's claim would re-introduce the
+/// "media_type X but bytes are Y" error a pre-fix backup carries, and (for
+/// `sha256`) a FileEntry that cannot be joined to the mount blob it points at
+/// (bug 117, v4 `0b0617fee`).
 ///
 /// `carried` short-circuits the ingest — see [`carried_store_rows`] for the
-/// ruling and the predicate. The row it writes keeps the same shape: the mime and
-/// size still describe what is actually in the store, read off the archive's own
-/// blob rather than off a bridge that has just re-written it.
+/// ruling and the predicate. The row it writes keeps the same shape: the mime,
+/// size and hash still describe what is actually in the store, read off the
+/// archive's own blob rather than off a bridge that has just re-written it.
 fn restore_one_file(
     main: &Connection,
     mount: &Connection,
@@ -1931,16 +1955,22 @@ fn restore_one_file(
             )?,
         }),
     };
-    let (storage_key, stored_mime_type, size_bytes) = match (&stored, carried) {
+    // Bug 117 (v4 `0b0617fee`): `sha256` joins `mimeType`/`size` in describing the
+    // bytes actually stored. The replay arm takes the bridge's answer; the carried
+    // arm takes the archived blob's own hash, falling back to the archive's
+    // `files.sha256` when the blob row carries none (v4's `carriedSha256 ? … : {}`).
+    let (storage_key, stored_mime_type, size_bytes, sha256) = match (&stored, carried) {
         (Some(s), _) => (
             s.storage_key(),
             s.stored_mime_type.clone(),
             s.size_bytes as f64,
+            s.sha256.clone(),
         ),
         (None, Some(c)) => (
             c.storage_key.clone(),
             c.stored_mime_type.clone(),
             c.size_bytes,
+            c.sha256.clone().unwrap_or_else(|| s(file, "sha256")),
         ),
         // Unreachable: `stored` is `None` only when `carried` is `Some`.
         (None, None) => unreachable!("the file phase either ingests or reuses"),
@@ -1948,7 +1978,7 @@ fn restore_one_file(
 
     let create = crate::db::files::FileCreate {
         user_id: target_user_id.to_string(),
-        sha256: s(file, "sha256"),
+        sha256,
         original_filename: filename,
         mime_type: stored_mime_type,
         size: size_bytes,

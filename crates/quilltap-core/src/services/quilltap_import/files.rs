@@ -342,9 +342,13 @@ pub(super) fn import_files(
             repo.create(
                 &crate::db::files::FileCreate {
                     user_id: user_id.to_string(),
-                    sha256: s(file, "sha256"),
+                    // Post-bridge truth, not what the archive claimed (see the
+                    // module header). `sha256` joined that rule in 4.9.0 (v4
+                    // `0b0617fee`, bug 117): the bridge transcodes bitmaps to
+                    // WebP, and a row carrying the archive's pre-transcode hash
+                    // cannot be joined to the mount blob it points at.
+                    sha256: stored.sha256.clone(),
                     original_filename: original_filename.clone(),
-                    // Post-bridge truth, not what the archive claimed.
                     mime_type: stored.stored_mime_type.clone(),
                     size: stored.size_bytes as f64,
                     width: file.get("width").and_then(Value::as_f64),

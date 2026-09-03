@@ -101844,3 +101844,98 @@ QT_ORACLE_OUT=/tmp/oracle-files-sha256-realign-heal.ndjson \
 
 Run: `QT_ORACLE_FILES_SHA256_REALIGN=/tmp/oracle-files-sha256-realign-heal.ndjson
 cargo test -p quilltap-harness --test files_sha256_realign_heal_equivalence`.
+
+### Unit 3 — legs (b) and (c): `.qtap` import and restore record the stored hash
+
+**Leg (b)** (v4 `import-files.ts` +7): `services/quilltap_import/files.rs` takes
+`sha256` from `stored.sha256`, joining the post-bridge `mimeType`/`size` rule
+its own module header already stated.
+
+**Leg (c)** (v4 `restore.ts` +33): `restore_one_file`'s replay arm takes the
+bridge's hash; `carried_store_rows` reads `sha256` in the SELECT it was already
+making (`storedMimeType, sizeBytes`) and carries it on `CarriedBlob`, and the
+carried arm falls back to the archive's `files.sha256` when the blob row has no
+hash — v4's `carriedSha256 ? … : {}` is a JS truthiness test, so an empty string
+is as absent as a NULL, and the column is read as `Option<String>` so a NULL can
+no longer collapse the whole `CarriedBlob` to `None` and silently re-ingest. The
+carry sits INSIDE the 2026-07-26 ruled divergence rather than around it: v4
+indexes the parsed archive's `docMountBlobs`, v5 reads the row 22f has already
+restored — the same array, one step later — and the module comment says so.
+
+#### Leg (b)'s differential: an ISOLATED second pair
+
+New committed `harness/oracle/fixtures/qtap-import-bug117.qtap` — a files-only
+export with a PNG whose row carries the PRE-TRANSCODE hash (what a pre-4.9.0
+exporter wrote) and a sibling `.txt` as the no-op arm. It runs on a SECOND copy
+of the qtap-import fixtures, not the shared pair: two blobs in the shared pair
+would change the `doc_mount_files` `fileSizeBytes` multiset the main diff
+asserts, and those sizes legitimately differ between sharp's WebP and the
+harness codec's bytes. The uploads mount is PLANTED identically on both sides
+(a `doc_mount_points` row + the `userUploadsMountPointId` instance setting) —
+fixture scaffolding, not ported code; the shared fixtures are empty and the
+bridge refuses without it. Comparand: the within-tree boolean per row, plus a
+floor asserting the PNG row is `image/webp` and matching.
+
+**Mutation:** take `sha256` from the archive row → **RED** (`bug117 sha join`).
+
+#### Leg (c)'s differential, and the blind comparand it had to route around
+
+New committed `crates/quilltap-web/tests/fixtures/restore-archives/
+restore-archive-bug117.zip` + its builder
+`harness/oracle/fixtures/build-restore-archive-bug117.test.ts` (a THIRD builder
+file, for the same reason the dedupe builder is a second: every archive carries
+fresh stamps, so re-running an existing builder rewrites archives this lane has
+no business moving; the helper block is copied verbatim from the dedupe builder
+so the two cannot drift apart in how they boot v4). Built by v4's REAL
+`createBackup` from an instance where a real 1x1 PNG went through v4's REAL
+uploads bridge — asserted at build time to have become `image/webp` and to have
+a stored hash differing from the input hash, or the arm would be vacuous — and
+where both files' `files.sha256` was then rewritten to a fixed sentinel
+(`b117…`, deliberately not a hash of anything, so a copy of the archive's value
+is legible in a diff). It carries the damage on BOTH branches at once:
+`portrait.png` (legacy disk key → replay) and `plate.png` (store-backed →
+carried).
+
+**The archive had to be TRIMMED twice, and both trims are recorded:** the
+`system-data-*` fixture has grown since the dedupe archives were built, and the
+extra content dragged in two v4-side behaviours that are somebody else's lane —
+v4's restore REFUSES one memory whose `embedding` column is an object where its
+Zod union wants Float32Array/array/Buffer/string, and the archived `restored`
+folder collides with the one v4's replay creates at 22a-bis (v4's known
+residual). The memories and the scaffolded `restored` folder go. A third trim
+followed: `atlas-plates.bin` is the fixture's only store-backed file inside a
+PROJECT store, and it lands squarely on the standing carried-store-rows ruling
+(v4 mints a second blob, v5 reuses the archived one) — its `files` row goes too.
+
+**`replace` mode is deliberately NOT a case.** There the archived
+`doc_mount_points` row restores verbatim, so v5's uploads mount keeps the
+ARCHIVE's cached rollups where v4 refreshes them — the standing `refreshStats`
+deferral in a shape `V5_STATS_GAP`'s zero-`fileCount` assertion cannot express.
+`new-account` restores into the target's own freshly provisioned uploads mount,
+where the existing carve-out fits, and it still exercises both branches. The
+case joins `PHASE_ORDER_RESIDUAL` for the three store tables (it replays a
+legacy-disk-key file — the exact shape that residual describes) and
+`V5_STATS_GAP` for the uploads mount; `doc_mount_folders` is NOT in the residual
+because its orders measurably agree on this archive, and `main.files` is not
+either.
+
+**⚠ The state diff is BLIND to `files.sha256`, and only a mutation said so.**
+A `files` row whose composites had to be normalized has EVERY `*sha256` in it
+replaced with `<sha:derived-from-normalized>` — precisely the column bug 117 is
+about. With the replay arm mutated back to the archive's value, the whole
+44-table diff stayed GREEN while the restored row carried the sentinel. So the
+arm is a dedicated `assert_bug117_stored_sha` over the RAW dumps, comparing
+`originalFilename → sha256` as plain strings. That is sound for THIS archive
+because neither file can transcode differently on the two engines:
+`portrait.png` is text-shaped so no codec decodes it, and `plate.png` is carried
+verbatim and never re-ingested.
+
+**Mutation proofs** (verified-applied, reverted by file backup): the replay arm
+takes the archive's sha → RED on `portrait.png`; the carried arm falls back to
+the archive's sha → RED on `plate.png`; the carried SELECT's `sha256` column
+replaced by `NULL` → RED on `plate.png`.
+
+Oracle regens (from the pin, own clean invocations) — the recipes are in each
+file's header. The `.qtap` and restore archives are COMMITTED fixtures; the
+qtap-import `/tmp` fixture pair and the system-restore NDJSON are rebuilt by
+their recipes.

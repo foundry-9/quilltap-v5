@@ -15,6 +15,11 @@
  *   - MOUNT-INDEX: the store tables (doc_mount_points / _folders / _files /
  *     _documents / _file_links) via the raw handle.
  *
+ * THE BUG-117 LEG (v4 `0b0617fee`): a THIRD import, of a files-only `.qtap`
+ * whose PNG row carries the PRE-TRANSCODE hash. The comparand is the WITHIN-TREE
+ * boolean `files.sha256 == doc_mount_blobs.sha256` (the hash string can never be
+ * compared across the trees — v4 stores real sharp WebP).
+ *
  * NORMALIZATION (done identically on both dumps by the Rust harness): nothing is
  * pinned — every character / wardrobe / memory / mount-point / file / document /
  * link / folder id is minted (v4's `create` strips the source id), so the harness
@@ -171,6 +176,102 @@ async function main(): Promise<void> {
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
+  // ── P4.D152 / bug 117 (v4 `0b0617fee`) — an ISOLATED second pair ──────────
+  //
+  // A files-only `.qtap` whose PNG row carries the PRE-TRANSCODE hash, which is
+  // exactly what a pre-4.9.0 exporting instance wrote. The importer's bridge
+  // transcodes the bitmap, so a row that records the archive's `sha256` cannot be
+  // joined to the mount blob it points at. The hash STRING can never be compared
+  // across the trees (v4 stores real sharp WebP, the Rust harness a byte-changing
+  // test codec), so the comparand is the WITHIN-TREE boolean
+  // `files.sha256 == doc_mount_blobs.sha256`, joined through the parsed key.
+  //
+  // It runs on a SECOND copy of the same fixtures, not the pair above: writing
+  // two blobs into the shared pair would change the `doc_mount_files`
+  // `fileSizeBytes` multiset the main diff asserts, and those sizes legitimately
+  // differ between sharp's WebP and the harness codec's bytes. Isolation keeps
+  // the two questions apart.
+  //
+  // The uploads mount is PLANTED (identically on both sides — it is fixture
+  // scaffolding, not ported code): the shared fixtures are empty, and
+  // `writeUserUploadToMountStore` refuses without a `userUploadsMountPointId`
+  // instance setting pointing at a database-backed store.
+  const bug117 = await (async () => {
+    const scratch2 = mkdtempSync(join(tmpdir(), 'qt-qtapimport-bug117-'));
+    mkdirSync(join(scratch2, 'data'), { recursive: true });
+    const main2 = join(scratch2, 'bug117-main.db');
+    const mount2 = join(scratch2, 'bug117-mount.db');
+    copyFileSync(mainFixture, main2);
+    copyFileSync(mountFixture, mount2);
+    process.env.SQLITE_PATH = main2;
+    process.env.SQLITE_MOUNT_INDEX_PATH = mount2;
+    process.env.QUILLTAP_DATA_DIR = scratch2;
+
+    await initializeDatabase();
+    const midb2 = getRawMountIndexDatabase();
+    if (!midb2) throw new Error('mount-index DB handle unavailable (bug117 pair)');
+
+    const UPLOADS_MP = 'aaaaaaaa-0000-4000-8000-00000000dd01';
+    const TS = '2026-02-28T17:11:10.563Z';
+    midb2
+      .prepare(
+        'INSERT INTO doc_mount_points (id, name, basePath, mountType, storeType, createdAt, updatedAt) ' +
+          "VALUES (?, 'Quilltap Uploads', '', 'database', 'documents', ?, ?)"
+      )
+      .run(UPLOADS_MP, TS, TS);
+    await rawQuery(
+      'CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)'
+    );
+    await rawQuery('INSERT INTO "instance_settings" ("key", "value") VALUES (?, ?)', [
+      'userUploadsMountPointId',
+      UPLOADS_MP,
+    ]);
+
+    const data117 = JSON.parse(
+      readFileSync(join(here, '..', 'fixtures', 'qtap-import-bug117.qtap'), 'utf8')
+    );
+    const r117 = await executeImport(SINGLE_USER_ID, data117, {
+      conflictStrategy: 'skip',
+      includeMemories: true,
+      includeRelatedEntities: false,
+    });
+
+    const rows = (await rawQuery(
+      'SELECT originalFilename, mimeType, category, isPlainText, storageKey, sha256 ' +
+        "FROM files WHERE storageKey LIKE 'mount-blob:%' ORDER BY originalFilename"
+    )) as Array<Record<string, unknown>>;
+    const findBlob = midb2.prepare(
+      'SELECT sha256, storedMimeType FROM doc_mount_blobs WHERE id = ?'
+    );
+    const shaJoin = rows.map((r) => {
+      const key = String(r.storageKey);
+      const rest = key.slice('mount-blob:'.length);
+      const sep = rest.indexOf(':');
+      const blobId = sep < 1 || sep === rest.length - 1 ? null : rest.slice(sep + 1);
+      const blob = blobId
+        ? (findBlob.get(blobId) as { sha256: string; storedMimeType: string } | undefined)
+        : undefined;
+      return {
+        filename: r.originalFilename,
+        mimeType: r.mimeType,
+        category: r.category,
+        isPlainText: r.isPlainText,
+        blobFound: !!blob,
+        storedMimeTypeInBlob: blob ? blob.storedMimeType : null,
+        shaMatchesBlob: !!blob && blob.sha256 === r.sha256,
+      };
+    });
+
+    closeMountIndexSQLiteClient();
+    await closeDatabase();
+    return {
+      success: r117.success,
+      warnings: r117.warnings,
+      imported: r117.imported.files ?? null,
+      shaJoin,
+    };
+  })();
+
   process.stdout.write(
     JSON.stringify({
       case: 'qtap-import-tier2',
@@ -193,6 +294,7 @@ async function main(): Promise<void> {
         warnings: bug75Result.warnings,
         items: bug75Items,
       },
+      bug117,
     }) + '\n'
   );
   process.exit(0);

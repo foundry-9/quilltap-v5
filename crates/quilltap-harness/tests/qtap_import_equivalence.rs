@@ -46,6 +46,17 @@
 //! `componentItemIds` element go through one shared token map — a hollow import
 //! (old export ids) yields tokens matching no sibling row and diverges loudly.
 //!
+//! THE BUG-117 LEG (v4 `0b0617fee`): a files-only `.qtap` whose PNG row carries
+//! the PRE-TRANSCODE hash — what a pre-4.9.0 exporting instance wrote. The
+//! importer took `sha256` from the archive row beside the post-bridge
+//! `mimeType`/`size`, so a bitmap the bridge transcoded left a FileEntry that
+//! cannot be joined to the mount blob it points at. It runs on an ISOLATED
+//! second copy of the fixtures (its two blobs would otherwise change the
+//! `doc_mount_files` size multiset above, and those sizes legitimately differ
+//! between sharp's WebP and the harness codec's bytes), with the uploads mount
+//! PLANTED identically on both sides. The comparand is the WITHIN-TREE boolean
+//! `files.sha256 == doc_mount_blobs.sha256`.
+//!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -165,6 +176,11 @@ fn qtap_path() -> PathBuf {
 fn bug75_qtap_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/qtap-import-bug75.qtap")
+}
+
+fn bug117_qtap_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../harness/oracle/fixtures/qtap-import-bug117.qtap")
 }
 
 /// Project a vault-overlaid wardrobe item to the bug-75 comparand fields
@@ -620,8 +636,170 @@ fn qtap_import_tier2_matches_oracle() {
         );
     }
 
+    // ── P4.D152 / bug 117 (v4 `0b0617fee`) — an ISOLATED second pair ──────────
+    //
+    // See the oracle case's comment: the importer took `sha256` from the ARCHIVE
+    // row beside the post-bridge `mimeType`/`size`, so a bitmap the bridge
+    // transcoded left a FileEntry that cannot be joined to the mount blob it
+    // points at. The hash STRING cannot cross the trees (v4 stores real sharp
+    // WebP), so the comparand is the WITHIN-TREE boolean, and the import runs on
+    // a SECOND copy of the fixtures so its two blobs cannot disturb the
+    // `doc_mount_files` size multiset the main diff asserts.
+    //
+    // The uploads mount is PLANTED, identically to the oracle's plant — fixture
+    // scaffolding, not ported code: the shared fixtures are empty and
+    // `write_user_upload_to_mount_store` refuses without a
+    // `userUploadsMountPointId` pointing at a database-backed store.
+    {
+        let main2_path = std::env::temp_dir().join(format!("qt-qtapimport-b117-main-{pid}.db"));
+        let mount2_path = std::env::temp_dir().join(format!("qt-qtapimport-b117-mount-{pid}.db"));
+        let _ = std::fs::remove_file(&main2_path);
+        let _ = std::fs::remove_file(&mount2_path);
+        std::fs::copy(&main_fixture, &main2_path).unwrap_or_else(|e| panic!("copy main2: {e}"));
+        std::fs::copy(&mount_fixture, &mount2_path).unwrap_or_else(|e| panic!("copy mount2: {e}"));
+        let main2 = Writer::open_writable(&main2_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open main2: {e}"));
+        let mount2 = Writer::open_writable(&mount2_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open mount2: {e}"));
+
+        const UPLOADS_MP: &str = "aaaaaaaa-0000-4000-8000-00000000dd01";
+        const TS: &str = "2026-02-28T17:11:10.563Z";
+        mount2
+            .connection()
+            .execute(
+                "INSERT INTO doc_mount_points (id, name, basePath, mountType, storeType, createdAt, updatedAt) \
+                 VALUES (?1, 'Quilltap Uploads', '', 'database', 'documents', ?2, ?2)",
+                rusqlite::params![UPLOADS_MP, TS],
+            )
+            .expect("plant uploads mount");
+        main2
+            .connection()
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS \"instance_settings\" (\"key\" TEXT PRIMARY KEY, \"value\" TEXT NOT NULL)",
+            )
+            .expect("plant instance_settings");
+        main2
+            .connection()
+            .execute(
+                "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('userUploadsMountPointId', ?1)",
+                rusqlite::params![UPLOADS_MP],
+            )
+            .expect("plant uploads setting");
+
+        let b117_qtap =
+            std::fs::read_to_string(bug117_qtap_path()).expect("read committed bug117 .qtap");
+        let b117_export = parse_export_file(&b117_qtap).expect("parse bug117 .qtap");
+        // The byte-CHANGING codec: the not-configured one passes bytes through and
+        // would make the boolean vacuously true whichever ORDER ran.
+        let codec = quilltap_harness::PrefixingPixelCodec;
+        let b117 = execute_import(
+            main2.connection(),
+            mount2.connection(),
+            SINGLE_USER_ID,
+            &b117_export,
+            &ImportOptions::seed_defaults(),
+            Some(&codec),
+        )
+        .expect("bug117 execute_import");
+
+        let want117 = &oracle["bug117"];
+        assert_eq!(
+            Value::Bool(b117.success),
+            want117["success"],
+            "bug117 import success"
+        );
+        assert_eq!(
+            serde_json::to_value(&b117.warnings).unwrap(),
+            want117["warnings"],
+            "bug117 warnings"
+        );
+        assert_eq!(
+            serde_json::json!(b117.imported.files),
+            want117["imported"],
+            "bug117 imported file count"
+        );
+
+        let got117 = dump_sha_join(&main2, &mount2);
+        assert_eq!(got117, want117["shaJoin"], "bug117 sha join");
+        // The floor: the transcoded row must be present AND matching, or the arm
+        // has stopped asking anything.
+        let png = got117
+            .as_array()
+            .and_then(|rs| {
+                rs.iter()
+                    .find(|r| r["filename"].as_str() == Some("imported-shot.png"))
+                    .cloned()
+            })
+            .expect("the PNG row");
+        assert_eq!(png["mimeType"], serde_json::json!("image/webp"));
+        assert_eq!(
+            png["shaMatchesBlob"],
+            serde_json::json!(true),
+            "bug 117: an imported bitmap must record the STORED bytes' hash"
+        );
+
+        drop(main2);
+        drop(mount2);
+        let _ = std::fs::remove_file(&main2_path);
+        let _ = std::fs::remove_file(&mount2_path);
+    }
+
     let _ = std::fs::remove_file(&main_work);
     let _ = std::fs::remove_file(&mount_work);
 
-    eprintln!("OK: qtap-import tier-2 matched oracle (9 tables, 2 DBs) + skip branch.");
+    eprintln!(
+        "OK: qtap-import tier-2 matched oracle (9 tables, 2 DBs) + skip branch + bug-117 sha join."
+    );
+}
+
+/// The bug-117 comparand, in the oracle case's shape: every `files` row with a
+/// `mount-blob:` key, joined to its blob through the parsed key.
+fn dump_sha_join(main: &Writer, mount: &Writer) -> Value {
+    let mut stmt = main
+        .connection()
+        .prepare(
+            "SELECT originalFilename, mimeType, category, isPlainText, storageKey, sha256 \
+               FROM files WHERE storageKey LIKE 'mount-blob:%' ORDER BY originalFilename",
+        )
+        .expect("prepare sha join");
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, Option<i64>>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+            ))
+        })
+        .expect("sha join")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("sha join rows");
+    let mut out = Vec::new();
+    for (filename, mime, category, is_plain_text, key, sha) in rows {
+        let blob: Option<(String, String)> =
+            quilltap_core::services::file_storage::parse_mount_blob_storage_key(&key).and_then(
+                |(_, id)| {
+                    mount
+                        .connection()
+                        .query_row(
+                            "SELECT sha256, storedMimeType FROM doc_mount_blobs WHERE id = ?1",
+                            rusqlite::params![id],
+                            |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                        )
+                        .ok()
+                },
+            );
+        out.push(serde_json::json!({
+            "filename": filename,
+            "mimeType": mime,
+            "category": category,
+            "isPlainText": is_plain_text,
+            "blobFound": blob.is_some(),
+            "storedMimeTypeInBlob": blob.as_ref().map(|(_, m)| m.clone()),
+            "shaMatchesBlob": blob.map(|(bs, _)| bs == sha).unwrap_or(false),
+        }));
+    }
+    Value::Array(out)
 }

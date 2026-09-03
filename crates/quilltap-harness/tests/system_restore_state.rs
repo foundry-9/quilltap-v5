@@ -188,6 +188,29 @@ const TEST_PEPPER: &str = "3q2+796tvu/erb7v3q2+796tvu/erb7v3q2+796tvu8=";
 /// insertion order. Not a new divergence — the ruled one, reached by a second
 /// case of the same shape.
 const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
+    // [P4.D152] The bug-117 archive replays a legacy-disk-key `portrait.png` —
+    // the exact shape this residual describes — so the two file phases write its
+    // content row, link and blob at different points in the insertion order. Not
+    // a new divergence; the ruled one, reached by a third archive.
+    // `doc_mount_folders` is NOT here: its orders measurably agree on this
+    // archive (the carve-out's own staleness check says so). `main.files` is not
+    // here either — it is this case's whole question (bug 117's `sha256`) and is
+    // diffed in order like everything else.
+    (
+        "restore_bug117_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_bug117_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_bug117_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
     ("restore_new_account", "mountIndex", "doc_mount_blobs"),
     ("restore_new_account", "mountIndex", "doc_mount_file_links"),
     ("restore_new_account", "mountIndex", "doc_mount_files"),
@@ -264,6 +287,13 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
     // [P4.D51] Converged off REPLAY_DEDUPE; its uploads mount hits the same stale
     // rollup (v4 refreshes `fileCount`/`totalSizeBytes`, v5 does not).
     ("restore_uploads_new_account", "Quilltap Uploads"),
+    // [P4.D152] The bug-117 archive replays a legacy-disk-key file into the
+    // target's own uploads mount, so it reaches the same stale rollup. Not a new
+    // gap — the existing deferral, reached by a third archive shape. (The
+    // `replace` mode of this archive is deliberately not a case at all: there the
+    // archived mount row restores verbatim and v5 keeps the ARCHIVE's rollups,
+    // which this zero-fileCount assertion cannot express. See the oracle's list.)
+    ("restore_bug117_new_account", "Quilltap Uploads"),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
@@ -850,6 +880,13 @@ fn archive_for(name: &str) -> &'static str {
             "restore-archive-memory-graph.zip"
         }
         "restore_orphan_links_replace" => "restore-archive-orphan-links.zip",
+        // [P4.D152] bug 117 — the archive that carries a `files.sha256` lie on
+        // BOTH file branches (the legacy disk-key `portrait.png` through the
+        // replay, the store-backed `plate.png` through carried-store-rows).
+        // Every other committed archive carries a `sha256` that already agrees
+        // with its bytes, so none of them can tell "copy the archive's value"
+        // from "ask the bridge" apart.
+        "restore_bug117_new_account" => "restore-archive-bug117.zip",
         // [P4.D46] The compact restore tail (24a + 25).
         "restore_compact_replace" | "restore_compact_new_account" => "restore-archive-compact.zip",
         // [P4.D126] bug 103 — the connection-profile columns an older archive
@@ -1156,6 +1193,9 @@ fn system_restore_state_equivalence() {
         // sets are empty, so it is cheap there and guards the id preservation.
         assert_memory_graph_intact(name, &zip, &host.temp_dir(), &got_state, &mut failures);
 
+        // [P4.D152] bug 117's own comparand, taken from the RAW dumps.
+        assert_bug117_stored_sha(name, &got_state, want_state, &mut failures);
+
         let literals = archive_literals(&zip, &host.temp_dir());
         compare_case(
             name,
@@ -1171,10 +1211,10 @@ fn system_restore_state_equivalence() {
     }
 
     assert_eq!(
-        seen, 15,
-        "expected all fifteen restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 16,
+        "expected all sixteen restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
-         + P4.D145's bug-114 duplicate-folders arm)"
+         + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm)"
     );
     assert!(
         failures.is_empty(),
@@ -1395,6 +1435,81 @@ fn compare_warnings(name: &str, got: &Value, want: &Value, failures: &mut Vec<St
 /// v4's `refreshStats` must have produced a non-zero `fileCount` and v5's
 /// unported one must still read zero. **Close the deferral and this fails**, at
 /// which point the mask below comes out and the columns go back under diff.
+/// ## [P4.D152] bug 117 — `files.sha256` must name the bytes actually stored
+///
+/// **The normalized table diff is BLIND to this column.** A `files` row whose
+/// composites had to be normalized has EVERY `*sha256` in it replaced with
+/// `<sha:derived-from-normalized>` — which is exactly the column bug 117 is
+/// about. Measured, not assumed: restoring bug 117's own ordering (the replay
+/// arm taking the archive's `sha256`) left the whole table diff GREEN while the
+/// restored row carried the archive's lie.
+///
+/// So compare it here, before normalization, as plain strings. That is sound for
+/// THIS archive precisely because neither of its two files can transcode
+/// differently on the two engines: `portrait.png` is text-shaped, so no codec
+/// decodes it and both bridges store the input bytes; `plate.png` is carried
+/// verbatim from the archive and never re-ingested. Both engines must therefore
+/// land the same hash — and the archive's own `files.sha256` is a fixed sentinel
+/// that is neither of them, so a restore that copies the archive's value is
+/// visible in both directions.
+fn assert_bug117_stored_sha(
+    name: &str,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    if name != "restore_bug117_new_account" {
+        return;
+    }
+    /// The archive's sentinel — see `build-restore-archive-bug117.test.ts`.
+    const LIE: &str = "b117b117b117b117b117b117b117b117b117b117b117b117b117b117b117b117";
+
+    let by_name = |rows: &[Value]| -> BTreeMap<String, String> {
+        rows.iter()
+            .filter_map(|r| {
+                Some((
+                    r.get("originalFilename")?.as_str()?.to_string(),
+                    r.get("sha256")?.as_str()?.to_string(),
+                ))
+            })
+            .collect()
+    };
+    let empty: Vec<Value> = Vec::new();
+    let v5 = by_name(
+        got.get("main")
+            .and_then(|p| p.get("files"))
+            .unwrap_or(&empty),
+    );
+    let v4 = by_name(
+        &want["main"]["files"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default(),
+    );
+
+    for file in ["portrait.png", "plate.png"] {
+        match (v5.get(file), v4.get(file)) {
+            (Some(g), Some(w)) => {
+                if g != w {
+                    failures.push(format!(
+                        "[{name}] bug 117: {file} sha256 rust {g} vs oracle {w}"
+                    ));
+                }
+                if g == LIE {
+                    failures.push(format!(
+                        "[{name}] bug 117: {file} kept the ARCHIVE's pre-transcode hash — the restored row names bytes that exist nowhere"
+                    ));
+                }
+            }
+            _ => failures.push(format!(
+                "[{name}] bug 117: {file} is missing from one side's restored `files` — the arm has gone stale (v5={:?} v4={:?})",
+                v5.get(file),
+                v4.get(file)
+            )),
+        }
+    }
+}
+
 fn assert_stats_gap(
     name: &str,
     got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,

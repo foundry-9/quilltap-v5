@@ -1,0 +1,60 @@
+{
+  "$comment": "P4.D152 / v4 bug 117 (0b0617fee). A files-only .qtap whose PNG row carries the PRE-TRANSCODE hash \u2014 exactly what a pre-4.9.0 exporting instance wrote. The importer's bridge transcodes the bitmap, so a row that records the archive's sha256 cannot be joined to the mount blob it points at. The sibling .txt is the no-op arm: its bytes pass the transcode through and its hash was never wrong.",
+  "manifest": {
+    "format": "quilltap-export",
+    "version": "1.0",
+    "exportType": "files",
+    "createdAt": "2026-02-28T17:11:10.563Z",
+    "appVersion": "4.8.4",
+    "settings": {
+      "scope": "selected",
+      "selectedIds": []
+    },
+    "counts": {
+      "files": 2
+    }
+  },
+  "data": {
+    "folders": [],
+    "files": [
+      {
+        "id": "f1170000-0000-4000-8000-000000000001",
+        "originalFilename": "imported-shot.png",
+        "mimeType": "image/png",
+        "size": 70,
+        "sha256": "c414cd0e204de974f73753c7e28d7638e7b3691bb8b1a2bab6b25bb7fed7ce77",
+        "category": "IMAGE",
+        "source": "UPLOADED",
+        "isPlainText": false,
+        "linkedTo": [],
+        "tags": [],
+        "projectId": null,
+        "folderPath": null,
+        "fileStatus": "ok",
+        "storageKey": "mount-blob:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222",
+        "createdAt": "2026-02-28T17:11:10.563Z",
+        "updatedAt": "2026-02-28T17:11:10.563Z",
+        "dataBase64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+      },
+      {
+        "id": "f1170000-0000-4000-8000-000000000002",
+        "originalFilename": "imported-note.txt",
+        "mimeType": "text/plain",
+        "size": 29,
+        "sha256": "1da64b9d01d5e520daf21179b614dd9c2d598c86a37973b01f26e8f231e1a90b",
+        "category": "ATTACHMENT",
+        "source": "UPLOADED",
+        "isPlainText": true,
+        "linkedTo": [],
+        "tags": [],
+        "projectId": null,
+        "folderPath": null,
+        "fileStatus": "ok",
+        "storageKey": "mount-blob:11111111-1111-4111-8111-111111111111:33333333-3333-4333-8333-333333333333",
+        "createdAt": "2026-02-28T17:11:10.563Z",
+        "updatedAt": "2026-02-28T17:11:10.563Z",
+        "dataBase64": "YW4gaW1wb3J0ZWQgbm90ZSwgaGFzaGVkIG9uY2U="
+      }
+    ]
+  }
+}
