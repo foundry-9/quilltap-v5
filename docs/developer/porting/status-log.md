@@ -101939,3 +101939,84 @@ Oracle regens (from the pin, own clean invocations) — the recipes are in each
 file's header. The `.qtap` and restore archives are COMMITTED fixtures; the
 qtap-import `/tmp` fixture pair and the system-restore NDJSON are rebuilt by
 their recipes.
+
+### Deferrals and named candidates (loud)
+
+- **Tier 3, recorded not built — v4's `PRETTY_LABELS` loading-screen sentence**
+  (`'Matching each picture to its fingerprint, so nothing goes missing on the
+  shelves…'`). v5 has no loading screen for a boot heal to announce itself on;
+  the boot log line carries the four counts instead. The sentence is carried
+  verbatim in `db/files_sha256_realign_heal.rs`'s header for the day one exists.
+- **Tier 3 — `docs/developer/DDL.md`'s prose.** v4's doc-only rewrite (and the
+  matching one in `repair-files-mime-and-size-from-mount-blob.ts`, which now
+  says its `sha256` carve-out WAS bug 117) belongs to the `docs/v4/` mirror at
+  its next refresh, not to this lane.
+- **Tier 3 — the `qtap-export.schema.json` `description` on `files.sha256`.**
+  v4 added a description and NO constraint, so nothing validates differently;
+  it joins the standing `qtap-export.schema.json` file-port flag.
+- **NAMED CANDIDATE, deliberately not done: threading the HOST codec into chat
+  uploads.** v4 transcodes chat-uploaded bitmaps through sharp; v5's chat-upload
+  path has always handed the bridges `NotConfiguredPixelCodec`, so every encode
+  fails and the ORIGINAL bytes are stored — v4's own sharp-unavailable branch,
+  the pre-existing divergence recorded at `api/files.rs:1116-1118`. That is why
+  v5's own rows never showed bug 117's symptom while v4-written, v5-imported and
+  v5-restored rows did. Threading the host codec would be a NEW convergence
+  beyond this drift row. The codec is now a parameter (production still passes
+  the not-configured one, byte-for-byte as before), so the day that convergence
+  is ordered it is a one-line change at `api/engine.rs` with the comment there
+  naming it.
+- **Recorded, unpinned by design: the heal's batching.** `BATCH_SIZE` 500 →
+  5000 leaves `files_sha256_realign_heal_equivalence` green — the keyset walk's
+  result is identical at any size, so the >500-row scenario is a coverage floor
+  and not a discriminator. Pinning it would need a query-count seam this lane
+  does not build.
+- **Recorded, for whoever owns it: the restore archive's two trims.** Building
+  the bug-117 archive from today's `system-data-*` fixture surfaced two v4-side
+  behaviours neither the dedupe archives nor this lane can speak for — v4's
+  restore REFUSES a memory whose `embedding` column is an object where its Zod
+  union wants Float32Array/array/Buffer/string, and the fixture's project-bound
+  store-backed file lands on the standing carried-store-rows ruling. Both were
+  trimmed out of the archive rather than absorbed; both are still there in the
+  fixture for a lane that wants them.
+- **💸 The dogfood queue gains the heal on the Friday copy** — measure the
+  population FIRST (ledger §5.5): v4 running on the same instance will have run
+  its own migration, and the free cross-app proof is then that v5's boot honours
+  the ledger row and writes nothing.
+
+### The lane's verification gate
+
+- **Drift-ledger §2 probe at lane start AND before each regen batch:** v4 on
+  `main`, tree clean, `15573c3a1..main` and `3a76b17df..bugfix` both empty —
+  PASS against §1 as recorded. (§1 already carries `15573c3a1` as a seventh
+  UNPROCESSED row and states it cannot poison a lane pinned at its own target;
+  the order's preamble predates that check.) Every regen ran from
+  `/tmp/qt-v4-pin-p4d152-0b0617fee`, a lane-unique detached worktree at
+  `0b0617fee` with the three symlink classes.
+- **The lane's ten families by name through the sweep driver, `--v4` at the
+  pin: 10/10 ok, ZERO SKIP** — `files_routes_equivalence`,
+  `files_sha256_realign_heal_equivalence`, `qtap_import_equivalence`,
+  `system_restore_state`, `system_restore_equivalence`, `restore_vintage_state`,
+  `files_tier2_equivalence`, `character_photo_upload_tier2_equivalence`,
+  `photo_tools_equivalence`, `provisioning_equivalence`. The last four moved
+  nothing, as the order predicted (the photo paths already hash after the
+  transcode), and **`provisioning_equivalence` is green — no D23 re-dump, which
+  is the commit's own claim confirmed on v5's side.**
+- **Changed bytes grepped in every regenerated NDJSON** (a green regen is not
+  coverage): `chat_upload_image_twice_dedups` ×1 and `shaJoin` ×3 in
+  files-routes; 8 scenarios and 6 `mount-blob FileEntries` sentences in the heal
+  oracle; `bug117` + `imported-shot.png` in qtap-import;
+  `restore_bug117_new_account` + `plate.png` in system-restore.
+- **`cargo test --workspace`** with the lane's env block (+ `TZ=UTC`):
+  **489 test binaries / 2,754 passed / 0 failed / 1 ignored — exit 0, ZERO
+  `SKIP:` lines.** (The three `FAILED` substrings in the log are a boot WARN's
+  own text — `FAILED-status exclusion disabled` — the standing
+  `grep -c FAILED lies` trap.)
+- **`cargo fmt --all --check`** clean; **`cargo clippy --workspace
+  --all-targets -- -D warnings`** clean on BOTH feature sets (plain +
+  `--features quilltap-core/native-transport`); **`cargo build --workspace
+  --release`** clean; `harness/tools/check_spelling.py` silent.
+- **Host boot tests by name:** `cargo test -p quilltap-host` — 105 + 2 + 1 + 4 +
+  1 + 5 passed, 0 failed.
+- **No Playwright and no SPA gate** — this lane touched no `apps/web` file and
+  no spec (order §F).
+- Versions: core 0.0.761, harness 0.0.657, host 0.0.95.

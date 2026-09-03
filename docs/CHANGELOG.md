@@ -148,6 +148,24 @@ pins the thread through a stub transport (DEEPSEEK's
 `prompt_cache_hit_tokens`) and asserts the subtraction that makes the
 add-back necessary; the tier-3 differential cannot see this thread, because
 the canned provider builds its own response.
+#### 2026-09-03 — docs(p4.d152): the lane record — deferrals, named candidates, and the gate
+
+_No crate versions bumped._
+
+The P4.D152 lane record's closing sections: the three Tier-3 deferrals recorded
+rather than built (v4's `PRETTY_LABELS` loading-screen sentence, which v5 has no
+surface for and which the heal module's header now carries verbatim;
+`docs/developer/DDL.md`'s prose, for the `docs/v4/` mirror's next refresh; the
+`qtap-export.schema.json` description, which adds no constraint), the named
+candidate this lane deliberately did not take (threading the HOST codec into
+chat uploads — v4 transcodes there, v5 has always handed the bridges the
+not-configured codec, and closing that gap is a new convergence beyond this
+drift row), the heal's batching recorded as unpinned by design, the two v4-side
+behaviours trimmed out of the new restore archive rather than absorbed, and the
+verification gate: 10/10 families by name from the pinned worktree with zero
+SKIP, 489 test binaries / 2,754 passed / 0 failed, clippy clean on both feature
+sets, release build clean.
+
 #### 2026-09-03 — fix(import,restore): record the stored bytes' hash (bug 117, legs b and c)
 
 _Versions: core 0.0.761, harness 0.0.657._
