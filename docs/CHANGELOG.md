@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-02 — docs(setupphase): the `0b0617fee` drift catch-up round ordered (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152)
+
+_Docs-only change._
+
+Five work orders for the five UNPROCESSED drift rows in the ledger's §3,
+written after a fresh survey of the shipped hunks and the v5 surfaces
+they land on. P4.D148/P4.D149 split v4's Concierge-at-creation feature
+(`303288fb4`) into its server half (`conciergeState` on the create
+request, the flip after the system-prompt message on all three branches,
+the greeting ladder's attempt 0 on the uncensored desk, the capstone
+corpus widened red-first) and its SPA half (the New Chat dropdown, the
+omit-when-monitored body rule, v4's client tests transcribed, a gated
+create-time beat; Continue Elsewhere seeding recorded as a no-counterpart).
+P4.D150 takes bug 115 (the fallback distill asks for the interactive
+budget, pinned by the P4.D136 unit idiom since the corpus is blind to a
+deadline class) and the `c9faa2c74` inter-character timing log. P4.D151
+takes bug 116 (the describer arrival verdict ahead of every content check,
+which needs a `CompletionResponse.cache_usage` widening the lane owns at
+every construction site) and bug 118 as a manifest-regen byte-identity
+proof (v5 never had it — measured at the drift check), and ratifies
+`b448eddd7`. P4.D152 takes bug 117's four legs plus v4's
+`realign-file-entry-sha256-v1` migration as a boot heal in the P4.D140
+ledger shape, with a within-tree boolean comparand and a harness-only
+byte-changing codec so the upload arm can go red first; the survey found
+v5's chat-upload path hands the bridges a not-configured codec, so v5's
+own upload rows never had the symptom — the live damage is on v4-written
+and v5-imported/restored rows, and threading the host codec into chat
+uploads is named as a candidate, not ordered.
+
+The ledger's five rows are marked ORDERED with a §1 note; `phase-4.md`
+gains the round's ORDERED section (pick order, the two-wave execution
+arrangement under the 89 GB disk budget, what was left out). The shared
+contract and ownership blocks are byte-identical across the five orders
+(md5-checked).
+
 #### 2026-09-02 — docs(drift): record v4's bugs 116-118 fix as the fifth drift row
 
 _Docs-only change._

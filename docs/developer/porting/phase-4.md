@@ -6256,6 +6256,122 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The `0b0617fee` drift catch-up round (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152) — ORDERED 2026-09-02
+
+**A drift round.** The ledger's §2 probe passed at ordering (v4 `main` at
+`0b0617fee`, tree clean, both logs empty) and its §3 held FIVE UNPROCESSED
+rows — one PORT-NEW, three PORT (one log-only), one NO-PORT? — none a
+convergence (bugs 115–118 are v4's own filings). The standing rule (drift
+debt before new scope) makes the catch-up the whole round; the follow-ups
+list's item 1 (the three-row catch-up) grew to five rows when v4 filed and
+fixed bugs 116–118 the same evening, and its item 3 (the v5-side
+measurements those filings asked for) was TAKEN at the drift check and is
+folded into the two bug-fix lanes. Five lanes, ownership disjoint at file
+level, the shared-contract + ownership blocks byte-identical across all
+five orders (md5-checked at ordering). Orders under `work-orders/`:
+
+- **P4.D148** `p4.d148-concierge-at-creation-server.md` — the server half
+  of `303288fb4`: `conciergeState` on the `chatCreate` request (v4's
+  spelled-out enum, `.optional()` not nullable), `apply_requested_
+  concierge_state` through the EXISTING `apply_concierge_flip` chokepoint
+  at all three create branches right after the system-prompt message (the
+  continuation branch BEFORE the replay), the greeting ladder's "attempt 0"
+  — the reroute body reshaped into ONE closure asked WITH the fresh chat
+  row (a Vouched chat never reroutes under a global AUTO_ROUTE; an
+  Uncensored one reroutes under a global OFF), the content-filter attempt
+  reusing it and skipping when attempt 0 ran, five log lines; the capstone
+  corpus WIDENED (it seeds no danger settings and no uncensored profile
+  today) with ten red-first cases incl. the `Briefing the Concierge…`
+  frame and the bubble-position dumps.
+- **P4.D149** `p4.d149-concierge-at-creation-spa.md` — the client half:
+  the **The Concierge** dropdown above Starting Scenario (`Monitored
+  (default)` — v4's form label differs from the sidebar's), the tone icon,
+  the shared `detail` sentence (no `hint`), `conciergeState` in the form
+  state with the OMIT-when-monitored body rule, v4's two client tests
+  transcribed 1:1, an ungated body-rule beat + a GATED create-time beat
+  (`P4D148_SERVER_LANDED`); Continue Elsewhere seeding is a NO-COUNTERPART
+  (v5's continue-chat flow is unported — recorded); two help hunks →
+  `p4.9i2`.
+- **P4.D150** `p4.d150-interactive-distill-and-timing-log.md` — bug 115
+  (`distill_memory_search` gains `options: CheapLlmTaskOptions`; the
+  build-context FALLBACK passes `interactive()`, the proactive pass and
+  recall-replay keep the default — v5 reproduces the 90 s + free retry
+  today) pinned by the P4.D136 unit idiom (a budget-recording provider at
+  both sites + call counts; the corpus is provably blind — the
+  pin-vs-baseline byte-identity is recorded as the measurement) + the
+  `c9faa2c74` inter-character timing debug line (`durationMs`,
+  `loadedCount` = importance + relevance lengths, `includedCount`),
+  capture-pinned with three arms.
+- **P4.D151** `p4.d151-describer-arrival-verdict-bug116.md` — bug 116:
+  `verify_image_reached_model` (attachment ledger first; absent/zero usage
+  is SILENCE; cache reads added back; `<= 66` refuses) ahead of every
+  content check in the describe tier, the warn + the long sentence + the
+  metadata keys, failing INTO the fallback chain; the
+  `CompletionResponse.cache_usage` widening (§B — the lane edits every
+  construction site incl. ten harness one-liners); the corpus widened with
+  optional `attachmentResults`/`cacheUsage` on the canned vision entries +
+  six red-first cases; `verifyImageReachedModel` as a tier-1 `fallback_
+  engine` kind; bug 118 as a manifest regen proven BYTE-IDENTICAL (v5 has
+  carried the truthful block since P4.D107 — measured at the drift check);
+  `b448eddd7` ratified NO-PORT with its file list.
+- **P4.D152** `p4.d152-files-sha256-stored-bytes-bug117.md` — bug 117's
+  four legs: chat upload transcodes THROUGH the bridge's own function
+  before hashing and records the bridge's `sha256` (+ the disagree warn),
+  `.qtap` import and restore's replay branch take the bridge's hash, the
+  carried-store-rows branch reads the archived blob's own hash by parsed
+  blob id (the RULED DIVERGENCE at `orchestrator.rs:994` re-read first),
+  and v4's `realign-file-entry-sha256-v1` migration as a boot heal in the
+  P4.D140 ledger shape (honour either app's row; write only on a pass that
+  realigned ≥ 1). **Measured at ordering:** v5's chat-upload path hands
+  the bridges `NotConfiguredPixelCodec` (a documented passthrough
+  divergence), so v5's OWN upload rows never had the symptom — the live
+  damage is on rows v4 wrote on the shared instance and on v5's
+  import/restore rows (those paths carry the host codec); threading the
+  host codec into chat uploads is a NAMED CANDIDATE, not this lane's. The
+  comparand is a within-tree BOOLEAN (`files.sha256 == doc_mount_blobs.
+  sha256`) with a harness-only byte-changing codec so the upload arm is
+  red first; a NEW heal family over v4's REAL migration with its seven
+  cases; a NEW committed `restore-archive-bug117.zip`.
+
+Shared contracts §A–§G (identical in all five): the create-time wire
+(P4.D148 ↔ P4.D149), the `CompletionResponse.cache_usage` widening is
+P4.D151's alone (P4.D150 edits no harness file), `distill_memory_search`'s
+signature is P4.D150's, the `files.sha256` invariant + the heal's ledger
+shape are P4.D152's (P4.D151 keeps `attach_mount_file_equivalence`), the
+manifest regen is P4.D151's, Playwright is P4.D149's with the create-time
+beat gated, lanes never write the ledger. **Unifier pick order: P4.D150 →
+P4.D151 → P4.D152 → P4.D148 → P4.D149** (the smallest core lane first; the
+widening before the two lanes whose harness files it touches; the SPA +
+full Playwright last, flipping `P4D148_SERVER_LANDED`). Four lanes bump
+core, three bump harness — recount at unification.
+
+**Execution arrangement:** disk is the constraint (89 GB free at ordering
+against the playbook's 50–70 GB per long lane) — run in TWO waves with
+`CARGO_INCREMENTAL=0`: wave 1 = P4.D148 + P4.D151 + P4.D152 (the three
+heavy core lanes), wave 2 = P4.D150 + P4.D149 (small core + the SPA lane,
+which needs no cargo target). Opus-class agents for P4.D148/P4.D151/
+P4.D152 (each reshapes a spine and designs a corpus); Sonnet-class for
+P4.D150 and P4.D149 (transcriptions with named pins). One worktree per
+lane; `df -h ~` between waves.
+
+**Deliberately left out of the round:** the P4.67 remainder (seventeen
+`?action=` sites, the duplicate-key rows, P4.62(a)/(c) — non-drift, and
+it would collide with nothing here but the standing rule clears drift
+first), the follow-ups list's items 5–6 (the streaming-bubble avatar, the
+`auth` chain arm, the eleventh/twelfth status-parser copies, the
+`POST /api/v1/images?action=generate` route, the three shared-stage
+recipes, `p4.9i2`, the handler-logging sweep, the present-but-null lead,
+the `title=` census, finding #109), the host-codec-for-chat-uploads
+convergence P4.D152 names, the `docs/v4/` mirror refresh (the next
+maintenance pass, after the baseline moves), and the standing 💸 queue
+(now gaining: a chat created Uncensored greeting from the frank desk on
+real data, the describer verdict against a real gateway that drops
+images, the sha256 heal on the Friday copy — measure the population first
+per ledger §5.5, the interactive distill budget on a stalling cheap
+route). PB1 stays parked by the standing rule; the `qtap-export.schema.
+json` file port remains a NAMED standalone flag (P4.D152 banks its
+`description` hunk there).
+
 ## The follow-ups round (P4.67 ∥ P4.68 ∥ P4.69 ∥ P4.70 ∥ P4.71) — UNIFIED 2026-09-02
 
 **UNIFIED on main (2026-09-02) — P4.68, P4.69, P4.70 and P4.71 CLOSED; P4.67
