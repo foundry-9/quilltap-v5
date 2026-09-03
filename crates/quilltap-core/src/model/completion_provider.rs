@@ -259,6 +259,11 @@ pub fn execute_completion_with_anchor<'a, T: ProviderTransport + ?Sized>(
             finish_reason: parsed.finish_reason,
             // The builder's format-time report (v4 attaches it to LLMResponse).
             attachment_results: Some(built.attachment_results.clone()),
+            // v4 `LLMResponse.cacheUsage` (P4.D151, bug 116). The parser already
+            // normalises every provider's cache dialect into one shape; carrying
+            // it here is what lets `verify_image_reached_model` add cache reads
+            // back before judging a describer's prompt-token count.
+            cache_usage: parsed.cache_usage,
         })
     })
 }
@@ -456,6 +461,45 @@ mod tests {
             "bare metal must not rewrite: {}",
             seen.url
         );
+    }
+
+    /// P4.D151 (v4 `0b0617fee`, bug 116): the real composition carries
+    /// `parsed.cache_usage` onto the `CompletionResponse`.
+    ///
+    /// This is what makes `verify_image_reached_model`'s cache add-back
+    /// possible, and it cannot be pinned by the tier-3 differential — the
+    /// canned provider builds its own response, so a reverted thread here
+    /// leaves every corpus row green. Note the second assertion: the parser
+    /// SUBTRACTS the cache read out of `prompt_tokens` (the 4.6.1 invariant),
+    /// which is precisely why the verdict has to put it back.
+    #[tokio::test]
+    async fn composes_completion_and_carries_cache_usage() {
+        let body = br#"{"choices":[{"message":{"content":"answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":812,"completion_tokens":3,"total_tokens":815,"prompt_cache_hit_tokens":40}}"#.to_vec();
+        let transport = FakeTransport {
+            body,
+            seen: std::sync::Mutex::new(None),
+        };
+        let policy = TransportPolicy::default();
+        let resp = execute_completion(
+            &transport,
+            "DEEPSEEK",
+            None,
+            "synthetic-key",
+            &params("deepseek-chat"),
+            &policy,
+            "Quilltap/test",
+            None,
+            None,
+        )
+        .await
+        .expect("completion");
+        let cache = resp
+            .cache_usage
+            .expect("the composition must carry the parsed cache usage");
+        assert_eq!(cache.cache_read_input_tokens, Some(40));
+        assert_eq!(cache.cached_tokens, Some(40));
+        // The read is normalised OUT of the billed prompt count…
+        assert_eq!(resp.usage.unwrap().prompt_tokens, 772);
     }
 
     #[tokio::test]

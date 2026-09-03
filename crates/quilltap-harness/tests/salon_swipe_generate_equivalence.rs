@@ -72,6 +72,7 @@ impl CompletionProvider for AlwaysCompletion {
                 }),
                 finish_reason: Some("stop".to_string()),
                 attachment_results: None,
+                cache_usage: None,
             })
         }
     }

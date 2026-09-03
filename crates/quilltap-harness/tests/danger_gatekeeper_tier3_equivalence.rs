@@ -351,6 +351,7 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
                         }),
                         finish_reason: None,
                         attachment_results: None,
+                        cache_usage: None,
                     },
                 );
             }

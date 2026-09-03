@@ -101458,3 +101458,39 @@ files, as ordered — their behaviour is the unit pins.
 
 Versions: core 0.0.759 (unit 1) → 0.0.760 (unit 2). Harness unchanged, as §B
 requires.
+## P4.D151 — verify a describer saw the image (bug 116) + the NanoGPT manifest convergence (bug 118)
+
+Lane branch `claude/p4-describer-arrival-verdict-bug-70b224`; v4 target
+`0b0617fee` (the lane pin, a lane-unique detached worktree at
+`/tmp/qt-v4-pin-p4d151-0b0617fee`). Drift-ledger §2 probe at lane start:
+PASS against §1 as of the 2026-09-03 check — v4 on `main`, tree clean,
+`15573c3a1..main` and `3a76b17df..bugfix` both empty. `15573c3a1` is the
+ledger's recorded UNPROCESSED row and does not reach this lane's pin.
+
+### Unit 1 — §B: `CompletionResponse.cache_usage`
+
+v4's `LLMResponse` carries `cacheUsage`; v5's `CompletionResponse` did not,
+so bug 116's cache add-back had nothing to read. The field lands as
+`Option<crate::model::stream::StreamCacheUsage>` — the shape
+`response_parse` already produces for all ten providers.
+
+- **The real composition** (`model/completion_provider.rs`) threads
+  `parsed.cache_usage`; **23 hand-built sites** carry `None` (the order's
+  census of 18, plus three the compiler found:
+  `salon_swipe_generate_equivalence.rs`, and the web crate's
+  `chat_create_end_to_end.rs` / `chat_send_smoke.rs` — hence the
+  `quilltap-web` bump the order did not predict). The mechanical pass also
+  hit `FinalizerStreaming` in `answer_confirmation_tier3_equivalence.rs`,
+  which already has a `cache_usage` field of its own; that duplicate was
+  removed by hand.
+- **The thread is differential-INVISIBLE** — the canned tier-3 provider
+  builds its own `CompletionResponse`, so a reverted thread leaves every
+  corpus row green. It is pinned instead by
+  `completion_provider::tests::composes_completion_and_carries_cache_usage`,
+  a stub-transport call whose DEEPSEEK body carries
+  `prompt_cache_hit_tokens: 40`. **Mutation-proven:** reverting the thread
+  to `None` reddens exactly that test.
+- The same test asserts `prompt_tokens == 772` against a wire
+  `prompt_tokens` of 812 — the parser SUBTRACTS the cache read (the 4.6.1
+  invariant), which is the reason the verdict must add it back.
+

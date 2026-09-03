@@ -159,6 +159,15 @@ pub struct CompletionResponse {
     /// provider (the v4 oracle's mock returns none either — no differential
     /// diffs it on this path, and no v4 caller consumes it here).
     pub attachment_results: Option<crate::model::stream::StreamAttachmentResults>,
+    /// v4 `response.cacheUsage` (P4.D151, v4 `0b0617fee` bug 116) — the
+    /// normalised cache report the parser already produces. Read by
+    /// [`verify_image_reached_model`](crate::services::file_fallback::verify_image_reached_model),
+    /// which adds cache reads BACK into the billed prompt before judging,
+    /// because every plugin normalises them *out* of `prompt_tokens` (the 4.6.1
+    /// invariant) and a cache hit would otherwise read as a dropped image.
+    /// `Some` from the real `execute_completion` composition; `None` everywhere
+    /// a caller builds a response by hand.
+    pub cache_usage: Option<crate::model::stream::StreamCacheUsage>,
 }
 
 /// Error from a completion call. The message text matters: v4's execution path
@@ -387,6 +396,7 @@ impl CannedCompletionProvider {
                 usage,
                 finish_reason: None,
                 attachment_results: None,
+                cache_usage: None,
             },
         );
         self

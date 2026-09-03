@@ -1484,6 +1484,7 @@ mod tests {
                     usage: None,
                     finish_reason: None,
                     attachment_results: None,
+                    cache_usage: None,
                 })
             }
         }
@@ -1516,6 +1517,7 @@ mod tests {
                         usage: None,
                         finish_reason: None,
                         attachment_results: None,
+                        cache_usage: None,
                     });
                 }
                 std::future::pending().await
@@ -1599,6 +1601,7 @@ mod tests {
                     usage: None,
                     finish_reason: None,
                     attachment_results: None,
+                    cache_usage: None,
                 })
             }
         }
@@ -2019,6 +2022,7 @@ mod tests {
                         usage: None,
                         finish_reason: None,
                         attachment_results: None,
+                        cache_usage: None,
                     }),
                     Err(e) => Err(CompletionError::new(e)),
                 }
@@ -2202,6 +2206,7 @@ mod tests {
                     usage: None,
                     finish_reason: None,
                     attachment_results: None,
+                    cache_usage: None,
                 })
             }
         }

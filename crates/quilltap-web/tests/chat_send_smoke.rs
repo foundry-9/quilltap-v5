@@ -90,6 +90,7 @@ impl CompletionProvider for AnyCompletion {
                 usage: None,
                 finish_reason: None,
                 attachment_results: None,
+                cache_usage: None,
             })
         }
     }

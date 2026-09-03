@@ -126,6 +126,7 @@ impl CompletionProvider for CannedDistillProvider {
                     }),
                     finish_reason: Some("stop".to_string()),
                     attachment_results: None,
+                    cache_usage: None,
                 }),
                 None => Err(CompletionError::new("canned failure")),
             }

@@ -120,6 +120,7 @@ impl CompletionProvider for CannedTitleProvider {
             }),
             finish_reason: None,
             attachment_results: None,
+            cache_usage: None,
         })
     }
 }

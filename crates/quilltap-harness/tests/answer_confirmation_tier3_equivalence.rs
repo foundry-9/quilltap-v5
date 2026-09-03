@@ -448,6 +448,7 @@ fn answer_confirmation_tier3_matches_oracle() {
                         usage: None,
                         finish_reason: None,
                         attachment_results: None,
+                        cache_usage: None,
                     },
                 );
             }

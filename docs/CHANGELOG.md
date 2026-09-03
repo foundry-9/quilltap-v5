@@ -83,6 +83,26 @@ ceiling in the file wraps the memory recap and nothing else, so there is no
 "attempt deadline < enclosing ceiling" relation to state here — the relation the
 two arms depend on (interactive strictly under background) is already a compile-
 time pin in `cheap_llm_exec.rs` from P4.D136.
+#### 2026-09-03 — feat(model): CompletionResponse carries the parsed cacheUsage (P4.D151 §B)
+
+_Versions: core 0.0.759, harness 0.0.655, web 0.0.105._
+
+`CompletionResponse` gains `cache_usage: Option<StreamCacheUsage>`, v4's
+`LLMResponse.cacheUsage`. The real `execute_completion` composition threads
+`parsed.cache_usage` — the parser already normalises every provider's cache
+dialect into one shape — and every hand-built response (23 construction
+sites across core, the harness and the web crate's two smoke tests) carries
+`None`.
+
+Nothing observable moves yet. The widening is what bug 116's arrival verdict
+needs: plugins normalise cache-read tokens *out* of `prompt_tokens` (the
+4.6.1 invariant), so a cached describe call would otherwise read as a
+dropped image. A new `composes_completion_and_carries_cache_usage` unit test
+pins the thread through a stub transport (DEEPSEEK's
+`prompt_cache_hit_tokens`) and asserts the subtraction that makes the
+add-back necessary; the tier-3 differential cannot see this thread, because
+the canned provider builds its own response.
+
 #### 2026-09-03 — docs(drift): record v4's bug-119 optimizer fix as the sixth drift row
 
 _Docs-only change._
