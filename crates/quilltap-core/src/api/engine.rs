@@ -4108,6 +4108,17 @@ impl CoreEngine {
                 Ok(db) => {
                     super::chat_media::chat_file_upload(
                         &db,
+                        // ⚠ NOT `self.qtap_pixel_codec()`. v4 transcodes chat
+                        // uploads through sharp; v5's chat-upload path has always
+                        // handed the bridges the not-configured codec, so every
+                        // encode fails and the ORIGINAL bytes are stored (v4's own
+                        // sharp-unavailable branch — the pre-existing divergence
+                        // recorded at `api/files.rs:1116-1118`). Bug 117 (P4.D152)
+                        // ports the ORDER of the two operations, not the codec:
+                        // threading the host codec in here would be a NEW
+                        // convergence beyond that drift row, and is recorded as a
+                        // named candidate instead.
+                        std::sync::Arc::new(crate::services::file_storage::NotConfiguredPixelCodec),
                         SINGLE_USER_ID,
                         &chat_id,
                         super::chat_media::ChatFileUploadInput {

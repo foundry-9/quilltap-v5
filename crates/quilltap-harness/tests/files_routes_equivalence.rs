@@ -39,6 +39,13 @@ const CHAT_G: &str = "c0000000-0000-4000-8000-000000000001";
 const CHAT_P: &str = "c0000000-0000-4000-8000-000000000002";
 const PF_DUP: &str = "f0000000-0000-4000-8000-000000000041";
 
+/// P4.D152 — a 1x1 PNG, the smallest input sharp will actually decode and
+/// re-encode (the .ts twin's constant). Its bytes must NOT survive the bridge
+/// unchanged on either side: v4 transcodes it to real WebP, and this harness
+/// drives the upload with [`quilltap_harness::PrefixingPixelCodec`].
+const PNG_1X1_BASE64: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 fn b64(s: &str) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(s.as_bytes())
@@ -65,6 +72,81 @@ impl quilltap_core::services::file_storage::StorageBackend for DiskErrorBackend 
     fn exists(&self, _k: &str) -> Result<bool, String> {
         Err("Unknown existence check error".into())
     }
+}
+
+/// P4.D152 — the codec every chat-upload case drives.
+///
+/// Production hands this path [`NotConfiguredPixelCodec`]: every encode fails,
+/// the policy layer passes the ORIGINAL bytes through, and the input hash and
+/// the stored hash are equal whichever ORDER they are computed in — so bug 117's
+/// comparand would be vacuously true. [`PrefixingPixelCodec`] changes the bytes
+/// deterministically, exactly as v4's real sharp does (different bytes, which is
+/// why the comparand is the within-tree boolean and never the hash string).
+fn codec() -> std::sync::Arc<dyn quilltap_core::services::file_storage::PixelCodec> {
+    std::sync::Arc::new(quilltap_harness::PrefixingPixelCodec)
+}
+
+/// P4.D152 — the bug-117 comparand, in the oracle's `dumpShaJoin` shape.
+///
+/// Every `files` row with a `mount-blob:` storage key, joined to its blob through
+/// the parsed key: does the FileEntry's `sha256` name the bytes the mount blob
+/// actually holds? The committed fixture carries four mount-blob rows whose blobs
+/// are deliberately absent (the stale/dissociate arms), so both buckets have a
+/// floor before this case adds anything.
+fn dump_sha_join(db: &Db) -> Value {
+    let rows: Vec<(String, String, String, Option<i64>, String, String)> = db
+        .read_main(|c| {
+            let mut stmt = c.prepare(
+                "SELECT originalFilename, mimeType, category, isPlainText, storageKey, sha256 \
+                   FROM files WHERE storageKey LIKE 'mount-blob:%' ORDER BY originalFilename",
+            )?;
+            let rows = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, Option<i64>>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                ))
+            })?;
+            Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        })
+        .expect("sha-join main read");
+    let mut out = Vec::new();
+    let mut matching = 0i64;
+    let mut not_matching = 0i64;
+    for (filename, mime, category, is_plain_text, key, sha) in rows {
+        let blob_id = quilltap_core::services::file_storage::parse_mount_blob_storage_key(&key)
+            .map(|(_, b)| b);
+        let blob: Option<(String, String)> = blob_id.and_then(|id| {
+            db.read_mount_index(move |c| {
+                Ok(c.query_row(
+                    "SELECT sha256, storedMimeType FROM doc_mount_blobs WHERE id = ?1",
+                    rusqlite::params![id],
+                    |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                )
+                .ok())
+            })
+            .expect("sha-join mount read")
+        });
+        let sha_matches = blob.as_ref().map(|(bs, _)| *bs == sha).unwrap_or(false);
+        if sha_matches {
+            matching += 1;
+        } else {
+            not_matching += 1;
+        }
+        out.push(json!({
+            "filename": filename,
+            "mimeType": mime,
+            "category": category,
+            "isPlainText": is_plain_text,
+            "blobFound": blob.is_some(),
+            "storedMimeTypeInBlob": blob.map(|(_, m)| m),
+            "shaMatchesBlob": sha_matches,
+        }));
+    }
+    json!({ "rows": out, "matching": matching, "notMatching": not_matching })
 }
 
 #[derive(Deserialize)]
@@ -186,10 +268,25 @@ fn canon_folders_dump(rows: &Value) -> Value {
             })
         })
         .collect();
+    // (path, projectId) — NOT path alone. `/docs/` exists twice in this fixture
+    // (once general, once in the project), so a path-only key is a TIE and the
+    // two rows keep DB order, which is `ORDER BY id` over one baked id and one
+    // freshly MINTED one. That made `folder_create_same_path_in_project` a coin
+    // flip across oracle regens; P4.D152's regen is where it landed heads.
     out.sort_by(|a, b| {
-        a.get("path")
-            .and_then(Value::as_str)
-            .cmp(&b.get("path").and_then(Value::as_str))
+        let k = |v: &Value| {
+            (
+                v.get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                v.get("projectId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+            )
+        };
+        k(a).cmp(&k(b))
     });
     Value::Array(out)
 }
@@ -969,6 +1066,7 @@ fn files_routes_match_oracle() {
         let db = fresh_db(&spec, tag);
         let resp = rt.block_on(chat_media::chat_file_upload(
             &db,
+            codec(),
             USER_A,
             chat,
             ChatFileUploadInput {
@@ -1042,6 +1140,175 @@ fn files_routes_match_oracle() {
         None,
         &mut failed,
     );
+
+    // ── P4.D152 (bug 117): the sha the row records must name the bytes stored ──
+    //
+    // The response `size` is BLANKED on the image arm and only there: v4 stores
+    // real sharp WebP and v5 stores the prefixing codec's bytes, so the byte
+    // COUNT can never agree — which is precisely why the comparand is
+    // `shaJoin`'s within-tree boolean. `mimeType` is NOT blanked: both sides must
+    // answer `image/webp`, and a pre-fix v5 answers it too (the mime always came
+    // from the bridge), so it is the arm's guard against a lazy fix rather than
+    // its discriminator.
+    let sha_join_case = |tag: &str,
+                         name: &str,
+                         content_type: &str,
+                         bytes: Vec<u8>,
+                         blank: &[&str],
+                         failed: &mut Vec<String>| {
+        use base64::Engine;
+        let db = fresh_db(&spec, tag);
+        let resp = rt.block_on(chat_media::chat_file_upload(
+            &db,
+            codec(),
+            USER_A,
+            CHAT_G,
+            ChatFileUploadInput {
+                filename: name.to_string(),
+                content_type: content_type.to_string(),
+                data: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                resolution: None,
+                conflicting_file_id: None,
+            },
+        ));
+        let oracle_name = if content_type == "text/plain" {
+            "chat_upload_text_sha_join"
+        } else {
+            "chat_upload_image_sha_join"
+        };
+        check_ok(oracle_name, response_data(&resp), blank, None, failed);
+        let got = dump_sha_join(&db);
+        let want = oracle[oracle_name]["shaJoin"].clone();
+        if got != want {
+            eprintln!("[{oracle_name} shaJoin] MISMATCH:\n got {got}\n want {want}");
+            failed.push(format!("{oracle_name}:shaJoin"));
+        } else {
+            eprintln!("[{oracle_name} shaJoin] OK.");
+        }
+        got
+    };
+
+    let png_1x1 = {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD
+            .decode(PNG_1X1_BASE64)
+            .expect("png fixture")
+    };
+    let image_join = sha_join_case(
+        "csi",
+        "shot.png",
+        "image/png",
+        png_1x1,
+        &["id", "filepath", "url", "size"],
+        &mut failed,
+    );
+    // ⚠ THE discriminator for bug 117's first half. Writing the bridge's hash to
+    // the row is not measurable on its own — with the post-fix ordering the two
+    // hashes agree by construction (v4's own comment says so). What IS measurable
+    // is the DEDUP: upload the same PNG twice. Post-fix the second upload hashes
+    // the TRANSCODED bytes, matches the row the first wrote, and extends its
+    // linkedTo — ONE `shot.png` row. Pre-fix it hashes the input, matches nothing
+    // (the row carries the stored hash), and mints a SECOND row, which shows up
+    // as an extra element in the join dump.
+    let twice_join = {
+        use base64::Engine;
+        let db = fresh_db(&spec, "cs2");
+        let png = base64::engine::general_purpose::STANDARD
+            .decode(PNG_1X1_BASE64)
+            .expect("png fixture");
+        let mut last = None;
+        for _ in 0..2 {
+            last = Some(rt.block_on(chat_media::chat_file_upload(
+                &db,
+                codec(),
+                USER_A,
+                CHAT_G,
+                ChatFileUploadInput {
+                    filename: "shot.png".to_string(),
+                    content_type: "image/png".to_string(),
+                    data: base64::engine::general_purpose::STANDARD.encode(&png),
+                    resolution: None,
+                    conflicting_file_id: None,
+                },
+            )));
+        }
+        check_ok(
+            "chat_upload_image_twice_dedups",
+            response_data(last.as_ref().expect("two uploads")),
+            &["id", "filepath", "url", "size"],
+            None,
+            &mut failed,
+        );
+        let got = dump_sha_join(&db);
+        let want = oracle["chat_upload_image_twice_dedups"]["shaJoin"].clone();
+        if got != want {
+            eprintln!(
+                "[chat_upload_image_twice_dedups shaJoin] MISMATCH:\n got {got}\n want {want}"
+            );
+            failed.push("chat_upload_image_twice_dedups:shaJoin".to_string());
+        } else {
+            eprintln!("[chat_upload_image_twice_dedups shaJoin] OK.");
+        }
+        got
+    };
+    assert_eq!(
+        twice_join["rows"]
+            .as_array()
+            .map(|rs| rs
+                .iter()
+                .filter(|r| r["filename"].as_str() == Some("shot.png"))
+                .count())
+            .unwrap_or(0),
+        1,
+        "bug 117: two uploads of one image must dedup to a single FileEntry"
+    );
+
+    let text_join = sha_join_case(
+        "cst",
+        "plain.txt",
+        "text/plain",
+        b"a chat note, hashed once".to_vec(),
+        &["id", "filepath", "url"],
+        &mut failed,
+    );
+
+    // The floors the order asks for: BOTH buckets non-empty, and the uploaded row
+    // itself named. A whole-structure compare that happened to agree on four
+    // pre-existing broken rows and nothing else would be worthless.
+    let row_of = |j: &Value, filename: &str| -> Value {
+        j["rows"]
+            .as_array()
+            .and_then(|rs| {
+                rs.iter()
+                    .find(|r| r["filename"].as_str() == Some(filename))
+                    .cloned()
+            })
+            .unwrap_or(Value::Null)
+    };
+    assert_eq!(
+        row_of(&image_join, "shot.png"),
+        json!({
+            "filename": "shot.png",
+            "mimeType": "image/webp",
+            "category": "IMAGE",
+            "isPlainText": 0,
+            "blobFound": true,
+            "storedMimeTypeInBlob": "image/webp",
+            "shaMatchesBlob": true
+        }),
+        "bug 117: a transcoded chat upload must record the STORED bytes' hash"
+    );
+    assert_eq!(
+        row_of(&text_join, "plain.txt")["shaMatchesBlob"],
+        json!(true),
+        "the no-op transcode arm must stay right"
+    );
+    for (label, j) in [("image", &image_join), ("text", &text_join)] {
+        assert!(
+            j["matching"].as_i64().unwrap_or(0) >= 1 && j["notMatching"].as_i64().unwrap_or(0) >= 1,
+            "{label}: both sha-join buckets must be populated (got {j})"
+        );
+    }
 
     assert!(failed.is_empty(), "files-routes mismatches: {failed:?}");
 }

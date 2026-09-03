@@ -167,11 +167,77 @@ async function dumpTables(): Promise<unknown> {
   };
 }
 
+/**
+ * P4.D152 — a 1x1 PNG, the smallest input sharp will actually decode and
+ * re-encode. Its bytes must NOT survive the bridge unchanged on either side:
+ * v4 transcodes it to real WebP, and the Rust harness drives its upload with
+ * `PrefixingPixelCodec`, which prepends a fixed marker. That is the whole point
+ * — a passthrough codec makes bug 117's comparand vacuously true.
+ */
+const PNG_1X1_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
 interface CaseSpec {
   name: string;
   dump?: boolean;
   assoc?: boolean;
+  /** P4.D152 — dump the files ↔ doc_mount_blobs sha join (bug 117). */
+  shaJoin?: boolean;
   run: () => Promise<{ status: number; body: unknown }>;
+}
+
+/**
+ * P4.D152 — the bug-117 comparand.
+ *
+ * The hash STRING can never be compared across the trees: v4 stores real sharp
+ * WebP and no Rust harness can reproduce those bytes. What CAN be compared is
+ * the within-tree question the bug is about — does the FileEntry's `sha256`
+ * name the bytes the mount blob actually holds? Every `files` row with a
+ * `mount-blob:` storage key is joined to its blob through the parsed key and
+ * reported as a boolean, keyed by `originalFilename` because the ids are minted.
+ *
+ * The committed fixture carries no mount-blob rows at all, so this dump contains
+ * exactly what the case just uploaded.
+ */
+async function dumpShaJoin(): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const main = getRawDatabase() as unknown as { prepare: (s: string) => { all: () => unknown; get: (...a: unknown[]) => unknown } };
+  const mount = getRawMountIndexDatabase();
+  if (!mount) throw new Error('mount-index DB handle unavailable for the sha join');
+  const rows = main
+    .prepare(
+      "SELECT originalFilename, mimeType, category, isPlainText, storageKey, sha256 " +
+        "FROM files WHERE storageKey LIKE 'mount-blob:%' ORDER BY originalFilename"
+    )
+    .all() as Array<Record<string, unknown>>;
+  const findBlob = mount.prepare('SELECT sha256, storedMimeType FROM doc_mount_blobs WHERE id = ?');
+  let matching = 0;
+  let notMatching = 0;
+  const out = rows.map((r) => {
+    const key = String(r.storageKey);
+    const rest = key.slice('mount-blob:'.length);
+    const sep = rest.indexOf(':');
+    const blobId = sep < 1 || sep === rest.length - 1 ? null : rest.slice(sep + 1);
+    const blob = blobId
+      ? (findBlob.get(blobId) as { sha256: string; storedMimeType: string } | undefined)
+      : undefined;
+    const shaMatchesBlob = !!blob && blob.sha256 === r.sha256;
+    if (shaMatchesBlob) matching++;
+    else notMatching++;
+    return {
+      filename: r.originalFilename,
+      mimeType: r.mimeType,
+      category: r.category,
+      isPlainText: r.isPlainText,
+      blobFound: !!blob,
+      storedMimeTypeInBlob: blob ? blob.storedMimeType : null,
+      shaMatchesBlob,
+    };
+  });
+  return { rows: out, matching, notMatching };
 }
 
 async function loadRoute(path: string): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -286,6 +352,7 @@ async function runCase(
     const payload: Record<string, unknown> = { name: c.name, status: out.status, body: out.body };
     if (c.dump) payload.tables = await dumpTables();
     if (c.assoc) payload.assoc = await dumpAssoc();
+    if (c.shaJoin) payload.shaJoin = await dumpShaJoin();
     return payload;
   } finally {
     await closeDatabase();
@@ -377,6 +444,48 @@ async function main(): Promise<void> {
     { name: 'chat_upload_keepboth', run: chatFilesUpload(CHAT_P, { file: { name: 'dup.txt', type: 'text/plain', bytes: Buffer.from('kept both body') }, resolution: 'keepBoth' }) },
     { name: 'chat_upload_replace', run: chatFilesUpload(CHAT_P, { file: { name: 'dup.txt', type: 'text/plain', bytes: Buffer.from('replacement body') }, resolution: 'replace', conflictingFileId: PF_DUP }) },
     { name: 'chat_upload_link', run: chatFilesLink(CHAT_G, F_UNLINKED) },
+    // ── P4.D152 (bug 117): the sha the row records must name the bytes stored ──
+    // A PNG is transcoded by the bridge, so the pre-fix order (hash the input,
+    // transcode after) leaves `files.sha256` naming bytes that exist nowhere.
+    {
+      name: 'chat_upload_image_sha_join',
+      shaJoin: true,
+      run: chatFilesUpload(CHAT_G, {
+        file: { name: 'shot.png', type: 'image/png', bytes: Buffer.from(PNG_1X1_BASE64, 'base64') },
+      }),
+    },
+    // The no-op arms: already-WebP and non-image uploads pass the transcode
+    // through untouched, so they were never wrong and must stay right.
+    // ⚠ THE discriminator for bug 117's first half (hash AFTER the transcode).
+    // Writing the bridge's hash to the row is not measurable on its own — with
+    // the post-fix ordering the two hashes agree by construction, which is what
+    // v4's own comment says. What IS measurable is the DEDUP: upload the same
+    // PNG twice. Post-fix the second upload hashes the transcoded bytes, matches
+    // the row the first upload wrote, and extends its linkedTo — ONE files row.
+    // Pre-fix it hashes the input, matches nothing (the row carries the stored
+    // hash), and mints a SECOND row. Within-tree row count, no hash string.
+    {
+      name: 'chat_upload_image_twice_dedups',
+      shaJoin: true,
+      run: async () => {
+        const upload = chatFilesUpload(CHAT_G, {
+          file: {
+            name: 'shot.png',
+            type: 'image/png',
+            bytes: Buffer.from(PNG_1X1_BASE64, 'base64'),
+          },
+        });
+        await upload();
+        return upload();
+      },
+    },
+    {
+      name: 'chat_upload_text_sha_join',
+      shaJoin: true,
+      run: chatFilesUpload(CHAT_G, {
+        file: { name: 'plain.txt', type: 'text/plain', bytes: Buffer.from('a chat note, hashed once') },
+      }),
+    },
   ];
 
   const outLines: string[] = [];

@@ -213,6 +213,53 @@ pub fn corpus() -> Vec<(&'static str, MemoryInputs)> {
     ]
 }
 
+/// ============================================================================
+/// A harness-only [`PixelCodec`] whose encode CHANGES the bytes deterministically
+/// (P4.D152).
+/// ============================================================================
+///
+/// Bug 117 is an ORDERING defect: `files.sha256` was computed before the bridge
+/// transcoded, so it named bytes that were never stored. Nothing in the
+/// production build can measure that, because every production chat-upload call
+/// hands the bridges [`quilltap_core::services::file_storage::NotConfiguredPixelCodec`]
+/// — every encode fails, the policy layer passes the ORIGINAL bytes through, and
+/// the input hash and the stored hash are trivially equal whichever order they
+/// are computed in. The comparand would be vacuously true pre-fix.
+///
+/// So the differential drives the upload with a codec that DOES change the
+/// bytes: `encode_webp` returns a fixed prefix followed by the input. v4's real
+/// sharp changes the bytes too — different bytes, which is exactly why the
+/// comparand is the WITHIN-TREE boolean `files.sha256 == doc_mount_blobs.sha256`
+/// and never the hash string itself. Pre-fix v5 yields `false` on a PNG upload
+/// and post-fix `true`; v4 with real sharp yields `true` both times.
+///
+/// `measure` returns nothing, matching the not-configured codec — dimensions are
+/// not part of this comparand and v4's sharp answers real ones.
+pub struct PrefixingPixelCodec;
+
+/// The prefix `encode_webp` prepends. Arbitrary, fixed, and deliberately not
+/// valid WebP: nothing downstream of the bridge decodes these bytes, and a
+/// changed-bytes result is the entire point.
+pub const PREFIXING_CODEC_PREFIX: &[u8] = b"QTAP-HARNESS-WEBP:";
+
+impl quilltap_core::services::file_storage::PixelCodec for PrefixingPixelCodec {
+    fn encode_webp(
+        &self,
+        bytes: &[u8],
+        _quality: i64,
+        _effort: Option<i64>,
+        _animated: bool,
+    ) -> Result<Vec<u8>, String> {
+        let mut out = PREFIXING_CODEC_PREFIX.to_vec();
+        out.extend_from_slice(bytes);
+        Ok(out)
+    }
+
+    fn measure(&self, _bytes: &[u8]) -> (Option<i64>, Option<i64>) {
+        (None, None)
+    }
+}
+
 #[cfg(test)]
 mod self_tests {
     use super::*;

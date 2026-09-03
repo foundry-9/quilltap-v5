@@ -101654,3 +101654,100 @@ as files — `chat-files-v2-stored-sha256.test.ts` (189) and
 `file-attachment-fallback.test.ts` (+208) / `image-transport.test.ts` (+98)
 are represented here by the tier-1 `verdict` rows, the tier-3 corpus and the
 unit tests. No Playwright authored (§F).
+## P4.D152 — `files.sha256` names the bytes actually stored (bug 117) + the `realign-file-entry-sha256-v1` boot heal (v4 `0b0617fee`)
+
+Lane branch `claude/p4-files-sha256-bytes-bug-4be488`; v4 pin
+`/tmp/qt-v4-pin-p4d152-0b0617fee` (detached at `0b0617fee`, three symlink
+classes). Drift-ledger §2 probe at lane start: branch `main`, tree clean,
+`15573c3a1..main` and `3a76b17df..bugfix` both empty — **PASS against §1 as
+recorded** (§1 already carries `15573c3a1` as a seventh UNPROCESSED row and
+states it cannot poison a lane pinned at its own target).
+
+### Unit 1 — leg (a): the chat upload transcodes before it hashes
+
+v4 `chat-files-v2.ts` (+69). `upload_chat_file_conn` now runs
+`transcode_to_webp(codec, data, &input_mime_type, TRANSCODE_WEBP_QUALITY)` —
+the bridge's own function, a no-op for non-images and existing WebP — and takes
+`buffer` / `mime_type` / `sha256` from the result. `detect_text_content` and
+`get_best_mime_type` keep reading the INPUT bytes (v4's "the only thing it can
+mean"). The category comes from the STORED mime; the duplicate echo's
+`new_size` / `new_sha256` describe the bytes that would be stored, matching
+v4's `buffer.length` after its own reorder. `upload_file_to_project` takes
+`stored_sha256` from the bridge result on both branches and writes THAT to the
+row.
+
+**The codec became a parameter.** `api::chat_media::chat_file_upload` and
+`services::chat_files::upload_chat_file` take an
+`Arc<dyn PixelCodec>`; the engine passes `NotConfiguredPixelCodec`, so
+production behaviour is byte-for-byte what it was (every encode fails, the
+policy layer stores the original bytes — v4's own sharp-unavailable branch, the
+pre-existing divergence at `api/files.rs:1116-1118`). **Recorded candidate, not
+this lane's:** threading the HOST codec into chat uploads would be a NEW
+convergence beyond this drift row (v4 transcodes there for real).
+
+**The corpus was blind and the comparand had to be built.** No oracle drove
+`uploadChatFile` with an image, and the hash STRING can never be compared
+across the trees (v4 stores real sharp WebP). So `files_routes_equivalence`
+compares the WITHIN-TREE boolean instead: every `files` row with a
+`mount-blob:` key, joined to its blob through the parsed key —
+`files.sha256 == doc_mount_blobs.sha256` — reported per row and as
+matching/notMatching counts, keyed by `originalFilename` because ids are
+minted. The committed fixture already carries four mount-blob rows whose blobs
+are deliberately absent, so both buckets have a floor before a case adds
+anything. The harness drives the upload with a NEW
+`quilltap_harness::PrefixingPixelCodec` (encode = a fixed prefix + the input),
+because the production `NotConfiguredPixelCodec` passes bytes through and would
+make the boolean vacuously true whichever ORDER the two operations ran in.
+
+**⚠ The first comparand did not discriminate, and the mutation is what said
+so.** With the row taking the bridge's hash, restoring bug 117's pre-fix
+ordering left the join boolean TRUE — because the two hashes agree by
+construction, exactly as v4's own comment says. The half that IS observable is
+the DEDUP, so a third case uploads the same PNG twice: post-fix the second
+upload hashes the transcoded bytes, matches the row the first wrote and extends
+its `linkedTo` (ONE `shot.png` row); pre-fix it hashes the input, matches
+nothing and mints a SECOND. Three arms now: `chat_upload_image_sha_join`,
+`chat_upload_image_twice_dedups`, `chat_upload_text_sha_join` (the no-op
+transcode arm, which was never wrong and must stay right).
+
+**The other half — "the bridge wins" — is pinned separately**, because no
+corpus can drive a disagreement through the upload path (both hashes come from
+the same codec over the same bytes). v4's tripwire block became
+`resolve_stored_sha256`, driven directly by two core unit tests with a
+thread-scoped capturing layer: the disagreeing branch returns the bridge's hash
+and emits v4's sentence with all five fields, and the agreeing branch is
+SILENT.
+
+**Mutation proofs** (verified-applied, reverted by file backup):
+
+- hash the input before the transcode (bug 117's own ordering) → **RED**:
+  `chat_upload_image_twice_dedups` shaJoin mismatches and the one-FileEntry
+  floor fires. This is the lane's red-first proof for leg (a).
+- the row takes the passed-in hash instead of the bridge's → **GREEN, recorded**
+  — they agree by construction; that is why the warn arm exists and is pinned by
+  unit test instead.
+- `resolve_stored_sha256` returns the pre-upload hash → RED (the disagree test).
+- warn on the agreeing branch too → RED (the silence test).
+
+**Riding the unit:** the folders canonicalizer in `files_routes_equivalence`
+sorted by `path` alone. `/docs/` exists twice in the fixture (general +
+project), so the key was a TIE and the rows kept DB order — `ORDER BY id` over
+one baked id and one freshly minted one, i.e. a coin flip across oracle regens.
+This lane's regen is where it landed heads; the key is now `(path, projectId)`.
+
+Oracle regen (from the pin, own clean invocation):
+
+```
+TMPO=/tmp/qt-files-oracle-p4d152
+cp harness/oracle/cases/files-routes.test.ts "$TMPO/cases/"
+cp harness/oracle/fixtures/files-web.json    "$TMPO/fixtures/"
+cd /tmp/qt-v4-pin-p4d152-0b0617fee
+QT_FIXTURE_FILES_MAIN=$V5W/crates/quilltap-web/tests/fixtures/files-main.db \
+QT_FIXTURE_FILES_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/files-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-files-routes.ndjson \
+  npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "files-routes\.test\.ts$"
+```
+
+45 cases (was 42). Run: `QT_ORACLE_FILES_ROUTES=/tmp/oracle-files-routes.ndjson
+cargo test -p quilltap-harness --test files_routes_equivalence`.

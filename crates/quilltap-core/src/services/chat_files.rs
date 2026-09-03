@@ -553,8 +553,8 @@ impl<CMP: CompletionProvider + Sync> crate::services::message_context::MessageCo
 use crate::db::files::{CreateOptions, FileCreate, FileFull, FilesRepository};
 use crate::files::text_detection::{detect_text_content, get_best_mime_type};
 use crate::services::file_storage::{
-    get_inherited_tags, write_project_file_to_mount_store, write_user_upload_to_mount_store,
-    NotConfiguredPixelCodec,
+    get_inherited_tags, transcode_to_webp, write_project_file_to_mount_store,
+    write_user_upload_to_mount_store, PixelCodec, TRANSCODE_WEBP_QUALITY,
 };
 
 /// v4 `MAX_FILE_SIZE` (`chat-files-v2.ts:72`) — 10 MB (size only, no type gate).
@@ -616,6 +616,7 @@ impl From<crate::db::DbError> for ChatUploadError {
 #[allow(clippy::too_many_arguments)]
 pub async fn upload_chat_file(
     db: &Db,
+    codec: std::sync::Arc<dyn PixelCodec>,
     user_id: &str,
     chat_id: &str,
     project_id: Option<String>,
@@ -625,7 +626,8 @@ pub async fn upload_chat_file(
     resolution: Option<String>,
     conflicting_file_id: Option<String>,
 ) -> Result<ChatUploadOutcome, ChatUploadError> {
-    // validateChatFile — size only.
+    // validateChatFile — size only. v4 measures the INPUT file (`file.size` on the
+    // uploaded `File`), before any transcode — so this stays on `data`.
     if data.len() > MAX_CHAT_FILE_SIZE {
         return Err(ChatUploadError::SizeExceeded);
     }
@@ -642,6 +644,7 @@ pub async fn upload_chat_file(
         upload_chat_file_conn(
             main,
             mount,
+            codec.as_ref(),
             &user_id,
             &chat_id,
             project_id.as_deref().filter(|s| !s.is_empty()),
@@ -662,6 +665,7 @@ pub async fn upload_chat_file(
 fn upload_chat_file_conn(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
+    codec: &dyn PixelCodec,
     user_id: &str,
     chat_id: &str,
     project_id: Option<&str>,
@@ -671,9 +675,47 @@ fn upload_chat_file_conn(
     resolution: Option<&str>,
     conflicting_file_id: Option<&str>,
 ) -> Result<ChatUploadOutcome, crate::db::DbError> {
-    let sha256 = crate::photos::keep_image_markdown::sha256_of_buffer(data);
+    // Detect text content and infer a better MIME type if needed. This reads the
+    // *input* bytes, before any transcode, which is the only thing it can mean
+    // (v4 `:138-140`).
     let text_detection = detect_text_content(data, filename, content_type);
-    let mime_type = get_best_mime_type(&text_detection, content_type);
+    let input_mime_type = get_best_mime_type(&text_detection, content_type);
+
+    // Bug 117 (v4 `0b0617fee`): run the transcode the storage bridge is about to
+    // run, HERE, before anything is hashed — the same shape the generated-image
+    // path (`image_job_storage.rs`) has always had, and the reason all 2541 of
+    // v4's generated rows joined cleanly while 118 of 239 chat uploads did not.
+    //
+    // `transcode_to_webp` is the bridge's own function (`store_mount_blob` calls
+    // it with these exact arguments) and is a no-op for anything already WebP or
+    // not an image, so handing it the result a second time changes nothing: the
+    // bytes hashed here are the bytes that land on disk. That makes one hash
+    // serve both jobs — dedup against other uploads, *and* the join to
+    // `doc_mount_files.sha256` that carries a description into the search index
+    // (`photos::auto_describe_attachment`) and lets `describe_image` /
+    // `attach_image` (`tools::photo`) resolve a mount link back to its FileEntry.
+    //
+    // The residual is v4's own, and it lands differently here: WebP encoding has
+    // to be deterministic for dedup to keep matching two uploads of the same
+    // source file. In v4 that is sharp, stable for a given version. In v5 the
+    // encoder is the [`PixelCodec`] host seam, so the bargain is the same one a
+    // sharp version bump makes — a changed encoder costs a missed duplicate (a
+    // second row, nothing worse).
+    //
+    // ⚠ The codec this site is HANDED is deliberately `NotConfiguredPixelCodec`
+    // at every production call (`api::engine`), so every encode fails and the
+    // policy layer passes the ORIGINAL bytes through — v4's own sharp-unavailable
+    // branch, the pre-existing divergence recorded at `api/files.rs:1116-1118`.
+    // Threading the HOST codec in here (v4 transcodes chat uploads for real)
+    // would be a NEW convergence beyond bug 117 and is a named candidate, not
+    // this lane's. The parameter exists so the shape is provable: the
+    // differential drives it with a byte-CHANGING codec, where the pre-fix order
+    // is measurably wrong and this one measurably right.
+    let stored = transcode_to_webp(codec, data, &input_mime_type, TRANSCODE_WEBP_QUALITY);
+    let buffer = stored.data;
+    let mime_type = stored.stored_mime_type;
+    let sha256 = stored.sha256;
+
     let category = if mime_type.starts_with("image/") {
         "IMAGE"
     } else {
@@ -714,7 +756,10 @@ fn upload_chat_file_conn(
                 existing_created_at: existing.created_at.clone(),
                 existing_sha256: existing.sha256.clone(),
                 new_filename: filename.to_string(),
-                new_size: data.len() as i64,
+                // v4 `newFile.size: buffer.length` — `buffer` is the transcoded
+                // buffer after bug 117, so both echoed values describe the bytes
+                // that WOULD be stored, not the ones that arrived.
+                new_size: stored.size_bytes as i64,
                 new_sha256: sha256.clone(),
             }));
         }
@@ -756,7 +801,8 @@ fn upload_chat_file_conn(
             return upload_file_to_project(
                 main,
                 mount,
-                data,
+                codec,
+                &buffer,
                 &final_filename,
                 &mime_type,
                 &sha256,
@@ -798,7 +844,8 @@ fn upload_chat_file_conn(
     upload_file_to_project(
         main,
         mount,
-        data,
+        codec,
+        &buffer,
         filename,
         &mime_type,
         &sha256,
@@ -811,14 +858,20 @@ fn upload_chat_file_conn(
     .map(ChatUploadOutcome::Uploaded)
 }
 
-/// v4 `uploadFileToProject` (`chat-files-v2.ts:313`) — mint the fileId, write the
+/// v4 `uploadFileToProject` (`chat-files-v2.ts:343`) — mint the fileId, write the
 /// bytes (project store `/` vs the Quilltap Uploads mount under `chat/`), inherit
 /// tags, create the metadata row (id == storage path), return the result. The
 /// fire-and-forget image auto-describe is a named no-op (deferred).
+///
+/// `data` / `mime_type` / `sha256` all describe the *stored* bytes — the caller
+/// has already run the bridge's transcode (bug 117). The hash is passed in only
+/// so a bridge that disagrees can be caught below; the bridge's own answer is
+/// what reaches the row.
 #[allow(clippy::too_many_arguments)]
 fn upload_file_to_project(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
+    codec: &dyn PixelCodec,
     data: &[u8],
     filename: &str,
     mime_type: &str,
@@ -830,12 +883,17 @@ fn upload_file_to_project(
     is_plain_text: bool,
 ) -> Result<ChatUploadedFile, crate::db::DbError> {
     let file_id = uuid::Uuid::new_v4().to_string();
-    let codec = NotConfiguredPixelCodec;
-    let (storage_key, stored_mime, stored_size, file_folder_path, file_project_id) =
+    // The bridges may transcode bitmap uploads to WebP; the FileEntry must record
+    // the stored mimeType/size/sha256 — all three — not the input. mimeType and
+    // size were always taken from here; sha256 was not, and that one omission is
+    // bug 117: `files.sha256` named bytes that were never stored, so every join
+    // to `doc_mount_files.sha256` was between two different languages and
+    // returned an empty result nobody logged.
+    let (storage_key, stored_mime, stored_size, stored_sha256, file_folder_path, file_project_id) =
         if let Some(pid) = project_id {
             let uploaded = write_project_file_to_mount_store(
                 mount,
-                &codec,
+                codec,
                 pid,
                 filename,
                 data,
@@ -847,21 +905,25 @@ fn upload_file_to_project(
                 uploaded.storage_key(),
                 uploaded.stored_mime_type,
                 uploaded.size_bytes as f64,
+                uploaded.sha256,
                 Some("/".to_string()),
                 Some(pid.to_string()),
             )
         } else {
             let written = write_user_upload_to_mount_store(
-                main, mount, &codec, filename, data, mime_type, "chat", None,
+                main, mount, codec, filename, data, mime_type, "chat", None,
             )?;
             (
                 written.storage_key(),
                 written.stored_mime_type,
                 written.size_bytes as f64,
+                written.sha256,
                 None,
                 None,
             )
         };
+
+    let stored_sha256 = resolve_stored_sha256(sha256, stored_sha256, filename, &stored_mime);
 
     let inherited_tags = get_inherited_tags(main, mount, linked_to, user_id);
     let files = FilesRepository::new(main);
@@ -869,7 +931,7 @@ fn upload_file_to_project(
     files.create(
         &FileCreate {
             user_id: user_id.to_string(),
-            sha256: sha256.to_string(),
+            sha256: stored_sha256.clone(),
             original_filename: filename.to_string(),
             mime_type: stored_mime.clone(),
             size: stored_size,
@@ -924,6 +986,36 @@ fn uploaded_from_full(f: &FileFull) -> ChatUploadedFile {
     }
 }
 
+/// v4's disagree-warn (`chat-files-v2.ts:399-411`) and the rule it enforces:
+/// **the bridge wins**.
+///
+/// The caller pre-ran the bridge's own transcode, so these agree by construction
+/// — which is exactly why this is a separate function. No corpus can drive a
+/// disagreement through the upload path (both hashes come from the same codec
+/// over the same bytes), so the arm would be dead to every differential. Driving
+/// it directly is the only honest pin for the branch v4 wrote as a tripwire: if
+/// a bridge ever changes its storage policy, the dedup hash computed upstream is
+/// stale, and this says so rather than letting the join rot silently a second
+/// time (bug 117).
+fn resolve_stored_sha256(
+    pre_upload_sha256: &str,
+    stored_sha256: String,
+    filename: &str,
+    stored_mime_type: &str,
+) -> String {
+    if stored_sha256 != pre_upload_sha256 {
+        tracing::warn!(
+            context = "chat-files-v2",
+            filename = %filename,
+            pre_upload_sha256 = %pre_upload_sha256,
+            stored_sha256 = %stored_sha256,
+            stored_mime_type = %stored_mime_type,
+            "Stored-bytes hash differs from the pre-upload hash; recording the stored one"
+        );
+    }
+    stored_sha256
+}
+
 /// v4 `generateUniqueFilename` (`chat-files-v2.ts:79`) — append ` (1)`, ` (2)`, …
 /// before the extension until the name is free.
 fn generate_unique_filename(
@@ -944,5 +1036,88 @@ fn generate_unique_filename(
             return candidate;
         }
         counter += 1;
+    }
+}
+
+#[cfg(test)]
+mod chat_upload_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt;
+
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+    #[derive(Default)]
+    struct V(String);
+    impl tracing::field::Visit for V {
+        fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+            self.0.push_str(&format!(" {}={v}", f.name()));
+        }
+        fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+            if f.name() == "message" {
+                self.0.push_str(&format!(" {v:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={v:?}", f.name()));
+            }
+        }
+    }
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(&self, e: &tracing::Event<'_>, _c: tracing_subscriber::layer::Context<'_, S>) {
+            let mut v = V::default();
+            e.record(&mut v);
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("{}{}", e.metadata().level(), v.0));
+        }
+    }
+
+    fn capture(pre: &str, stored: &str) -> (String, Vec<String>) {
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let out = {
+            let _g = tracing::subscriber::set_default(sub);
+            resolve_stored_sha256(pre, stored.to_string(), "shot.png", "image/webp")
+        };
+        let l = logs.lock().unwrap().clone();
+        (out, l)
+    }
+
+    /// The bridge wins, and says so with v4's sentence and its five fields.
+    #[test]
+    fn a_disagreeing_bridge_wins_and_warns() {
+        let (out, logs) = capture("input-hash", "stored-hash");
+        assert_eq!(out, "stored-hash");
+        assert_eq!(logs.len(), 1, "exactly one warn: {logs:?}");
+        let line = &logs[0];
+        assert!(line.starts_with("WARN "), "{line}");
+        // `tracing` renders a static message through `record_debug` on a
+        // `format_args!`, so it lands UNQUOTED — a bare `contains` on the
+        // sentence would accept a corrupted one ("… stored one (muted)" contains
+        // "… stored one"). Anchoring the trailing ` context=` makes it exact.
+        assert!(
+            line.contains(
+                "Stored-bytes hash differs from the pre-upload hash; recording the stored one context="
+            ),
+            "{line}"
+        );
+        for f in [
+            "context=chat-files-v2",
+            "filename=shot.png",
+            "pre_upload_sha256=input-hash",
+            "stored_sha256=stored-hash",
+            "stored_mime_type=image/webp",
+        ] {
+            assert!(line.contains(f), "missing {f} in {line}");
+        }
+    }
+
+    /// The production case: the caller pre-ran the bridge's transcode, so the two
+    /// agree and the tripwire stays SILENT. A warn attached to the wrong branch
+    /// is exactly what a presence-only assertion cannot catch.
+    #[test]
+    fn an_agreeing_bridge_is_silent() {
+        let (out, logs) = capture("same-hash", "same-hash");
+        assert_eq!(out, "same-hash");
+        assert!(logs.is_empty(), "expected silence, got {logs:?}");
     }
 }

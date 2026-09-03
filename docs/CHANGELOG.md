@@ -148,6 +148,38 @@ pins the thread through a stub transport (DEEPSEEK's
 `prompt_cache_hit_tokens`) and asserts the subtraction that makes the
 add-back necessary; the tier-3 differential cannot see this thread, because
 the canned provider builds its own response.
+#### 2026-09-03 — fix(files): a chat upload hashes the bytes it stores (bug 117, leg a)
+
+_Versions: core 0.0.759, harness 0.0.655._
+
+`upload_chat_file_conn` hashed its input buffer and let the storage bridge
+transcode afterwards, so a chat upload that arrived as PNG or JPEG left a
+`files` row whose `sha256` named bytes that exist nowhere. It now runs the
+bridge's own `transcode_to_webp` FIRST — the same shape the generated-image
+path has always had — and takes `buffer`, `mimeType` and `sha256` from the
+result, so one hash serves both dedup and the join to
+`doc_mount_files.sha256`. `detect_text_content` / `get_best_mime_type` still
+read the INPUT bytes. `upload_file_to_project` takes the bridge's own hash for
+the row and warns with v4's sentence when it disagrees with the pre-upload one
+(the bridge wins). The duplicate echo's `newFile.size`/`sha256` now describe
+the bytes that would be stored, as v4's `buffer.length` does.
+
+The codec is now a parameter rather than a hard-coded `NotConfiguredPixelCodec`
+at the write site. Production still passes `NotConfiguredPixelCodec` from the
+engine, byte-for-byte as before — threading the host codec into chat uploads
+would be a new convergence beyond this drift row and is recorded as a
+candidate. The parameter exists so the ordering is provable: the differential
+drives the upload with a byte-CHANGING codec, where the pre-fix order is
+measurably wrong.
+
+`files_routes_equivalence` gains three arms over a 1x1 PNG and a text upload,
+comparing the WITHIN-TREE boolean `files.sha256 == doc_mount_blobs.sha256`
+(the hash string can never cross the trees — v4 stores real sharp WebP). The
+discriminator is the twice-upload dedup case: post-fix the second upload
+hashes the transcoded bytes and matches the first row, so one FileEntry;
+pre-fix it mints a second. The harness gained `PrefixingPixelCodec`, and the
+folders canonicalizer's `path`-only sort key — a latent coin flip whenever two
+folders share a path — became `(path, projectId)`.
 
 #### 2026-09-03 — docs(drift): record v4's bug-119 optimizer fix as the sixth drift row
 

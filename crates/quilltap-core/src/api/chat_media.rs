@@ -1092,6 +1092,7 @@ pub struct ChatFileUploadInput {
 /// `{duplicate, …}` body. A >10 MB overflow → v4's message-sniffed 400.
 pub async fn chat_file_upload(
     db: &Db,
+    codec: std::sync::Arc<dyn crate::services::file_storage::PixelCodec>,
     user_id: &str,
     chat_id: &str,
     input: ChatFileUploadInput,
@@ -1122,6 +1123,7 @@ pub async fn chat_file_upload(
 
     let outcome = upload_chat_file(
         db,
+        codec,
         user_id,
         chat_id,
         project_id,
