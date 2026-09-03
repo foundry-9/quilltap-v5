@@ -338,7 +338,7 @@ async function openChatDrawer(page: Page): Promise<void> {
  * bubble would ever be written. The unifier flips this to `true` once P4.D148
  * is in, and runs it live.
  */
-const P4D148_SERVER_LANDED = false;
+const P4D148_SERVER_LANDED = true;
 
 /**
  * The helper sentences this spec reads back, quoted from the ONE shared
