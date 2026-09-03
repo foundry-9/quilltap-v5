@@ -102555,3 +102555,154 @@ from `id="new-chat-concierge"` to its detail interpolation, regex the
 compare those two lists plus the four `detail:` sentences pulled from each
 tree's `concierge-state-presentation` module. Anyone re-checking it can rewrite
 it in minutes; the recorded result is above.
+
+## Round record — the `0b0617fee` drift catch-up round unification (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152)
+
+**UNIFIED on main (2026-09-03). ALL FIVE ORDERS CLOSED; the oracle baseline
+MOVES `6d2a50382` → `0b0617fee`.** Five lanes, five worktrees, seventeen
+commits cherry-picked onto `unify/0b0617fee-round` in the ordered sequence
+P4.D150 → P4.D151 → P4.D152 → P4.D148 → P4.D149 (the smallest core lane
+first; the `CompletionResponse` widening before the two lanes whose harness
+files it touches; the SPA + Playwright last). The §2 probe passed before the
+picks AND before the gate against the 2026-09-03 ledger (v4 `main` at
+`15573c3a1`, tree clean, both logs empty). **`15573c3a1` (bug 119, the
+unported character optimizer) stays in §3 as UNPROCESSED across the baseline
+move, by the previous §1's own instruction** — the regen rule stays PIN
+REQUIRED, now at `0b0617fee`.
+
+### The survey
+
+Every lane's worktree was clean and fully committed. Verified against the
+ownership table: three out-of-row touches, all legitimate and explained —
+P4.D152 threaded a `PixelCodec` parameter through `api/chat_media.rs` +
+`api/engine.rs` (production passes `NotConfiguredPixelCodec`, byte-for-byte
+as before) and added the harness-only `PrefixingPixelCodec` to
+`quilltap-harness/src/lib.rs`; P4.D151's §B widening reached three sites the
+order's census missed (`salon_swipe_generate_equivalence.rs`, the web crate's
+`chat_create_end_to_end.rs` / `chat_send_smoke.rs` — hence a `quilltap-web`
+bump the order did not predict) and rebuilt the committed `attach-file-*.db`
+trio (read by exactly its own three files). P4.D150's apparent
+`drift-ledger.md` diff was branch age (its base predates the `08f6e925`
+driftcheck; `git log main..branch -- drift-ledger.md` is empty). No lane
+wrote the ledger.
+
+### The cherry-picks
+
+Conflicts were exactly the predicted classes: `docs/CHANGELOG.md` on the
+first pick (P4.D150 predates main's last entry — resolved newest-first, then
+`merge=union` for the two append-only docs), `Cargo.toml`/`Cargo.lock` on
+every version-bumping pick (resolved by ACCUMULATION — each pick's own
+delta on top of the branch's current value, lockfile taken as ours and
+synced at the wires: **core 0.0.758 → 0.0.768, harness 0.0.654 → 0.0.662,
+web 0.0.104 → 0.0.105, host 0.0.94 → 0.0.95, SPA 0.5.628 → 0.5.631**), and
+one `phase-4.md` conflict where P4.D149 and P4.D151 each appended a `p4.9i2`
+bank section (both kept). No source-level conflict. The CHANGELOG union kept
+each lane's block whole, newest-first within the lane; the per-entry
+versions lines are the lanes' own pre-recount numbers, as every prior round.
+
+### The §3 review
+
+Five parallel reviewers (Opus-class on P4.D148/P4.D151/P4.D152, Sonnet-class
+on P4.D150/P4.D149), each reading its lane's diff against v4's real code in
+its own detached worktree at the lane's pin, plus the unifier's own read of
+every production hunk. **NO BLOCKING findings in any lane** — the fifth such
+round. Fixed on the unify branch (`unify(review)` commit), in severity order:
+
+- **P4.D152 `files_sha256_realign_heal.rs` — the blob lookup folded EVERY DB
+  error into the "orphaned" bucket** (`query_row(...).ok()`), emitting v4's
+  "Mount blob missing" warn for a busy mount partition. v4's `findBlob.get()`
+  treats only `undefined` as the orphan; a driver throw escapes `run()` to
+  its catch (`success: false`, the runner stops). Now `QueryReturnedNoRows` →
+  orphan, anything else propagates. Unreachable from the corpus (in-memory
+  pairs) — found by reading the arm against v4.
+- **P4.D152 `host.rs` — the boot comment claimed v4 PARITY for the
+  no-stamp-on-clean rule** ("exactly as v4's own runner behaves") where the
+  lane's module header, `NoDrift` doc, record and family all correctly pin
+  it as a DIVERGENCE (v4's `shouldRun()` is presence-not-drift, so v4's runner
+  stamps a zero-`itemsAffected` row; `migrations/index.ts:161-163` has no
+  guard). Adapted from the P4.D140 block above it, where the claim IS true.
+  Reworded to match the header.
+- **P4.D148 `chat_create.rs` — three shape items:** the attempt-3 arm
+  re-tested the greeting for emptiness after the desk helper had already
+  answered `Ok(None)` (v4's call site is a bare `if (rerouted) return`); the
+  flip helper silently no-op'd on a chat row without an `id`, an arm v4 does
+  not have (the id now comes from the caller); the Err-parity doc comment
+  now names the settings/resolver/routing reads the helper still
+  `.ok()`-folds where v4's `try` catches them (log-only, pre-existing).
+- **P4.D152 `system_restore_state.rs`** — the `V5_STATS_GAP` doc block had
+  fused onto `assert_bug117_stored_sha`, leaving `assert_stats_gap`
+  undocumented; moved back. The heal's module header now says the boot line
+  is conditional on a realigning pass (a clean pass is silent, the
+  D140/D145 idiom, where v4 always logs its summary).
+- **P4.D151 `completion.rs`** — the `attachment_results` doc comment still
+  called the field unobservable; it is now the verdict's first proof and
+  corpus-driven.
+
+Recorded, not changed: a non-string `conciergeState` (`42`) answers the
+dispatch decode envelope where v4 answers the flat `Validation error` — the
+P4.60/P4.62 wrong-type-collapse class, shared with `roleplayTemplateId` /
+`timestampConfig` (a named lead for that census); the `[Image Fallback]` warn
+fields are unpinned (none of that file's five log lines are — a capture-layer
+test is follow-up-sized); the order's "verdict after the empty check" mutation
+is discharged in substance by `fb_verdict_empty_and_unseen`'s red-first
+measurement; P4.D148's pin verification recorded only the presence half (moot
+— `303288fb4` is the first commit past the old baseline).
+
+### The wires
+
+- **§A diffed name-for-name:** core `ChatCreateRequest.concierge_state`
+  (serde camelCase → `conciergeState`, validated through
+  `ConciergeState::from_wire`'s four values) ↔ SPA
+  `ChatCreateRequest.conciergeState?: ConciergeState` over the same
+  four-value union. Identical.
+- **`P4D148_SERVER_LANDED` flipped to `true`** in `new-chat-flow.spec.ts`;
+  the create-time beat ran LIVE at the gate (below).
+- The lockfile synced to the recounted versions.
+
+### The gate
+
+- **Oracles, all from the unify's pinned worktree `/tmp/qt-v4-pin-unify-0b0617fee`
+  (regen rule PIN REQUIRED — v4 HEAD one commit past the new baseline):** the
+  round's **26 families regenerated and run through the sweep driver in one
+  detached run — 26/26 ok, zero SKIP** (`--label unify-0b0617fee`): the five
+  lanes' own families plus every family whose canned provider gained the §B
+  one-liner. **Changed bytes grepped in the fresh NDJSONs** (ledger §5.2):
+  `Briefing the Concierge` ×9 and `frank-model` ×4 in the capstone oracle;
+  `did not process the image` ×6 and `no reason given` ×1 in
+  file-attachment; `shaJoin` ×3 + `chat_upload_image_twice_dedups` ×1 in
+  files-routes; six `mount-blob FileEntries` summaries in the heal oracle;
+  `restore_bug117_new_account` + `plate.png` in system-restore;
+  `bug117` in qtap-import; 14 `verdict` rows in fallback-engine;
+  `attach_verdict_unseen` in attach-mount-file; and the build-context oracle's
+  md5 `f240bef4853b2f165b09ca32caabed5f` — the SAME digest P4.D150 recorded
+  for both its target pin and the old baseline, so the byte-identity claim
+  reproduces at the new baseline too.
+- **Rust:** `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean on BOTH feature sets (plain + `--features quilltap-core/native-transport`); `cargo build --workspace --release` clean; **`cargo test --workspace` with the round's 71-variable env block (+ `TZ=UTC`): 489 test binaries / 2,761 passed / 0 failed / 1 ignored — exit 0, ZERO `SKIP:` lines** (main carried 488 / 2,745; the +1 binary is the new `files_sha256_realign_heal_equivalence`, the +16 tests are exactly the lanes' unit pins). All run AFTER the §3 review fixes, `CARGO_INCREMENTAL=0`.
+- **SPA:** `npm run lint` — 948 qt-* classes, every guarded reference
+  resolves; `npm test` **376 files / 5,925 tests / 0 failed** (main's 5,911
+  + P4.D149's 14); `npm run build` clean.
+- **Full Playwright against the fresh build:** **271 passed / 1 failed / 0 skipped (6.9 m)** — the suite grew 270 → 272 with P4.D149's two beats, BOTH GREEN, the flipped create-time beat on its first live run (`new-chat-flow.spec.ts:270` — pick Uncensored on the form, create, the sidebar control reads `uncensored`, the Concierge's manual-uncensored bubble once in the transcript). **The one red is `workspace-search-documents-flow.spec.ts:208`** (the dogfood-#105 in-chat arm): `.qt-chat-messages-list` resolved-but-HIDDEN after the card click — the SAME shape two prior rounds recorded as a suite-context intermittent (once reproduced in a two-spec recheck with no round-related spec present). Re-run in isolation ×3 on the unified build: **2 green, 1 red, identical shape** — so it is intermittent even alone, and NOT this round's: no lane touched the Salon transcript, the workspace, Document Mode or search (the SPA diff is six new-chat files + one e2e spec + one comment). Dispositioned as the standing intermittent class for the THIRD time and therefore promoted to a NAMED maintenance candidate in phase-4.md (it wants a root-cause look at `open-document-from-search` + the tab activation order, not another 'recorded' line). The gate is otherwise whole.
+
+### Versions
+
+core 0.0.768, harness 0.0.662, web 0.0.105, host 0.0.95, SPA 0.5.631;
+cli/tauri unchanged.
+
+### 💸 The dogfood queue gains
+
+A chat created Uncensored greeting from the frank desk on real data (the
+Concierge bubble second in the transcript); the describer verdict against a
+real gateway that drops images (the live incident's 38-token shape); the
+sha256 heal on the Friday copy — **measure the population FIRST** (ledger
+§5.5: v4 running on the same instance will already have run its own
+migration, and the free cross-app proof is then that v5's boot honours the
+ledger row and writes nothing); the interactive distill budget on a stalling
+cheap route. Plus the standing queue.
+
+### Cleanup
+
+Performed after the fast-forward: the five lane worktrees removed and their
+branches deleted with the temp branch, the `.git/info/attributes` union rule
+removed, the unify's pinned v4 worktree and the five reviewers' review
+worktrees removed, the `/tmp` oracle NDJSONs / fixture mirrors / sweep and
+gate logs / the Playwright output removed, no debug servers left running.

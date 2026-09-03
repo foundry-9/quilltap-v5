@@ -2741,9 +2741,39 @@ records THERE. Update this summary only when a phase or round completes.
   failover rows on a real understudy. **Next: the three-row drift catch-up
   (`303288fb4` + bug 115 + the timing log), then the dogfood pass** — see
   phase-4.md. Round record: `status-log.md`.
-- **Oracle baseline: `6d2a50382` (2026-09-02, v4 main — the Concierge
-  state-view version bump), adopted at the `6d2a50382` drift catch-up round
-  unification (2026-09-02).**
+- **The `0b0617fee` drift catch-up round (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥
+  P4.D151 ∥ P4.D152): UNIFIED on main (2026-09-03) — ALL FIVE CLOSED; the
+  oracle baseline MOVES to `0b0617fee`** (the `15573c3a1` bug-119 row stays
+  UNPROCESSED by design — an unported surface, `p4.9k`). v4's five-commit
+  day absorbed whole: the Concierge state chosen at chat creation end-to-end
+  (the flip through the existing chokepoint on all three create branches,
+  the greeting's attempt 0 on the uncensored desk asked WITH the chat row,
+  the capstone corpus 19 → 32 with `message_order` + `stream_calls`
+  comparands and the harness api-key seam that had made every reroute
+  unreachable; the SPA dropdown + body rule + the create-time beat LIVE;
+  Continue Elsewhere seeding a NO-COUNTERPART) ∥ bug 115 + the timing log
+  (pinned at the real call sites — the corpus is provably blind, the oracle
+  byte-identical across three pins) ∥ bug 116 (the arrival verdict ahead of
+  every content check; `CompletionResponse.cache_usage` at 23 sites; 6 of 8
+  new tier-3 rows red first) + bug 118 (a no-op, re-proven: eleven manifests
+  byte-identical) ∥ bug 117 (transcode-then-hash with the codec as a
+  parameter — production keeps the not-configured passthrough; import + both
+  restore arms; the boot heal in the P4.D140 ledger shape with a
+  both-directions divergence pin on v4's presence-not-drift stamp; the
+  within-tree boolean comparand + a harness byte-changing codec, the DEDUP
+  being the red-first arm). **§3 review: NO blocking findings** (the fifth
+  such round); fixed at unification: the heal folding every DB error into
+  the orphan bucket, a parity-claiming boot comment, three create-path shape
+  items, a spliced doc, a stale field comment. Gate: 26/26 families fresh at
+  the pin zero SKIP; clippy both feature sets; release build; 489 test binaries / 2,761 / 0 with the round's env block, zero SKIP; ng 376 / 5,925; full Playwright
+  271 passed / 1 failed / 0 skipped (the red is the documented `workspace-search-documents` intermittent — same shape, 1-in-3 red in isolation on this build, no lane touched the surface; promoted to a named candidate). Versions: core 0.0.768, harness 0.0.662, web 0.0.105, host
+  0.0.95, SPA 0.5.631. 💸 the dogfood queue gains the created-Uncensored
+  greeting, the describer verdict against a real gateway, the sha256 heal on
+  the Friday copy (measure the population FIRST), the interactive distill
+  budget. **Next: the owed dogfood pass** — see phase-4.md. Round record:
+  `status-log.md`.
+- **Oracle baseline: `0b0617fee` (2026-09-02, v4 main — bugs 116-118 fixed),
+  adopted at the `0b0617fee` drift catch-up round unification (2026-09-03).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

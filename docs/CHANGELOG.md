@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — unify: the `0b0617fee` drift catch-up round (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152)
+
+_Versions: core 0.0.768, harness 0.0.662, web 0.0.105, host 0.0.95, SPA 0.5.631._
+
+Five lanes unified onto main; the oracle baseline moves from `6d2a50382` to
+`0b0617fee` (the `15573c3a1` bug-119 row stays unprocessed in the ledger by
+design — it fixes the unported character optimizer). Landed: the Concierge
+state chosen at chat creation, server and SPA halves; bug 115 (the fallback
+distill on the interactive budget) and the inter-character timing log; bug
+116 (the describer arrival verdict) with the `CompletionResponse.cache_usage`
+widening and the bug-118 manifest byte-identity proof; bug 117's four legs
+and the `realign-file-entry-sha256-v1` boot heal.
+
+Wires: the §A contract diffed name-for-name across core and SPA; the gated
+create-time beat flipped live; the lockfile synced to the recounted versions.
+The review found nothing blocking; fixed on the unify branch: the heal's blob
+lookup folding every DB error into the orphaned bucket, a boot comment
+claiming v4 parity where the lane had pinned a divergence, three shape items
+in the create path, a spliced harness doc comment, a stale field comment.
+
+Gate: 26 families regenerated and run from a worktree pinned at `0b0617fee`,
+26/26 green, zero SKIP, changed bytes grepped; clippy both feature sets; release build; 489 test binaries / 2,761 / 0 with the round's env block, zero SKIP; SPA lint
+948 classes, 376 files / 5,925 tests, build clean; full Playwright
+271 passed / 1 failed / 0 skipped (the red is the documented `workspace-search-documents` intermittent — same shape, 1-in-3 red in isolation on this build, no lane touched the surface; promoted to a named candidate).
+
 #### 2026-09-03 — fix(context): restore the inter-character memory timing log
 
 _Versions: core 0.0.760._

@@ -19,74 +19,45 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline:** `6d2a50382` — "docs(update): version bump for
-  Concierge state view changes" (v4 main, 2026-09-02, v4 `4.9.0-dev.115`),
-  adopted at the `6d2a50382` drift catch-up round unification (P4.D143 ∥
-  P4.D144 ∥ P4.D145 ∥ P4.D146 ∥ P4.D147, 2026-09-02). **UNCHANGED** — the
-  `0b0617fee` catch-up round that will move it is ordered but not yet
-  unified.
-- **Checked:** 2026-09-03.
+- **Oracle baseline:** `0b0617fee` — "fix(images): verify a describer saw the
+  image; hash the bytes we store (bugs 116-118)" (v4 main, 2026-09-02
+  21:04 -0500, v4 `4.9.0-dev.120`), adopted at the `0b0617fee` drift catch-up
+  round unification (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152,
+  2026-09-03).
+- **Checked:** 2026-09-03 (at the unification — the §2 probe re-run before the
+  cherry-picks AND before the gate).
 - **v4 `main` HEAD at check:** `15573c3a1` — "fix(optimizer): a non-array
-  sub-step answer no longer kills the run (bug 119)" (2026-09-02
-  21:59 -0500, v4 `4.9.0-dev.121`) — **SIX commits past the baseline**
-  (`303288fb4`, `02d4efa1b`, `c9faa2c74`, `b448eddd7`, `0b0617fee`,
-  `15573c3a1`). `origin/main` is level with `main`. **One new commit since
-  the last check** (`15573c3a1`, landed ~55 minutes after `0b0617fee`).
-- **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4
-  fork marker). Re-measured by CONTENT this check (§4 step 2): the
-  `main..bugfix` list over `lib/ app/ packages/ plugins/` is the
-  squash-topology lie — pre-4.8.4 lineage already absorbed into main — and
-  `git diff main bugfix` over those paths is 568 files, overwhelmingly
-  deletions, because main is far ahead. **Nothing genuinely unabsorbed.**
+  sub-step answer no longer kills the run (bug 119)" (2026-09-02 21:59 -0500,
+  v4 `4.9.0-dev.121`) — **ONE commit past the baseline.** `origin/main` is
+  level with `main`. Unmoved since the 2026-09-03 `/driftcheck`.
+- **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4 fork
+  marker; re-measured by content at the 2026-09-03 check — nothing genuinely
+  unabsorbed).
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
-- **Checkout at check:** branch `main`, **tree CLEAN**, no v4 worktrees
-  outstanding.
-- **Verdict: DRIFT PENDING — 6 commits past the baseline.** §3 holds six
-  rows: **five ORDERED** to the in-flight `0b0617fee` catch-up round, and
-  **ONE new UNPROCESSED** (`15573c3a1`). **None is a convergence** — bugs
-  115–119 are all v4's own filings, and v4's `bugs.md` records no fix for
-  anything this port filed first.
-- **Regen rule in force: PIN REQUIRED** at **`6d2a50382`** (§5.1 — a
-  lane-unique detached worktree, the sweep driver's `--v4 "$PIN"`).
-  **Unchanged.**
-- **⚠ The new row landed MID-ROUND.** The `0b0617fee` drift catch-up round
-  (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152) is ORDERED and
-  P4.D150's lane is in flight (v5 worktree
-  `claude/p4-d150-interactive-distill-timing-31bfb4`). Every lane pins at
-  its own TARGET commit (`303288fb4` / `c9faa2c74` / `0b0617fee`), so
-  `15573c3a1` **cannot poison any lane regen** — but it must not be swept
-  along either: **`/unify` moves the baseline to `0b0617fee` ONLY, and the
-  `15573c3a1` row STAYS UNPROCESSED past that move** (it does not go to
-  §6). Whoever unifies: leave it in §3 and say so in the round record.
-- **v5 intersection of the new row: NONE today.** `15573c3a1` fixes v4's
-  character optimizer (`lib/services/character-optimizer.service.ts`), which
-  is **unported v5 surface** — `m6-screen-parity.md:546`
-  (`CharacterOptimizerModal` → **MISSING** → `p4.9k`) and phase-4's tier-3
-  LLM-service deferrals (wizard / optimizer / rename / ai-import). The row's
-  obligation is therefore to carry the **post-fix** shape into `p4.9k` when
-  that round runs, not to schedule a catch-up lane now.
-- **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix
-  fork; v4 develops on `main` alone. Keep probing BOTH branches.
-- _Superseded (the 2026-09-02 late-evening verdict, second run): DRIFT
-  PENDING — 5 commits past `6d2a50382`, PIN REQUIRED, checkout clean; all
-  five rows then ORDERED to the `0b0617fee` catch-up round. Bugs 116–118
-  were filed (`b448eddd7`) and fixed (`0b0617fee`) the same day; the v5-side
-  measurements taken at that check stand in the `0b0617fee` row — **v5
-  measurably HAS bug 116 and all three legs of bug 117, and measurably does
-  NOT have bug 118** (v5's generated NanoGPT manifest has carried the
-  truthful block since P4.D107; v4 converged onto it)._
-- _Superseded (the 2026-09-02 late-evening verdict, first run): DRIFT
-  PENDING — 4 commits past `6d2a50382`, with bugs 116–118 recorded as OPEN
-  v4 filings and their v5 measurements owed. v4 fixed all three about two
-  hours later._
-- _Superseded (the 2026-09-02 night verdict): DRIFT PENDING — 3 commits
-  past `6d2a50382`, PIN REQUIRED, checkout DIRTY (docs only — the bug
-  116–118 filings, since committed as `b448eddd7`)._
-- _Superseded (the 2026-09-02 evening verdict): DRIFT PENDING — 1 commit
-  past `6d2a50382` (`303288fb4`), PIN REQUIRED, checkout clean. The five
-  follow-ups lanes (P4.67–P4.71, UNIFIED 2026-09-02, baseline STAYED
-  `6d2a50382`) resumed against that §1 and every one regenerated from the
-  pin._
+- **Checkout at check:** branch `main`, **tree CLEAN**; the unify's own pinned
+  worktree (`/tmp/qt-v4-pin-unify-0b0617fee`) removed at cleanup.
+- **Verdict: DRIFT PENDING — 1 commit past the baseline.** §3 holds ONE
+  UNPROCESSED row, `15573c3a1` (bug 119, the character optimizer — **unported
+  v5 surface**, `p4.9k`; the row's obligation is to carry the post-fix shape
+  into that round, not a catch-up lane now). It stayed in §3 across this
+  baseline move BY THE PREVIOUS §1's OWN INSTRUCTION — not swept along.
+  **Not a convergence** (v4's own filing).
+- **Regen rule in force: PIN REQUIRED** at **`0b0617fee`** (§5.1 — a
+  lane-unique detached worktree, the sweep driver's `--v4 "$PIN"`) — because
+  HEAD is past the baseline. The one drift commit touches
+  `lib/services/character-optimizer.service.ts` only, which no oracle imports,
+  so a pin-free regen would NOT poison any existing family today; the rule
+  stays PIN REQUIRED anyway because that is the rule, and because the next v4
+  commit may not be so polite.
+- **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix fork;
+  v4 develops on `main` alone. Keep probing BOTH branches.
+- _Superseded (the 2026-09-03 `/driftcheck` verdict): DRIFT PENDING — 6
+  commits past `6d2a50382`, five ORDERED to the in-flight `0b0617fee` round
+  + `15573c3a1` new and UNPROCESSED, PIN REQUIRED at `6d2a50382`. The round
+  unified 2026-09-03 and moved the baseline to `0b0617fee`; the five rows are
+  in §6._
+- _Superseded (the 2026-09-02 verdicts): recorded in §6's round entry and in
+  `status-log.md`'s round record._
 
 ## §2 The freshness probe
 
@@ -126,11 +97,6 @@ when absorbed/ratified.
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
 
-| `303288fb4` | 2026-09-02 | Choose the Concierge state on the New Chat form | **PORT-NEW** | **Server:** `app/api/v1/chats/route.ts` (244 lines changed) + the NEW `__tests__/unit/app/api/v1/chats/route.concierge-state.test.ts` (444 lines): `createChatSchema` gains `conciergeState: z.enum(['monitored','flagged','vouched','uncensored']).optional()`; NEW `applyRequestedConciergeState` (no-op on absent/`'monitored'`; else `progress.status('Briefing the Concierge…')` → the P4.D141 `applyConciergeFlip` chokepoint + a `[Chats v1] Applied Concierge state at creation` debug) called at ALL THREE create branches immediately after `writeSystemPromptMessage` and before scenario/staff/greeting; the `createInitialMessages` wrapper DELETED (both call sites now write the prompt themselves); `autoGenerateFirstMessage` reads the fresh chat row and gains "attempt 0" — `shouldUseUncensoredRoute(chatRow)` → the NEW `generateViaUncensoredDesk(trigger)` closure (resolver asked WITH the chat: Vouched → `OFF` never reroutes, Uncensored reroutes under a global `OFF`); the content-filter attempt 3 now reuses the closure and SKIPS when attempt 0 ran (`uncensoredDeskTried`); five log lines (two new `trigger` fields, one new "unavailable or empty" info, one new "attempt failed" warn). `orchestrator.service.ts`: comment only. → v5 `services/chat_create.rs` (`write_system_prompt_message` `:989`, `create_initial_messages_scenario_and_staff` `:1011`, `auto_generate_first_message` `:1390` — the P4.4 unit-2 chat-create port + the P4.D44 flatten seam), `api/types.rs` `ChatCreate` (`:381`), `services/dangerous_content/manual_flip.rs` `apply_concierge_flip` (P4.D141 — today's ONLY production caller is the chat PUT), the danger resolver's chat-aware arm (P4.D141/P4.D143). Families: `chat_create_capstone_equivalence` (19 cases), `initial_greeting_equivalence`, `first_message_context_equivalence`, the danger-resolver/manual-flip families. **SPA:** `NewChatForm.tsx` (the dropdown above Starting Scenario — two optgroups, `Monitored (default)`, helper `detail` from `CONCIERGE_STATE_PRESENTATION`, the `hint` deliberately NOT shown), `useNewChat.ts` (`conciergeState` OMITTED from the POST body when `'monitored'` — a plain create stays byte-identical), `types.ts` (`conciergeState: ConciergeState`, default `'monitored'`), `NewChatModal.tsx` + `new-chat-provider.tsx` (`initialConciergeState` prop), `SalonView.tsx:1730` (Continue Elsewhere seeds it from `getConciergeState(chat)`), two client test files (the scenario test now reaches its select by id because the form has two). → v5 `screens/new-chat/{new-chat-form, new-chat.state, new-chat.logic, new-chat.types}.ts` (the P4.9 New-Chat vertical + the P4.D44 template picker), the Continue Elsewhere dialog (P4.9E3), `chat/concierge-state-presentation.ts` (P4.D144's ONE table — the `detail` sentences already there). **Help:** `help/chats.md` (+15, "A Word With the Concierge, Before the Doors Open"), `help/dangerous-content.md` (two sentences) → the `p4.9i2` bank. **Docs/infra (NO-PORT):** `API.md`, the feature design doc `docs/developer/features/complete/concierge-default-at-creation.md` (read it — §3 "Wire contract", §4 "Applying the state", §5 "Greeting routing"), `releases/4.9.0.md`, `README.md`, `scripts/concierge-four-state-test.sh` CT-3, `.claude/commands/update-documentation.md`, `package-lock.json`. No schema / migration / export-schema / backup change (the commit's own claim, CONFIRMED by the file list — no `generateDDL`, no D23 re-dump). | ORDERED(p4.d148 server ∥ p4.d149 SPA — 2026-09-02) |
-| `02d4efa1b` | 2026-09-02 | fix(memory): the turn-blocking distillation asks for the interactive budget (bug 115) | **PORT** | v4's own filing (bug 115 — fixed same day, `docs/developer/bugs/fixed/bug-115-interactive-distill-background-budget.md`; NOT a convergence). **Hunks:** `lib/memory/cheap-llm-tasks/memory-tasks.ts` — `extractMemorySearchKeywords` gains a trailing `latency: CheapLLMLatencyClass = 'background'` parameter threaded to `executeCheapLLMTask` as `{ latency }`; `lib/chat/context-manager.ts:1398` — the dynamic-head FALLBACK distill (the branch that runs when no proactive pre-compute pass has a query ready) passes `'interactive'` (45 s, no retry) with a nine-line why-comment; the proactive pass (`pre-compute.service.ts`) and the `recall-replay` diagnostic keep the default. Two new tests (`dynamic-head-distill-latency.test.ts` asserts the 8th argument is `'interactive'`; four `task-deadline.test.ts` cases pin the budget/retry arithmetic bug 107 shipped untested). "Completes bug 107" — the third inline cheap call 107's task-type histogram could not see. → v5: `services/memory_recap/distill.rs:340 distill_memory_search` (no latency parameter — the executor's `execute(…)` takes the budget seam P4.D136 added; today every distill caller passes the same default), its THREE call sites `services/build_context.rs:2339` (the fallback — must become interactive), `services/pre_compute.rs:288` + `services/recall_replay.rs:275` (stay background). The P4.D136 lane record threaded the latency class from 45 call sites and named the recap + compression legs; this is the one v4 itself missed, so v5 reproduces bug 115 today. Families: `build_context_tier3`, `precompute_equivalence`, `recall_replay_equivalence` — a deadline class is differential-INVISIBLE on a canned executor, so the pin is P4.D136's compile-pin/unit idiom (a mutation-proven per-site assertion that the fallback site's class is `Interactive`), not a corpus row. | ORDERED(p4.d150 — 2026-09-02) |
-| `c9faa2c74` | 2026-09-02 | fix(context): restore the inter-character memory timing log | **PORT (log-only)** | ONE hunk in `lib/chat/context-manager.ts:1755`: the empty `if (isMultiCharacter) { }` block (emptied by the `96bf74b5b` debug-strip chore) regains `logger.debug('[ContextManager] Inter-character memory retrieval complete', {chatId, characterId, durationMs: Math.round(performance.now() - tInterStart), loadedCount: interCharacterLoadedCount, includedCount: interCharacterMemoriesIncluded})`. Rest is version bumps (`4.9.0-dev.117` → `.118`), README, CHANGELOG. → v5 `services/build_context.rs` has NO such line (grep `Inter-character memory retrieval complete` → nothing) — a log-only port with a thread-scoped capture pin (memory notes `differential-blind-to-a-log-only-fix`, `a-process-global-test-seam-must-be-thread-scoped`); the three fields need v5's inter-character load count + a duration stamp at the site. Joins the handler-logging sweep's row list; small enough to ride the bug-115 catch-up. | ORDERED(p4.d150 — 2026-09-02) |
-| `b448eddd7` | 2026-09-02 | docs(bugs): file bugs 116-118 from one mis-described image upload | **NO-PORT?** | **Docs only — ZERO `lib/`, `app/`, `packages/`, `plugins/`.** Five files: `docs/CHANGELOG.md` (+30), `docs/developer/bugs.md` (the Status paragraph rewritten — "Bugs **1–115** are **fixed in v4**. **116–118** are **open**"), and the three NEW filings `docs/developer/bugs/bug-116-describer-answer-never-verified.md` (198), `bug-117-file-entry-sha-pre-transcode.md` (207), `bug-118-nanogpt-manifest-attachment-drift.md` (121). No code hunk to port, so this row ratifies as NO-PORT at the next baseline move — **but it is not inert**: all three bugs are marked **"Applies"** to v5 by their own `v5 status` rows, and the v5-side MEASUREMENTS are owed now (§1's ⚠ bullet carries the shapes and the v5 surfaces: `services/file_fallback.rs` for 116, `api/chat_media.rs` / the upload bridge for 117, the manifest generator's augmentation table for 118). This commit is also what DISCHARGES the previous §1's dirty-tree note — the same three files were the untracked dirt recorded there. **Not a convergence:** it files v4's own new bugs as OPEN; nothing this port filed came back fixed. | ORDERED(p4.d151 ratifies NO-PORT with the file list — 2026-09-02) |
-| `0b0617fee` | 2026-09-02 | fix(images): verify a describer saw the image; hash the bytes we store (bugs 116-118) | **PORT** (three defects, one commit; 28 files, +1445/-65) | **NOT a convergence** — v4's own filings from one mis-described upload (a warship screenshot recorded as 3,175 characters about a tabby kitten), fixed ~2 h after `b448eddd7` filed them. **No `generateDDL`, no new column, no D23 re-dump** (`docs/developer/DDL.md` is prose only; `public/schemas/qtap-export.schema.json` gains a `description` on `files.sha256` and no constraint). **Bug 116 — `lib/chat/file-attachment-fallback.ts` (+124):** new exported `verifyImageReachedModel(response, attachmentId) -> {arrived:true} | {arrived:false, reason}` plus two consts — `MIN_CHARS_PER_TOKEN = 2.5` (deliberately pessimistic) and `INSTRUCTION_TOKEN_CEILING = Math.ceil(IMAGE_DESCRIPTION_INSTRUCTION.length / 2.5)` (= 66; the live bad call reported 38). Order inside the function: `attachmentResults.failed` first (pick the entry matching `attachmentId`, else `failed[0]`; reason = "the provider reported the attachment as not sent: <error|no reason given>"), then `usage.promptTokens` — **absent or `<= 0` is SILENCE, returns `arrived:true`** — then `billedInput = promptTokens + (cacheUsage.cacheReadInputTokens ?? 0) + (cacheUsage.cachedTokens ?? 0)` (cache reads added BACK because every plugin normalises them out; the 4.6.1 invariant), and `billedInput <= 66` refuses. Called in `describeImageWithProfile` **ahead of every content check** (before the empty/refusal detectors) — on refusal, a `logger.warn('[Image Fallback] Describer answered without the image; discarding its description', {provider, model, profileId, filename, reason, promptTokens, contentLength})` and a `type:'unsupported'` result carrying the long sentence "Image description profile (<provider> <model>) did not process the image — <reason>. Pick a describer on a model that genuinely reads images; a gateway may accept an image and route to a model that ignores it." plus the five `processingMetadata` keys. → **v5 MEASURABLY HAS bug 116**: `services/file_fallback.rs` `describe_image_with_profile` `:421` goes straight from the response to the empty check `:585` and the refusal-keyword check `:611` — it reads neither `attachment_results` nor `usage.prompt_tokens` (the usage struct is only projected into the llm-log at `:767`). Ported at P4.D106/P4.D108 (the `a14a1811` vision round — the describe tier + the bug-91 transport predicate). Families: `file_attachment_tier3_equivalence`, `fallback_engine_equivalence`, `attach_mount_file_equivalence`. Note the corpus shape: the refusal is driven by the canned response's `usage`/`attachmentResults`, so the tier-3 canned calls need a low-`promptTokens` arm AND a cache-read arm (the `??` chain is `or_else`, not a `>0` filter). **Bug 117 — the pre-transcode `sha256`, four legs.** (a) `lib/chat-files-v2.ts` (+69): `uploadChatFile` no longer hashes its input — it runs the bridge's own `transcodeToWebP(inputBuffer, inputMimeType)` FIRST (a no-op for non-images and existing WebP), and `buffer`/`mimeType`/`sha256` all come from the transcode result; `detectTextContent`/`getBestMimeType` still read the INPUT bytes. `uploadFileToProject` now also takes `storedSha256` from the bridge (`uploaded.sha256` / `written.sha256`), warns `'Stored-bytes hash differs from the pre-upload hash; recording the stored one'` when the two disagree, and writes `sha256: storedSha256`. (b) `lib/import/quilltap-import/import-files.ts` (+7): the row records `sha256: storedSha256` from the bridge, joining the existing post-bridge `mimeType`/`size` rule. (c) `lib/backup/restore/restore.ts` (+33): the replay branch takes `restoredSha256` from the bridge; the **carried-store-rows branch**, which skips the replay and has no bridge, builds `carriedBlobSha256ById` from `data.docMountBlobs` and resolves it via the NEW import `parseMountBlobStorageKey(carriedStorageKey)?.blobId`, spreading `...(carriedSha256 ? {sha256: carriedSha256} : {})`. (d) NEW `migrations/scripts/realign-file-entry-sha256.ts` (278) + its registration in `migrations/scripts/index.ts` (both the array and the re-export) + the `PRETTY_LABELS` line in `lib/startup/prettify.ts` ('Matching each picture to its fingerprint, so nothing goes missing on the shelves…'); it walks `files` rows whose `storageKey LIKE 'mount-blob:%'`, reads `doc_mount_blobs.sha256` by the encoded blob id, and UPDATEs `files.sha256` + `updatedAt` on disagreement (idempotent; a missing blob is logged and left alone). `migrations/scripts/repair-files-mime-and-size-from-mount-blob.ts` (+16) is doc-only — its `sha256` carve-out is rewritten to say the carve-out WAS bug 117. → **v5 MEASURABLY HAS all three code legs**: `services/chat_files.rs` `:674` hashes `data` (the input) via `sha256_of_buffer` and `:872` writes that value while `:834` already takes `stored_mime`/`stored_size` from the bridge (the exact pre-fix asymmetry v4 describes) — ported at P4.4/P4.9 (`upload_chat_file` + `upload_chat_file_conn` + `upload_file_to_project`); `services/quilltap_import/files.rs:345` takes `sha256` from the archive row beside post-bridge `mime_type`/`size` `:348`; `services/backup/restore/orchestrator.rs:1951` does the same, and its `carried_store_rows` `:1841` is the branch v4 just taught to read the archived blob's own hash — **note the RULED DIVERGENCE comment at `:994`, which must be re-read before touching that branch**. The migration has **no v5 counterpart and no migration runner**: it wants a boot heal in the established `db/*_repair.rs` / `*_heal.rs` idiom (`chat_activity_recompute_heal.rs` for bug 112, `connection_profiles_prefill_repair.rs` for P4.D97, `character_archive_repair.rs`), with the P4.D145 precedent for a heal that writes NO ledger row and the P4.D97 precedent for one that does — **decide which deliberately**; a cross-app hazard exists either way, since v4 running on the same instance will have run its own migration. **The dedup residual is v4's own, carried:** WebP encoding must be deterministic for `findBySha256` to keep matching re-uploads across a sharp version bump — v5's transcoder is a host seam, so the same bargain needs stating at the v5 site. Families: `files_tier2_equivalence`, `character_photo_upload_tier2_equivalence`, `qtap_import_equivalence`, `system_restore_state` / `system_restore_equivalence` / `restore_vintage_state`, `photo_tools_equivalence`, `attach_mount_file_equivalence`. **Bug 118 — `plugins/dist/qtap-plugin-nanogpt/manifest.json`:** `attachmentSupport` flips to `supported: true` with the four image MIME types and "Images (JPEG, PNG, GIF, WebP) — requires a vision-capable routed model" (plugin 1.2.1 → 1.2.2, built output unchanged); `image-transport.test.ts` now gates all three declarations. → **v5 does NOT have this bug — MEASURED this check.** `provider_manifest/manifests/nanogpt.json`'s `attachment` block already reads `supportsAttachments: true` with those exact four MIME types and that exact description string, because v5's generator regenerates from the plugin's built declaration (the truthful one) rather than from `manifest.json` — so **v4 converged onto bytes v5 has carried since P4.D107**. Nothing to port; the lane's obligation is a regen + byte-identity check, and a note that `model/request_builder/chat_completions.rs:48-52`'s "keep the two in step" comment now describes a v4 that agrees. **Help (→ the `p4.9i2` bank):** `help/file-uploads.md` (+10), `help/chat-settings.md` (+3). **NO-PORT:** four v4 test files (189+208+98+252), `README.md`, `.claude/commands/update-documentation.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` + the three bug docs (status → fixed), version bumps. | ORDERED(p4.d151 bugs 116 + 118 ∥ p4.d152 bug 117 — 2026-09-02) |
 | `15573c3a1` | 2026-09-02 | fix(optimizer): a non-array sub-step answer no longer kills the run (bug 119) | **PORT (deferred surface — no v5 counterpart today)** | **NOT a convergence** — v4's own filing, from a screenshot of the Refine-from-Memories confirmation screen showing the minified `q.filter is not a function`. **Hunks: ONE lib file, `lib/services/character-optimizer.service.ts` (+60/-4), three changes.** (a) NEW exported `coerceSuggestionArray(value: unknown): OptimizerSuggestion[]` placed after `coerceSuggestionText` — array passes through; non-object/nullish → `[]`; else the FIRST array-valued property among the ordered key list `['suggestions','items','results','data','amendments']`; else a lone object whose `field` is a `string` becomes a one-element array (`field` is called "the shape's fingerprint"); else `[]`. (b) inside the sub-step body, `parseLLMJson<OptimizerSuggestion[]>(raw)` becomes `parseLLMJson<unknown>(raw)` + `coerceSuggestionArray(...)`, and a non-array answer logs `logger.warn('[CharacterOptimizer] Sub-step answered with a non-array; coerced', {characterId, subStep: label, parsedType, recovered})` — note `parsedType` is computed as `Array.isArray(rawParsed) ? 'array' : typeof rawParsed` **inside a branch already known to be non-array**, so it can only ever emit `typeof`; the pre-existing unparseable-JSON `catch` is untouched. (c) the closure `runSubStep` is renamed `runSubStepCore` and a NEW `runSubStep` wraps it in try/catch, logging `logger.error('[CharacterOptimizer] Sub-step failed unexpectedly; continuing', {characterId, subStep: label}, err)` and emitting `onProgress({type:'substep_complete', step:'generating', partialSuggestions: []})` — so one bad pass no longer aborts the fan-out (general fields / each scenario / each system prompt / physical description / wardrobe / aliases / proposed prompts). Explicitly **NOT done** (v4 says so): Zod validation at the sub-step boundary, and moving `logLLMCall` ahead of the filter chain. → **v5 intersection: NONE.** The character optimizer has **never been ported** — `m6-screen-parity.md:546` lists `CharacterOptimizerModal` (`components/characters/optimizer/CharacterOptimizerModal.tsx`, `CharacterDetailView.tsx:373`) as **absent → MISSING → `p4.9k`**, and `phase-4.md:779` / `:5099` carry it among the tier-3 LLM-service deferrals (ai-wizard / optimizer / rename / ai-import); grep confirms no `character_optimizer` / `OptimizerSuggestion` / `runSubStep` anywhere in `crates/` or `apps/`. So there is **nothing to port now and no family to regenerate** — the obligation is that **`p4.9k` ports the POST-FIX shape**, and its work order must cite this sha so the pre-fix inline `.filter` is never transcribed. Also note the class does not transfer mechanically: v4's bug is a TypeScript *cast* (`return JSON.parse(cleaned) as T`) that JS never checks, whereas v5 has no `parseLLMJson` twin at all (`services/answer_confirmation.rs:464 extract_json` returns a `Value` and every reader is explicit) — a Rust `serde_json` deserialize into `Vec<T>` would return `Err`, landing in the equivalent of the parse `catch` rather than throwing at `.filter`. The port's live obligation is therefore the *design* lesson v4's `bugs.md` states — normalise before treating a model answer as an array, and contain a fan-out failure to the pass that caused it — carried into `p4.9k`'s order, plus the coercion table byte-for-byte (the key list is ordered and load-bearing). **NO-PORT within the commit:** `README.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` (+ the new `bugs/fixed/bug-119-optimizer-substep-non-array.md`, 186 lines — read it when `p4.9k` runs), the 47 new lines in `__tests__/unit/lib/services/character-optimizer-helpers.test.ts`, and the version bumps (`4.9.0-dev.120` → `.121` across `package.json`, `package-lock.json`, `packages/quilltap/package.json`). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
@@ -284,6 +250,30 @@ the disposable copy proves the mechanism but is a weaker claim — offer it,
 don't silently swap it in.
 
 ## §6 History
+
+- **The `0b0617fee` drift catch-up round (2026-09-03, baseline `6d2a50382` →
+  `0b0617fee`):** `303288fb4` ABSORBED(p4.d148 server ∥ p4.d149 SPA — the
+  create-time `conciergeState` through the existing `apply_concierge_flip`
+  chokepoint on all three branches, the greeting ladder's attempt 0 on the
+  uncensored desk asked WITH the chat row, the one shared desk closure; the
+  New Chat dropdown + the omit-when-monitored body rule + the gated create-time
+  beat flipped live at unification; Continue Elsewhere seeding recorded as a
+  NO-COUNTERPART), `02d4efa1b` ABSORBED(p4.d150 — `distill_memory_search`
+  takes the latency class, the fallback interactive, pinned at the real call
+  sites by a budget-recording provider since the corpus is provably blind),
+  `c9faa2c74` ABSORBED(p4.d150 — the inter-character timing debug line,
+  capture-pinned three arms), `b448eddd7` NO-PORT-RATIFIED(p4.d151 — docs
+  only, five files, zero lib/app/packages/plugins; its measurement
+  obligations discharged by p4.d151 for bugs 116/118 and p4.d152 for 117),
+  `0b0617fee` ABSORBED(p4.d151 bugs 116 + 118 ∥ p4.d152 bug 117 — the
+  describer arrival verdict ahead of every content check with the
+  `CompletionResponse.cache_usage` widening; the manifest regen proven
+  byte-identical, v5 never had bug 118; the four bug-117 legs with the
+  within-tree boolean comparand and the `realign-file-entry-sha256-v1` boot
+  heal in the P4.D140 ledger shape, its presence-vs-drift stamp rule a
+  RECORDED both-directions divergence). `15573c3a1` deliberately NOT swept
+  (still §3). Round record: `status-log.md` → "Round record — the
+  `0b0617fee` drift catch-up round unification".
 
 - **The `6d2a50382` drift catch-up round (2026-09-02, baseline `4622411fd` →
   `6d2a50382`):** `70505745a` ABSORBED(p4.d146 — the presence gate at the

@@ -6256,6 +6256,112 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The `0b0617fee` drift catch-up round (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152) — UNIFIED 2026-09-03
+
+**UNIFIED on main (2026-09-03) — ALL FIVE ORDERS CLOSED; the oracle baseline
+MOVES to `0b0617fee`; the `15573c3a1` row (bug 119, the unported character
+optimizer → `p4.9k`) stays UNPROCESSED in the ledger's §3 by design.** v4's
+five-commit day absorbed whole: the Concierge state chosen at chat creation
+end-to-end (server: `conciergeState` on the create request through the
+EXISTING flip chokepoint on all three branches right after the system-prompt
+message, the greeting ladder's attempt 0 on the uncensored desk asked WITH
+the chat row, the one shared desk closure, the capstone corpus 19 → 32 with
+two NEW comparands — `message_order` over `rowid` and `stream_calls` over the
+ordered call trace — and the harness `NoApiKeys` seam that had made every
+Concierge reroute unreachable; SPA: the dropdown in v4's slot, the
+omit-when-monitored body rule, v4's two client tests 1:1, the gated
+create-time beat flipped LIVE at unification; Continue Elsewhere seeding a
+recorded NO-COUNTERPART) ∥ bug 115 (`distill_memory_search` takes the latency
+class; the fallback interactive — pinned at the REAL call sites by a
+budget-recording provider since a deadline class is provably invisible to
+the corpus: the build-context oracle is byte-identical at the target pin,
+the old baseline AND the new one) + the inter-character timing log
+(capture-pinned, the `!skip_memories` arm included) ∥ bug 116 (the describer
+arrival verdict ahead of every content check, the `CompletionResponse.
+cache_usage` widening at 23 sites with the real composition's thread pinned,
+the tier-3 corpus widened with optional `attachmentResults`/`cacheUsage`
+bags — 6 of 8 new rows RED first, the invented kitten description persisted
+pre-fix — and a 14-row tier-1 `verdict` kind) + bug 118 re-proven a no-op
+(eleven manifests byte-identical from the pin — v5 has carried the truthful
+block since P4.D107) ∥ bug 117's four legs (transcode-then-hash at chat
+upload with the codec as a PARAMETER — production still passes
+`NotConfiguredPixelCodec`; import + both restore arms from the bridge / the
+archived blob; the `realign-file-entry-sha256-v1` boot heal in the P4.D140
+ledger shape over v4's REAL migration, with its presence-vs-drift stamp rule
+a RECORDED both-directions divergence; the within-tree BOOLEAN comparand
+with a harness-only byte-changing codec, and the honest measurement that
+the join half is non-discriminating by construction — the DEDUP is the
+red-first arm). **The §3 review (five parallel readers + the unifier's own
+read): NO blocking findings — the fifth such round;** fixed at unification:
+the heal's blob lookup folding EVERY DB error into the "orphaned" bucket
+(v4 lets a driver throw escape), a boot comment claiming v4 parity where the
+lane had pinned a divergence, three shape items in the create path (a dead
+emptiness guard, a silent missing-id no-op v4 lacks, an over-claiming
+Err-parity comment), a spliced harness doc, a stale field comment. Gate:
+26/26 families fresh from the unify pin zero SKIP with changed-bytes greps;
+clippy both feature sets; release build; 489 test binaries / 2,761 / 0 with the round's env block, zero SKIP; ng 376 / 5,925; full Playwright 271 passed / 1 failed / 0 skipped (the red is the documented `workspace-search-documents` intermittent — same shape, 1-in-3 red in isolation on this build, no lane touched the surface; promoted to a named candidate). Round
+record: `status-log.md` → "Round record — the `0b0617fee` drift catch-up
+round unification". Versions: core 0.0.768, harness 0.0.662, web 0.0.105,
+host 0.0.95, SPA 0.5.631.
+
+**Next candidates, in rough value order** (updated at this unification,
+2026-09-03):
+
+1. **The owed dogfood pass over this round's surfaces** on the Friday copy:
+   a chat created Uncensored greeting from the frank desk (the Concierge
+   bubble second in the transcript, the sidebar control reading it back);
+   the describer verdict against a real gateway that drops images (the
+   live 38-token shape); **the sha256 heal — measure the population FIRST**
+   (ledger §5.5; v4 will have run its own migration, so the expected proof
+   is v5 honouring the ledger row and writing nothing); the interactive
+   distill budget on a stalling cheap route; plus the standing queue
+   (Pascal's group tier with its recipe, the Brahma deep query,
+   dedup/summaries, #101, the re-measured compression row, the LoRA
+   wire-byte look, and the follow-ups round's items — the danger ring on a
+   real Flagged chat, the subset refusals, the Docker Ollama walk, the LoRA
+   modal's writers, `count: 20` through the image-profile route, the
+   failover rows).
+2. **The P4.67 remainder** (its order's OPEN list: seventeen `?action=`
+   sites into the family, the per-site duplicate-key rows, P4.62(a) the
+   `FileUpload.tags` raw carry, P4.62(c) the `chat_file_link` guard tidy;
+   the recorded `characters_get` fold) — and, joining that census, **the
+   dispatch-level wrong-TYPE class this round's review named:** a
+   non-string `conciergeState` / `roleplayTemplateId` / `timestampConfig`
+   answers the dispatch decode envelope where v4's `createChatSchema.parse`
+   answers the flat `Validation error`.
+3. **Threading the host codec into chat uploads** (P4.D152's named
+   candidate — v4 transcodes chat-uploaded bitmaps through sharp; v5 stores
+   the original bytes, the documented `api/files.rs:1116` passthrough; a
+   one-line change at `api/engine.rs` now that the codec is a parameter,
+   but a NEW convergence that needs its own differential over a
+   byte-changing codec and a dogfood look at real uploads).
+4. **The follow-ups round's items 5–6, carried:** the streaming bubble's
+   missing avatar (P4.69), the `auth`/`no-api-key-configured` chain arm
+   (P4.68), the eleventh/twelfth status-parser copies, the
+   `POST /api/v1/images?action=generate` route, the three shared-stage
+   recipes, `p4.9i2` (the HelpChat/Guide client + the banked help docs —
+   now six more rows from this round), the handler-logging sweep (the
+   `[Image Fallback]` warn fields are unpinned — a capture-layer test),
+   the present-but-null lead, the `title=` census, the dozen residue
+   hosts, finding #109 (v4-first).
+5. **The `workspace-search-documents-flow.spec.ts:208` suite-context
+   intermittent, now a NAMED maintenance item** (third round it has fired:
+   `.qt-chat-messages-list` resolved-but-HIDDEN after the in-chat card
+   click — the SILENT standalone arm fires and its tab backgrounds the
+   salon; green in isolation, once reproduced in a two-spec recheck with no
+   round-related spec present). It wants its own root-cause look
+   (`open-document-from-search` + the workspace tab activation order), not
+   another "recorded, not this lane" line.
+6. **The `15573c3a1` row (bug 119)** rides `p4.9k` (the character
+   optimizer is unported); the `docs/v4/` mirror refresh at the next
+   maintenance pass.
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json` file
+port remains a NAMED standalone flag (P4.D152 banked the `files.sha256`
+`description` hunk there).
+
+**The ordering-time section follows for history:**
+
 ## The `0b0617fee` drift catch-up round (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152) — ORDERED 2026-09-02
 
 **A drift round.** The ledger's §2 probe passed at ordering (v4 `main` at
