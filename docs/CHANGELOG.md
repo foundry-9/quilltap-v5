@@ -277,6 +277,16 @@ hashes the transcoded bytes and matches the first row, so one FileEntry;
 pre-fix it mints a second. The harness gained `PrefixingPixelCodec`, and the
 folders canonicalizer's `path`-only sort key — a latent coin flip whenever two
 folders share a path — became `(path, projectId)`.
+#### 2026-09-03 — docs(p4.d148): the lane-close record for the create-time Concierge state
+
+_No crate versions bumped._
+
+Records the P4.D148 lane's final gate: both clippy feature sets clean, 488 test
+binaries / 2,745 passed / 0 failed with the lane's oracle env block and zero
+`SKIP:` lines, and the four families re-run by name from a worktree pinned at
+v4 `303288fb4` with the changed bytes grepped out of the fresh NDJSON. No SPA
+file touched and no Playwright authored.
+
 #### 2026-09-03 — feat(chats): a Flagged or Uncensored chat greets on the Concierge's uncensored desk first (v4 `303288fb4`)
 
 _Versions: core 0.0.760, harness 0.0.656._

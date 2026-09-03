@@ -102252,3 +102252,57 @@ clean.
   arm over v4's REAL `applyConciergeFlip` + REAL announcement writer):
   regenerated at the pin and run; unchanged — `manual-flip.ts` gained a caller,
   not an edit.
+
+### P4.D148 — lane close
+
+**Branch:** `claude/concierge-creation-server-d1d460`. **Commits:** two —
+`feat(chats): apply a Concierge state chosen at chat creation` (unit 1) and
+`feat(chats): greet a Flagged or Uncensored chat on the Concierge's desk first`
+(unit 2). Both Tier-1 and Tier-2 deliverables landed **in the corpus**; the
+order's unit-test fallback for the Tier-2 skip was NOT needed (the mock could
+express a content filter all along — an empty answer WITH a `usage` whose
+`completionTokens > 0` is v4's own signature in `initial-greeting.ts`, and the
+per-model canned table made it per-CALL). **Tier 3: no deferrals.**
+
+**Freshness probe** run at lane start AND again before the final regen: v4
+checkout on `main`, tree clean, `git log 15573c3a1..main` and
+`git log 3a76b17df..bugfix` both empty — i.e. the ledger's §1 as recorded on
+2026-09-03 (the order's preamble quotes the one-commit-older `0b0617fee`; §1
+records `15573c3a1` and states explicitly that it must not be swept into this
+round's baseline move). PIN REQUIRED honoured: every regen ran from
+`/tmp/qt-v4-pin-p4d148-303288fb4`, a lane-unique detached worktree at
+`303288fb4` with the three symlink classes.
+
+**Final gate (this branch, `CARGO_INCREMENTAL=0`):**
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean, and again
+  with `--features quilltap-core/native-transport`.
+- `cargo test --workspace` with the lane's env block (the four `QT_ORACLE_CC` /
+  `QT_FIXTURE_CC_*` vars plus `QT_ORACLE_GREETING`, `QT_ORACLE_FMC` +
+  `QT_FIXTURE_FMC_*`, `QT_ORACLE_DANGER_RESOLVER`,
+  `QT_ORACLE_DANGER_MANUAL_FLIP`, `QT_FIXTURE_MANUAL_FLIP`): **488 test
+  binaries / 2,745 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines** — the
+  same counts main carries, as expected (the lane adds no unit test; its whole
+  proof is the capstone corpus).
+- The lane's four families by name through the sweep driver, from the pin,
+  with the fixtures deleted first so a stale build could not hide:
+  `chat_create_capstone_equivalence` (32/32 cases),
+  `initial_greeting_equivalence`, `first_message_context_equivalence`,
+  `danger_resolver_equivalence` (both its resolver and manual-flip arms) —
+  **totals `{'ok': 4}`, zero SKIP.** The three neighbours are unchanged, as
+  predicted: `303288fb4` touched neither `initial-greeting.ts` nor
+  `first-message-context.ts` nor `manual-flip.ts`.
+- **Changed-bytes greps on the FRESH pinned NDJSON** (ledger §5.2): `Briefing
+  the Concierge` in exactly the 9 non-Monitored cases; a `concierge` bubble row
+  in the same 9; `frank-model` in a `kind:"stream"` recording in exactly the 4
+  cases that reach the uncensored desk.
+- **No SPA gate — no `apps/web` file touched** (`git diff --name-only
+  main...HEAD` is ten files, all `crates/`, `harness/` and `docs/`), and **no
+  Playwright** (§F: port 4319 is P4.D149's).
+
+**Fixtures changed:** `harness/oracle/fixtures/chat-create-capstone.json` and
+`build-chat-create-capstone.ts` (this lane owns both). They are consumed ONLY
+by `chat_create_capstone_equivalence`, so no other family is invalidated; the
+three `QT_FIXTURE_CC_*` `.db` files are /tmp-built by the recipe and never
+committed. All 32 capstone cases were re-run after each builder change.
