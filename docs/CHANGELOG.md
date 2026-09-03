@@ -148,6 +148,47 @@ pins the thread through a stub transport (DEEPSEEK's
 `prompt_cache_hit_tokens`) and asserts the subtraction that makes the
 add-back necessary; the tier-3 differential cannot see this thread, because
 the canned provider builds its own response.
+#### 2026-09-03 — feat(boot): realign FileEntry sha256 with the bytes stored (bug 117, leg d)
+
+_Versions: core 0.0.760, harness 0.0.656, host 0.0.95._
+
+v4's `realign-file-entry-sha256-v1` migration ported as a v5 boot heal, in the
+established `db/*_heal.rs` idiom (v5 has no migration runner). It walks every
+`files` row whose `storageKey` is a `mount-blob:` key in batches of 500 ordered
+by id, reads the blob's own hash out of the MOUNT partition, and rewrites
+`files.sha256` + `updatedAt` where the two disagree. A malformed key and a
+missing blob are each counted, warned about with v4's sentence, and left alone;
+the batch around them continues. The pass is idempotent and the boot log line
+carries the four counts.
+
+The heal needs both connections, so it sits in the host boot chain's
+mount-aware block rather than with the main-only passes. The readers it serves
+are named in the module header: the auto-describe attachment path (a
+description that never reached the search index), `describe_image` /
+`attach_image` resolving a mount link to its FileEntry, and the photo link
+summaries.
+
+**Once-only guard: the P4.D140 ledger shape** — an existing `migrations_state`
+row from either app is honoured, and the row is written only on a pass that
+realigned at least one row. **Recorded divergence, measured not assumed:** v4's
+`shouldRun()` for this migration tests PRESENCE of mount-blob rows, not drift,
+so v4's runner writes a zero-`itemsAffected` ledger row on an instance whose
+rows all agree. v5 does not, because the risk is asymmetric — a stamp on a
+pass that changed nothing tells a later v4 boot to skip a migration that never
+ran, while a pre-4.9.0 v4 sharing the instance is still writing drifted rows.
+Both directions are pinned.
+
+The NEW `files_sha256_realign_heal_equivalence` drives v4's REAL migration and
+its REAL ledger write over eight scenarios: a drifted row, an agreeing row
+(whose `updatedAt` must not move), a missing blob, two malformed keys with a
+good row after them, non-mount-blob rows the LIKE never selects, an instance
+with no mount-blob rows at all, a pre-planted ledger row over genuinely
+drifted data, and 507 rows past the first batch. It compares the whole `files`
+table, the four counts, the summary sentence, the warn lines (captured through
+a thread-scoped tracing layer — the malformed and orphan arms are log-only on
+the state) and the ledger. Batch size is unobservable by state and recorded as
+unpinned: raising it to 5000 leaves the family green.
+
 #### 2026-09-03 — fix(files): a chat upload hashes the bytes it stores (bug 117, leg a)
 
 _Versions: core 0.0.759, harness 0.0.655._

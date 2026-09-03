@@ -65,6 +65,7 @@ pub mod embedding_status;
 pub mod ensure_official_store;
 pub mod fictional_clock_anchor_repair;
 pub mod files;
+pub mod files_sha256_realign_heal;
 pub mod folders;
 pub mod folders_unique_path_repair;
 pub mod group_character_members;

@@ -1173,6 +1173,44 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             // === end P4.d27 ===
             if let Some(mi) = ws.mount_index() {
                 let mount_index = mi.connection();
+                // === P4.D152 (v4 `0b0617fee`, migration
+                // `realign-file-entry-sha256-v1`, bug 117) ===
+                // `files.sha256` named the bytes a chat upload ARRIVED as, while
+                // the bridge stored a transcoded WebP — so every join to
+                // `doc_mount_files.sha256` was between two different languages and
+                // returned an empty result nobody logged (118 of 239 uploaded
+                // images on the real instance). The forward fix hashes after the
+                // transcode; this realigns the rows written before it, reading
+                // each blob's own hash out of the mount partition. Needs BOTH
+                // connections, so it lives in this mount-aware block rather than
+                // with the main-only passes above.
+                //
+                // DATA-only like the P4.D97/P4.D140 passes, so its once-only guard
+                // is v4's own migrations_state ledger in the P4.D140 shape: an
+                // existing row (from either app) is honoured, and a pass that
+                // realigns NOTHING writes no row — exactly as v4's own runner
+                // behaves, where `shouldRun()` gates on mount-blob rows existing
+                // and `run()` returns `itemsAffected: 0` without recording.
+                if let quilltap_core::db::files_sha256_realign_heal::RealignOutcome::Ran {
+                    scanned,
+                    realigned,
+                    orphaned,
+                    malformed_key,
+                } = quilltap_core::db::files_sha256_realign_heal::realign_file_entry_sha256(
+                    main,
+                    Some(mount_index),
+                    &quilltap_core::clock::now_iso(),
+                )? {
+                    tracing::info!(
+                        target: "quilltap::boot",
+                        scanned,
+                        realigned,
+                        orphaned,
+                        malformed_key,
+                        "Realigned FileEntry sha256 values with the bytes actually stored"
+                    );
+                }
+                // === end P4.D152 ===
                 builtin_mounts::ensure_builtin_mounts(main, mount_index)?;
                 builtin_mounts::ensure_general_scenarios_folder(main, mount_index)?;
                 // Companion (v4 instrumentation.ts Phase 3 tail, `f48f34dc`):

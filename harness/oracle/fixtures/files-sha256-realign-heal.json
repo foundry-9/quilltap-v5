@@ -1,0 +1,81 @@
+{
+  "$comment": "P4.D152 — the shared corpus for v4's REAL `realign-file-entry-sha256-v1` migration (v4 `0b0617fee`, bug 117) and v5's `db::files_sha256_realign_heal`. `files` rows are the MAIN partition; `blobs` are `doc_mount_blobs` in the MOUNT partition. `generate` synthesises N agreeing-id pairs whose file sha is always drifted, for the past-the-first-batch scenario (v4 BATCH_SIZE = 500).",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  "createdAt": "2020-01-01T00:00:00.000Z",
+  "nowIso": "2026-09-03T12:00:00.000Z",
+  "scenarios": [
+    {
+      "name": "drifted-row-realigned",
+      "$comment": "The shape bug 117 wrote: files.sha256 is the PRE-transcode hash, the blob carries the stored one.",
+      "blobs": [{ "id": "b-0001", "sha256": "stored-aaaa" }],
+      "files": [
+        { "id": "f-0001", "sha256": "input-aaaa", "storageKey": "mount-blob:mp-1:b-0001" }
+      ]
+    },
+    {
+      "name": "agreeing-row-untouched",
+      "$comment": "Already in agreement: skipped, and updatedAt must NOT move. v4's runner still records a zero-itemsAffected ledger row here (shouldRun tests presence, not drift) — v5 records nothing; the divergence is pinned by the ledger comparand.",
+      "blobs": [{ "id": "b-0001", "sha256": "stored-aaaa" }],
+      "files": [
+        { "id": "f-0001", "sha256": "stored-aaaa", "storageKey": "mount-blob:mp-1:b-0001" }
+      ]
+    },
+    {
+      "name": "missing-blob-left-alone",
+      "$comment": "The blob has gone; the row is counted orphaned, warned about, and left as it is rather than guessed at.",
+      "blobs": [{ "id": "b-0001", "sha256": "stored-aaaa" }],
+      "files": [
+        { "id": "f-0001", "sha256": "input-aaaa", "storageKey": "mount-blob:mp-1:b-0001" },
+        { "id": "f-0002", "sha256": "input-bbbb", "storageKey": "mount-blob:mp-1:b-gone" }
+      ]
+    },
+    {
+      "name": "malformed-key-batch-continues",
+      "$comment": "`mount-blob:mp-1:` has sep === rest.length - 1 → refused; `mount-blob::b-0002` has sep < 1 → refused. The rows AFTER them still realign, which is the point.",
+      "blobs": [
+        { "id": "b-0001", "sha256": "stored-aaaa" },
+        { "id": "b-0002", "sha256": "stored-bbbb" }
+      ],
+      "files": [
+        { "id": "f-0001", "sha256": "input-aaaa", "storageKey": "mount-blob:mp-1:" },
+        { "id": "f-0002", "sha256": "input-bbbb", "storageKey": "mount-blob::b-0002" },
+        { "id": "f-0003", "sha256": "input-cccc", "storageKey": "mount-blob:mp-1:b-0001" },
+        { "id": "f-0004", "sha256": "input-dddd", "storageKey": "mount-blob:mp-1:b-0002" }
+      ]
+    },
+    {
+      "name": "non-mount-blob-rows-ignored",
+      "$comment": "A legacy disk key and a NULL storageKey are never selected by the LIKE, so they are not even scanned.",
+      "blobs": [{ "id": "b-0001", "sha256": "stored-aaaa" }],
+      "files": [
+        { "id": "f-0001", "sha256": "input-aaaa", "storageKey": "mount-blob:mp-1:b-0001" },
+        { "id": "f-0002", "sha256": "input-bbbb", "storageKey": "ffffffff/portrait.png" },
+        { "id": "f-0003", "sha256": "input-cccc", "storageKey": null }
+      ]
+    },
+    {
+      "name": "no-mount-blob-rows-at-all",
+      "$comment": "v4's shouldRun() is false — the runner SKIPS and records nothing. v5 returns NoDrift{scanned:0} and records nothing. The one arm where the two ledgers agree on silence.",
+      "blobs": [{ "id": "b-0001", "sha256": "stored-aaaa" }],
+      "files": [
+        { "id": "f-0001", "sha256": "input-aaaa", "storageKey": "ffffffff/portrait.png" }
+      ]
+    },
+    {
+      "name": "ledger-row-present-skips-the-drift",
+      "$comment": "A migrations_state row is already there (v4 having run its own migration on a shared instance). v4's runner refuses at isMigrationCompleted; v5's heal refuses at the same check. The row IS drifted, so a heal that ignored the ledger would realign it and the arm would redden.",
+      "preCompleted": true,
+      "blobs": [{ "id": "b-0001", "sha256": "stored-aaaa" }],
+      "files": [
+        { "id": "f-0001", "sha256": "input-aaaa", "storageKey": "mount-blob:mp-1:b-0001" }
+      ]
+    },
+    {
+      "name": "past-the-first-batch",
+      "$comment": "507 drifted rows — one full batch of 500 plus seven. The keyset walk must pass the first batch; batching is otherwise unobservable by state (see the family header).",
+      "blobs": [],
+      "files": [],
+      "generate": { "count": 507 }
+    }
+  ]
+}

@@ -101751,3 +101751,96 @@ QT_ORACLE_OUT=/tmp/oracle-files-routes.ndjson \
 
 45 cases (was 42). Run: `QT_ORACLE_FILES_ROUTES=/tmp/oracle-files-routes.ndjson
 cargo test -p quilltap-harness --test files_routes_equivalence`.
+
+### Unit 2 — leg (d): the `realign-file-entry-sha256-v1` boot heal
+
+v4 `migrations/scripts/realign-file-entry-sha256.ts` (278 lines) → NEW
+`crates/quilltap-core/src/db/files_sha256_realign_heal.rs`, in the established
+`db/*_heal.rs` idiom (there is no migration runner). Keyset walk over `files
+WHERE storageKey LIKE 'mount-blob:%' AND id > ? ORDER BY id LIMIT 500`, the
+blob hashes read up front and the writes applied in one transaction per batch
+so a vanished blob cannot abort the batch around it. Malformed key and missing
+blob are counted, warned with v4's exact sentences, and left alone. The pass
+takes BOTH connections, so its boot block is the host's mount-aware one
+(`host.rs`, beside `ensure_builtin_mounts`) rather than the main-only chain.
+v4's private `parseBlobId` is `parseMountBlobStorageKey`'s rule spelled a second
+time (same prefix test, same `sep < 1 || sep == len - 1` refusal), so the shared
+`parse_mount_blob_storage_key` is what runs.
+
+**The once-only mechanism: the P4.D140 shape (order §D, binding).** An existing
+`migrations_state` row from either app is honoured; the row is written only on
+a pass that realigned ≥ 1 row.
+
+**⚠ RECORDED DIVERGENCE, measured not assumed.** v4's `shouldRun()` for THIS
+migration is `COUNT(*) FROM files WHERE storageKey LIKE 'mount-blob:%' > 0` —
+**presence, not drift** (unlike P4.D140's migration, whose own `shouldRun()`
+tests for drift). So on an instance whose mount-blob rows all agree, v4 runs,
+returns `itemsAffected: 0`, and its runner (`migrations/index.ts:157-163`)
+records the ledger row anyway. v5 deliberately does not: a stamp on a pass that
+changed nothing tells a LATER v4 boot to skip a migration that has never run,
+and a pre-4.9.0 v4 sharing the instance is still writing drifted rows. Not
+stamping costs one indexed scan per boot. Both directions are asserted by the
+new family, so v4 changing its own guard trips the pin by design. A
+zero-mount-blob-row instance matches exactly (v4 skips without recording, v5
+returns `NoDrift { scanned: 0 }`).
+
+**Non-ports, named in the module header:** v4's per-row
+`reportProgress(scanned, total, 'files')` and the `PRETTY_LABELS` loading-screen
+sentence *"Matching each picture to its fingerprint, so nothing goes missing on
+the shelves…"* are runner UI with no v5 surface (carried in the header for the
+day a loading screen exists; the boot log line carries the counts instead).
+v4's `dependsOn` is runner ordering with no v5 counterpart.
+
+**NEW family `files_sha256_realign_heal_equivalence`** over v4's REAL migration
+`run()` plus its REAL `recordCompletedMigration`, following the runner's
+sequence. Eight scenarios: `drifted-row-realigned`, `agreeing-row-untouched`,
+`missing-blob-left-alone`, `malformed-key-batch-continues`,
+`non-mount-blob-rows-ignored`, `no-mount-blob-rows-at-all`,
+`ledger-row-present-skips-the-drift`, `past-the-first-batch` (507 rows).
+Comparands: the whole `files` table (with `updatedAt` normalized to `<now>` only
+where it MOVED — v4 rewrites it just on rows it changed, which is the
+discriminator), the four counts, the summary sentence, the warn lines, the
+second run, and the ledger. Warns are captured through a thread-scoped
+`tracing` layer, because the malformed-key and orphan arms are log-only on the
+state.
+
+The oracle had two problems the single-partition heal oracles do not: jest maps
+`better-sqlite3` to a mock whose `prepare().get()` returns `undefined` (under
+which EVERY row would read as an orphaned blob and the corpus would measure
+nothing), so the real driver is loaded by absolute path and handed back through
+`jest.mock`; and the migration opens the mount partition itself, so
+`getMountIndexDatabasePath()` is mocked to a real temp file and
+`ENCRYPTION_MASTER_PEPPER` is dropped for the run (the cipher is boot
+infrastructure, not part of this comparand).
+
+**Mutation proofs** (verified-applied, reverted by file backup):
+
+- drop the `migrations_state` honour check → **RED**
+  (`ledger-row-present-skips-the-drift` realigns a row v4 leaves alone).
+- stamp on a zero-realigned pass → **RED** (`agreeing-row-untouched`: the
+  recorded divergence stops holding).
+- rename the malformed-key warn → RED.
+- drop the `blob_sha == row.sha256` skip → RED (agreeing rows' `updatedAt`
+  moves).
+- `BATCH_SIZE` 500 → 5000 → **GREEN, recorded**: batching is a memory bound, not
+  a behaviour; the keyset walk's result is identical at any size, so the >500
+  case is a coverage floor and NOT a discriminator. Unpinned by design.
+
+Six core unit tests cover the same arms at the module level, including
+`NotApplicable` for a missing `files` table and for an unopened mount partition
+(v4's `fs.existsSync(getMountIndexDatabasePath())` gate).
+
+Oracle regen (from the pin, own clean invocation):
+
+```
+TMPO=/tmp/qt-files-sha256-realign-heal-oracle
+cp harness/oracle/cases/files-sha256-realign-heal.test.ts "$TMPO/cases/"
+cp harness/oracle/fixtures/files-sha256-realign-heal.json "$TMPO/fixtures/"
+cd /tmp/qt-v4-pin-p4d152-0b0617fee
+QT_ORACLE_OUT=/tmp/oracle-files-sha256-realign-heal.ndjson \
+  npx jest --silent --watchman=false --testTimeout=180000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- "files-sha256-realign-heal\.test\.ts$"
+```
+
+Run: `QT_ORACLE_FILES_SHA256_REALIGN=/tmp/oracle-files-sha256-realign-heal.ndjson
+cargo test -p quilltap-harness --test files_sha256_realign_heal_equivalence`.
