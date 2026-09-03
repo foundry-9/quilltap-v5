@@ -101494,3 +101494,103 @@ so bug 116's cache add-back had nothing to read. The field lands as
   `prompt_tokens` of 812 — the parser SUBTRACTS the cache read (the 4.6.1
   invariant), which is the reason the verdict must add it back.
 
+
+### Unit 2 — bug 116: the arrival verdict (`verify_image_reached_model`)
+
+v4 `0b0617fee`'s `lib/chat/file-attachment-fallback.ts` (+124) ported whole
+into `services/file_fallback.rs`:
+
+- `MIN_CHARS_PER_TOKEN = 2.5` and `instruction_token_ceiling()` — DERIVED
+  from `IMAGE_DESCRIPTION_INSTRUCTION` the way v4 derives it, never written
+  down. `instruction_token_ceiling_is_sixty_six` is the live-call anchor
+  (163 UTF-16 units / 2.5, ceil → 66; the live bad call reported 38).
+- `ImageArrivalVerdict` + `verify_image_reached_model(&CompletionResponse,
+  attachment_id)`, in v4's order: the plugin ledger first (the entry whose
+  `id` matches, else `failed[0]`; `mine.error || 'no reason given'` — a JS
+  `||`, so an EMPTY string takes the fallback), then silence (absent `usage`
+  or `prompt_tokens <= 0` → arrived), then `billed_input = prompt_tokens +
+  cache_read` against the ceiling with `<=`.
+- **Two v4 shapes reproduced rather than tidied**, both commented at the
+  site: the `||`, and the cache add-back SUMMING `cacheReadInputTokens` and
+  `cachedTokens` when most `response_parse` dialects set both to the same
+  number — a cached call is double-credited. It only ever makes the verdict
+  more permissive, which is the safe direction.
+- v4's `typeof promptTokens !== 'number'` arm has no v5 counterpart:
+  `CompletionUsage.prompt_tokens` is an `i64`. An absent `usage` is the
+  whole of it; the corpus emits no non-number row rather than faking one.
+- The call site sits AHEAD of every content check and AFTER
+  `log_description_success` — v4 logs the call before judging it, so the
+  consultation stays diagnosable whatever the verdict. On refusal: v4's warn
+  (`provider/model/profileId/filename/reason/promptTokens/contentLength`,
+  the last in UTF-16 units) and the long `unsupported` sentence built from
+  the EXISTING `FallbackResult::unsupported` + `set_description_metadata`
+  pair, so the five `processingMetadata` keys come out unchanged. The
+  verdict fails INTO the existing fallback chain.
+
+**Differential — `fallback_engine_equivalence` gains a `verdict` kind**
+(v4's `verifyImageReachedModel` is exported and imports cleanly under tsx).
+14 rows, byte-compared on `{arrived, reason}`: v4's own five new test shapes
+plus the arms v4's tests do not reach — the `<=` boundary at 66 and 67, the
+`||` empty-error fallback, two failed entries with the MATCHING one second,
+a `failed` list matching nothing (v4's `?? failed[0]`), the ledger's
+precedence over a low token count, and an EMPTY `failed` list. Family 158 →
+172 cases, green first run at the `0b0617fee` pin.
+
+**Five mutations, each reddening exactly the right row(s):** drop the cache
+add-back → `cache-reads-added-back` + `cache-both-keys-summed`; `<=` → `<`
+→ `ceiling-exactly`; `failed[0]` unconditionally → `failed-picks-the-
+matching-id`; `||` → keep-the-empty-string → `failed-with-an-empty-error`;
+move the ledger arm after the token count → `ledger-beats-the-token-count`.
+
+### Unit 3 — the tier-3 corpus (`file_attachment_tier3_equivalence`)
+
+**The corpus was BLIND**: the `vision[]` entries carried no `attachmentResults`
+and no `cacheUsage`, and every entry was billed ≥ 820 or reported no usage at
+all — every shape arrives. Widened both sides: the entry gains two OPTIONAL
+bags, returned by the oracle's canned `sendMessage` AND recorded on the
+`kind:"canned"` row (omitted when the entry declares neither, so every
+pre-existing recorded row is byte-identical), and carried into the v5 canned
+`CompletionResponse`.
+
+Eight new files + eight `fb_verdict_*` cases. Note the fixture's shape, which
+does more work than the order predicted: the primary describer names the Z_AI
+profile as its understudy, so a refused primary walks the CHAIN — which puts
+the primary's WHOLE refusal sentence into
+`processingMetadata.fallbackAttemptTrail` even on rows where the stand-in
+answers. The sentence is therefore a comparand on every row, not just the
+two that end in `unsupported`.
+
+- `fb_verdict_low_tokens` — the live incident (38 tokens); the Z_AI stand-in
+  is billed 22, so BOTH refuse and the final error carries both sentences.
+- `fb_verdict_chain` — v4's third new test: the chain advances to a describer
+  that did see the picture.
+- `fb_verdict_ceiling` (66 refuses) ∥ `fb_verdict_above_ceiling` (67 arrives).
+- `fb_verdict_cache_read` — 20 prompt tokens + an 800-token cache read
+  arrives.
+- `fb_verdict_failed_no_reason` — the `||` on an empty error string.
+- `fb_verdict_failed_matching_id` — two failed entries, the matching one
+  second.
+- `fb_verdict_empty_and_unseen` — an EMPTY answer billed for 38: the trail
+  reads "did not process the image", not "returned empty response". This row
+  is what the sentence ORDER is measured by.
+
+⚠ The `failed` entries' ids are the file's REAL pinned UUID (the canned KEY
+carries `id: String::new()` per P4.21, but the response's ledger is data, and
+`describe_image_with_profile` matches on `file.id`).
+
+**RED FIRST, measured:** with the call site disabled, **6 of the 8** rows are
+red — `fb_verdict_low_tokens` returned `{"type":"image_description",
+"imageDescription":"The image is a vertical, close-up portrait photograph of a
+small, fluffy kitten…"}`, the invented description the caller persists onto
+`files.description`, where v4 answers `unsupported`. The two green-both-ways
+rows are the ARRIVAL arms, which exist so the verdict cannot over-refuse;
+they are pinned by mutation instead — widen the ceiling by one →
+`fb_verdict_above_ceiling` reddens; drop the cache add-back →
+`fb_verdict_cache_read` reddens (which also proves the canned provider
+carries the corpus's `cacheUsage`).
+
+**A gate finding, fixed:** the two new optional bags grew the tier-3
+`OracleRow::Canned` variant to 376 bytes against `Case`'s 120, tripping
+`clippy::large_enum_variant` under `-D warnings` (the workspace test run was
+unaffected — clippy is a separate stage). Both are now `Option<Box<…>>`, with
+a comment saying why: they are present on a handful of rows out of eighteen.

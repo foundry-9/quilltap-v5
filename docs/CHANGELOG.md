@@ -83,6 +83,31 @@ ceiling in the file wraps the memory recap and nothing else, so there is no
 "attempt deadline < enclosing ceiling" relation to state here — the relation the
 two arms depend on (interactive strictly under background) is already a compile-
 time pin in `cheap_llm_exec.rs` from P4.D136.
+#### 2026-09-03 — fix(images): the describer's answer is verified before it is believed (bug 116)
+
+_Versions: core 0.0.760, harness 0.0.656._
+
+A gateway can accept an image, discard it, and answer the instruction alone
+with long, confident, sectioned prose — which passed every content check the
+describe path had, and was then persisted onto `files.description`, where it
+short-circuited every later reader permanently. The live incident: a
+screenshot of a warship recorded as 3,175 characters about a tabby kitten,
+on a call billed for 38 prompt tokens.
+
+`verify_image_reached_model` reads the two proofs already on the response —
+the plugin's attachment ledger, and `prompt_tokens` against a ceiling derived
+from the instruction at a deliberately pessimistic 2.5 chars/token (66) —
+and runs ahead of every content check in `describe_image_with_profile`, after
+the llm-log row so the consultation stays diagnosable either way. Cache reads
+are added back first, since plugins normalise them out of `prompt_tokens`.
+Absent or zero usage is silence, not evidence. Either verdict fails into the
+existing fallback chain.
+
+`fallback_engine_equivalence` gains a 14-row `verdict` kind over v4's real
+exported function (158 → 172 cases), and the tier-3 corpus — blind until now,
+since no entry could express either proof — gains eight `fb_verdict_*` rows,
+six of which were red before the fix.
+
 #### 2026-09-03 — feat(model): CompletionResponse carries the parsed cacheUsage (P4.D151 §B)
 
 _Versions: core 0.0.759, harness 0.0.655, web 0.0.105._

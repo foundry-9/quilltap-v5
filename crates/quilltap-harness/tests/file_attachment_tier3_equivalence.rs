@@ -25,6 +25,26 @@
 //! is out of scope. No resize is exercised (small images), so the transcoder seam
 //! (`NotConfiguredTranscoder`) is never consulted.
 //!
+//! ## The arrival verdict (bug 116)
+//!
+//! P4.D151 (v4 `0b0617fee`): the `vision[]` entries carry two OPTIONAL bags —
+//! `attachmentResults` and `cacheUsage` — returned by the oracle's canned
+//! `sendMessage` AND recorded on the `kind:"canned"` row, so the Rust canned
+//! provider builds the SAME response object `verify_image_reached_model`
+//! judges. An entry declaring neither records exactly the pre-bug-116 bytes.
+//!
+//! The eight `fb_verdict_*` rows all reach `describe_image_with_profile`. Note
+//! the fixture's shape: the primary describer names the Z_AI profile as its
+//! understudy, so a refused primary walks the CHAIN — which puts the primary's
+//! whole refusal sentence into `processingMetadata.fallbackAttemptTrail` even
+//! when the stand-in answers, making the sentence a comparand on every row.
+//! Six of the eight were RED before the port landed (measured: the 38-token row
+//! returned `image_description` carrying the invented description the caller
+//! would have persisted onto `files.description`); the two arrival rows
+//! (`fb_verdict_above_ceiling`, `fb_verdict_cache_read`) are green both ways by
+//! design — they exist so the verdict cannot over-refuse, and they are pinned
+//! by mutation instead (widen the ceiling by one, drop the cache add-back).
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). The oracle case
 //! MUST be staged OUTSIDE any `.claude/` path (v4's jest ignores `/\.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5 ; TMPO=/tmp/qt-oracle-run
@@ -183,7 +203,43 @@ enum OracleRow {
         #[serde(rename = "finishReason")]
         finish_reason: Option<String>,
         usage: Option<OracleUsage>,
+        /// P4.D151 (v4 `0b0617fee`, bug 116) — the two proofs
+        /// `verify_image_reached_model` reads. Recorded by the oracle's mock
+        /// only when the fixture entry declares them, so every pre-existing
+        /// canned row is byte-identical. BOXED: present on a handful of rows
+        /// out of eighteen, and inline they push this variant far enough past
+        /// `Case` to trip `clippy::large_enum_variant`.
+        #[serde(rename = "attachmentResults", default)]
+        attachment_results: Option<Box<OracleAttachmentResults>>,
+        #[serde(rename = "cacheUsage", default)]
+        cache_usage: Option<Box<OracleCacheUsage>>,
     },
+}
+
+#[derive(Deserialize)]
+struct OracleAttachmentResults {
+    #[serde(default)]
+    sent: Vec<String>,
+    #[serde(default)]
+    failed: Vec<OracleAttachmentFailure>,
+}
+
+#[derive(Deserialize)]
+struct OracleAttachmentFailure {
+    id: String,
+    error: String,
+}
+
+#[derive(Deserialize)]
+struct OracleCacheUsage {
+    #[serde(rename = "cachedTokens", default)]
+    cached_tokens: Option<i64>,
+    #[serde(rename = "cacheDiscount", default)]
+    cache_discount: Option<f64>,
+    #[serde(rename = "cacheCreationInputTokens", default)]
+    cache_creation_input_tokens: Option<i64>,
+    #[serde(rename = "cacheReadInputTokens", default)]
+    cache_read_input_tokens: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -302,6 +358,8 @@ fn file_attachment_matches_oracle() {
                 content,
                 finish_reason,
                 usage,
+                attachment_results,
+                cache_usage,
             } => {
                 let messages = vec![CompletionMessage::user(IMAGE_DESCRIPTION_INSTRUCTION)];
                 expected_sampling.insert(
@@ -344,7 +402,33 @@ fn file_attachment_matches_oracle() {
                             total_tokens: u.total_tokens,
                         }),
                         finish_reason,
-                        attachment_results: None,
+                        // P4.D151 (bug 116): the canned response carries the
+                        // oracle's recorded bags, so the verdict judges the
+                        // SAME two proofs on both sides. Absent stays `None`,
+                        // which is the pre-bug-116 shape and always arrives.
+                        attachment_results: attachment_results.map(|a| {
+                            quilltap_core::model::stream::StreamAttachmentResults {
+                                sent: a.sent,
+                                failed: a
+                                    .failed
+                                    .into_iter()
+                                    .map(|f| {
+                                        quilltap_core::model::stream::StreamAttachmentFailure {
+                                            id: f.id,
+                                            error: f.error,
+                                        }
+                                    })
+                                    .collect(),
+                            }
+                        }),
+                        cache_usage: cache_usage.map(|c| {
+                            quilltap_core::model::stream::StreamCacheUsage {
+                                cached_tokens: c.cached_tokens,
+                                cache_discount: c.cache_discount,
+                                cache_creation_input_tokens: c.cache_creation_input_tokens,
+                                cache_read_input_tokens: c.cache_read_input_tokens,
+                            }
+                        }),
                     },
                 );
             }
@@ -447,6 +531,24 @@ fn file_attachment_matches_oracle() {
         // non-image type untouched by the transport check.
         ("fb_vision_no_transport", "visionNoTransport", "descImage"),
         ("fb_vision_no_transport_text", "visionNoTransport", "text"),
+        // Bug 116 (v4 `0b0617fee`): the arrival verdict inside
+        // `describe_image_with_profile`. The fixture's primary describer names
+        // the Z_AI profile as its understudy, so a refused primary walks the
+        // CHAIN — which is what puts the primary's whole refusal sentence into
+        // `processingMetadata.fallbackAttemptTrail` even when the stand-in
+        // answers, and makes the sentence itself a comparand on every row.
+        ("fb_verdict_low_tokens", "noImg", "verdictLow"),
+        ("fb_verdict_chain", "noImg", "verdictChain"),
+        ("fb_verdict_ceiling", "noImg", "verdictCeiling"),
+        ("fb_verdict_above_ceiling", "noImg", "verdictAbove"),
+        ("fb_verdict_cache_read", "noImg", "verdictCache"),
+        ("fb_verdict_failed_no_reason", "noImg", "verdictFailedEmpty"),
+        (
+            "fb_verdict_failed_matching_id",
+            "noImg",
+            "verdictFailedMatch",
+        ),
+        ("fb_verdict_empty_and_unseen", "noImg", "verdictEmptyLow"),
     ];
     let fb_deps = FallbackDeps {
         db: &db,

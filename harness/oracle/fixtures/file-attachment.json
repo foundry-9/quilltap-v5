@@ -270,6 +270,182 @@
         8
       ],
       "$comment": "P4.D136 (v4 a1d88aa3a, bug 106): its own image so the adapter's describe is a REAL describer call rather than a reuse of a description fb_desc already cached."
+    },
+    {
+      "key": "verdictLow",
+      "id": "f0000000-0000-4000-8000-00000000000c",
+      "originalFilename": "verdict-low.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        11,
+        12,
+        13,
+        14
+      ],
+      "$comment": "P4.D151 (v4 0b0617fee, bug 116): the live incident's shape — a long, confident, section-headed description billed for 38 prompt tokens. Its Z_AI stand-in is ALSO billed below the ceiling, so BOTH describers refuse by verdict and the primary's whole sentence lands in the final error beside the fallback's."
+    },
+    {
+      "key": "verdictChain",
+      "id": "f0000000-0000-4000-8000-00000000000d",
+      "originalFilename": "verdict-chain.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        15,
+        16,
+        17,
+        18
+      ],
+      "$comment": "P4.D151: v4's third new test — the primary never saw the image and the chain advances to a describer that did. The primary's refusal sentence is preserved byte-for-byte in processingMetadata.fallbackAttemptTrail."
+    },
+    {
+      "key": "verdictCeiling",
+      "id": "f0000000-0000-4000-8000-00000000000e",
+      "originalFilename": "verdict-ceiling.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        19,
+        20,
+        21,
+        22
+      ],
+      "$comment": "P4.D151: the ceiling itself. 66 is INSTRUCTION_TOKEN_CEILING and `<=` refuses it; swapping the comparison for `<` flips this row alone."
+    },
+    {
+      "key": "verdictAbove",
+      "id": "f0000000-0000-4000-8000-00000000000f",
+      "originalFilename": "verdict-above.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        23,
+        24,
+        25,
+        26
+      ],
+      "$comment": "P4.D151: one token above the ceiling arrives, so the describer's answer is believed. The boundary's other half."
+    },
+    {
+      "key": "verdictCache",
+      "id": "f0000000-0000-4000-8000-000000000010",
+      "originalFilename": "verdict-cache.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        27,
+        28,
+        29,
+        30
+      ],
+      "$comment": "P4.D151: 20 prompt tokens plus an 800-token cache read is a REAL call — every plugin normalises cache reads out of promptTokens (the 4.6.1 invariant), so dropping the add-back turns this into a refusal."
+    },
+    {
+      "key": "verdictFailedEmpty",
+      "id": "f0000000-0000-4000-8000-000000000011",
+      "originalFilename": "verdict-failed-empty.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        31,
+        32,
+        33,
+        34
+      ],
+      "$comment": "P4.D151: the plugin's ledger reports the attachment as not sent with an EMPTY error string. v4's `mine.error || 'no reason given'` is a JS ||, so the empty string takes the fallback."
+    },
+    {
+      "key": "verdictFailedMatch",
+      "id": "f0000000-0000-4000-8000-000000000012",
+      "originalFilename": "verdict-failed-match.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        35,
+        36,
+        37,
+        38
+      ],
+      "$comment": "P4.D151: two failed entries, the MATCHING one second. Reading failed[0] unconditionally names the neighbour's failure instead of ours."
+    },
+    {
+      "key": "verdictEmptyLow",
+      "id": "f0000000-0000-4000-8000-000000000013",
+      "originalFilename": "verdict-empty-low.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytes": [
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        39,
+        40,
+        41,
+        42
+      ],
+      "$comment": "P4.D151: an EMPTY answer billed for 38 prompt tokens. The verdict runs ahead of every content check, so the trail records 'did not process the image', not 'returned empty response' — this row is what the sentence ORDER is measured by."
     }
   ],
   "mount": {
@@ -329,6 +505,199 @@
         "promptTokens": 640,
         "completionTokens": 29,
         "totalTokens": 669
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "verdict-low.png",
+      "content": "The image is a vertical, close-up portrait photograph of a small, fluffy kitten. The subject has a classic tabby coat with large, round, bright amber eyes. The background falls away into soft bokeh. There is no watermark present in the picture.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 38,
+        "completionTokens": 683,
+        "totalTokens": 721
+      }
+    },
+    {
+      "provider": "Z_AI",
+      "modelName": "uncensored-vision-model",
+      "filename": "verdict-low.png",
+      "content": "A tranquil harbour at dawn with three fishing boats at anchor, ropes slack, the water flat enough to hold the whole skyline upside down.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 22,
+        "completionTokens": 300,
+        "totalTokens": 322
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "verdict-chain.png",
+      "content": "The image is a vertical, close-up portrait photograph of a small, fluffy kitten. The subject has a classic tabby coat with large, round, bright amber eyes. The background falls away into soft bokeh. There is no watermark present in the picture.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 38,
+        "completionTokens": 683,
+        "totalTokens": 721
+      }
+    },
+    {
+      "provider": "Z_AI",
+      "modelName": "uncensored-vision-model",
+      "filename": "verdict-chain.png",
+      "content": "A weathered stone lighthouse on a basalt headland, its lamp cutting through low sea fog at dusk.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 912,
+        "completionTokens": 140,
+        "totalTokens": 1052
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "verdict-ceiling.png",
+      "content": "The image is a vertical, close-up portrait photograph of a small, fluffy kitten. The subject has a classic tabby coat with large, round, bright amber eyes. The background falls away into soft bokeh. There is no watermark present in the picture.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 66,
+        "completionTokens": 400,
+        "totalTokens": 466
+      }
+    },
+    {
+      "provider": "Z_AI",
+      "modelName": "uncensored-vision-model",
+      "filename": "verdict-ceiling.png",
+      "content": "A weathered stone lighthouse on a basalt headland, its lamp cutting through low sea fog at dusk.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 900,
+        "completionTokens": 140,
+        "totalTokens": 1040
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "verdict-above.png",
+      "content": "A gothic warship named FLYING DUTCHMAN in orbit above a slowly tumbling asteroid field.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 67,
+        "completionTokens": 400,
+        "totalTokens": 467
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "verdict-cache.png",
+      "content": "A brass orrery on a mahogany desk, its planets caught mid-turn under a green-shaded lamp.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 20,
+        "completionTokens": 200,
+        "totalTokens": 220
+      },
+      "cacheUsage": {
+        "cacheReadInputTokens": 800
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "verdict-failed-empty.png",
+      "content": "The image is a vertical, close-up portrait photograph of a small, fluffy kitten. The subject has a classic tabby coat with large, round, bright amber eyes. The background falls away into soft bokeh. There is no watermark present in the picture.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 4000,
+        "completionTokens": 100,
+        "totalTokens": 4100
+      },
+      "attachmentResults": {
+        "sent": [],
+        "failed": [
+          {
+            "id": "f0000000-0000-4000-8000-000000000011",
+            "error": ""
+          }
+        ]
+      }
+    },
+    {
+      "provider": "Z_AI",
+      "modelName": "uncensored-vision-model",
+      "filename": "verdict-failed-empty.png",
+      "content": "A weathered stone lighthouse on a basalt headland, its lamp cutting through low sea fog at dusk.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 900,
+        "completionTokens": 140,
+        "totalTokens": 1040
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "verdict-failed-match.png",
+      "content": "The image is a vertical, close-up portrait photograph of a small, fluffy kitten. The subject has a classic tabby coat with large, round, bright amber eyes. The background falls away into soft bokeh. There is no watermark present in the picture.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 4000,
+        "completionTokens": 100,
+        "totalTokens": 4100
+      },
+      "attachmentResults": {
+        "sent": [],
+        "failed": [
+          {
+            "id": "f0000000-0000-4000-8000-0000000000ff",
+            "error": "a neighbour attachment, not mine"
+          },
+          {
+            "id": "f0000000-0000-4000-8000-000000000012",
+            "error": "Standard messages (strip attachments)"
+          }
+        ]
+      }
+    },
+    {
+      "provider": "Z_AI",
+      "modelName": "uncensored-vision-model",
+      "filename": "verdict-failed-match.png",
+      "content": "A weathered stone lighthouse on a basalt headland, its lamp cutting through low sea fog at dusk.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 900,
+        "completionTokens": 140,
+        "totalTokens": 1040
+      }
+    },
+    {
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-mini",
+      "filename": "verdict-empty-low.png",
+      "content": "",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 38,
+        "completionTokens": 0,
+        "totalTokens": 38
+      }
+    },
+    {
+      "provider": "Z_AI",
+      "modelName": "uncensored-vision-model",
+      "filename": "verdict-empty-low.png",
+      "content": "A weathered stone lighthouse on a basalt headland, its lamp cutting through low sea fog at dusk.",
+      "finishReason": "stop",
+      "usage": {
+        "promptTokens": 900,
+        "completionTokens": 140,
+        "totalTokens": 1040
       }
     }
   ],

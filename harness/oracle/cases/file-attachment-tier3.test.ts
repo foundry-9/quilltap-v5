@@ -73,6 +73,18 @@ interface VisionSpec {
   content: string;
   finishReason: string | null;
   usage: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
+  /**
+   * P4.D151 (v4 `0b0617fee`, bug 116) — the two proofs `verifyImageReachedModel`
+   * reads off the response. Optional: an entry without them is the pre-bug-116
+   * shape, and every such entry is billed well above the ceiling, so it arrives.
+   */
+  attachmentResults?: { sent: string[]; failed: Array<{ id: string; error: string }> };
+  cacheUsage?: {
+    cachedTokens?: number;
+    cacheDiscount?: number;
+    cacheCreationInputTokens?: number;
+    cacheReadInputTokens?: number;
+  };
 }
 interface AttachmentRef { file?: string; raw?: Record<string, unknown> }
 interface AdaptCase {
@@ -225,8 +237,20 @@ async function main(): Promise<void> {
             content: entry.content,
             finishReason: entry.finishReason,
             usage: entry.usage,
+            // P4.D151 (bug 116): recorded so the Rust canned provider can build
+            // the SAME response object the verdict judges. Omitted when the
+            // entry declares neither, which keeps every pre-existing recorded
+            // row byte-identical.
+            ...(entry.attachmentResults !== undefined ? { attachmentResults: entry.attachmentResults } : {}),
+            ...(entry.cacheUsage !== undefined ? { cacheUsage: entry.cacheUsage } : {}),
           };
-          return { content: entry.content, finishReason: entry.finishReason, usage: entry.usage };
+          return {
+            content: entry.content,
+            finishReason: entry.finishReason,
+            usage: entry.usage,
+            ...(entry.attachmentResults !== undefined ? { attachmentResults: entry.attachmentResults } : {}),
+            ...(entry.cacheUsage !== undefined ? { cacheUsage: entry.cacheUsage } : {}),
+          };
         },
       }),
     };
@@ -307,6 +331,22 @@ async function main(): Promise<void> {
     // …while a non-image type on the same profile takes the ordinary
     // unsupported-type text-inline path, untouched by the transport check.
     { label: 'fb_vision_no_transport_text', profile: 'visionNoTransport', fileKey: 'text' },
+    // ---- Bug 116 (v4 `0b0617fee`): the describer's answer is verified -------
+    //
+    // Every row below reaches `describeImageWithProfile`, whose verdict runs
+    // ahead of every content check. Note the fixture's shape: the primary
+    // describer names the Z_AI profile as its understudy, so a refused primary
+    // walks the CHAIN first — which is why most rows carry a Z_AI entry too,
+    // and why the primary's whole refusal sentence is observable in
+    // `processingMetadata.fallbackAttemptTrail` even when the stand-in answers.
+    { label: 'fb_verdict_low_tokens', profile: 'noImg', fileKey: 'verdictLow' },
+    { label: 'fb_verdict_chain', profile: 'noImg', fileKey: 'verdictChain' },
+    { label: 'fb_verdict_ceiling', profile: 'noImg', fileKey: 'verdictCeiling' },
+    { label: 'fb_verdict_above_ceiling', profile: 'noImg', fileKey: 'verdictAbove' },
+    { label: 'fb_verdict_cache_read', profile: 'noImg', fileKey: 'verdictCache' },
+    { label: 'fb_verdict_failed_no_reason', profile: 'noImg', fileKey: 'verdictFailedEmpty' },
+    { label: 'fb_verdict_failed_matching_id', profile: 'noImg', fileKey: 'verdictFailedMatch' },
+    { label: 'fb_verdict_empty_and_unseen', profile: 'noImg', fileKey: 'verdictEmptyLow' },
   ];
   for (const c of fbCases) {
     const profile = spec.respProfiles[c.profile];

@@ -17,6 +17,18 @@
 //! and this test asserts v5's own `provider_can_transport_images` against them
 //! FIRST. A capability divergence fails by name.
 //!
+//! ## The arrival verdict (bug 116)
+//!
+//! P4.D151 (v4 `0b0617fee`): the family gained a `verdict` kind driving v4's
+//! REAL exported `verifyImageReachedModel` — the pure half of the
+//! describer-arrival check. `{arrived, reason}` is compared byte-for-byte,
+//! because the refusal sentence is what reaches the user inside
+//! `describeImageWithProfile`'s `unsupported` error. Five shapes come from v4's
+//! own new test block; the rest are the arms it does not reach (the `<=`
+//! boundary at the ceiling itself, the `||` fallback on an EMPTY error string,
+//! the id-matching rule with the matching failed entry SECOND, the ledger's
+//! precedence over the token count).
+//!
 //! ## The error shape
 //!
 //! v4 classifies an `unknown` by walking `instanceof`, then `error.name`, then
@@ -55,6 +67,70 @@ use quilltap_core::services::api_key_service::{
 };
 use quilltap_core::services::llm_errors::LlmErrorKind;
 use serde_json::Value;
+
+/// Rebuild the `CompletionResponse` a `verdict` row describes. Only the three
+/// fields `verify_image_reached_model` reads are carried; `content` is
+/// irrelevant to it (the verdict runs BEFORE any content check, which is the
+/// whole point of bug 116).
+///
+/// ⚠ An absent `usage` is the whole of v4's `typeof promptTokens !== 'number'`
+/// arm here — `CompletionUsage.prompt_tokens` is an `i64` and structurally
+/// cannot be a non-number, so the oracle emits no such row.
+fn completion_response_from(v: &Value) -> quilltap_core::model::completion::CompletionResponse {
+    use quilltap_core::model::completion::{CompletionResponse, CompletionUsage};
+    use quilltap_core::model::stream::{
+        StreamAttachmentFailure, StreamAttachmentResults, StreamCacheUsage,
+    };
+    let usage = v
+        .get("usage")
+        .filter(|u| u.is_object())
+        .map(|u| CompletionUsage {
+            prompt_tokens: u["promptTokens"].as_i64().unwrap_or(0),
+            completion_tokens: u["completionTokens"].as_i64().unwrap_or(0),
+            total_tokens: u["totalTokens"].as_i64().unwrap_or(0),
+        });
+    let cache_usage = v
+        .get("cacheUsage")
+        .filter(|c| c.is_object())
+        .map(|c| StreamCacheUsage {
+            cached_tokens: c["cachedTokens"].as_i64(),
+            cache_discount: c["cacheDiscount"].as_f64(),
+            cache_creation_input_tokens: c["cacheCreationInputTokens"].as_i64(),
+            cache_read_input_tokens: c["cacheReadInputTokens"].as_i64(),
+        });
+    let attachment_results = v
+        .get("attachmentResults")
+        .filter(|a| a.is_object())
+        .map(|a| StreamAttachmentResults {
+            sent: a["sent"]
+                .as_array()
+                .map(|xs| {
+                    xs.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            failed: a["failed"]
+                .as_array()
+                .map(|xs| {
+                    xs.iter()
+                        .map(|f| StreamAttachmentFailure {
+                            id: f["id"].as_str().unwrap_or("").to_string(),
+                            error: f["error"].as_str().unwrap_or("").to_string(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        });
+    CompletionResponse {
+        content: String::new(),
+        usage,
+        finish_reason: None,
+        attachment_results,
+        cache_usage,
+    }
+}
 
 /// The in-memory repo the oracle's `makeRepos` is.
 struct MemoryRepos(Vec<FallbackProfile>);
@@ -216,6 +292,7 @@ fn fallback_engine_matches_oracle() {
                 "chain" => "chain",
                 "record" => "record",
                 "summarize" => "summarize",
+                "verdict" => "verdict",
                 other => panic!("unknown oracle kind {other}"),
             })
             .or_default() += 1;
@@ -366,6 +443,34 @@ fn fallback_engine_matches_oracle() {
                     ));
                 }
             }
+            // Bug 116 (v4 `0b0617fee`): the arrival verdict, byte-compared.
+            // `{arrived, reason}` — the sentence itself is the comparand,
+            // because it reaches the user inside the describer's refusal.
+            "verdict" => {
+                let response = completion_response_from(&case["response"]);
+                let attachment_id = case["attachmentId"].as_str().unwrap_or("");
+                let got = quilltap_core::services::file_fallback::verify_image_reached_model(
+                    &response,
+                    attachment_id,
+                );
+                if Value::Bool(got.arrived()) != case["arrived"] {
+                    diffs.push(format!(
+                        "    arrived: rust {} != oracle {}",
+                        got.arrived(),
+                        case["arrived"]
+                    ));
+                }
+                let got_reason = match got.reason() {
+                    Some(r) => Value::String(r.to_string()),
+                    None => Value::Null,
+                };
+                if got_reason != case["reason"] {
+                    diffs.push(format!(
+                        "    reason: rust {got_reason} != oracle {}",
+                        case["reason"]
+                    ));
+                }
+            }
             _ => unreachable!(),
         }
 
@@ -393,6 +498,7 @@ fn fallback_engine_matches_oracle() {
         ("chain", 18),
         ("record", 5),
         ("summarize", 6),
+        ("verdict", 14),
     ] {
         let n = by_kind.get(kind).copied().unwrap_or(0);
         assert!(

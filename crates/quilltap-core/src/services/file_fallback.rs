@@ -49,6 +49,147 @@ pub const IMAGE_DESCRIPTION_TIMEOUT_MS: i64 = 60_000;
 const DEFAULT_VISION_TEMPERATURE: f64 = 0.7;
 const DEFAULT_VISION_MAX_TOKENS: i64 = 1000;
 
+/// A deliberately pessimistic characters-per-token ratio, used only to put a
+/// *ceiling* on what the instruction alone could cost. Real BPE tokenizers run
+/// 3.5–4.5 chars/token on English prose (the live call put the instruction
+/// above at ~4.3), so 2.5 leaves ~40% headroom before a text-only prompt could
+/// climb past the ceiling and be mistaken for a real one.
+///
+/// v4 `MIN_CHARS_PER_TOKEN` (`0b0617fee`, bug 116).
+const MIN_CHARS_PER_TOKEN: f64 = 2.5;
+
+/// The most prompt tokens [`IMAGE_DESCRIPTION_INSTRUCTION`] could plausibly cost
+/// on its own. A prompt at or below this billed for text and nothing else — no
+/// image was processed, on any provider, whatever the response says. The margin
+/// to a genuine image call is wide: the cheapest image tier in the field
+/// (OpenAI low-detail, 85 tokens) still lands a real call well clear of it, and
+/// most providers charge hundreds to thousands.
+///
+/// v4 `INSTRUCTION_TOKEN_CEILING = Math.ceil(IMAGE_DESCRIPTION_INSTRUCTION.length
+/// / MIN_CHARS_PER_TOKEN)` — DERIVED from the instruction, not written down, so
+/// editing the instruction moves the ceiling on both sides. `.length` is UTF-16
+/// units; the instruction is ASCII today, but the count is taken faithfully so a
+/// future edit cannot silently drift. A unit test pins the value at 66 (the
+/// number the live bad call is measured against, which reported 38).
+pub fn instruction_token_ceiling() -> i64 {
+    let units = crate::jsstr::utf16_len(IMAGE_DESCRIPTION_INSTRUCTION) as f64;
+    (units / MIN_CHARS_PER_TOKEN).ceil() as i64
+}
+
+/// Verdict from [`verify_image_reached_model`] (v4 `ImageArrivalVerdict`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImageArrivalVerdict {
+    /// v4 `{ arrived: true }`.
+    Arrived,
+    /// v4 `{ arrived: false, reason }`.
+    NotArrived { reason: String },
+}
+
+impl ImageArrivalVerdict {
+    pub fn arrived(&self) -> bool {
+        matches!(self, ImageArrivalVerdict::Arrived)
+    }
+    /// The refusal sentence, or `None` when the image arrived.
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            ImageArrivalVerdict::Arrived => None,
+            ImageArrivalVerdict::NotArrived { reason } => Some(reason),
+        }
+    }
+}
+
+/// Did the image actually reach the model, or did we get 683 tokens of confident
+/// prose about a picture nobody looked at?
+///
+/// Bug 116 (v4 `0b0617fee`): `describeImageWithProfile` believed the describer's
+/// answer on its own recognisance. A NanoGPT route for an experimental vision
+/// model accepted the `image_url` part and discarded it, then answered the only
+/// thing it had — "Please describe this image in great detail." — with a
+/// detailed, sectioned, entirely invented description of a tabby kitten, which
+/// was persisted to `files.description` and short-circuited every later reader
+/// forever. Nothing threw; the failure produced well-formed prose, and the only
+/// post-hoc check in the function is a refusal detector that treats length as
+/// evidence of success.
+///
+/// Two proofs were already on the response object and neither was read:
+///
+///  1. **The plugin's attachment ledger.** `attachment_results.failed` is the
+///     plugin telling us, in so many words, that it did not send the bytes.
+///     This half would not have fired on the live incident — the plugin *did*
+///     send — but it is the detector for the neighbouring failure class, and
+///     leaving it unread is bug 91's blindness surviving one layer up.
+///  2. **The response's own token count.** `prompt_tokens` at or below what the
+///     instruction costs by itself is an arithmetic-grade, provider-agnostic
+///     statement that no image was processed. On the live call it was 38.
+///
+/// Silence is not evidence: a missing `usage`, or a zero `prompt_tokens`, means
+/// the provider reported nothing and must not be failed for it. Cache-read
+/// tokens are added back before comparing, because every plugin normalises them
+/// *out* of `prompt_tokens` (the 4.6.1 invariant) and a cache hit would
+/// otherwise read as a dropped image.
+///
+/// ⚠ Two v4 shapes reproduced deliberately rather than tidied:
+///
+///  * `mine.error || 'no reason given'` is a JS `||`, so an EMPTY error string
+///    takes the fallback (a `??` would keep the empty string).
+///  * the cache add-back SUMS `cacheReadInputTokens` and `cachedTokens`, and
+///    most of `response_parse`'s dialects set BOTH to the same number — so a
+///    cached call is double-credited. That is v4's arithmetic; it only ever
+///    makes the verdict more permissive, which is the safe direction here.
+///
+/// v4 reads `typeof promptTokens !== 'number'` where v5's `usage` is an
+/// `Option<CompletionUsage>` whose `prompt_tokens` is an `i64` — an absent
+/// `usage` is the whole of v4's non-number arm, and `<= 0` is shared.
+pub fn verify_image_reached_model(
+    response: &crate::model::completion::CompletionResponse,
+    attachment_id: &str,
+) -> ImageArrivalVerdict {
+    let failed: &[crate::model::stream::StreamAttachmentFailure] = response
+        .attachment_results
+        .as_ref()
+        .map(|r| r.failed.as_slice())
+        .unwrap_or(&[]);
+    if !failed.is_empty() {
+        let mine = failed
+            .iter()
+            .find(|f| f.id == attachment_id)
+            .unwrap_or(&failed[0]);
+        let detail = if mine.error.is_empty() {
+            "no reason given"
+        } else {
+            mine.error.as_str()
+        };
+        return ImageArrivalVerdict::NotArrived {
+            reason: format!("the provider reported the attachment as not sent: {detail}"),
+        };
+    }
+
+    let Some(prompt_tokens) = response.usage.map(|u| u.prompt_tokens) else {
+        return ImageArrivalVerdict::Arrived;
+    };
+    if prompt_tokens <= 0 {
+        return ImageArrivalVerdict::Arrived;
+    }
+
+    let cache_read = response
+        .cache_usage
+        .map(|c| c.cache_read_input_tokens.unwrap_or(0) + c.cached_tokens.unwrap_or(0))
+        .unwrap_or(0);
+    let billed_input = prompt_tokens + cache_read;
+    let ceiling = instruction_token_ceiling();
+    if billed_input <= ceiling {
+        return ImageArrivalVerdict::NotArrived {
+            reason: format!(
+                "the model was billed for {billed_input} prompt tokens, which is no more than the \
+                 {ceiling} the instruction costs on its own — the image was accepted and discarded \
+                 before it reached the model, and any description returned is invented"
+            ),
+        };
+    }
+
+    ImageArrivalVerdict::Arrived
+}
+
 // ============================================================================
 // Result shapes (v4 `FallbackResult`)
 // ============================================================================
@@ -580,6 +721,38 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
                 describe_start_ms,
             )
             .await;
+
+            // Before believing a word of it: did the image actually arrive? This
+            // has to run ahead of every content check, because the failure it
+            // catches produces the healthiest-looking response in the file —
+            // long, confident, sectioned prose that passes the refusal detector
+            // with room to spare (bug 116, v4 `0b0617fee`). The caller persists
+            // whatever we return onto `files.description`, from where it
+            // short-circuits every future reader, so a wrong answer here is
+            // permanent. It runs AFTER the llm-log row, exactly as v4 does —
+            // the call happened and stays diagnosable whatever the verdict.
+            let arrival = verify_image_reached_model(&resp, &file.id);
+            if let ImageArrivalVerdict::NotArrived { reason } = &arrival {
+                tracing::warn!(
+                    target: "quilltap::image_fallback",
+                    provider = %provider,
+                    model = %model_name,
+                    profile_id = %profile_id,
+                    filename = %file.filename,
+                    reason = %reason,
+                    // v4 `response.usage?.promptTokens` — absent when the
+                    // provider reported nothing (the plugin-ledger arm).
+                    prompt_tokens = resp.usage.map(|u| u.prompt_tokens),
+                    // v4 `response.content?.length ?? 0` — UTF-16 units.
+                    content_length = crate::jsstr::utf16_len(&resp.content),
+                    "[Image Fallback] Describer answered without the image; discarding its description"
+                );
+                let mut result = FallbackResult::unsupported(&file.filename, &file.mime_type, Some(format!(
+                    "Image description profile ({provider} {model_name}) did not process the image — {reason}. Pick a describer on a model that genuinely reads images; a gateway may accept an image and route to a model that ignores it."
+                )));
+                set_description_metadata(&mut result, &profile_id, &provider, &model_name);
+                return result;
+            }
 
             let trimmed = crate::jsstr::js_trim(&resp.content).to_string();
             if trimmed.is_empty() {
@@ -1387,5 +1560,20 @@ mod tests {
         // Kept-raw (unsupported, no error) → empty prefix.
         let kept = FallbackResult::unsupported("ok.png", "image/png", None);
         assert_eq!(format_fallback_as_message_prefix(&kept), "");
+    }
+
+    /// The ceiling is DERIVED from the instruction, so nothing in the port
+    /// writes 66 down — but 66 is the number the live bad call (38 prompt
+    /// tokens) was judged against, and v4's own doc comment names it. This is
+    /// the live-call anchor: if someone edits the instruction, this test is
+    /// where the ceiling's movement is noticed rather than in a describer's
+    /// silent behaviour change.
+    #[test]
+    fn instruction_token_ceiling_is_sixty_six() {
+        assert_eq!(instruction_token_ceiling(), 66);
+        // …and the arithmetic behind it, so a wrong `utf16_len` or a lost
+        // `ceil` cannot land on 66 by luck.
+        assert_eq!(crate::jsstr::utf16_len(IMAGE_DESCRIPTION_INSTRUCTION), 163);
+        assert!((163.0f64 / MIN_CHARS_PER_TOKEN).ceil() as i64 == 66);
     }
 }

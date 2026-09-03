@@ -66,6 +66,7 @@ import {
   TokenLimitError,
 } from '@/lib/llm/errors';
 import { providerCanTransportImages } from '@/lib/llm/image-transport';
+import { verifyImageReachedModel } from '@/lib/chat/file-attachment-fallback';
 import { acceptsApiKey, requiresApiKey } from '@/lib/plugins/provider-validation';
 import {
   buildFallbackChain,
@@ -637,6 +638,164 @@ for (const [id, idx, offered] of SUMMARIES) {
     attempts,
     tierPickWasOffered: offered,
     text: summarizeFallbackAttempts(attempts, offered),
+  });
+}
+
+// ── 7. verifyImageReachedModel (bug 116, v4 `0b0617fee`) ────────────────────
+//
+// The pure half of the arrival verdict, driven over v4's REAL exported
+// function. Five shapes come straight from v4's own new
+// `describe('verifyImageReachedModel')` block; the rest are the arms those
+// tests do not reach — the ceiling boundary itself (`<=` refuses, so 66 is a
+// refusal and 67 is not), the `||` fallback on an EMPTY error string, and the
+// id-matching rule with two failed entries where the matching one is second.
+//
+// ⚠ `usage: undefined` is the only silence shape emitted. v4 also answers
+// `arrived: true` for a `promptTokens` that is present but not a number; v5's
+// `CompletionUsage.prompt_tokens` is an `i64` and structurally cannot be one,
+// so that arm is v4-only and deliberately absent from the corpus rather than
+// faked.
+interface VerdictCase {
+  id: string;
+  attachmentId: string;
+  response: Record<string, unknown>;
+}
+const VERDICTS: VerdictCase[] = [
+  {
+    id: 'billed-for-the-instruction-alone',
+    attachmentId: 'file-1',
+    // 38 prompt tokens is the number off the live llm_logs row.
+    response: { usage: { promptTokens: 38, completionTokens: 683, totalTokens: 721 } },
+  },
+  {
+    id: 'plugin-reported-not-sent',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 4000, completionTokens: 100, totalTokens: 4100 },
+      attachmentResults: { sent: [], failed: [{ id: 'file-1', error: 'provider does not forward attachments' }] },
+    },
+  },
+  {
+    id: 'well-above-the-ceiling',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 812, completionTokens: 240, totalTokens: 1052 },
+      attachmentResults: { sent: ['file-1'], failed: [] },
+    },
+  },
+  {
+    id: 'silence-no-usage',
+    attachmentId: 'file-1',
+    response: {},
+  },
+  {
+    id: 'silence-zero-prompt-tokens',
+    attachmentId: 'file-1',
+    response: { usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } },
+  },
+  {
+    id: 'cache-reads-added-back',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 12, completionTokens: 200, totalTokens: 212 },
+      cacheUsage: { cacheReadInputTokens: 1400 },
+    },
+  },
+  // The boundary. `<=` refuses, so the ceiling itself is a refusal and one
+  // token above it is not; a `<` would flip exactly this pair.
+  {
+    id: 'ceiling-exactly',
+    attachmentId: 'file-1',
+    response: { usage: { promptTokens: 66, completionTokens: 400, totalTokens: 466 } },
+  },
+  {
+    id: 'one-token-above-the-ceiling',
+    attachmentId: 'file-1',
+    response: { usage: { promptTokens: 67, completionTokens: 400, totalTokens: 467 } },
+  },
+  // The cache add-back can carry a prompt over the ceiling from below it, and
+  // v4 SUMS both cache keys — most plugin dialects set the two to the same
+  // number, so a cached call is double-credited. Reproduced, not tidied.
+  {
+    id: 'cache-both-keys-summed',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 20, completionTokens: 90, totalTokens: 110 },
+      cacheUsage: { cacheReadInputTokens: 24, cachedTokens: 24 },
+    },
+  },
+  // `mine.error || 'no reason given'` is a JS `||`: an EMPTY string takes the
+  // fallback where a `??` would keep it.
+  {
+    id: 'failed-with-an-empty-error',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 4000, completionTokens: 100, totalTokens: 4100 },
+      attachmentResults: { sent: [], failed: [{ id: 'file-1', error: '' }] },
+    },
+  },
+  // The matching entry is SECOND: reading `failed[0]` unconditionally names
+  // the neighbour's failure instead of ours.
+  {
+    id: 'failed-picks-the-matching-id',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 4000, completionTokens: 100, totalTokens: 4100 },
+      attachmentResults: {
+        sent: [],
+        failed: [
+          { id: 'file-neighbour', error: 'a neighbour attachment, not mine' },
+          { id: 'file-1', error: 'provider does not forward attachments' },
+        ],
+      },
+    },
+  },
+  // Nothing matches: v4's `?? failed[0]` takes the first entry.
+  {
+    id: 'failed-falls-back-to-the-first-entry',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 4000, completionTokens: 100, totalTokens: 4100 },
+      attachmentResults: {
+        sent: [],
+        failed: [
+          { id: 'file-neighbour', error: 'a neighbour attachment, not mine' },
+          { id: 'file-other', error: 'also not mine' },
+        ],
+      },
+    },
+  },
+  // The ledger is read FIRST: a plainly-genuine prompt count does not rescue a
+  // reported drop, and a failed entry beside a low count still reports the
+  // ledger's sentence rather than the arithmetic one.
+  {
+    id: 'ledger-beats-the-token-count',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 38, completionTokens: 683, totalTokens: 721 },
+      attachmentResults: { sent: [], failed: [{ id: 'file-1', error: 'Standard messages (strip attachments)' }] },
+    },
+  },
+  // An EMPTY failed list is not a report: the ledger arm is skipped entirely.
+  {
+    id: 'empty-failed-list-is-not-a-report',
+    attachmentId: 'file-1',
+    response: {
+      usage: { promptTokens: 40, completionTokens: 10, totalTokens: 50 },
+      attachmentResults: { sent: ['file-1'], failed: [] },
+    },
+  },
+];
+
+for (const c of VERDICTS) {
+  const verdict = verifyImageReachedModel(c.response as never, c.attachmentId);
+  rows.push({
+    kind: 'verdict',
+    id: `verdict/${c.id}`,
+    attachmentId: c.attachmentId,
+    response: c.response,
+    arrived: verdict.arrived,
+    reason: verdict.arrived === false ? verdict.reason : null,
   });
 }
 
