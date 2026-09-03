@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — docs(drift): record v4's bug-119 optimizer fix as the sixth drift row
+
+_Docs-only change._
+
+A `/driftcheck` run against the ledger's §1 found one new v4 commit,
+`15573c3a1` ("fix(optimizer): a non-array sub-step answer no longer kills
+the run", bug 119), landed roughly 55 minutes after `0b0617fee` and about
+an hour before this check. v4 `main` is now six commits past the
+`6d2a50382` baseline; `bugfix` is unmoved at `3a76b17df` and re-measured
+by content as nothing unabsorbed; the checkout is clean; the regen rule
+stays PIN REQUIRED at `6d2a50382`.
+
+The new row is classed PORT but has **no v5 counterpart today**: it fixes
+`lib/services/character-optimizer.service.ts`, and the character optimizer
+is unported v5 surface (`m6-screen-parity.md:546` → MISSING → `p4.9k`;
+phase-4's tier-3 LLM-service deferrals). So there is nothing to port now
+and no family to regenerate — the obligation recorded is that `p4.9k`
+ports the post-fix shape, citing this sha, and carries the ordered
+`coerceSuggestionArray` key list byte-for-byte. The row also notes that
+the defect class does not transfer mechanically: v4's bug is a TypeScript
+cast that JS never checks, while v5 has no `parseLLMJson` twin and a
+serde deserialize would return `Err` rather than throw at `.filter`.
+
+Not a convergence — bugs 115–119 are all v4's own filings. Because the
+commit arrived mid-round, §1 records that `/unify` moves the baseline to
+`0b0617fee` only and this row **stays UNPROCESSED** past that move rather
+than going to §6; the five ordered lanes pin at their own targets, so
+`15573c3a1` cannot poison any lane regen.
+
 #### 2026-09-02 — docs(setupphase): the `0b0617fee` drift catch-up round ordered (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152)
 
 _Docs-only change._
