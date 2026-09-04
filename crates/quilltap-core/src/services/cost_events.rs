@@ -87,8 +87,24 @@ pub async fn create_system_event(
                 .add_message(&write_chat_id, &parsed)
         })
         .await;
-    if posted.is_err() {
-        // v4's outer catch → null.
+    if let Err(e) = &posted {
+        // v4 `system-events.service.ts:73-79` logs before returning null. v5
+        // swallowed the write in silence, which since P4.49 means a lost SYSTEM
+        // row leaves nothing at all in `combined.log` — the one place an
+        // operator looks after a turn that came out wrong.
+        //
+        // v4's catch also spans `updateChatTokenAggregates`; v5 keeps that as a
+        // separate best-effort write below (a bump failure must not lose the
+        // event), and v4's own `updateChatTokenAggregates` swallows its errors,
+        // so the reachable arm of that catch is exactly this one — the SYSTEM
+        // insert failing.
+        tracing::error!(
+            target: "quilltap::system_events",
+            chat_id = %chat_id,
+            event_type = %event.system_event_type,
+            error = %e,
+            "Failed to create system event"
+        );
         return None;
     }
 
@@ -202,4 +218,111 @@ pub async fn create_context_summary_event(
         },
     )
     .await
+}
+
+#[cfg(test)]
+mod log_context_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    // === P4.74: `createSystemEvent`'s swallowed write (v4
+    // === `lib/services/system-events.service.ts:73-79`).
+    //
+    // v4 catches, logs `Failed to create system event` with
+    // `{chatId, eventType, error}`, and returns null. v5 returned `None` in
+    // silence — and since P4.49 made `combined.log` the place an operator looks
+    // after a turn that came out wrong, a lost SYSTEM row left nothing there at
+    // all.
+    //
+    // A differential cannot see a log-only fix, and no INPUT reaches this arm:
+    // the write fails or it doesn't. So the failure is forced by breaking the
+    // table (the `force-a-swallowed-catch-by-breaking-the-table` idiom) — the
+    // fixture DB simply has no `chat_messages`.
+
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    /// `set_default` is THREAD-scoped, so parallel tests cannot steal each
+    /// other's subscriber.
+    fn captured<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let out = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            f()
+        };
+        let lines = logs.lock().unwrap().clone();
+        (out, lines)
+    }
+
+    /// A main DB with NO `chat_messages` table — every `add_message` fails.
+    fn db_without_chat_messages() -> Db {
+        let dir = std::env::temp_dir().join(format!(
+            "qt-cost-events-log-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        Db::open_main(
+            dir.join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_failed_system_event_write_is_logged_with_v4s_keys() {
+        let db = db_without_chat_messages();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let event = SystemEventInput {
+            system_event_type: "TITLE_GENERATION".to_string(),
+            description: "The Host renamed the chat.".to_string(),
+            ..Default::default()
+        };
+        let (id, lines) = captured(|| rt.block_on(create_system_event(&db, "chat-77", &event)));
+
+        assert!(id.is_none(), "v4's catch returns null; v5 must return None");
+        let line = lines
+            .iter()
+            .find(|l| l.contains("Failed to create system event"))
+            .unwrap_or_else(|| panic!("the failed write was silent; got {lines:#?}"));
+        for field in [
+            "ERROR",
+            "chat_id=chat-77",
+            "event_type=TITLE_GENERATION",
+            "error=",
+        ] {
+            assert!(line.contains(field), "line is missing {field}: {line}");
+        }
+    }
 }

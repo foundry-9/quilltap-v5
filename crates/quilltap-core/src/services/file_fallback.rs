@@ -391,11 +391,23 @@ pub fn convert_text_file_to_inline(
                 error: None,
             }
         }
-        Err(msg) => FallbackResult::unsupported(
-            filename,
-            mime_type,
-            Some(format!("Failed to process text file: {msg}")),
-        ),
+        Err(msg) => {
+            // v4 `file-attachment-fallback.ts:306` (the error object is v4's
+            // third `logger.error` argument; v5 carries it as the `error`
+            // field, the only shape tracing has).
+            tracing::error!(
+                target: "quilltap::image_fallback",
+                filename,
+                mime_type,
+                error = %msg,
+                "[Text Fallback] Failed to convert text file"
+            );
+            FallbackResult::unsupported(
+                filename,
+                mime_type,
+                Some(format!("Failed to process text file: {msg}")),
+            )
+        }
     }
 }
 
@@ -651,6 +663,12 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
         .unwrap_or(DEFAULT_VISION_MAX_TOKENS);
     let reasoning = is_reasoning_model(&model_name);
     if reasoning && max_tokens < 4000 {
+        // v4 `file-attachment-fallback.ts:399` — a CONCATENATED sentence with
+        // no context object, so the old value is inside the message bytes.
+        tracing::warn!(
+            target: "quilltap::image_fallback",
+            "[Image Fallback] Reasoning model detected, increasing maxTokens from {max_tokens} to 4000"
+        );
         max_tokens = 4000;
     }
 
@@ -756,6 +774,21 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
 
             let trimmed = crate::jsstr::js_trim(&resp.content).to_string();
             if trimmed.is_empty() {
+                // v4 `file-attachment-fallback.ts:545`. ⚠ RECORDED DIVERGENCE
+                // (P4.74): v4's `responseMetadata` is
+                // `JSON.stringify(response, null, 2)` over the SDK's own
+                // response object; `CompletionResponse` is not `Serialize`, so
+                // v5 renders it with `Debug`. The KEY is v4's and the rendered
+                // value is v5's shape — a diagnostic dump, not a contract.
+                tracing::error!(
+                    target: "quilltap::image_fallback",
+                    provider = %provider,
+                    model = %model_name,
+                    filename = %file.filename,
+                    mime_type = %file.mime_type,
+                    response_metadata = ?resp,
+                    "[Image Fallback] Empty response from image description LLM"
+                );
                 // Reasoning-token exhaustion vs generic empty.
                 if resp.finish_reason.as_deref() == Some("length") && reasoning {
                     let tokens = resp
@@ -790,6 +823,15 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
                 || content_lower.contains("invalid")
                 || crate::jsstr::utf16_len(&trimmed) < 20
             {
+                // v4 `file-attachment-fallback.ts:594` — the `content` it logs
+                // is the RAW response content, not the trimmed copy.
+                tracing::warn!(
+                    target: "quilltap::image_fallback",
+                    content = %resp.content,
+                    provider = %provider,
+                    model = %model_name,
+                    "[Image Fallback] Suspicious response from image description LLM"
+                );
                 let snippet = crate::jsstr::utf16_truncate(&trimmed, 100);
                 let mut result = FallbackResult::unsupported(&file.filename, &file.mime_type, Some(format!(
                     "The image description profile responded with: \"{snippet}...\". This appears to be an error rather than an image description. The model may not support images or there's a parameter mismatch. Try using gpt-4o-mini, claude-haiku-4-5, or gemini-2.0-flash."
@@ -798,6 +840,15 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
                 return result;
             }
 
+            // v4 `file-attachment-fallback.ts:613` — `descriptionLength` is
+            // the TRIMMED content's length (UTF-16 units, as JS counts).
+            tracing::info!(
+                target: "quilltap::image_fallback",
+                filename = %file.filename,
+                description_length = crate::jsstr::utf16_len(&trimmed),
+                profile_id = %profile_id,
+                "[Image Fallback] Successfully generated description"
+            );
             // Success — imageDescription is the RAW content (not trimmed).
             FallbackResult {
                 type_: FallbackType::ImageDescription,
@@ -816,6 +867,15 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
             }
         }
         Err(err) => {
+            // v4 `file-attachment-fallback.ts:632`. v4 passes an EMPTY context
+            // object and the error as its third argument; tracing has no third
+            // argument, so the error rides as the only field. The trailing
+            // colon is v4's sentence, kept.
+            tracing::error!(
+                target: "quilltap::image_fallback",
+                error = %err.message,
+                "[Image Fallback] Error generating description:"
+            );
             // Failure-path logLLMCall (IMAGE_DESCRIPTION), best-effort.
             log_description_failure(
                 deps,
@@ -868,6 +928,16 @@ async fn resolve_api_key<CMP: CompletionProvider>(
 
 /// Downsize a base64 image to the description provider's limit. Returns
 /// `(base64, mimeType)` only when the resize actually happened.
+///
+/// v4 `file-attachment-fallback.ts:426` warns
+/// "[Image Fallback] Resize for description provider failed; sending original"
+/// in its catch. NOT PORTED, and structurally rather than by oversight
+/// (P4.74): v4 distinguishes a resize that THREW from one that had nothing to
+/// do, while this function collapses both into `None` (the decode step is
+/// `.ok()?`). Emitting the warn on every `None` would write a line v4 does not;
+/// telling them apart means giving this function a `Result`, which is a
+/// refactor beyond a logging pass. Recorded in
+/// `docs/developer/porting/handler-logging-inventory.md`.
 fn try_downsize<CMP: CompletionProvider>(
     deps: &FallbackDeps<'_, CMP>,
     provider: &str,
@@ -946,6 +1016,20 @@ async fn log_description_success<CMP: CompletionProvider>(
         request_hashes: None,
         duration_ms: Some((crate::clock::now_unix_ms() - describe_start_ms) as f64),
     };
+    // v4 `file-attachment-fallback.ts:505` warns
+    // "[Image Fallback] Failed to record IMAGE_DESCRIPTION llm log"
+    // when this write throws.
+    // NOT PORTED, and the reason is structural rather than an oversight
+    // (P4.74): `log_llm_call` answers `Option<String>` and returns `None` for
+    // logging DISABLED as well as for a failed write, so `.is_none()` would
+    // emit a warning on the ordinary disabled path — a line v4 never writes.
+    // Distinguishing the two means changing that function's signature, which
+    // is outside this lane; the row is in
+    // `docs/developer/porting/handler-logging-inventory.md`.
+    //
+    // (The failure-path twin below has no sentence to carry either way: v4's
+    // catch there is deliberately empty — "Logging must never mask the
+    // original failure".)
     let _ = log_llm_call(deps.db, params, &LogContext::none()).await;
 }
 
@@ -1028,6 +1112,31 @@ async fn run_generate_image_description<CMP: CompletionProvider>(
                     entry.description.as_deref(),
                 ]);
                 if let Some(reused) = reused {
+                    // v4 `file-attachment-fallback.ts:696`. `source` is v4's
+                    // nested ternary over the same three fields, in the same
+                    // order `first_non_empty_trimmed` walks them.
+                    let source = if entry
+                        .generation_revised_prompt
+                        .as_deref()
+                        .is_some_and(|s| !crate::jsstr::js_trim(s).is_empty())
+                    {
+                        "generation-revised-prompt"
+                    } else if entry
+                        .generation_prompt
+                        .as_deref()
+                        .is_some_and(|s| !crate::jsstr::js_trim(s).is_empty())
+                    {
+                        "generation-prompt"
+                    } else {
+                        "stored-description"
+                    };
+                    tracing::info!(
+                        target: "quilltap::image_fallback",
+                        file_id = %file.id,
+                        source,
+                        description_length = crate::jsstr::utf16_len(&reused),
+                        "[Image Fallback] Reusing persisted description (no vision call)"
+                    );
                     return FallbackResult {
                         type_: FallbackType::ImageDescription,
                         text_content: None,
@@ -1045,8 +1154,17 @@ async fn run_generate_image_description<CMP: CompletionProvider>(
             }
             // Not found → fall through to vision (v4's `entry?.` short-circuits).
             Ok(None) => {}
-            // Lookup failure → warn + fall through (v4's catch).
-            Err(_) => {}
+            // Lookup failure → warn + fall through (v4's catch,
+            // `file-attachment-fallback.ts:717`). The comment promised this
+            // warn before P4.74 wrote it.
+            Err(e) => {
+                tracing::warn!(
+                    target: "quilltap::image_fallback",
+                    file_id = %file.id,
+                    error = %e,
+                    "[Image Fallback] Persisted-description lookup failed; falling back to vision"
+                );
+            }
         }
     }
 
@@ -1235,8 +1353,33 @@ async fn describe_via_fallback_chain<CMP: CompletionProvider>(
     attempt_trail: &mut Vec<String>,
 ) -> Option<FallbackResult> {
     let Some(primary_profile) = crate::llm_fallback::FallbackProfile::from_value(primary) else {
+        // v4 `file-attachment-fallback.ts:860` carries `primaryProfileId` and
+        // `error`; v5 carried NEITHER, which made the line true but useless —
+        // an operator learns a describer chain was skipped and not whose.
+        //
+        // ⚠ RECORDED DIVERGENCE (P4.74): the two sides reach this sentence by
+        // different routes, so `error` cannot be v4's bytes. v4 wraps its
+        // `buildFallbackChain` call in try/catch and reports the thrown
+        // message; v5's `build_fallback_chain` returns a plain `Vec` and cannot
+        // fail, so the only way to arrive here is a primary profile row that
+        // will not parse — which v4 cannot have, its `primary` being an already
+        // typed `ConnectionProfile`. The KEYS are v4's; the reason names v5's
+        // actual condition rather than inventing a thrown error.
+        //
+        // `FallbackProfile::from_value` requires exactly one thing: a STRING
+        // `id`. So in the arm that can actually fire, `primary_profile_id` is
+        // empty by construction — it is carried anyway because it is v4's key
+        // and because the row may later grow a required field that a profile
+        // WITH a readable id can fail.
         tracing::warn!(
             target: "quilltap::image_fallback",
+            // `Value` inside a tracing macro resolves to `tracing::field::Value`
+            // (the same trap the `:1132` site's NOTE records) — hence the path.
+            primary_profile_id = primary
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(""),
+            error = "the primary profile row could not be read as a fallback profile",
             "[Image Fallback] Could not build a fallback chain for the describer"
         );
         return None;
@@ -1575,5 +1718,215 @@ mod tests {
         // `ceil` cannot land on 66 by luck.
         assert_eq!(crate::jsstr::utf16_len(IMAGE_DESCRIPTION_INSTRUCTION), 163);
         assert!((163.0f64 / MIN_CHARS_PER_TOKEN).ceil() as i64 == 66);
+    }
+}
+
+#[cfg(test)]
+mod log_context_tests {
+    use super::*;
+    use crate::files::image_processing::NotConfiguredTranscoder;
+    use crate::model::completion::{
+        CompletionError, CompletionParams, CompletionProvider, CompletionResponse,
+    };
+    use std::sync::{Arc, Mutex};
+
+    // === P4.74: the `[Image Fallback]` / `[Text Fallback]` / `[Attachment]`
+    // === lines' sentences AND context-object keys, against v4
+    // === `lib/chat/file-attachment-fallback.ts`.
+    //
+    // A differential cannot see a log-only fix, so the capture layer is the
+    // proof. The idiom is P4.70's `image_gen::lora_support::log_context_tests`:
+    // a THREAD-scoped subscriber (parallel tests cannot steal each other's),
+    // one test per line, one mutation per line reddening exactly one test.
+    //
+    // Measured, and why the set is what it is: v4's file carries SIXTEEN logger
+    // calls (the order said nine), and all five stand-in-chain sentences live
+    // in that same file rather than in `provider-failover.service.ts`. Of v5's
+    // lines, the ones reachable from a unit test are pinned here. The
+    // description-path lines (`:399` `:545` `:594` `:613` `:632` `:696` `:717`)
+    // sit past `describe_image_with_profile`, which needs a seeded profile row
+    // and an API key; they are PORTED but recorded UNPINNED in
+    // `docs/developer/porting/handler-logging-inventory.md` rather than pinned
+    // by a test that would have to reproduce the vision prompt's bytes.
+
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_bool(&mut self, field: &tracing::field::Field, value: bool) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    fn captured(f: impl FnOnce()) -> Vec<String> {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            f();
+        }
+        let out = logs.lock().unwrap().clone();
+        out
+    }
+
+    /// Find the line carrying `sentence` and assert every field in `fields`.
+    /// The sentence match is a substring: the level/target prefix and the field
+    /// list surround it.
+    fn assert_line(lines: &[String], sentence: &str, fields: &[&str]) {
+        let line = lines
+            .iter()
+            .find(|l| l.contains(sentence))
+            .unwrap_or_else(|| panic!("no line carried {sentence:?}; got {lines:#?}"));
+        for field in fields {
+            assert!(
+                line.contains(field),
+                "line is missing {field}: {line}\n(all: {lines:#?})"
+            );
+        }
+    }
+
+    /// A completion provider that never answers — enough to build a
+    /// `FallbackDeps`, never called by the arms pinned here.
+    struct UnusedProvider;
+    impl CompletionProvider for UnusedProvider {
+        async fn send_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &CompletionParams,
+        ) -> Result<CompletionResponse, CompletionError> {
+            unreachable!("the pinned arms return before any provider call")
+        }
+    }
+
+    fn test_db() -> Db {
+        let dir = std::env::temp_dir().join(format!(
+            "qt-file-fallback-log-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        Db::open_main(
+            dir.join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap()
+    }
+
+    /// v4 `:214` — the transport-vs-flag disagreement, on the pure predicate.
+    #[test]
+    fn the_attachment_transport_line_carries_v4s_keys() {
+        let profile = json!({
+            "id": "profile-9",
+            "provider": "DEEPSEEK",
+            "modelName": "deepseek-chat",
+            "supportsImageUpload": true
+        });
+        let lines = captured(|| {
+            needs_fallback_processing(&profile, "image/png");
+        });
+        assert_line(
+            &lines,
+            "[Attachment] Plugin cannot transport images; routing to describe-fallback",
+            &[
+                "profile_id=profile-9",
+                "provider=DEEPSEEK",
+                "model_name=deepseek-chat",
+                "supports_image_upload=true",
+            ],
+        );
+    }
+
+    /// v4 `:306` — the text-conversion failure. v4 carries `filename` and
+    /// `mimeType`, with the error as `logger.error`'s third argument.
+    #[test]
+    fn the_text_conversion_failure_line_carries_v4s_keys() {
+        let lines = captured(|| {
+            // Not base64 — `decode_text_from_base64` refuses.
+            convert_text_file_to_inline("notes.txt", "text/plain", "!!!not base64!!!");
+        });
+        assert_line(
+            &lines,
+            "[Text Fallback] Failed to convert text file",
+            &["filename=notes.txt", "mime_type=text/plain", "error="],
+        );
+    }
+
+    /// v4 `:860` — the chain-build refusal. v5 carried NO fields at all until
+    /// P4.74; v4 carries `primaryProfileId` and `error`.
+    #[test]
+    fn the_chain_build_refusal_line_carries_v4s_keys() {
+        let db = test_db();
+        let provider = UnusedProvider;
+        let transcoder = NotConfiguredTranscoder;
+        let deps = FallbackDeps {
+            db: &db,
+            completion: &provider,
+            transcoder: &transcoder,
+            user_id: "user-1",
+            now_ms: 0,
+        };
+        let file = FallbackFile {
+            id: "file-1".into(),
+            filename: "a.png".into(),
+            mime_type: "image/png".into(),
+            data: None,
+        };
+        // A profile row `FallbackProfile::from_value` cannot read — the only
+        // route to this sentence in v5 (see the RECORDED DIVERGENCE at the
+        // site: v4 arrives here when `buildFallbackChain` THROWS, which v5's
+        // infallible `build_fallback_chain` cannot do). That reader requires
+        // exactly one thing, a STRING `id`, so a non-string id is the whole
+        // failure surface — and it is why `primary_profile_id` renders empty
+        // here rather than naming a profile.
+        let primary = json!({ "id": 42, "provider": "OPENAI" });
+        let mut trail = Vec::new();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let lines = captured(|| {
+            let out = rt.block_on(describe_via_fallback_chain(
+                &deps,
+                &file,
+                &primary,
+                false,
+                &[],
+                &mut trail,
+            ));
+            assert!(out.is_none(), "the refusal arm must return None");
+        });
+        assert_line(
+            &lines,
+            "[Image Fallback] Could not build a fallback chain for the describer",
+            &[
+                "primary_profile_id=",
+                "error=the primary profile row could not be read as a fallback profile",
+            ],
+        );
     }
 }

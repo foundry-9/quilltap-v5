@@ -103074,3 +103074,100 @@ widened shared fixture to be re-run by name. Measured: the `primary-stream` pair
 has exactly ONE consuming family, `primary_stream_tier3_equivalence`, whose
 recipe drives two oracle cases (`primary-stream-tier3` and
 `openai-chaining-fallback-tier3`). Both green from the pin.
+
+### Unit 4 — the handler-logging rows + the inventory (order items 5, 6, 7)
+
+**The order's survey premise was wrong in both directions, and the order itself
+said to measure rather than assume.** v4's `lib/chat/file-attachment-fallback.ts`
+carries **SIXTEEN** `logger.*` calls, not the nine the order listed; and all
+five describer-chain sentences (`Could not build a fallback chain…`, `Trying a
+describer stand-in`, `Describer stand-in answered`, `Primary profile failed…`,
+`Describer answered without the image…`) live in **that same file**, not in
+`provider-failover.service.ts` — the order explicitly told this lane to find
+them by sentence bytes rather than assume the file, and this is the answer. v5
+carries six lines in `file_fallback.rs` (the order named five; the sixth is the
+`[Attachment]` line at `:346`, whose v4 twin is `:214`).
+
+**Field fidelity: five of six already matched v4 key-for-key; one did not.**
+v4 `:860` carries `primaryProfileId` and `error`; v5's twin carried NO fields at
+all — a line that told an operator a describer chain had been skipped but not
+whose. Fixed. ⚠ **RECORDED DIVERGENCE**, at the site and here: the two sides
+reach that sentence by different routes. v4 wraps `buildFallbackChain` in
+try/catch and reports the thrown message; v5's `build_fallback_chain` returns a
+plain `Vec` and cannot fail, so the only route in is a primary profile row that
+will not parse — which v4 cannot have, its `primary` being an already-typed
+`ConnectionProfile`. `FallbackProfile::from_value` requires exactly one thing, a
+STRING `id`, so in the arm that can actually fire `primary_profile_id` is empty
+by construction; it is carried anyway because it is v4's key. The `error` field
+names v5's real condition rather than inventing a thrown message.
+
+**Eight v4 lines v5 lacked, ported** at their analogous sites: `:306`
+(`[Text Fallback]`), `:399`, `:545`, `:594`, `:613`, `:632`, `:696`, `:717`.
+Two more are **deliberately NOT ported**, for structural reasons recorded in the
+source at each site (this is the loud deferral, not a silent gap):
+
+- **`:505`** (`Failed to record IMAGE_DESCRIPTION llm log`) — v5's
+  `log_llm_call` answers `Option<String>` and returns `None` for logging
+  **DISABLED** as well as for a failed write. Warning on `None` would emit a
+  line v4 never writes; telling the two apart means changing that function's
+  signature, which ripples through its callers and is outside this lane.
+  (Its failure-path twin needs nothing: v4's catch there is deliberately empty —
+  "Logging must never mask the original failure" — so v5's `let _ =` is already
+  faithful. That was measured, not assumed.)
+- **`:426`** (`Resize for description provider failed; sending original`) —
+  v5's `try_downsize` collapses "the decode threw" and "there was nothing to
+  resize" into one `None` (`.ok()?`), so the warn cannot be emitted only on
+  v4's condition. Wants a `Result`, not a logging pass.
+
+**`create_system_event` (item 6).** v4 `system-events.service.ts:73` logs
+`Failed to create system event` with `{chatId, eventType, error}` and returns
+null; v5 returned `None` in silence. Since P4.49 made `combined.log` the place
+an operator looks after a turn that came out wrong, a lost SYSTEM row left
+nothing there at all. Ported. ⚠ **The seeded survey for this row came back
+"NO-PORT, v4 code dead" and that was WRONG** — v4's catch wraps two real DB
+writes (`repos.chats.addMessage` and `updateChatTokenAggregates`), and v5 has
+the exact site (`if posted.is_err()`). The claim had been conflated with
+`title-update.ts:190`, whose catch IS dead. Verified against v4's source before
+acting; the order's item 6 stands.
+
+**Pins.** Four lines carry capture-layer pins in P4.70's `log_context_tests`
+idiom (a THREAD-scoped subscriber so parallel tests cannot steal each other's):
+the `[Attachment]` transport line, `[Text Fallback]`, the chain-build refusal
+(the divergence fix), and `create_system_event` — the last forced by the
+break-the-table idiom, a fixture DB with no `chat_messages`, because no INPUT
+reaches that arm. Each mutation-proven to redden exactly ONE test. ⚠ One
+mutation appeared not to redden and the standing rule caught it: the `gsed`
+never applied. Re-applied through an anchor-counted Python edit — verified
+APPLIED — it reddened correctly.
+
+The description-path lines (`:399` `:545` `:594` `:613` `:632` `:696` `:717`)
+are ported but recorded **UNPINNED**: reaching them from a unit test means
+driving `describe_image_with_profile` past a seeded profile row and API key,
+and the shared `CannedCompletionProvider` keys on the exact
+`(provider, model, temperature, messages)` tuple — so a pin would have to
+reproduce the vision prompt's bytes. They are rows in the inventory, by name.
+
+**The inventory (item 7) is GENERATED, not hand-maintained.**
+`docs/developer/porting/handler-logging-inventory.md` — 203 rows, every v4
+`logger.*` call in `lib/background-jobs/handlers/**`,
+`lib/services/system-events.service.ts` and `lib/chat/file-attachment-fallback.ts`,
+each with level, sentence, v5 site and disposition (PORTED-PINNED 10 /
+PORTED-UNPINNED 41 / NO-PORT-RECORDED 4 / NO-SITE 148). Written by the new
+`harness/tools/handler_log_inventory.py`, so it cannot rot silently: regenerate
+it after porting a line and commit the result.
+
+Two lessons are baked into that script. **A match inside a v5 comment must not
+count as a port** — an earlier version marked `[Title Update] No cheap LLM
+available` and `[Title Update] Failed to create system event:` as PORTED because
+v5 quotes those sentences in comments recording that P4.61 deliberately did NOT
+port them (both are dead v4 branches). And **v4's per-file counts were measured
+mechanically**, not taken from prose: 186 handler lines + 1 system-events + 16
+file-attachment-fallback.
+
+The 148 NO-SITE rows are the deferral, and the inventory IS it. The shape worth
+naming: several handlers are functionally complete in v5 while carrying none of
+v4's logging at all (`character_avatar_job` has 0 tracing calls against v4's 18;
+`story_background_job` 3 against 35; the whole autonomous-room family ~0 against
+25), and four handlers are unported outright (`character-headshoulders-backfill`,
+`memory-regenerate-all`, `memory-regenerate-chat`, `scene-state-tracking`), so
+their rows are a consequence of the unported surface rather than a logging gap.
