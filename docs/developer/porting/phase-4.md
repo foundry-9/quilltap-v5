@@ -6294,14 +6294,24 @@ harness 0.0.671, web 0.0.114, host 0.0.96, SPA 0.5.642. Round record:
 **Next candidates, in rough value order** (updated at this unification,
 2026-09-04):
 
-1. **`p4.9i2` — help/HelpChat as a dedicated round** (recommended NEXT; the
-   bank holds nine notes now). Or, if a drift arrives first, the catch-up —
-   pin `0b0617fee` for every regen until it runs.
-2. **The owed dogfood pass over this round's surfaces** on the Friday copy
+1. **The twelve-commit drift catch-up** (ledger §3, all UNPROCESSED —
+   v4's 4.9 release-checklist push landed DURING this round): the Anthropic
+   Opus 5 sampling strip (`48f4b42ec`), the CLI `instances default --json`
+   bug 120 (`af2023c9a`, Tier R red-first), the About sentences + the
+   cheap-LLM `qt-checkbox` (`e9a9c538e`, `bbcb318c6`), the big
+   duplicate-collapse refactor with its named behaviour corrections
+   (`0506517d3` — hunk survey first, then the D32-class neutrality sweep),
+   the dead-code sweep's one check (`d4138b96b`, the LoRA bounds' new home),
+   and the SDK/bundle wire re-check for the three packaging commits
+   (`6e1a64ea6` / `b52b996c1` / `06658535f`). Pin `0b0617fee` for every
+   regen until it runs. Four more help files join the `p4.9i2` bank.
+2. **`p4.9i2` — help/HelpChat as a dedicated round** (the bank holds
+   thirteen notes now).
+3. **The owed dogfood pass over this round's surfaces** on the Friday copy
    (the 💸 list in the round record: the images collection route end to end,
    the chat-upload WebP transcode, the streaming avatar on a real
    multi-character turn, the search-open shape) + the standing queue.
-3. **P4.73's remainder:** `POST /api/v1/images?action=generate` (the lane
+4. **P4.73's remainder:** `POST /api/v1/images?action=generate` (the lane
    record's survey — the erased image-GENERATION seam, the Concierge stack
    from a route handler, both tripwires stay ARMED until it lands; the
    `activity_span_sites_guard` substring trap), and P4.62(a)'s FILES leg with
@@ -6311,13 +6321,13 @@ harness 0.0.671, web 0.0.114, host 0.0.96, SPA 0.5.642. Round record:
    archived-character write guard, `zod_url_ok`'s authority-less schemes, the
    two `[Images v1]` info lines, the unbounded JSON read, the order-dependent
    `cannedFetch`.
-4. **The census's honest totality** — a per-variant allow-list of the fields
+5. **The census's honest totality** — a per-variant allow-list of the fields
    v4 really reads from the URL and the ~160 unclassified body-key rows
    (`ChatSend`'s four, the announcement/mail ids, …); then the fixes the
    census names, by row (P4.72's second-level structs too).
-5. **The present-but-null validation lead** (`api/**`-wide; ownership is free
+6. **The present-but-null validation lead** (`api/**`-wide; ownership is free
    again).
-6. The carried smalls: the thirteen `CaptureLayer` copies → one
+7. The carried smalls: the thirteen `CaptureLayer` copies → one
    `#[cfg(test)]` helper; the `?action=` endpoint census (the family's list
    is hand-maintained); `files_write_routes.rs`'s transcribed DDL; the
    `chat_files_post_*` bare/empty 500-vs-400 divergence the family cannot

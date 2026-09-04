@@ -24,45 +24,36 @@ probe verifies against._
   21:04 -0500, v4 `4.9.0-dev.120`), adopted at the `0b0617fee` drift catch-up
   round unification (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152,
   2026-09-03).
-- **Probed at the follow-ups round 2 unification (2026-09-04): PASS** — v4 `main`
-  still `15573c3a1`, tree clean, both logs empty; the baseline did NOT move
-  (the round absorbed no drift row) and every regen ran from a pinned worktree
-  at `0b0617fee`. The §1 fields below stand as checked on 2026-09-03.
-- **Checked:** 2026-09-03 (a full `/driftcheck` run AFTER the unification — the
-  third probe of the day; the two earlier ones were the unification's own, run
-  before the cherry-picks and before the gate). **Nothing has moved on either
-  branch since the baseline was adopted:** every §1 field below re-measured
-  identical, so this check adds no §3 row and changes no disposition.
-- **v4 `main` HEAD at check:** `15573c3a1` — "fix(optimizer): a non-array
-  sub-step answer no longer kills the run (bug 119)" (2026-09-02 21:59 -0500,
-  v4 `4.9.0-dev.121`) — **ONE commit past the baseline.** `origin/main` is
-  level with `main`. Unmoved since the 2026-09-03 `/driftcheck`
-  (`15573c3a1..main` is empty).
+- **Checked:** 2026-09-04, at the END of the follow-ups round 2 unification
+  (the `/unify` §6 drift step — the round's §2 probe had PASSED at its start
+  with v4 `main` at `15573c3a1`, and the checkout was found at `06658535f`
+  during cleanup). Every regen of that round ran from a pinned worktree at
+  `0b0617fee`, so the unified gate is unaffected; the twelve commits below
+  arrived DURING the round.
+- **v4 `main` HEAD at check:** `06658535f` — "chore(packages): install the
+  published plugin-utils 2.6.1 everywhere" (2026-09-04) — **THIRTEEN commits
+  past the baseline** (the bug-119 row + twelve new, all dated 2026-09-04,
+  v4's 4.9 release-checklist push). `origin/main` level with `main`.
 - **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4 fork
-  marker). Re-measured by CONTENT again at this check per §4 step 2: the
-  `main..bugfix` diff over `lib/ app/ packages/ plugins/` is 568 files /
-  +6,869 / **−43,355** — net-negative because bugfix is *behind* main, which is
-  exactly the squash-topology signature; its long `main..bugfix --oneline`
-  commit list is the historical lineage, not unabsorbed work. Nothing genuinely
-  unabsorbed.
+  marker; `3a76b17df..bugfix` empty).
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
-- **Checkout at check:** branch `main`, **tree CLEAN** (`git status --short`
-  empty). `git worktree list` shows the checkout alone — the unify's own pinned
-  worktree (`/tmp/qt-v4-pin-unify-0b0617fee`) was removed at cleanup and no
-  `/tmp/qt-v4-pin-*` path survives, so the next lane builds its pin fresh.
-- **Verdict: DRIFT PENDING — 1 commit past the baseline.** §3 holds ONE
-  UNPROCESSED row, `15573c3a1` (bug 119, the character optimizer — **unported
-  v5 surface**, `p4.9k`; the row's obligation is to carry the post-fix shape
-  into that round, not a catch-up lane now). It stayed in §3 across this
-  baseline move BY THE PREVIOUS §1's OWN INSTRUCTION — not swept along.
-  **Not a convergence** (v4's own filing).
-- **Regen rule in force: PIN REQUIRED** at **`0b0617fee`** (§5.1 — a
-  lane-unique detached worktree, the sweep driver's `--v4 "$PIN"`) — because
-  HEAD is past the baseline. The one drift commit touches
-  `lib/services/character-optimizer.service.ts` only, which no oracle imports,
-  so a pin-free regen would NOT poison any existing family today; the rule
-  stays PIN REQUIRED anyway because that is the rule, and because the next v4
-  commit may not be so polite.
+- **Checkout at check:** branch `main`, **tree CLEAN**. `git worktree list`
+  shows the checkout alone (the unify's pin worktree was removed at cleanup).
+- **Verdict: DRIFT PENDING — 13 commits past the baseline.** §3 holds the
+  bug-119 row (`p4.9k`'s, unchanged) plus twelve new rows classified below
+  from their diffstats and the small hunks; the two large ones (`0506517d3`,
+  `d4138b96b`) carry their hunk-level survey as the catch-up order's first
+  job (§5.3 — the classification here rests on their shipped file lists and
+  their own CHANGELOG-listed corrections, not on their prose alone). **Not a
+  convergence** (v4's own release-checklist work, apart from the regression
+  tests for bugs 104/111 that pin this port's own filings).
+- **Regen rule in force: PIN REQUIRED** at **`0b0617fee`** (§5.1) — HEAD is
+  thirteen commits past the baseline, and three of them rebuild every plugin
+  bundle under `plugins/dist/` (the third symlink class), so a pin-free regen
+  would import a rebuilt Anthropic plugin and the `npm update`d SDKs.
+- _Superseded (the 2026-09-03 `/driftcheck`): DRIFT PENDING — 1 commit past
+  the baseline (`15573c3a1`), PIN REQUIRED at `0b0617fee`; the probe at the
+  follow-ups round 2's start (2026-09-04) re-measured it identical._
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix fork;
   v4 develops on `main` alone. Keep probing BOTH branches.
 - _Superseded (the EARLIER 2026-09-03 `/driftcheck` verdict, the one that ran
@@ -114,6 +105,18 @@ when absorbed/ratified.
 |---|---|---|---|---|---|
 
 | `15573c3a1` | 2026-09-02 | fix(optimizer): a non-array sub-step answer no longer kills the run (bug 119) | **PORT (deferred surface — no v5 counterpart today)** | **NOT a convergence** — v4's own filing, from a screenshot of the Refine-from-Memories confirmation screen showing the minified `q.filter is not a function`. **Hunks: ONE lib file, `lib/services/character-optimizer.service.ts` (+60/-4), three changes.** (a) NEW exported `coerceSuggestionArray(value: unknown): OptimizerSuggestion[]` placed after `coerceSuggestionText` — array passes through; non-object/nullish → `[]`; else the FIRST array-valued property among the ordered key list `['suggestions','items','results','data','amendments']`; else a lone object whose `field` is a `string` becomes a one-element array (`field` is called "the shape's fingerprint"); else `[]`. (b) inside the sub-step body, `parseLLMJson<OptimizerSuggestion[]>(raw)` becomes `parseLLMJson<unknown>(raw)` + `coerceSuggestionArray(...)`, and a non-array answer logs `logger.warn('[CharacterOptimizer] Sub-step answered with a non-array; coerced', {characterId, subStep: label, parsedType, recovered})` — note `parsedType` is computed as `Array.isArray(rawParsed) ? 'array' : typeof rawParsed` **inside a branch already known to be non-array**, so it can only ever emit `typeof`; the pre-existing unparseable-JSON `catch` is untouched. (c) the closure `runSubStep` is renamed `runSubStepCore` and a NEW `runSubStep` wraps it in try/catch, logging `logger.error('[CharacterOptimizer] Sub-step failed unexpectedly; continuing', {characterId, subStep: label}, err)` and emitting `onProgress({type:'substep_complete', step:'generating', partialSuggestions: []})` — so one bad pass no longer aborts the fan-out (general fields / each scenario / each system prompt / physical description / wardrobe / aliases / proposed prompts). Explicitly **NOT done** (v4 says so): Zod validation at the sub-step boundary, and moving `logLLMCall` ahead of the filter chain. → **v5 intersection: NONE.** The character optimizer has **never been ported** — `m6-screen-parity.md:546` lists `CharacterOptimizerModal` (`components/characters/optimizer/CharacterOptimizerModal.tsx`, `CharacterDetailView.tsx:373`) as **absent → MISSING → `p4.9k`**, and `phase-4.md:779` / `:5099` carry it among the tier-3 LLM-service deferrals (ai-wizard / optimizer / rename / ai-import); grep confirms no `character_optimizer` / `OptimizerSuggestion` / `runSubStep` anywhere in `crates/` or `apps/`. So there is **nothing to port now and no family to regenerate** — the obligation is that **`p4.9k` ports the POST-FIX shape**, and its work order must cite this sha so the pre-fix inline `.filter` is never transcribed. Also note the class does not transfer mechanically: v4's bug is a TypeScript *cast* (`return JSON.parse(cleaned) as T`) that JS never checks, whereas v5 has no `parseLLMJson` twin at all (`services/answer_confirmation.rs:464 extract_json` returns a `Value` and every reader is explicit) — a Rust `serde_json` deserialize into `Vec<T>` would return `Err`, landing in the equivalent of the parse `catch` rather than throwing at `.filter`. The port's live obligation is therefore the *design* lesson v4's `bugs.md` states — normalise before treating a model answer as an array, and contain a fan-out failure to the pass that caused it — carried into `p4.9k`'s order, plus the coercion table byte-for-byte (the key list is ordered and load-bearing). **NO-PORT within the commit:** `README.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` (+ the new `bugs/fixed/bug-119-optimizer-substep-non-array.md`, 186 lines — read it when `p4.9k` runs), the 47 new lines in `__tests__/unit/lib/services/character-optimizer-helpers.test.ts`, and the version bumps (`4.9.0-dev.120` → `.121` across `package.json`, `package-lock.json`, `packages/quilltap/package.json`). | UNPROCESSED |
+| `49f66f571` | 2026-09-04 | refactor(api): use successResponse in two v1 route handlers (checklist item 4) | **NO-PORT?** | `app/api/v1/connection-profiles/[id]/route.ts` (`NextResponse.json({tags})` → `successResponse({tags})`) and `app/api/v1/wardrobe/route.ts` (`{wardrobeItems}`): `successResponse(data, status = 200)` IS `NextResponse.json(data, {status})` (`lib/api/responses.ts:63-68`), so the wire bytes are unchanged by construction. Ratify by the existing families staying green at the new pin (`settings_routes`' get-tags arm, `wardrobe_routes`). | UNPROCESSED |
+| `bbcb318c6` | 2026-09-04 | style(settings): cheap-LLM checkboxes use qt-checkbox (checklist item 7) | **PORT (SPA, tiny)** | `components/settings/chat-settings/CheapLLMSettings.tsx`: two `className="rounded"` → `"qt-checkbox"`. v5 intersection: the Settings → Chat cheap-LLM card (`screens/settings/chat/**`); the qt-* utility sweep precedent (P4.D116). | UNPROCESSED |
+| `48f4b42ec` | 2026-09-04 | fix(plugins): stop sending Opus 5 the sampling params it rejects | **PORT** | `plugins/dist/qtap-plugin-anthropic/provider.ts`: `/^claude-opus-5(-|$)/` joins the family that drops `temperature`/`top_p`/fixed-budget thinking (the manifest/package bumps + the rebuilt `index.js` ride along). v5 intersection: `model/request_builder/anthropic.rs:34-35` carries the `opus-4-7` / `opus-4-8` patterns — add the third; the request-envelope corpus (`request_envelopes`) gains an Opus 5 row, re-recorded at the pin. | UNPROCESSED |
+| `a0e6fb42a` | 2026-09-04 | test(coverage): regression tests for bugs 104 and 111, and sixteen new modules | **NO-PORT?** | 18 new `__tests__/**` files (+3,054) and the rebuilt Anthropic bundle only; no `lib/`/`app/` hunk. Note the bug-104/111 tests pin this port's OWN filings coming back — read them when the catch-up regenerates the corpora. Ratify tests-only. | UNPROCESSED |
+| `0506517d3` | 2026-09-04 | refactor: release-checklist 3 — collapse the 4.9 diff's duplicates onto single owners | **PORT (corrections) + NEUTRALITY** | **256 files, +8,241/−6,847** — a DRY/chokepoint pass over everything since 4.8.4 across `lib/` (10+ files: `api/instance-setting-handlers.ts`, the background-job handlers, maintenance sweeps, …) and ~30 `app/` routes and views (chats, wardrobe, settings, documents, custom-tools, qtap-target, creation-progress, the Aurora/Salon/Files/Photos/Prospero views). Its own body names BEHAVIOUR corrections that "fell out of the collapse": priority-5 cheap-LLM `profileParameters`, the export preview exclusion, the document delete 404 body, API-key prose, placeholder edge cases, two toasts, one settings row style — each a PORT on a ported surface (cheap-LLM selection, export preview, the documents route, Pascal placeholders, the SPA toasts). The rest is the D32 class: prove neutral by regenerating every family whose oracle imports a touched file at the new pin vs the baseline pin. **The hunk-level survey is the catch-up order's first deliverable** (§5.3; this row is from the diffstat + the commit's own CHANGELOG list). | UNPROCESSED |
+| `d4138b96b` | 2026-09-04 | chore(dead-code): v4.9 release sweep, second pass (checklist item 5) | **NO-PORT? (with one check)** | 56 files, +173/−2,861: three modules deleted (`lib/database/meta.ts`, `lib/sillytavern/persona.ts`, `hooks/useNavbarCollapse.ts`) and 32 unreferenced exports across 23 `lib/`/`app/` files (Mongo relics, `handleProviderError`/`getUserFriendlyError`, Host roster builders, context-status gauges, pricing tier helpers, `calculateSha256`, `isCheapModel`, two orphaned Zod schemas, `toggleSource`). v5 ports behaviour, not modules — a deleted unreferenced export changes no wire. **The one check:** the LoRA scale bounds moved to a new client-safe `lib/image-gen/lora-scale.ts` — v5's transcription (P4.D138) must stay byte-equal to the new home; and any family whose oracle IMPORTED a deleted export dies at regen (the regen itself is the tripwire). Ratify with the sweep green. | UNPROCESSED |
+| `b52b996c1` | 2026-09-04 | chore(packages): install published package versions consistently everywhere | **NO-PORT? (wire re-check)** | Package/lock/manifest bumps + rebuilt plugin bundles (the MCP plugin's `index.js` +535). No source hunk under `lib/`/`app/`. The P4.D33/D75 class: prove the rebuilt bundles wire-neutral by re-recording the provider corpora at the new HEAD against the baseline pin. | UNPROCESSED |
+| `2edd823c0` | 2026-09-04 | test(backup): pin every 4.9/4.10 data-model addition in the restore guard | **NO-PORT?** | One new test file (`restore-field-fidelity.test.ts`, +144). Read it when the catch-up runs — it enumerates the 4.9/4.10 columns v4's restore must carry, a checklist for v5's restore families. Ratify tests-only. | UNPROCESSED |
+| `e9a9c538e` | 2026-09-04 | docs: documentation-freshness sweep, second pass (checklist item 13) | **PORT (SPA strings) + bank** | `app/about/AboutView.tsx`: three feature sentences grew (the Lantern's LoRA clause, the Concierge's four-state clause, the multi-provider understudy clause) — v5's About mirrors v4's text (P4.D134 precedent; spec-pinned). Help: `help/homepage.md` (+7), `help/brahma-console.md`, `help/help-chat.md`, `help/salon-host-introductions.md` → the `p4.9i2` bank. `docs/developer/API.md` +187 → the `docs/v4/` mirror refresh. | UNPROCESSED |
+| `af2023c9a` | 2026-09-04 | fix(cli): instances default --json was read as an instance name (bug 120) | **PORT (CLI)** | `packages/quilltap/lib/instances-commands.js`: `instances default --json` — the flag is lifted OUT of the positionals before `cmdDefault` (it was being set as an instance literally named `--json`, and the json branch was unreachable); `fish.template` gains `--json` completion for `instances list|ls`; `help/cli-instances.md` (+37) → the bank. v5 intersection: `quilltap-cli/src/instances_cmd.rs:48` (`"default" => cmd_default(&rest)`) — measure whether v5 reproduces the bug (Tier R red-first vs v4's real launcher, the bug-101 precedent). | UNPROCESSED |
+| `6e1a64ea6` | 2026-09-04 | chore(deps): npm update across app, packages, and plugins | **NO-PORT? (wire re-check)** | The big one for the wire: `package.json` (46 lines), every `package-lock.json`, `plugin-utils` 2.6.1's generated version, and EVERY plugin bundle rebuilt (10–12k-line `index.js` diffs each — SDK majors inside). The P4.D33/D75 class exactly: re-record the request-envelope / stream / google-wire / OpenRouter-SDK corpora at the new HEAD and diff against the baseline-pinned ones; any moved byte is a PORT row of its own. | UNPROCESSED |
+| `06658535f` | 2026-09-04 | chore(packages): install the published plugin-utils 2.6.1 everywhere | **NO-PORT? (wire re-check)** | Manifest/package bumps only across the plugins + the root lock. Rides the `6e1a64ea6` wire re-check. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

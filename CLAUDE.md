@@ -2849,8 +2849,10 @@ records THERE. Update this summary only when a phase or round completes.
   designed. Gate: fmt/clippy both feature sets clean; 17/17 families fresh from the `0b0617fee` pin zero SKIP (+2 and +1 re-runs after the review fixes); **494 test binaries / 2,780 / 0 / 1 ignored, zero SKIP**; release build; ng 378 files / 5,945; full Playwright **274 / 0 / 0** after the gate's own catch — the image-detail beat's two seeds were pixel-identical and now dedup under the host codec, as v4's do (fixed spec-side). Versions: core 0.0.776, harness 0.0.671, web
   0.0.114, host 0.0.96, SPA 0.5.642. 💸 the dogfood queue gains the images
   route + the chat-upload WebP transcode + the streaming avatar on real data.
-  **Next: `p4.9i2` as its own round (or the drift catch-up if one arrives
-  first) — see phase-4.md.** Round record: `status-log.md`.
+  **⚠ v4 landed TWELVE commits during the round (its 4.9 release-checklist
+  push — classified in the ledger's §3 at the unification's drift step; the
+  round's regens were all pinned). Next: that drift catch-up, then `p4.9i2`
+  as its own round — see phase-4.md.** Round record: `status-log.md`.
 - **Oracle baseline: `0b0617fee` (2026-09-02, v4 main — bugs 116-118 fixed),
   adopted at the `0b0617fee` drift catch-up round unification (2026-09-03).**
   **Drift state, the drift-check method, and the pinned-worktree regen

@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-04 — docs(drift): the unification's drift step — v4 landed twelve commits during the follow-ups round 2
+
+_Docs-only change._ (No crate versions bumped.)
+
+The `/unify` §6 drift step, run at cleanup after the fast-forward: v4 `main`
+sits at `06658535f`, thirteen commits past the `0b0617fee` baseline (the
+bug-119 row plus twelve new, all dated today — v4's 4.9 release-checklist
+push). The round's probe had passed at its start and every regen ran from a
+pinned worktree, so the unified gate stands. The ledger's §1 is rewritten
+(DRIFT PENDING — 13; PIN REQUIRED stays) and §3 gains twelve rows classified
+from their diffstats and small hunks: three ports on ported surfaces (the
+Anthropic Opus 5 sampling strip, the About sentences, the CLI `instances
+default --json` bug 120), one SPA styling port, the large duplicate-collapse
+refactor as PORT-plus-neutrality (its own body names behaviour corrections;
+the hunk survey is the catch-up order's first job), and the dead-code sweep,
+the tests-only commits and the three packaging/bundle commits as NO-PORT
+candidates pending the SDK wire re-check. `phase-4.md`'s candidate 1 and
+CLAUDE.md's next step now name the catch-up ahead of `p4.9i2`.
+
 #### 2026-09-04 — unify: the follow-ups round 2 (P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75)
 
 _Versions: core 0.0.776, harness 0.0.671, web 0.0.114, host 0.0.96, SPA 0.5.642._
