@@ -24,18 +24,28 @@ probe verifies against._
   21:04 -0500, v4 `4.9.0-dev.120`), adopted at the `0b0617fee` drift catch-up
   round unification (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152,
   2026-09-03).
-- **Checked:** 2026-09-03 (at the unification — the §2 probe re-run before the
-  cherry-picks AND before the gate).
+- **Checked:** 2026-09-03 (a full `/driftcheck` run AFTER the unification — the
+  third probe of the day; the two earlier ones were the unification's own, run
+  before the cherry-picks and before the gate). **Nothing has moved on either
+  branch since the baseline was adopted:** every §1 field below re-measured
+  identical, so this check adds no §3 row and changes no disposition.
 - **v4 `main` HEAD at check:** `15573c3a1` — "fix(optimizer): a non-array
   sub-step answer no longer kills the run (bug 119)" (2026-09-02 21:59 -0500,
   v4 `4.9.0-dev.121`) — **ONE commit past the baseline.** `origin/main` is
-  level with `main`. Unmoved since the 2026-09-03 `/driftcheck`.
+  level with `main`. Unmoved since the 2026-09-03 `/driftcheck`
+  (`15573c3a1..main` is empty).
 - **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4 fork
-  marker; re-measured by content at the 2026-09-03 check — nothing genuinely
-  unabsorbed).
+  marker). Re-measured by CONTENT again at this check per §4 step 2: the
+  `main..bugfix` diff over `lib/ app/ packages/ plugins/` is 568 files /
+  +6,869 / **−43,355** — net-negative because bugfix is *behind* main, which is
+  exactly the squash-topology signature; its long `main..bugfix --oneline`
+  commit list is the historical lineage, not unabsorbed work. Nothing genuinely
+  unabsorbed.
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
-- **Checkout at check:** branch `main`, **tree CLEAN**; the unify's own pinned
-  worktree (`/tmp/qt-v4-pin-unify-0b0617fee`) removed at cleanup.
+- **Checkout at check:** branch `main`, **tree CLEAN** (`git status --short`
+  empty). `git worktree list` shows the checkout alone — the unify's own pinned
+  worktree (`/tmp/qt-v4-pin-unify-0b0617fee`) was removed at cleanup and no
+  `/tmp/qt-v4-pin-*` path survives, so the next lane builds its pin fresh.
 - **Verdict: DRIFT PENDING — 1 commit past the baseline.** §3 holds ONE
   UNPROCESSED row, `15573c3a1` (bug 119, the character optimizer — **unported
   v5 surface**, `p4.9k`; the row's obligation is to carry the post-fix shape
@@ -51,7 +61,9 @@ probe verifies against._
   commit may not be so polite.
 - **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix fork;
   v4 develops on `main` alone. Keep probing BOTH branches.
-- _Superseded (the 2026-09-03 `/driftcheck` verdict): DRIFT PENDING — 6
+- _Superseded (the EARLIER 2026-09-03 `/driftcheck` verdict, the one that ran
+  before the round unified — not the post-unification check recorded above):
+  DRIFT PENDING — 6
   commits past `6d2a50382`, five ORDERED to the in-flight `0b0617fee` round
   + `15573c3a1` new and UNPROCESSED, PIN REQUIRED at `6d2a50382`. The round
   unified 2026-09-03 and moved the baseline to `0b0617fee`; the five rows are

@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — docs(drift): the post-unification drift check — v4 unmoved, the ledger re-verified
+
+_Docs-only change._ (No crate versions bumped.)
+
+A standalone `/driftcheck` run after the `0b0617fee` round unified — the third
+probe of the day, and the first one not owned by the unification itself. **v4
+has not moved on either branch since the baseline was adopted**: `main` is
+still `15573c3a1` (bug 119, `4.9.0-dev.121`), `origin/main` is level with it,
+the `bugfix` tip is still the bare `3a76b17df` 4.8.4 fork marker, `release` is
+still `8736d7042`, and the checkout sits on `main` with a clean tree and no
+surviving pinned worktree. So the check adds **no §3 row and changes no
+disposition**.
+
+The verdict stands unchanged: **DRIFT PENDING — 1 commit past the baseline**,
+that one row being `15573c3a1`, whose surface (the character optimizer) has no
+v5 counterpart at all. Its obligation is still to be discharged by `p4.9k`
+porting the post-fix shape, not by a catch-up lane. The regen rule stays **PIN
+REQUIRED at `0b0617fee`**.
+
+Two §1 fields gained measurements rather than assertions. `bugfix` was
+re-measured by CONTENT per §4 step 2 instead of by its commit list: the
+`main..bugfix` diff over `lib/ app/ packages/ plugins/` is 568 files /
++6,869 / **−43,355**, net-negative because bugfix is *behind* main — the
+squash-topology signature the ledger warns about, which is why its long
+`--oneline` list reads as historical lineage rather than unabsorbed work. And
+the checkout posture now records that `git worktree list` shows the checkout
+alone with no `/tmp/qt-v4-pin-*` path surviving, so the next lane builds its
+pin fresh. The superseded verdict line was relabelled to say explicitly that it
+is the *earlier* same-day check, since 2026-09-03 now carries two of them.
+
 #### 2026-09-03 — ci(docker): a manual-only image build + smoke-test workflow; dogfood B6 discharged
 
 _Docs-only change._ (No crate versions bumped.)
