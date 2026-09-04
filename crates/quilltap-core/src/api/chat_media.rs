@@ -1048,6 +1048,23 @@ pub async fn chat_file_link(db: &Db, _user_id: &str, chat_id: &str, file_id: &st
         Ok(None) => return not_found("Chat"),
         Err(e) => return internal(e),
     }
+    // [P4.62(c) / P4.72] v4's guard is `!fileId || typeof fileId !== 'string'`
+    // (`chats/[id]/files/route.ts` `handleLinkFile`), and it sits AFTER the
+    // chat lookup — so a missing chat 404s before this 400 can happen. The
+    // caller collapses absent / null / wrong-typed / empty to `""`, exactly as
+    // v4's `!v || typeof v !== 'string'` does, and the refusal itself lives
+    // here so the REST edge and the `/api/dispatch` entrance cannot answer
+    // different sentences (the P4.60 one-home rule).
+    //
+    // It replaces a post-hoc rewrite at the web edge, which had to guess: it
+    // turned EVERY non-`Chat not found` outcome into this 400 whenever the
+    // fileId was invalid, so a genuine failure of the CHAT lookup — where v4
+    // answers 500, never having reached its own file lookup — was reported as
+    // the 400 too. No committed arm forces that failure, so the repair is
+    // unmeasured; it is a consequence of putting the guard where v4 puts it.
+    if file_id.is_empty() {
+        return bad_request("fileId is required");
+    }
     let fid = file_id.to_string();
     let file = match db.read_main(move |c| FilesRepository::new(c).find_full_by_id(&fid)) {
         Ok(Some(f)) => f,

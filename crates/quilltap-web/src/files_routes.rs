@@ -1080,38 +1080,22 @@ pub async fn chat_files_post(
         // v4 resolves the CHAT before the action dispatch (`route.ts:34-38`), so
         // on a missing chat the 404 comes FIRST and this 400 never happens.
         //
-        // The chat lookup lives in the core handler, so an invalid `fileId` is
-        // sent through as `""` PURELY to run that 404 gate: when the fileId is
-        // invalid, the only two answers v4 can give are `Chat not found` and
-        // `fileId is required`, because v4 never reaches its file lookup at all.
-        // So the chat-404 is passed through and EVERY other outcome becomes the
-        // 400 — rewriting only `File not found` was wrong, and the pre-existing
-        // `files_write_routes` beat caught it: on a venue whose `files` table is
-        // missing the lookup ERRORS, and the 400 was lost as a 500. `""` writes
-        // nothing on the way.
-        //
-        // The one shape this cannot separate is a failure of the CHAT lookup
-        // itself, where v4 answers 500; the edge cannot tell it from the file
-        // lookup's. The tidier shape is a three-line `fileId is required` guard
-        // in `chat_media::chat_file_link` right after its chat-404 — that file
-        // is outside this lane's ownership, and it is recorded as the follow-up.
-        let valid = body
+        // [P4.62(c), landed by P4.72] The collapse is all this edge does now:
+        // absent / null / wrong-typed / empty all become `""`, which is exactly
+        // v4's `!v || typeof v !== 'string'` reading, and the REFUSAL lives in
+        // `chat_media::chat_file_link` right after its chat-404 — v4's own
+        // order, in one place, so this edge and the `/api/dispatch` entrance
+        // cannot answer different sentences. The post-hoc rewrite that used to
+        // live here (turn every non-`Chat not found` outcome into the 400) is
+        // gone with it; a failing CHAT lookup now stays the 500 v4 answers.
+        let file_id = body
             .get("fileId")
             .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty());
-        let core_req = CoreRequest::ChatFileLink {
-            chat_id,
-            file_id: valid.unwrap_or("").to_string(),
-        };
+            .filter(|s| !s.is_empty())
+            .unwrap_or("")
+            .to_string();
+        let core_req = CoreRequest::ChatFileLink { chat_id, file_id };
         return match dispatch_core(&state, core_req).await {
-            Ok(CoreResponse::Error(e))
-                if valid.is_none()
-                    && e.kind == ErrorKind::NotFound
-                    && e.message == "Chat not found" =>
-            {
-                core_response_to_http(CoreResponse::Error(e), StatusCode::OK)
-            }
-            Ok(_) if valid.is_none() => error_json(StatusCode::BAD_REQUEST, "fileId is required"),
             Ok(resp) => core_response_to_http(resp, StatusCode::OK),
             Err(r) => r,
         };

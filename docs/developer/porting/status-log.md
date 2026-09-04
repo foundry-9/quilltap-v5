@@ -103675,3 +103675,31 @@ by diffing the regenerated NDJSON against the previous one.
 the changed bytes: `Unknown or missing action` ×8, `Invalid action. Available
 actions` ×4, `Missing action parameter` ×3.
 
+## Lane record — P4.72 (unit 2): P4.62(c), the `chat_file_link` guard tidy
+
+The last of P4.62's three deferred core-side shapes. v4's `handleLinkFile`
+guard (`!fileId || typeof fileId !== 'string'`) sits after the chat lookup;
+v5's chat lookup is in the core handler, so the web edge used to send `""`
+through purely to run the 404 gate and then rewrite the answer — turning EVERY
+non-`Chat not found` outcome into the 400. The guard is now three lines in
+`chat_media::chat_file_link` immediately after its chat-404, and the edge keeps
+only the collapse (absent / null / wrong-typed / empty → `""`, v4's own
+reading). Both entrances — the REST edge and `/api/dispatch` — now answer from
+one place.
+
+**Measured before adding anything** (the order's instruction): the existing
+`files_body_guards_equivalence` already carries `link_missing_chat`,
+`link_absent`, `link_null`, `link_empty`, `link_number`, `link_object` and
+`link_unknown_string`, so the guard IS visible to a committed family and a new
+arm would have been vacuous. None was added.
+
+**One unmeasured repair rides along and is recorded rather than claimed:** a
+failure of the CHAT lookup itself (v4: 500, never having reached its file
+lookup) used to be reported as the 400 by the edge's rewrite; it is now the
+500. No committed arm forces a chat-lookup failure, so this is a consequence of
+guard placement, not a proven change.
+
+Green over oracles regenerated fresh from the `0b0617fee` pin:
+`files_body_guards_equivalence`, `files_routes_equivalence` (both through the
+sweep driver), plus `files_write_routes`.
+

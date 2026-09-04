@@ -396,6 +396,33 @@ post-mutation `files` + `characters` dumps so a refusal proves it wrote
 nothing. Seven mutation proofs; two of them (the key-less probe arm and the
 `avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
 blind spots, closed with dedicated fixture rows before the unit landed.
+#### 2026-09-03 — refactor(files): the `fileId is required` guard moves into `chat_file_link` (P4.62(c))
+
+_Versions: core 0.0.769, web 0.0.107._
+
+v4's `handleLinkFile` guard is `!fileId || typeof fileId !== 'string'`, and it
+sits AFTER the chat lookup — so a missing chat 404s before the 400 can happen.
+v5's chat lookup lives in the core handler, so the web edge had been sending an
+invalid `fileId` through as `""` purely to run that 404 gate, and then
+rewriting the answer: every outcome that was not `Chat not found` became the
+400. That guessed. A genuine failure of the CHAT lookup — where v4 answers 500,
+never having reached its own file lookup — was reported as the 400 too.
+
+The refusal now lives in `chat_media::chat_file_link`, right after its
+chat-404, so the REST edge and the `/api/dispatch` entrance cannot answer
+different sentences (the P4.60 one-home rule). The edge keeps only the
+collapse: absent / null / wrong-typed / empty all become `""`, which is exactly
+what v4's `!v || typeof v !== 'string'` reads. A failing chat lookup now stays
+the 500 v4 answers; no committed arm forces that failure, so that half is
+unmeasured — it is a consequence of putting the guard where v4 puts it.
+
+Behaviour-neutral for everything the corpus can see: `files_body_guards_equivalence`
+already drives six `link_*` arms (absent / null / empty / number / object /
+unknown-string) plus the missing-chat arm, and `files_routes_equivalence`,
+`files_write_routes` and `files_body_guards_equivalence` are all green over
+oracles regenerated fresh at the `0b0617fee` pin. No new arm was added, because
+the existing ones already see the guard.
+
 #### 2026-09-03 — test(query): the other seventeen `?action=` edges into the semantics family (P4.72)
 
 _Versions: harness 0.0.663, web 0.0.106._
