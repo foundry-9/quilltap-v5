@@ -200,6 +200,36 @@ alias expansion (which resolves to the same absolute worktree path) and
 nothing else; all six `--run` green from a `0b0617fee`-pinned v4 worktree; and
 none of the eight regenerated NDJSONs contains a stage path at all, so the
 directory name provably cannot reach the measured bytes.
+#### 2026-09-04 — fix(chats): the ChatCreate wrong-type trio answers v4's Validation error (P4.73 unit 4)
+
+_Versions: core 0.0.772, harness 0.0.666._
+
+`conciergeState`, `roleplayTemplateId` and `timestampConfig` now reach the
+handler as raw `Value`s, so a present-but-WRONG-TYPED value answers v4's flat
+`Validation error` 400 instead of failing the transport's serde decode with
+`Invalid request: invalid type: integer 42, expected a string` — a different
+envelope the client never sees from v4. Both transports get it from one place,
+which is why the refusal lives in the handler and not at an edge.
+
+Measured red-first against v4's real handler: all three answer 400 `Validation
+error`, for three different Zod reasons (`invalid_value` against the enum's four
+values, `invalid_type` expecting a string, `invalid_type` expecting an object).
+`timestampConfig` already carried a raw `Value` and was already correct; the
+other two were typed to `String` and collapsed at the decode.
+
+Three new capstone arms (`cs_wrong_type_400`, `rt_wrong_type_400`,
+`tc_wrong_type_400`), and `de_double_opt_string` is deleted now that nothing
+uses it — a tri-state deserializer typed to `String` is precisely what caused
+the collapse, so leaving it around invites the same bug back.
+
+Two mutation proofs: letting either field accept a non-string reddens its arm
+with `v4 answered 400 but the port succeeded`.
+
+⚠ Only the wrong-TYPE arm is measured. v4's `z.uuid()` would also refuse a
+non-UUID STRING for `roleplayTemplateId`, and the empty-string allowance in the
+resolver predates this lane; no corpus case covers either, so neither was
+changed. Recorded rather than guessed at.
+
 #### 2026-09-04 — feat(images): thread the host pixel codec into chat uploads (P4.73 unit 3)
 
 _Versions: core 0.0.771, harness 0.0.665._

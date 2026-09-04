@@ -103413,3 +103413,77 @@ says so, and says what would have to change if that path ever grows an IMAGE arm
 
 Gate: 491 test binaries / 2,764 passed / 0 failed / 1 ignored, zero SKIP; clippy
 clean on both feature sets; fmt clean.
+
+### P4.62(a) — the escalated claim MEASURED, and it is wrong in both directions
+
+The order (inheriting `files_body_guards_equivalence`'s `ESCALATED` note) says
+v4's schemaless upload legs CARRY a raw non-string `tagId` into `linkedTo` and
+the `tags` column, and that v5 diverges by dropping it. **Measured against v4's
+real handlers, that is not what happens on either leg.**
+
+`repos.files.create` re-validates the whole row against `FileEntrySchema`, whose
+`linkedTo` and `tags` are both `z.array(z.uuid())`. A non-UUID id therefore
+THROWS out of the create — it never lands in a row. What differs between the two
+legs is only who catches it:
+
+| leg | catch | wire |
+|---|---|---|
+| images (`route.ts` `handleUploadOrImport`) | none — reaches the middleware | **400** `Validation error` (MEASURED this lane, `upload_tags_raw_tagid`) |
+| files (`actions/upload.ts` `handleUploadFile`) | its own `try` → `serverError` | **500** `Failed to upload file` (`upload.ts:77-84`) |
+
+Both leave an ORPHANED BLOB behind, because the bridge write precedes the
+metadata create (measured on the images leg; the files leg's `saveFileEntry`
+has the same ordering).
+
+So the divergence is real but its SHAPE is the opposite of the order's: v5
+today `filter_map`s the non-strings away and SUCCEEDS (201) where v4 refuses.
+The fix is NOT to carry the raw value — it is to let the row write refuse and
+answer v4's status for that leg.
+
+**What this lane did and did not do.** The images leg is CLOSED (unit 2: the
+repository-level UUID validation lives in `create_file_conns`, and the arm
+answers 400 with the orphan reproduced). **The files leg is NOT ported** — it
+needs `Request::FileUpload.tags` widened to `Option<Vec<Value>>`, the raw ids
+carried through `api/files.rs::file_upload`, `save_file_entry` validating as
+`create_file_conns` now does, and the 500 sentence. DEFERRED, with the corrected
+shape recorded here rather than the order's.
+
+⚠ `files_body_guards_equivalence.rs:225-238`'s `ESCALATED` const and its doc
+comment, and `harness/oracle/cases/files-body-guards.test.ts:20-24` / `:115-119`,
+all state the superseded shape. They belong to the sibling lane's directory this
+round; correcting them is part of whoever lands the files leg.
+
+### Unit 4 — the `ChatCreate` wrong-type trio (Tier 2 item 9)
+
+`conciergeState` / `roleplayTemplateId` / `timestampConfig` carried as raw
+`Value`s so a present-but-WRONG-TYPED value reaches the handler's refusal
+instead of failing the transport decode (the P4.60 wrong-type-collapse
+convention; both transports answer from ONE place, the `ChatCreate` trio's own
+lesson applied to itself).
+
+**Measured red-first.** v4 answers 400 `Validation error` for all three, via
+three different Zod reasons: `invalid_value` against the enum's four values,
+`invalid_type` expecting a string, `invalid_type` expecting an object. v5 was
+failing earlier and differently — `Invalid request: invalid type: integer 42,
+expected a string` out of serde, an envelope v4 never emits. `timestampConfig`
+was ALREADY correct (it already carried `Option<Option<Value>>`); only the other
+two needed widening, which is worth recording because the order named all three.
+
+Corpus: `cs_wrong_type_400`, `rt_wrong_type_400`, `tc_wrong_type_400` (35 cases,
+up from 32). `de_double_opt_string` DELETED — nothing uses it now, and a
+tri-state deserializer typed to `String` is exactly the shape that caused this
+collapse, so keeping it available would invite the same bug into the next field.
+
+**Mutations:** letting either field accept a non-string reddens its own arm with
+`case …: v4 answered 400 but the port succeeded`.
+
+⚠ **Deliberately NOT changed, recorded instead.** v4's
+`roleplayTemplateId: z.uuid()` would also refuse a non-UUID STRING, and the
+resolver's pre-existing empty-string allowance (`!requested.is_empty()`) predates
+this lane. NO corpus case covers either shape, so closing them would be a
+behavior change with no measurement behind it — and the existing green
+`roleplay_template_id` section depends on the current semantics. Named in the
+source and here as an open question for whoever measures it.
+
+Gate: 491 test binaries / 2,764 passed / 0 failed / 1 ignored, zero SKIP; clippy
+clean on both feature sets; fmt clean.

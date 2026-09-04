@@ -137,18 +137,6 @@ fn de_double_opt_value<'de, D: serde::Deserializer<'de>>(
     Ok(Some(if v.is_null() { None } else { Some(v) }))
 }
 
-/// The double-`Option` deserializer for a `z.string().nullable().optional()`
-/// field: absent → `None`, explicit `null` → `Some(None)`, a string →
-/// `Some(Some(s))`. Unlike [`de_double_opt_value`]'s consumer, the `null` arm is
-/// MEANINGFUL here rather than a rejection (see
-/// [`ChatCreateRequest::roleplay_template_id`]).
-fn de_double_opt_string<'de, D: serde::Deserializer<'de>>(
-    de: D,
-) -> Result<Option<Option<String>>, D::Error> {
-    use serde::Deserialize as _;
-    Ok(Some(Option::<String>::deserialize(de)?))
-}
-
 /// The chat-creation request (v4 `createChatSchema`). Every field carries a
 /// serde default so a sparse dispatch payload deserializes.
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -183,8 +171,14 @@ pub struct ChatCreateRequest {
     /// ⚠ The `null` arm is the mirror-image of [`Self::timestamp_config`]'s:
     /// there `.optional()` is NOT nullable so a null REJECTS; here
     /// `.nullable().optional()` makes null a deliberate choice.
-    #[serde(deserialize_with = "de_double_opt_string")]
-    pub roleplay_template_id: Option<Option<String>>,
+    ///
+    /// RAW `Value`, not `String`: v4 Zod-parses it, so a present-but-WRONG-TYPED
+    /// value must reach the handler's refusal and answer v4's `Validation
+    /// error` 400 — a boundary that refused it with the transport's own
+    /// `Invalid request: …` would never get there (the P4.60
+    /// wrong-type-collapse convention; MEASURED at `rt_wrong_type_400`).
+    #[serde(deserialize_with = "de_double_opt_value")]
+    pub roleplay_template_id: Option<Option<Value>>,
     /// v4 [`303288fb4`] `conciergeState:
     /// z.enum(['monitored','flagged','vouched','uncensored']).optional()` — the
     /// per-chat Concierge state to set at creation, using the same enum as the
@@ -204,8 +198,12 @@ pub struct ChatCreateRequest {
     /// values inside `handle_create` so an unknown one answers v4's route-level
     /// `Validation error` 400 rather than failing the dispatch decode with a
     /// different envelope.
-    #[serde(deserialize_with = "de_double_opt_string")]
-    pub concierge_state: Option<Option<String>>,
+    ///
+    /// RAW `Value` for the same reason as [`Self::roleplay_template_id`]: a
+    /// wrong TYPE must reach the handler, not fail the decode (MEASURED at
+    /// `cs_wrong_type_400`).
+    #[serde(deserialize_with = "de_double_opt_value")]
+    pub concierge_state: Option<Option<Value>>,
     pub outfit_selections: Option<Vec<Value>>,
     pub avatar_generation_enabled: Option<bool>,
     pub continuation_from_chat_id: Option<String>,
@@ -340,8 +338,11 @@ where
                 "Validation error".to_string(),
             ))
         }
+        // A wrong TYPE lands here as well as an out-of-domain string, and v4's
+        // `z.enum` refuses both with the same sentence.
         Some(Some(raw)) => Some(
-            ConciergeState::from_wire(raw)
+            raw.as_str()
+                .and_then(ConciergeState::from_wire)
                 .ok_or_else(|| HandleCreateError::BadRequest("Validation error".to_string()))?,
         ),
     };
@@ -573,7 +574,28 @@ where
     // onto the chat at creation so the choice — or the project's preference —
     // sticks. A truthy id must resolve or the whole create is a 400, checked
     // BEFORE the chain so an unresolvable id never silently falls back.
-    if let Some(Some(requested)) = req.roleplay_template_id.as_ref() {
+    // v4 `roleplayTemplateId: z.uuid().nullable().optional()`. The field arrives
+    // RAW so a wrong TYPE reaches this refusal rather than failing the decode;
+    // normalize it to the string tri-state here.
+    //
+    // ⚠ Only the wrong-TYPE arm is MEASURED (`rt_wrong_type_400`). v4's
+    // `z.uuid()` would also refuse a non-UUID STRING, and the empty-string
+    // allowance below predates this lane; no corpus case covers either, so
+    // neither is changed here. Recorded in the lane record as an unmeasured
+    // question rather than guessed at.
+    let requested_roleplay_template_id: Option<Option<String>> = match &req.roleplay_template_id {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(v)) => match v.as_str() {
+            Some(s) => Some(Some(s.to_string())),
+            None => {
+                return Err(HandleCreateError::BadRequest(
+                    "Validation error".to_string(),
+                ))
+            }
+        },
+    };
+    if let Some(Some(requested)) = requested_roleplay_template_id.as_ref() {
         if !requested.is_empty()
             && crate::db::roleplay_templates::find_full_json_by_id(main, requested)?.is_none()
         {
@@ -586,7 +608,7 @@ where
         .as_ref()
         .and_then(|s| s.get("defaultRoleplayTemplateId").and_then(Value::as_str))
         .map(str::to_string);
-    let default_roleplay_template_id: Option<String> = match &req.roleplay_template_id {
+    let default_roleplay_template_id: Option<String> = match &requested_roleplay_template_id {
         // v4 `typeof validatedData.roleplayTemplateId !== 'undefined'` — the key
         // was present, so its value (id or null) wins over both defaults.
         Some(explicit) => explicit.clone(),
@@ -598,7 +620,7 @@ where
     // Log output is explicitly outside the differential contract (the P4.18
     // ruling), so this is an analog, not an obligation.
     tracing::debug!(
-        requested = ?req.roleplay_template_id.as_ref().and_then(Option::as_deref),
+        requested = ?requested_roleplay_template_id.as_ref().and_then(Option::as_deref),
         requested_explicitly = req.roleplay_template_id.is_some(),
         project_default = ?project_default_roleplay_template_id,
         user_default = ?user_default_roleplay_template_id,
