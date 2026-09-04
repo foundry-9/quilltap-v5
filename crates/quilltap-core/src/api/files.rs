@@ -1113,9 +1113,13 @@ pub async fn files_folder_delete(
 /// `tags.map(t => t.tagId)` — used for BOTH `linkedTo` AND the file's `tags`
 /// column (`upload.ts:55,66`).
 ///
-/// The pixel work uses [`NotConfiguredPixelCodec`] (this dispatch path threads no
-/// host codec — a `DOCUMENT` upload never transcodes, and an image upload takes
-/// v4's own sharp-unavailable passthrough branch: original bytes, original mime).
+/// The pixel work uses [`NotConfiguredPixelCodec`] — deliberately, and NOT the
+/// divergence P4.73 closed for chat uploads. This is the general FILES upload
+/// leg, which v4 hard-codes to `category: 'DOCUMENT'`, and a document never
+/// transcodes; the images-category ingest paths (`api::images`, chat media)
+/// each thread the host codec. If this path ever grows an IMAGE arm it needs
+/// the codec too, and would take v4's sharp-unavailable passthrough until it
+/// does.
 #[allow(clippy::too_many_arguments)]
 pub async fn file_upload(
     db: &Db,

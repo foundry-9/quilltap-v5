@@ -702,15 +702,20 @@ fn upload_chat_file_conn(
     // sharp version bump makes — a changed encoder costs a missed duplicate (a
     // second row, nothing worse).
     //
-    // ⚠ The codec this site is HANDED is deliberately `NotConfiguredPixelCodec`
-    // at every production call (`api::engine`), so every encode fails and the
-    // policy layer passes the ORIGINAL bytes through — v4's own sharp-unavailable
-    // branch, the pre-existing divergence recorded at `api/files.rs:1116-1118`.
-    // Threading the HOST codec in here (v4 transcodes chat uploads for real)
-    // would be a NEW convergence beyond bug 117 and is a named candidate, not
-    // this lane's. The parameter exists so the shape is provable: the
-    // differential drives it with a byte-CHANGING codec, where the pre-fix order
-    // is measurably wrong and this one measurably right.
+    // P4.73: the codec this site is handed is now the HOST codec at every
+    // production call (`api::engine`'s `ChatFileUpload` arm), so v5 transcodes
+    // chat uploads exactly as v4's sharp does — the convergence P4.D152 named
+    // as its follow-up candidate, and the close of the divergence recorded at
+    // `api/files.rs:1116-1118` (measured live in the 2026-09-03 dogfood walk:
+    // a PNG came back `image/png`). A locked or codec-less engine still falls
+    // back to `NotConfiguredPixelCodec`, whose failed encode passes the
+    // ORIGINAL bytes through — which is v4's own sharp-unavailable branch.
+    //
+    // The parameter stays injectable for two reasons: the differential drives
+    // it with a byte-CHANGING codec (where bug 117's pre-fix ORDER is
+    // measurably wrong and this one measurably right), and the WIRING — which
+    // codec the dispatch arm reaches for, something no differential can see —
+    // is pinned by `quilltap-harness/tests/chat_upload_codec_wiring.rs`.
     let stored = transcode_to_webp(codec, data, &input_mime_type, TRANSCODE_WEBP_QUALITY);
     let buffer = stored.data;
     let mime_type = stored.stored_mime_type;

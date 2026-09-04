@@ -200,6 +200,41 @@ alias expansion (which resolves to the same absolute worktree path) and
 nothing else; all six `--run` green from a `0b0617fee`-pinned v4 worktree; and
 none of the eight regenerated NDJSONs contains a stage path at all, so the
 directory name provably cannot reach the measured bytes.
+#### 2026-09-04 — feat(images): thread the host pixel codec into chat uploads (P4.73 unit 3)
+
+_Versions: core 0.0.771, harness 0.0.665._
+
+The `ChatFileUpload` dispatch arm now reaches for `Engine::qtap_pixel_codec()`
+instead of hard-coding `NotConfiguredPixelCodec`, so v5 transcodes chat
+attachments through the host codec exactly as v4 transcodes them through sharp.
+This is the follow-up candidate P4.D152 named when it ported bug 117's ORDER but
+not the codec, and it closes the divergence recorded at
+`api/files.rs:1116-1118` — measured live in the 2026-09-03 dogfood walk, where a
+265-byte PNG came back `image/png` with the row's sha equal to the served bytes.
+
+A locked or codec-less engine still falls back to the not-configured codec,
+whose failed encode passes the original bytes through. That is v4's own
+sharp-unavailable branch, not a divergence.
+
+No differential can see which codec a dispatch arm reaches for: the existing
+`files_routes_equivalence` arms drive `chat_file_upload` with a byte-changing
+codec passed in by hand, and would keep passing if the arm reverted. So the wire
+is held by a composition-level pin (`chat_upload_codec_wiring`) that boots a
+real `CoreEngine` with a byte-CHANGING codec, dispatches `ChatFileUpload`, and
+asserts the STORED bytes carry the codec's marker, the stored mime is
+`image/webp`, the blob path ends `.webp`, and both the blob row's and the
+`files` row's sha name those bytes. It guards its own vacuity by first asserting
+a `NoopAssembler` engine exposes no codec and the assembled one does. Reverting
+the arm reddens it.
+
+`api/files.rs`'s note is corrected rather than removed: that path keeps the
+not-configured codec DELIBERATELY, because v4 hard-codes the general files
+upload to `category: 'DOCUMENT'` and a document never transcodes. It is not the
+same divergence.
+
+`dogfood-findings.md`'s A8 standing note is marked CLOSED, with the live
+re-measurement owed to the next pass.
+
 #### 2026-09-04 — feat(images): the images upload + import-from-URL legs (P4.73 unit 2)
 
 _Versions: core 0.0.770, harness 0.0.664, host 0.0.96, web 0.0.107._

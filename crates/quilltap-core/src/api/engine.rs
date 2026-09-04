@@ -4116,17 +4116,30 @@ impl CoreEngine {
                 Ok(db) => {
                     super::chat_media::chat_file_upload(
                         &db,
-                        // ⚠ NOT `self.qtap_pixel_codec()`. v4 transcodes chat
-                        // uploads through sharp; v5's chat-upload path has always
-                        // handed the bridges the not-configured codec, so every
-                        // encode fails and the ORIGINAL bytes are stored (v4's own
-                        // sharp-unavailable branch — the pre-existing divergence
-                        // recorded at `api/files.rs:1116-1118`). Bug 117 (P4.D152)
-                        // ports the ORDER of the two operations, not the codec:
-                        // threading the host codec in here would be a NEW
-                        // convergence beyond that drift row, and is recorded as a
-                        // named candidate instead.
-                        std::sync::Arc::new(crate::services::file_storage::NotConfiguredPixelCodec),
+                        // P4.73: the HOST codec, at last. v4 transcodes chat
+                        // uploads through sharp; until this lane v5 handed the
+                        // bridges `NotConfiguredPixelCodec` at every production
+                        // call, so every encode failed and the ORIGINAL bytes
+                        // were stored — v4's own sharp-unavailable branch, and
+                        // the divergence recorded at `api/files.rs:1116-1118`
+                        // and measured live in the 2026-09-03 dogfood walk (a
+                        // 265-byte PNG came back `image/png`). P4.D152 ported
+                        // bug 117's ORDER and named threading the codec as its
+                        // follow-up candidate; this is that follow-up, so v5
+                        // now transcodes on ingest as v4 does.
+                        //
+                        // A locked or codec-less engine still falls back to the
+                        // not-configured codec, which is the same
+                        // pass-the-original-bytes branch v4 takes when sharp is
+                        // unavailable. No differential can see this cutover
+                        // (`a-chokepoint-cutover-is-differential-invisible`), so
+                        // it is held by the composition-level WIRING pin in
+                        // `quilltap-harness/tests/chat_upload_codec_wiring.rs`.
+                        self.qtap_pixel_codec().unwrap_or_else(|| {
+                            std::sync::Arc::new(
+                                crate::services::file_storage::NotConfiguredPixelCodec,
+                            )
+                        }),
                         SINGLE_USER_ID,
                         &chat_id,
                         super::chat_media::ChatFileUploadInput {

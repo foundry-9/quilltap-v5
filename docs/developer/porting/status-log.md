@@ -103376,3 +103376,40 @@ anyway, so appending the mime subtype or not lands identically. Closed with
 `import_no_dot_svg` — a passthrough, where the name v4 builds survives — which
 also pins v4's own quirk that `'image/svg+xml'.split('/')[1]` is `svg+xml`, so
 the stored filename really is `portrait.svg+xml`. Then RED.
+
+### Unit 3 — the host pixel codec threaded into chat uploads (Tier 1 item 4)
+
+The `ChatFileUpload` arm reaches for `Engine::qtap_pixel_codec()`; a locked or
+codec-less engine falls back to `NotConfiguredPixelCodec`, which is v4's own
+sharp-unavailable branch. Closes the divergence at `api/files.rs:1116-1118` and
+the A8 standing note (now marked CLOSED in `dogfood-findings.md`, with the live
+re-measurement owed).
+
+**Why a composition test and not a differential arm.** `files_routes_
+equivalence` already drives `chat_media::chat_file_upload` with a byte-changing
+codec handed in BY THE TEST, so it proves the FUNCTION transcodes — and it would
+stay green forever if the engine arm reverted to handing that function the
+not-configured codec. What no differential can see is which codec the ARM
+reaches for (`a-chokepoint-cutover-is-differential-invisible`). So
+`chat_upload_codec_wiring` boots a real `CoreEngine` over a seeded instance,
+assembles it with a `BackupHost` whose `pixel_codec()` is byte-CHANGING,
+dispatches `Request::ChatFileUpload`, and asserts the STORED bytes carry the
+marker, the stored mime is `image/webp`, the blob path ends `.webp`, and BOTH
+the `doc_mount_blobs` row's and the `files` row's sha name those bytes.
+
+It guards its own vacuity first: a `NoopAssembler` engine must expose NO codec
+and the assembled one must expose one. Without that, a pin whose assembly
+silently lacked a codec would assert against the original bytes and pass while
+proving nothing.
+
+**Mutation proof:** reverting the arm to `NotConfiguredPixelCodec` reddens it,
+with the symptom named in the message (`path=chat/wire.png mime=image/png`).
+
+**A note CORRECTED rather than swept along.** `api/files.rs:1116` keeps the
+not-configured codec DELIBERATELY — v4 hard-codes that leg to `category:
+'DOCUMENT'` and a document never transcodes, so it is not the same divergence
+and threading a codec there would be a change v4 does not make. The comment now
+says so, and says what would have to change if that path ever grows an IMAGE arm.
+
+Gate: 491 test binaries / 2,764 passed / 0 failed / 1 ignored, zero SKIP; clippy
+clean on both feature sets; fmt clean.
