@@ -103984,7 +103984,24 @@ Concierge surfaces use, asserts the ring on the LIVE column mid-turn, and
 `afterAll` restores the chat to `monitored`.
 
 Proven by mutation: binding `[showAvatar]="showAvatars() && false"`, rebuilding
-the dist and re-running turns both beats red.
+the dist and re-running turns both beats red. ⚠ The mutation's FIRST attempt
+proved nothing and reported GREEN — `replace(old, new, 1)` landed on the first
+of the file's three `[showAvatar]="showAvatars()"` bindings, which is the
+virtualized settled row, not the streaming one (memory note
+`mutation-anchor-must-be-unique`). Re-anchored on the whole
+`<qt-streaming-message …>` block, both beats go red.
+
+**And the beat's own first WHOLE-SUITE run caught two suite-context assumptions
+in it** — the very shape unit 3 had just root-caused next door, arriving from
+the other direction. It asserted "no ring" without SETTING the shared chat's
+Concierge state (`salon-concierge-four-state-flow` walks that same chat through
+all ten transitions earlier in the run), and it read the responding character's
+INITIAL, which `qt-avatar` only renders when the character has no portrait (v4
+`Avatar.tsx:125`, `:147`); in isolation the server picked a portrait-less
+character, in the suite it did not. Both fixed: the beat now sets the state it
+asserts, and reads whichever arm the column actually drew — the image arm being
+the STRONGER assertion, since the portrait carries the whole name as its `alt`
+rather than one letter.
 
 ### Unit 3 — the `workspace-search-documents` intermittent, ROOT-CAUSED (Tier 1, item 3)
 
@@ -104136,9 +104153,13 @@ not the population; the wide form would need an allowlist of that size.
 - `npm test` — **378 test files / 5,945 tests, 0 failed** (376 / 5,911 before),
   `check-qt-classes --self-test` 5/5 and **950 qt-* classes defined, every
   guarded reference resolves**.
-- Playwright: the new streaming-avatar spec 2/2 (and red on the gate mutation);
-  `workspace-search-documents-flow` **30/30** over `--repeat-each=10`; the full
-  suite's numbers are in the final report.
+- Playwright, full suite: numbers in the final report. The FIRST whole-suite run
+  was 273 passed / 1 failed / 0 skipped, and the one red was this lane's own new
+  beat on the two suite-context assumptions described in unit 2 — repaired, the
+  beat green again, and the suite re-run.
+- `workspace-search-documents-flow` **30/30** over `--repeat-each=10` on its
+  own; the streaming-avatar spec red under the gate mutation and green without
+  it.
 
 💸 **For the next dogfood pass:** the streaming avatar on a real
 multi-character turn — does the column show the RESPONDING character rather than
