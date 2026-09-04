@@ -238,6 +238,20 @@ fn endpoints() -> Vec<Endpoint> {
         // Tier 1 item 3 remainder). Mirrors the oracle's block entry for
         // entry; the two lengths are compared.
         // ================================================================
+        // P4.73's endpoint, added at the follow-ups-round-2 unification: v4's
+        // FIRST dispatch shape (only the literal `generate` takes the generate
+        // leg; every other action value falls through to upload/import, so
+        // there is no envelope to compare and the three equalities are the
+        // claim). v5 does not serve `generate` yet — the named refusal is
+        // pinned in `UNSERVED_KNOWN_ACTIONS`, and `known` is never
+        // cross-compared anyway.
+        ep_body(
+            "images_collection_post",
+            "POST",
+            "/api/v1/images".into(),
+            "generate",
+            json!({}),
+        ),
         ep_body(
             "system_restore_post",
             "POST",
@@ -561,6 +575,15 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
 /// unification review of the follow-ups round put these back after the lane
 /// had replaced them with the envelope.
 const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
+    (
+        "POST",
+        "/api/v1/images",
+        "generate",
+        500,
+        "Generating an image through POST /api/v1/images?action=generate is recognized but not \
+         yet available (v4's route-level handleGenerateImage — its own Concierge gate, reroute \
+         rule and Lantern write — is the next P4.73 unit).",
+    ),
     (
         "POST",
         "/api/v1/mount-points/00000000-0000-4000-8000-000000000001",

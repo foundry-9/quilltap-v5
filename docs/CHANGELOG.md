@@ -12,6 +12,31 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-04 — unify(wires): the follow-ups round 2 wires — the ChatCreate trio census retired to FIXED(P4.73), the images endpoint into the query-param family, the version recount
+
+_Versions: core 0.0.775, harness 0.0.670, web 0.0.112, host 0.0.96, SPA 0.5.638._
+
+The cross-lane proof obligations no single lane could discharge. P4.72's
+dispatch wrong-type census drove the `ChatCreate` trio against
+`ChatCreateRequest` so that P4.73's widening would redden it — it did, at the
+unified gate, exactly as the census header predicted; the two rows are now
+`FIXED(P4.73)` and the probe asserts the post-fix shape (a wrong-typed
+`conciergeState` / `roleplayTemplateId` is ACCEPTED by the decode so the
+handler can answer v4's flat `Validation error`, pinned by the capstone
+family's `cs_wrong_type_400` / `rt_wrong_type_400`). The same census's
+mechanical walk of `api/types.rs` then found P4.73's `ImageUpload` transport
+trio (`filename` / `content_type` / `data`) unclassified — three rows added
+in the `FileUpload` multipart shape (v4 reads the decoded `File`; no JSON
+counterpart). P4.73 recorded its `?action=` row as coordination-only, so
+`images_collection_post` joins `query_param_semantics_equivalence` on both
+sides: v4's FIRST dispatch shape (only the literal `generate` takes the
+generate leg; every other value falls through to upload/import, no envelope),
+recorded fresh from the `0b0617fee` pin with all six v4 rows reaching the
+handler and the three within-tree equalities matching; the deferred
+`generate` refusal is pinned in `UNSERVED_KNOWN_ACTIONS`. Versions recounted
+as base + every lane's bumps (three lanes bumped core and harness) and both
+locks synced.
+
 #### 2026-09-03 — docs(orders): P4.74 closed; P4.68's deferred `auth` arm named where it landed
 
 _Docs-only change._ (No crate versions bumped.)

@@ -205,6 +205,25 @@ const ENDPOINTS: Endpoint[] = [
   // item 3 remainder). Same six shapes; the `known` action is picked so the
   // first-wins probe has something to compare, never for what it says.
   // ===================================================================
+  // ===================================================================
+  // P4.73's endpoint, added at the follow-ups-round-2 unification (the lane
+  // recorded it as coordination-only). v4 `app/api/v1/images/route.ts:161-171`
+  // is the FIRST dispatch shape: `getActionParam` compared to the one literal
+  // `'generate'`, and EVERY other value — unknown, `?action=` (empty), none —
+  // falls through to the upload/import leg. There is no envelope on this
+  // route, so every row here is a handler leg and the comparands are the
+  // within-tree equalities. `{}` as JSON reaches `importFromUrlSchema.parse`
+  // (upload leg) or `generateImageSchema.parse` (generate leg) — both refuse
+  // before any repository call, so the row is DB-free on both sides.
+  // ===================================================================
+  {
+    key: 'images_collection_post',
+    mod: '@/app/api/v1/images/route',
+    method: 'POST',
+    path: '/api/v1/images',
+    known: 'generate',
+    body: {},
+  },
   {
     key: 'system_restore_post',
     mod: '@/app/api/v1/system/restore/route',

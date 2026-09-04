@@ -44,8 +44,15 @@
 //! `ErrorKind::BadRequest` `invalid chatCreate request: <serde text>`. The
 //! shape of the divergence is the same, but its home is not: the fields live on
 //! `quilltap_core::services::chat_create::ChatCreateRequest`, and the sentence
-//! belongs to the host. The trio's rows are marked `ORDERED(P4.73)` and driven
-//! against `ChatCreateRequest` itself, so P4.73's widening reddens them here.
+//! belongs to the host. The trio's rows were marked `ORDERED(P4.73)` and driven
+//! against `ChatCreateRequest` itself, so that P4.73's widening would redden
+//! them here — and it did, at the follow-ups-round-2 unification (2026-09-04):
+//! P4.73 landed the widening in the same round (`concierge_state` and
+//! `roleplay_template_id` now carry `Option<Option<Value>>`, refused in the
+//! handler with v4's flat `Validation error`, pinned by the capstone family's
+//! `cs_wrong_type_400` / `rt_wrong_type_400` cases). The rows are therefore
+//! `FIXED(P4.73)` and the probe below asserts the POST-fix shape: the decode
+//! ACCEPTS a wrong type so the handler can refuse it.
 //!
 //! ## Nested request structs beyond the trio — a named deferral
 //!
@@ -1521,6 +1528,34 @@ const CENSUS: &[Row] = &[
             "envelope"
         ),
     },
+    // P4.73's images COLLECTION upload (added at the follow-ups-round-2
+    // unification: the mechanical walk found the three transport fields the
+    // moment the variant landed). Same shape as `FileUpload`'s trio — v4
+    // `app/api/v1/images/route.ts:452-458` reads the multipart `File`
+    // (`formData.get('file')`), so `filename`/`contentType`/`data` are the
+    // decoded upload and a wrong JSON type has no v4 counterpart; only the
+    // dispatch transport carries them as JSON.
+    Row {
+        variant: "ImageUpload",
+        field: "filename",
+        rust_type: "String",
+        v4: V4::NoCounterpart,
+        note: "`app/api/v1/images/route.ts:452-458` — multipart; the decoded `File`",
+    },
+    Row {
+        variant: "ImageUpload",
+        field: "content_type",
+        rust_type: "String",
+        v4: V4::NoCounterpart,
+        note: "`app/api/v1/images/route.ts:452-458` — multipart; the decoded `File`",
+    },
+    Row {
+        variant: "ImageUpload",
+        field: "data",
+        rust_type: "String",
+        v4: V4::NoCounterpart,
+        note: "`app/api/v1/images/route.ts:452-458` — multipart; the decoded `File`",
+    },
     Row {
         variant: "FileUpload",
         field: "filename",
@@ -2190,22 +2225,25 @@ const CHAT_CREATE_TRIO: &[Row] = &[
     Row {
         variant: "ChatCreateRequest",
         field: "concierge_state",
-        rust_type: "Option<Option<String>>",
+        rust_type: "Option<Option<Value>>",
         v4: V4::BodyParse,
-        note: "ORDERED(P4.73) — v4 `chats/route.ts:146,993` \
+        note: "FIXED(P4.73) — v4 `chats/route.ts:146,993` \
                `createChatSchema.conciergeState: z.enum([...]).optional()` under an \
                uncaught `.parse` → `{\"error\":\"Validation error\",\"details\":[…]}`. \
-               v5 answers `invalid chatCreate request: …` from \
-               `quilltap-host/src/spine.rs:1871`.",
+               v5 used to answer `invalid chatCreate request: …` from \
+               `quilltap-host/src/spine.rs:1871`; since P4.73 the field is a raw \
+               `Value` carrier and the handler answers the flat sentence \
+               (capstone `cs_wrong_type_400`).",
     },
     Row {
         variant: "ChatCreateRequest",
         field: "roleplay_template_id",
-        rust_type: "Option<Option<String>>",
+        rust_type: "Option<Option<Value>>",
         v4: V4::BodyParse,
-        note: "ORDERED(P4.73) — v4 `roleplayTemplateId: z.uuid().nullable().optional()`; \
-               same envelope. (`.nullable()` here, so an explicit null is a \
-               deliberate choice on BOTH sides — only a wrong TYPE diverges.)",
+        note: "FIXED(P4.73) — v4 `roleplayTemplateId: z.uuid().nullable().optional()`; \
+               same envelope, same fix (capstone `rt_wrong_type_400`). (`.nullable()` \
+               here, so an explicit null is a deliberate choice on BOTH sides — only \
+               a wrong TYPE diverged.)",
     },
 ];
 
@@ -2482,35 +2520,36 @@ fn body_sourced_rows_are_serde_type_rejected_today() {
 }
 
 #[test]
-fn chat_create_trio_still_diverges_and_is_ordered_to_p4_73() {
+fn chat_create_trio_fixed_by_p4_73_decodes_raw_so_the_handler_can_refuse() {
     use quilltap_core::services::chat_create::ChatCreateRequest;
 
-    // The minimum a `ChatCreateRequest` needs, so the probe's failure is the
-    // wrong TYPE and not a missing sibling.
+    // The minimum a `ChatCreateRequest` needs, so what the probe measures is
+    // the wrong TYPE and not a missing sibling. Post-fix, a wrong type must be
+    // ACCEPTED by the decode (the host driver's `invalid chatCreate request`
+    // envelope is no longer reachable for these two) — the refusal lives in the
+    // handler and is pinned by the capstone family, not here.
     let base = json!({ "participants": [] });
     for row in CHAT_CREATE_TRIO {
         assert!(
-            row.note.starts_with("ORDERED(P4.73)"),
-            "{}.{} must carry its ordered owner",
+            row.note.starts_with("FIXED(P4.73)"),
+            "{}.{} must carry its fixing owner",
             row.variant,
             row.field
+        );
+        assert_eq!(
+            row.rust_type, "Option<Option<Value>>",
+            "{}.{} must be recorded as the raw carrier it now is",
+            row.variant, row.field
         );
         let mut body = base.clone();
         body.as_object_mut()
             .unwrap()
-            .insert(camel(row.field), wrong_value(row.rust_type));
-        let err = serde_json::from_value::<ChatCreateRequest>(body)
-            .err()
-            .unwrap_or_else(|| {
-                panic!(
-                    "`{}` accepted a wrong-typed value — if that is a fix, retire this row",
-                    row.field
-                )
-            })
-            .to_string();
+            .insert(camel(row.field), json!(42));
+        let decoded = serde_json::from_value::<ChatCreateRequest>(body);
         assert!(
-            err.contains("invalid type") || err.contains("invalid value"),
-            "`{}` rejected for the wrong reason: {err}",
+            decoded.is_ok(),
+            "`{}` REJECTED a wrong-typed value at the decode — P4.73's widening has \
+             regressed and the host envelope is reachable again: {decoded:?}",
             row.field
         );
     }
