@@ -42,7 +42,10 @@ import { WARDROBE_SLOT_META } from './slot-meta';
 @Component({
   selector: 'qt-wardrobe-item-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  // The host needs a BOX: it is a direct child of a `space-y-*` stack, and a
+  // vertical margin never applies to a non-replaced inline box — see
+  // `_surfaces.css`'s rule for this class (P4.75, measured).
+  host: { class: 'qt-wardrobe-item-row', '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     <div
       class="qt-card-interactive py-2 px-3"

@@ -191,3 +191,21 @@ describe('WardrobeItemRow — the archive affordance (v4 d25dacc1)', () => {
     expect(labels).toContain('Copy');
   });
 });
+
+/**
+ * P4.75 (the residue-host adjudication, item 6): both of this row's stacks are
+ * Tailwind `space-y-1` containers (`wardrobe-control-dialog.ts:327` and the
+ * composite drill at `wardrobe-item-row.ts:256`), and an Angular custom element
+ * with no CSS rule renders `display: inline` — which silently ignores the
+ * vertical margin `space-y-*` puts on it. The fix is the host class + the
+ * `_surfaces.css` rule; jsdom computes no cascade, so the reachable pin is the
+ * class that rule targets (the dogfood-#97 idiom).
+ */
+describe('WardrobeItemRow — the host carries its own box (P4.75)', () => {
+  it('stamps qt-wardrobe-item-row on the host element', async () => {
+    const fixture = await render(dto({ id: 'i1', title: 'Silk Blouse' }));
+    expect(
+      (fixture.nativeElement as HTMLElement).classList.contains('qt-wardrobe-item-row'),
+    ).toBe(true);
+  });
+});

@@ -50,11 +50,23 @@ interface FolderPathOnly {
  * belongs to somewhere else.
  */
 /**
- * `#move-folder` is the dialog's `<label for>` target and the specs' handle
- * (v4's `FolderPicker` carries no id and its label has no `htmlFor`; v5 kept
- * the pre-existing association across the component boundary). The picker is
- * single-instance by contract — one Move-to-Project dialog at a time — so the
- * fixed id cannot collide; a second host would need it as an input.
+ * `#move-folder` is the dialog's `<label for>` target and the specs' handle.
+ *
+ * **RE-MEASURED at the `0b0617fee` pin (P4.75 item 7), and the standing note
+ * above holds.** v4's `FolderPicker.tsx:214` gives its `<select>` no id at all,
+ * and `MoveToProjectModal.tsx:190` labels it with a bare
+ * `<label className="qt-label mb-2">Folder</label>` carrying no `htmlFor` — so
+ * BOTH branches P4.75's order anticipated ("v4 has the same literal" / "v4 keys
+ * it per instance") are refuted: v4 has neither, and the association is a v5
+ * addition kept across the component boundary.
+ *
+ * The picker is single-instance by contract — `<qt-folder-picker>` has exactly
+ * one call site in the tree (`move-to-project-dialog.ts:69`) and that host is a
+ * modal — so the fixed id cannot collide. Recorded rather than "improved":
+ * keying it per instance would add machinery for a collision no arrangement of
+ * the app can produce, and deleting it to match v4 byte-for-byte would drop a
+ * working label association for no v4 mandate. A second host would take it as
+ * an input.
  */
 @Component({
   selector: 'qt-folder-picker',

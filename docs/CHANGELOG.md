@@ -623,6 +623,43 @@ query read reddens exactly its `empty_then_known` body plus `firstWins` and
 `UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
 conversation-summaries sentence reddens exactly that endpoint's four
 byte-compared rows.
+#### 2026-09-04 — fix(wardrobe): give the two `space-y` row hosts a box; adjudicate the residue
+
+_Versions: SPA 0.5.633._
+
+P4.D142 named twelve component hosts with no host class, no host style, and no
+bare-element CSS rule — each rendering `display: inline`, the shape that has
+shipped as a real bug three times. P4.75 adjudicated all twelve by MEASURING
+them in a real browser (computed `display`, the host's box against its first
+child's, the parent's display).
+
+Two were real. `qt-equipped-slot-row` and `qt-wardrobe-item-row` are direct
+children of Tailwind `space-y-*` stacks, and `space-y-N` works by putting
+`margin-top` on every child after the first — which a non-replaced inline box
+ignores. So those gaps silently collapsed to zero while block-hosted siblings
+(`qt-equipped-bundle-card`) kept theirs. Measured rather than reasoned: five
+live slot-row hosts in the wardrobe dialog reported `display: inline`, and the
+same stylesheet over three 20px rows in a `space-y-2` parent came to 60px with
+an inline host against 76px with a block one — the two missing 8px gaps
+exactly. Both hosts gain a `qt-*` class and a `_surfaces.css` rule (so the
+narrow guard polices them), spec-pinned, and the guard proven red-first against
+the stripped rule.
+
+The other ten are harmless, each for a measured reason, now written into
+`check-qt-classes.mjs`'s header: two are blockified by flex/grid parents; three
+render fixed-position overlays that are out of flow; three measured a host box
+equal to their child's on the axis that matters; one is 32×32 over a 32×32
+child; one is the first child of its stack, which `> * + *` never targets. The
+residue is therefore ten, not zero, so the WIDE invariant stays deferred — and
+the header now records why with a number: spelled out as "no host class, no host
+style/binding, no bare-element rule", a census over the tree counts 342 such
+hosts today, so P4.D142's dozen was a curated subset rather than the population.
+
+Also recorded (no code change): `#move-folder` is v5's own id, not a port —
+v4's `FolderPicker.tsx:214` gives its `<select>` no id and its label no
+`htmlFor`, refuting both branches the order anticipated. One call site, in a
+modal, so it cannot collide.
+
 #### 2026-09-04 — chore(spa): the SPA-wide `title=` census, and the two copy repairs it found
 
 _Versions: SPA 0.5.632._

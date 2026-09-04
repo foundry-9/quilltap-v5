@@ -118,3 +118,23 @@ describe('EquippedSlotRow (v4 equipped-slot-row.tsx)', () => {
     expect(el.textContent).toContain('No matching items.');
   });
 });
+
+/**
+ * P4.75 (the residue-host adjudication, item 6): this host is a direct child of
+ * `outfit-composer.ts`'s `space-y-2 mb-3` stack, and an Angular custom element
+ * with no CSS rule renders `display: inline` — which silently ignores the
+ * vertical margin `space-y-*` puts on it. Measured live: five slot-row hosts in
+ * the wardrobe dialog reported `display: inline`, and the same stylesheet over
+ * three 20px rows measured 60px inline vs 76px block (the two missing 8px
+ * gaps). The fix is the host class + the `_surfaces.css` rule; jsdom computes no
+ * cascade, so the reachable pin is the class that rule targets — the
+ * `standalone-document-view.spec.ts` idiom from dogfood #97.
+ */
+describe('EquippedSlotRow — the host carries its own box (P4.75)', () => {
+  it('stamps qt-equipped-slot-row on the host element', () => {
+    const fixture = render({ slot: 'top', equippedIds: [], allItems: [blouse] });
+    expect(
+      (fixture.nativeElement as HTMLElement).classList.contains('qt-equipped-slot-row'),
+    ).toBe(true);
+  });
+});

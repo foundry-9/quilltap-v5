@@ -40,12 +40,41 @@
  * shipped as a real bug three times (dogfood #97 `qt-tab-view`'s
  * `qt-standalone-document-view` host, the Almanack's `qt-entity-tabs`, dogfood
  * #107 `qt-markdown-field`). This is the NARROW form of that invariant — see
- * `docs/developer/porting/status-log.md` (P4.D142) for why the WIDER one (any
- * component host must have an explicit display, by a covering utility class,
- * host style, or bare-element rule — not just a `qt-*` class) was surveyed and
- * deliberately deferred rather than guessed at: the survey found roughly a
- * dozen existing hosts with no class, no style, and no bare-element rule at
- * all, and each needs its own visual judgment call this script cannot make.
+ * `docs/developer/porting/status-log.md` (P4.D142, then P4.75) for why the
+ * WIDER one (any component host must have an explicit display, by a covering
+ * utility class, host style, or bare-element rule — not just a `qt-*` class)
+ * stays deferred.
+ *
+ * P4.75 adjudicated P4.D142's twelve named residue hosts by MEASURING them in a
+ * real browser (computed `display`, the host's box against its first child's,
+ * and the parent's display). TWO were real and are fixed —
+ * `qt-equipped-slot-row` and `qt-wardrobe-item-row`, both direct children of a
+ * Tailwind `space-y-*` stack, where an inline box silently ignores the
+ * `margin-top` the stack puts on it (measured: three 20px rows came to 60px
+ * with an inline host against 76px with a block one). The other TEN are
+ * harmless, each for a reason that was measured rather than argued:
+ *
+ *   - `qt-search-bar`, `qt-custom-tools-popup` — reported `display: block`:
+ *     their flex/grid parents BLOCKIFY them, so the host's own display is moot.
+ *   - `qt-search-dialog`, `qt-wardrobe-control-dialog`,
+ *     `qt-library-file-picker-modal` — their content is a fixed-position
+ *     overlay, out of flow entirely; the host's 0x0 inline box lays out
+ *     nothing. (One consequence survives and the specs already work around it:
+ *     such a host never reports "visible" to Playwright.)
+ *   - `qt-wardrobe-dialog-inner`, `qt-wardrobe-tab-view`, `qt-photos-page` —
+ *     measured host box equal to the child's on the axis that matters
+ *     (1224x612 and 1224x720 respectively); the child's own container carries
+ *     the geometry, so nothing collapses.
+ *   - `qt-rng-dropdown` — a 32x32 host over a 32x32 child, alone in its own
+ *     gutter wrapper div.
+ *   - `qt-outfit-quick-pick` — the FIRST child of its `space-y-2` stack, which
+ *     `> * + *` never targets, so the missing margin cannot apply to it.
+ *
+ * The residue is therefore ten, not zero — and it is not the whole story:
+ * spelled out ("no host class, no host style/binding, and no bare-element
+ * rule"), a census over the tree counts 342 such hosts today. P4.D142's dozen
+ * was a curated subset, not the population, so the wide form would need an
+ * allowlist of that size — which rots faster than it protects.
  *
  * Escape hatch: a line containing `qt-class-exception` is skipped.
  *

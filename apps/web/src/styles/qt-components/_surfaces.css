@@ -1185,6 +1185,31 @@
   }
 
   /**
+   * The wardrobe stacks' row HOSTS (`wardrobe/equipped-slot-row.ts`,
+   * `wardrobe/wardrobe-item-row.ts`) — the same inline-host family again, with
+   * the quietest symptom yet: SPACING, not geometry.
+   *
+   * Both are direct children of a Tailwind `space-y-*` stack
+   * (`outfit-composer.ts`'s `space-y-2 mb-3`; the item list's `space-y-1`, and
+   * the composite drill's nested `space-y-1`), and `space-y-N` works by putting
+   * `margin-top` on every child after the first — which a **non-replaced inline
+   * box simply ignores**. So the gaps silently collapsed to zero on exactly
+   * these rows while their block-hosted siblings (`qt-equipped-bundle-card`)
+   * kept theirs, leaving a stack whose spacing depended on which component
+   * drew the row.
+   *
+   * Measured rather than reasoned (P4.75): five live `qt-equipped-slot-row`
+   * hosts in the wardrobe dialog reported `display: inline`, and the same
+   * stylesheet over three 20px rows in a `space-y-2` parent measured **60px
+   * total with an inline host vs 76px with a block one** — the two missing 8px
+   * gaps, exactly.
+   */
+  .qt-equipped-slot-row,
+  .qt-wardrobe-item-row {
+    display: block;
+  }
+
+  /**
    * Markdown form-field HOST element (`editor/markdown-field.ts`,
    * `host: { class: 'qt-markdown-field' }`) — the same inline-host bug class
    * as above (dogfood finding #107). Unlike the bare `display: block` fixes

@@ -17,7 +17,10 @@ import { selectGarments } from './composed-outfits';
 @Component({
   selector: 'qt-equipped-slot-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  // The host needs a BOX: it is a direct child of a `space-y-*` stack, and a
+  // vertical margin never applies to a non-replaced inline box — see
+  // `_surfaces.css`'s rule for this class (P4.75, measured).
+  host: { class: 'qt-equipped-slot-row', '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     <div class="qt-card py-2 px-3">
       <div class="flex items-center justify-between mb-1">
