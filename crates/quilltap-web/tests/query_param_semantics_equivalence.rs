@@ -874,5 +874,95 @@ async fn unserved_known_actions_are_pinned_v5_side() {
     // The duplicate-key class on a NON-action key is pinned where the venue
     // can discriminate it: `chats_collection_route.rs` (`?limit=1&limit=2`
     // answers `?limit=1`'s count) — this family's `system-data-*` venue lists
-    // no chats for the fixture user.
+    // no chats for the fixture user. P4.72's other per-site rows live with
+    // their venues too; see [`duplicate_non_action_keys_read_the_first`].
+}
+
+/// **P4.72 — the per-site DUPLICATED-key rows for the non-action keys**
+/// (P4.67's Tier 2 remainder). v4 reads most query keys with
+/// `searchParams.get`, the FIRST occurrence; v5's old `Query<HashMap>`
+/// extractor kept the LAST. Two of the classified sites can be discriminated
+/// on this family's `system-data-*` venue without any seeded row, because both
+/// have a value that REFUSES:
+///
+/// - `kind` on `GET /api/v1/system/image-aesthetics`
+///   (`llm_logs_routes.rs:110`) — `lantern`/`aurora` serve, anything else is
+///   v4's fixed `Query param "kind" must be "lantern" or "aurora"` 400.
+/// - `filePath` on `GET /api/v1/chats/{id}/qtap-target`
+///   (`qtap_target_route.rs:60`) — a present-but-EMPTY value is JS-falsy in
+///   v4's `querySchema` (`filePath` has `min(1)`), so it refuses; a non-empty
+///   one goes on to the chat lookup.
+///
+/// Each row asserts BOTH halves: that the repeat answers what the FIRST value
+/// answers, and that the second value answers something ELSE — without the
+/// second assertion the row would pass whichever value won (memory note
+/// `a-green-mutation-means-a-non-discriminating-arm`).
+///
+/// **The rest of the classified sites, and where they are pinned:**
+///
+/// | site | reader | pinned in |
+/// |---|---|---|
+/// | `limit` on `GET /api/v1/chats` | FIRST | `chats_collection_route.rs` (P4.67) |
+/// | `tag` on `GET /api/v1/photos` | ALL (`getAll`) | `photos_web_routes.rs` |
+/// | `q` / `limit` / `offset` on `GET /api/v1/photos` | FIRST | `photos_web_routes.rs` (P4.72) |
+/// | `force` on `DELETE /api/v1/files/{id}` | FIRST | `files_write_routes.rs` (P4.72) |
+///
+/// **Deferred loudly:** `scope` and `mountPoint` on the qtap-target route.
+/// Both are FIRST-wins reads through `crate::query::first` (the source is the
+/// pin), but neither has a value that answers differently until a chat AND a
+/// resolvable mount exist — the route's chat-404 precedes any use of them, and
+/// no committed fixture carries the pair. A row over either would be vacuous,
+/// so none is added; the class is recorded here and in the lane record.
+#[tokio::test]
+async fn duplicate_non_action_keys_read_the_first() {
+    let base = materialize_instance();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    async fn answer(client: &reqwest::Client, url: String) -> (u16, Value) {
+        let resp = client.get(url).send().await.unwrap();
+        let status = resp.status().as_u16();
+        let raw = resp.text().await.unwrap();
+        let body = serde_json::from_str(&raw).unwrap_or(Value::String(raw));
+        (status, body)
+    }
+
+    // --- `kind` on the image-aesthetics GET ---
+    let base_url = format!("http://{addr}/api/v1/system/image-aesthetics");
+    let good = answer(&client, format!("{base_url}?kind=lantern")).await;
+    let bad = answer(&client, format!("{base_url}?kind=zzz")).await;
+    assert_ne!(
+        good, bad,
+        "the `kind` pair must discriminate: {good:?} vs {bad:?}"
+    );
+    assert_eq!(
+        answer(&client, format!("{base_url}?kind=lantern&kind=zzz")).await,
+        good,
+        "`?kind=lantern&kind=zzz` must read the FIRST occurrence (v4 `searchParams.get`)"
+    );
+
+    // --- `filePath` on the qtap-target GET ---
+    let base_url = format!("http://{addr}/api/v1/chats/{CHAT}/qtap-target");
+    let present = answer(&client, format!("{base_url}?filePath=notes.md")).await;
+    let empty = answer(&client, format!("{base_url}?filePath=")).await;
+    assert_eq!(
+        empty.1["error"], "Invalid query: filePath is required",
+        "an empty `filePath` is v4's `min(1)` refusal: {empty:?}"
+    );
+    // Both answers are 400 here — the chat is absent from this venue, so the
+    // present-value leg gets past the query gate and dies on the chat lookup.
+    // The BODIES are what discriminate, so the whole answer is the comparand.
+    assert_ne!(
+        present, empty,
+        "the `filePath` pair must discriminate: {present:?} vs {empty:?}"
+    );
+    assert_eq!(
+        answer(&client, format!("{base_url}?filePath=notes.md&filePath=")).await,
+        present,
+        "`?filePath=notes.md&filePath=` must read the FIRST occurrence"
+    );
 }

@@ -396,6 +396,50 @@ post-mutation `files` + `characters` dumps so a refusal proves it wrote
 nothing. Seven mutation proofs; two of them (the key-less probe arm and the
 `avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
 blind spots, closed with dedicated fixture rows before the unit landed.
+#### 2026-09-03 — test(query): the per-site duplicate-key rows for the non-action keys (P4.72)
+
+_Versions: web 0.0.108._
+
+P4.67 classified every non-action query read by the v4 reader it mirrors but
+left the corpus with one duplicate-key pin. Five sites now carry a
+DISCRIMINATING row, and every one asserts both halves — that the repeat answers
+what the FIRST value answers, and that the second value answers something else.
+Without the second assertion the row would pass whichever value won.
+
+`photos_web_routes.rs` gains `q`, `limit` and `offset` (the `tag` ALL-wins pair
+was already there): an empty `q` lists while a real term takes the search path
+this seam-less assembly refuses, and `limit=abc` / `offset=abc` are `Number()`
+→ NaN → Zod's 400 where `limit=2` / `offset=0` are not.
+`query_param_semantics_equivalence` gains `kind` on the image-aesthetics GET
+(`lantern` serves, anything else is v4's fixed 400) and `filePath` on the
+qtap-target GET (an empty value is v4's `min(1)` refusal). Both of those needed
+no seeded row.
+
+**A pre-existing vacuity fell out of the `force` row.** `files_write_routes`
+wrapped its chat-file `?action=link` and `DELETE ?force=true` legs in
+`if let Some(file_id)`, and the committed `chat-send` fixture carries no
+`files` table at all — so neither leg had ever run. Measured, not assumed: a
+LAST-wins mutation of `files_delete`'s reader stayed green, and replacing the
+`if let` with a hard floor turned the test red at the unwrap. The table is now
+created in the test from v4's own `generateDDL` shape and one row seeded (the
+`instance_settings` materialization precedent), so both legs are real for the
+first time.
+
+**The `force` row itself is DEFERRED with its reason, not faked.** v5 refuses an
+unforced delete only when `compute_associations` finds a REAL reference — a
+character `defaultImageId`/avatar override or a message attachment. The
+`?action=link` leg writes only `linkedTo`, which both trees classify as stale
+and clear silently, so `force=false` and `force=true` answer the same 200.
+Closing it needs a venue whose seeded file is referenced by a character or a
+message. `scope` and `mountPoint` on the qtap-target route are deferred the
+same way: neither can answer differently until a chat AND a resolvable mount
+exist, and the route's chat-404 precedes both.
+
+Mutation-proven per site, each reverted by file backup: `photos_routes`'
+`number_param` → LAST-wins reddens exactly the `limit` row; the qtap
+`filePath` read → LAST-wins reddens exactly that row; the aesthetics `kind`
+read → LAST-wins reddens exactly that row.
+
 #### 2026-09-03 — refactor(files): the `fileId is required` guard moves into `chat_file_link` (P4.62(c))
 
 _Versions: core 0.0.769, web 0.0.107._

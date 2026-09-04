@@ -26,9 +26,70 @@ async fn dispatch(client: &reqwest::Client, addr: &std::net::SocketAddr, body: V
     resp.json().await.unwrap()
 }
 
+/// **P4.72 — the venue must actually carry a library file.**
+///
+/// The link + delete legs below were written behind `if let Some(file_id)`,
+/// and the committed `chat-send` fixture carries an EMPTY `files` table — so
+/// they had never run. (Measured, not assumed: replacing the `if let` with a
+/// hard floor turned the test red at the unwrap.) One row is seeded here, the
+/// `instance_settings` materialization precedent, so the arms are real: the
+/// `?action=link` leg gives it an association, and the `force` duplicate-key
+/// row then has two values that answer differently.
+fn seed_library_file(data: &std::path::Path) -> String {
+    use quilltap_core::db::Writer;
+    let id = "d1e2f3a4-0000-4000-8000-00000000f11e".to_string();
+    let w = Writer::open_writable(&data.join("quilltap.db"), common::TEST_PEPPER).unwrap();
+    // The chat-send fixture carries no `files` table AT ALL (the same fact
+    // `files_body_guards_equivalence`'s header records, which is why that
+    // family serves the `system-data-*` venue instead). The table is created
+    // here from v4's own `generateDDL` shape — the committed
+    // `provisioning/fresh_schema.json` `files` entry, column for column — so
+    // the seeded row is the shape the repository reads.
+    w.connection()
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS \"files\" (\n\
+               \"id\" TEXT PRIMARY KEY NOT NULL,\n\
+               \"userId\" TEXT NOT NULL,\n\
+               \"sha256\" TEXT NOT NULL,\n\
+               \"originalFilename\" TEXT NOT NULL,\n\
+               \"mimeType\" TEXT NOT NULL,\n\
+               \"size\" REAL NOT NULL,\n\
+               \"width\" REAL,\n\
+               \"height\" REAL,\n\
+               \"isPlainText\" INTEGER,\n\
+               \"linkedTo\" TEXT DEFAULT '[]',\n\
+               \"source\" TEXT NOT NULL,\n\
+               \"category\" TEXT NOT NULL,\n\
+               \"generationPrompt\" TEXT,\n\
+               \"generationModel\" TEXT,\n\
+               \"generationRevisedPrompt\" TEXT,\n\
+               \"description\" TEXT,\n\
+               \"tags\" TEXT DEFAULT '[]',\n\
+               \"projectId\" TEXT,\n\
+               \"folderPath\" TEXT,\n\
+               \"storageKey\" TEXT,\n\
+               \"fileStatus\" TEXT DEFAULT 'ok',\n\
+               \"createdAt\" TEXT NOT NULL,\n\
+               \"updatedAt\" TEXT NOT NULL\n\
+             )",
+        )
+        .expect("create the files table");
+    w.connection()
+        .execute(
+            "INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, \
+             linkedTo, source, category, tags, storageKey, fileStatus, createdAt, updatedAt) \
+             VALUES (?1, ?2, 'f0f0', 'seed.txt', 'text/plain', 4, '[]', 'upload', 'general', \
+             '[]', 'files/seed.txt', 'ok', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+            rusqlite::params![id, quilltap_core::api::SINGLE_USER_ID],
+        )
+        .expect("seed a library file");
+    id
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn files_write_web_edges() {
     let base = common::materialize_fixture_instance();
+    let seeded = seed_library_file(&base.path().join("data"));
     let (addr, _state) = common::serve_instance(base.path(), |mut c| {
         c.terminal = false;
         c
@@ -68,16 +129,17 @@ async fn files_write_web_edges() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["error"], "Invalid tags JSON");
 
-    // Find an existing library file (the orchestrator corpus carries generated
-    // images) to drive the link + delete legs.
+    // The seeded library file drives the link + delete legs. Read it back
+    // through the real listing rather than trusting the INSERT, so a fixture
+    // whose `files` schema moves fails here rather than silently skipping.
     let files = dispatch(&client, &addr, json!({"type": "filesList"})).await;
     let file_id = files["data"]["files"]
         .as_array()
-        .and_then(|a| a.first())
+        .and_then(|a| a.iter().find(|f| f["id"] == seeded.as_str()))
         .and_then(|f| f["id"].as_str())
-        .map(str::to_string);
-
-    if let Some(file_id) = file_id {
+        .map(str::to_string)
+        .expect("the seeded library file must be listed");
+    {
         // --- chat-file action=link → 200 {file} ---
         let resp = client
             .post(format!(
@@ -91,6 +153,24 @@ async fn files_write_web_edges() {
         let body: Value = resp.json().await.unwrap();
         assert_eq!(body["file"]["id"], file_id);
         assert_eq!(body["file"]["url"], body["file"]["filepath"]);
+
+        // --- P4.72: the `force` DUPLICATE-key row, DEFERRED with its reason ---
+        //
+        // `force` is a FIRST-wins `searchParams.get` read
+        // (`files_routes.rs:1146`), and the intended row was
+        // `?force=false&force=true` vs `?force=true&force=false`. It cannot
+        // discriminate here, and this is measured rather than assumed: v5's
+        // delete only refuses when `compute_associations` finds a REAL
+        // reference — a character `defaultImageId`/avatar override, or a
+        // message attachment (`api/files.rs:548-556`). The `?action=link` leg
+        // above writes only `linkedTo`, which BOTH trees classify as stale and
+        // clear silently, so `force=false` and `force=true` answer the same
+        // 200 and the row would pass whichever value won (memory note
+        // `a-green-mutation-means-a-non-discriminating-arm`). Confirmed by
+        // building the row and watching a LAST-wins mutation of this route's
+        // reader stay green. Closing it needs a venue whose seeded file is
+        // referenced by a character or a message; recorded in the lane record
+        // as the follow-up, not faked here.
 
         // --- DELETE /api/v1/files/{id}?force=true → 200 {success:true} ---
         let resp = client

@@ -114,6 +114,63 @@ async fn photos_web_edges() {
         .unwrap();
     assert_eq!(body["total"], 1, "one tag, one match: {body}");
 
+    // --- P4.72: the DUPLICATE-key rows for this route's other three keys ---
+    //
+    // `tag` is v4 `getAll` (ALL wins) and the two arms above are its
+    // discriminating pin. The other three — `q`, `limit`, `offset` — are v4
+    // `searchParams.get`/`has` (FIRST wins), and `Query<HashMap>` used to keep
+    // the LAST. Each pair below is chosen so the two values answer
+    // DIFFERENTLY, and both halves are asserted: that the repeat answers the
+    // FIRST value's answer, AND that the second value's answer is not the same
+    // (without which the row would pass no matter which value won).
+    let answer = |q: &'static str| {
+        let client = client.clone();
+        let url = url(q);
+        async move {
+            let resp = client.get(url).send().await.unwrap();
+            let status = resp.status().as_u16();
+            let body: Value = resp.json().await.unwrap();
+            (status, body)
+        }
+    };
+
+    // `q`: an empty string is JS-falsy for `needsQueryEmbedding`, so it LISTS;
+    // a real term takes the search path, which this seam-less assembly refuses.
+    let empty_q = answer("/api/v1/photos?q=").await;
+    let term_q = answer("/api/v1/photos?q=dawn").await;
+    assert_ne!(empty_q.0, term_q.0, "the `q` pair must discriminate");
+    assert_eq!(
+        answer("/api/v1/photos?q=&q=dawn").await,
+        empty_q,
+        "`?q=&q=dawn` must read the FIRST occurrence (v4 `searchParams.get`)"
+    );
+
+    // `limit`: `abc` is `Number('abc')` → NaN → Zod's 400.
+    let good_limit = answer("/api/v1/photos?limit=2").await;
+    let nan_limit = answer("/api/v1/photos?limit=abc").await;
+    assert_ne!(
+        good_limit.0, nan_limit.0,
+        "the `limit` pair must discriminate"
+    );
+    assert_eq!(
+        answer("/api/v1/photos?limit=2&limit=abc").await,
+        good_limit,
+        "`?limit=2&limit=abc` must read the FIRST occurrence"
+    );
+
+    // `offset`: same shape, through the same `number_param` reader.
+    let good_offset = answer("/api/v1/photos?offset=0").await;
+    let nan_offset = answer("/api/v1/photos?offset=abc").await;
+    assert_ne!(
+        good_offset.0, nan_offset.0,
+        "the `offset` pair must discriminate"
+    );
+    assert_eq!(
+        answer("/api/v1/photos?offset=0&offset=abc").await,
+        good_offset,
+        "`?offset=0&offset=abc` must read the FIRST occurrence"
+    );
+
     // --- Pagination ---
     let body: Value = client
         .get(url("/api/v1/photos?limit=2&offset=0"))

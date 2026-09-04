@@ -103703,3 +103703,54 @@ Green over oracles regenerated fresh from the `0b0617fee` pin:
 `files_body_guards_equivalence`, `files_routes_equivalence` (both through the
 sweep driver), plus `files_write_routes`.
 
+## Lane record — P4.72 (unit 3): the per-site duplicate-key rows
+
+P4.67's Tier 2 remainder. Five classified non-action sites now carry a
+DISCRIMINATING row, each asserting BOTH halves — the repeat answers the FIRST
+value's answer, AND the second value answers something else. Without the second
+half the row passes whichever value wins (memory note
+`a-green-mutation-means-a-non-discriminating-arm`).
+
+- `photos_web_routes.rs`: `q` (empty lists / a term takes the seam-less search
+  path's 500), `limit` and `offset` (`abc` is `Number()` → NaN → Zod's 400).
+  The `tag` ALL-wins pair was already there; it is the pointer, not a new row.
+- `query_param_semantics_equivalence::duplicate_non_action_keys_read_the_first`:
+  `kind` on the image-aesthetics GET (`lantern` vs anything else) and
+  `filePath` on the qtap-target GET (empty is v4's `min(1)` refusal). Neither
+  needs a seeded row — and the `filePath` pair's two answers are BOTH 400, so
+  the comparand is the whole answer, not the status (the first draft compared
+  statuses and failed as designed).
+- `chats_collection_route.rs`'s `?limit=1&limit=2` (P4.67) is the fifth,
+  unchanged.
+
+**A pre-existing vacuity, found by a surviving mutation.** The `force` row was
+written against `files_write_routes`, and a LAST-wins mutation of
+`files_delete`'s reader stayed GREEN. Chasing that: the whole
+`if let Some(file_id)` block — the chat-file `?action=link` leg AND the
+`DELETE ?force=true` leg — had never run, because the committed `chat-send`
+fixture carries no `files` table at all (the same fact
+`files_body_guards_equivalence`'s header records as its reason for serving the
+`system-data-*` venue instead). Replacing the `if let` with a hard floor turned
+the test red at the unwrap. The table is now created in the test from v4's own
+`generateDDL` shape (the committed `provisioning/fresh_schema.json` `files`
+entry, column for column) and one row seeded — the `instance_settings`
+materialization precedent — so both legs are real for the first time.
+
+**The `force` row itself is DEFERRED LOUDLY, with its measured reason.** v5
+refuses an unforced delete only when `compute_associations` finds a REAL
+reference — a character `defaultImageId`/avatar override or a message
+attachment (`api/files.rs:548-556`). The `?action=link` leg writes only
+`linkedTo`, which BOTH trees classify as stale and clear silently, so
+`force=false` and `force=true` answer the same 200. Closing it needs a venue
+whose seeded file is referenced by a character or a message. `scope` and
+`mountPoint` on the qtap-target route are deferred the same way and for the
+same kind of reason: neither can answer differently until a chat AND a
+resolvable mount exist, and that route's chat-404 precedes both.
+
+**Mutation proofs** (each verified applied, then reverted by file backup):
+`photos_routes::number_param` → LAST-wins reddens exactly
+`?limit=2&limit=abc`; the qtap `filePath` read → LAST-wins reddens exactly that
+row; the aesthetics `kind` read → LAST-wins reddens exactly that row. The
+fourth (`files_delete` → LAST-wins) SURVIVED, which is what exposed the vacuity
+above — recorded because a surviving mutation is a measurement, not a nuisance.
+
