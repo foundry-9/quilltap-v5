@@ -2824,6 +2824,33 @@ records THERE. Update this summary only when a phase or round completes.
   followed by a real local-model completion through the container in 8 s. The
   repo's first CI workflow rides along, **manual-only**
   (`.github/workflows/docker-image.yml`, `workflow_dispatch`).
+- **The follow-ups round 2 (P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75): UNIFIED on
+  main (2026-09-04) — P4.72 / P4.74 / P4.75 CLOSED, P4.73 PARTIAL (its
+  `?action=generate` leg + P4.62(a)'s FILES leg OPEN); the baseline STAYS
+  `0b0617fee`.** The second non-drift round: the whole P4.67 remainder (the
+  `?action=` family at 32 endpoints, the duplicate-key rows, P4.62(c)) + the
+  dispatch wrong-type census (240 rows; its `*_id` exclusion PINNED at 403
+  after the review found it dropping real v4 body keys — the honest allow-list
+  is a named candidate) ∥ the never-ported `/api/v1/images` COLLECTION route
+  (list / upload / import-from-URL over a new host fetch seam / the `{id}`
+  DELETE) over a new committed fixture + a 32-case real-DB family, **the host
+  pixel codec threaded into chat uploads** (P4.D152's candidate; v5 now
+  transcodes to WebP as v4 does), the `ChatCreate` wrong-type trio on both
+  transports ∥ the failover `auth` chain arm, two stray status parsers retired
+  (a thirteenth census-named), six shared-stage recipes re-staged, all sixteen
+  `[Image Fallback]` calls dispositioned, the first written handler-logging
+  inventory ∥ the streaming bubble's avatar (v4's ONE `shouldShowAvatars` —
+  v5's `GROUP_ONLY` arm was an invention), the search-documents intermittent
+  root-caused to the BEAT, the `title=` census + two copy repairs, the residue
+  hosts. **The §3 review's headline catch: P4.73's dedup arm bypassed the UUID
+  refusal and answered 201 where v4 answers 400 before any write** — fixed with
+  five new arms on both sides, mutation-proven; twelve should-fixes across the
+  four lanes; the cross-lane `ChatCreate` tripwire fired at the unified gate as
+  designed. Gate: fmt/clippy both feature sets clean; 17/17 families fresh from the `0b0617fee` pin zero SKIP (+2 and +1 re-runs after the review fixes); **494 test binaries / 2,780 / 0 / 1 ignored, zero SKIP**; release build; ng 378 files / 5,945; full Playwright **274 / 0 / 0** after the gate's own catch — the image-detail beat's two seeds were pixel-identical and now dedup under the host codec, as v4's do (fixed spec-side). Versions: core 0.0.776, harness 0.0.671, web
+  0.0.114, host 0.0.96, SPA 0.5.642. 💸 the dogfood queue gains the images
+  route + the chat-upload WebP transcode + the streaming avatar on real data.
+  **Next: `p4.9i2` as its own round (or the drift catch-up if one arrives
+  first) — see phase-4.md.** Round record: `status-log.md`.
 - **Oracle baseline: `0b0617fee` (2026-09-02, v4 main — bugs 116-118 fixed),
   adopted at the `0b0617fee` drift catch-up round unification (2026-09-03).**
   **Drift state, the drift-check method, and the pinned-worktree regen

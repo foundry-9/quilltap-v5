@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-04 — unify: the follow-ups round 2 (P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75)
+
+_Versions: core 0.0.776, harness 0.0.671, web 0.0.114, host 0.0.96, SPA 0.5.642._
+
+Four lanes unified onto main; P4.72 / P4.74 / P4.75 CLOSED, P4.73 PARTIAL
+(the `?action=generate` leg and P4.62(a)'s files leg stay open by its own
+header). The oracle baseline stays `0b0617fee`; the drift ledger's one row is
+unmoved. Landed: the whole P4.67 remainder plus the dispatch wrong-type
+census; the `/api/v1/images` collection route (list, upload, import-from-URL,
+the `{id}` DELETE) with a new committed fixture and real-DB family, the host
+pixel codec threaded into chat uploads, the `ChatCreate` wrong-type trio; the
+failover `auth` chain arm, two stray participant-status parsers retired, six
+shared-stage recipes re-staged, the `[Image Fallback]` and `create_system_event`
+log pins and the first written handler-logging inventory; the streaming
+bubble's avatar column, the search-documents intermittent root-caused to the
+beat, the SPA-wide `title=` census and two copy repairs, the residue hosts.
+The §3 review's headline catch (P4.73's dedup arm bypassing the UUID refusal)
+and twelve should-fixes across the four lanes landed as three review commits
+on the unify branch; the wires retired the cross-lane `ChatCreate` tripwire,
+added the images endpoint to the query-param family, and recounted versions.
+Gate: fmt/clippy both feature sets clean; 17 families fresh from the pin zero SKIP; 494 test binaries / 2,780 / 0 / 1 ignored, zero SKIP; release build; ng 378 / 5,945; full Playwright 274 / 0 / 0 after one spec-side repair (the image-detail beat seeded two pixel-identical PNGs, which now dedup under the host codec exactly as v4 dedups them). Round record in `status-log.md`.
+
 #### 2026-09-04 — fix(spa,harness): the §3 review's P4.74 + P4.75 findings — the thirteenth residue host, the beat's live window, the whole `'AI'` string, the case headers' anchored filters, the inventory's missing sibling
 
 _Versions: SPA 0.5.641._

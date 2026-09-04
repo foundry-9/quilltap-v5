@@ -24,6 +24,10 @@ probe verifies against._
   21:04 -0500, v4 `4.9.0-dev.120`), adopted at the `0b0617fee` drift catch-up
   round unification (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152,
   2026-09-03).
+- **Probed at the follow-ups round 2 unification (2026-09-04): PASS** — v4 `main`
+  still `15573c3a1`, tree clean, both logs empty; the baseline did NOT move
+  (the round absorbed no drift row) and every regen ran from a pinned worktree
+  at `0b0617fee`. The §1 fields below stand as checked on 2026-09-03.
 - **Checked:** 2026-09-03 (a full `/driftcheck` run AFTER the unification — the
   third probe of the day; the two earlier ones were the unification's own, run
   before the cherry-picks and before the gate). **Nothing has moved on either

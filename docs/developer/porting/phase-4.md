@@ -6256,6 +6256,80 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The follow-ups round 2 (P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75) — UNIFIED 2026-09-04
+
+**UNIFIED on main (2026-09-04) — P4.72 / P4.74 / P4.75 CLOSED, P4.73 PARTIAL
+(the `?action=generate` leg + P4.62(a)'s FILES leg OPEN by its own header);
+the oracle baseline STAYS `0b0617fee`, the ledger's one §3 row (`15573c3a1`,
+bug 119 → `p4.9k`) unmoved.** Landed: the whole P4.67 remainder (the family at
+32 endpoints, the per-site duplicate-key rows, P4.62(c)) + the dispatch
+wrong-type census (240 rows / 125 variants, with its exclusion PINNED at 403
+and its totality claim withdrawn) + the two `actionLogger.warn` pins ∥ the
+`/api/v1/images` COLLECTION route as dispatch verbs + thin edges (list /
+upload / import-from-URL over a NEW host fetch seam / the `{id}` DELETE
+retiring the P4.9a2 refusal) over a NEW committed `images-{main,mount}.db`
+pair and a 32-case real-DB family, **the host pixel codec threaded into the
+chat-upload dispatch arm** (P4.D152's named candidate — a composition-level
+wiring pin whose files-row half the §3 review found had never run), the
+`ChatCreate` wrong-type trio answering v4's flat `Validation error` on BOTH
+transports (the typed decode is the host driver's — both lanes were right
+about different layers) ∥ the failover `auth` chain arm with BOTH reason
+spellings, the eleventh + twelfth participant-status copies retired (a
+THIRTEENTH found and census-named: `db/chats_messages.rs`, whose status IS
+read), six shared-stage recipes re-staged lane-unique, all sixteen v4
+`[Image Fallback]` calls dispositioned + `create_system_event`'s catch, and
+the first WRITTEN handler-logging inventory (205 rows) ∥ the streaming
+bubble's avatar column with v4's ONE `shouldShowAvatars` (v5's `≥2` arm was
+an invention — removed), a mid-turn beat, the search-documents intermittent
+root-caused to the BEAT (two causes, 30/30 ×10), the `title=` census as a
+committed script + two byte-exact copy repairs, twelve of thirteen residue
+hosts adjudicated (the thirteenth at unification). **The §3 review's
+headline catch:** P4.73's dedup arm bypassed the UUID refusal and answered
+201 where v4 answers 400 before any write — fixed with five new arms on both
+sides, mutation-proven; plus twelve should-fixes across the four lanes (the
+round record has every one). Gate: fmt/clippy both feature sets clean; 17/17 families fresh from the `0b0617fee` pin zero SKIP (+2 and +1 re-runs after the review fixes); **494 test binaries / 2,780 / 0 / 1 ignored, zero SKIP**; release build; ng 378 files / 5,945; full Playwright **274 / 0 / 0** after the gate's own catch — the image-detail beat's two seeds were pixel-identical and now dedup under the host codec, as v4's do (fixed spec-side). Versions: core 0.0.776,
+harness 0.0.671, web 0.0.114, host 0.0.96, SPA 0.5.642. Round record:
+`status-log.md` → "Round record — the follow-ups round 2 unification".
+
+**Next candidates, in rough value order** (updated at this unification,
+2026-09-04):
+
+1. **`p4.9i2` — help/HelpChat as a dedicated round** (recommended NEXT; the
+   bank holds nine notes now). Or, if a drift arrives first, the catch-up —
+   pin `0b0617fee` for every regen until it runs.
+2. **The owed dogfood pass over this round's surfaces** on the Friday copy
+   (the 💸 list in the round record: the images collection route end to end,
+   the chat-upload WebP transcode, the streaming avatar on a real
+   multi-character turn, the search-open shape) + the standing queue.
+3. **P4.73's remainder:** `POST /api/v1/images?action=generate` (the lane
+   record's survey — the erased image-GENERATION seam, the Concierge stack
+   from a route handler, both tripwires stay ARMED until it lands; the
+   `activity_span_sites_guard` substring trap), and P4.62(a)'s FILES leg with
+   its CORRECTED shape (v4 REFUSES a non-UUID id — 500 `Failed to upload
+   file`, orphaned blob — where v5 filter-maps and succeeds). Plus the
+   review's recorded items: the DELETE's orphan cleanup vs the
+   archived-character write guard, `zod_url_ok`'s authority-less schemes, the
+   two `[Images v1]` info lines, the unbounded JSON read, the order-dependent
+   `cannedFetch`.
+4. **The census's honest totality** — a per-variant allow-list of the fields
+   v4 really reads from the URL and the ~160 unclassified body-key rows
+   (`ChatSend`'s four, the announcement/mail ids, …); then the fixes the
+   census names, by row (P4.72's second-level structs too).
+5. **The present-but-null validation lead** (`api/**`-wide; ownership is free
+   again).
+6. The carried smalls: the thirteen `CaptureLayer` copies → one
+   `#[cfg(test)]` helper; the `?action=` endpoint census (the family's list
+   is hand-maintained); `files_write_routes.rs`'s transcribed DDL; the
+   `chat_files_post_*` bare/empty 500-vs-400 divergence the family cannot
+   see; the streaming column's duplicated markup; the thirteenth
+   participant-status copy + five harness copies; `p4.9k` (with bug 119's
+   post-fix shape); the `docs/v4/` mirror refresh.
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json` file
+port remains a NAMED standalone flag.
+
+**The ordering-time section follows for history:**
+
 ## The follow-ups round 2 (P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75) — ORDERED 2026-09-03
 
 **Four parallel lanes, no drift.** The ledger's §2 probe passed at ordering

@@ -104179,3 +104179,284 @@ not the population; the wide form would need an allowlist of that size.
 💸 **For the next dogfood pass:** the streaming avatar on a real
 multi-character turn — does the column show the RESPONDING character rather than
 the first one, on a chat where the two differ?
+
+## Round record — the follow-ups round 2 unification (P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75)
+
+**UNIFIED on main (2026-09-04) — P4.72 / P4.74 / P4.75 CLOSED, P4.73 PARTIAL
+(its `?action=generate` leg and P4.62(a)'s FILES leg stay OPEN by the lane's
+own honest header); the oracle baseline STAYS `0b0617fee`; the drift ledger's
+§3 holds its one row (`15573c3a1`, bug 119, `p4.9k`'s) unmoved.** The second
+non-drift round since P4.59, unified from four clean lane worktrees onto
+`unify/follow-ups-round-2` in dependency order (P4.74 → P4.73 → P4.72 →
+P4.75; 28 commits; the only conflicts were version files, taken theirs and
+recounted as base + every lane's bumps; the three append-only docs
+union-merged with the `.git/info/attributes` trick and audited for
+duplicated additions — two repeated section-heading lines across lane
+records, nothing else). Ownership was respected to the file: no two lanes
+touched a source file, and neither §F/§G same-file region was needed (P4.73
+deferred P4.62(a)'s files leg, so `files_routes.rs` stayed P4.72's alone).
+
+### The survey
+
+The ledger's §2 probe PASSED at unification: v4 `main` at `15573c3a1`, tree
+clean, both logs empty — so §1's verdict stood (one commit past the
+baseline, an unported surface) and the regen rule was PIN REQUIRED at
+`0b0617fee`, honoured for every regen through a single unify-owned detached
+worktree (`/tmp/qt-v4-pin-unify-fu2-0b0617fee`, all three symlink classes),
+the sweep driver rewriting every recipe's `cd`. Each lane's delivered scope
+was read against its order's tier list, not its close claim; the doubts
+carried into §3 were (a) P4.72 and P4.73 disagreeing about WHERE the
+`ChatCreate` trio decodes — both right about different layers, as it turned
+out — and (b) P4.73's "coordination-only" `?action=` row.
+
+### The §3 review — four parallel readers + the unifier's own reads
+
+**The finding that would have shipped (P4.73, BLOCKING):**
+`create_file_conns`' dedup-with-growth arm bypassed the UUID refusal the
+create arm carried. For an upload whose bytes already existed with a raw
+`tagId` (`[{"tagId": 5}]`), v4's `repos.files.update` re-validates the row
+against `FileEntrySchema` BEFORE any write and answers 400 with nothing
+written; v5 merged `"5"` into `linkedTo`, then `add_raw_tag_value` did a raw
+`UPDATE files SET tags` pushing the NUMBER 5, and answered 201. The order's
+Tier 1 item 5 had required "the dedup-existing arm; the dedup-orphaned
+cleanup arm" and neither existed — the harness codec prefixes every PNG, so
+no case could ever collide with a seeded row. Fixed on the unify branch
+(`d2b714d2`): the check now precedes the update (no orphan on that path,
+unlike the create arm where v4's own bridge write precedes the throw);
+`add_raw_tags`' raw writer retired for a UUID guard (its doc had claimed v4's
+`addTag` pushes raw values — it goes through the validating `update`); five
+arms added to `images_routes_equivalence` on BOTH sides —
+`upload_dedup_existing_notag` / `_grows` / `_raw_tagid` over F_INUSE's
+literal WebP bytes (a PASSTHROUGH type on both implementations, so the sha
+collides identically; the receipt names F_INUSE and nothing is minted), the
+two-step `upload_dedup_orphan_cleanup` (upload the SVG, delete its
+`doc_mount_blobs` row on both sides, upload again → v4's "Cleaning up
+orphaned file metadata before re-upload" and a fresh row), and
+`import_tags_extra_keys`. The fresh v4 rows are exactly the predicted shapes
+(201 F_INUSE / 201 F_INUSE + tag / 400 `Validation error` / 201 new id /
+rebuilt `{tagType, tagId}`), v5 matches all five, and the mutation proof
+(the dedup check removed, restored by backup) reddens exactly
+`upload_dedup_existing_raw_tagid`.
+
+**P4.73's other findings, fixed on the unify branch:** four coverage claims
+the code did not support — the family header named a driver
+(`images_post_edge_arms`) that did not exist; the lane record said
+`upload_action_unknown` pinned the `?action=` fall-through when it called
+the verb with the same arguments as `upload_png` and never touched the edge;
+`api/images.rs` said the `validateImageFile` sentences were unit-pinned when
+the file had no test module (they are now); and the edge's "registered in
+the family" line became true only when the unifier added the row. The
+edge's unreadable/unparseable JSON and malformed multipart bodies answered a
+400 (`Validation error`) and a v5-invented `Invalid multipart body` where v4's
+`request.json()` / `request.formData()` throwing is the middleware's
+unhandled-error **500 `Internal server error`** — fixed and pinned by the NEW
+`images_edge_routes` web test over the images fixture (its first run found
+the venue keyed with the common test pepper, not the images corpus pepper —
+the engine answered `The engine is not running` 503 to every arm). The
+import receipt echoed the RAW tag objects where v4 echoes
+`importFromUrlSchema.parse`'s rebuilt ones (unknown keys stripped, `tagType`
+then `tagId` — the family's own comparand is key order, and every corpus
+case wrote the keys in schema order). `roleplayTemplateId`'s wrong-type
+refusal sat AFTER the continuation 404 and the autonomous 400s where v4
+Zod-parses the whole body first — hoisted beside `conciergeState`, pinned by
+`rt_wrong_type_before_404` (a missing continuation chat + a numeric template
+id → 400 on both). **The chat-upload codec wiring pin's files-row half had
+NEVER run**: it read `data.id` / `id` behind `if !file_id.is_empty()`, and
+the receipt is `{"file": {"id", …}}` — the review predicted the hole; making
+it a hard floor measured it (the assertions then passed for real); its owner
+probe compared `USER_A` with the literal it is defined as, and the fixture
+turns out to seed TWO owners. A fourth `z.uuid()` transcription folded onto
+`is_zod_uuid`; both tripwires' prose said v5 serves only
+`/api/v1/images/{id}`; the contract comment named one refusing path.
+**Recorded, not fixed:** the DELETE's orphan cleanup writes `characters`
+rows raw where v4's `validateCharacterArchivePatch` would throw on an
+ARCHIVED character (the fixture seeds none); `zod_url_ok` refuses
+authority-less schemes v4's `new URL()` accepts; the two `[Images v1]`
+upload/import info lines are unported; the JSON body read is unbounded; the
+oracle's `cannedFetch` is order-dependent across cases; three "driven" cases
+call the verb with a sibling's arguments (they pin v4 only).
+
+**P4.72 (BLOCKING ×2, both claim defects — the data was right where
+sampled):** the census's totality claim was false. `is_route_identifier`
+excludes every `id` / `*_id` / `*_ids` field on the premise that v4 takes
+them from the URL — 403 of 643 typed fields — but a large part of what it
+drops are v4 BODY keys under an uncaught `.parse`: `ChatSend.{file_ids,
+target_participant_ids, speaking_as_participant_id,
+responding_participant_id}` (`orchestrator.service.ts:149-181`, parsed at
+`chats/[id]/messages/route.ts:47-48`), the announcement and mail verbs' id
+fields (`chats/[id]/schemas.ts:223-247`), `ChatUpdateParticipant`'s three,
+`ChatSetAvatar.image_id`, `CharacterAvatar.image_id`,
+`ChatMergeConversation.source_chat_id`, `SystemExportPreview.selected_ids`,
+the reattribute pair, the tag-add pairs. The honest fix — a per-variant
+allow-list of what v4 really reads from the URL and ~160 more classified
+rows — is a round of its own (a named candidate); landed as the stopgap the
+review proposed: the excluded set's size pinned
+(`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE = 403` — the reviewer's hand count,
+exact), the header withdrawing "one row per typed field". And "a SOURCE
+census on both sides, which cannot go stale silently" was false: the v4 half
+is a transcription read at the pin; the only file the census reads is
+`api/types.rs`. Reworded. Should-fixes landed: `character_item_get`'s
+`known` action `stats` (unserved by v5, a V5_PINNED endpoint) was asserted
+NOWHERE — now in `UNSERVED_KNOWN_ACTIONS`; the unlock edge's doc still said
+the four siblings "answer `unknown_action` here" three lines above the
+change that stopped them, and its list carried a dead `change-passphrase`
+entry; the chat-GET comment contradicted its own pinned sentence (two
+handlers answer that URL — named); the log-field spelling divergence is
+noted at both emitters. Recorded: five of the family's endpoints are
+V5_PINNED, so their three equalities are vacuously true; the
+`chat_files_post_*` rows carry a pre-existing bare/`?action=`/unknown
+divergence the family structurally cannot see (v4 falls to `formData()` and
+500s `Failed to upload file`; v5 answers 400 `Expected multipart/form-data`);
+the `?action=` surface has no census of its own (the endpoint list is
+hand-maintained — this round's `images_collection_post` had to be added by
+hand); `files_write_routes.rs` hand-transcribes the `files` DDL.
+
+**P4.74 (no blocking):** the shared-stage fix landed in the `.rs` twins only —
+`carina-tool.test.ts` and `mail-tools.test.ts` still carried the UNANCHORED
+jest filter the lane itself diagnosed (the new stage dir name CONTAINS
+`carina-tool`); the inventory could not see `token-tracking.service.ts`'s
+`Failed to update chat token aggregates` catch — the sibling of
+`create_system_event`'s row, three lines below it in `cost_events.rs` —
+because the seed list never named that file (seeded; 203 → 205 rows, NO-SITE);
+the oracle's `profileKey` union advertised `'profile'`, which `primaryOf`
+folds silently and the Rust twin panics on. All three fixed; plus the
+`state-cascade.test.ts` `WT=` placeholder and the script's duplicated
+docstring / unused import. Verified clean by the reviewer, in detail: the
+`auth` arm is real (v4 `provider-failover.service.ts:583-592`, both reason
+spellings in one case; the fifth `toConnectionProfile` site is the
+load-bearing one; the tier-picker argument holds against
+`tier-picker.ts:52-74`), both retirements are output-neutral by construction,
+the thirteenth-copy claim is TRUE (`db/chats_messages.rs:691-696`, and its
+status IS read), all sixteen v4 `[Image Fallback]` calls dispositioned
+key-for-key, `create_system_event` byte-faithful and forced by breaking the
+table. Recorded: thirteen verbatim `CaptureLayer` copies want a shared
+`#[cfg(test)]` helper; `pinned()` is a plain grep.
+
+**P4.75 (no blocking):** all three refuted premises verified against v4's
+real code — ONE `shouldShowAvatars` (`SalonView.tsx:1171-1174`, ALWAYS-only)
+passed to both `VirtualizedMessageList` sites, `GROUP_ONLY` consumed by no
+render site anywhere in v4's client (its own settings copy says "will be
+implemented in the future"), so v5's `≥2 characters` arm was a v5 invention
+and its removal is v4-faithful; the intermittent was the beat (v4
+`open-document-in-chat.ts:75` passes `focus: true`, the reducer defaults
+focus, so an in-chat open backgrounds the Salon in BOTH apps — the old
+assertion was wrong about both); `#move-folder` has no v4 counterpart
+(`FolderPicker.tsx:214` has no id). Four should-fixes landed:
+`qt-brahma-model-picker` — P4.D142 named THIRTEEN hosts and the lane
+adjudicated twelve — classified by structure (its only child is the
+dropdown's positioning context) and added to the guard's residue list; the
+streaming-avatar beat's `chatGet` round-trip sat INSIDE the ~2.5 s live
+window (moved before the send — only DOM reads while the column is live);
+the two `'AI'` fallback specs asserted a single initial `A` (any fallback
+beginning with A passed, and the ordered "drop the fallback" mutation would
+not have compiled) — now the whole string through `avatarName()`; the
+copy-repair commit shipped SPA source without a bump. Recorded: the
+streaming column's markup is duplicated across the two `@if` arms;
+`title-census.mjs` defaults `--v4` to the moving checkout; the mid-turn beat
+RECORDS the server's own frames rather than injecting one (documented in the
+spec, and stronger than the ordered gesture).
+
+### The wires (`1348f7c3`)
+
+- **The `ChatCreate` trio, across two lanes.** P4.72's census drove the trio
+  against `ChatCreateRequest` and its header said P4.73's widening "reddens
+  them here" — it did, at the first census run on the unify branch. P4.73
+  had landed the widening in the same round (`concierge_state` and
+  `roleplay_template_id` now `Option<Option<Value>>`, refused in the handler
+  with v4's flat `Validation error`, reaching BOTH transports because the
+  only typed decode is the host driver's `spine.rs:1868`
+  `from_value::<ChatCreateRequest>`). The rows are `FIXED(P4.73)` and the
+  probe asserts the post-fix shape (the decode ACCEPTS a wrong type so the
+  handler can refuse it), with the `timestampConfig` and raw-`Map`
+  assertions kept.
+- **The census's mechanical walk found P4.73's `ImageUpload` transport trio
+  unclassified** the moment the variants landed — three rows added in the
+  `FileUpload` multipart shape (v4 reads the decoded `File`; no JSON
+  counterpart).
+- **P4.73's `?action=` row** — recorded by the lane as coordination-only —
+  landed in `query_param_semantics_equivalence` on both sides:
+  `images_collection_post`, v4's FIRST dispatch shape (only the literal
+  `generate` takes the generate leg; every other value falls through to
+  upload/import, no envelope). Recorded fresh from the pin with all six v4
+  rows reaching the handler (400 `Validation error` on `{}`), the three
+  within-tree equalities matching, and the deferred `generate` refusal pinned
+  in `UNSERVED_KNOWN_ACTIONS` (31 → 32 endpoints).
+- The version recount: core 0.0.768 + 7 → 0.0.775, harness 0.0.662 + 8 →
+  0.0.670, web 0.0.105 + 7 → 0.0.112, host 0.0.95 + 1 → 0.0.96, SPA
+  0.5.631 + 7 → 0.5.638 (then the review fixes: core 0.0.776, harness
+  0.0.671, web 0.0.114, SPA 0.5.641).
+- The §1 contract mirror diffed name-for-name: the four landed verbs
+  (`imagesList` / `imageUpload` / `imageImportFromUrl` / `imageDelete`) on
+  both sides; `imagesGenerate` on neither, consistent with the deferral.
+
+### The gate
+
+- `cargo fmt --all --check` — exit 0; `cargo clippy --workspace --all-targets
+  -- -D warnings` — exit 0 on BOTH feature sets (plain and
+  `quilltap-core/native-transport`), zero warnings.
+- **The round's seventeen families regenerated FRESH from the pinned
+  `0b0617fee` worktree through the sweep driver and re-run by name — 17/17
+  ok, zero SKIP** (`chat_create_capstone`, `courier_images_routes`,
+  `files_routes`, `image_generate_route`, `images_routes`,
+  `mail_carina_tools`, `message_attribution`, `photo_tools`, `precompute`,
+  `primary_stream_tier3`, `search_tools`, `state_cascade`, `state_routes`,
+  `state_sql_tools`, `web_search_tool`, `files_body_guards`,
+  `query_param_semantics`); `images_routes` + `chat_create_capstone` re-run
+  again after the P4.73 fixes (2/2 ok — the five new arms and the
+  guard-order case landed against v4's fresh rows), the query-param family a
+  third time after its `images_collection_post` row (32 endpoints, 6 fresh v4
+  rows all reaching the handler); the census's 403 exclusion count and the
+  driver's `--self-test` (0 failures) confirmed after the P4.72 fixes.
+- **`cargo test --workspace` with the round's env block: 494 test binaries /
+  2,780 passed / 0 failed / 1 ignored — exit 0, ZERO `SKIP:` lines** (the
+  three `FAILED` strings in the log are a boot WARN's `FAILED-status
+  exclusion` text, not results). The five families that share
+  `QT_FIXTURE_TMP_*` with different values (`mail_carina_tools`,
+  `search_tools`, the three `state_*`) were withheld from the block and
+  proven by name above (the playbook's shared-var rule).
+- `cargo build --workspace --release` — exit 0.
+- SPA: `npm run build` clean; `npm test` **378 files / 5,945 tests / 0
+  failed** (incl. `check-qt-classes --self-test`).
+- **The full Playwright suite — the gate's own catch, then green:** the first
+  run was **273 passed / 1 failed / 0 skipped**, the red
+  `salon-image-detail-flow`'s "closes one layer at a time" expecting two
+  gallery tiles and finding one. Root cause, not an intermittent: the beat's
+  `tinyPng(tag)` seeded "two distinct images" as ONE 1×1 PNG with the tag
+  appended after `IEND` — distinct bytes, identical pixels — which was only
+  ever two images while the chat-upload leg stored the original bytes. P4.73
+  threaded the host codec into that leg (v4's own sharp transcode), so both
+  seeds transcode to the same WebP, hash the same, and `createFile` dedups
+  the second onto the first: the product is now v4-faithful and the beat's
+  premise was false. Fixed spec-side (two 1×1 PNGs whose PIXELS differ),
+  nothing weakened; the repaired beat green 3/3 in isolation, and **the full suite re-run
+  whole: 274 passed / 0 failed / 0 skipped (7.4 m)** — the suite grew 272 →
+  274 with P4.75's streaming-avatar spec, and the standing store-probe park
+  is gone (P4.69 un-parked it).
+
+### Versions
+
+core 0.0.776, harness 0.0.671, web 0.0.114, host 0.0.96, SPA 0.5.642 (the last bump the beat repair);
+cli 0.0.17 and tauri 0.0.7 unchanged.
+
+### 💸 The dogfood queue gains
+
+The images collection route on the Friday copy (a multipart upload stored
+as WebP with the row's sha naming the WebP bytes; a re-upload of the same
+bytes returning the SAME id; an import-from-URL of a real public image; a
+DELETE of an in-use image refused with `Image is in use`); a chat-uploaded
+PNG now stored as `image/webp` through `POST /api/v1/chats/{id}/files` —
+the P4.D152 divergence v5 is now on the same side of; the streaming avatar
+on a real multi-character turn (the column shows the RESPONDING character,
+not the first, and no ring on a Monitored chat); the two `title` copy
+repairs; the search-documents beat's real-world shape (open a document from
+the search bar with a Salon focused — the document tab takes focus, the
+chat_documents row appears). Plus the standing queue (Pascal's group tier,
+the Brahma deep query, dedup/summaries, #101, the LoRA wire-byte look).
+
+### Cleanup
+
+Performed after the fast-forward: the four lane worktrees removed and their
+branches deleted with the temp branch, the `.git/info/attributes` union rule
+removed, the unify's pinned v4 worktree removed, the `/tmp` oracle NDJSONs /
+fixture mirrors / sweep and gate logs / the Playwright output removed, no
+debug servers left running.

@@ -21,11 +21,22 @@ import { openSidebarSection } from './support/sidebar';
  */
 
 /** A 1×1 transparent PNG; a distinct trailing tail keeps the sha unique. */
+/**
+ * Two 1×1 PNGs whose PIXELS differ. The first form of this helper appended the
+ * tag after `IEND` of one PNG — distinct BYTES, identical pixels — which was
+ * only ever "two images" while the chat-upload leg stored the original bytes.
+ * Since P4.73 threaded the host codec into that leg (v4 transcodes chat
+ * uploads through sharp), both transcode to the same WebP, hash the same, and
+ * `createFile` dedups the second onto the first: one tile, and this beat went
+ * red at the follow-ups-round-2 unification gate. The seeds now differ where
+ * the codec looks.
+ */
+const PNG_1X1_A =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+const PNG_1X1_B =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 function tinyPng(tag: string): Buffer {
-  const png = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
-    'base64',
-  );
+  const png = Buffer.from(tag.endsWith('-two') ? PNG_1X1_B : PNG_1X1_A, 'base64');
   return Buffer.concat([png, Buffer.from(`\n${tag}\n`, 'utf-8')]);
 }
 
