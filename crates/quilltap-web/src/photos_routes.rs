@@ -149,19 +149,3 @@ pub async fn image_info_get(
         Err(r) => r,
     }
 }
-
-/// v4 `DELETE /api/v1/images/[id]` — the orphan-cleanup delete the
-/// `DeletedImagePlaceholder` / `ImageGallery` Remove buttons call. **A loud
-/// refusal, not a port**: v4's handler (`route.ts:134-237`) carries
-/// storage-existence probing, avatar-reference cleanup, and the
-/// `IMAGE_IN_USE` envelope — none of it inside this round's §1 contract
-/// (`imageInfoGet` only). The named refusal keeps the SPA affordance honest
-/// (its error line shows this message) until the delete surface is ordered;
-/// an unregistered method would be a mute 405 instead.
-pub async fn image_delete_not_available() -> AxumResponse {
-    error_json(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "Deleting an image reference is recognized but not yet available \
-         (v4's DELETE /api/v1/images/[id] orphan-cleanup surface is unported — the P4.9a2 deferral).",
-    )
-}

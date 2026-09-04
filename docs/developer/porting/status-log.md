@@ -103171,3 +103171,115 @@ v4's logging at all (`character_avatar_job` has 0 tracing calls against v4's 18;
 25), and four handlers are unported outright (`character-headshoulders-backfill`,
 `memory-regenerate-all`, `memory-regenerate-chat`, `scene-state-tracking`), so
 their rows are a consequence of the unported surface rather than a logging gap.
+## Lane record — P4.73 (the `/api/v1/images` collection route + the ingest codec)
+
+**Branch:** `claude/p4-73-images-collection-ingest-7e6c3f`. **Baseline:**
+`0b0617fee`, PIN REQUIRED; the lane pin is
+`/tmp/qt-v4-pin-p473-0b0617fee` (all three symlink classes), and the §2
+freshness probe PASSED at lane start (v4 on `main`, tree clean, both logs
+empty).
+
+### Unit 1 — `GET /api/v1/images` + `DELETE /api/v1/images/{id}`
+
+v5 served neither: `quilltap-web` registered only `/api/v1/images/{id}` GET
+(P4.9a2's `imageInfoGet`), and its DELETE arm was
+`photos_routes::image_delete_not_available`, a named loud refusal. Three SPA
+files name the gap in their headers (`images/image-gallery.ts`,
+`screens/profile/avatar-picker.ts`, `chat/cast/create-npc-dialog.ts`).
+
+Landed: `Request::ImagesList { tag_id }` and `Request::ImageDelete { id }`
+(append-only, in a `// === P4.73 ===` fence), the `Response::Images` family
+variant, `quilltap-core::api::images`, the new `quilltap-web::images_routes`
+edge, the `lib.rs` registration, and the §F retirement of
+`image_delete_not_available`.
+
+Three supporting core additions, each named here because they touch files this
+order granted narrowly:
+
+* `Response::bad_request_with_details(message, details)` — v4's
+  `badRequest(msg, details)`. `Response::validation_error` fixes the sentence
+  to `Validation error`; the `IMAGE_IN_USE` refusal needs its own sentence with
+  a details bag. The bag rides `CoreError::details`, so a REST edge must
+  consult `validation_wire_body()` to render it — `images_routes.rs` does that
+  locally rather than widening the shared `error_to_http`, which lives in a
+  file P4.72 owns.
+* `file_storage::delete_file_conn` — the conn-level twin of the async
+  `delete_file`, so the reference cleanup and the row drop share ONE writer
+  transaction. The async form takes its own `db.write` and cannot be called
+  from inside one.
+* `file_storage::file_exists_conn` widened `fn` → `pub(crate) fn` (no body
+  change) — it is exactly the predicate v4's DELETE route reads.
+
+**Four measurements corrected the port or the corpus.** None was visible by
+inspection:
+
+1. **The list OMITS null optionals.** v4's repository hydrates a NULL cell to
+   `undefined` and `JSON.stringify` drops the key, so `width`, `height`,
+   `generationPrompt` and `generationModel` are ABSENT — not null — while
+   `url`, which comes from the route's own ternary, stays an explicit null.
+   The first draft emitted all of them as null.
+2. **The list drops schema-invalid rows.** `findByCategory` → `findByFilter`
+   re-validates every row against `FileEntrySchema` and `.filter`s the failures
+   out (`base.repository.ts:277-285`), so `sha256: z.string().length(64)` and
+   `linkedTo`/`tags: z.array(z.uuid())` are load-bearing. The fixture's
+   `F_BADSHA` (an 8-char sha, inserted RAW because `repos.files.create` would
+   refuse it) is the pin. ⚠ This interacts with P4.62(a): the raw non-string
+   `tagId` v4's schemaless upload leg writes makes a row invisible to v4's own
+   list.
+3. **`chatAvatarOverrides` is TWO different numbers.** The DELETE refusal's
+   `associations.chatAvatarOverrides` counts CHARACTERS (v4 reduces to one
+   entry per character, `[id]/route.ts:162-165`); the list's
+   `_count.chatAvatarOverrides` counts individual OVERRIDES. The fixture's
+   `CHAR_OVR` carries two overrides on one image so the two are 1 and 2 and a
+   port that conflated them cannot pass.
+4. **A key-less image is treated as orphaned.** v4 guards the storage probe on
+   `if (image.storageKey)` (`[id]/route.ts:150`), so a row with no key never
+   probes and `fileExists` stays false — a key-less image that IS referenced
+   takes the ORPHAN branch and deletes.
+
+**The family:** `images_routes_equivalence`, 12 cases, over a NEW committed
+`images-{main,mount}.db` pair (+ the `.meta.json` sidecar carrying the minted
+blob id) built by `harness/oracle/fixtures/build-images-collection-fixture.ts`
+from `images-collection.json`. No existing pair carried tagged IMAGE rows AND a
+provisioned Lantern Backgrounds store AND a Quilltap Uploads store AND
+characters referencing those images, so the builder is trimmed to this family's
+question rather than grown from a sibling. The oracle
+(`harness/oracle/cases/images-routes.test.ts`) drives v4's REAL
+`app/api/v1/images/route.ts` and `[id]/route.ts` with the DB stack and every
+storage bridge `doMock`ed back to the real modules; only the auth session and
+the startup gate are faked.
+
+Two things the family does that a plain value diff would not: the key SEQUENCE
+is asserted explicitly (a `key_paths` walk), so a future map-collecting rewrite
+cannot silently lose the omit-null ordering; and every write case diffs the
+post-mutation `files` + `characters` dumps, so a refusal proves it wrote
+NOTHING rather than only that it answered 400.
+
+**Mutation proofs — seven, and TWO of them survived the first corpus.** Green
+mutations located real blind spots rather than proving the port right:
+
+* emit `width` as null instead of omitting → RED.
+* drop the `FileEntrySchema` row filter → RED.
+* `tagType` always `THEME` → RED.
+* count overrides instead of characters in the refusal → RED.
+* skip the `avatarOverrides` cleanup branch → **GREEN at first.** The
+  orphan-cleanup case's character had only a `defaultImageId`, so the override
+  rewrite never ran. Fixed by giving `CHAR_DEF2` an override on the orphan AND
+  a sibling override on another image that must SURVIVE the filter; then RED.
+* the category gate accepts anything → RED.
+* treat a missing `storageKey` as "bytes present" → **GREEN at first.** No
+  delete case had a key-less row. Fixed by seeding `F_NOKEY_INUSE` (no
+  `storageKey`, referenced by `CHAR_NOKEY`), which v4 deletes through the
+  orphan branch; then RED.
+
+**Recorded, not fixed:** `zod_uuid_ok` is now a THIRD transcription of v4's
+uuid pattern (beside `api/settings.rs` and `quilltap-web/system_data_routes.rs`).
+Folding the three into one home is a named consolidation candidate; it was not
+done here because the other two live in files this order does not grant.
+
+**Fixtures this unit adds:** `crates/quilltap-web/tests/fixtures/images-main.db`,
+`images-mount.db`, `images-main.db.meta.json` — all NEW; no existing committed
+fixture was widened, so no sibling family is invalidated.
+
+**Regen recipe:** in the `images_routes_equivalence` header, verified end-to-end
+through `recipe_sweep.py --run images_routes_equivalence --v5w "$PWD" --v4 "$PIN"`.

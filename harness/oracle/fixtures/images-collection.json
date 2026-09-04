@@ -1,0 +1,79 @@
+{
+  "$comment": "P4.73 \u2014 the corpus + seed spec for `images_routes_equivalence` (the /api/v1/images COLLECTION route). Ids are pinned so both differential sides read byte-identical rows; only the ingest/generate mutations mint fresh ids, which the harness canonicalizes. NOTE: `$`-prefixed keys are the ONLY comment form this file may carry, and never inside a case map (memory note `corpus-comment-inside-a-case-map-is-parsed-as-a-case`).",
+  "testPepperBase64": "dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHktMzJieXRl",
+  "seedTimestamp": "2020-01-01T00:00:00.000Z",
+  "frozenNowMs": 1767225600000,
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "userIdB": "22222222-2222-4222-8222-222222222222",
+  "user": {
+    "username": "imgcol-owner",
+    "name": "Fixture User",
+    "email": "fixture@example.com"
+  },
+  "userB": {
+    "username": "imgcol-other",
+    "name": "Other User",
+    "email": "other@example.com"
+  },
+  "uploadsMountPointId": "80000000-0000-4000-8000-000000000001",
+  "lanternMountPointId": "80000000-0000-4000-8000-000000000002",
+  "$profiles": "The generate leg's connection profiles: PROFILE_MAIN is the default (not dangerous-compatible), PROFILE_UNCENSORED is the AUTO_ROUTE reroute target, PROFILE_NOIMAGE names a provider with no image capability (the `<provider> provider does not support image generation` refusal).",
+  "connectionProfiles": [
+    {
+      "id": "aaaa0000-0000-4000-8000-000000000001",
+      "name": "Main",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "isDefault": true,
+      "isDangerousCompatible": false,
+      "apiKeyId": "abcd0000-0000-4000-8000-000000000001",
+      "tags": []
+    },
+    {
+      "id": "aaaa0000-0000-4000-8000-000000000002",
+      "name": "Uncensored",
+      "provider": "GROK",
+      "modelName": "grok-2-image",
+      "isDefault": false,
+      "isDangerousCompatible": true,
+      "apiKeyId": "abcd0000-0000-4000-8000-000000000002",
+      "tags": []
+    },
+    {
+      "id": "aaaa0000-0000-4000-8000-000000000003",
+      "name": "No Images",
+      "provider": "OLLAMA",
+      "modelName": "llama3",
+      "isDefault": false,
+      "isDangerousCompatible": false,
+      "tags": []
+    }
+  ],
+  "apiKeys": [
+    {
+      "id": "abcd0000-0000-4000-8000-000000000001",
+      "provider": "OPENAI",
+      "name": "main key",
+      "keyValue": "sk-fixture-main"
+    },
+    {
+      "id": "abcd0000-0000-4000-8000-000000000002",
+      "provider": "GROK",
+      "name": "uncensored key",
+      "keyValue": "sk-fixture-uncensored"
+    }
+  ],
+  "$chatSettings": "One row per user (v4 chatSettings is per-user via findByUserId). The corpus flips the stored dangerousContent bag per case with `settingsPatch` rather than seeding a second user.",
+  "chatSettings": {
+    "id": "cd000000-0000-4000-8000-000000000001",
+    "dangerousContent": {
+      "mode": "OFF",
+      "threshold": 0.5,
+      "scanTextChat": true,
+      "scanImagePrompts": true,
+      "scanImageGeneration": false,
+      "displayMode": "BADGE",
+      "showWarningBadges": true
+    }
+  }
+}

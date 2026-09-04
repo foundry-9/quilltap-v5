@@ -3246,6 +3246,26 @@ pub enum Request {
         max_agent_turns: Option<Option<serde_json::Value>>,
     },
     // === end P4.D57 ===
+
+    // === P4.73: the `/api/v1/images` COLLECTION surface (append-only) ===
+    /// v4 `GET /api/v1/images` (`app/api/v1/images/route.ts:69-153`) — the
+    /// tagged image list. `tag_id` is v4's `searchParams.get('tagId')`; a
+    /// present-but-empty value is JS-falsy there, so the edge folds `?tagId=`
+    /// into absent before it reaches here. → [`Response::Images`].
+    #[serde(rename_all = "camelCase")]
+    ImagesList {
+        #[serde(default)]
+        tag_id: Option<String>,
+    },
+
+    /// v4 `DELETE /api/v1/images/{id}` (`app/api/v1/images/[id]/route.ts:134-237`)
+    /// — the orphan-aware, in-use-refusing image delete. Replaces the P4.9a2
+    /// loud refusal (`photos_routes::image_delete_not_available`).
+    #[serde(rename_all = "camelCase")]
+    ImageDelete {
+        id: String,
+    },
+    // === end P4.73 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -3707,6 +3727,14 @@ pub enum Response {
     /// Pinned by `settings_routes_equivalence`.
     Taboo(serde_json::Value),
     // === end P4.D50 ===
+    // === P4.73: the `/api/v1/images` collection surface — append-only ===
+    /// Every body the images COLLECTION route answers: the list envelope
+    /// (`{data: [...]}`), the upload / import receipts (`{data: {...}}`, 201),
+    /// the generate envelope (`{data, metadata}`, 201) and the delete receipt
+    /// (`{success: true}`). One family variant carrying v4's literals verbatim
+    /// — the `PhotoGallery` precedent. Pinned by `images_routes_equivalence`.
+    Images(serde_json::Value),
+    // === end P4.73 ===
     Error(CoreError),
 }
 
@@ -3756,6 +3784,32 @@ impl Response {
         Response::Error(CoreError {
             kind: ErrorKind::BadRequest,
             message: "Validation error".to_string(),
+            pepper_state: None,
+            code: None,
+            associations: None,
+            character_id: None,
+            entity: None,
+            details: Some(Box::new(details)),
+        })
+    }
+
+    /// v4 `badRequest(message, details)` — a 400 whose body carries BOTH the
+    /// sentence and an arbitrary `details` value (`responses.ts:errorResponse`
+    /// appends `details` whenever it is not `undefined`). Distinct from
+    /// [`Response::validation_error`], which fixes the sentence to
+    /// `'Validation error'`: P4.73's images DELETE answers `'Image is in use'`
+    /// with an itemized `{message, code, associations}` bag the SPA reads.
+    ///
+    /// The bag rides [`CoreError::details`], so
+    /// [`CoreError::validation_wire_body`] renders it — a REST edge that wants
+    /// it must consult that method rather than the plain `{error}` fallback.
+    pub fn bad_request_with_details(
+        message: impl Into<String>,
+        details: serde_json::Value,
+    ) -> Response {
+        Response::Error(CoreError {
+            kind: ErrorKind::BadRequest,
+            message: message.into(),
             pepper_state: None,
             code: None,
             associations: None,

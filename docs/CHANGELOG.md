@@ -200,6 +200,46 @@ alias expansion (which resolves to the same absolute worktree path) and
 nothing else; all six `--run` green from a `0b0617fee`-pinned v4 worktree; and
 none of the eight regenerated NDJSONs contains a stage path at all, so the
 directory name provably cannot reach the measured bytes.
+#### 2026-09-04 — feat(images): the images collection LIST + the orphan-aware DELETE (P4.73 unit 1)
+
+_Versions: core 0.0.769, harness 0.0.663, web 0.0.106._
+
+Ports the first half of v4's `/api/v1/images` COLLECTION route, which v5 had
+never served at all: `GET /api/v1/images` (the tagged list projection) and
+`DELETE /api/v1/images/{id}` (the orphan-aware, in-use-refusing delete that
+until now answered a named loud refusal). New `Request::ImagesList` /
+`Request::ImageDelete` verbs, a new `Response::Images` family variant, the new
+`quilltap-core::api::images` module, and a new `quilltap-web::images_routes`
+edge; `photos_routes::image_delete_not_available` is retired and `lib.rs`
+re-points the DELETE arm at the real handler.
+
+Supporting core additions: `Response::bad_request_with_details` (v4's
+`badRequest(message, details)`, which the `IMAGE_IN_USE` refusal needs),
+`file_storage::delete_file_conn` (the conn-level twin of `delete_file`, so the
+reference cleanup and the row drop share one transaction), and `file_exists_conn`
+widened to `pub(crate)`.
+
+Four things the differential measured that inspection had wrong. v4 OMITS a
+null `width` / `height` / `generationPrompt` / `generationModel` from the list
+projection — the repository hydrates a NULL cell to `undefined` and
+`JSON.stringify` drops the key — while `url`, which comes from the route's own
+ternary, stays an explicit null. The list also silently drops rows that fail
+`FileEntrySchema` (`findByFilter` re-validates every row it reads), so a
+64-char `sha256` and UUID-only `tags`/`linkedTo` are load-bearing. The DELETE
+refusal's `associations.chatAvatarOverrides` counts CHARACTERS while the list's
+`_count.chatAvatarOverrides` counts OVERRIDES — the same name carrying
+different numbers. And the storage-existence probe is skipped entirely when
+`storageKey` is NULL, so a key-less image that IS referenced takes the ORPHAN
+branch and deletes rather than being refused.
+
+New family `images_routes_equivalence` (12 cases) over a NEW committed
+`images-{main,mount}.db` pair and its builder, driving v4's REAL route handlers
+with the DB stack and every storage bridge un-mocked. Key ORDER is asserted
+explicitly, not just implied by value equality, and every write case diffs the
+post-mutation `files` + `characters` dumps so a refusal proves it wrote
+nothing. Seven mutation proofs; two of them (the key-less probe arm and the
+`avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
+blind spots, closed with dedicated fixture rows before the unit landed.
 
 #### 2026-09-03 — docs(orders): the follow-ups round 2 ordered — P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75
 

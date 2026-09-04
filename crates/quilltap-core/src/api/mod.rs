@@ -77,6 +77,9 @@ pub mod system_qtap;
 // === P4.6ae: files family (lane A, append-only) ===
 pub mod files;
 // === end P4.6ae ===
+// === P4.73: the /api/v1/images COLLECTION surface (append-only) ===
+pub mod images;
+// === end P4.73 ===
 // === P4.6ak: text-replacements (lane A, append-only) ===
 pub mod text_replacements;
 // === end P4.6ak ===

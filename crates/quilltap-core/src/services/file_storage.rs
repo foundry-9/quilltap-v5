@@ -936,6 +936,28 @@ pub async fn delete_file(
         .map_err(|msg| format!("Failed to delete file '{}': {msg}", entry.original_filename))
 }
 
+/// The conn-level twin of [`delete_file`], for callers already inside a
+/// `Db::write` closure (P4.73's images DELETE arm, which must clear character
+/// references and drop the row in ONE transaction). Same dispatch as the async
+/// form — mount-blob keys through the GC-aware delete, disk keys through the
+/// backend, a missing key a silent skip (v4's warn-and-return).
+pub(crate) fn delete_file_conn(
+    mount: &Connection,
+    backend: &dyn StorageBackend,
+    entry: &FileEntry,
+) -> Result<(), String> {
+    let Some(key) = effective_storage_key(entry) else {
+        return Ok(()); // v4: warn + skip.
+    };
+    if is_mount_blob_storage_key(Some(key)) {
+        return delete_mount_blob_conn(mount, key)
+            .map_err(|e| format!("Failed to delete file '{}': {e}", entry.original_filename));
+    }
+    backend
+        .delete(key)
+        .map_err(|msg| format!("Failed to delete file '{}': {msg}", entry.original_filename))
+}
+
 /// v4 `deleteFileCompletely` (`cascade-delete.ts:26`) — the GC-safe delete
 /// chokepoint: storage bytes first (best-effort — a storage failure is logged
 /// and the metadata delete proceeds, faithful to v4's catch), then the `files`
@@ -1420,7 +1442,11 @@ fn read_linked_to(main: &Connection, file_id: &str) -> Result<Vec<String>, DbErr
 /// Conn-level `fileExists` (the dedup recheck inside `createFile`): mount-blob
 /// keys check `doc_mount_blobs` on the held mount connection; disk keys the
 /// backend. Any error → `false` (v4's try/catch around the recheck).
-fn file_exists_conn(mount: &Connection, backend: &dyn StorageBackend, entry: &FileEntry) -> bool {
+pub(crate) fn file_exists_conn(
+    mount: &Connection,
+    backend: &dyn StorageBackend,
+    entry: &FileEntry,
+) -> bool {
     let Some(key) = effective_storage_key(entry) else {
         return false;
     };

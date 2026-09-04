@@ -46,6 +46,9 @@ pub mod profile_routes;
 // === P4.9a: the user photo gallery REST edges (lane A, append-only) ===
 pub mod photos_routes;
 // === end P4.9a ===
+// === P4.73: the /api/v1/images COLLECTION REST edges (append-only) ===
+pub mod images_routes;
+// === end P4.73 ===
 // === end P4.9c ===
 // === P4.6w: documents ===
 pub mod qtap_target_route;
@@ -558,13 +561,17 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v1/photos/{id}",
             get(photos_routes::photo_entry_get).delete(photos_routes::photo_entry_delete),
         )
-        // P4.9a2: the image-info read the deep detail modals hang off; the
-        // DELETE arm is the named loud refusal (v4's orphan-cleanup unported).
+        // P4.9a2: the image-info read the deep detail modals hang off. P4.73
+        // replaced the DELETE arm's named refusal with the real orphan-aware
+        // delete; the GET stays in `photos_routes` where P4.9a2 put it.
         .route(
             "/api/v1/images/{id}",
-            get(photos_routes::image_info_get).delete(photos_routes::image_delete_not_available),
+            get(photos_routes::image_info_get).delete(images_routes::image_delete),
         )
         // === end P4.9a ===
+        // === P4.73: the images COLLECTION endpoint (append-only) ===
+        .route("/api/v1/images", get(images_routes::images_list))
+        // === end P4.73 ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         // P4.18 (unit 4): the request-log analog of v4's `logRequest`. `tower-http`'s

@@ -4702,6 +4702,31 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.9a ===
+            // === P4.73: the /api/v1/images COLLECTION surface (append-only) ===
+            Request::ImagesList { tag_id } => match self.ready_db() {
+                Ok(db) => super::images::images_list(&db, SINGLE_USER_ID, tag_id.as_deref()),
+                Err(r) => r,
+            },
+            Request::ImageDelete { id } => match self.ready_db() {
+                Ok(db) => {
+                    // The disk backend (`None` on a diskless host) — v4's
+                    // `fileStorageManager` dispatch reads mount-blob keys from
+                    // the mount index and everything else from the backend, so
+                    // an absent backend only affects DISK-keyed rows, exactly
+                    // as the `FileUpload` arm's `qtap_file_storage()` does.
+                    let storage = self.qtap_file_storage();
+                    let backend: std::sync::Arc<dyn crate::services::file_storage::StorageBackend> =
+                        match storage {
+                            Some(s) => s,
+                            None => std::sync::Arc::new(
+                                crate::services::file_storage::NotConfiguredStorageBackend,
+                            ),
+                        };
+                    super::images::image_delete(&db, backend, SINGLE_USER_ID, &id).await
+                }
+                Err(r) => r,
+            },
+            // === end P4.73 ===
             // === P4.9f1: the wardrobe server surface (lane F1, append-only) ===
             Request::ChatOutfitGet { chat_id } => match self.ready_db() {
                 Ok(db) => super::chat_outfits::chat_outfit_get(&db, &chat_id),
