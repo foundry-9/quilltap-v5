@@ -200,6 +200,23 @@ alias expansion (which resolves to the same absolute worktree path) and
 nothing else; all six `--run` green from a `0b0617fee`-pinned v4 worktree; and
 none of the eight regenerated NDJSONs contains a stage path at all, so the
 directory name provably cannot reach the measured bytes.
+#### 2026-09-04 — docs(orders): P4.73 closed PARTIAL — five units landed, the generate leg deferred
+
+_Docs-only change._ (No crate versions bumped.)
+
+Marks the order PARTIAL and records what landed against what did not. Landed:
+Tier 1 items 1, 2, 4 and 5; Tier 2 items 7, 9 and 10. OPEN: Tier 1 item 3
+(`?action=generate`, not started — both its tripwires stay ARMED on purpose,
+since retiring them without the route would put an `api.v1.images.generate`
+anchor in `combined.log` with nothing behind it) and Tier 2 item 8 (P4.62(a)'s
+files leg, whose shape the lane corrected by measurement).
+
+Three of the order's stated premises were refuted and are corrected in the lane
+record: the ingest engine did not need building (`create_file_conns` has existed
+since P4.1b); v4 does not carry a raw non-string `tagId` but REFUSES it, leaving
+an orphaned blob; and `import_no_dot_filename` cannot discriminate v4's
+extension rule.
+
 #### 2026-09-04 — feat(spa): mirror the images collection verbs into core-contract (P4.73 unit 5)
 
 _Versions: SPA 0.5.632._
