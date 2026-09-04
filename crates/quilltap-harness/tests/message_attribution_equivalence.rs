@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use quilltap_core::chat_predicates::ParticipantStatus;
+use quilltap_core::chat_predicates::{participant_status_from_str, ParticipantStatus};
 use quilltap_core::message_attribution::{
     attribute_messages_for_character, compute_presence_windows_for_participant,
     filter_messages_by_history_access, filter_messages_by_presence_windows,
@@ -24,14 +24,21 @@ use quilltap_core::message_attribution::{
 };
 use serde::Deserialize;
 
+/// §C (P4.74): the twelfth participant-status copy, retired onto the ONE home.
+///
+/// This was a hand-rolled match that `panic!`ed on an unknown status — a rule
+/// STRICTER than v4's, which has no unknown case at all: `isParticipantPresent`
+/// is `status === 'active' || status === 'silent'`, so anything unrecognised is
+/// simply not present. A corpus row carrying a new status string would have
+/// aborted the whole binary here instead of measuring v4's answer. The
+/// canonical reader answers `Absent` for it, which is what v4 computes.
+///
+/// The retirement is byte-neutral on today's corpus — no row carries a status
+/// outside the four known spellings — and `corpus_status_strings_are_known`
+/// below asserts exactly that, so this is not a vacuous swap: the day a row
+/// arrives with a fifth spelling, that guard names it.
 fn parse_status(s: &str) -> ParticipantStatus {
-    match s {
-        "active" => ParticipantStatus::Active,
-        "silent" => ParticipantStatus::Silent,
-        "absent" => ParticipantStatus::Absent,
-        "removed" => ParticipantStatus::Removed,
-        other => panic!("unknown status {other}"),
-    }
+    participant_status_from_str(Some(s))
 }
 
 #[derive(Deserialize)]
@@ -194,6 +201,49 @@ enum Row {
     },
 }
 
+/// The count guard that keeps P4.74's `parse_status` retirement honest.
+///
+/// The old private match `panic!`ed on an unknown status; the canonical reader
+/// answers `Absent`. Those two agree on every string the corpus carries TODAY,
+/// so the swap is byte-neutral — but "byte-neutral" is only a fact while that
+/// stays true, and a silent divergence is exactly what a vacuous swap hides.
+/// So: scan the oracle's own bytes, assert every `status` / `toStatus` value is
+/// one of v4's four spellings, and assert the scan actually found some (an
+/// empty scan would pass trivially and prove nothing).
+fn assert_corpus_status_strings_are_known(ndjson: &str) {
+    const KNOWN: [&str; 4] = ["active", "silent", "absent", "removed"];
+    let mut seen = 0usize;
+    for key in ["\"status\":", "\"toStatus\":"] {
+        let mut rest = ndjson;
+        while let Some(at) = rest.find(key) {
+            rest = &rest[at + key.len()..];
+            let trimmed = rest.trim_start();
+            // `null` (the introduction rows' absent `toStatus`) is not a status
+            // string and never reaches `parse_status`.
+            let Some(after_quote) = trimmed.strip_prefix('"') else {
+                continue;
+            };
+            let Some(end) = after_quote.find('"') else {
+                continue;
+            };
+            let value = &after_quote[..end];
+            assert!(
+                KNOWN.contains(&value),
+                "the oracle carries participant status {value:?}, which is outside v4's four \
+                 spellings {KNOWN:?}. `parse_status` now answers Absent for it (v4's \
+                 `isParticipantPresent` computes the same); confirm that is right for the new \
+                 row, then widen this guard."
+            );
+            seen += 1;
+        }
+    }
+    assert!(
+        seen > 0,
+        "no participant status strings found in the oracle — this guard would pass vacuously, \
+         so the `parse_status` retirement would be unmeasured"
+    );
+}
+
 fn kept_ids(ids: &[String], mask: &[bool]) -> Vec<String> {
     ids.iter()
         .zip(mask)
@@ -214,6 +264,8 @@ fn message_attribution_matches_oracle() {
         }
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
+
+    assert_corpus_status_strings_are_known(&text);
 
     let mut count = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {

@@ -102949,3 +102949,60 @@ taken: **none of the eight regenerated NDJSONs contains a stage path at all**
 (`qt-*-stage` / `/tmp/qt-` refs = 0 in every file), so the directory name
 provably cannot reach the measured bytes — a before/after byte diff can only
 sample that, this settles it.
+
+### Unit 2 — the eleventh and twelfth status-parser copies retired (order items 2–3)
+
+`services/answer_confirmation.rs:336` (the OLD `_ => Active` rule) and
+`message_attribution_equivalence.rs:27`'s `parse_status` (a `panic!` on an
+unknown status — STRICTER than v4, which has no unknown case at all) both now
+call `chat_predicates::participant_status_from_str`. One line of production
+change each; the surrounding `AttributionParticipant` construction untouched.
+
+**The order asked whether any corpus row carries an unknown status at the
+answer-confirmation site; the measurement is stronger than that.** The only
+consumer of those participants is `get_participant_name`, which reads
+`id` / `participant_type` / `character_id` and **never `status`** — the field is
+write-only at that site. So the swap is output-neutral BY CONSTRUCTION, not
+merely on today's corpus, and no differential could ever see it. Confirmed
+anyway by running the three families that thread participants through this path
+from the pin: `answer_confirmation_tier3`, `orchestrator_tier3` and
+`message_finalizer_tier3`, all green and byte-identical.
+
+The harness swap IS corpus-visible in principle, so it got the count guard the
+order asked for: `assert_corpus_status_strings_are_known` scans the oracle's own
+bytes, fails naming any status outside v4's four spellings, and fails on an
+empty scan so it cannot pass vacuously. Mutation-proven both ways (a `"paused"`
+row reddens it by name; a corpus with the key renamed away reddens the vacuity
+arm). `message_attribution_equivalence` green from the pin, 29 rows.
+
+**A new census guard makes §C mechanical** —
+`crates/quilltap-harness/tests/participant_status_home_guard.rs`, the
+`db_error_key_guard` idiom over the needle `=> ParticipantStatus::` (a match arm
+PRODUCING a status). Mutation-proven: re-growing a private parser in a
+non-census file reddens it with the file named.
+
+**The census corrects the round's count.** After these two retirements **six**
+private parsers remain, not zero and not one:
+
+| file | arms | disposition |
+|---|---|---|
+| `chat_predicates.rs` | 4 | THE HOME |
+| `skip_signal.rs` | 4 | DELIBERATE — must not default a missing status; doc-commented, kept by P4.68 |
+| `db/chats_messages.rs` | 4 | **OPEN, and the only live one** — see below |
+| `select_speaker_equivalence.rs` | 4 | OPEN — harness copy, `panic!` rule |
+| `small_utils_equivalence.rs` | 4 | OPEN — harness copy, `panic!` rule |
+| `system_prompt_equivalence.rs` | 4 | OPEN — harness copy, `panic!` rule |
+| `turn_pause_filters_equivalence.rs` | 4 | OPEN — harness copy, `panic!` rule |
+| `turn_state_equivalence.rs` | 4 | OPEN — harness copy, `panic!` rule |
+
+**`db/chats_messages.rs::participants_from_chat` is a thirteenth copy carrying
+the same stale `_ => Active` rule this lane was sent to fix — and unlike
+`answer_confirmation`'s, its status is READ.** It builds
+`turn_state::ParticipantView`, whose `is_active_character` calls
+`is_participant_present`, so an unknown status would count as PRESENT where v4
+counts it absent. Latent today (v4's Zod schema constrains the column to the
+four spellings, so no real row reaches the arm) and **outside this lane's
+ownership** — the Ownership row grants `answer_confirmation.rs` only, and §C
+names two copies. Recorded here and in the census with its reason; it wants a
+follow-up order, together with the five harness copies (which are the identical
+one-line change).

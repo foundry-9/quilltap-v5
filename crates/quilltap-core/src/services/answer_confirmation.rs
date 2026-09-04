@@ -36,7 +36,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::chat_predicates::ParticipantStatus;
+use crate::chat_predicates::participant_status_from_str;
 use crate::cheap_llm::{
     resolve_uncensored_cheap_llm_selection, CheapLlmProfile, CheapLlmSelection,
     DangerousContentSettings, UncensoredFallbackOptions,
@@ -333,12 +333,18 @@ pub fn build_recent_conversation_context(
                 .and_then(Value::as_str)
                 .unwrap_or("llm")
                 .to_string(),
-            status: match p.get("status").and_then(Value::as_str) {
-                Some("silent") => ParticipantStatus::Silent,
-                Some("absent") => ParticipantStatus::Absent,
-                Some("removed") => ParticipantStatus::Removed,
-                _ => ParticipantStatus::Active,
-            },
+            // §C (P4.74): participant-status parsing has ONE home. This site
+            // used to carry a private match with the OLD unknown -> Active
+            // rule; `participant_status_from_str` answers Absent for anything
+            // unrecognised, which is what v4's `isParticipantPresent` test
+            // (`status === 'active' || status === 'silent'`) produces. The swap
+            // is output-neutral BY CONSTRUCTION here, not merely on today's
+            // corpus: the only consumer of these participants is
+            // `get_participant_name` below, which reads id / type /
+            // characterId and never `status`. That is also why no differential
+            // can see this change — the guard is the census test in
+            // `chat_predicates` plus that function's own unit coverage.
+            status: participant_status_from_str(p.get("status").and_then(Value::as_str)),
         })
         .collect();
 

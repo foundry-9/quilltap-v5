@@ -12,6 +12,48 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — refactor(core): retire two stray participant-status parsers onto the one home
+
+_Versions: core 0.0.769, harness 0.0.664._
+
+§C of the round: participant-status parsing has ONE home,
+`chat_predicates::participant_status_from_str` (`None`/`"active"` → Active,
+`"silent"` → Silent, `"removed"` → Removed, **anything else → Absent** — v4
+never parses a status, it tests `isParticipantPresent` =
+`status === 'active' || status === 'silent'`, so an unrecognised string is not
+present).
+
+`services/answer_confirmation.rs` carried the OLD `_ => Active` rule and
+`message_attribution_equivalence.rs` a rule STRICTER than v4's
+(`panic!("unknown status")`). Both now call the canonical reader.
+
+The answer-confirmation swap is output-neutral **by construction**, not merely
+on today's corpus: the only consumer of those participants is
+`get_participant_name`, which reads id / type / characterId and never `status`.
+That is also why no differential can see it — `answer_confirmation_tier3`,
+`orchestrator_tier3` and `message_finalizer_tier3` are byte-identical across
+the change, as expected. The harness swap is byte-neutral because no corpus row
+carries a fifth spelling, which is now asserted rather than assumed:
+`assert_corpus_status_strings_are_known` scans the oracle's own bytes, rejects
+an unknown status by name, and refuses to pass on an empty scan.
+
+The durable pin is a new census guard,
+`crates/quilltap-harness/tests/participant_status_home_guard.rs`, which walks
+`crates/**/*.rs` for `=> ParticipantStatus::` (a match arm producing a status —
+which is what a parser is) and holds every file against an allow-list, in the
+`db_error_key_guard` idiom. It also makes the remaining copies a written list
+rather than a phrase, and the census corrects the count: after these two
+retirements **six** private parsers remain, not the one the order implied. One
+is deliberate (`skip_signal`, which must not default a missing status). One is
+OPEN and live: `db/chats_messages.rs::participants_from_chat` still carries
+`_ => Active`, and unlike the copy retired here its status IS read — it builds
+`turn_state::ParticipantView`, whose `is_active_character` calls
+`is_participant_present` — so an unknown status would count as present where v4
+counts it absent. Latent today (v4's Zod schema constrains the column to the
+four spellings) and outside this lane's ownership; recorded in the census with
+its reason. The other four are harness-side copies of the retired `panic!`
+shape.
+
 #### 2026-09-03 — test(harness): retire the shared `/tmp/qt-oracle-stage` — six families, not three
 
 _Versions: harness 0.0.663._
