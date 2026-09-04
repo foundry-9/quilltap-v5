@@ -102706,3 +102706,128 @@ branches deleted with the temp branch, the `.git/info/attributes` union rule
 removed, the unify's pinned v4 worktree and the five reviewers' review
 worktrees removed, the `/tmp` oracle NDJSONs / fixture mirrors / sweep and
 gate logs / the Playwright output removed, no debug servers left running.
+
+## Dogfood pass — the `0b0617fee` round + the follow-ups round (2026-09-03)
+
+**RAN 2026-09-03 (agent-driven, on the Friday copy) — 15 rows, 13 PASS, 1
+PARTIAL, 1 deferred to the human; ZERO v5 defects; eight 💸 items
+discharged.** Walk doc:
+`dogfood-walks/2026-09-03-concierge-creation-sha256-pass.md`. Surfaces: the
+`0b0617fee` drift catch-up round (P4.D148–P4.D152) and the follow-ups round
+(P4.67–P4.71, unified 2026-09-02 and never dogfooded).
+
+**Drift-ledger §2 probe at walk start: PASS** — v4 `main` at `15573c3a1`,
+tree clean, both logs empty; §1's verdict stood (1 commit past the baseline,
+bug 119, an **unported** surface — `p4.9k`), so no step could blame the
+drift, and no regen was needed.
+
+**The pre-walk measurement is the pass's best result (ledger §5.5).** The
+banked bug-117 proof had **expired before the walk**: v4 ran its own
+`realign-file-entry-sha256-v1` migration on this instance at 2026-09-03
+02:43 (`4.9.0-dev.120` = `0b0617fee`, the very commit P4.D152 ported),
+healing **117** rows. Measuring first — with the server still down, since the
+boot heal would have consumed the population — turned that into a stronger
+pair. (a) **v5 booted on v4's healed DB and wrote nothing**: the
+`migrations_state` dump md5 is `470baa219040cab245d31815ce10aa4d` before AND
+after, zero `realign` lines — P4.D152's recorded divergence (v4's
+`shouldRun()` is presence-not-drift and stamps a zero-`itemsAffected` row;
+v5 stamps none) meeting a real cross-app ledger. (b) **On a planted
+population v5 recomputed v4's own answer**: five corrupted `sha256` values +
+v4's ledger row deleted → `scanned=2791 realigned=5 orphaned=2
+malformed_key=0`, with `orphaned`/`malformed_key` **matching v4's recorded
+run**, `scanned` exactly today's mount-blob row count (v4's 2801 was 16 h and
+ten deleted files earlier), and the five healed values **byte-identical to
+the ones v4's migration had written**. (c) The heal is **idempotent** — the
+next boot, v5's own row present, skipped it.
+
+**Proven live on real data.** The Concierge-at-creation feature end to end,
+**all four states** through the real form: the dropdown in v4's slot
+(Roleplay Template → Image Generation Profile → **The Concierge** → Starting
+Scenario), two optgroups, `Monitored (default)`, the helper byte-identical to
+v4's `concierge-state-presentation.ts:56` `detail`, icon and sentence both
+reactive; Monitored **omits** `conciergeState` from the create body entirely
+(keys enumerated) and persists NULL; Vouched Safe → `'OFF'`; Flagged →
+`conciergeOverride` NULL + `isDangerousChat=1`, **exactly v4's documented
+mapping** (`manual-flip.ts:11`); Uncensored → `'UNCENSORED'`. ⭐ The
+uncensored greeting is airtight: the character's own profile on the create
+body was **Z.AI GLM 5.3 Flash**, the only `llm_logs` row is **DEEPSEEK /
+deepseek-v4-flash / 6094 ms**, so the seat was never tried — attempt **0** on
+the desk, `trigger="chat-state"` proving the resolver was asked WITH the
+fresh chat row — and the Concierge bubble is rowid 156774, **second in the
+transcript**, right after the system prompt. The Flagged chat then gave a
+**second, different** routing proof: same desk, but `settings_source="global"`
+where the operator-set chat logged `"chat-uncensored"`. Create-time
+validation: `"bogus"` and explicit `null` both 400 `Validation error` with
+the chat count unchanged (895 → 895); the recorded wrong-type divergence
+(`42` → the decode envelope) confirmed as documented.
+
+**Bug 116's verdict ran live with real arithmetic.** The chat's seat was
+switched to **DeepSeek v4 Flash** (`supportsAttachments: false`) through the
+real Participants panel and a **real 1207×805 JPEG from the instance itself**
+attached: `[Attachment] Plugin cannot transport images; routing to
+describe-fallback`, the describer on **GROK, 8460 ms**,
+`usage.promptTokens=1077` with `cacheUsage` NULL → billed input **1077** vs
+the derived **66** ceiling → **`Arrived`**, description trusted, **zero**
+`did not process the image` warns all session. Friday — on a seat that cannot
+receive images — then described the photo accurately and the chat auto-titled
+itself *The Bench Where the Work Happens*. ⭐ A **free contrast arm** came
+from a first attempt with a hand-rolled PNG that every describer rejected: the
+chain walked (configured understudy skipped `cannot receive this turn's
+images … purpose=vision`; tier picker `eligible_count=21`; uncensored retry)
+and v5 spliced the **honest error** rather than inventing a description —
+the principle bug 116 protects, from the other side. That same walk
+discharged **P4.68's failover `llm_logs` thread**: all three legs wrote their
+own rows with the providers' real errors (GROK `invalid_image`; Z_AI
+`glm-5.3-flash` and `glm-4.6v` both `图片输入格式/解析错误`).
+
+**The follow-ups round's surfaces.** The `?action=` semantics on both shapes:
+`system/tools`'s interpolated action lists are **byte-identical to v4's
+`TOOLS_GET_ACTIONS`/`TOOLS_POST_ACTIONS` in declaration order**, a
+present-but-empty `?action=` matches v4 (this edge gates on `isValidAction`,
+not truthiness), and duplicates give the **FIRST** value as `searchParams.get`
+does; the `mount-points/{id}` subset edge answers the **loud** refusal for the
+v4-known-unserved `scan` without listing it as available, v4's envelope for a
+truly unknown action, and `Action parameter required` for none. The
+image-profile route runs v4's OWN `generateImageSchema`: `count: 20`, `count:
+0`, `count: 11`, an empty prompt and a 4001-unit prompt all answer
+`Validation error` 400 — and **the 404 beats the 400** (missing profile +
+invalid body → `Image profile not found`), v4's guard order. The danger ring
+is alive on a real flagged chat (3 of 5 avatars compute `outline: rgb(208, 67,
+67) solid 2px`, the user's two `none`; the rule byte-identical to v4's). The
+image-profile modal on the real NANOGPT `FLUXNSFWunlock` names **NanoGPT**
+(finding #108 holding), renders the schema-driven options panel, and saves
+`parameters` as a **structured object** — `{"size":"1024x576","loras":[…],
+"num_inference_steps":28}` with numbers as numbers and every non-sampling key
+preserved, persisted byte-for-byte.
+
+**Two apparent failures were chased and both were INSTRUMENT ERROR**, now
+standing notes in `dogfood-findings.md`: measuring the danger ring on the
+wrapper instead of the descendant the CSS targets, and reading an
+Angular-signal-driven helper in the same tick as the synthetic `change`.
+
+**PARTIAL, honestly: A9.** The inter-character timing line is live with all
+five fields (`duration_ms=919 loaded_count=23 included_count=23`, correctly
+gated on `is_multi_character`), but the interactive distill **budget** is a
+deadline — observable only when a cheap route stalls past 45 s, which none
+did, and the fallback distill branch did not run at all that turn. It stays
+unit-pinned by P4.D150's stalling-provider-on-a-paused-clock test. (This
+pass's plan had said "85 s"; the constants are
+`CHEAP_LLM_TASK_TIMEOUT_INTERACTIVE_MS = 45_000` no-retry vs
+`CHEAP_LLM_TASK_TIMEOUT_MS = 90_000` + a free retry.)
+
+**Scope note recorded (not a defect):** the bug-117 **chat-upload** leg cannot
+exhibit its own fix in production — `chat_files.rs:705` threads
+`NotConfiguredPixelCodec` at every production call, so stored bytes ARE source
+bytes and the hash agrees by construction. This makes P4.D152's named
+candidate concrete: until the HOST codec is threaded in, v5 stores chat images
+in their original type where v4 transcodes to WebP.
+
+**💸 discharged (8):** the created-Uncensored greeting; the describer verdict
+against a real gateway (negative arm + the refusal contrast); the sha256 heal
+on the Friday copy (replaced by the stronger cross-app pair); the danger ring;
+the subset refusals via a v4-shaped client; `count: 20` through the
+image-profile route; the modal's writers on a real NanoGPT profile; the
+failover rows on a real understudy. **Still owed:** the Docker/container walk
++ one `docker build` (human, by nature); Pascal's group tier; the Brahma
+deep-query budget; memory dedup / conversation summaries (cost); the NanoGPT
+prompt-caching cost question (#101); the LoRA wire-byte look (blocked).

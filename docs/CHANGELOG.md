@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — docs(dogfood): the `0b0617fee`-round + follow-ups-round pass — zero v5 defects, eight live proofs
+
+_Docs-only change._
+
+A dogfood pass on a copy of the real Friday instance over the surfaces of the
+`0b0617fee` drift catch-up round (P4.D148–P4.D152) and the follow-ups round
+(P4.67–P4.71, which had never been dogfooded). Fifteen rows: 13 PASS, 1
+PARTIAL, 1 deferred to the human. **No v5 defects were found**, so no source
+changed.
+
+The banked bug-117 proof expired before the walk — v4 ran its own
+`realign-file-entry-sha256-v1` migration on the instance at 02:43 that
+morning, healing 117 rows. Measuring the population first (drift-ledger §5.5),
+with the server still down so the boot heal could not consume it, bought a
+stronger pair instead: v5 booted on v4's healed database and wrote nothing
+(the `migrations_state` dump md5 is identical across the boot, zero realign
+lines), and on a planted population it reported `scanned=2791 realigned=5
+orphaned=2 malformed_key=0` — `orphaned` and `malformed_key` matching v4's
+own recorded run, and the five healed values byte-identical to the ones v4's
+migration had written. A third boot proved the heal idempotent.
+
+Also proven live: the Concierge-at-creation feature in all four states
+(including Flagged's `conciergeOverride` NULL + `isDangerousChat=1`, exactly
+v4's `manual-flip.ts:11` mapping) with the uncensored greeting shown to be
+attempt 0 on the desk; bug 116's arrival verdict with real arithmetic (1077
+billed prompt tokens against the derived 66 ceiling) plus a contrast arm where
+every describer refused and v5 spliced the honest error rather than inventing
+a description; the failover `llm_logs` thread across three chain legs; the
+`?action=` semantics on both v4 dispatch shapes; the image route's Zod gate
+with the 404 correctly beating the 400; the danger ring; and the image-profile
+modal's structured writers on a real NanoGPT profile.
+
+Two apparent failures were chased to instrument error and are recorded as
+standing notes: measuring the danger ring on the wrapper rather than the
+descendant its CSS targets, and reading an Angular signal-driven helper in the
+same tick as the synthetic `change` event. A third standing note records that
+the bug-117 chat-upload leg cannot exhibit its own fix in production, since
+`chat_files.rs:705` threads `NotConfiguredPixelCodec` at every production call
+site — which makes P4.D152's named candidate concrete.
+
 #### 2026-09-03 — unify: the `0b0617fee` drift catch-up round (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152)
 
 _Versions: core 0.0.768, harness 0.0.662, web 0.0.105, host 0.0.95, SPA 0.5.631._

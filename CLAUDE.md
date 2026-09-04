@@ -2772,6 +2772,51 @@ records THERE. Update this summary only when a phase or round completes.
   the Friday copy (measure the population FIRST), the interactive distill
   budget. **Next: the owed dogfood pass** — see phase-4.md. Round record:
   `status-log.md`.
+- **The `0b0617fee`-round + follow-ups-round dogfood pass RAN (2026-09-03,
+  agent-driven, on the Friday copy) — 15 rows, 13 PASS, 1 PARTIAL, 1 human;
+  ZERO v5 defects and eight 💸 items discharged.** Walk doc:
+  `dogfood-walks/2026-09-03-concierge-creation-sha256-pass.md`; record in
+  `status-log.md`. The ledger's §2 probe **passed** at walk start, and the one
+  drift row (bug 119) is an **unported** surface, so no step could blame it.
+  **The pre-walk measurement is the pass's best result (ledger §5.5):** v4 had
+  run its OWN bug-117 migration on this instance at 02:43 that morning
+  (`4.9.0-dev.120` = `0b0617fee`), healing 117 rows — so the banked proof was
+  dead on arrival and was replaced by a stronger pair. v5 **booted on v4's
+  healed DB and wrote nothing** (ledger md5 identical, zero realign lines — the
+  recorded presence-not-drift divergence meeting a real cross-app ledger), and
+  on a **planted** population it reported `scanned=2791 realigned=5 orphaned=2
+  malformed_key=0` with `orphaned`/`malformed_key` **matching v4's own run**
+  and the five healed values **byte-identical to the ones v4's migration
+  wrote**; a third boot proved it idempotent. **Proven live:** the
+  Concierge-at-creation feature in **all four states** (Monitored omits the key
+  entirely; Vouched → `'OFF'`; Flagged → NULL + `isDangerousChat=1`, exactly
+  v4's `manual-flip.ts:11` mapping; Uncensored → `'UNCENSORED'`), with the
+  uncensored greeting **airtight** — the seat was Z.AI, the only `llm_logs` row
+  is DEEPSEEK, so attempt 0 went to the desk and the Concierge bubble sits
+  second in the transcript — and Flagged giving a **second, different** routing
+  proof (`settings_source="global"` vs `"chat-uncensored"`); bug 116's verdict
+  with real arithmetic (1077 billed prompt tokens vs the 66 ceiling →
+  `Arrived`) on a real JPEG through a `supportsAttachments:false` seat, plus a
+  free contrast arm where every describer refused and v5 spliced the **honest
+  error** rather than inventing a description; P4.68's failover `llm_logs`
+  thread (three legs, three rows, the providers' real errors); the `?action=`
+  semantics on both v4 shapes incl. the loud unserved-`scan` refusal and
+  byte-identical action lists; the image route's Zod gate with **the 404
+  beating the 400**; the danger ring; and the image-profile modal's structured
+  writers on the real NANOGPT `FLUXNSFWunlock`. **Two apparent failures were
+  INSTRUMENT ERROR** (measuring the ring on the wrapper, not the descendant the
+  CSS targets; reading an Angular signal in the same tick as the synthetic
+  `change`) — both now standing notes. **PARTIAL: A9** — the inter-character
+  timing line is live with all five fields, but the interactive distill budget
+  is a *deadline*, unobservable without a stall (and the constants are 45 s
+  interactive / 90 s + retry background, not the 85 s a stale note claimed).
+  **Scope note:** the bug-117 **chat-upload** leg cannot exhibit its fix in
+  production — `chat_files.rs:705` threads `NotConfiguredPixelCodec` at every
+  production call, so stored bytes ARE source bytes; P4.D152's named candidate
+  (thread the HOST codec) is what closes it. **💸 still owed:** the
+  Docker/container walk + one `docker build` (human by nature), Pascal's group
+  tier, the Brahma deep-query budget, dedup/summaries (cost), #101, and the
+  LoRA wire-byte look (blocked).
 - **Oracle baseline: `0b0617fee` (2026-09-02, v4 main — bugs 116-118 fixed),
   adopted at the `0b0617fee` drift catch-up round unification (2026-09-03).**
   **Drift state, the drift-check method, and the pinned-worktree regen

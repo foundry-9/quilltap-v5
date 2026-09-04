@@ -591,6 +591,33 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+- **The bug-117 chat-upload leg cannot exhibit its own fix in production
+  (2026-09-03 walk, A8).** `services/chat_files.rs:705` is handed
+  `NotConfiguredPixelCodec` at **every** production call site, so the WebP
+  encode always fails and the policy layer passes the ORIGINAL bytes through.
+  Stored bytes therefore ARE source bytes on a real instance, and
+  `files.sha256` agrees with them *by construction* — the
+  `a-production-noop-seam-makes-a-comparand-vacuous` class. Confirmed live: a
+  265-byte PNG uploaded through `POST /api/v1/chats/{id}/files` came back as
+  `image/png` with the row's sha equal to the served bytes' sha. The
+  byte-CHANGING codec that makes the pre-fix ordering measurably wrong exists
+  only in the differential (`PrefixingPixelCodec`). **This makes P4.D152's own
+  named candidate concrete:** until the HOST codec is threaded into chat
+  uploads, v5 stores chat images in their original type where v4 transcodes to
+  WebP — the pre-existing divergence recorded at `api/files.rs:1116-1118`. Any
+  order that touches this leg should state which side of that it is on.
+
+- **Two browser-instrument slips worth naming, both from the 2026-09-03 walk**
+  (the standing "prove the instrument before trusting a negative" rule, in two
+  new shapes). (1) **Measure the element the CSS actually targets.** The danger
+  ring is `.qt-chat-avatar-dangerous .overflow-hidden` — a DESCENDANT selector
+  — so a computed-style read on the wrapper reports `boxShadow: none` and looks
+  exactly like a dead rule. (2) **An Angular signal-driven sibling is one tick
+  behind a synthetic `change`.** Reading the Concierge helper `<p>` in the same
+  tick as `sel.dispatchEvent(new Event('change'))` returns the PREVIOUS
+  sentence; it is correct on the next render. Both produced a convincing false
+  negative before being chased down.
+
 - **Two v4 filing candidates from P4.71's host-gateway port (2026-09-02),
   both reproduced faithfully in v5 rather than fixed.** (1) **A profile with
   a BLANK base URL is never rewritten in a container.** v4's Ollama plugin
