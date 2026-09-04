@@ -103487,3 +103487,110 @@ source and here as an open question for whoever measures it.
 
 Gate: 491 test binaries / 2,764 passed / 0 failed / 1 ignored, zero SKIP; clippy
 clean on both feature sets; fmt clean.
+
+### Unit 5 — the `core-contract.ts` §1 mirror (Tier 2 item 10)
+
+The four landed verbs mirrored NAME-FOR-NAME from `api/types.rs`'s `=== P4.73 ===`
+block. Type-only: the SPA has no consumer this round. The three files that name
+the gap in their own headers — `images/image-gallery.ts` (its self-fetch of
+`GET /api/v1/images`), `screens/profile/avatar-picker.ts` (the
+`ImageUploadDialog` leg) and `chat/cast/create-npc-dialog.ts` (v4's upload-first
+NPC avatar sequence) — are the NEXT SPA lane's, and these are the verbs they
+consume. `imagesGenerate` is deliberately ABSENT: its verb did not land (below).
+
+**A typing judgement the next lane inherits.** `ImageUploadRequest.tags` is
+`unknown[]`, and `ImageImportFromUrlRequest.url`/`tags` are `unknown`. That is
+not laziness: a non-UUID `tagId` must REACH the server to be refused (the
+refusal comes from `repos.files.create` re-validating the row), and a client
+type narrowed to `string` would make the measured wrong-type behaviour
+unreachable from the only consumer that matters.
+
+---
+
+## P4.73 — what did NOT land, and why
+
+### Tier 1 item 3 — `POST /api/v1/images?action=generate`: DEFERRED
+
+**Not started.** No stub, no partial verb, no retired tripwire — the route is
+absent exactly as it was, and `images_routes.rs` answers a NAMED refusal on
+`?action=generate` rather than silently falling through to the upload leg (which
+is what v4's FIRST-shape dispatch would otherwise do, and would have been a lie
+about what the server does).
+
+**The two tripwires stay ARMED, deliberately.** `lora_log_anchor_guard`'s
+`the_ninth_anchor_is_absent_because_its_route_is_unported` and
+`activity_span_sites_guard`'s `NO_V5_SURFACE` row 9 both still hold. Retiring
+them without the route would put an `api.v1.images.generate` anchor in
+`combined.log` with nothing behind it — the exact lie the guard's own comment
+says it exists to prevent.
+
+⚠ **A trap for whoever lands it:** `activity_span_sites_guard`'s absence check is
+a naked substring search for `handle_generate_image` over EVERY `.rs` under
+`crates/` (only the guard file itself is exempt). The moment that name appears
+anywhere — including in a test — the guard fails. Its census row must move in
+the SAME commit that introduces the name.
+
+**The survey, so the next lane starts from measurement and not from prose.**
+v4's `handleGenerateImage` (`route.ts:177-408`) is its own route-level
+implementation, NOT a call into the Salon's `generate_image` tool: its Concierge
+gate is `scanImagePrompts` with no chat, its reroute picks the first
+`isDangerousCompatible` profile rather than consulting the Concierge desk, and
+it resolves NO orientation (`params_builder`'s `orientation: None` arm exists for
+this caller). What v5 is missing:
+
+* **An erased image-GENERATION provider seam.** `ErasedImageDiscovery`
+  (`model/image.rs:253`) exposes only `available_models`; `ErasedImageGeneration`
+  (`tools/generate_image.rs:437`) runs the whole tool, which the order explicitly
+  says not to call into. A new object-safe wrapper over
+  `ImageProvider::generate_image` is needed, wired in the host over
+  `RealImageProvider` — the `ErasedImageDiscovery` shape, one file.
+* **The Concierge stack reachable from a route handler.** `classify_content`
+  (`dangerous_content/gatekeeper.rs:413`) takes `ModerationProvider` +
+  `CompletionProvider` + a `CheapLlmSelection`; today only the tool runner holds
+  them. Note `build_cheap_llm_selection` (`generate_image.rs:1422`) is a private
+  `fn` — widening it or duplicating its three lines is a decision to make
+  deliberately.
+* **The oracle**: `createImageProvider` mocked with a recorder (the
+  `image-generate-route.test.ts:212-284` seams), the classification canned,
+  `logLLMCall` no-op'd, and `Date` FROZEN — v4's filenames are
+  `generated_<Date.now()>_<index>_<sha8>.webp`, so an unfrozen clock makes every
+  row unstable.
+
+Everything else it needs already exists: `build_image_gen_params` (with the
+`orientation: None` arm), `write_lantern_background_to_mount_store` (subfolder
+`tool/`), `get_inherited_tags`, and the api-key resolver.
+
+### Tier 2 item 8 — P4.62(a)'s FILES leg: DEFERRED, with a CORRECTED shape
+
+See the measurement above: the order's premise (a raw carry) is wrong for both
+legs. The images leg is CLOSED; the files leg needs `Request::FileUpload.tags`
+widened, `save_file_entry` validating as `create_file_conns` now does, and v4's
+**500 `Failed to upload file`** (its route catches, where the images route does
+not). Not ported.
+
+### Tier 1 item 6 — the `?action=` row: COORDINATION ONLY, by the order's own instruction
+
+`query_param_semantics_equivalence` lives in `crates/quilltap-web/tests/`, which
+this round assigns to P4.72; the order says to coordinate by name so the two
+`ENDPOINTS` lists agree at unification. **The row P4.72 (or the unifier) should
+add is `ep_body("images_collection_post", "POST", "/api/v1/images", <a served
+action>, json!({}))` — except that this endpoint serves NO action but
+`generate`**, which did not land, so the honest row today is the GET:
+`ep("images_collection_get", "GET", "/api/v1/images", …)` has no served action
+either. **Recommendation: add no row until the generate leg lands.** The
+behaviour itself is already pinned in `images_routes_equivalence` by
+`upload_action_unknown` — v4's FIRST shape, where `?action=<anything but
+generate>` UPLOADS and there is no unknown-action envelope.
+
+### Tier 3 — as the order specified
+
+The `{id}` POST `add-tag` / `remove-tag` actions are NOT ported. v4's envelope is
+the string-interpolated `Unknown action: <x>. Available actions: add-tag,
+remove-tag` (the THIRD dispatch shape), and `verifyTaggedEntity` only ever checks
+the CHAT tier. No v5 edge serves them, so there is no silent 405 — the route is
+simply not registered.
+
+The `almanack.rs` / `quilltap_import` codec sites were MEASURED, not widened:
+both pass `NotConfiguredPixelCodec`, and both are correct to. `api/almanack.rs`
+writes `text/markdown` diagnostics and `quilltap_import` takes the caller's codec
+(`codec.unwrap_or(&not_configured)`), so neither is an image ingest path.

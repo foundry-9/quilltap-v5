@@ -200,6 +200,25 @@ alias expansion (which resolves to the same absolute worktree path) and
 nothing else; all six `--run` green from a `0b0617fee`-pinned v4 worktree; and
 none of the eight regenerated NDJSONs contains a stage path at all, so the
 directory name provably cannot reach the measured bytes.
+#### 2026-09-04 — feat(spa): mirror the images collection verbs into core-contract (P4.73 unit 5)
+
+_Versions: SPA 0.5.632._
+
+The four landed images verbs mirrored name-for-name from `api/types.rs`'s
+P4.73 block. Type-only — the SPA has no consumer this round; the three files
+that name the gap in their headers (`images/image-gallery.ts`,
+`screens/profile/avatar-picker.ts`, `chat/cast/create-npc-dialog.ts`) belong to
+the next SPA lane, and these are the verbs they consume. `imagesGenerate` is
+deliberately absent: its verb did not land.
+
+`ImageUploadRequest.tags` is `unknown[]` and `ImageImportFromUrlRequest`'s
+`url`/`tags` are `unknown` on purpose. A non-UUID `tagId` has to REACH the
+server to be refused — the refusal comes from `repos.files.create` re-validating
+the row — so a client type narrowed to `string` would make the measured
+wrong-type behaviour unreachable from its only consumer.
+
+SPA gate: `npm run build` clean; `npm test` 376 files / 5,925 tests, 0 failed.
+
 #### 2026-09-04 — fix(chats): the ChatCreate wrong-type trio answers v4's Validation error (P4.73 unit 4)
 
 _Versions: core 0.0.772, harness 0.0.666._

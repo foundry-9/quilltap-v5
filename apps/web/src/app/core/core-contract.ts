@@ -5206,6 +5206,12 @@ export type MemoryRequest =
   | PhotoGalleryEntryRemoveRequest
   // P4.9a2 (folded at the consult-wire round's unification).
   | ImageInfoGetRequest
+  // === P4.73: the /api/v1/images COLLECTION surface (append-only) ===
+  | ImagesListRequest
+  | ImageUploadRequest
+  | ImageImportFromUrlRequest
+  | ImageDeleteRequest
+  // === end P4.73 ===
   // P4.9f1 (folded at the consult-wire round's unification; §1 of that
   // round's Shared contract pins every name and payload below).
   | ChatOutfitGetRequest
@@ -6398,6 +6404,72 @@ export interface ImageInfoGetRequest {
   type: 'imageInfoGet';
   id: string;
 }
+
+// === P4.73: the `/api/v1/images` COLLECTION surface, mirrored NAME-FOR-NAME
+// from `api/types.rs`'s `=== P4.73 ===` block. Type-only this round: the SPA
+// has no consumer yet. The three files that name the gap in their headers —
+// `images/image-gallery.ts` (its self-fetch of `GET /api/v1/images`),
+// `screens/profile/avatar-picker.ts` (the `ImageUploadDialog` leg) and
+// `chat/cast/create-npc-dialog.ts` (v4's upload-first NPC avatar sequence) —
+// are the NEXT SPA lane's, and these are the verbs they consume.
+//
+// The response bodies ride the server's envelope and are read defensively via
+// `CoreClient.dispatchData` (the photo-gallery precedent — one
+// `Response::Images(Value)` variant serves all four verbs server-side); they
+// are byte-pinned server-side by `images_routes_equivalence`.
+// ===========================================================================
+
+/**
+ * v4 `GET /api/v1/images` — the tagged image list. `tagId` is v4's
+ * `searchParams.get('tagId')`; an empty value is JS-falsy there, so the edge
+ * folds `?tagId=` into absent before the verb sees it.
+ */
+export interface ImagesListRequest {
+  type: 'imagesList';
+  tagId?: string;
+}
+
+/**
+ * v4 `POST /api/v1/images` with a multipart body — the paste/drag-drop upload.
+ * Bytes cross the boundary base64-encoded (the `chatFileUpload` precedent); the
+ * multipart parse stays at the web edge.
+ *
+ * `tags` is `unknown[]` because v4 runs NO schema on this leg: it maps
+ * `t => t.tagId` over whatever the JSON held. A non-UUID id does not land in
+ * the row — `repos.files.create` re-validates and refuses — but it must REACH
+ * the server to be refused, so the client type cannot narrow it to strings.
+ */
+export interface ImageUploadRequest {
+  type: 'imageUpload';
+  filename: string;
+  contentType: string;
+  /** base64 of the file bytes. */
+  data: string;
+  tags?: unknown[];
+}
+
+/**
+ * v4 `POST /api/v1/images` with a JSON body — fetch an image from a URL and
+ * ingest it. `url` and `tags` are `unknown` because the server Zod-parses them
+ * and a wrong-typed value must answer v4's `Validation error` 400 rather than
+ * failing the transport decode.
+ */
+export interface ImageImportFromUrlRequest {
+  type: 'imageImportFromUrl';
+  url?: unknown;
+  tags?: unknown;
+}
+
+/**
+ * v4 `DELETE /api/v1/images/{id}` — the orphan-aware, in-use-refusing delete.
+ * Replaces the P4.9a2 loud refusal. Its 400 carries v4's `{message, code:
+ * 'IMAGE_IN_USE', associations}` bag alongside the sentence.
+ */
+export interface ImageDeleteRequest {
+  type: 'imageDelete';
+  id: string;
+}
+// === end P4.73 ===
 
 /**
  * Per-character equipped slots (v4 `EquippedSlotsSchema`,
