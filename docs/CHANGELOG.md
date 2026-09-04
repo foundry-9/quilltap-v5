@@ -623,6 +623,35 @@ query read reddens exactly its `empty_then_known` body plus `firstWins` and
 `UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
 conversation-summaries sentence reddens exactly that endpoint's four
 byte-compared rows.
+#### 2026-09-04 — chore(spa): the SPA-wide `title=` census, and the two copy repairs it found
+
+_Versions: SPA 0.5.632._
+
+`apps/web/scripts/title-census.mjs` compares v4's native browser tooltips
+against v5's, mechanically and re-runnably, so a drift round can re-run it
+instead of eyeballing two trees. It counts only `title` on a DOM element — v4's
+PascalCase components and v5's own `qt-*` component selectors (read out of the
+source, no allowlist) are subtracted as props — and classifies every v4 string
+site as `ok` (v5 has the same string in a `title`/`[title]`/`[attr.title]`
+attribute or a `qt-tooltip` content), `bound` (the string is in the v5 source
+but not in an attribute — v5 often holds tooltip copy in a TS table read through
+`[title]`, which no attribute scan can see), or `missing`. Expression-valued v4
+sites and v5-only strings are reported separately for a human to judge.
+
+At the `0b0617fee` pin: v4's 612 `title=` occurrences are 431 on DOM elements
+(273 with a string value) and 181 component props; v5 carries 415 DOM titles.
+Of v4's 273: 231 ok, 9 bound, 33 absent. The 33 are dominated by controls v5
+does not render at all (the theme browser, the character optimizer, Continue
+Elsewhere, re-extract/delete memories, the `me`/`char` placeholder buttons,
+Clear-all, RenameReplace) — those belong to their surfaces' own orders, not
+here.
+
+Two were real copy divergences on elements v5 does render, and both are fixed
+byte-exactly with a spec pin at the source: the Scriptorium's file-manager
+toggle said "Preview the new file manager" where v4 says "Preview the new
+SVAR-powered file manager" (`DocumentStoreDetailView.tsx:241`), and the template
+highlighter's two hard-coded-name warnings had been typographed into em dashes
+where v4 uses a plain hyphen (`TemplateHighlighter.tsx:567`, `:579`).
 
 #### 2026-09-03 — docs(orders): the follow-ups round 2 ordered — P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75
 

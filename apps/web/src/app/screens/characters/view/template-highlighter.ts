@@ -311,13 +311,17 @@ export function highlightSegments(
 
   const segments: HighlightSegment[] = [];
   let lastEnd = 0;
+  // ⚠ The two hard-coded rows use v4's PLAIN HYPHEN, not an em dash. They are
+  // v4's bytes (`components/characters/TemplateHighlighter.tsx:567`, `:579` at
+  // `0b0617fee`); v5 had quietly typographed them, which the P4.75 `title=`
+  // census caught as two v4 strings with no v5 twin.
   const titleFor: Record<ContentMatch['kind'], string> = {
     'char-template': 'Character name (from {{char}})',
     'user-template': userCharacterName
       ? 'User character name (from {{user}})'
       : 'User (no default user character set)',
-    'char-hardcoded': 'Hard-coded character name — consider replacing with {{char}}',
-    'user-hardcoded': 'Hard-coded user character name — consider replacing with {{user}}',
+    'char-hardcoded': 'Hard-coded character name - consider replacing with {{char}}',
+    'user-hardcoded': 'Hard-coded user character name - consider replacing with {{user}}',
   };
   for (const match of matches) {
     if (match.start > lastEnd) {

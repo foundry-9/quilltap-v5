@@ -184,7 +184,7 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
               <button
                 type="button"
                 class="qt-button-ghost inline-flex items-center gap-1.5 text-sm"
-                title="Preview the new file manager"
+                title="Preview the new SVAR-powered file manager"
                 (click)="useFileManager.set(!useFileManager())"
               >
                 <qt-icon name="layers" class="w-4 h-4" />
