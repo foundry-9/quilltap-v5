@@ -80,9 +80,10 @@ fn every_v4_image_params_anchor_still_has_a_v5_call_site() {
 
 /// A TRIPWIRE, not a pin. v4's ninth anchor belongs to
 /// `POST /api/v1/images?action=generate` (`app/api/v1/images/route.ts:282`),
-/// a route v5 has never ported — `quilltap-web` serves only
-/// `/api/v1/images/{id}`, and no v5 site calls `build_image_gen_params` for
-/// it. That is a PRE-EXISTING gap, measured at P4.70 and recorded rather than
+/// a leg v5 has never ported — since P4.73 `quilltap-web` serves the images
+/// COLLECTION route (list / upload / import / DELETE) but answers a NAMED
+/// refusal on `?action=generate`, and no v5 site calls `build_image_gen_params`
+/// for it. That is a PRE-EXISTING gap, measured at P4.70 and recorded rather than
 /// invented into existence: an anchor with nothing behind it would be a lie in
 /// `combined.log`.
 ///

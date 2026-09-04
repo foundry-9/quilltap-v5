@@ -45,6 +45,8 @@ interface Spec {
 // `harness/oracle/fixtures/build-images-collection-fixture.ts`).
 const CHAR_TAG = 'c1000000-0000-4000-8000-000000000003';
 const THEME_TAG = 'ee000000-0000-4000-8000-000000000001';
+/** The literal bytes the fixture builder stores behind F_INUSE (`build-images-collection-fixture.ts:270`). */
+const IN_USE_BYTES = Buffer.from('RIFFfixture-webp-bytes-for-F_INUSE', 'utf8');
 const F_TAGGED = 'f0000000-0000-4000-8000-000000000001';
 const F_INUSE = 'f0000000-0000-4000-8000-000000000005';
 const F_ORPHAN = 'f0000000-0000-4000-8000-000000000006';
@@ -425,6 +427,68 @@ function buildCases(): CaseSpec[] {
       dump: true,
     },
 
+    // ── The dedup arms (Tier 1 item 5; added at the follow-ups-round-2
+    // unification after the §3 review found them missing). F_INUSE's blob
+    // holds literal bytes stored as `image/webp` — a PASSTHROUGH type, so the
+    // same bytes hash to its `sha256` and `createFile` takes the dedup branch
+    // (`images-v2.ts:117-137`).
+    {
+      name: 'upload_dedup_existing_notag',
+      run: imagesUpload({ file: { name: 'in-use-again.webp', type: 'image/webp', bytes: IN_USE_BYTES } }),
+      dump: true,
+    },
+    // Growth → `repos.files.update({linkedTo})` on the EXISTING row, then
+    // `addTag`: the receipt names F_INUSE and nothing is minted.
+    {
+      name: 'upload_dedup_existing_grows',
+      run: imagesUpload({
+        file: { name: 'in-use-again.webp', type: 'image/webp', bytes: IN_USE_BYTES },
+        tags: `[{"tagType":"CHARACTER","tagId":"${CHAR_TAG}"}]`,
+      }),
+      dump: true,
+    },
+    // Growth with a RAW id → `update` re-validates against `FileEntrySchema`
+    // BEFORE any write: 400, row untouched, no orphan.
+    {
+      name: 'upload_dedup_existing_raw_tagid',
+      run: imagesUpload({
+        file: { name: 'in-use-again.webp', type: 'image/webp', bytes: IN_USE_BYTES },
+        tags: '[{"tagType":"THEME","tagId":5}]',
+      }),
+      dump: true,
+    },
+    // The dedup-ORPHAN arm, two steps: upload the SVG (untranscoded, so its
+    // sha is the same on both sides), delete its blob row so
+    // `mountBlobExists` misses, upload it again → "Cleaning up orphaned file
+    // metadata before re-upload" (`images-v2.ts:138-146`) and a fresh row.
+    {
+      name: 'upload_dedup_orphan_cleanup',
+      run: async () => {
+        const route = await loadRoute('@/app/api/v1/images/route');
+        const svg = { name: 'mark.svg', type: 'image/svg+xml', bytes: SVG_BYTES };
+        const first = await respond(await route.POST(mockMultipartRequest(IMAGES, { file: svg })));
+        const firstId = (first.body as { data?: { id?: string } }).data?.id;
+        if (!firstId) throw new Error(`first upload did not mint a row: ${JSON.stringify(first)}`);
+        const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+        const { getRawMountIndexDatabase } = await import(
+          '@/lib/database/backends/sqlite/mount-index-client'
+        );
+        const main = getRawDatabase() as unknown as {
+          prepare: (s: string) => { get: (...a: unknown[]) => { storageKey?: string } | undefined };
+        };
+        const mount = getRawMountIndexDatabase() as unknown as {
+          prepare: (s: string) => { run: (...a: unknown[]) => { changes: number } };
+        };
+        const key = main.prepare('SELECT storageKey FROM files WHERE id = ?').get(firstId)?.storageKey;
+        if (!key) throw new Error(`minted row ${firstId} has no storageKey`);
+        const blobId = key.split(':').pop();
+        const { changes } = mount.prepare('DELETE FROM doc_mount_blobs WHERE id = ?').run(blobId);
+        if (changes !== 1) throw new Error(`planting the orphan deleted ${changes} blob rows`);
+        return respond(await route.POST(mockMultipartRequest(IMAGES, { file: svg })));
+      },
+      dump: true,
+    },
+
     // ── POST: import from URL (JSON) ────────────────────────────────────────
     {
       name: 'import_ok',
@@ -495,6 +559,19 @@ function buildCases(): CaseSpec[] {
       dump: true,
     },
     { name: 'import_bad_url', run: imagesImport({ url: 'not-a-url' }), dump: true },
+    // The receipt echoes the PARSED tags (`route.ts:445`): unknown keys are
+    // stripped and each object is rebuilt `tagType` then `tagId`. Sent
+    // reordered and with an extra key so the receipt's key order is the
+    // comparand (added at the follow-ups-round-2 unification).
+    {
+      name: 'import_tags_extra_keys',
+      run: imagesImport({
+        url: 'https://example.invalid/pics/photo.png',
+        tags: [{ tagId: THEME_TAG, tagType: 'THEME', extra: 1 }],
+      }),
+      fetch: { status: 200, statusText: 'OK', contentType: 'image/png', body: PNG_1X1 },
+      dump: true,
+    },
 
     // Neither JSON nor multipart.
     { name: 'post_bad_content_type', run: imagesPostBadContentType(), dump: true },

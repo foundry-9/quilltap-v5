@@ -71,45 +71,11 @@ pub(crate) fn legacy_source(source: &str) -> &'static str {
     }
 }
 
-/// v4 zod's `uuid()` source pattern, hand-matched (the `api/settings.rs`
-/// `zod_uuid_ok` transcription — a THIRD copy of the same predicate; folding
-/// the three into one home is a named consolidation candidate, recorded in the
-/// lane record rather than done here, because the other two live in files this
-/// lane does not own).
-fn zod_uuid_ok(s: &str) -> bool {
-    if s == "00000000-0000-0000-0000-000000000000" || s == "ffffffff-ffff-ffff-ffff-ffffffffffff" {
-        return true;
-    }
-    let b = s.as_bytes();
-    if b.len() != 36 {
-        return false;
-    }
-    for (i, &c) in b.iter().enumerate() {
-        match i {
-            8 | 13 | 18 | 23 => {
-                if c != b'-' {
-                    return false;
-                }
-            }
-            14 => {
-                if !c.is_ascii_hexdigit() || !(b'1'..=b'8').contains(&c) {
-                    return false;
-                }
-            }
-            19 => {
-                if !matches!(c, b'8' | b'9' | b'a' | b'b' | b'A' | b'B') {
-                    return false;
-                }
-            }
-            _ => {
-                if !c.is_ascii_hexdigit() {
-                    return false;
-                }
-            }
-        }
-    }
-    true
-}
+/// The Zod `uuid()` predicate — ONE home, `services::file_storage::is_zod_uuid`
+/// (a fourth transcription lived here until the follow-ups-round-2 §3 review
+/// folded it; the `api/settings.rs` copy is the remaining consolidation
+/// candidate, recorded in the lane record).
+use crate::services::file_storage::is_zod_uuid;
 
 /// A stored JSON array column read back as raw elements (v4 hydrates the cell
 /// with `JSON.parse`, so a number stays a number).
@@ -129,7 +95,7 @@ fn file_entry_row_is_valid(sha256: Option<&str>, linked_to: &[Value], tags: &[Va
     if !matches!(sha256, Some(s) if s.len() == 64) {
         return false;
     }
-    let all_uuid = |arr: &[Value]| arr.iter().all(|v| v.as_str().is_some_and(zod_uuid_ok));
+    let all_uuid = |arr: &[Value]| arr.iter().all(|v| v.as_str().is_some_and(is_zod_uuid));
     all_uuid(linked_to) && all_uuid(tags)
 }
 
@@ -367,54 +333,30 @@ fn list(
 
 /// v4 `for (const tag of tags) await repos.files.addTag(imageData.id, tag.tagId)`
 /// (`route.ts:421-425` / `:477-481`). Runs AFTER the ingest, so a tag id the
-/// ingest already inherited is a no-op, and a non-string raw id is pushed onto
-/// the array as-is.
+/// ingest already inherited is a no-op.
+///
+/// v4's `addTag` is `this.update(id, { tags: [...tags, tagId] })`
+/// (`base.repository.ts:579-596`), and `_update` re-validates the row against
+/// `FileEntrySchema` — so a non-string or non-UUID id THROWS out of the loop
+/// (the middleware's `Validation error` 400). Every id reaching this loop has
+/// already passed `create_file_conns`' own refusal (the create arm after the
+/// bridge write, the dedup arm before any write), so the refusal here is a
+/// guard that names the invariant rather than a live arm. It replaces a raw
+/// `UPDATE files SET tags = …` that pushed the value as-is — which was a claim
+/// about v4 that was false (the §3 review of the follow-ups round 2).
 pub(crate) fn add_raw_tags(
     main: &rusqlite::Connection,
     file_id: &str,
     tag_ids: &[Value],
 ) -> Result<(), DbError> {
     for tag in tag_ids {
-        match tag.as_str() {
-            Some(s) => {
-                FilesRepository::new(main).add_tag(file_id, s)?;
-            }
-            // v4's `addTag` pushes the raw value into the JSON array; the
-            // repository's string-typed twin cannot, so the raw arm is spelled
-            // out here rather than widening the repository for one caller.
-            None => add_raw_tag_value(main, file_id, tag)?,
-        }
+        let Some(s) = tag.as_str().filter(|s| is_zod_uuid(s)) else {
+            return Err(DbError::Internal(format!(
+                "files.addTag: `{tag}` is not a UUID"
+            )));
+        };
+        FilesRepository::new(main).add_tag(file_id, s)?;
     }
-    Ok(())
-}
-
-/// The non-string half of [`add_raw_tags`] — v4's `addTag` is
-/// `tags.includes(tagId) ? noop : [...tags, tagId]` over the hydrated array,
-/// so a number is compared with `===` and appended as a number.
-fn add_raw_tag_value(
-    main: &rusqlite::Connection,
-    file_id: &str,
-    tag: &Value,
-) -> Result<(), DbError> {
-    use rusqlite::OptionalExtension;
-    let cell: Option<Option<String>> = main
-        .query_row(
-            "SELECT tags FROM files WHERE id = ?1",
-            rusqlite::params![file_id],
-            |row| row.get(0),
-        )
-        .optional()?;
-    let Some(cell) = cell else { return Ok(()) };
-    let mut arr = raw_json_array(cell.as_deref());
-    if arr.iter().any(|t| t == tag) {
-        return Ok(());
-    }
-    arr.push(tag.clone());
-    let now = crate::clock::now_iso();
-    main.execute(
-        "UPDATE files SET tags = ?1, updatedAt = ?2 WHERE id = ?3",
-        rusqlite::params![Value::Array(arr).to_string(), now, file_id],
-    )?;
     Ok(())
 }
 
@@ -713,8 +655,8 @@ fn allowed_types_joined() -> String {
 /// v4 `validateImageFile` (`images-v2.ts:218-226`). Both arms THROW, and
 /// neither route leg wraps them, so the sentences reach the middleware's catch
 /// and the client sees a flat `500 {"error": "Internal server error"}` — they
-/// are pinned by unit tests here, not by a corpus row, because the wire cannot
-/// show them.
+/// are pinned by [`validate_image_file_tests`] here, not by a corpus row,
+/// because the wire cannot show them (v4 logs them as the unhandled error).
 fn validate_image_file(content_type: &str, size: usize) -> Result<(), String> {
     if !crate::services::file_storage::ALLOWED_IMAGE_TYPES.contains(&content_type) {
         return Err(format!(
@@ -802,7 +744,22 @@ fn parse_import_body(
                     return Err(bad());
                 }
             }
-            Some(arr.clone())
+            // v4 echoes the PARSED array (`route.ts:445` `tags: tags || []` is
+            // the `importFromUrlSchema.parse` result): unknown keys are
+            // stripped and each object is rebuilt in schema key order,
+            // `tagType` then `tagId`. Echoing the raw objects would diverge on
+            // key order and content the moment a client sent either (the §3
+            // review of the follow-ups round 2; `import_tags_extra_keys`).
+            Some(
+                arr.iter()
+                    .map(|t| {
+                        json!({
+                            "tagType": t["tagType"].clone(),
+                            "tagId": t["tagId"].clone(),
+                        })
+                    })
+                    .collect(),
+            )
         }
     };
     Ok((url.to_string(), tags))
@@ -974,10 +931,12 @@ async fn ingest(
             .is_some_and(crate::services::file_storage::is_zod_uuid)
     });
     // A non-string raw id crosses as its JSON text (`5` → `"5"`), which is not
-    // a UUID either, so the validation fails identically. The stored value
-    // would differ if it could ever be written — it cannot, so it is
-    // unobservable; the alternative is widening `IngestParams.linked_to` to
-    // `Vec<Value>` for a path that always refuses.
+    // a UUID either, so the validation fails identically on BOTH of
+    // `create_file_conns`' arms — the create arm (after the bridge write, an
+    // orphaned blob) and the dedup-with-growth arm (before any write). It can
+    // never be written, so the coerced spelling is unobservable; the
+    // alternative is widening `IngestParams.linked_to` to `Vec<Value>` for a
+    // path that always refuses.
     let linked_to: Vec<String> = raw_tags
         .iter()
         .map(|v| match v.as_str() {
@@ -1018,7 +977,8 @@ async fn ingest(
                 dims,
             )?;
             // v4 runs `addTag` AFTER the ingest, so a tag the ingest already
-            // inherited is a no-op and a non-string raw id is appended as-is.
+            // inherited is a no-op; an id that is not a UUID never reaches
+            // this loop (see `add_raw_tags`).
             add_raw_tags(main, &entry.id, &tags_for_loop)?;
             let refreshed = crate::db::files::FilesRepository::new(main)
                 .find_by_id(&entry.id)?
@@ -1046,5 +1006,31 @@ async fn ingest(
         // `validationError` 400; anything else is its generic 500.
         Err(_) if !ids_valid => Response::error(ErrorKind::BadRequest, "Validation error"),
         Err(_) => internal_error(),
+    }
+}
+
+#[cfg(test)]
+mod validate_image_file_tests {
+    //! The two `validateImageFile` sentences (`images-v2.ts:218-226`) — the
+    //! wire collapses both to the middleware's 500, so the bytes are pinned
+    //! here (promised by the doc comment above; landed at the follow-ups-
+    //! round-2 unification after the §3 review found the promise empty).
+    use super::validate_image_file;
+
+    #[test]
+    fn a_disallowed_type_names_the_allow_list() {
+        let err = validate_image_file("text/plain", 1).unwrap_err();
+        assert_eq!(
+            err,
+            "Invalid file type. Allowed types: image/jpeg, image/jpg, image/png, image/gif, \
+             image/webp, image/avif, image/svg+xml"
+        );
+    }
+
+    #[test]
+    fn an_oversize_file_names_the_limit_in_mb() {
+        let err = validate_image_file("image/png", 10 * 1024 * 1024 + 1).unwrap_err();
+        assert_eq!(err, "File size exceeds maximum allowed size of 10 MB");
+        assert!(validate_image_file("image/png", 10 * 1024 * 1024).is_ok());
     }
 }

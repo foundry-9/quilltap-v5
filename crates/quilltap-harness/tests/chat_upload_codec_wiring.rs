@@ -239,12 +239,23 @@ async fn the_chat_upload_arm_reaches_for_the_host_codec() {
     );
 
     // 4. The `files` row the response names agrees with the stored bytes too.
-    let file_id = body["data"]["id"]
+    // The chat-upload receipt is `{"file": {"id", …}}` (v4 `chats/[id]/files`
+    // `handleUploadFile` → `{ file: serializeFileEntry(...) }`). The first form
+    // of this pin read `data.id` / `id` behind an `if !file_id.is_empty()`, so
+    // the files-row half below had NEVER run — measured at the follow-ups-
+    // round-2 unification when the `if` became this hard floor (the §3 review
+    // predicted exactly that hole).
+    let file_id = body["file"]["id"]
         .as_str()
+        .or_else(|| body["data"]["id"].as_str())
         .or_else(|| body["id"].as_str())
         .unwrap_or_default()
         .to_string();
-    if !file_id.is_empty() {
+    assert!(
+        !file_id.is_empty(),
+        "the upload response names no file id — the pin's files-row half would be skipped: {body}"
+    );
+    {
         let row = db
             .read_main(move |c| {
                 let mut stmt = c.prepare("SELECT sha256, mimeType FROM files WHERE id = ?1")?;
@@ -312,9 +323,33 @@ fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", h.finalize())
 }
 
-/// The user the fixture owns everything as — referenced so a fixture swap that
-/// changed the owner fails loudly here rather than producing an empty upload.
+/// The user the pin uploads as must own files in the FIXTURE (it seeds two
+/// owners; USER_A is the one the chat belongs to), read from the fixture so a
+/// swap that dropped the owner fails loudly here rather than producing an
+/// empty upload. (Its first form compared the constant with itself.)
 #[test]
 fn the_fixture_owner_is_the_single_user() {
-    assert_eq!(USER_A, "11111111-1111-4111-8111-111111111111");
+    let base = scratch_instance("owner");
+    let db = quilltap_core::db::runtime::Db::open(
+        quilltap_core::db::runtime::DbPaths {
+            main: base.join("data").join("quilltap.db"),
+            mount_index: Some(base.join("data").join("quilltap-mount-index.db")),
+            llm_logs: None,
+        },
+        PEPPER,
+    )
+    .expect("open the seeded fixture");
+    let owners: Vec<String> = db
+        .read_main(|c| {
+            let mut stmt = c.prepare("SELECT DISTINCT userId FROM files ORDER BY userId")?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .expect("read the files owners");
+    assert!(
+        owners.iter().any(|o| o == USER_A),
+        "the fixture's files rows name no USER_A among their owners: {owners:?}"
+    );
 }

@@ -137,9 +137,16 @@ pub async fn images_post(
     // v4 `contentType.includes('application/json')` — a substring test, so a
     // charset parameter still matches.
     if content_type.contains("application/json") {
+        // v4 `await request.json()` throwing (an unreadable or unparseable
+        // body) is a SyntaxError, not a ZodError — `handleRouteError`'s final
+        // arm (`context.ts:206-207`): a flat 500 `Internal server error`. Only
+        // a body that PARSES reaches the Zod refusal (the §3 review of the
+        // follow-ups round 2 caught both arms answering a 400 v4 never does).
         let body = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
             Ok(b) => b,
-            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Validation error"),
+            Err(_) => {
+                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+            }
         };
         // The body is decoded THROUGH the Request enum and validated in the
         // HANDLER (`api::images::parse_import_body`), so the `z.url()` and
@@ -149,7 +156,10 @@ pub async fn images_post(
             Ok(Value::Object(map)) => (map.get("url").cloned(), map.get("tags").cloned()),
             // A body that is not even an object still reaches v4's Zod parse,
             // which refuses it — the handler answers that, not the edge.
-            _ => (None, None),
+            Ok(_) => (None, None),
+            Err(_) => {
+                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+            }
         };
         let core_req = CoreRequest::ImageImportFromUrl { url, tags };
         return match dispatch_core(&state, core_req).await {
@@ -161,7 +171,11 @@ pub async fn images_post(
     if content_type.contains("multipart/form-data") {
         let form = match FormData::from_request(req, &state).await {
             Ok(f) => f,
-            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid multipart body"),
+            // v4 `await request.formData()` throwing is the same unhandled-error
+            // 500 as the JSON leg's — never a v5-invented 400 sentence.
+            Err(_) => {
+                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+            }
         };
         // v4 `if (!file) return badRequest('No file provided')`.
         let Some(file) = form.file("file") else {

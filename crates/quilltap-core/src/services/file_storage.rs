@@ -1610,6 +1610,21 @@ pub fn create_file_conns(
             let current = read_linked_to(main, &existing.id)?;
             let updated = merge_tags(&current, &params.linked_to);
             if updated.len() > current.len() {
+                // v4's dedup-with-growth arm goes through `repos.files.update`
+                // (`images-v2.ts:126-137`), and `base.repository.ts:_update`
+                // re-validates the row against `FileEntrySchema` — `linkedTo`
+                // is `z.array(z.uuid())` — so a non-UUID id THROWS here too.
+                // Unlike the create arm below, the throw lands BEFORE any
+                // write: no bridge write has happened for a deduplicated
+                // upload, so nothing is orphaned and the row is untouched.
+                // (Caught by the §3 review of the follow-ups round 2: the
+                // create-path check was in place, this arm bypassed it, and
+                // v5 answered 201 with a raw id merged where v4 answers 400.)
+                if let Some(bad) = updated.iter().find(|v| !is_zod_uuid(v)) {
+                    return Err(DbError::Internal(format!(
+                        "files.update: `{bad}` is not a UUID"
+                    )));
+                }
                 let now = crate::clock::now_iso();
                 files.update(
                     &existing.id,

@@ -1035,6 +1035,25 @@
       }
     },
     {
+      "name": "rt_wrong_type_before_404",
+      "progressId": "e0000000-0000-4000-8000-0000000000fe",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000fe",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "roleplayTemplateId": 42,
+        "continuationFromChatId": "e0000000-0000-4000-8000-00000000dead"
+      }
+    },
+    {
       "name": "tc_wrong_type_400",
       "progressId": "e0000000-0000-4000-8000-0000000000fc",
       "tz": "UTC",

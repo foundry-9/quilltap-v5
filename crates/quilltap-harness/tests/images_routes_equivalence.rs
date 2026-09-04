@@ -162,6 +162,10 @@ const USER_A: &str = "11111111-1111-4111-8111-111111111111";
 // The pinned ids the fixture bakes (lockstep with the builder + the .test.ts).
 const CHAR_TAG: &str = "c1000000-0000-4000-8000-000000000003";
 const THEME_TAG: &str = "ee000000-0000-4000-8000-000000000001";
+/// The literal bytes the fixture builder stores behind F_INUSE
+/// (`build-images-collection-fixture.ts:270`), as `image/webp` — a
+/// PASSTHROUGH type on both sides, so re-uploading them is the dedup arm.
+const IN_USE_BYTES: &[u8] = b"RIFFfixture-webp-bytes-for-F_INUSE";
 const F_TAGGED: &str = "f0000000-0000-4000-8000-000000000001";
 const F_INUSE: &str = "f0000000-0000-4000-8000-000000000005";
 const F_ORPHAN: &str = "f0000000-0000-4000-8000-000000000006";
@@ -529,8 +533,10 @@ fn images_routes_match_oracle() {
     // ── POST: upload (multipart) ────────────────────────────────────────────
     // The web edge parses the multipart body and the `tags` JSON string; the
     // arms it owns alone (`No file provided`, `Invalid tags JSON`, the
-    // truthy-non-array 500, `Invalid content type`) are edge-level and are
-    // driven by `images_post_edge_arms` below rather than here.
+    // truthy-non-array 500, `Invalid content type`, the malformed-body 500s)
+    // are edge-level and are pinned v5-side in
+    // `crates/quilltap-web/tests/images_edge_routes.rs` (the §3 review of the
+    // follow-ups round 2 found this comment naming a driver that did not exist).
     let png = png_1x1();
     let svg = SVG_BYTES.to_vec();
     /// One multipart upload arm: case name, filename, content type, bytes, and
@@ -589,6 +595,41 @@ fn images_routes_match_oracle() {
             png.clone(),
             None,
         ),
+        // ── The dedup arms (the order's Tier 1 item 5 named them; the §3
+        // review of the follow-ups round 2 found them missing — and the code
+        // WRONG behind them). F_INUSE's blob holds literal bytes stored as
+        // `image/webp`, which both implementations pass through UNTRANSCODED,
+        // so the same bytes hash to F_INUSE's `sha256` on both sides and the
+        // upload takes `createFile`'s dedup branch (`images-v2.ts:117-137`).
+        // No growth → the existing row comes back untouched.
+        up(
+            "upload_dedup_existing_notag",
+            "in-use-again.webp",
+            "image/webp",
+            IN_USE_BYTES.to_vec(),
+            None,
+        ),
+        // Growth → v4 `repos.files.update({linkedTo})` on the EXISTING row,
+        // then the `addTag` loop: the receipt names F_INUSE (its stored
+        // filename, not the upload's), and no row is minted.
+        up(
+            "upload_dedup_existing_grows",
+            "in-use-again.webp",
+            "image/webp",
+            IN_USE_BYTES.to_vec(),
+            Some(vec![json!({"tagType": "CHARACTER", "tagId": CHAR_TAG})]),
+        ),
+        // Growth with a RAW id → v4's `update` re-validates against
+        // `FileEntrySchema` BEFORE any write and throws: 400, row untouched,
+        // no orphan (unlike the create arm, where the bridge write precedes
+        // the throw). v5 merged and answered 201 until the unification fix.
+        up(
+            "upload_dedup_existing_raw_tagid",
+            "in-use-again.webp",
+            "image/webp",
+            IN_USE_BYTES.to_vec(),
+            Some(vec![json!({"tagType": "THEME", "tagId": 5})]),
+        ),
     ];
     for c in upload_cases {
         let name = c.name;
@@ -602,6 +643,76 @@ fn images_routes_match_oracle() {
             c.content_type,
             c.bytes,
             c.tags,
+        ));
+        let tables = dump_tables(&db);
+        if let Err(e) = within_tree_sha_agrees(&tables) {
+            failed.push(format!("{name}: {e}"));
+        }
+        let got = from_response(resp, 201, Some(tables));
+        compare(name, &got, &oracle, &mut failed);
+    }
+
+    // ── The dedup-ORPHAN arm (two steps, the same two on both sides) ────────
+    // `createFile` finds the row by sha, asks the storage manager whether the
+    // bytes still exist (`mountBlobExists` → `docMountBlobs.findById`), and on
+    // a miss deletes the metadata row and re-uploads (`images-v2.ts:138-146`:
+    // "Cleaning up orphaned file metadata before re-upload"). The fixture's
+    // F_ORPHAN carries a tag hash no bytes can produce, so the arm plants its
+    // own orphan: upload the SVG (passes through untranscoded, so its sha is
+    // the same on both sides), delete its blob row, upload it again.
+    {
+        let name = "upload_dedup_orphan_cleanup";
+        driven.push(name.to_string());
+        let db = fresh_db(&spec, name);
+        let first = rt.block_on(quilltap_core::api::images::image_upload(
+            &db,
+            ingest_deps(),
+            USER_A,
+            "mark.svg",
+            "image/svg+xml",
+            SVG_BYTES.to_vec(),
+            None,
+        ));
+        let first_id = match &first {
+            quilltap_core::api::Response::Images(v) => v["data"]["id"]
+                .as_str()
+                .expect("the first upload minted a row")
+                .to_string(),
+            other => panic!("first upload of {name} did not answer Images: {other:?}"),
+        };
+        let key: String = db
+            .read_main(|c| {
+                let k: String = c.query_row(
+                    "SELECT storageKey FROM files WHERE id = ?1",
+                    [&first_id],
+                    |r| r.get(0),
+                )?;
+                Ok(k)
+            })
+            .expect("read the minted row's storageKey");
+        let blob_id = key
+            .rsplit(':')
+            .next()
+            .expect("a mount-blob storage key")
+            .to_string();
+        rt.block_on(db.write(move |ws| {
+            let mount = ws
+                .mount_index()
+                .ok_or_else(|| quilltap_core::db::DbError::Internal("no mount index".to_string()))?
+                .connection();
+            let n = mount.execute("DELETE FROM doc_mount_blobs WHERE id = ?1", [&blob_id])?;
+            assert_eq!(n, 1, "the planted orphan must delete exactly its blob row");
+            Ok(())
+        }))
+        .expect("plant the orphan");
+        let resp = rt.block_on(quilltap_core::api::images::image_upload(
+            &db,
+            ingest_deps(),
+            USER_A,
+            "mark.svg",
+            "image/svg+xml",
+            SVG_BYTES.to_vec(),
+            None,
         ));
         let tables = dump_tables(&db);
         if let Err(e) = within_tree_sha_agrees(&tables) {
@@ -672,6 +783,16 @@ fn images_routes_match_oracle() {
             json!("not-a-url"),
             CannedFetch::ok("image/png", png_1x1()),
             None,
+        ),
+        // v4 echoes the PARSED tags (`route.ts:445`): unknown keys stripped,
+        // each object rebuilt `tagType` then `tagId`. Sent reordered and with
+        // an extra key so the receipt's key order is the comparand (the §3
+        // review of the follow-ups round 2 — the corpus had been blind).
+        (
+            "import_tags_extra_keys",
+            json!("https://example.invalid/pics/photo.png"),
+            CannedFetch::ok("image/png", png_1x1()),
+            Some(json!([{"tagId": THEME_TAG, "tagType": "THEME", "extra": 1}])),
         ),
     ];
     for (name, url, canned, tags) in import_cases {

@@ -347,6 +347,32 @@ where
         ),
     };
 
+    // v4 `roleplayTemplateId: z.uuid().nullable().optional()`. The field arrives
+    // RAW so a wrong TYPE reaches this refusal rather than failing the decode;
+    // normalize it to the string tri-state here — and do it HERE, beside
+    // `conciergeState`, because v4 Zod-parses the whole body at `route.ts:993`
+    // before any lookup: a wrong type must answer 400 even when the
+    // continuation chat is missing (the §3 review of the follow-ups round 2
+    // found it sitting after the 404; `rt_wrong_type_before_404` pins the
+    // order). The RESOLUTION (does the template exist) stays where v4 does it.
+    //
+    // ⚠ Only the wrong-TYPE arm is MEASURED (`rt_wrong_type_400`). v4's
+    // `z.uuid()` would also refuse a non-UUID STRING, and the empty-string
+    // allowance below predates this lane; no corpus case covers either, so
+    // neither is changed here. Recorded in the lane record as an unmeasured
+    // question rather than guessed at.
+    let requested_roleplay_template_id: Option<Option<String>> = match &req.roleplay_template_id {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(v)) => match v.as_str() {
+            Some(s) => Some(Some(s.to_string())),
+            None => {
+                return Err(HandleCreateError::BadRequest(
+                    "Validation error".to_string(),
+                ))
+            }
+        },
+    };
     emitter.status("Assembling the cast\u{2026}");
 
     // 1. Continuation ownership pre-check (before any create work).
@@ -574,27 +600,6 @@ where
     // onto the chat at creation so the choice — or the project's preference —
     // sticks. A truthy id must resolve or the whole create is a 400, checked
     // BEFORE the chain so an unresolvable id never silently falls back.
-    // v4 `roleplayTemplateId: z.uuid().nullable().optional()`. The field arrives
-    // RAW so a wrong TYPE reaches this refusal rather than failing the decode;
-    // normalize it to the string tri-state here.
-    //
-    // ⚠ Only the wrong-TYPE arm is MEASURED (`rt_wrong_type_400`). v4's
-    // `z.uuid()` would also refuse a non-UUID STRING, and the empty-string
-    // allowance below predates this lane; no corpus case covers either, so
-    // neither is changed here. Recorded in the lane record as an unmeasured
-    // question rather than guessed at.
-    let requested_roleplay_template_id: Option<Option<String>> = match &req.roleplay_template_id {
-        None => None,
-        Some(None) => Some(None),
-        Some(Some(v)) => match v.as_str() {
-            Some(s) => Some(Some(s.to_string())),
-            None => {
-                return Err(HandleCreateError::BadRequest(
-                    "Validation error".to_string(),
-                ))
-            }
-        },
-    };
     if let Some(Some(requested)) = requested_roleplay_template_id.as_ref() {
         if !requested.is_empty()
             && crate::db::roleplay_templates::find_full_json_by_id(main, requested)?.is_none()

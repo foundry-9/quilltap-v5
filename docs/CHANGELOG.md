@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-04 — fix(images): the §3 review's P4.73 findings — the dedup arm validates before it writes, the receipt echoes Zod's tags, malformed bodies are v4's 500, the wiring pin's hole, the guard order
+
+_Versions: core 0.0.776, harness 0.0.671, web 0.0.113, SPA 0.5.640._
+
+The unification review of P4.73 found the finding that would have shipped:
+`create_file_conns`' dedup-with-growth arm merged a raw non-UUID `tagId` into
+`linkedTo` and answered 201 where v4's `repos.files.update` re-validates the
+row against `FileEntrySchema` BEFORE any write and answers 400 — the create
+arm had the check, the dedup arm bypassed it, and the two dedup corpus arms
+the order required were never written. Fixed (the check now precedes the
+update, so nothing is orphaned on that path — unlike the create arm, where
+v4's own bridge write precedes the throw); `add_raw_tags`' raw
+`UPDATE files SET tags` writer retired for a UUID guard (v4's `addTag` goes
+through the validating `update`; the raw push was a false claim about v4);
+five arms added to `images_routes_equivalence` on both sides —
+`upload_dedup_existing_notag` / `_grows` / `_raw_tagid` over F_INUSE's literal
+WebP bytes (a passthrough type, so the sha collides identically on both
+sides), the two-step `upload_dedup_orphan_cleanup` (upload the SVG, delete
+its blob row, upload again), and `import_tags_extra_keys` (v4 echoes the
+PARSED tags in schema key order; v5 echoed the raw objects). Mutation-proven:
+removing the dedup check reddens exactly `upload_dedup_existing_raw_tagid`.
+Also from the review: the images edge's unreadable/unparseable JSON and
+malformed multipart bodies answer v4's unhandled-error `500 Internal server
+error` (they answered a 400 and a v5-invented sentence) — pinned by the NEW
+`images_edge_routes` web test, which also carries the edge arms the family's
+header had attributed to a driver that did not exist; `roleplayTemplateId`'s
+wrong-type refusal hoisted beside `conciergeState` (v4 Zod-parses the whole
+body before any lookup; `rt_wrong_type_before_404` in the capstone corpus
+pins the order); the chat-upload codec wiring pin's files-row half read
+`data.id` behind an `if` and had NEVER run (the receipt is `{file:{id}}`) —
+now a hard floor, and the owner probe reads the fixture instead of comparing
+a constant with itself; the fourth `z.uuid()` transcription folded onto
+`is_zod_uuid`; the two `validateImageFile` sentences the doc comment claimed
+were unit-pinned now are; the two tripwires' prose no longer says v5 serves
+only `/api/v1/images/{id}`; the contract comment names both refusing paths.
 #### 2026-09-04 — unify(wires): the follow-ups round 2 wires — the ChatCreate trio census retired to FIXED(P4.73), the images endpoint into the query-param family, the version recount
 
 _Versions: core 0.0.775, harness 0.0.670, web 0.0.112, host 0.0.96, SPA 0.5.638._

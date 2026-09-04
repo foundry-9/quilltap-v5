@@ -109,11 +109,13 @@ const NO_V5_SURFACE: &[(&str, &str, &str)] = &[
     (
         "POST /api/v1/images?action=generate",
         "handle_generate_image",
-        "v5 has no twin of v4's images COLLECTION route: only /api/v1/images/{id} \
-         GET+DELETE are served, and v5's Generate Image surface goes through \
-         image-profiles ?action=generate → execute_image_generation_tool, which \
-         site 7 already wraps. v4's handleGenerateImage is a separate route-level \
-         implementation, not a caller of that tool.",
+        "v5 serves the images COLLECTION route since P4.73 (list / upload / \
+         import-from-URL / the {id} DELETE) but NOT its ?action=generate leg — \
+         the edge answers a NAMED refusal (`images_routes::images_generate_not_available`); \
+         v5's Generate Image surface goes through image-profiles ?action=generate → \
+         execute_image_generation_tool, which site 7 already wraps. v4's \
+         handleGenerateImage is a separate route-level implementation, not a \
+         caller of that tool.",
     ),
     // — v4 `services/character-wizard.service.ts`.
     (

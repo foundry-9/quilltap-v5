@@ -6435,9 +6435,11 @@ export interface ImagesListRequest {
  * multipart parse stays at the web edge.
  *
  * `tags` is `unknown[]` because v4 runs NO schema on this leg: it maps
- * `t => t.tagId` over whatever the JSON held. A non-UUID id does not land in
- * the row — `repos.files.create` re-validates and refuses — but it must REACH
- * the server to be refused, so the client type cannot narrow it to strings.
+ * `t => t.tagId` over whatever the JSON held. A non-UUID id never lands in a
+ * row on EITHER path — `repos.files.create` refuses after the bridge write (an
+ * orphaned blob) and the dedup arm's `repos.files.update` refuses before any
+ * write — but it must REACH the server to be refused, so the client type
+ * cannot narrow it to strings.
  */
 export interface ImageUploadRequest {
   type: 'imageUpload';
