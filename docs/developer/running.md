@@ -62,6 +62,56 @@ The first build is slow: it compiles the SQLite3MultipleCiphers amalgamation
 (~12 MB of C). BuildKit cache mounts and the pinned `quilltap-sqlite3mc-sys`
 version mean it happens once per cache, not once per build.
 
+#### If the build is killed with "cannot allocate memory"
+
+```
+error: could not compile `quilltap-web` (lib)
+  process didn't exit successfully: `rustc …` (signal: 9, SIGKILL: kill)
+ERROR: ResourceExhausted: … cannot allocate memory
+```
+
+That is the OOM killer, and the cause is usually a **ratio**, not a shortage.
+Cargo sizes its job count from the CPU count, which a container reads from the
+host, while the memory limit is the VM's — so Docker Desktop's out-of-the-box
+shape (all of a 14-core machine's CPUs against ~8 GB) starts fourteen
+concurrent `rustc` processes in memory sized for about four, and one of the big
+crates gets killed mid-compile. BuildKit reports it as `ResourceExhausted`,
+which reads like a disk or quota problem and is not.
+
+The build therefore caps itself at **4 jobs** by default — the standard free
+GitHub-hosted Linux runner's core count — so it completes unattended in CI and
+on a stock Docker Desktop alike. On a machine whose RAM matches its cores, take
+the width back:
+
+```bash
+docker build --build-arg CARGO_BUILD_JOBS=14 -t quilltap .
+```
+
+Raising Docker Desktop's memory limit (Settings → Resources → Advanced) works
+just as well and keeps the build fully parallel; the cap is simply the default
+that needs no configuration.
+
+#### Building in CI
+
+The image builds unattended on a standard free GitHub-hosted Linux runner
+(public repos: 4 vCPU / 16 GB RAM; the 6-hour job limit is not close). Two
+things to know before wiring a workflow:
+
+- **`RUN --mount=type=cache` does not survive between runs.** Every job gets a
+  fresh VM, so each CI build recompiles the amalgamation and every dependency
+  from cold. The cache mounts in the Dockerfile are a local-development
+  optimisation; in CI they buy nothing.
+- **Reach for buildx's `gha` cache backend carefully.** `cache-to: type=gha`
+  does not create a Docker-specific cache — it writes into the *same 10 GB
+  per-repository Actions cache* shared with every other cache in the repo.
+  `mode=max` on this three-stage image can exceed that on its own, at which
+  point it evicts your other caches and then itself (GitHub calls the result
+  "cache thrashing"). `mode=min`, or a per-branch scope, is the safer default.
+
+Measured on an arm64 Docker Desktop, cold cache, `CARGO_BUILD_JOBS=4`: the
+final image is ~348 MB, but the **build cache peaks around 9 GB** — the figure
+to watch if a runner's disk turns out to be tight.
+
 #### Set the timezone, or things fire at the wrong hour
 
 A container has no timezone, so it runs on UTC unless told otherwise — and

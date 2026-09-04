@@ -51,6 +51,26 @@ COPY assets ./assets
 # The rest of the tree (docs/harness/apps excluded via .dockerignore).
 COPY crates ./crates
 
+# How many rustc jobs run at once. Cargo's default is one per core, which is
+# the wrong default in a container: the CPU count comes from the host while the
+# memory limit does not, so a many-core machine with a modestly-sized Docker VM
+# (Docker Desktop's out-of-the-box 14 CPUs against ~8 GB is the common shape)
+# spawns fourteen concurrent rustc processes into memory sized for about four
+# and the OOM killer takes one down mid-crate — `signal: 9, SIGKILL` on
+# `quilltap-web` or `quilltap-core`, surfacing from BuildKit as the misleading
+# `ResourceExhausted: cannot allocate memory`.
+#
+# 4 is the standard free GitHub-hosted Linux runner's core count (4 vCPU /
+# 16 GB), so the default builds unattended in CI and on a stock Docker Desktop
+# alike. Raise it on a machine whose RAM matches its cores:
+#
+#   docker build --build-arg CARGO_BUILD_JOBS=14 -t quilltap .
+#
+# Cargo reads CARGO_BUILD_JOBS from the environment, so this needs no flag on
+# the command line below.
+ARG CARGO_BUILD_JOBS=4
+ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
+
 # BuildKit cache mounts keep the amalgamation object + dependency rlibs warm;
 # the binary is copied OUT of the cache mount so the runtime stage can see it.
 RUN --mount=type=cache,target=/src/target \

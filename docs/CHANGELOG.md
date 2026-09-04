@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — build(docker): cap cargo's job count so the image builds on a stock Docker Desktop and a free CI runner
+
+_Docs-only change._ (No crate versions bumped — the Dockerfile and the running guide only.)
+
+The Rust build stage now sets `ARG CARGO_BUILD_JOBS=4` / `ENV CARGO_BUILD_JOBS`,
+overridable with `--build-arg CARGO_BUILD_JOBS=<n>`.
+
+Cargo sizes its job count from the CPU count, which a container reads from the
+host, while the memory limit is the VM's. Docker Desktop's default shape on a
+14-core machine — all 14 CPUs against ~8 GB — therefore started fourteen
+concurrent `rustc` processes in memory sized for about four, and the OOM killer
+took one down mid-crate: `signal: 9, SIGKILL` on `quilltap-web`, which BuildKit
+surfaces as `ResourceExhausted: cannot allocate memory` (a message that reads
+like a disk or quota problem and is not).
+
+4 is the standard free GitHub-hosted Linux runner's core count (public repos:
+4 vCPU / 16 GB), so the default builds unattended in CI and on a stock Docker
+Desktop alike, and a machine whose RAM matches its cores can take the width
+back with the build arg.
+
+Verified by building at the new default inside the same 7.7 GB VM that had just
+failed — a deliberately conservative test, since fitting in 7.7 GB at 4 jobs
+implies fitting in a runner's 16 GB at 4 jobs. The image then ran: `GET /` 200
+serving the real SPA (not the embedded placeholder), the CLI on PATH at 0.0.17,
+`host.docker.internal` resolving, and the boot log carrying both
+`process timezone set timezone=America/Chicago source=QUILLTAP_TIMEZONE` and
+P4.71's `Docker environment detected — using host.docker.internal as gateway
+hostname`. Final image ~348 MB; build cache peaks around 9 GB.
+
+`running.md` gains the symptom and its fix, plus a CI section recording two
+traps: `RUN --mount=type=cache` does not survive between workflow runs (each job
+gets a fresh VM), and buildx's `cache-to: type=gha` writes into the same 10 GB
+per-repository Actions cache as every other cache in the repo, where `mode=max`
+on this three-stage image can evict the others and then itself.
+
 #### 2026-09-03 — docs(dogfood): the `0b0617fee`-round + follow-ups-round pass — zero v5 defects, eight live proofs
 
 _Docs-only change._
