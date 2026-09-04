@@ -104043,8 +104043,9 @@ as the INPUT it is.
 
 At the pin: v4's **612** `title=` occurrences are **431** on DOM elements (273
 string-valued, 158 expression-valued) and **181** component props; v5 carries
-**415** DOM titles. Of v4's 273 string sites — **231 ok**, **9 bound**, **33
-absent**. The `bound` bucket exists because v5 frequently holds tooltip copy in
+**415** DOM titles. Of v4's 273 string sites, as the census reads after this
+lane's two repairs — **231 ok**, **11 bound**, **31 absent** (before them, 9 and
+33, with both repairs among the 33). The `bound` bucket exists because v5 frequently holds tooltip copy in
 a TS table read through `[title]`, which no attribute scan can see; without it
 the census would have called nine present strings missing and hidden the two
 real repairs below among them.

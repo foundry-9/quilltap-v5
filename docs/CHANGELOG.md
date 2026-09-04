@@ -756,8 +756,9 @@ sites and v5-only strings are reported separately for a human to judge.
 
 At the `0b0617fee` pin: v4's 612 `title=` occurrences are 431 on DOM elements
 (273 with a string value) and 181 component props; v5 carries 415 DOM titles.
-Of v4's 273: 231 ok, 9 bound, 33 absent. The 33 are dominated by controls v5
-does not render at all (the theme browser, the character optimizer, Continue
+Of v4's 273, as the census reads AFTER this commit's two repairs: **231 ok, 11
+bound, 31 absent** (before them, 11 → 9 and 31 → 33, with both repairs among the
+33). The 31 are dominated by controls v5 does not render at all (the theme browser, the character optimizer, Continue
 Elsewhere, re-extract/delete memories, the `me`/`char` placeholder buttons,
 Clear-all, RenameReplace) — those belong to their surfaces' own orders, not
 here.
