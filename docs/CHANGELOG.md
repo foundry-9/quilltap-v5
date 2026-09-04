@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-04 — docs(drift): the hunk-level survey of the thirteen-commit release-checklist drift
+
+_Docs-only change._ (No crate versions bumped.)
+
+A full `/driftcheck` run from a clean `main`, immediately after the follow-ups
+round 2 merged. The probe found nothing new on either branch, so the verdict
+stands unchanged (DRIFT PENDING — 13 past `0b0617fee`; PIN REQUIRED). What it
+adds is the survey the previous entry deferred to the catch-up order: all
+twelve rows are rewritten from their shipped hunks and from measured v5
+intersections instead of diffstats.
+
+**One classification moved, materially.** `d4138b96b` was NO-PORT?-with-a-check
+and is now PORT: a mechanical cross-check of every deleted export name against
+`harness/oracle/` found **fourteen symbols imported by name by seven committed
+oracle cases** (`cheap-model`, `model-selection`, `llm-errors`,
+`message-formatter`, `post-office-host`, `chat-timestamp`, `token-estimation`).
+A missing named ESM export does not diff wrong — it fails to link, so those
+families cannot regenerate at the new baseline, and each pins a v5 port of a
+function v4 has now proven dead in its own tree. The row states the three
+honest options rather than leaving the regen to fail and read as drift.
+
+The other eleven kept their class but traded inference for measurement, and
+three now name a v5 site that reproduces the v4 defect: the Anthropic table at
+`request_builder/anthropic.rs:31` has no `^claude-opus-5` row; `cmd_default`
+(`instances_cmd.rs:314`) has no `--json` branch at all, so the CLI needs the
+whole post-fix shape rather than the flag strip; and
+`brahma_console/mod.rs:359` still carries v4's pre-fix lowercase API-key
+sentence while its sibling has the capital form — the exact two-site divergence
+`0506517d3` collapsed. All seven of that refactor's behaviour corrections were
+verified at hunk level, `49f66f571`'s payload-neutrality was verified from
+`successResponse`'s body rather than its commit message, and `generateDDL` was
+confirmed untouched across all thirteen commits, so **no D23 re-dump is owed**.
+The regen rule's reason is upgraded from prudent to load-bearing.
+
 #### 2026-09-04 — docs(drift): the unification's drift step — v4 landed twelve commits during the follow-ups round 2
 
 _Docs-only change._ (No crate versions bumped.)
