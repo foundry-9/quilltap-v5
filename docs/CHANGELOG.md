@@ -623,6 +623,23 @@ query read reddens exactly its `empty_then_known` body plus `firstWins` and
 `UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
 conversation-summaries sentence reddens exactly that endpoint's four
 byte-compared rows.
+#### 2026-09-04 — fix(e2e): the streaming-avatar beat's portrait arm, this time actually on disk
+
+_Versions: SPA 0.5.637._
+
+The previous commit's message described this change; the change itself was never
+written. Its editing script began `cd apps/web && python3 …` from a shell whose
+working directory was already `apps/web`, so the `cd` failed and `&&`
+short-circuited the edit away — and the beat then passed in isolation anyway,
+because that run's responding character happened to have no portrait, which is
+exactly the condition the fix exists for. Both halves of the lesson are the
+same one: **verify a scripted edit landed before trusting a green run** (the
+`mutation-must-be-verified-to-have-applied` note, in a new disguise).
+
+The assertion itself is unchanged from what was intended: read whichever arm the
+column actually drew — the portrait's `alt` (the whole name, the stronger
+assertion) when there is one, the initial otherwise.
+
 #### 2026-09-04 — fix(e2e): the streaming-avatar beat reads whichever avatar arm the column drew
 
 _Versions: SPA 0.5.636._

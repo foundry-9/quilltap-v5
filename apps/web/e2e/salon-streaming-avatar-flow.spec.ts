@@ -213,7 +213,6 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
     // Read the column only once the responder is known, and only while the turn
     // is still live (the settled row draws its avatar from another code path).
     await expect(streamingColumn(page)).toHaveCount(1);
-    const rendered = ((await streamingColumn(page).innerText()) ?? '').trim();
 
     const chat = (await dispatch({ type: 'chatGet', chatId }))['chat'] as {
       participants: Array<{ id: string; character?: { name?: string } | null }>;
@@ -221,10 +220,23 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
     const expected = chat.participants.find((p) => p.id === participantId)?.character?.name;
     expect(expected, 'the named participant should be a character seat').toBeTruthy();
 
-    // `qt-avatar` renders the name's initial when the character has no portrait
-    // (v4 `Avatar.tsx:125`, `name.charAt(0).toUpperCase()`), which is what this
-    // fixture's cast carries.
-    expect(rendered).toBe(expected![0]!.toUpperCase());
+    // `qt-avatar` draws the PORTRAIT when the character has one and the name's
+    // INITIAL when it does not (v4 `Avatar.tsx:125` `name.charAt(0)
+    // .toUpperCase()`; the image's `alt` is the name, `:147`). Which arm this
+    // chat takes depends on who the server picked AND on whether an earlier
+    // spec in the run gave that character a portrait — so read whichever the
+    // column actually drew rather than assuming. (Caught by the full suite on
+    // this beat's first whole-suite run: in isolation the responder had no
+    // portrait and the initial was there; in the suite it had one, and the
+    // column's text was empty.)
+    const img = streamingColumn(page).locator('img');
+    if (await img.count()) {
+      // The stronger arm: the portrait carries the WHOLE name as its alt text.
+      expect(await img.getAttribute('alt')).toBe(expected);
+    } else {
+      const rendered = ((await streamingColumn(page).innerText()) ?? '').trim();
+      expect(rendered).toBe(expected![0]!.toUpperCase());
+    }
 
     // A Monitored chat wears no ring (v4 :85's ternary, false arm).
     await expect(
