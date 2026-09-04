@@ -103870,3 +103870,41 @@ giving the no-action warn an `action` field reddens only
 `action_required_warns_with_v4s_context`; adding a warn to the served-action
 path reddens only `a_served_action_writes_neither_line`.
 
+## Lane record — P4.72: the verification gate
+
+Branch `claude/p4-72-query-param-census-0c8180`, six commits. Drift-ledger §2
+probe PASSED at lane start AND re-run before the regen batch (v4 on `main`,
+tree clean, `15573c3a1..main` and `3a76b17df..bugfix` both empty). Regen rule
+PIN REQUIRED, honoured: every oracle came from the lane-unique detached
+worktree `/tmp/qt-v4-pin-p472-0b0617fee`, **verified** by the drift commit's
+`coerceSuggestionArray` being ABSENT from that tree
+(`git worktree list` checked before the batch; the four lanes' pins are
+distinct).
+
+- `cargo fmt --all --check` — exit 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` — exit 0.
+- the same with `--features quilltap-core/native-transport` — exit 0.
+- `cargo test --workspace` with the lane's three oracle env vars
+  (`QT_ORACLE_QUERY_PARAM_SEMANTICS`, `QT_ORACLE_FILES_BODY_GUARDS`,
+  `QT_ORACLE_FILES_ROUTES`, all three files `ls`-checked first) — **490 test
+  binaries / 2,769 passed / 0 failed / 1 ignored, exit 0, ZERO `SKIP:` lines in
+  the whole log.** The lane's six families confirmed to have RUN by name:
+  `dispatch_wrong_type_census` 4, `query_param_semantics_equivalence` 3,
+  `files_body_guards_equivalence` 1, `files_write_routes` 3,
+  `photos_web_routes` 1, `files_routes_equivalence` 1.
+- `cargo build --workspace --release` — exit 0.
+- The three affected families re-run BY NAME through the sweep driver from the
+  pin (`--run-all --families …`), all `ok`, with the changed bytes grepped in
+  the regenerated NDJSON: `Unknown action:` ×32, `Action parameter required`
+  ×15, `availableActions` ×24, `Unknown or missing action` ×8,
+  `Invalid action. Available actions` ×4, `Missing action parameter` ×3, plus
+  the two sharpened `known` legs (`File is not a resizable image` ×2,
+  `Upload not found or expired` ×2) and the stateful stub's
+  `already in flight` ×1.
+
+No SPA run and no Playwright — this lane has no SPA surface (P4.75 owns port
+4319), per the order.
+
+**Versions at close:** core 0.0.769, harness 0.0.663, web 0.0.110
+(base: core 0.0.768, harness 0.0.662, web 0.0.105). host/cli/tauri untouched.
+

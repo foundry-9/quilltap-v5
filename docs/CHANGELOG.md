@@ -396,6 +396,16 @@ post-mutation `files` + `characters` dumps so a refusal proves it wrote
 nothing. Seven mutation proofs; two of them (the key-less probe arm and the
 `avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
 blind spots, closed with dedicated fixture rows before the unit landed.
+#### 2026-09-04 — docs(status): the P4.72 lane gate
+
+_No crate versions bumped._
+
+490 test binaries / 2,769 passed / 0 failed / 1 ignored with the lane's three
+oracle env vars, zero `SKIP:` lines, and the six affected families confirmed to
+have run by name; fmt, clippy on both feature sets, and the release build all
+clean; the three regenerated families re-run from the pinned `0b0617fee`
+worktree with the changed bytes grepped.
+
 #### 2026-09-03 — docs(orders): close P4.72 and the P4.67 remainder
 
 _No crate versions bumped._
