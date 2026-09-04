@@ -2813,10 +2813,17 @@ records THERE. Update this summary only when a phase or round completes.
   **Scope note:** the bug-117 **chat-upload** leg cannot exhibit its fix in
   production — `chat_files.rs:705` threads `NotConfiguredPixelCodec` at every
   production call, so stored bytes ARE source bytes; P4.D152's named candidate
-  (thread the HOST codec) is what closes it. **💸 still owed:** the
-  Docker/container walk + one `docker build` (human by nature), Pascal's group
-  tier, the Brahma deep-query budget, dedup/summaries (cost), #101, and the
-  LoRA wire-byte look (blocked).
+  (thread the HOST codec) is what closes it. **💸 still owed:** Pascal's
+  group tier, the Brahma deep-query budget, dedup/summaries (cost), #101, and
+  the LoRA wire-byte look (blocked). **The Docker/container walk (B6) was
+  DISCHARGED the same day**, after `ARG CARGO_BUILD_JOBS=4` fixed an OOM on a
+  stock Docker Desktop (`060ba01f`): pointing the container at the dogfood copy
+  (already provisioned, auto-unlocking) removed the passphrase blocker, and one
+  host listener captured BOTH halves — `HOST-HEADER: host.docker.internal`
+  (P4.71's rewrite) and `GET //api/tags` (v4's double slash, the flipped pin) —
+  followed by a real local-model completion through the container in 8 s. The
+  repo's first CI workflow rides along, **manual-only**
+  (`.github/workflows/docker-image.yml`, `workflow_dispatch`).
 - **Oracle baseline: `0b0617fee` (2026-09-02, v4 main — bugs 116-118 fixed),
   adopted at the `0b0617fee` drift catch-up round unification (2026-09-03).**
   **Drift state, the drift-check method, and the pinned-worktree regen

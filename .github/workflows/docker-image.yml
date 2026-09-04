@@ -1,0 +1,123 @@
+# Build the dev-grade Docker image and smoke-test it.
+#
+# MANUAL ONLY — `workflow_dispatch`, no `push`/`pull_request` triggers. Run it
+# from the Actions tab when you want it. This is deliberate: the build is a
+# cold Rust compile every time (see "No cache backend" below), so firing it on
+# every commit would burn a lot of runner minutes for little signal.
+#
+# The image is built and exercised, never published: no registry login, no
+# tags, no signing. Phase-4 D21 — nothing here is released.
+name: Docker image
+
+on:
+  workflow_dispatch:
+    inputs:
+      cargo_build_jobs:
+        description: >-
+          Concurrent rustc jobs. The Dockerfile defaults to 4 (this runner's
+          core count). Lower it if a build is OOM-killed.
+        required: false
+        default: "4"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # A cold build of the workspace plus the SQLite3MC amalgamation and the
+    # Angular bundle. Well inside the 6-hour ceiling, but not quick.
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # GitHub's runner spec advertises 14 GB of SSD, but it prints that same
+      # number in every row of the table — every OS, every architecture — so it
+      # is a coarse figure rather than a measured one, and it understates
+      # ubuntu-latest in practice. This build is disk-hungry (locally the
+      # BuildKit cache peaks near 9 GB), so measure rather than assume: the
+      # before/after pair below is the evidence for whether the image can keep
+      # building here as the workspace grows.
+      - name: Disk before
+        run: |
+          echo "::group::df -h"
+          df -h / /mnt 2>/dev/null || df -h /
+          echo "::endgroup::"
+          docker system df || true
+
+      - name: Build the image
+        run: |
+          docker build \
+            --build-arg CARGO_BUILD_JOBS="${{ inputs.cargo_build_jobs || '4' }}" \
+            -t quilltap:ci .
+
+      # The disk figure that actually matters: BuildKit's cache after a cold
+      # build, which is what would exhaust the runner first.
+      - name: Disk after
+        if: always()
+        run: |
+          echo "::group::df -h"
+          df -h / /mnt 2>/dev/null || df -h /
+          echo "::endgroup::"
+          docker system df
+          docker images quilltap:ci --format 'image size: {{.Size}}'
+
+      # Prove the image runs, not merely that it compiled. A fresh instance
+      # lands on the setup screen, which still serves the real SPA — so a 200
+      # plus the Angular <title> distinguishes a working image from one falling
+      # back to quilltap-web's embedded placeholder pages.
+      - name: Smoke-test the image
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name qt-ci \
+            -p 127.0.0.1:3000:3000 \
+            -v qt-ci-data:/app/quilltap \
+            --add-host=host.docker.internal:host-gateway \
+            -e QUILLTAP_TIMEZONE=America/Chicago \
+            quilltap:ci
+
+          # Wait for the parlour door rather than sleeping a guessed interval.
+          for i in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3000/; then break; fi
+            if [ "$i" = 60 ]; then echo "server never came up"; docker logs qt-ci; exit 1; fi
+            sleep 2
+          done
+
+          echo "::group::boot log"
+          docker logs qt-ci
+          echo "::endgroup::"
+
+          # The SPA is really being served (not the embedded placeholder).
+          curl -fsS http://127.0.0.1:3000/ | grep -q '<title>Quilltap</title>'
+          echo "ok: SPA served"
+
+          # The CLI is on PATH for `docker exec` (D12).
+          docker exec qt-ci quilltap --version
+          echo "ok: CLI present"
+
+          # The container marker and both host-side resolvers fired. The
+          # gateway line is P4.71: it is what lets a model server on the host
+          # be reachable from inside the container.
+          docker logs qt-ci 2>&1 | grep -q 'source=QUILLTAP_TIMEZONE'
+          echo "ok: timezone resolver"
+          docker logs qt-ci 2>&1 | grep -q 'Docker environment detected'
+          echo "ok: host-gateway resolver"
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker stop qt-ci || true
+          docker volume rm qt-ci-data || true
+
+# No cache backend, deliberately.
+#
+# `RUN --mount=type=cache` does not survive between runs — each job gets a
+# fresh VM — so the Dockerfile's cache mounts buy nothing here and every run is
+# a cold compile. The obvious fix has a trap: buildx's `cache-to: type=gha`
+# does not create a Docker-specific cache, it writes into the SAME 10 GB
+# per-repository Actions cache shared with every other cache in the repo, and
+# `mode=max` on this three-stage image can exceed that by itself — evicting the
+# other caches and then itself ("cache thrashing", GitHub's own term). If this
+# workflow ever becomes frequent enough to want caching, start with
+# `mode=min` and a per-branch scope, and watch the repo's cache usage.

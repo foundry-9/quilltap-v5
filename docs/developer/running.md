@@ -112,6 +112,12 @@ Measured on an arm64 Docker Desktop, cold cache, `CARGO_BUILD_JOBS=4`: the
 final image is ~348 MB, but the **build cache peaks around 9 GB** — the figure
 to watch if a runner's disk turns out to be tight.
 
+`.github/workflows/docker-image.yml` builds and smoke-tests the image on a
+standard runner. It is **manual only** (`workflow_dispatch`, no `push` or
+`pull_request` trigger) — run it from the Actions tab. It reports `df -h`
+before and after the build precisely because the advertised disk figure is not
+trustworthy, and it never publishes the image.
+
 #### Set the timezone, or things fire at the wrong hour
 
 A container has no timezone, so it runs on UTC unless told otherwise — and

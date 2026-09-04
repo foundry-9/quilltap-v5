@@ -102831,3 +102831,52 @@ failover rows on a real understudy. **Still owed:** the Docker/container walk
 + one `docker build` (human, by nature); Pascal's group tier; the Brahma
 deep-query budget; memory dedup / conversation summaries (cost); the NanoGPT
 prompt-caching cost question (#101); the LoRA wire-byte look (blocked).
+
+
+### Follow-up — the Docker build fixed, B6 discharged, and the repo's first CI workflow (2026-09-03)
+
+The walk's one deferred row closed the same day. `docker build` first died with
+`ResourceExhausted: cannot allocate memory` — `rustc` SIGKILLed compiling
+`quilltap-web`. The cause was a **ratio**, not a shortage: cargo sizes its job
+count from the CPU count, which a container reads from the host, while the
+memory limit is the VM's, so Docker Desktop's default (14 CPUs against 7.7 GB)
+started fourteen rustc processes in memory sized for four. Fixed with
+`ARG CARGO_BUILD_JOBS=4` / `ENV CARGO_BUILD_JOBS` in the build stage
+(`060ba01f`) — 4 being the standard free GitHub-hosted Linux runner's core
+count (public repos: 4 vCPU / 16 GB / 6-hour job limit, verified against
+docs.github.com), overridable with `--build-arg`. Proven by rebuilding at the
+new default **inside the same 7.7 GB VM that had just failed**, which is the
+conservative direction: fitting in 7.7 GB at 4 jobs implies fitting in 16 GB at
+4 jobs.
+
+**B6 then discharged WITHOUT the human.** The order had assumed a fresh
+container instance needing Setup — i.e. a passphrase. Pointing the container at
+the **dogfood copy** instead (`-v ~/qt-dogfood-friday:/app/quilltap`, already
+provisioned and auto-unlocking) removed that blocker entirely. Both halves of
+P4.71 then fell out of a single capture: a `connectionProfileTest` against the
+instance's real Ollama profile (stored `baseUrl: http://localhost:11434`)
+answered `valid:true` from a container with nothing on its own loopback, with a
+dead-port negative control answering `valid:false`; and a host listener logging
+request lines showed **`REQUEST-LINE: GET //api/tags`** with
+**`HOST-HEADER: host.docker.internal:11999`** — the gateway rewrite AND v4's
+`//api/tags` double slash (the flipped pin) in one line. A real completion on
+`qwen3.5-9b-q6:latest` through the container returned in 8 s. The boot log
+carries both resolvers (`Docker environment detected — using
+host.docker.internal as gateway hostname`; `source=QUILLTAP_TIMEZONE`).
+
+Measured for the record: final image ~348 MB, **BuildKit cache peaks near
+9 GB** — the figure that would exhaust a runner first, and the reason the new
+workflow reports `df -h` on both sides of the build (GitHub prints "14 GB SSD"
+in every row of its runner table across seven machine types, so that number is
+coarse rather than measured).
+
+**The repo's first CI workflow** is `.github/workflows/docker-image.yml`, added
+at the human's request and **manual-only by their instruction**
+(`workflow_dispatch`, no `push`/`pull_request`). It builds, reports disk on
+both sides, and smoke-tests the image (200 + the real Angular `<title>` rather
+than the embedded placeholder, the CLI on PATH, both boot resolvers), then
+tears down. It publishes nothing (D21). It deliberately configures **no cache
+backend**: `RUN --mount=type=cache` does not survive between runs, and buildx's
+`cache-to: type=gha` writes into the same 10 GB per-repository Actions cache as
+every other cache in the repo, where `mode=max` on this three-stage image can
+evict the others and then itself. `running.md` gains all of the above.

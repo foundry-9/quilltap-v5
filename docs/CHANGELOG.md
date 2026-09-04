@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — ci(docker): a manual-only image build + smoke-test workflow; dogfood B6 discharged
+
+_Docs-only change._ (No crate versions bumped.)
+
+The repo's first CI workflow, `.github/workflows/docker-image.yml`. It is
+**manual only** — `workflow_dispatch`, deliberately no `push` or
+`pull_request` trigger — because every run is a cold Rust compile (see below),
+so firing it per-commit would burn runner minutes for little signal. It builds
+the image, reports `df -h` before and after, smoke-tests the result, and tears
+down. It publishes nothing: no registry, no tags, no signing (D21).
+
+The smoke test proves the image runs rather than merely compiles: `GET /` 200
+carrying the real Angular `<title>` (which distinguishes a working image from
+one falling back to `quilltap-web`'s embedded placeholder pages), the CLI on
+PATH for `docker exec`, and both host-side resolvers in the boot log — the
+`QUILLTAP_TIMEZONE` line and P4.71's "Docker environment detected — using
+host.docker.internal as gateway hostname".
+
+Disk is reported on both sides on purpose. GitHub advertises 14 GB of SSD but
+prints that same figure in every row of its runner table, across seven
+different machine types, so it is coarse rather than measured; locally the
+BuildKit cache peaks near 9 GB against a ~348 MB final image, which is the
+number that would exhaust a runner first.
+
+**No cache backend, deliberately.** `RUN --mount=type=cache` does not survive
+between runs — each job gets a fresh VM — so the Dockerfile's cache mounts buy
+nothing in CI. The obvious remedy has a trap: buildx's `cache-to: type=gha`
+writes into the *same 10 GB per-repository Actions cache* shared with every
+other cache in the repo, and `mode=max` on this three-stage image can exceed
+that alone, evicting the other caches and then itself.
+
+Riding along: **dogfood B6 is discharged**, and it needed no human after all.
+The walk had deferred it on the assumption that a fresh container instance
+requires the Setup screen, hence a passphrase. Pointing the container at the
+dogfood copy instead (already provisioned, auto-unlocking) removed that
+blocker, and one host listener captured both halves of P4.71 in a single
+request line: `GET //api/tags` with `HOST-HEADER: host.docker.internal:11999`
+— the localhost→gateway rewrite *and* v4's `//api/tags` double slash, the
+flipped pin, matched byte-for-byte. A `connectionProfileTest` against the
+instance's real Ollama profile answered `valid:true` from a container with
+nothing on its own loopback (a dead-port control answered `valid:false`), and a
+real completion on `qwen3.5-9b-q6:latest` came back through the container in
+8 s.
+
 #### 2026-09-03 — build(docker): cap cargo's job count so the image builds on a stock Docker Desktop and a free CI runner
 
 _Docs-only change._ (No crate versions bumped — the Dockerfile and the running guide only.)
