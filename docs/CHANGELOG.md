@@ -623,6 +623,23 @@ query read reddens exactly its `empty_then_known` body plus `firstWins` and
 `UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
 conversation-summaries sentence reddens exactly that endpoint's four
 byte-compared rows.
+#### 2026-09-04 — fix(e2e): the streaming-avatar beat reads whichever avatar arm the column drew
+
+_Versions: SPA 0.5.636._
+
+Caught by the beat's first WHOLE-SUITE run, having passed in isolation — the
+shape this lane had just root-caused next door. Two suite-context assumptions,
+both now established rather than assumed: the beat asserted "no ring" without
+setting the shared chat's Concierge state (`salon-concierge-four-state-flow`
+walks that same chat through all ten transitions earlier in the run), and it
+read the responding character's INITIAL, which only exists when the character
+has no portrait. `qt-avatar` draws the portrait when there is one and the
+initial otherwise (v4 `Avatar.tsx:125`, `:147`), and which arm this chat takes
+depends on who the server picked and on whether an earlier spec gave that
+character a portrait. The beat now sets the state it asserts and reads whichever
+arm the column actually drew — the image arm being the stronger of the two,
+since the portrait carries the whole name as its `alt`.
+
 #### 2026-09-04 — docs(p4.75): the lane's status headers and the inline-host standing note
 
 _Docs-only change._ (No crate versions bumped.)

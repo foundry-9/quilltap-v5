@@ -182,6 +182,13 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
   test('the live bubble opens with the responding character (v4 StreamingMessage:85-96)', async ({
     page,
   }) => {
+    // Establish the precondition rather than assuming the fixture's shipped
+    // state: this chat is SHARED, and `salon-concierge-four-state-flow` walks it
+    // through all ten Concierge transitions earlier in the run. The no-ring arm
+    // below asserts what a MONITORED chat does, so say so. (Caught by the full
+    // suite on this beat's first whole-suite run — it passed in isolation, which
+    // is exactly the shape P4.75 had just root-caused in a neighbouring spec.)
+    await dispatch({ type: 'chatUpdate', chatId, chat: {}, conciergeState: 'monitored' });
     await openChat(page);
     await send(page, 'P4.75 streaming avatar — who is answering?');
 
