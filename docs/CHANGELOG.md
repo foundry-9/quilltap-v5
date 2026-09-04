@@ -623,6 +623,39 @@ query read reddens exactly its `empty_then_known` body plus `firstWins` and
 `UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
 conversation-summaries sentence reddens exactly that endpoint's four
 byte-compared rows.
+#### 2026-09-04 — feat(salon): the streaming bubble's avatar column, ringed, proven mid-turn
+
+_Versions: SPA 0.5.634._
+
+v4 opens the live assistant row with the responding character's avatar
+(`StreamingMessage.tsx:85-96`), under the same gate the settled rows use and
+carrying the same dangerous-chat ring. v5's live bubble had never rendered that
+column at all — the gap P4.69 recorded at the site when its ring had nowhere to
+land. `message-list.ts` now computes v4's two SalonView helpers and passes them
+down as inputs exactly as v4 passes them as props: `shouldShowAvatars`
+(`SalonView.tsx:1171-1174`) and `getRespondingCharacter` (`:1176-1184`, whose id
+arm takes the named participant's character whatever its type or active state
+and whose fallback is the first participant that is both CHARACTER and active).
+`streaming-message.ts` renders the settled rows' own markup in BOTH of its row
+arms, because v4 has one row whose body switches between the waiting quill and
+the bubble.
+
+**An order premise refuted by measurement.** v5's settled-row gate had a
+GROUP_ONLY arm meaning "avatars when the cast has ≥2 characters". v4 consumes
+`avatarDisplayMode` at exactly one site, tests only for `'ALWAYS'`, and its own
+settings copy calls GROUP_ONLY "(will be implemented in the future)" — so the
+arm implemented a feature v4 has not built. There is now one rule, used at both
+the settled and streaming sites, as in v4. No spec or beat exercised GROUP_ONLY
+before the change.
+
+The new `salon-streaming-avatar-flow` beat observes the column MID-TURN and does
+not guess who answers: it records the server's own SSE frames without altering
+them, takes the `participantId` off the wire, resolves it through the same
+`chatGet` the app uses, and asserts the column renders that character. A second
+beat flips the chat to Flagged and asserts the ring on the live column, then
+restores the chat. Five source mutations and one build-level mutation
+(`showAvatar` forced false at the streaming site, which turns both beats red).
+
 #### 2026-09-04 — fix(wardrobe): give the two `space-y` row hosts a box; adjudicate the residue
 
 _Versions: SPA 0.5.633._

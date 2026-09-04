@@ -1,6 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+import type { DetailCharacter } from '../core/core-contract';
 import type { ChatStreamState } from '../core/chat-stream.reducer';
+import { Avatar } from '../ui/avatar';
+import { normalizeAvatarSrc } from '../ui/avatar-stack';
 import { Icon } from '../ui/icon';
 import { MessageContent } from './message-content';
 import { QuillAnimation } from './quill-animation';
@@ -13,17 +16,14 @@ import { ThinkingBlock } from './thinking-block';
  * pipeline as settled messages), with minimal tool rows. Fed by the P4.5 stream
  * reducer state.
  *
- * ⚠ NO AVATAR HERE — and therefore no danger ring. v4's `StreamingMessage.tsx:85`
- * opens the assistant row with
- * `<div className={\`flex-shrink-0 qt-chat-desktop-avatar${isDangerousChat ? ' qt-chat-avatar-dangerous' : ''}\`}>`
- * wrapping an `Avatar` for `getRespondingCharacter()`; v5's live bubble has
- * never rendered that column at all, so there is no element for P4.69's ring to
- * land on and threading the flag here would only add a dead input. The gap is
- * the AVATAR, not the ring: settled assistant rows (`message-row.ts`) do carry
- * the ring, so a flagged chat paints everywhere v5 draws an avatar. Porting the
- * streaming avatar needs `respondingParticipantId` (already on
- * `ChatStreamState`) resolved against the cast plus v4's `shouldShowAvatars`
- * gate — its own unit, named as a follow-up in P4.69's lane record.
+ * The row opens with the responding character's avatar column (v4
+ * `StreamingMessage.tsx:85-96`) — the same `qt-chat-desktop-avatar` wrapper the
+ * settled rows use (`message-row.ts:87-92`), so P4.69's danger ring lands here
+ * too: a flagged chat now paints on the LIVE bubble as well as on every settled
+ * one. Both are inputs rather than derivations, exactly as v4 passes them as
+ * props (`VirtualizedMessageList.tsx:375-384`); `message-list.ts` computes them
+ * from v4's `shouldShowAvatars` (`SalonView.tsx:1171-1174`) and
+ * `getRespondingCharacter` (`:1176-1184`).
  *
  * The waiting quill (`qt-quill-animation`) appears at v5's analogs of v4's four
  * call sites — v4 spreads them over three components (`StreamingMessage`,
@@ -33,7 +33,7 @@ import { ThinkingBlock } from './thinking-block';
 @Component({
   selector: 'qt-streaming-message',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, MessageContent, QuillAnimation, ThinkingBlock],
+  imports: [Avatar, Icon, MessageContent, QuillAnimation, ThinkingBlock],
   template: `
     @if (state().status; as status) {
       <div class="qt-chat-response-status" [attr.data-stage]="status.stage" role="status" aria-live="polite">
@@ -61,6 +61,18 @@ import { ThinkingBlock } from './thinking-block';
     -->
     @if (state().waitingForResponse && !state().content && !state().reasoning) {
       <div class="qt-chat-message-row qt-chat-message-row-assistant">
+        <!--
+          v4 StreamingMessage.tsx:85-96 — the live assistant row opens with the
+          responding character's avatar column, under v4's shouldShowAvatars
+          gate and carrying the dangerous-chat ring (:85). The name falls back
+          to 'AI' when the cast yields no character (:86); v4 passes a null
+          title (:87) so the label block shows the name alone.
+        -->
+        @if (showAvatar()) {
+          <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
+            <qt-avatar [name]="avatarName()" [src]="avatarSrc()" size="chat" />
+          </div>
+        }
         <div class="qt-chat-message-body">
           <div class="qt-text-secondary">
             <qt-quill-animation size="lg" />
@@ -71,6 +83,18 @@ import { ThinkingBlock } from './thinking-block';
 
     @if (state().content || state().reasoning) {
       <div class="qt-chat-message-row qt-chat-message-row-assistant">
+        <!--
+          v4 StreamingMessage.tsx:85-96 — the live assistant row opens with the
+          responding character's avatar column, under v4's shouldShowAvatars
+          gate and carrying the dangerous-chat ring (:85). The name falls back
+          to 'AI' when the cast yields no character (:86); v4 passes a null
+          title (:87) so the label block shows the name alone.
+        -->
+        @if (showAvatar()) {
+          <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
+            <qt-avatar [name]="avatarName()" [src]="avatarSrc()" size="chat" />
+          </div>
+        }
         <div class="qt-chat-message-body">
           <div class="qt-chat-message qt-chat-message-assistant">
             @if (state().reasoning) {
@@ -159,6 +183,34 @@ export class StreamingMessage {
    */
   readonly renderingPatterns = input<RenderingPattern[] | undefined>(undefined);
   readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
+  /**
+   * v4's `shouldShowAvatars` prop (`VirtualizedMessageList.tsx:383` ←
+   * `SalonView.tsx:1171-1174`). The list computes it; the bubble only obeys.
+   */
+  readonly showAvatar = input(false);
+  /**
+   * v4's `respondingCharacter` prop (`VirtualizedMessageList.tsx:378` ←
+   * `SalonView.tsx:1176-1184 getRespondingCharacter`). Null when the cast
+   * yields nobody — v4's `undefined`, which its `Avatar` then names 'AI'.
+   */
+  readonly respondingCharacter = input<DetailCharacter | null>(null);
+  /**
+   * v4's `isDangerousChat` prop (`VirtualizedMessageList.tsx:384`), the Salon's
+   * `shouldShowDangerStyling(chat)` verdict — the ring on the avatar column.
+   */
+  readonly isDangerousChat = input(false);
+
+  /** v4 `StreamingMessage.tsx:86`: `respondingCharacter?.name || 'AI'`. */
+  protected readonly avatarName = computed(() => this.respondingCharacter()?.name || 'AI');
+  /**
+   * v4 passes the character OBJECT as `src` and lets `getAvatarSrc` unwrap it;
+   * v5's settled rows already narrow that to `avatarUrl` through
+   * `normalizeAvatarSrc` (`chat-view-model.ts:138`), and this column reuses the
+   * settled markup, so it reads the same field the same way.
+   */
+  protected readonly avatarSrc = computed(() =>
+    normalizeAvatarSrc(this.respondingCharacter()?.avatarUrl),
+  );
 
   /**
    * v4's `standaloneIndicator` (`StreamingMessage.tsx:122`), in v5's render

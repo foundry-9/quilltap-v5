@@ -1,6 +1,6 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.633",
+  "version": "0.5.634",
   "scripts": {
     "ng": "ng",
     "lint": "node scripts/check-qt-classes.mjs --self-test && node scripts/check-qt-classes.mjs",

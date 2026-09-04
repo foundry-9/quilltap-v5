@@ -550,3 +550,113 @@ describe('MessageList — forwarding the danger verdict (P4.69, v4 VirtualizedMe
     expect(rings(render([], foldChain(), false))).toBe(0);
   });
 });
+
+/**
+ * The avatar gate and the responding-character resolver — v4 `SalonView.tsx`,
+ * ported by P4.75 so the streaming bubble can open with its avatar column.
+ *
+ * ⚠ **An order premise refuted by measurement.** The order described v5's
+ * settled-row gate as a separate GROUP_ONLY-aware rule that must NOT be merged
+ * with the streaming row's ALWAYS-only one. Measured at the `0b0617fee` pin, v4
+ * consumes `avatarDisplayMode` at exactly ONE site — `shouldShowAvatars`
+ * (`SalonView.tsx:1171-1174`) — and feeds it to BOTH the settled rows
+ * (`VirtualizedMessageList.tsx:274`, `:305`) and the streaming bubble (`:383`);
+ * `GROUP_ONLY` is never read anywhere in `app/` or `components/`, and v4's own
+ * settings copy calls it "(will be implemented in the future)"
+ * (`components/settings/chat-settings/types.ts:266`). v5's "≥2 characters" arm
+ * implemented a feature v4 has not built, so it is gone and there is one rule.
+ */
+describe('MessageList — the avatar gate + responding character (v4 SalonView:1171,:1176)', () => {
+  function render(
+    stream: ChatStreamState | null,
+    settings: { avatarDisplayMode: 'ALWAYS' | 'GROUP_ONLY' | 'NEVER' } | null,
+    chat: ChatDetail = chatDetail(),
+  ): ComponentFixture<MessageList> {
+    TestBed.configureTestingModule({
+      imports: [MessageList],
+      providers: [
+        {
+          provide: CoreClient,
+          useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(MessageList);
+    fixture.componentRef.setInput('messages', []);
+    fixture.componentRef.setInput('chat', chat);
+    fixture.componentRef.setInput('stream', stream);
+    if (settings) fixture.componentRef.setInput('settings', settings);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  /** The live bubble's avatar column, or null. */
+  function column(fixture: ComponentFixture<MessageList>): HTMLElement | null {
+    return fixture.nativeElement.querySelector('qt-streaming-message .qt-chat-desktop-avatar');
+  }
+
+  /**
+   * A live turn. `respondingParticipantId` is set by the `turnStart` frame
+   * (`chat-stream.reducer.ts:277`), which is where the server names the speaker;
+   * a bare content frame carries no participant, so the fixture has to open the
+   * turn the way the wire does.
+   */
+  const live = (participantId?: string): ChatStreamState =>
+    foldChatFrames(
+      participantId
+        ? [{ turnStart: true, participantId }, { content: 'live' }]
+        : [{ content: 'live' }],
+    );
+
+  it('shows avatars with no settings loaded (v4 :1172 — `if (!chatSettings) return true`)', () => {
+    expect(column(render(live(), null))).not.toBeNull();
+  });
+
+  it("shows avatars on ALWAYS (v4 :1173 — `=== 'ALWAYS'`)", () => {
+    expect(column(render(live(), { avatarDisplayMode: 'ALWAYS' }))).not.toBeNull();
+  });
+
+  it('hides avatars on NEVER (v4 :1173)', () => {
+    expect(column(render(live(), { avatarDisplayMode: 'NEVER' }))).toBeNull();
+  });
+
+  it('hides avatars on GROUP_ONLY even with two characters in the cast (v4 :1173)', () => {
+    // The fixture chat carries Ada AND Bob — the exact shape v5's retired "≥2"
+    // rule would have shown avatars for.
+    expect(chatDetail().participants.filter((p) => p.type === 'CHARACTER').length).toBe(2);
+    expect(column(render(live(), { avatarDisplayMode: 'GROUP_ONLY' }))).toBeNull();
+  });
+
+  it('names the participant the stream is answering as (v4 :1177-1181)', () => {
+    const col = column(render(live('p2'), null));
+    expect(col?.textContent?.trim()).toBe('B'); // Bob's initial
+  });
+
+  it('falls back to the first ACTIVE character participant (v4 :1183 getFirstCharacter)', () => {
+    const chat = chatDetail();
+    chat.participants[0] = { ...chat.participants[0], isActive: false };
+    // Ada is inactive, so v4's `find(p => p.type === 'CHARACTER' && p.isActive)`
+    // skips her and lands on Bob — the arm a `filter`-free `[0]` would miss.
+    expect(column(render(live(), null, chat))?.textContent?.trim()).toBe('B');
+  });
+
+  it('takes the named participant even when it is inactive (v4 :1178 checks neither)', () => {
+    const chat = chatDetail();
+    chat.participants[0] = { ...chat.participants[0], isActive: false };
+    expect(column(render(live('p1'), null, chat))?.textContent?.trim()).toBe('A');
+  });
+
+  it("renders 'AI' when the cast holds no character at all (v4 :1183 → undefined)", () => {
+    const chat = chatDetail();
+    chat.participants = [];
+    expect(column(render(live(), null, chat))?.textContent?.trim()).toBe('A');
+  });
+
+  it("forwards the chat's danger verdict to the live column (v4 VML:384)", () => {
+    const fixture = render(live(), null);
+    expect(column(fixture)?.classList.contains('qt-chat-avatar-dangerous')).toBe(false);
+    fixture.componentRef.setInput('isDangerousChat', true);
+    fixture.detectChanges();
+    expect(column(fixture)?.classList.contains('qt-chat-avatar-dangerous')).toBe(true);
+  });
+});

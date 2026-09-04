@@ -15,7 +15,7 @@ import {
 import { injectVirtualizer } from '@tanstack/angular-virtual';
 
 import type { ChatStreamState, StreamMessage } from '../core/chat-stream.reducer';
-import type { ChatDetail, ChatSettingsDto, MessageDto } from '../core/core-contract';
+import type { ChatDetail, ChatSettingsDto, DetailCharacter, MessageDto } from '../core/core-contract';
 import { AnnouncementGroup } from './announcement-group';
 import { AutoScrollController } from './auto-scroll';
 import { buildRenderItems, type RenderItem, type SwipeState } from './chat-view-model';
@@ -154,6 +154,9 @@ import { VirtualRow } from './virtual-row';
             [state]="s"
             [renderingPatterns]="renderingPatterns()"
             [dialogueDetection]="dialogueDetection()"
+            [showAvatar]="showAvatars()"
+            [respondingCharacter]="respondingCharacter()"
+            [isDangerousChat]="isDangerousChat()"
           />
         }
 
@@ -256,14 +259,50 @@ export class MessageList {
 
   protected readonly autoScroll = new AutoScrollController();
 
-  /** Avatar display: v4 ALWAYS / GROUP_ONLY (≥2 chars) / NEVER. */
+  /**
+   * v4 `SalonView.tsx:1171-1174 shouldShowAvatars` — the ONE avatar gate, used
+   * for the settled rows (`VirtualizedMessageList.tsx:274`, `:305`) AND the
+   * streaming bubble (`:383`):
+   *
+   * ```ts
+   * if (!chatSettings) return true
+   * return chatSettings.avatarDisplayMode === 'ALWAYS'
+   * ```
+   *
+   * ⚠ **GROUP_ONLY means NO avatars, not "avatars in a group".** v5 used to
+   * read it as "≥2 characters"; measured against the pin, v4 consumes
+   * `avatarDisplayMode` at exactly one site — this one — and tests only for
+   * `'ALWAYS'`, and v4's own settings copy calls the mode "(will be implemented
+   * in the future)" (`components/settings/chat-settings/types.ts:266`). The
+   * ≥2 rule was a v5 invention implementing a feature v4 has not built; it is
+   * gone (P4.75, the order's own "transcribe both, do not merge them" premise
+   * refuted by measurement — v4 has ONE rule at BOTH sites).
+   */
   protected readonly showAvatars = computed(() => {
-    const mode = this.settings()?.avatarDisplayMode ?? 'ALWAYS';
-    if (mode === 'NEVER') return false;
-    if (mode === 'GROUP_ONLY') {
-      return this.chat().participants.filter((p) => p.type === 'CHARACTER').length >= 2;
+    const settings = this.settings();
+    if (!settings) return true;
+    return settings.avatarDisplayMode === 'ALWAYS';
+  });
+
+  /**
+   * v4 `SalonView.tsx:1176-1184 getRespondingCharacter` — who the LIVE bubble's
+   * avatar column names.
+   *
+   * The id arm looks `respondingParticipantId` up in the cast and takes that
+   * participant's character whatever its type or active state; the fallback is
+   * v4's `getFirstCharacter()` (`useParticipants.ts:227,235`) — the first
+   * participant that is BOTH `type === 'CHARACTER'` and `isActive`, whose
+   * character may still be absent, in which case v4's Avatar renders the 'AI'
+   * fallback name.
+   */
+  protected readonly respondingCharacter = computed<DetailCharacter | null>(() => {
+    const participants = this.chat().participants;
+    const id = this.stream()?.respondingParticipantId ?? null;
+    if (id) {
+      const named = participants.find((p) => p.id === id);
+      if (named?.character) return named.character;
     }
-    return true;
+    return participants.find((p) => p.type === 'CHARACTER' && p.isActive)?.character ?? null;
   });
 
   constructor() {

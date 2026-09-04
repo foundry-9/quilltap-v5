@@ -182,3 +182,112 @@ describe('StreamingMessage', () => {
     });
   });
 });
+
+/**
+ * The live bubble's avatar column — v4 `StreamingMessage.tsx:85-96`, ported by
+ * P4.75. v4's markup, line by line:
+ *
+ * ```tsx
+ * {shouldShowAvatars && (                                            // :85
+ *   <div className={`flex-shrink-0 qt-chat-desktop-avatar${
+ *      isDangerousChat ? ' qt-chat-avatar-dangerous' : ''}`}>         // :85
+ *     <Avatar name={respondingCharacter?.name || 'AI'}                // :86
+ *             title={null} src={respondingCharacter} size="chat"      // :87-89
+ *             showName showTitle className="… w-32 …" />              // :90-92
+ *   </div>
+ * )}
+ * ```
+ *
+ * `flex-shrink-0` is the CSS rule's own `@apply` in v5 (`_chat.css:2377`), so
+ * the column carries the two semantic classes exactly as the settled rows do
+ * (`message-row.ts:87-92`) — the shape P4.D131's ring already targets.
+ */
+describe('StreamingMessage — the responding avatar column (v4 :85-96)', () => {
+  function renderWith(
+    inputs: Record<string, unknown>,
+  ): ComponentFixture<StreamingMessage> {
+    // Reset first: the ring case renders twice (calm, then flagged) in one `it`.
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [StreamingMessage] });
+    const fixture = TestBed.createComponent(StreamingMessage);
+    fixture.componentRef.setInput('state', foldChatFrames([{ content: 'Live prose' }]));
+    for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const ada = {
+    id: 'c1',
+    name: 'Ada',
+    title: null,
+    avatarUrl: 'uploads/ada.png',
+    defaultImageId: null,
+    defaultImage: null,
+  };
+
+  it('renders no column when the gate is off (v4 :85 — `shouldShowAvatars &&`)', () => {
+    const fixture = renderWith({ showAvatar: false, respondingCharacter: ada });
+    expect(fixture.nativeElement.querySelector('.qt-chat-desktop-avatar')).toBeNull();
+  });
+
+  it('opens the row with the responding character under the gate (v4 :85-89)', () => {
+    const fixture = renderWith({ showAvatar: true, respondingCharacter: ada });
+    const column = fixture.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement;
+    expect(column).not.toBeNull();
+    // The column is the row's FIRST child, ahead of the body (v4 :85 precedes :98).
+    const row = fixture.nativeElement.querySelector('.qt-chat-message-row-assistant') as HTMLElement;
+    expect(row.firstElementChild).toBe(column);
+    const img = column.querySelector('img') as HTMLImageElement;
+    expect(img.getAttribute('alt')).toBe('Ada');
+    // v4's `getAvatarSrc` string branch: a bare path gains a leading slash.
+    expect(img.getAttribute('src')).toBe('/uploads/ada.png');
+  });
+
+  it("names an absent character 'AI' (v4 :86 — `respondingCharacter?.name || 'AI'`)", () => {
+    const fixture = renderWith({ showAvatar: true, respondingCharacter: null });
+    const column = fixture.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement;
+    // No src, so `qt-avatar` falls back to the initial of the name.
+    expect(column.textContent?.trim()).toBe('A');
+    expect(column.querySelector('img')).toBeNull();
+  });
+
+  it("falls back to 'AI' for a character with a blank name (v4 :86 is `||`, not `??`)", () => {
+    const fixture = renderWith({ showAvatar: true, respondingCharacter: { ...ada, name: '', avatarUrl: null } });
+    expect(
+      (fixture.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement).textContent?.trim(),
+    ).toBe('A');
+  });
+
+  it('wears the danger ring only on a flagged chat (v4 :85 ternary)', () => {
+    const calm = renderWith({ showAvatar: true, respondingCharacter: ada, isDangerousChat: false });
+    expect(
+      (calm.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement).classList.contains(
+        'qt-chat-avatar-dangerous',
+      ),
+    ).toBe(false);
+    const flagged = renderWith({ showAvatar: true, respondingCharacter: ada, isDangerousChat: true });
+    expect(
+      (flagged.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement).classList.contains(
+        'qt-chat-avatar-dangerous',
+      ),
+    ).toBe(true);
+  });
+
+  /**
+   * v4 renders ONE assistant row whose BODY switches between the waiting quill
+   * and the bubble (`:98-104`), so the column is present in both states. v5
+   * splits the row in two `@if`s, which is why both need the column — a
+   * regression that dropped it from the waiting arm would show as an avatar that
+   * pops in when the first token lands.
+   */
+  it('is present in the waiting state too (v4 :85 precedes the :99 branch)', () => {
+    TestBed.configureTestingModule({ imports: [StreamingMessage] });
+    const fixture = TestBed.createComponent(StreamingMessage);
+    fixture.componentRef.setInput('state', foldChatFrames([{ turnStart: true }]));
+    fixture.componentRef.setInput('showAvatar', true);
+    fixture.componentRef.setInput('respondingCharacter', ada);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.qt-chat-desktop-avatar')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.qt-thinking-indicator')).not.toBeNull();
+  });
+});
