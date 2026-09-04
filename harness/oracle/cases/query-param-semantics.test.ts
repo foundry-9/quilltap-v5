@@ -199,6 +199,157 @@ const ENDPOINTS: Endpoint[] = [
     known: 'favorite',
     body: {},
   },
+
+  // ===================================================================
+  // P4.72 — the other seventeen `?action=`-reading edges (P4.67's Tier 1
+  // item 3 remainder). Same six shapes; the `known` action is picked so the
+  // first-wins probe has something to compare, never for what it says.
+  // ===================================================================
+  {
+    key: 'system_restore_post',
+    mod: '@/app/api/v1/system/restore/route',
+    method: 'POST',
+    path: '/api/v1/system/restore',
+    known: 'preview',
+    // `uploadId` is supplied so the preview leg and the default restore leg
+    // answer DIFFERENT sentences (`Upload not found or expired` vs `mode must
+    // be …`). With `{}` both said `uploadId is required` and the first-wins
+    // probe compared a constant with itself.
+    body: { uploadId: 'oracle-upload' },
+  },
+  {
+    key: 'characters_wardrobe_get',
+    mod: '@/app/api/v1/characters/[id]/wardrobe/route',
+    method: 'GET',
+    path: `/api/v1/characters/${ITEM}/wardrobe`,
+    params: { id: ITEM },
+    known: 'instructions',
+  },
+  {
+    key: 'character_item_get',
+    mod: '@/app/api/v1/characters/[id]/route',
+    method: 'GET',
+    path: `/api/v1/characters/${ITEM}`,
+    params: { id: ITEM },
+    known: 'stats',
+  },
+  {
+    key: 'characters_collection_post',
+    mod: '@/app/api/v1/characters/route',
+    method: 'POST',
+    path: '/api/v1/characters',
+    known: 'import',
+    body: {},
+  },
+  {
+    key: 'embedding_profiles_collection_get',
+    mod: '@/app/api/v1/embedding-profiles/route',
+    method: 'GET',
+    path: '/api/v1/embedding-profiles',
+    known: 'list-providers',
+  },
+  {
+    key: 'files_item_get',
+    mod: '@/app/api/v1/files/[id]/route',
+    method: 'GET',
+    path: `/api/v1/files/${ITEM}`,
+    params: { id: ITEM },
+    known: 'thumbnail',
+  },
+  // The chat-files POST twice — once per hand-rolled arm
+  // (`chats/[id]/files/route.ts:43-52`), because the first-wins probe is
+  // per-arm and the two arms read the same parameter through the same
+  // hand-rolled truthiness.
+  {
+    key: 'chat_files_post_link',
+    mod: '@/app/api/v1/chats/[id]/files/route',
+    method: 'POST',
+    path: `/api/v1/chats/${CHAT}/files`,
+    params: { id: CHAT },
+    known: 'link',
+    body: {},
+  },
+  {
+    key: 'chat_files_post_attach',
+    mod: '@/app/api/v1/chats/[id]/files/route',
+    method: 'POST',
+    path: `/api/v1/chats/${CHAT}/files`,
+    params: { id: CHAT },
+    known: 'attach-mount-file',
+    body: {},
+  },
+  {
+    key: 'text_replacements_post',
+    mod: '@/app/api/v1/settings/text-replacements/route',
+    method: 'POST',
+    path: '/api/v1/settings/text-replacements',
+    known: 'bulk-replace',
+    body: {},
+  },
+  {
+    key: 'conversation_summaries_get',
+    mod: '@/app/api/v1/system/conversation-summaries/route',
+    method: 'GET',
+    path: '/api/v1/system/conversation-summaries',
+    known: 'regenerate',
+  },
+  {
+    key: 'conversation_summaries_post',
+    mod: '@/app/api/v1/system/conversation-summaries/route',
+    method: 'POST',
+    path: '/api/v1/system/conversation-summaries',
+    known: 'regenerate',
+    body: {},
+  },
+  {
+    key: 'system_job_post',
+    mod: '@/app/api/v1/system/jobs/[id]/route',
+    method: 'POST',
+    path: `/api/v1/system/jobs/${ITEM}`,
+    params: { id: ITEM },
+    known: 'pause',
+    body: {},
+  },
+  {
+    key: 'system_unlock_post',
+    mod: '@/app/api/v1/system/unlock/route',
+    method: 'POST',
+    path: '/api/v1/system/unlock',
+    known: 'lock',
+    body: {},
+  },
+  {
+    key: 'wardrobe_collection_get',
+    mod: '@/app/api/v1/wardrobe/route',
+    method: 'GET',
+    path: '/api/v1/wardrobe',
+    known: 'instructions',
+  },
+  {
+    key: 'wardrobe_collection_post',
+    mod: '@/app/api/v1/wardrobe/route',
+    method: 'POST',
+    path: '/api/v1/wardrobe',
+    known: 'instructions',
+    body: {},
+  },
+  {
+    key: 'chat_item_get',
+    mod: '@/app/api/v1/chats/[id]/route',
+    method: 'GET',
+    path: `/api/v1/chats/${CHAT}`,
+    params: { id: CHAT },
+    known: 'get-background',
+  },
+  {
+    key: 'chat_item_post',
+    mod: '@/app/api/v1/chats/[id]/route',
+    method: 'POST',
+    path: `/api/v1/chats/${CHAT}`,
+    params: { id: CHAT },
+    known: 'equip',
+    body: {},
+  },
 ];
 
 /** The query string each probe appends. */
@@ -245,6 +396,14 @@ function mockRequest(url: string, ep: Endpoint): unknown {
 }
 
 /**
+ * Whether a `REGENERATE_CONVERSATION_SUMMARIES` job is already "in flight" for
+ * this oracle run. Lives OUTSIDE `applyMocks` because `jest.resetModules()`
+ * runs between shapes and would reset anything held inside the factory — and
+ * the whole point is that the second enqueue of a run sees the first.
+ */
+let summaryRegenerationEnqueued = false;
+
+/**
  * The leaves. Everything a DEFAULT handler reaches is stubbed to something
  * deterministic — the point is which leg ran, never what it found.
  */
@@ -263,11 +422,23 @@ function applyMocks(): void {
     chats: {
       // `verifyBrahmaChat` demands ownership AND `chatType === 'brahma'`; a
       // 404 here would answer every shape identically and measure nothing.
-      findById: async (id: string) => ({ id, userId: USER, chatType: 'brahma', title: 'Oracle' }),
+      findById: async (id: string) => ({
+        id,
+        userId: USER,
+        chatType: 'brahma',
+        title: 'Oracle',
+        participants: [],
+        projectId: null,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      }),
       list: async () => [],
       findAll: async () => [],
       countAll: async () => 0,
       hasDangerous: async () => false,
+      // `characters/[id]` GET's DEFAULT leg counts the character's chats.
+      findByCharacterId: async () => [],
+      getMessages: async () => [],
     },
     // Same trap: `characters/[id]` POST runs `findById` → `notFound` BEFORE the
     // action gate, so a null here makes all six shapes a 404.
@@ -275,10 +446,37 @@ function applyMocks(): void {
       findById: async (id: string) => ({ id, userId: USER, name: 'Oracle', isFavorite: false }),
       setFavorite: async (id: string) => ({ id, isFavorite: true }),
     },
-    files: { findById: async () => null, findByCategory: async () => [] },
+    // A NON-resizable file, so `files/[id]?action=thumbnail` refuses
+    // (`File is not a resizable image`) while the default leg downloads — with
+    // `null` every shape was the same 404 and the first-wins probe measured
+    // nothing, and with an image both legs answered the same bytes.
+    files: {
+      findById: async (id: string) => ({
+        id,
+        userId: USER,
+        mimeType: 'text/plain',
+        originalFilename: 'oracle.txt',
+        storageKey: `files/${id}.txt`,
+        size: 3,
+        category: 'general',
+      }),
+      findByCategory: async () => [],
+    },
     mountPoints: { findById: async () => null },
-    embeddingProfiles: { findById: async () => null },
+    embeddingProfiles: { findById: async () => null, findByUserId: async () => [] },
     tags: { findAll: async () => [] },
+    // ---- P4.72 leaves ----
+    // The wardrobe reads the `?action=instructions` routes' DEFAULT legs run.
+    wardrobe: {
+      findArchetypes: async () => [],
+      findByCharacterId: async () => [],
+      findArchetypesInMounts: async () => [],
+      create: async () => null,
+    },
+    // `system/jobs/[id]` POST looks the job up only AFTER its action gate, so a
+    // null here is the deterministic answer for every SERVED action too.
+    backgroundJobs: { findById: async () => null, pause: async () => null, resume: async () => null },
+    textReplacementRules: { findAll: async () => [], create: async () => null },
   };
   jest.doMock('@/lib/repositories/factory', () => ({
     __esModule: true,
@@ -329,6 +527,87 @@ function applyMocks(): void {
     __esModule: true,
     buildCustomToolLibrary: async () => ({ tools: [], stores: [] }),
     listCustomToolDestinations: async () => ({ destinations: [] }),
+  }));
+
+  // ---- P4.72 leaves ----
+  // `settings/text-replacements` reaches its repositories through
+  // `getRepositories` from the OTHER factory module; the rest of that module is
+  // kept real so its sibling exports (the conflict error class the route
+  // imports) still resolve.
+  jest.doMock('@/lib/database/repositories', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/database/repositories'),
+    getRepositories: () => repos,
+    getRepositoriesSafe: async () => repos,
+  }));
+
+  // `system/restore` — the real restore service would touch the filesystem and
+  // the databases; dispatch is all this oracle measures.
+  jest.doMock('@/lib/backup/restore-service', () => ({
+    __esModule: true,
+    restore: async () => ({ warnings: [], counts: {} }),
+    previewRestore: async () => ({ manifest: {} }),
+  }));
+
+  // `system/conversation-summaries` — the enqueue is the SERVED leg's whole
+  // body; the refusal legs never reach it.
+  //
+  // The stub is STATEFUL on purpose. v4's real
+  // `enqueueRegenerateConversationSummaries` looks for a PENDING/PROCESSING job
+  // of the same type first and answers `isNew: false` with the existing id
+  // (`queue-service.ts:745-773`) — so the second `?action=regenerate` POST of a
+  // run answers a different sentence than the first, on BOTH trees. A stateless
+  // stub said `isNew: true` forever and made v4's `firstWins` a claim about the
+  // stub. The first-wins reading for this endpoint is carried instead by the
+  // byte-compared `empty_then_known` row (`?action=&action=regenerate` answers
+  // the refusal — i.e. the FIRST value won).
+  jest.doMock('@/lib/background-jobs/queue-service', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/background-jobs/queue-service'),
+    enqueueRegenerateConversationSummaries: async () => {
+      const isNew = !summaryRegenerationEnqueued;
+      summaryRegenerationEnqueued = true;
+      return { jobId: 'oracle-job', isNew };
+    },
+  }));
+
+  // `system/jobs/[id]` POST's resume leg nudges the processor.
+  jest.doMock('@/lib/background-jobs', () => ({
+    __esModule: true,
+    ensureProcessorRunning: () => {},
+  }));
+
+  // `chats/[id]/files` default leg — the upload pipeline.
+  jest.doMock('@/lib/chat-files-v2', () => ({
+    __esModule: true,
+    uploadChatFile: async () => ({ file: { id: 'oracle-file' } }),
+  }));
+
+  // `wardrobe` POST's default (create) leg resolves the General mount.
+  jest.doMock('@/lib/instance-settings', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/instance-settings'),
+    getGeneralMountPointId: async () => null,
+  }));
+  jest.doMock('@/lib/mount-index/general-wardrobe', () => ({
+    __esModule: true,
+    ensureGeneralWardrobeFolder: async () => null,
+  }));
+
+  // `chats/[id]/handlers/get.ts` imports the markdown renderer, which imports
+  // `unified` — ESM, which jest's CJS runtime cannot compile. Pre-rendering
+  // plays no part in action dispatch.
+  jest.doMock('@/lib/services/markdown-renderer.service', () => ({
+    __esModule: true,
+    renderMarkdownToHtml: async (md: string) => md,
+    canPreRenderMessage: () => false,
+    escapeMarkdownInBrackets: (s: string) => s,
+  }));
+
+  // `characters/[id]/wardrobe` GET's `?scope=group` leg walks the tiered pool.
+  jest.doMock('@/lib/mount-index/tiered-mount-pool', () => ({
+    __esModule: true,
+    resolveGroupMountPointIdsForCharacter: async () => [],
   }));
 }
 

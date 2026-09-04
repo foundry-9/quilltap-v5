@@ -33,6 +33,23 @@
 //! null` and `?action=` reads `Unknown action: `. v4 distinguishes them and so
 //! must v5. The oracle measures which, per endpoint; nothing here assumes.
 //!
+//! ## What P4.72 added
+//!
+//! P4.67 covered fourteen of the ~31 `?action=`-reading edges. P4.72 brings in
+//! the other seventeen (the restore POST, both character reads + the character
+//! collection POST, the character wardrobe GET, the embedding-profiles
+//! collection GET, the files item GET, BOTH chat-files arms, the
+//! text-replacements POST, both conversation-summaries edges, the jobs item
+//! POST, `system/unlock`, both wardrobe collection edges, and the chat item
+//! GET + POST), each with the same six shapes.
+//!
+//! Three of them hand-roll their gate rather than using the middleware, and
+//! their fixed sentences joined [`is_dispatcher_refusal`] so their rows are
+//! byte-compared like the middleware's: `system/unlock`'s
+//! `Missing action parameter…`, `system/jobs/[id]`'s
+//! `Invalid action. Available actions: pause, resume`, and
+//! `system/conversation-summaries`' `Unknown or missing action.`.
+//!
 //! ## Recorded divergences
 //!
 //! - `character_item_post` — v4's `handlePost` runs `repos.characters.findById`
@@ -42,6 +59,12 @@
 //!   so the rows are pinned on the v5 side rather than cross-compared. v5 also
 //!   serves only `archive`/`rehydrate` here (the P4.D66 CLI edge); the other
 //!   eleven v4 actions ride `/api/dispatch`.
+//! - The other four [`V5_PINNED_ENDPOINTS`] (P4.72) — `character_item_get`,
+//!   `characters_collection_post`, `chat_item_get`, `chat_item_post` — are the
+//!   same class one route wider: v5 hosts a strict subset of the v4 route (the
+//!   rest ride `POST /api/dispatch`) and answers one loud pointer for every
+//!   shape v4 sends to a handler. Their rows are pinned v5-side; the reasons
+//!   sit beside them in [`RECORDED_DIVERGENCES`].
 //! - The SUBSET edges — `user_profile_get`/`_put` (v5 serves no action at all;
 //!   `theme-preference` is a named non-port), `system_data_dir_post`
 //!   (`?action=open` is a named refusal), `mount_point_action_post` (v5 serves
@@ -210,6 +233,123 @@ fn endpoints() -> Vec<Endpoint> {
             "favorite",
             json!({}),
         ),
+        // ================================================================
+        // P4.72 — the other seventeen `?action=`-reading edges (P4.67's
+        // Tier 1 item 3 remainder). Mirrors the oracle's block entry for
+        // entry; the two lengths are compared.
+        // ================================================================
+        ep_body(
+            "system_restore_post",
+            "POST",
+            "/api/v1/system/restore".into(),
+            "preview",
+            json!({}),
+        ),
+        ep(
+            "characters_wardrobe_get",
+            "GET",
+            format!("/api/v1/characters/{ITEM}/wardrobe"),
+            "instructions",
+        ),
+        ep(
+            "character_item_get",
+            "GET",
+            format!("/api/v1/characters/{ITEM}"),
+            "stats",
+        ),
+        ep_body(
+            "characters_collection_post",
+            "POST",
+            "/api/v1/characters".into(),
+            "import",
+            json!({}),
+        ),
+        ep(
+            "embedding_profiles_collection_get",
+            "GET",
+            "/api/v1/embedding-profiles".into(),
+            "list-providers",
+        ),
+        ep(
+            "files_item_get",
+            "GET",
+            format!("/api/v1/files/{ITEM}"),
+            "thumbnail",
+        ),
+        ep_body(
+            "chat_files_post_link",
+            "POST",
+            format!("/api/v1/chats/{CHAT}/files"),
+            "link",
+            json!({}),
+        ),
+        ep_body(
+            "chat_files_post_attach",
+            "POST",
+            format!("/api/v1/chats/{CHAT}/files"),
+            "attach-mount-file",
+            json!({}),
+        ),
+        ep_body(
+            "text_replacements_post",
+            "POST",
+            "/api/v1/settings/text-replacements".into(),
+            "bulk-replace",
+            json!({}),
+        ),
+        ep(
+            "conversation_summaries_get",
+            "GET",
+            "/api/v1/system/conversation-summaries".into(),
+            "regenerate",
+        ),
+        ep_body(
+            "conversation_summaries_post",
+            "POST",
+            "/api/v1/system/conversation-summaries".into(),
+            "regenerate",
+            json!({}),
+        ),
+        ep_body(
+            "system_job_post",
+            "POST",
+            format!("/api/v1/system/jobs/{ITEM}"),
+            "pause",
+            json!({}),
+        ),
+        ep_body(
+            "system_unlock_post",
+            "POST",
+            "/api/v1/system/unlock".into(),
+            "lock",
+            json!({}),
+        ),
+        ep(
+            "wardrobe_collection_get",
+            "GET",
+            "/api/v1/wardrobe".into(),
+            "instructions",
+        ),
+        ep_body(
+            "wardrobe_collection_post",
+            "POST",
+            "/api/v1/wardrobe".into(),
+            "instructions",
+            json!({}),
+        ),
+        ep(
+            "chat_item_get",
+            "GET",
+            format!("/api/v1/chats/{CHAT}"),
+            "get-background",
+        ),
+        ep_body(
+            "chat_item_post",
+            "POST",
+            format!("/api/v1/chats/{CHAT}"),
+            "equip",
+            json!({}),
+        ),
     ]
 }
 
@@ -242,11 +382,15 @@ fn query_for(shape: &str, known: &str) -> String {
 ///
 /// Derived from the recorded row rather than declared per endpoint, so it
 /// cannot drift out of step with v4: every refusal v4's dispatchers emit opens
-/// with `Unknown action:`, `Action parameter required` or (the `system/unlock`
-/// hand-roll) `Missing action parameter`. Anything else is a handler's own
-/// answer — the chat list, the profile, the tool library, a Zod complaint —
-/// i.e. a payload over that tree's database, which no cross-tree byte compare
-/// could fairly make. Those rows are carried by the equality booleans instead.
+/// with one of the sentences below — the middleware's two envelopes, plus the
+/// three hand-rolled gates P4.72 brought in (`system/unlock`'s
+/// `Missing action parameter`, `system/jobs/[id]`'s `Invalid action.` and
+/// `system/conversation-summaries`' `Unknown or missing action.`). All five are
+/// FIXED strings decided before any repository call, so they are cross-tree
+/// comparable. Anything else is a handler's own answer — the chat list, the
+/// profile, the tool library, a Zod complaint — i.e. a payload over that tree's
+/// database, which no cross-tree byte compare could fairly make. Those rows are
+/// carried by the equality booleans instead.
 fn is_dispatcher_refusal(v4_body: &Value) -> bool {
     let Some(err) = v4_body.get("error").and_then(Value::as_str) else {
         return false;
@@ -254,16 +398,31 @@ fn is_dispatcher_refusal(v4_body: &Value) -> bool {
     err.starts_with("Unknown action:")
         || err.starts_with("Action parameter required")
         || err.starts_with("Missing action parameter")
+        || err.starts_with("Invalid action. Available actions:")
+        || err == "Unknown or missing action."
 }
+
+/// The five endpoints whose v5 edge serves a strict SUBSET of the v4 route and
+/// answers its own loud "this rides /api/dispatch" sentence for everything
+/// else. There is no cross-tree comparison to be made for their non-`known`
+/// shapes — v4 runs a handler v5 does not host — so every one of those rows is
+/// pinned v5-side in [`RECORDED_DIVERGENCES`] instead of compared.
+const V5_PINNED_ENDPOINTS: &[&str] = &[
+    "character_item_post",
+    "character_item_get",
+    "characters_collection_post",
+    "chat_item_get",
+    "chat_item_post",
+];
 
 /// Shapes never cross-compared regardless: `known` runs the endpoint's real
 /// work (a payload over each tree's own database — and on the SUBSET edges,
 /// where v5 does not serve the action v4 dispatches, a RECORDED divergence
-/// pinned v5-side by [`UNSERVED_KNOWN_ACTIONS`]), and `character_item_post`
-/// gates ownership in a different order on the two sides — see the header's
-/// "Recorded divergences".
+/// pinned v5-side by [`UNSERVED_KNOWN_ACTIONS`]), and the
+/// [`V5_PINNED_ENDPOINTS`] gate in a different order or host a different action
+/// set on the two sides — see the header's "Recorded divergences".
 fn cross_comparable_shape(key: &str, shape: &str) -> bool {
-    shape != "known" && shape != "known_then_unknown" && key != "character_item_post"
+    shape != "known" && shape != "known_then_unknown" && !V5_PINNED_ENDPOINTS.contains(&key)
 }
 
 /// v5's pinned answers for the rows that cannot be cross-compared, so they
@@ -288,6 +447,109 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
         "character_item_post__empty_then_known",
         400,
         "This route serves ?action=archive and ?action=rehydrate only",
+    ),
+    // --- P4.72 ---
+    // `GET /api/v1/characters/{id}` — v4 has NO refusal leg here at all:
+    // `handlers/get.ts:44` falls through `!action || !isValidAction(...)` to the
+    // full character payload, so v4 answers 200 for bare, `?action=`, AND an
+    // unknown action. v5 serves only the byte-out `?action=export` leg (the
+    // JSON reads ride `POST /api/dispatch`, the P4.D66 narrowing), so all four
+    // shapes fold onto its loud pointer. Recorded, not chased: closing it means
+    // hosting v4's whole character GET at this URL.
+    (
+        "character_item_get__bare",
+        400,
+        "This route serves ?action=export only",
+    ),
+    (
+        "character_item_get__empty",
+        400,
+        "This route serves ?action=export only",
+    ),
+    (
+        "character_item_get__unknown",
+        400,
+        "This route serves ?action=export only",
+    ),
+    (
+        "character_item_get__empty_then_known",
+        400,
+        "This route serves ?action=export only",
+    ),
+    // `POST /api/v1/characters` — same shape: v4's `handlers/post.ts:592` falls
+    // through to `handleCreate` for bare / `?action=` / unknown (a Zod 400 over
+    // the empty body); v5 serves only the multipart `import` and
+    // `reset-builtins` legs, creation being a dispatch verb.
+    (
+        "characters_collection_post__bare",
+        400,
+        "This route serves ?action=import and ?action=reset-builtins only",
+    ),
+    (
+        "characters_collection_post__empty",
+        400,
+        "This route serves ?action=import and ?action=reset-builtins only",
+    ),
+    (
+        "characters_collection_post__unknown",
+        400,
+        "This route serves ?action=import and ?action=reset-builtins only",
+    ),
+    (
+        "characters_collection_post__empty_then_known",
+        400,
+        "This route serves ?action=import and ?action=reset-builtins only",
+    ),
+    // `GET /api/v1/chats/{id}` — v4's if-chain falls through to the whole chat
+    // payload; v5 hosts only the four byte/JSON legs the dispatch channel
+    // cannot carry (`outfit`, `outfit-summary`, `export`, `export-markdown`)
+    // plus `get-background` / `cost`.
+    (
+        "chat_item_get__bare",
+        400,
+        "Only the get-background and cost actions are served on this route",
+    ),
+    (
+        "chat_item_get__empty",
+        400,
+        "Only the get-background and cost actions are served on this route",
+    ),
+    (
+        "chat_item_get__unknown",
+        400,
+        "Only the get-background and cost actions are served on this route",
+    ),
+    (
+        "chat_item_get__empty_then_known",
+        400,
+        "Only the get-background and cost actions are served on this route",
+    ),
+    // `POST /api/v1/chats/{id}` — v4 DOES refuse here, but hand-rolled and after
+    // its chat-404: `Unknown action: ${action}. Available actions: <all 30>`
+    // (`chats/[id]/handlers/post.ts:120`), with the action INTERPOLATED — so v4
+    // says `Unknown action: null` for a bare request and `Unknown action: ` for
+    // `?action=`, which is why its `fold` is FALSE (see [`RECORDED_EQUALITIES`]).
+    // v5 serves two of the thirty here and answers one sentence for all four
+    // shapes, without a chat lookup.
+    (
+        "chat_item_post__bare",
+        400,
+        "Only the equip and regenerate-avatar actions are served on this route",
+    ),
+    (
+        "chat_item_post__empty",
+        400,
+        "Only the equip and regenerate-avatar actions are served on this route",
+    ),
+    (
+        "chat_item_post__unknown",
+        400,
+        "Only the equip and regenerate-avatar actions are served on this route",
+    ),
+    (
+        "chat_item_post__empty_then_known",
+        400,
+        "Only the equip and regenerate-avatar actions are served on this route",
     ),
 ];
 
@@ -319,6 +581,42 @@ const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
         "ai-import-stream",
         400,
         "The 'ai-import-stream' action is not served on this route; it rides POST /api/dispatch",
+    ),
+    // --- P4.72: `system/unlock`'s four v4-known siblings ---
+    // v4's `isUnlockAction` (`system/unlock/route.ts:102`) knows five; v5
+    // aliases only `change-passphrase` at this URL because the other four have
+    // dispatch verbs the SPA uses. Until this lane they answered v4's UNKNOWN
+    // sentence — `Unknown action: lock` for an action v4 dispatches — which is
+    // the same lie the §3 unification review of P4.67 removed from the
+    // mount-point and system/tools edges. They now carry the mount-point
+    // precedent's loud pointer instead, pinned here.
+    (
+        "POST",
+        "/api/v1/system/unlock",
+        "setup",
+        400,
+        "Only the 'change-passphrase' action is served on this route; the other database-key actions ride POST /api/dispatch",
+    ),
+    (
+        "POST",
+        "/api/v1/system/unlock",
+        "unlock",
+        400,
+        "Only the 'change-passphrase' action is served on this route; the other database-key actions ride POST /api/dispatch",
+    ),
+    (
+        "POST",
+        "/api/v1/system/unlock",
+        "store",
+        400,
+        "Only the 'change-passphrase' action is served on this route; the other database-key actions ride POST /api/dispatch",
+    ),
+    (
+        "POST",
+        "/api/v1/system/unlock",
+        "lock",
+        400,
+        "Only the 'change-passphrase' action is served on this route; the other database-key actions ride POST /api/dispatch",
     ),
 ];
 
@@ -464,7 +762,16 @@ async fn query_param_semantics_match_oracle() {
         // into its sentence, while v5's subset refusal names neither — so v5
         // folds where v4 does not, and that is the recorded divergence, not a
         // drift to chase.
-        const RECORDED_EQUALITIES: &[(&str, &str, bool)] = &[("character_item_post", "fold", true)];
+        const RECORDED_EQUALITIES: &[(&str, &str, bool)] = &[
+            ("character_item_post", "fold", true),
+            // Same cause, measured on a second route (P4.72): v4's chat POST
+            // interpolates the action into its refusal, so bare reads
+            // `Unknown action: null` and `?action=` reads `Unknown action: `
+            // — v4 does NOT fold. v5's subset pointer names neither, so it
+            // does. Pinned rather than chased: matching v4 would mean hosting
+            // all thirty chat POST actions at this URL.
+            ("chat_item_post", "fold", true),
+        ];
         let want = oracle
             .get(&format!("{}__equalities", e.key))
             .unwrap_or_else(|| panic!("oracle missing equalities for '{}'", e.key));
@@ -497,7 +804,7 @@ async fn query_param_semantics_match_oracle() {
         "cross-compared refusal rows: {refusal_rows}; equality-only handler rows: {handler_rows}"
     );
     assert!(
-        refusal_rows >= 20 && handler_rows >= 8,
+        refusal_rows >= 40 && handler_rows >= 40,
         "the refusal/handler classification collapsed ({refusal_rows} refusal, {handler_rows} handler) \
          — a change to v4's refusal wording would silently stop this family comparing bytes"
     );

@@ -396,6 +396,62 @@ post-mutation `files` + `characters` dumps so a refusal proves it wrote
 nothing. Seven mutation proofs; two of them (the key-less probe arm and the
 `avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
 blind spots, closed with dedicated fixture rows before the unit landed.
+#### 2026-09-03 — test(query): the other seventeen `?action=` edges into the semantics family (P4.72)
+
+_Versions: harness 0.0.663, web 0.0.106._
+
+P4.67 covered fourteen of the ~31 REST edges that read `?action=`;
+`query_param_semantics_equivalence` now covers all thirty-one. The seventeen
+new entries are the restore POST, the character item GET + wardrobe GET + the
+character collection POST, the embedding-profiles collection GET, the files
+item GET, BOTH chat-files arms (`link` and `attach-mount-file`), the
+text-replacements POST, both conversation-summaries edges, the jobs item POST,
+`system/unlock`, both wardrobe collection edges, and the chat item GET + POST
+— each with the same six shapes (`bare`, `?action=`, unknown,
+`?action=<known>`, `?action=<known>&action=<unknown>`,
+`?action=&action=<known>`).
+
+Three of those routes hand-roll their gate instead of using v4's
+`withActionDispatch`, and their fixed sentences joined the family's refusal
+classifier so their rows are byte-compared like the middleware's:
+`system/unlock`'s `Missing action parameter…`, `system/jobs/[id]`'s
+`Invalid action. Available actions: pause, resume`, and
+`system/conversation-summaries`' `Unknown or missing action.` The family now
+byte-compares 54 refusal rows (was 20) beside 50 within-tree equality rows.
+
+The red-first run over the grown family produced six failures, all recorded:
+`chat_item_post`'s four refusal bodies and its `fold` (v4 interpolates the
+action into a hand-rolled sentence, so `Unknown action: null` and
+`Unknown action: ` differ — v4 does NOT fold there), plus
+`conversation_summaries_post`'s `firstWins`, which turned out to be an oracle
+STUB artifact: v4's real `enqueueRegenerateConversationSummaries` answers
+`isNew: false` when a job of that type is already pending, exactly as v5 does,
+and the stateless stub had been claiming otherwise. The stub is stateful now,
+and both trees agree.
+
+One v5 behavior changed. `POST /api/v1/system/unlock` aliases only
+`change-passphrase`; v4's four siblings (`setup` / `unlock` / `store` /
+`lock`) have dispatch verbs the SPA uses. Until now they were refused as
+`Unknown action: lock` — a claim about v4 that is false, since v4 dispatches
+them. They now carry the mount-point edge's loud pointer instead ("Only the
+'change-passphrase' action is served on this route; the other database-key
+actions ride POST /api/dispatch"), the shape the P4.67 §3 unification review
+restored elsewhere; a genuinely unknown action still gets v4's own
+`Unknown action: <x>`. The divergence is pinned v5-side in
+`UNSERVED_KNOWN_ACTIONS`.
+
+Four endpoints join `character_item_post` as v5-pinned: `character_item_get`,
+`characters_collection_post`, `chat_item_get` and `chat_item_post` all host a
+strict subset of the v4 route (the rest ride `POST /api/dispatch`) and answer
+one loud pointer where v4 runs a handler. Their sixteen rows are pinned in
+`RECORDED_DIVERGENCES` rather than cross-compared, each with its reason.
+
+Mutation-proven: reverting `system_job_post` to the old `HashMap` (LAST-wins)
+query read reddens exactly its `empty_then_known` body plus `firstWins` and
+`emptyFirstWins`; disarming the unlock pointer reddens exactly the four new
+`UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
+conversation-summaries sentence reddens exactly that endpoint's four
+byte-compared rows.
 
 #### 2026-09-03 — docs(orders): the follow-ups round 2 ordered — P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75
 

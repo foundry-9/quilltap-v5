@@ -773,10 +773,26 @@ pub async fn system_unlock_post(
              ?action=store, ?action=change-passphrase, or ?action=lock",
         );
     };
-    // Scope, unchanged from P4.9G3: only `change-passphrase` is aliased here, so
-    // v4's four siblings answer `unknown_action` — a RECORDED narrowing (they
-    // all have dispatch verbs the SPA uses), not this lane's doing.
+    // Scope, unchanged from P4.9G3: only `change-passphrase` is aliased here,
+    // because v4's four siblings (`setup` / `unlock` / `store` / `lock`) all
+    // have dispatch verbs the SPA uses.
+    //
+    // [P4.72] What DID change is the sentence. A v4-KNOWN action v5 does not
+    // host must not be refused as *unknown* — v4 dispatches `?action=lock`, so
+    // `Unknown action: lock` is a claim about v4 that is false. This is the
+    // shape the §3 unification review of P4.67 restored at the mount-point and
+    // `system/tools` edges; the divergence is pinned v5-side in
+    // `query_param_semantics_equivalence` (`UNSERVED_KNOWN_ACTIONS`). A
+    // genuinely unknown action still gets v4's own `Unknown action: <x>`.
+    const UNLOCK_ACTIONS: &[&str] = &["setup", "unlock", "store", "change-passphrase", "lock"];
     if action != "change-passphrase" {
+        if UNLOCK_ACTIONS.contains(&action) {
+            return error_json(
+                StatusCode::BAD_REQUEST,
+                "Only the 'change-passphrase' action is served on this route; \
+                 the other database-key actions ride POST /api/dispatch",
+            );
+        }
         return unknown_action(action);
     }
     let Ok(parsed) = serde_json::from_slice::<Value>(&body) else {

@@ -103594,3 +103594,84 @@ The `almanack.rs` / `quilltap_import` codec sites were MEASURED, not widened:
 both pass `NotConfiguredPixelCodec`, and both are correct to. `api/almanack.rs`
 writes `text/markdown` diagnostics and `quilltap_import` takes the caller's codec
 (`codec.unwrap_or(&not_configured)`), so neither is an image ingest path.
+## Lane record — P4.72 (unit 1): the other seventeen `?action=` edges
+
+**Branch** `claude/p4-72-query-param-census-0c8180`. Baseline `0b0617fee`;
+the drift-ledger §2 probe PASSED at lane start (v4 on `main`, tree clean,
+both logs empty) and the regen rule is PIN REQUIRED, so every regen ran from
+the lane-unique detached worktree `/tmp/qt-v4-pin-p472-0b0617fee`.
+
+`query_param_semantics_equivalence` grew from 14 endpoints to 31 — the whole
+`?action=`-reading REST surface. The seventeen new entries: the restore POST,
+`character_item_get`, `characters_wardrobe_get`, `characters_collection_post`,
+`embedding_profiles_collection_get`, `files_item_get`, BOTH chat-files arms
+(`chat_files_post_link` / `chat_files_post_attach` — v4's hand-rolled
+`chats/[id]/files/route.ts:43` truthiness, measured), `text_replacements_post`,
+`conversation_summaries_get` + `_post`, `system_job_post`,
+`system_unlock_post`, `wardrobe_collection_get` + `_post`, `chat_item_get`,
+`chat_item_post`.
+
+**Three hand-rolled gates joined the refusal classifier.** v4's dispatcher
+refusals were three fixed sentences; three of the new routes hand-roll theirs
+and are equally fixed-before-any-repository-call, so they are byte-compared
+too: `Missing action parameter…` (`system/unlock/route.ts:79`),
+`Invalid action. Available actions: pause, resume`
+(`system/jobs/[id]/route.ts:81`), and `Unknown or missing action.`
+(`system/conversation-summaries/route.ts:23`). Cross-compared refusal rows
+went 20 → 54; equality-only handler rows 8 → 50.
+
+**Red-first (the grown family, before any v5 change): SIX reds**, all
+dispositioned rather than chased:
+
+1–4. `chat_item_post__{bare,empty,unknown,empty_then_known}_body` — v4's chat
+POST hand-rolls `badRequest(\`Unknown action: ${action}. Available actions:
+…\`)` AFTER its chat-404; v5 hosts two of the thirty actions here and answers
+one loud pointer. → `RECORDED_DIVERGENCES`.
+5. `chat_item_post_fold` — v4 INTERPOLATES the action, so bare reads
+`Unknown action: null` and `?action=` reads `Unknown action: `; v4 does not
+fold where v5 does. → `RECORDED_EQUALITIES` (the `character_item_post`
+precedent, now measured on a second route).
+6. `conversation_summaries_post_firstWins` — **an ORACLE STUB artifact, not a
+port bug.** v4's real `enqueueRegenerateConversationSummaries`
+(`queue-service.ts:745-773`) finds a PENDING/PROCESSING job of the same type
+and answers `isNew:false` with the existing id — exactly what v5 does, with
+the same job id both times. The stateless stub said `isNew:true` forever, so
+v4's `firstWins` was a claim about the stub. The stub is stateful now; both
+trees answer `false`, and the first-wins reading for that endpoint is carried
+by the byte-compared `empty_then_known` row instead.
+
+**One v5 behavior change.** `POST /api/v1/system/unlock` refused v4's four
+KNOWN-but-unaliased sibling actions (`setup`/`unlock`/`store`/`lock`) as
+`Unknown action: <x>` — the same false-claim-about-v4 shape the P4.67 §3
+unification review removed from the mount-point and `system/tools` edges. They
+now carry that precedent's loud pointer; a genuinely unknown action still gets
+v4's own sentence. Pinned in `UNSERVED_KNOWN_ACTIONS` (four new rows).
+
+**Two oracle stubs were sharpened so their `known` legs discriminate** (memory
+note `a-green-mutation-means-a-non-discriminating-arm`): the restore body
+carries a `uploadId` so preview and restore answer different sentences (with
+`{}` both said `uploadId is required`), and `files.findById` returns a
+NON-resizable `text/plain` row so `?action=thumbnail` refuses where the default
+leg downloads (with `null` every shape was the same 404; with an image both
+legs answered the same bytes). Neither changed any pre-existing row — verified
+by diffing the regenerated NDJSON against the previous one.
+
+**Mutation proofs** (each verified applied, then reverted by file backup):
+
+- `system_job_post`'s reader reverted to `HashMap` (LAST-wins) semantics →
+  exactly `system_job_post__empty_then_known_status`, `_firstWins`,
+  `_emptyFirstWins` redden. This is the order's named "revert ONE site's
+  reader" proof.
+- the unlock pointer disarmed → exactly the four new `UNSERVED_KNOWN_ACTIONS`
+  rows redden (`left: Some("Unknown action: setup")`).
+- one byte off the conversation-summaries GET sentence → exactly
+  `conversation_summaries_get__{bare,empty,unknown,empty_then_known}_body`
+  redden, proving the new classifier prefix makes them byte-compared and that
+  the sibling POST rows are separately compared.
+
+**Regen recipe** (unchanged from P4.67; the pin is the driver's):
+`python3 harness/tools/recipe_sweep.py --run query_param_semantics_equivalence
+--v5w <worktree> --v4 /tmp/qt-v4-pin-p472-0b0617fee`. Fresh NDJSON grepped for
+the changed bytes: `Unknown or missing action` ×8, `Invalid action. Available
+actions` ×4, `Missing action parameter` ×3.
+
