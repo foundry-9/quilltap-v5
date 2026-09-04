@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — docs(orders): P4.74 closed; P4.68's deferred `auth` arm named where it landed
+
+_Docs-only change._ (No crate versions bumped.)
+
+P4.74's status header records the close, the Tier-3 arm that landed rather than
+deferring, the three order premises corrected by measurement, and what is left
+OPEN for a follow-up order (the thirteenth participant-status copy at
+`db/chats_messages.rs`, whose status IS read, plus five harness-side copies).
+P4.68's header gains the line naming where its deferred
+`auth`/`no-api-key-configured` chain arm closed, and the correction to its
+written-out shape: the oracle hands a primary at five sites, not four.
+
 #### 2026-09-03 — fix(core): the handler-logging rows — `[Image Fallback]` fields, `create_system_event`, and the inventory
 
 _Versions: core 0.0.770._
