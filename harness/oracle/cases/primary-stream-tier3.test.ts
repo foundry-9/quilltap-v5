@@ -127,6 +127,13 @@ interface CallSpec {
   existingMessages?: Array<Record<string, unknown>>;
   expectThrow?: boolean;
   isDangerousRouted?: boolean;
+  /**
+   * P4.74 — the per-call primary. Absent (every pre-existing case) resolves to
+   * `spec.profile`, so nothing about those cases moves; the credential-gate
+   * case names its own primary, which is what keeps the three new profiles out
+   * of every existing case's chain AND tier pool.
+   */
+  profileKey?: 'profile' | 'authPrimaryProfile';
 }
 interface Spec {
   testPepperBase64: string;
@@ -135,6 +142,9 @@ interface Spec {
   uncensoredProfile: ProfileSpec;
   understudyProfile: ProfileSpec;
   tierSpareProfile: ProfileSpec;
+  authPrimaryProfile: ProfileSpec;
+  keylessUnderstudyProfile: ProfileSpec;
+  danglingKeyUnderstudyProfile: ProfileSpec;
   apiKeys: ApiKeySpec[];
   userId: string;
   character: CharacterSpec;
@@ -160,6 +170,11 @@ function toConnectionProfile(p: ProfileSpec): Record<string, unknown> {
     fallbackProfileId: p.fallbackProfileId ?? null,
     allowTierFallback: p.allowTierFallback ?? false,
   };
+}
+
+/** P4.74 — resolve a call's primary; absent `profileKey` is `spec.profile`. */
+function primaryOf(spec: Spec, call: CallSpec): ProfileSpec {
+  return call.profileKey === 'authPrimaryProfile' ? spec.authPrimaryProfile : spec.profile;
 }
 
 // A recording SSE controller: decode each enqueued `data: {...}\n\n` frame back
@@ -368,9 +383,9 @@ async function main(): Promise<void> {
 
   const lines: string[] = [];
 
-  const freshStreamingState = () => ({
+  const freshStreamingState = (primary: ProfileSpec) => ({
     fullResponse: '',
-    effectiveProfile: toConnectionProfile(spec.profile),
+    effectiveProfile: toConnectionProfile(primary),
     effectiveApiKey: 'primary-key',
     usage: null,
     cacheUsage: null,
@@ -404,7 +419,7 @@ async function main(): Promise<void> {
     if (call.kind === 'findPrevResponseId') {
       result = findPreviousResponseId(call.provider as never, call.existingMessages as never) ?? null;
     } else if (call.kind === 'primary') {
-      const streaming = freshStreamingState();
+      const streaming = freshStreamingState(primaryOf(spec, call));
       const character = { id: spec.character.id, name: spec.character.name, aliases: spec.character.aliases };
       const characterParticipant = { id: call.participantId as string };
       const preserve = makePreservePartialOnError({
@@ -432,7 +447,7 @@ async function main(): Promise<void> {
           preGeneratedAssistantMessageId: call.preGeneratedMessageId as string,
           attachedFiles: (call.attachedFiles ?? []) as never,
           originalMessage: call.originalMessage,
-          connectionProfile: toConnectionProfile(spec.profile) as never,
+          connectionProfile: toConnectionProfile(primaryOf(spec, call)) as never,
           // P4.D135: no `primary` case is danger-routed, and none carries an
           // image — the fallback shapes get their own `hardFailover` cases
           // below, where the flags matter.
@@ -452,7 +467,7 @@ async function main(): Promise<void> {
         controller: controller as never,
         encoder,
         character: { id: spec.character.id, name: spec.character.name } as never,
-        connectionProfile: toConnectionProfile(spec.profile) as never,
+        connectionProfile: toConnectionProfile(primaryOf(spec, call)) as never,
         apiKey: 'primary-key',
         attachedFiles: (call.attachedFiles ?? []) as never,
         originalMessage: call.originalMessage,
@@ -469,7 +484,7 @@ async function main(): Promise<void> {
         response: rr.response ?? null,
       };
     } else if (call.kind === 'failover') {
-      const streaming = freshStreamingState();
+      const streaming = freshStreamingState(primaryOf(spec, call));
       const flags = await attemptEmptyResponseRecovery({
         state: streaming as never,
         toolMessagesLength: 0,
@@ -479,7 +494,7 @@ async function main(): Promise<void> {
           uncensoredTextProfileId:
             call.dangerMode === 'AUTO_ROUTE' ? spec.uncensoredProfile.id : undefined,
         } as never,
-        connectionProfile: toConnectionProfile(spec.profile) as never,
+        connectionProfile: toConnectionProfile(primaryOf(spec, call)) as never,
         formattedMessages: userMessages(call.originalMessage as string, call.messageAttachments as unknown[] | undefined) as never,
         modelParams: { temperature: 1.0, maxTokens: 4096 },
         actualTools: [],
@@ -522,7 +537,7 @@ async function main(): Promise<void> {
       // chain runs AFTER the tool-unsupported and request-limit branches have
       // declined, and that an exhausted chain's summary reaches the rethrown
       // error's message.
-      const streaming = freshStreamingState();
+      const streaming = freshStreamingState(primaryOf(spec, call));
       const character = {
         id: spec.character.id,
         name: spec.character.name,
@@ -554,7 +569,7 @@ async function main(): Promise<void> {
           preGeneratedAssistantMessageId: call.preGeneratedMessageId as string,
           attachedFiles: (call.attachedFiles ?? []) as never,
           originalMessage: call.originalMessage,
-          connectionProfile: toConnectionProfile(spec.profile) as never,
+          connectionProfile: toConnectionProfile(primaryOf(spec, call)) as never,
           isDangerousRouted: !!call.isDangerousRouted,
           streaming: streaming as never,
           controller: controller as never,

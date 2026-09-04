@@ -36,17 +36,33 @@
 //!      clean_stream + tool_unsupported_retry_success (characterId set), the four
 //!      failover legs (characterId SET — v4 `65f5021c8`); NONE for recovery (v4 passes no userId).
 //!
-//! ## ⚠ Measured blind spot — the credential-gate chain arm (P4.68)
+//! ## The credential-gate chain arm (P4.68's blind spot, CLOSED by P4.74)
 //!
-//! A chain candidate refused by `resolveConnectionProfileApiKey` records
-//! `auth` with `no-api-key-configured` (v4 `provider-failover.service.ts:583-591`;
-//! v5 `provider_failover.rs`'s `FallbackTrigger::Auth` arm). NO case in this
-//! corpus reaches it — every call shares one chain whose three profiles all
-//! carry keys. The shape that would: a per-call primary override plus a second
-//! primary with `allowTierFallback: false` pointing at a KEYLESS understudy,
-//! both `modelClass: null` so they stay out of every existing case's tier pool
-//! (the P4.68 lane record spells it out). Until that lands, the `auth` bytes are
-//! pinned by nothing here.
+//! A chain candidate refused by `resolveConnectionProfileApiKey` records `auth`
+//! with the gate's reason (v4 `provider-failover.service.ts:583-591`; v5
+//! `provider_failover.rs`'s `FallbackTrigger::Auth` arm). No case reached it
+//! until `empty_walk_auth_refusals`, because every call shared one chain whose
+//! three profiles all carry keys.
+//!
+//! It runs on its OWN primary — `CallSpec.profileKey` selects
+//! `spec.authPrimaryProfile`, and both sides resolve it in one place
+//! (`primary_of` here, `primaryOf` in the oracle) at every site that hands a
+//! service a profile, INCLUDING the `StreamingState.effectiveProfile` seed,
+//! which is the profile `walkFallbackChain` treats as the one that failed. That
+//! is what keeps the three new profiles out of every existing case: P4.68
+//! measured that making the tier spare keyless moves `empty_chain_fallback` and
+//! `hard_error_chain_exhausted`, and that adding a keyless profile to the tier
+//! POOL risks the picker choosing it elsewhere. All three carry
+//! `modelClass: null`, and v4's `tierMatches` calls unknown-vs-a-known-class a
+//! non-match in BOTH directions, so they can never be drafted into a
+//! pre-existing case whose primary is Standard.
+//!
+//! One case measures BOTH of v4's reason spellings, because the two refusals
+//! arrive by different routes: the CONFIGURED understudy names no key at all
+//! (`no-api-key-configured`), and the TIER PICK names an `api_keys` row that
+//! does not exist (`api-key-not-found`) — the latter passes the picker's own
+//! static `hasUsableCredentials`, which only tests that `apiKeyId` is truthy,
+//! which is precisely why the gate has to run again inside the walk.
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -124,6 +140,16 @@ struct ChainProfileW {
     id: String,
 }
 
+/// P4.74 — resolve a call's primary; an absent `profileKey` is `spec.profile`.
+/// The oracle's `primaryOf` is the same two lines.
+fn primary_of<'a>(spec: &'a Spec, call: &CallW) -> &'a ProfileW {
+    match call.profile_key.as_deref() {
+        Some("authPrimaryProfile") => &spec.auth_primary_profile,
+        Some(other) => panic!("unknown profileKey {other:?} — the oracle knows two"),
+        None => &spec.profile,
+    }
+}
+
 /// A bare "is this profile in the fixture?" probe for the shape assertions.
 fn fallback_repos_lookup(db: &Db, id: &str) -> Option<Value> {
     let owned = id.to_string();
@@ -192,6 +218,11 @@ struct CallW {
     existing_messages: Vec<Value>,
     #[serde(default)]
     is_dangerous_routed: bool,
+    /// P4.74 — the per-call primary. Absent (every pre-existing case) means
+    /// `spec.profile`, so no existing case's chain or tier pool moves; the
+    /// credential-gate case names `authPrimaryProfile` instead.
+    #[serde(default)]
+    profile_key: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -205,6 +236,10 @@ struct Spec {
     understudy_profile: Option<ChainProfileW>,
     #[serde(default)]
     tier_spare_profile: Option<ChainProfileW>,
+    /// P4.74 — the credential-gate arm's own company (see the module header).
+    auth_primary_profile: ProfileW,
+    keyless_understudy_profile: ChainProfileW,
+    dangling_key_understudy_profile: ChainProfileW,
     user_id: String,
     character: CharacterW,
     calls: Vec<CallW>,
@@ -572,6 +607,55 @@ async fn primary_stream_tier3_matches_oracle() {
         "the fixture must carry the tier spare"
     );
 
+    // P4.74 — the credential-gate arm's shape. Not decoration: if the fixture
+    // lost either refusable candidate, or if one of them quietly acquired a
+    // resolvable key, the `auth` row would still be GREEN while measuring a
+    // shorter chain or a different trigger entirely.
+    {
+        let auth_primary = fallback_repos_lookup(&db, &spec.auth_primary_profile.id)
+            .as_ref()
+            .and_then(quilltap_core::llm_fallback::FallbackProfile::from_value)
+            .expect("the fixture must carry the auth primary");
+        assert_eq!(
+            auth_primary.fallback_profile_id.as_deref(),
+            Some(spec.keyless_understudy_profile.id.as_str()),
+            "the auth primary must name the KEYLESS understudy — that is the \
+             `no-api-key-configured` candidate"
+        );
+        assert!(
+            auth_primary.allow_tier_fallback,
+            "the auth primary must opt in to the tier pick, or the walk never \
+             offers the dangling-key candidate and `api-key-not-found` goes \
+             unmeasured"
+        );
+        let keyless = fallback_repos_lookup(&db, &spec.keyless_understudy_profile.id)
+            .expect("the fixture must carry the keyless understudy");
+        assert!(
+            keyless.get("apiKeyId").is_none_or(Value::is_null),
+            "the keyless understudy must name NO api key, or the gate passes \
+             and the `auth` trigger is never recorded"
+        );
+        let dangling = fallback_repos_lookup(&db, &spec.dangling_key_understudy_profile.id)
+            .expect("the fixture must carry the dangling-key understudy");
+        let dangling_key = dangling
+            .get("apiKeyId")
+            .and_then(Value::as_str)
+            .expect(
+                "the dangling-key understudy must NAME an api key — a null \
+                     one would answer `no-api-key-configured`, not \
+                     `api-key-not-found`",
+            )
+            .to_string();
+        assert!(
+            db.read_main(move |c| quilltap_core::db::api_keys::find_by_id(c, &dangling_key))
+                .ok()
+                .flatten()
+                .is_none(),
+            "the dangling-key understudy's api key row must NOT exist, or the \
+             gate resolves it and `api-key-not-found` goes unmeasured"
+        );
+    }
+
     // The messages the oracle plants for primary/failover calls.
     let user_messages = |marker: &str| -> Vec<CompletionMessage> {
         vec![
@@ -582,7 +666,7 @@ async fn primary_stream_tier3_matches_oracle() {
     // P4.D136 (v4 `a1d88aa3a`, bug 106): the attachments a call plants ON THE
     // ARRAY. `needsVision` is read from here now, not from `attachedFiles`.
     let base_params_with_attachments =
-        |messages: Vec<CompletionMessage>, attachments: &[Value]| StreamParams {
+        |messages: Vec<CompletionMessage>, attachments: &[Value], model: &str| StreamParams {
             // The canned registration keeps the oracle-recorded `[{role, content}]`
             // shape; the params carry the equivalent StreamMessage projection
             // (identical canned key bytes).
@@ -598,7 +682,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     },
                 })
                 .collect(),
-            model: spec.profile.model_name.clone(),
+            model: model.to_string(),
             temperature: Some(1.0),
             max_tokens: Some(4096),
             top_p: None,
@@ -636,13 +720,16 @@ async fn primary_stream_tier3_matches_oracle() {
             }
             "primary" => {
                 let marker = call.original_message.clone().unwrap_or_default();
-                let mut params =
-                    base_params_with_attachments(user_messages(&marker), &call.message_attachments);
+                let mut params = base_params_with_attachments(
+                    user_messages(&marker),
+                    &call.message_attachments,
+                    &primary_of(&spec, call).model_name,
+                );
                 if call.has_tools {
                     params.tools = Some(json!([{ "function": { "name": "noop" } }]));
                 }
                 let mut state = StreamingState {
-                    effective_profile: Some(spec.profile.to_effective()),
+                    effective_profile: Some(primary_of(&spec, call).to_effective()),
                     effective_api_key: "primary-key".into(),
                     ..Default::default()
                 };
@@ -720,7 +807,7 @@ async fn primary_stream_tier3_matches_oracle() {
                 let ctx = RecoveryContext {
                     chat_id: call.chat_id.clone().unwrap(),
                     character_name: spec.character.name.clone(),
-                    connection_profile: Some(spec.profile.to_effective()),
+                    connection_profile: Some(primary_of(&spec, call).to_effective()),
                     api_key: "primary-key".into(),
                     attached_files: call
                         .attached_files
@@ -746,7 +833,7 @@ async fn primary_stream_tier3_matches_oracle() {
             "failover" => {
                 let marker = call.original_message.clone().unwrap_or_default();
                 let mut state = StreamingState {
-                    effective_profile: Some(spec.profile.to_effective()),
+                    effective_profile: Some(primary_of(&spec, call).to_effective()),
                     effective_api_key: "primary-key".into(),
                     ..Default::default()
                 };
@@ -764,10 +851,11 @@ async fn primary_stream_tier3_matches_oracle() {
                         mode: danger_mode,
                         uncensored_text_profile_id: uncensored_id,
                     },
-                    connection_profile: spec.profile.to_effective(),
+                    connection_profile: primary_of(&spec, call).to_effective(),
                     params: base_params_with_attachments(
                         user_messages(&marker),
                         &call.message_attachments,
+                        &primary_of(&spec, call).model_name,
                     ),
                     user_id: spec.user_id.clone(),
                     chat_id: call.chat_id.clone().unwrap(),
@@ -849,7 +937,7 @@ async fn primary_stream_tier3_matches_oracle() {
                 // request-limit branches have declined, and that an exhausted
                 // chain's summary reaches the rethrown error's message.
                 let mut state = StreamingState {
-                    effective_profile: Some(spec.profile.to_effective()),
+                    effective_profile: Some(primary_of(&spec, call).to_effective()),
                     effective_api_key: "primary-key".into(),
                     ..Default::default()
                 };
@@ -863,8 +951,11 @@ async fn primary_stream_tier3_matches_oracle() {
                     call.pre_generated_message_id.clone().unwrap(),
                 );
                 let marker = call.original_message.clone().unwrap_or_default();
-                let params =
-                    base_params_with_attachments(user_messages(&marker), &call.message_attachments);
+                let params = base_params_with_attachments(
+                    user_messages(&marker),
+                    &call.message_attachments,
+                    &primary_of(&spec, call).model_name,
+                );
                 let opts = RunPrimaryStreamOptions {
                     log_context: LogContext::none(),
                     chat_id: call.chat_id.clone().unwrap(),

@@ -12,6 +12,48 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — test(harness): measure the credential-gate chain arm (`auth` / both reasons)
+
+_Versions: harness 0.0.665._
+
+P4.68's third measured blind spot, closed. A chain candidate refused by
+`resolveConnectionProfileApiKey` records `auth` with the gate's reason (v4
+`provider-failover.service.ts:583-591`); no case in this corpus reached it,
+because every call shared one chain whose three profiles all carry keys, so the
+`auth` bytes were pinned by nothing.
+
+The new `empty_walk_auth_refusals` case runs on its OWN primary. `CallSpec`
+gains `profileKey`, resolved in one place on each side (`primaryOf` in the
+oracle, `primary_of` in the Rust twin) at every site that hands a service a
+profile — including the `StreamingState.effectiveProfile` seed, which is the
+profile `walkFallbackChain` treats as the one that failed, and which the order's
+"four sites" count missed (there are five). Absent `profileKey` is
+`spec.profile`, so no pre-existing case moves.
+
+Three profiles are added to the spec and seeded by the shipped builder, all
+`modelClass: null`. That is what keeps them out of every existing case: v4's
+`tierMatches` calls unknown-vs-a-known-class a non-match in both directions and
+every pre-existing profile is Standard, so none of the three can ever be drafted
+into a pre-existing tier pick.
+
+One case measures BOTH of v4's reason spellings, so the order's optional
+`api-key-not-found` arm lands rather than defers. The two refusals arrive by
+different routes: the CONFIGURED understudy names no key at all
+(`no-api-key-configured`), while the TIER PICK names an `api_keys` row that does
+not exist (`api-key-not-found`) — the latter passes the picker's own static
+`hasUsableCredentials`, which tests only that `apiKeyId` is truthy, which is
+exactly why the gate has to run again inside the walk.
+
+No v5 source changed: the port was already faithful; what was missing was the
+measurement. Red-first proven with two v5-source mutations — `FallbackTrigger::
+Auth` → `ProviderError`, and collapsing the two `ProfileApiKeyFailure` spellings
+into one — each reddening the row by name. Every pre-existing oracle row is
+byte-identical apart from per-run minted ids and timestamps, which the
+differential normalizes on both sides (proven by regenerating the oracle from
+the pre-change builder, case and spec at the same pin and diffing). Four fixture
+shape assertions keep the arm from going quietly vacuous if a candidate loses
+its place in the chain or acquires a resolvable key.
+
 #### 2026-09-03 — refactor(core): retire two stray participant-status parsers onto the one home
 
 _Versions: core 0.0.769, harness 0.0.664._

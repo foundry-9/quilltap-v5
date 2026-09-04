@@ -60,6 +60,13 @@ interface Spec {
   profile: ProfileSpec;
   understudyProfile: ProfileSpec;
   tierSpareProfile: ProfileSpec;
+  // P4.74 — the credential-gate arm's own company. All three carry
+  // `modelClass: null`, which keeps them out of every EXISTING case's tier
+  // pool: v4's `tierMatches` calls unknown-vs-a-known-class a non-match in
+  // both directions, and every pre-existing profile here is Standard.
+  authPrimaryProfile: ProfileSpec;
+  keylessUnderstudyProfile: ProfileSpec;
+  danglingKeyUnderstudyProfile: ProfileSpec;
   apiKeys: ApiKeySpec[];
 }
 
@@ -140,7 +147,15 @@ async function main(): Promise<void> {
       }) as never,
     );
   }
-  for (const p of [spec.profile, spec.understudyProfile, spec.tierSpareProfile]) {
+  const seededProfiles = [
+    spec.profile,
+    spec.understudyProfile,
+    spec.tierSpareProfile,
+    spec.authPrimaryProfile,
+    spec.keylessUnderstudyProfile,
+    spec.danglingKeyUnderstudyProfile,
+  ];
+  for (const p of seededProfiles) {
     await connections.create(
       {
         userId: p.userId,
@@ -165,7 +180,7 @@ async function main(): Promise<void> {
   await closeDatabase();
   process.stderr.write(
     `built primary-stream seed fixture: ${out} (${spec.chats.length} chats, ` +
-      `3 connection profiles, ${spec.apiKeys.length} api keys)\n`,
+      `${seededProfiles.length} connection profiles, ${spec.apiKeys.length} api keys)\n`,
   );
   process.exit(0);
 }

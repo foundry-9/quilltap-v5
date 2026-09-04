@@ -103006,3 +103006,71 @@ ownership** — the Ownership row grants `answer_confirmation.rs` only, and §C
 names two copies. Recorded here and in the census with its reason; it wants a
 follow-up order, together with the five harness copies (which are the identical
 one-line change).
+
+### Unit 3 — the credential-gate chain arm, `auth` + BOTH reasons (order item 1)
+
+`empty_walk_auth_refusals` in `primary_stream_tier3_equivalence`, over v4's REAL
+`provider-failover.service.ts` at the pin. **No v5 source changed** — the port
+was already faithful (`provider_failover.rs:825-833` records
+`FallbackTrigger::Auth` with `reason.as_str()`); what was missing was the
+measurement.
+
+**Two order facts corrected by measurement.** (a) The order (and the family's
+own header) said the oracle hands `toConnectionProfile(spec.profile)` at FOUR
+sites; there are FIVE. The fifth is `freshStreamingState`'s
+`effectiveProfile` seed — and it is the load-bearing one, because
+`walkFallbackChain` treats `state.effectiveProfile` as the profile that failed.
+A `profileKey` threaded through only the four would have walked the chain from
+`spec.profile` and measured nothing new. `freshStreamingState` now takes the
+call's primary. (b) The order made `api-key-not-found` a Tier-3 deferral ("if
+the fixture can carry it without disturbing the tier pool"); it can, in the SAME
+case, so it landed.
+
+The shape, exactly as the order's P4.68-derived spec called for plus the tier
+leg: `authPrimaryProfile` (`modelClass: null`, `allowTierFallback: true`) names
+`keylessUnderstudyProfile` as its configured understudy and draws
+`danglingKeyUnderstudyProfile` as its tier pick. Both are refused before any
+stream opens, so the walk records two `auth` attempts with v4's two different
+reason spellings — `no-api-key-configured` (names no key) and
+`api-key-not-found` (names an `api_keys` row that does not exist). The second is
+the interesting one: it passes the tier picker's own static
+`hasUsableCredentials`, which tests only that `apiKeyId` is truthy, which is
+precisely why the gate has to run AGAIN inside the walk. v4's recorded row:
+
+    trigger "empty-response" error "empty response"        (Auth Primary, the same-provider retry)
+    trigger "auth"           error "no-api-key-configured"  (Keyless Understudy, configured)
+    trigger "auth"           error "api-key-not-found"      (Dangling Key Understudy, tier-pick)
+
+**Why the new profiles cannot disturb an existing case** (the risk P4.68
+measured when it deferred this): all three carry `modelClass: null`, and v4's
+`tierMatches` calls unknown-vs-a-KNOWN-class a non-match in both directions
+while every pre-existing profile is Standard — so none of them is ever eligible
+for a pre-existing case's tier pick. `uncensoredProfile` is not seeded at all,
+so the pool is unchanged otherwise.
+
+**Proofs.** Fixture widened ADDITIVELY through its shipped builder (every
+existing call, stream and top-level value byte-preserved — asserted
+programmatically, not by eye). The pre-existing oracle rows were proven
+byte-identical by regenerating the oracle from the PRE-CHANGE builder, case and
+spec at the same pin and diffing: every `result`/`events` row matches apart from
+per-run minted ids and `createdAt`, both of which the differential normalizes on
+each side; the three table dumps grow only by the new call's rows (`llm_logs`
++1; `chat_messages` and `chats` row counts unchanged). Red-first with two
+v5-source mutations, each reverted by file backup: `FallbackTrigger::Auth` →
+`ProviderError` reddens the row (and proves the trigger bytes discriminate);
+collapsing `ProfileApiKeyFailure`'s two spellings into one reddens it again (and
+proves the two reasons are not interchangeable). Green from the pin through the
+sweep driver, and the regenerated NDJSON greps 1 × `no-api-key-configured`,
+1 × `api-key-not-found`.
+
+Four fixture shape assertions were added beside the existing ones, for the same
+reason they exist: a fixture that lost a candidate, or whose keyless understudy
+quietly acquired a key, would leave this case GREEN while measuring a shorter
+chain or a different trigger.
+
+**Consumer re-runs.** The order (and memory note
+`a-new-fixture-built-from-a-grown-shared-fixture`) requires every consumer of a
+widened shared fixture to be re-run by name. Measured: the `primary-stream` pair
+has exactly ONE consuming family, `primary_stream_tier3_equivalence`, whose
+recipe drives two oracle cases (`primary-stream-tier3` and
+`openai-chaining-fallback-tier3`). Both green from the pin.

@@ -468,6 +468,18 @@
           "done": true
         }
       ]
+    ],
+    "auth_chain_refused": [
+      [
+        {
+          "done": true
+        }
+      ],
+      [
+        {
+          "done": true
+        }
+      ]
     ]
   },
   "calls": [
@@ -745,6 +757,71 @@
       "dangerMode": "OFF",
       "contentWasFlaggedDangerous": false,
       "comment": "P4.68 \u2014 fail-then-recover INSIDE the walk, and the only `provider-error` chain trigger in the corpus. A candidate THROWS (provider-failover.service.ts:622 records it under its trigger) and the walk continues to one that succeeds. Everything else here either goes empty the whole way down or fails the whole way down; nothing covered a throw followed by a recovery, so `recordAttempt`'s error branch and the post-error effectiveProfile swap were both unmeasured."
+    },
+    {
+      "name": "empty_walk_auth_refusals",
+      "kind": "failover",
+      "profileKey": "authPrimaryProfile",
+      "chatId": "dd000001-0000-4000-8000-000000000001",
+      "participantId": "ee000001-0000-4000-8000-000000000001",
+      "preGeneratedMessageId": "ff000022-0000-4000-8000-000000000022",
+      "hasTools": false,
+      "streamLabel": "auth_chain_refused",
+      "attachedFiles": [],
+      "originalMessage": "every understudy refuses at the door",
+      "dangerMode": "OFF",
+      "contentWasFlaggedDangerous": false,
+      "comment": "P4.74 \u2014 the credential-gate chain arm (v4 provider-failover.service.ts:583-591), the third blind spot P4.68 measured and deferred. Runs on its OWN primary (`profileKey`) so no existing case's tier pool moves: both candidates it offers are refused before a stream is ever opened, recording trigger `auth` with v4's two reason spellings \u2014 `no-api-key-configured` from the CONFIGURED understudy and `api-key-not-found` from the TIER PICK, whose dangling apiKeyId passes the picker's static credential check and only fails at the gate."
     }
-  ]
+  ],
+  "authPrimaryProfile": {
+    "$comment": [
+      "P4.74 \u2014 the per-call primary for the credential-gate arm. Never the",
+      "failed profile of any other case: cases name it through `profileKey`.",
+      "`modelClass: null` keeps it out of every existing tier pool; it opts IN",
+      "to the tier pick so the walk offers BOTH refusable candidates."
+    ],
+    "id": "aa000005-0000-4000-8000-000000000005",
+    "userId": "bb000001-0000-4000-8000-000000000001",
+    "name": "Auth Primary",
+    "provider": "ANTHROPIC",
+    "modelName": "claude-sonnet-4-5",
+    "baseUrl": null,
+    "apiKeyId": "cc000001-0000-4000-8000-000000000001",
+    "modelClass": null,
+    "fallbackProfileId": "aa000006-0000-4000-8000-000000000006",
+    "allowTierFallback": true
+  },
+  "keylessUnderstudyProfile": {
+    "$comment": [
+      "The CONFIGURED understudy the credential gate refuses: OPENAI requires a",
+      "key and this profile names none, so resolveConnectionProfileApiKey",
+      "answers `no-api-key-configured`."
+    ],
+    "id": "aa000006-0000-4000-8000-000000000006",
+    "userId": "bb000001-0000-4000-8000-000000000001",
+    "name": "Keyless Understudy",
+    "provider": "OPENAI",
+    "modelName": "gpt-4o-mini",
+    "baseUrl": null,
+    "apiKeyId": null,
+    "modelClass": null
+  },
+  "danglingKeyUnderstudyProfile": {
+    "$comment": [
+      "The TIER-PICK candidate, refused for the OTHER reason: it names an",
+      "api_keys row that does not exist, so the gate answers",
+      "`api-key-not-found`. It passes the picker's own static",
+      "`hasUsableCredentials` (which only tests that `apiKeyId` is truthy) \u2014",
+      "which is exactly why the gate has to run again inside the walk."
+    ],
+    "id": "aa000007-0000-4000-8000-000000000007",
+    "userId": "bb000001-0000-4000-8000-000000000001",
+    "name": "Dangling Key Understudy",
+    "provider": "GOOGLE",
+    "modelName": "gemini-3-flash",
+    "baseUrl": null,
+    "apiKeyId": "cc0000ff-0000-4000-8000-0000000000ff",
+    "modelClass": null
+  }
 }
