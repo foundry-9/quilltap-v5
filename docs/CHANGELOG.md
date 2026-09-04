@@ -396,6 +396,19 @@ post-mutation `files` + `characters` dumps so a refusal proves it wrote
 nothing. Seven mutation proofs; two of them (the key-less probe arm and the
 `avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
 blind spots, closed with dedicated fixture rows before the unit landed.
+#### 2026-09-03 — docs(orders): close P4.72 and the P4.67 remainder
+
+_No crate versions bumped._
+
+P4.72's status header records what landed (Tier 1 items 1–4 and Tier 2 item 5),
+the one v5 behavior change beyond the tests (the `system/unlock` known-unserved
+sentence), the four loud deferrals with their measured reasons, the two order
+premises the `ChatCreate` census refuted, and the pre-existing
+`files_write_routes` vacuity found on the way. P4.67's remainder list is marked
+closed by P4.72, except P4.62(a), which went to P4.73 because that lane owns
+`api/types.rs` this round. The `Cargo.lock` catches up with the last version
+bump.
+
 #### 2026-09-03 — test(query): pin v4's two `actionLogger.warn` lines (P4.72, P4.67's Tier 3)
 
 _Versions: web 0.0.110._
