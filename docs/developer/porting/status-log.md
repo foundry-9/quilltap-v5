@@ -103754,3 +103754,97 @@ row; the aesthetics `kind` read → LAST-wins reddens exactly that row. The
 fourth (`files_delete` → LAST-wins) SURVIVED, which is what exposed the vacuity
 above — recorded because a surviving mutation is a measurement, not a nuisance.
 
+## Lane record — P4.72 (unit 4): the dispatch-level wrong-TYPE census
+
+`crates/quilltap-web/tests/dispatch_wrong_type_census.rs` — the class the
+`0b0617fee` round's §3 review named, made executable in the
+`db_error_key_guard` idiom. **Not a fix**: the transport-agnostic shape (the
+P4.D57 idiom — the field carries `Option<Value>` and the HANDLER refuses with
+v4's sentence) puts the change in `api/types.rs` and the handler files, which
+are P4.73's this round and, beyond it, cross three lanes.
+
+**237 rows over 124 variants.** The `(variant, field)` key set is derived
+MECHANICALLY from `api/types.rs`'s `Request` — every field whose type is not a
+`serde_json::Value`, minus the route identifiers (excluded by a named rule, not
+by judgment: a `chatId` over dispatch has no v4 counterpart, because v4 takes it
+from the URL). The table is held against that walk in both directions, so a new
+typed field fails the test until it is classified and a retired one fails until
+its row goes.
+
+By v4 source: **92 Query** (v4 reads a query string — a wrong JSON type has no
+v4 counterpart at all), **58 BodyParse** (uncaught Zod `.parse` →
+`{"error":"Validation error","details":[…]}`), **43 BodySafeParse**, **23
+BodyHandRolled**, **16 NoCounterpart**, **3 BodyParseLocallyCaught**
+(`Invalid request body: <messages>`, no `details`), **2 Path**. The 127
+body-sourced rows are DRIVEN — decoded for real with a wrong-typed value, both
+key spellings tried — and asserted to be serde-rejected today.
+
+**Findings the survey turned up, recorded per row:**
+
+- v4's refusal envelope for this class is NOT uniform. Five distinct shapes
+  appear among the `safeParse` rows alone: the standard `validationError`
+  envelope, `Invalid request: <joined>`, `<joined by '; '>` with no prefix,
+  `{error:'Invalid request body', details:[…]}`, and the flat detail-LESS
+  `Invalid request` (`search-replace`, which logs the issues and discards them).
+- **Seven v4 sites answer 200 for a wrong type.** `MemoryDedupRun.threshold`,
+  `MountBlobUpdate.description`, `CharacterDepictionGuidelinesUpdate.content`
+  silently substitute a default; `MountReindex.force` / `MountEmbed.force` are
+  `!!`-coerced; `FilesCleanupStale` / `FilesCleanupOrphans` `safeParse` with no
+  failure branch; and `ProjectAestheticSet.content` /
+  `SystemImageAestheticsSet.content` treat a wrong type as `''`, which DELETES
+  the file. `MessageSwipe.swipeIndex` is stranger: a wrong type silently
+  reroutes from "switch to this swipe" to "generate a new swipe".
+- Two wire-key renames a fixer must not trip over: v4's
+  `SystemJobConcurrencySet` key is `concurrency` (v5: `maxConcurrentJobs`), and
+  v4's `ChatRng` discriminator is `type` (v5: `kind`, renamed to dodge the
+  serde tag).
+- `ChatUpdateToolSettings`'s two `Vec<String>` fields are `.default([])` in v4
+  but REQUIRED in v5 with no `#[serde(default)]` — so an ABSENT key diverges
+  too, a neighbouring bug this census could see without looking for it.
+
+**TWO ORDER PREMISES REFUTED BY MEASUREMENT** (§5.3 applies to the order's
+prose as much as to a commit message):
+
+1. The order states the `ChatCreate` trio answers `dispatch.rs:72`'s
+   `Invalid request: <serde text>`. **It does not.** `Request::ChatCreate`
+   carries a raw `serde_json::Map`, so the dispatch decode ACCEPTS a
+   wrong-typed `conciergeState`; the typed decode is one level down, in
+   `quilltap-host/src/spine.rs:1868-1878`, which composes
+   `ErrorKind::BadRequest` `invalid chatCreate request: <serde text>`. The
+   divergence's shape is unchanged but its HOME is not — the fields live on
+   `services::chat_create::ChatCreateRequest` and the sentence belongs to the
+   host, which widens the fix past the `api/types.rs` the order named. Asserted
+   in the test, not just written down.
+2. `timestampConfig` is not a wrong-type row at all: it already carries
+   `Option<Option<Value>>`, so serde accepts any JSON. What is open for it is a
+   HANDLER question (does v5 refuse a non-object as v4's `TimestampConfigSchema`
+   does?), outside a census of the serde boundary. Pinned by an assertion that
+   fires the day it stops being a `Value` carrier — which is also what proves
+   the driven half is not vacuous: it distinguishes a typed field from an
+   untyped one.
+
+**Named deferral:** second-level request structs (`PendingToolResult`,
+`ChatCreateParticipant`, `AnnouncerSenderWire`, …) are NOT enumerated. Walking
+`Request`'s own fields is what makes the mechanical half total and cheap; the
+`ChatCreate` trio is carried explicitly because the order names it. Enumerating
+the nested structs the same way is a follow-up, recorded here rather than
+half-done.
+
+**Mutation proof:** renaming one census row's field (`MemoryRebuildIndex.confirm`
+→ `confirmXX`) reddens BOTH tests and names the row on both sides — the
+totality test as a missing classification, the driven half as a row that failed
+to reject. A second attempt — retyping that field to `Value` in `api/types.rs`
+— **did not compile** (the engine arm reads it as a `bool`), so it proves
+nothing and is recorded as invalid rather than counted (memory note
+`a-mutation-that-does-not-compile-proves-nothing`). The `Value`-vs-typed
+discrimination the failed mutation was reaching for is covered instead by the
+`timestampConfig` assertion above, which shows a `Value` carrier is ACCEPTED by
+the same probe that rejects every typed field.
+
+**The survey behind the table** was run against the PINNED v4 worktree
+(`/tmp/qt-v4-pin-p472-0b0617fee`) in three parallel passes over the 124
+variants; every row's `note` carries the v4 file:line it was read from. No
+oracle: this is a SOURCE census on both sides, which is why it needs no regen
+and cannot go stale silently — the mechanical half fails the moment
+`api/types.rs` moves.
+

@@ -396,6 +396,59 @@ post-mutation `files` + `characters` dumps so a refusal proves it wrote
 nothing. Seven mutation proofs; two of them (the key-less probe arm and the
 `avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
 blind spots, closed with dedicated fixture rows before the unit landed.
+#### 2026-09-03 — test(dispatch): the wrong-type census over every typed `Request` field (P4.72)
+
+_Versions: web 0.0.109._
+
+`POST /api/dispatch` decodes the `Request` enum with serde, so a
+present-but-wrong-typed value on a TYPED field is rejected whole:
+`400 {"kind":"badRequest","message":"Invalid request: <serde text>"}`. v4 has no
+such single decode — each route reads its body its own way — so the same shape
+can answer five different things there. `dispatch_wrong_type_census` is the
+executable record of that class, in the `db_error_key_guard` idiom. It is not a
+fix; the fix crosses three lanes' ownership.
+
+**237 rows over 124 variants**, enumerated MECHANICALLY from
+`api/types.rs` (route-identifier fields excluded by a named rule) and held
+against the table, so a new typed field fails the test until it is classified.
+By v4 source: 92 `Query` (v4 reads a query string, so a wrong JSON type has no
+v4 counterpart at all), 58 `BodyParse` (an uncaught Zod `.parse` →
+`{"error":"Validation error","details":[…]}`), 43 `BodySafeParse` (the route's
+own sentence — and they are NOT uniform: five distinct shapes appear, from a
+fixed detail-less `Invalid request` to a joined-message string to an explicit
+`validationError`), 23 `BodyHandRolled`, 16 `NoCounterpart` (multipart-only
+routes and keys v4's schema never declares), 3 `BodyParseLocallyCaught`
+(`Invalid request body: <messages>`, no `details`), 2 `Path`.
+
+The 127 body-sourced rows are DRIVEN, not described: each is decoded for real
+with a wrong-typed value, and the test asserts serde rejects it today — so a
+later round's fix reddens its row by name instead of quietly passing.
+
+**Seven v4 sites answer 200 for a wrong type**, which is the sharpest end of the
+divergence: `MemoryDedupRun.threshold` and `MountBlobUpdate.description` and
+`CharacterDepictionGuidelinesUpdate.content` silently substitute a default;
+`MountReindex.force` / `MountEmbed.force` are `!!`-coerced; `FilesCleanupStale`
+and `FilesCleanupOrphans` `safeParse` with no failure branch;
+`ProjectAestheticSet.content` and `SystemImageAestheticsSet.content` treat a
+wrong type as `''`, which DELETES the file. `MessageSwipe.swipeIndex` is
+stranger still — a wrong type silently reroutes the request from "switch to
+this swipe" to "generate a new swipe".
+
+**Two of the order's premises about the `ChatCreate` trio were refuted by
+measurement.** The order predicted the trio answers `dispatch.rs:72`'s
+`Invalid request: …`; it does not. `Request::ChatCreate` carries a raw
+`serde_json::Map`, so the dispatch decode ACCEPTS a wrong-typed
+`conciergeState` — the typed decode happens one level down, in the host driver
+(`quilltap-host/src/spine.rs:1868-1878`), which composes
+`invalid chatCreate request: <serde text>`. And `timestampConfig` is not a
+wrong-type row at all: it already carries an `Option<Option<Value>>`, so serde
+accepts any JSON and the open question for it is a HANDLER one. Both facts are
+asserted, not just written down.
+
+Mutation-proven: renaming one census row's field reddens the totality test with
+that row named on both sides; retyping a censused field to `Value` in
+`api/types.rs` reddens it as an extra row.
+
 #### 2026-09-03 — test(query): the per-site duplicate-key rows for the non-action keys (P4.72)
 
 _Versions: web 0.0.108._
