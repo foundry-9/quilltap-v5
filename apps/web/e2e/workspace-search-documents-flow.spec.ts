@@ -58,6 +58,44 @@ async function ensureUnlocked(): Promise<void> {
   await ctx.dispose();
 }
 
+/**
+ * Close every document the named chat is carrying, so the Salon has no child
+ * `document` tab to reconcile (and focus) when it mounts. Idempotent and
+ * chat-scoped; uses the same verbs the composer's picker does.
+ */
+/** The fixture chat's id, by title. */
+async function chatIdByTitle(chatTitle: string): Promise<string> {
+  // `listChats` answers `{ type: 'chats', data: [...] }`, so the dispatch helper's
+  // `parsed.data` IS the array — not an object with a `chats` key (the trap the
+  // `f3892158d` round's seeding hit).
+  const chats = (await dispatch({ type: 'listChats' })) as unknown as Array<{
+    id: string;
+    title?: string | null;
+  }>;
+  const chat = (Array.isArray(chats) ? chats : []).find((c) => c.title === chatTitle);
+  if (!chat) throw new Error(`fixture carries no chat titled ${JSON.stringify(chatTitle)}`);
+  return chat.id;
+}
+
+/** The `chat_documents` rows a chat is carrying — the in-chat arm's own trace. */
+async function openDocumentPaths(chatId: string): Promise<string[]> {
+  const open = (await dispatch({ type: 'chatOpenDocuments', chatId }))['documents'] as
+    | Array<{ id: string; filePath?: string; document?: { filePath?: string } }>
+    | undefined;
+  return (open ?? []).map((d) => d.filePath ?? d.document?.filePath ?? '');
+}
+
+/** Close every document the chat is carrying. Idempotent; returns how many. */
+async function closeOpenDocuments(chatId: string): Promise<number> {
+  const open = (await dispatch({ type: 'chatOpenDocuments', chatId }))['documents'] as
+    | Array<{ id: string }>
+    | undefined;
+  for (const doc of open ?? []) {
+    await dispatch({ type: 'chatDocumentClose', chatId, chatDocumentId: doc.id });
+  }
+  return (open ?? []).length;
+}
+
 async function openWorkspace(page: Page): Promise<void> {
   await page.goto('/');
   const passphrase = page.locator('#qt-passphrase');
@@ -213,6 +251,36 @@ test('with a Salon focused the card opens IN the chat — the arm dogfood #105 b
   // `OpenDocumentFromSearch` is `providedIn: 'root'`, so its injector could not
   // see the Salon's component-provided `DocumentApi` and every in-chat open
   // threw NG0201 and did nothing at all (dogfood finding #105).
+  // ⚠ THE PRECONDITION, established rather than assumed (P4.75).
+  //
+  // `resolveActiveSalon` follows the focused pane's ACTIVE TAB — not a merely
+  // visible conversation (v4 `use-open-document-from-search.ts:52-64`, which v5
+  // transcribes verbatim). Those two come apart whenever the chat already has an
+  // open document: the Salon reconciles a `document` CHILD tab for it and
+  // FOCUSES it (v4 `SalonModePanes.tsx:110-118` passes no `focus`, and v4's
+  // reducer defaults `focus = action.focus ?? true`, `workspace-reducer.ts:259`
+  // — v5 is byte-faithful at both), and the child renders BESIDE its parent, so
+  // the conversation stays on screen while the active tab is the document. The
+  // card click then takes the standalone arm, correctly, and the assertion below
+  // reads a backgrounded Salon.
+  //
+  // That reconcile lands asynchronously, after the chat's open-document set
+  // loads — later than the message list appears — so no amount of waiting on the
+  // Salon makes it settle. And this fixture chat is SHARED: `salon-documents-
+  // flow` opens, edits and closes a document in Solo Voyage, so whether one is
+  // left open here belongs to whatever ran before. That coupling is the standing
+  // `workspace-search-documents` intermittent, root-caused by P4.75 — the beat,
+  // not the product.
+  //
+  // So close whatever this chat is carrying first. Nothing about the subject is
+  // weakened: the beat is about what a Documents result does with a conversation
+  // in front of the reader, and this is exactly that starting point.
+  const chatId = await chatIdByTitle('Solo Voyage');
+  const closed = await closeOpenDocuments(chatId);
+  // eslint-disable-next-line no-console
+  console.log(`[p4d122] closed ${closed} open document(s) on "Solo Voyage"`);
+  expect(await openDocumentPaths(chatId)).toEqual([]);
+
   await openWorkspace(page);
 
   // Get a real conversation focused, the way a reader would. Picked BY TITLE,
@@ -240,11 +308,42 @@ test('with a Salon focused the card opens IN the chat — the arm dogfood #105 b
   await expect(card).toBeVisible({ timeout: 15_000 });
   await card.click();
 
-  // The in-chat open splits the document in beside the conversation — the
-  // chat is still there, and the document pane came up with it.
-  await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+  // ⚠ WHAT DISTINGUISHES THE TWO ARMS (P4.75 — this assertion used to be a
+  // race, and the race is why the beat was intermittent).
+  //
+  // The in-chat arm creates a `chat_documents` row and posts the Librarian's
+  // announcement; the silent standalone arm touches no chat at all. That row is
+  // therefore the ONE unambiguous witness, it lives on the server, and it cannot
+  // be won or lost by a rendering race — which is why the precondition above
+  // asserts the chat starts with none.
+  //
+  // What this beat used to assert instead was `.qt-chat-messages-list` still
+  // VISIBLE, on the reasoning that an in-chat open "splits the document in
+  // beside the conversation". Measured: it does not. `openDocumentInChat` opens
+  // the `document` child tab with `focus: true`, that tab's view is the portaled
+  // document pane ALONE (`tab-registry.ts` maps `document` → `TabPortalHost`),
+  // and the Salon tab is hidden behind it — in v4 exactly as in v5 (v4
+  // `open-document-in-chat.ts` → `ws.openTab(...)`, `workspace-reducer.ts:259`
+  // `focus = action.focus ?? true`, and v4's own `TabView` hides the inactive
+  // parent the same way). The old assertion passed only when Playwright's first
+  // visibility poll beat the tab switch — ~9 ms after the click, on the state
+  // BEFORE it. That is the whole intermittent.
+  const afterOpen = await openDocumentPaths(chatId);
+  expect(
+    afterOpen,
+    `the in-chat arm should have opened ${docPath} in the chat; open documents: ${afterOpen.join(', ')}`,
+  ).toContain(docPath!);
+
+  // The pane itself came up, and the conversation was not closed out from under
+  // it — its tab is still in the strip beside the document's.
   await expect(
     page.locator('qt-document-pane, .qt-document-pane, .qt-document-mode').first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.locator('.qt-tab-strip .qt-tab-label', { hasText: 'Conversation' }).first(),
+  ).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.locator('.qt-tab-strip .qt-tab-label', { hasText: docName! }),
   ).toBeVisible({ timeout: 15_000 });
   // And nothing threw on the way.
   expect(failures, `errors during the in-chat open: ${failures.join(' | ')}`).toEqual([]);

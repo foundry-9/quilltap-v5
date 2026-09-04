@@ -103908,3 +103908,237 @@ No SPA run and no Playwright — this lane has no SPA surface (P4.75 owns port
 **Versions at close:** core 0.0.769, harness 0.0.663, web 0.0.110
 (base: core 0.0.768, harness 0.0.662, web 0.0.105). host/cli/tauri untouched.
 
+## Lane record — P4.75 (the SPA smalls: the streaming avatar, the search-documents intermittent, the `title=` census, the residue hosts, `#move-folder`)
+
+**Branch:** `claude/spa-smalls-avatar-search-intermittent-b1b4cb`. **Order:**
+`work-orders/p4.75-spa-smalls-streaming-avatar-search-intermittent-title-census.md`.
+**Baseline:** `0b0617fee`, read from a lane-unique pinned detached worktree at
+`/tmp/qt-v4-pin-p475-0b0617fee` (ledger §5.1; v4 `main` sits one commit past the
+baseline, so the regen rule is PIN REQUIRED). The §2 freshness probe PASSED at
+lane start — branch `main`, tree clean, `15573c3a1..main` and
+`3a76b17df..bugfix` both empty. No crate, no harness family, no oracle: this
+lane is SPA + e2e only, so no Rust gate applies.
+
+### Unit 1 — the streaming bubble's avatar column (Tier 1, item 1)
+
+v4 opens the live assistant row with the responding character's avatar
+(`StreamingMessage.tsx:85-96`) under `shouldShowAvatars`
+(`SalonView.tsx:1171-1174`), carrying the dangerous-chat ring in the same
+`className` ternary. v5's live bubble had never rendered the column at all —
+the gap P4.69 recorded at the site when its ring had nowhere to land. Ported:
+
+- `message-list.ts` computes v4's two SalonView helpers and passes them down as
+  inputs, exactly as v4 passes them as props
+  (`VirtualizedMessageList.tsx:375-388`): `showAvatars()` (the gate) and a new
+  `respondingCharacter()` transcribing `getRespondingCharacter`
+  (`SalonView.tsx:1176-1184`) — the id arm takes the named participant's
+  character whatever its type or active state, the fallback is
+  `getFirstCharacter()` (`useParticipants.ts:227,235`), the FIRST participant
+  that is both `type === 'CHARACTER'` and `isActive`.
+- `streaming-message.ts` gains `showAvatar` / `respondingCharacter` /
+  `isDangerousChat` and renders the settled rows' own markup
+  (`message-row.ts:87-92`) in BOTH of its row arms — v4 has ONE row whose body
+  switches between the waiting quill and the bubble, so the column is present in
+  both states; v5 splits that row in two `@if`s. The `'AI'` fallback is v4's
+  `||` (falsy), not `??`. Its header note, which used to say why there was no
+  avatar, now says what is true.
+
+**⚠ An order premise REFUTED by measurement.** The order described v5's
+settled-row gate as a separate GROUP_ONLY-aware rule that must NOT be merged
+with the streaming row's ALWAYS-only one ("transcribe both, do not merge them").
+Measured at the pin, v4 consumes `avatarDisplayMode` at exactly ONE site —
+`shouldShowAvatars` — and feeds it to BOTH the settled rows
+(`VirtualizedMessageList.tsx:274`, `:305`) and the streaming bubble (`:383`);
+`GROUP_ONLY` appears nowhere in v4's `app/` or `components/` except the settings
+enum, and v4's own settings copy calls the mode "(will be implemented in the
+future)" (`components/settings/chat-settings/types.ts:266`). v5's "≥2
+characters" arm was therefore implementing a feature v4 has not built. It is
+gone; there is one rule, at both sites, and a GROUP_ONLY chat now shows no
+avatars exactly as v4's does. Blast radius measured before the change: no spec
+and no beat exercised GROUP_ONLY.
+
+**Mutation proofs** (each applied, run, reverted by file backup):
+
+| mutation | reddens |
+|---|---|
+| restore the invented `GROUP_ONLY → ≥2` arm | `hides avatars on GROUP_ONLY even with two characters in the cast` |
+| `?? 'AI'` for v4's `\|\| 'AI'` | `falls back to 'AI' for a character with a blank name` |
+| unbind the ring at both rows | the ring spec + `forwards the chat's danger verdict to the live column` |
+| drop `isActive` from the fallback `find` | `falls back to the first ACTIVE character participant` |
+| `@if (false && showAvatar())` on the WAITING arm only | `is present in the waiting state too` |
+
+### Unit 2 — the mid-turn beat (Tier 1, item 2)
+
+`e2e/salon-streaming-avatar-flow.spec.ts`, ACTIVE. Two beats on Group
+Expedition (never Solo Voyage, whose token totals another beat pins), with the
+mock streaming slowly so the turn is genuinely in flight.
+
+The assertion does not guess who answers. The beat captures the app's real
+`EventSource#onmessage` handler (the `salon-optimistic-bubble-reconcile` idiom)
+and RECORDS every frame the server sends without altering one, takes the
+`participantId` off the wire, resolves it to a character through the same
+`chatGet` the app uses, and asserts the live column renders that character's
+initial — so whatever the server's turn selection picks, the column must name
+it. The second beat flips the chat to Flagged through the same `chatUpdate` the
+Concierge surfaces use, asserts the ring on the LIVE column mid-turn, and
+`afterAll` restores the chat to `monitored`.
+
+Proven by mutation: binding `[showAvatar]="showAvatars() && false"`, rebuilding
+the dist and re-running turns both beats red.
+
+### Unit 3 — the `workspace-search-documents` intermittent, ROOT-CAUSED (Tier 1, item 3)
+
+**It was the beat, not the product — and it had TWO causes, both measured.**
+
+*Cause 1, the shared fixture chat.* `resolveActiveSalon` follows the focused
+pane's ACTIVE TAB, not a merely visible conversation (v5 transcribes v4's
+`use-open-document-from-search.ts:52-64` verbatim). Those come apart whenever
+the chat already carries an open document: the Salon reconciles a `document`
+CHILD tab for it and FOCUSES it — v4 `SalonModePanes.tsx:110-118` passes no
+`focus` and v4's reducer defaults `focus = action.focus ?? true`
+(`workspace-reducer.ts:259`); v5 is byte-faithful at both — and the child
+renders beside its parent, so the conversation stays on screen while the active
+tab is the document. The card click then takes the standalone arm, correctly.
+`salon-documents-flow` opens, edits and closes a document in the same Solo
+Voyage this beat uses, so whether one was left open belonged to whatever ran
+before. Instrumented and confirmed: with a leftover document the workspace state
+at click time reads `activeKind: document`, and the click mints a
+`document-standalone` tab.
+
+*Cause 2, the assertion itself.* The beat's `await expect(page.locator(
+'.qt-chat-messages-list')).toBeVisible()` right after the click was passing on
+the state BEFORE the click landed — measured at **t+9 ms**, with the salon still
+active. After an in-chat open the `document` tab activates with focus, its view
+is the portaled document pane ALONE (`tab-registry.ts` maps `document` →
+`TabPortalHost`), and the Salon tab is hidden behind it — in v4 exactly as in
+v5. So the old assertion was a race the beat won about two thirds of the time,
+and its premise ("the chat is still there beside it") was simply not what either
+app does.
+
+**The fix, with nothing weakened.** The beat now (a) closes whatever documents
+the chat carries through the API and asserts it starts with none — which is what
+makes the arm-discriminating assertion below meaningful — and (b) asserts the
+in-chat arm by its own unambiguous witness: the `chat_documents` row, read back
+over `chatOpenDocuments`, which the silent standalone arm never creates and no
+rendering race can win or lose. It also asserts the document pane came up and
+that both the conversation's tab and the document's tab are in the strip.
+
+**The numbers.** `--repeat-each=10` against one shared server (which reproduces
+cause 1 deliberately, since run 1 leaves the document open for runs 2–10):
+**1 pass / 9 fail** before. With the precondition only: 6/10, then 7/10 — the
+residual being cause 2. With both: **30 passed / 0 failed** for the whole spec
+file ×10 (three tests each). Mutation-proven: forcing `activeSalon()` to return
+null, rebuilding, and re-running turns the new assertion red in 1.5 s with the
+message `the in-chat arm should have opened … in the chat; open documents:` —
+where the old assertion took a 15 s timeout to say something misleading.
+
+### Unit 4 — the `title=` census (Tier 2, item 4)
+
+`apps/web/scripts/title-census.mjs`, committed and runnable against any v4 path
+(`--v4 <path>`, `--json`, `--show-ok`). It counts only `title` on a DOM element:
+v4's PascalCase components are subtracted by spelling, and v5's own `qt-*`
+component selectors are read out of the source (the `check-qt-classes.mjs`
+idiom, no allowlist to rot) so `<qt-collapsible-card title="Taboo">` is scored
+as the INPUT it is.
+
+At the pin: v4's **612** `title=` occurrences are **431** on DOM elements (273
+string-valued, 158 expression-valued) and **181** component props; v5 carries
+**415** DOM titles. Of v4's 273 string sites — **231 ok**, **9 bound**, **33
+absent**. The `bound` bucket exists because v5 frequently holds tooltip copy in
+a TS table read through `[title]`, which no attribute scan can see; without it
+the census would have called nine present strings missing and hidden the two
+real repairs below among them.
+
+Class (ii) — v5 renders the element, the copy differs — came to exactly two, and
+both are fixed byte-exactly with a spec pin at the source: the Scriptorium
+file-manager toggle (`Preview the new file manager` → v4's `Preview the new
+SVAR-powered file manager`), and the template highlighter's two
+hard-coded-name warnings, typographed into em dashes where v4 uses a plain
+hyphen.
+
+Class (iii) — v5 renders no such control — is the rest, listed by surface for
+the orders that own them: `TemplateHighlighter`'s name-match render path (5),
+`DebugThemeInfo` (4), `CharacterHeader`'s three optimizer/prompt/replace buttons
+(v5 renders them with v4's copy plus " (not yet available)"), `ChatSidebar`'s
+Continue Elsewhere + the two memory-maintenance entries (all three already loud
+tier-3 deferrals in v5's own source), `ThemeBrowser` (3) and `ThemePreviewModal`
+(2), `AuroraView` (2), `GenerateImageView`'s `me`/`char` placeholder buttons
+(v5 renders a different, per-character control), `RenameReplaceTab` (2),
+`CustomToolRunDialog` (2), `HelpChatDialog` (`p4.9i2`), `TimestampConfigCard`'s
+Clear, `ProfileModal`'s pseudo-tool select, the roleplay-template starter guide,
+`import-from-image-modal`, `outfit-selector`'s Clear all,
+`ExternalPromptResultDialog`, `character-conversations-tab`, `ChatCard`'s
+memory badge (v5's is a display-only `<span>`; v4's is a button that deletes and
+re-extracts), `DangerFlagBadge`'s "Mark as not dangerous", `ToolMessage`'s copy
+button on the thumbnails v5 defers, and `SalonView`'s story-background thumbnail.
+
+### Unit 5 — the residue hosts (Tier 2, item 5)
+
+All twelve of P4.D142's named hosts MEASURED in a real browser rather than
+argued about: computed `display`, the host's box against its first child's, and
+the parent's display.
+
+**TWO were real and are fixed.** `qt-equipped-slot-row` and
+`qt-wardrobe-item-row` are direct children of Tailwind `space-y-*` stacks, and
+`space-y-N` works by putting `margin-top` on every child after the first —
+which a non-replaced inline box ignores. Five live slot-row hosts in the
+wardrobe dialog reported `display: inline` inside `space-y-2 mb-3`, and the same
+stylesheet over three 20px rows measured **60px total with an inline host
+against 76px with a block one** — the two missing 8px gaps exactly, while their
+block-hosted sibling `qt-equipped-bundle-card` kept its. Both hosts gained a
+`qt-*` class + a `_surfaces.css` rule (the #107 idiom, so the NARROW guard
+polices them), each spec-pinned at the class the rule targets, and the guard
+proven red-first against the stripped rule.
+
+**The other ten are harmless, each for a measured reason** (now written into
+`check-qt-classes.mjs`'s header): `qt-search-bar` and `qt-custom-tools-popup`
+report `display: block` — their flex/grid parents blockify them;
+`qt-search-dialog`, `qt-wardrobe-control-dialog` and
+`qt-library-file-picker-modal` render fixed-position overlays, out of flow (the
+one surviving consequence — such a host never reports "visible" to Playwright —
+is already worked around in the specs); `qt-wardrobe-dialog-inner`,
+`qt-wardrobe-tab-view` and `qt-photos-page` measured a host box equal to their
+child's on the axis that matters (1224×612 and 1224×720); `qt-rng-dropdown` is
+32×32 over a 32×32 child; `qt-outfit-quick-pick` is the FIRST child of its
+stack, which `> * + *` never targets.
+
+**So the WIDE invariant does not land** (Tier 3 as the order allows), and the
+header now records why with a number rather than an impression: spelled out as
+"no host class, no host style/binding, and no bare-element rule", a census over
+the tree counts **342** such hosts today. P4.D142's dozen was a curated subset,
+not the population; the wide form would need an allowlist of that size.
+
+### Tier 3 — the explicit deferrals, restated loudly
+
+- **`#move-folder`** — recorded, unchanged. BOTH branches the order anticipated
+  are refuted: v4's `FolderPicker.tsx:214` gives its `<select>` no id at all and
+  `MoveToProjectModal.tsx:190` labels it with a bare `<label>` carrying no
+  `htmlFor`, so v5's id/`for` pair is a v5 accessibility addition, not a port.
+  One call site (`move-to-project-dialog.ts:69`), and it is a modal, so the
+  fixed literal cannot collide. The file's existing note is re-measured and
+  extended rather than duplicated.
+- **The WIDE `check-qt-classes` invariant** — not landed; the ten survivors and
+  the 342-host figure are in the guard's header.
+- **The class-(iii) `title` sites** — listed by surface above; they belong to
+  the unported surfaces' own orders (`p4.9i2`, `p4.9k`, the theme browser, the
+  memory-maintenance entries), not to a copy fill here.
+- **NEW, from this lane's own measurement:** v5's `qt-avatar` has no
+  `showName`/`showTitle` (its header calls the labels a vertical concern), so
+  neither the settled rows nor this new streaming column render v4's name-under-
+  avatar block or its `w-32` column. That gap predates this lane and is
+  unchanged by it — the streaming column deliberately reuses the settled rows'
+  markup, so the two agree.
+
+### The gate
+
+- `npm run build` — clean.
+- `npm test` — **378 test files / 5,945 tests, 0 failed** (376 / 5,911 before),
+  `check-qt-classes --self-test` 5/5 and **950 qt-* classes defined, every
+  guarded reference resolves**.
+- Playwright: the new streaming-avatar spec 2/2 (and red on the gate mutation);
+  `workspace-search-documents-flow` **30/30** over `--repeat-each=10`; the full
+  suite's numbers are in the final report.
+
+💸 **For the next dogfood pass:** the streaming avatar on a real
+multi-character turn — does the column show the RESPONDING character rather than
+the first one, on a chat where the two differ?

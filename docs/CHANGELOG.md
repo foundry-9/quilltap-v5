@@ -623,6 +623,39 @@ query read reddens exactly its `empty_then_known` body plus `firstWins` and
 `UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
 conversation-summaries sentence reddens exactly that endpoint's four
 byte-compared rows.
+#### 2026-09-04 — fix(e2e): root-cause the `workspace-search-documents` in-chat intermittent
+
+_Versions: SPA 0.5.635._
+
+The standing intermittent (`.qt-chat-messages-list` resolved-but-HIDDEN after
+the Documents card click, ~1-in-3 in isolation, carried three rounds) was the
+BEAT, not the product — and it had two causes, both measured.
+
+First, the shared fixture chat. `resolveActiveSalon` follows the focused pane's
+ACTIVE TAB, not a merely visible conversation (v5 transcribes v4's
+`use-open-document-from-search.ts:52-64` verbatim). Those come apart whenever
+the chat already carries an open document: the Salon reconciles a `document`
+CHILD tab and FOCUSES it — v4's `SalonModePanes.tsx:110-118` passes no `focus`
+and v4's reducer defaults `focus ?? true` — and the child renders beside its
+parent, so the conversation stays on screen while the ACTIVE tab is the
+document. The click then takes the standalone arm, correctly.
+`salon-documents-flow` opens, edits and closes a document in the same Solo
+Voyage, so whether one was left open belonged to whatever ran before.
+
+Second, the assertion. `toBeVisible()` on the message list right after the click
+was passing on the state BEFORE the click landed — measured at t+9 ms. After an
+in-chat open the `document` tab activates with focus, its view is the portaled
+document pane alone, and the Salon tab is hidden behind it, in v4 exactly as in
+v5. The old assertion was a race the beat won about two thirds of the time.
+
+The beat now closes the chat's open documents through the API and asserts it
+starts with none, then asserts the in-chat arm by its own unambiguous witness —
+the `chat_documents` row read back over `chatOpenDocuments`, which the silent
+standalone arm never creates and no rendering race can decide — plus the
+document pane and both tabs in the strip. Nothing is weakened. Measured: 1/10
+before, 30/30 after (the whole spec file ×10), and forcing `activeSalon()` to
+null turns the new assertion red in 1.5 s with a message that names the defect.
+
 #### 2026-09-04 — feat(salon): the streaming bubble's avatar column, ringed, proven mid-turn
 
 _Versions: SPA 0.5.634._

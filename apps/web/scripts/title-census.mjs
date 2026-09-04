@@ -243,6 +243,15 @@ function collectV5(root) {
 
 const args = parseArgs(process.argv.slice(2));
 const v4 = collectV4(args.v4);
+if (v4.length === 0) {
+  // `walk` swallows a missing directory so a partial tree still reports; a
+  // wholly empty v4 side means the path is wrong, and a silent "0 missing" is
+  // the worst possible answer to give.
+  console.error(
+    `No v4 title sites found under ${args.v4} — pass --v4 <path to a quilltap-server checkout or pinned worktree>.`,
+  );
+  process.exit(2);
+}
 const v5 = collectV5(V5_APP);
 
 // DOM titles only — a component INPUT named `title` carrying the same string is
