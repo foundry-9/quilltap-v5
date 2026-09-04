@@ -13,18 +13,23 @@
 //!
 //! Generate the fixture + oracles (Node 24, from the v4 checkout). STAGE the case
 //! files outside any `.claude/` path (jest ignores them there):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<worktree> ; STAGE=/tmp/qt-oracle-stage
+//!   N=~/.nvm/versions/node/v24.13.1/bin
+//!   V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   STAGE=/tmp/qt-mail-carina-tools-stage
+//!   # The jest `--` filters are ANCHORED (`…\.test\.ts$`): they match the whole
+//!   # PATH, and an unanchored `carina-tool` also matches the stage DIRECTORY, which
+//!   # dragged `mail-tools.test.ts` into the carina run without its fixture env.
 //!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
-//!   cp $WT/harness/oracle/cases/{mail-tools,carina-tool}.test.ts $STAGE/harness/oracle/cases/
-//!   cp $WT/harness/oracle/fixtures/mail-carina-tools.json        $STAGE/harness/oracle/fixtures/
+//!   cp $V5W/harness/oracle/cases/{mail-tools,carina-tool}.test.ts $STAGE/harness/oracle/cases/
+//!   cp $V5W/harness/oracle/fixtures/mail-carina-tools.json        $STAGE/harness/oracle/fixtures/
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db \
-//!     $N/node --import tsx $WT/harness/oracle/fixtures/build-mail-carina-tools-fixture.ts
+//!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-mail-carina-tools-fixture.ts
 //!   TZ=UTC QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-mail-tools.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- mail-tools
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "mail-tools\.test\.ts$"
 //!   QT_ORACLE_OUT=/tmp/oracle-carina-tool.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- carina-tool
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "carina-tool\.test\.ts$"
 //! Run:
 //!   QT_ORACLE_MAIL=/tmp/oracle-mail-tools.ndjson QT_ORACLE_CARINA=/tmp/oracle-carina-tool.ndjson \
 //!   QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db \

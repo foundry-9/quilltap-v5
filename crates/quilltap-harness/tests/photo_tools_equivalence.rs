@@ -37,7 +37,7 @@
 //! MUST be staged OUTSIDE any `.claude/` path (v4's jest ignores `/\.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   WT=<this worktree root>
-//!   STAGE=/tmp/qt-oracle-stage
+//!   STAGE=/tmp/qt-photo-tools-stage
 //!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
 //!   cp $WT/harness/oracle/cases/photo-tools.test.ts $STAGE/harness/oracle/cases/
 //!   cp $WT/harness/oracle/fixtures/photo-tools.json  $STAGE/harness/oracle/fixtures/

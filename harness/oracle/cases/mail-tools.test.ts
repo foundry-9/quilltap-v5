@@ -14,7 +14,7 @@
  * Real-DB-under-jest (search-tools recipe). NO model boundary is touched.
  *
  * Run (Node 24, from the v4 checkout; STAGE outside any .claude path):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5 ; STAGE=/tmp/qt-oracle-stage
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5 ; STAGE=/tmp/qt-mail-carina-tools-stage
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db \
  *     $N/node --import tsx $V5/harness/oracle/fixtures/build-mail-carina-tools-fixture.ts

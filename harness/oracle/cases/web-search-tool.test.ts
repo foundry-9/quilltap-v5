@@ -34,7 +34,7 @@
  * TZ MUST be UTC (the formatter's `publishedDate`).
  *
  * Run (Node 24, from the v4 checkout; STAGE outside any .claude path):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; STAGE=/tmp/qt-oracle-stage
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; STAGE=/tmp/qt-oracle-stage-web-search
  *   cd ~/source/quilltap-server
  *   TZ=UTC QT_ORACLE_OUT=/tmp/oracle-web-search-tool.ndjson \
  *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- web-search-tool

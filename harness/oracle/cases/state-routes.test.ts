@@ -17,14 +17,16 @@
  * detached worktree only on drift/dirty; stage outside .claude/ first).
  * Self-contained: builds the /tmp fixture itself rather than assuming the
  * state-cascade recipe ran first.
- *   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<v5 worktree> ; STAGE=/tmp/qt-oracle-stage
+ *   N=~/.nvm/versions/node/v24.13.1/bin
+ *   V5W=${V5W:-$HOME/source/quilltap-v5}
+ *   STAGE=/tmp/qt-state-routes-stage
  *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
- *   cp $WT/harness/oracle/cases/state-routes.test.ts $STAGE/harness/oracle/cases/
- *   cp $WT/harness/oracle/fixtures/state-sql-tools.json $STAGE/harness/oracle/fixtures/
+ *   cp $V5W/harness/oracle/cases/state-routes.test.ts $STAGE/harness/oracle/cases/
+ *   cp $V5W/harness/oracle/fixtures/state-sql-tools.json $STAGE/harness/oracle/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_TMP_MAIN=/tmp/qt-state-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-state-mount.db \
  *   QT_FIXTURE_TMP_LLM=/tmp/qt-state-llm.db \
- *     $N/node --import tsx $WT/harness/oracle/fixtures/build-state-sql-tools-fixture.ts
+ *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-state-sql-tools-fixture.ts
  *   QT_FIXTURE_TMP_MAIN=/tmp/qt-state-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-state-mount.db \
  *   QT_FIXTURE_TMP_LLM=/tmp/qt-state-llm.db QT_ORACLE_OUT=/tmp/oracle-state-routes.ndjson \
  *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- state-routes

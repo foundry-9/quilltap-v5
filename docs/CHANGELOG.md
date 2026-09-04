@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — test(harness): retire the shared `/tmp/qt-oracle-stage` — six families, not three
+
+_Versions: harness 0.0.663._
+
+Six committed recipes staged their jest case mirrors into one shared
+`/tmp/qt-oracle-stage`, so two sweeps could clobber each other (each one opens
+with `rm -rf $STAGE`). Each now stages into its own `/tmp/qt-<family>-stage`.
+
+The round record named three (`precompute`, `mail_carina_tools`,
+`photo_tools`); the driver's own `--collisions` names six — `search_tools`,
+`state_cascade` and `state_routes` as well. The census also corrects which
+three were actually unsafe. `recipe_sweep.py` already suffixes a `STAGE=`
+assignment with the family name (policy 2), but that rewrite anchors on
+`^STAGE=`, so it silently missed the three headers that wrote
+`N=… ; WT=… ; STAGE=…` on ONE line — `mail_carina_tools`, `state_cascade` and
+`state_routes` (the last via its elided `.rs` recipe, restored from
+`state-routes.test.ts`). Those three were the ones genuinely sharing a
+directory; `precompute`, `search_tools` and `photo_tools` were protected by
+policy 2 all along and shared only in the human-facing copy-paste recipe.
+Those three one-line assignments are now split one-per-line, so policy 2's
+anchor applies as a second layer, and their placeholder `WT=<worktree>` alias
+becomes the sanctioned self-referential `V5W=${V5W:-$HOME/source/quilltap-v5}`
+form (`WT=${V5W:-…}` — an alias defaulted from a different alias — is the
+spelling P4.53 made unforgeable).
+
+Renaming the stage dir then exposed a second latent trap in
+`mail_carina_tools`, which stages two cases side by side: a jest `--` filter
+matches the whole PATH, and the unanchored `carina-tool` also matched the new
+directory name `qt-mail-carina-tools-stage`, dragging `mail-tools.test.ts`
+into the carina run without its fixture env. Both filters are now anchored
+(`"carina-tool\.test\.ts$"`), which is the convention the harness README
+already documents.
+
+Five stale case-header twins were aligned to the family stage dir their `.rs`
+recipe names (`carina-tool`, `mail-tools`, `state-cascade`, plus
+`state-sql-tools` and `web-search-tool`, whose `.rs` recipes had already moved
+off the shared path while their case headers still advertised it).
+
+Proof: `--collisions` reports no `qt-oracle-stage` sharing; `--self-test` 0
+failures; the `--show` diff for all six moves only the stage path and the
+alias expansion (which resolves to the same absolute worktree path) and
+nothing else; all six `--run` green from a `0b0617fee`-pinned v4 worktree; and
+none of the eight regenerated NDJSONs contains a stage path at all, so the
+directory name provably cannot reach the measured bytes.
+
 #### 2026-09-03 — docs(orders): the follow-ups round 2 ordered — P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75
 
 _Docs-only change._ (No crate versions bumped.)

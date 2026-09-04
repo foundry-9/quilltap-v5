@@ -20,7 +20,7 @@
  * handles. NO model boundary is touched.
  *
  * Run (Node 24, from the v4 checkout):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5 ; STAGE=/tmp/qt-oracle-stage
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5 ; STAGE=/tmp/qt-state-sql-tools-oracle
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_TMP_MAIN=/tmp/qt-state-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-state-mount.db \
  *   QT_FIXTURE_TMP_LLM=/tmp/qt-state-llm.db \

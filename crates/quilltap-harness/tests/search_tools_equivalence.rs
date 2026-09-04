@@ -29,7 +29,7 @@
 //! that path has no `.claude` segment.)
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   WT=<this worktree root>
-//!   STAGE=/tmp/qt-oracle-stage
+//!   STAGE=/tmp/qt-search-tools-stage
 //!   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
 //!   cp $WT/harness/oracle/cases/search-tools-*.test.ts $STAGE/harness/oracle/cases/
 //!   cp $WT/harness/oracle/fixtures/search-tools.json    $STAGE/harness/oracle/fixtures/

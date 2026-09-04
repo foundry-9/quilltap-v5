@@ -80,7 +80,7 @@
 //! Regenerate the oracle (Node 24, from the v4 checkout; STAGE the case outside
 //! `.claude/` — v4's jest ignores those paths):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; W=<this worktree>
-//!   STAGE=/tmp/qt-oracle-stage
+//!   STAGE=/tmp/qt-precompute-stage
 //!   mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
 //!   cp $W/harness/oracle/cases/precompute.test.ts $STAGE/harness/oracle/cases/
 //!   cp $W/harness/oracle/fixtures/{precompute-cases,episodic-recall}.json \

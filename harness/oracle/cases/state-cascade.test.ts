@@ -20,7 +20,7 @@
  *
  * Run (Node 24, from the PINNED v4 worktree; case files under .claude/ are
  * invisible to jest → stage them outside first):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<v5 worktree> ; STAGE=/tmp/qt-oracle-stage
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<v5 worktree> ; STAGE=/tmp/qt-state-cascade-stage
  *   rm -rf $STAGE && mkdir -p $STAGE/harness/oracle/cases $STAGE/harness/oracle/fixtures
  *   cp $WT/harness/oracle/cases/state-cascade.test.ts $STAGE/harness/oracle/cases/
  *   cp $WT/harness/oracle/fixtures/state-sql-tools.json $STAGE/harness/oracle/fixtures/

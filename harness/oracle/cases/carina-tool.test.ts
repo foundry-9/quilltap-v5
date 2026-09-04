@@ -9,7 +9,7 @@
  *   { label, resultJson, formatted, prospero: null | {kind, characterName, detail, whisper, askerParticipantId} }
  *
  * Run (Node 24, from the v4 checkout; STAGE outside any .claude path):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; STAGE=/tmp/qt-oracle-stage
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; STAGE=/tmp/qt-mail-carina-tools-stage
  *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-carina-tool.ndjson \
  *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- carina-tool
