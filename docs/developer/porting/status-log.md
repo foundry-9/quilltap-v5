@@ -103283,3 +103283,96 @@ fixture was widened, so no sibling family is invalidated.
 
 **Regen recipe:** in the `images_routes_equivalence` header, verified end-to-end
 through `recipe_sweep.py --run images_routes_equivalence --v5w "$PWD" --v4 "$PIN"`.
+
+### Unit 2 — `POST /api/v1/images` (multipart upload + JSON import-from-URL)
+
+`Request::ImageUpload` / `Request::ImageImportFromUrl` over the existing,
+already-differentialed `create_file_conns` ingest engine (P4.1b) — the order's
+premise that this needed `createFile`'s sequence built fresh was REFUTED at
+survey: v5 has had that engine since `image_ingest_tier2_equivalence`, and it
+takes the `PixelCodec` seam this lane needs. What was genuinely missing was
+`validate_image_file`, the two route legs, and the fetch.
+
+**The fetch seam:** `ImageImportFetch` / `ErasedImageImportFetch` in core (in
+`api/images.rs`, to stay inside this order's ownership), `ReqwestImageImportFetch`
+in the NEW `quilltap-host/src/image_import_fetch.rs`, wired in `host.rs`. Two
+deliberate differences from the `ReqwestLoraMetadata` precedent it copies: NO
+timeout (v4's `fetch(url)` imposes none, and adding one would refuse imports v4
+completes) and BYTES rather than text (v4 reads `arrayBuffer()`).
+
+**TWO ORDER-CORRECTING MEASUREMENTS.** Both came from driving v4's real
+handler; neither was visible by reading it.
+
+1. **v4 does NOT carry a raw non-string `tagId`.** The order (and the P4.62(a)
+   escalation it inherits) says `tags.map(t => t.tagId)` puts `5` into
+   `linkedTo` and the `tags` column. It does not: `repos.files.create`
+   re-validates the row against `FileEntrySchema`, whose `linkedTo` is
+   `z.array(z.uuid())`, so `[{"tagId": 5}]` throws a ZodError out of
+   `createFile` and the route answers **400 `Validation error`** — measured,
+   with `files` unchanged. ⚠ **P4.62(a)'s shape for the FILES leg must be
+   re-measured before it is ported**; this lane measured only the images leg,
+   and the two go through different functions (`saveFileEntry` vs `createFile`)
+   onto the same validating `create`.
+2. **The refusal still leaks bytes.** The bridge write lands BEFORE the
+   metadata create, so the 400 leaves `images/shot.webp` in
+   `doc_mount_file_links` as an orphan. Reproduced rather than tidied; the
+   differential's dump was widened to the mount side (scoped to the two stores
+   this route writes, since every character mint scaffolds a vault full of
+   empty `.md` files) so the orphan is MEASURED.
+
+Closing (1) faithfully meant putting v4's repository-level UUID validation
+inside `create_file_conns` — a SHARED ingest path (photos, chat media). Named
+here because it is the one change in this lane with blast radius beyond its own
+files; the full workspace gate (490 binaries / 2,762 / 0) confirms no sibling
+family was relying on writing a non-UUID tag.
+
+**A deliberate deviation from the order, recorded:** the order puts the import
+leg's Zod validation at the web edge. Measurement showed that leaves five
+oracle arms undrivable by a core-level family. Two of them — `z.url()` and the
+tags schema — are body validation, and by this project's own boundary
+convention (the `ChatCreate` trio's lesson, which this same order cites) they
+belong in the HANDLER so both transports answer v4's bytes from one place. They
+moved there. The remaining three are genuinely edge-shaped.
+
+**Coverage, stated honestly:** 27 cases driven in core; three arms
+(`upload_no_file`, `upload_tags_bad_json`, `post_bad_content_type`) are
+multipart/content-type outcomes with no `Request` to decode and are named in an
+`EDGE_ONLY` const that still participates in the both-directions coverage
+assertion. **Proving them needs a served instance under
+`crates/quilltap-web/tests/`, whose directory this round assigns to P4.72** —
+DEFERRED LOUDLY, not silently covered.
+
+**The D19 construction.** A byte-changing codec (`FixedDimsPrefixCodec`, local
+to the test) runs against v4's REAL sharp. `sha256`/`size` are blanked only for
+rows a case MINTED **and** transcoded — so `upload_svg`, a passthrough, keeps a
+genuine byte-level sha equality with v4 — and a within-tree check that every
+`files.sha256` names the bytes actually stored is what keeps the blanking from
+being a hole.
+
+**Six differential iterations, every red in the harness rather than the port.**
+Recorded because three of them are reusable lessons:
+
+* the seeded fixture row's `sha256` did not match the bytes the repository
+  content-addressed, so the within-tree invariant failed on the SEEDED row —
+  the builder now seeds the real digest, and the invariant is universal rather
+  than scoped around a fixture artifact;
+* `drop_zod_details` stripped by KEY PRESENCE, which would have discarded the
+  `IMAGE_IN_USE` bag — `details` is not a ZodError marker, and v4's
+  `badRequest(message, details)` uses the same key for a fixed literal v5
+  reproduces in full. Now scoped to the `Validation error` sentence;
+* the table dumps are `ORDER BY id`, so blanking the minted id left the rows
+  EQUAL but in different positions (a minted UUID sorts either side of the
+  pinned `f0000000-…` ids). Re-sorted on the blanked id, with an assertion that
+  at most one row per case is minted — which is what makes the key total.
+
+**Mutation proofs — three, and the third is the lane's third surviving
+mutation.** Dropping the repository UUID refusal → RED. Widening the import
+content-type gate → RED. The filename-extension rule → first failed to APPLY
+(a wrong anchor; its green was the UNMUTATED run — a mutation that does not
+apply proves nothing), then applied and stayed **GREEN**, exposing
+`import_no_dot_filename` as VACUOUS: `createFile` transcodes and renames to
+`.webp`, which `replaceExtensionWithWebP` produces from a bare `portrait`
+anyway, so appending the mime subtype or not lands identically. Closed with
+`import_no_dot_svg` — a passthrough, where the name v4 builds survives — which
+also pins v4's own quirk that `'image/svg+xml'.split('/')[1]` is `svg+xml`, so
+the stored filename really is `portrait.svg+xml`. Then RED.

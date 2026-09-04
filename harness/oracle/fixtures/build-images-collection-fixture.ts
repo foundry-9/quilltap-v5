@@ -51,6 +51,7 @@
  *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-images-collection-fixture.ts
  */
 
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
@@ -283,6 +284,12 @@ async function main(): Promise<void> {
   const inUseBlobId = (written as { blobId?: string }).blobId;
   if (!inUseBlobId) throw new Error('F_INUSE blob id not minted');
   const inUseStorageKey = `mount-blob:${spec.uploadsMountPointId}:${inUseBlobId}`;
+  // The repository content-addresses the blob itself, so the stored sha is the
+  // sha of the BYTES, not whatever was passed in. F_INUSE's `files` row must
+  // carry that same value or the "the row's sha names the bytes we stored"
+  // invariant — which the differential asserts within each tree — would be
+  // false for the one seeded row that has real bytes.
+  const inUseSha = createHash('sha256').update(inUseBytes).digest('hex');
 
   // 4. Files.
   type FileSeed = {
@@ -303,12 +310,14 @@ async function main(): Promise<void> {
     generationPrompt?: string | null;
     generationModel?: string | null;
     shaTag: string;
+    /** Overrides `sha(shaTag)` when the row must name real stored bytes. */
+    sha256?: string;
   };
   const mkFile = async (f: FileSeed) => {
     await repos.files.create(
       {
         userId: f.userId ?? spec.userId,
-        sha256: sha(f.shaTag),
+        sha256: f.sha256 ?? sha(f.shaTag),
         originalFilename: f.filename,
         mimeType: f.mimeType ?? 'image/webp',
         size: f.size ?? 2048,
@@ -374,6 +383,7 @@ async function main(): Promise<void> {
     createdAt: '2026-03-04T00:00:00.000Z',
     storageKey: inUseStorageKey,
     shaTag: '5',
+    sha256: inUseSha,
   });
   await mkFile({
     id: F_ORPHAN,

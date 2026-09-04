@@ -803,6 +803,13 @@ impl EngineAssembler for HostAssembler {
                 ),
             )),
             // === end P4.6ai ===
+            // === P4.73: the images-collection import fetch. v4's bare
+            // `fetch(url)` — no timeout, no headers — so the transport adds
+            // none of its own. ===
+            image_import_fetch: Some(quilltap_core::api::images::ErasedImageImportFetch::new(
+                crate::image_import_fetch::ReqwestImageImportFetch::new(),
+            )),
+            // === end P4.73 ===
             // === P4.6bd: the custom-tool consult seam, wired LIVE from the
             // spine's wire-config runner (60 s timeout decorated). Spine-less
             // assemblies keep `None` → the composer/bench arms answer the loud

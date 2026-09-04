@@ -84,6 +84,45 @@ pub const ALLOWED_IMAGE_TYPES: &[&str] = &[
     "image/svg+xml",
 ];
 
+/// v4 zod's `uuid()` source pattern (`common.types.ts:52` `UUIDSchema =
+/// z.uuid()`), hand-matched. `FileEntrySchema` types `linkedTo` and `tags` as
+/// `z.array(UUIDSchema)`, so this is the predicate `repos.files.create`
+/// enforces on every write.
+pub(crate) fn is_zod_uuid(s: &str) -> bool {
+    if s == "00000000-0000-0000-0000-000000000000" || s == "ffffffff-ffff-ffff-ffff-ffffffffffff" {
+        return true;
+    }
+    let b = s.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    for (i, &c) in b.iter().enumerate() {
+        match i {
+            8 | 13 | 18 | 23 => {
+                if c != b'-' {
+                    return false;
+                }
+            }
+            14 => {
+                if !(b'1'..=b'8').contains(&c) {
+                    return false;
+                }
+            }
+            19 => {
+                if !matches!(c, b'8' | b'9' | b'a' | b'b' | b'A' | b'B') {
+                    return false;
+                }
+            }
+            _ => {
+                if !c.is_ascii_hexdigit() {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 /// v4 `UNSAFE_FILENAME_CHARS = /[\/\\:*?"<>|\x00-\x1f\x7f]/` (`manager.ts:62`).
 fn is_unsafe_filename_char(c: char) -> bool {
     matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
@@ -1608,6 +1647,29 @@ pub fn create_file_conns(
 
     let inherited = get_inherited_tags(main, mount, &params.linked_to, &params.user_id);
     let final_tags = merge_tags(&params.tags, &inherited);
+
+    // v4's `repos.files.create` re-validates the whole row against
+    // `FileEntrySchema` before writing, and BOTH `linkedTo` and `tags` are
+    // `z.array(z.uuid())` — so an id that is not a UUID throws a ZodError out
+    // of `createFile`, which the images route lets escape to the middleware's
+    // `validationError` 400.
+    //
+    // ⚠ ORDER IS OBSERVABLE. The throw lands AFTER the bridge write above, so
+    // v4 leaves the stored bytes behind as an orphaned blob and only the
+    // `files` row is missing. MEASURED against v4's real route: a multipart
+    // upload carrying `[{"tagId": 5}]` answers 400 with `files` unchanged and
+    // `images/shot.webp` present in `doc_mount_file_links`. Validating before
+    // the write would be tidier and WRONG.
+    if let Some(bad) = params
+        .linked_to
+        .iter()
+        .chain(final_tags.iter())
+        .find(|v| !is_zod_uuid(v))
+    {
+        return Err(DbError::Internal(format!(
+            "files.create: `{bad}` is not a UUID"
+        )));
+    }
 
     let now = crate::clock::now_iso();
     files.create(

@@ -52,7 +52,7 @@ use serde_json::{json, Map, Value};
 use crate::db::files::FilesRepository;
 use crate::db::runtime::Db;
 use crate::db::DbError;
-use crate::services::file_storage::StorageBackend;
+use crate::services::file_storage::{PixelCodec, StorageBackend};
 
 use super::types::{ErrorKind, Response};
 
@@ -362,6 +362,129 @@ fn list(
 }
 
 // ===========================================================================
+// Shared: the addTag loop both ingest legs run
+// ===========================================================================
+
+/// v4 `for (const tag of tags) await repos.files.addTag(imageData.id, tag.tagId)`
+/// (`route.ts:421-425` / `:477-481`). Runs AFTER the ingest, so a tag id the
+/// ingest already inherited is a no-op, and a non-string raw id is pushed onto
+/// the array as-is.
+pub(crate) fn add_raw_tags(
+    main: &rusqlite::Connection,
+    file_id: &str,
+    tag_ids: &[Value],
+) -> Result<(), DbError> {
+    for tag in tag_ids {
+        match tag.as_str() {
+            Some(s) => {
+                FilesRepository::new(main).add_tag(file_id, s)?;
+            }
+            // v4's `addTag` pushes the raw value into the JSON array; the
+            // repository's string-typed twin cannot, so the raw arm is spelled
+            // out here rather than widening the repository for one caller.
+            None => add_raw_tag_value(main, file_id, tag)?,
+        }
+    }
+    Ok(())
+}
+
+/// The non-string half of [`add_raw_tags`] — v4's `addTag` is
+/// `tags.includes(tagId) ? noop : [...tags, tagId]` over the hydrated array,
+/// so a number is compared with `===` and appended as a number.
+fn add_raw_tag_value(
+    main: &rusqlite::Connection,
+    file_id: &str,
+    tag: &Value,
+) -> Result<(), DbError> {
+    use rusqlite::OptionalExtension;
+    let cell: Option<Option<String>> = main
+        .query_row(
+            "SELECT tags FROM files WHERE id = ?1",
+            rusqlite::params![file_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(cell) = cell else { return Ok(()) };
+    let mut arr = raw_json_array(cell.as_deref());
+    if arr.iter().any(|t| t == tag) {
+        return Ok(());
+    }
+    arr.push(tag.clone());
+    let now = crate::clock::now_iso();
+    main.execute(
+        "UPDATE files SET tags = ?1, updatedAt = ?2 WHERE id = ?3",
+        rusqlite::params![Value::Array(arr).to_string(), now, file_id],
+    )?;
+    Ok(())
+}
+
+// ===========================================================================
+// The ingest legs' shared tail (both answer the same receipt shape)
+// ===========================================================================
+
+/// v4's upload / import receipt (`route.ts:428-442` / `:486-500`). `createdAt`
+/// / `updatedAt` are the ROUTE's `new Date().toISOString()`, not the row's.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn ingest_receipt(
+    user_id: &str,
+    entry: &crate::db::files::FileEntry,
+    url: Value,
+    source: &str,
+    tags: Option<&[Value]>,
+    now_iso: &str,
+) -> Value {
+    let mut m = Map::new();
+    m.insert("id".into(), json!(entry.id));
+    m.insert("userId".into(), json!(user_id));
+    m.insert("filename".into(), json!(entry.original_filename));
+    m.insert(
+        "filepath".into(),
+        json!(format!("/api/v1/files/{}", entry.id)),
+    );
+    m.insert("url".into(), url);
+    m.insert("mimeType".into(), json!(entry.mime_type));
+    m.insert("size".into(), json!(entry.size));
+    // v4's `ImageUploadResult` maps `width: fileEntry.width || undefined`, and
+    // `JSON.stringify` drops an undefined key — so a NULL/zero dimension is
+    // ABSENT from the receipt, not null.
+    if let Some(w) = entry.width.filter(|w| *w != 0) {
+        m.insert("width".into(), json!(w));
+    }
+    if let Some(h) = entry.height.filter(|h| *h != 0) {
+        m.insert("height".into(), json!(h));
+    }
+    m.insert("source".into(), json!(source));
+    m.insert("createdAt".into(), json!(now_iso));
+    m.insert("updatedAt".into(), json!(now_iso));
+    m.insert(
+        "tags".into(),
+        tags.map(|t| Value::Array(t.to_vec()))
+            .unwrap_or_else(|| Value::Array(vec![])),
+    );
+    Value::Object(m)
+}
+
+/// The ingest arms' shared dependencies — the host codec and the byte store.
+pub struct IngestDeps {
+    pub codec: Arc<dyn PixelCodec>,
+    pub backend: Arc<dyn StorageBackend>,
+}
+
+/// v4's `tags.map(t => t.tagId)` with NO schema (`route.ts:415`/`:471`) — the
+/// raw property value, whatever its type, and `undefined` (a missing key)
+/// serialized as `null`. P4.62(a): a `Vec<String>` here would silently drop
+/// `[{"tagId": 5}]` and `[{}]`, which v4 carries into both `linkedTo` and the
+/// `tags` column.
+pub(crate) fn raw_tag_ids(tags: Option<&[Value]>) -> Vec<Value> {
+    tags.map(|arr| {
+        arr.iter()
+            .map(|t| t.get("tagId").cloned().unwrap_or(Value::Null))
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+// ===========================================================================
 // DELETE /api/v1/images/{id} — the orphan-aware, in-use-refusing delete
 // ===========================================================================
 
@@ -531,4 +654,397 @@ fn delete_conns(
         "[Images v1] Image deleted successfully"
     );
     Ok(Response::Images(json!({ "success": true })))
+}
+
+// ===========================================================================
+// The import-from-URL fetch seam
+// ===========================================================================
+
+/// What v4's `fetch(url)` gives `importImageFromUrl` (`images-v2.ts:269-282`):
+/// the status, its `statusText` (which the `!ok` throw interpolates), the
+/// `content-type` header, and the body BYTES. Core has no HTTP, so this rides
+/// the host — the P4.D138 HuggingFace precedent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageFetchResponse {
+    pub status: u16,
+    /// v4 `response.statusText`.
+    pub status_text: String,
+    /// v4 `response.headers.get('content-type') || ''`.
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
+/// The one outbound call the import leg makes. `Err` is v4's THROWN fetch (a
+/// network failure), which its route lets escape to the middleware's 500;
+/// every HTTP status — including a 404 — is an `Ok` the caller gates on.
+pub trait ImageImportFetch: Send + Sync {
+    fn get(
+        &self,
+        url: &str,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<ImageFetchResponse, String>> + Send + '_>,
+    >;
+}
+
+/// A type-erased [`ImageImportFetch`] (the `ErasedLoraMetadata` shape).
+#[derive(Clone)]
+pub struct ErasedImageImportFetch(Arc<dyn ImageImportFetch>);
+
+impl ErasedImageImportFetch {
+    pub fn new<T: ImageImportFetch + 'static>(inner: T) -> Self {
+        Self(Arc::new(inner))
+    }
+
+    pub async fn get(&self, url: &str) -> Result<ImageFetchResponse, String> {
+        self.0.get(url).await
+    }
+}
+
+// ===========================================================================
+// POST /api/v1/images — upload (multipart) and import (JSON)
+// ===========================================================================
+
+/// v4 `ALLOWED_IMAGE_TYPES.join(', ')` — the exact interpolation both refusal
+/// sentences carry.
+fn allowed_types_joined() -> String {
+    crate::services::file_storage::ALLOWED_IMAGE_TYPES.join(", ")
+}
+
+/// v4 `validateImageFile` (`images-v2.ts:218-226`). Both arms THROW, and
+/// neither route leg wraps them, so the sentences reach the middleware's catch
+/// and the client sees a flat `500 {"error": "Internal server error"}` — they
+/// are pinned by unit tests here, not by a corpus row, because the wire cannot
+/// show them.
+fn validate_image_file(content_type: &str, size: usize) -> Result<(), String> {
+    if !crate::services::file_storage::ALLOWED_IMAGE_TYPES.contains(&content_type) {
+        return Err(format!(
+            "Invalid file type. Allowed types: {}",
+            allowed_types_joined()
+        ));
+    }
+    if size as i64 > crate::services::file_storage::MAX_IMAGE_FILE_SIZE {
+        return Err(format!(
+            "File size exceeds maximum allowed size of {} MB",
+            crate::services::file_storage::MAX_IMAGE_FILE_SIZE / 1024 / 1024
+        ));
+    }
+    Ok(())
+}
+
+/// v4's `handleUploadOrImport` multipart leg (`route.ts:449-506`).
+///
+/// `uploadImage` → `createFile` (already ported as
+/// [`crate::services::file_storage::create_file_conns`], differential-proven by
+/// `image_ingest_tier2_equivalence`), then the per-tag `addTag` loop, then the
+/// route's own receipt whose `createdAt`/`updatedAt` are minted AT THE ROUTE.
+pub async fn image_upload(
+    db: &Db,
+    deps: IngestDeps,
+    user_id: &str,
+    filename: &str,
+    content_type: &str,
+    bytes: Vec<u8>,
+    tags: Option<Vec<Value>>,
+) -> Response {
+    ingest(
+        db,
+        deps,
+        user_id,
+        IngestRequest {
+            filename: filename.to_string(),
+            content_type: content_type.to_string(),
+            bytes,
+            source: "UPLOADED",
+            description: None,
+            url: Value::Null,
+            wire_source: "upload",
+            // v4 validates the FILE before reading its bytes; the import leg
+            // gates on the response instead (different sentences, same 500).
+            validate: true,
+        },
+        tags,
+    )
+    .await
+}
+
+/// v4's `handleUploadOrImport` JSON leg (`route.ts:410-447`) →
+/// `importImageFromUrl` (`images-v2.ts:267-321`).
+/// v4 `importFromUrlSchema` (`route.ts:33-42`) — `url: z.url()` plus the
+/// optional `tags` array of `{tagType: enum, tagId: string}`. Unlike the
+/// multipart leg, this one IS schema-checked, so a wrong-typed `tagId` refuses
+/// HERE rather than reaching the row write. That asymmetry between two legs of
+/// one route is v4's, measured against its real handler.
+///
+/// Validated in the HANDLER, not at the web edge, so both transports answer the
+/// same bytes from one place (the `ChatCreate` trio's lesson).
+fn parse_import_body(
+    url: Option<&Value>,
+    tags: Option<&Value>,
+) -> Result<(String, Option<Vec<Value>>), Response> {
+    let bad = || Response::error(ErrorKind::BadRequest, "Validation error");
+    let url = url
+        .and_then(Value::as_str)
+        .filter(|s| zod_url_ok(s))
+        .ok_or_else(bad)?;
+    let tags = match tags {
+        None | Some(Value::Null) if tags.is_none() => None,
+        None => None,
+        Some(v) => {
+            // `.optional()` is not `.nullable()`: an explicit null REFUSES.
+            let arr = v.as_array().ok_or_else(bad)?;
+            for t in arr {
+                let o = t.as_object().ok_or_else(bad)?;
+                match o.get("tagType").and_then(Value::as_str) {
+                    Some("CHARACTER" | "CHAT" | "THEME") => {}
+                    _ => return Err(bad()),
+                }
+                if o.get("tagId").and_then(Value::as_str).is_none() {
+                    return Err(bad());
+                }
+            }
+            Some(arr.clone())
+        }
+    };
+    Ok((url.to_string(), tags))
+}
+
+/// Zod 4's `z.url()` — a WHATWG-parseable absolute URL.
+fn zod_url_ok(s: &str) -> bool {
+    let Some(scheme_end) = s.find("://") else {
+        return false;
+    };
+    let scheme = &s[..scheme_end];
+    if scheme.is_empty()
+        || !scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+    {
+        return false;
+    }
+    let rest = &s[scheme_end + 3..];
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    !rest[..authority_end].is_empty()
+}
+
+pub async fn image_import_from_url(
+    db: &Db,
+    deps: IngestDeps,
+    fetch: &ErasedImageImportFetch,
+    user_id: &str,
+    url_raw: Option<&Value>,
+    tags_raw: Option<&Value>,
+) -> Response {
+    let (url, tags) = match parse_import_body(url_raw, tags_raw) {
+        Ok(v) => v,
+        Err(r) => return r,
+    };
+    let url = url.as_str();
+    // v4 `const response = await fetch(url)` — a THROWN fetch escapes to the
+    // middleware's catch, exactly as every other sentence in this leg does.
+    let resp = match fetch.get(url).await {
+        Ok(r) => r,
+        Err(_) => return internal_error(),
+    };
+    // v4 `if (!response.ok)` — `Response.ok` is `status` in [200, 300).
+    if !(200..300).contains(&resp.status) {
+        // `Failed to fetch image from URL: ${response.statusText}` — thrown,
+        // so the wire shows the middleware's flat 500.
+        return internal_error();
+    }
+    if !crate::services::file_storage::ALLOWED_IMAGE_TYPES.contains(&resp.content_type.as_str()) {
+        // `Invalid image type from URL. Allowed types: …` — thrown.
+        return internal_error();
+    }
+    if resp.bytes.len() as i64 > crate::services::file_storage::MAX_IMAGE_FILE_SIZE {
+        // `Image size exceeds maximum allowed size of 10 MB` — thrown.
+        return internal_error();
+    }
+
+    // v4 `images-v2.ts:292-295` — the filename comes from the URL's PATH (not
+    // its query), last segment, with the mime's subtype appended only when the
+    // segment carries no dot at all.
+    let filename = import_filename(url, &resp.content_type);
+
+    ingest(
+        db,
+        deps,
+        user_id,
+        IngestRequest {
+            filename,
+            content_type: resp.content_type.clone(),
+            bytes: resp.bytes,
+            source: "IMPORTED",
+            description: Some(format!("Imported from {url}")),
+            // v4 echoes the REQUEST url, not the row's description.
+            url: Value::String(url.to_string()),
+            wire_source: "import",
+            validate: false,
+        },
+        tags,
+    )
+    .await
+}
+
+/// v4 `images-v2.ts:292-295`:
+/// ```text
+/// const urlPath = new URL(url).pathname;
+/// const urlFilename = urlPath.split('/').pop() || 'imported-image';
+/// const ext = contentType.split('/')[1] || 'jpg';
+/// const originalFilename = urlFilename.includes('.') ? urlFilename : `${urlFilename}.${ext}`;
+/// ```
+/// `pathname` of a WHATWG URL always begins `/` for a special scheme, so the
+/// last segment is `''` for a bare origin — falsy, hence `imported-image`.
+fn import_filename(url: &str, content_type: &str) -> String {
+    let path = whatwg_pathname(url);
+    let last = path.rsplit('/').next().unwrap_or("");
+    let base = if last.is_empty() {
+        "imported-image"
+    } else {
+        last
+    };
+    if base.contains('.') {
+        return base.to_string();
+    }
+    // `'image/png'.split('/')[1]` → `png`; an empty subtype is falsy → `jpg`.
+    let ext = content_type.split('/').nth(1).filter(|s| !s.is_empty());
+    format!("{}.{}", base, ext.unwrap_or("jpg"))
+}
+
+/// The `pathname` of a WHATWG URL — everything after the authority and before
+/// `?`/`#`. Deliberately narrow: this only ever sees a URL that already passed
+/// v4's `z.url()`, so the scheme and authority are well formed.
+fn whatwg_pathname(url: &str) -> String {
+    let after_scheme = match url.find("://") {
+        Some(i) => &url[i + 3..],
+        None => url,
+    };
+    let path_start = after_scheme.find('/').unwrap_or(after_scheme.len());
+    let rest = &after_scheme[path_start..];
+    let end = rest.find(['?', '#']).unwrap_or(rest.len());
+    rest[..end].to_string()
+}
+
+/// The middleware's catch for every thrown sentence in this family
+/// (`context.ts:147-148` → `serverError('Internal server error')`). The
+/// sentences themselves never reach the wire, which is why they are pinned by
+/// unit tests rather than corpus rows.
+fn internal_error() -> Response {
+    Response::error(ErrorKind::Internal, "Internal server error")
+}
+
+struct IngestRequest {
+    filename: String,
+    content_type: String,
+    bytes: Vec<u8>,
+    source: &'static str,
+    description: Option<String>,
+    url: Value,
+    wire_source: &'static str,
+    validate: bool,
+}
+
+/// The shared tail both legs run: `createFile` → the per-tag `addTag` loop →
+/// the 201 receipt.
+async fn ingest(
+    db: &Db,
+    deps: IngestDeps,
+    user_id: &str,
+    req: IngestRequest,
+    tags: Option<Vec<Value>>,
+) -> Response {
+    if req.validate && validate_image_file(&req.content_type, req.bytes.len()).is_err() {
+        return internal_error();
+    }
+
+    // v4 `tags.map(t => t.tagId)` with NO schema — the RAW values, whatever
+    // their type.
+    let raw_tags = raw_tag_ids(tags.as_deref());
+
+    // MEASURED against v4's real route, and it refutes the ordering premise
+    // this port was written from: v4 does NOT silently carry a non-string
+    // `tagId`. `repos.files.create` re-validates the row against
+    // `FileEntrySchema`, whose `linkedTo` is `z.array(z.uuid())`, so
+    // `[{"tagId": 5}]` throws a ZodError out of `createFile` and the route
+    // answers `Validation error` 400 — with the bytes ALREADY written, because
+    // the throw lands after the bridge write. `create_file_conns` reproduces
+    // that order; this flag is only how the caller knows to answer 400 rather
+    // than 500.
+    let ids_valid = raw_tags.iter().all(|v| {
+        v.as_str()
+            .is_some_and(crate::services::file_storage::is_zod_uuid)
+    });
+    // A non-string raw id crosses as its JSON text (`5` → `"5"`), which is not
+    // a UUID either, so the validation fails identically. The stored value
+    // would differ if it could ever be written — it cannot, so it is
+    // unobservable; the alternative is widening `IngestParams.linked_to` to
+    // `Vec<Value>` for a path that always refuses.
+    let linked_to: Vec<String> = raw_tags
+        .iter()
+        .map(|v| match v.as_str() {
+            Some(s) => s.to_string(),
+            None => v.to_string(),
+        })
+        .collect();
+
+    let user = user_id.to_string();
+    let tags_for_loop = raw_tags.clone();
+    let written = db
+        .write(move |ws| {
+            let main = ws.main().connection();
+            let mount = ws
+                .mount_index()
+                .ok_or_else(|| {
+                    DbError::Internal("image ingest requires the mount-index database".to_string())
+                })?
+                .connection();
+            let dims = deps.codec.measure(&req.bytes);
+            let params = crate::services::file_storage::IngestParams {
+                buffer: req.bytes,
+                original_filename: req.filename,
+                mime_type: req.content_type,
+                user_id: user.clone(),
+                linked_to,
+                tags: vec![],
+                source: req.source.to_string(),
+                description: req.description,
+            };
+            let (entry, _outcome) = crate::services::file_storage::create_file_conns(
+                main,
+                mount,
+                deps.codec.as_ref(),
+                deps.backend.as_ref(),
+                &params,
+                "IMAGE",
+                dims,
+            )?;
+            // v4 runs `addTag` AFTER the ingest, so a tag the ingest already
+            // inherited is a no-op and a non-string raw id is appended as-is.
+            add_raw_tags(main, &entry.id, &tags_for_loop)?;
+            let refreshed = crate::db::files::FilesRepository::new(main)
+                .find_by_id(&entry.id)?
+                .unwrap_or(entry);
+            Ok((refreshed, user))
+        })
+        .await;
+
+    match written {
+        Ok((entry, user)) => {
+            // v4 stamps `new Date().toISOString()` at the ROUTE, not the row's.
+            let now = crate::clock::now_iso();
+            Response::Images(json!({
+                "data": ingest_receipt(
+                    &user,
+                    &entry,
+                    req.url,
+                    req.wire_source,
+                    tags.as_deref(),
+                    &now,
+                ),
+            }))
+        }
+        // v4's ZodError from `repos.files.create` is the middleware's
+        // `validationError` 400; anything else is its generic 500.
+        Err(_) if !ids_valid => Response::error(ErrorKind::BadRequest, "Validation error"),
+        Err(_) => internal_error(),
+    }
 }

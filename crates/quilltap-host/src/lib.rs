@@ -42,6 +42,9 @@ pub mod files_store;
 pub mod host;
 pub mod host_gateway;
 pub mod image_codec;
+// === P4.73: the images-collection import fetch ===
+pub mod image_import_fetch;
+// === end P4.73 ===
 pub mod instances;
 pub mod job_pump;
 pub mod lock;

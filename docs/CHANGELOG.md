@@ -200,6 +200,61 @@ alias expansion (which resolves to the same absolute worktree path) and
 nothing else; all six `--run` green from a `0b0617fee`-pinned v4 worktree; and
 none of the eight regenerated NDJSONs contains a stage path at all, so the
 directory name provably cannot reach the measured bytes.
+#### 2026-09-04 — feat(images): the images upload + import-from-URL legs (P4.73 unit 2)
+
+_Versions: core 0.0.770, harness 0.0.664, host 0.0.96, web 0.0.107._
+
+Ports v4's `handleUploadOrImport` — the `POST /api/v1/images` multipart upload
+and the `application/json` import-from-URL — as `Request::ImageUpload` and
+`Request::ImageImportFromUrl`, over the already-differentialed
+`create_file_conns` ingest engine. The outbound fetch rides a new host seam
+(`ErasedImageImportFetch` in core, `ReqwestImageImportFetch` in the host — the
+P4.D138 HuggingFace precedent, minus the timeout v4 does not impose here and
+carrying BYTES rather than text). The edge dispatches on the request's own
+content-type exactly as v4 does, and the POST reads `?action=` in v4's FIRST
+shape: only the literal `generate` diverts, so an unknown action, an empty one,
+and no action at all all UPLOAD. There is no unknown-action envelope on this
+route.
+
+TWO MEASUREMENTS REFUTED THE ORDER'S PREMISE, both found by driving v4's real
+handler. First, v4 does NOT silently carry a raw non-string `tagId` into
+`linkedTo` and `tags`: `repos.files.create` re-validates the row against
+`FileEntrySchema`, whose `linkedTo` is `z.array(z.uuid())`, so `[{"tagId": 5}]`
+throws a ZodError and the route answers 400 `Validation error` with no `files`
+row written. Second, that refusal still LEAKS BYTES — the bridge write happens
+before the metadata create, so the 400 leaves an orphaned blob in
+`doc_mount_file_links`. The port reproduces that order rather than tidying it,
+and the differential's dump was widened to the mount side specifically so the
+orphan is measured instead of assumed.
+
+Closing the first of those needed v4's repository-level UUID validation inside
+`create_file_conns` — the shared images-v2 ingest path. The full workspace gate
+confirms it disturbed no sibling family.
+
+The import leg's Zod validation lives in the HANDLER, not the web edge, so both
+transports answer v4's bytes from one place (the `ChatCreate` trio's
+convention). That also makes the `z.url()` and tags-schema refusals drivable by
+this core-level family instead of reachable only over HTTP.
+
+The family grows to 27 core-driven cases plus three named EDGE_ONLY arms
+(`No file provided`, `Invalid tags JSON`, `Invalid content type` — multipart and
+content-type outcomes with no `Request` to decode), which still participate in
+the coverage assertion. A byte-changing codec runs against v4's real sharp, with
+`sha256`/`size` blanked only for rows a case minted AND transcoded, so the SVG
+passthrough stays a genuine byte-level equality; a within-tree check that every
+`files.sha256` names the bytes actually stored is what keeps the blanking from
+being a hole.
+
+Three mutation proofs, one of which took three attempts and was worth it:
+dropping the repository UUID refusal and widening the import content-type gate
+both redden. The filename-extension mutation first failed to APPLY (a wrong
+anchor — its green was the unmutated run), then applied and stayed GREEN,
+which exposed `import_no_dot_filename` as vacuous: the transcode renames to
+`.webp` either way, so appending the mime subtype or not lands identically. The
+new `import_no_dot_svg` arm fixes that — SVG passes through untouched, so v4's
+own `split('/')[1]` quirk is visible and the stored name really is
+`portrait.svg+xml`.
+
 #### 2026-09-04 — feat(images): the images collection LIST + the orphan-aware DELETE (P4.73 unit 1)
 
 _Versions: core 0.0.769, harness 0.0.663, web 0.0.106._

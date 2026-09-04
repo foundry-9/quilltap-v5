@@ -134,6 +134,12 @@ pub struct EngineAssembly {
     /// spine-less assembly → the loud not-assembled refusal.
     pub lora_metadata: Option<crate::image_gen::huggingface_lookup::ErasedLoraMetadata>,
     // === end P4.6ai ===
+    // === P4.73: the images-collection import fetch ===
+    /// The outbound fetch `POST /api/v1/images` (JSON leg) uses to pull an
+    /// image from a URL — v4's bare `fetch(url)` in `importImageFromUrl`.
+    /// `None` on a spine-less assembly → the loud not-assembled refusal.
+    pub image_import_fetch: Option<super::images::ErasedImageImportFetch>,
+    // === end P4.73 ===
     // === P4.6bd: the custom-tool consult seam ===
     /// The custom-tool consult runner (P4.6bd, wired LIVE in the host — the
     /// spine's wire-config runner with the 60 s timeout decorator). Behind the
@@ -284,6 +290,7 @@ impl EngineAssembly {
             shutdown,
             chat_send: None,
             lora_metadata: None,
+            image_import_fetch: None,
             brahma_console_send: None,
             chat_create: None,
             swipe_generate: None,
@@ -492,6 +499,7 @@ struct ReadyEngine {
     image_generation: Option<crate::tools::generate_image::ErasedImageGeneration>,
     image_discovery: Option<crate::model::image::ErasedImageDiscovery>,
     lora_metadata: Option<crate::image_gen::huggingface_lookup::ErasedLoraMetadata>,
+    image_import_fetch: Option<super::images::ErasedImageImportFetch>,
     /// The custom-tool consult runner (P4.6bd; `None` for spine-less assemblies —
     /// the composer/bench arms answer the loud not-assembled error).
     consult: Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
@@ -4707,6 +4715,49 @@ impl CoreEngine {
                 Ok(db) => super::images::images_list(&db, SINGLE_USER_ID, tag_id.as_deref()),
                 Err(r) => r,
             },
+            Request::ImageUpload {
+                filename,
+                content_type,
+                data,
+                tags,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    use base64::Engine;
+                    match base64::engine::general_purpose::STANDARD.decode(data.as_bytes()) {
+                        Ok(bytes) => {
+                            super::images::image_upload(
+                                &db,
+                                self.images_ingest_deps(),
+                                SINGLE_USER_ID,
+                                &filename,
+                                &content_type,
+                                bytes,
+                                tags,
+                            )
+                            .await
+                        }
+                        Err(_) => super::types::Response::error(
+                            super::types::ErrorKind::BadRequest,
+                            "Invalid base64 file data",
+                        ),
+                    }
+                }
+                Err(r) => r,
+            },
+            Request::ImageImportFromUrl { url, tags } => match self.ready_image_import_fetch() {
+                Ok((db, fetch)) => {
+                    super::images::image_import_from_url(
+                        &db,
+                        self.images_ingest_deps(),
+                        &fetch,
+                        SINGLE_USER_ID,
+                        url.as_ref(),
+                        tags.as_ref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             Request::ImageDelete { id } => match self.ready_db() {
                 Ok(db) => {
                     // The disk backend (`None` on a diskless host) — v4's
@@ -4906,6 +4957,43 @@ impl CoreEngine {
                     "The Almanack is not assembled (no host facts wired)",
                 )
             }),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+
+    /// The ingest seams the `/api/v1/images` write legs need: the HOST pixel
+    /// codec (so v5 transcodes on ingest exactly as v4's sharp does — the
+    /// P4.73 convergence) and the disk backend. Each accessor takes the state
+    /// lock in its OWN statement, so this is safe to call from inside a
+    /// `ready_db()` arm: that guard is already dropped (the `.qtap` importer's
+    /// precedent at `Request::SystemImportExecute`).
+    ///
+    /// A locked or codec-less engine falls back to `NotConfiguredPixelCodec`,
+    /// whose failed encode makes the policy layer pass the ORIGINAL bytes
+    /// through — v4's own sharp-unavailable branch.
+    fn images_ingest_deps(&self) -> super::images::IngestDeps {
+        let codec = self.qtap_pixel_codec().unwrap_or_else(|| {
+            std::sync::Arc::new(crate::services::file_storage::NotConfiguredPixelCodec)
+        });
+        let backend = self.qtap_file_storage().unwrap_or_else(|| {
+            std::sync::Arc::new(crate::services::file_storage::NotConfiguredStorageBackend)
+        });
+        super::images::IngestDeps { codec, backend }
+    }
+
+    /// The image-import fetch transport, or the loud not-assembled refusal (the
+    /// `ready_lora_metadata` precedent).
+    fn ready_image_import_fetch(
+        &self,
+    ) -> Result<(Db, super::images::ErasedImageImportFetch), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.image_import_fetch {
+                Some(f) => Ok((r.db.clone(), f.clone())),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "image import fetch not assembled (host transport seam deferral)",
+                )),
+            },
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
@@ -5903,6 +5991,7 @@ fn open_ready(
         has_user_passphrase,
         shutdown: assembly.shutdown,
         lora_metadata: assembly.lora_metadata,
+        image_import_fetch: assembly.image_import_fetch,
         chat_send: assembly.chat_send,
         chat_create: assembly.chat_create,
         swipe_generate: assembly.swipe_generate,

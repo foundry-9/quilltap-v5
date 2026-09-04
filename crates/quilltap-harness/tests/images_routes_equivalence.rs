@@ -36,10 +36,125 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+
+/// The seeded `files` ids. A row OUTSIDE this set was minted by the case, and
+/// its `sha256`/`size` are therefore codec-dependent (v4 encodes WebP through
+/// sharp, v5 through the harness codec below) — the D19 rule: compare the
+/// POLICY, never the WebP bytes.
+const SEEDED_FILE_IDS: &[&str] = &[
+    "f0000000-0000-4000-8000-000000000001",
+    "f0000000-0000-4000-8000-000000000002",
+    "f0000000-0000-4000-8000-000000000003",
+    "f0000000-0000-4000-8000-000000000004",
+    "f0000000-0000-4000-8000-000000000005",
+    "f0000000-0000-4000-8000-000000000006",
+    "f0000000-0000-4000-8000-000000000007",
+    "f0000000-0000-4000-8000-000000000008",
+    "f0000000-0000-4000-8000-000000000009",
+    "f0000000-0000-4000-8000-00000000000a",
+    "f0000000-0000-4000-8000-0000000000b1",
+];
+
+/// The Rust side's pixel codec: byte-CHANGING (so `convert_to_webp` reports
+/// `was_converted` and the WebP policy is genuinely exercised) and measuring
+/// 1x1, which is what REAL sharp measured for every image in this corpus —
+/// both the 1x1 PNG and the 1x1 SVG, whose `width`/`height` v4 stores.
+///
+/// A passthrough codec would leave the PNG as `image/png` and the whole
+/// transcode policy would go unmeasured; a measuring-free codec would drop the
+/// dimensions v4 records.
+struct FixedDimsPrefixCodec;
+
+impl quilltap_core::services::file_storage::PixelCodec for FixedDimsPrefixCodec {
+    fn encode_webp(
+        &self,
+        bytes: &[u8],
+        _quality: i64,
+        _effort: Option<i64>,
+        _animated: bool,
+    ) -> Result<Vec<u8>, String> {
+        let mut out = b"QTAP-P473-WEBP:".to_vec();
+        out.extend_from_slice(bytes);
+        Ok(out)
+    }
+
+    fn measure(&self, _bytes: &[u8]) -> (Option<i64>, Option<i64>) {
+        (Some(1), Some(1))
+    }
+}
+
+/// The same 1x1 PNG the oracle feeds v4 — real bytes, so sharp actually
+/// transcodes on that side.
+fn png_1x1() -> Vec<u8> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        )
+        .expect("the corpus PNG")
+}
+
+/// The SVG the oracle feeds v4 — a passthrough on both sides, so its stored
+/// bytes (and sha) ARE comparable.
+const SVG_BYTES: &[u8] = br#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>"#;
+
+/// The ingest seams, matching what the production engine hands these arms
+/// (`Engine::images_ingest_deps`) except that the codec is the harness's
+/// byte-changing one.
+fn ingest_deps() -> quilltap_core::api::images::IngestDeps {
+    quilltap_core::api::images::IngestDeps {
+        codec: std::sync::Arc::new(FixedDimsPrefixCodec),
+        backend: std::sync::Arc::new(
+            quilltap_core::services::file_storage::NotConfiguredStorageBackend,
+        ),
+    }
+}
+
+/// A canned `fetch`, the row's own wire — the P4.D138 shape.
+struct CannedFetch {
+    status: u16,
+    status_text: String,
+    content_type: String,
+    bytes: Vec<u8>,
+}
+
+impl CannedFetch {
+    fn ok(content_type: &str, bytes: Vec<u8>) -> Self {
+        Self {
+            status: 200,
+            status_text: "OK".to_string(),
+            content_type: content_type.to_string(),
+            bytes,
+        }
+    }
+}
+
+/// The seam's future type, named so the impl below reads (clippy's
+/// `type_complexity`).
+type FetchFuture<'a> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<quilltap_core::api::images::ImageFetchResponse, String>,
+            > + Send
+            + 'a,
+    >,
+>;
+
+impl quilltap_core::api::images::ImageImportFetch for CannedFetch {
+    fn get(&self, _url: &str) -> FetchFuture<'_> {
+        let resp = quilltap_core::api::images::ImageFetchResponse {
+            status: self.status,
+            status_text: self.status_text.clone(),
+            content_type: self.content_type.clone(),
+            bytes: self.bytes.clone(),
+        };
+        Box::pin(async move { Ok(resp) })
+    }
+}
 
 /// v5's `SINGLE_USER_ID` — the fixture's owner.
 const USER_A: &str = "11111111-1111-4111-8111-111111111111";
@@ -170,7 +285,141 @@ fn dump_tables(db: &Db) -> Value {
             )
         })
         .expect("dump characters");
-    serde_json::json!({ "files": files, "characters": characters })
+    let links = db
+        .read_mount_index(|c| {
+            dump_query(
+                c,
+                "SELECT l.relativePath, l.fileName, l.originalMimeType, f.sha256, \
+                 f.fileSizeBytes, f.fileType \
+                 FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId \
+                 WHERE l.mountPointId IN ('80000000-0000-4000-8000-000000000001', \
+                 '80000000-0000-4000-8000-000000000002') ORDER BY l.relativePath",
+            )
+        })
+        .expect("dump links");
+    serde_json::json!({ "files": files, "characters": characters, "links": links })
+}
+
+/// Normalize what a CASE minted. Two separate reasons, kept distinct:
+///
+/// * the row id and its blob id are fresh UUIDs on both sides — nondeterminism,
+///   not divergence;
+/// * a minted row that was TRANSCODED carries WebP bytes the two
+///   implementations encode differently (v4 through sharp, v5 through
+///   [`FixedDimsPrefixCodec`]), so its `sha256` and byte length are not
+///   comparable — the POLICY around them is. Applied to BOTH sides.
+///
+/// Deliberately narrow: a SEEDED row keeps its exact sha (both sides read the
+/// same fixture bytes), and a minted row that was NOT transcoded — the SVG
+/// passthrough — keeps its sha too, which is what makes `upload_svg` a real
+/// byte-level equality rather than a blanked one.
+fn blank_codec_dependent(v: &mut Value) {
+    if let Some(files) = v.get_mut("files").and_then(Value::as_array_mut) {
+        for row in files {
+            let seeded = row
+                .get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| SEEDED_FILE_IDS.contains(&id));
+            let webp = row.get("mimeType").and_then(Value::as_str) == Some("image/webp");
+            if !seeded {
+                // The row id and the blob id inside its storage key are minted
+                // per run on both sides.
+                blank(row, "id");
+                blank(row, "storageKey");
+            }
+            if !seeded && webp {
+                blank(row, "sha256");
+                blank(row, "size");
+            }
+        }
+    }
+    // Both dumps are `ORDER BY id`, and the id a case minted is a fresh UUID —
+    // so the SORT POSITION of the new row is a coin flip once the id itself is
+    // blanked (its neighbours are pinned `f0000000-…` ids, and a minted UUID
+    // lands either side of them). Re-sort on a remap-invariant key: seeded rows
+    // keep their pinned id order, and the minted row goes last.
+    //
+    // That is a TOTAL order only because at most ONE row per case is minted,
+    // which the assertion below holds (`a-canonicalizer-sort-key-must-be-a-
+    // total-order`).
+    if let Some(files) = v.get_mut("files").and_then(Value::as_array_mut) {
+        let minted = files
+            .iter()
+            .filter(|r| r.get("id").and_then(Value::as_str) == Some("<id>"))
+            .count();
+        assert!(
+            minted <= 1,
+            "the sort key assumes at most one minted row per case; found {minted}"
+        );
+        files.sort_by_key(|r| {
+            r.get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        });
+    }
+    if let Some(links) = v.get_mut("links").and_then(Value::as_array_mut) {
+        for row in links {
+            let path = row
+                .get("relativePath")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            // `images/in-use.webp` is the fixture's own seeded blob.
+            if path != "images/in-use.webp" && path.ends_with(".webp") {
+                blank(row, "sha256");
+                blank(row, "fileSizeBytes");
+            }
+        }
+    }
+}
+
+fn blank(row: &mut Value, key: &str) {
+    if let Some(o) = row.as_object_mut() {
+        if o.contains_key(key) {
+            o.insert(key.to_string(), Value::String(format!("<{key}>")));
+        }
+    }
+}
+
+/// The comparand the blanking above gives up, restored WITHIN each tree: the
+/// `files` row's `sha256` must name the bytes actually stored for it. v4 and
+/// v5 disagree on WHAT those bytes are; both must agree that the row describes
+/// them (`within-tree-equality-comparand`).
+fn within_tree_sha_agrees(tables: &Value) -> Result<(), String> {
+    let files = tables["files"].as_array().ok_or("no files")?;
+    let links = tables["links"].as_array().ok_or("no links")?;
+    for f in files {
+        let Some(key) = f.get("storageKey").and_then(Value::as_str) else {
+            continue;
+        };
+        if !key.starts_with("mount-blob:") {
+            continue;
+        }
+        let name = f
+            .get("originalFilename")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        // The link row is found by the stored basename (the bridge renames a
+        // transcoded upload to .webp, and `originalFilename` follows).
+        let Some(link) = links
+            .iter()
+            .find(|l| l.get("fileName").and_then(Value::as_str) == Some(name))
+        else {
+            continue;
+        };
+        let fs = f.get("sha256").and_then(Value::as_str).unwrap_or_default();
+        let ls = link
+            .get("sha256")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if fs != ls {
+            return Err(format!(
+                "the files row for {name} carries sha {fs} but the stored blob is {ls}"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn dump_query(conn: &rusqlite::Connection, sql: &str) -> Result<Value, quilltap_core::db::DbError> {
@@ -204,10 +453,10 @@ struct Got {
     tables: Option<Value>,
 }
 
-fn from_response(resp: Response, tables: Option<Value>) -> Got {
+fn from_response(resp: Response, success_status: u16, tables: Option<Value>) -> Got {
     match resp {
         Response::Images(v) => Got {
-            status: 200,
+            status: success_status,
             body: v,
             tables,
         },
@@ -266,8 +515,182 @@ fn images_routes_match_oracle() {
         let db = fresh_db(&spec, name);
         let got = from_response(
             quilltap_core::api::images::images_list(&db, USER_A, *tag),
+            200,
             None,
         );
+        compare(name, &got, &oracle, &mut failed);
+    }
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    // ── POST: upload (multipart) ────────────────────────────────────────────
+    // The web edge parses the multipart body and the `tags` JSON string; the
+    // arms it owns alone (`No file provided`, `Invalid tags JSON`, the
+    // truthy-non-array 500, `Invalid content type`) are edge-level and are
+    // driven by `images_post_edge_arms` below rather than here.
+    let png = png_1x1();
+    let svg = SVG_BYTES.to_vec();
+    /// One multipart upload arm: case name, filename, content type, bytes, and
+    /// the RAW parsed `tags` array the edge hands the verb.
+    struct UploadCase {
+        name: &'static str,
+        filename: &'static str,
+        content_type: &'static str,
+        bytes: Vec<u8>,
+        tags: Option<Vec<Value>>,
+    }
+    let up = |name, filename, content_type, bytes, tags| UploadCase {
+        name,
+        filename,
+        content_type,
+        bytes,
+        tags,
+    };
+    let upload_cases: Vec<UploadCase> = vec![
+        up("upload_png", "shot.png", "image/png", png.clone(), None),
+        up("upload_svg", "mark.svg", "image/svg+xml", svg, None),
+        up(
+            "upload_disallowed_type",
+            "note.txt",
+            "text/plain",
+            b"x".to_vec(),
+            None,
+        ),
+        up(
+            "upload_oversize",
+            "big.png",
+            "image/png",
+            vec![0u8; 10 * 1024 * 1024 + 1],
+            None,
+        ),
+        up(
+            "upload_tags_raw_tagid",
+            "shot.png",
+            "image/png",
+            png.clone(),
+            Some(vec![json!({"tagType": "THEME", "tagId": 5})]),
+        ),
+        up(
+            "upload_tags_string_tagid",
+            "shot.png",
+            "image/png",
+            png.clone(),
+            Some(vec![json!({"tagType": "CHARACTER", "tagId": CHAR_TAG})]),
+        ),
+        // The `?action=` fall-through: the EDGE decides, and it reaches the
+        // same verb, so the core-side call is identical to `upload_png`'s.
+        up(
+            "upload_action_unknown",
+            "shot.png",
+            "image/png",
+            png.clone(),
+            None,
+        ),
+    ];
+    for c in upload_cases {
+        let name = c.name;
+        driven.push(name.to_string());
+        let db = fresh_db(&spec, name);
+        let resp = rt.block_on(quilltap_core::api::images::image_upload(
+            &db,
+            ingest_deps(),
+            USER_A,
+            c.filename,
+            c.content_type,
+            c.bytes,
+            c.tags,
+        ));
+        let tables = dump_tables(&db);
+        if let Err(e) = within_tree_sha_agrees(&tables) {
+            failed.push(format!("{name}: {e}"));
+        }
+        let got = from_response(resp, 201, Some(tables));
+        compare(name, &got, &oracle, &mut failed);
+    }
+
+    // ── POST: import from URL (JSON) ────────────────────────────────────────
+    // The URL and tags cross as RAW values: the handler Zod-validates them, so
+    // the refusal arms are DRIVEN here rather than owned by the web edge.
+    let import_cases: Vec<(&str, Value, CannedFetch, Option<Value>)> = vec![
+        (
+            "import_ok",
+            json!("https://example.invalid/pics/photo.png"),
+            CannedFetch::ok("image/png", png_1x1()),
+            None,
+        ),
+        (
+            "import_no_dot_filename",
+            json!("https://example.invalid/pics/portrait"),
+            CannedFetch::ok("image/png", png_1x1()),
+            None,
+        ),
+        // See the oracle case's comment: the PNG arm above cannot discriminate
+        // the extension rule (the transcode renames to .webp either way). An
+        // SVG passes through, so `portrait.svg+xml` — v4's own
+        // `split('/')[1]` quirk — is what actually gets stored.
+        (
+            "import_no_dot_svg",
+            json!("https://example.invalid/pics/portrait"),
+            CannedFetch::ok("image/svg+xml", SVG_BYTES.to_vec()),
+            None,
+        ),
+        (
+            "import_not_ok",
+            json!("https://example.invalid/missing.png"),
+            CannedFetch {
+                status: 404,
+                status_text: "Not Found".into(),
+                content_type: "image/png".into(),
+                bytes: vec![],
+            },
+            None,
+        ),
+        (
+            "import_wrong_content_type",
+            json!("https://example.invalid/page.html"),
+            CannedFetch::ok("text/html", b"<html>".to_vec()),
+            None,
+        ),
+        (
+            "import_oversize",
+            json!("https://example.invalid/huge.png"),
+            CannedFetch::ok("image/png", vec![0u8; 10 * 1024 * 1024 + 1]),
+            None,
+        ),
+        // The Zod refusals — the arms the handler owns.
+        (
+            "import_tags_raw_tagid",
+            json!("https://example.invalid/pics/photo.png"),
+            CannedFetch::ok("image/png", png_1x1()),
+            Some(json!([{"tagType": "THEME", "tagId": 5}])),
+        ),
+        (
+            "import_bad_url",
+            json!("not-a-url"),
+            CannedFetch::ok("image/png", png_1x1()),
+            None,
+        ),
+    ];
+    for (name, url, canned, tags) in import_cases {
+        driven.push(name.to_string());
+        let db = fresh_db(&spec, name);
+        let fetch = quilltap_core::api::images::ErasedImageImportFetch::new(canned);
+        let resp = rt.block_on(quilltap_core::api::images::image_import_from_url(
+            &db,
+            ingest_deps(),
+            &fetch,
+            USER_A,
+            Some(&url),
+            tags.as_ref(),
+        ));
+        let tables = dump_tables(&db);
+        if let Err(e) = within_tree_sha_agrees(&tables) {
+            failed.push(format!("{name}: {e}"));
+        }
+        let got = from_response(resp, 201, Some(tables));
         compare(name, &got, &oracle, &mut failed);
     }
 
@@ -278,10 +701,6 @@ fn images_routes_match_oracle() {
     // `fileStorageManager` makes. F_INUSE's bytes are really there and
     // F_ORPHAN's key dangles, which is the whole discriminator between the
     // refusal and the cleanup.
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
     let backend: std::sync::Arc<dyn quilltap_core::services::file_storage::StorageBackend> =
         std::sync::Arc::new(quilltap_core::services::file_storage::NotConfiguredStorageBackend);
 
@@ -308,7 +727,7 @@ fn images_routes_match_oracle() {
         // The dump is taken AFTER the write in every case, so a refusal proves
         // it wrote NOTHING rather than only that it answered 400.
         let tables = if *dump { Some(dump_tables(&db)) } else { None };
-        let got = from_response(resp, tables);
+        let got = from_response(resp, 200, tables);
         compare(name, &got, &oracle, &mut failed);
     }
 
@@ -321,7 +740,24 @@ fn images_routes_match_oracle() {
 
     // Coverage by SHAPE, both directions — a case added on one side only
     // cannot pass silently (`harness-corpus-shape-constants-rot`).
+    // The arms the WEB EDGE owns and this core-level family cannot reach: they
+    // refuse before any verb exists to call. `No file provided` and
+    // `Invalid tags JSON` are multipart-parse outcomes, and
+    // `Invalid content type` is the route's final fall-through — none of them
+    // has a `Request` to decode.
+    //
+    // ⚠ DEFERRED LOUDLY, not silently covered: proving them needs a served
+    // instance, i.e. a test under `crates/quilltap-web/tests/`, whose directory
+    // this round assigns to the sibling lane. Named here and in the lane record
+    // so the gap is visible rather than implied by a green count.
+    const EDGE_ONLY: &[&str] = &[
+        "upload_no_file",
+        "upload_tags_bad_json",
+        "post_bad_content_type",
+    ];
+
     let mut driven_sorted = driven.clone();
+    driven_sorted.extend(EDGE_ONLY.iter().map(|s| (*s).to_string()));
     driven_sorted.sort();
     let mut oracle_names: Vec<String> = oracle.keys().cloned().collect();
     oracle_names.sort();
@@ -329,6 +765,51 @@ fn images_routes_match_oracle() {
         driven_sorted, oracle_names,
         "the driven case list and the oracle's disagree"
     );
+}
+
+/// v4's middleware answers an uncaught `ZodError` with `{error: 'Validation
+/// error', details: [...issues]}`; that `details` array is the standing
+/// project-wide deferral, so v5 carries the sentence alone and this drops it.
+///
+/// ⚠ Scoped to the ZodError sentence ON PURPOSE. `details` is not a ZodError
+/// marker — v4's `badRequest(message, details)` uses the same key for the
+/// images DELETE's `{message, code: 'IMAGE_IN_USE', associations}` bag, which
+/// is a fixed literal v5 reproduces in full. Stripping by key presence would
+/// have thrown that whole bag away, taking the `associations` counts with it —
+/// the very numbers the `charactersUsingAsDefault` / `chatAvatarOverrides`
+/// split exists to pin. So only the deferred Zod issues are dropped, and
+/// everything else is compared byte for byte.
+fn drop_zod_details(want_body: &Value) -> Value {
+    let Some(o) = want_body.as_object() else {
+        return want_body.clone();
+    };
+    if !o.contains_key("details") {
+        return want_body.clone();
+    }
+    if o.get("error").and_then(Value::as_str) != Some("Validation error") {
+        return want_body.clone();
+    }
+    serde_json::json!({ "error": "Validation error" })
+}
+
+/// The ingest receipt's minted values: the file id (and the `filepath` built
+/// from it), the ROUTE-stamped timestamps, and — for a transcoded upload — the
+/// byte length, which is codec-dependent for the same D19 reason the stored
+/// sha is. Blanked on BOTH sides.
+fn blank_receipt(v: &mut Value) {
+    let Some(data) = v.get_mut("data").and_then(Value::as_object_mut) else {
+        return;
+    };
+    for k in ["id", "filepath", "createdAt", "updatedAt"] {
+        if data.contains_key(k) {
+            data.insert(k.to_string(), Value::String(format!("<{k}>")));
+        }
+    }
+    if data.get("mimeType").and_then(Value::as_str) == Some("image/webp")
+        && data.contains_key("size")
+    {
+        data.insert("size".to_string(), Value::String("<size>".to_string()));
+    }
 }
 
 fn compare(name: &str, got: &Got, oracle: &HashMap<String, Value>, failed: &mut Vec<String>) {
@@ -344,8 +825,12 @@ fn compare(name: &str, got: &Got, oracle: &HashMap<String, Value>, failed: &mut 
         ));
         return;
     }
-    let want_body = canon(&want["body"]);
-    let got_body = canon(&got.body);
+    let mut want_body = canon(&drop_zod_details(&want["body"]));
+    let mut got_body = canon(&got.body);
+    if want_status == 201 {
+        blank_receipt(&mut want_body);
+        blank_receipt(&mut got_body);
+    }
     if got_body != want_body {
         failed.push(format!(
             "{name}: body\n  want {want_body}\n  got  {got_body}"
@@ -361,8 +846,13 @@ fn compare(name: &str, got: &Got, oracle: &HashMap<String, Value>, failed: &mut 
         return;
     }
     if let Some(tables) = &got.tables {
-        let want_tables = canon(&want["tables"]);
-        let got_tables = canon(tables);
+        let mut want_tables = canon(&want["tables"]);
+        let mut got_tables = canon(tables);
+        // D19: the WebP bytes a case minted are codec-dependent, so their sha
+        // and length are blanked on BOTH sides; `within_tree_sha_agrees` is
+        // what keeps that from being a hole.
+        blank_codec_dependent(&mut want_tables);
+        blank_codec_dependent(&mut got_tables);
         if got_tables != want_tables {
             failed.push(format!(
                 "{name}: tables\n  want {want_tables}\n  got  {got_tables}"

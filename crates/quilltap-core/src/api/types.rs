@@ -3258,6 +3258,46 @@ pub enum Request {
         tag_id: Option<String>,
     },
 
+    /// v4 `POST /api/v1/images` with a `multipart/form-data` body
+    /// (`route.ts:449-506` → `uploadImage`) — the paste/drag-drop image upload.
+    /// Bytes cross the boundary base64-encoded, exactly as
+    /// [`Request::ChatFileUpload`] does; the multipart parse stays at the web
+    /// edge.
+    ///
+    /// `tags` carries the RAW parsed elements, not resolved strings: v4 runs no
+    /// schema here, so `tags.map(t => t.tagId)` puts whatever the JSON held
+    /// into `linkedTo` and the `tags` column (`5` stays the number `5`, a
+    /// missing key becomes `undefined` → serialized `null`). A `Vec<String>`
+    /// would silently drop those — the P4.62(a) divergence this verb closes for
+    /// the images leg and [`Request::FileUpload`] closes for the files leg.
+    #[serde(rename_all = "camelCase")]
+    ImageUpload {
+        filename: String,
+        content_type: String,
+        /// base64 of the file bytes.
+        data: String,
+        #[serde(default)]
+        tags: Option<Vec<serde_json::Value>>,
+    },
+
+    /// v4 `POST /api/v1/images` with an `application/json` body
+    /// (`route.ts:410-447` → `importImageFromUrl`) — fetch an image from a URL
+    /// and ingest it. The outbound fetch rides the host transport seam
+    /// ([`crate::api::images::ErasedImageImportFetch`]); an unassembled host
+    /// answers the seam's loud named refusal.
+    #[serde(rename_all = "camelCase")]
+    ImageImportFromUrl {
+        /// RAW, because v4 Zod-parses it (`z.url()`) and a wrong-typed or
+        /// malformed value must answer v4's `Validation error` 400 rather than
+        /// failing the dispatch decode with a different envelope — the
+        /// `ChatCreate` trio's lesson, applied so BOTH transports answer v4's
+        /// bytes from ONE piece of code.
+        #[serde(default)]
+        url: Option<serde_json::Value>,
+        #[serde(default)]
+        tags: Option<serde_json::Value>,
+    },
+
     /// v4 `DELETE /api/v1/images/{id}` (`app/api/v1/images/[id]/route.ts:134-237`)
     /// — the orphan-aware, in-use-refusing image delete. Replaces the P4.9a2
     /// loud refusal (`photos_routes::image_delete_not_available`).

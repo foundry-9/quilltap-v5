@@ -570,7 +570,10 @@ pub fn build_router(state: SharedState) -> Router {
         )
         // === end P4.9a ===
         // === P4.73: the images COLLECTION endpoint (append-only) ===
-        .route("/api/v1/images", get(images_routes::images_list))
+        .route(
+            "/api/v1/images",
+            get(images_routes::images_list).post(images_routes::images_post),
+        )
         // === end P4.73 ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))

@@ -27,8 +27,18 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
 
 use quilltap_core::api::{Request as CoreRequest, Response as CoreResponse};
+use serde_json::Value;
 
 use crate::files_routes::error_json;
+use crate::multipart::FormData;
+
+/// Base64 for the dispatch boundary. `files_routes` has an identical private
+/// helper; §G grants this lane only that file's `tags` block, so the two-liner
+/// is repeated here rather than widening a neighbour's visibility.
+fn base64_of(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
 use crate::state::SharedState;
 use crate::text_replacements_routes::{dispatch_core, error_to_http};
 
@@ -94,4 +104,111 @@ pub async fn image_delete(
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }
+}
+
+/// v4 `POST /api/v1/images` (`route.ts:159-171` + `handleUploadOrImport`).
+///
+/// ⚠ The action read is v4's FIRST dispatch shape, not the envelope shape:
+/// only the literal `'generate'` takes the generate leg, and EVERY other value
+/// — unknown, `?action=` (empty, JS-falsy), or no key at all — falls through to
+/// upload/import. There is no `Unknown action` envelope on this route.
+///
+/// The fall-through then dispatches on the request's own `content-type`:
+/// `application/json` → import-from-URL, `multipart/form-data` → upload,
+/// anything else → `badRequest('Invalid content type')`.
+pub async fn images_post(
+    State(state): State<SharedState>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+    req: axum::extract::Request,
+) -> AxumResponse {
+    // `query::action` folds `?action=` into the no-action leg exactly as v4's
+    // JS truthiness does; on this route BOTH land in the same place.
+    if crate::query::action(&pairs) == Some("generate") {
+        return images_generate_not_available();
+    }
+
+    let content_type = req
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    // v4 `contentType.includes('application/json')` — a substring test, so a
+    // charset parameter still matches.
+    if content_type.contains("application/json") {
+        let body = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
+            Ok(b) => b,
+            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Validation error"),
+        };
+        // The body is decoded THROUGH the Request enum and validated in the
+        // HANDLER (`api::images::parse_import_body`), so the `z.url()` and
+        // tags-schema refusals answer identical bytes on this transport and on
+        // Tauri IPC — one place, not two (the `ChatCreate` trio's lesson).
+        let (url, tags) = match serde_json::from_slice::<Value>(&body) {
+            Ok(Value::Object(map)) => (map.get("url").cloned(), map.get("tags").cloned()),
+            // A body that is not even an object still reaches v4's Zod parse,
+            // which refuses it — the handler answers that, not the edge.
+            _ => (None, None),
+        };
+        let core_req = CoreRequest::ImageImportFromUrl { url, tags };
+        return match dispatch_core(&state, core_req).await {
+            Ok(resp) => unwrap_to_http(resp, StatusCode::CREATED),
+            Err(r) => r,
+        };
+    }
+
+    if content_type.contains("multipart/form-data") {
+        let form = match FormData::from_request(req, &state).await {
+            Ok(f) => f,
+            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid multipart body"),
+        };
+        // v4 `if (!file) return badRequest('No file provided')`.
+        let Some(file) = form.file("file") else {
+            return error_json(StatusCode::BAD_REQUEST, "No file provided");
+        };
+        // v4 reads `tags` as a RAW JSON string with NO schema: unparseable is
+        // `badRequest('Invalid tags JSON')`, and whatever it parses to is
+        // `.map`ped for `tagId` — so `[{"tagId": 5}]` carries the number 5.
+        // A FALSY parse (`null`, `0`, `false`) skips the map entirely, and a
+        // TRUTHY non-array throws `.map is not a function` into the outer
+        // catch, which on this route is the middleware's 500.
+        let tags: Option<Vec<Value>> = match form.text("tags").filter(|s| !s.is_empty()) {
+            Some(raw) => match serde_json::from_str::<Value>(&raw) {
+                Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid tags JSON"),
+                Ok(v) if !quilltap_core::api::system_qtap::js_truthy(Some(&v)) => None,
+                Ok(Value::Array(arr)) => Some(arr),
+                Ok(_) => {
+                    return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+                }
+            },
+            None => None,
+        };
+        let core_req = CoreRequest::ImageUpload {
+            filename: file.filename.clone().unwrap_or_default(),
+            content_type: file.content_type.clone().unwrap_or_default(),
+            data: base64_of(&file.bytes),
+            tags,
+        };
+        return match dispatch_core(&state, core_req).await {
+            Ok(resp) => unwrap_to_http(resp, StatusCode::CREATED),
+            Err(r) => r,
+        };
+    }
+
+    // v4's final `return badRequest('Invalid content type')`.
+    error_json(StatusCode::BAD_REQUEST, "Invalid content type")
+}
+
+/// The `?action=generate` leg, pending its own unit. A NAMED refusal, never a
+/// silent fall-through to upload: v4 runs a whole synchronous generate here,
+/// and answering `Invalid content type` (what the upload leg would say to a
+/// JSON generate body) would be a lie about what the server does.
+fn images_generate_not_available() -> AxumResponse {
+    error_json(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Generating an image through POST /api/v1/images?action=generate is recognized but not \
+         yet available (v4's route-level handleGenerateImage — its own Concierge gate, reroute \
+         rule and Lantern write — is the next P4.73 unit).",
+    )
 }
