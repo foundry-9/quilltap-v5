@@ -51,7 +51,7 @@
  * `qt-equipped-slot-row` and `qt-wardrobe-item-row`, both direct children of a
  * Tailwind `space-y-*` stack, where an inline box silently ignores the
  * `margin-top` the stack puts on it (measured: three 20px rows came to 60px
- * with an inline host against 76px with a block one). The other TEN are
+ * with an inline host against 76px with a block one). The other ELEVEN are
  * harmless, each for a reason that was measured rather than argued:
  *
  *   - `qt-search-bar`, `qt-custom-tools-popup` — reported `display: block`:
@@ -69,6 +69,13 @@
  *     gutter wrapper div.
  *   - `qt-outfit-quick-pick` — the FIRST child of its `space-y-2` stack, which
  *     `> * + *` never targets, so the missing margin cannot apply to it.
+ *   - `qt-brahma-model-picker` — the THIRTEENTH of P4.D142's hosts, missed by
+ *     the P4.75 lane and added at the follow-ups-round-2 unification: its only
+ *     child is a `div.relative` that is the dropdown's positioning context, so
+ *     the absolutely-positioned menu anchors to the div, not the host, and the
+ *     inline host's 0x0 box lays out nothing (the `qt-rng-dropdown` shape).
+ *     Classified by structure, not by a browser measurement — re-measure if the
+ *     picker's root ever stops being the positioning context.
  *
  * The residue is therefore ten, not zero — and it is not the whole story:
  * spelled out ("no host class, no host style/binding, and no bare-element

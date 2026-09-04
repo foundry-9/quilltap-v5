@@ -198,7 +198,7 @@ describe('StreamingMessage', () => {
  * )}
  * ```
  *
- * `flex-shrink-0` is the CSS rule's own `@apply` in v5 (`_chat.css:2377`), so
+ * `flex-shrink-0` is the CSS rule's own `@apply` in v5 (`_chat.css:2517`), so
  * the column carries the two semantic classes exactly as the settled rows do
  * (`message-row.ts:87-92`) — the shape P4.D131's ring already targets.
  */
@@ -248,6 +248,9 @@ describe('StreamingMessage — the responding avatar column (v4 :85-96)', () => 
     const column = fixture.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement;
     // No src, so `qt-avatar` falls back to the initial of the name.
     expect(column.textContent?.trim()).toBe('A');
+    // The initial alone would accept any fallback beginning with A — pin the
+    // WHOLE string through the computed the template binds (unify §3 review).
+    expect((fixture.componentInstance as unknown as { avatarName: () => string }).avatarName()).toBe('AI');
     expect(column.querySelector('img')).toBeNull();
   });
 
@@ -256,6 +259,7 @@ describe('StreamingMessage — the responding avatar column (v4 :85-96)', () => 
     expect(
       (fixture.nativeElement.querySelector('.qt-chat-desktop-avatar') as HTMLElement).textContent?.trim(),
     ).toBe('A');
+    expect((fixture.componentInstance as unknown as { avatarName: () => string }).avatarName()).toBe('AI');
   });
 
   it('wears the danger ring only on a flagged chat (v4 :85 ternary)', () => {

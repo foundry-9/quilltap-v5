@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-04 — fix(spa,harness): the §3 review's P4.74 + P4.75 findings — the thirteenth residue host, the beat's live window, the whole `'AI'` string, the case headers' anchored filters, the inventory's missing sibling
+
+_Versions: SPA 0.5.641._
+
+P4.75: `qt-brahma-model-picker` was the thirteenth of P4.D142's residue hosts
+and the lane's "all twelve" had missed it — adjudicated (harmless by
+structure: its only child is the dropdown's positioning context) and added
+to `check-qt-classes.mjs`'s residue list; the streaming-avatar beat fetched
+the cast over the wire INSIDE the ~2.5 s live window — moved before the send,
+so only DOM reads happen while the column is live; the two `'AI'` fallback
+specs asserted a single initial (any fallback beginning with A passed, and
+the ordered mutation would not have compiled) — they now pin the whole string
+through the component's `avatarName()`; the lane's copy-repair commit had
+shipped SPA source without a bump. P4.74: `carina-tool.test.ts` and
+`mail-tools.test.ts` still carried the unanchored jest filter the lane had
+diagnosed (fixed only in the `.rs` twins — a human copying the header would
+have reproduced the failure); the handler-logging inventory's seed gained
+`token-tracking.service.ts`, whose `Failed to update chat token aggregates`
+catch is the sibling of `create_system_event`'s row three lines below it in
+`cost_events.rs` (203 → 205 rows, the new row NO-SITE); the oracle's
+`profileKey` union no longer advertises a value the Rust twin panics on; the
+`state-cascade.test.ts` header's `WT=` placeholder, the script's duplicated
+docstring and unused import. The four order status headers carry the
+unification notes.
+
+#### 2026-09-04 — fix(web): the §3 review's P4.72 findings — the census's exclusion pinned and its totality claim withdrawn, the unserved `stats` pin, the unlock edge's stale doc
+
+_Versions: web 0.0.114._
+
+The dispatch wrong-type census claimed to cover every typed `Request` field;
+its `is_route_identifier` rule excludes 403 of 643, and a large part of what
+it drops are real v4 body keys under an uncaught `.parse` (`ChatSend`'s four
+id fields, the announcement/mail verbs' ids, and more — named in the new
+`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` doc). The exclusion's size is now
+asserted so it cannot grow unnoticed, the header stops calling the census
+total, and the per-variant allow-list is a named next-round candidate. The
+"source census on both sides" claim is withdrawn: the v4 half is a
+transcription at the pin. Also: `character_item_get`'s `known` action `stats`
+is unserved by v5 and was asserted nowhere — pinned in `UNSERVED_KNOWN_ACTIONS`;
+the unlock edge's doc still said the four sibling actions answer
+`unknown_action` three lines above the change that stopped them, and its
+action list carried a dead `change-passphrase` entry; the chat-GET comment
+that contradicted its own pinned sentence names the two handlers; the
+log-field spelling divergence is noted at both emitters.
+
 #### 2026-09-04 — fix(images): the §3 review's P4.73 findings — the dedup arm validates before it writes, the receipt echoes Zod's tags, malformed bodies are v4's 500, the wiring pin's hole, the guard order
 
 _Versions: core 0.0.776, harness 0.0.671, web 0.0.113, SPA 0.5.640._

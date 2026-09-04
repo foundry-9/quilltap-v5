@@ -20,7 +20,7 @@ script was fooled by exactly that.
 
 Run from the repo root.
 """
-import argparse, re, subprocess, pathlib, json, os
+import argparse, re, subprocess, pathlib, os
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--v4', default=os.path.expanduser('~/source/quilltap-server'),
@@ -30,7 +30,14 @@ args = ap.parse_args()
 PIN = pathlib.Path(args.v4)
 V5  = pathlib.Path('crates/quilltap-core/src')
 
-files = sorted(PIN.glob('lib/background-jobs/handlers/*.ts')) + [PIN/'lib/services/system-events.service.ts'] + [PIN/'lib/chat/file-attachment-fallback.ts']
+# The seed list. `token-tracking.service.ts` joined it at the follow-ups-round-2
+# unification: its `updateChatTokenAggregates` catch logs `Failed to update chat
+# token aggregates` — the sibling of `create_system_event`'s row, three lines
+# below it in v5's `cost_events.rs`, and invisible to the inventory until seeded.
+files = (sorted(PIN.glob('lib/background-jobs/handlers/*.ts'))
+         + [PIN/'lib/services/system-events.service.ts']
+         + [PIN/'lib/services/token-tracking.service.ts']
+         + [PIN/'lib/chat/file-attachment-fallback.ts'])
 CALL = re.compile(r"logger\.(info|warn|error|debug)\(\s*(?:'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|\"((?:[^\"\\]|\\.)*)\")")
 
 # every v5 source line, for sentence lookup
@@ -75,8 +82,7 @@ def find_v5(sentence):
     return None, None
 
 def pinned(sentence):
-    """Asserted by a test: a harness family or an in-crate capture pin."""
-    """Is the sentence asserted by a test (a capture-layer pin or harness)?"""
+    """Is the sentence asserted by a test (a capture-layer pin or a harness family)?"""
     needle = needle_of(sentence)
     if len(needle) < 12: return False
     out = subprocess.run(['ggrep','-rlF','--include=*.rs','-e',needle,

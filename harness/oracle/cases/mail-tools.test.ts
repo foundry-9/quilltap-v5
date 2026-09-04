@@ -20,7 +20,7 @@
  *     $N/node --import tsx $V5/harness/oracle/fixtures/build-mail-carina-tools-fixture.ts
  *   TZ=UTC QT_FIXTURE_TMP_MAIN=/tmp/qt-mail-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-mail-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-mail-tools.ndjson \
- *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- mail-tools
+ *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "mail-tools\.test\.ts$"
  */
 
 import * as fs from 'fs';

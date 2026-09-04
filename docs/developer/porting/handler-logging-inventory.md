@@ -12,8 +12,8 @@ disposition. **Generated** — regenerate with:
 | `PORTED-PINNED` | a v5 tracing site carries the sentence AND a test asserts it | 10 |
 | `PORTED-UNPINNED` | a v5 tracing site carries it; nothing asserts it | 41 |
 | `NO-PORT-RECORDED` | no v5 site, but a v5 comment records the decision | 4 |
-| `NO-SITE` | neither | 148 |
-| **total** | | **203** |
+| `NO-SITE` | neither | 150 |
+| **total** | | **205** |
 
 A match inside a v5 comment never counts as a port: several sites quote a v4
 sentence precisely to record that it was deliberately not ported.
@@ -356,4 +356,11 @@ sentence precisely to record that it was deliberately not ported.
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
 | 74 | error | `Failed to create system event` | `services/cost_events.rs:106` | PORTED-PINNED |
+
+### `lib/services/token-tracking.service.ts` — 2 line(s) (NO-SITE 2)
+
+| v4 line | level | sentence | v5 site | disposition |
+|---|---|---|---|---|
+| 42 | error | `Failed to increment profile token usage` | — | NO-SITE |
+| 77 | error | `Failed to update chat token aggregates` | — | NO-SITE |
 

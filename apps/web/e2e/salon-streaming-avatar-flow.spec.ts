@@ -189,6 +189,13 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
     // suite on this beat's first whole-suite run — it passed in isolation, which
     // is exactly the shape P4.75 had just root-caused in a neighbouring spec.)
     await dispatch({ type: 'chatUpdate', chatId, chat: {}, conciergeState: 'monitored' });
+    // The cast does not change during the turn, so read it BEFORE the live
+    // window: the streamed reply is ~2.5 s long, and a network round-trip inside
+    // that window was a flake-in-waiting (the §3 unification review of the
+    // follow-ups round 2) — only DOM reads happen while the column is live.
+    const chat = (await dispatch({ type: 'chatGet', chatId }))['chat'] as {
+      participants: Array<{ id: string; character?: { name?: string } | null }>;
+    };
     await openChat(page);
     await send(page, 'P4.75 streaming avatar — who is answering?');
 
@@ -214,9 +221,6 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
     // is still live (the settled row draws its avatar from another code path).
     await expect(streamingColumn(page)).toHaveCount(1);
 
-    const chat = (await dispatch({ type: 'chatGet', chatId }))['chat'] as {
-      participants: Array<{ id: string; character?: { name?: string } | null }>;
-    };
     const expected = chat.participants.find((p) => p.id === participantId)?.character?.name;
     expect(expected, 'the named participant should be a character seat').toBeTruthy();
 

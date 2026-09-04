@@ -12,7 +12,7 @@
  *   N=~/.nvm/versions/node/v24.13.1/bin ; STAGE=/tmp/qt-mail-carina-tools-stage
  *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-carina-tool.ndjson \
- *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- carina-tool
+ *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$STAGE/harness/oracle/cases" -- "carina-tool\.test\.ts$"
  */
 
 import * as fs from 'fs';

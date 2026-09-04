@@ -133,7 +133,7 @@ interface CallSpec {
    * case names its own primary, which is what keeps the three new profiles out
    * of every existing case's chain AND tier pool.
    */
-  profileKey?: 'profile' | 'authPrimaryProfile';
+  profileKey?: 'authPrimaryProfile';
 }
 interface Spec {
   testPepperBase64: string;
@@ -172,7 +172,13 @@ function toConnectionProfile(p: ProfileSpec): Record<string, unknown> {
   };
 }
 
-/** P4.74 — resolve a call's primary; absent `profileKey` is `spec.profile`. */
+/**
+ * P4.74 — resolve a call's primary; absent `profileKey` is `spec.profile`. The
+ * union names ONLY the override the Rust twin (`primary_of`) knows: it panics
+ * on any other spelling, so a spec must not be able to write one the oracle
+ * would silently fold back to `spec.profile` (the §3 review of the
+ * follow-ups round 2).
+ */
 function primaryOf(spec: Spec, call: CallSpec): ProfileSpec {
   return call.profileKey === 'authPrimaryProfile' ? spec.authPrimaryProfile : spec.profile;
 }
