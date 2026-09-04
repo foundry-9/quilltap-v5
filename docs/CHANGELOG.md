@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-03 — docs(orders): the follow-ups round 2 ordered — P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75
+
+_Docs-only change._ (No crate versions bumped.)
+
+Four parallel work orders under `docs/developer/porting/work-orders/`, drawn
+from the carried candidates now that the drift ledger is clear (its one row,
+bug 119, belongs to the unported `p4.9k` surface and stays UNPROCESSED) and
+the 2026-09-03 dogfood pass has run. P4.72: the P4.67 remainder (seventeen
+more `?action=` sites, the duplicate-key rows, P4.62(c)) plus an executable
+census of the dispatch-level wrong-type class. P4.73: the never-ported
+`/api/v1/images` collection route (list, upload, import-from-URL,
+`?action=generate`, the `{id}` DELETE) with a new real-DB family, the host
+pixel codec threaded into the chat-upload dispatch arm and every images
+ingest arm (P4.D152's named candidate), P4.62(a), and the `ChatCreate`
+wrong-type trio. P4.74: the failover `auth` chain arm, the two stray
+participant-status parsers, the shared-stage recipes re-staged lane-unique,
+the `[Image Fallback]` and `create_system_event` log pins, and a written
+handler-logging inventory. P4.75: the streaming bubble's avatar (and its
+danger ring), the `workspace-search-documents` intermittent's root cause,
+the SPA-wide `title=` census, the dozen residue hosts, `#move-folder`. The
+binding Shared-contract and Ownership sections are byte-identical across
+the four orders. Also: `phase-4.md` gains the round's ORDERED section and
+its stale candidate 1 (the dogfood pass) is marked DISCHARGED; P4.67's
+status header points at P4.72. Regen rule for every lane: PIN REQUIRED at
+`0b0617fee`.
+
 #### 2026-09-03 — docs(drift): the post-unification drift check — v4 unmoved, the ledger re-verified
 
 _Docs-only change._ (No crate versions bumped.)

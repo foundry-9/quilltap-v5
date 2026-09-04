@@ -6256,6 +6256,76 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The follow-ups round 2 (P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75) — ORDERED 2026-09-03
+
+**Four parallel lanes, no drift.** The ledger's §2 probe passed at ordering
+(v4 `main` at `15573c3a1`, tree clean, both logs empty); its one §3 row
+(`15573c3a1`, bug 119) belongs to the unported character optimizer (`p4.9k`)
+and is NOT ordered here — it stays UNPROCESSED by the ledger's own
+instruction. **Regen rule: PIN REQUIRED at `0b0617fee`** for every lane. The
+round is drawn from candidates 2–5 of the list below (candidate 1, the owed
+dogfood pass, ran 2026-09-03 and is marked DISCHARGED below): the second
+non-drift round since P4.59, taking the follow-ups debt three rounds have
+carried.
+
+- **P4.72** — `work-orders/p4.72-query-param-remainder-and-dispatch-type-census.md`:
+  the P4.67 remainder whole (the other seventeen `?action=` sites into
+  `query_param_semantics_equivalence`, the per-site duplicate-key rows,
+  P4.62(c)) + the dispatch-level wrong-TYPE **census** (every `Request`
+  variant whose v4 twin is a Zod `.parse`, the ordered per-verb shape —
+  the fix crosses three lanes' files, so the `ChatCreate` trio's fix is
+  P4.73's). Owns `quilltap-web/src/**` (less `lib.rs`, the new
+  `images_routes.rs`, two named regions) + `api/chat_media.rs`.
+- **P4.73** — `work-orders/p4.73-images-collection-route-and-ingest-codec.md`:
+  the never-ported `/api/v1/images` COLLECTION route (list / upload /
+  import-from-URL / `?action=generate` / the `{id}` DELETE that today
+  answers a loud refusal) as dispatch verbs + thin edges + a NEW real-DB
+  family, retiring the two tripwires built to fire when it lands
+  (`lora_log_anchor_guard`'s ninth anchor, `activity_span_sites_guard`'s
+  row 9); **the host codec threaded into the chat-upload dispatch arm and
+  every images arm** (P4.D152's named candidate — a NEW convergence with a
+  composition-level wiring pin); P4.62(a); the `ChatCreate` wrong-type trio.
+  Owns `api/types.rs`, `api/engine.rs`, `api/files.rs`, the new
+  `api/images.rs`, the host seams, `core-contract.ts`.
+- **P4.74** — `work-orders/p4.74-core-smalls-auth-arm-status-copies-recipes-logging.md`:
+  the failover `auth`/`no-api-key-configured` chain arm in
+  `primary_stream_tier3_equivalence` (P4.68's written-out shape), the
+  eleventh + twelfth participant-status copies onto the one home, every
+  recipe staging into the shared `/tmp/qt-oracle-stage` re-staged
+  lane-unique, the `[Image Fallback]` fields + `create_system_event`
+  capture-pinned, and the first WRITTEN handler-logging inventory. Owns
+  three named service files + the named harness families.
+- **P4.75** — `work-orders/p4.75-spa-smalls-streaming-avatar-search-intermittent-title-census.md`:
+  the streaming bubble's avatar column (v4 `StreamingMessage.tsx:85` —
+  ALWAYS-only gate, the responding-character resolver, the danger ring for
+  free) with a mid-turn beat; the `workspace-search-documents` in-chat
+  intermittent's ROOT CAUSE (1-in-3 red in isolation — not suite context);
+  the SPA-wide `title=` census as a committed script + fills; the dozen
+  residue hosts adjudicated; `#move-folder` measured. Owns the SPA +
+  Playwright.
+
+Binding across all four: §A well-formed actions never move; §B one query
+reader; §C one participant-status home; §D one codec accessor
+(`Engine::qtap_pixel_codec()`); §E the `Request`/`Response` enums are
+P4.73's; §F/§G the two named same-file regions (`photos_routes.rs`'s
+`image_delete_not_available`, `files_routes.rs`'s `files_upload_post` tags
+block) — the only sanctioned same-file splits, named in commit messages;
+§H the streaming avatar is client-only. Version-bump ownership is in each
+order (three lanes bump core + harness; two bump web; two bump the SPA —
+recount at unification).
+
+**Deliberately left out of the round:** `p4.9i2` (help/HelpChat — a
+standalone ~2,500-LOC vertical with eight bank notes, wanting its own
+survey-heavy round, recommended NEXT), `p4.9k` (the character AI dialogs +
+bug 119's post-fix optimizer shape — the same class), the present-but-null
+validation lead (`api/**`-wide; would collide with P4.72/P4.73's `api/*.rs`
+regions — next round, after §E's ownership frees up), the fixes the P4.72
+census will name (by row, next round), the `docs/v4/` mirror refresh, and
+the standing 💸 queue (Pascal's group tier, the Brahma deep query,
+dedup/summaries, #101, the LoRA wire-byte look). PB1 stays parked by the
+standing rule; the `qtap-export.schema.json` file port remains a NAMED
+standalone flag.
+
 ## The `0b0617fee` drift catch-up round (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152) — UNIFIED 2026-09-03
 
 **UNIFIED on main (2026-09-03) — ALL FIVE ORDERS CLOSED; the oracle baseline
@@ -6307,7 +6377,14 @@ host 0.0.95, SPA 0.5.631.
 **Next candidates, in rough value order** (updated at this unification,
 2026-09-03):
 
-1. **The owed dogfood pass over this round's surfaces** on the Friday copy:
+1. ~~**The owed dogfood pass over this round's surfaces**~~ **DISCHARGED — the
+   pass RAN 2026-09-03** (15 rows, 13 PASS, 1 PARTIAL, 1 human; zero v5
+   defects; eight 💸 items discharged; B6 discharged the same day —
+   `dogfood-walks/2026-09-03-concierge-creation-sha256-pass.md`, the
+   `status-log.md` record). Still owed from the standing queue: Pascal's
+   group tier, the Brahma deep-query budget, dedup/summaries, #101, the LoRA
+   wire-byte look. _(The list as it stood at unification follows.)_ The owed
+   dogfood pass over this round's surfaces on the Friday copy:
    a chat created Uncensored greeting from the frank desk (the Concierge
    bubble second in the transcript, the sidebar control reading it back);
    the describer verdict against a real gateway that drops images (the
