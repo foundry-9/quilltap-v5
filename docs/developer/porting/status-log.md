@@ -103848,3 +103848,25 @@ oracle: this is a SOURCE census on both sides, which is why it needs no regen
 and cannot go stale silently — the mechanical half fails the moment
 `api/types.rs` moves.
 
+## Lane record — P4.72 (unit 5, Tier 2): v4's two `actionLogger.warn` lines
+
+P4.67's Tier 3, cheap now that the family enumerates every site that fires them.
+`query.rs` has emitted both lines since P4.67; what was missing was the proof
+that it does. Three thread-scoped capture-layer tests
+(`set_default`, not the process-global seam — memory note
+`a-process-global-test-seam-must-be-thread-scoped`): the two sentences with
+their whole field spread, and the SILENCE half (a served action writes
+neither), which is what stops a warn moved to the wrong branch from passing.
+
+**Recorded difference, deliberate:** the field is `available_actions`, not v4's
+`availableActions`. Every ported warn in this tree spells fields in snake_case
+(`chat_id`, `profile_id`, …); `combined.log` is read whole, and one camelCase
+line would buy parity on that line at the cost of consistency with all the
+others. The SENTENCES are byte-exact.
+
+Mutation-proven, each reverted by file backup: dropping `method` from the
+unknown-action warn reddens only `unknown_action_warns_with_v4s_context`;
+giving the no-action warn an `action` field reddens only
+`action_required_warns_with_v4s_context`; adding a warn to the served-action
+path reddens only `a_served_action_writes_neither_line`.
+

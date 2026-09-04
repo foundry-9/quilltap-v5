@@ -148,6 +148,135 @@ pub(crate) fn action_required_response(
         .into_response()
 }
 
+/// **P4.72 (P4.67's Tier 3) — v4's two `actionLogger.warn` lines.**
+///
+/// `withActionDispatch` writes one line beside each of its two refusals
+/// (`lib/api/middleware/actions.ts:103,124`): `Unknown action requested`
+/// with `{action, availableActions, method, path}`, and `No action param and
+/// no default handler` with `{method, path, availableActions}`. Both are
+/// emitted above; nothing but a capture layer can see them, because a
+/// differential compares bodies and a log line is not one (memory note
+/// `differential-blind-to-a-log-only-fix`).
+///
+/// **One recorded difference, deliberate:** the field is spelled
+/// `available_actions`, not v4's `availableActions`. Every ported warn in this
+/// tree spells its fields in snake_case (`chat_id`, `profile_id`, … — see
+/// `image_gen/lora_support.rs`), and `combined.log` is read as a whole; making
+/// this one line camelCase would buy v4 parity on one line at the cost of
+/// consistency across every other. The SENTENCES are byte-exact, which is what
+/// an operator greps for.
+#[cfg(test)]
+mod action_warn_pins {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+            self.0.push_str(&format!(" {}={}", field.name(), value));
+        }
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    /// `set_default` is THREAD-scoped, so parallel tests cannot steal each
+    /// other's subscriber (memory note
+    /// `a-process-global-test-seam-must-be-thread-scoped`).
+    fn captured(f: impl FnOnce()) -> Vec<String> {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            f();
+        }
+        let out = logs.lock().unwrap().clone();
+        out
+    }
+
+    fn line_with<'a>(lines: &'a [String], sentence: &str) -> &'a String {
+        lines
+            .iter()
+            .find(|l| l.contains(sentence))
+            .unwrap_or_else(|| panic!("no line carried {sentence:?}; got {lines:#?}"))
+    }
+
+    const AVAILABLE: &[&str] = &["scan", "convert"];
+
+    #[test]
+    fn unknown_action_warns_with_v4s_context() {
+        let lines = captured(|| {
+            let _ = unknown_action_response("zzz", AVAILABLE, "POST", "/api/v1/mount-points/[id]");
+        });
+        let line = line_with(&lines, "Unknown action requested");
+        assert!(line.starts_with("WARN "), "v4 logs this at warn: {line}");
+        for field in [
+            "action=zzz",
+            r#"available_actions=["scan", "convert"]"#,
+            "method=POST",
+            "path=/api/v1/mount-points/[id]",
+        ] {
+            assert!(line.contains(field), "missing {field} in {line}");
+        }
+    }
+
+    #[test]
+    fn action_required_warns_with_v4s_context() {
+        let lines = captured(|| {
+            let _ = action_required_response(AVAILABLE, "POST", "/api/v1/mount-points/[id]");
+        });
+        let line = line_with(&lines, "No action param and no default handler");
+        assert!(line.starts_with("WARN "), "v4 logs this at warn: {line}");
+        for field in [
+            r#"available_actions=["scan", "convert"]"#,
+            "method=POST",
+            "path=/api/v1/mount-points/[id]",
+        ] {
+            assert!(line.contains(field), "missing {field} in {line}");
+        }
+        // v4's no-action line carries NO `action` field — there is no action to
+        // name. Asserting the absence keeps the two lines distinguishable.
+        assert!(
+            !line.contains(" action="),
+            "the no-action line must not invent an `action` field: {line}"
+        );
+    }
+
+    /// The silence half: a SERVED action writes neither line. Without this a
+    /// warn moved to the wrong branch would still pass both tests above.
+    #[test]
+    fn a_served_action_writes_neither_line() {
+        let lines = captured(|| {
+            assert_eq!(action(&[("action".into(), "scan".into())]), Some("scan"));
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains("Unknown action requested")
+                || l.contains("No action param and no default handler")),
+            "a served action must be silent; got {lines:#?}"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -396,6 +396,30 @@ post-mutation `files` + `characters` dumps so a refusal proves it wrote
 nothing. Seven mutation proofs; two of them (the key-less probe arm and the
 `avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
 blind spots, closed with dedicated fixture rows before the unit landed.
+#### 2026-09-03 — test(query): pin v4's two `actionLogger.warn` lines (P4.72, P4.67's Tier 3)
+
+_Versions: web 0.0.110._
+
+`withActionDispatch` writes a line beside each of its two refusals
+(`lib/api/middleware/actions.ts:103,124`): `Unknown action requested` with
+`{action, availableActions, method, path}`, and `No action param and no default
+handler` with `{method, path, availableActions}`. v5's `query.rs` has emitted
+both since P4.67, but nothing could see them — a differential compares bodies,
+and a log line is not one. Three thread-scoped capture-layer tests pin them: the
+two sentences with their whole field spread, and the silence half (a SERVED
+action writes neither line, without which a warn moved to the wrong branch would
+still pass the other two).
+
+One recorded difference, deliberate: the field is spelled `available_actions`,
+not v4's `availableActions`. Every ported warn in this tree spells its fields in
+snake_case, and `combined.log` is read as a whole; making this one line camelCase
+would buy v4 parity on one line at the cost of consistency with every other. The
+sentences — what an operator greps — are byte-exact.
+
+Mutation-proven: dropping `method` from the unknown-action warn, giving the
+no-action warn an `action` field, and adding a warn to the served-action path
+each redden exactly one of the three.
+
 #### 2026-09-03 — test(dispatch): the wrong-type census over every typed `Request` field (P4.72)
 
 _Versions: web 0.0.109._
