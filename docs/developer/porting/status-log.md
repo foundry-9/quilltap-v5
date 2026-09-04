@@ -104153,10 +104153,25 @@ not the population; the wide form would need an allowlist of that size.
 - `npm test` — **378 test files / 5,945 tests, 0 failed** (376 / 5,911 before),
   `check-qt-classes --self-test` 5/5 and **950 qt-* classes defined, every
   guarded reference resolves**.
-- Playwright, full suite: numbers in the final report. The FIRST whole-suite run
-  was 273 passed / 1 failed / 0 skipped, and the one red was this lane's own new
-  beat on the two suite-context assumptions described in unit 2 — repaired, the
-  beat green again, and the suite re-run.
+- Playwright, full suite, THREE runs recorded honestly (the machine was under
+  heavy load from sibling lanes throughout — a run that normally takes 8 minutes
+  took over an hour):
+  - **run A: 273 passed / 1 failed / 0 skipped.** The one red was this lane's own
+    new beat, on the two suite-context assumptions in unit 2.
+  - run B was killed mid-flight: it was still failing on the SAME assertion,
+    which is how the repair was found never to have reached disk (unit 2's
+    `cd apps/web &&` note).
+  - **run C: 272 passed / 2 failed / 0 skipped.** Both beats of the new
+    streaming-avatar spec PASS here, in suite context. The two reds are
+    `wardrobe-flow:741` and `:946` (the component-transfer pair) — **not this
+    lane**: run A had them green on byte-identical product code, and re-running
+    `wardrobe-flow` alone immediately afterwards is **11/11**. Recorded as a
+    load-sensitive intermittent in that serial, stateful spec (memory notes
+    `wardrobe-e2e-beats-are-serial-and-stateful`,
+    `e2e-serial-beat-timeout-cascades`); its assertion is a post-MOVE state
+    check, and nothing this lane changed is on that path — the two host classes
+    it added are on the row HOST, while the beat's locator reads the row's inner
+    `.qt-card-interactive`.
 - `workspace-search-documents-flow` **30/30** over `--repeat-each=10` on its
   own; the streaming-avatar spec red under the gate mutation and green without
   it.
