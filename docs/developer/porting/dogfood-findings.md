@@ -686,6 +686,30 @@ catch, since every fixture is built fresh.
   the family rather than the instance. `.qt-markdown-field` (20 call sites) is
   the currently-known offender.
 
+  **UPDATED 2026-09-04 (P4.75).** The narrow guard landed at P4.D142 and is
+  live; P4.75 then adjudicated the twelve residue hosts it had to defer, by
+  MEASURING each in a real browser (computed `display`, the host's box against
+  its first child's, the parent's display) rather than reasoning about them.
+  Two were real — `qt-equipped-slot-row` and `qt-wardrobe-item-row`, whose
+  symptom is the family's quietest yet: not geometry but SPACING. Both are
+  direct children of a Tailwind `space-y-*` stack, and `space-y-N` puts
+  `margin-top` on every child after the first, which a non-replaced inline box
+  ignores — so those gaps collapsed to zero while block-hosted siblings kept
+  theirs. Measured: three 20px rows in a `space-y-2` parent come to 60px with an
+  inline host against 76px with a block one. Both are fixed (host class + rule +
+  spec pin, guard proven red-first). The other ten are harmless for reasons now
+  recorded in the guard's header (blockified by a flex/grid parent; a
+  fixed-position overlay out of flow; a host box measured equal to its child's;
+  the first child of its stack, which `> * + *` never targets).
+
+  **The WIDE invariant stays deferred, and now with a number:** spelled out as
+  "no host class, no host style/binding, and no bare-element rule", a census
+  over the tree counts **342** such hosts today. P4.D142's dozen was a curated
+  subset, not the population — so the wide form would need an allowlist of that
+  size, which rots faster than it protects. The family's live defence is the
+  narrow guard plus this note; the next occurrence should be adjudicated the
+  same way (measure the host in the browser, don't argue about it).
+
 - **Finding #106 needs an order (2026-08-29).** The duplicate optimistic user
   bubble is user-visible on every multi-character turn and the whole Playwright
   suite is green through it, because every beat asserts the *post-turn* state

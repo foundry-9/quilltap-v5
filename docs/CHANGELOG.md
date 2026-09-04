@@ -623,6 +623,19 @@ query read reddens exactly its `empty_then_known` body plus `firstWins` and
 `UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
 conversation-summaries sentence reddens exactly that endpoint's four
 byte-compared rows.
+#### 2026-09-04 — docs(p4.75): the lane's status headers and the inline-host standing note
+
+_Docs-only change._ (No crate versions bumped.)
+
+P4.75's own status header records the three order premises its measurements
+refuted; P4.69's records that its one new deferral — the streaming bubble's
+missing avatar column — is now closed and where. `dogfood-findings.md`'s
+standing note on the inline-host family gains the residue disposition: two of
+P4.D142's twelve hosts were real (a `space-y-*` spacing collapse, measured at
+60px against 76px), ten are harmless for reasons now written into the guard's
+header, and the WIDE invariant stays deferred with the population it would have
+to cover measured at 342 rather than guessed at.
+
 #### 2026-09-04 — fix(e2e): root-cause the `workspace-search-documents` in-chat intermittent
 
 _Versions: SPA 0.5.635._
