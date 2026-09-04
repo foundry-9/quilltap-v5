@@ -116,10 +116,15 @@ struct Row {
     note: &'static str,
 }
 
-/// **The census.** One row per (`Request` variant, non-`Value` field). Held
-/// against a mechanical walk of `api/types.rs` by
-/// [`census_covers_every_typed_request_field`], so a new typed field fails this
-/// test until it is classified.
+/// **The census.** One row per (`Request` variant, non-`Value` field) that the
+/// route-identifier rule does not exclude — NOT one per typed field: the rule
+/// drops 403 of 643 today, a large part of them real v4 body keys (see
+/// [`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`]). Held against a mechanical walk of
+/// `api/types.rs` by [`census_covers_every_typed_request_field`], so a new
+/// typed field outside the exclusion fails this test until it is classified.
+/// The v4 half of every row (`v4`, `note`) is a TRANSCRIPTION read at the
+/// `0b0617fee` pin, not a mechanical read of the v4 tree — v4 can move a
+/// `.parse` site without this file noticing; the drift check is the ledger's.
 const CENSUS: &[Row] = &[
     Row {
         variant: "Unlock",
@@ -2391,9 +2396,44 @@ fn is_route_identifier(field: &str) -> bool {
         )
 }
 
+/// **The exclusion is NOT totality, and this pins its size (the §3 review of
+/// the follow-ups round 2).** `is_route_identifier` drops every `id` / `*_id` /
+/// `*_ids` field on the premise that v4 takes them from the URL — but a large
+/// part of what it drops are v4 BODY keys under an uncaught `.parse`:
+/// `ChatSend.{file_ids, target_participant_ids, speaking_as_participant_id,
+/// responding_participant_id}` (`orchestrator.service.ts:149-181`, parsed at
+/// `chats/[id]/messages/route.ts:47-48`), `ChatAnnouncementPost.
+/// target_participant_ids` and `ChatAnnouncementPreview.{character_id,
+/// connection_profile_id, system_prompt_id, target_participant_ids}`
+/// (`chats/[id]/schemas.ts:223-236`), `ChatSendMail.{from_character_id,
+/// to_character_id}` (`:245-247`), `ChatUpdateParticipant.{connection_profile_id,
+/// image_profile_id, selected_system_prompt_id}`, `ChatSetAvatar.image_id`,
+/// `CharacterAvatar.image_id`, `ChatMergeConversation.source_chat_id`,
+/// `SystemExportPreview.selected_ids`, `ChatBulkReattribute.
+/// target_participant_id`, `MessageReattribute.new_participant_id`, and the
+/// tag-add pairs — textbook `V4::BodyParse` rows this census does not carry.
+/// The honest fix is a per-variant allow-list of the fields v4 really reads
+/// from the URL (the first `*_id` of a variant whose v4 twin is `/[id]/`) and
+/// classification of the remainder — a round of its own, recorded in
+/// `phase-4.md`'s candidates. Until then the excluded set's size is asserted
+/// here so it cannot grow unnoticed, and the header no longer calls the
+/// census total.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 403;
+
 #[test]
 fn census_covers_every_typed_request_field() {
-    let mut expected: Vec<(String, String)> = typed_request_fields()
+    let all = typed_request_fields();
+    let excluded = all
+        .iter()
+        .filter(|(_, f, _)| is_route_identifier(f))
+        .count();
+    assert_eq!(
+        excluded, EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE,
+        "the route-identifier exclusion now drops {excluded} typed fields — re-measure \
+         (and remember it is a heuristic that also drops real v4 body keys; see the \
+         constant's doc)"
+    );
+    let mut expected: Vec<(String, String)> = all
         .into_iter()
         .filter(|(_, f, _)| !is_route_identifier(f))
         .map(|(v, f, _)| (v, f))

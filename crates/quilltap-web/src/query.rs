@@ -100,6 +100,8 @@ pub(crate) fn unknown_action_response(
     method: &str,
     path: &str,
 ) -> AxumResponse {
+    // `available_actions`, not v4's `availableActions` — the tree's snake_case
+    // log-field convention, a recorded divergence (see the test module's doc).
     tracing::warn!(
         action,
         available_actions = ?available,
@@ -130,6 +132,7 @@ pub(crate) fn action_required_response(
     method: &str,
     path: &str,
 ) -> AxumResponse {
+    // Same recorded field-spelling divergence as the unknown-action warn.
     tracing::warn!(
         available_actions = ?available,
         method,

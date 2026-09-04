@@ -752,7 +752,9 @@ pub async fn system_jobs_collection_post(
 ///
 /// **Scope, named:** only this one action is aliased. v4's four sibling actions
 /// (`setup` / `unlock` / `store` / `lock`) all have dispatch verbs the SPA uses;
-/// they get no REST alias in this lane and answer `unknown_action` here.
+/// they get no REST alias here and answer the loud "rides POST /api/dispatch"
+/// pointer below (P4.72 — never `Unknown action`, which would be a false claim
+/// about v4, which dispatches all five).
 pub async fn system_unlock_post(
     State(state): State<SharedState>,
     Query(pairs): Query<crate::query::QueryPairs>,
@@ -784,9 +786,11 @@ pub async fn system_unlock_post(
     // `system/tools` edges; the divergence is pinned v5-side in
     // `query_param_semantics_equivalence` (`UNSERVED_KNOWN_ACTIONS`). A
     // genuinely unknown action still gets v4's own `Unknown action: <x>`.
-    const UNLOCK_ACTIONS: &[&str] = &["setup", "unlock", "store", "change-passphrase", "lock"];
+    // The four v4-KNOWN siblings this edge does not serve (`change-passphrase`
+    // itself is the served arm above this test).
+    const UNSERVED_SIBLINGS: &[&str] = &["setup", "unlock", "store", "lock"];
     if action != "change-passphrase" {
-        if UNLOCK_ACTIONS.contains(&action) {
+        if UNSERVED_SIBLINGS.contains(&action) {
             return error_json(
                 StatusCode::BAD_REQUEST,
                 "Only the 'change-passphrase' action is served on this route; \

@@ -515,9 +515,12 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
         "This route serves ?action=import and ?action=reset-builtins only",
     ),
     // `GET /api/v1/chats/{id}` — v4's if-chain falls through to the whole chat
-    // payload; v5 hosts only the four byte/JSON legs the dispatch channel
-    // cannot carry (`outfit`, `outfit-summary`, `export`, `export-markdown`)
-    // plus `get-background` / `cost`.
+    // payload; v5 hosts only the legs the dispatch channel cannot carry, split
+    // across TWO handlers: `wardrobe_routes::chat_action_get` serves `outfit`,
+    // `outfit-summary`, `export`, `export-markdown` and delegates everything
+    // else to `text_replacements_routes::chat_get_background`, which serves
+    // `get-background` / `cost` and is what answers the sentence pinned here
+    // (hence its wording names only those two).
     (
         "chat_item_get__bare",
         400,
@@ -575,6 +578,17 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
 /// unification review of the follow-ups round put these back after the lane
 /// had replaced them with the envelope.
 const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
+    // `character_item_get`'s `known` is `stats`, which v5's edge does not
+    // serve (only `export` — the reads ride /api/dispatch); as a
+    // V5_PINNED endpoint its `known` row was asserted NOWHERE until the §3
+    // review of the follow-ups round 2.
+    (
+        "GET",
+        "/api/v1/characters/a1000000-0000-4000-8000-0000000000a1",
+        "stats",
+        400,
+        "This route serves ?action=export only; JSON reads are on /api/dispatch",
+    ),
     (
         "POST",
         "/api/v1/images",
