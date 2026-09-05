@@ -1,6 +1,13 @@
 //! Port of v4's `lib/llm/message-formatter.ts` — provider-aware multi-character
 //! message formatting plus the finalizer's anti-hijack cleanups.
 //!
+//! P4.D157 (v4 `d4138b96b`, the 4.9 dead-code sweep): v4 deleted
+//! `buildMultiCharacterContextSection` as unreferenced, and this port's twin went
+//! with it along with the `OtherParticipant` / `ParticipantPronouns` shapes only
+//! it took. Its two v5 callers were the Host roster builders in
+//! [`crate::services::host_notifications`], which v4 deleted in the SAME commit
+//! and which nothing in v5 ever called.
+//!
 //! The centrepiece is the anti-hijack trio the finalizer runs on a model's
 //! response: `strip_character_name_prefix` (drop the model's own leading
 //! `[Name]`/`Name:` echo), `truncate_at_foreign_speaker` (cut where the model
@@ -338,88 +345,6 @@ pub fn format_messages_for_provider(
             }
         })
         .collect()
-}
-
-/// One "other participant" for the multi-character context section.
-#[derive(Clone, Debug)]
-pub struct OtherParticipant {
-    pub name: String,
-    pub aliases: Option<Vec<String>>,
-    pub pronouns: Option<ParticipantPronouns>,
-    pub description: Option<String>,
-    /// The `type: 'CHARACTER'` discriminator (only value v4 ever passes).
-    pub status: Option<String>,
-}
-
-/// Subject/object/possessive pronoun triple for the context section.
-#[derive(Clone, Debug)]
-pub struct ParticipantPronouns {
-    pub subject: String,
-    pub object: String,
-    pub possessive: String,
-}
-
-/// Build the multi-character context section for the system prompt
-/// (`buildMultiCharacterContextSection`). Empty roster → empty string.
-pub fn build_multi_character_context_section(
-    other_participants: &[OtherParticipant],
-    responding_character_name: &str,
-) -> String {
-    if other_participants.is_empty() {
-        return String::new();
-    }
-
-    let mut lines: Vec<String> = vec![
-        String::new(),
-        "## Other Participants in This Conversation".to_string(),
-        String::new(),
-    ];
-
-    // Status guide — always present so the LLM understands the participation model.
-    lines.push("**Participant Status Guide:**".to_string());
-    lines.push("- **active**: Present and participating normally in the conversation".to_string());
-    lines.push(
-        "- **silent**: Present but observing silently — may think and act physically, but does not speak aloud"
-            .to_string(),
-    );
-    lines.push("- **absent**: Away from the scene — cannot perceive what is happening".to_string());
-    lines.push(String::new());
-
-    for participant in other_participants {
-        // type is always 'CHARACTER'; label the user when the name includes "User".
-        let type_label = if participant.name.contains("User") {
-            "(the user)"
-        } else {
-            ""
-        };
-        let alias_note = match &participant.aliases {
-            Some(a) if !a.is_empty() => format!(" (also known as: {})", a.join(", ")),
-            _ => String::new(),
-        };
-        let pronoun_note = match &participant.pronouns {
-            Some(p) => format!(" (pronouns: {}/{}/{})", p.subject, p.object, p.possessive),
-            None => String::new(),
-        };
-        let status = participant.status.as_deref().filter(|s| !s.is_empty());
-        let status_note = format!(" [{}]", status.unwrap_or("active"));
-        let description = match &participant.description {
-            Some(d) if !d.is_empty() => format!(" - {d}"),
-            _ => String::new(),
-        };
-        lines.push(format!(
-            "- **{}**{alias_note}{pronoun_note}{status_note} {type_label}{description}",
-            participant.name
-        ));
-    }
-
-    lines.push(String::new());
-    lines.push(format!(
-        "You are {responding_character_name}. Stay in character when responding to the other participants. \
-Messages from other characters and the user will be marked with their names. \
-Your responses will be attributed to you ({responding_character_name})."
-    ));
-
-    lines.join("\n")
 }
 
 /// Normalize LLM response content that may be wrapped in content-block array

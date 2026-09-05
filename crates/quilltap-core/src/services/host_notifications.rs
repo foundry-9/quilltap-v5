@@ -49,7 +49,6 @@ use crate::db::database_store::read_database_document;
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read};
 use crate::jsstr::{js_trim, js_trim_end};
-use crate::message_formatter::{build_multi_character_context_section, OtherParticipant};
 
 // Reuse — do not re-transcribe (W4.6a).
 pub use crate::services::off_scene::{
@@ -290,33 +289,6 @@ pub fn build_user_character_opaque_content(
         "{user_character_name} is the user's voice in this conversation:\n\n{}",
         apply_host_templates(desc, None, Some(user_character_name))
     )
-}
-
-/// v4 `buildMultiCharacterRosterContent`. Empty roster → the "stands alone"
-/// fallback (reuses [`build_multi_character_context_section`]).
-pub fn build_multi_character_roster_content(
-    responding_character_name: &str,
-    others: &[OtherParticipant],
-) -> String {
-    let section = build_multi_character_context_section(others, responding_character_name);
-    if section.is_empty() {
-        return format!(
-            "The Host notes that, for the moment, {responding_character_name} stands alone in the Salon."
-        );
-    }
-    format!("The Host outlines the company present in the Salon:\n\n{section}")
-}
-
-/// v4 `buildMultiCharacterRosterOpaqueContent`.
-pub fn build_multi_character_roster_opaque_content(
-    responding_character_name: &str,
-    others: &[OtherParticipant],
-) -> String {
-    let section = build_multi_character_context_section(others, responding_character_name);
-    if section.is_empty() {
-        return format!("For the moment, {responding_character_name} stands alone in the scene.");
-    }
-    format!("The company present in the scene:\n\n{section}")
 }
 
 const SILENT_MODE_ENTRY_BODY: &str = "You have entered SILENT mode. You are present in the scene but MUST NOT speak out loud — no dialogue that others can hear. You may:\n- Have inner thoughts and internal monologue (use *italics* or describe as thoughts)\n- Take physical actions (gestures, movements, facial expressions)\n- React emotionally or physically to what others say and do\n\nYou MUST NOT:\n- Speak any dialogue out loud\n- Whisper, murmur, or make any vocal sounds others could hear\n- Communicate verbally in any way\n";
@@ -1034,33 +1006,6 @@ pub async fn post_host_user_character_announcement(
             params.user_character_description.as_deref(),
         )),
         "user-character",
-        None,
-    )
-    .await
-}
-
-/// v4 `HostMultiCharacterRosterAnnouncement` (implicit — the roster post).
-#[derive(Clone, Debug)]
-pub struct HostMultiCharacterRosterAnnouncement {
-    pub chat_id: String,
-    pub responding_character_name: String,
-    pub others: Vec<OtherParticipant>,
-}
-
-/// v4 `postHostMultiCharacterRosterAnnouncement`.
-pub async fn post_host_multi_character_roster_announcement(
-    db: &Db,
-    params: HostMultiCharacterRosterAnnouncement,
-) -> Option<PostedHostMessage> {
-    post_host_message_with_targets(
-        db,
-        &params.chat_id,
-        build_multi_character_roster_content(&params.responding_character_name, &params.others),
-        Some(build_multi_character_roster_opaque_content(
-            &params.responding_character_name,
-            &params.others,
-        )),
-        "multi-character-roster",
         None,
     )
     .await

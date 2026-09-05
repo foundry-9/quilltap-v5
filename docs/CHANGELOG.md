@@ -12,6 +12,34 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — chore(dead-code): retire the Host multi-character roster chain v4 deleted (P4.D157 unit 6)
+
+_Versions: core 0.0.782, harness 0.0.677._
+
+v4 `d4138b96b` removed `buildMultiCharacterRosterContent` /
+`buildMultiCharacterRosterOpaqueContent` from
+`lib/services/host-notifications/writer.ts` and the
+`buildMultiCharacterContextSection` they orphaned from
+`lib/llm/message-formatter.ts`. Two committed oracle cases
+(`post-office-host.ts`, `message-formatter.ts`) import all three by name, so
+both fail to LINK at any sha past that commit.
+
+The chain was dead on **both** sides. v4 has never had a
+`postHostMultiCharacterRosterAnnouncement` (measured at both pins — zero hits
+under `lib/` and `app/`); v5 carried its own extrapolation of one at
+`services/host_notifications.rs:1051`, and that had **zero callers anywhere in
+`crates/`**. Its two roster builders were therefore the only callers of
+`build_multi_character_context_section`, and their only caller was the dead
+announcement.
+
+Deleted: the announcement helper and its `HostMultiCharacterRosterAnnouncement`
+params struct, both roster builders, the context-section builder, and the
+`OtherParticipant` / `ParticipantPronouns` shapes only it took (v4 spelled that
+shape inline in the deleted signature, so it went the same way there).
+
+The two oracle cases shrink 58 → 54 and 118 → 109 rows, every surviving row
+byte-identical to the pre-split oracles at `0b0617fee`.
+
 #### 2026-09-05 — chore(dead-code): retire the system-prompt timestamp formatter v4 deleted (P4.D157 unit 5)
 
 _Versions: core 0.0.781, harness 0.0.676._

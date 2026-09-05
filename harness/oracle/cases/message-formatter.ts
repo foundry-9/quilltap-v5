@@ -5,8 +5,15 @@
  * Drives the REAL pure functions from v4's lib/llm/message-formatter.ts:
  *   stripCharacterNamePrefix, truncateAtForeignSpeaker,
  *   normalizeContentBlockFormat, formatParticipantName, formatDisplayName,
- *   getProviderNameSupport, supportsNameField, formatMessagesForProvider,
- *   buildMultiCharacterContextSection.
+ *   getProviderNameSupport, supportsNameField, formatMessagesForProvider.
+ *
+ * P4.D157 (v4 d4138b96b, the 4.9 dead-code sweep) DELETED
+ * buildMultiCharacterContextSection; its `context` rows left this case with the
+ * v5 twin. The twin's only callers were the two Host roster builders in
+ * `services/host_notifications.rs`, which v4 deleted in the same commit and
+ * which nothing in v5 called either (see post-office-host.ts). Do not re-add
+ * the name: a named import of a deleted export makes this whole case fail to
+ * LINK, emitting a ZERO-byte NDJSON.
  *
  * As of W4.7a the built-in provider MANIFESTS carry `messageFormat`, and v4's
  * `getProviderNameSupport` consults the registry before the legacy fallback. So
@@ -34,7 +41,6 @@ import {
   getProviderNameSupport,
   supportsNameField,
   formatMessagesForProvider,
-  buildMultiCharacterContextSection,
   type MultiCharacterMessage,
 } from '@/lib/llm/message-formatter';
 import { initializeProviderRegistry } from '@/lib/plugins/provider-registry';
@@ -64,8 +70,7 @@ type Row =
   | { kind: 'display'; id: string; name: string; out: string }
   | { kind: 'nameSupport'; id: string; provider: string; out: { supportsNameField: boolean; supportedRoles: string[]; maxNameLength: number | null } }
   | { kind: 'supportsRole'; id: string; provider: string; role: 'user' | 'assistant'; out: boolean }
-  | { kind: 'format'; id: string; provider: string; respondingCharacterName: string; messages: MultiCharacterMessage[]; out: Array<{ role: string; content: string; name: string | null; thoughtSignature: string | null }> }
-  | { kind: 'context'; id: string; respondingCharacterName: string; participants: Parameters<typeof buildMultiCharacterContextSection>[0]; out: string };
+  | { kind: 'format'; id: string; provider: string; respondingCharacterName: string; messages: MultiCharacterMessage[]; out: Array<{ role: string; content: string; name: string | null; thoughtSignature: string | null }> };
 
 const rows: Row[] = [];
 
@@ -233,25 +238,6 @@ for (const [id, provider, resp, messages] of fmtCases) {
     thoughtSignature: m.thoughtSignature ?? null,
   }));
   rows.push({ kind: 'format', id, provider, respondingCharacterName: resp, messages, out });
-}
-
-// ---- buildMultiCharacterContextSection -----------------------------------
-const ctxCases: Array<[string, string, Parameters<typeof buildMultiCharacterContextSection>[0]]> = [
-  ['empty', 'Alice', []],
-  ['one-basic', 'Alice', [{ name: 'Bob', type: 'CHARACTER' }]],
-  ['user-label', 'Alice', [{ name: 'User Bob', type: 'CHARACTER' }]],
-  ['aliases', 'Alice', [{ name: 'Bob', aliases: ['Bobby', 'Rob'], type: 'CHARACTER' }]],
-  ['pronouns', 'Alice', [{ name: 'Bob', pronouns: { subject: 'he', object: 'him', possessive: 'his' }, type: 'CHARACTER' }]],
-  ['status', 'Alice', [{ name: 'Bob', status: 'silent', type: 'CHARACTER' }]],
-  ['description', 'Alice', [{ name: 'Bob', description: 'a knight', type: 'CHARACTER' }]],
-  ['all-fields', 'Alice', [{ name: 'Bob', aliases: ['Rob'], pronouns: { subject: 'they', object: 'them', possessive: 'their' }, status: 'absent', description: 'a wizard', type: 'CHARACTER' }]],
-  ['multiple', 'Alice', [
-    { name: 'Bob', type: 'CHARACTER' },
-    { name: 'User Carol', description: 'the player', type: 'CHARACTER' },
-  ]],
-];
-for (const [id, resp, participants] of ctxCases) {
-  rows.push({ kind: 'context', id, respondingCharacterName: resp, participants, out: buildMultiCharacterContextSection(participants, resp) });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

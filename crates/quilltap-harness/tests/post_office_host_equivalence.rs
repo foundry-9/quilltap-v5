@@ -5,14 +5,21 @@
 //! Covers every EXPORTED builder branch: `add` (description / empty branches +
 //! `{{char}}`/`{{user}}` templating — the identity branch is DB-backed, pinned by
 //! a `services::host_notifications` self-test), `remove`, `status-change` (known
-//! phrases + unknown fallback), `scenario`, `user-character` (desc/empty), the
-//! multi-character roster (alone fallback + company section), silent-mode
-//! entry/exit, `join-scenario`, `timestamp`, and `nudge` (6a8a77aa — shares
+//! phrases + unknown fallback), `scenario`, `user-character` (desc/empty),
+//! silent-mode entry/exit, `join-scenario`, `timestamp`, and `nudge` (6a8a77aa — shares
 //! the turn-pass name corpus). The PRIVATE continuation /
 //! merge / no-user-character builders are not exported (not driven here); they
 //! are covered by transcription + self-tests and the parent's central tier-3
 //! differential (persisted `content` column). The POST functions' row shape is
 //! also verified by that parent tier-3.
+//!
+//! P4.D157: v4 `d4138b96b` deleted `buildMultiCharacterRosterContent` /
+//! `buildMultiCharacterRosterOpaqueContent`. The chain was dead on BOTH sides —
+//! v4 has never had a `postHostMultiCharacterRosterAnnouncement`, and v5's own
+//! extrapolation of one had zero callers across `crates/` — so the twins, the
+//! announcement helper and its params struct all went, and the
+//! `roster_content` / `roster_opaque` rows left the case (58 -> 54 rows; every
+//! surviving row byte-identical).
 //!
 //! Generate (Node 24, from the v4 checkout; `$V5` = the quilltap-v5 checkout —
 //! the repo root post-merge, or this worktree in flight):
@@ -25,7 +32,6 @@
 
 use serde_json::Value;
 
-use quilltap_core::message_formatter::{OtherParticipant, ParticipantPronouns};
 use quilltap_core::services::host_notifications as hn;
 
 /// Recompute the Rust value for one `(kind, id)` oracle row.
@@ -58,14 +64,6 @@ fn rust_value(kind: &str, id: &str) -> Value {
         "user_char_opaque" => {
             let (n, d) = user_char_case(id);
             hn::build_user_character_opaque_content(n, d)
-        }
-        "roster_content" => {
-            let (r, others) = roster_case(id);
-            hn::build_multi_character_roster_content(r, &others)
-        }
-        "roster_opaque" => {
-            let (r, others) = roster_case(id);
-            hn::build_multi_character_roster_opaque_content(r, &others)
         }
         "silent_entry_content" => hn::build_silent_mode_entry_content(silent_case(id)),
         "silent_entry_opaque" => hn::build_silent_mode_entry_opaque_content(silent_case(id)),
@@ -142,36 +140,6 @@ fn user_char_case(id: &str) -> (&'static str, Option<&'static str>) {
         "empty-desc" => ("Cid", Some("")),
         "null-desc" => ("Cid", None),
         other => panic!("unknown user-char case {other}"),
-    }
-}
-
-fn roster_case(id: &str) -> (&'static str, Vec<OtherParticipant>) {
-    match id {
-        "alone" => ("Ada", vec![]),
-        "company" => (
-            "Ada",
-            vec![
-                OtherParticipant {
-                    name: "Bea".into(),
-                    aliases: Some(vec!["B".into()]),
-                    pronouns: Some(ParticipantPronouns {
-                        subject: "she".into(),
-                        object: "her".into(),
-                        possessive: "hers".into(),
-                    }),
-                    description: Some("A beekeeper.".into()),
-                    status: Some("silent".into()),
-                },
-                OtherParticipant {
-                    name: "User Cid".into(),
-                    aliases: None,
-                    pronouns: None,
-                    description: None,
-                    status: Some("active".into()),
-                },
-            ],
-        ),
-        other => panic!("unknown roster case {other}"),
     }
 }
 

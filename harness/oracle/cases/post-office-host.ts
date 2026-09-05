@@ -16,6 +16,15 @@
  * column). The POST functions' row shape (systemSender / systemKind / hostEvent
  * / targeting / opaqueContent) is likewise verified by the parent's tier-3.
  *
+ * P4.D157 (v4 d4138b96b, the 4.9 dead-code sweep) DELETED
+ * buildMultiCharacterRosterContent / buildMultiCharacterRosterOpaqueContent; the
+ * `roster_content` / `roster_opaque` rows left this case with the v5 twins. The
+ * whole chain was dead on both sides: v4 has never had a
+ * `postHostMultiCharacterRosterAnnouncement` (measured at both pins), and v5's
+ * own extrapolation of one had ZERO callers across `crates/`. Do not re-add the
+ * names: a named import of a deleted export makes this whole case fail to LINK,
+ * emitting a ZERO-byte NDJSON.
+ *
  * Pure — runs under `npx tsx` (no DB, no jest). Emits NDJSON to stdout.
  */
 
@@ -30,8 +39,6 @@ import {
   buildScenarioOpaqueContent,
   buildUserCharacterContent,
   buildUserCharacterOpaqueContent,
-  buildMultiCharacterRosterContent,
-  buildMultiCharacterRosterOpaqueContent,
   buildSilentModeEntryContent,
   buildSilentModeEntryOpaqueContent,
   buildSilentModeExitContent,
@@ -94,34 +101,6 @@ const userCharCases: Array<{ id: string; name: string; description?: string | nu
   { id: 'null-desc', name: 'Cid', description: null },
 ];
 
-// ---- multi-character roster ----
-interface OtherInfo {
-  name: string;
-  aliases?: string[];
-  pronouns?: { subject: string; object: string; possessive: string };
-  description?: string;
-  type: 'CHARACTER';
-  status?: 'active' | 'silent' | 'absent' | 'removed';
-}
-const rosterCases: Array<{ id: string; responding: string; others: OtherInfo[] }> = [
-  { id: 'alone', responding: 'Ada', others: [] },
-  {
-    id: 'company',
-    responding: 'Ada',
-    others: [
-      {
-        name: 'Bea',
-        aliases: ['B'],
-        pronouns: { subject: 'she', object: 'her', possessive: 'hers' },
-        description: 'A beekeeper.',
-        type: 'CHARACTER',
-        status: 'silent',
-      },
-      { name: 'User Cid', type: 'CHARACTER', status: 'active' },
-    ],
-  },
-];
-
 // ---- silent-mode entry / exit ----
 const silentCases: Array<{ id: string; name: string }> = [{ id: 'ada', name: 'Ada' }];
 
@@ -182,14 +161,6 @@ async function main(): Promise<void> {
   for (const c of userCharCases) {
     emit('user_char_content', c.id, buildUserCharacterContent(c.name, c.description));
     emit('user_char_opaque', c.id, buildUserCharacterOpaqueContent(c.name, c.description));
-  }
-  for (const c of rosterCases) {
-    emit('roster_content', c.id, buildMultiCharacterRosterContent(c.responding, c.others as never));
-    emit(
-      'roster_opaque',
-      c.id,
-      buildMultiCharacterRosterOpaqueContent(c.responding, c.others as never),
-    );
   }
   for (const c of silentCases) {
     emit('silent_entry_content', c.id, buildSilentModeEntryContent(c.name));

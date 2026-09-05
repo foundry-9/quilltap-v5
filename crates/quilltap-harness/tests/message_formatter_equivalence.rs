@@ -2,6 +2,11 @@
 //! anti-hijack cleanups + provider name/prefix formatting. Pure functions —
 //! exact equality on every field.
 //!
+//! P4.D157: v4 `d4138b96b` deleted `buildMultiCharacterContextSection`; the v5
+//! twin's only callers were the Host roster builders v4 deleted in the same
+//! commit and nothing in v5 called, so the twin went too and the `context` rows
+//! left the case (118 -> 109 rows; every surviving row byte-identical).
+//!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/message-formatter.ts \
@@ -11,10 +16,9 @@
 //!     cargo test -p quilltap-harness --test message_formatter_equivalence
 
 use quilltap_core::message_formatter::{
-    build_multi_character_context_section, format_display_name, format_messages_for_provider,
-    format_participant_name, get_provider_name_support, normalize_content_block_format,
-    strip_character_name_prefix, supports_name_field, truncate_at_foreign_speaker, MessageRole,
-    MultiCharacterMessage, OtherParticipant, ParticipantPronouns, WireRole,
+    format_display_name, format_messages_for_provider, format_participant_name,
+    get_provider_name_support, normalize_content_block_format, strip_character_name_prefix,
+    supports_name_field, truncate_at_foreign_speaker, MessageRole, MultiCharacterMessage, WireRole,
 };
 use serde::Deserialize;
 
@@ -34,26 +38,6 @@ struct WireFormatted {
     name: Option<String>,
     #[serde(rename = "thoughtSignature")]
     thought_signature: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct WirePronouns {
-    subject: String,
-    object: String,
-    possessive: String,
-}
-
-#[derive(Deserialize)]
-struct WireParticipant {
-    name: String,
-    #[serde(default)]
-    aliases: Option<Vec<String>>,
-    #[serde(default)]
-    pronouns: Option<WirePronouns>,
-    #[serde(default)]
-    description: Option<String>,
-    #[serde(default)]
-    status: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -135,14 +119,6 @@ enum Row {
         responding_character_name: String,
         messages: Vec<WireMsg>,
         out: Vec<WireFormatted>,
-    },
-    #[serde(rename = "context")]
-    Context {
-        id: String,
-        #[serde(rename = "respondingCharacterName")]
-        responding_character_name: String,
-        participants: Vec<WireParticipant>,
-        out: String,
     },
 }
 
@@ -293,29 +269,6 @@ fn message_formatter_matches_oracle() {
                         "format[{i}] thoughtSig '{id}'"
                     );
                 }
-            }
-            Row::Context {
-                id,
-                responding_character_name,
-                participants,
-                out,
-            } => {
-                let ps: Vec<OtherParticipant> = participants
-                    .into_iter()
-                    .map(|p| OtherParticipant {
-                        name: p.name,
-                        aliases: p.aliases,
-                        pronouns: p.pronouns.map(|pr| ParticipantPronouns {
-                            subject: pr.subject,
-                            object: pr.object,
-                            possessive: pr.possessive,
-                        }),
-                        description: p.description,
-                        status: p.status,
-                    })
-                    .collect();
-                let got = build_multi_character_context_section(&ps, &responding_character_name);
-                assert_eq!(got, out, "context '{id}'");
             }
         }
         count += 1;
