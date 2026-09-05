@@ -470,6 +470,57 @@ the regen obligation (both hand-rolled Zod engines, the SPA corpus, the ~150
 edge sites) plus the P4.D158 measurement to repeat. A loud `SKIP:` only when
 the checkout itself is absent. Closes the gap the `d883a5ee1` round found by
 consequence rather than by design (phase-4 candidate 4).
+#### 2026-09-05 — feat(help): the Help dialog, the entity picker, the message list and the rail entry (P4.9I2B units 5-9)
+
+_Versions: SPA 0.5.650._
+
+The rest of the HelpChat client, with its specs and two guarded e2e walks.
+
+`help-dialog.ts` is v4's `HelpChatDialog`: the two tabs on a `sessionStorage`
+key, the Ask launcher (seat pills, recent chats with delete, the opening
+composer), the conversation view, create-then-send, and `handleNavigate`
+routing a parameterised URL to the entity picker rather than to navigation. The
+optimistic user bubble goes into the SAME message array the reload replaces —
+the P4.66 shape, because a separate signal appended at render is what made the
+user's message show twice mid-turn (dogfood #106).
+
+`help-streaming.service.ts` subscribes the global Event channel scope-tagged by
+`chatId` BEFORE dispatching and folds each frame through `reduceHelpFrame`,
+firing v4's `onMessageComplete` off the fold's completed ids so the machine
+itself stays pure. `help-entity-picker.ts` carries the three `PARAM_ROUTES`
+rows, pinned by the recorded probe of v4's private table. `help-message-list.ts`
+renders through the shared message renderer with v4's two easily-mistaken
+filters: an assistant turn with no visible content is hidden (agent mode's
+intermediate tool turns persist as empty rows), and a suggested link that
+duplicates a navigation link is dropped. `help-entry.ts` is the rail button with
+v4's exact disabled rule — disabled only once eligibility has ANSWERED, so it
+stays live during the first fetch.
+
+`help.service.ts` now seeds `currentPageUrl` from the Router rather than
+`window.location`, so the seed and the later `NavigationEnd` reads come from one
+source.
+
+Two new e2e specs (8 beats) ship as guarded ACTIVATE-AT-UNIFY probes with
+`e2e/support/seed-help-fixture.ts`, which flips `defaultHelpToolsEnabled`
+through the running server's own verb rather than by writing the DB. Each beat
+names which of its preconditions is missing when it skips.
+
+**A deferral, measured rather than assumed:** no e2e beat exercises a
+`help_navigate` tool turn, because `e2e/support/mock-llm.ts` emits content
+deltas and a stop chunk and has no `tool_calls` branch at all — no browser walk
+can make the server emit a `toolResult` frame. The link paths are proven at unit
+tier instead, over the real frames and the real components. Teaching the mock to
+answer a tool call would activate a fifth Ask beat.
+
+The Guide family's 22-mutation pass finished green. Five mutations initially
+survived and none was waved through: three were vacuous assertions, sharpened
+(the back-stack case matched a category label the list renders too; the
+active-topic case used a page both slash rules match; the eligibility case had
+the payload flag agreeing with the list by construction), one was a mis-aimed
+mutation (`allowDangerousHtml` on `remark-rehype` alone is inert — the
+stringifier gates it too, so the real weakening needs both), and one was a
+genuinely unobservable arm given its own function and test.
+
 #### 2026-09-05 — feat(help): the help state service and the whole Guide tab (P4.9I2B units 3–4)
 
 _Versions: SPA 0.5.649._

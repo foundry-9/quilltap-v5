@@ -377,8 +377,20 @@ describe('HelpGuideTab — the reader and its back stack', () => {
       (fixture.nativeElement as HTMLElement).querySelector('.qt-help-guide-back') as HTMLElement
     ).click();
     await settle(fixture);
-    // Back goes to the document we came FROM, not out to the list.
-    expect(text(fixture)).toContain('Characters (Aurora)');
+    // Back goes to the document we came FROM, not out to the list. Assert the
+    // READER is still up: the category list renders a "Characters (Aurora)"
+    // label of its own, so a text match alone cannot tell the two apart — and
+    // measurably does not (a mutation that never pushes the stack survived it).
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.qt-help-guide-reader'),
+    ).not.toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.qt-help-guide-search-input'),
+    ).toBeNull();
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.qt-help-guide-back')?.textContent,
+    ).toContain('Characters (Aurora)');
+    expect(docGet).toHaveBeenLastCalledWith('characters');
   });
 
   it('an in-document page link navigates instead of opening a topic', async () => {
@@ -450,6 +462,19 @@ describe('HelpCategorySection — ordering and the active topic', () => {
       '.qt-help-guide-topic-active',
     );
     expect(active?.textContent?.trim()).toBe('Beta');
+  });
+
+  it('does NOT mark a topic whose url is a bare string prefix of the page', async () => {
+    // v4's active test appends a trailing slash, so `/salon` lights only on
+    // `/salon` itself or a `/salon/…` child — never on `/salonade`. Measured:
+    // `/salon/abc` alone cannot tell the two rules apart (both match), so a
+    // mutation dropping the slash survived until this case existed. The SORT
+    // deliberately keeps the slash-less prefix, exactly as v4 does — only the
+    // highlight is segment-aware.
+    const fixture = await renderSection('/salonade');
+    expect(
+      (fixture.nativeElement as HTMLElement).querySelector('.qt-help-guide-topic-active'),
+    ).toBeNull();
   });
 
   it('renders the snippet line and its wrapping class', async () => {

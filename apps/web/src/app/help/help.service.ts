@@ -52,7 +52,7 @@ export class HelpService {
   readonly selectedCharacterIds = signal<string[]>(loadStorageArray(STORAGE_KEY_SELECTED));
 
   /** The path the operator is on — the chat's page context (v4 `currentPageUrl`). */
-  readonly currentPageUrl = signal(currentPath());
+  readonly currentPageUrl = signal(currentPath(this.router));
 
   private readonly eligibilityQuery = injectQuery(() => ({
     queryKey: HELP_ELIGIBILITY_QUERY_KEY,
@@ -212,7 +212,9 @@ function readStoredChatId(): string | null {
  * PATH ONLY, no query string, because v4 reads `usePathname()` and Next's own
  * typings state the contract outright: `usePathname() // returns "/dashboard"
  * on /dashboard?foo=bar`. The port has already established this mapping once
- * (`documents/open-document-from-search.ts:59`).
+ * (`documents/open-document-from-search.ts:59`). Read off the ROUTER rather than
+ * `window.location`, so the seed and the subsequent `NavigationEnd` reads come
+ * from the same source.
  *
  * ⚠ **A v4 finding, reproduced deliberately.** Because `currentPageUrl` is the
  * bare path, the seven `?tab=` rows of `URL_CATEGORY_MAP` can never match
@@ -225,9 +227,9 @@ function readStoredChatId(): string | null {
  * porting a unilateral repair would make v5's Guide behave differently from the
  * oracle. Pinned by a spec so the behaviour cannot drift silently either way.
  */
-function currentPath(): string {
+function currentPath(router: Router): string {
   try {
-    return window.location.pathname;
+    return router.url.split('?')[0] || '/';
   } catch {
     return '/';
   }

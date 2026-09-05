@@ -107870,3 +107870,195 @@ per the ledger's PIN REQUIRED rule): `title_update_tier3_equivalence` and
 an integration arm with no NDJSON to regenerate), run directly via `cargo
 test` instead.
 
+## Lane record — P4.9I2B (the HelpChat SPA: the Help dialog's Guide + Ask tabs, the help service, the stream fold, the entity picker, and the rail entry)
+
+Ordered against round baseline **`d883a5ee1`** (§B). **Drift-ledger §2 freshness
+probe at lane start (2026-09-05):** PASS — v4 checkout on `bugfix` (as §1
+records), tree clean, `git log c2232cd9a..main` empty, `git log
+2b49f51aa..bugfix` empty. §1's verdict (4 commits pending, all docs/version-only,
+**PIN REQUIRED at `d883a5ee1`**) stands; the lane never wrote the ledger. Every
+read of v4's client came from the lane-unique pinned worktree
+`/tmp/qt-v4-pin-p49i2b-d883a5ee1`, removed at cleanup.
+
+### What landed
+
+Ten new modules under `apps/web/src/app/help/**`, one recorder under
+`apps/web/oracle/`, five recorded fixtures, six spec files, two guarded e2e
+specs and their seed helper. Nothing in `crates/**` moved (`git diff main --
+crates/ Cargo.toml Cargo.lock` empty); no existing spec was edited; the
+`qt-help-*` CSS block needed **zero** additions — the 52 class names v4's help
+family uses are already defined in v5 (measured symmetrically against v4's
+`app/styles/qt-components/` at the pin: the two sets are identical).
+
+| Module | v4 source |
+| --- | --- |
+| `help-wire.ts` | the §B contract — thirteen request DTOs + the response DTOs + `HelpApi` |
+| `help-categories.ts` | `lib/help-guide/categories.ts`, 1:1 |
+| `help-stream.ts` | `hooks/useHelpChatStreaming.ts`'s read loop, as a pure fold, + `labelFromUrl` |
+| `help.service.ts` | `components/providers/help-chat-provider.tsx` |
+| `help-guide-tab.ts` | `HelpGuideTab.tsx` |
+| `help-category-section.ts` | `HelpCategorySection.tsx` |
+| `help-guide-search.ts` | `HelpGuideSearch.tsx` |
+| `help-welcome-card.ts` | `HelpWelcomeCard.tsx` |
+| `help-topic-reader.ts` + `help-doc-markdown.ts` | `HelpTopicReader.tsx` |
+| `help-entity-picker.ts` | `HelpEntityPicker.tsx` |
+| `help-message-list.ts` | `HelpChatMessageList.tsx` |
+| `help-dialog.ts` | `HelpChatDialog.tsx` |
+| `help-streaming.service.ts` | the transport half of the streaming hook |
+| `help-entry.ts` | `sidebar-footer.tsx:203-212` |
+| `help-navigate.ts` | `components/workspace/useWorkspaceNavigate.ts` |
+
+The composer is REUSED from `brahma/help-composer.ts` (`qt-help-composer`), as
+the order requires — nothing in `brahma/**` was touched.
+
+### The differential: what was recorded, and how
+
+`apps/web/oracle/help-guide-capture.test.tsx` runs v4's REAL modules inside the
+pinned worktree and records five fixtures under
+`apps/web/src/app/help/__fixtures__/`: the three static tables, 32
+`getCategoryForUrl` vectors, 35 `labelFromUrl` vectors, a `PARAM_ROUTES` probe
+through v4's exported `hasParamSegments`/`findParamRoute` (the table itself is
+module-private), and `HelpWelcomeCard` rendered to static markup. **The shipped
+recorder was re-run from its committed copy and reproduces all five
+byte-identically** — the generator is real, not a description of one.
+
+On top of that, v4's two jest suites were ported case-for-case
+(`categories.test.ts` 187 lines, `labelFromUrl.test.ts` 127 lines), after being
+run GREEN at the pin (`npx jest --watchman=false
+__tests__/unit/lib/help-guide/categories.test.ts
+__tests__/unit/components/help-chat/hooks/labelFromUrl.test.ts` → 2 suites, 57
+tests). The corpora reach edges those suites never ask about: `/settingsish`
+prefix-matching `/settings`, `/?tab=system` losing to the exact-root rule,
+`?tab=multi+word` decoding `+` to a space, `?section=-lead-ing` rendering a
+DOUBLE space after the arrow, `/AURORA/:id` missing a case-sensitive regex.
+
+### Two v4 findings, both measured rather than reasoned
+
+**(a) The Guide can never auto-expand a settings sub-tab.** `currentPageUrl`
+comes from v4's `usePathname()`, which Next's own installed typings document as
+dropping the query (`usePathname() // returns "/dashboard" on
+/dashboard?foo=bar`) — and v4's `/settings` page reads `tab` from search params.
+So the seven `?tab=` rows of `URL_CATEGORY_MAP` are UNREACHABLE from
+`getCategoryForUrl(currentPageUrl)`, and every settings screen falls through to
+bare `/settings` → `settings-system`. Appearance, Commonplace Book, Content
+Routing and AI Providers never auto-expand. v5 reproduces this faithfully (the
+port has already established `usePathname()` ≡ `router.url.split('?')[0]` in
+`documents/open-document-from-search.ts:59`) and pins it with a spec. **A
+candidate upstream filing** — the fix belongs in v4 (pass the search string, or
+read `useSearchParams`); porting a unilateral repair would make v5's Guide
+behave differently from the oracle.
+
+**(b) The reader's nav-callout branch is DEAD CODE.** v4's `HelpTopicReader`
+`blockquote` override matches `Open this page in Quilltap](url)` against the
+blockquote's extracted TEXT and, on a hit, renders a
+`qt-help-guide-nav-callout`. It never hits: ReactMarkdown renders the inner link
+through the `a` override FIRST, so `extractTextContent` sees
+`"\nOpen this page in Quilltap\n"` with no `](url)` left in it. Measured by
+running v4's real pipeline over a real callout at the pin — the recorded text is
+exactly that string, and the rendered output is a plain `<blockquote>` around a
+`qt-help-guide-page-link` button from the `a` branch. Every one of v4's 120 help
+documents opens with that callout, so this is the shape in production. v5
+implements the reachable shape (diffed against v4's recording element for
+element) and records the branch as a **NO-PORT**; `qt-help-guide-nav-callout`
+goes unused in v5 exactly as it does in v4.
+
+### Recorded divergences
+
+1. **The dialog is centred, not draggable.** v4 hosts it in `FloatingDialog`;
+   v5 has no such primitive, so it lands as a `qt-dialog-overlay` — the Brahma
+   precedent, ratified in the order.
+2. **The error sentence is recorded BARE.** v4's help hook reads `event.error`
+   and nothing else, where v5's shared chat reducer joins
+   `${error}: ${details}`. §B pins `details: ''` on the help error frame, so
+   only a spec arm with a non-empty `details` can see the difference — that arm
+   exists, and it is what makes the divergence measurable at all.
+3. **Participant ids arrive as frame SIBLINGS.** v4 reads
+   `event.turnStart.participantId` / `event.status.participantId` from nested
+   SSE objects; v5's frames ride the global Event channel in the flat
+   `ChatStreamFrame` envelope, so those reads move to the sibling
+   `participantId` (§B: "`status` may carry `participantId`").
+4. **`PARAM_ROUTES` carries a per-row extractor, not v4's single
+   `responseKey`.** v4's three REST bodies all wrap the list in a key; v5's
+   three verbs do not agree — `characterList`/`projectList` answer a keyed
+   object, `listChats` answers the bare array as its whole `data`. Each row
+   names the v4 key it corresponds to.
+5. **`qtap://` hrefs are left intact** in the reader rather than routed through
+   a `QtapLink` component; v5 renders to HTML and has no such component. This is
+   the port's established handling (`almanack/almanack-markdown.ts`).
+
+### Two arms that no test could see, and what was done about them
+
+Both were found by mutation, not by review, and both were given a discriminator
+rather than shipped unmeasured. The move in each case is the same: lift v4's
+expression into a named function — body verbatim, only its home moved — and test
+it directly.
+
+- **The category tie-break.** `getCategoryForUrl`'s
+  "longest pattern wins" reduce is invisible against the real
+  `URL_CATEGORY_MAP`, because the table lists the seven `?tab=` rows BEFORE bare
+  `/settings`, so first-wins and longest-wins agree on every URL the map can
+  produce. A mutation collapsing the reduce to `prev` survived all 32 vectors.
+  Now `mostSpecificMatch`, with a reversed-order case.
+- **`EXCLUDED_DOCUMENTS`.** No excluded slug appears in any `HELP_CATEGORIES`
+  list, so an excluded document has no category to render under either way; a
+  mutation deleting the filter survived every rendering case. Now
+  `buildDocumentMap`, with a direct case.
+
+Three more mutations survived on VACUOUS ASSERTIONS and were answered by
+sharpening the spec, not the source: the `details`-join arm (every error case
+used the production `details: ''`, which the join skips); the back-stack push
+(the assertion matched a category LABEL that the category list renders too, so
+"Back stayed in the reader" and "Back left the reader" both passed — now the
+reader element itself is asserted); and the active-topic trailing slash
+(`/salon/abc` matches `/salon` under both rules — now `/salonade` discriminates).
+`isEligible` reading the payload flag survived because the spec's helper
+computed that flag FROM the list; an arm where the two DISAGREE is what makes it
+measurable.
+
+### Deferrals, declared loudly
+
+- **A `help_navigate` tool turn is not exercised in e2e.** Measured, not
+  assumed: `e2e/support/mock-llm.ts` emits `content` deltas and a
+  `finish_reason: stop` chunk and has no `tool_calls` branch at all, so no
+  browser walk can make the server emit a `toolResult` frame. The navigation-
+  and suggested-link paths are proven at unit tier instead (`help-stream.spec.ts`
+  folds the real frames; `help-dialog.spec.ts` drives the strips through the
+  real component and the real streaming service). Teaching the mock to answer a
+  tool call would activate a fifth Ask beat — the follow-up.
+- **The draggable floating dialog** (divergence 1 above) — recorded, not built.
+
+### AT-UNIFY table
+
+| What | Where | Condition |
+| --- | --- | --- |
+| `<qt-help-entry />` mount | `apps/web/src/app/shell/shell.ts`, in `.qt-left-sidebar-footer-actions` **BEFORE** `<qt-brahma-entry />` (v4's footer order, `sidebar-footer.tsx:203` then `:213`) | UNIFIER-ONLY (§S.2). The entry hosts its own dialog, so this is ONE mount. |
+| `help-wire.ts` fold | the thirteen request DTOs → `core-contract.ts`, then the name-for-name wire diff against `api/types.rs` | §S.3. `HelpApi.dispatchHelp`'s single cast is the whole inert-in-lane surface to retire. |
+| `workspace-help-guide-flow.spec.ts` (4 beats) | already committed | Self-activating: guarded on `helpDocsList` being served AND the rail entry being present. Skips LOUDLY naming which is missing. |
+| `workspace-help-ask-flow.spec.ts` (4 beats) | already committed | Self-activating: guarded on `helpChatEligibility` being served, the seed having made a seat eligible, AND the rail entry being present. Skips LOUDLY naming which. |
+
+### The `p4.9i2` bank
+
+P4.D77's banked half (b) — the Guide's per-topic snippet line under a
+text-matched topic — is DISCHARGED: `help-category-section.ts` renders it as
+v4's muted `text-xs` line with `whitespace-normal` on the topic button, and the
+spec pins both.
+
+### Gate
+
+`npm run lint` (incl. `check-qt-classes --self-test` 5/5 and the full scan);
+`npm test`; `npm run build`; the full Playwright suite ALONE on port 4319. The
+numbers are in the round record.
+
+### A trap worth carrying (a memory note was written)
+
+**A killed mutation runner leaves its last mutation in the working tree**, and
+every failure after that reads as a real product bug. This lane lost ~20 minutes
+to it: an interrupted run left `[forceExpanded]="false"` and `void existing;` in
+two files, four search specs and two markdown specs went red, and three wrong
+diagnoses followed — including two source rewrites landed with doc comments
+claiming a "measured" rationale that was pure artifact, all of which had to be
+undone. The fixes: put `trap 'restore; exit 130' INT TERM` in the runner; grep
+the mutation anchors BEFORE believing any red that follows a kill; assert a
+fresh backup is clean rather than trusting it; and prefer running mutations off
+a COMMITTED tree so `git checkout --` is the restore and untracked files carry
+no risk.
