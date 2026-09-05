@@ -108015,6 +108015,18 @@ reader element itself is asserted); and the active-topic trailing slash
 computed that flag FROM the list; an arm where the two DISAGREE is what makes it
 measurable.
 
+### Tier 2 item 11 — refuted by its own stated measurement
+
+The order conditions the `realtime-topic-map` row on "if the measurement in the
+survey says v4's list would refetch". It does not. v4's
+`lib/realtime/topic-map.ts` `chats` case names only `queryKeys.chats.all` /
+`.detail(id)` / `.state(id)` / `.background(id)`, and
+`queryKeys.helpChat.pastChats` appears in exactly ONE place in the whole v4 tree
+— `HelpChatDialog.tsx:159`, the query's own declaration. Nothing invalidates it.
+So a `chats` hint does not refetch v4's past-help-chats list, and adding a v5 row
+would be an invention rather than a port. v5's dialog reloads the list directly
+after every send and delete, exactly as v4's does.
+
 ### Deferrals, declared loudly
 
 - **A `help_navigate` tool turn is not exercised in e2e.** Measured, not
@@ -108045,9 +108057,40 @@ spec pins both.
 
 ### Gate
 
-`npm run lint` (incl. `check-qt-classes --self-test` 5/5 and the full scan);
-`npm test`; `npm run build`; the full Playwright suite ALONE on port 4319. The
-numbers are in the round record.
+- `npm run lint`: `check-qt-classes --self-test` 5/5, then the full scan — **950
+  qt-* classes defined, every guarded reference resolves.**
+- `npm test`: **387 test files / 6,243 tests / 0 failed** (from 380 / 5,962 on
+  main — +7 files, +281 tests, all additions; zero edits to existing specs).
+- `npm run build`: clean.
+- **The Guide family's 22-mutation pass: every mutation reddens.** Five
+  initially survived; the treatment of each is above.
+- Full Playwright ALONE on port 4319, this worktree's own binaries
+  (`cargo build -p quilltap-web -p quilltap-cli`): **273 passed / 1 failed / 8
+  skipped (28.2 m)**. The 8 skips are exactly this lane's guarded
+  ACTIVATE-AT-UNIFY beats; the pre-existing suite was 274/0/0, so 274 = 273 + 1.
+
+**The one red is a pre-existing intermittent, not this lane's**, and the
+argument is mechanical rather than a plea:
+
+- The failing spec is `salon-thinking-indicator.spec.ts`, which
+  `git diff main -- apps/web/e2e/salon-thinking-indicator.spec.ts` shows this
+  lane never touched.
+- **Every source file this lane changed lives under
+  `apps/web/src/app/help/**`, and NOTHING outside that folder imports any of
+  it** — verified by grep. The shell mount is the unifier's job (§S.2), so the
+  lane's code is unreachable from the running application and cannot affect any
+  beat.
+- Re-run in isolation ×3: **2 passed, 1 failed** — flaky on this build at
+  roughly 1-in-3 even alone, which is the same profile as the documented
+  `workspace-search-documents` intermittent. And it fails in TWO different
+  places: the full-suite red was `:78` (the settled indicator count), the
+  isolation red was `:52` (a chat card not yet rendered in the list) — a
+  state/timing race on the shared fixture, in two spots, not one assertion with
+  a fixable margin.
+
+Recorded as a candidate for the deflake treatment the suite has applied twice
+before; deliberately NOT touched here, since the order forbids editing an
+existing spec.
 
 ### A trap worth carrying (a memory note was written)
 

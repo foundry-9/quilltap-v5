@@ -470,6 +470,26 @@ the regen obligation (both hand-rolled Zod engines, the SPA corpus, the ~150
 edge sites) plus the P4.D158 measurement to repeat. A loud `SKIP:` only when
 the checkout itself is absent. Closes the gap the `d883a5ee1` round found by
 consequence rather than by design (phase-4 candidate 4).
+#### 2026-09-05 — docs(help): the P4.9I2B lane record and the order's completion header
+
+_Versions: SPA 0.5.651._
+
+The lane record in `status-log.md` — what landed, how the parity corpora were
+recorded, the two v4 findings (the Guide's unreachable `?tab=` category rows;
+the reader's dead nav-callout branch), the five recorded divergences, the two
+arms no test could see and the discriminators they got, the deferrals, and the
+AT-UNIFY table. Tier 2 item 11 is recorded as REFUTED by the measurement the
+item itself conditions on: v4's `topic-map.ts` `chats` case names only
+`queryKeys.chats.*`, and `queryKeys.helpChat.pastChats` appears once in the
+whole v4 tree — its own declaration — so nothing invalidates it.
+
+The gate: lint clean, 387 files / 6,243 tests, build clean, the 22-mutation pass
+all-red, and Playwright 273 passed / 1 failed / 8 skipped. The 8 skips are this
+lane's own guarded beats. The 1 red is `salon-thinking-indicator`, which this
+lane never touched and cannot reach — every file it changed is under
+`app/help/**` and nothing outside that folder imports any of it — and which is
+flaky in isolation at 1-in-3, failing at two different assertions across runs.
+
 #### 2026-09-05 — feat(help): the Help dialog, the entity picker, the message list and the rail entry (P4.9I2B units 5-9)
 
 _Versions: SPA 0.5.650._
