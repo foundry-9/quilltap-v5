@@ -1057,7 +1057,9 @@ pub async fn chat_document_delete(
         .await;
     match del_outcome {
         Ok(Ok(DeleteOutcome::Deleted)) => {}
-        Ok(Ok(DeleteOutcome::NotFound)) => return not_found("File not found"),
+        // v4 `0506517d3` correction (c): `notFound('File')` renders "File not
+        // found". The pre-fix `notFound('File not found')` doubled the suffix.
+        Ok(Ok(DeleteOutcome::NotFound)) => return not_found("File"),
         Ok(Ok(DeleteOutcome::NotAFile)) => {
             return bad_request(format!("Path is not a file: {}", doc.file_path))
         }

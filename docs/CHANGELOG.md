@@ -387,6 +387,31 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — fix(documents): the chat-scoped delete's 404 says "File not found" once (v4 `0506517d3` correction (c))
+
+_Versions: core 0.0.777, harness 0.0.672._
+
+P4.D155's first correction from v4's release-checklist collapse. The
+chat-scoped document delete answered `File not found not found`: v5 passed the
+whole sentence to `not_found()`, which appends ` not found` to the resource it
+is given. v4 fixed the same doubling by moving the route onto the shared
+`operator-doc-http` layer, whose delete responds `notFound('File')`. The
+standalone delete already said `not_found("File")` — the exact two-site
+divergence, reproduced.
+
+The arm that proves it is new. `documents_routes_equivalence` had a
+`chat_delete_document` case, but the fixture's R3 is a project-scope document
+in a chat with no project, so that case never reaches the delete at all (both
+sides answer 400 `Could not resolve path: …`). And a `chatDocumentId` absent
+from the fixture would not reach it either — `resolveTargetDocument` returns
+null and the handler answers 400 `No active document to delete`. The 404 is
+reachable only with a row that EXISTS and a file that does not, so
+`chat_delete_document_missing` deletes R1 (`notes/alpha.md`, a database store)
+twice: the named-id lookup has no active filter, so the second call still finds
+the closed row, resolves its path, and the store answers "no such document".
+The case ran RED against v4's real handler at the `d883a5ee1` pin — v5
+`404 "File not found not found"` vs v4 `404 "File not found"` — and green after
+the one-token fix.
 
 #### 2026-09-05 — docs(orders): the `d883a5ee1` drift catch-up round ordered — P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158
 

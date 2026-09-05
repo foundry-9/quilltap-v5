@@ -416,6 +416,32 @@ async function main(): Promise<void> {
         return { ...r, tables: await dumpChatDocs(CHAT_A) };
       },
     },
+    {
+      // The 404 body (v4 `0506517d3` correction (c): `notFound('File')` renders
+      // "File not found", where the pre-fix `notFound('File not found')`
+      // rendered "File not found not found"). Reached by deleting the SAME row
+      // twice: `resolveTargetDocument` looks a named id up by id alone — no
+      // active filter — so the second call still finds the (now closed) row,
+      // resolves its path, and the database store answers "no such document".
+      // A `chatDocumentId` absent from the fixture would NOT reach here: it
+      // resolves to null and answers 400 "No active document to delete".
+      name: 'chat_delete_document_missing',
+      run: async ({ chatActions, context }) => {
+        await chatActions.handleDeleteDocument(
+          mockRequest(SB, { chatDocumentId: R1 }),
+          CHAT_A,
+          context,
+        );
+        const r = await respond(
+          await chatActions.handleDeleteDocument(
+            mockRequest(SB, { chatDocumentId: R1 }),
+            CHAT_A,
+            context,
+          ),
+        );
+        return { ...r, tables: await dumpChatDocs(CHAT_A) };
+      },
+    },
     // ── Standalone surface ─────────────────────────────────────────────────
     {
       name: 'standalone_stores',

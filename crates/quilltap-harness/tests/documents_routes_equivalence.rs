@@ -465,6 +465,29 @@ fn documents_routes_match_oracle() {
         let t = dump_chat_docs(&db, CHAT_A);
         check("chat_delete_document", &r, Some(t), &mut failed);
     }
+    {
+        // v4 `0506517d3` correction (c): the chat-scoped delete's 404 body reads
+        // "File not found", not "File not found not found". Reached by deleting
+        // the SAME row twice — `resolve_target_document` looks a named id up by
+        // id alone (no active filter), so the second call finds the closed row
+        // and the database store answers "no such document". An id absent from
+        // the fixture answers 400 "No active document to delete" instead.
+        let db = fresh_db(&spec, "delete-missing");
+        let _ = rt.block_on(documents::chat_document_delete(
+            &db,
+            CHAT_A,
+            Some(R1.to_string()),
+            None,
+        ));
+        let r = rt.block_on(documents::chat_document_delete(
+            &db,
+            CHAT_A,
+            Some(R1.to_string()),
+            None,
+        ));
+        let t = dump_chat_docs(&db, CHAT_A);
+        check("chat_delete_document_missing", &r, Some(t), &mut failed);
+    }
 
     // ── standalone writes ──────────────────────────────────────────────────
     {
