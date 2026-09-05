@@ -2,11 +2,16 @@
 //!
 //! Calculates and formats the "current time" string injected into system
 //! prompts, with IANA-timezone-aware output and optional fictional (auto-
-//! incrementing) time. Mirrors v4's six exported functions:
+//! incrementing) time. Mirrors v4's exported functions:
 //! [`resolve_timezone`], [`parse_timestamp_in_timezone`],
 //! [`calculate_current_timestamp`], [`should_inject_timestamp`],
-//! [`format_timestamp_for_system_prompt`], and
 //! [`ensure_fictional_base_real_time`].
+//!
+//! P4.D157 (v4 `d4138b96b`, the 4.9 dead-code sweep): v4 deleted
+//! `formatTimestampForSystemPrompt` as unreferenced. Measured here too — both
+//! callers of the v5 twin lived in this file's own unit-test module — so the twin
+//! and its `format` oracle rows went with it. v4's sixth export is gone; the
+//! other five stay differential-pinned.
 //!
 //! # Timezone mechanics (the CLDR/TZDB seam)
 //!
@@ -733,21 +738,6 @@ pub fn should_inject_timestamp(
     }
 }
 
-/// Format a calculated timestamp for a system prompt — v4
-/// `formatTimestampForSystemPrompt`. With `auto_prepend`, prefixes
-/// `Current time: `; otherwise returns the formatted string verbatim (for the
-/// `{{timestamp}}` template variable).
-pub fn format_timestamp_for_system_prompt(
-    timestamp: &CalculatedTimestamp,
-    auto_prepend: bool,
-) -> String {
-    if auto_prepend {
-        format!("Current time: {}", timestamp.formatted)
-    } else {
-        timestamp.formatted.clone()
-    }
-}
-
 /// JS truthiness of an optional JSON value — v4's guards are bare `!x` tests, so
 /// `null`, `false`, `""` and `0` all read as "absent".
 fn js_truthy(v: Option<&Value>) -> bool {
@@ -1041,23 +1031,6 @@ mod tests {
         let r = calculate_current_timestamp(&c, None, NOW, 0).unwrap();
         assert!(r.is_fictional);
         assert_eq!(r.iso_value, "2000-01-01T00:00:00.000Z");
-    }
-
-    #[test]
-    fn format_for_prompt() {
-        let ts = CalculatedTimestamp {
-            formatted: "July 2, 2026 at 12:34 PM".to_string(),
-            iso_value: "2026-07-02T12:34:56+00:00".to_string(),
-            is_fictional: false,
-        };
-        assert_eq!(
-            format_timestamp_for_system_prompt(&ts, true),
-            "Current time: July 2, 2026 at 12:34 PM"
-        );
-        assert_eq!(
-            format_timestamp_for_system_prompt(&ts, false),
-            "July 2, 2026 at 12:34 PM"
-        );
     }
 
     #[test]

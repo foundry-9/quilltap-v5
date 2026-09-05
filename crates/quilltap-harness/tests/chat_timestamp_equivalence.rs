@@ -1,7 +1,7 @@
 //! Tier-1 differential test: chat timestamp utilities (chat-orchestration wave 1.2, Part A).
 //!
 //! Covers resolveTimezone, parseTimestampInTimezone, calculateCurrentTimestamp,
-//! shouldInjectTimestamp, formatTimestampForSystemPrompt, and
+//! shouldInjectTimestamp, and
 //! ensureFictionalBaseRealTime. The injected clock (`now_ms`) and host local
 //! offset (`localOffsetMin`) are pinned by the oracle so every row is fully
 //! deterministic; exact equality on every field.
@@ -30,8 +30,8 @@
 
 use quilltap_core::chat_timestamp::{
     calculate_current_timestamp, calculate_timestamp_at, ensure_fictional_base_real_time,
-    format_timestamp_for_system_prompt, parse_timestamp_in_timezone, resolve_timezone,
-    should_inject_timestamp, CalculatedTimestamp, TimestampConfig, TimestampFormat, TimestampMode,
+    parse_timestamp_in_timezone, resolve_timezone, should_inject_timestamp, CalculatedTimestamp,
+    TimestampConfig, TimestampFormat, TimestampMode,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -151,18 +151,6 @@ enum Row {
         #[serde(rename = "minutesSince", default)]
         minutes_since: Option<i64>,
         out: bool,
-    },
-    #[serde(rename = "format")]
-    Format {
-        id: String,
-        formatted: String,
-        #[serde(rename = "isoValue")]
-        iso_value: String,
-        #[serde(rename = "isFictional")]
-        is_fictional: bool,
-        #[serde(rename = "autoPrepend")]
-        auto_prepend: bool,
-        out: String,
     },
     #[serde(rename = "parseTz")]
     ParseTz {
@@ -306,22 +294,6 @@ fn chat_timestamp_matches_oracle() {
                 let got = should_inject_timestamp(cfg.as_ref(), is_initial, minutes_since);
                 assert_eq!(got, out, "inject '{id}'");
             }
-            Row::Format {
-                id,
-                formatted,
-                iso_value,
-                is_fictional,
-                auto_prepend,
-                out,
-            } => {
-                let ts = CalculatedTimestamp {
-                    formatted,
-                    iso_value,
-                    is_fictional,
-                };
-                let got = format_timestamp_for_system_prompt(&ts, auto_prepend);
-                assert_eq!(got, out, "format '{id}'");
-            }
             Row::ParseTz {
                 id,
                 value,
@@ -364,9 +336,7 @@ fn chat_timestamp_matches_oracle() {
     // floor is the one that matters — those zone-less `datetime-local` bases
     // are the case class P4.d18 added, and losing them re-opens the blind spot
     // that hid `parse_date_ms → 0`.
-    for family in [
-        "resolve", "calc", "calcAt", "inject", "format", "parseTz", "ensure",
-    ] {
+    for family in ["resolve", "calc", "calcAt", "inject", "parseTz", "ensure"] {
         assert!(
             kinds.get(family).copied().unwrap_or(0) > 0,
             "oracle carries no '{family}' rows — regeneration lost a family (kinds: {kinds:?})"

@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — chore(dead-code): retire the system-prompt timestamp formatter v4 deleted (P4.D157 unit 5)
+
+_Versions: core 0.0.781, harness 0.0.676._
+
+v4 `d4138b96b` removed `formatTimestampForSystemPrompt` from
+`lib/chat/timestamp-utils.ts`; `harness/oracle/cases/chat-timestamp.ts`
+imports it by name, so the case fails to LINK at any sha past that commit.
+
+Measured on this side: both callers of the v5 twin were in
+`chat_timestamp.rs`'s own `#[cfg(test)]` module (`:1054`/`:1058`). The twin
+and the `format_for_prompt` test that only existed to drive it are deleted;
+the `format` rows leave the oracle case (187 → 185 rows, every surviving row
+byte-identical to the pre-split oracle at `0b0617fee`), and `format` comes out
+of the runner's family-floor list so the remaining six families still have to
+be present.
+
+v4's other five timestamp exports survive and stay differential-pinned.
+
 #### 2026-09-05 — chore(dead-code): retire the LLM error normalizer/formatter v4 deleted (P4.D157 unit 4)
 
 _Versions: core 0.0.780, harness 0.0.675._

@@ -3,8 +3,13 @@
  *
  * Drives the REAL exported functions from v4's lib/chat/timestamp-utils.ts:
  *   resolveTimezone, parseTimestampInTimezone, calculateCurrentTimestamp,
- *   shouldInjectTimestamp, formatTimestampForSystemPrompt,
- *   ensureFictionalBaseRealTime.
+ *   shouldInjectTimestamp, ensureFictionalBaseRealTime.
+ *
+ * P4.D157 (v4 d4138b96b, the 4.9 dead-code sweep) DELETED
+ * formatTimestampForSystemPrompt; its two `format` rows left this case with the
+ * v5 twin (whose only callers were in `chat_timestamp.rs`'s own `#[cfg(test)]`
+ * module). Do not re-add the name: a named import of a deleted export makes this
+ * whole case fail to LINK, emitting a ZERO-byte NDJSON.
  *
  * Widened by P4.d18 (the `e3a9654f` fictional-story-clock drift): the parse-in-
  * timezone family, zone-less `datetime-local` fictional bases in the calc
@@ -40,7 +45,6 @@ import {
   calculateCurrentTimestamp,
   calculateTimestampAt,
   shouldInjectTimestamp,
-  formatTimestampForSystemPrompt,
   ensureFictionalBaseRealTime,
   type CalculatedTimestamp,
 } from '@/lib/chat/timestamp-utils'
@@ -107,7 +111,6 @@ type Row =
       minutesSince: number | null | undefined
       out: boolean
     }
-  | { kind: 'format'; id: string; formatted: string; isoValue: string; isFictional: boolean; autoPrepend: boolean; out: string }
   | {
       kind: 'parseTz'
       id: string
@@ -595,20 +598,6 @@ const injectCases: Array<[string, TimestampConfig | null, boolean, number | null
 for (const [id, config, isInitial, minutesSince] of injectCases) {
   const out = shouldInjectTimestamp(config, isInitial, minutesSince as number | null | undefined)
   rows.push({ kind: 'inject', id, config, isInitial, minutesSince, out })
-}
-
-// ---- formatTimestampForSystemPrompt --------------------------------------
-const ts: CalculatedTimestamp = { formatted: 'July 2, 2026 at 12:34 PM', isoValue: '2026-07-02T12:34:56+00:00', isFictional: false }
-for (const ap of [true, false]) {
-  rows.push({
-    kind: 'format',
-    id: `format-${ap}`,
-    formatted: ts.formatted,
-    isoValue: ts.isoValue,
-    isFictional: ts.isFictional,
-    autoPrepend: ap,
-    out: formatTimestampForSystemPrompt(ts, ap),
-  })
 }
 
 // ---- parseTimestampInTimezone (P4.d18) ------------------------------------
