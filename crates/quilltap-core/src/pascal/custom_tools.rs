@@ -1325,17 +1325,76 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
         .replace_all(message, |caps: &Captures| {
             let whole = caps.get(0).map_or("", |m| m.as_str());
             let key = js_trim(caps.get(1).map_or("", |m| m.as_str()));
-            match resolve_placeholder_value(&classify_placeholder(key), vars) {
+            let place_ref = classify_placeholder(key);
+            match resolve_placeholder_value(&place_ref, vars) {
                 // Numbers render through `format_value`; anything else through
                 // its JS string form.
                 Some(ResolvedValue::Number(n)) => format_value(n),
                 Some(ResolvedValue::String(s)) => s,
                 Some(ResolvedValue::Bool(b)) => b.to_string(),
-                // Nothing renderable: leave the hole visible. v4 logs WHY at
-                // debug (no such metadata key / not a primitive / unknown
-                // placeholder); v5's renderer has never carried those debug
-                // lines, and this collapse does not add them.
-                None => whole.to_string(),
+                // Nothing renderable: leave the hole visible, and say why (v4
+                // `custom-tools.ts:1247-1270`, ported here at P4.77 — the four
+                // `logger.debug` sites the collapse's comment above named as
+                // never carried). v4 switches on the CLASSIFIED kind, not the
+                // collapsed `None`, so a present-but-non-primitive
+                // metadata/state value and an absent one log different
+                // reasons; `resolve_placeholder_value` already primitive-filters
+                // those two kinds inline, so the raw lookup is repeated here,
+                // on this cold path only, to recover which one happened.
+                None => {
+                    match &place_ref {
+                        PlaceholderRef::Llm => {
+                            // `{{{{`/`}}}}`: this is a tracing format-string
+                            // literal, so v4's literal `{{llm}}` needs doubled
+                            // escaping to survive `format_args!`.
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                "Custom tool message references {{{{llm}}}} with no consult to render",
+                            );
+                        }
+                        PlaceholderRef::Metadata { key: meta_key } => {
+                            let reason = if vars.metadata.and_then(|m| m.get(meta_key)).is_none() {
+                                "no such metadata key"
+                            } else {
+                                "the key does not hold a primitive"
+                            };
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                placeholder = whole,
+                                reason,
+                                "Custom tool message references metadata the character cannot render",
+                            );
+                        }
+                        PlaceholderRef::State { path } => {
+                            let empty = Value::Object(Map::new());
+                            let state = vars.state.unwrap_or(&empty);
+                            let reason =
+                                if get_at_path(state, &parse_path(Some(path))).is_none() {
+                                    "no such state path"
+                                } else {
+                                    "the path does not hold a primitive"
+                                };
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                placeholder = whole,
+                                reason,
+                                "Custom tool message references state it cannot render",
+                            );
+                        }
+                        // v4's switch has no `params`/`unknown`/etc. case, so
+                        // every OTHER kind (a not-found params name, or a
+                        // genuinely unknown placeholder) falls to its
+                        // `default:` — byte-faithful, not just the closest fit.
+                        _ => {
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                placeholder = whole,
+                                "Custom tool message carries an unknown placeholder",
+                            );
+                        }
+                    }
+                    whole.to_string()
+                }
             }
         })
         .into_owned()
@@ -1379,6 +1438,157 @@ pub fn resolve_placeholder_value(
             get_at_path(state, &parse_path(Some(path))).and_then(|v| js_primitive(&v))
         }
         PlaceholderRef::Unknown { .. } => None,
+    }
+}
+
+#[cfg(test)]
+mod render_template_debug_tests {
+    //! v4's four `render_template` debug lines (`custom-tools.ts:1247-1270`),
+    //! ported at P4.77 — a log-only fix, invisible to every other proof in
+    //! this repo (`differential-blind-to-a-log-only-fix`). Presence AND
+    //! silence: one test per line, plus the arm that must stay quiet.
+
+    use super::*;
+    use crate::test_support::captured;
+
+    static EMPTY_PARAMS: ResolvedParams = Vec::new();
+
+    fn vars<'a>(
+        metadata: Option<&'a Map<String, Value>>,
+        state: Option<&'a Value>,
+    ) -> TemplateVars<'a> {
+        TemplateVars {
+            value: 0.0,
+            roll: 0.0,
+            dice: "d6",
+            params: &EMPTY_PARAMS,
+            metadata,
+            llm: None,
+            state,
+        }
+    }
+
+    #[test]
+    fn an_llm_placeholder_with_no_consult_warns_and_leaves_the_hole() {
+        let lines = captured(|| {
+            let out = render_template("draw: {{llm}}", &vars(None, None));
+            assert_eq!(out, "draw: {{llm}}", "the hole stays visible");
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].starts_with("DEBUG quilltap::pascal"),
+            "{}",
+            lines[0]
+        );
+        assert!(
+            lines[0].contains("Custom tool message references {{llm}} with no consult to render"),
+            "{}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn a_missing_metadata_key_warns_no_such_key() {
+        let metadata = Map::new();
+        let lines = captured(|| {
+            let out = render_template("{{metadata.nickname}}", &vars(Some(&metadata), None));
+            assert_eq!(out, "{{metadata.nickname}}");
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let line = &lines[0];
+        assert!(
+            line.contains("Custom tool message references metadata the character cannot render"),
+            "{line}"
+        );
+        assert!(line.contains("placeholder={{metadata.nickname}}"), "{line}");
+        assert!(line.contains("reason=no such metadata key"), "{line}");
+    }
+
+    #[test]
+    fn a_non_primitive_metadata_value_warns_not_a_primitive() {
+        let mut metadata = Map::new();
+        metadata.insert("tags".to_string(), Value::Array(vec![]));
+        let lines = captured(|| {
+            render_template("{{metadata.tags}}", &vars(Some(&metadata), None));
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].contains("reason=the key does not hold a primitive"),
+            "{}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn a_missing_state_path_warns_no_such_path() {
+        let state = Value::Object(Map::new());
+        let lines = captured(|| {
+            let out = render_template("{{state.hp}}", &vars(None, Some(&state)));
+            assert_eq!(out, "{{state.hp}}");
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let line = &lines[0];
+        assert!(
+            line.contains("Custom tool message references state it cannot render"),
+            "{line}"
+        );
+        assert!(line.contains("placeholder={{state.hp}}"), "{line}");
+        assert!(line.contains("reason=no such state path"), "{line}");
+    }
+
+    #[test]
+    fn a_non_primitive_state_value_warns_not_a_primitive() {
+        let mut inner = Map::new();
+        inner.insert("hp".to_string(), Value::Object(Map::new()));
+        let state = Value::Object(inner);
+        let lines = captured(|| {
+            render_template("{{state.hp}}", &vars(None, Some(&state)));
+        });
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(
+            lines[0].contains("reason=the path does not hold a primitive"),
+            "{}",
+            lines[0]
+        );
+    }
+
+    /// v4's switch has no `params`/`unknown` case — both fall to `default:`.
+    /// A not-found params name is byte-faithful to that, not the closest fit.
+    #[test]
+    fn an_unknown_placeholder_and_a_missing_param_both_warn_unknown_placeholder() {
+        for template in ["{{surprise}}", "{{params.missing}}"] {
+            let lines = captured(|| {
+                render_template(template, &vars(None, None));
+            });
+            assert_eq!(lines.len(), 1, "{template}: {lines:?}");
+            assert!(
+                lines[0].contains("Custom tool message carries an unknown placeholder"),
+                "{template}: {}",
+                lines[0]
+            );
+            assert!(
+                lines[0].contains(&format!("placeholder={template}")),
+                "{template}: {}",
+                lines[0]
+            );
+        }
+    }
+
+    /// The silence half: a template with nothing unrenderable logs nothing at
+    /// all — a line attached to the wrong branch is exactly what a
+    /// presence-only assertion cannot catch.
+    #[test]
+    fn a_fully_renderable_template_logs_nothing() {
+        let mut metadata = Map::new();
+        metadata.insert("name".to_string(), Value::String("Kestrel".to_string()));
+        let lines = captured(|| {
+            let out = render_template(
+                "{{value}} {{roll}} {{dice}} {{metadata.name}}",
+                &vars(Some(&metadata), None),
+            );
+            assert_eq!(out, "0 0 d6 Kestrel");
+        });
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }
 

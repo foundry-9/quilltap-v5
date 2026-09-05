@@ -107797,3 +107797,76 @@ both clean; every touched file's own test module re-run individually
 unit 4's, see the combined gate below).
 
 Versions: core 0.0.797, host 0.0.97, web 0.0.115, harness 0.0.687.
+
+## Lane record — P4.77 unit 4: `render_template`'s four missing `logger.debug` lines (2026-09-05)
+
+Work order `p4.77-zod-tripwire-ratification-capture-layer.md`, item 4.
+`crates/quilltap-core/src/pascal/custom_tools.rs:1319`'s `render_template`
+had a comment recording that v4's four debug lines (`custom-tools.ts`
+`renderTemplate`, `1247`-`1270`) were never carried; ported now, verbatim
+against the pin (`d883a5ee1`, unmoved from the round's own survey):
+
+- `{{llm}}` with no consult: `"Custom tool message references {{llm}} with
+  no consult to render"` (no fields beyond target — a tracing format-string
+  literal needs `{{{{llm}}}}` to survive `format_args!` and render the
+  literal double braces).
+- A metadata placeholder that cannot render: `"Custom tool message
+  references metadata the character cannot render"` with `placeholder` +
+  `reason` (`"no such metadata key"` vs `"the key does not hold a
+  primitive"`).
+- A state placeholder that cannot render: the same shape, `"…references
+  state it cannot render"`, `"no such state path"` vs `"the path does not
+  hold a primitive"`.
+- Everything else (v4's `default:` arm — an unknown placeholder OR a
+  not-found `params` name, since v4's switch has no `params` case):
+  `"Custom tool message carries an unknown placeholder"` with
+  `placeholder`.
+
+v4 switches on the CLASSIFIED placeholder kind, not the collapsed `None`
+`resolve_placeholder_value` already returns (that function primitive-filters
+Metadata/State inline, for the effects resolver's sake, which this lane must
+not touch). So the "no such key" vs "not a primitive" distinction is
+recovered by repeating the RAW lookup (`vars.metadata.and_then(|m|
+m.get(key))` / `get_at_path(state, &parse_path(Some(path)))`) on this cold
+path only, once resolution has already failed — the classified `PlaceholderRef`
+is now bound once and matched on directly rather than reclassified.
+`target: "quilltap::pascal"` carries v4's `context: CONTEXT` field per the
+file's existing convention (`metadata_comparator` / `resolve_effects`
+sites, "the P4.18 tracing surface... v4's `context` becomes the target").
+
+**New test module** `render_template_debug_tests` (7 cases, using the new
+shared `crate::test_support::captured`): one presence test per line (the
+`{{llm}}` case; a missing metadata key; a metadata value that isn't a
+primitive; a missing state path; a state value that isn't a primitive; both
+an unknown placeholder AND a not-found params name landing on the SAME
+byte-exact sentence), plus the silence case (a fully-renderable template
+carrying `{{value}}` `{{roll}}` `{{dice}}` `{{metadata.name}}` logs nothing
+at all).
+
+**Mutation proof:** collapsed the metadata reason's ternary to always
+"no such metadata key" — `a_non_primitive_metadata_value_warns_not_a_primitive`
+reddened (`… reason=no such metadata key`, expected `…does not hold a
+primitive`); reverted.
+
+Versions: core 0.0.798.
+
+## Lane record — P4.77: the combined workspace gate (2026-09-05)
+
+Both units 3 and 4 verified together in one full-workspace run, then split
+into two commits with separate version bumps: `cargo fmt --all
+--check` clean; `cargo clippy --workspace --all-targets -- -D warnings` AND
+`--features quilltap-core/native-transport`, both clean;
+`CARGO_INCREMENTAL=0 QT_ORACLE_TITLE_UPDATE=/tmp/oracle-title-update.ndjson
+QT_ORACLE_FILES_SHA256_REALIGN=/tmp/oracle-files-sha256-realign-heal.ndjson
+cargo test --workspace -- --nocapture`, full log + sentinel (never `| tail`)
+— exit 0, zero SKIP for the two touched families with committed oracles
+(`title_update_tier3_equivalence`, `files_sha256_realign_heal_equivalence`),
+`zod_version_guard` present in the binary list and green. The three touched
+harness families additionally re-verified through `recipe_sweep.py --v4
+/tmp/qt-v4-pin-p477-d883a5ee1 --run <family>` (a lane-unique pin worktree,
+per the ledger's PIN REQUIRED rule): `title_update_tier3_equivalence` and
+`files_sha256_realign_heal_equivalence` regenerated fresh and green;
+`nanogpt_lora_wire_log` correctly REFUSED as `nothing_to_run` (`no_oracle` —
+an integration arm with no NDJSON to regenerate), run directly via `cargo
+test` instead.
+

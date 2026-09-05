@@ -415,6 +415,18 @@ Also landed, the five items the P4.73 unification review recorded:
 
 `handler-logging-inventory.md` gains its first `app/api/**` file, seeded so the
 generate route's eight lines are dispositioned.
+#### 2026-09-05 — fix(pascal): add render_template's four missing debug lines
+
+_Versions: core 0.0.798._
+
+`render_template` never carried v4's four `logger.debug` lines explaining
+why an unrenderable `{{placeholder}}` was left as written (no consult, an
+absent/non-primitive metadata key, an absent/non-primitive state path, or
+an unknown placeholder). Ported verbatim, with the same
+`{{metadata.key}}`/`{{state.path}}` reason distinction v4 makes ("no such
+key" vs "not a primitive"), proven with seven new capture-layer tests
+(presence per line, plus the silence case) and a mutation proof.
+
 #### 2026-09-05 — refactor(test): consolidate 19 copy-pasted tracing capture layers into `quilltap-core::test_support`
 
 _Versions: core 0.0.797, host 0.0.97, web 0.0.115, harness 0.0.687._
