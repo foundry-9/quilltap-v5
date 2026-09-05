@@ -107247,3 +107247,363 @@ necessity of the port, not a choice:
   `help_doc_sync_guards`, `help_docs_upsert_tier2`, `brahma_console_routes`,
   `brahma_console_tier3`, `brahma_orchestrator_tier3` — **18/18 ok, exit 0
   each, zero SKIP, zero MISMATCH**, no tracked-fixture write warned.
+---
+
+## Lane record — P4.76 (`?action=generate` end-to-end, P4.62(a)'s FILES leg, the five recorded review items)
+
+**Branch `claude/p4-76-images-generate-files-405522`, worked 2026-09-05.
+CLOSED — every tiered item landed.** Order:
+`work-orders/p4.76-images-generate-and-files-leg.md`. Baseline `d883a5ee1`;
+the drift ledger's §2 probe PASSED at lane start (checkout on `bugfix` as
+recorded, tree clean, both logs empty), so the regen rule stood as written and
+**every** regen ran from the lane-unique pinned worktree
+`/tmp/qt-v4-pin-p476-d883a5ee1` with all three symlink classes (the plugin-dist
+class is load-bearing here — the images oracle loads `createImageProvider`).
+
+### What landed
+
+**Tier 1 item 1 — the erased generation seam.**
+`model::image::ErasedImageGenerate`, object-safe over
+`ImageProvider::generate_image` in the `ErasedImageDiscovery` shape, plus a
+blanket `ImageGenerationDyn for T: ImageProvider` (which made three of that
+module's own tests ambiguous — disambiguated to the trait under test). ⚠ It
+does NOT carry `baseUrl`: v4 passes `profile.baseUrl ?? undefined` into the
+factory, but every v5 image dialect builds a fixed vendor URL, so no v5 caller
+has ever threaded it. That narrowing is PRE-EXISTING and shared with the tool,
+the avatar preview and both job paths; it is named at the seam so it cannot be
+mistaken for this seam's own omission, and the differential RECORDS `baseUrl`
+(as a constant `null` on both sides) rather than asserting it away.
+
+**Tier 1 item 2 — the verb, the handler, the wiring.** `Request::ImagesGenerate`
+carries its four body fields RAW (`Option<Value>` each), because v4
+Zod-parses the whole body and every refusal must answer `Validation error` 400
+from ONE place on both transports — the `ChatCreate` trio's lesson, and the
+`.optional()`-is-not-`.nullable()` tri-state depends on it. The handler is a
+transcription of `route.ts:177-408` with the guard order MEASURED (Zod first,
+then the profile lookup — the profile miss is a **400** `Connection profile not
+found` on this route, where the image-profiles route answers 404), v4's
+fail-safe try/catch around the whole Concierge block, and the sentence
+`{provider} provider does not support image generation` naming the profile's
+ORIGINAL provider string (never the `GOOGLE_IMAGEN` → `GOOGLE` map the factory
+applies first — v4's bare `catch` interpolates `profile.provider`).
+
+The `createImageProvider` throw maps to `Registry::supports_capability(mapped,
+ImageGeneration)`: measured, v4's registry throws on an unregistered provider,
+on a missing `imageGeneration` capability and on a missing factory, and v5's
+six image-declaring manifests (GOOGLE / GROK / NANOGPT / OPENAI / OPENROUTER /
+Z_AI) are exactly `build_image_request_with_extras`' six arms, so the
+capability IS the gate.
+
+**Tier 1 item 2 — the Concierge stack, and the decision the order asked for.**
+`build_cheap_llm_selection` was **NOT** widened in `tools/generate_image.rs`:
+`services/image_job_common.rs` already carries a `pub(crate)` copy of the
+identical three-line function (compared line for line, including
+`get_cheap_llm_provider`'s five arguments and the `find(isDefault) || [0]`
+index). The handler calls that one, so `tools/generate_image.rs` is untouched
+by this lane — the narrower reading of an ownership rule that permitted a
+visibility widening there.
+
+`classify_content`'s two provider generics are erased as
+`api::images::ErasedImagePromptClassifier`, living beside its only consumer
+exactly as P4.73's `ErasedImageImportFetch` does, for the same reason (core has
+no providers to construct). **Both seams travel as ONE `Option` on the engine
+assembly** (`images_generate: Option<ImagesGenerateSeams>`): a `None` classifier
+alone would silently skip v4's Concierge block while still generating, and one
+gate makes that unrepresentable. A missing pair answers a NAMED typed refusal,
+as the order required.
+
+The host half is a new `quilltap-host/src/images_generate.rs` built from
+`ProviderIo` and independent of the spine bundle — the `image_discovery` /
+`lora_metadata` precedent in `host.rs`'s P4.6ai block, and the reason is the
+same: this route needs neither the streaming provider nor the tool runner nor
+the cost bundle, only the plain completion + moderation wires and the image
+dialect. (It also avoids `spine.rs`, which this round assigns to P4.9I2A.)
+
+**Tier 1 item 2 — the tripwires.** BOTH retired in the same commit that
+introduced the surface, per the order's warning:
+`activity_span_sites_guard`'s site 9 moved out of `NO_V5_SURFACE` into
+`CENSUS` with its `track_activity(ActivityKind::Image, …)` wrap (the handler is
+split `images_generate` / `run_images_generate`, the `wardrobe_preview_avatar`
+shape, and the name `handle_generate_image` was deliberately never introduced);
+and `lora_log_anchor_guard`'s `the_ninth_anchor_is_absent_because_its_route_is_unported`
+was DELETED with `api.v1.images.generate` added to the anchor list and
+`api/images.rs` to the haystack — exactly as that test's own doc comment
+instructed. Two more files named the retired refusal and were updated:
+`crates/quilltap-web/tests/images_edge_routes.rs` (its `?action=generate` probe
+now asserts the served leg's `Validation error` 400 on an empty body AND the
+unparseable-body 500) and `query_param_semantics_equivalence`'s
+`UNSERVED_KNOWN_ACTIONS` row (removed — the action is served). Neither file is
+in another lane's ownership column; both edits are forced by the mandate and
+are flagged here.
+
+**Tier 1 item 3 — `images_generate_route_equivalence` (tier 3, NEW, 37 cases).**
+Green on its first full run after one corpus correction (below). Beyond status
+and body-with-key-order it compares:
+
+* **the ORDERED provider calls** — `{provider, baseUrl, apiKey, params}`. The
+  mock is BEHAVIOURAL and recording, not keyed: a keyed canned map answers
+  "miss" where this shows the divergence. The recorded `apiKey` is what proves
+  an AUTO_ROUTE reroute switched PROFILES rather than merely names.
+* **the ORDERED classification calls** — `{content, selection, userId,
+  settings, chatId}`. The `CheapLLMSelection` is otherwise INVISIBLE: the route
+  builds it from `allProfiles` + `cheapLLMSettings` and hands it straight to the
+  classifier, so recording it is the only pin on `build_cheap_llm_selection` for
+  this path. An EMPTY array is the comparand for the two gate conjuncts.
+* **the post-mutation `files` rows** (GENERATED only) **and the Lantern mount
+  links**, so every refusal proves it wrote nothing.
+
+Provider bytes are `image/webp` ON PURPOSE: `convertToWebP` passes those
+through, so the stored bytes, their sha, the `_<sha8>_` inside the filename and
+the byte length are identical on both sides and are REAL comparands rather than
+blanked ones. One `image/png` case exercises the transcode POLICY instead, with
+the codec-dependent fields blanked on both sides (D19). Index 1 of a multi-image
+answer deliberately carries no `revisedPrompt`, so the receipt's undefined-drop
+(an ABSENT key, never null) is measured.
+
+The danger bag is patched per case by a raw UPDATE on the working copy, on both
+sides — the fixture stores v4's `mode: 'OFF'` default and seeding a second user
+per mode would move every sibling family's row counts.
+
+**Tier 1 item 4 — P4.62(a)'s FILES leg, in its corrected shape.**
+`Request::FileUpload.tags` widened `Vec<String>` → `Vec<Value>`; the edge's
+three-way read extracted as `parse_upload_tags`; `save_file_entry` validates the
+link ids as `create_file_conns` does, but only on the CREATE branch — and the
+answer is v4's own **500 `Failed to upload file`** from `handleUploadFile`'s own
+catch, not the middleware's flat 500 and not a 400. Five arms, each dumping the
+post-mutation `files` table. The OVERWRITE arm is the discriminator between "the
+route refuses raw ids" (wrong) and "the CREATE does" (right): v4's update patch
+carries only `{sha256, mimeType, size, storageKey}`, so the same raw id is
+ignored there and the request answers 200.
+
+`files_routes_equivalence`'s `norm_tables` learned to blank a MINTED
+`files.id`: every arm that dumped before this one overwrote a PINNED row, so no
+dump had ever carried a minted id and the hole was invisible. The blanking
+asserts at most one minted row per case, then re-sorts on the blanked key, so it
+is a total order.
+
+**Tier 2 items (a)–(e).**
+
+* **(a)** the DELETE's orphan cleanup runs `refuse_if_archived` before each
+  `characters` write — v4's `validateCharacterArchivePatch`, whose
+  `CharacterArchivedError` reaches the route's outer catch because
+  `characters.update` takes `safeQuery`'s NO-fallback overload: **500
+  `Failed to delete image`**. ⚠ The already-committed updates STAY committed on
+  both sides (better-sqlite3 autocommits per statement; `Db::write` opens no
+  transaction of its own), and the fixture's new `CHAR_ARCH_PEER` /
+  `CHAR_ARCHIVED` pair is what makes that visible: the peer is created FIRST, so
+  v4's default-clearing loop commits its `defaultImageId = NULL` and then throws
+  on the archived row, leaving the peer's `avatarOverrides` still pointing at the
+  image the request tried to delete. Confirmed in the regenerated oracle.
+* **(b)** `zod_url_ok` was WRONG, and the measurement went further than the
+  order predicted. Zod 4.5's bare `z.url()` is exactly "`new URL(value.trim())`
+  does not throw" (`zod/v4/core/schemas.cjs:$ZodURL` — the `://` guard two lines
+  above applies ONLY under the `httpProtocol` constraint, which
+  `importFromUrlSchema` does not carry). So v4 ACCEPTS
+  `mailto:someone@example.invalid` and `data:image/png;base64,…` and goes on to
+  FETCH them (201, not a refusal — the order's "the fetch fails" premise was
+  about a real network, and the canned wire settles what the route does). Both
+  now parse; `whatwg_pathname` gained the OPAQUE-path form; the derived
+  filenames `someone@example.webp` and `png;base64,iVBORw0KGgo=.webp` are pinned
+  by two corpus rows plus unit tests, and every boundary was MEASURED against
+  Node 24's own `new URL` (`https:///path` parses with host `path`; `http:/x`
+  with host `x`; `https://` throws; `file:` alone may have an empty host).
+* **(c)** v4's two per-leg receipt lines were unported. Landed as TWO literal
+  emission sites (mirroring v4's two `logger.info` calls) rather than one
+  interpolated site — an interpolation carries the same bytes but is invisible
+  to `handler-logging-inventory.md`'s survey, which needs the literal within
+  reach of the macro. Pinned by a capture layer plus a production-zone source
+  census that strips each `#[cfg(test)]` module by its own braces (this file has
+  THREE, two of them MID-FILE — truncating at the first would have silently
+  shortened the census, the exact trap the round records name).
+* **(d)** the JSON body ceiling RECORDED rather than inherited: v4's request
+  path allows 10 GB (`next.config.js:66`'s `proxyClientMaxBodySize`; the
+  `bodySizeLimit: '100mb'` two lines above governs Server Actions — dogfood
+  findings #36/#63 settled that). `usize::MAX` is not identical to 10 GB, and
+  the note says so; what matters is that axum's 2 MB default would be a
+  v5-invented 413 where v4 answers 200.
+* **(e)** the images oracle's `cannedFetch` was assigned only when a case
+  declared one, so a fetch-less case inherited its PREDECESSOR's wire. It is now
+  assigned unconditionally, and the default THROWS — so the regen passing is
+  itself the proof that no existing case was relying on the inheritance, which
+  is stronger than the "keyed" fix the order asked for.
+
+**Tier 2 item 6 — the logging inventory.** `app/api/v1/images/route.ts` is now a
+seed file: the FIRST `app/api/**` entry the survey has ever had, and the first
+repayment of the scope gap dogfood finding #110 recorded. Its eight lines
+disposition as 2 PORTED-PINNED (the two receipts), 5 PORTED-UNPINNED (the
+generate route's Concierge + completion lines) and 1 NO-PORT-RECORDED
+(`[Images v1] Error fetching images`).
+
+### Banked — a real, PRE-EXISTING divergence found by this lane
+
+**v4 DROPS a whole `chat_settings` row that fails `ChatSettingsSchema`.** Found
+by consequence: the corpus's first draft used `mode: 'MONITOR'`, which is not
+one of v4's three (`OFF` / `DETECT_ONLY` / `AUTO_ROUTE`), and v4 made ZERO
+classification calls where v5 made one. The mechanism was then MEASURED rather
+than inferred — a VALID `mode: 'AUTO_ROUTE'` with an out-of-range
+`threshold: 5` ALSO produced zero calls, which rules out per-field defaulting
+and leaves `findByFilter`'s row-level re-validation
+(`base.repository.ts:277-285`, the same mechanism `api/images.rs`'s header
+already documents for the `files` list). So on v4 a corrupt settings row makes
+the Concierge silently fall back to `DEFAULT_DANGEROUS_CONTENT_SETTINGS`; v5's
+`db::chat_settings::find_by_user_id` runs no validation and reads it through.
+
+NOT fixed here: it belongs to the chat-settings repository, not to this route,
+and reproducing it means porting v4's read-time schema validation for that
+collection. Recorded in the order header and in the oracle case's corpus
+comment so the next person who reaches for an invalid mode knows why.
+
+### Mutation proofs
+
+Nine, each reddening exactly the arms named:
+
+| # | mutation | reddened |
+|---|---|---|
+| 1 | the frozen clock un-frozen (`frozen_now_ms + 1`) | **10** of the 11 writing rows — the eleventh is `generate_png_transcode`, whose filename is codec-blanked by design. Exactly right, and the count is the proof that the filename IS a comparand on the other ten. |
+| 2 | the reroute reads the Concierge DESK instead of the first compatible profile | `generate_danger_autoroute` (400 `OLLAMA provider does not support image generation` — the desk deliberately points at the no-image profile) |
+| 3 | `orientation` flipped from `None` to `Some(Square)` | 14 rows, on `providerCalls` |
+| 4 | the files-leg tag validation removed | `upload_tags_raw_tagid`, `_missing_tagid`, `_nonuuid_string` |
+| 5 | the archive guard disarmed (`if false && …`) | `delete_orphan_archived_peer` (200 `{"success":true}` vs v4's 500) |
+| 6 | the edge drops non-string `tagId`s again (`filter_map`) | `parse_upload_tags`' carry test |
+| 7 | `zod_url_ok` refuses non-special schemes | `import_mailto_scheme`, `import_data_uri` |
+| 8 / 9 | both legs given the SAME receipt sentence | the production-zone census |
+
+⚠ Proof 6 was FIRST written as a wire test in
+`crates/quilltap-web/tests/files_write_routes.rs` and stayed GREEN under the
+mutation. Probed rather than shrugged at: that venue has no mount store, so a
+VALID-uuid upload also answers 500 there and the arm was VACUOUS (`a-green-
+mutation-means-a-non-discriminating-arm` × `web-test-venue-…-lacks-tables`).
+The vacuous arm was REMOVED and the mapping extracted and unit-pinned instead.
+
+### Fixtures changed, and what they invalidate
+
+`crates/quilltap-web/tests/fixtures/images-{main,mount}.db` (+ the
+`.meta.json` sidecar) rebuilt in place from
+`harness/oracle/fixtures/build-images-collection-fixture.ts`, which gained
+`F_ORPHAN_ARCH` (a dangling-key IMAGE row), `CHAR_ARCH_PEER` (normal;
+`defaultImageId` AND an `avatarOverride` on it) and `CHAR_ARCHIVED` (archived by
+raw UPDATE — going through the service would run the very guard the row exists
+to arm, and would prune the vault). Every P4.73 arm stayed green unchanged.
+
+**Consumers regenerated in this lane:** `images_routes_equivalence` (27 + 5 →
+38 cases) and the new `images_generate_route_equivalence` (37). Nothing else
+reads the pair — `crates/quilltap-web/tests/fixtures/images-*.db` is grep-clean
+outside those two families and the builder.
+
+`files-{main,mount}.db` is UNCHANGED; `files_routes_equivalence`'s oracle was
+regenerated only because five arms were appended to it.
+
+### Regen recipes (all from the pin, all committed in the case headers)
+
+```bash
+PIN=/tmp/qt-v4-pin-p476-d883a5ee1   # git worktree add --detach at d883a5ee1 + the 3 symlink classes
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<worktree>
+
+# the fixture (writes /tmp, then copy into crates/quilltap-web/tests/fixtures/)
+cd "$PIN" && QT_FIXTURE_IMGCOL_MAIN=/tmp/qt-imgcol-main.db \
+  QT_FIXTURE_IMGCOL_MOUNT=/tmp/qt-imgcol-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-images-collection-fixture.ts
+
+# images_generate_route_equivalence  (QT_ORACLE_IMAGES_GENERATE)
+TMPO=/tmp/qt-images-generate-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+cp $V5W/harness/oracle/cases/images-generate-route.test.ts "$TMPO/cases/"
+cp $V5W/harness/oracle/fixtures/images-collection.json     "$TMPO/fixtures/"
+cd "$PIN" && TZ=UTC QT_FIXTURE_IMGCOL_MAIN=/tmp/qt-imgcol-main.db \
+  QT_FIXTURE_IMGCOL_MOUNT=/tmp/qt-imgcol-mount.db \
+  QT_ORACLE_OUT=/tmp/oracle-images-generate.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots "$TMPO/cases" -- images-generate-route
+
+# images_routes_equivalence (QT_ORACLE_IMAGES_ROUTES) — same shape, `-- images-routes`
+# files_routes_equivalence  (QT_ORACLE_FILES_ROUTES)  — the recipe in that case's header
+```
+
+### The gate's own catch — a pre-existing workspace intermittent, DIAGNOSED
+
+The first full `cargo test --workspace` went RED at binary 4:
+`services::activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`
+asserting `activity_counts().summary == 0` and reading **1**. Not shrugged at,
+and not this lane's: the assertion reads the PROCESS-GLOBAL registry, and the
+only Summary source is `cheap_llm_exec::execute`'s
+`track_activity(activity_kind_for_task(...))`.
+
+Measured rather than inferred. A repo-wide scan for tests that reach the
+registry — through `track_activity` / `begin_activity` /
+`run_attributed_to_job` / `CheapLlmTaskExecutor` — WITHOUT taking
+`ActivityTestGuard` found **sixteen**, and running the blip tests beside three of
+those families at `--test-threads=16` reproduced the failure **3 times in 6**.
+The mechanism is the ordering the guard exists to prevent: the blip test takes
+the lock, resets, runs its own span to completion, and then a guard-less test
+STARTS a Summary span before the blip test's `activity_counts()` read.
+
+Fixed with P4.D129's own remedy — that round gave thirteen wrapped-path tests
+the guard and left these behind, and its record called the residue "the one
+honestly-unreproduced workspace intermittent". Fifteen of the sixteen now take
+it (test-only, one line each, behaviour-neutral): three in
+`answer_confirmation.rs`, five in `compression.rs`, three in
+`outfit_selections.rs`, two in `build_context.rs`, one in `orchestrator.rs`, one
+in `memory_recap/mod.rs`. The same repro is **6-in-6 green** afterwards.
+
+⚠ **The sixteenth is left alone on purpose:**
+`tools/generate_image.rs:2774`'s `failure_row_duration_brackets_the_provider_call`.
+This order permits only a visibility widening in that file, and the omission is
+harmless to the failure diagnosed here — its span is `Image`, not `Summary` — but
+it can poison an `Image` assertion by the identical mechanism. Named for whoever
+owns that file next.
+
+None of the six files is in another lane's ownership column this round.
+
+**The gate's second catch, also mine:** `web_edge_body_parse_guard`'s
+`CLOSURE_CENSUS` row for `files_routes.rs` read 5 and now reads 4 — closing
+P4.62(a) RETIRED a collapsing site rather than adjudicating it. `tags[].tagId`
+was that file's last DIVERGENT-RECORDED escalation, and widening
+`Request::FileUpload.tags` to `Vec<Value>` meant `parse_upload_tags` maps with
+`t.get("tagId").cloned()` and reaches for no `as_str` at all. The census row
+carries the whole history and names the arms.
+
+**And a third, the same shape:** `dispatch_wrong_type_census`'s
+`("FileUpload", "tags")` row RETIRED — that census enumerates the TYPED
+`Request` fields whose decode could refuse where v4 accepts, and the field is
+`Option<Vec<Value>>` now, so there is nothing left for it to say. The retyping
+IS the close of P4.62(a)'s escalation, and the row is replaced by a comment
+naming where the behaviour is pinned instead. All three catches are the same
+lesson: closing a recorded divergence moves the censuses that recorded it, and
+only the full workspace run says which.
+
+### Gate
+
+* `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (the default and
+  `quilltap-core/native-transport`); the release build clean. Clippy's own catch
+  during the lane: `(special && rest.starts_with('/')) || special` in the
+  rewritten `whatwg_pathname` is a logic bug — simplified to `special ||
+  rest.starts_with("//")`, which is also what v4's parser does.
+* **`cargo test --workspace`: 497 test binaries / 2,815 passed / 0 failed /
+  1 ignored — exit 0, ZERO `SKIP:` lines**, with this lane's env block
+  (`QT_ORACLE_IMAGES_ROUTES`, `QT_ORACLE_IMAGES_GENERATE`,
+  `QT_ORACLE_FILES_ROUTES`). All three families positively confirmed to have RUN
+  rather than skipped — 2.33 s / 2.16 s / 0.17 s respectively, not 0.00 s.
+* The three oracles regenerated FRESH from the pinned `d883a5ee1` worktree
+  before that run, and the `images_generate_route_equivalence` corpus was green
+  on its first full run after the one correction the corpus itself forced
+  (`MONITOR` → `DETECT_ONLY`, above).
+* No Playwright (§S.5); `git diff main -- apps/web/ crates/quilltap-web/src/lib.rs
+  crates/quilltap-host/src/spine.rs` is EMPTY.
+
+### Deferred loudly
+
+* 💸 **The generate route spends REAL MONEY** the moment a provider is
+  configured: one image-provider call per request, plus one cheap-LLM
+  classification whenever the Concierge is armed. Both seams are wired LIVE in
+  `quilltap-host`. The live proof — a real generation through
+  `POST /api/v1/images?action=generate` with a real key, and an AUTO_ROUTE
+  reroute on a genuinely-flagged prompt — joins the dogfood queue.
+* The **chat-settings read-validation divergence** above (banked, with its
+  reproduction).
+* The `ErasedImageGenerate` **`baseUrl` narrowing** (pre-existing and shared —
+  named at the seam, not introduced here).
+* `api/image_profiles.rs:655` still measures its `1..=4000` prompt window with
+  `jsstr::utf16_len` where Zod 4.5 counts CODE POINTS. Not this lane's file;
+  `api::images::images_generate` uses `zod_len_min_ok` / `zod_len_max_ok` for
+  the identical schema, so the two sibling routes now disagree on astral
+  prompts. Observed, not fixed.

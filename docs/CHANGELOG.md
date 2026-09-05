@@ -251,6 +251,31 @@ embedded table; 120 docs + 667 chunks + the rowid walk order compared; a one-byt
 edit to one vendored file reddens it — mutation-proven) and `help_tree_embed_guard`
 (the embedded table equals the on-disk walk: path set, order, bytes; pins the
 120-file count so an empty embed cannot pass).
+#### 2026-09-05 — docs(p4.76): the lane record, and P4.73 marked CLOSED WHOLE
+
+_Docs-only change._
+
+The P4.76 lane record in `status-log.md`: what landed under each tiered item,
+the seam design and the reasoning behind ONE `Option` for the two provider
+seams, the `build_cheap_llm_selection` decision the order asked to be made
+deliberately (not widened — `services/image_job_common.rs` already carries an
+identical `pub(crate)` copy), the nine mutation proofs with the arms each
+reddened, the three gate catches, the fixture change and which oracles it
+invalidates, the verbatim regen recipes, and what is deferred.
+
+Also banked with its reproduction: **v4 DROPS a whole `chat_settings` row that
+fails `ChatSettingsSchema`**, so `findByUserId` answers null and the Concierge
+falls back to `DEFAULT_DANGEROUS_CONTENT_SETTINGS`. Found by consequence (a
+corpus draft used a mode outside v4's enum), then measured — a VALID
+`mode: 'AUTO_ROUTE'` with an out-of-range `threshold: 5` ALSO produced zero
+classification calls, which rules out per-field defaulting and leaves
+`findByFilter`'s row-level re-validation. v5's
+`db::chat_settings::find_by_user_id` runs no such validation. Pre-existing, and
+belonging to the chat-settings repository rather than to this route.
+
+P4.73's order header now reads CLOSED WHOLE: both items it left open, and all
+five items its unification review recorded, landed in this lane.
+
 #### 2026-09-05 — test(activity): give the last fifteen registry-touching tests the lock, and move two censuses P4.76 retired sites from
 
 _Versions: core 0.0.799, harness 0.0.688, web 0.0.117._
