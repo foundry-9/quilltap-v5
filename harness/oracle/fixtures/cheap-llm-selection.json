@@ -1,0 +1,174 @@
+{
+  "$note": "P4.D155 — the cheap-LLM SELECTION corpus (v4 `0506517d3` correction (a)). Read by BOTH sides: harness/oracle/cases/cheap-llm-selection.ts drives v4's real lib/llm/cheap-llm.ts over it, crates/quilltap-harness/tests/cheap_llm_selection_equivalence.rs drives quilltap_core::cheap_llm. Keeping the corpus in one JSON file rather than transcribing it twice is what makes the profile shapes (parameters bags, maxContext, blank base URLs) comparable at all.",
+  "profiles": {
+    "openaiPlain": {
+      "id": "p-openai-plain", "provider": "OPENAI", "modelName": "gpt-5",
+      "baseUrl": null, "isCheap": false, "isDangerousCompatible": false,
+      "parameters": null, "maxContext": null
+    },
+    "openaiParams": {
+      "id": "p-openai-params", "provider": "OPENAI", "modelName": "gpt-5",
+      "baseUrl": "https://api.example.test/v1", "isCheap": false, "isDangerousCompatible": false,
+      "parameters": { "reasoning_effort": "minimal", "top_p": 0.4 }, "maxContext": 128000
+    },
+    "deepseekParams": {
+      "id": "p-deepseek", "provider": "DEEPSEEK", "modelName": "deepseek-chat",
+      "baseUrl": null, "isCheap": false, "isDangerousCompatible": false,
+      "parameters": { "thinking": false }, "maxContext": null
+    },
+    "ollamaBlank": {
+      "id": "p-ollama-blank", "provider": "OLLAMA", "modelName": "qwen3:8b",
+      "baseUrl": "", "isCheap": false, "isDangerousCompatible": false,
+      "parameters": null, "maxContext": null
+    },
+    "ollamaOwnUrl": {
+      "id": "p-ollama-own", "provider": "OLLAMA", "modelName": "qwen3:8b",
+      "baseUrl": "http://box.local:11434", "isCheap": false, "isDangerousCompatible": false,
+      "parameters": { "num_ctx": 4096 }, "maxContext": 65536
+    },
+    "ollamaCtx": {
+      "id": "p-ollama-ctx", "provider": "OLLAMA", "modelName": "llama4:latest",
+      "baseUrl": null, "isCheap": false, "isDangerousCompatible": false,
+      "parameters": { "keep_alive": -1 }, "maxContext": 32768
+    },
+    "ollamaCheap": {
+      "id": "p-ollama-cheap", "provider": "OLLAMA", "modelName": "qwen3:1.7b",
+      "baseUrl": null, "isCheap": true, "isDangerousCompatible": false,
+      "parameters": { "keep_alive": "10m" }, "maxContext": 8192
+    },
+    "openaiCheap": {
+      "id": "p-openai-cheap", "provider": "OPENAI", "modelName": "gpt-5-mini",
+      "baseUrl": null, "isCheap": true, "isDangerousCompatible": false,
+      "parameters": { "reasoning_effort": "minimal" }, "maxContext": null
+    },
+    "uncensoredOllama": {
+      "id": "p-unc-ollama", "provider": "OLLAMA", "modelName": "dolphin:latest",
+      "baseUrl": null, "isCheap": false, "isDangerousCompatible": true,
+      "parameters": { "temperature": 1.1 }, "maxContext": 16384
+    },
+    "uncensoredRemote": {
+      "id": "p-unc-remote", "provider": "OPENROUTER", "modelName": "nous/hermes",
+      "baseUrl": null, "isCheap": false, "isDangerousCompatible": true,
+      "parameters": null, "maxContext": null
+    }
+  },
+  "$fromProfileNote": "selectionFromProfile directly — the shape every other rung is now built from.",
+  "fromProfile": [
+    { "name": "from_openai_plain_nofallback", "profile": "openaiPlain", "localBaseUrlFallback": false },
+    { "name": "from_openai_plain_fallback", "profile": "openaiPlain", "localBaseUrlFallback": true },
+    { "name": "from_openai_params", "profile": "openaiParams", "localBaseUrlFallback": false },
+    { "name": "from_deepseek_params", "profile": "deepseekParams", "localBaseUrlFallback": false },
+    { "name": "from_ollama_blank_nofallback", "profile": "ollamaBlank", "localBaseUrlFallback": false },
+    { "name": "from_ollama_blank_fallback", "profile": "ollamaBlank", "localBaseUrlFallback": true },
+    { "name": "from_ollama_own_url_fallback", "profile": "ollamaOwnUrl", "localBaseUrlFallback": true },
+    { "name": "from_ollama_ctx_fallback", "profile": "ollamaCtx", "localBaseUrlFallback": true },
+    { "name": "from_ollama_ctx_nofallback", "profile": "ollamaCtx", "localBaseUrlFallback": false }
+  ],
+  "$ladderNote": "getCheapLLMProvider — one case per rung, with the two priority-5 branches carrying provider params on the CURRENT profile so their absence pre-fix is visible.",
+  "ladder": [
+    {
+      "name": "p1_global_default",
+      "current": "openaiPlain",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": true, "defaultCheapProfileId": "p-openai-cheap" },
+      "available": ["openaiCheap", "ollamaCheap"], "ollamaAvailable": false
+    },
+    {
+      "name": "p1_global_default_missing_falls_through",
+      "current": "openaiParams",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false, "defaultCheapProfileId": "p-nobody" },
+      "available": ["openaiPlain"], "ollamaAvailable": false
+    },
+    {
+      "name": "p2_user_defined",
+      "current": "openaiPlain",
+      "config": { "strategy": "USER_DEFINED", "fallbackToLocal": true, "userDefinedProfileId": "p-deepseek" },
+      "available": ["deepseekParams", "ollamaCheap"], "ollamaAvailable": true
+    },
+    {
+      "name": "p3_local_cheap_blank_url",
+      "current": "openaiPlain",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false },
+      "available": ["openaiCheap", "ollamaCheap"], "ollamaAvailable": false
+    },
+    {
+      "name": "p3_first_cheap_remote",
+      "current": "openaiPlain",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false },
+      "available": ["openaiCheap"], "ollamaAvailable": false
+    },
+    {
+      "name": "p4_local_first_blank_url",
+      "current": "openaiPlain",
+      "config": { "strategy": "LOCAL_FIRST", "fallbackToLocal": false },
+      "available": ["ollamaBlank", "openaiPlain"], "ollamaAvailable": false
+    },
+    {
+      "name": "p4_fallback_to_local_own_url",
+      "current": "openaiPlain",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": true },
+      "available": ["ollamaOwnUrl"], "ollamaAvailable": true
+    },
+    {
+      "name": "p5_current_ollama_carries_params",
+      "current": "ollamaCtx",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false },
+      "available": [], "ollamaAvailable": false
+    },
+    {
+      "name": "p5_current_ollama_own_url",
+      "current": "ollamaOwnUrl",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false },
+      "available": [], "ollamaAvailable": false
+    },
+    {
+      "name": "p5_cheapest_carries_params",
+      "current": "openaiParams",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false },
+      "available": [], "ollamaAvailable": false
+    },
+    {
+      "name": "p5_cheapest_deepseek_params",
+      "current": "deepseekParams",
+      "config": { "strategy": "PROVIDER_CHEAPEST", "fallbackToLocal": false },
+      "available": [], "ollamaAvailable": false
+    }
+  ],
+  "$uncensoredNote": "resolveUncensoredCheapLLMSelection — both picks take localBaseUrlFallback, so an OLLAMA uncensored profile with a blank base URL gets localhost AND is local.",
+  "uncensored": [
+    {
+      "name": "unc_off_returns_standard",
+      "standard": "openaiCheap", "isDangerousChat": true,
+      "dangerSettings": { "mode": "OFF" }, "available": ["uncensoredOllama"]
+    },
+    {
+      "name": "unc_not_dangerous_returns_standard",
+      "standard": "openaiCheap", "isDangerousChat": false,
+      "dangerSettings": { "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "p-unc-ollama" },
+      "available": ["uncensoredOllama"]
+    },
+    {
+      "name": "unc_configured_ollama_blank_url",
+      "standard": "openaiCheap", "isDangerousChat": true,
+      "dangerSettings": { "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "p-unc-ollama" },
+      "available": ["uncensoredOllama", "uncensoredRemote"]
+    },
+    {
+      "name": "unc_configured_remote",
+      "standard": "openaiCheap", "isDangerousChat": true,
+      "dangerSettings": { "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "p-unc-remote" },
+      "available": ["uncensoredRemote", "uncensoredOllama"]
+    },
+    {
+      "name": "unc_scan_any_compatible",
+      "standard": "openaiCheap", "isDangerousChat": true,
+      "dangerSettings": { "mode": "AUTO_ROUTE" },
+      "available": ["openaiPlain", "uncensoredOllama"]
+    },
+    {
+      "name": "unc_nothing_found_fails_open",
+      "standard": "openaiCheap", "isDangerousChat": true,
+      "dangerSettings": { "mode": "AUTO_ROUTE", "uncensoredTextProfileId": "p-nobody" },
+      "available": ["openaiPlain"]
+    }
+  ]
+}

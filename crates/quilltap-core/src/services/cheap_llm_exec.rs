@@ -33,7 +33,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use crate::cheap_llm::{
-    build_character_cache_key, profile_params, CheapLlmSelection, UncensoredFallbackOptions,
+    build_character_cache_key, selection_from_profile, CheapLlmSelection, UncensoredFallbackOptions,
 };
 use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
@@ -124,18 +124,11 @@ fn should_attempt_uncensored_fallback(
         .iter()
         .find(|p| p.id == uncensored_id)?;
 
-    Some(CheapLlmSelection {
-        provider: uncensored_profile.provider.clone(),
-        model_name: uncensored_profile.model_name.clone(),
-        base_url: uncensored_profile
-            .base_url
-            .clone()
-            .filter(|s| !s.is_empty()),
-        connection_profile_id: Some(uncensored_profile.id.clone()),
-        // v4 hardcodes `isLocal: false` on this path.
-        is_local: false,
-        profile_parameters: profile_params(uncensored_profile),
-    })
+    // v4 `0506517d3` (correction (a)): this literal hard-coded `isLocal: false`
+    // and became `selectionFromProfile(uncensoredProfile)`, so an OLLAMA
+    // uncensored profile is now correctly local here. No `localBaseUrlFallback`
+    // — v4 passes no options at this site, so a blank base URL stays blank.
+    Some(selection_from_profile(uncensored_profile, false))
 }
 
 struct ProviderResponse {
@@ -2982,13 +2975,87 @@ mod tests {
 
     /// Each attempt gets a FRESH budget. The safe provider burns 30 s and comes
     /// back empty, the uncensored fallback then stalls — with per-attempt
-    /// budgets that fires at 30 + 45 = 75 s; a single task-level budget would
-    /// have fired at 45 s.
+    /// budgets that fires at 30 + 90 = 120 s; a single task-level budget would
+    /// have fired at 90 s.
+    ///
+    /// The uncensored profile here is deliberately REMOTE. It used to be OLLAMA
+    /// and still measure the remote tier, because the fallback selection
+    /// hard-coded `isLocal: false`; v4 `0506517d3` (correction (a)) made it
+    /// provider-derived, so an OLLAMA profile now takes the 180 s local budget —
+    /// which is what `an_ollama_uncensored_fallback_takes_the_local_budget`
+    /// pins. Keeping this one remote keeps it about the FRESH budget.
     #[tokio::test(start_paused = true)]
     async fn each_attempt_gets_a_fresh_budget() {
         // Drives the REAL wrapped path, so it opens real activity spans on the
         // process-global registry; serialize with the exact-count registry tests
         // (the drop also zeroes, so this test leaves no residue either).
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let messages = vec![CompletionMessage::user("spicy")];
+        let provider = SlowEmptyThenStall {
+            first_provider: "ANTHROPIC".to_string(),
+            first_delay_ms: 30_000,
+        };
+        let danger = DangerousContentSettings {
+            mode: "AUTO_ROUTE".to_string(),
+            uncensored_text_profile_id: Some("u1".to_string()),
+        };
+        let profiles = vec![
+            CheapLlmProfile {
+                id: "cur".to_string(),
+                provider: "ANTHROPIC".to_string(),
+                model_name: "safe".to_string(),
+                ..Default::default()
+            },
+            CheapLlmProfile {
+                id: "u1".to_string(),
+                provider: "OPENROUTER".to_string(),
+                model_name: "dolphin".to_string(),
+                ..Default::default()
+            },
+        ];
+        let options = UncensoredFallbackOptions {
+            danger_settings: &danger,
+            available_profiles: &profiles,
+            is_dangerous_chat: None,
+        };
+
+        let started = tokio::time::Instant::now();
+        let r = CheapLlmTaskExecutor::new()
+            .execute(
+                &provider,
+                &selection("ANTHROPIC", "safe"),
+                messages,
+                |s| s.to_string(),
+                Some(&options),
+                None,
+                None,
+                Some("summarize-chat"),
+                CheapLlmTaskOptions::default(),
+            )
+            .await;
+
+        assert!(!r.success);
+        // A REMOTE fallback selection gets the shared background tier — 90 s
+        // since P4.D136 (bug 107) — reported as such.
+        assert!(r.error.as_deref().unwrap().contains("90000ms budget"));
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= std::time::Duration::from_millis(120_000),
+            "the second attempt shared the first's budget (total {elapsed:?}, expected ~120s)"
+        );
+    }
+
+    /// v4 `0506517d3` correction (a), at the one site no differential can see:
+    /// `shouldAttemptUncensoredFallback` is private in v4, and the tier-3
+    /// families that reach it record a canned key of
+    /// `provider|model|temperature|messages`, which carries neither `isLocal`
+    /// nor `profileParameters`. Its pre-fix literal hard-coded `isLocal: false`;
+    /// post-fix it is `selectionFromProfile(uncensoredProfile)`, so an OLLAMA
+    /// uncensored profile is LOCAL — and `deadlineFor`'s local branch is the
+    /// visible consequence: 180 s, not 90 s. The shape that function produces is
+    /// itself proven against v4 by `cheap_llm_selection_equivalence`.
+    #[tokio::test(start_paused = true)]
+    async fn an_ollama_uncensored_fallback_takes_the_local_budget() {
         let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let messages = vec![CompletionMessage::user("spicy")];
         let provider = SlowEmptyThenStall {
@@ -3019,7 +3086,6 @@ mod tests {
             is_dangerous_chat: None,
         };
 
-        let started = tokio::time::Instant::now();
         let r = CheapLlmTaskExecutor::new()
             .execute(
                 &provider,
@@ -3035,14 +3101,10 @@ mod tests {
             .await;
 
         assert!(!r.success);
-        // The fallback selection is `isLocal: false` in v4, so its fresh budget
-        // is the remote shared tier — 90 s since P4.D136 (bug 107) — reported as
-        // such.
-        assert!(r.error.as_deref().unwrap().contains("90000ms budget"));
-        let elapsed = started.elapsed();
         assert!(
-            elapsed >= std::time::Duration::from_millis(120_000),
-            "the second attempt shared the first's budget (total {elapsed:?}, expected ~120s)"
+            r.error.as_deref().unwrap().contains("180000ms budget"),
+            "an OLLAMA uncensored fallback must take the local budget, got {:?}",
+            r.error
         );
     }
 

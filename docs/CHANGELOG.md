@@ -387,6 +387,57 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — fix(cheap-llm): one `selectionFromProfile`, and the priority-5 rungs stop dropping a profile's params (v4 `0506517d3` correction (a))
+
+_Versions: core 0.0.781, harness 0.0.673._
+
+v4 collapsed eight hand-built `CheapLLMSelection` literals onto one
+`selectionFromProfile(profile, { localBaseUrlFallback })`, and two of them
+disagreed with it. Both priority-5 branches of `getCheapLLMProvider` — the
+Ollama "use the current model" branch and the "current profile on its
+provider's cheapest model" branch — carried NO `profileParameters`, so a
+profile's provider params (DeepSeek `thinking`, Ollama `num_ctx`, a sampling
+bag) reached every other rung of the ladder and vanished on the fallback one.
+And the answer-confirmation re-affirmation selection and the cheap-task
+uncensored fallback both hard-coded `isLocal: false`, so an Ollama profile on
+either path was treated as remote — an API key it does not need, and the 90 s
+remote budget instead of the 180 s local one.
+
+v5 reproduced all three, plus the duplication that caused them. `cheap_llm.rs`
+now has one `selection_from_profile(profile, local_base_url_fallback)` and every
+rung goes through it, `base_url_or_localhost` is gone, and the two literals in
+`cheap_llm_exec.rs` and `answer_confirmation.rs` are the same shape (the latter
+extracted as `reaffirmation_selection`, since `ReaffirmationProfile` is a
+narrower type).
+
+**The family this needed did not exist.** `cheap_llm_fallback_equivalence`
+drives `buildCheapFallbackSelections`, not the ladder; every tier-3 family that
+resolves a selection records a canned key of
+`provider|model|temperature|messages`, which carries neither corrected field.
+So the new tier-1 `cheap_llm_selection_equivalence` drives v4's real
+`selectionFromProfile` / `getCheapLLMProvider` /
+`resolveUncensoredCheapLLMSelection` over a 26-row corpus shared by both sides
+(`harness/oracle/fixtures/cheap-llm-selection.json` — profile shapes are
+exactly what a transcribed corpus drifts on). Every row also carries
+`deadlineFor`'s background deadline, which turns `isLocal` from a field nobody
+diffs into a number: 180 000 vs 90 000.
+
+Mutation-proven both ways. Hard-coding `is_local: false` back on the uncensored
+pick reddens `unc_configured_ollama_blank_url` and `unc_scan_any_compatible`
+(both the boolean and the deadline); dropping `profile_parameters` on the two
+priority-5 branches reddens all four `p5_*` rows. The two sites v4 keeps
+private get unit pins instead: `an_ollama_uncensored_fallback_takes_the_local_budget`
+(the existing `each_attempt_gets_a_fresh_budget` had *asserted* the pre-fix
+90 s and went red on the fix — its uncensored profile is now deliberately
+remote so it stays about the fresh budget) and
+`reaffirmation_selection_derives_is_local`, each mutation-proven.
+
+`services/answer_confirmation.rs` is unowned in the round's ownership table;
+the edit is one derived boolean plus its extraction, named loudly in the lane
+record. `services/announcer/character_voiced.rs` — P4.D153's file — needed
+nothing: v4's `buildSelection` there was already the shared shape, and so is
+v5's.
+
 #### 2026-09-05 — docs(self-inventory): v4's dropped empty catch has no v5 counterpart (v4 `0506517d3` correction (g))
 
 _Versions: core 0.0.780._

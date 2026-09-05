@@ -215,20 +215,42 @@ fn base_url_or_none(profile: &CheapLlmProfile) -> Option<String> {
     profile.base_url.clone().filter(|s| !s.is_empty())
 }
 
-/// JS `baseUrl || 'http://localhost:11434'`.
-fn base_url_or_localhost(profile: &CheapLlmProfile) -> Option<String> {
-    Some(base_url_or_none(profile).unwrap_or_else(|| "http://localhost:11434".to_string()))
-}
+/// v4 `OLLAMA_DEFAULT_BASE_URL` — where a local Ollama server listens when a
+/// profile leaves its base URL blank.
+const OLLAMA_DEFAULT_BASE_URL: &str = "http://localhost:11434";
 
 /// v4 `selectionFromProfile` — `export`ed at `65f5021c8` so the cheap-LLM
-/// fallback chain can turn a drafted connection profile into a selection.
-pub fn selection_from_profile(profile: &CheapLlmProfile) -> CheapLlmSelection {
+/// fallback chain can turn a drafted connection profile into a selection, and
+/// widened at `0506517d3` (correction (a)) into the ONE place a
+/// [`CheapLlmSelection`] is assembled from a profile: the ladder in
+/// [`get_cheap_llm_provider`], the uncensored reroute, and the direct utility
+/// calls that pick a profile as-is all come through here.
+///
+/// `local_base_url_fallback` substitutes the default Ollama address when a
+/// LOCAL profile has no base URL of its own (v4's `{ localBaseUrlFallback:
+/// true }`); non-local profiles always keep their own base URL, or none.
+///
+/// Two of v4's eight hand-built literals disagreed with this shape, and that is
+/// what the collapse corrected: the two priority-5 branches carried no
+/// `profileParameters` at all (so a profile's provider params — DeepSeek
+/// `thinking`, Ollama `num_ctx` — silently vanished on the fallback path), and
+/// the answer-confirmation / cheap-task selections hard-coded `isLocal: false`
+/// where the provider decides it.
+pub fn selection_from_profile(
+    profile: &CheapLlmProfile,
+    local_base_url_fallback: bool,
+) -> CheapLlmSelection {
+    let is_local = profile.provider == "OLLAMA";
+    // JS `profile.baseUrl || (isLocal && localBaseUrlFallback ? DEFAULT : undefined)`.
+    let base_url = base_url_or_none(profile).or_else(|| {
+        (is_local && local_base_url_fallback).then(|| OLLAMA_DEFAULT_BASE_URL.to_string())
+    });
     CheapLlmSelection {
         provider: profile.provider.clone(),
         model_name: profile.model_name.clone(),
-        base_url: base_url_or_none(profile),
+        base_url,
         connection_profile_id: Some(profile.id.clone()),
-        is_local: profile.provider == "OLLAMA",
+        is_local,
         profile_parameters: profile_params(profile),
     }
 }
@@ -256,7 +278,7 @@ pub fn get_cheap_llm_provider(
         .filter(|s| !s.is_empty())
     {
         if let Some(p) = available_profiles.iter().find(|p| p.id == default_id) {
-            return selection_from_profile(p);
+            return selection_from_profile(p, false);
         }
         // Global default not found — fall through.
     }
@@ -269,7 +291,7 @@ pub fn get_cheap_llm_provider(
             .filter(|s| !s.is_empty())
         {
             if let Some(p) = available_profiles.iter().find(|p| p.id == user_id) {
-                return selection_from_profile(p);
+                return selection_from_profile(p, false);
             }
             // Profile not found — v4 warns and falls through.
         }
@@ -280,45 +302,26 @@ pub fn get_cheap_llm_provider(
         available_profiles.iter().filter(|p| p.is_cheap).collect();
     if !cheap_profiles.is_empty() {
         if let Some(local) = cheap_profiles.iter().find(|p| p.provider == "OLLAMA") {
-            return CheapLlmSelection {
-                provider: "OLLAMA".to_string(),
-                model_name: local.model_name.clone(),
-                base_url: base_url_or_localhost(local),
-                connection_profile_id: Some(local.id.clone()),
-                is_local: true,
-                profile_parameters: profile_params(local),
-            };
+            return selection_from_profile(local, true);
         }
-        return selection_from_profile(cheap_profiles[0]);
+        return selection_from_profile(cheap_profiles[0], false);
     }
 
     // Priority 4: local first (prefer Ollama if available).
     if config.strategy == "LOCAL_FIRST" || (config.fallback_to_local && ollama_available) {
         if let Some(ollama) = available_profiles.iter().find(|p| p.provider == "OLLAMA") {
-            return CheapLlmSelection {
-                provider: "OLLAMA".to_string(),
-                model_name: ollama.model_name.clone(),
-                base_url: base_url_or_localhost(ollama),
-                connection_profile_id: Some(ollama.id.clone()),
-                is_local: true,
-                profile_parameters: profile_params(ollama),
-            };
+            return selection_from_profile(ollama, true);
         }
         // LOCAL_FIRST with no Ollama profile — fall through.
     }
 
     // Priority 5: no dedicated cheap LLM. For Ollama, use the current profile's
-    // model as-is (all local models are "free"); note v4 sets no
-    // profileParameters on either priority-5 branch.
+    // model as-is (all local models are "free"). v4 `0506517d3` (correction (a)):
+    // BOTH priority-5 branches used to build their literal by hand and set no
+    // `profileParameters`, so a profile's provider params reached every other
+    // rung of the ladder and vanished on this one.
     if current_profile.provider == "OLLAMA" {
-        return CheapLlmSelection {
-            provider: current_profile.provider.clone(),
-            model_name: current_profile.model_name.clone(),
-            base_url: base_url_or_none(current_profile),
-            connection_profile_id: Some(current_profile.id.clone()),
-            is_local: true,
-            profile_parameters: None,
-        };
+        return selection_from_profile(current_profile, false);
     }
 
     // Map the current provider to its cheapest variant. v4's legacy map covers
@@ -326,13 +329,14 @@ pub fn get_cheap_llm_provider(
     // `undefined` (and fail downstream) — surfaced here as an empty model name.
     let cheap_model = get_cheapest_model(&current_profile.provider, registry_cheapest_for_current)
         .unwrap_or_default();
+    // The current profile, but on its provider's cheapest model (v4's
+    // `{ ...selectionFromProfile(currentProfile), modelName: cheapModel }`).
+    // `is_local` is provider-derived rather than the old hard `false`; this
+    // branch is only reached for a non-OLLAMA current profile, so the value is
+    // unchanged — the `profileParameters` this now carries are the correction.
     CheapLlmSelection {
-        provider: current_profile.provider.clone(),
         model_name: cheap_model,
-        base_url: base_url_or_none(current_profile),
-        connection_profile_id: Some(current_profile.id.clone()),
-        is_local: false,
-        profile_parameters: None,
+        ..selection_from_profile(current_profile, false)
     }
 }
 
@@ -353,20 +357,9 @@ pub fn resolve_uncensored_cheap_llm_selection(
         return standard_selection;
     }
 
+    // v4's two uncensored picks are `selectionFromProfile(p, { localBaseUrlFallback: true })`.
     fn uncensored_selection(p: &CheapLlmProfile) -> CheapLlmSelection {
-        let is_local = p.provider == "OLLAMA";
-        CheapLlmSelection {
-            provider: p.provider.clone(),
-            model_name: p.model_name.clone(),
-            base_url: if is_local {
-                base_url_or_localhost(p)
-            } else {
-                base_url_or_none(p)
-            },
-            connection_profile_id: Some(p.id.clone()),
-            is_local,
-            profile_parameters: profile_params(p),
-        }
+        selection_from_profile(p, true)
     }
 
     if let Some(profile_id) = danger

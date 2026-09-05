@@ -597,6 +597,43 @@ fn build_reaffirmation_user(
     reaff_parts.join("\n")
 }
 
+/// v4 `answer-confirmation.service.ts:386`, which `0506517d3` (correction (a))
+/// turned from a hand-built literal into `selectionFromProfile(connectionProfile)`.
+///
+/// The literal hard-coded `isLocal: false`; the shared builder derives it from
+/// the provider, so a character on a local Ollama profile now takes the local
+/// API-key rule (no key needed) and the local per-attempt budget on its OWN
+/// re-affirmation call. Extracted here because the differential cannot see it:
+/// v4's site is private, and the canned-provider key every tier-3 family
+/// records is `provider|model|temperature|messages`, which carries neither
+/// `isLocal` nor `profileParameters`. `reaffirmation_selection_derives_is_local`
+/// is the pin; the shape itself is proven against v4 by
+/// `cheap_llm_selection_equivalence`.
+///
+/// `ReaffirmationProfile` is a narrower shape than [`CheapLlmProfile`], so the
+/// derivation is spelled here rather than routed through
+/// [`crate::cheap_llm::selection_from_profile`] — the two must agree, and the
+/// pin below asserts they do on the field that moved.
+fn reaffirmation_selection(profile: &ReaffirmationProfile) -> CheapLlmSelection {
+    CheapLlmSelection {
+        provider: profile.provider.clone(),
+        model_name: profile.model_name.clone(),
+        // JS `profile.baseUrl || undefined`; v4 passes no `localBaseUrlFallback`
+        // at this site, so a blank base URL stays blank.
+        base_url: profile.base_url.clone().filter(|s| !s.is_empty()),
+        connection_profile_id: Some(profile.id.clone()),
+        is_local: profile.provider == "OLLAMA",
+        // v4 `d9c5a1c7`: the inline `parameters && typeof === 'object'` copy
+        // became `profileParams(connectionProfile)`, so the Ollama `num_ctx`
+        // injection reaches the re-affirmation call too.
+        profile_parameters: crate::cheap_llm::profile_params_parts(
+            &profile.provider,
+            profile.parameters.as_ref(),
+            profile.max_context,
+        ),
+    }
+}
+
 /// Run the consistency check and, if needed, the re-affirmation pass (v4
 /// `runAnswerConfirmation`). **Never throws** — any failure resolves to
 /// `confirmed: null`. Generic over the [`CompletionProvider`] boundary; the
@@ -694,26 +731,7 @@ pub async fn run_answer_confirmation<C: CompletionProvider>(
     // discrepancies, chooses to stand by the reply or rewrite it. Reuse the
     // cheap-task harness with a selection built from the character's connection
     // profile.
-    let reaff_selection = CheapLlmSelection {
-        provider: opts.connection_profile.provider.clone(),
-        model_name: opts.connection_profile.model_name.clone(),
-        base_url: opts
-            .connection_profile
-            .base_url
-            .clone()
-            .filter(|s| !s.is_empty()),
-        connection_profile_id: Some(opts.connection_profile.id.clone()),
-        // v4 hardcodes `isLocal: false` on this path.
-        is_local: false,
-        // v4 `d9c5a1c7`: the inline `parameters && typeof === 'object'` copy
-        // became `profileParams(connectionProfile)`, so the Ollama `num_ctx`
-        // injection reaches the re-affirmation call too.
-        profile_parameters: crate::cheap_llm::profile_params_parts(
-            &opts.connection_profile.provider,
-            opts.connection_profile.parameters.as_ref(),
-            opts.connection_profile.max_context,
-        ),
-    };
+    let reaff_selection = reaffirmation_selection(opts.connection_profile);
 
     let reaff_messages = vec![
         CompletionMessage::system(build_reaffirmation_system_prompt(opts.character_name)),
@@ -1127,6 +1145,34 @@ mod tests {
             parameters: None,
             max_context: None,
         }
+    }
+
+    /// v4 `0506517d3` correction (a) at a site no differential reaches: the
+    /// re-affirmation selection derives `isLocal` from the provider where the
+    /// pre-fix literal hard-coded `false`. Both directions, plus the fields the
+    /// same collapse must NOT have moved (a blank base URL stays blank — v4
+    /// passes no `localBaseUrlFallback` here) and the Ollama `num_ctx`
+    /// injection `profileParams` performs.
+    #[test]
+    fn reaffirmation_selection_derives_is_local() {
+        let remote = reaffirmation_selection(&own_profile());
+        assert!(!remote.is_local);
+        assert_eq!(remote.base_url, None);
+
+        let local = reaffirmation_selection(&ReaffirmationProfile {
+            id: "own".into(),
+            provider: "OLLAMA".into(),
+            model_name: "qwen3:8b".into(),
+            base_url: Some(String::new()),
+            parameters: Some(serde_json::json!({ "keep_alive": "10m" })),
+            max_context: Some(32768.0),
+        });
+        assert!(local.is_local, "an OLLAMA profile re-affirms locally");
+        assert_eq!(local.base_url, None, "a blank base URL is not substituted");
+        assert_eq!(
+            local.profile_parameters,
+            Some(serde_json::json!({ "keep_alive": "10m", "num_ctx": 32768 })),
+        );
     }
 
     fn check_messages() -> Vec<CompletionMessage> {

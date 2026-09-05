@@ -87,7 +87,7 @@ pub fn build_cheap_fallback_selections(
             .into_iter()
             .filter(|c| c.profile.id != primary.0.id)
             .filter_map(|c| read_profile(db, &c.profile.id))
-            .map(|(_, cheap)| selection_from_profile(&cheap))
+            .map(|(_, cheap)| selection_from_profile(&cheap, false))
             .collect();
     }
 
@@ -185,7 +185,7 @@ pub fn build_cheap_fallback_selections(
         "[CheapLLM] Drafted a stand-in for a profile-less cheap route"
     );
 
-    vec![selection_from_profile(&picked)]
+    vec![selection_from_profile(&picked, false)]
 }
 
 /// One row, read once, in both projections the chain needs: the engine's
