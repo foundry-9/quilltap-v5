@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — docs(setupphase): order the `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77)
+
+_Docs-only change._
+
+Four work orders under `docs/developer/porting/work-orders/`. The headline
+is the last unported vertical of any size: **P4.9I2A** (the help server —
+vendor v4's 120-file `help/` tree at the pin and embed it at compile time,
+since v5 ships no help tree and the host's cwd walk has synced an empty one;
+wire the boot-time ensure; the four help-docs read verbs, the nine
+help-chats verbs, the six-strategy context resolver, the byte-exact help
+system prompt, and the help-chat orchestrator on a new live send seam — seven
+differentials incl. a whole-tree content oracle and a tier-3 orchestrator
+family) ∥ **P4.9I2B** (the HelpChat SPA — the Guide and Ask tabs, the
+streaming consumer, the entity picker, the sidebar entry; v4's own jest
+suites as parity specs) ∥ **P4.76** (the P4.73 remainder — `?action=generate`
+over an erased image-generation seam with a frozen-clock oracle, the FILES
+leg, the five recorded items) ∥ **P4.77** (maintenance — the `zod` version
+tripwire, the 4.9.0-release ratification evidence + mirror refresh as
+P4.D159, the 19-copy `CaptureLayer` consolidation, `render_template`'s debug
+lines). The ledger's four docs-only 4.9.0-release rows are marked
+`ORDERED(P4.77)`; the bug-119 row stays UNPROCESSED for `p4.9k`, which is
+deliberately left out (its own round). The ordering section is appended to
+`phase-4.md`.
+
 #### 2026-09-05 — docs(drift): record v4's 4.9.0 release — 4 commits, zero code
 
 _Docs-only change._

@@ -6346,6 +6346,85 @@ port remains a NAMED standalone flag.
 
 **The ordering-time section follows for history:**
 
+## The `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77) — ORDERED 2026-09-05
+
+**Baseline `d883a5ee1`; v4 HEAD `c2232cd9a` — four docs/version-only
+commits (the 4.9.0 release cut), all marked `ORDERED(P4.77)` in the ledger
+for the mechanical ratification; the `15573c3a1` bug-119 row stays
+UNPROCESSED for the unported `p4.9k`. Regen rule PIN REQUIRED at
+`d883a5ee1` (the checkout sits on `bugfix`); per-lane pins.** The first
+non-drift round whose headline is a whole unported vertical: the last one
+of any size.
+
+- **P4.9I2A — the help/HelpChat SERVER lane**
+  (`work-orders/p4.9i2a-help-server.md`): vendor v4's `help/` (120 files)
+  at the pin and EMBED it at compile time — v5 has NO help tree, so the
+  host's cwd walk has synced an EMPTY tree since P4.6BM and `help_search`
+  reads zero rows on a fresh instance; wire `ensure_help_docs_synced` at
+  boot (the P4.D77 backfill finally reachable); the four help-docs read
+  verbs (list / chat-count / the substring search with v4's lopsided
+  snippet / get-by-id-or-slug); the nine help-chats verbs +
+  `verify_help_chat` + the REST edges; the two pure modules (the six-strategy
+  context resolver — reproducing v4's never-true `doc.id === primary.url`
+  duplicate-wildcard quirk, a candidate upstream filing — and the
+  byte-exact help system prompt); the help-chat orchestrator on a new
+  `HelpChatSendDriver` seam (💸 LIVE) — `maxAgentTurns = 10`, the
+  duplicate-call guard, and an async tail that, unlike Brahma's, DOES fire
+  memory extraction. Seven differentials incl. a whole-tree content oracle
+  (v4's real `syncHelpDocs` over the pinned `help/` vs v5 over the embedded
+  table) and a tier-3 mocked-LLM orchestrator family; the new committed
+  `help-chat-{main,mount}.db` pair.
+- **P4.9I2B — the HelpChat SPA lane**
+  (`work-orders/p4.9i2b-help-spa.md`): the nine-component family +
+  provider as `apps/web/src/app/help/**` — the Guide tab (the 11-category /
+  68-slug table 1:1 with `getCategoryForUrl` and v4's own jest suite as the
+  parity spec; the 200 ms debounced text search with stale-tagged results
+  and snippet lines; the topic reader; the welcome card), the Ask tab
+  (launcher, past chats, create-then-send, the Event-channel consumer
+  extracting `help_navigate`/`help_search` links, `labelFromUrl` with its
+  parity suite, the three-row entity picker), the sidebar Help entry
+  (UNIFIER-mounted before Brahma's), storage-key semantics pinned; e2e beats
+  gated ACTIVATE-AT-UNIFY. Binds to P4.9I2A through §B.
+- **P4.76 — the P4.73 remainder**
+  (`work-orders/p4.76-images-generate-and-files-leg.md`): `POST
+  /api/v1/images?action=generate` as v4's own route-level implementation
+  over a new erased image-generation host seam (the Concierge gate with no
+  chat; the first-`isDangerousCompatible` reroute; `orientation: None`; a
+  frozen-clock tier-3 oracle), both ARMED tripwires retired with the census
+  row in the same commit; P4.62(a)'s FILES leg in its corrected shape;
+  the five recorded review items. Closes P4.73 whole.
+- **P4.77 — maintenance**
+  (`work-orders/p4.77-zod-tripwire-ratification-capture-layer.md`): the
+  `zod` version tripwire (recorded `4.5.4`; FAIL on a moved checkout, loud
+  SKIP on none); **P4.D159** — the 4.9.0-release ratification evidence
+  re-measured at the pin + the `docs/v4/releases/4.9.0.md` mirror refresh
+  (the unifier moves the baseline to `c2232cd9a` on it); the 19
+  `CaptureLayer` copies → one `#[cfg(test)]` helper (the candidate said
+  thirteen — the grep says nineteen); `render_template`'s four missing
+  debug lines with capture pins.
+
+**Shared contracts:** §B (the help wire — verbatim in P4.9I2A/B), §S (the
+round-wide meeting points — verbatim in all four: three fenced-append files
+for the two Rust lanes, `lib.rs`/`spine.rs` single-owner, `shell.ts` +
+`core-contract.ts` UNIFIER-only, version-bump ownership with the recount
+rule, Playwright only in P4.9I2B, the bank discharge), and the Ownership
+table (identical in all four).
+
+**Execution shape:** all four lanes in parallel, each in its own worktree
+per the `carryout` skill. P4.9I2A is the deepest (survey-heavy, seven
+differentials, a host seam) — the most capable model; P4.9I2B is large but
+well-specified client work — Opus; P4.76 is a measured survey turned into
+code — Opus; P4.77 is mechanical — Sonnet. Version bumps: P4.9I2A and
+P4.76 both bump core/harness/web/host (the unifier recounts); P4.9I2B the
+SPA; P4.77 harness + core.
+
+**Deliberately left out of this round:** `p4.9k` (the character AI dialogs
+— wizard / optimizer / rename / ai-import: ~4,000 lines of v4 services +
+~4,000 of client, plus bug 119's post-fix shape; its own round, and the
+ledger's bug-119 row waits for it); the census's honest totality and the
+present-but-null validation lead (each a sweep the size of a lane on its
+own); the owed 💸 dogfood items that need the human (dedup/summaries, the
+Brahma deep query, #101). PB1 stays parked by the standing rule.
 ## The `d883a5ee1` drift catch-up round (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158) — ORDERED 2026-09-05
 
 **Six parallel lanes, all drift.** The ledger's §2 probe passed at ordering
