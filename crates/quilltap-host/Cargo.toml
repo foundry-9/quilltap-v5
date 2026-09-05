@@ -59,5 +59,9 @@ tempfile = "3"
 # P4.71: the capture-layer pins for the host-gateway resolver's four v4 log
 # lines (the core/harness idiom — same pinned line, `registry` only).
 tracing-subscriber = { version = "0.3", features = ["registry"] }
+# P4.77: reach the core's shared test-only capture rig (`test_support`) for
+# host_gateway.rs's own tests — `#[cfg(test)]` alone does not cross the crate
+# boundary, so this feature is enabled ONLY here, never in [dependencies].
+quilltap-core = { path = "../quilltap-core", features = ["test-support"] }
 # Fixture seeding in the integration tests (same pinned line as the core).
 rusqlite = { workspace = true }

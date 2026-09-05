@@ -65,3 +65,9 @@ rusqlite = { workspace = true }
 # `title_update_job.rs` test module has no fixture to drive it from.
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["registry"] }
+# P4.77: reach the core's shared test-only capture rig (`test_support`) for
+# the three log-only-fix pins (`files_sha256_realign_heal_equivalence`,
+# `nanogpt_lora_wire_log`, `title_update_tier3_equivalence`) — enabled ONLY
+# here, never in [dependencies], since `#[cfg(test)]` alone does not cross
+# the crate boundary.
+quilltap-core = { path = "../quilltap-core", features = ["test-support"] }

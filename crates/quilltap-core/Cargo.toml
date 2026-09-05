@@ -139,10 +139,23 @@ zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
 # change to any existing DEFLATE output in the tree.
 flate2 = "1"
 
+# P4.77: `test_support`'s cross-crate half needs `tracing-subscriber` linked
+# as a NORMAL (optional) dependency — a `[dev-dependencies]` entry (below)
+# only links for THIS crate's own test/bench targets, never for a downstream
+# crate that depends on core normally. Gated behind `test-support` so it
+# never reaches a non-test build. Same pinned line as the existing dev-dep.
+tracing-subscriber = { version = "0.3", features = ["registry"], optional = true }
+
 [features]
 # Pulls the reqwest transport + the tokio runtime it needs. NON-DEFAULT: the
 # default core build has neither reqwest nor a tokio scheduler.
 native-transport = ["dep:reqwest", "tokio/rt", "tokio/rt-multi-thread"]
+# Exposes `test_support` (the shared tracing-capture rig, P4.77) to OTHER
+# crates' own tests. `#[cfg(test)]` alone is invisible across a crate
+# boundary — this feature is how quilltap-host/-web/-harness reach it, each
+# enabling it only under their own `[dev-dependencies]` so it never leaks
+# into a non-test build.
+test-support = ["dep:tracing-subscriber"]
 
 [dev-dependencies]
 tempfile = "3"

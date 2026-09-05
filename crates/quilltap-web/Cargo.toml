@@ -46,6 +46,10 @@ tower-http = { version = "0.6", features = ["trace"] }
 
 [dev-dependencies]
 tempfile = "3"
+# P4.77: reach the core's shared test-only capture rig (`test_support`) for
+# query.rs's own tests — `#[cfg(test)]` alone does not cross the crate
+# boundary, so this feature is enabled ONLY here, never in [dependencies].
+quilltap-core = { path = "../quilltap-core", features = ["test-support"] }
 # P4.D48: the timezone resolver's validation rule is only meaningful if the
 # names it accepts resolve in the engine that consumes `TZ` — `main.rs`'s
 # `accepted_zones_resolve_in_jiff` checks them against the same jiff the host
