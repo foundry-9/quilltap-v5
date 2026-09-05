@@ -2058,12 +2058,17 @@ mod create_schema_tests {
         assert!(ok(json!({ "name": "   " })));
     }
 
-    /// Zod measures `String.length` — UTF-16 code units. 50 astral characters
-    /// are 100 units and pass; 51 are 102 and fail.
+    /// Zod ≥ 4.5.4 (v4 `6e1a64ea6`) measures the `.max(100)` in CODE POINTS once
+    /// the UTF-16 count overflows it: 51 astral characters (102 units, 51 code
+    /// points) now PASS where 4.4.3's UTF-16 rule refused them; 101 fail in both
+    /// measures. `projects_routes_equivalence`'s `create_name_astral_within_max`
+    /// is the oracle-driven twin of the first arm.
     #[test]
-    fn lengths_are_utf16_code_units() {
+    fn lengths_follow_zods_code_point_window() {
         assert!(ok(json!({ "name": "🎩".repeat(50) })));
-        assert!(!ok(json!({ "name": "🎩".repeat(51) })));
+        assert!(ok(json!({ "name": "🎩".repeat(51) })));
+        assert!(ok(json!({ "name": "🎩".repeat(100) })));
+        assert!(!ok(json!({ "name": "🎩".repeat(101) })));
         assert!(ok(json!({ "name": "x".repeat(100) })));
         assert!(!ok(json!({ "name": "x".repeat(101) })));
         assert!(ok(json!({ "name": "P", "description": "x".repeat(2000) })));

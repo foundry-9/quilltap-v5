@@ -3062,14 +3062,17 @@ mod schema_tests {
     }
 
     #[test]
-    fn string_bounds_count_utf16_units() {
-        // 2000 astral characters are 4000 UTF-16 units and pass; 2001 (4002) do
-        // not. Measured on v4 — `String.prototype.length` is UTF-16, and this is
-        // the whole reason `jsstr::utf16_len` exists.
+    fn string_bounds_follow_zods_code_point_window() {
+        // Zod ≥ 4.5.4 (v4 `6e1a64ea6`): the `.max(4000)` counts CODE POINTS once
+        // the UTF-16 count overflows it — 2001 astral characters (4002 units,
+        // 2001 code points) now PASS where 4.4.3's UTF-16 rule refused them;
+        // 4001 fail in both measures.
         assert!(parse(json!({ "prompt": "x".repeat(4000) })).is_some());
         assert!(parse(json!({ "prompt": "x".repeat(4001) })).is_none());
         assert!(parse(json!({ "prompt": "\u{1F600}".repeat(2000) })).is_some());
-        assert!(parse(json!({ "prompt": "\u{1F600}".repeat(2001) })).is_none());
+        assert!(parse(json!({ "prompt": "\u{1F600}".repeat(2001) })).is_some());
+        assert!(parse(json!({ "prompt": "\u{1F600}".repeat(4000) })).is_some());
+        assert!(parse(json!({ "prompt": "\u{1F600}".repeat(4001) })).is_none());
         let p = "a cat";
         assert!(parse(json!({ "prompt": p, "negativePrompt": "x".repeat(1000) })).is_some());
         assert!(parse(json!({ "prompt": p, "negativePrompt": "x".repeat(1001) })).is_none());

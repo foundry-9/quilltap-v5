@@ -955,11 +955,17 @@ mod p4d50_taboo_tests {
     }
 
     #[test]
-    fn parse_measures_length_in_utf16_code_units() {
-        // 101 astral characters = 202 UTF-16 units — JS `String.length` rejects.
-        let astral = "🎩".repeat(101);
+    fn parse_measures_length_in_zods_code_point_window() {
+        // Zod ≥ 4.5.4 (v4 `6e1a64ea6`): 101 astral characters are 202 UTF-16
+        // units but 101 code points — ACCEPTED against the `.max(200)` (4.4.3's
+        // UTF-16 rule refused them; `settings_routes_equivalence`'s
+        // `taboo_put_astral_over_bound` is the oracle-driven twin). 201 fail in
+        // both measures.
+        let within = "🎩".repeat(101);
+        assert!(parse_taboo_settings(&serde_json::json!({ "phrases": [within] })).is_some());
+        let over = "🎩".repeat(201);
         assert_eq!(
-            parse_taboo_settings(&serde_json::json!({ "phrases": [astral] })),
+            parse_taboo_settings(&serde_json::json!({ "phrases": [over] })),
             None
         );
         let ok = "🎩".repeat(100);

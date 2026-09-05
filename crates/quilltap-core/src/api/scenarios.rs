@@ -31,7 +31,7 @@ use crate::db::scenarios::{
     ListScenariosResult, ScenarioPathResolution, ScenarioWriteError, SCENARIOS_FOLDER,
 };
 use crate::db::DbError;
-use crate::jsstr::{utf16_len, zod_len_max_ok, zod_len_min_ok};
+use crate::jsstr::{zod_len_max_ok, zod_len_min_ok};
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::sanitize_file_name;
 
