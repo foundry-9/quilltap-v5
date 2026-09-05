@@ -387,6 +387,28 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — fix(brahma): one sentence for a profile's API-key failure (v4 `0506517d3` correction (d))
+
+_Versions: core 0.0.778._
+
+v4's Brahma one-shot console said "no API key configured for this connection
+profile" where its orchestrator said "No …"; collapsing both onto the new
+shared `describeProfileApiKeyFailure` picked the capitalised form. v5
+reproduced the divergence exactly — `brahma_console/mod.rs` lowercase,
+`orchestrator.rs` capitalised — so the fix is the same collapse:
+`ProfileApiKeyFailure::describe()` beside the existing `as_str()` (which keeps
+carrying v4's machine-readable `reason` token), and both Brahma sites read it.
+
+Red-first on `brahma_console_tier3_equivalence`'s existing `no_key_configured`
+arm, regenerated against v4's real `runBrahmaQuery` at the `d883a5ee1` pin:
+v5 `no API key configured for this connection profile` vs v4 `No …`. Green
+after; `brahma_console_routes_equivalence` and
+`brahma_orchestrator_tier3_equivalence` re-run at the pin, both unmoved.
+
+v4's third caller is the help chat, whose v5 counterpart does not exist —
+that surface is unported and banked to `p4.9i2`. `ProfileApiKeyFailure::
+describe` names it so the fourth site cannot be written fresh.
+
 #### 2026-09-05 — fix(documents): the chat-scoped delete's 404 says "File not found" once (v4 `0506517d3` correction (c))
 
 _Versions: core 0.0.777, harness 0.0.672._

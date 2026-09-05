@@ -148,6 +148,24 @@ impl ProfileApiKeyFailure {
             ProfileApiKeyFailure::ApiKeyNotFound => "api-key-not-found",
         }
     }
+
+    /// v4 `describeProfileApiKeyFailure` (`0506517d3` correction (d)): the
+    /// user-facing sentence for a failed resolution, in ONE place. The Brahma
+    /// one-shot console and the orchestrator used to spell it out separately and
+    /// disagreed on the first letter — the one-shot said "no API key configured
+    /// for this connection profile" where the orchestrator said "No …". v4
+    /// collapsed both onto the capitalised form; so does this.
+    ///
+    /// v4's help chat is the third caller. That surface is unported (`p4.9i2`),
+    /// so it has no v5 twin to route through here yet.
+    pub fn describe(self) -> &'static str {
+        match self {
+            ProfileApiKeyFailure::NoApiKeyConfigured => {
+                "No API key configured for this connection profile"
+            }
+            ProfileApiKeyFailure::ApiKeyNotFound => "API key not found",
+        }
+    }
 }
 
 /// v4 `ProfileApiKeyResolution`.

@@ -283,12 +283,9 @@ where
             ProfileApiKeyFailure::ApiKeyNotFound,
         ));
     if let ProfileApiKeyResolution::Failed(reason) = resolution {
-        return Err(BrahmaSendError::new(match reason {
-            ProfileApiKeyFailure::NoApiKeyConfigured => {
-                "No API key configured for this connection profile"
-            }
-            ProfileApiKeyFailure::ApiKeyNotFound => "API key not found",
-        }));
+        // v4 `0506517d3` correction (d) — one `describeProfileApiKeyFailure` for
+        // both Brahma paths (see `ProfileApiKeyFailure::describe`).
+        return Err(BrahmaSendError::new(reason.describe()));
     }
 
     // Build tools — the Brahma flag vector (agent ON, help OFF, doc read/write ON,

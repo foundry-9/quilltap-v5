@@ -354,12 +354,10 @@ where
         Err(_) => ProfileApiKeyResolution::Failed(ProfileApiKeyFailure::ApiKeyNotFound),
     };
     if let ProfileApiKeyResolution::Failed(reason) = resolution {
-        return fail(match reason {
-            ProfileApiKeyFailure::NoApiKeyConfigured => {
-                "no API key configured for this connection profile"
-            }
-            ProfileApiKeyFailure::ApiKeyNotFound => "API key not found",
-        });
+        // v4 `0506517d3` correction (d): the sentence comes from the shared
+        // `describeProfileApiKeyFailure`, which is how the one-shot's lowercase
+        // "no API key configured…" became the orchestrator's capitalised form.
+        return fail(reason.describe());
     }
 
     // 3. Tools — the console slate: agent mode, doc read/write, read-only run_sql,
