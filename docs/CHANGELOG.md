@@ -251,6 +251,39 @@ embedded table; 120 docs + 667 chunks + the rowid walk order compared; a one-byt
 edit to one vendored file reddens it — mutation-proven) and `help_tree_embed_guard`
 (the embedded table equals the on-disk walk: path set, order, bytes; pins the
 120-file count so an empty embed cannot pass).
+#### 2026-09-05 — test(activity): give the last fifteen registry-touching tests the lock, and move two censuses P4.76 retired sites from
+
+_Versions: core 0.0.799, harness 0.0.688, web 0.0.117._
+
+P4.76's first full `cargo test --workspace` went red at
+`activity_registry::tests::records_a_blip_once_a_span_outlives_the_threshold`,
+which asserts `activity_counts().summary == 0` and read 1. The assertion reads
+the PROCESS-GLOBAL registry, and the only Summary source is
+`cheap_llm_exec::execute`'s `track_activity(activity_kind_for_task(...))`.
+
+A repo-wide scan for tests reaching the registry — `track_activity`,
+`begin_activity`, `run_attributed_to_job`, `CheapLlmTaskExecutor` — WITHOUT
+taking `ActivityTestGuard` found sixteen, and running the blip tests beside
+three of those families at `--test-threads=16` reproduced the failure 3 times in
+6. The ordering is the one the guard exists to prevent: the blip test takes the
+lock, resets, runs its span to completion, and a guard-less test then STARTS a
+Summary span before the blip test's `activity_counts()` read.
+
+P4.D129 gave thirteen wrapped-path tests this guard and left these behind; its
+record called the residue "the one honestly-unreproduced workspace
+intermittent". Fifteen of the sixteen take it now — three in
+`answer_confirmation.rs`, five in `compression.rs`, three in
+`outfit_selections.rs`, two in `build_context.rs`, one in `orchestrator.rs`, one
+in `memory_recap/mod.rs` — and the same repro is 6-in-6 green. Test-only, one
+line each, no production behaviour moves.
+
+The sixteenth, `tools/generate_image.rs`'s
+`failure_row_duration_brackets_the_provider_call`, is deliberately untouched:
+P4.76's order permits only a visibility widening in that file, and its span is
+`Image` rather than `Summary`, so it cannot cause the failure diagnosed here —
+though it can poison an `Image` assertion the same way. Named in the lane record
+for whoever owns that file next.
+
 #### 2026-09-05 — fix(files): carry a raw `tagId` into the upload row (P4.62(a)'s FILES leg)
 
 _Versions: core 0.0.798, harness 0.0.687, web 0.0.116._

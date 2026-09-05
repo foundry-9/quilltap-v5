@@ -4185,6 +4185,13 @@ mod distill_latency_tests {
     /// (the retry is withheld from an interactive pass — v4 `a1d88aa3a`).
     #[tokio::test(start_paused = true)]
     async fn the_fallback_distill_asks_for_the_interactive_budget() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let (_dir, db) = provisioned_db();
         let provider = StallingBudgetRecorder::new();
         let exec = CheapLlmTaskExecutor::new();
@@ -4219,6 +4226,13 @@ mod distill_latency_tests {
     /// waiting on it.
     #[tokio::test(start_paused = true)]
     async fn the_proactive_distill_keeps_the_background_budget() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let (_dir, db) = provisioned_db();
         let provider = StallingBudgetRecorder::new();
         let exec = CheapLlmTaskExecutor::new();

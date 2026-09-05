@@ -782,6 +782,13 @@ mod tests {
     /// there.
     #[tokio::test]
     async fn the_recap_declares_itself_interactive() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         use crate::model::completion::{
             CompletionError, CompletionParams, CompletionProvider, CompletionResponse,
         };

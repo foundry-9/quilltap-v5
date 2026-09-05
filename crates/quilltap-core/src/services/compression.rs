@@ -397,6 +397,13 @@ mod tests {
     /// stay green.
     #[tokio::test]
     async fn the_latency_class_reaches_the_providers_budget() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         use std::sync::Mutex;
 
         struct BudgetRecorder(Mutex<Vec<Option<i64>>>);
@@ -510,6 +517,13 @@ mod tests {
 
     #[tokio::test]
     async fn happy_path_applies_compression() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         // 4 messages, windowSize 2 → compress the first 2.
         let messages = vec![
             msg("user", "let's plan the trip"),
@@ -560,6 +574,13 @@ mod tests {
 
     #[tokio::test]
     async fn no_messages_to_compress_returns_early() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         // 2 messages, windowSize 5 → nothing to compress.
         let messages = vec![msg("user", "hi"), msg("assistant", "hello")];
         let provider = CannedCompletionProvider::new();
@@ -586,6 +607,13 @@ mod tests {
 
     #[tokio::test]
     async fn llm_failure_populates_warning() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let messages = vec![
             msg("user", "one"),
             msg("assistant", "two"),
@@ -626,6 +654,13 @@ mod tests {
 
     #[tokio::test]
     async fn empty_response_falls_back_to_uncensored_and_applies() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         // The safe provider returns empty; the uncensored fallback answers.
         let messages = vec![
             msg("user", "spicy one"),

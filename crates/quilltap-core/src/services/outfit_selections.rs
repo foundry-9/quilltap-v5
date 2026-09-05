@@ -1376,6 +1376,13 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_stalled_provider_gives_up_at_the_timeout() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let (character, items, profiles) = consult_inputs();
         let provider = SlowProvider {
             delay_ms: None,
@@ -1435,6 +1442,13 @@ mod tests {
     /// and nothing would have noticed.)
     #[tokio::test(start_paused = true)]
     async fn a_stalled_local_provider_gives_up_at_the_outfit_phase_ceiling() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let (character, items, _) = consult_inputs();
         let profiles = vec![json!({
             "id": "p1", "isDefault": true, "provider": "OLLAMA", "model": "qwen3"
@@ -1471,6 +1485,13 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_batch_of_consults_is_bounded_by_the_slowest_not_their_sum() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let (character, items, profiles) = consult_inputs();
         let in_flight: std::sync::Arc<std::sync::Mutex<(usize, usize)>> = Default::default();
         let provider = SlowProvider {

@@ -1594,19 +1594,16 @@ const CENSUS: &[Row] = &[
             "form field"
         ),
     },
-    Row {
-        variant: "FileUpload",
-        field: "tags",
-        rust_type: "Option<Vec<String>>",
-        v4: V4::BodyHandRolled,
-        note: concat!(
-            "`files/actions/upload.ts:38-44` — a form field holding a JSON STRING of ",
-            "`{tagType,tagId}` objects; only malformed JSON is refused (400 `Invalid ",
-            "tags JSON`), the element shape is never validated. v5's field is the ",
-            "already-RESOLVED id list, so the shapes differ as well as the types ",
-            "(P4.62(a) → P4.73)"
-        ),
-    },
+    // RETIRED at P4.76: `FileUpload.tags` is `Option<Vec<serde_json::Value>>`
+    // now, so this census — which enumerates the TYPED `Request` fields whose
+    // decode could refuse where v4 accepts — has nothing left to say about it.
+    // That retyping IS the close of P4.62(a)'s escalation: v4 runs no schema on
+    // this leg, so `tags.map(t => t.tagId)` carries the RAW value into
+    // `linkedTo`/`tags` and `repos.files.create` refuses the row afterwards
+    // (500 `Failed to upload file`). The behaviour is pinned by
+    // `files_routes_equivalence`'s five `upload_tags_*` arms and by
+    // `files_routes::upload_tags_tests`; the sibling `ImageUpload.tags` row is
+    // absent for the same reason and has been since P4.73.
     Row {
         variant: "FileUpload",
         field: "folder_path",

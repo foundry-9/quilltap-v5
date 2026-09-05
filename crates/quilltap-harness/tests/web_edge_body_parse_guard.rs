@@ -190,23 +190,26 @@ const CLOSURE_CENSUS: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/quilltap-web/src/files_routes.rs",
-        5,
-        "ADJUDICATED (P4.62), down from SEVEN: `content` and `encoding` on the \
-     mount-file write left the needle entirely when they moved into \
-     `parse_mount_write_body` (wired above). Of the five that remain, TWO are \
-     the 201-vs-200 `createdAt`/`updatedAt` pick — FAITHFUL entity reads off \
-     the server's own `Files` response, never a request body. The \
-     `attach-mount-file` `str_field` is FAITHFUL: v4's `!v || typeof v !== \
+        4,
+        "ADJUDICATED (P4.62), down from SEVEN and then — at P4.76 — from FIVE. \
+     `content` and `encoding` on the mount-file write left the needle entirely \
+     when they moved into `parse_mount_write_body` (wired above). **P4.76 \
+     removed the sixth-and-seventh's sibling: `tags[].tagId`.** That site was \
+     the last DIVERGENT-RECORDED escalation on this file — v4 carries a \
+     wrong-typed `tagId` into `linkedTo`/`tags` where the `as_str()` collapse \
+     dropped it — and closing it meant widening `Request::FileUpload.tags` to \
+     `Vec<Value>`, which retired the read: `parse_upload_tags` now maps with \
+     `t.get(\"tagId\").cloned()` and no `as_str` anywhere. Of the FOUR that \
+     remain, TWO are the 201-vs-200 `createdAt`/`updatedAt` pick — FAITHFUL \
+     entity reads off the server's own `Files` response, never a request body. \
+     The `attach-mount-file` `str_field` is FAITHFUL: v4's `!v || typeof v !== \
      'string'` refuses absent, null, wrong-typed and empty alike, and the core \
      reproduces both sentences AFTER v4's chat-404. `fileId` on the link leg \
      WAS divergent twice over (an empty string rode through, and the 400 \
      preceded v4's chat-404) and is fixed — the collapse stays because the \
-     coerced `\"\"` is what carries the guard past the 404. `tags[].tagId` is \
-     SPLIT: the truthy-non-array 500 is fixed, while a wrong-typed tagId is a \
-     DIVERGENT-RECORDED escalation (v4 carries the raw value into `linkedTo`; \
-     closing it needs `Request::FileUpload.tags` widened past `Vec<String>` in \
-     `quilltap-core/src/api/types.rs`). Arms: \
-     `files_body_guards_equivalence`.",
+     coerced `\"\"` is what carries the guard past the 404. Arms: \
+     `files_body_guards_equivalence`, and `files_routes_equivalence`'s five \
+     `upload_tags_*` rows for the retired one.",
     ),
 ];
 

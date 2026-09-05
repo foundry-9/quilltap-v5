@@ -1301,6 +1301,13 @@ mod tests {
 
     #[tokio::test]
     async fn reaffirmation_carries_scene_and_name() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         // v4 `a7b1398d`: with characterName + conversationContext supplied, the
         // re-affirmation pass runs on the anchored system prompt + the scene-block
         // user message — proven by the canned key (a divergence = canned miss).
@@ -1395,6 +1402,13 @@ mod tests {
 
     #[tokio::test]
     async fn no_cheap_selection_is_unverified() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let provider = CannedCompletionProvider::new();
         let executor = CheapLlmTaskExecutor::new();
         let prof = own_profile();
@@ -1419,6 +1433,13 @@ mod tests {
 
     #[tokio::test]
     async fn affirming_callback_fires_only_on_inconsistency() {
+        // P4.76: the activity registry is process-GLOBAL, and this test starts a
+        // span through the cheap-LLM executor. Without the lock it races the
+        // registry's own blip tests, whose `activity_counts()` read then sees a
+        // live span nobody in that test started (reproduced 3-in-6 at
+        // `--test-threads=16`). The P4.D129 remedy, applied to the sites that
+        // pass did not reach.
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         use std::sync::atomic::{AtomicUsize, Ordering};
         let fired = AtomicUsize::new(0);
         // Consistent → callback NOT fired.
