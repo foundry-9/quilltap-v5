@@ -689,6 +689,23 @@ the closed row, resolves its path, and the store answers "no such document".
 The case ran RED against v4's real handler at the `d883a5ee1` pin — v5
 `404 "File not found not found"` vs v4 `404 "File not found"` — and green after
 the one-token fix.
+#### 2026-09-05 — docs(about): the Lantern, Concierge and multi-provider bullets carry 4.9's late features
+
+_Versions: SPA 0.5.643._
+
+v4's `e9a9c538e` is a documentation-freshness sweep whose only code hunk is
+three `<span>` bodies in `AboutView.tsx`. v5 carried the pre-fix bytes at all
+three sites: the Lantern gains LoRA adapters and per-model options taken from
+the provider's own advertised capabilities, the Concierge gains its four-state
+per-chat control settable at creation as well as mid-conversation, and the
+provider sentence gains an understudy on every profile.
+
+v4 spells the Lantern's apostrophe `&apos;`, which the DOM renders as U+0027 —
+a straight quote, not the U+2019 the rest of the page's prose uses. The
+rendered character is what the spec pins. The spec was run against the pre-port
+tree first and failed on the Lantern sentence; dropping that clause again
+reddens it.
+
 #### 2026-09-05 — fix(cli): `instances default --json` is read and stripped, not taken as an instance name (bug 120)
 
 _Versions: cli 0.0.18._

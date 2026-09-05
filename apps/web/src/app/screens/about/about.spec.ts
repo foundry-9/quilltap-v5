@@ -95,6 +95,30 @@ describe('AboutPage (v4 app/about/AboutView.tsx)', () => {
     expect(text.indexOf('Live interface')).toBeLessThan(text.indexOf('Database protection'));
   });
 
+  /**
+   * v4 `e9a9c538e` (the second documentation-freshness sweep) is the ONE code
+   * hunk in an otherwise-docs commit: three `<span>` bodies in `AboutView.tsx`
+   * gain a clause apiece — the Lantern's LoRA adapters and per-model options,
+   * the Concierge's four-state per-chat control, and an understudy on every
+   * connection profile. v4 spells the Lantern's apostrophe `&apos;`, which the
+   * DOM renders as U+0027 (a straight quote), not the typographic U+2019 the
+   * rest of the page's prose uses — the RENDERED character is what is pinned.
+   */
+  it('carries e9a9c538e\u2019s three widened feature sentences', async () => {
+    const fixture = await render({ kind: 'healthy', version: '0.0.28' });
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+
+    expect(text).toContain(
+      'AI-generated atmospheric background images derived from chat context, with LoRA adapters and per-model options taken from the provider\u0027s own advertised capabilities',
+    );
+    expect(text).toContain(
+      'content classification with detection, auto-routing to uncensored providers, quick-hide integration, and a four-state per-chat control (Monitored, Flagged, Vouched Safe, Uncensored) settable at creation as well as mid-conversation',
+    );
+    expect(text).toContain(
+      'Anthropic, OpenAI, Google Gemini, Grok, DeepSeek, Z.AI, NanoGPT, Ollama, OpenRouter, and OpenAI-compatible APIs, each profile able to name an understudy to take the call when its provider falls over',
+    );
+  });
+
   it('renders the version LOCALLY from the §3 health field', async () => {
     const fixture = await render({ kind: 'healthy', version: '0.0.28' });
     const badge = (fixture.nativeElement as HTMLElement).querySelector(

@@ -339,11 +339,11 @@ export class AboutPage {
     },
     {
       title: 'The Lantern – Story Backgrounds',
-      body: 'AI-generated atmospheric background images derived from chat context',
+      body: 'AI-generated atmospheric background images derived from chat context, with LoRA adapters and per-model options taken from the provider\'s own advertised capabilities',
     },
     {
       title: 'The Concierge – Alternative Content Provision and Routing',
-      body: 'content classification with detection, auto-routing to uncensored providers, and quick-hide integration',
+      body: 'content classification with detection, auto-routing to uncensored providers, quick-hide integration, and a four-state per-chat control (Monitored, Flagged, Vouched Safe, Uncensored) settable at creation as well as mid-conversation',
     },
     {
       title: 'Pascal the Croupier – Gaming',
@@ -395,7 +395,7 @@ export class AboutPage {
     },
     {
       title: 'Multi-provider support',
-      body: 'Anthropic, OpenAI, Google Gemini, Grok, DeepSeek, Z.AI, NanoGPT, Ollama, OpenRouter, and OpenAI-compatible APIs',
+      body: 'Anthropic, OpenAI, Google Gemini, Grok, DeepSeek, Z.AI, NanoGPT, Ollama, OpenRouter, and OpenAI-compatible APIs, each profile able to name an understudy to take the call when its provider falls over',
     },
     {
       title: 'LLM tools',
