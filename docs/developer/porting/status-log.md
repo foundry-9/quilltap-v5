@@ -107633,3 +107633,59 @@ proof:** `recipe_sweep.py --list` classifies it `ok` (not `nothing_to_run` /
 driver.
 
 Versions: harness 0.0.686.
+
+## Lane record — P4.77 unit 2 (P4.D159): the 4.9.0-release ratification evidence + the mirror refresh (2026-09-05)
+
+Work order `p4.77-zod-tripwire-ratification-capture-layer.md`, item 2. Produces
+the evidence the unifier needs to move the oracle baseline `d883a5ee1` →
+`c2232cd9a` and mark the drift ledger's four `ORDERED(P4.77)` rows
+`NO-PORT-RATIFIED`. Re-measured from this lane's own worktree (a read-only
+`git -C ~/source/quilltap-server`, no branch switch, checkout stayed on
+`bugfix` throughout):
+
+```
+$ git -C ~/source/quilltap-server diff --stat d883a5ee1 c2232cd9a
+ README.md              |  2 +-
+ docs/CHANGELOG.md      |  4 +++-
+ docs/releases/4.9.0.md | 26 ++++++++++++++++++++------
+ package-lock.json      |  4 ++--
+ package.json           |  2 +-
+ 5 files changed, 27 insertions(+), 11 deletions(-)
+
+$ git -C ~/source/quilltap-server diff --stat d883a5ee1 c2232cd9a -- lib/ app/ packages/ plugins/ scripts/ server.ts public/ types/ hooks/ components/
+(empty)
+
+$ git -C ~/source/quilltap-server diff d883a5ee1 c2232cd9a -- package-lock.json
+ diff --git a/package-lock.json b/package-lock.json
+ @@ -1,12 +1,12 @@
+  {
+    "name": "@foundry-9/quilltap",
+ -  "version": "4.9.0-dev.135",
+ +  "version": "4.10.0-dev.0",
+    "lockfileVersion": 3,
+    ...
+ -      "version": "4.9.0-dev.135",
+ +      "version": "4.10.0-dev.0",
+```
+
+All three commands match the ledger's §1/§3 claim exactly: the four-commit span
+(`6cbe2b027` release notes, `b0eea4642` the squash onto `release`, `f6794c840`
+the merge back, `c2232cd9a` the 4.10.0 dev bump) touches exactly the five
+doc/version files, zero bytes under any ported-code path, and the
+`package-lock.json` hunk is the two version-string lines. **This is the
+ratification — the unifier moves the baseline and dispositions the four rows
+on this evidence.**
+
+**The mirror refresh:** `docs/v4/releases/4.9.0.md` was the pre-final
+(`6cbe2b027`-era) copy; refreshed from `git -C ~/source/quilltap-server show
+6cbe2b027:docs/releases/4.9.0.md` (the final release-notes text, +20/-6 over
+the pre-final draft — the `pubDate`/description update, four new body
+paragraphs on the last-day repairs, the 54→57 count, "Five"→"Eight"
+migrations, a new Upgrading paragraph, and the re-dated sign-off). `diff
+docs/v4/releases/4.9.0.md <(git -C ~/source/quilltap-server show
+6cbe2b027:docs/releases/4.9.0.md)` is empty after the copy. Nothing reads this
+mirror mechanically — the ratification above is the deliverable; the refresh
+is the ledger's doc-sync nit, discharged.
+
+Docs-only; no crate version bumped.
+

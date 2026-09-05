@@ -415,6 +415,22 @@ Also landed, the five items the P4.73 unification review recorded:
 
 `handler-logging-inventory.md` gains its first `app/api/**` file, seeded so the
 generate route's eight lines are dispositioned.
+#### 2026-09-05 — docs(unify): the P4.77 4.9.0-release ratification evidence + mirror refresh (P4.D159)
+
+_Docs-only change._
+
+Re-measured, from a lane worktree, what the drift ledger's §1/§3 claim about
+v4's four docs/version-only commits past the `d883a5ee1` baseline
+(`6cbe2b027`/`b0eea4642`/`f6794c840`/`c2232cd9a`): the all-paths diff touches
+exactly five files (`README.md`, `docs/CHANGELOG.md`,
+`docs/releases/4.9.0.md`, `package.json`, `package-lock.json`), the
+ported-paths diff (`lib/ app/ packages/ plugins/ scripts/ server.ts public/
+types/ hooks/ components/`) is empty, and the `package-lock.json` hunk is the
+two version-string lines. This is the ratification the unifier needs to move
+the oracle baseline to `c2232cd9a`. Also refreshes `docs/v4/releases/4.9.0.md`
+from `6cbe2b027`'s final release-notes text (the ledger's doc-sync nit),
+byte-identical after the copy.
+
 #### 2026-09-05 — test(harness): add a `zod` version tripwire against the v4 checkout
 
 _Versions: harness 0.0.686._
