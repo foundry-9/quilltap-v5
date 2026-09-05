@@ -176,6 +176,14 @@ pub async fn run_scheduled_maintenance(
     transcripts: &dyn TranscriptStore,
     backend: &dyn crate::services::file_storage::StorageBackend,
 ) -> MaintenanceSweepSummary {
+    // v4 `scheduled-maintenance.ts:182`. The pair of bookend lines is what makes
+    // a pass legible in `combined.log`: without the opener an operator cannot
+    // tell a pass that is still running from one that never started.
+    tracing::info!(
+        target: "quilltap::maintenance",
+        "Starting scheduled maintenance pass",
+    );
+
     let mut summary = MaintenanceSweepSummary {
         jobs_completed: 0,
         jobs_dead: 0,
@@ -201,7 +209,14 @@ pub async fn run_scheduled_maintenance(
             summary.jobs_completed = completed;
             summary.jobs_dead = dead;
         }
-        Err(_) => summary.failures.push("jobs".to_string()),
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "Job cleanup sweep failed — continuing",
+            );
+            summary.failures.push("jobs".to_string());
+        }
     }
 
     // 2. Stale-chat asset collapse.
@@ -211,7 +226,14 @@ pub async fn run_scheduled_maintenance(
             summary.assets_chats_collapsed = r.chats_collapsed;
             summary.assets_files_deleted = r.files_deleted;
         }
-        Err(_) => summary.failures.push("assets".to_string()),
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "Stale-chat asset collapse failed — continuing",
+            );
+            summary.failures.push("assets".to_string());
+        }
     }
 
     // 3. Stale-chat cache collapse + conversation-chunk cold-tiering.
@@ -223,7 +245,14 @@ pub async fn run_scheduled_maintenance(
             summary.caches_message_rows_cleared = r.message_rows_cleared;
             summary.caches_chunk_embeddings_cleared = r.chunk_embeddings_cleared;
         }
-        Err(_) => summary.failures.push("caches".to_string()),
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "Stale-chat cache collapse failed — continuing",
+            );
+            summary.failures.push("caches".to_string());
+        }
     }
 
     // 4. Orphaned store children — v4 bug 9 (`3bb664f0`). Runs BEFORE the
@@ -262,10 +291,14 @@ pub async fn run_scheduled_maintenance(
         Err(e) => {
             // The swallow-site rule (P4.9G3's lesson): a failure that only
             // becomes a summary key leaves nothing to diagnose with.
-            tracing::error!(
+            // v4 `scheduled-maintenance.ts:233` (runSweep's warnMessage). The
+            // swallow-site rule that put a line here stands; the SENTENCE and
+            // the level are now v4's (dogfood finding #110) rather than the
+            // port's own words.
+            tracing::warn!(
                 target: "quilltap::maintenance",
                 error = %e,
-                "The orphaned-store-children reaper failed during the maintenance sweep",
+                "Orphaned store-children sweep failed — continuing",
             );
             summary.failures.push("orphan-store-children".to_string());
         }
@@ -281,7 +314,14 @@ pub async fn run_scheduled_maintenance(
         .await
     {
         Ok(n) => summary.orphaned_files_swept = n,
-        Err(_) => summary.failures.push("orphans".to_string()),
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "Orphaned-file sweep failed — continuing",
+            );
+            summary.failures.push("orphans".to_string());
+        }
     }
 
     // 6. Closed terminal sessions + transcript files.
@@ -291,7 +331,14 @@ pub async fn run_scheduled_maintenance(
             summary.terminal_rows = rows;
             summary.terminal_transcripts = files;
         }
-        Err(_) => summary.failures.push("terminals".to_string()),
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "Terminal-session cleanup failed — continuing",
+            );
+            summary.failures.push("terminals".to_string());
+        }
     }
 
     // 7. Orphaned thumbnails — v4 bug 43 (`7bcd8515`). v4's sweep propagates a
@@ -303,10 +350,12 @@ pub async fn run_scheduled_maintenance(
         Ok(r) => summary.orphaned_thumbnails_swept = r,
         Err(e) => {
             // The swallow-site rule: log the real error where it happened.
-            tracing::error!(
+            // v4 `scheduled-maintenance.ts:251` (runSweep's warnMessage) — see
+            // the store-children arm above.
+            tracing::warn!(
                 target: "quilltap::maintenance",
                 error = %e,
-                "The orphaned-thumbnail sweep failed during the maintenance sweep",
+                "Orphaned-thumbnail sweep failed — continuing",
             );
             summary.failures.push("orphan-thumbnails".to_string());
         }
@@ -315,11 +364,47 @@ pub async fn run_scheduled_maintenance(
     // Record the pass regardless of per-sweep failures ("last attempted pass").
     // A record failure is warned-and-swallowed in v4; same here.
     let stamp = iso_from_unix_ms(now_ms);
-    let _ = db
+    if let Err(e) = db
         .write(move |writers| {
             instance_settings::set_last_maintenance_sweep_at(writers.main().connection(), &stamp)
         })
-        .await;
+        .await
+    {
+        // v4 `scheduled-maintenance.ts:258`. Still swallowed — but a failure to
+        // record the stamp makes the NEXT startup tick run again, and that is
+        // only diagnosable if it is said out loud.
+        tracing::warn!(
+            target: "quilltap::maintenance",
+            error = %e,
+            "Failed to record lastMaintenanceSweepAt",
+        );
+    }
+
+    // v4 `scheduled-maintenance.ts:263` — the whole summary, unconditionally.
+    // Dogfood finding #110: this pass DELETES the operator's generated images
+    // (the stale-chat asset collapse), and before this line nothing anywhere
+    // said so.
+    tracing::info!(
+        target: "quilltap::maintenance",
+        jobs_completed = summary.jobs_completed,
+        jobs_dead = summary.jobs_dead,
+        assets_stale_chats = summary.assets_stale_chats,
+        assets_chats_collapsed = summary.assets_chats_collapsed,
+        assets_files_deleted = summary.assets_files_deleted,
+        caches_stale_chats = summary.caches_stale_chats,
+        caches_chats_collapsed = summary.caches_chats_collapsed,
+        caches_chat_rows_cleared = summary.caches_chat_rows_cleared,
+        caches_message_rows_cleared = summary.caches_message_rows_cleared,
+        caches_chunk_embeddings_cleared = summary.caches_chunk_embeddings_cleared,
+        orphaned_store_children_links = summary.orphaned_store_children_swept.links,
+        orphaned_store_children_folders = summary.orphaned_store_children_swept.folders,
+        orphaned_store_children_documents = summary.orphaned_store_children_swept.documents,
+        orphaned_files_swept = summary.orphaned_files_swept,
+        terminal_rows = summary.terminal_rows,
+        terminal_transcripts = summary.terminal_transcripts,
+        failures = ?summary.failures,
+        "Scheduled maintenance pass complete",
+    );
 
     summary
 }
@@ -345,6 +430,122 @@ mod tests {
             self.calls.fetch_add(1, Ordering::SeqCst);
             session_id != self.missing_id
         }
+    }
+
+    // ---- the tracing capture layer (thread-scoped; the `cost_events.rs` idiom).
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+            self.0.push_str(&format!(" {}={:?}", f.name(), v));
+        }
+    }
+    struct CaptureLayer(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(&self, e: &tracing::Event<'_>, _c: tracing_subscriber::layer::Context<'_, S>) {
+            let m = e.metadata();
+            let mut v = FieldVisitor(format!("{} {}", m.level(), m.target()));
+            e.record(&mut v);
+            self.0.lock().unwrap().push(v.0);
+        }
+    }
+    fn captured<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let out = {
+            let _g = tracing::subscriber::set_default(sub);
+            f()
+        };
+        let lines = logs.lock().unwrap().clone();
+        (out, lines)
+    }
+
+    /// A storage backend that lists nothing — the thumbnail sweep needs one and
+    /// this test is not about it.
+    struct NoBackend;
+    impl crate::services::file_storage::StorageBackend for NoBackend {
+        fn upload(&self, _k: &str, _c: &[u8], _t: &str) -> Result<(), String> {
+            Err("no backend".into())
+        }
+        fn download(&self, _k: &str) -> Result<Vec<u8>, String> {
+            Err("no backend".into())
+        }
+        fn delete(&self, _k: &str) -> Result<(), String> {
+            Err("no backend".into())
+        }
+        fn exists(&self, _k: &str) -> Result<bool, String> {
+            Ok(false)
+        }
+    }
+
+    struct NoTranscripts;
+    impl TranscriptStore for NoTranscripts {
+        fn unlink_transcript(&self, _id: &str, _p: Option<&str>) -> bool {
+            false
+        }
+    }
+
+    /// Dogfood finding #110 — v4 `scheduled-maintenance.ts:182/:258/:263` plus
+    /// `runSweep`'s per-sweep `warnMessage`. The pass had been running in total
+    /// silence, and it is the pass that DELETES the operator's generated images.
+    /// The DB here carries only `terminal_sessions`, so every other sweep AND
+    /// the `lastMaintenanceSweepAt` write fail — which is how one test reaches
+    /// most of v4's sentences at once without inventing a single error.
+    #[test]
+    fn the_pass_announces_itself_its_failures_and_its_summary() {
+        let db = test_db();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (summary, lines) = captured(|| {
+            rt.block_on(run_scheduled_maintenance(
+                &db,
+                1_900_000_000_000,
+                &NoTranscripts,
+                &NoBackend,
+            ))
+        });
+
+        let has = |needle: &str| lines.iter().any(|l| l.contains(needle));
+
+        // The bookends.
+        assert!(has("Starting scheduled maintenance pass"), "{lines:?}");
+        assert!(has("Scheduled maintenance pass complete"), "{lines:?}");
+
+        // v4's runSweep warns, for the sweeps this DB makes fail.
+        assert!(has("Job cleanup sweep failed — continuing"), "{lines:?}");
+        assert!(
+            has("Stale-chat asset collapse failed — continuing"),
+            "{lines:?}"
+        );
+        assert!(
+            has("Stale-chat cache collapse failed — continuing"),
+            "{lines:?}"
+        );
+
+        // The stamp write has no `instance_settings` table to write to.
+        assert!(has("Failed to record lastMaintenanceSweepAt"), "{lines:?}");
+
+        // Every warn names its error and rides the maintenance target.
+        for l in lines.iter().filter(|l| l.contains("— continuing")) {
+            assert!(l.starts_with("WARN quilltap::maintenance"), "{l:?}");
+            assert!(l.contains("error="), "{l:?}");
+        }
+
+        // The summary line carries the numbers, not just a sentence.
+        let done = lines
+            .iter()
+            .find(|l| l.contains("Scheduled maintenance pass complete"))
+            .unwrap();
+        assert!(done.starts_with("INFO quilltap::maintenance"), "{done:?}");
+        assert!(done.contains("assets_files_deleted=0"), "{done:?}");
+        assert!(done.contains("failures="), "{done:?}");
+
+        // And the failures the summary reports are the ones that were warned.
+        assert!(summary.failures.contains(&"jobs".to_string()));
+        assert!(summary.failures.contains(&"assets".to_string()));
     }
 
     fn test_db() -> Db {

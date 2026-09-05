@@ -12,6 +12,34 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — fix(maintenance): say out loud what the daily sweep deletes (dogfood finding #110)
+
+_Versions: core 0.0.796._
+
+The daily maintenance pass ran in total silence. v4 emits eleven lines across
+`scheduled-maintenance.ts` and `maintenance/collapse-stale-chat-assets.ts` — the
+`Starting scheduled maintenance pass` / `Scheduled maintenance pass complete`
+bookends with the whole summary, `runSweep`'s per-sweep
+`<Sweep> failed — continuing` warn, `Failed to record lastMaintenanceSweepAt`,
+plus `Collapsed stale chat assets` per chat (chat id, files deleted, bytes) and
+`Stale-chat asset collapse complete`. v5 had none of the info lines, no per-chat
+line, and only two error lines in words of its own; five of the seven sweep
+failure arms pushed a summary key and said nothing at all.
+
+That matters because this is the pass that DELETES the operator's generated
+images. Found on the dogfood copy by consequence: the `files` IMAGE count fell
+2,831 → 2,827 between two measurements, and nothing in `combined.log`, on
+stdout, or in the DB said which chat lost what — only `lastMaintenanceSweepAt`
+recorded that anything had happened.
+
+The sentences are v4's byte-for-byte, at v4's levels; the field names follow
+this crate's snake_case tracing idiom rather than v4's JSON keys, as every other
+v5 site does. The two pre-existing v5-invented error lines (the swallow-site
+rule's, at the store-children and thumbnail sweeps) keep their site and drop to
+v4's sentence and level. Four capture-layer tests pin the sentences, the
+`deleted > 0` gate's silence half, and the failure arms; six mutations each
+redden exactly one of them.
+
 #### 2026-09-05 — unify: the `d883a5ee1` drift catch-up round (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158)
 
 _Versions: core 0.0.795, harness 0.0.685, cli 0.0.18, SPA 0.5.646._

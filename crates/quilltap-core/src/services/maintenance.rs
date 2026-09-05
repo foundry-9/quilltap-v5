@@ -286,6 +286,19 @@ async fn collapse_one_chat(db: &Db, chat: &Value) -> Result<(usize, i64), DbErro
             bytes += file.size as i64;
         }
     }
+    // v4 `collapse-stale-chat-assets.ts:252`, gated on `deleted > 0` exactly as
+    // v4 gates it — a stale chat with nothing left to collapse says nothing.
+    // The sentence is v4's byte-for-byte; the field NAMES follow this crate's
+    // snake_case tracing idiom (every other v5 site does), not v4's JSON keys.
+    if deleted > 0 {
+        tracing::info!(
+            target: "quilltap::maintenance",
+            chat_id = %chat_id,
+            deleted,
+            bytes_released_estimate = bytes,
+            "Collapsed stale chat assets",
+        );
+    }
     Ok((deleted, bytes))
 }
 
@@ -323,16 +336,243 @@ pub async fn collapse_stale_chat_assets(
                     summary.bytes_released_estimate += bytes;
                 }
             }
-            Err(_) => { /* v4 warns + continues */ }
+            // v4 `collapse-stale-chat-assets.ts:288` — the warn IS the port
+            // surface here: without it a chat that fails to collapse leaves
+            // nothing behind to diagnose with (dogfood finding #110).
+            Err(e) => {
+                // The id is bound OUT of the macro: inside `tracing::warn!`,
+                // `Value::as_str` resolves to the trait, not the enum
+                // (E0782 — a standing trap in this tree).
+                let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or_default();
+                tracing::warn!(
+                    target: "quilltap::maintenance",
+                    chat_id = %chat_id,
+                    error = %e,
+                    "Failed to collapse stale chat — continuing",
+                );
+            }
         }
     }
 
+    // v4 `collapse-stale-chat-assets.ts:302` — logged unconditionally, the whole
+    // summary, so an operator can see a pass that deleted nothing as readily as
+    // one that deleted a hundred files.
+    tracing::info!(
+        target: "quilltap::maintenance",
+        chats_scanned = summary.chats_scanned,
+        stale_chats = summary.stale_chats,
+        chats_collapsed = summary.chats_collapsed,
+        files_deleted = summary.files_deleted,
+        bytes_released_estimate = summary.bytes_released_estimate,
+        "Stale-chat asset collapse complete",
+    );
     Ok(summary)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::collapse_stale_chat_assets;
     use crate::db::doc_mount_file_links::is_photos_relative_path;
+    use crate::db::runtime::Db;
+    use std::sync::{Arc, Mutex};
+
+    // ---- the tracing capture layer (the `cost_events.rs` idiom: `set_default`
+    // is THREAD-scoped, so parallel tests cannot steal each other's subscriber).
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push_str(&format!(" {}={:?}", field.name(), value));
+        }
+    }
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _c: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut v = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut v);
+            self.0.lock().unwrap().push(v.0);
+        }
+    }
+    fn captured<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let out = {
+            let _g = tracing::subscriber::set_default(sub);
+            f()
+        };
+        let lines = logs.lock().unwrap().clone();
+        (out, lines)
+    }
+
+    const TEST_PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+    /// A freshly PROVISIONED, empty instance — the REAL schema replayed from the
+    /// D23-dumped `fresh_schema.json`, never a hand-rolled subset (the standing
+    /// reduced-DDL trap: `chats` alone carries ~90 columns and the reader selects
+    /// them by name). `with_files == false` DROPS `files` afterwards, which is
+    /// how the per-chat FAILURE arm is reached without inventing an error.
+    fn collapse_db(with_files: bool) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        crate::services::provisioning::provision_fresh_instance(dir.path(), TEST_PEPPER)
+            .expect("provision a fresh instance");
+        let db = Db::open_main(dir.path().join("quilltap.db"), TEST_PEPPER).expect("open main");
+        if !with_files {
+            db.write_blocking(|w| {
+                w.main().connection().execute_batch("DROP TABLE files;")?;
+                Ok(())
+            })
+            .unwrap();
+        }
+        (dir, db)
+    }
+
+    fn seed_stale_chat(db: &Db, chat_id: &str) {
+        let sql = format!(
+            "INSERT INTO chats (id, userId, title, createdAt, updatedAt)
+             VALUES ('{chat_id}', 'u1', 'Quiet', '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z');"
+        );
+        db.write_blocking(move |w| {
+            w.main().connection().execute_batch(&sql)?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    fn seed_generated_image(db: &Db, file_id: &str, chat_id: &str, size: i64) {
+        // An EMPTY sha256 keeps `skip_reason` off its two sha branches (which
+        // would reach the mount partition this DB does not have).
+        let sql = format!(
+            "INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size,
+                 linkedTo, source, category, createdAt, updatedAt)
+             VALUES ('{file_id}', 'u1', '', 'bg.webp', 'image/webp', {size},
+                 '[\"{chat_id}\"]', 'GENERATED', 'IMAGE',
+                 '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z');"
+        );
+        db.write_blocking(move |w| {
+            w.main().connection().execute_batch(&sql)?;
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    fn rt() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    /// Dogfood finding #110. v4 `collapse-stale-chat-assets.ts:252` and `:302`.
+    /// The sweep DELETES the operator's generated images; before this it said
+    /// nothing at all, in `combined.log` or anywhere else.
+    #[test]
+    fn a_collapsed_chat_is_named_in_the_log_with_v4s_sentences() {
+        let (_dir, db) = collapse_db(true);
+        seed_stale_chat(&db, "chat-quiet");
+        seed_generated_image(&db, "file-dead", "chat-quiet", 4096);
+
+        let (summary, lines) = captured(|| {
+            rt().block_on(collapse_stale_chat_assets(&db, 1_900_000_000_000))
+                .expect("collapse")
+        });
+
+        assert_eq!(summary.files_deleted, 1, "the sweep must actually delete");
+
+        let per_chat: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Collapsed stale chat assets"))
+            .collect();
+        assert_eq!(per_chat.len(), 1, "one per-chat line, got {lines:?}");
+        assert!(
+            per_chat[0].starts_with("INFO quilltap::maintenance"),
+            "{:?}",
+            per_chat[0]
+        );
+        assert!(
+            per_chat[0].contains("chat_id=chat-quiet"),
+            "{:?}",
+            per_chat[0]
+        );
+        assert!(per_chat[0].contains("deleted=1"), "{:?}", per_chat[0]);
+        assert!(
+            per_chat[0].contains("bytes_released_estimate=4096"),
+            "{:?}",
+            per_chat[0]
+        );
+
+        let done: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Stale-chat asset collapse complete"))
+            .collect();
+        assert_eq!(done.len(), 1, "one completion line, got {lines:?}");
+        assert!(done[0].contains("stale_chats=1"), "{:?}", done[0]);
+        assert!(done[0].contains("chats_collapsed=1"), "{:?}", done[0]);
+        assert!(done[0].contains("files_deleted=1"), "{:?}", done[0]);
+    }
+
+    /// The silence half: a stale chat with nothing to collapse says nothing
+    /// per-chat (v4 gates on `deleted > 0`) but the pass still reports.
+    #[test]
+    fn a_chat_with_nothing_to_collapse_is_not_named() {
+        let (_dir, db) = collapse_db(true);
+        seed_stale_chat(&db, "chat-empty");
+
+        let (summary, lines) = captured(|| {
+            rt().block_on(collapse_stale_chat_assets(&db, 1_900_000_000_000))
+                .expect("collapse")
+        });
+
+        assert_eq!(summary.files_deleted, 0);
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Collapsed stale chat assets")),
+            "a chat that lost nothing must not be named: {lines:?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Stale-chat asset collapse complete")
+                    && l.contains("chats_collapsed=0")),
+            "the pass still reports: {lines:?}"
+        );
+    }
+
+    /// v4 `collapse-stale-chat-assets.ts:288` — one chat's failure is swallowed
+    /// so the rest continue, and the warn is the only thing left to diagnose
+    /// with. Reached by removing `files` rather than by inventing an error.
+    #[test]
+    fn a_chat_that_fails_to_collapse_is_warned_and_the_pass_continues() {
+        let (_dir, db) = collapse_db(false);
+        seed_stale_chat(&db, "chat-broken");
+
+        let (summary, lines) = captured(|| {
+            rt().block_on(collapse_stale_chat_assets(&db, 1_900_000_000_000))
+                .expect("the pass itself must not fail")
+        });
+
+        assert_eq!(summary.stale_chats, 1);
+        assert_eq!(summary.chats_collapsed, 0);
+
+        let warn: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Failed to collapse stale chat — continuing"))
+            .collect();
+        assert_eq!(warn.len(), 1, "one warn, got {lines:?}");
+        assert!(
+            warn[0].starts_with("WARN quilltap::maintenance"),
+            "{:?}",
+            warn[0]
+        );
+        assert!(warn[0].contains("chat_id=chat-broken"), "{:?}", warn[0]);
+        assert!(warn[0].contains("error="), "{:?}", warn[0]);
+    }
 
     #[test]
     fn photos_relative_path_predicate() {
