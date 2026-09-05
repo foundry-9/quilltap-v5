@@ -616,6 +616,35 @@ pub struct LanternLoad {
     pub attachments: Vec<Value>,
 }
 
+/// One loaded + fallback-dispatched USER upload (v4's per-file loop body inside
+/// `rehydrateUserAttachments`). The seam does the IO — the load, the fallback
+/// dispatch, the prefix formatting — and [`rehydrate_user_attachments`] keeps the
+/// budget arithmetic and the keep-vs-drop rule, so both stay unit-drivable
+/// through a canned seam.
+#[derive(Clone, Debug)]
+pub struct UserAttachmentFile {
+    /// v4's `fileAttachment` — the loaded `FileAttachment` JSON, pushed onto
+    /// `rehydratedAttachmentsToKeep` VERBATIM when the provider takes it natively.
+    pub attachment: Value,
+    /// `fallbackResult.type === 'unsupported'`.
+    pub unsupported: bool,
+    /// `!!fallbackResult.error`.
+    pub errored: bool,
+    /// `formatFallbackAsMessagePrefix(fallbackResult)`. Read ONLY when the result
+    /// is not `unsupported` — v4 `continue`s before it formats anything, so an
+    /// `unsupported`-with-error file contributes no `⚠️` line on this path (unlike
+    /// the Lantern path, which formats first and filters second).
+    pub prefix: String,
+}
+
+/// The result of the seamed USER-attachment load, one entry per file the loader
+/// resolved (v4's `loadChatFilesForLLM` can return FEWER than it was asked for —
+/// a per-file failure is skipped there, faithfully kept).
+#[derive(Clone, Debug, Default)]
+pub struct UserAttachmentLoad {
+    pub files: Vec<UserAttachmentFile>,
+}
+
 /// The file-subsystem seam (v4 `buildMessageContext` section K). Default no-op;
 /// [`crate::services::chat_files::RealMessageContextSeams`] (W4.4b) does the real
 /// load + fallback dispatch. Async (RPITIT `+ Send`), matching
@@ -631,11 +660,150 @@ pub trait MessageContextSeams {
         let _ = (file_ids, provider);
         async { LanternLoad::default() }
     }
+
+    /// Load + fallback-process one carrying message's USER uploads (v4 bug 121's
+    /// `loadChatFilesForLLM(fileIds, {provider})` + the per-file
+    /// `processFileAttachmentFallback` inside `rehydrateUserAttachments`).
+    ///
+    /// `Err` is the Rust spelling of v4's `try { … } catch` around the whole
+    /// re-hydration: the turn proceeds exactly as it did before this existed,
+    /// keeping whatever earlier rows already contributed.
+    fn load_user_attachments(
+        &self,
+        file_ids: &[String],
+        provider: &str,
+    ) -> impl std::future::Future<Output = Result<UserAttachmentLoad, String>> + Send {
+        let _ = (file_ids, provider);
+        async { Ok(UserAttachmentLoad::default()) }
+    }
 }
 
 /// The default no-op seam.
 pub struct NoopMessageContextSeams;
 impl MessageContextSeams for NoopMessageContextSeams {}
+
+/// What [`rehydrate_user_attachments`] hands back (v4's
+/// `{ rehydratedContentByMessageId, rehydratedAttachmentsToKeep }`).
+#[derive(Debug, Default)]
+pub struct RehydratedUserAttachments {
+    /// The text to splice in AHEAD of each carrying message, keyed by that
+    /// message's row id.
+    pub content_by_message_id: std::collections::HashMap<String, String>,
+    /// The raw attachments the provider takes natively, for the caller to merge
+    /// and anchor the usual way.
+    pub attachments_to_keep: Vec<Value>,
+}
+
+/// Load the user uploads a character has not yet been shown and turn them back
+/// into prompt content (v4 `rehydrateUserAttachments`, `e288ae2ec` / bug 121).
+/// See [`collect_unseen_user_attachments_for_character`] for why this is a
+/// read-side derivation rather than a stored body.
+///
+/// Never fails: an unreadable file leaves the turn exactly as it was before this
+/// existed. v4 declares its two accumulators OUTSIDE the try, so a mid-walk throw
+/// returns what earlier rows already contributed rather than nothing — kept here
+/// by breaking out of the loop instead of discarding.
+pub async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
+    mc_seams: &MCS,
+    messages: &[WhisperMessage],
+    character_participant_id: &str,
+    is_multi_character: bool,
+    history_cutoff: Option<&str>,
+    provider: &str,
+) -> RehydratedUserAttachments {
+    let mut out = RehydratedUserAttachments::default();
+    // v4: `if (!characterParticipantId) return { … }` — an absent participant has
+    // no "own prior response" to bound the walk with.
+    if character_participant_id.is_empty() {
+        return out;
+    }
+
+    let unseen = collect_unseen_user_attachments_for_character(
+        messages,
+        character_participant_id,
+        is_multi_character,
+        history_cutoff,
+        USER_ATTACHMENT_LOOKBACK,
+    );
+    if unseen.is_empty() {
+        return out;
+    }
+
+    let mut budget_left = REHYDRATED_ATTACHMENT_CHAR_BUDGET;
+    let mut skipped_for_budget = 0usize;
+
+    for row in &unseen {
+        let loaded = match mc_seams
+            .load_user_attachments(&row.file_ids, provider)
+            .await
+        {
+            Ok(l) => l,
+            Err(error) => {
+                // v4's outer catch: warn and leave the turn as it was, keeping
+                // whatever earlier rows contributed.
+                tracing::warn!(
+                    error = %error,
+                    character_participant_id,
+                    "Failed to re-hydrate user attachments from history"
+                );
+                return out;
+            }
+        };
+        let mut prefix = String::new();
+
+        for file in loaded.files {
+            // Mirror the `load_and_process_files` filter: keep the raw bytes only
+            // when the provider takes them natively. A failed fallback DROPS the
+            // file rather than tripping the provider's "no image input" refusal.
+            if file.unsupported {
+                if !file.errored {
+                    out.attachments_to_keep.push(file.attachment);
+                }
+                continue;
+            }
+
+            if file.prefix.is_empty() {
+                continue;
+            }
+            // v4's `text.length` is UTF-16 units; the budget is a JS string
+            // length, so count the same units.
+            let len = file.prefix.encode_utf16().count();
+            if len > budget_left {
+                // Skipped WHOLE, never truncated: half a transcript is a worse
+                // input than none, and a model given one cannot tell.
+                skipped_for_budget += 1;
+                continue;
+            }
+            budget_left -= len;
+            prefix.push_str(&file.prefix);
+        }
+
+        if !prefix.is_empty() {
+            out.content_by_message_id
+                .insert(row.message_id.clone(), prefix);
+        }
+    }
+
+    if skipped_for_budget > 0 {
+        tracing::warn!(
+            skipped_for_budget,
+            budget = REHYDRATED_ATTACHMENT_CHAR_BUDGET,
+            character_participant_id,
+            "Re-hydrated attachments exceeded the per-turn budget; some were not re-sent"
+        );
+    }
+    if !out.content_by_message_id.is_empty() || !out.attachments_to_keep.is_empty() {
+        tracing::debug!(
+            messages_expanded = out.content_by_message_id.len(),
+            raw_attachments_kept = out.attachments_to_keep.len(),
+            characters_used = REHYDRATED_ATTACHMENT_CHAR_BUDGET - budget_left,
+            character_participant_id,
+            "Re-hydrated user attachments from history"
+        );
+    }
+
+    out
+}
 
 // ===========================================================================
 // The composition.
@@ -1009,8 +1177,85 @@ where
     // the distinction (v4 a14a1811, bug 95) — see [`user_turn_message_ids`].
     let user_turn_message_ids = user_turn_message_ids(&messages_after_whisper_filter);
 
+    // --- D2. The shared attachment history cutoff (v4 `e288ae2ec` hoisted it out
+    // of the Lantern block so BOTH walks read one value). If this is a joining
+    // character without history access and they have not yet responded, clamp both
+    // attachment walks to messages posted after they joined. Computed from the
+    // filtered set so opaque characters never reach Staff attachments either —
+    // symmetric with their text-side filter.
+    let has_prior_response = filtered.iter().any(|m| {
+        m.message_type.as_deref() == Some("message")
+            && m.role.as_deref() == Some("ASSISTANT")
+            && m.participant_id.as_deref() == Some(responding_id)
+    });
+    let attachment_history_cutoff: Option<String> = if is_multi
+        && !responding_id.is_empty()
+        && !params.has_history_access
+        && !has_prior_response
+    {
+        params.character_participant_created_at.map(String::from)
+    } else {
+        None
+    };
+
+    // --- D3. Bug 121: re-hydrate the human's own attachments out of history. ---
+    //
+    // `load_and_process_files` expands the files on *this* request's `fileIds` and
+    // the expansion dies with the request — the row keeps the typed words and a
+    // pointer. Everyone after the first character to answer therefore saw a bare
+    // message where a document had been. Re-deriving from the file here (rather
+    // than persisting the expanded body) keeps the file the single source of
+    // truth, survives regenerate, swipe, import and restore, and treats an
+    // uploaded image exactly like an uploaded transcript: the same
+    // `process_file_attachment_fallback` pass either inlines the text, describes
+    // the image, or hands the raw bytes back for a provider that takes them.
+    //
+    // This runs *before* `build_context` so the tokens are budgeted, compressed
+    // and trimmed like any other message content — the Lantern prefix is spliced
+    // in after budgeting, which is affordable for a description and would not be
+    // for a 29 KB transcript.
+    let rehydrated = rehydrate_user_attachments(
+        mc_seams,
+        &filtered,
+        responding_id,
+        is_multi,
+        attachment_history_cutoff.as_deref(),
+        params.provider,
+    )
+    .await;
+
+    // A COPY only when something was re-hydrated (v4's `size > 0` ternary);
+    // `filtered` itself is never spliced, so the Lantern walk below still reads
+    // the stored rows.
+    let rehydrated_messages: Option<Vec<WhisperMessage>> =
+        if rehydrated.content_by_message_id.is_empty() {
+            None
+        } else {
+            Some(
+                filtered
+                    .iter()
+                    .map(|m| {
+                        let prefix =
+                            m.id.as_deref()
+                                .and_then(|id| rehydrated.content_by_message_id.get(id));
+                        match prefix {
+                            Some(p) => {
+                                let mut out = m.clone();
+                                out.content =
+                                    Some(format!("{p}{}", m.content.as_deref().unwrap_or("")));
+                                out
+                            }
+                            None => m.clone(),
+                        }
+                    })
+                    .collect(),
+            )
+        };
+    let messages_for_conversation: &[WhisperMessage] =
+        rehydrated_messages.as_deref().unwrap_or(&filtered);
+
     // --- E. Conversation messages + first-message detection. ---
-    let (conversation, mwp) = build_conversation_messages(&filtered, is_multi);
+    let (conversation, mwp) = build_conversation_messages(messages_for_conversation, is_multi);
     let is_initial_message = !conversation
         .iter()
         .any(|m| m.role == "user" || m.role == "USER");
@@ -1086,36 +1331,28 @@ where
     };
 
     // --- K. Lantern image collection + load (seam). ---
-    let mut merged_attachments: Vec<Value> = attachments_to_send.to_vec();
+    // v4 `e288ae2ec` seeds the merged slate from the re-hydrated raw attachments
+    // as well, and the Lantern merge below CHAINS onto it rather than re-seeding
+    // from `attachments_to_send` (which used to drop them).
+    let mut merged_attachments: Vec<Value> = attachments_to_send
+        .iter()
+        .cloned()
+        .chain(rehydrated.attachments_to_keep.iter().cloned())
+        .collect();
     let mut lantern_prefix = String::new();
     {
-        let has_prior_response = filtered.iter().any(|m| {
-            m.message_type.as_deref() == Some("message")
-                && m.role.as_deref() == Some("ASSISTANT")
-                && m.participant_id.as_deref() == Some(responding_id)
-        });
-        let history_cutoff: Option<String> =
-            if is_multi && !params.has_history_access && !has_prior_response {
-                params.character_participant_created_at.map(String::from)
-            } else {
-                None
-            };
         let ids = collect_lantern_image_file_ids_for_character(
             &filtered,
             responding_id,
             is_multi,
-            history_cutoff.as_deref(),
+            attachment_history_cutoff.as_deref(),
             ASSISTANT_IMAGE_LOOKBACK,
         );
         if !ids.is_empty() {
             let load = mc_seams.load_lantern_images(&ids, params.provider).await;
             lantern_prefix = load.prefix;
             if !load.attachments.is_empty() {
-                merged_attachments = attachments_to_send
-                    .iter()
-                    .cloned()
-                    .chain(load.attachments)
-                    .collect();
+                merged_attachments.extend(load.attachments);
             }
         }
     }
@@ -1258,6 +1495,335 @@ fn wire_role_str(role: WireRole) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Mutex};
+
+    // -----------------------------------------------------------------------
+    // The bug-121 re-hydration pins (v4 `e288ae2ec`). The walk itself is
+    // oracle-pinned by `message_context_leaves_equivalence`; these drive
+    // `rehydrate_user_attachments` through a CANNED seam so the budget
+    // arithmetic, the skip-whole rule, the `unsupported`-with-error drop and
+    // the three log lines are each measured on their own.
+    // -----------------------------------------------------------------------
+
+    /// A canned [`MessageContextSeams`] answering `load_user_attachments` from a
+    /// fileId → (unsupported, errored, prefix) table. `Err` for a file id in
+    /// `fail_on` stands in for v4's `loadChatFilesForLLM` throwing.
+    struct CannedSeams {
+        table: std::collections::HashMap<String, (bool, bool, String)>,
+        fail_on: Option<String>,
+        calls: Mutex<Vec<Vec<String>>>,
+    }
+    impl CannedSeams {
+        fn new(rows: &[(&str, bool, bool, &str)]) -> Self {
+            CannedSeams {
+                table: rows
+                    .iter()
+                    .map(|(id, u, e, p)| (id.to_string(), (*u, *e, p.to_string())))
+                    .collect(),
+                fail_on: None,
+                calls: Mutex::new(Vec::new()),
+            }
+        }
+        fn failing_on(mut self, id: &str) -> Self {
+            self.fail_on = Some(id.to_string());
+            self
+        }
+    }
+    impl MessageContextSeams for CannedSeams {
+        async fn load_user_attachments(
+            &self,
+            file_ids: &[String],
+            _provider: &str,
+        ) -> Result<UserAttachmentLoad, String> {
+            self.calls.lock().unwrap().push(file_ids.to_vec());
+            if let Some(bad) = &self.fail_on {
+                if file_ids.iter().any(|id| id == bad) {
+                    return Err("storage read failed".to_string());
+                }
+            }
+            let mut files = Vec::new();
+            for id in file_ids {
+                if let Some((unsupported, errored, prefix)) = self.table.get(id) {
+                    files.push(UserAttachmentFile {
+                        attachment: serde_json::json!({ "id": id }),
+                        unsupported: *unsupported,
+                        errored: *errored,
+                        prefix: prefix.clone(),
+                    });
+                }
+            }
+            Ok(UserAttachmentLoad { files })
+        }
+    }
+
+    fn user_msg(id: &str, content: &str, atts: &[&str]) -> WhisperMessage {
+        WhisperMessage {
+            message_type: Some("message".to_string()),
+            role: Some("USER".to_string()),
+            content: Some(content.to_string()),
+            id: Some(id.to_string()),
+            attachments: Some(atts.iter().map(|a| a.to_string()).collect()),
+            ..Default::default()
+        }
+    }
+    fn assistant_msg(id: &str, participant: &str) -> WhisperMessage {
+        WhisperMessage {
+            message_type: Some("message".to_string()),
+            role: Some("ASSISTANT".to_string()),
+            content: Some("a turn".to_string()),
+            id: Some(id.to_string()),
+            participant_id: Some(participant.to_string()),
+            ..Default::default()
+        }
+    }
+
+    /// The dev-dependency tokio runtime the other async unit pins in this crate
+    /// use (`scheduled_maintenance`, `file_fallback`).
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0.push_str(&format!(" {value:?}"));
+            } else {
+                self.0.push_str(&format!(" {}={value:?}", field.name()));
+            }
+        }
+    }
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _ctx: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut visitor = FieldVisitor(format!("{}", meta.level()));
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+    /// `set_default` is THREAD-scoped, so parallel tests cannot steal each
+    /// other's subscriber.
+    fn captured<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let out = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            f()
+        };
+        let lines = logs.lock().unwrap().clone();
+        (out, lines)
+    }
+    fn line_with<'a>(lines: &'a [String], sentence: &str) -> &'a String {
+        lines
+            .iter()
+            .find(|l| l.contains(sentence))
+            .unwrap_or_else(|| panic!("no line carried {sentence:?}; got {lines:#?}"))
+    }
+
+    /// An `unsupported` result keeps the raw bytes ONLY when it carries no
+    /// error — a failed fallback DROPS the file rather than tripping the
+    /// provider's "no image input" refusal — and v4 `continue`s BEFORE
+    /// formatting, so the errored file contributes no `⚠️` prefix here (unlike
+    /// the Lantern path, which formats first and filters second).
+    #[test]
+    fn unsupported_keeps_bytes_only_without_an_error() {
+        let seams = CannedSeams::new(&[
+            ("native", true, false, "⚠️ never read\n\n"),
+            (
+                "failed",
+                true,
+                true,
+                "⚠️ Attachment Processing Failed: x\nboom\n\n",
+            ),
+            (
+                "text",
+                false,
+                false,
+                "[User attached text file: n.md]\n\nbody\n\n",
+            ),
+        ]);
+        let msgs = vec![user_msg("m1", "read these", &["native", "failed", "text"])];
+        let out = block_on(rehydrate_user_attachments(
+            &seams,
+            &msgs,
+            "cp",
+            true,
+            None,
+            "ANTHROPIC",
+        ));
+        assert_eq!(
+            out.attachments_to_keep,
+            vec![serde_json::json!({ "id": "native" })],
+            "only the errorless unsupported file keeps its bytes"
+        );
+        assert_eq!(
+            out.content_by_message_id.get("m1").map(String::as_str),
+            Some("[User attached text file: n.md]\n\nbody\n\n"),
+            "neither unsupported file contributes prefix text"
+        );
+    }
+
+    /// The budget SKIPS a file whole rather than truncating it, and a later
+    /// smaller file still lands. The arithmetic counts UTF-16 units, as v4's
+    /// `text.length` does.
+    #[test]
+    fn the_budget_skips_a_file_whole_and_the_next_smaller_one_still_lands() {
+        let big = "A".repeat(REHYDRATED_ATTACHMENT_CHAR_BUDGET - 4);
+        let over = "B".repeat(8); // 8 > the 4 left after `big`
+        let small = "C".repeat(4);
+        let seams = CannedSeams::new(&[
+            ("big", false, false, &big),
+            ("over", false, false, &over),
+            ("small", false, false, &small),
+        ]);
+        let msgs = vec![user_msg("m1", "tail", &["big", "over", "small"])];
+        let (out, lines) = captured(|| {
+            block_on(rehydrate_user_attachments(
+                &seams,
+                &msgs,
+                "cp",
+                true,
+                None,
+                "ANTHROPIC",
+            ))
+        });
+        let spliced = out.content_by_message_id.get("m1").cloned().unwrap();
+        assert_eq!(
+            spliced,
+            format!("{big}{small}"),
+            "the overflowing file is skipped WHOLE (never truncated) and the smaller one still lands"
+        );
+        let warn = line_with(
+            &lines,
+            "Re-hydrated attachments exceeded the per-turn budget; some were not re-sent",
+        );
+        assert!(warn.starts_with("WARN"), "budget line is a warn: {warn}");
+        assert!(warn.contains("skipped_for_budget=1"), "{warn}");
+        assert!(warn.contains("budget=80000"), "{warn}");
+        assert!(warn.contains("character_participant_id=\"cp\""), "{warn}");
+    }
+
+    /// The debug line fires when anything came back, and counts what did.
+    #[test]
+    fn the_debug_line_reports_what_was_rehydrated() {
+        let seams = CannedSeams::new(&[("t", false, false, "abcde"), ("n", true, false, "")]);
+        let msgs = vec![
+            assistant_msg("m0", "cp"),
+            user_msg("m1", "one", &["t"]),
+            assistant_msg("m2", "other"),
+            user_msg("m3", "two", &["n"]),
+        ];
+        let (out, lines) = captured(|| {
+            block_on(rehydrate_user_attachments(
+                &seams,
+                &msgs,
+                "cp",
+                true,
+                None,
+                "ANTHROPIC",
+            ))
+        });
+        assert_eq!(out.content_by_message_id.len(), 1);
+        assert_eq!(out.attachments_to_keep.len(), 1);
+        let debug = line_with(&lines, "Re-hydrated user attachments from history");
+        assert!(debug.starts_with("DEBUG"), "{debug}");
+        assert!(debug.contains("messages_expanded=1"), "{debug}");
+        assert!(debug.contains("raw_attachments_kept=1"), "{debug}");
+        assert!(debug.contains("characters_used=5"), "{debug}");
+        // The budget warn must NOT fire when nothing overflowed.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("exceeded the per-turn budget")),
+            "{lines:#?}"
+        );
+    }
+
+    /// Nothing unseen → no seam call, no logs, nothing spliced. And an absent
+    /// participant returns before the walk runs at all (v4's first line).
+    #[test]
+    fn a_quiet_turn_calls_nothing_and_logs_nothing() {
+        let seams = CannedSeams::new(&[("t", false, false, "x")]);
+        let msgs = vec![user_msg("m1", "one", &["t"]), assistant_msg("m2", "cp")];
+        let (out, lines) = captured(|| {
+            block_on(rehydrate_user_attachments(
+                &seams,
+                &msgs,
+                "cp",
+                true,
+                None,
+                "ANTHROPIC",
+            ))
+        });
+        assert!(out.content_by_message_id.is_empty());
+        assert!(out.attachments_to_keep.is_empty());
+        assert!(seams.calls.lock().unwrap().is_empty(), "no load was needed");
+        assert!(lines.is_empty(), "{lines:#?}");
+
+        let seams2 = CannedSeams::new(&[("t", false, false, "x")]);
+        let msgs2 = vec![user_msg("m1", "one", &["t"])];
+        let out2 = block_on(rehydrate_user_attachments(
+            &seams2,
+            &msgs2,
+            "",
+            true,
+            None,
+            "ANTHROPIC",
+        ));
+        assert!(out2.content_by_message_id.is_empty());
+        assert!(seams2.calls.lock().unwrap().is_empty());
+    }
+
+    /// v4 declares both accumulators OUTSIDE its try, so a mid-walk failure
+    /// warns and returns what earlier rows already contributed — the turn
+    /// proceeds exactly as it did before this existed.
+    #[test]
+    fn a_load_failure_warns_and_keeps_what_earlier_rows_contributed() {
+        let seams = CannedSeams::new(&[("good", false, false, "kept\n\n")]).failing_on("bad");
+        let msgs = vec![
+            assistant_msg("m0", "cp"),
+            user_msg("m1", "one", &["good"]),
+            assistant_msg("m2", "other"),
+            user_msg("m3", "two", &["bad"]),
+        ];
+        let (out, lines) = captured(|| {
+            block_on(rehydrate_user_attachments(
+                &seams,
+                &msgs,
+                "cp",
+                true,
+                None,
+                "ANTHROPIC",
+            ))
+        });
+        assert_eq!(
+            out.content_by_message_id.get("m1").map(String::as_str),
+            Some("kept\n\n"),
+            "the earlier row survives the later failure"
+        );
+        assert!(!out.content_by_message_id.contains_key("m3"));
+        let warn = line_with(&lines, "Failed to re-hydrate user attachments from history");
+        assert!(warn.starts_with("WARN"), "{warn}");
+        assert!(warn.contains("error=storage read failed"), "{warn}");
+        assert!(warn.contains("character_participant_id=\"cp\""), "{warn}");
+        // The success lines must NOT fire on the failure path (v4's throw jumps
+        // past both).
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Re-hydrated user attachments from history")),
+            "{lines:#?}"
+        );
+    }
 
     /// The a14a1811 §3 review's named silent mutation: the id-set predicate is
     /// the middle plumbing between the oracle-pinned selector and the

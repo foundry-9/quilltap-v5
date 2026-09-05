@@ -105099,3 +105099,77 @@ identical (v4's `typeof id === 'string'` filter empties it a step later), but
 `has_attachments()` directly, so such a row would stop v5's walk and not v4's.
 No corpus row (v4's or ours) carries a non-string attachment; the divergence
 predates this lane, living in the Lantern walk since the original port.
+
+### Unit 2 — the seam, the re-hydration step, and the `build_message_context` rewiring
+
+**The seam (§D).** `MessageContextSeams::load_user_attachments(file_ids,
+provider) -> Result<UserAttachmentLoad, String>` beside `load_lantern_images`,
+with a no-op default on `NoopMessageContextSeams` and the production body in
+`chat_files.rs::load_user_attachments`. `UserAttachmentLoad` carries one
+`UserAttachmentFile` per loaded file — the raw attachment bag, `unsupported`,
+`errored`, and the formatted `prefix` — because the budget arithmetic and the
+keep-vs-drop rule belong in the wrapper where a canned seam can drive them.
+The real impl reads `connection_profile.provider` (the responding profile),
+not the possibly-rerouted formatting provider the seam is passed — the same
+override the Lantern impl already makes, and what v4's
+`args.connectionProfile.provider` means.
+
+**Two shape decisions, both recorded:**
+
+1. **`Result` rather than an infallible return.** v4 wraps the WHOLE
+   re-hydration in one `try/catch` whose two accumulators are declared
+   OUTSIDE the try, so a throw returns what earlier rows contributed. v5's
+   loader swallows per-file failures already, so an infallible seam would make
+   v4's `Failed to re-hydrate user attachments from history` warn arm
+   unreachable and unpinnable. The `Result` is the faithful Rust spelling of
+   the `catch`, and the wrapper returns the partial accumulators on `Err` as
+   v4 does. **The one v4 arm with no v5 counterpart:** v4 can throw
+   mid-FILE-loop (leaving that row's earlier files already on the keep list
+   while its prefix is lost); v5's seam succeeds or fails per ROW, so only the
+   `loadChatFilesForLLM`-throws shape exists. Recorded, not stubbed.
+2. **The prefix is computed in the seam and ignored for `unsupported`.**
+   `format_fallback_as_message_prefix` is pure, so computing it and not
+   reading it is behaviour-neutral, and it keeps the seam a plain IO boundary.
+   The wrapper reproduces v4's ordering exactly: `unsupported` is tested
+   FIRST and `continue`s, so an errored `unsupported` file contributes no
+   `⚠️ Attachment Processing Failed` line on this path — unlike the Lantern
+   path, which formats first and filters second.
+
+**The rewiring (v4 (d)).** `attachment_history_cutoff` + `has_prior_response`
+hoisted out of section K into a new section D2 (v4's own hoist), so both walks
+read one value; v4's new `characterParticipant &&` guard lands as
+`!responding_id.is_empty()`. Section D3 runs the re-hydration BEFORE
+`build_context`. The splice builds `rehydrated_messages: Option<Vec<…>>` only
+when `content_by_message_id` is non-empty and
+`build_conversation_messages` is fed
+`rehydrated_messages.as_deref().unwrap_or(&filtered)`. Section K seeds
+`merged_attachments` from `attachments_to_send ++
+rehydrated.attachments_to_keep` and the Lantern merge now `extend`s it rather
+than re-seeding from `attachments_to_send` (which used to drop them).
+
+**The ordered "splice into `filtered` instead of a copy" mutation is NOT
+discriminating — on either side.** Measured: every reader of `filtered` after
+the splice point is content-blind (`collect_lantern_image_file_ids_for_
+character` reads type / role / attachments / participantId / createdAt, never
+`content`), and `user_turn_message_ids` is taken from the PRE-normalization
+list. So splicing in place would be behaviourally identical in v5 and in v4;
+a "pin" for it would be vacuous. What stands in its place is the type system:
+`filtered` is not declared `mut`, so the in-place mutation does not compile
+without a deliberate edit. Recorded rather than pinned.
+
+**Unit pins (five, over a canned seam), three mutation-proven:**
+
+| Pin | Mutation | Reddened |
+|---|---|---|
+| `unsupported_keeps_bytes_only_without_an_error` | keep an errored `unsupported` result | that pin |
+| `the_budget_skips_a_file_whole_and_the_next_smaller_one_still_lands` | truncate to the remaining budget instead of skipping whole | that pin |
+| `a_load_failure_warns_and_keeps_what_earlier_rows_contributed` | return `default()` instead of the partial accumulators | that pin |
+| `the_debug_line_reports_what_was_rehydrated` | — (asserts the debug fields AND the budget warn's silence) | — |
+| `a_quiet_turn_calls_nothing_and_logs_nothing` | — (no seam call, no log line, and the empty-participant early return) | — |
+
+The three log lines are capture-pinned through a THREAD-scoped
+`tracing::subscriber::set_default` layer (memory notes
+`a-process-global-test-seam-must-be-thread-scoped`,
+`capture-layer-target-assert-is-a-prefix-match` — the level is asserted with
+`starts_with`, the fields with `contains`). The budget arithmetic counts
+UTF-16 units, matching v4's `text.length`.

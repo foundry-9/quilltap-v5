@@ -28,7 +28,7 @@ use crate::files::image_processing::{
 };
 use crate::model::completion::CompletionProvider;
 use crate::services::file_fallback::{self, FallbackDeps, FallbackFile, FallbackType};
-use crate::services::message_context::LanternLoad;
+use crate::services::message_context::{LanternLoad, UserAttachmentFile, UserAttachmentLoad};
 
 /// The host byte store (v4 `fileStorageManager.downloadFile(entry)`) — reads a
 /// legacy `files`-table entry's bytes from S3/local disk. `Err` = the download
@@ -519,6 +519,66 @@ pub async fn load_lantern_images<CMP: CompletionProvider>(
     }
 }
 
+/// The USER-attachment loader (v4 bug 121, `e288ae2ec`): the body of
+/// `rehydrateUserAttachments`'s per-row load — `loadChatFilesForLLM(fileIds,
+/// {provider})` then `processFileAttachmentFallback` per file, reported per file
+/// so the caller keeps the budget arithmetic and the keep-vs-drop rule.
+///
+/// v4 builds each file's `fileMetadata` from the LOADED attachment exactly as the
+/// Lantern block does (`filepath ?? /api/v1/files/{id}`), so the two paths hand
+/// the fallback identical inputs.
+pub async fn load_user_attachments<CMP: CompletionProvider>(
+    deps: &ProcessFilesDeps<'_, CMP>,
+    connection_profile: &Value,
+    file_ids: &[String],
+    provider: &str,
+) -> UserAttachmentLoad {
+    let options = LoadChatFilesOptions::with_provider(Some(provider.to_string()));
+    let loaded = load_chat_files_for_llm(deps.db, deps.bytes, deps.transcoder, file_ids, &options);
+    if loaded.is_empty() {
+        return UserAttachmentLoad::default();
+    }
+
+    let fallback_deps = deps.fallback_deps();
+    let mut files: Vec<UserAttachmentFile> = Vec::with_capacity(loaded.len());
+    for fa in loaded {
+        let file = FallbackFile {
+            id: fa
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            filename: fa
+                .get("filename")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            // Like Lantern's, this metadata carries the LOADED (possibly resized)
+            // mime — v4 reads `fileAttachment.mimeType` here, not the row's.
+            mime_type: fa
+                .get("mimeType")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            data: fa.get("data").and_then(Value::as_str).map(str::to_string),
+        };
+        let result = file_fallback::process_file_attachment_fallback(
+            &fallback_deps,
+            &file,
+            connection_profile,
+        )
+        .await;
+        files.push(UserAttachmentFile {
+            attachment: fa,
+            unsupported: result.type_ == FallbackType::Unsupported,
+            errored: result.error.is_some(),
+            prefix: file_fallback::format_fallback_as_message_prefix(&result),
+        });
+    }
+
+    UserAttachmentLoad { files }
+}
+
 /// The production [`crate::services::message_context::MessageContextSeams`] — the
 /// real Lantern K-seam loader. Holds the byte/transcoder/completion seams + the
 /// responding connection profile; the orchestrator swaps this in for
@@ -542,6 +602,23 @@ impl<CMP: CompletionProvider + Sync> crate::services::message_context::MessageCo
             .unwrap_or("")
             .to_string();
         load_lantern_images(&self.deps, self.connection_profile, file_ids, &provider).await
+    }
+
+    async fn load_user_attachments(
+        &self,
+        file_ids: &[String],
+        _provider: &str,
+    ) -> Result<UserAttachmentLoad, String> {
+        // v4 `rehydrateUserAttachments` reads `args.connectionProfile.provider`
+        // (the responding profile), the same source the K section uses — NOT the
+        // possibly-rerouted formatting provider the seam passes.
+        let provider = self
+            .connection_profile
+            .get("provider")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        Ok(load_user_attachments(&self.deps, self.connection_profile, file_ids, &provider).await)
     }
 }
 

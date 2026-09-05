@@ -271,6 +271,46 @@ would be vacuous), and `find_names_by_ids` still resolves the name.
 
 Nothing calls it yet; the memory-subject prefix (parts 2 and 3) is what
 will.
+#### 2026-09-05 — port(chat): re-hydrate the human's own attachments before buildContext (v4 bug 121, part 2)
+
+_Versions: core 0.0.778._
+
+The read-side derivation itself. `MessageContextSeams` gains a sibling to
+`load_lantern_images`: `load_user_attachments(file_ids, provider) ->
+Result<UserAttachmentLoad, String>`, reporting one `UserAttachmentFile` per
+loaded file (the raw attachment bag, whether the fallback answered
+`unsupported`, whether it errored, and the formatted prefix). The IO lives in
+the seam; the budget arithmetic and the keep-vs-drop rule live in
+`rehydrate_user_attachments`, so both are drivable through a canned seam. The
+`Result` is the Rust spelling of v4's `try { … } catch` — the production impl
+in `chat_files.rs` (`load_user_attachments`) mirrors the Lantern loader and
+v4's `loadAndProcessFiles` filter, reading the responding profile's provider
+rather than the possibly-rerouted formatting one.
+
+`rehydrate_user_attachments` walks the unseen rows oldest-first, keeps raw
+bytes only for a successful `unsupported` result (a failed fallback drops the
+file rather than tripping the provider's "no image input" refusal, and
+contributes no prefix at all — v4 `continue`s before it formats), and
+accumulates prefix text against the 80,000-character per-turn ceiling that
+SKIPS a file whole rather than truncating it. Both accumulators live outside
+the failure path, so a mid-walk load failure warns and returns what earlier
+rows already contributed, exactly as v4's outside-the-try declarations do.
+All three log lines carried.
+
+`build_message_context` is rewired to match: `attachment_history_cutoff` is
+hoisted out of the Lantern block so both walks read one value; the
+re-hydration runs BEFORE `build_context` so the spliced text is budgeted,
+compressed and trimmed like any other message body; the prefix is spliced per
+carrying message id into a copy fed to `build_conversation_messages` (built
+only when something was re-hydrated); and `merged_attachments` seeds from
+`attachments_to_send ++ rehydrated_attachments_to_keep` with the Lantern merge
+chaining onto it instead of re-seeding.
+
+Five unit pins over a canned seam, three of them mutation-proven: truncating
+instead of skipping whole reddens the budget pin; keeping an errored
+`unsupported` result reddens the drop pin; discarding the partial map on a
+load failure reddens the partial-progress pin.
+
 #### 2026-09-05 — port(chat): the USER-side attachment walk, the shared own-prior-response stop rule (v4 bug 121, part 1)
 
 _Versions: core 0.0.777, harness 0.0.672._
