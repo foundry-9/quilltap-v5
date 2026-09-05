@@ -437,6 +437,27 @@ async function main(): Promise<void> {
     { name: 'upload_new_project', run: filesUpload({ file: { name: 'newdoc.txt', type: 'text/plain', bytes: Buffer.from('a fresh document body') }, projectId: PROJECT }) },
     { name: 'upload_overwrite_project', dump: true, run: filesUpload({ file: { name: 'p1.txt', type: 'text/plain', bytes: Buffer.from('overwritten p1 body') }, projectId: PROJECT }) },
     { name: 'upload_new_general', run: filesUpload({ file: { name: 'gen.txt', type: 'text/plain', bytes: Buffer.from('general upload body') } }) },
+    // ── P4.76: P4.62(a)'s FILES leg (the escalated raw-`tagId` divergence) ──
+    // NO schema on this leg: `tags.map(tag => tag.tagId)` carries whatever the
+    // JSON held into BOTH `linkedTo` and `tags`, and `repos.files.create` then
+    // re-validates the row against `FileEntrySchema` (`z.array(z.uuid())`). The
+    // throw lands in `handleUploadFile`'s OWN catch, so the wire shows
+    // **500 `Failed to upload file`** — not the middleware's flat 500 and not a
+    // 400 — with the BYTES already written (the create is the last step).
+    { name: 'upload_tags_raw_tagid', dump: true, run: filesUpload({ file: { name: 'rawtag.txt', type: 'text/plain', bytes: Buffer.from('raw tag body') }, tags: '[{"tagType":"THEME","tagId":5}]' }) },
+    // `[{}]` — `.map` yields `undefined`, which the row carries as a hole.
+    { name: 'upload_tags_missing_tagid', dump: true, run: filesUpload({ file: { name: 'notag.txt', type: 'text/plain', bytes: Buffer.from('no tag body') }, tags: '[{}]' }) },
+    // A STRING that is not a UUID fails the same `z.uuid()` — so the refusal is
+    // about the schema, not about the JSON type (without this row a port that
+    // only rejected non-strings would pass).
+    { name: 'upload_tags_nonuuid_string', dump: true, run: filesUpload({ file: { name: 'badid.txt', type: 'text/plain', bytes: Buffer.from('bad id body') }, tags: '[{"tagType":"THEME","tagId":"not-a-uuid"}]' }) },
+    // …and a well-formed id is carried into BOTH columns, 201.
+    { name: 'upload_tags_string_tagid', dump: true, run: filesUpload({ file: { name: 'goodtag.txt', type: 'text/plain', bytes: Buffer.from('good tag body') }, tags: `[{"tagType":"CHAT","tagId":"${CHAT_G}"}]` }) },
+    // The OVERWRITE branch never validates tags — v4's update patch carries only
+    // `{sha256, mimeType, size, storageKey}`, so the same raw id is IGNORED and
+    // the request succeeds with 200. The discriminator between "the route
+    // refuses raw ids" (wrong) and "the CREATE does" (right).
+    { name: 'upload_tags_raw_tagid_overwrite', dump: true, run: filesUpload({ file: { name: 'p1.txt', type: 'text/plain', bytes: Buffer.from('overwrite with raw tag') }, projectId: PROJECT, tags: '[{"tagType":"THEME","tagId":5}]' }) },
     // ── P4.6ah: chat upload (multipart) + link ──
     { name: 'chat_upload_nonproject', run: chatFilesUpload(CHAT_G, { file: { name: 'note.txt', type: 'text/plain', bytes: Buffer.from('a chat note') } }) },
     { name: 'chat_upload_conflict', run: chatFilesUpload(CHAT_P, { file: { name: 'dup.txt', type: 'text/plain', bytes: Buffer.from('new dup content') } }) },

@@ -2186,8 +2186,17 @@ pub enum Request {
         content_type: String,
         /// base64 of the file bytes.
         data: String,
+        /// P4.76 (P4.62(a)'s FILES leg): the RAW mapped values, not strings.
+        /// v4 runs NO schema on this leg — `tags.map(tag => tag.tagId)` puts
+        /// whatever the JSON held into `linkedTo` AND `tags`, so `[{"tagId": 5}]`
+        /// carries the number `5` and `[{}]` carries `undefined` (serialized
+        /// `null`). A `Vec<String>` silently DROPPED both, which made v5 write
+        /// a row v4 refuses. The refusal is v4's own: `repos.files.create`
+        /// re-validates against `FileEntrySchema` (`z.array(z.uuid())`) and
+        /// throws — into `handleUploadFile`'s OWN catch, so the wire shows
+        /// **500 `Failed to upload file`**, not the middleware's 400.
         #[serde(default)]
-        tags: Option<Vec<String>>,
+        tags: Option<Vec<serde_json::Value>>,
         #[serde(default)]
         project_id: Option<String>,
         #[serde(default)]

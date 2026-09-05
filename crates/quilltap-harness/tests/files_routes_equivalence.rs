@@ -294,9 +294,52 @@ fn canon_folders_dump(rows: &Value) -> Value {
 /// Normalize a `{files, folders}` table dump for comparison.
 fn norm_tables(t: &Value) -> Value {
     json!({
-        "files": norm(t.get("files").unwrap_or(&Value::Null)),
+        "files": norm(&blank_minted_file_ids(t.get("files").unwrap_or(&Value::Null))),
         "folders": norm(&canon_folders_dump(t.get("folders").unwrap_or(&Value::Null))),
     })
+}
+
+/// A `files.id` the CASE minted is a fresh UUID on both sides — nondeterminism,
+/// not divergence. Every SEEDED row's id is pinned by the fixture builder to the
+/// `f0000000-…` family, so anything outside it was minted here and is blanked.
+///
+/// P4.76: the arms that existed before this all overwrote a PINNED row, so no
+/// dump had ever carried a minted id and the hole was invisible. The rows are
+/// already `ORDER BY id`, and the blanked value sorts last on both sides
+/// because at most one row per case is minted — asserted, not assumed.
+fn blank_minted_file_ids(files: &Value) -> Value {
+    let Some(rows) = files.as_array() else {
+        return files.clone();
+    };
+    let mut out: Vec<Value> = Vec::with_capacity(rows.len());
+    let mut minted = 0usize;
+    for row in rows {
+        let mut row = row.clone();
+        let is_seeded = row
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| id.starts_with("f0000000-"));
+        if !is_seeded {
+            minted += 1;
+            if let Some(o) = row.as_object_mut() {
+                o.insert("id".into(), Value::String("<minted>".into()));
+            }
+        }
+        out.push(row);
+    }
+    assert!(
+        minted <= 1,
+        "the blanking assumes at most one minted `files` row per case; found {minted}"
+    );
+    // `<minted>` sorts after every `f0000000-…` id, so re-sorting on the blanked
+    // key gives both sides the same sequence whatever UUID each drew.
+    out.sort_by_key(|r| {
+        r.get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    });
+    Value::Array(out)
 }
 
 fn response_data(r: &Response) -> Value {
@@ -517,6 +560,40 @@ fn files_routes_match_oracle() {
                 norm(&got),
                 norm(&want)
             );
+            failed.push(name.to_string());
+        }
+    };
+
+    // An error check that ALSO diffs the post-mutation tables — P4.76's
+    // files-leg arms turn on "the request refused AND wrote no `files` row",
+    // which a status-only check cannot see.
+    let check_err_tables = |name: &str,
+                            got: &Response,
+                            tables: &Value,
+                            oracle: &HashMap<String, Value>,
+                            failed: &mut Vec<String>| {
+        let rec = &oracle[name];
+        let want_status = rec["status"].as_u64().unwrap_or(0) as u16;
+        let want_msg = rec["body"]["error"].as_str().unwrap_or("");
+        let mut ok = match got {
+            Response::Error(e) => status_of(e.kind) == want_status && e.message == want_msg,
+            _ => false,
+        };
+        if !ok {
+            eprintln!("[{name}] MISMATCH: got {got:?} / want {want_status} {want_msg:?}");
+        }
+        let wt = rec.get("tables").cloned().unwrap_or(Value::Null);
+        if norm_tables(tables) != norm_tables(&wt) {
+            ok = false;
+            eprintln!(
+                "[{name} tables] MISMATCH:\n got {}\n want {}",
+                norm_tables(tables),
+                norm_tables(&wt)
+            );
+        }
+        if ok {
+            eprintln!("[{name}] OK ({want_status}).");
+        } else {
             failed.push(name.to_string());
         }
     };
@@ -1054,6 +1131,96 @@ fn files_routes_match_oracle() {
             None,
             &mut failed,
         );
+    }
+
+    // ── P4.76: P4.62(a)'s FILES leg — the raw `tagId` carry ──
+    // v4 runs NO schema on this leg, so `tags.map(t => t.tagId)` puts the raw
+    // value into BOTH `linkedTo` and `tags`; `repos.files.create` then refuses
+    // the row against `FileEntrySchema` (`z.array(z.uuid())`) and the throw
+    // lands in `handleUploadFile`'s OWN catch — 500 `Failed to upload file`,
+    // never the middleware's `Internal server error` and never a 400. The
+    // dumps prove nothing was written; the OVERWRITE arm proves the refusal
+    // belongs to the CREATE and not to the route.
+    {
+        struct TagUpload {
+            name: &'static str,
+            filename: &'static str,
+            body: &'static [u8],
+            project: Option<&'static str>,
+            tags: Vec<Value>,
+            err: bool,
+        }
+        let tag_uploads: Vec<TagUpload> = vec![
+            TagUpload {
+                name: "upload_tags_raw_tagid",
+                filename: "rawtag.txt",
+                body: b"raw tag body",
+                project: None,
+                tags: vec![json!(5)],
+                err: true,
+            },
+            // `[{}]` — `.map(t => t.tagId)` yields `undefined`, which crosses
+            // this boundary as JSON `null`.
+            TagUpload {
+                name: "upload_tags_missing_tagid",
+                filename: "notag.txt",
+                body: b"no tag body",
+                project: None,
+                tags: vec![Value::Null],
+                err: true,
+            },
+            // A STRING that is not a UUID fails the same `z.uuid()`.
+            TagUpload {
+                name: "upload_tags_nonuuid_string",
+                filename: "badid.txt",
+                body: b"bad id body",
+                project: None,
+                tags: vec![json!("not-a-uuid")],
+                err: true,
+            },
+            TagUpload {
+                name: "upload_tags_string_tagid",
+                filename: "goodtag.txt",
+                body: b"good tag body",
+                project: None,
+                tags: vec![json!(CHAT_G)],
+                err: false,
+            },
+            TagUpload {
+                name: "upload_tags_raw_tagid_overwrite",
+                filename: "p1.txt",
+                body: b"overwrite with raw tag",
+                project: Some(PROJECT),
+                tags: vec![json!(5)],
+                err: false,
+            },
+        ];
+        for c in tag_uploads {
+            let db = fresh_db(&spec, c.name);
+            let resp = rt.block_on(files::file_upload(
+                &db,
+                USER_A,
+                c.filename,
+                "text/plain",
+                c.body.to_vec(),
+                c.tags,
+                c.project.map(str::to_string),
+                None,
+                None,
+            ));
+            let tables = dump_tables(&db);
+            if c.err {
+                check_err_tables(c.name, &resp, &tables, &oracle, &mut failed);
+            } else {
+                check_ok(
+                    c.name,
+                    response_data(&resp),
+                    &["id", "filepath", "createdAt", "updatedAt"],
+                    Some(tables),
+                    &mut failed,
+                );
+            }
+        }
     }
 
     // ── P4.6ah: chat upload (uploadChatFile) + link ──

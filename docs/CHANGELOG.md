@@ -251,6 +251,40 @@ embedded table; 120 docs + 667 chunks + the rowid walk order compared; a one-byt
 edit to one vendored file reddens it — mutation-proven) and `help_tree_embed_guard`
 (the embedded table equals the on-disk walk: path set, order, bytes; pins the
 120-file count so an empty embed cannot pass).
+#### 2026-09-05 — fix(files): carry a raw `tagId` into the upload row (P4.62(a)'s FILES leg)
+
+_Versions: core 0.0.798, harness 0.0.687, web 0.0.116._
+
+`POST /api/v1/files?action=upload` runs NO schema on its `tags` field: v4 does
+`JSON.parse(tagsJson)` then `tags.map(tag => tag.tagId)`, and whatever that
+yields goes into BOTH `linkedTo` and the `tags` column. v5's edge read the
+values with `filter_map(… as_str)`, so `[{"tagId": 5}]` and `[{}]` were silently
+DROPPED and the row was written — a claim about v4 that is false.
+
+P4.62 escalated it because closing it needed `Request::FileUpload.tags` widened
+past `Vec<String>`, which that lane did not own. Widened here, and the shape it
+uncovers is v4's own: `repos.files.create` re-validates the whole row against
+`FileEntrySchema`, whose `linkedTo` and `tags` are `z.array(z.uuid())`, so a
+non-UUID entry throws — **into `handleUploadFile`'s OWN catch**, which answers
+**500 `Failed to upload file`**, not the middleware's flat 500 and not a 400.
+The bytes are already on disk when it throws (the create is the last step), and
+the OVERWRITE branch is untouched, because v4's update patch carries only
+`{sha256, mimeType, size, storageKey}` — so the same raw id is simply ignored
+there and the request succeeds.
+
+`files_routes_equivalence` gains five arms covering all of that (the raw number,
+the missing key, a non-UUID string, a well-formed id, and the overwrite), each
+diffing the post-mutation `files` dump so a refusal proves it wrote nothing. The
+family's `norm_tables` learned to blank a MINTED `files.id`: every arm that
+dumped before this one overwrote a pinned row, so no dump had ever carried one.
+
+The edge's own mapping has no corpus row — the differential drives the verb —
+and the obvious wire test is VACUOUS, because `files_write_routes`'s minimal
+venue has no mount store and every upload 500s there whatever the tags say
+(measured). So the three-way read is extracted as `parse_upload_tags` and pinned
+by unit tests instead; restoring the dropping spelling reddens exactly the
+carry test.
+
 #### 2026-09-05 — feat(images): serve `POST /api/v1/images?action=generate` (P4.76 tier 1)
 
 _Versions: core 0.0.797, harness 0.0.686, web 0.0.115, host 0.0.97._

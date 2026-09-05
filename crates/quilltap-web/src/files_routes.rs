@@ -974,23 +974,20 @@ pub async fn files_upload_post(
     //   - parses to a FALSY value (`null`, `0`, `false`) → `tags ? … : []`, i.e.
     //     no tags at all, exactly as an absent field
     //
-    // ⚠ DIVERGENT-RECORDED (escalated, P4.62): a present but wrong-typed
-    // `tagId` (`[{"tagId": 5}]`, `[{}]`) is carried by v4 into `linkedTo`/`tags`
-    // as the raw value, where this drops it. Closing that needs
-    // `Request::FileUpload.tags` widened past `Vec<String>` in
-    // `quilltap-core/src/api/types.rs`, which this lane does not own.
-    let tags: Option<Vec<String>> = match form.text("tags") {
-        Some(raw) if !raw.is_empty() => match serde_json::from_str::<serde_json::Value>(&raw) {
-            Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid tags JSON"),
-            Ok(v) if !quilltap_core::api::system_qtap::js_truthy(Some(&v)) => None,
-            Ok(serde_json::Value::Array(arr)) => Some(
-                arr.iter()
-                    .filter_map(|t| t.get("tagId").and_then(|v| v.as_str()).map(str::to_string))
-                    .collect(),
-            ),
-            Ok(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to upload file"),
-        },
-        _ => None,
+    // [P4.76] The escalated P4.62(a) divergence is CLOSED here: a present but
+    // wrong-typed `tagId` (`[{"tagId": 5}]`) — and a MISSING one (`[{}]`, which
+    // `.map` yields as `undefined`, serialized `null`) — now cross as the raw
+    // value, because `Request::FileUpload.tags` is `Vec<Value>`. Dropping them
+    // was a claim about v4 that is false: v4 carries them into `linkedTo`/`tags`
+    // and `repos.files.create` then REFUSES the row (`FileEntrySchema`'s
+    // `z.array(z.uuid())`), with the bytes already on disk. The handler answers
+    // v4's own catch sentence, 500 `Failed to upload file`.
+    let tags = match parse_upload_tags(form.text("tags")) {
+        UploadTags::Ids(t) => t,
+        UploadTags::Unparseable => return error_json(StatusCode::BAD_REQUEST, "Invalid tags JSON"),
+        UploadTags::NotArray => {
+            return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Failed to upload file")
+        }
     };
     let project_id = form.text("projectId").filter(|s| !s.is_empty());
     let folder_path = form.text("folderPath").filter(|s| !s.is_empty());
@@ -1190,5 +1187,104 @@ mod tests {
         // The documents fallback arm has ONE fallback, `'document'`.
         assert_eq!(blob_disposition_name("", &["document"]), "document");
         assert_eq!(blob_disposition_name("notes/a.md", &["document"]), "a.md");
+    }
+}
+
+// ===========================================================================
+// P4.76 — the upload leg's `tags` field (P4.62(a)'s FILES leg)
+// ===========================================================================
+
+/// What v4's three-way `tags` read produces (`actions/upload.ts:37-56`).
+#[derive(Debug, PartialEq)]
+pub(crate) enum UploadTags {
+    /// `tags ? tags.map(t => t.tagId) : []` — the RAW mapped values.
+    Ids(Option<Vec<Value>>),
+    /// `JSON.parse` threw → `badRequest('Invalid tags JSON')`.
+    Unparseable,
+    /// A TRUTHY non-array: `.map is not a function`, and the TypeError escapes
+    /// to `handleUploadFile`'s own catch → 500 `Failed to upload file`.
+    NotArray,
+}
+
+/// v4 `actions/upload.ts:37-56`, extracted so the mapping is unit-pinnable.
+///
+/// The differential drives `api::files::file_upload` at the CORE level, so the
+/// EDGE's mapping has no corpus row — and the obvious wire test is VACUOUS,
+/// because `files_write_routes`'s minimal venue has no mount store and every
+/// upload 500s there whatever the tags say (measured while writing this). These
+/// tests are the pin instead.
+pub(crate) fn parse_upload_tags(raw: Option<String>) -> UploadTags {
+    let Some(raw) = raw.filter(|s| !s.is_empty()) else {
+        return UploadTags::Ids(None);
+    };
+    match serde_json::from_str::<Value>(&raw) {
+        Err(_) => UploadTags::Unparseable,
+        // A FALSY parse (`null`, `0`, `false`, `""`) never reaches `.map`:
+        // v4's `tags ? tags.map(...) : []` yields no tags at all.
+        Ok(v) if !quilltap_core::api::system_qtap::js_truthy(Some(&v)) => UploadTags::Ids(None),
+        Ok(Value::Array(arr)) => UploadTags::Ids(Some(
+            arr.iter()
+                // RAW: `[{"tagId": 5}]` carries the number 5 and `[{}]` carries
+                // `undefined`, which crosses the dispatch boundary as `null`.
+                // Dropping either was P4.62(a)'s escalated divergence.
+                .map(|t| t.get("tagId").cloned().unwrap_or(Value::Null))
+                .collect(),
+        )),
+        Ok(_) => UploadTags::NotArray,
+    }
+}
+
+#[cfg(test)]
+mod upload_tags_tests {
+    use super::{parse_upload_tags, UploadTags};
+    use serde_json::json;
+
+    fn ids(raw: &str) -> Option<Vec<serde_json::Value>> {
+        match parse_upload_tags(Some(raw.to_string())) {
+            UploadTags::Ids(v) => v,
+            other => panic!("expected Ids, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn absent_and_empty_carry_no_tags() {
+        assert_eq!(parse_upload_tags(None), UploadTags::Ids(None));
+        assert_eq!(
+            parse_upload_tags(Some(String::new())),
+            UploadTags::Ids(None)
+        );
+    }
+
+    #[test]
+    fn a_wrong_typed_or_missing_tag_id_is_carried_not_dropped() {
+        // The P4.62(a) divergence: both of these used to vanish, so v5 wrote a
+        // row v4 refuses.
+        assert_eq!(
+            ids(r#"[{"tagType":"THEME","tagId":5}]"#),
+            Some(vec![json!(5)])
+        );
+        assert_eq!(ids("[{}]"), Some(vec![json!(null)]));
+        assert_eq!(
+            ids(r#"[{"tagId":"11111111-1111-4111-8111-111111111111"}]"#),
+            Some(vec![json!("11111111-1111-4111-8111-111111111111")])
+        );
+    }
+
+    #[test]
+    fn a_falsy_parse_is_no_tags_and_a_truthy_non_array_is_the_500() {
+        for falsy in ["null", "0", "false", "\"\""] {
+            assert_eq!(parse_upload_tags(Some(falsy.into())), UploadTags::Ids(None));
+        }
+        for truthy in ["7", "\"x\"", "{}", "true"] {
+            assert_eq!(parse_upload_tags(Some(truthy.into())), UploadTags::NotArray);
+        }
+    }
+
+    #[test]
+    fn an_unparseable_body_is_the_400() {
+        assert_eq!(
+            parse_upload_tags(Some("{oops".into())),
+            UploadTags::Unparseable
+        );
     }
 }

@@ -1127,7 +1127,10 @@ pub async fn file_upload(
     filename: &str,
     content_type: &str,
     data: Vec<u8>,
-    link_ids: Vec<String>,
+    // P4.76 (P4.62(a)'s FILES leg): the RAW `tags.map(t => t.tagId)` values.
+    // v4 runs no schema here, so a non-string id reaches `repos.files.create`
+    // and is refused by `FileEntrySchema` — AFTER the bytes are written.
+    link_ids: Vec<Value>,
     project_id: Option<String>,
     folder_path_raw: Option<String>,
     backend: Option<&dyn StorageBackend>,
@@ -1180,7 +1183,12 @@ pub async fn file_upload(
             }
             resp
         }
-        Err(e) => internal(e),
+        // v4 `handleUploadFile`'s OWN try/catch (`actions/upload.ts:74-81`)
+        // wraps the whole handler, so EVERY throw inside it — the ZodError
+        // `repos.files.create` raises on a non-UUID `linkedTo`/`tags` entry
+        // included — answers this one sentence, never the middleware's
+        // `Internal server error` and never a 400.
+        Err(_) => Response::error(ErrorKind::Internal, "Failed to upload file"),
     }
 }
 
@@ -1207,7 +1215,7 @@ fn save_file_entry(
     project_id: Option<&str>,
     folder_path: &str,
     category: &str,
-    link_ids: &[String],
+    link_ids: &[Value],
 ) -> Result<(Response, Option<Overwritten>), DbError> {
     let sanitized = sanitize_filename(filename);
     let sha256 = sha256_of_buffer(data);
@@ -1258,6 +1266,30 @@ fn save_file_entry(
     let stored_mime = stored.stored_mime_type;
     let stored_size = stored.size_bytes as f64;
 
+    // P4.76 (P4.62(a)'s FILES leg): `repos.files.create` re-validates the whole
+    // row against `FileEntrySchema`, whose `linkedTo` and `tags` are both
+    // `z.array(z.uuid())` — so a raw `tagId` that is not a string UUID throws
+    // there, with the BYTES ALREADY WRITTEN above. The OVERWRITE branch is
+    // untouched: v4's update patch carries only `{sha256, mimeType, size,
+    // storageKey}`, so a wrong-typed tag is simply ignored on that path.
+    //
+    // A non-string id crosses as its JSON text (`5` → `"5"`), which is not a
+    // UUID either, so it can never be written and the coerced spelling is
+    // unobservable — the `api::images::ingest` reasoning, same schema, same
+    // conclusion.
+    let ids_valid = link_ids.iter().all(|v| {
+        v.as_str()
+            .is_some_and(crate::services::file_storage::is_zod_uuid)
+    });
+    let link_ids: Vec<String> = link_ids
+        .iter()
+        .map(|v| match v.as_str() {
+            Some(s) => s.to_string(),
+            None => v.to_string(),
+        })
+        .collect();
+    let link_ids = link_ids.as_slice();
+
     let file_id = if let Some(existing) = overwrite {
         let id = existing.id.clone();
         files.update(
@@ -1273,6 +1305,11 @@ fn save_file_entry(
         )?;
         id
     } else {
+        if !ids_valid {
+            return Err(DbError::Internal(
+                "files.create: linkedTo/tags must be UUIDs".to_string(),
+            ));
+        }
         let id = uuid::Uuid::new_v4().to_string();
         // v4 create mints createdAt == updatedAt (one `new Date().toISOString()`).
         let now = crate::clock::now_iso();
