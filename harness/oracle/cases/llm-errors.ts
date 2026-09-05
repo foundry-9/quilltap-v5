@@ -3,12 +3,20 @@
  * formatter, plus regression rows for the already-ported predicates.
  *
  * Drives the REAL exports of v4's `lib/llm/errors.ts`:
- *   - `handleProviderError` + `getUserFriendlyError` (the ported W4.7d half);
  *   - the error-class constructors (default messages, `retryAfter`, token/content
- *     values) via `getUserFriendlyError`;
+ *     values), compared on `name` + `message`;
  *   - `isTokenLimitError` / `isContentLimitError` / `isToolUnsupportedError` /
  *     `isRecoverableRequestError` / `parseTokenLimitError` /
  *     `parseContentLimitError` (regression rows for the primary_stream port).
+ *
+ * P4.D157 (v4 d4138b96b, the 4.9 dead-code sweep) DELETED handleProviderError
+ * and getUserFriendlyError. Their rows left this case with the v5 twins (v5's
+ * only callers of either were inside `llm_errors.rs`'s own `#[cfg(test)]`
+ * module): the whole `handle` section is gone, and the `construct` rows dropped
+ * their `userFriendly` field — the ONE field change in this split; every other
+ * field of every surviving row is byte-identical. Do not re-add the deleted
+ * names: a named import of a deleted export makes this whole case fail to LINK,
+ * emitting a ZERO-byte NDJSON.
  *
  * Side-effect-free; no injection. Run from the v4 checkout:
  *   cd ~/source/quilltap-server
@@ -17,8 +25,6 @@
  */
 
 import {
-  handleProviderError,
-  getUserFriendlyError,
   APIKeyError,
   RateLimitError,
   NetworkError,
@@ -40,59 +46,8 @@ const out: string[] = [];
 const emit = (row: Record<string, unknown>) => out.push(JSON.stringify(row));
 
 // --------------------------------------------------------------------------
-// 1. handleProviderError + getUserFriendlyError over a message corpus.
-//    (One row per branch + precedence-collision rows.)
-// --------------------------------------------------------------------------
-const handleCases: Array<[string, string, string]> = [
-  // id, provider, message
-  ['apikey-unauthorized', 'OPENAI', 'Request failed: unauthorized'],
-  ['apikey-invalid', 'ANTHROPIC', 'Invalid API key provided'],
-  ['apikey-authentication', 'GOOGLE', 'authentication error'],
-  ['apikey-401', 'OLLAMA', 'HTTP 401'],
-  ['ratelimit-phrase', 'OPENAI', 'You hit the rate limit'],
-  ['ratelimit-toomany', 'DEEPSEEK', 'too many requests, slow down'],
-  ['ratelimit-429', 'GROK', 'server said 429'],
-  ['network-network', 'OPENAI', 'a network problem'],
-  ['network-econnrefused', 'OLLAMA', 'connect ECONNREFUSED 127.0.0.1:11434'],
-  ['network-timeout', 'ANTHROPIC', 'Request timeout after 600s'],
-  ['network-enotfound', 'Z_AI', 'getaddrinfo ENOTFOUND api.z.ai'],
-  ['model-notfound', 'OPENAI', 'The model gpt-9 was not found'],
-  ['model-doesnotexist', 'OPENROUTER', 'model does not exist'],
-  ['token-prompt-too-long', 'ANTHROPIC', 'prompt is too long: 210311 tokens > 200000 maximum'],
-  ['token-context-length', 'OPENAI', 'context_length_exceeded for this request'],
-  ['token-maximum-context', 'OPENAI', 'This maximum context length is 128000 tokens for the model'],
-  ['invalid-word', 'GOOGLE', 'invalid argument supplied'],
-  ['invalid-400', 'OLLAMA', 'server returned 400'],
-  ['generic', 'OLLAMA', 'some weird failure with no keywords'],
-  // Precedence collisions (match ORDER is precedence-bearing):
-  ['prec-401-and-429', 'OPENAI', 'HTTP 401 and also 429 too many requests'],
-  ['prec-429-and-invalid', 'OPENAI', '429 invalid request body'],
-  ['prec-network-and-invalid', 'OPENAI', 'network timeout on an invalid 400 route'],
-  ['prec-authentication-and-network', 'OPENAI', 'authentication failed due to network'],
-  // A bare "> maximum" that does NOT match a token-limit PATTERN → generic.
-  ['token-bare-gt-maximum', 'ANTHROPIC', '210311 tokens > 200000 maximum'],
-];
-
-for (const [id, provider, message] of handleCases) {
-  const err = handleProviderError(provider, new Error(message)) as LLMProviderError;
-  const tokenErr = err instanceof TokenLimitError ? err : null;
-  emit({
-    kind: 'handle',
-    id,
-    provider,
-    input: message,
-    name: err.name,
-    message: err.message,
-    requestedTokens: tokenErr?.requestedTokens ?? null,
-    maxTokens: tokenErr?.maxTokens ?? null,
-    userFriendly: getUserFriendlyError(err),
-  });
-}
-
-// --------------------------------------------------------------------------
-// 2. Direct constructions (default messages / retryAfter / token+content values)
-//    → getUserFriendlyError. The Rust side builds from the SAME (ctor, args) and
-//    compares name / message / userFriendly.
+// 1. Direct constructions (default messages / retryAfter / token+content values).
+//    The Rust side builds from the SAME (ctor, args) and compares name / message.
 // --------------------------------------------------------------------------
 type Construct =
   | { id: string; ctor: 'apiKey'; provider: string }
@@ -173,12 +128,11 @@ for (const c of constructs) {
     id: c.id,
     name: err.name,
     message: err.message,
-    userFriendly: getUserFriendlyError(err),
   });
 }
 
 // --------------------------------------------------------------------------
-// 3. Predicate regression rows (the primary_stream port).
+// 2. Predicate regression rows (the primary_stream port).
 // --------------------------------------------------------------------------
 const predicateInputs: Array<[string, string]> = [
   ['p-context-length', 'context_length_exceeded'],

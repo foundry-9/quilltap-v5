@@ -1,11 +1,15 @@
-//! Tier-1 differential test (W4.7d): the LLM provider error taxonomy +
-//! normalizer (`handleProviderError`) + formatter (`getUserFriendlyError`), with
+//! Tier-1 differential test (W4.7d): the LLM provider error taxonomy, with
 //! regression rows for the already-ported predicates.
 //!
 //! Drives v4's REAL `lib/llm/errors.ts` exports (see the oracle case) and diffs
-//! byte-for-byte: the normalized error class `name`, message, token counts, and
-//! the user-facing string; the constructor default messages / `retryAfter` /
+//! byte-for-byte: the constructor default messages / `retryAfter` /
 //! content-value formatting; and every predicate output.
+//!
+//! P4.D157: v4 `d4138b96b` deleted `handleProviderError` / `getUserFriendlyError`;
+//! every v5 caller of either lived in `llm_errors.rs`'s own `#[cfg(test)]`
+//! module, so both twins were deleted here. The `handle` rows left the case and
+//! the `construct` rows dropped their `userFriendly` field (54 -> 30 rows; every
+//! surviving field byte-identical).
 //!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
@@ -15,9 +19,7 @@
 //!   QT_ORACLE_LLM_ERRORS=/tmp/oracle-llm-errors.ndjson \
 //!     cargo test -p quilltap-harness --test llm_errors_equivalence
 
-use quilltap_core::services::llm_errors::{
-    handle_provider_error, user_friendly_error, LlmProviderError,
-};
+use quilltap_core::services::llm_errors::LlmProviderError;
 use quilltap_core::services::primary_stream::{
     is_content_limit_error, is_recoverable_request_error, is_token_limit_error,
     is_tool_unsupported_error, parse_content_limit_error, parse_token_limit_error,
@@ -98,33 +100,14 @@ fn llm_errors_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
+    // Per-kind counters: a single total cannot tell a whole vanished kind from a
+    // shrunk oracle (P4.D157 split this case; the guard now sees each half).
+    let mut counts = [0usize; 2]; // [construct, predicate]
     let mut count = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let id = row.get("id").and_then(Value::as_str).unwrap_or("?");
         match row.get("kind").and_then(Value::as_str).unwrap_or("") {
-            "handle" => {
-                let provider = row["provider"].as_str().unwrap();
-                let input = row["input"].as_str().unwrap();
-                let e = handle_provider_error(provider, input);
-                assert_eq!(e.kind.name(), row["name"].as_str().unwrap(), "name '{id}'");
-                assert_eq!(
-                    e.message,
-                    row["message"].as_str().unwrap(),
-                    "message '{id}'"
-                );
-                assert_eq!(
-                    e.requested_tokens,
-                    opt_i64(&row, "requestedTokens"),
-                    "reqTokens '{id}'"
-                );
-                assert_eq!(e.max_tokens, opt_i64(&row, "maxTokens"), "maxTokens '{id}'");
-                assert_eq!(
-                    user_friendly_error(&e),
-                    row["userFriendly"].as_str().unwrap(),
-                    "userFriendly '{id}'"
-                );
-            }
             "construct" => {
                 let e = build_from_spec(&row["spec"]);
                 assert_eq!(
@@ -137,11 +120,7 @@ fn llm_errors_matches_oracle() {
                     row["message"].as_str().unwrap(),
                     "ctor message '{id}'"
                 );
-                assert_eq!(
-                    user_friendly_error(&e),
-                    row["userFriendly"].as_str().unwrap(),
-                    "ctor userFriendly '{id}'"
-                );
+                counts[0] += 1;
             }
             "predicate" => {
                 let input = row["input"].as_str().unwrap();
@@ -184,12 +163,16 @@ fn llm_errors_matches_oracle() {
                     .and_then(Value::as_str)
                     .map(str::to_string);
                 assert_eq!(cdesc, want_desc, "parseContentDesc '{id}'");
+                counts[1] += 1;
             }
             other => panic!("unknown row kind {other}"),
         }
         count += 1;
     }
 
-    assert!(count > 0, "oracle file looks empty");
-    eprintln!("OK: llm-errors matched oracle ({count} rows).");
+    assert!(
+        counts.iter().all(|&c| c > 0),
+        "oracle file looks empty/partial: {counts:?}"
+    );
+    eprintln!("OK: llm-errors matched oracle ({count} rows, counts {counts:?}).");
 }

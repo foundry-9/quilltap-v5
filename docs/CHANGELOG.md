@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — chore(dead-code): retire the LLM error normalizer/formatter v4 deleted (P4.D157 unit 4)
+
+_Versions: core 0.0.780, harness 0.0.675._
+
+v4 `d4138b96b` removed `handleProviderError` and `getUserFriendlyError` from
+`lib/llm/errors.ts`; `harness/oracle/cases/llm-errors.ts` imports both by
+name, so the case fails to LINK at any sha past that commit.
+
+Measured on this side: every v5 caller of either lived inside
+`services/llm_errors.rs`'s own `#[cfg(test)]` module (`:352`–`:395`). The two
+doc-comment references in `model/completion_provider.rs` and
+`model/transport.rs` are prose, not calls. Both twins are deleted, with the
+three unit tests that only existed to drive them; the `zero_tokens_are_falsy`
+test keeps its default-message half, which the surviving constructors still
+own.
+
+The error classes, their default-message builders, the JS-truthiness rules
+and `LlmErrorKind` (live in `llm_fallback`) all survive. The oracle case
+drops its whole `handle` section and the `construct` rows' `userFriendly`
+field — 54 → 30 rows, every surviving field byte-identical to the pre-split
+oracle at `0b0617fee`. The runner's single row counter became a per-kind pair
+so a vanished kind cannot pass unseen.
+
 #### 2026-09-05 — chore(dead-code): retire the pricing tier helpers v4 deleted (P4.D157 unit 3)
 
 _Versions: core 0.0.779, harness 0.0.674._

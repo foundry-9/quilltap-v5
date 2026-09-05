@@ -1,8 +1,7 @@
-//! The LLM provider error taxonomy + normalizer/formatter (W4.7d).
+//! The LLM provider error taxonomy (W4.7d).
 //!
-//! Ports the **unported half** of v4's `lib/llm/errors.ts`: the 8 error classes,
-//! `handleProviderError` (the string-based normalizer), and `getUserFriendlyError`
-//! (the per-class user-facing formatter). The predicate/parse half
+//! Ports the **unported half** of v4's `lib/llm/errors.ts`: the 8 error classes
+//! and their default-message builders. The predicate/parse half
 //! (`isTokenLimitError` / `isContentLimitError` / `isToolUnsupportedError` /
 //! `isRecoverableRequestError` / `parseTokenLimitError` / `parseContentLimitError`,
 //! plus the `toLocaleString` grouper and [`ContentLimitType`]) was already ported
@@ -11,12 +10,19 @@
 //! v4's `Error` subclass hierarchy becomes one Rust struct
 //! ([`LlmProviderError`]) tagged by [`LlmErrorKind`] (the class `name`), carrying
 //! the per-class extra data (`retryAfter`; token `requested`/`max`; content
-//! `limitType`/`limitValue`/`maxValue`). The class `name` selects the
-//! `getUserFriendlyError` branch, so it is preserved exactly.
+//! `limitType`/`limitValue`/`maxValue`). [`LlmErrorKind`] is the live half —
+//! [`crate::llm_fallback`] classifies on it.
+//!
+//! P4.D157 (v4 `d4138b96b`, the 4.9 dead-code sweep): v4 deleted
+//! `handleProviderError` (the string-based normalizer) and `getUserFriendlyError`
+//! (the per-class user-facing formatter) as unreferenced. Measured here too —
+//! every v5 caller of either lived in this file's own unit-test module — so both
+//! twins were deleted with them. The classes, their default messages and the
+//! JS-truthiness rules below all survive and stay differential-pinned.
 //!
 //! ## JS truthiness (preserved)
 //!
-//! v4's default-message + user-friendly builders gate on `a && b`, where a
+//! v4's default-message builders gate on `a && b`, where a
 //! numeric `0` is **falsy**. So `requestedTokens = 0` (or `retryAfter = 0`, or a
 //! `limitValue = 0`) is treated as absent — reproduced with [`truthy`].
 
@@ -231,167 +237,14 @@ fn content_limit_description(kind: ContentLimitType) -> &'static str {
     }
 }
 
-/// v4 `handleProviderError(provider, error)` — the string-based normalizer over an
-/// `Error`'s message. **Match ORDER is precedence-bearing** — API key → rate limit
-/// → network → model-not-found → token-limit → invalid-request → generic.
-///
-/// v4's leading `error instanceof LLMProviderError` passthrough and the trailing
-/// `!(error instanceof Error)` "An unknown error occurred" fall to the caller: the
-/// input here is always a raw provider message string (an `Error`), matching how
-/// the differential drives v4 (`new Error(message)`).
-pub fn handle_provider_error(provider: &str, message: &str) -> LlmProviderError {
-    let lower = message.to_lowercase();
-
-    // API key errors.
-    if lower.contains("unauthorized")
-        || lower.contains("invalid api key")
-        || lower.contains("authentication")
-        || lower.contains("401")
-    {
-        return LlmProviderError::api_key(provider);
-    }
-
-    // Rate limit errors.
-    if lower.contains("rate limit") || lower.contains("too many requests") || lower.contains("429")
-    {
-        return LlmProviderError::rate_limit(provider, None);
-    }
-
-    // Network errors (message preserved).
-    if lower.contains("network")
-        || lower.contains("econnrefused")
-        || lower.contains("timeout")
-        || lower.contains("enotfound")
-    {
-        return LlmProviderError::network(provider, Some(message.to_string()));
-    }
-
-    // Model not found.
-    if lower.contains("model") && (lower.contains("not found") || lower.contains("does not exist"))
-    {
-        return LlmProviderError::model_not_found(provider, "unknown");
-    }
-
-    // Token limit errors (parsed from the ORIGINAL message; message preserved).
-    if super::primary_stream::is_token_limit_error(message) {
-        let (requested, max) = super::primary_stream::parse_token_limit_error(message);
-        return LlmProviderError::token_limit(provider, requested, max, Some(message.to_string()));
-    }
-
-    // Invalid request (message preserved).
-    if lower.contains("invalid") || lower.contains("400") {
-        return LlmProviderError::invalid_request(provider, message.to_string());
-    }
-
-    // Generic error with the original message.
-    LlmProviderError::base(provider, message.to_string())
-}
-
-/// v4 `getUserFriendlyError(error)` for a normalized [`LlmProviderError`] — the
-/// per-class byte-exact user-facing string. (v4's plain-`Error` and unknown
-/// fallbacks apply above this seam, where the input isn't a provider error.)
-pub fn user_friendly_error(error: &LlmProviderError) -> String {
-    match error.kind {
-        LlmErrorKind::ApiKey => format!(
-            "Invalid or expired API key for {}. Please check your API key in settings.",
-            error.provider
-        ),
-        LlmErrorKind::RateLimit => {
-            let retry = if truthy(error.retry_after) {
-                format!(
-                    " Please try again in {} seconds.",
-                    error.retry_after.unwrap()
-                )
-            } else {
-                " Please try again later.".to_string()
-            };
-            format!("Rate limit exceeded for {}.{retry}", error.provider)
-        }
-        LlmErrorKind::Network => format!(
-            "Unable to connect to {}. Please check your internet connection and provider settings.",
-            error.provider
-        ),
-        LlmErrorKind::ModelNotFound => format!(
-            "{}. Please select a different model in your connection profile.",
-            error.message
-        ),
-        LlmErrorKind::InvalidRequest => {
-            format!("Invalid request to {}: {}", error.provider, error.message)
-        }
-        LlmErrorKind::TokenLimit => {
-            let token_info = if truthy(error.requested_tokens) && truthy(error.max_tokens) {
-                format!(
-                    " ({} tokens requested, {} maximum)",
-                    to_locale_string(error.requested_tokens.unwrap()),
-                    to_locale_string(error.max_tokens.unwrap())
-                )
-            } else {
-                String::new()
-            };
-            format!(
-                "Your message exceeds {}'s token limit{token_info}. Try removing attachments or shortening the conversation.",
-                error.provider
-            )
-        }
-        // ContentLimitError extends LLMProviderError with no dedicated branch, so
-        // it (and the Base kind) fall to the generic `${provider} error:
-        // ${message}` form.
-        LlmErrorKind::ContentLimit | LlmErrorKind::Base => {
-            format!("{} error: {}", error.provider, error.message)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn precedence_api_key_beats_rate_limit() {
-        // A message matching BOTH 401 and 429 → API key (checked first).
-        let e = handle_provider_error("OPENAI", "HTTP 401 and 429 too many requests");
-        assert_eq!(e.kind, LlmErrorKind::ApiKey);
-    }
-
-    #[test]
-    fn rate_limit_beats_invalid() {
-        let e = handle_provider_error("OPENAI", "429 invalid something");
-        assert_eq!(e.kind, LlmErrorKind::RateLimit);
-    }
-
-    #[test]
-    fn token_limit_message_preserved_and_parsed() {
-        // Needs a token-limit PATTERN (`prompt is too long`); the parse then pulls
-        // the counts out of the `> maximum` clause. A bare `> maximum` message does
-        // NOT match `isTokenLimitError`, so v4 (and this port) fall to generic.
-        let e = handle_provider_error(
-            "ANTHROPIC",
-            "prompt is too long: 210311 tokens > 200000 maximum",
-        );
-        assert_eq!(e.kind, LlmErrorKind::TokenLimit);
-        assert_eq!(e.requested_tokens, Some(210311));
-        assert_eq!(e.max_tokens, Some(200000));
-        assert_eq!(
-            user_friendly_error(&e),
-            "Your message exceeds ANTHROPIC's token limit (210,311 tokens requested, 200,000 maximum). Try removing attachments or shortening the conversation."
-        );
-    }
 
     #[test]
     fn zero_tokens_are_falsy() {
         // requested=0 → treated as absent → default message, no tokenInfo.
         let e = LlmProviderError::token_limit("X", Some(0), Some(200000), None);
         assert_eq!(e.message, "Prompt exceeds maximum token limit");
-        assert_eq!(
-            user_friendly_error(&e),
-            "Your message exceeds X's token limit. Try removing attachments or shortening the conversation."
-        );
-    }
-
-    #[test]
-    fn generic_fallthrough() {
-        let e = handle_provider_error("OLLAMA", "some weird failure");
-        assert_eq!(e.kind, LlmErrorKind::Base);
-        assert_eq!(user_friendly_error(&e), "OLLAMA error: some weird failure");
     }
 }
