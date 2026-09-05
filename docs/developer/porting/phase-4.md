@@ -6256,6 +6256,117 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The `d883a5ee1` drift catch-up round (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158) — ORDERED 2026-09-05
+
+**Six parallel lanes, all drift.** The ledger's §2 probe passed at ordering
+(v4 `main` at `d883a5ee1`, tree clean, both logs empty, no pin worktrees
+outstanding); its §3 held FIFTEEN rows, of which FOURTEEN are ordered here
+and marked `ORDERED(p4.d15x)` — the fifteenth (`15573c3a1`, bug 119)
+belongs to the unported character optimizer (`p4.9k`) and stays UNPROCESSED
+by the ledger's own instruction. **Regen rule: PIN REQUIRED at
+`d883a5ee1`** (the round's target baseline) for every lane, with P4.D157
+carrying a second pin at `0b0617fee` for its frozen-family evidence. This
+is candidate 1 of the list below, grown from twelve commits to fourteen by
+the two live-Friday bug fixes (121, 122) that landed after that list was
+written — **both of which v5 reproduces whole today.**
+
+- **P4.D153** — `work-orders/p4.d153-memory-subject-prefix-bug122.md`:
+  v4 bug 122 (`d883a5ee1`) — the memory-subject prefix (`About <name>: ` /
+  `About another character: `) through the three self-facing formatters at
+  v4's exact template positions and INSIDE each line's token estimate, the
+  RAW-path `find_names_by_ids` (v5's `find_by_ids` is the overlaid twin —
+  the port must not reintroduce the vault dependency v4's docblock refuses),
+  the `services/memory_subject.rs` resolver (no query when the subject set is
+  empty), the three call sites (build-context over the archive∪head UNION,
+  Carina, the character-voiced announcer). The oracle case's positional
+  calls are fixed FIRST (the ledger's silent-regen trap), the corpus gains a
+  `prefix` leaf + targeted-memory rows for all three kinds (today every
+  self-facing row leaves `aboutCharacterId` null — vacuous). Owns
+  `memory_injector.rs`, `db/characters_read.rs`, `build_context.rs`,
+  `carina_query.rs`, `character_voiced.rs`.
+- **P4.D154** — `work-orders/p4.d154-user-attachment-rehydration-bug121.md`:
+  v4 bug 121 (`e288ae2ec`) — the USER-side attachment walk
+  (`collect_unseen_user_attachments_for_character`, lookback 20) as a FOURTH
+  `message_context_leaves` leaf with v4's ten cases, the re-hydration step
+  BEFORE `build_context` (per-file 80,000-char budget that skips whole, the
+  `unsupported`-with-error drop, the `messages_for_conversation` copy, the
+  hoisted shared cutoff, the merged-attachments seeding), a sibling
+  `load_user_attachments` seam on `MessageContextSeams`. The orchestrator
+  tier-3 builder is widened with a `files` row + a USER attachment + a
+  second character's turn — the corpus keeps attachments EMPTY today and is
+  blind to the fix. Owns `message_context.rs`, `chat_files.rs`.
+- **P4.D155** — `work-orders/p4.d155-collapse-corrections-server-and-pascal.md`:
+  the `0506517d3` collapse's seven behaviour corrections — NOT the refactor:
+  (a) priority-5 cheap-LLM selections carry `profile_parameters` + derive
+  `is_local` (v5 reproduces the drop at `cheap_llm.rs:319/:334` and the
+  hard-coded `false` at `cheap_llm_exec.rs:136`; the port IS the
+  eight-twins-through-one-`selection_from_profile` collapse), (b) the export
+  PREVIEW count through `is_file_excluded_from_export` (v5's `preview.rs`
+  names this exact divergence in a comment), (c) `api/documents.rs:1060`'s
+  "File not found not found" (a missing-file delete arm added red-first),
+  (d) `brahma_console/mod.rs:359`'s lowercase sentence, (e) the Pascal
+  placeholder classifier ONCE on each side (five Rust spellings + six SPA
+  sites; a bare `{{params.}}` is `unknown`; `{{params.toString}}` pinned —
+  the browser Workbench is where the prototype leak is real), (g) the
+  self-inventory catch measured. Owns `cheap_llm*.rs`, `api/documents.rs`,
+  `brahma_console/**`, `qtap_export/**`, `pascal/**` on both sides.
+- **P4.D156** — `work-orders/p4.d156-client-cli-drift-bug120-about-checkbox.md`:
+  bug 120 (`af2023c9a` — `instances default --json` read AND stripped; v5
+  has the same defect and no JSON branch at all; Tier R red-first + the
+  help line + the fish block), `e9a9c538e`'s three About sentences (v5 at
+  the pre-fix bytes), `bbcb318c6`'s two `qt-checkbox` attributes (v5's
+  inputs carry NO class), and `0506517d3`'s three CLIENT corrections ((f1)
+  measured as a convergence by construction — v5 already shares one
+  outfit-choice card; (f2) the server sentence preference, the wizard half a
+  NO-COUNTERPART; (f3) the Answer Confirmation row onto the shared
+  `qt-settings-toggle-row` six siblings already use). Owns
+  `apps/web/src/app/screens/**`, `styles/**`, `crates/quilltap-cli/**`;
+  holds port 4319.
+- **P4.D157** — `work-orders/p4.d157-dead-code-sweep-decision.md`: the
+  `d4138b96b` dead-code sweep — fourteen deleted v4 exports imported BY NAME
+  by seven committed oracle cases, which fail to LINK at any pin past it.
+  A per-SYMBOL decision with evidence: (ii) delete-and-retire where the v5
+  twin is dead too (measured today: the pricing trio, the roster pair whose
+  only caller has zero callers, the token-warning pair), (iii) unit-pin
+  from the frozen oracle where a v5 twin is live, (i) FROZEN at `0b0617fee`
+  only where a live twin cannot be pinned without v4. The families are
+  SPLIT (surviving rows byte-identical), never retired whole. Plus the LoRA
+  bounds' new-home check. Owns the seven twin modules (function-level) + the
+  seven families; never `lib.rs` or a module declaration.
+- **P4.D158** — `work-orders/p4.d158-wire-recheck-neutrality-ratifications.md`:
+  the one known wire change (`48f4b42ec` — `^claude-opus-5(-|$)` in the
+  anthropic sampling-rejected table, v5 reproduces the bug; two corpus rows
+  red-first, no opus-5 row exists today), the packaging trio's corpus
+  re-check at the pin (openai 7.4 → 7.10, openrouter 1.2.32 → 1.2.106,
+  plugin-utils 2.6's `buildRequestBody`; byte-identical outside the
+  self-dating markers, the P4.D76 method), the Zod 4.5 locale MEASURED at
+  ordering (uuid regex identical; three message arms moved — `.length(n)`
+  "exactly", non-finite names, exclusive unions — none of which v5
+  transcribes), the `0506517d3` neutrality bulk sweep AFTER the siblings
+  close (excluding every §A family by name), the three ratifications with
+  `2edd823c0`'s four restore blind spots turned into corpus arms over a NEW
+  archive (none of the four keys appears in any v5 restore family today),
+  the `docs/v4/` mirror refresh (521 lines behind the baseline on `API.md`
+  alone) + the `?action=` read, the §G help bank. Owns the provider corpora
+  + recorders, the restore builders, `docs/v4/**`, one regex line.
+
+**Shared contracts §A–§H + the Ownership table** are byte-identical across
+the six orders (built from one scratch file and spliced; md5-checked).
+**Pick order at unification:** P4.D157 (retires/splits families the others
+never touch) → P4.D153 → P4.D154 (both core; disjoint files) → P4.D155
+(core + `pascal/` SPA) → P4.D156 (SPA + CLI) → P4.D158 (corpora + restore
+arms + the mirror; its sweep artifact is the round's neutrality record).
+Five lanes bump core and/or harness — recount at the wire.
+
+**Deliberately left out of the round:** `15573c3a1` (bug 119 → `p4.9k`);
+the P4.73 remainder (`?action=generate`, P4.62(a)'s FILES leg); `p4.9i2`;
+the census's honest totality; the present-but-null lead; the carried smalls
+— all still below, unchanged. The owed dogfood pass (candidate 3) runs
+after this round unifies, gaining bug 122's live proof (a multi-character
+turn where one character's memories are ABOUT another), bug 121's (a text
+attachment quoted by the SECOND responder), the opus-5 send on a real
+profile, and `instances default --json`.
+
 ## The follow-ups round 2 (P4.72 ∥ P4.73 ∥ P4.74 ∥ P4.75) — UNIFIED 2026-09-04
 
 **UNIFIED on main (2026-09-04) — P4.72 / P4.74 / P4.75 CLOSED, P4.73 PARTIAL
@@ -6294,8 +6405,10 @@ harness 0.0.671, web 0.0.114, host 0.0.96, SPA 0.5.642. Round record:
 **Next candidates, in rough value order** (updated at this unification,
 2026-09-04):
 
-1. **The twelve-commit drift catch-up** (ledger §3, all UNPROCESSED —
-   v4's 4.9 release-checklist push landed DURING this round): the Anthropic
+1. **The twelve-commit drift catch-up** → **ORDERED 2026-09-05 as the
+   `d883a5ee1` round (P4.D153–P4.D158), grown to fourteen rows by bugs
+   121/122** (ledger §3 — v4's 4.9 release-checklist push landed DURING
+   this round): the Anthropic
    Opus 5 sampling strip (`48f4b42ec`), the CLI `instances default --json`
    bug 120 (`af2023c9a`, Tier R red-first), the About sentences + the
    cheap-LLM `qt-checkbox` (`e9a9c538e`, `bbcb318c6`), the big

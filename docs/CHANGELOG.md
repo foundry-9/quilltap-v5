@@ -12,6 +12,41 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — docs(orders): the `d883a5ee1` drift catch-up round ordered — P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158
+
+_Docs-only change._ (No crate versions bumped.)
+
+Six work orders for fourteen of the fifteen UNPROCESSED drift rows in the
+ledger's §3 (the fifteenth, `15573c3a1` / bug 119, stays UNPROCESSED — it
+belongs to the unported `p4.9k` surface), written after a fresh survey of
+the shipped hunks and the v5 surfaces they land on. P4.D153: v4 bug 122
+(`d883a5ee1`) — the memory-subject prefix through the three self-facing
+formatters, the RAW-path name lookup, the resolver module, three call sites;
+v5 reproduces the bug whole. P4.D154: v4 bug 121 (`e288ae2ec`) — the
+USER-side attachment walk as a fourth `buildMessageContext` leaf and the
+re-hydration step before `build_context`; v5 reproduces it whole and the
+orchestrator corpus is blind to it (attachments kept empty). P4.D155: the
+`0506517d3` collapse's seven behaviour corrections on the server plus the
+Pascal placeholder classifier on both sides — five of the seven were
+measured present in v5 (the priority-5 params drop, the preview count, the
+"File not found not found" body, the lowercase Brahma sentence, the
+per-site placeholder prefix tests). P4.D156: the client/CLI drift — bug 120
+(`af2023c9a`; v5's `cmd_default` has no `--json` branch at all), the About
+sentences, the cheap-LLM `qt-checkbox` (v5's inputs carry no class), the
+collapse's three client corrections. P4.D157: the `d4138b96b` dead-code
+sweep — fourteen deleted v4 exports imported by name by seven oracle cases,
+a per-symbol decision (retire / unit-pin / freeze) with the families split
+rather than dropped. P4.D158: the Opus 5 sampling strip (`48f4b42ec`, one
+regex + two corpus rows), the packaging trio's corpus re-check, the Zod
+4.4.3 → 4.5.4 locale measured at ordering (uuid regex identical; three
+message arms moved, none transcribed by v5), the `0506517d3` neutrality
+bulk sweep, three ratifications with `2edd823c0`'s four restore blind spots
+turned into corpus arms, the `docs/v4/` mirror refresh. Shared contracts
+§A–§H + the Ownership table are byte-identical across the six orders. The
+ledger's fourteen rows are marked `ORDERED(...)`; `phase-4.md` gains the
+round's ORDERED section and its candidate 1 points at it. Regen rule for
+every lane: PIN REQUIRED at `d883a5ee1` (P4.D157 also pins `0b0617fee`).
+
 #### 2026-09-05 — docs(drift): v4's bug-122 memory-subject prefix, and the first drift row that would fail a regen silently
 
 _Docs-only change._ (No crate versions bumped.)
