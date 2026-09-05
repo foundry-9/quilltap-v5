@@ -12,6 +12,39 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — feat(help): ship the help tree — vendor v4's `help/` at the pin and embed it in the host binary (P4.9I2A unit 1)
+
+_Versions: host 0.0.97, harness 0.0.686._
+
+v5 had no `help/` tree at all: the host's `EMBEDDING_REINDEX_ALL` handler walked
+`<cwd>/help`, which does not exist in this repo, so every reindex since P4.6BM
+synced an empty tree and `help_search` on a fresh instance read zero rows. This
+commit vendors v4's 120-file `help/` (1.6 MB, byte-identical to v4 `d883a5ee1` —
+`diff -r` empty) at the repo root and embeds it at compile time: a new
+`quilltap-host/build.rs` walks `<repo>/help` in the runtime walker's order and
+emits an `EMBEDDED_HELP: &[(&str, &str)]` table into `OUT_DIR` (`help_content.rs`
+includes it); `files_store::embedded_help_source_files()` turns it into the core
+sync's input list; and the reindex-all registration reads that table instead of
+the cwd walk, so the reindex handler and the (next unit's) boot ensure share one
+source.
+
+**A real order defect in the existing walker, found and fixed by the new content
+oracle:** Node's `readdirSync` goes through libuv's `scandir`, which sorts every
+directory with `strcmp` — so v4 walks `help/` in name-byte order on every
+platform — while `find_markdown_files` returned Rust's raw `read_dir` order (APFS
+hash order) under a doc comment claiming the two agreed. No prior family could see
+it (the `help-sync-*` families compare sorted paths). The order is now
+load-bearing (it is `help_docs`' rowid order → the Guide list order → the context
+resolver's first-match), so the walker and the build-script mirror both sort by
+name bytes, and the walker's unit test pins a scrambled-creation-order tree.
+
+New harness families: `help_tree_equivalence` (the content oracle — v4's REAL
+`ensureHelpDocsSynced()` at the pin's cwd vs `ensure_help_docs_synced` over the
+embedded table; 120 docs + 667 chunks + the rowid walk order compared; a one-byte
+edit to one vendored file reddens it — mutation-proven) and `help_tree_embed_guard`
+(the embedded table equals the on-disk walk: path set, order, bytes; pins the
+120-file count so an empty embed cannot pass).
+
 #### 2026-09-05 — docs(setupphase): order the `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77)
 
 _Docs-only change._

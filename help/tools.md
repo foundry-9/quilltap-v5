@@ -1,0 +1,156 @@
+---
+url: /settings?tab=providers
+---
+
+# Tools
+
+> **[Open this page in Quilltap](/settings?tab=providers)**
+
+Tools are AI capabilities that allow the AI assistant to perform actions within Quilltap and access information beyond the conversation. They extend what the AI can do during a chat session.
+
+## What Are Tools?
+
+Tools are functions that the AI can call to:
+
+- **Generate images** - Create AI-generated artwork and images
+- **Search information** - Look up memories, past conversations, and web content
+- **Access files** - Read project files and manage documents
+- **Get context** - Access project information and character details
+
+When you send a message, the AI decides which tools (if any) to use to best answer your question or fulfill your request.
+
+## Types of Tools
+
+### Built-In Tools
+
+These tools are always available in Quilltap:
+
+**Generate Image**
+
+- Creates images using AI image generation providers
+- Requires: Image generation profile configured for the character
+- Useful for: Illustrating descriptions, creating character artwork, visual ideas
+
+**Search Memories**
+
+- Searches through stored memories and past conversations
+- Always available when memory is enabled
+- Useful for: Retrieving relevant past information and context
+
+**Search Web**
+
+- Searches the internet for current information
+- Requires: Web search enabled in the connection profile
+- Useful for: Finding recent news, facts, and current information
+
+**Project Info**
+
+- Accesses project information and files
+- Requires: Chat associated with a project
+- Useful for: Getting project context and accessing project files
+
+**Manage Files**
+
+- Reads, writes, and manages files in the file system
+- Always available
+- Useful for: Working with documents and file-based information
+
+**Search Help**
+
+- Searches Quilltap's help documentation for features, settings, and usage guidance
+- Always available
+- Useful for: Getting accurate information about how to use Quilltap features, configure settings, or troubleshoot issues
+
+**Settings Reader**
+
+- Reads your current Quilltap settings by category (overview, chat, connections, embeddings, images, appearance, templates, system)
+- Requires: Help tools enabled on the character
+- Useful for: Checking your current configuration without leaving the chat, troubleshooting settings issues, or asking the AI to help you understand what you have configured
+- API keys and secrets are never disclosed
+
+**Random Number Generator (RNG)**
+
+- Rolls dice, flips coins, or randomly selects a chat participant
+- Always available
+- Useful for: Tabletop gaming, roleplay decisions, adding chance elements to stories
+- See [RNG Tool](rng-tool.md) for detailed usage
+
+**Self-Inventory**
+
+- Returns an introspection report for the calling character, assembled from whichever sections are requested:
+  - **vault** — the file listing of the character's own vault *and* the vaults of any groups it belongs to (with metadata for `doc_read_file`/`doc_write_file`). Auto-generated avatars and story backgrounds are hidden by default; pass `includeAutomaticImages: true` to list them. Request just `vault.character` (own vault) or `vault.groups` (group vaults) to narrow it.
+  - **vaultAccess** — who can read or write the character's own vault *in this chat* (read/write for the character itself and the user persona; read-only for other present characters when Shared Vaults is on) plus who can read/write each group vault (every group member, in any chat). Narrow with `vaultAccess.character` or `vaultAccess.groups`.
+  - **memory**, **loadedMemories**, **chats**, **prompt**, **lastTurn**, **quilltap** — memory totals and high-importance percentage; the actual memories loaded into this turn's prompt; conversation count and date range; the static system prompt; provider/model/token usage from the most recent LLM call; and Quilltap version/runtime/release notes/changelog (with the `quilltap.version`/`quilltap.releaseNotes`/`quilltap.changelog` sub-sections).
+  - **context** — where the character is right now: this chat (id and name), the current project (id, name, linked stores), its groups (ids, names, linked stores), the other characters present with it (names, aliases, identities, and which one is the user's persona), and the files attached to this chat with a copy-pasteable `doc_read_file(...)` call for reaching each. Narrow with `context.chat`, `context.project`, `context.groups`, `context.characters`, or `context.files`.
+- Omit the `sections` array to receive every top-level section; pass an array to fetch only what you need and save tokens.
+- Always available to character participants
+- Useful for: letting a character pick the right vault file to consult, see who is in the room and where shared files live, check which memories the prompt actually delivered this turn, ask the operator whether the context window is filling up, or dump its own configuration into the chat on request; useful to operators for debugging why a character is behaving a particular way without stepping out of the Salon
+
+### Plugin Tools
+
+Additional tools provided by installed plugins or extensions:
+
+- These appear in the Tools section with their plugin name
+- Availability depends on plugin configuration
+- Can be organized into groups or categories
+
+## How Tools Work
+
+**Automatic Tool Use:**
+
+1. You send a message to the AI
+2. The AI analyzes your message
+3. If relevant tools exist, the AI decides whether to use them
+4. The AI calls the selected tools with appropriate parameters
+5. Tool results are returned to the AI
+6. The AI uses these results to form its response
+7. You see the AI's response incorporating the tool results
+
+**Where Tool Calls Appear:**
+
+When a character reaches for a tool mid-conversation, the resulting flourish is tucked into their message at the very spot where they paused to summon it — not swept to the foot of the bubble, but set in its proper place between the line that came before and the line that follows. Should they call upon several tools in a row, each takes its turn in order, one beneath the next, exactly where the errand was run. You'll see a labeled panel for every tool, which you may unfold to inspect the request and the reply, threaded through the character's prose like a footnote that knew where to stand. (And because each passage between calls was its own composition, it is rendered as such — so the punctuation no longer collides at the seams.) Tools *you* set in motion — by way of the Run Tool dialog, or a result you attach to your own message — keep their own standalone card, since the honour of that errand is yours and not the character's. And while a character is still composing, any tool they invoke appears in its rightful place within the very bubble where their reply is taking shape.
+
+**Tool Availability:**
+
+- Some tools depend on your chat configuration (image generation requires an image profile)
+- Some tools are context-specific (Project Info only works in project chats)
+- You can enable or disable tools per chat in the Tool Settings
+
+## Why Enable/Disable Tools?
+
+**Enable tools when:**
+
+- You want the AI to have full access to capabilities
+- You're working on a task that benefits from tool use (generating images, searching web)
+- You want the AI to remember and search through your conversation history
+
+**Disable tools when:**
+
+- You want faster responses (fewer tool calls)
+- You want the AI to focus on text-only responses
+- You're on a limited connection or concerned about rate limits
+- A tool is interfering with your workflow
+
+## Quick Settings Access
+
+To configure which tools the AI can use in your current chat:
+
+1. **While in a chat**, look for the **Tool Settings** option (usually in a menu or toolbar)
+2. **Click Tool Settings** to open the configuration dialog
+3. **Enable or disable** individual tools
+4. **Apply your changes** - they take effect on the next message
+5. **The AI will use** only the enabled tools going forward
+
+For more details, see [Configuring Chat Tools](tools-settings.md).
+
+## In-Chat Navigation
+
+Characters with help tools enabled can navigate directly to this page:
+
+`help_navigate(url: "/settings?tab=providers")`
+
+## Related Topics
+
+- [Configuring Chat Tools](tools-settings.md) - How to enable/disable tools for your chat
+- [Using Tools in Chat](tools-usage.md) - Understanding how to work with tools
+- [Plugins](plugins.md) - Adding plugin tools to your system

@@ -39,6 +39,8 @@ pub mod backup_services;
 // === end P4.9G5 ===
 pub mod env;
 pub mod files_store;
+/// The compile-time-embedded help tree (P4.9I2A) — see `build.rs`.
+pub mod help_content;
 pub mod host;
 pub mod host_gateway;
 pub mod image_codec;

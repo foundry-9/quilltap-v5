@@ -536,13 +536,16 @@ impl EngineAssembler for HostAssembler {
         // walk this crate owns. v5 has been MINTING these jobs since the
         // EMBEDDING_REFIT handler shipped (a BUILTIN refit with triggerReindex
         // enqueues one) with nothing to run them, so each retried three times
-        // and died. The walk is v4's own `join(process.cwd(), 'help')`,
-        // resolved once here — the tree ships with the binary and cannot change
-        // under a running process. This is also the production caller
-        // `help_doc_sync` has been documented as lacking.
-        let help_files = std::env::current_dir()
-            .map(|cwd| crate::files_store::load_help_source_files(&cwd))
-            .unwrap_or_default();
+        // and died.
+        //
+        // P4.9I2A: the tree is the compile-time EMBEDDED table, not a
+        // `current_dir()` walk. v4's `join(process.cwd(), 'help')` assumes the
+        // server runs from its checkout; a native binary does not, and this
+        // repo never had a `help/` beside the binary at all — so every
+        // reindex-all since P4.6BM synced an EMPTY tree. The same table feeds
+        // the boot-time `ensure_help_docs_synced` in `assemble`, so reindex-all
+        // and the boot ensure cannot disagree about the shipped documentation.
+        let help_files = crate::files_store::embedded_help_source_files();
         registry.register(
             "EMBEDDING_REINDEX_ALL",
             Box::new(EmbeddingReindexAllHandler {

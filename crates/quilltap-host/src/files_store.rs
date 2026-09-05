@@ -262,22 +262,51 @@ fn list_dir(
 // The help-doc disk walker (v4 help-doc-sync.ts findMarkdownFiles)
 // ============================================================================
 
-/// v4 `findMarkdownFiles` — recurse `dir` in RAW readdir order (files and
+/// v4 `findMarkdownFiles` — recurse `dir` in `readdirSync` order (files and
 /// directories interleaved, subdirectory contents inlined at the directory's
-/// position; both Node's `readdirSync` and Rust's `read_dir` surface the same
-/// syscall order over the same directory). A directory read error yields the
-/// entries collected so far for that directory (v4's try/catch around the
-/// whole loop).
+/// position). A directory read error yields the entries collected so far for
+/// that directory (v4's try/catch around the whole loop).
+///
+/// ## The order is SORTED, not the raw syscall order (P4.9I2A correction)
+///
+/// Node's `fs.readdirSync` goes through libuv's `uv_fs_scandir`, which sorts
+/// every directory's entries with `strcmp` on `d_name` (`src/unix/fs.c`,
+/// `uv__fs_scandir_sort`) — so v4 walks each directory in **byte order of the
+/// name**, on every platform. Rust's `read_dir` is the raw syscall order (APFS
+/// hands back a hash order; ext4 an htree order), and this walker used to
+/// return THAT, under a doc comment claiming the two agreed. No differential
+/// could see it: the `help-sync-*` families compare the changed docs as SORTED
+/// paths precisely because "walk order is readdir-dependent". The order became
+/// load-bearing with the shipped tree (P4.9I2A): it is the `help_docs` rowid
+/// order, hence `findAll`'s order, the Guide's list order, and the help-chat
+/// context resolver's "first match wins" — and the content oracle
+/// (`help_tree_equivalence`) compares it. Measured on the vendored tree: Node
+/// `readdirSync('help')` is sorted, `ls -f` / Python `listdir` are not.
+///
+/// `sort_unstable_by` over the UTF-8 name bytes IS `strcmp` on `d_name` (both
+/// compare unsigned bytes; UTF-8 byte order equals code-point order). The
+/// build script (`build.rs`) mirrors this function verbatim.
 pub fn find_markdown_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let Ok(entries) = std::fs::read_dir(dir) else {
         return files;
     };
+    // libuv `scandir` collects the whole directory, then sorts by `strcmp`.
+    let mut collected: Vec<std::fs::DirEntry> = Vec::new();
     for entry in entries {
         let Ok(entry) = entry else {
-            // v4: a stat error aborts this directory's loop (caught).
-            break;
+            // v4: a read error aborts this directory's loop (caught) — with
+            // libuv's collect-then-sort, a failed scandir yields NO entries.
+            return files;
         };
+        collected.push(entry);
+    }
+    collected.sort_unstable_by(|a, b| {
+        a.file_name()
+            .as_encoded_bytes()
+            .cmp(b.file_name().as_encoded_bytes())
+    });
+    for entry in collected {
         let path = entry.path();
         let Ok(meta) = std::fs::metadata(&path) else {
             break;
@@ -315,6 +344,25 @@ pub fn load_help_source_files(cwd: &Path) -> Vec<HelpSourceFile> {
                 rel_path: rel,
                 raw_content: String::from_utf8_lossy(&bytes).to_string(),
             })
+        })
+        .collect()
+}
+
+/// The help tree the BINARY ships (P4.9I2A) — the compile-time table
+/// `help_content::EMBEDDED_HELP` (`build.rs`) as the core sync's input list.
+/// `rel_path` is v4's `relative(process.cwd(), filePath)` (`help/<name>.md`);
+/// the order is the runtime walker's ([`find_markdown_files`] mirrored in the
+/// build script). This is the ONE source both the boot-time
+/// `ensure_help_docs_synced` and the `EMBEDDING_REINDEX_ALL` handler read, so
+/// the two cannot disagree. [`load_help_source_files`] keeps the filesystem
+/// walk for the differential fixture trees (`help-sync-*`, `help-ensure`),
+/// which are NOT the shipped tree.
+pub fn embedded_help_source_files() -> Vec<HelpSourceFile> {
+    crate::help_content::EMBEDDED_HELP
+        .iter()
+        .map(|(rel_path, content)| HelpSourceFile {
+            rel_path: (*rel_path).to_string(),
+            raw_content: (*content).to_string(),
         })
         .collect()
 }
@@ -388,6 +436,30 @@ mod tests {
         let mut paths: Vec<&str> = files.iter().map(|f| f.rel_path.as_str()).collect();
         paths.sort();
         assert_eq!(paths, vec!["help/a.md", "help/nested/b.md"]);
+        // P4.9I2A: the ORDER is Node's `readdirSync` order — each directory's
+        // entries sorted by name bytes, a subdirectory's contents inlined at its
+        // position. Written in a scrambled creation order so a raw-syscall walk
+        // (APFS hash order) cannot pass by luck.
+        std::fs::write(help.join("z.md"), "# Z").unwrap();
+        std::fs::write(help.join("m.md"), "# M").unwrap();
+        std::fs::create_dir_all(help.join("b-dir")).unwrap();
+        std::fs::write(help.join("b-dir/y.md"), "# Y").unwrap();
+        std::fs::write(help.join("b-dir/a.md"), "# A2").unwrap();
+        let ordered: Vec<String> = load_help_source_files(dir.path())
+            .into_iter()
+            .map(|f| f.rel_path)
+            .collect();
+        assert_eq!(
+            ordered,
+            vec![
+                "help/a.md",
+                "help/b-dir/a.md",
+                "help/b-dir/y.md",
+                "help/m.md",
+                "help/nested/b.md",
+                "help/z.md",
+            ]
+        );
         // Missing help dir → empty.
         let empty = tempfile::tempdir().unwrap();
         assert!(load_help_source_files(empty.path()).is_empty());

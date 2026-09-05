@@ -106871,3 +106871,58 @@ wire-byte look (still blocked for the same TLS reason).
 cheap-LLM and danger-settings bags, the Ollama profile's baseUrl and parameters),
 and every probe artifact removed (the throwaway profiles, the Brahma chats' host
 profiles, the `walk_group_probe` tool, and all three state tiers).
+
+
+---
+
+## P4.9I2A — the help/HelpChat SERVER lane (lane record, 2026-09-05)
+
+Order: `docs/developer/porting/work-orders/p4.9i2a-help-server.md`. Branch
+`claude/p4-9i2a-help-server-porting-575b4a`. Baseline `d883a5ee1`; every regen
+from the lane-unique pin `/tmp/qt-v4-pin-p49i2a-d883a5ee1` (ledger §5.1, three
+symlink classes). The §2 freshness probe PASSED at lane start (checkout on
+`bugfix`, tree clean, both logs empty); `diff -r "$PIN/help" help` EMPTY, and
+the checkout's own `help/` is byte-identical to the pin's.
+
+### Unit 1 — the shipped help tree (Tier 1 item 1)
+
+- `help/` vendored at the repo root (120 files, 1.6 MB; `diff -r` against the
+  pin EMPTY). `crates/quilltap-host/build.rs` (new) walks `<repo>/help` and
+  emits `EMBEDDED_HELP` into `OUT_DIR`; `src/help_content.rs` includes it;
+  `files_store::embedded_help_source_files()` is the sync input;
+  `host.rs`'s `EMBEDDING_REINDEX_ALL` registration reads the embedded table
+  (the cwd walk retired there — `load_help_source_files` stays for the
+  fixture-tree differentials).
+- **Finding (fixed): the walker's ORDER was wrong on every platform.** Node's
+  `readdirSync` → libuv `uv_fs_scandir` → `uv__fs_scandir_sort` (`strcmp` on
+  `d_name`): v4 walks each directory in name-byte order. `find_markdown_files`
+  returned Rust's raw `read_dir` order (APFS hash order — measured: `ls -f` /
+  Python `listdir` unsorted, Node sorted) under a doc comment claiming the two
+  agreed. Unmeasurable before: the `help-sync-*` families compare SORTED paths.
+  Now load-bearing (rowid order → `findAll` → Guide list → resolver
+  first-match). Fixed in the walker + the build-script mirror; the walker unit
+  test pins a scrambled-creation-order tree.
+- `help_tree_equivalence` (tier 2, NEW; oracle `help-tree-sync.test.ts`, the
+  jest real-DB recipe, self-contained — no fixture): v4's REAL
+  `ensureHelpDocsSynced()` with cwd = the pin vs `ensure_help_docs_synced` over
+  the embedded table on a fresh-provisioned instance (the seeded builtin
+  embedding profile is dropped so both sides' enqueue backs off — the enqueue
+  is `help_doc_ensure_equivalence`'s comparand). Comparands: 120 docs
+  (path/title/url/content/contentHash/hasEmbedding, path-sorted), 667 chunks
+  (docPath/chunkIndex/heading/content), the rowid WALK ORDER, the job count.
+  First run: docs + chunks GREEN, walk order RED (the finding above), jobs 120
+  vs 0 (the profile). After the fixes: GREEN. **Mutation:** one byte appended to
+  `help/agent-mode.md` → RED (`docs[1]` + `chunks[4]`); reverted, tree
+  byte-identical to the pin again.
+- `help_tree_embed_guard` (NEW): embedded table == `load_help_source_files(repo)`
+  (path set, order, bytes) + the 120-file count floor (a checkout without
+  `help/` builds an EMPTY table rather than failing the build; this refuses it).
+- Regen recipe (the header; the driver's `--v4 <pin>` rewrites the `cd`):
+  mirror `harness/oracle/cases/help-tree-sync.test.ts` to `/tmp/qt-help-tree-oracle/cases`,
+  `QT_ORACLE_OUT=/tmp/oracle-help-tree.ndjson npx jest --roots "$PWD" --roots
+  <mirror> -- help-tree-sync` from the checkout root; run with
+  `QT_ORACLE_HELP_TREE=…`.
+- Recorded divergence: the embedded table is captured at BUILD time on the
+  build machine (v4 walks at runtime on the user's machine); both are the
+  same sorted order now, so the only residual is a `help/` edited after the
+  build — which the guard refuses in-tree and `rerun-if-changed` rebuilds.
