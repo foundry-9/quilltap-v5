@@ -1,0 +1,19 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "seedTimestamp": "2026-05-01T00:00:00.000Z",
+  "users": {
+    "A": { "id": "e18e05bc-63e8-4539-8a85-719b7a508850", "username": "friday", "name": "Friday" },
+    "B": { "id": "f28e15cd-74f9-4640-9b96-82ac8b619961", "username": "saturday", "name": "Saturday" },
+    "C": { "id": "a38e25de-85fa-4751-ac07-93bd9c72a072", "username": "sunday", "name": null }
+  },
+  "provider": "ANTHROPIC",
+  "model": "help-fixture-model",
+  "helpDocFiles": [
+    "brahma-console.md", "homepage.md", "search.md", "sidebar.md",
+    "chats.md", "agent-mode.md", "chat-state.md",
+    "chat-settings.md", "taboo.md", "system-tools.md", "settings.md", "setup-wizard.md",
+    "characters.md", "character-editing.md", "character-creation.md",
+    "files.md", "project-chats.md"
+  ],
+  "note": "Ids are pinned in build-help-chat-fixture.ts and repeated as consts in the Rust differentials (help_docs_routes_equivalence, help_chats_routes_equivalence, help_chat_orchestrator_tier3_equivalence). The help_docs rows are minted by v4's REAL syncHelpDocs over a scratch help/ holding exactly helpDocFiles (copied from the v4 checkout's help/), so titles/urls/contentHash/chunks are v4's own; both differential sides read the same committed .db so the minted doc ids agree."
+}
