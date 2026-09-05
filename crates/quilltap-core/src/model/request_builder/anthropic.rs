@@ -2,8 +2,8 @@
 //! anthropic plugin's `streamMessage` + `formatMessagesWithAttachments` +
 //! `applyMidHistoryBreakpoint`. The transform is the cache-breakpoint hierarchy
 //! (tools → system → messages), the consecutive-tool-result batching, and the
-//! adaptive-thinking / sampling-param-rejection rules for Sonnet 5 / Opus 4.7+ /
-//! Fable / Mythos.
+//! adaptive-thinking / sampling-param-rejection rules for Sonnet 5 / Opus 5 /
+//! Opus 4.7+ / Fable / Mythos.
 //!
 //! ## The sampling-param-rejected model list
 //!
@@ -15,7 +15,11 @@
 //! (e.g. `samplingRejectedModelPrefixes`) — a manifest-schema extension deferred
 //! as a follow-up. Keeping the list in this hook matches v4's structure (the rules
 //! live in the anthropic plugin's `requestTransform`). Ported from CURRENT v4
-//! (`6b6e39ad`): Sonnet 5, Opus 4.7 / 4.8, Fable 5, Mythos 5 / preview.
+//! (`48f4b42ec`): Sonnet 5, **Opus 5**, Opus 4.7 / 4.8, Fable 5, Mythos 5 /
+//! preview. Opus 5 arrived a generation after the 4.7/4.8 pair and joined the
+//! list late (v4 `48f4b42ec`, 2026-09-04) — the plugin lists models live through
+//! `client.models.list()`, so it was selectable in a connection profile and every
+//! send 400'd on "`temperature` is deprecated for this model" until it was added.
 
 use serde_json::{json, Value};
 use std::sync::LazyLock;
@@ -26,11 +30,17 @@ use super::{
     att_fail, att_id, att_str, num, Body, RequestInput, StreamAttachmentResults, StreamMessage,
 };
 
-/// v4 `SAMPLING_PARAMS_REJECTED_MODELS` (current source): these models reject
-/// `temperature`/`top_p`/`top_k` outright and 400 on fixed-budget thinking.
+/// v4 `SAMPLING_PARAMS_REJECTED_MODELS` (current source): Claude Sonnet 5,
+/// Claude Opus 5, the Opus 4.7/4.8 family, and Fable/Mythos models remove
+/// `temperature`/`top_p`/`top_k` entirely — sending either returns
+/// "`temperature` is deprecated for this model" (400), independent of whether
+/// extended thinking is enabled — and they 400 on fixed-budget thinking too.
+/// Matched by prefix since these are stable aliases (no dated snapshots).
+/// Order mirrors v4's array.
 static SAMPLING_PARAMS_REJECTED_MODELS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
         r"^claude-sonnet-5(-|$)",
+        r"^claude-opus-5(-|$)",
         r"^claude-opus-4-7(-|$)",
         r"^claude-opus-4-8(-|$)",
         r"^claude-fable-5(-|$)",
@@ -356,6 +366,10 @@ pub fn build_body(input: &RequestInput, results: &mut StreamAttachmentResults) -
         }
     };
     let thinking_enabled = thinking_budget > 0;
+    // v4: "Sonnet 5 / Opus 5 / Opus 4.7+ / Fable / Mythos reject both fixed-budget
+    // thinking and sampling params (temperature/top_p/top_k) — computed once and
+    // used for both decisions below." v4 carries that comment twice (`sendMessage`
+    // and `streamMessage`); this builder serves both modes, so it lands once.
     let sampling_rejected = model_rejects_sampling_params(&input.model);
 
     let cache_opts = if caching_enabled {

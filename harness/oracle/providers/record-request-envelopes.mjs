@@ -281,6 +281,13 @@ function casesFor(provider) {
     add('boundary-first-new-gen-4-7', { ...base, model: 'claude-opus-4-7', messages: [SYS, USER] });
     add('boundary-dated-new-gen-4-8', { ...base, model: 'claude-opus-4-8-20260215', messages: [SYS, USER] });
     add('boundary-new-gen-thinking', { ...base, model: 'claude-opus-4-8', profileParameters: { thinkingBudget: 2048 } });
+    // P4.D158 (v4 `48f4b42ec`): Opus 5 joined SAMPLING_PARAMS_REJECTED_MODELS.
+    // The one flag gates BOTH decisions, so the pair is the whole contract: the
+    // plain row proves temperature/top_p/top_k are dropped, the thinking row
+    // proves a requested fixed budget becomes the adaptive shape rather than
+    // `{type:'enabled',budget_tokens:N}`. Recorded against v4's POST-fix plugin.
+    add('boundary-opus-5', { ...base, model: 'claude-opus-5', messages: [SYS, USER] });
+    add('boundary-opus-5-thinking', { ...base, model: 'claude-opus-5', profileParameters: { thinkingBudget: 2048 } });
     // P4.21 — attachment vectors (image + PDF + both text-decode arms + the
     // failure arms + the cache-control-on-image-block interaction).
     add('image-attachment', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER_IMG] });

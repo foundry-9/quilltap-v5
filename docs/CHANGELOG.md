@@ -806,6 +806,26 @@ red against the pinned v4 — this fix is what closes them.
 `completion_behavior` gains a scoped guard for the fish block, because the
 blanket flag-coverage test asks only whether `-l 'json'` appears anywhere in
 a template, and it already did — on the top-level `quilltap --json`.
+#### 2026-09-05 — fix(providers): stop sending Claude Opus 5 the sampling params it rejects (v4 `48f4b42ec`)
+
+_Versions: core 0.0.777, harness 0.0.673._
+
+v4's `SAMPLING_PARAMS_REJECTED_MODELS` covered Sonnet 5, Opus 4.7/4.8 and the
+Fable/Mythos families but not `claude-opus-5`, which removes
+`temperature`/`top_p`/`top_k` and rejects fixed-budget thinking; every send
+came back 400. v5's compiled table reproduced the gap exactly. The entry
+`^claude-opus-5(-|$)` now sits where v4 put it, after the sonnet-5 row, and
+the three comments that described the set as "Opus 4.7+" name Opus 5.
+
+The one flag gates both decisions, so the corpus proof is a pair, recorded at
+the pin against v4's post-fix plugin: `boundary-opus-5` (the sampling params
+are dropped) and `boundary-opus-5-thinking` (a requested 2048-token budget
+becomes `{"type":"adaptive","display":"summarized"}` rather than
+`{"type":"enabled","budget_tokens":2048}`). Both rows ran RED before the
+entry — the failure was a literal `"temperature":0.5` on a `claude-opus-5`
+body — and the corpus grew 343 → 347 rows with every pre-existing row
+byte-identical.
+
 #### 2026-09-05 — test(providers): re-record every provider corpus at `d883a5ee1` — the packaging churn moved two version markers and nothing else
 
 _Versions: harness 0.0.672._

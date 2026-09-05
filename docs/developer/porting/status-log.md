@@ -106016,3 +106016,62 @@ memory-note rule *verify the mutation APPLIED* earned its keep again.)
 `b52b996c1`, `6e1a64ea6` and `06658535f` are **NO-PORT, ratified on the
 measurement** for the provider wire. The Zod half of `6e1a64ea6` is unit 2
 item 4, recorded separately.
+
+## Lane record — P4.D158 unit 1: the Opus 5 sampling strip (v4 `48f4b42ec`) (2026-09-05)
+
+A one-line port with a two-row corpus proof, and the round's only v5 source
+change in this lane.
+
+**v4's hunk** (`plugins/dist/qtap-plugin-anthropic/provider.ts`, plugin
+1.0.54 → 1.0.55): one new entry `/^claude-opus-5(-|$)/` in
+`SAMPLING_PARAMS_REJECTED_MODELS` — placed **after the sonnet-5 row and before
+opus-4-7** — plus three comment corrections ("Opus 4.7+" → naming Opus 5
+explicitly, at the constant and at both `sendMessage :379` / `streamMessage
+:574` decision sites). The single flag gates BOTH decisions in both
+compositions: the sampling params AND the fixed-budget thinking branch.
+
+**v5's gap, measured:** `crates/quilltap-core/src/model/request_builder/
+anthropic.rs:31`'s `LazyLock<Vec<Regex>>` carried the other five patterns and
+not `^claude-opus-5(-|$)`.
+
+**The corpus rows.** `harness/oracle/providers/record-request-envelopes.mjs`
+gained `boundary-opus-5` (plain) and `boundary-opus-5-thinking`
+(`profileParameters.thinkingBudget = 2048`), recorded in both modes → 4 new
+lines. v4's post-fix bytes:
+
+| case | temperature/top_p/top_k | `thinking` | max_tokens |
+|---|---|---|---|
+| `boundary-opus-5` | absent | absent | 1000 |
+| `boundary-opus-5-thinking` | absent | `{"type":"adaptive","display":"summarized"}` | 3072 |
+
+Contrast rows already in the corpus: `thinking` on `claude-opus-4-6` keeps
+`{"type":"enabled","budget_tokens":2048}`, and `boundary-first-new-gen-4-7`
+shows the same stripping for the previous generation — so the pair pins the
+boundary in both directions.
+
+**RED first, and literally.** With the rows recorded and the regex entry not
+yet added, `request_builder_equivalence` failed at `:489`:
+
+```
+ANTHROPIC/boundary-opus-5[stream] BODY diverged
+  got:  {…,"system":"You are a helpful assistant.","temperature":0.5}
+  want: {…,"system":"You are a helpful assistant."}
+```
+
+That is the production bug on the wire: v5 was sending Opus 5 a `temperature`.
+Green after the one-line entry, all 347 rows.
+
+**Neutrality of the corpus growth:** the regen's diff against the unit-2
+baseline is `1 file changed, 4 insertions(+)` — the two new cases in two modes
+and nothing else. `tool_wire_call_site` (same corpus) and the google families
+re-run green.
+
+⚠ **This is the model the planning sessions run on**, so a real Friday
+connection profile is affected — 💸 a live send on Opus 5 joins the dogfood
+queue as the acceptance proof.
+
+**Not widened:** the `fable-5` / `mythos-5` / `mythos-preview` patterns still
+have no corpus row (pre-existing; `sonnet-5`, `opus-4-7`, `opus-4-8` and now
+`opus-5` do). `anthropic.rs` carries no unit tests for the list — the corpus
+is its pin, which is why the two rows were the deliverable rather than a
+`#[test]`.
