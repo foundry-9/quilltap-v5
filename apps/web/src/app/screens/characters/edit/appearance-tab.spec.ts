@@ -4,6 +4,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { CoreDispatchError } from '../../../core/core-contract';
 import { RichEditor } from '../../../editor/rich-editor';
 import { ToastService } from '../../../ui/toast.service';
 import { CharacterAppearanceTab } from './appearance-tab';
@@ -246,6 +247,45 @@ describe('CharacterAppearanceTab (edit) — physical-description toasts', () => 
     clickButtonWithText(fixture, 'Save Physical Descriptions');
     await settle(fixture);
     expect(toasts()).toEqual([{ type: 'error', message: 'the scribe is out to lunch' }]);
+  });
+
+  /**
+   * v4 `0506517d3` correction (f2) made `saveGeneratedPhysicalDescription`
+   * prefer the server's `error` text over the caller's fixed sentence. That
+   * function is the AI WIZARD's saver, which v5 has no counterpart for (the
+   * wizard is `p4.9k`-class) — but v5's manual saver here ports v4's
+   * `DescriptionsTab.tsx:119-127`, which already reaches the same place by a
+   * different road: it throws `new Error(data.error || <fixed>)` and toasts
+   * `err.message`. v5's road is the dispatch envelope: a `{ type: 'error' }`
+   * response becomes a `CoreDispatchError` whose `message` IS the server's
+   * sentence, so `err.message` already prefers it. The sibling case above
+   * throws a bare `Error`; this one throws the real envelope-built error, so
+   * the WHOLE chain is what is pinned, not the catch arm's shape.
+   */
+  it('prefers the server sentence carried on the dispatch envelope (f2)', async () => {
+    const client: Partial<CoreClient> = {
+      dispatchData: (async (req: Req) => {
+        if (req.type === 'characterGet') {
+          return { character: { id: 'c1', characterDocumentMountPointId: 'mp1', physicalDescription: PHYSICAL } };
+        }
+        if (req.type === 'characterDepictionGuidelines') {
+          return { content: '' };
+        }
+        if (req.type === 'characterUpdate') {
+          throw new CoreDispatchError({
+            kind: 'validation',
+            message: 'Physical description name must not be blank',
+          });
+        }
+        return {};
+      }) as unknown as CoreClient['dispatchData'],
+    };
+    const fixture = await render(client);
+    clickButtonWithText(fixture, 'Save Physical Descriptions');
+    await settle(fixture);
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'Physical description name must not be blank' },
+    ]);
   });
 
   it('clears with a confirm + success toast, sending physicalDescription: null', async () => {

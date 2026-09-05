@@ -689,6 +689,43 @@ the closed row, resolves its path, and the store answers "no such document".
 The case ran RED against v4's real handler at the `d883a5ee1` pin — v5
 `404 "File not found not found"` vs v4 `404 "File not found"` — and green after
 the one-token fix.
+#### 2026-09-05 — test(characters): pin the outfit-choice toasts and the server-sentence preference (v4 `0506517d3` (f1)/(f2))
+
+_Versions: SPA 0.5.645._
+
+The two corrections in v4's collapse that v5 turned out to have already, each
+for its own reason — measured, then pinned, with nothing ported.
+
+**(f1)** v4 extracted `CanChooseOutfitToggle` and gave the EDIT view's hook the
+success toast the DETAIL view's already had; read side by side at the pin, its
+two hooks are now identical. v5 reached that state by construction — ONE
+`CharacterChooseOutfitCard`, hosted by both views — but its specs pinned only
+the ERROR toast. Two were added: both success sentences on the card (U+2019 in
+the negative arm), and, on the edit view, that the card is hosted, fed the
+loaded character's flag, and raises the toast from THIS view. That last is the
+whole of what v4's correction bought.
+
+**(f2)** v4's `saveGeneratedPhysicalDescription` now prefers the server's
+`error` text. Its callers were enumerated at the pin: both are AI-wizard apply
+paths, so the whole function is a NO-COUNTERPART today (v5 has no AI wizard —
+`p4.9k`-class), not just the wizard's half of it. The v5 site the order names is
+the port of a different v4 file, `DescriptionsTab.tsx`, which reaches the same
+place by its own road. Measured on v5: `dispatchData` throws `CoreDispatchError`
+built `super(error.message)` from the `{ type: 'error' }` envelope, so
+`err.message` IS the server's sentence. Pinned with a stub that throws the real
+envelope-built error rather than the bare `Error` its sibling case throws, so
+the whole chain is the comparand.
+
+Also here: the `lora-list-editor.ts` comment is re-pointed at v4's new home.
+`0506517d3` moved `DEFAULT_LORA_SCALE` and `resolveLoraScaleBounds` into the
+dependency-free `lib/image-gen/lora-scale.ts` so v4's own browser half could
+import them. v5's server twin is Rust, so the client copy stays; the values are
+measured identical.
+
+Mutations: collapsing the card's two sentences reddens the first spec, deleting
+the card from the edit host reddens the second, and replacing the catch's
+expression with the fixed sentence reddens the third.
+
 #### 2026-09-05 — style(settings): the cheap-LLM checkboxes and the Answer Confirmation row take their shared classes
 
 _Versions: SPA 0.5.644._

@@ -9,6 +9,200 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.D156 (the client/CLI drift: bug 120's `instances default --json`, the About sentences, the cheap-LLM `qt-checkbox`, and the collapse's three client corrections)
+
+Ordered against round baseline **`d883a5ee1`** (§B); the lane's four target
+commits are `af2023c9a` (bug 120), `e9a9c538e`'s ONE code hunk, `bbcb318c6`,
+and `0506517d3`'s three CLIENT corrections (f). **Drift-ledger §2 freshness
+probe at lane start (2026-09-05):** PASS — v4 checkout on `main`, tree clean,
+`git log d883a5ee1..main` empty, `git log 3a76b17df..bugfix` empty. §1's
+verdict (15 commits pending, **PIN REQUIRED**) stands; the lane never wrote
+the ledger.
+
+**Pin:** one lane-unique detached worktree at
+`/tmp/qt-v4-pin-p4d156-d883a5ee1`, all three symlink classes per ledger §5.1.
+Every Tier R run in this record drove v4's REAL launcher from it
+(`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d156-d883a5ee1`), never the live checkout.
+
+### Unit 1 — bug 120: `instances default --json` (v4 `af2023c9a`)
+
+v4's dispatcher called `cmdDefault(rest)` with the flag neither read nor
+stripped, so the JSON branch was unreachable AND `--json` became the name of
+an instance to set. **v5 had the same defect and one more:** `cmd_default`
+carried no JSON branch at all. Ported whole:
+
+- the dispatch arm filters and reads together, carrying v4's why-comment
+  verbatim (including its point that the `list` arm this was copied from is
+  correct only because `cmd_list` has no positionals to corrupt);
+- `cmd_default(args, json)` emits v4's **compact** `JSON.stringify({
+  defaultInstance })` — measured against v4's two spellings side by side:
+  `cmdList` is `JSON.stringify(entries, null, 2)` (v5 already used
+  `json_stringify_pretty`), `cmdDefault` is bare. The absent default is JSON
+  `null`, not the plain report's `(none)`;
+- `help/instances_help.txt` takes v4's `  list [--json]                 List
+  registered instances (default)` byte-for-byte, column padding included;
+- `help/completion/fish.template` gains v4's `for verb in list ls … end` block
+  in v4's exact slot (between the `--names-only` line and the
+  `default --clear` line). The region now diffs identical to v4's template
+  line-for-line.
+
+**A survey finding that corrects the order.** The order predicted three new
+Tier R cases and 214 → 217. `instances --help` is already a Tier R case
+(`cli_differential.rs:1811`), so only two were added — `instances default json
+none` and `instances default json set` — and the honest arithmetic is
+**214 → 216**. The second needs a default already recorded, which no single
+invocation can arrange (each case copies the master fixture fresh before each
+side), so it plants `defaultInstance` in the registry through a `CaseOpts.pre`
+hook.
+
+**Also measured, not invented (the order asked for exactly this):** v4's hunk
+touches `fish.template` ALONE. bash's `inst_flags` and zsh's `inst_opts`
+already listed `--json` on both sides, so nothing was added there.
+
+**Differential — Tier R against v4's real launcher at the pin:**
+
+- pre-port: `CLI differential: 214 cases, 2 failures` — `[instances help]
+  stdout differs` and `[completion fish] stdout differs`, i.e. the two surfaces
+  v4's fix moved were already red against the pinned v4 before a line was
+  written.
+- post-port: **`CLI differential: 216 cases, 0 failures`** (384 s).
+- `completion_behavior`: 7 → **8 tests, 0 failures**.
+
+**⚠ A trap worth the memory note (recorded below).** The first red-first run
+was CONTAMINATED and discarded: `cli_differential` invokes
+`env!("CARGO_BIN_EXE_quilltap")`, a fixed path, and an unrelated `cargo test
+-p quilltap-cli --test completion_behavior` fired mid-run **rebuilt that
+binary from the ported source**. Cases before the rebuild compared the pre-fix
+binary and cases after it the post-fix one — a 6-minute run whose two halves
+answer different questions, with nothing in the log to say so. The run was
+killed (by PID, never `pkill -f` — sibling lanes run the same command lines)
+and the evidence re-taken as a clean post-port green plus an explicit
+mutation, which measures the same thing without ever editing source under a
+live binary.
+
+**Mutation proofs (each reverting one half of the port, all three at once):**
+restoring `cmd_default(&rest, json)` (read but not stripped), the pre-fix help
+line, and the deleted fish block → `completion_behavior`'s new guard fails by
+name, and Tier R returns to reds on `instances default json none` /
+`instances default json set` / `instances help` / `completion fish`.
+
+### Unit 2 — the About page's three widened sentences (v4 `e9a9c538e`)
+
+The one code hunk in an otherwise-docs commit. v5 carried the PRE-fix bytes at
+all three sites (`about-page.ts:342/:346/:398`); each gains its clause. v4
+spells the Lantern's apostrophe `&apos;`, which the DOM renders as **U+0027**
+(a straight quote) rather than the U+2019 the rest of the page's prose uses —
+the RENDERED character is what the spec pins.
+
+Spec: `about.spec.ts` gains `carries e9a9c538e's three widened feature
+sentences`, run RED against the pre-port tree first (`expected 'About Quilltap
+Your AI…' to contain 'AI-generated atmospheric background images derived from
+chat context, with LoRA adapters…'`). Mutation: dropping the Lantern clause
+reddens it.
+
+### Unit 3 — the cheap-LLM checkboxes (v4 `bbcb318c6`)
+
+v4's two inputs moved from a raw `className="rounded"` to `qt-checkbox`. **v5's
+carried no class at all** — neither the old spelling nor the new — so both take
+`qt-checkbox`. `.qt-checkbox` is already defined
+(`styles/qt-components/_interactive.css:290`), and `check-qt-classes` stays
+green at 950 defined classes.
+
+Spec: `cheap-llm-card.spec.ts` gains `dresses both checkboxes in qt-checkbox`,
+which locates each input by its own label text rather than by index, run RED
+first (`expected null to be 'qt-checkbox'` — the attribute was absent).
+Mutation: removing the stand-in input's class reddens it.
+
+### Unit 4 — the collapse's three client corrections (v4 `0506517d3` (f))
+
+**(f1) — measured a convergence by construction, as the order predicted; no
+port.** v4 extracted `CanChooseOutfitToggle` and gave the EDIT view's hook the
+success toast the DETAIL view's already had, so both v4 hooks now raise the
+same two sentences (read side by side at the pin: `useCharacterEdit.ts:238-258`
+and `useCharacterView.ts:517-543` — identical). v5 reached that state by
+construction: ONE `CharacterChooseOutfitCard`, hosted by
+`character-edit.ts:164` AND `view/tabs/wardrobe-tab.ts:28`. What v5's specs did
+NOT have is what v4's correction actually bought, so two were added:
+
+- `choose-outfit-card.spec.ts` — `raises v4's two success sentences, one per
+  direction`, pinning both (U+2019 in the negative arm). The pre-existing spec
+  pinned only the ERROR toast.
+- `character-edit.spec.ts` — `hosts the outfit-choice card on the Wardrobe tab,
+  toast and all`, which switches to the Wardrobe tab, asserts the card is
+  hosted and fed the loaded character's flag, toggles it, and reads the toast
+  out of the EDIT view. That the toast reaches this view is the whole of v4's
+  correction.
+
+Mutations: collapsing the card's two sentences to one reddens the first;
+deleting the card from the edit host's template reddens the second.
+
+**(f2) — the ordered measurement came back "already correct", by a road v4 does
+not take; pinned. The wizard half is a NO-COUNTERPART, and so is more of it
+than the order predicted.** v4's `saveGeneratedPhysicalDescription` now prefers
+the server's `errorData.error` over the caller's fixed sentence. Its callers
+were enumerated at the pin: `NewCharacterView.tsx:154` and
+`CharacterEditView.tsx:115` — **BOTH are AI-wizard apply paths**, so the whole
+function is a NO-COUNTERPART today, not just the wizard's half of it (v5 has no
+AI wizard; `p4.9k`-class). The v5 site the order names
+(`edit/appearance-tab.ts:325-328`) is the port of a DIFFERENT v4 file,
+`view/components/DescriptionsTab.tsx:119-127`, which reaches the same place by
+its own road: `throw new Error(data.error || <fixed>)` then toast
+`err.message`.
+
+Measured on v5: `CoreClient.dispatchData` throws `CoreDispatchError`, whose
+constructor is `super(error.message)` over the `{ type: 'error' }` envelope
+(`core-contract.ts:4005-4014`) — so `err.message` IS the server's sentence and
+the preference already holds. Pinned as the order directs, with a stub that
+answers a server sentence: `appearance-tab.spec.ts` gains `prefers the server
+sentence carried on the dispatch envelope (f2)`, which throws a REAL
+envelope-built `CoreDispatchError` rather than the bare `Error` its sibling
+case throws — so the whole chain is the comparand, not the catch arm's shape.
+Mutation: replacing the catch's expression with the fixed sentence reddens it.
+
+**(f3) — ported.** v4 replaced `AnswerConfirmationSettings`'s hand-built
+`<label className="flex items-start gap-3 p-4 border …">` with the shared
+`SettingsToggleRow`. v5 adopts the SIBLING markup, not v4's React component
+(six chat-settings cards already carry it): `label.qt-settings-toggle-row` >
+`input.qt-checkbox.mt-1` + `div.flex-1` > `.qt-settings-section-heading` +
+`.qt-text-small.mt-1`, wrapped in the plain `<div>` v4's component renders.
+Spec: `scalar-toggle-cards.spec.ts` gains `wears the shared
+qt-settings-toggle-row styling`, which also asserts the hand-built label is
+GONE rather than merely joined; run RED first. Mutation: restoring the
+hand-built class list reddens it.
+
+### Tier 2
+
+- The `default` arm carries v4's why-comment verbatim (Unit 1 above).
+- `settings/images/lora-list-editor.ts` — the `DEFAULT_SCALE` comment is
+  re-pointed at v4's NEW home. `0506517d3` moved `DEFAULT_LORA_SCALE` and
+  `resolveLoraScaleBounds` out of `lib/image-gen/lora-support.ts` into the
+  dependency-free `lib/image-gen/lora-scale.ts` so v4's own browser half could
+  import them (v4's client no longer defines either). v5's server twin is Rust,
+  so the client copy stays; the values are measured identical
+  (`{ min: 0, max: 2, default: 1, step: 0.05 }`, `lora-scale.ts:19`), and
+  `scaleBounds`'s comment is re-pointed at the renamed
+  `resolveLoraScaleBounds`. P4.D157 owns the VALUES check.
+
+### Tier 3 — deferrals, loud
+
+- **The wizard half of (f2): NO-COUNTERPART.** v5's `new-character.ts` never
+  saves a generated physical description, and neither does its edit view —
+  v4's `saveGeneratedPhysicalDescription` has no v5 caller at all because the
+  AI wizard is unported (`p4.9k`-class; the edit view's own AI Wizard button is
+  `disabled` with v4's not-yet-available title). Nothing was stubbed.
+- **`af2023c9a`'s docs half** (the CLI package README, `help/cli-instances.md`,
+  `docs/developer/CLI.md`): mirror work, P4.D158's §G bank and `docs/v4/`
+  refresh. Not this lane's.
+
+### Ownership + §E
+
+Touched `crates/quilltap-cli/**`, `apps/web/src/app/screens/**` and the two
+append-only docs — nothing else. `apps/web/src/styles/**` needed no edit
+(`.qt-checkbox` and `.qt-settings-toggle-row` both already exist).
+`apps/web/src/app/pascal/**` untouched (P4.D155's). No new Playwright beat was
+authored: every surface this lane moved is pinned at unit-spec level, and the
+existing suite was run once at close on port 4319 per §E.
+
 ## Lane record — P4.D146 (absent characters out of story backgrounds + the project background-mode narrowing) — v4 `70505745a`
 
 Ordered against round baseline **`4622411fd`**; the lane's target commit is

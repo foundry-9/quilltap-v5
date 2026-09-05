@@ -32,7 +32,14 @@ import { LoraQueryResult } from './lora-query-result';
  * source is edited.
  */
 
-/** Mirrors `DEFAULT_LORA_SCALE` on the server side. */
+/**
+ * Mirrors `DEFAULT_LORA_SCALE` on the server side. v4's client used to carry
+ * its own copy here too; `0506517d3` (the release-checklist collapse) moved
+ * both the constant and the bounds resolver into the dependency-free
+ * `lib/image-gen/lora-scale.ts` so its browser half could import them. v5's
+ * server twin is Rust, so the client copy stays — the values are measured
+ * identical to v4's (`{ 0, 2, 1, 0.05 }` at `lora-scale.ts:19`).
+ */
 export const DEFAULT_SCALE = { min: 0, max: 2, default: 1, step: 0.05 };
 
 export interface LoraScaleBounds {
@@ -42,7 +49,7 @@ export interface LoraScaleBounds {
   step: number;
 }
 
-/** v4 `scaleBounds` — a declared `step` is optional; the rest are not. */
+/** v4 `resolveLoraScaleBounds` — a declared `step` is optional; the rest are not. */
 export function scaleBounds(support: ImageLoraSupport): LoraScaleBounds {
   const declared = support.scale;
   if (!declared) return { ...DEFAULT_SCALE };

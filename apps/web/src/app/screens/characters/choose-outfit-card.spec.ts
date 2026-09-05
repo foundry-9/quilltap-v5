@@ -71,6 +71,39 @@ describe('CharacterChooseOutfitCard (v4 8bf3cb5f Wardrobe-tab checkbox)', () => 
     });
   });
 
+  /**
+   * v4 `0506517d3` correction (f1): the toggle was extracted to
+   * `components/wardrobe/CanChooseOutfitToggle.tsx` and the EDIT view's hook
+   * (`useCharacterEdit.handleSaveCanChooseOutfit`) gained the success toast the
+   * DETAIL view's hook already had, so both v4 hooks now raise the same two
+   * sentences. v5 reached that state by construction — ONE card component,
+   * hosted by both views — so this pins the sentences themselves (U+2019 in the
+   * negative arm, as v4 spells it) rather than porting anything.
+   */
+  it('raises v4’s two success sentences, one per direction (f1)', async () => {
+    const { fixture, el } = render(async () => ({}));
+    fixture.componentRef.setInput('characterId', 'c1');
+    fixture.componentRef.setInput('canChooseOutfit', false);
+    fixture.detectChanges();
+
+    const cb = checkbox(el);
+    cb.checked = true;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'New chats will let this character choose their own opening outfit',
+    });
+
+    cb.checked = false;
+    cb.dispatchEvent(new Event('change'));
+    await flush();
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'New chats will use this character’s default opening outfit',
+    });
+  });
+
   it('surfaces a failed save as v4’s toast', async () => {
     const dispatchData = vi.fn(async () => {
       throw new Error('nope');

@@ -360,6 +360,44 @@ describe('CharacterEdit', () => {
       Array.from(card.children).indexOf(select),
     );
   });
+
+  /**
+   * v4 `0506517d3` correction (f1): the EDIT view's hook gained the success
+   * toast the detail view's already had — before that, toggling the
+   * outfit-choice flag from the edit view saved silently. v5 has ONE card
+   * component hosted by BOTH views, so the sentences are pinned once on the
+   * card itself (`choose-outfit-card.spec.ts`); what needs pinning HERE is that
+   * the edit view is a host of it, i.e. that the toast reaches this view too —
+   * which is the whole of what v4's correction bought.
+   */
+  it('hosts the outfit-choice card on the Wardrobe tab, toast and all (f1)', async () => {
+    const fixture = await render(stubClient(character({ canChooseOutfit: true })));
+    fixture.componentRef.setInput('tab', 'wardrobe');
+    fixture.detectChanges();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    const card = fixture.nativeElement.querySelector(
+      'qt-character-choose-outfit-card',
+    ) as HTMLElement;
+    expect(card).toBeTruthy();
+    const box = card.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    // The host feeds it the loaded character's flag, not a constant.
+    expect(box.checked).toBe(true);
+
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(toasts().at(-1)).toEqual({
+      type: 'success',
+      message: 'New chats will use this character\u2019s default opening outfit',
+    });
+  });
 });
 
 /**
