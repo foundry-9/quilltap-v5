@@ -106075,3 +106075,198 @@ have no corpus row (pre-existing; `sonnet-5`, `opus-4-7`, `opus-4-8` and now
 `opus-5` do). `anthropic.rs` carries no unit tests for the list — the corpus
 is its pin, which is why the two rows were the deliverable rather than a
 `#[test]`.
+
+## Lane record — P4.D158 unit 2 item 4: the Zod 4.4.3 → 4.5.4 read (2026-09-05)
+
+`6e1a64ea6` moved `zod` a minor version, and v5 byte-copies Zod's own
+`ZodError.message` bodies into refusal envelopes at many edges. The order
+carried a three-arm summary from ordering; per §5.3 the diff was re-taken
+(`npm pack zod@4.4.3` vs the INSTALLED 4.5.4 the pin resolves), and it is
+**wider than three arms**.
+
+### `v4/locales/en.js` — four changes, not three
+
+| # | change | reachable in v4? |
+|---|---|---|
+| α | `too_small`/`too_big`: `adj = issue.exact ? "exactly " : issue.inclusive ? ">=" : ">"` | only via `.length(n)` |
+| β | `invalid_type` gains `getTypeName(type, input)`: a **non-finite number** renders `Infinity`/`-Infinity` instead of `number` | not through JSON |
+| γ | `invalid_union` + `issue.inclusive === false` → `"Invalid input: more than one option matched"` | v4 has no such union |
+| δ | **NEW, not in the order:** `credit_card: "credit card number"` added to the format-name dictionary | v4 uses no `.credit_card()` |
+
+δ only *adds* a name for a format that did not exist, so no existing sentence
+moves — but it was missing from the order's list, which is the §5.3 habit
+earning its keep on a work order's own prose.
+
+### The measurement that mattered
+
+**v5 DOES transcribe the (α) sentences** — `custom_tool_types.rs:995/1002/
+1052/1057` (`Too small: expected string to have >={m} characters`, and the
+number forms) plus four `>=1 characters` sites in `run_sql.rs`, `api/
+wardrobe.rs` ×2 and `api/chat_outfits.rs`. So the arm is live, and the
+question is whether any of them comes from a `.length(n)`.
+
+- **v4's Pascal custom-tool schema uses `.min()`/`.max()` exclusively**
+  (`lib/pascal/custom-tool.types.ts` — measured, no `.length(` in the file).
+  `.min`/`.max` never set `issue.exact`, so the `>=`/`<=` adjectives are
+  UNCHANGED and every v5 sentence stays byte-correct.
+- **Every `.length(n)` in v4** — SIX sites, not the five the order listed: the
+  sixth is `mount-index.types.ts:304`. All six are `sha256: z.string()
+  .length(64)` on repository-internal schemas (`file.types.ts:37/:95`,
+  `mount-index.types.ts:81/:159/:280/:304`); none is parsed from an API body,
+  and v5 transcribes no `>=64 characters`/`exactly 64` sentence anywhere
+  (grep-confirmed). If v5 ever answers a `.length` refusal it must use the new
+  `exactly 64` wording.
+- (γ)'s sentence appears nowhere in v5 (grep-confirmed).
+
+### `v4/core/regexes.js` — the uuid family is byte-identical, but five others moved
+
+`guid`, `uuid(version)`, `uuid4/6/7` are **character-for-character identical**
+between 4.4.3 and 4.5.4, so the `zod_uuid` gates (`api/chat_outfits.rs:297`,
+`api/brahma.rs:139`, the folded `z.uuid()` copies) need no change — the order's
+claim, verified rather than taken.
+
+Five regexes DID move and the order did not have them: `ulid` (now anchored to
+a `[0-7]` lead), `emoji` (alternation → one character class), `cidrv6` (the
+compressed forms), `domain` (length-bounded, TLD capped at 63), and a new
+`creditCard`. **v4 uses none of those validators** (measured across `lib/ app/
+packages/ plugins/`, non-test: zero hits for `.ulid(`, `.domain(`, `.cidrv6`,
+`.emoji(`, `.credit_card`, `.nanoid(`).
+
+**One real behaviour change is reachable and worth recording.** `datetime()`
+was rewritten: RFC 3339 seconds are now MANDATORY wherever the time carries a
+`Z` or an offset (only the unqualified `local` form may omit them). v4 has
+exactly one site — `lib/schemas/common.types.ts:55`, `TimestampSchema =
+z.iso.datetime().or(z.date())` — and it guards `createdAt`/`updatedAt` across
+chats, chat settings, embedding jobs, chat documents and more. So at 4.5.4 a
+v4 archive or body carrying `2026-07-01T00:00Z` is refused where it used to
+parse. It is unexercised in practice on both sides: those cells are written by
+`toISOString()`, which always emits seconds and milliseconds, and **no v5
+fixture or corpus carries a seconds-less ISO timestamp** (grep-confirmed over
+`harness/oracle/fixtures` and `crates/quilltap-harness`). Recorded, not ported
+— v5 runs no Zod, and nothing in v5 transcribes a lenient timestamp validator.
+
+### Verdict and the proof
+
+**No v5 sentence moves, and no v5 regex transcription moves.** The positive
+proof is the settings/routes families regenerated at the pin in unit 3's bulk
+sweep and staying green — `settings_routes_equivalence`, the `chat_settings_*`
+arms, the `web_edge_body_parse_guard` families and P4.62's `validationError`
+envelope family are the ones that would have to move; they are named here and
+their sweep result is unit 3's record.
+
+## Lane record — P4.D158 unit 4 items 7–8: two ratifications with evidence (2026-09-05)
+
+**`49f66f571` — NO-PORT, ratified.** Two one-line call swaps,
+`NextResponse.json(x)` → `successResponse(x)`, at
+`app/api/v1/connection-profiles/[id]/route.ts:98` (the `get-tags` GET action)
+and `app/api/v1/wardrobe/route.ts:58` (the default archetype listing), plus the
+import line. The neutrality was measured rather than trusted:
+`lib/api/responses.ts:63` is `successResponse<T>(data, status = 200) { return
+NextResponse.json(data, { status }) }` — a pass-through — and both call sites
+pass one argument, so the status is 200 and the body bytes are unchanged. The
+two surfaces are ported (P4.D85's `resolve_editor_tags`; P4.D112's wardrobe
+archetypes) and both payloads are covered by families in unit 3's sweep.
+
+**`a0e6fb42a` — NO-PORT, ratified.** Eighteen new `__tests__/` files (233
+cases), `docs/CHANGELOG.md`, and one bundle hunk. The bundle hunk was
+inspected rather than assumed: every added/removed line in
+`plugins/dist/qtap-plugin-anthropic/index.js` mentions only
+`standardwebhooks` / `timingSafeEqual` (7 and 4 occurrences respectively), and
+**not one mentions `SAMPLING_PARAMS`, `temperature`, `top_p`, `top_k` or
+`thinking`** — it is a vendored-dependency re-inline, superseded twice over by
+`b52b996c1` and `6e1a64ea6` rebuilding every bundle, and unit 2's corpus proves
+the anthropic wire byte-identical across all three.
+
+**The paragraph worth keeping** (the reason the order says READ it): v4's
+commit body records that **bugs 87, 88, 112 and 119 turned out to be covered
+already, under tests that do not name their bug number**, and that **bugs 89,
+90, 100 and 102 are guarded outside jest** — by
+`scripts/assert-standalone-portable.mjs` and by `scripts/check-qt-classes.mjs`
+in `npm run lint`. A future lane looking for a v4-side pin under the obvious
+name will find none for any of those eight; that is not a gap, it is where they
+live. The two bugs it DOES add regression tests for (104 and 111) were absorbed
+at P4.D128 and the P4.D138 follow-up respectively.
+
+## Lane record — P4.D158 unit 4 item 9: `2edd823c0`'s four blind spots become corpus arms (2026-09-05)
+
+`2edd823c0` itself is **NO-PORT for behaviour** — `restore-field-fidelity
+.test.ts` (+144) and `docs/CHANGELOG.md` only, "no production code changed"
+verified against the two-file stat. What it is worth is the class it names,
+in v4's own words:
+
+> a new column announces itself with a migration; a new key in a JSON bag or a
+> widened enum domain is invisible to every schema check.
+
+**The premise verified first.** None of `conciergeOverride`,
+`allowCheapFallback`, `loras` or `perTurnConversationSummaries` appears in any
+v5 restore/backup/import family, oracle case or fixture builder (measured
+2026-09-05). So v5's tier-2 DB-state diff was green on all four for the same
+reason v4's schema checks were: no archive carried them, so nothing asked.
+
+### The archive
+
+`crates/quilltap-web/tests/fixtures/restore-archives/restore-archive-bag-keys
+.zip` (29,548 bytes), built by `harness/oracle/fixtures/
+build-restore-archive-bag-keys.ts`. A DERIVATION of `restore-archive.zip` —
+`unzip`, four JSON edits, then the same `zip -r` call `backup-service.ts:800`
+makes — so every other byte in the zip is v4's own and both engines read
+identical bytes. The builder asserts the base archive's shape before each edit
+(2 chats, 1 chat-settings row with a `cheapLLMSettings` bag lacking the key, 1
+image profile whose `parameters` has `steps` and no `loras`, no existing
+`memoryRecall` row) and refuses loudly rather than producing a fixture that
+measures nothing.
+
+Verified against the archive's own manifest as ground truth (§5.4's habit):
+`counts.instanceSettings` 2 → 3, `conciergeOverride` `['UNCENSORED','OFF']`,
+`allowCheapFallback: true`, `parameters.loras` one adapter beside `steps: 30`.
+
+Unlike `build-restore-archive-legacy-profiles.ts`, this is not an archive v4
+*could not* produce — a modern instance whose chats had been ruled on and whose
+operator had opted into a stand-in would back up exactly this. It is a
+derivation only because reconstructing that instance to re-dump it is a much
+larger fixture for the same bytes.
+
+### The two cases, and the two ruled deferrals they reach
+
+`restore_bag_keys_replace` and `restore_bag_keys_new_account` (both modes:
+`new-account` is where a per-row rebuild is likeliest to reconstruct a record
+from the fields it knows about and leave a bag key behind). Both diff **44
+tables row-for-row across three partitions** against v4.
+
+The `new-account` arm reached two PRE-EXISTING ruled deferrals on its first
+run, and neither is new — the archive is `restore-archive.zip` plus four values
+inside existing columns, so it replays the same one `files/portrait.png`:
+
+- **`V5_STATS_GAP`** — v4 refreshes the target uploads mount's
+  `fileCount`/`totalSizeBytes` after the replay and v5 does not (rust
+  `fileCount: 0, totalSizeBytes: 0` vs oracle `1 / 32`). A fifth case of the
+  shape, recorded beside the four that were already there.
+- **`PHASE_ORDER_RESIDUAL`** — the ruled placement divergence on
+  `doc_mount_blobs` / `doc_mount_file_links` / `doc_mount_files`: same rows,
+  different insertion order. A fourth archive shape reaching it.
+
+### The four within-tree arms — the load-bearing half
+
+`assert_bag_keys_survive` in `system_restore_state.rs`. The cross-side dump
+catches a ONE-SIDED loss; it cannot catch a two-sided one — if v5 dropped
+`allowCheapFallback` and v4 dropped it too, the row diff would be green and the
+port would still be wrong. So each value is also asserted against what the
+ARCHIVE carries, by name, so a failure says which addition went missing. The
+chats are identified by TITLE, not id, because `new-account` remaps every id.
+
+**Mutation-proven, one per arm, on v5 SOURCE** (never fixture-side), each
+reddening only its own arm, in both modes:
+
+| arm | mutation | what reddened |
+|---|---|---|
+| 1 `conciergeOverride` | narrow `'UNCENSORED'` → `'OFF'` after the re-own (v4's own mutation) | `chat "A Lesson in Lift" restored as "OFF" — the archive carries "UNCENSORED"`; the `'OFF'` chat stayed green, so a NARROWING is distinguishable from a DROP |
+| 2 `allowCheapFallback` | remove the key from the bag before `ChatSettingsCreate` | the restored bag reads `"allowCheapFallback":false` — the schema default, i.e. exactly v4's "reads as a declined stand-in" |
+| 3 `parameters.loras` | strip `loras` at both image-profile sites | `restored parameters is {"steps":30}`; the sibling `steps` assertion separates a bag-level replacement from a lost key |
+| 4 `memoryRecall` | `continue` past that key in the raw-SQL upsert | `no memoryRecall row — the archive carries one, and 3 others restored` |
+
+The coverage floor moved 16 → 18 with its sentence updated, so a case going
+missing is loud rather than silent.
+
+**Zero v5 source changed by this unit** — v5 already carried all four
+faithfully. The deliverable is that a future regression in any of them now has
+a named arm to redden, which is the whole point of `2edd823c0`.

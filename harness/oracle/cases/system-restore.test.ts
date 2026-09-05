@@ -269,6 +269,31 @@ const RESTORE_CASES: Array<{
   // All eleven other committed archives carry exactly ONE folder row, so none
   // of them can see this (measured 2026-09-02).
   { name: 'restore_duplicate_folders_replace', archive: 'restore-archive-duplicate-folders.zip', collapseFolders: true },
+
+  // ── P4.D158 (`2edd823c0`): the additions that ride INSIDE an existing column ─
+  //
+  // v4's framing, and the reason these need an archive of their own: *a new
+  // column announces itself with a migration; a new key in a JSON bag or a
+  // widened enum domain is invisible to every schema check.* v4 pinned four of
+  // them with jest mocks over `restore.ts`; a DB-state diff can only see them
+  // if some archive carries them, and NONE of the thirteen others does
+  // (measured 2026-09-05).
+  //
+  //   1 `chats.conciergeOverride: 'UNCENSORED'` — the widened domain, on chat 1,
+  //     with `'OFF'` on chat 2 so a NARROWING and a DROP are different failures.
+  //   2 `chat_settings.cheapLLMSettings.allowCheapFallback: true` — default
+  //     `false`, so losing it reads as a declined stand-in.
+  //   3 `image_profiles.parameters.loras` — an unvalidated bag, carried beside
+  //     the pre-existing `steps`.
+  //   4 the `memoryRecall` instance-settings row — upserted by RAW SQL, so the
+  //     value travels as an opaque string.
+  //
+  // Both modes: `replace` is the ordinary path, and `new-account` is the one
+  // that remaps every id first — the mode in which a per-row rebuild is most
+  // likely to reconstruct a record from the fields it knows about and quietly
+  // leave a bag key behind.
+  { name: 'restore_bag_keys_replace', archive: 'restore-archive-bag-keys.zip' },
+  { name: 'restore_bag_keys_new_account', archive: 'restore-archive-bag-keys.zip', mode: 'new-account' },
 ];
 
 /** jest.setup stubs the file-storage manager; the restore file phase IS the

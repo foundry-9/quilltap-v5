@@ -214,6 +214,26 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
     ("restore_new_account", "mountIndex", "doc_mount_blobs"),
     ("restore_new_account", "mountIndex", "doc_mount_file_links"),
     ("restore_new_account", "mountIndex", "doc_mount_files"),
+    // [P4.D158] Same archive as `restore_new_account` bar four values inside
+    // existing columns, so its `new-account` restore replays the same legacy
+    // disk-key file and the two file phases place its content row, link and blob
+    // at the same differing points. The ruled divergence, reached by a fourth
+    // archive shape.
+    (
+        "restore_bag_keys_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_bag_keys_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_bag_keys_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
     (
         "restore_memory_graph_new_account",
         "mountIndex",
@@ -294,6 +314,12 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
     // archived mount row restores verbatim and v5 keeps the ARCHIVE's rollups,
     // which this zero-fileCount assertion cannot express. See the oracle's list.)
     ("restore_bug117_new_account", "Quilltap Uploads"),
+    // [P4.D158] The bag-keys archive IS `restore-archive.zip` plus four JSON
+    // edits, so its `new-account` restore replays the same one
+    // `files/portrait.png` into the target's own uploads mount and hits the same
+    // stale rollup. A fifth case of the shape, not a fifth gap — the edits are
+    // four values inside existing columns and touch no file at all.
+    ("restore_bag_keys_new_account", "Quilltap Uploads"),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
@@ -898,6 +924,14 @@ fn archive_for(name: &str) -> &'static str {
         // committed archives carry exactly ONE folder row (measured
         // 2026-09-02), so none of them can see it.
         "restore_duplicate_folders_replace" => "restore-archive-duplicate-folders.zip",
+        // [P4.D158] v4 `2edd823c0` — the four 4.9/4.10 additions that ride
+        // INSIDE an existing column (a widened enum domain and three JSON bags).
+        // None of the thirteen other committed archives carries ANY of the four
+        // (measured 2026-09-05), which is exactly the blind spot v4 names: a new
+        // column announces itself with a migration; a key inside a bag does not.
+        "restore_bag_keys_replace" | "restore_bag_keys_new_account" => {
+            "restore-archive-bag-keys.zip"
+        }
         other => panic!("unknown restore case {other}"),
     }
 }
@@ -1196,6 +1230,9 @@ fn system_restore_state_equivalence() {
         // [P4.D152] bug 117's own comparand, taken from the RAW dumps.
         assert_bug117_stored_sha(name, &got_state, want_state, &mut failures);
 
+        // [P4.D158] v4 `2edd823c0`'s four bag-key arms, within-tree.
+        assert_bag_keys_survive(name, &got_state, &mut failures);
+
         let literals = archive_literals(&zip, &host.temp_dir());
         compare_case(
             name,
@@ -1211,10 +1248,11 @@ fn system_restore_state_equivalence() {
     }
 
     assert_eq!(
-        seen, 16,
-        "expected all sixteen restore cases in the oracle (ten + the #58 orphan-links arm \
+        seen, 18,
+        "expected all eighteen restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
-         + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm)"
+         + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
+         + P4.D158's two bag-key arms)"
     );
     assert!(
         failures.is_empty(),
@@ -1448,6 +1486,185 @@ fn compare_warnings(name: &str, got: &Value, want: &Value, failures: &mut Vec<St
 /// land the same hash — and the archive's own `files.sha256` is a fixed sentinel
 /// that is neither of them, so a restore that copies the archive's value is
 /// visible in both directions.
+/// [P4.D158] v4 `2edd823c0`'s four arms — the additions that ride INSIDE an
+/// existing column, asserted **within-tree** on v5's own restored cells.
+///
+/// The cross-side dump above already compares these cells to v4's, which catches
+/// a one-sided loss. It cannot catch a two-sided one: if v5 dropped
+/// `allowCheapFallback` and v4 dropped it too, the row diff would be green and
+/// the port would still be wrong. So each of the four is also asserted against
+/// the value the ARCHIVE carries, by name, so the failure says which addition
+/// went missing rather than "a row differs".
+///
+/// v4's own framing, from the commit that motivated them: *a new column
+/// announces itself with a migration; a new key in a JSON bag or a widened enum
+/// domain is invisible to every schema check.*
+fn assert_bag_keys_survive(
+    name: &str,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    failures: &mut Vec<String>,
+) {
+    if !name.starts_with("restore_bag_keys") {
+        return;
+    }
+    let empty: Vec<Value> = Vec::new();
+    let table =
+        |t: &str| -> &Vec<Value> { got.get("main").and_then(|p| p.get(t)).unwrap_or(&empty) };
+    let mut fail = |arm: &str, msg: String| {
+        failures.push(format!("[{name}] BAG-KEY ARM {arm}: {msg}"));
+    };
+
+    // ── arm 1: the widened enum domain, on both chats ───────────────────────
+    //
+    // Two rows, because a NARROWING and a DROP are different bugs: narrowing
+    // 'UNCENSORED' to 'OFF' moves only the first cell (and would silently re-arm
+    // the classifier on a chat the operator had ruled on); dropping the column
+    // moves both. The chats are identified by title, since `new-account` remaps
+    // every id.
+    let chats = table("chats");
+    let by_title = |t: &str| -> Option<&Value> {
+        chats
+            .iter()
+            .find(|r| r.get("title").and_then(Value::as_str) == Some(t))
+    };
+    for (title, want) in [
+        ("A Lesson in Lift", "UNCENSORED"),
+        ("Quiet Interlude", "OFF"),
+    ] {
+        match by_title(title) {
+            None => fail(
+                "1 conciergeOverride",
+                format!("no restored chat titled {title:?}"),
+            ),
+            Some(row) => {
+                let got_v = row.get("conciergeOverride");
+                if got_v.and_then(Value::as_str) != Some(want) {
+                    fail(
+                        "1 conciergeOverride",
+                        format!(
+                            "chat {title:?} restored as {} — the archive carries {want:?}",
+                            serde_json::to_string(&got_v).unwrap()
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    // ── arm 2: a JSON-bag key whose schema default is the opposite ──────────
+    //
+    // `allowCheapFallback` defaults to false, so losing it in transit reads as
+    // the operator having DECLINED a stand-in they opted into. In `new-account`
+    // mode the target keeps its own freshly-provisioned settings row too, so the
+    // arm looks for the RESTORED one: the row whose bag carries the key at all.
+    let settings = table("chat_settings");
+    let restored_bag = settings.iter().filter_map(|r| {
+        let raw = r.get("cheapLLMSettings")?.as_str()?;
+        let bag: Value = serde_json::from_str(raw).ok()?;
+        bag.get("embeddingProvider")
+            .and_then(Value::as_str)
+            .filter(|p| *p == "OPENAI")
+            .filter(|_| bag.get("fallbackToLocal") == Some(&Value::Bool(false)))?;
+        Some(bag)
+    });
+    let bags: Vec<Value> = restored_bag.collect();
+    match bags.len() {
+        1 => {
+            if bags[0].get("allowCheapFallback") != Some(&Value::Bool(true)) {
+                fail(
+                    "2 allowCheapFallback",
+                    format!(
+                        "restored cheapLLMSettings is {} — the archive carries true, and the \
+                         schema default (false) reads as a declined stand-in",
+                        serde_json::to_string(&bags[0]).unwrap()
+                    ),
+                );
+            }
+        }
+        n => fail(
+            "2 allowCheapFallback",
+            format!("expected exactly one RESTORED chat_settings bag, found {n}"),
+        ),
+    }
+
+    // ── arm 3: a reserved key in an unvalidated bag ─────────────────────────
+    //
+    // Nothing downstream validates `image_profiles.parameters`, so nothing
+    // downstream would notice `loras` going missing. The pre-existing `steps` is
+    // asserted beside it so a bag-level REPLACEMENT and a key-level DROP are
+    // different failures.
+    let profiles = table("image_profiles");
+    match profiles.len() {
+        1 => {
+            let raw = profiles[0].get("parameters").and_then(Value::as_str);
+            let bag: Option<Value> = raw.and_then(|r| serde_json::from_str(r).ok());
+            match bag {
+                None => fail(
+                    "3 parameters.loras",
+                    format!("parameters is not a JSON object: {raw:?}"),
+                ),
+                Some(bag) => {
+                    let loras = bag.get("loras").and_then(Value::as_array);
+                    let ok = loras.map(|a| {
+                        a.len() == 1
+                            && a[0].get("source").and_then(Value::as_str)
+                                == Some("author/some-lora")
+                            && a[0].get("triggerPhrase").and_then(Value::as_str)
+                                == Some("in the style of")
+                    }) == Some(true);
+                    if !ok {
+                        fail(
+                            "3 parameters.loras",
+                            format!(
+                                "restored parameters is {bag} — the archive carries one adapter"
+                            ),
+                        );
+                    }
+                    if bag.get("steps").and_then(Value::as_i64) != Some(30) {
+                        fail(
+                            "3 parameters.loras",
+                            format!("the sibling `steps` key is gone too ({bag}) — that is a bag-level replacement, not a lost key"),
+                        );
+                    }
+                }
+            }
+        }
+        n => fail(
+            "3 parameters.loras",
+            format!("expected 1 image profile, found {n}"),
+        ),
+    }
+
+    // ── arm 4: the row written by RAW SQL rather than a repository ──────────
+    //
+    // `instance_settings` is upserted directly (`restore.ts:879`), so the value
+    // travels as an opaque string: the guard is that the row is written at all,
+    // and written verbatim.
+    let rows = table("instance_settings");
+    match rows
+        .iter()
+        .find(|r| r.get("key").and_then(Value::as_str) == Some("memoryRecall"))
+    {
+        None => fail(
+            "4 memoryRecall",
+            format!(
+                "no memoryRecall row — the archive carries one, and {} others restored",
+                rows.len()
+            ),
+        ),
+        Some(row) => {
+            let raw = row.get("value").and_then(Value::as_str).unwrap_or_default();
+            let bag: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+            if bag.get("perTurnConversationSummaries") != Some(&Value::Bool(true)) {
+                fail(
+                    "4 memoryRecall",
+                    format!("restored value is {raw:?} — perTurnConversationSummaries is gone"),
+                );
+            }
+        }
+    }
+}
+
 fn assert_bug117_stored_sha(
     name: &str,
     got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,

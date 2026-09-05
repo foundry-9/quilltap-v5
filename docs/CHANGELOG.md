@@ -806,6 +806,35 @@ red against the pinned v4 — this fix is what closes them.
 `completion_behavior` gains a scoped guard for the fish block, because the
 blanket flag-coverage test asks only whether `-l 'json'` appears anywhere in
 a template, and it already did — on the top-level `quilltap --json`.
+#### 2026-09-05 — test(restore): pin the four 4.9/4.10 additions that ride inside an existing column (v4 `2edd823c0`)
+
+_Versions: harness 0.0.674._
+
+v4's `2edd823c0` states the class in a sentence: a new column announces itself
+with a migration, but a new key in a JSON bag or a widened enum domain is
+invisible to every schema check. It pinned four of them with jest mocks. v5's
+restore proof is a tier-2 DB-state diff, which can only see a key some archive
+carries — and **none of the thirteen committed archives carried any of the
+four** (measured: the names appear in no restore/backup family, oracle case or
+fixture builder in the tree). The cross-side dump was green on all four for
+exactly the reason v4's schema checks were: nothing asked.
+
+A new committed archive, `restore-archive-bag-keys.zip`, carries all four:
+`chats.conciergeOverride = 'UNCENSORED'` on one chat and `'OFF'` on the other
+(so a narrowing and a drop are different failures),
+`chat_settings.cheapLLMSettings.allowCheapFallback = true`,
+`image_profiles.parameters.loras` beside the pre-existing `steps`, and a
+`memoryRecall` instance-settings row carrying `perTurnConversationSummaries`.
+It is a derivation of `restore-archive.zip` — four JSON edits, then v4's own
+`zip -r` — so every other byte is v4's, and both engines read the same bytes.
+
+Two new restore cases (`replace` and `new-account`) diff clean cross-side, and
+four named within-tree arms assert each value against what the archive carries,
+because a cross-side dump cannot tell "both sides carried the key" from "both
+sides dropped it". Each arm is mutation-proven on v5 source and reddens only
+itself: narrowing `'UNCENSORED'`, removing `allowCheapFallback` from the bag,
+stripping `loras`, and skipping the `memoryRecall` row.
+
 #### 2026-09-05 — fix(providers): stop sending Claude Opus 5 the sampling params it rejects (v4 `48f4b42ec`)
 
 _Versions: core 0.0.777, harness 0.0.673._
