@@ -57,6 +57,8 @@ const SEEDED_FILE_IDS: &[&str] = &[
     "f0000000-0000-4000-8000-000000000009",
     "f0000000-0000-4000-8000-00000000000a",
     "f0000000-0000-4000-8000-0000000000b1",
+    // P4.76 item (a): referenced by CHAR_ARCH_PEER and CHAR_ARCHIVED.
+    "f0000000-0000-4000-8000-00000000000c",
 ];
 
 /// The Rust side's pixel codec: byte-CHANGING (so `convert_to_webp` reports
@@ -171,6 +173,8 @@ const F_INUSE: &str = "f0000000-0000-4000-8000-000000000005";
 const F_ORPHAN: &str = "f0000000-0000-4000-8000-000000000006";
 const F_PLAIN: &str = "f0000000-0000-4000-8000-000000000007";
 const F_NOKEY_INUSE: &str = "f0000000-0000-4000-8000-00000000000a";
+/// P4.76 item (a): referenced by an ARCHIVED character and by a normal peer.
+const F_ORPHAN_ARCH: &str = "f0000000-0000-4000-8000-00000000000c";
 const F_DOC: &str = "f0000000-0000-4000-8000-000000000009";
 const MISSING: &str = "f0000000-0000-4000-8000-00000000dead";
 
@@ -784,6 +788,26 @@ fn images_routes_match_oracle() {
             CannedFetch::ok("image/png", png_1x1()),
             None,
         ),
+        // P4.76 item (b): MEASURED — Zod 4's bare `z.url()` is exactly
+        // "`new URL(value.trim())` does not throw" (no `://` guard without the
+        // `httpProtocol` constraint), so v4 ACCEPTS an authority-less scheme and
+        // goes on to fetch it. These two rows are the pin for both halves: the
+        // acceptance, and the filename `importImageFromUrl` derives from an
+        // OPAQUE pathname (no leading slash) — `someone@example.invalid` keeps
+        // its dot-bearing last segment, `png;base64,iVBORw0KGgo=` has none and
+        // takes the mime subtype. v5's `zod_url_ok` refused both until this unit.
+        (
+            "import_mailto_scheme",
+            json!("mailto:someone@example.invalid"),
+            CannedFetch::ok("image/png", png_1x1()),
+            None,
+        ),
+        (
+            "import_data_uri",
+            json!("data:image/png;base64,iVBORw0KGgo="),
+            CannedFetch::ok("image/png", png_1x1()),
+            None,
+        ),
         // v4 echoes the PARSED tags (`route.ts:445`): unknown keys stripped,
         // each object rebuilt `tagType` then `tagId`. Sent reordered and with
         // an extra key so the receipt's key order is the comparand (the §3
@@ -835,6 +859,12 @@ fn images_routes_match_oracle() {
         // stays FALSE and the orphan branch runs. Without this row a mutation
         // flipping the key-less arm to "bytes present" stayed GREEN.
         ("delete_nokey_in_use", F_NOKEY_INUSE, true),
+        // P4.76 item (a): the orphan cleanup hits an ARCHIVED character, whose
+        // repository guard throws — 500 `Failed to delete image`, with the
+        // PEER's cleared `defaultImageId` already committed and its
+        // `avatarOverrides` untouched (the second loop never runs). Both sides
+        // keep the half-done cleanup because neither opens a transaction.
+        ("delete_orphan_archived_peer", F_ORPHAN_ARCH, true),
     ];
     for (name, id, dump) in delete_cases {
         driven.push((*name).to_string());

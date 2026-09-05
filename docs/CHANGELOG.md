@@ -251,6 +251,78 @@ embedded table; 120 docs + 667 chunks + the rowid walk order compared; a one-byt
 edit to one vendored file reddens it — mutation-proven) and `help_tree_embed_guard`
 (the embedded table equals the on-disk walk: path set, order, bytes; pins the
 120-file count so an empty embed cannot pass).
+#### 2026-09-05 — feat(images): serve `POST /api/v1/images?action=generate` (P4.76 tier 1)
+
+_Versions: core 0.0.797, harness 0.0.686, web 0.0.115, host 0.0.97._
+
+v4's `handleGenerateImage` (`app/api/v1/images/route.ts:177-408`) ported whole.
+It is v4's OWN route-level implementation, not a call into the Salon's
+`generate_image` tool, and every difference is deliberate: the Concierge gate is
+`scanImagePrompts` with NO chat, the AUTO_ROUTE reroute picks the FIRST
+`isDangerousCompatible` profile rather than the Concierge desk's
+`uncensoredImageProfileId`, no orientation is resolved (the params builder's
+`orientation: None` arm exists for this caller), and the whole Concierge block
+sits in one fail-safe try/catch.
+
+Two new host seams, carried as ONE `Option` in the engine assembly so a
+half-wired host cannot generate while silently skipping the Concierge:
+`ErasedImageGenerate` (an object-safe wrapper over `ImageProvider::generate_image`
+in `model/image.rs`, the `ErasedImageDiscovery` shape) and
+`ErasedImagePromptClassifier` (the two provider generics `classify_content`
+needs, erased beside its only consumer — the `ErasedImageImportFetch`
+precedent). Both are built in a new `quilltap-host/src/images_generate.rs` from
+`ProviderIo`, independent of the spine bundle. ⚠ LIVE means real money: one
+image-provider call per request plus a cheap-LLM classification whenever the
+Concierge is armed.
+
+`Request::ImagesGenerate` carries its four body fields RAW, because v4
+Zod-parses the whole body and every refusal must answer v4's `Validation error`
+400 from ONE place on both transports. The web edge replaces P4.73's named
+refusal; both of that refusal's tripwires are retired in this commit —
+`activity_span_sites_guard`'s site 9 moves out of `NO_V5_SURFACE` into the
+census with its `track_activity(ActivityKind::Image, …)` wrap, and
+`lora_log_anchor_guard`'s `api.v1.images.generate` absence test is deleted as
+its own doc comment instructed.
+
+**The differential is new: `images_generate_route_equivalence` (tier 3, 37
+cases)**, driving v4's real route with the image provider and the classifier
+mocked below it, `Date` frozen, and the danger bag patched per case by raw SQL
+on both sides. Beyond status and body it compares the ORDERED provider calls
+(including the api key, which is what proves a reroute switched profiles) and
+the ORDERED classification calls (whose recorded `CheapLLMSelection` is the only
+way to pin `build_cheap_llm_selection` on this path), plus the post-mutation
+`files` rows and Lantern mount links. Provider bytes are `image/webp` so the
+transcode passes through and the stored sha — and the `_<sha8>_` inside the
+filename — are real comparands; one `image/png` case exercises the transcode
+policy with the codec-dependent fields blanked (D19).
+
+Also landed, the five items the P4.73 unification review recorded:
+
+* **(a)** the `{id}` DELETE's orphan cleanup now runs v4's
+  `validateCharacterArchivePatch` before each `characters` write, so an ARCHIVED
+  character makes the request answer 500 `Failed to delete image` — with the
+  already-committed updates left in place on both sides, since neither opens a
+  transaction. The fixture gains the archived character AND a normal peer that
+  makes the half-done cleanup visible.
+* **(b)** `zod_url_ok` was wrong. MEASURED against the installed zod: bare
+  `z.url()` is exactly "`new URL(value.trim())` does not throw" (the `://` guard
+  applies only under the `httpProtocol` constraint), so v4 ACCEPTS
+  `mailto:someone@example.invalid` and `data:image/png;base64,…` and goes on to
+  fetch them. Both now parse, and `whatwg_pathname` gained the opaque-path form
+  that derives v4's `someone@example.webp` / `png;base64,iVBORw0KGgo=.webp`.
+* **(c)** v4's two per-leg receipt lines (`[Images v1] Image uploaded` /
+  `imported from URL`) were unported. Two literal emission sites, pinned by a
+  capture layer plus a production-zone source census.
+* **(d)** the JSON body ceiling recorded rather than inherited: v4's request
+  path allows 10 GB (`proxyClientMaxBodySize`), so `usize::MAX` is the faithful
+  spelling and axum's 2 MB default would be a v5-invented 413.
+* **(e)** the images oracle's `cannedFetch` was order-dependent — a fetch-less
+  case inherited its predecessor's wire. It is now assigned unconditionally, and
+  the default THROWS, so the regen passing is itself the proof that nothing was
+  relying on the inheritance.
+
+`handler-logging-inventory.md` gains its first `app/api/**` file, seeded so the
+generate route's eight lines are dispositioned.
 
 #### 2026-09-05 — docs(setupphase): order the `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77)
 

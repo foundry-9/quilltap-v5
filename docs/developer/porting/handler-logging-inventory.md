@@ -9,50 +9,29 @@ disposition. **Generated** — regenerate with:
 
 | disposition | meaning | count |
 |---|---|---|
-| `PORTED-PINNED` | a v5 tracing site carries the sentence AND a test asserts it | 19 |
-| `PORTED-UNPINNED` | a v5 tracing site carries it; nothing asserts it | 49 |
-| `NO-PORT-RECORDED` | no v5 site, but a v5 comment records the decision | 8 |
+| `PORTED-PINNED` | a v5 tracing site carries the sentence AND a test asserts it | 12 |
+| `PORTED-UNPINNED` | a v5 tracing site carries it; nothing asserts it | 46 |
+| `NO-PORT-RECORDED` | no v5 site, but a v5 comment records the decision | 5 |
 | `NO-SITE` | neither | 150 |
-| **total** | | **226** |
+| **total** | | **213** |
 
 A match inside a v5 comment never counts as a port: several sites quote a v4
 sentence precisely to record that it was deliberately not ported.
 
-## The help-chats routes (P4.9I2A)
+## Other
 
-### `app/api/v1/help-chats/[id]/route.ts` — 3 line(s) (PORTED-PINNED 3)
-
-| v4 line | level | sentence | v5 site | disposition |
-|---|---|---|---|---|
-| 120 | info | `Help chat renamed` | `api/help_chats.rs:574` | PORTED-PINNED |
-| 161 | info | `Help chat context updated` | `api/help_chats.rs:628` | PORTED-PINNED |
-| 184 | info | `Help chat deleted` | `api/help_chats.rs:642` | PORTED-PINNED |
-
-### `app/api/v1/help-chats/route.ts` — 1 line(s) (PORTED-PINNED 1)
+### `app/api/v1/images/route.ts` — 8 line(s) (NO-PORT-RECORDED 1, PORTED-PINNED 2, PORTED-UNPINNED 5)
 
 | v4 line | level | sentence | v5 site | disposition |
 |---|---|---|---|---|
-| 205 | info | `Help chat created` | `api/help_chats.rs:516` | PORTED-PINNED |
-
-## The help-docs routes (P4.9I2A)
-
-### `app/api/v1/help-docs/[id]/route.ts` — 3 line(s) (PORTED-PINNED 2, PORTED-UNPINNED 1)
-
-| v4 line | level | sentence | v5 site | disposition |
-|---|---|---|---|---|
-| 38 | warn | `[HelpDoc] Document not found` | `api/help_docs.rs:127` | PORTED-PINNED |
-| 42 | info | `[HelpDoc] Document retrieved` | `api/help_docs.rs:136` | PORTED-PINNED |
-| 57 | error | `[HelpDoc] Error getting document` | `api/help_docs.rs:150` | PORTED-UNPINNED |
-
-### `app/api/v1/help-docs/route.ts` — 5 line(s) (PORTED-PINNED 2, PORTED-UNPINNED 3)
-
-| v4 line | level | sentence | v5 site | disposition |
-|---|---|---|---|---|
-| 29 | info | `[HelpDocs] Listed help documents` | `api/help_docs.rs:52` | PORTED-PINNED |
-| 33 | error | `[HelpDocs] Error listing help documents` | `api/help_docs.rs:58` | PORTED-UNPINNED |
-| 116 | info | `[HelpDocs] Guide text search` | `api/help_docs.rs:104` | PORTED-PINNED |
-| 120 | error | `[HelpDocs] Error searching help documents` | `api/help_docs.rs:110` | PORTED-UNPINNED |
-| 141 | error | `[HelpDocs] Error getting chat count` | `api/help_docs.rs:82` | PORTED-UNPINNED |
+| 152 | error | `[Images v1] Error fetching images` | `api/images.rs:114` | NO-PORT-RECORDED |
+| 223 | info | `[Images v1] Front page image prompt classified as dangerous` | `api/images.rs:1578` | PORTED-UNPINNED |
+| 238 | info | `[Images v1] Rerouted to uncensored connection profile` | `api/images.rs:1615` | PORTED-UNPINNED |
+| 245 | warn | `[Images v1] No uncensored connection profile available, using original` | `api/images.rs:1622` | PORTED-UNPINNED |
+| 255 | error | `[Images v1] the Concierge classification failed, continuing normally` | `api/images.rs:1550` | PORTED-UNPINNED |
+| 388 | info | `[Images v1] Image generation complete` | `api/images.rs:1856` | PORTED-UNPINNED |
+| 429 | info | `[Images v1] Image imported from URL` | `api/images.rs:1186` | PORTED-PINNED |
+| 485 | info | `[Images v1] Image uploaded` | `api/images.rs:1192` | PORTED-PINNED |
 
 ## The background-job handlers
 
@@ -384,29 +363,6 @@ sentence precisely to record that it was deliberately not ported.
 | 835 | warn | `[Image Fallback] Could not build a fallback chain for the describer` | `services/file_fallback.rs:1383` | PORTED-PINNED |
 | 845 | info | `[Image Fallback] Trying a describer stand-in` | `services/file_fallback.rs:1413` | PORTED-UNPINNED |
 | 856 | info | `[Image Fallback] Describer stand-in answered` | `services/file_fallback.rs:1435` | PORTED-UNPINNED |
-
-## The HelpSearch cache (P4.9I2A — no v5 twin)
-
-### `lib/help-search.ts` — 3 line(s) (NO-PORT-RECORDED 3)
-
-| v4 line | level | sentence | v5 site | disposition |
-|---|---|---|---|---|
-| 56 | info | `Help documents loaded from database` | `api/help_docs.rs:17` | NO-PORT-RECORDED |
-| 108 | warn | `No embedded help docs available for search` | `api/help_docs.rs:19` | NO-PORT-RECORDED |
-| 207 | warn | `Section-level help scoring failed; falling back to whole-document scores` | `api/help_docs.rs:20` | NO-PORT-RECORDED |
-
-## The help-chat orchestrator (P4.9I2A)
-
-### `lib/services/help-chat/orchestrator.service.ts` — 6 line(s) (NO-PORT-RECORDED 1, PORTED-PINNED 1, PORTED-UNPINNED 4)
-
-| v4 line | level | sentence | v5 site | disposition |
-|---|---|---|---|---|
-| 141 | error | `Error processing help response for participant` | `services/help_chat/orchestrator.rs:410` | PORTED-PINNED |
-| 168 | error | `Help chat message error` | `services/help_chat/orchestrator.rs:66` | NO-PORT-RECORDED |
-| 433 | warn | `Agent stuck in tool call loop, forcing final response` | `services/help_chat/orchestrator.rs:796` | PORTED-UNPINNED |
-| 619 | warn | `Failed to trigger context summary check` | `services/help_chat/orchestrator.rs:1036` | PORTED-UNPINNED |
-| 634 | warn | `Failed to trigger memory extraction` | `services/help_chat/orchestrator.rs:1046` | PORTED-UNPINNED |
-| 640 | warn | `Failed to trigger async tasks` | `services/help_chat/orchestrator.rs:1006` | PORTED-UNPINNED |
 
 ## The system-events service
 

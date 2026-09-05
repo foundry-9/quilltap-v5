@@ -52,6 +52,8 @@ const F_INUSE = 'f0000000-0000-4000-8000-000000000005';
 const F_ORPHAN = 'f0000000-0000-4000-8000-000000000006';
 const F_PLAIN = 'f0000000-0000-4000-8000-000000000007';
 const F_NOKEY_INUSE = 'f0000000-0000-4000-8000-00000000000a';
+/** P4.76 item (a): referenced by an ARCHIVED character (and by a normal peer). */
+const F_ORPHAN_ARCH = 'f0000000-0000-4000-8000-00000000000c';
 const F_DOC = 'f0000000-0000-4000-8000-000000000009';
 const MISSING = 'f0000000-0000-4000-8000-00000000dead';
 
@@ -133,12 +135,27 @@ function mockRequest(url: string, body?: unknown): unknown {
  * `jest.resetModules`) and reads this slot — the same canned-wire-per-row shape
  * the P4.D138 HuggingFace family uses.
  */
-let cannedFetch: { status: number; statusText: string; contentType: string; body: Buffer } = {
-  status: 200,
-  statusText: 'OK',
-  contentType: 'image/png',
+type CannedFetch = { status: number; statusText: string; contentType: string; body: Buffer };
+
+/**
+ * The default installed for a case that declares NO `fetch`. P4.76 (the P4.73
+ * review's item (e)): this slot used to be assigned only when `c.fetch` was
+ * present, so a fetch-less case silently inherited its PREDECESSOR's wire and
+ * the corpus was order-dependent. It is now assigned unconditionally, and the
+ * default THROWS — so a case that reaches the network without declaring what it
+ * should find fails loudly instead of borrowing a neighbour's answer.
+ *
+ * The regen passing IS the proof that no existing case was relying on the
+ * inheritance (the two `import_*_scheme` arms below declare their own).
+ */
+const POISON: CannedFetch = {
+  status: 0,
+  statusText: 'UNDECLARED',
+  contentType: '',
   body: Buffer.alloc(0),
 };
+
+let cannedFetch: CannedFetch = POISON;
 
 function applyMocks(spec: Spec): void {
   // `node-fetch` is a dependency of the v4 CHECKOUT, not of this /tmp-staged
@@ -149,6 +166,13 @@ function applyMocks(spec: Spec): void {
   jest.doMock(nodeFetchPath, () => ({
     __esModule: true,
     default: async () => ({
+      ...(cannedFetch === POISON
+        ? (() => {
+            throw new Error(
+              'this case fetched without declaring a `fetch` — see POISON (P4.76 item (e))',
+            );
+          })()
+        : {}),
       ok: cannedFetch.status >= 200 && cannedFetch.status < 300,
       status: cannedFetch.status,
       statusText: cannedFetch.statusText,
@@ -559,6 +583,24 @@ function buildCases(): CaseSpec[] {
       dump: true,
     },
     { name: 'import_bad_url', run: imagesImport({ url: 'not-a-url' }), dump: true },
+    // P4.76 (the P4.73 review's item (b)): what does Zod 4's `z.url()` DO with a
+    // scheme that has no authority? v5's `zod_url_ok` requires `://` and a
+    // non-empty authority, so it refuses both of these — this measures whether
+    // v4 does. If v4 ACCEPTS, the route proceeds to `fetch`, and these rows also
+    // pin the filename `importImageFromUrl` derives from a pathname that has no
+    // leading `/`.
+    {
+      name: 'import_mailto_scheme',
+      run: imagesImport({ url: 'mailto:someone@example.invalid' }),
+      fetch: { status: 200, statusText: 'OK', contentType: 'image/png', body: PNG_1X1 },
+      dump: true,
+    },
+    {
+      name: 'import_data_uri',
+      run: imagesImport({ url: 'data:image/png;base64,iVBORw0KGgo=' }),
+      fetch: { status: 200, statusText: 'OK', contentType: 'image/png', body: PNG_1X1 },
+      dump: true,
+    },
     // The receipt echoes the PARSED tags (`route.ts:445`): unknown keys are
     // stripped and each object is rebuilt `tagType` then `tagId`. Sent
     // reordered and with an extra key so the receipt's key order is the
@@ -590,6 +632,16 @@ function buildCases(): CaseSpec[] {
     // `fileExists` stays FALSE and the ORPHAN branch runs. The discriminator
     // for `route.ts:150`'s `if (image.storageKey)` guard.
     { name: 'delete_nokey_in_use', run: imageDelete(F_NOKEY_INUSE), dump: true },
+    // P4.76 (the P4.73 unification review's item (a)): the orphan cleanup goes
+    // through `repos.characters.update`, whose `validateCharacterArchivePatch`
+    // THROWS on an archived character — and `update` takes `safeQuery`'s
+    // NO-fallback overload, so the throw reaches the route's outer catch:
+    // 500 `Failed to delete image`. The peer character (created FIRST, so
+    // `findByUserId` sees it first) proves the PARTIAL commit: its
+    // `defaultImageId` is cleared before the throw, while its `avatarOverrides`
+    // — the second loop, which never runs — still point at the image. Neither
+    // side opens a transaction, so both keep the half-done cleanup.
+    { name: 'delete_orphan_archived_peer', run: imageDelete(F_ORPHAN_ARCH), dump: true },
   ];
 }
 
@@ -614,7 +666,8 @@ async function runCase(
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
-  if (c.fetch) cannedFetch = c.fetch;
+  // Assigned UNCONDITIONALLY (item (e)) — never carried over from the last case.
+  cannedFetch = c.fetch ?? POISON;
 
   await initializeDatabase();
   try {

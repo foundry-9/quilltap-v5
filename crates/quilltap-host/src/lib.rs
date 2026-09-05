@@ -45,6 +45,9 @@ pub mod host;
 pub mod host_gateway;
 pub mod image_codec;
 // === P4.73: the images-collection import fetch ===
+// === P4.76 ===
+pub mod images_generate;
+// === end P4.76 ===
 pub mod image_import_fetch;
 // === end P4.73 ===
 pub mod instances;

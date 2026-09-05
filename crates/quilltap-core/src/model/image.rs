@@ -268,6 +268,69 @@ impl ErasedImageDiscovery {
     }
 }
 
+// === P4.76: the erased image-GENERATION seam ===
+
+/// The object-safe form of [`ImageProvider`], which the dispatch engine holds
+/// behind an `Arc<dyn …>` — the [`ImageModelDiscoveryDyn`] shape, one method
+/// down. It exists because `POST /api/v1/images?action=generate` is a ROUTE
+/// handler, not a tool: v4 calls `createImageProvider(...).generateImage(...)`
+/// inline (`app/api/v1/images/route.ts:266-274`), so the engine needs the
+/// provider call itself rather than the whole `generate_image` tool that
+/// [`ErasedImageGeneration`](crate::tools::generate_image::ErasedImageGeneration)
+/// wraps.
+///
+/// ⚠ `baseUrl` is NOT carried. v4 passes `profile.baseUrl ?? undefined` into
+/// the factory, but every v5 image dialect builds a fixed vendor URL
+/// (`model::image_dialects::build_image_request_with_extras`), so no v5 caller
+/// — this one, the tool, the avatar preview or the two job paths — has ever
+/// threaded it. The narrowing is pre-existing and shared; naming it here keeps
+/// it from looking like this seam's own omission.
+pub trait ImageGenerationDyn: Send + Sync {
+    fn generate_image<'a>(
+        &'a self,
+        provider: &'a str,
+        api_key: &'a str,
+        params: &'a ImageGenParams,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<ImageGenResponse, ImageGenError>> + Send + 'a>>;
+}
+
+impl<T: ImageProvider + Send + Sync> ImageGenerationDyn for T {
+    fn generate_image<'a>(
+        &'a self,
+        provider: &'a str,
+        api_key: &'a str,
+        params: &'a ImageGenParams,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<ImageGenResponse, ImageGenError>> + Send + 'a>>
+    {
+        Box::pin(ImageProvider::generate_image(
+            self, provider, api_key, params,
+        ))
+    }
+}
+
+/// A type-erased [`ImageProvider`] (the [`ErasedImageDiscovery`] shape).
+#[derive(Clone)]
+pub struct ErasedImageGenerate(std::sync::Arc<dyn ImageGenerationDyn>);
+
+impl ErasedImageGenerate {
+    /// Wrap a concrete image provider.
+    pub fn new<P: ImageGenerationDyn + 'static>(inner: P) -> Self {
+        Self(std::sync::Arc::new(inner))
+    }
+
+    /// One `provider.generateImage(params, apiKey)` call.
+    pub async fn generate_image(
+        &self,
+        provider: &str,
+        api_key: &str,
+        params: &ImageGenParams,
+    ) -> Result<ImageGenResponse, ImageGenError> {
+        self.0.generate_image(provider, api_key, params).await
+    }
+}
+
+// === end P4.76 ===
+
 /// The image → WebP transcode boundary (v4 `convertToWebP` /
 /// `transcodeToWebP`). No image-codec crate in the core (the `doc_blob`
 /// precedent). Given the decoded bytes + the provider mime type + the desired
@@ -454,10 +517,14 @@ mod tests {
             )
             .with_failure("GROK", &p, "content moderation rejected");
 
-        let ok = provider.generate_image("OPENAI", "k", &p).await.unwrap();
+        let ok = ImageProvider::generate_image(&provider, "OPENAI", "k", &p)
+            .await
+            .unwrap();
         assert_eq!(ok.images[0].revised_prompt.as_deref(), Some("a fluffy cat"));
 
-        let err = provider.generate_image("GROK", "k", &p).await.unwrap_err();
+        let err = ImageProvider::generate_image(&provider, "GROK", "k", &p)
+            .await
+            .unwrap_err();
         assert!(
             crate::services::dangerous_content::provider_routing::is_image_moderation_error(
                 &err.message
@@ -466,7 +533,11 @@ mod tests {
 
         // Unregistered ⇒ surfaced error.
         let miss = params("other", None);
-        assert!(provider.generate_image("OPENAI", "k", &miss).await.is_err());
+        assert!(
+            ImageProvider::generate_image(&provider, "OPENAI", "k", &miss)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

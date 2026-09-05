@@ -16,7 +16,7 @@
 //! * neither JSON nor multipart → **400 `Invalid content type`** (`:505`).
 //! * multipart without a `file` part → **400 `No file provided`** (`:459`).
 //! * a `tags` form field that is not JSON → **400 `Invalid tags JSON`** (`:470`).
-//! * `?action=generate` → v5's NAMED refusal (the leg is deferred; never a
+//! * `?action=generate` → the P4.76 generate leg (never a
 //!   fall-through to upload).
 //!
 //! Runs without an oracle (`cargo test -p quilltap-web --test images_edge_routes`).
@@ -148,7 +148,11 @@ async fn the_collection_post_edge_answers_v4s_own_arms() {
         "{body}"
     );
 
-    // The deferred generate leg refuses by NAME — never a fall-through to upload.
+    // P4.76: the generate leg is SERVED. An empty body reaches v4's
+    // `generateImageSchema.parse`, which refuses the missing prompt — so the
+    // edge's own proof is that the action routes there at all (a fall-through
+    // to upload would answer `Invalid content type`, and the pre-P4.76 refusal
+    // answered a 500 naming itself).
     let (status, body) = post(
         &client,
         &format!("{url}?action=generate"),
@@ -156,11 +160,23 @@ async fn the_collection_post_edge_answers_v4s_own_arms() {
         "{}".into(),
     )
     .await;
-    assert_eq!(status, 500, "{body}");
-    assert!(
-        body["error"].as_str().unwrap_or("").starts_with(
-            "Generating an image through POST /api/v1/images?action=generate is recognized but not"
-        ),
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (400, Some("Validation error")),
+        "{body}"
+    );
+    // …and a body that does not PARSE takes v4's `await request.json()` throw:
+    // the middleware's flat 500, never a 400 and never the upload leg.
+    let (status, body) = post(
+        &client,
+        &format!("{url}?action=generate"),
+        "application/json",
+        "{not json".into(),
+    )
+    .await;
+    assert_eq!(
+        (status, body["error"].as_str()),
+        (500, Some("Internal server error")),
         "{body}"
     );
 }

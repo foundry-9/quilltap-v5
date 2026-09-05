@@ -118,6 +118,24 @@ const F_NOKEY_INUSE = 'f0000000-0000-4000-8000-00000000000a';
 const CHAR_DEF2 = 'c1000000-0000-4000-8000-000000000004'; // defaultImageId → F_ORPHAN
 const CHAR_NOKEY = 'c1000000-0000-4000-8000-000000000005'; // defaultImageId → F_NOKEY_INUSE
 
+// ── P4.76 (the P4.73 review's item (a)): the ARCHIVED-character delete arm ──
+// The `{id}` DELETE's orphan cleanup calls `repos.characters.update`, whose
+// `validateCharacterArchivePatch` THROWS `CharacterArchivedError` on any patch
+// to an archived character that is not the single-key unarchive. `update` uses
+// `safeQuery`'s NO-fallback overload, so the throw reaches the route's outer
+// catch → `serverError('Failed to delete image')`.
+//
+// The pair below is what makes that measurable rather than assumed: F_ORPHAN_ARCH
+// is referenced by a NORMAL character (created FIRST, so `findByUserId` sees it
+// first) and by the ARCHIVED one. v4 clears every `defaultImageId` before it
+// touches any `avatarOverrides`, so the run commits the peer's cleared
+// `defaultImageId`, throws on the archived row, and NEVER reaches the override
+// loop — leaving the peer's override pointing at the image the request tried to
+// delete. Without the peer the arm would only prove "it 500s".
+const F_ORPHAN_ARCH = 'f0000000-0000-4000-8000-00000000000c';
+const CHAR_ARCH_PEER = 'c1000000-0000-4000-8000-000000000006'; // normal; default + override → F_ORPHAN_ARCH
+const CHAR_ARCHIVED = 'c1000000-0000-4000-8000-000000000007'; // archivedAt set; default → F_ORPHAN_ARCH
+
 /** A dangling `mount-blob:` storage key (no such blob → the bytes are gone). */
 function danglingBlobKey(uploads: string, tag: string): string {
   return `mount-blob:${uploads}:deadbeef-0000-4000-8000-${tag.padStart(12, '0')}`;
@@ -421,6 +439,13 @@ async function main(): Promise<void> {
     shaTag: '9',
   });
   await mkFile({
+    id: F_ORPHAN_ARCH,
+    filename: 'orphan-archived.webp',
+    createdAt: '2026-02-28T12:00:00.000Z',
+    storageKey: danglingBlobKey(spec.uploadsMountPointId, 'c'),
+    shaTag: 'c',
+  });
+  await mkFile({
     id: F_USERB,
     userId: spec.userIdB,
     filename: 'other-user.webp',
@@ -538,6 +563,34 @@ async function main(): Promise<void> {
     } as never,
     { id: CHAR_NOKEY, createdAt: TS, updatedAt: TS } as never,
   );
+
+  // 6b. P4.76 item (a): the archived-character delete arm (see the constants).
+  await repos.characters.create(
+    {
+      name: 'Archive Peer',
+      userId: spec.userId,
+      controlledBy: 'llm',
+      defaultImageId: F_ORPHAN_ARCH,
+      avatarOverrides: [{ chatId: CHAT_1, imageId: F_ORPHAN_ARCH }],
+    } as never,
+    { id: CHAR_ARCH_PEER, createdAt: TS, updatedAt: TS } as never,
+  );
+  await repos.characters.create(
+    {
+      name: 'Archived Owner',
+      userId: spec.userId,
+      controlledBy: 'llm',
+      defaultImageId: F_ORPHAN_ARCH,
+    } as never,
+    { id: CHAR_ARCHIVED, createdAt: TS, updatedAt: TS } as never,
+  );
+  // Archived by RAW update: `repos.characters.update` would run the very guard
+  // this row exists to arm, and archiving through the service would prune the
+  // vault (§4.2a) — irrelevant here and slow. The column is the whole fact.
+  await rawQuery('UPDATE characters SET archivedAt = ? WHERE id = ?', [
+    '2026-04-01T00:00:00.000Z',
+    CHAR_ARCHIVED,
+  ]);
 
   // 7. Connection profiles + their SYNTHETIC api keys (pinned ids — a minted
   //    `createApiKey` id would differ between the two fixture copies).

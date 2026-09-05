@@ -140,6 +140,17 @@ pub struct EngineAssembly {
     /// `None` on a spine-less assembly → the loud not-assembled refusal.
     pub image_import_fetch: Option<super::images::ErasedImageImportFetch>,
     // === end P4.73 ===
+    // === P4.76: the images-collection GENERATE action ===
+    /// Everything `POST /api/v1/images?action=generate` needs from the composing
+    /// host: the erased image provider, the erased Concierge classifier, and the
+    /// WebP codec. ONE `Option` on purpose — the two provider seams travel
+    /// together so a half-wired host cannot silently skip v4's Concierge block
+    /// while still generating. `None` on a spine-less assembly → the arm answers
+    /// the loud named refusal.
+    /// ⚠ 💸 LIVE means real money: one image-provider call per request, plus a
+    /// cheap-LLM classification whenever the Concierge is armed.
+    pub images_generate: Option<super::images::ImagesGenerateSeams>,
+    // === end P4.76 ===
     // === P4.6bd: the custom-tool consult seam ===
     /// The custom-tool consult runner (P4.6bd, wired LIVE in the host — the
     /// spine's wire-config runner with the 60 s timeout decorator). Behind the
@@ -299,6 +310,9 @@ impl EngineAssembly {
             chat_send: None,
             lora_metadata: None,
             image_import_fetch: None,
+            // === P4.76 ===
+            images_generate: None,
+            // === end P4.76 ===
             brahma_console_send: None,
             chat_create: None,
             swipe_generate: None,
@@ -511,6 +525,9 @@ struct ReadyEngine {
     image_discovery: Option<crate::model::image::ErasedImageDiscovery>,
     lora_metadata: Option<crate::image_gen::huggingface_lookup::ErasedLoraMetadata>,
     image_import_fetch: Option<super::images::ErasedImageImportFetch>,
+    // === P4.76 ===
+    images_generate: Option<super::images::ImagesGenerateSeams>,
+    // === end P4.76 ===
     /// The custom-tool consult runner (P4.6bd; `None` for spine-less assemblies —
     /// the composer/bench arms answer the loud not-assembled error).
     consult: Option<Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
@@ -4807,6 +4824,32 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.73 ===
+            // === P4.76: the images-collection GENERATE action ===
+            Request::ImagesGenerate {
+                prompt,
+                profile_id,
+                tags,
+                options,
+            } => match self.ready_images_generate() {
+                Ok((db, seams)) => {
+                    super::images::images_generate(
+                        &db,
+                        &seams,
+                        SINGLE_USER_ID,
+                        // v4's `Date.now()` — the two filenames this route mints
+                        // (`generated_<ts>_<i>.<ext>` and the stored
+                        // `generated_<ts>_<i>_<sha8>.webp`) are its only readers.
+                        crate::clock::now_unix_ms(),
+                        prompt.as_ref(),
+                        profile_id.as_ref(),
+                        tags.as_ref(),
+                        options.as_ref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.76 ===
             // === P4.9f1: the wardrobe server surface (lane F1, append-only) ===
             Request::ChatOutfitGet { chat_id } => match self.ready_db() {
                 Ok(db) => super::chat_outfits::chat_outfit_get(&db, &chat_id),
@@ -5119,6 +5162,25 @@ impl CoreEngine {
             EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
         }
     }
+
+    // === P4.76 ===
+    /// The `?action=generate` host seams, or the loud not-assembled refusal (the
+    /// `ready_image_import_fetch` precedent). ONE gate for the pair: a host that
+    /// wired only the image provider would silently skip v4's Concierge block.
+    fn ready_images_generate(&self) -> Result<(Db, super::images::ImagesGenerateSeams), Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => match &r.images_generate {
+                Some(s) => Ok((r.db.clone(), s.clone())),
+                None => Err(Response::error(
+                    ErrorKind::Internal,
+                    "image generation not assembled (the host image-provider + Concierge \
+                     classifier seams are unwired on this assembly)",
+                )),
+            },
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+    // === end P4.76 ===
 
     fn ready_db(&self) -> Result<Db, Response> {
         match &*self.inner.state.lock().unwrap() {
@@ -6143,6 +6205,9 @@ fn open_ready(
         shutdown: assembly.shutdown,
         lora_metadata: assembly.lora_metadata,
         image_import_fetch: assembly.image_import_fetch,
+        // === P4.76 ===
+        images_generate: assembly.images_generate,
+        // === end P4.76 ===
         chat_send: assembly.chat_send,
         chat_create: assembly.chat_create,
         swipe_generate: assembly.swipe_generate,

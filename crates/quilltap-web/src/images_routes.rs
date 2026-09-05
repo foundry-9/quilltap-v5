@@ -16,6 +16,21 @@
 //! `images_collection_post`, whose `unknown` / `empty` probes are exactly this
 //! fall-through.
 //!
+//! ## The JSON body ceiling (P4.76, the P4.73 review's item (d))
+//!
+//! Both JSON legs read the body with `usize::MAX` rather than axum's 2 MB
+//! default, and that is v4's posture MEASURED rather than assumed: v4's
+//! request-path ceiling is `next.config.js:66`'s
+//! `proxyClientMaxBodySize: '10gb'` (the `bodySizeLimit: '100mb'` two lines
+//! above governs Server Actions, not route handlers — dogfood findings #36/#63
+//! settled that distinction, and `files_write_routes`'s
+//! `import_body_over_the_old_100mb_ceiling_reaches_the_handler` is its pin).
+//! Ten gigabytes is not `usize::MAX`, so the two are not identical — but no
+//! payload this route can carry (a URL, a prompt, a tag list) comes within
+//! nine orders of magnitude of either, and the alternative — a v5-invented 413
+//! at 2 MB where v4 answers 200 — is the divergence that would actually be
+//! observable. RECORDED, not silently inherited.
+//!
 //! ## `?tagId=`
 //!
 //! v4 `searchParams.get('tagId')` (FIRST-wins) then `if (tagId)` — JS-falsy, so
@@ -124,7 +139,7 @@ pub async fn images_post(
     // `query::action` folds `?action=` into the no-action leg exactly as v4's
     // JS truthiness does; on this route BOTH land in the same place.
     if crate::query::action(&pairs) == Some("generate") {
-        return images_generate_not_available();
+        return images_generate(state, req).await;
     }
 
     let content_type = req
@@ -214,15 +229,46 @@ pub async fn images_post(
     error_json(StatusCode::BAD_REQUEST, "Invalid content type")
 }
 
-/// The `?action=generate` leg, pending its own unit. A NAMED refusal, never a
-/// silent fall-through to upload: v4 runs a whole synchronous generate here,
-/// and answering `Invalid content type` (what the upload leg would say to a
-/// JSON generate body) would be a lie about what the server does.
-fn images_generate_not_available() -> AxumResponse {
-    error_json(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "Generating an image through POST /api/v1/images?action=generate is recognized but not \
-         yet available (v4's route-level handleGenerateImage — its own Concierge gate, reroute \
-         rule and Lantern write — is the next P4.73 unit).",
+/// The `?action=generate` leg (P4.76) — v4 `handleGenerateImage`
+/// (`route.ts:177-408`), wrapped by v4 in `trackActivity('image', …)`.
+///
+/// ⚠ There is NO content-type gate on this leg. v4 goes straight to
+/// `await request.json()`, so a multipart or text body reaching `?action=generate`
+/// throws a SyntaxError, not the upload leg's `Invalid content type` — the flat
+/// 500 the middleware's final arm answers. The upload/import fall-through's
+/// content-type dispatch is reached only when the action is NOT `generate`.
+///
+/// The four body keys cross RAW: v4 Zod-parses them in the handler, so the
+/// refusals answer identical bytes on this transport and on Tauri IPC.
+async fn images_generate(state: SharedState, req: axum::extract::Request) -> AxumResponse {
+    let body = match axum::body::to_bytes(req.into_body(), usize::MAX).await {
+        Ok(b) => b,
+        Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+    };
+    let (prompt, profile_id, tags, options) = match serde_json::from_slice::<Value>(&body) {
+        Ok(Value::Object(map)) => (
+            map.get("prompt").cloned(),
+            map.get("profileId").cloned(),
+            map.get("tags").cloned(),
+            map.get("options").cloned(),
+        ),
+        // A body that PARSES but is not an object still reaches v4's Zod parse,
+        // which refuses it — the handler answers that, not the edge.
+        Ok(_) => (None, None, None, None),
+        Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+    };
+    match dispatch_core(
+        &state,
+        CoreRequest::ImagesGenerate {
+            prompt,
+            profile_id,
+            tags,
+            options,
+        },
     )
+    .await
+    {
+        Ok(resp) => unwrap_to_http(resp, StatusCode::CREATED),
+        Err(r) => r,
+    }
 }

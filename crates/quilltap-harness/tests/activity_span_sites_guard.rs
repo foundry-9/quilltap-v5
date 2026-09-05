@@ -82,6 +82,16 @@ const CENSUS: &[(&str, &str, &str, &str)] = &[
         "track_activity(\n        ActivityKind::Image,",
         "reading an image with a vision model is image work",
     ),
+    // 9 — v4 `app/api/v1/images/route.ts` POST ?action=generate. Moved out of
+    // `NO_V5_SURFACE` by P4.76, which landed the route: v4's own route-level
+    // implementation, wrapped at the POST handler because "generation is
+    // synchronous here rather than queued".
+    (
+        "crates/quilltap-core/src/api/images.rs",
+        "pub async fn images_generate",
+        "track_activity(\n        crate::services::activity_kinds::ActivityKind::Image,",
+        "the front-page generate runs synchronously in the request, so only this span counts it",
+    ),
     // 10 — v4 `app/api/v1/wardrobe/preview-avatar/route.ts`.
     (
         "crates/quilltap-core/src/api/wardrobe.rs",
@@ -104,18 +114,6 @@ const NO_V5_SURFACE: &[(&str, &str, &str)] = &[
         "apply_child_activity_delta",
         "NO-PORT by design: v5's job runner is in-process, so there is no child \
          to mirror and no crash mirror to zero (job_runner.rs's header).",
-    ),
-    // 9 — v4 `app/api/v1/images/route.ts` POST ?action=generate.
-    (
-        "POST /api/v1/images?action=generate",
-        "handle_generate_image",
-        "v5 serves the images COLLECTION route since P4.73 (list / upload / \
-         import-from-URL / the {id} DELETE) but NOT its ?action=generate leg — \
-         the edge answers a NAMED refusal (`images_routes::images_generate_not_available`); \
-         v5's Generate Image surface goes through image-profiles ?action=generate → \
-         execute_image_generation_tool, which site 7 already wraps. v4's \
-         handleGenerateImage is a separate route-level implementation, not a \
-         caller of that tool.",
     ),
     // — v4 `services/character-wizard.service.ts`.
     (

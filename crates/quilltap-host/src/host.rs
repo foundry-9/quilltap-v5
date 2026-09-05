@@ -833,6 +833,14 @@ impl EngineAssembler for HostAssembler {
                 crate::image_import_fetch::ReqwestImageImportFetch::new(),
             )),
             // === end P4.73 ===
+            // === P4.76: the images-collection GENERATE action, wired LIVE.
+            // Independent of the spine bundle (the `image_discovery` /
+            // `lora_metadata` precedent above): the route needs only the plain
+            // completion + moderation wires and the image dialect, all of which
+            // `ProviderIo` builds. ⚠ 💸 one image-provider call per request,
+            // plus a cheap-LLM classification whenever the Concierge is armed. ===
+            images_generate: Some(crate::images_generate::images_generate_seams(&self.version)),
+            // === end P4.76 ===
             // === P4.6bd: the custom-tool consult seam, wired LIVE from the
             // spine's wire-config runner (60 s timeout decorated). Spine-less
             // assemblies keep `None` → the composer/bench arms answer the loud

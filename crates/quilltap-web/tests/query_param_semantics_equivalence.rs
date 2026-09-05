@@ -242,9 +242,9 @@ fn endpoints() -> Vec<Endpoint> {
         // FIRST dispatch shape (only the literal `generate` takes the generate
         // leg; every other action value falls through to upload/import, so
         // there is no envelope to compare and the three equalities are the
-        // claim). v5 does not serve `generate` yet — the named refusal is
-        // pinned in `UNSERVED_KNOWN_ACTIONS`, and `known` is never
-        // cross-compared anyway.
+        // claim). P4.76 landed the generate leg, so its `UNSERVED_KNOWN_ACTIONS`
+        // row is gone — `known` is never cross-compared anyway, and the served
+        // leg's own refusals are `images_generate_route_equivalence`'s.
         ep_body(
             "images_collection_post",
             "POST",
@@ -588,15 +588,6 @@ const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
         "stats",
         400,
         "This route serves ?action=export only; JSON reads are on /api/dispatch",
-    ),
-    (
-        "POST",
-        "/api/v1/images",
-        "generate",
-        500,
-        "Generating an image through POST /api/v1/images?action=generate is recognized but not \
-         yet available (v4's route-level handleGenerateImage — its own Concierge gate, reroute \
-         rule and Lantern write — is the next P4.73 unit).",
     ),
     (
         "POST",

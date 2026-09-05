@@ -34,6 +34,13 @@ V5  = pathlib.Path('crates/quilltap-core/src')
 # unification: its `updateChatTokenAggregates` catch logs `Failed to update chat
 # token aggregates` — the sibling of `create_system_event`'s row, three lines
 # below it in v5's `cost_events.rs`, and invisible to the inventory until seeded.
+# P4.76 seeded the images COLLECTION route — the FIRST `app/api/**` file in this
+# inventory. Its eight lines belong here because `?action=generate` is a whole
+# synchronous pipeline living in a route handler rather than a job handler, and
+# because the P4.73 unification review found two of them (the upload / import
+# receipts) unported with nothing to say so. Seeding the file is also the first
+# repayment of the scope gap dogfood finding #110 recorded: this survey used to
+# reach `lib/background-jobs/handlers/*.ts` and three named services only.
 files = (sorted(PIN.glob('lib/background-jobs/handlers/*.ts'))
          + [PIN/'lib/services/system-events.service.ts']
          + [PIN/'lib/services/token-tracking.service.ts']
@@ -49,6 +56,7 @@ files = (sorted(PIN.glob('lib/background-jobs/handlers/*.ts'))
          + [PIN/'lib/help-chat/context-resolver.ts']
          + [PIN/'lib/help-chat/system-prompt-builder.ts']
          + [PIN/'lib/help-search.ts'])
+         + [PIN/'app/api/v1/images/route.ts'])
 CALL = re.compile(r"logger\.(info|warn|error|debug)\(\s*(?:'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|\"((?:[^\"\\]|\\.)*)\")")
 
 # every v5 source line, for sentence lookup

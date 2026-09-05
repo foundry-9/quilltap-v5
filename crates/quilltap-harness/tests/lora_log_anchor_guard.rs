@@ -70,33 +70,16 @@ fn every_v4_image_params_anchor_still_has_a_v5_call_site() {
         "background-jobs.story-background",
         "background-jobs.story-background.concierge-reroute",
         "api.v1.wardrobe.preview-avatar",
+        // P4.76 landed `POST /api/v1/images?action=generate`, so v4's ninth
+        // anchor finally has a v5 call site. The tripwire that asserted it
+        // ABSENT is gone, exactly as its own doc comment instructed.
+        "api.v1.images.generate",
     ] {
         assert!(
             haystack().contains(&format!("\"{anchor}\"")),
             "v4 anchor {anchor:?} has no v5 call site"
         );
     }
-}
-
-/// A TRIPWIRE, not a pin. v4's ninth anchor belongs to
-/// `POST /api/v1/images?action=generate` (`app/api/v1/images/route.ts:282`),
-/// a leg v5 has never ported — since P4.73 `quilltap-web` serves the images
-/// COLLECTION route (list / upload / import / DELETE) but answers a NAMED
-/// refusal on `?action=generate`, and no v5 site calls `build_image_gen_params`
-/// for it. That is a PRE-EXISTING gap, measured at P4.70 and recorded rather than
-/// invented into existence: an anchor with nothing behind it would be a lie in
-/// `combined.log`.
-///
-/// When that route IS ported, this test fails and says so — which is the point.
-/// Delete it then, and add `api.v1.images.generate` to the list above.
-#[test]
-fn the_ninth_anchor_is_absent_because_its_route_is_unported() {
-    assert!(
-        !haystack().contains("\"api.v1.images.generate\""),
-        "`api.v1.images.generate` now has a call site — the images-collection \
-         generate route has been ported. Move the anchor into \
-         `every_v4_image_params_anchor_still_has_a_v5_call_site` and delete this test."
-    );
 }
 
 /// Every v5 file that names an image-params call-site anchor.
@@ -108,6 +91,7 @@ fn haystack() -> String {
         "services/story_background_job.rs",
         "api/wardrobe.rs",
         "api/image_profiles.rs",
+        "api/images.rs",
     ]
     .iter()
     .map(|f| source(f))

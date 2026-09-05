@@ -3380,6 +3380,35 @@ pub enum Request {
         file_ids: Option<serde_json::Value>,
     },
     // === end P4.9I2A ===
+    // === P4.76: the images-collection GENERATE action (append-only) ===
+    /// v4 `POST /api/v1/images?action=generate` (`app/api/v1/images/route.ts:
+    /// 177-408`) — the front-page synchronous image generation. Its own
+    /// route-level implementation, NOT a call into the Salon's `generate_image`
+    /// tool: a `scanImagePrompts` Concierge gate with no chat, a reroute that
+    /// picks the FIRST `isDangerousCompatible` profile, and NO orientation.
+    ///
+    /// Every field is RAW because v4 Zod-parses the whole body
+    /// (`generateImageSchema`) and each refusal must answer v4's
+    /// `Validation error` 400 rather than failing the dispatch decode with a
+    /// different envelope — the `ChatCreate` trio's lesson, so BOTH transports
+    /// answer v4's bytes from ONE piece of code. Keeping them `Option<Value>`
+    /// also preserves the absent/null/value tri-state `.optional()` (which is
+    /// not `.nullable()`) turns on. → [`Response::Images`] with a 201.
+    ///
+    /// ⚠ 💸 LIVE MONEY: one image-provider call per request, plus one cheap-LLM
+    /// classification whenever the Concierge is armed.
+    #[serde(rename_all = "camelCase")]
+    ImagesGenerate {
+        #[serde(default)]
+        prompt: Option<serde_json::Value>,
+        #[serde(default)]
+        profile_id: Option<serde_json::Value>,
+        #[serde(default)]
+        tags: Option<serde_json::Value>,
+        #[serde(default)]
+        options: Option<serde_json::Value>,
+    },
+    // === end P4.76 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
