@@ -356,9 +356,13 @@ async function main(): Promise<void> {
       )),
     },
     {
-      name: 'create_name_astral_over_max',
+      // Zod ≥ 4.5.4 (v4 `6e1a64ea6`) measures the name's `.max(100)` in CODE
+      // POINTS once the UTF-16 count overflows it: 51 top hats are 102 units but
+      // 51 code points, so v4 now ACCEPTS (this row was
+      // `create_name_astral_over_max` under 4.4.3's UTF-16 rule).
+      name: 'create_name_astral_within_max',
       run: async () => respond(await (await loadRoute('@/app/api/v1/projects/route')).POST(
-        mockRequest(B, { name: '\u{1F3A9}'.repeat(51) }),
+        mockRequest(B, { name: '\u{1F3A9}'.repeat(51), color: '#abcdef', icon: 'rocket' }),
       )),
     },
     {

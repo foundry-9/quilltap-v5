@@ -1,0 +1,111 @@
+{
+  "label": "d883a5ee1 unification \u2014 the Zod 4.5 length-rule families by name",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "autonomous_rooms_routes_equivalence",
+    "projects_routes_equivalence",
+    "settings_routes_equivalence",
+    "groups_routes_equivalence",
+    "mount_points_routes_equivalence",
+    "scenarios_routes_equivalence",
+    "image_generate_route_equivalence",
+    "image_generation_tier3_equivalence",
+    "profile_routes_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "images_edge_routes",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "autonomous_rooms_routes_equivalence",
+      "status": "run_failed",
+      "cause": "[update_invalid_writes_nothing] OK (400).\n[update_invalid_writes_nothing tables] OK.\n[update_non_autonomous] OK (400).\n[update_missing] OK (404).\n[update_clamp_false] OK.\n[update_clamp_false tables] OK.\n[update_clamp_true] OK.\n[update_clamp_true tables] OK.\nthread 'autonomous_rooms_routes_match_oracle' (5312951) panicked at crates/quilltap-harness/tests/autonomous_rooms_routes_equivalence.rs:709:5:\nmismatched cases: [\"update_invalid_title_astral\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test autonomous_rooms_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "projects_routes_equivalence",
+      "status": "run_failed",
+      "cause": "[add_file] OK.\n[add_file tables] OK.\n[add_file_missing] OK (err 404).\n[add_character_archived] OK (err 400).\n[remove_file] OK.\n[remove_file tables] OK.\n[get_store_corrupt] OK.\n[update_store_corrupt] OK.\nthread 'projects_routes_match_oracle' (5313612) panicked at crates/quilltap-harness/tests/projects_routes_equivalence.rs:1203:5:\nprojects-routes FAILED: [\"create_name_astral_over_max\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test projects_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "settings_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "groups_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "mount_points_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "scenarios_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "image_generate_route_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "image_generation_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "profile_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    }
+  ],
+  "totals": {
+    "run_failed": 2,
+    "ok": 7
+  }
+}

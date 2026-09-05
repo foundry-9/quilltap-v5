@@ -128,7 +128,7 @@ enum Field {
 fn parse_name(field: &Option<Option<Value>>) -> Field {
     match field {
         None => Field::Absent,
-        Some(Some(Value::String(s))) if !s.is_empty() && crate::jsstr::utf16_len(s) <= 200 => {
+        Some(Some(Value::String(s))) if !s.is_empty() && crate::jsstr::zod_len_max_ok(s, 200) => {
             Field::Value(s.clone())
         }
         Some(_) => Field::Invalid,

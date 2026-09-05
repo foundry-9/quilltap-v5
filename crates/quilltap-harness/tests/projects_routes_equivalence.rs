@@ -560,6 +560,15 @@ fn projects_routes_match_oracle() {
             json!({ "name": "Omicron", "color": "#abcdef", "icon": "rocket",
                     "notAField": "should vanish" }),
         ),
+        (
+            // Zod ≥ 4.5.4 (v4 `6e1a64ea6`): the `.max(100)` counts CODE POINTS
+            // once the UTF-16 count overflows — 51 top hats are 102 units but 51
+            // code points, ACCEPTED (`jsstr::zod_len_max_ok`). Was the 400 row
+            // `create_name_astral_over_max` under 4.4.3's UTF-16 rule.
+            "create_name_astral_within_max",
+            "cnawm",
+            json!({ "name": "\u{1F3A9}".repeat(51), "color": "#abcdef", "icon": "rocket" }),
+        ),
     ] {
         let db = fresh_db(&spec, tag);
         let resp = rt.block_on(projects::project_create(&db, body));
@@ -615,12 +624,6 @@ fn projects_routes_match_oracle() {
             "create_name_over_max",
             "cnom",
             json!({ "name": "x".repeat(101) }),
-        ),
-        (
-            // Zod counts UTF-16 code units: 51 top hats are 102.
-            "create_name_astral_over_max",
-            "cnaom",
-            json!({ "name": "\u{1F3A9}".repeat(51) }),
         ),
         ("create_name_wrong_type", "cnwt", json!({ "name": 42 })),
         (

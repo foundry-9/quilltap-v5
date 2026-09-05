@@ -234,7 +234,7 @@ fn zod_integer(value: &Value) -> Option<i64> {
 fn zod_optional_string(value: Option<&Value>, max_utf16: usize) -> Result<Option<String>, ()> {
     match value {
         None => Ok(None),
-        Some(Value::String(s)) if crate::jsstr::utf16_len(s) <= max_utf16 => Ok(Some(s.clone())),
+        Some(Value::String(s)) if crate::jsstr::zod_len_max_ok(s, max_utf16) => Ok(Some(s.clone())),
         Some(_) => Err(()),
     }
 }
@@ -315,7 +315,7 @@ fn parse_schema(obj: &Map<String, Value>) -> Result<ImageGenerationToolInput, ()
         Some(Value::String(s)) => s.clone(),
         _ => return Err(()),
     };
-    if !(1..=4000).contains(&crate::jsstr::utf16_len(&prompt)) {
+    if !(crate::jsstr::zod_len_min_ok(&prompt, 1) && crate::jsstr::zod_len_max_ok(&prompt, 4000)) {
         return Err(());
     }
 

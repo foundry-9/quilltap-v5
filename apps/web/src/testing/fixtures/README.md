@@ -7,7 +7,9 @@ and investigate the diff — do not patch the fixture.
 ## `pascal-custom-tool-definition.oracle.ndjson`
 
 _Refreshed 2026-09-05 at v4 `d883a5ee1` (Zod 4.5.4): thirteen rows moved — the
-unrecognized-key shapes, now continuable inside unions/refines (v4 `6e1a64ea6`)._
+unrecognized-key shapes, now continuable inside unions/refines — and two
+astral-title rows added for Zod's code-point length windows (v4 `6e1a64ea6`);
+299 → 301 rows._
 
 **299 rows** — 10 `title` + 258 `definition` + 31 `gate`. Drives
 `app/pascal/custom-tool-types.corpus.spec.ts`, which replays

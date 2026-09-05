@@ -989,17 +989,18 @@ fn parse_string(
     };
 
     let mut issues = Vec::new();
-    // JS `.length` is UTF-16 code units.
-    let len = s.encode_utf16().count();
+    // Zod ≥ 4.5.4 (v4 `6e1a64ea6`): strings are measured in code points once the
+    // UTF-16 count crosses a bound — `jsstr::zod_len_*` carry each check's window
+    // (under 4.4.3 this was a plain UTF-16 count).
     if let Some(m) = min {
-        if len < m {
+        if !crate::jsstr::zod_len_min_ok(s, m) {
             issues.push(Issue::check(format!(
                 "Too small: expected string to have >={m} characters"
             )));
         }
     }
     if let Some(m) = max {
-        if len > m {
+        if !crate::jsstr::zod_len_max_ok(s, m) {
             issues.push(Issue::check(format!(
                 "Too big: expected string to have <={m} characters"
             )));

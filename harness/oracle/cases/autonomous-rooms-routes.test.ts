@@ -385,12 +385,19 @@ async function main(): Promise<void> {
       run: () => postAction(ROOM_IDLE, 'update-settings', { title: 'x'.repeat(400) }),
     },
     {
-      // Zod's `.max(300)` measures UTF-16 code units (`String.length`): 151
-      // astral characters are 302 units, so v4 refuses even though a scalar
-      // count says 151. Pins the unit the max is measured in (§3 unification
-      // review — the first v5 port counted chars and accepted this title).
-      name: 'update_invalid_title_astral',
-      run: () => postAction(ROOM_IDLE, 'update-settings', { title: '😀'.repeat(151) }),
+      // Zod ≥ 4.5.4 (v4 `6e1a64ea6`) measures a `.max(300)` in CODE POINTS once
+      // the UTF-16 count overflows it: 151 astral characters are 302 units but
+      // 151 code points, so v4 now ACCEPTS this title (under 4.4.3 it refused —
+      // this row was `update_invalid_title_astral` and pinned the old rule; the
+      // `d883a5ee1` unification's neutrality sweep is what moved it). A 400 row
+      // for the new rule is `update_invalid_title_too_long` (400 BMP units).
+      name: 'update_title_astral_within_max',
+      run: async () => {
+        const { status, body } = await postAction(ROOM_IDLE, 'update-settings', {
+          title: '😀'.repeat(151),
+        });
+        return { status, body, tables: await dumpRoomRow(ROOM_IDLE) };
+      },
     },
     {
       // The refusal writes NOTHING: ROOM_RUNNING already carries stored caps

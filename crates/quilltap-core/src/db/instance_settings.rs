@@ -259,7 +259,7 @@ pub const TABOO_MAX_PHRASES: usize = 500;
 /// `.min(1)`) rather than silently dropped. Unknown keys are stripped, as Zod's
 /// default object mode does; `phrases` absent → `.default([])`.
 pub fn parse_taboo_settings(value: &serde_json::Value) -> Option<Vec<String>> {
-    use crate::jsstr::{js_trim, utf16_len};
+    use crate::jsstr::{js_trim, zod_len_max_ok, zod_len_min_ok};
 
     let obj = value.as_object()?; // `z.object` throws on a non-object
     let Some(raw) = obj.get("phrases") else {
@@ -275,8 +275,10 @@ pub fn parse_taboo_settings(value: &serde_json::Value) -> Option<Vec<String>> {
     for entry in arr {
         let s = entry.as_str()?; // `z.string()` throws on a non-string
         let trimmed = js_trim(s);
-        let len = utf16_len(trimmed);
-        if !(1..=TABOO_MAX_PHRASE_LENGTH).contains(&len) {
+        // `z.string().trim().min(1).max(200)` under Zod ≥ 4.5.4's code-point
+        // windows (v4 `6e1a64ea6`): 101 astral characters (202 units, 101 code
+        // points) now pass the 200 bound where 4.4.3 refused them.
+        if !(zod_len_min_ok(trimmed, 1) && zod_len_max_ok(trimmed, TABOO_MAX_PHRASE_LENGTH)) {
             return None;
         }
         out.push(trimmed.to_string());

@@ -64,6 +64,7 @@
  */
 
 import { MAX_DIE_SIDES, MIN_DIE_SIDES, parseDiceNotation } from './dice-notation';
+import { zodLenMaxOk, zodLenMinOk } from './zod-length';
 import { MAX_EFFECT_EXPRESSION_LENGTH, parseExpression } from './expressions';
 
 export { MAX_EFFECT_EXPRESSION_LENGTH };
@@ -718,12 +719,12 @@ function parseString(
   if (typeof input !== 'string') return resHard(invalidType('string', input));
 
   const issues: Issue[] = [];
-  // JS `.length` is UTF-16 code units — which is exactly what Zod counts.
-  const len = input.length;
-  if (min !== undefined && len < min) {
+  // Zod ≥ 4.5.4 (v4 `6e1a64ea6`) measures strings in code points once the UTF-16
+  // count crosses a bound — `zod-length.ts` carries each check's window.
+  if (min !== undefined && !zodLenMinOk(input, min)) {
     issues.push(checkIssue(`Too small: expected string to have >=${min} characters`));
   }
-  if (max !== undefined && len > max) {
+  if (max !== undefined && !zodLenMaxOk(input, max)) {
     issues.push(checkIssue(`Too big: expected string to have <=${max} characters`));
   }
   if (identifier && !IDENTIFIER_PATTERN.test(input)) {

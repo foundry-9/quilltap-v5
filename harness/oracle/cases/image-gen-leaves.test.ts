@@ -206,7 +206,10 @@ async function main(): Promise<void> {
       getImageGenerationModels: () => cannedModels,
       getImageProviderConstraints: () => cannedConstraints,
     }));
-    const { resolveLoraSupport, resolveLoraScaleBounds } = await import('@/lib/image-gen/lora-support');
+    // v4 `d4138b96b` moved the bounds resolver (and `DEFAULT_LORA_SCALE`) to the
+    // client-safe `lib/image-gen/lora-scale`; the `lora-support` re-export is gone.
+    const { resolveLoraSupport } = await import('@/lib/image-gen/lora-support');
+    const { resolveLoraScaleBounds } = await import('@/lib/image-gen/lora-scale');
     const support = resolveLoraSupport(c.provider, c.model);
     lines.push(JSON.stringify({
       label: c.label,
@@ -225,8 +228,9 @@ async function main(): Promise<void> {
       getImageGenerationModels: () => null,
       getImageProviderConstraints: () => undefined,
     }));
-    const { readLorasFromParameters, capLoras, loraTriggerPhrases, joinLoraTriggerPhrases, DEFAULT_LORA_SCALE } =
+    const { readLorasFromParameters, capLoras, loraTriggerPhrases, joinLoraTriggerPhrases } =
       await import('@/lib/image-gen/lora-support');
+    const { DEFAULT_LORA_SCALE } = await import('@/lib/image-gen/lora-scale');
 
     lines.push(JSON.stringify({ label: 'lora_default_scale', kind: 'lora_const', json: JSON.stringify(DEFAULT_LORA_SCALE) }));
 

@@ -452,7 +452,8 @@ fn parse_settings_patch(settings: &Value) -> Result<AutonomousRoomSettingsPatch,
     // here under-counts astral characters and silently widens the limit (the
     // §3 unification review's catch; pinned by `update_invalid_title_astral`).
     if let Some(v) = obj.get("title") {
-        let Some(t) = v.as_str().filter(|t| t.encode_utf16().count() <= 300) else {
+        // Zod ≥ 4.5.4 (v4 `6e1a64ea6`): code points once the UTF-16 count overflows.
+        let Some(t) = v.as_str().filter(|t| crate::jsstr::zod_len_max_ok(t, 300)) else {
             return Err(validation_error());
         };
         patch.title = Some(t.to_string());
@@ -514,7 +515,7 @@ fn tri_state_string(
         None => Ok(None),
         Some(Value::Null) => Ok(Some(None)),
         Some(Value::String(s)) => {
-            if max_len.is_some_and(|m| s.encode_utf16().count() > m) {
+            if max_len.is_some_and(|m| !crate::jsstr::zod_len_max_ok(s, m)) {
                 return Err(validation_error());
             }
             Ok(Some(Some(s.clone())))

@@ -226,6 +226,12 @@ const corpus: Array<[string, unknown]> = [
   ['name-not-identifier', { ...BASE, name: 'Probe It' }],
   ['name-leading-digit', { ...BASE, name: '2probe' }],
   ['name-too-long', { ...BASE, name: 'a'.repeat(65) }],
+  // Zod ≥ 4.5.4 (v4 `6e1a64ea6`) measures strings in code points once the
+  // UTF-16 count crosses a bound: 60 astral characters are 120 units (over the
+  // 80-unit title max under 4.4.3) but 60 code points (within it now); 81 miss
+  // it in both measures.
+  ['title-astral-within-max', { ...BASE, title: '\u{1F3A9}'.repeat(60) }],
+  ['title-astral-over-max', { ...BASE, title: '\u{1F3A9}'.repeat(81) }],
   ['name-wrong-type', { ...BASE, name: 42 }],
   ['outcomes-missing', { name: 'probe', description: 'A probe.' }],
   ['outcomes-empty', { ...BASE, outcomes: [] }],

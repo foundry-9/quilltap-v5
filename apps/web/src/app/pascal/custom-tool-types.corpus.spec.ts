@@ -7,10 +7,11 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 299 rows generated from v4's REAL
+ * This replays the COMMITTED oracle corpus — 301 rows generated from v4's REAL
  * `QtapCustomToolSchema` at `d883a5ee1` under Zod 4.5.4 (refreshed at the
  * `d883a5ee1` unification: thirteen unrecognized-key rows moved when Zod made
- * `unrecognized_keys` continuable — v4 `6e1a64ea6`; first captured at `c4d4b0de`; see
+ * `unrecognized_keys` continuable, and two astral-title rows were added for
+ * its code-point length rule — v4 `6e1a64ea6`; first captured at `c4d4b0de`; see
  * `src/testing/fixtures/README.md` for provenance and the regen recipe) — and
  * byte-compares four things per row:
  *
@@ -92,7 +93,7 @@ const definitionRows = rows.filter((r): r is DefinitionRow => r.kind === 'defini
 const gateVerdictRows = rows.filter((r): r is GateRow => r.kind === 'gate');
 
 /**
- * The corpus is generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows —
+ * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh —
  * the chipLabel/effects arms joined at the `c4d4b0de` drift round). The map is
  * empty — every row passes against the fixture's own bytes. The map and its
  * guard stay as the mechanism for the NEXT drift window (fill it only with

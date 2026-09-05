@@ -197,7 +197,9 @@ fn is_valid_hex_color(v: &str) -> bool {
 
 /// `z.string().max(N)` on a value already known to be a string.
 fn within(v: &str, max: usize) -> bool {
-    crate::jsstr::utf16_len(v) <= max
+    // Zod ≥ 4.5.4 counts code points once the UTF-16 length overflows (v4
+    // `6e1a64ea6`; `jsstr::zod_len_max_ok` carries the rule and its window).
+    crate::jsstr::zod_len_max_ok(v, max)
 }
 
 /// One `z.string()…nullable().optional()` field read off a raw patch map.
@@ -1033,7 +1035,7 @@ fn parse_wardrobe_fields(body: &Value, partial: bool) -> Result<WardrobeFields, 
     // title: z.string().min(1) (create) / the same `.optional()` (update).
     let title = match get("title") {
         None if partial => None,
-        Some(Value::String(s)) if crate::jsstr::utf16_len(s) >= 1 => Some(s.clone()),
+        Some(Value::String(s)) if crate::jsstr::zod_len_min_ok(s, 1) => Some(s.clone()),
         _ => return Err(()),
     };
 

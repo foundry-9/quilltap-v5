@@ -299,8 +299,14 @@ don't silently swap it in.
   `when: true | {…}` union with a stray key reports the object branch alone
   and its refines fire; both engine twins (`custom_tool_types.rs` /
   `custom-tool-types.ts`) fixed at the wire, `pascal_custom_tool_definition_
-  equivalence` red-first then green (258 definitions), the SPA's committed
-  corpus refreshed (13 rows) + nine hand-captured rows re-captured,
+  equivalence` red-first then green (260
+  definitions with two new astral-title rows), the SPA's committed corpus
+  refreshed (301 rows) + nine hand-captured rows re-captured — **and the
+  neutrality sweep then found the bump's SECOND rule, code-point string
+  lengths, in three families' astral pins (fixed as one helper per check on
+  both sides; the sweep's other reds were a fixture-vintage artifact on the
+  characters pair, an oracle mock lagging the collapse, and a moved LoRA
+  import — none `0506517d3`'s, which measured NEUTRAL over 402 families),
   `49f66f571` + `a0e6fb42a` + `2edd823c0` NO-PORT-RATIFIED(p4.d158 — hunk
   evidence; `2edd823c0`'s four bag-key blind spots landed as restore corpus
   arms over the new committed `restore-archive-bag-keys.zip`). Round record:

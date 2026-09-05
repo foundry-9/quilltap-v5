@@ -1,0 +1,94 @@
+{
+  "label": "d883a5ee1 unification \u2014 the characters-fixture families after the vintage repair",
+  "v5w": "/Users/csebold/source/quilltap-v5",
+  "venue_is_worktree": false,
+  "requested": [
+    "characters_subresources_equivalence",
+    "characters_reads_equivalence",
+    "character_photo_upload_tier2_equivalence",
+    "characters_mutations_equivalence",
+    "characters_actions_equivalence",
+    "system_restore_guards_equivalence",
+    "character_avatar_write_tier2_equivalence"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "images_edge_routes",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "characters_subresources_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "characters_reads_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "character_photo_upload_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "characters_mutations_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "characters_actions_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "system_restore_guards_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    },
+    {
+      "family": "character_avatar_write_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": [
+        "tracked fixture bytes modified by this family's stages:\nM crates/quilltap-web/tests/fixtures/characters-main.db"
+      ]
+    }
+  ],
+  "totals": {
+    "ok": 7
+  }
+}

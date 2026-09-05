@@ -441,10 +441,11 @@ fn is_hex_color(s: &str) -> bool {
 fn field_value_ok(rule: &FieldRule, v: &Value) -> bool {
     match rule {
         FieldRule::Bool => v.is_boolean(),
-        FieldRule::Str(min, max) => v
-            .as_str()
-            .map(|s| s.encode_utf16().count())
-            .is_some_and(|n| n >= *min && n <= *max),
+        // Zod ≥ 4.5.4 (v4 `6e1a64ea6`): code points once the UTF-16 count crosses
+        // a bound — `jsstr::zod_len_*` carry the per-check windows.
+        FieldRule::Str(min, max) => v.as_str().is_some_and(|s| {
+            crate::jsstr::zod_len_min_ok(s, *min) && crate::jsstr::zod_len_max_ok(s, *max)
+        }),
         FieldRule::Color => v.as_str().is_some_and(is_hex_color),
         FieldRule::Uuid => v.as_str().is_some_and(super::chat_outfits::is_zod_uuid),
         FieldRule::Enum(members) => v.as_str().is_some_and(|s| members.contains(&s)),

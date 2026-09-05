@@ -622,16 +622,25 @@ fn autonomous_rooms_routes_match_oracle() {
             "update_invalid_title_too_long",
             json!({ "title": "x".repeat(400) }),
         ),
-        // Zod's `.max(300)` measures UTF-16 code units: 151 astral characters
-        // are 302 units, refused — a chars() count says 151 and accepts (§3
-        // unification review's catch on the first v5 port).
-        (
-            "update_invalid_title_astral",
-            json!({ "title": "😀".repeat(151) }),
-        ),
     ] {
         let db = fresh_db(&spec, name);
         check_error(name, &upd(&db, &uid_a, ROOM_IDLE, patch), &mut failed);
+    }
+    // Zod ≥ 4.5.4 (v4 `6e1a64ea6`) measures the `.max(300)` in CODE POINTS once
+    // the UTF-16 count overflows it: 151 astral characters are 302 units but 151
+    // code points, so this title is now ACCEPTED (`jsstr::zod_len_max_ok`). It
+    // was `update_invalid_title_astral`, a 400 row pinning Zod 4.4.3's UTF-16
+    // rule; the `d883a5ee1` unification's neutrality sweep moved it.
+    {
+        let db = fresh_db(&spec, "utaw");
+        let resp = upd(&db, &uid_a, ROOM_IDLE, json!({ "title": "😀".repeat(151) }));
+        check_body("update_title_astral_within_max", &resp, &mut failed);
+        check_tables_blanked(
+            "update_title_astral_within_max",
+            &dump_room_row(&db, ROOM_IDLE),
+            &volatile,
+            &mut failed,
+        );
     }
     {
         // The refusal writes NOTHING. ROOM_RUNNING already carries stored caps,

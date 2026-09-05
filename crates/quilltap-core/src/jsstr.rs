@@ -47,6 +47,56 @@ pub fn utf16_len(s: &str) -> usize {
     s.encode_utf16().count()
 }
 
+/// Unicode code-point length — Zod ≥ 4.5's `util.codePointLength`, which counts
+/// a surrogate PAIR as one and any other UTF-16 unit as one. A Rust `&str` holds
+/// no lone surrogates, so `chars().count()` is that function exactly.
+pub fn code_point_len(s: &str) -> usize {
+    s.chars().count()
+}
+
+/// Zod ≥ 4.5.4 `$ZodCheckMaxLength` for strings (v4 `6e1a64ea6` moved `zod`
+/// 4.4.3 → 4.5.4): "Strings are measured in Unicode code points, not UTF-16
+/// units. A code point is at most two units, so a string that already fits in
+/// units fits in code points; only an overflow has to be counted." Under 4.4.3
+/// this was `utf16_len(s) <= max` — 101 astral characters (202 units) FAILED a
+/// `.max(200)`; since 4.5.4 they pass (101 code points).
+pub fn zod_len_max_ok(s: &str, max: usize) -> bool {
+    let units = utf16_len(s);
+    let length = if units > max {
+        code_point_len(s)
+    } else {
+        units
+    };
+    length <= max
+}
+
+/// Zod ≥ 4.5.4 `$ZodCheckMinLength` for strings: "A code point is one or two
+/// UTF-16 units, so fewer units than the floor can never reach it and twice the
+/// floor always clears it. Only in between is the exact count in doubt." — so
+/// three astral characters (6 units) now FAIL a `.min(5)` where 4.4.3 passed.
+pub fn zod_len_min_ok(s: &str, min: usize) -> bool {
+    let units = utf16_len(s);
+    let length = if units >= min && units < min.saturating_mul(2) {
+        code_point_len(s)
+    } else {
+        units
+    };
+    length >= min
+}
+
+/// Zod ≥ 4.5.4 `$ZodCheckLengthEquals` for strings: "outside `[length, length *
+/// 2]` units the target is missed either way — and missed in the same direction
+/// in both measures."
+pub fn zod_len_eq_ok(s: &str, n: usize) -> bool {
+    let units = utf16_len(s);
+    let length = if units >= n && units <= n.saturating_mul(2) {
+        code_point_len(s)
+    } else {
+        units
+    };
+    length == n
+}
+
 /// First `n` UTF-16 code units of `s`, decoded back to a `String` — matching JS
 /// `s.slice(0, n)` for `n` within the string. BMP text round-trips exactly; a
 /// cut that would split a surrogate pair (only possible with non-BMP text) is
@@ -102,4 +152,34 @@ pub fn js_last_index_of(haystack: &str, needle: &str) -> Option<usize> {
     }
     let last = hay.len() - nee.len();
     (0..=last).rev().find(|&i| hay[i..i + nee.len()] == nee[..])
+}
+
+#[cfg(test)]
+mod zod_length_tests {
+    use super::*;
+
+    // Zod 4.5.4's code-point window rules (v4 `6e1a64ea6`), measured against
+    // `node_modules/zod/v4/core/checks.js` at the `d883a5ee1` unification.
+    #[test]
+    fn zod_length_checks_count_code_points_only_inside_the_window() {
+        let hats = |n: usize| "\u{1F3A9}".repeat(n); // 🎩 = 2 UTF-16 units, 1 code point
+                                                     // max: 101 astral chars (202 units) pass a .max(200) since 4.5.4; 201 fail.
+        assert!(zod_len_max_ok(&hats(101), 200));
+        assert!(!zod_len_max_ok(&hats(201), 200));
+        assert!(zod_len_max_ok(&"a".repeat(200), 200));
+        assert!(!zod_len_max_ok(&"a".repeat(201), 200));
+        // min: 3 astral chars (6 units) FAIL a .min(5) — inside [5, 10) the code
+        // points decide; 5 astral chars (10 units) clear it without counting.
+        assert!(!zod_len_min_ok(&hats(3), 5));
+        assert!(zod_len_min_ok(&hats(5), 5));
+        assert!(zod_len_min_ok(&"a".repeat(5), 5));
+        assert!(!zod_len_min_ok(&"a".repeat(4), 5));
+        assert!(zod_len_min_ok(&hats(1), 1));
+        // eq: 64 astral chars (128 units) EQUAL a .length(64); 32 (64 units) do not.
+        assert!(zod_len_eq_ok(&hats(64), 64));
+        assert!(!zod_len_eq_ok(&hats(32), 64));
+        assert!(zod_len_eq_ok(&"a".repeat(64), 64));
+        assert_eq!(code_point_len(&hats(3)), 3);
+        assert_eq!(utf16_len(&hats(3)), 6);
+    }
 }

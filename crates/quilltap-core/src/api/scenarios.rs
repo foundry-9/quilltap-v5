@@ -31,7 +31,7 @@ use crate::db::scenarios::{
     ListScenariosResult, ScenarioPathResolution, ScenarioWriteError, SCENARIOS_FOLDER,
 };
 use crate::db::DbError;
-use crate::jsstr::utf16_len;
+use crate::jsstr::{utf16_len, zod_len_max_ok, zod_len_min_ok};
 use crate::services::image_job_common::with_both_conns;
 use crate::vault_overlay::sanitize_file_name;
 
@@ -87,7 +87,8 @@ fn collect_bag_issues(bag: &Value, include_filename: bool) -> Vec<String> {
 
     if include_filename {
         match obj.get("filename") {
-            Some(Value::String(s)) if (1..=100).contains(&utf16_len(s)) => {}
+            // `z.string().min(1).max(100)` under Zod ≥ 4.5.4's code-point windows (v4 `6e1a64ea6`).
+            Some(Value::String(s)) if zod_len_min_ok(s, 1) && zod_len_max_ok(s, 100) => {}
             Some(Value::String(_)) => issues.push("Invalid filename length".to_string()),
             _ => issues.push("Required".to_string()),
         }
@@ -96,7 +97,7 @@ fn collect_bag_issues(bag: &Value, include_filename: bool) -> Vec<String> {
     if let Some(v) = obj.get("name") {
         if !v.is_null() {
             match v {
-                Value::String(s) if (1..=200).contains(&utf16_len(s)) => {}
+                Value::String(s) if zod_len_min_ok(s, 1) && zod_len_max_ok(s, 200) => {}
                 _ => issues.push("Invalid name".to_string()),
             }
         }
@@ -105,7 +106,7 @@ fn collect_bag_issues(bag: &Value, include_filename: bool) -> Vec<String> {
     if let Some(v) = obj.get("description") {
         if !v.is_null() {
             match v {
-                Value::String(s) if utf16_len(s) <= 500 => {}
+                Value::String(s) if zod_len_max_ok(s, 500) => {}
                 _ => issues.push("Invalid description".to_string()),
             }
         }

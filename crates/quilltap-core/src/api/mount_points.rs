@@ -294,7 +294,10 @@ pub async fn mount_point_create(db: &Db, body: Value) -> Response {
 fn validate_create(body: &Value) -> Result<CreateFields, Response> {
     let validation_error = || bad_request("Validation error");
     let name = match body.get("name").and_then(Value::as_str) {
-        Some(s) if (1..=200).contains(&crate::jsstr::utf16_len(s)) => s.to_string(),
+        // `z.string().min(1).max(200)` under Zod ≥ 4.5.4's code-point windows.
+        Some(s) if crate::jsstr::zod_len_min_ok(s, 1) && crate::jsstr::zod_len_max_ok(s, 200) => {
+            s.to_string()
+        }
         _ => return Err(validation_error()),
     };
     let base_path = body
@@ -369,7 +372,9 @@ pub async fn mount_point_update(db: &Db, mount_point_id: &str, body: Value) -> R
     // Each field: validate the type (a failure → 500), set the merged echo + patch.
     if let Some(v) = body_obj.get("name") {
         match v.as_str() {
-            Some(s) if (1..=200).contains(&crate::jsstr::utf16_len(s)) => {
+            Some(s)
+                if crate::jsstr::zod_len_min_ok(s, 1) && crate::jsstr::zod_len_max_ok(s, 200) =>
+            {
                 mo.insert("name".into(), Value::String(s.to_string()));
                 patch.name = Some(s.to_string());
             }

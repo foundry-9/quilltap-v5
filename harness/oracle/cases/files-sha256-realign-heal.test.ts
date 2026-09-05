@@ -130,6 +130,20 @@ jest.mock('@/migrations/lib/database-utils', () => ({
     testDb.exec(sql);
   },
   querySQLite: (sql: string) => testDb.prepare(sql).all(),
+  // v4 `0506517d3` collapsed the migration's inline mount-index opener onto
+  // this module's `openMountIndexDbIfPresent` (→ `openEncryptedSqlite`); a mock
+  // without it made `run()` abort with "is not a function" at the `d883a5ee1`
+  // unification. This mirrors what the inline opener did in this venue: the
+  // case has already dropped `ENCRYPTION_MASTER_PEPPER`, so no key pragma.
+  openMountIndexDbIfPresent: (opts?: { foreignKeys?: boolean }) => {
+    if (!mountDbPath || !fs.existsSync(mountDbPath)) return null;
+    const Driver = loadDriver();
+    const db = new Driver(mountDbPath);
+    db.pragma('journal_mode = WAL');
+    if (opts?.foreignKeys) db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000');
+    return db;
+  },
 }));
 
 jest.mock('@/lib/paths', () => {
