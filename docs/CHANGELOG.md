@@ -251,6 +251,7 @@ embedded table; 120 docs + 667 chunks + the rowid walk order compared; a one-byt
 edit to one vendored file reddens it — mutation-proven) and `help_tree_embed_guard`
 (the embedded table equals the on-disk walk: path set, order, bytes; pins the
 120-file count so an empty embed cannot pass).
+
 #### 2026-09-05 — docs(p4.76): the lane record, and P4.73 marked CLOSED WHOLE
 
 _Docs-only change._
@@ -415,6 +416,7 @@ Also landed, the five items the P4.73 unification review recorded:
 
 `handler-logging-inventory.md` gains its first `app/api/**` file, seeded so the
 generate route's eight lines are dispositioned.
+
 #### 2026-09-05 — fix(pascal): add render_template's four missing debug lines
 
 _Versions: core 0.0.798._
@@ -470,6 +472,7 @@ the regen obligation (both hand-rolled Zod engines, the SPA corpus, the ~150
 edge sites) plus the P4.D158 measurement to repeat. A loud `SKIP:` only when
 the checkout itself is absent. Closes the gap the `d883a5ee1` round found by
 consequence rather than by design (phase-4 candidate 4).
+
 #### 2026-09-05 — docs(help): the P4.9I2B lane record and the order's completion header
 
 _Versions: SPA 0.5.651._
@@ -948,6 +951,7 @@ oracle case, and the runner's count guard moves 7 → 5 buckets.
 The oracle case shrinks 33 → 24 rows; every surviving row is byte-identical
 to the pre-split oracle regenerated at `0b0617fee` (the last sha at which the
 case links), and the split case regenerates clean at `d883a5ee1`.
+
 #### 2026-09-05 — test(harness): make the tier-3 memory blocks carry a subject other than their owner
 
 _No crate versions bumped._
@@ -1039,6 +1043,7 @@ would be vacuous), and `find_names_by_ids` still resolves the name.
 
 Nothing calls it yet; the memory-subject prefix (parts 2 and 3) is what
 will.
+
 #### 2026-09-05 — test(harness): the orchestrator corpus can see the bug-121 re-hydration (v4 bug 121, part 3)
 
 _Versions: harness 0.0.673._
@@ -1155,6 +1160,7 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+
 #### 2026-09-05 — docs(status): P4.D155's gate, and what "zero SKIP lines" does not mean
 
 _Docs-only change._ (No crate versions bumped.)
@@ -1457,6 +1463,7 @@ the closed row, resolves its path, and the store answers "no such document".
 The case ran RED against v4's real handler at the `d883a5ee1` pin — v5
 `404 "File not found not found"` vs v4 `404 "File not found"` — and green after
 the one-token fix.
+
 #### 2026-09-05 — docs(porting): the P4.D156 lane's verification gate and its two order corrections
 
 _Docs-only change._ (No crate versions bumped.)
@@ -1574,6 +1581,7 @@ red against the pinned v4 — this fix is what closes them.
 `completion_behavior` gains a scoped guard for the fish block, because the
 blanket flag-coverage test asks only whether `-l 'json'` appears anywhere in
 a template, and it already did — on the top-level `quilltap --json`.
+
 #### 2026-09-05 — docs(sweep): prepare the `0506517d3` neutrality sweep and record why its execution waits
 
 _Docs-only change._ (No crate versions bumped.)
@@ -1982,6 +1990,7 @@ a constant with itself; the fourth `z.uuid()` transcription folded onto
 `is_zod_uuid`; the two `validateImageFile` sentences the doc comment claimed
 were unit-pinned now are; the two tripwires' prose no longer says v5 serves
 only `/api/v1/images/{id}`; the contract comment names both refusing paths.
+
 #### 2026-09-04 — unify(wires): the follow-ups round 2 wires — the ChatCreate trio census retired to FIXED(P4.73), the images endpoint into the query-param family, the version recount
 
 _Versions: core 0.0.775, harness 0.0.670, web 0.0.112, host 0.0.96, SPA 0.5.638._
@@ -2195,6 +2204,7 @@ alias expansion (which resolves to the same absolute worktree path) and
 nothing else; all six `--run` green from a `0b0617fee`-pinned v4 worktree; and
 none of the eight regenerated NDJSONs contains a stage path at all, so the
 directory name provably cannot reach the measured bytes.
+
 #### 2026-09-04 — docs(orders): P4.73 closed PARTIAL — five units landed, the generate leg deferred
 
 _Docs-only change._ (No crate versions bumped.)
@@ -2391,6 +2401,7 @@ post-mutation `files` + `characters` dumps so a refusal proves it wrote
 nothing. Seven mutation proofs; two of them (the key-less probe arm and the
 `avatarOverrides` cleanup branch) SURVIVED on the first corpus and named real
 blind spots, closed with dedicated fixture rows before the unit landed.
+
 #### 2026-09-04 — docs(status): the P4.72 lane gate
 
 _No crate versions bumped._
@@ -2618,6 +2629,7 @@ query read reddens exactly its `empty_then_known` body plus `firstWins` and
 `UNSERVED_KNOWN_ACTIONS` rows; changing one byte of the
 conversation-summaries sentence reddens exactly that endpoint's four
 byte-compared rows.
+
 #### 2026-09-04 — fix(e2e): the streaming-avatar beat's portrait arm, this time actually on disk
 
 _Versions: SPA 0.5.637._
@@ -3070,6 +3082,7 @@ ceiling in the file wraps the memory recap and nothing else, so there is no
 "attempt deadline < enclosing ceiling" relation to state here — the relation the
 two arms depend on (interactive strictly under background) is already a compile-
 time pin in `cheap_llm_exec.rs` from P4.D136.
+
 #### 2026-09-03 — fix(images): verify a describer saw the image, and ratify the NanoGPT manifest convergence (bugs 116, 118)
 
 _Versions: core 0.0.761, harness 0.0.657._
@@ -3135,6 +3148,7 @@ pins the thread through a stub transport (DEEPSEEK's
 `prompt_cache_hit_tokens`) and asserts the subtraction that makes the
 add-back necessary; the tier-3 differential cannot see this thread, because
 the canned provider builds its own response.
+
 #### 2026-09-03 — docs(p4.d152): the lane record — deferrals, named candidates, and the gate
 
 _No crate versions bumped._
@@ -3264,6 +3278,7 @@ hashes the transcoded bytes and matches the first row, so one FileEntry;
 pre-fix it mints a second. The harness gained `PrefixingPixelCodec`, and the
 folders canonicalizer's `path`-only sort key — a latent coin flip whenever two
 folders share a path — became `(path, projectId)`.
+
 #### 2026-09-03 — docs(p4.d148): the lane-close record for the create-time Concierge state
 
 _No crate versions bumped._
@@ -3326,6 +3341,7 @@ persisted-state diff on the reject arms, which previously proved only the
 status and the sentence. The fixture now bakes a source chat for the
 continuation case; `chats` and `chat_messages` rows are ordered by `createdAt`
 rather than by id, since a minted id sorts differently on each side.
+
 #### 2026-09-03 — docs(p4.d149): the lane's gate and close
 
 _Docs-only change._
@@ -3577,6 +3593,7 @@ arrived), 117 (a chat upload's sha256 is the pre-transcode hash) and 118
 and each now carrying a v5-side measurement to owe. Ledger §1 rewritten
 (regen rule PIN REQUIRED at `6d2a50382`), §3 gains two UNPROCESSED rows; no
 row is a convergence. The five lanes are unaffected — every regen ran pinned.
+
 #### 2026-09-02 — docs(p4.68): the lane record, the close notes, and the order's status header
 
 _Docs-only change._
@@ -3718,6 +3735,7 @@ picked as the user's speaker where v4 skips it. Consolidated, with a unit pin
 on v4's rule that reddens if the old arm returns. `parse_sys_status` is left
 alone and documented: v4's `buildOtherParticipantsInfo` never parses at all, and
 mapping unknown to `None` reproduces its `=== 'removed'` skip exactly.
+
 #### 2026-09-02 — docs(p4.71): close the work order
 
 _Docs-only change._
@@ -3841,6 +3859,7 @@ The core gains `is_localhost_url` — the same parse and `LOCALHOST_HOSTS` test
 `rewrite_localhost_url` already did, extracted to one home and exposed so the
 host can ask before resolving. No URL semantics changed (P4.D134's corpus is
 the pin).
+
 #### 2026-09-02 — test(harness): the latest-chat background branch, and what the GET's normalize can actually pin
 
 _Versions: harness 0.0.646._
@@ -3972,6 +3991,7 @@ reading the source would not have told you.
 `image_generation_tier3_equivalence` grew 22 rows (four accepts, eighteen
 refusals) over a raw `toolInput` the case spec now carries; fourteen of them
 reddened against the pre-fix behavior, six tables each, before the fix landed.
+
 #### 2026-09-02 — docs(p4.67): the order's status header — Tier 1/2 + P4.62(b) closed, (a) and (c) still open
 
 _Docs-only change._
@@ -4056,6 +4076,7 @@ database. Red-first: 79 of 98 rows failed before the fix. Two mutations pin it
 — removing the empty-string fold reddens 18 rows and nothing on the two routes
 where v4 deliberately does not fold; reading the last duplicate instead of the
 first reddens 33, all of them duplicate-key rows.
+
 #### 2026-09-02 — docs(p4.69): the lane record and the order's close
 
 _No crate versions bumped._
@@ -4517,6 +4538,7 @@ The `write-partition` oracle case gains v4's two folder classify rows
 `classifyWriteTarget`: both answer `main`, so v5's default-to-Main routing
 already covers the chokepoint's non-conforming method name — the assertion v4
 added to its own suite, landed as a differential row instead.
+
 #### 2026-09-02 — docs(porting): the P4.D146 lane gate record
 
 _Docs-only; no version bumps._
@@ -4622,6 +4644,7 @@ with one participant per status, and a chat where everyone has left.
 `cost_background_routes_equivalence` gains two arms and
 `title_update_tier3_equivalence` two cases, all four measured against v4's
 real code at the `70505745a` pin.
+
 #### 2026-09-02 — docs(concierge): the P4.D143 lane gate record
 
 _Versions: harness 0.0.636._
@@ -4781,6 +4804,7 @@ through `getConciergeState(chat)`) plus four `stateRoute` rows that drive the
 twin on each literal state with no chat anywhere, and the Rust family asserts
 both. A shape guard fails the run if a stale oracle carries fewer than the four
 `stateRoute` rows.
+
 #### 2026-09-02 — feat(quick-hide): the footer affordance follows the uncensored row
 
 _Versions: SPA 0.5.621._
@@ -4909,6 +4933,7 @@ Shared contract §B of the round: the same predicate lands server-side as
 `concierge_state_uses_uncensored_route`, and each side is pinned by its own
 transcription of v4's truth table. The parity spec grows v4's new
 `conciergeStateUsesUncensoredRoute` block, TABLE row for row.
+
 #### 2026-09-02 — docs(orders): P4.D147's gate numbers
 
 _Docs-only change._
@@ -5412,6 +5437,7 @@ oracle, driving v4's REAL matcher and LoRA functions; every new row carries its
 own input, so nothing is transcribed into Rust. Six mutations were applied and
 each reddened exactly one arm (the `.`-class, the cap floor, the scale range,
 the phrase-dedupe fold, the resolution order, and the source trim).
+
 #### 2026-09-01 — fix(tests): the two reduced chat_messages DDLs carry customAnnouncer
 
 _Versions: core 0.0.726._
@@ -5617,6 +5643,7 @@ mutations, each reddening exactly the arm it should.
 
 Nothing calls the module yet — the write gates, readers, restore and the boot
 heal follow in their own units.
+
 #### 2026-09-01 — docs(p4.d141): the lane's verification gate record and the m6 placement row
 
 _Docs-only change._
@@ -5841,6 +5868,7 @@ lives in `db/chats_messages.rs`, which P4.D140 owns. The column is masked in
 `LAST_MESSAGE_AT_PENDING_P4D140`, but only after a measurement asserts the
 divergence has exactly the shape bug 112 predicts — and the measurement reddens
 the moment P4.D140 lands, which is the signal to drop the mask.
+
 #### 2026-09-01 — test(e2e): the LoRA editor beats, gated ACTIVATE-AT-UNIFY (P4.D139 unit 8)
 
 _Versions: SPA 0.5.609._
@@ -6067,6 +6095,7 @@ inverting the unknown-model arm each redden the corpus and not the
 transcription. One mutation (WIDENING the escape class to cover `-` and
 `/`) stays green and is recorded as behaviour-neutral rather than a
 coverage gap: `\-` and `\/` mean themselves outside a character class.
+
 #### 2026-09-01 — feat(lint): guard every Angular component host's qt-* class, not just the four utility families
 
 _Versions: SPA 0.5.602; core/harness/host/web/cli/tauri unchanged._
@@ -6110,6 +6139,7 @@ block`. One build-forced deviation from the literal frame classes: three of
 them (`qt-border-default`, `qt-bg-card`, `qt-shadow-sm`) are plain classes,
 not Tailwind `@utility` declarations, so `@apply` refused them — inlined as
 the equivalent raw properties instead, with the computed style unchanged.
+
 #### 2026-09-01 — fix(salon): reconcile the optimistic user bubble against a mid-turn refetch (dogfood #106)
 
 _Versions: SPA 0.5.601; no crate touched._
@@ -6253,6 +6283,7 @@ Tier R gained two cases and ran red-first against the pinned v4 launcher: with
 the old three-value predicate, `lock status retired lima env` and `lock clean
 retired lima env` produced 3 failures (two stdout, one exit code) out of 214;
 after the port, 214/0.
+
 #### 2026-08-31 — refactor(runtime): retire the vm runtime modes and the Lima gateway strategies (v4 1560bd43b)
 
 _Versions: core 0.0.703, host 0.0.84._
@@ -6284,6 +6315,7 @@ That header also records a measured pre-existing gap, loudly: nothing outside
 `None` on every production path and v5 has never rewritten a localhost URL.
 Porting the two surviving strategies would be new wire behavior, not a
 retirement, so this deletion lane names it as a follow-up instead of closing it.
+
 #### 2026-08-31 — refactor(about): the three back ends, no VM (v4 1560bd43b + 7fb668263)
 
 _Versions: SPA 0.5.598._
@@ -6307,6 +6339,7 @@ Two v4 hunks in the same commit are NO-PORTs with evidence: `footer-wrapper.tsx`
 (v5 ships no footer component and no `BackendMode` badge) and
 `instance-lock-gate.tsx` (v5's startup screen never ported the environment-label
 cascade).
+
 #### 2026-08-31 — refactor(data-dir): drop the Lima probe and the isVM wire key (v4 1560bd43b)
 
 _Versions: core 0.0.702, harness 0.0.604, SPA 0.5.597._
@@ -6329,6 +6362,7 @@ and re-run red-first: the two Lima cases diverged on `platform`, `path`,
 were reshaped into deletion pins — `platform_lima_flag_inert` and
 `host_path_lima_flag_inert` set `LIMA_CONTAINER=true` on the v4 side and record
 that it now changes nothing — and the corpus-coverage guard names them.
+
 #### 2026-08-31 — fix(wardrobe): the outfit consult's two bounds inverted with the raised cheap-LLM ceiling
 
 _Versions: core 0.0.712, harness 0.0.612._
@@ -6791,6 +6825,7 @@ connection-profile leg has been vacuous since v4 `aa464abf` (the committed
 identically and the arms stay green on matching failures), and the two new
 columns land in the same hole. Widening that fixture is cross-lane; the gap is
 named in both files.
+
 #### 2026-08-31 — fix(doc-tools): name the missing argument, and match past the file's punctuation (v4 bugs 108, 109)
 
 _Versions: core 0.0.703, harness 0.0.605._
@@ -7216,6 +7251,7 @@ directions. The `profiles.rs` divergence doc block is rewritten as a
 convergence record. No v5 production behavior changed; the core bump is
 doc-comment-only. The one v4-side line this commit does not port —
 `help/system-import-export.md`'s new sentence — banks to `p4.9i2`.
+
 #### 2026-08-27 — docs(porting): the P4.D133 lane record — restore-key landed whole
 
 _Docs-only change._
@@ -7296,6 +7332,7 @@ P4.D128 coverage guard now enforces the five new flags; a mutation dropping
 `--no-passphrase` from the fish template reddens it (proven, restored).
 `--force` cannot discriminate template-wide because `docs` already carries it —
 v4's own guard coarseness, recorded in the lane record.
+
 #### 2026-08-27 — port(chat-list): the ChatListPreloaded batching threaded through the list enrichment (P4.65)
 
 _Versions: core 0.0.700, harness 0.0.603, web 0.0.99._
@@ -7345,6 +7382,7 @@ proof per site; un-chunking all five sites reddened exactly those five
 proofs.
 
 #### 2026-08-27 — docs(porting): the drift catch-up + chat-list-batching round ordered — P4.D131 ∥ P4.D132 ∥ P4.D133 ∥ P4.65
+
 #### 2026-08-27 — port(spa): the tooltip live beats + the committed emit recorder
 
 _Versions: SPA 0.5.595._
@@ -7557,6 +7595,7 @@ round that absorbs it) and `0bd841394` (PORT-NEW — a body-portalled
 now-pinnable answer-confirmation badge), and the checkout went dirty in
 `app/salon/` with in-progress work continuing the same surface. Ledger §1
 and §3 updated; regen rule stays PIN REQUIRED.
+
 #### 2026-08-27 — fix(web): adjudicate the three wrong-type-collapse pockets — reportId's 404, the zod concurrency envelope, the mount-write schema
 
 _Versions: harness 0.0.599, web 0.0.98._
@@ -7613,6 +7652,7 @@ One escalation, recorded not fixed: a wrong-typed `tagId` (`[{"tagId": 5}]`) is
 carried by v4 into `linkedTo` as the raw value, where v5 drops it. Closing it
 needs `Request::FileUpload.tags` widened past `Vec<String>` in
 `quilltap-core/src/api/types.rs`, outside this lane's ownership.
+
 #### 2026-08-27 — docs(porting): P4.63's gate numbers, measured at the committed state
 
 _Docs-only change._
@@ -7735,6 +7775,7 @@ it — on the line that also carries the abandonment message, and every field is
 asserted on that line. Measured rather than argued: retargeting the
 abandonment warn to `quilltap::cheap_llm_exec` leaves the old assert GREEN and
 reddens the new one. Test-only; no production behavior changed.
+
 #### 2026-08-27 — perf(home): slice the recent chats before enriching them, not after
 
 _Versions: core 0.0.697._
@@ -7765,6 +7806,7 @@ one thing this can no longer do is fail the whole dashboard because of an
 error raised by a conversation nobody was going to see — a case these reads
 do not produce, since every read made for a discarded conversation is also
 made for the twelve that are kept.
+
 #### 2026-08-27 — test(wardrobe): the pull-down walked live, and the two carried e2e-fixture debts closed
 
 _Versions: SPA 0.5.590._
@@ -8118,6 +8160,7 @@ seeds a memory on a character the user does not own (so it survives the
 wipe) whose `relatedMemoryIds` points at a doomed row, and asserts the edge
 is scrubbed. That only happens through the chokepoint. Mutation-proven:
 restoring the per-row loop leaves the edge dangling and the test fails.
+
 #### 2026-08-27 — chore(logging): drop the per-publish realtime coalesce trace
 
 _Versions: core 0.0.691._
@@ -8197,6 +8240,7 @@ worktree pinned at `8872d7efc`: the two `image-attachment-non-vision` rows
 flipped red-first (v5 produced the text-only body v4 no longer produces), a
 new `image-attachment-glm-5-3` pair records the model that named the bug, and
 all 339 other rows are byte-identical.
+
 #### 2026-08-26 — docs(porting): the P4.D128 lane gate record
 
 _Docs-only change._
@@ -8358,6 +8402,7 @@ either new utility makes the guard exit 1 and name the inert class and its
 call site (`hover:qt-bg-primary` → `gallery-tab.ts:198`; `hover:qt-bg-success`
 → `gallery-tab.ts:183`). v4's `packages/theme-storybook` mirror has no v5
 analog — recorded, not ported.
+
 #### 2026-08-27 — fix(harness): repair nine sweep recipes and the driver's --nocapture splice
 
 _Versions: harness 0.0.594._
@@ -8838,6 +8883,7 @@ New differential `activity_tables_equivalence` diffs both tables — entry order
 included — plus `ACTIVITY_KINDS` and v4's real `BackgroundJobTypeEnum.options`,
 against v4's exports. `ACTIVITY_CHIPS` is client-only display metadata and does
 not port here.
+
 #### 2026-08-26 — fix(e2e): a healthy live channel parks the chips' fallback poll, so the beat must take the channel down
 
 _Versions: SPA 0.5.581._
@@ -9363,6 +9409,7 @@ dedupe-then-sort is made observable instead — two mounts in one tier both carr
 file and the sort decides which content comes back. Six mutations proven to
 redden; a seventh (dropping the folder ensure) provably does not, because the
 write primitive find-or-creates folder segments itself — recorded at the source.
+
 #### 2026-08-26 — test(search): a live walk over the Documents chip and its standalone open
 
 _Versions: SPA 0.5.568._
@@ -9489,6 +9536,7 @@ inside the helper, then wraps `%…%`). Callers pair it with
 
 v4's five unit cases ported one for one, plus a sixth pinning the escape set as
 exactly those three characters.
+
 #### 2026-08-26 — docs(porting): the P4.D121 lane record
 
 _Docs-only change._
@@ -9899,6 +9947,7 @@ Neutrality proven by regenerating `chat_create_capstone` from a v4 worktree
 pinned at `44a8137e` (which carries v4's own extraction) and re-running it
 green; the family's `two_char_scenario` case is the live create-path scenario
 arm. The resolver's own four-tier differential arrives with the verb.
+
 #### 2026-08-25 — docs(porting): the P4.D116 lane gate and unifier notes
 
 _Versions: SPA 0.5.561._
@@ -9999,6 +10048,7 @@ collapse to a stray space. The host carries `block`, so `.qt-select`'s
 `select.value` after the children mount, so a selection naming no rendered
 option leaves the control blank instead of snapping to row 0 - reachable here
 whenever a tier's list refetches without the row the current selection names.
+
 #### 2026-08-25 — docs(porting): the P4.D117 lane record — deferrals and the gate
 
 _Docs-only change._
@@ -10109,6 +10159,7 @@ Two v5-only adaptations: class strings live in Angular inline templates inside
 `qt-`-prefixed token too — `qt-text-replacement-settings` collides head-on with
 the `qt-text-` family — so the selectors are read out of the source itself rather
 than kept in an allowlist that would rot.
+
 #### 2026-08-25 — test(cli): the shipped completion templates are driven under a real shell
 
 _Versions: cli 0.0.12._
@@ -10433,6 +10484,7 @@ the exact UUID. Unit tests mirror v4's new `wardrobe-slug-map.test.ts`; the
 the `vault-wardrobe-write` fixture a collision-returns op, both proven
 red-first against the old code and green against oracles regenerated at the
 `f6a10055` pin.
+
 #### 2026-08-25 — test(workspace): follow the wardrobe selector's rename (P4.D113)
 
 _Versions: SPA 0.5.555._
@@ -10552,6 +10604,7 @@ Recorded mechanism divergence: v4's module also exports
 mutations ride dispatch verbs, so that routing lands in `wardrobe.api.ts` as a
 verb router in a later unit of this lane; the types and the encoding stay
 v4's verbatim.
+
 #### 2026-08-25 — test(e2e): the download buttons produce real browser downloads (P4.D114)
 
 _Versions: no crate versions bumped (the SPA rides un-bumped per the round's ownership split; the unifier recounts)._
@@ -10832,6 +10885,7 @@ real parser, and its POST leg now goes through it rather than re-reading the
 keys itself. New `web_edge_body_parse_guard` holds the whole
 `quilltap-web/src/*_routes.rs` surface to a per-file census of the collapsing
 idiom and pins that the fixed edge still routes through its parser.
+
 #### 2026-08-24 — fix(spa): the API-keys surface offers the search provider (dogfood #98)
 
 _Versions: SPA 0.5.549._
@@ -10991,6 +11045,7 @@ of the gate is faithful, which is the arm an operator can exercise today.
 
 The manifest generator learned the search shape in the same commit (the
 standing rule for this file); all ten LLM manifests regenerated byte-identical.
+
 #### 2026-08-24 — fix(title-update): the handler says what it did (P4.61)
 
 _Versions: core 0.0.646, harness 0.0.563._
@@ -11175,6 +11230,7 @@ through the real handler, so a recovered title is measured as a write — the
 renamed chat row and the story-background job's scene context. Five were red
 against the pre-fix parser. The `checkpoint burned` warn writes no row, so it is
 pinned by a capturing-subscriber wiring test over the real handler.
+
 #### 2026-08-23 — fix(images): OpenRouter transports images again, and the describer guard names NanoGPT (v4 bug 97)
 
 _Versions: core 0.0.644._
@@ -11211,6 +11267,7 @@ Proven red-first, per family, over oracles regenerated fresh at the pin:
 `provider_registry_equivalence` red on the `attachmentSupport` block bytes,
 `file_attachment_tier3_equivalence` red on `fb_ollama_describer_guard`'s
 sentence — then all three green with no oracle re-run.
+
 #### 2026-08-23 — docs(dogfood): finding #95 closes — P4.D93 absorbed v4 bug 82
 
 _Docs-only change._
@@ -11515,6 +11572,7 @@ spine reproduces it. v4's module docblock mis-numbers itself "bug 94"; the
 port records the discrepancy and keeps the code. Also mirrors v4's
 bug-88…95 docs + `bugs.md` index into `docs/v4` and banks the two help-file
 sections to the `p4.9i2` row.
+
 #### 2026-08-23 — docs(porting): the P4.D107 verification gate record
 
 _Docs-only change._
@@ -11604,6 +11662,7 @@ The family that pins this block is `provider_registry_equivalence` (its
 `attachmentSupport` row), not `providers_listing_equivalence` — the
 listing oracle carries no attachment data at all. Proven red-first against
 the pre-flip manifest, then green.
+
 #### 2026-08-23 — docs(porting): the P4.D108 lane-closed record
 
 _Docs-only change._
@@ -11747,6 +11806,7 @@ oracle cases gained the new import; the count tripwire in
 57 != 58 size mismatch against the fresh oracle before the regen, green
 after. The handler, registration, and Librarian rewrites follow in this
 lane's later units.
+
 #### 2026-08-23 — refactor(api): decode the settings tri-state once (taboo, brahma-console, data-retention)
 
 _Versions: core 0.0.629, harness 0.0.552, web 0.0.79._
@@ -11775,6 +11835,7 @@ decoder against its literal wire key and tag — a typo there would silently tur
 every body into the keep-current arm at the edge, the dispatch layer and the
 differential at once. The live web-edge test grew from one surface to all three,
 each over the full tri-state; the Taboo edge had never been walked live at all.
+
 #### 2026-08-23 — docs(porting): the P4.D109 lane record — Tier 2 reads, deferral, gate
 
 _No crate versions bumped._
@@ -12042,6 +12103,7 @@ pre-existing row is byte-identical. The differential gains four
 coverage-shape asserts (both TTLs, the caching-off arm, the
 consumed-keys arm) read off v4's recorded body, so a corpus that lost
 the vectors cannot pass green.
+
 #### 2026-08-22 — docs(porting): the P4.56 lane gate record
 
 _Docs-only change._
@@ -12462,6 +12524,7 @@ deliberately fights every sort. Five mutations proven red-first: byte order
 instead of ICU (`apple` vs `Banana`), a reversed name sort, the dropped
 `instructions` tie-break (two groups both named `Mirror`), the dropped
 resolver trim, and groups-before-project.
+
 #### 2026-08-22 — docs(porting): the P4.55 verification gate record
 
 _Docs-only change._
@@ -12572,6 +12635,7 @@ root-level `invalid_type` and takes the same `Validation error` path. Six new
 arms in the memories-config differential (two invalid + one writes-nothing
 composite comparing the stored bag per verb), all eight comparands proven red
 against the old lenient behavior.
+
 #### 2026-08-22 — fix(prompts): the shared prompt-field label host is a block
 
 _Versions: SPA 0.5.543._
@@ -13121,6 +13185,7 @@ recording in this commit — v4's Z.AI URL→base64 download (the same drift
 commit) lands with the bytes seam in a later unit of this lane, and the
 recorder needs a distinct download response before that row can be
 regenerated honestly.
+
 #### 2026-08-22 — port(images): the Z.AI and NanoGPT size panels, the NanoGPT options verify-spec, and two gated beats (v4 `ca22ec45` + `781fc420` + `d5830439`, P4.D102)
 
 _Versions: SPA 0.5.539._
@@ -13345,6 +13410,7 @@ Four of them (`change_passphrase_archive_sweep`, `characters_action_route`,
 `Run:` line with the command in backticks, written at the PROSE margin, so the
 driver had always read it as a sentence. Those are rewritten into the indented
 form rather than duplicated.
+
 #### 2026-08-22 — docs(porting): finding #99 is fixed — v4 at `d9c98cf2`, v5 in P4.D99
 
 _Docs-only change._
@@ -13429,6 +13495,7 @@ shape, the prefix strip, the unwrapped sentence, the nested fallback,
 sibling-wins precedence, and every empty case.
 
 No caller reads it yet — the reducer carry and the two render sites follow.
+
 #### 2026-08-21 — test(e2e): the gated thinking-turn prefill beat (P4.D98 tier 2, ACTIVATE-AT-UNIFY)
 
 _Versions: SPA 0.5.532._
@@ -13484,6 +13551,7 @@ and the two `ModelInfo` facts (`supportsThinking` / `thinksByDefault`); the
 server half that serves them is P4.D97's, and everything here degrades to the
 provider-rule-only answer while the fields are absent, exactly as v4's client
 does.
+
 #### 2026-08-21 — test(harness): sweep-runnable run lines for the three envelope families (P4.D97 rider)
 
 _Versions: harness 0.0.523._
@@ -13890,6 +13958,7 @@ fidelity vectors, and gains a `turnSkipNote` kind driving v4's real
 `buildTurnSkipInstruction` — the note bytes had no *direct* differential before
 this round (every `build_context_tier3` op passes `turnSkip: None`); the spine
 carried them only transitively, through 25 `orchestrator_tier3` rows.
+
 #### 2026-08-20 — test(harness): widen the memories fixture pair to v4's schema vintage; retire the ruled vintage row (P4.52)
 
 _Versions: harness 0.0.512._
@@ -13927,6 +13996,7 @@ designed; the ruled row retires to a plain `check_body`. Mutation-proven:
 dropping `composerEmoji` from a scratch copy puts v4 back on the bare 500 and
 reddens the family with the same "expected an error arm" refusal the ruling
 documented.
+
 #### 2026-08-20 — fix(harness): normalize() neutralizes any checkout-alias assignment (P4.53)
 
 _Versions: harness 0.0.514._
@@ -14091,6 +14161,7 @@ untouched, and toggles it back off.
 The new help-doc section v4 wrote alongside this
 (`help/memory-recall-relevance.md`) is banked to `p4.9i2` with the rest of the
 help family; the bank note is on `m6-screen-parity.md` row 11.
+
 #### 2026-08-20 — feat(memory): per-turn conversation summaries riding the turn's one embedding (P4.D95)
 
 _Versions: core 0.0.591, harness 0.0.510._
@@ -14145,6 +14216,7 @@ columns v4 added in the 4.8.2/4.8.3 round, so it dies on `no such column:
 composerEmoji`. Reproduced against an unmodified oracle case at `c8a3cf77`. The
 repair is a fixture-vintage one and belongs to a maintenance order — that `.db`
 pair is also read by two e2e specs.
+
 #### 2026-08-20 — test(e2e): walk the document toolbar in both of its hosts
 
 _Versions: SPA 0.5.525._
@@ -14216,6 +14288,7 @@ it was added when this pane had no toolbar — and is recorded as a divergence.
 `document-pane.toolbar.spec.ts` (12 cases) pins the mount shape, the no-Nar
 shape against the recorded corpus, the shared signal from both controls, the
 flush direction, and both routing branches. Six mutations red.
+
 #### 2026-08-20 — docs(porting): the P4.51 lane gate — both riders discharged, three follow-ups recorded
 
 _Docs-only change._
@@ -14519,6 +14592,7 @@ after `requiresApiKey` and only when the manifest carries it — v4's route pass
 declares it. The providers-listing oracle now spreads that whole config object
 instead of hand-picking six fields: the hand-picked comparand was blind to any
 config key v4 adds, which is exactly how `acceptsApiKey` would have passed green.
+
 #### 2026-08-19 — port(lantern): a moderation reroute re-crafts the story prompt candidly
 
 _Versions: core 0.0.586, harness 0.0.507._
@@ -14768,6 +14842,7 @@ first regeneration, as designed, and is now a plain equality: v4 completes
 the avatar job and writes the avatar, as this port always did. New unit
 tests diff the normalizer against v4's `normalizeEquippedSlots` case for
 case, including the malformed-bag salvage and the non-object shapes.
+
 #### 2026-08-18 — fix(prospero): keep v4's legacy per-view background layer on the routed project page
 
 _Versions: SPA 0.5.518._

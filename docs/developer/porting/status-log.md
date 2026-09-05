@@ -2500,6 +2500,7 @@ parser assertions.
 Gate for the unit: `cargo test -p quilltap-core --lib model::ollama_think_parser`
 8/8; `QT_ORACLE_OLLAMA_THINK_PARSER=… cargo test -p quilltap-harness --test
 ollama_think_parser_equivalence` 1/1 (339 cases); `cargo fmt --all --check`.
+
 ## Lane record — P4.D79 (the `aa464abf` drift, profile/host half), IN PROGRESS
 
 **v4 baseline `aa464abf`, drift-checked at lane start 2026-08-15:** v4's
@@ -3096,6 +3097,7 @@ workspace gate below.
 (`~/source/quilltap-v5/harness/oracle/cases/settings-routes.test.ts`) rather than
 the worktree — the two are separate working trees. Transplanted to the worktree
 and `git checkout`-restored main (verified base-identical first). Main left clean.
+
 ## Lane record — P4.D58 (the salon impersonation reconcile SPA, bugs 45/46), IN PROGRESS
 
 Ports the SPA half of v4 `1bed814f` ("reconcile impersonation attribution + add
@@ -3370,6 +3372,7 @@ Regen (all TZ=UTC, /tmp jest mirror): salon fixture
 `node --import tsx build-salon-fixture.ts` (writes committed `salon-{main,mount}.db`),
 then the four salon jest cases + `chat-cast-routes` jest + `turn-pause-filters`
 tsx. core 0.0.490, harness 0.0.415.
+
 ## Lane record — P4.D55 (the `f4955e0e` provider drift: bugs 31–35), ALL FIVE BUGS LANDED
 
 **Tier 1 + tier 2 complete.** All five v4 `43a1b5b1` fixes ported and
@@ -6539,6 +6542,7 @@ fold-episode seam went live in the Salon orchestrator's
 `run_summary_check` wiring (P4.6bj) but the enclave step's spine
 apparently doesn't run it. Deferred loudly to the post-rewrite
 dogfood-fixing round.
+
 ## Lane record — P4.14, the memory-injector sort comparators made panic-free (CLOSED, 2026-07-23)
 
 **Branch `claude/p4-14-memory-sort-total-order-156889`, 3 commits. Every unit
@@ -37517,6 +37521,7 @@ availableProfiles)`), and called v4's real `extractMemorySearchKeywords` N×
 per window. Windows were reconstructed from the logged distill requests +
 `chat_messages`. Run: `cd ~/source/quilltap-server && ~/.nvm/versions/node/v24.13.1/bin/node --import tsx _bench_p416.mts <bench-input.json> 5 <out.json>`. Cleanup: v4 bench file removed, the 3 bench-startup physical
 backups (~1.8 GB) removed from the copy's `data/backups/`, scratch discarded.
+
 ## Lane record — P4.17 ToolMessage rendering (the dogfood tool-result card): COMPLETE on branch (SPA-only lane of the post-rewrite dogfood-fixing round)
 
 **SPA-only; zero `crates/**` diffs (verified `git diff --stat`). Closes the
@@ -42427,6 +42432,7 @@ freshly regenerated oracle. No SPA run is owed — `apps/web/**` was never touch
 `quilltap-core` **0.0.376**, `quilltap-harness` **0.0.322**, `quilltap-host`
 **0.0.41**, `quilltap-web` **0.0.47**. `quilltap-cli` 0.0.3,
 `quilltap-tauri` 0.0.5, SPA 0.5.290 — untouched.
+
 ## Lane record — P4.d22 unit 1: bug 4, the sparse-array blob divergence, CONVERGED
 
 **Order:** `work-orders/p4.d22-restore-import-convergence.md`, tier-1 item 1.
@@ -44250,6 +44256,7 @@ one existed.
   help text now lags v4 by one more delta (the popup's perspective wording).
 - The two `apps/web` riders above (stale `core-contract.ts` comment; no
   `characterLabel` spec) — **P4.9E3C's**, recorded not taken.
+
 ## Lane record — P4.9E3B unit 1 (fixture + export + outfit-summary), 2026-07-27
 
 **The chat-dialogs fixture family + the two chat-GET fan-out arms.** Branch
@@ -47116,6 +47123,7 @@ contaminated by it. Note for whoever regenerates next: the shared pin
 `/private/tmp/qt-v4-pin-b3ee00f1` was REMOVED by another lane mid-run; this lane
 re-created its own at `/private/tmp/qt-v4-pin-p4d26-b3ee00f1`. Use a
 lane-unique pin path.
+
 ## Lane record — P4.d27 unit 1 (the `7391404e` support reads) — 2026-07-30
 
 The four support surfaces v4's new dimension-reconcile + reindex code needs, all
@@ -47600,6 +47608,7 @@ reporting the same counts and `reindex_enqueued=false` while it drains.
 
 **Versions after the lane:** core 0.0.403, harness 0.0.349, host 0.0.50; web
 0.0.52, cli 0.0.3, quilltap-tauri 0.0.5, SPA 0.5.319 unchanged.
+
 ## Lane record — P4.d28 unit 1: the `calculate_timestamp_at` extraction (2026-07-30)
 
 Order: `work-orders/p4.d28-export-markdown-transcript.md` (tier-1 item 2).
@@ -48461,6 +48470,7 @@ is cleared. Suggested replacement for the CLAUDE.md baseline paragraph:
 families above re-run by name with `--nocapture`, zero SKIP, over oracles
 regenerated fresh from the pinned `dcd9440a` worktree. **No `apps/web` change —
 no SPA gate owed.** Versions: core 0.0.412, harness 0.0.358.
+
 ## Lane record — P4.20 unit 1 (the diagnosis + the stale oracle mock) — 2026-07-30
 
 **Drift check at lane start:** v4 HEAD is EXACTLY the order's baseline
@@ -48732,6 +48742,7 @@ landed; the tier-3 deferrals were respected (the P4.13 failed-cheap-call ruling
 was not touched — the failing CALL disappeared, not the ruling — and no v4-side
 fix was made). No v4 bug or dead code surfaced, so `dogfood-findings.md` gets no
 new entry from this lane.
+
 ## Lane record — P4.21 unit 1: the attachment carrying types + threading (2026-07-30)
 
 **Branch `claude/p4-21-image-attachments-wire-53abb7`.** Drift-check: v4 HEAD
@@ -48931,6 +48942,7 @@ no behavior those families compare). No `apps/web` change — no SPA gate owed.
 design):** a real describe call and a real in-chat vision send on the Friday
 copy, verifying the model describes the ACTUAL image — dogfood #37's live
 close-out. Versions at lane close: core 0.0.414, harness 0.0.359.
+
 ## Lane record — P4.9P units 1–2: the `uiSearch` server vertical + differential (2026-07-30)
 
 **The verb.** `api/ui_search.rs` ports v4's `app/api/v1/ui/search/route.ts`
@@ -49518,6 +49530,7 @@ message belongs to the caller, not a label composed from one. Wording is
 byte-identical (`the consult timed out after 60s`), covered by
 `pascal_llm_consult_equivalence` (3 constants, 28 budgets, green at
 `ff12f491`).
+
 ## Lane record — P4.D31, the `4ac66c29` restore memory-id re-port (2026-07-30/31)
 
 **Branch:** `claude/p4-restore-memory-ids-fc4f4d`. **Order:**
@@ -49734,6 +49747,7 @@ binaries, 1,719 passed, 0 failed**; the eleven families re-run by name with
 > regenerated BYTE-IDENTICAL. ⚠ v4 moved to **`e1be028b`** during the round —
 > release infra only (Dockerfile / tarball script / version chore), **zero
 > `lib/`, NO-PORT**; oracles were pinned at `ff12f491` regardless.
+
 ## Lane record — P4.D32, the release-refactor neutrality sweep (2026-07-31)
 
 **Branch** `claude/p4-d32-release-refactor-7aacba`. **v4 baseline `ff12f491`**;
@@ -49942,6 +49956,7 @@ re-run at `ff12f491`; the round's NO-PORTs are `71dcc7e8`, `80cafed5`,
 
 **Versions after the lane:** core 0.0.421, harness 0.0.364, cli 0.0.4; host,
 web, quilltap-tauri and the SPA unchanged.
+
 ## Lane record — P4.D33 (the provider SDK-major wire check)
 
 Branch `claude/p4-d33-provider-sdk-wire-662202`. Order:
@@ -50141,6 +50156,7 @@ opened. Versions: core 0.0.419, harness 0.0.364, host 0.0.52.
 differential runs on recorded pages). A dogfood boot with an OpenRouter key
 configured should show non-null context lengths and tool-capable models in cost
 estimation — it joins the owed dogfood pass.
+
 ## Lane record — P4.D34 (the SPA drift riders), unit 1: the xterm-6 two-tier theme read
 
 **v4 reference:** `components/terminal/Terminal.tsx` → `getTerminalTheme(): ITheme`
@@ -50799,6 +50815,7 @@ Regen recipes: the groups/projects routes oracles per their headers
 store-unavailable oracle per its header (characters fixture). ⚠ /tmp proved
 volatile mid-lane (a wipe ate freshly-written NDJSON + fixture copies); the
 recipes' outputs are best pointed at a stable scratch dir.
+
 ## Lane record — P4.24 unit 1 (the `cleanupOldLogs` repository delete)
 
 `crates/quilltap-core/src/db/llm_logs.rs` gains `cleanup_old_logs` plus the pure
@@ -51019,6 +51036,7 @@ reader diagnosing a red does not have to work backwards to the cause.
 The test's config pushes `cleanup_interval_ms` out of the way along with every
 other cadence: the boot tick would otherwise enqueue a SECOND job and blur what
 is being asserted.
+
 ## Lane record — P4.27 (lane E): the D32 sweep debt
 
 ### Unit 1 — the `canChooseOutfit` projection gap (2026-07-31)
@@ -51182,6 +51200,7 @@ is being asserted.
   triggered.
 - Versions: core 0.0.428, harness 0.0.370 (this lane's bumps; unifier
   recounts per the playbook).
+
 ## Lane record — P4.25 (the toast subsystem), unit 1: the module
 
 **Ported:** v4 `lib/toast.tsx` (151 LOC) → `apps/web/src/app/ui/toast.service.ts`
@@ -53018,6 +53037,7 @@ each minimal and named here for the unifier:**
    (`dump_pascal_stores`), shared by the two route differentials.
 
 `api/types.rs`, `engine.rs`, and all of `apps/web/**` are untouched.
+
 ## Lane record — P4.D36 unit 1: the client-safe expression parser (2026-08-01)
 
 **Branch** `claude/pascal-side-effects-spa-port-96bd95`. Drift check at lane
@@ -53588,6 +53608,7 @@ cd ~/source/quilltap-server
 QT_ORACLE_ANNOUNCEMENT_ATTRIBUTION=/tmp/oracle-announcement-attribution.ndjson \
   cargo test -p quilltap-harness --test announcement_attribution_equivalence
 ```
+
 ## Lane record — P4.D38 unit 1: `whisper-visibility.ts` re-port (both commits)
 
 `apps/web/src/app/chat/whisper-visibility.ts` ported v4's fully-drifted
@@ -55679,6 +55700,7 @@ drift catch-up is owed — but it is **not this lane's**: P4.28 pinned its v4
 worktree at `c4d4b0de` for every oracle and archive, nothing in its scope is
 drift-driven, and no family it regenerated imports those files. Recorded for the
 round's planner.
+
 ## Lane record — P4.30 unit 1 (the parity corpus learns the template)
 
 **Branch:** `claude/p4-30-roleplay-template-de683c`. SPA-only; zero Rust.
@@ -55956,6 +55978,7 @@ never the same test twice) is the documented signature of contention rather
 than a regression.
 
 **Version:** SPA 0.5.383. No crate touched.
+
 ## Lane record — P4.29: the toast census's OPEN rows (in progress)
 
 Branch `claude/toast-census-open-rows-bc4082`. Drift-checked at lane start:
@@ -57539,6 +57562,7 @@ The baseline paragraph in `CLAUDE.md` is the unifier's to move (this lane
 edited neither `CLAUDE.md` nor `phase-4.md`, per the order). Until the catch-up
 runs, regenerate chat-create-family oracles from a worktree pinned at
 `49769ec4`; everything else regenerates straight from the checkout.
+
 ## Lane record — P4.D43 unit 1: the `vaultMountPointId` listing field
 
 **Order:** `work-orders/p4.d43-pascal-run-presets.md` (tier-1 deliverables 1
@@ -57614,6 +57638,7 @@ is a keystroke FILTER, not a validator: it can yield `''` or `-x`, both of
 which `PRESET_NAME_PATTERN` refuses. v4 makes that explicit in a test and so
 does the port — the Save button's pattern check is the second gate, not a
 redundancy.
+
 ## Lane record — P4.D43 unit 3: the run dialog's Presets section
 
 **Order:** deliverable 3 (all ten surveyed behaviors) + the ONE named
@@ -58471,6 +58496,7 @@ v4's new 189-line design spec (`diff -q` identical).
 
 core 0.0.462 → **0.0.463**; harness 0.0.395 → **0.0.396**. No other crate
 and no `apps/web` file touched.
+
 ## Lane record — P4.33 unit 1 (arm 1: the overwrite-clear claims the folders), 2026-08-04
 
 **Drift check at lane start (2026-08-04):** `git log 7fe9fe40..HEAD` in
@@ -59755,6 +59781,7 @@ beats' 15 s expectations — global setup alone ran past seven minutes
 before it was abandoned, which is worth knowing for any future SPA-only
 lane: build release, not debug, for a Playwright gate). SPA version
 0.5.402 → 0.5.407.
+
 ## Lane record — P4.D48 unit 1: the `be2c9cbb` Anthropic-SDK wire check, and the five infra NO-PORT dispositions (2026-08-05)
 
 Branch `claude/anthropic-sdk-wire-check-536a2f`. v4 drift-checked at lane
@@ -61041,6 +61068,7 @@ No `apps/web` change in this lane, so **no SPA gate is owed**.
   restore got the tolerant variant, because only restore has a
   vintage-instance invariant proving it. If an import into an
   un-migrated instance ever matters, it needs its own survey first.
+
 ## Lane record — P4.38 unit 1 (the §1 contract mirror + the phases mirror), 2026-08-05
 
 Branch `claude/almanack-spa-porting-docs-2a6795`. The SPA half of the Almanack
@@ -61386,6 +61414,7 @@ dialog, `ProgressBar.tsx`, `lib/tools/almanack/phases.ts`, both
 and `search-results.tsx` — is verified untouched by both the commit and the dirty
 set (`git status --short` over that path list returns empty). This lane consumes
 no oracles, so there is nothing to regenerate.
+
 ## Lane record — P4.39 (the `gen-provider-manifests.mjs` repair)
 
 **Branch** `claude/provider-manifests-generator-repair-7cd703`.
@@ -62820,6 +62849,7 @@ recovery + four failover legs) is unchanged and stays green.
   path the fallback must come with it.
 - The stale-id CLEANUP (proactively clearing a dead `rawResponse.id`) — v4
   doesn't do it either; the fallback makes it moot.
+
 ## Lane record — P4.9H2A (embedding-profiles management, server half)
 
 Order: `work-orders/p4.9h2a-embedding-profiles-server.md`. Branch
@@ -63027,6 +63057,7 @@ The REST edges for these (system/tools `?action=memory-dedup[-preview]`;
 reaches the refusal via `POST /api/dispatch` meanwhile.
 
 Version: core 0.0.485 → 0.0.486.
+
 ## Lane record — P4.42 (the Serper web-search wire)
 
 Order: `work-orders/p4.42-web-search-wire.md`. A WIRE, not a port — the
@@ -63213,6 +63244,7 @@ file's `renamedToast` documents. Unrelated to the wire; my global-setup changes
 cannot reach that scope dialog, and the mock-serper server only starts in the
 P4.42 describe's `beforeAll` (after that beat runs) — it surfaced under run-to-run
 timing variance and is now hardened permanently.
+
 ## Lane record — P4.9H2B (embedding-profiles + maintenance SPA), 2026-08-06
 
 SPA-only lane on `claude/embedding-profiles-spa-porting-8723fa`, off v4
@@ -63697,6 +63729,7 @@ fixture with no orphaned store children — the shape agrees at zeros.
 --no-fail-fast` with the lane env block = **417 binaries / 1,933 passed /
 0 failed / 0 ignored**, every lane differential RUN (zero SKIP). Versions:
 core 0.0.494, host 0.0.62, harness 0.0.420.
+
 ## Lane record — P4.D52 (scriptorium + memory + almanack drift), 2026-08-06
 
 Part of the `f4955e0e` found-bugs convergence round. v4 baseline
@@ -64932,6 +64965,7 @@ Pure de-duplication, zero behavior change, no oracle regen owed. Gate:
 fmt/clippy both feature sets clean; select_speaker / orchestrator_tier3 /
 salon_reads / salon_skip re-run green (salon_skip exercises the touched
 turn-action skip path). Version: core 0.0.517.
+
 ## Lane record — P4.D61 (impersonate-takes-the-turn + speaking-as turn-follow + seed-once, SPA) — v4 `f6eac168` (Bugs 48/49 + Bug 51 client half)
 
 Branch `claude/p4-d61-follow-impersonation-spa-63209e`. SPA-only lane (owns
@@ -65025,6 +65059,7 @@ modal (`showAllLLMPause`), and take-over closes it, impersonates, and hands the
 character the turn (Bug 48) — `userTurnName` names them, `turnOverride` is set.
 Combined with the existing `AllLLMPauseModal` component specs, this covers the
 opener + take-over chain deterministically. SPA 0.5.444.
+
 ## Lane record — P4.44 item 1 (conversation-chunks upsert CREATE arm)
 
 **Branch `claude/p4-44-pinning-followups-4f07c5`, baseline v4 `f6eac168`
@@ -65675,6 +65710,7 @@ for a second, unrelated reason. It is therefore deliberately NOT in this lane's
 gate env block (where it skips), it is re-run and recorded here, and the round
 planned exactly this handoff ("P4.D62 plants the ARCHIVE rows P4.D63's
 kept/swept arms consume").
+
 ## Lane record — P4.D63 units 1-6 (the archive schema, guards, chokepoint, crypto)
 
 Branch `claude/p4-archive-schema-guards-crypto-02d37f`. v4 pinned at
@@ -66830,6 +66866,7 @@ One cosmetic leftover for the unifier, outside this lane's ownership:
 `apps/web/.../scriptorium.spec.ts:122` still names the deleted
 `verifyBasePath` in a test title. It stubs its own warning string, so
 only the name is stale.
+
 ## Lane record — P4.D66 unit 1: the `ed8934f1` CLI text drift (2026-08-11)
 
 The round's baseline move to `ed8934f1` landed on `crates/quilltap-cli/**`
@@ -69302,6 +69339,7 @@ write.
 - `cargo build --workspace --release` exit 0.
 - `ng test` 298 files / 4,143 tests, 0 failed; `ng build` clean.
 - Lane branch `claude/boot-lock-order-hardening-8873d7`, three commits.
+
 ## Lane record — P4.D76 (the 4.8.2 dependency-refresh wire re-check)
 
 Branch `claude/provider-sdk-wire-recheck-991b39`. Order:
@@ -69454,6 +69492,7 @@ its 13 SDK-path rows. Two consequences worth carrying:
 No file under `crates/*/src`. No Rust test text, hence **no crate version
 bump** (per the order's ownership section: fixtures alone do not bump). The
 committed delta is two NDJSON corpora, the CHANGELOG entry, and this record.
+
 ## Lane record — P4.D72 unit 1: the staged-live-outfits pure module (v4 `07d4ccce`)
 
 **Landed.** v4 4.8.2's new `lib/wardrobe/staged-live-outfits.ts` (93 lines,
@@ -70243,6 +70282,7 @@ port in this lane is still against current v4, and no recapture is owed.
 The round's baseline move should still be to `48396682` (what the round
 was planned against); **`11553944` is the next round's drift check**, and
 P4.D75's lane should know its two test suites moved under it.
+
 ## Lane record — P4.D75 unit 1: the char-insert engine twin, the four corpora, the two datasets (v4 `48396682`)
 
 **The Tier B engine is in v5, code-identical to v4's.** v4's
@@ -71684,6 +71724,7 @@ production caller (the archive service) now exists, so the fix has a live
 consumer.
 
 Versions: harness 0.0.463.
+
 ## Lane record — P4.47 (A): the three sibling settings Zod-collapse arms, 2026-08-14
 
 The D73 bank, closed. `answerConfirmationSettings`, `cheapLLMSettings` and
@@ -88300,6 +88341,7 @@ red first). It was discarded and re-run after the port freed. **The tell is
 quilltap-web`; check it before every suite run, and queue behind the other lane
 rather than racing.** No data crossed over — each worktree has its own instance
 directory — so the sibling's run was unaffected beyond CPU contention.
+
 ## Lane record — P4.D118 (the `6afacb18` CLI completion drift, bug 101) — v4 pin `6afacb18`
 
 Drift ledger §2 freshness probe at lane start (2026-08-25): v4 checkout on
@@ -90014,6 +90056,7 @@ ported** — `git diff --stat f3892158d..main` over `lib/realtime/`,
 span sites and both schema files is EMPTY — and every oracle in this lane was
 generated from the pinned worktree, so the port and the gate are unaffected.
 **`/driftcheck` is owed before the next round.**
+
 ## Lane record — P4.D125 (the `664cfca84` + `f3892158d` CLIENT half: chips, the realtime hub over v5's event stream, the topic map, the shared clock, the polling-site migrations)
 
 Ordered against round baseline **`b220999da`**. **Drift-ledger §2 freshness
@@ -99987,6 +100030,7 @@ rm -f $W/crates/quilltap-web/tests/fixtures/episodic-recall-*.db-journal
   makes "reddens exactly its row" a measurement rather than a hope.
 - **The fixture builder leaves zero-length `-journal` files** beside the `.db`s.
   No committed fixture carries one.
+
 ## Lane record — P4.71 (the host gateway resolver)
 
 Branch `claude/p4.71-host-gateway`. Order:
@@ -100650,6 +100694,7 @@ this lane ran from the lane-unique detached worktree
 `/tmp/qt-v4-pin-p4.70-6d2a50382`, verified still at `6d2a50382` at close. That
 is exactly the case §5.1's pin exists for. **The unifier must `/driftcheck`
 before moving the baseline.**
+
 ## Lane record — P4.67 (the query-parameter semantics sweep)
 
 **Branch:** `claude/p4.67-query-param-semantics`. **Baseline:** `6d2a50382`,
@@ -100848,6 +100893,7 @@ UNDER the census: a real body read landing there later moves the count and the
 guard fires. ⚠ `crates/quilltap-harness/tests/web_edge_body_parse_guard.rs` is
 not in any lane's ownership table this round; this lane edited it because this
 lane created the condition, and flags the touch for the unifier.
+
 ## Lane record — P4.69 (the SPA follow-ups: the danger ring, the invented warn, the modal's writers, the fragile beats)
 
 **Branch:** `claude/p4.69-spa-followups-danger-ring-modal-beats`. **Order:**
@@ -102550,6 +102596,7 @@ round's baseline move). PIN REQUIRED honoured: every regen ran from
 by `chat_create_capstone_equivalence`, so no other family is invalidated; the
 three `QT_FIXTURE_CC_*` `.db` files are /tmp-built by the recipe and never
 committed. All 32 capstone cases were re-run after each builder change.
+
 ## Lane record — P4.D149, the Concierge state chosen at chat creation (SPA half, v4 `303288fb4`)
 
 **Branch:** `claude/concierge-creation-spa-01263f`. **v4 pin:**
@@ -103415,6 +103462,7 @@ v4's logging at all (`character_avatar_job` has 0 tracing calls against v4's 18;
 25), and four handlers are unported outright (`character-headshoulders-backfill`,
 `memory-regenerate-all`, `memory-regenerate-chat`, `scene-state-tracking`), so
 their rows are a consequence of the unported surface rather than a logging gap.
+
 ## Lane record — P4.73 (the `/api/v1/images` collection route + the ingest codec)
 
 **Branch:** `claude/p4-73-images-collection-ingest-7e6c3f`. **Baseline:**
@@ -103838,6 +103886,7 @@ The `almanack.rs` / `quilltap_import` codec sites were MEASURED, not widened:
 both pass `NotConfiguredPixelCodec`, and both are correct to. `api/almanack.rs`
 writes `text/markdown` diagnostics and `quilltap_import` takes the caller's codec
 (`codec.unwrap_or(&not_configured)`), so neither is an image ingest path.
+
 ## Lane record — P4.72 (unit 1): the other seventeen `?action=` edges
 
 **Branch** `claude/p4-72-query-param-census-0c8180`. Baseline `0b0617fee`;
@@ -105016,6 +105065,7 @@ core 0.0.783, harness 0.0.677 (from the round base core 0.0.776, harness
 
 Nothing. This lane deletes code that has no production caller on either side
 and adds two unit pins; no user-visible surface moves.
+
 ## Lane record — P4.D153 (the `d883a5ee1` drift catch-up round): the memory-subject prefix, bug 122
 
 **Branch:** `claude/p4-memory-subject-prefix-bug-a56373`. **Target commit:**
@@ -105587,6 +105637,7 @@ lane-unique `/tmp/qt-p4d154-gate/` first (the `/tmp` collision rule).
 
 **Versions:** core 0.0.778, harness 0.0.673. No other crate touched; no SPA
 file touched; no Playwright authored or run (§E).
+
 ## Lane record — P4.D155: the `0506517d3` collapse's seven behaviour corrections (server) + the Pascal placeholder classifier on both sides
 
 **Branch** `claude/p4-d155-collapse-corrections-156867`. **Target commit**
@@ -105917,6 +105968,7 @@ written `.qtap` should agree for the first time); a Brahma one-shot against a
 key-less profile (the capitalised sentence); and a Workbench draft carrying
 `{{params.}}` and `{{metadata.}}`, whose warnings now name what is actually
 wrong.
+
 ## Lane record — P4.D158 unit 2: the packaging trio's wire re-check (2026-09-05)
 
 The `d883a5ee1` drift catch-up round, lane P4.D158. v4's three packaging
@@ -107607,6 +107659,7 @@ only the full workspace run says which.
   `api::images::images_generate` uses `zod_len_min_ok` / `zod_len_max_ok` for
   the identical schema, so the two sibling routes now disagree on astral
   prompts. Observed, not fixed.
+
 ## Lane record — P4.77 unit 1: the `zod` version tripwire (2026-09-05)
 
 Work order `p4.77-zod-tripwire-ratification-capture-layer.md`, item 1 (phase-4
