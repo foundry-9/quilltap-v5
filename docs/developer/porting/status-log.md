@@ -106530,3 +106530,231 @@ markers, so the mandate's escalation clause never fired.**
 
 Versions: core 0.0.777, harness 0.0.674. No other crate touched; no SPA change;
 no Playwright (§E).
+
+## Round record — the `d883a5ee1` drift catch-up round unification (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158)
+
+**UNIFIED on main 2026-09-05 — ALL SIX ORDERS CLOSED; the oracle baseline
+MOVES `0b0617fee` → `d883a5ee1` and the fifteen-row drift debt is CLEARED
+(fourteen rows absorbed/ratified; `15573c3a1` / bug 119 stays UNPROCESSED for
+`p4.9k` by the ledger's instruction).** Unify branch `unify/d883a5ee1`,
+fast-forwarded onto main.
+
+### The survey
+
+Six lane worktrees, all clean, 38 commits: P4.D157 (8), P4.D153 (4), P4.D154
+(4), P4.D155 (10), P4.D156 (5), P4.D158 (7). The ledger's §2 probe passed at
+the start AND again immediately before the baseline move (v4 `main` at
+`d883a5ee1`, tree clean, both logs empty) — **no drift arrived mid-round**.
+Ownership held: no two lanes touched the same source file; the only shared
+files were the version manifests, `Cargo.lock`, and the two append-only docs.
+Every lane's header verified against its order's tier list: P4.D153/D154/D157
+whole; P4.D155 whole with two escalations out of its ownership; P4.D156 whole
+with two measured corrections to its order's prose (Tier R 214 → 216, and
+(f2)'s NO-COUNTERPART is the whole of v4's `saveGeneratedPhysicalDescription`);
+P4.D158 OPEN at unit 3 only — the `0506517d3` neutrality sweep, which the
+order's own §C made single-flight and post-sibling, so it ran HERE.
+
+### Reconciliation
+
+Cherry-picked in the planned order D157 → D153 → D154 → D155 → D156 → D158
+with `merge=union` on the two append-only docs. Six conflicts, all version
+files (`Cargo.toml` ×2 / `Cargo.lock`), resolved to the incoming side and then
+**recounted as base + total bumps** (the playbook's silent-auto-merge rule):
+core 0.0.776 + 19 = **0.0.795**, harness 0.0.671 + 14 = **0.0.685**, cli
+0.0.17 + 1 = **0.0.18**, SPA 0.5.642 + 4 = **0.5.646**; web 0.0.114 / host
+0.0.96 / tauri 0.0.7 unchanged. Both lockfiles re-synced. A first scripted
+resume re-attempted an already-applied pick and left a stale
+`CHERRY_PICK_HEAD` with HEAD already correct — cleared with `--quit`, the
+second loop skipped by the `-x` trailer.
+
+### The §3 review — three parallel readers over the core lanes + the unifier's own reads
+
+**The headline finding — would have shipped, and it contradicted a lane's
+ratification:** P4.D155 recorded `pascal_custom_tool_definition_equivalence`
+RED at the pin and escalated it to P4.D158's `6e1a64ea6` (`zod` 4.4.3 →
+4.5.4) row; P4.D158's record ratified that row NO-PORT with "no v5 sentence
+and no v5 regex moves". Both were right about what they measured and both
+had diffed the LOCALE (`v4/locales/en.js`) only. The change is in core
+`schemas.js`: **Zod 4.5.4 marks a strict object's `unrecognized_keys` issue
+`continue: true`** (4.4.3 did not), so an object with a stray key is no
+longer ABORTED — inside a `when: true | {…}` union the object branch stays
+live while the literal branch aborts, and Zod's `handleUnionResults` (itself
+unchanged) hoists the object branch alone; and because the object is not
+aborted, its refines RUN. v5's two hand-rolled Zod engines
+(`custom_tool_types.rs` and its SPA twin `custom-tool-types.ts`) modelled
+the 4.4.3 rules. Fixed at the wire in three parts on both twins: the
+unrecognized-keys issue is continuable; and the three `hasComparator`
+refines test only the keys their level declares, because Zod's refine sees
+the PARSED value from which the strict object has already stripped the stray
+key (a `contains` on a `when` object is unrecognized, not a comparator).
+Proven red-first in two steps at the `d883a5ee1` pin: pre-fix the family's
+first mismatch was `metadata-misspelled-comparator`; with the flag alone it
+moved to `contains-bare-value` (the refine now firing but the input-keyed
+`has_comparator` still swallowing it); with both, **258 definitions
+byte-matched**. The SPA side: the committed 299-row corpus refreshed at the
+pin (13 rows moved, all unrecognized-key shapes) and nine hand-captured rows
+across four specs re-captured from v4's REAL schema at the pin (`npm test`
+green after). **The standing lesson is recorded in the ledger's §1:** the
+oracle's `node_modules` resolve the LIVE dependency tree whatever sha the
+source pin names, so a v4 `npm update` is a regen event for every
+Zod-transcribing family, not only the provider corpora — and a locale diff
+is not a Zod diff.
+
+**Applied from the readers (nothing blocking in any lane):**
+- P4.D155 — the answer-confirmation re-affirmation selection re-spelled the
+  derivation v4 collapsed onto `selectionFromProfile` at that exact site;
+  agreed today, nothing pinned it. `ReaffirmationProfile` now widens into
+  `CheapLlmProfile` and routes through the ONE `selection_from_profile`.
+- P4.D153 — a read-pool failure ahead of `find_names_by_ids` fell to the
+  empty map silently; it now logs v4's `Error resolving character names`
+  (the one leg v4's `safeQuery` never leaves quiet). The three coverage
+  floors counted the bare `About ` — which a corpus memory body also
+  contains — and now count the two real prefixes.
+- P4.D154 — the hoisted cutoff's `!responding_id.is_empty()` conjunct is
+  commented as v4's `characterParticipant` truthiness test (verified
+  neutral), `rehydrate_user_attachments` is module-private as v4's is, and
+  the seam's all-or-nothing-per-message granularity vs v4's push-as-you-go is
+  recorded (unreachable on both sides today).
+- Recorded, not changed: v4's `super.findByIds` drops Zod-invalid character
+  rows where v5's `query_raw` marshals with defaults (every reader in that
+  file; converges on the blank-name exclusion); the `provider` argument is
+  dead on both `MessageContextSeams` methods; `render_template` lacks v4's
+  four `logger.debug` lines (a handler-logging inventory row); the
+  `placeholders.rs` regex walks `char`s where v4 walks UTF-16 units (the
+  standing JS-fidelity class, no well-formed input differs).
+
+**The unifier's own reads** (the whole combined diff, files no conflict
+touched included): the anthropic regex in v4's position with the comment
+corrections; the CLI `default` arm reading AND stripping `--json` with v4's
+`{"defaultInstance": null}` shape; the three About sentences byte-for-byte;
+the two `qt-checkbox` attributes; the Answer Confirmation row on the shared
+`qt-settings-toggle-row` (copied from a sibling card, not from React); the
+export preview through `is_file_excluded_from_export`; `not_found("File")`;
+`ProfileApiKeyFailure::describe()` at both Brahma sites; `selection_from_
+profile(profile, local_base_url_fallback)` with the eight call sites' flags;
+D157's seven deletions with **zero remaining references** to any deleted
+name outside the sweep's own citations; D158's request-envelopes corpus
+re-measured FIELD by field — exactly two fields moved
+(`headers.x-stainless-package-version` 7.4.0 → 7.10.0 on 202 rows, the
+openrouter `headers.user-agent` on 13) plus the four new opus-5 rows.
+
+### The wires
+
+1. **The Zod 4.5 fix, both twins** (above) + the SPA corpus/vector refresh.
+2. **The two `screens/custom-tools/**` placeholder readers** neither
+   P4.D155 (mandate) nor P4.D156 (path) owned: `proving-bench.ts`'s `$state`
+   probe through `scanPlaceholders` (v4 `ProvingBench.tsx:168` — a bare
+   `{{state.}}` / unterminated `{{state.foo` no longer counts; two spec arms),
+   `outcomes-section.ts` on the exported `PLACEHOLDER_PATTERN`
+   (`OutcomesSection.tsx:771`).
+3. **P4.D157's three stale doc references** (`completion_provider.rs`,
+   `transport.rs`, `lib.rs`) landed as the lane recorded them.
+4. **P4.D158's unit 3 — the `0506517d3` neutrality sweep** — run at the
+   unification from a fresh pin per the lane's recipe with its committed
+   38-family exclusion list: **409 families: 402 ok / 4 run_failed / 2
+   regen_failed / 1 refused (`backup_uuid_remap`, the deliberate
+   repo-writer)** — artifact
+   `harness/tools/sweep-results/2026-09-05-d883a5ee1-p4.d158-neutrality.json`.
+   **Not one of the seven was `0506517d3`'s** — the collapse is NEUTRAL over
+   every family the sweep ran — but the sweep earned its keep on the other
+   drift rows: (i) **three reds were ONE finding — Zod 4.5.4's code-point
+   length rule** (`autonomous_rooms_routes`'s `update_invalid_title_astral`,
+   `projects_routes`'s `create_name_astral_over_max`, `settings_routes`'s
+   `taboo_put_astral_over_bound`: v4 now ACCEPTS 101 astral characters
+   against a `.max(200)`). `$ZodCheckMaxLength` now counts code points once
+   the UTF-16 count overflows the bound (`$ZodCheckMinLength` inside `[min,
+   2·min)`, `$ZodCheckLengthEquals` inside `[n, 2·n]` — measured in
+   `core/checks.js`, each with Zod's own window comment). The port's standing
+   rule that "`.max(n)` counts UTF-16 units" (memory note
+   `zod-string-check-order-and-length`) is now WRONG for Zod ≥ 4.5.4. Fixed
+   as ONE rule on both sides — `jsstr::zod_len_{max,min,eq}_ok` + the SPA's
+   `pascal/zod-length.ts` — and routed through every v5 site whose v4 origin
+   is a Zod string check (groups `within` + `title min(1)`, projects'
+   `FieldRule::Str`, autonomous-room title/description maxes, mount-point
+   names, scenario filename/name/description, the user-profile display name,
+   `generate_image`'s prompt + `llmString` maxes, the taboo phrase bound,
+   the Pascal engine's `parse_string` and the SPA twin's `parseString`);
+   the sites whose v4 origin is a PLAIN `.length` compare (`files`'
+   `validateFilename`/`validateFolderName`, the roleplay-template POST, the
+   UI-search `query.length < 2`, the SPA draft validators — v4's own client
+   `validateDraft` compares `.length`) keep UTF-16 deliberately. Unit tables
+   on both sides from Zod's comments; a `title-astral-{within,over}-max`
+   pair added to the definition corpus (60 hats accept, 81 refuse — 260
+   definitions matched). (ii) `characters_mutations`'s `tag_delete` — **a
+   FIXTURE-VINTAGE artifact, reproduced from v4's OLD source on the same
+   live `node_modules`**: v4's tag DELETE now also unlinks the tag from
+   connection profiles (bug 74's profile tags), its whole-entity write hit
+   `no such column: allowTierFallback` on the committed `characters-main.db`
+   (pre-P4.D135), and the route answered 500 where v5's column-wise write
+   succeeded. Repaired with P4.D155's `migrate-pascal-run-custom-columns.ts`
+   pointed at the characters pair (exactly the three P4.D135
+   `connection_profiles` columns added; the mount partition needed nothing),
+   then the seven families sharing that fixture regenerated. (iii)
+   `files_sha256_realign_heal`'s regen died on `openMountIndexDbIfPresent is
+   not a function` — the oracle case's OWN `jest.mock` of v4's
+   `migrations/lib/database-utils` predates the collapse that routed the
+   migration's inline opener through that module; the mock gained the opener
+   (mirroring the inline one in that venue). (iv) `image_gen_leaves` imported
+   `resolveLoraScaleBounds` and `DEFAULT_LORA_SCALE` from `lora-support`,
+   whose re-export `d4138b96b` removed (the dead-code recipe saw the constant
+   only as a comment mention and missed the function) — imports moved to
+   `lora-scale`. All seven re-run green by name.
+5. The ledger: §1 rewritten for `d883a5ee1` (probe re-run clean), the
+   fourteen rows retired to §6, the live-`node_modules` hazard recorded, the
+   §1 "fourteen symbols" corrected to thirteen via P4.D157's row.
+
+### The gate
+
+**The gate's own catch:** the first full run stopped fail-fast in the core
+library binary on THREE unit pins of the old UTF-16 rule (`projects`'
+`lengths_are_utf16_code_units`, the taboo `parse_measures_length_in_utf16_
+code_units`, `generate_image`'s `string_bounds_count_utf16_units`) — the same
+rule the sweep had just retired, pinned three more times where no oracle
+reaches — and clippy in both feature sets on a leftover `utf16_len` import.
+Each pin now asserts the astral-within-bound acceptance its routes family
+pins from the oracle plus an over-in-both-measures refusal; the chain was
+re-run whole.
+
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (re-run after the last edit);
+  `cargo build --release --workspace` clean.
+- **The round's families by name, all from the `d883a5ee1` pin through the sweep
+  driver, zero SKIP:** the 22-family sibling batch (§A of P4.D153/D154/D155
+  minus the Pascal set) 22/22; the ten Pascal families re-run after the Zod
+  fix 10/10 (the definition family red-first twice, then green at 260
+  definitions); the nine length-rule families 9/9 after the rule landed (two
+  of them via their renamed acceptance rows); the seven characters-fixture
+  families 7/7 after the vintage repair; `files_sha256_realign_heal` and
+  `image_gen_leaves` green after their oracle-side repairs; the 409-family
+  neutrality sweep 402 ok + the six repaired + the one deliberate refusal.
+  Artifacts: `harness/tools/sweep-results/2026-09-05-d883a5ee1-{p4.d158-
+  neutrality,unify-siblings,unify-zod-length,unify-characters-fixture}.json`.
+- `cargo test --workspace -- --nocapture` with the round's 67-variable env block (every affected family's recipe vars, built mechanically from the driver's `--show` run stages, zero name collisions) plus `QT_V4_CHECKOUT=<pin>` for Tier R: **496 test binaries / 2,802 passed / 0 failed / 1 ignored — exit 0**; Tier R RAN inside it (`CLI differential: 216 cases, 0 failures`); the 373 `SKIP:` lines name ONLY families outside the block (the SKIP-var set ∩ the env-block set measured EMPTY), each of which the 409-family sweep had already regenerated and run fresh at the pin in its own invocation.
+- SPA: `npm test` **379 files / 5,962 passed / 0 failed**; `npm run build`
+  clean; `npm run lint` (the `check-qt-classes` guard) clean.
+- Full Playwright against the fresh build (the debug `quilltap-web` /
+  `quilltap` binaries built first — the suite's global setup refuses without
+  them): **274 passed / 0 failed / 0 skipped (6.9 m)** — the third full run of the day on this branch (274/274 twice before it, then re-run after the length-rule port).
+
+### Versions
+
+core 0.0.795, harness 0.0.685, cli 0.0.18, SPA 0.5.646; web 0.0.114, host
+0.0.96, tauri 0.0.7 unchanged.
+
+### 💸 The dogfood queue gains
+
+Bug 122 on a real multi-character turn (a character whose store holds
+memories ABOUT another — the block must read `About <name>: `); bug 121 with
+a text attachment quoted by the SECOND responder, and on the first responder's
+second turn; the opus-5 sampling strip on a real Friday profile (this is the
+model the planning session runs on); `instances default --json` against the
+real registry; the Workbench's bare `{{state.}}` no longer lighting the
+state-test hint; the About page's three sentences; the cheap-LLM priority-5
+path carrying a profile's provider params to the wire. Plus the standing
+queue (Pascal's group tier, the Brahma deep query, dedup/summaries, #101,
+the LoRA wire-byte look).
+
+### Cleanup
+
+Performed after the fast-forward: the six lane worktrees removed and their branches deleted with the temp branch; the `.git/info/attributes` union rule removed; both unify pin worktrees (`/tmp/qt-v4-pin-unify-d883a5ee1`, `/tmp/qt-v4-pin-unify-0b0617fee`) removed; the `/tmp` oracle NDJSONs / fixture shields / sweep and gate logs / the Playwright output removed; no debug servers left running.

@@ -2853,8 +2853,38 @@ records THERE. Update this summary only when a phase or round completes.
   push — classified in the ledger's §3 at the unification's drift step; the
   round's regens were all pinned). Next: that drift catch-up, then `p4.9i2`
   as its own round — see phase-4.md.** Round record: `status-log.md`.
-- **Oracle baseline: `0b0617fee` (2026-09-02, v4 main — bugs 116-118 fixed),
-  adopted at the `0b0617fee` drift catch-up round unification (2026-09-03).**
+- **The `d883a5ee1` drift catch-up round (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥
+  P4.D156 ∥ P4.D157 ∥ P4.D158): UNIFIED on main (2026-09-05) — ALL SIX
+  CLOSED; the oracle baseline MOVES to `d883a5ee1` and the fifteen-row
+  drift debt is CLEARED** (bug 119's row stays for `p4.9k`). v4's two
+  live-Friday bug fixes absorbed whole — **v5 reproduced both**: bug 122
+  (the memory-subject prefix `About <name>: ` through the three
+  self-facing formatters, inside the token estimate; the RAW-path name
+  lookup that cannot reach the vault; the oracle case's positional arity
+  fixed FIRST — the ledger's silent-regen trap) and bug 121 (the USER-side
+  attachment walk as a fourth leaf with v4's ten cases; re-hydration BEFORE
+  `build_context` with the 80,000-char skip-whole budget; the orchestrator
+  corpus widened to SEE it) ∥ the `0506517d3` collapse's seven corrections
+  (five measured present in v5: the priority-5 params drop, the hard-coded
+  `is_local`, the preview's inline filter, "File not found not found", the
+  lowercase Brahma sentence) + the Pascal placeholder classifier once on
+  each side ∥ bug 120 (Tier R 214 → 216/0), the About sentences, the
+  `qt-checkbox`/toggle-row adoptions ∥ the `d4138b96b` dead-code decision
+  (thirteen symbols DELETED — no twin had a production caller; seven
+  families SPLIT, none frozen) ∥ the Opus 5 sampling strip red-first, every
+  provider corpus re-recorded at the pin (two version-marker fields moved,
+  nothing else), `2edd823c0`'s four bag-key blind spots as restore arms
+  over a new archive, the `docs/v4/` mirror refreshed. **The §3 review's
+  headline catch contradicted a lane's ratification:** `zod` 4.4.3 → 4.5.4
+  DID move v5 bytes — both lanes diffed the locale, the change is in core
+  (`unrecognized_keys` now continuable, so a stray key keeps a union branch
+  alive and its refines fire); both hand-rolled Zod engines fixed
+  red-first, the SPA corpus refreshed. Also at the wire: the neutrality
+  sweep for `0506517d3` (409 families: 402 green, the seven non-green rows all run to ground — three were Zod 4.5's code-point length rule, one a fixture-vintage artifact, one an oracle mock lagging the collapse, one a moved import, one the deliberate repo-writer — none the collapse's; it is NEUTRAL). Gate: fmt/clippy both feature sets clean; release build; 496 binaries / 2,802 / 0 / 1 ignored with the 67-var env block (Tier R 216/0 inside it); 409-family sweep 402 + 6 repaired + 1 refused; the round's families by name from the pin zero SKIP; ng 380 files / 5,962+; full Playwright 274/274 zero skips. Versions:
+  core 0.0.795, harness 0.0.685, cli 0.0.18, SPA 0.5.646. **The owed
+  dogfood pass is the top next candidate.** Round record: `status-log.md`.
+- **Oracle baseline: `d883a5ee1` (2026-09-05, v4 main — bug 122 fixed),
+  adopted at the `d883a5ee1` drift catch-up round unification (2026-09-05).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

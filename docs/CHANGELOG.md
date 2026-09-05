@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — unify: the `d883a5ee1` drift catch-up round (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158)
+
+_Versions: core 0.0.795, harness 0.0.685, cli 0.0.18, SPA 0.5.646._
+
+Six lanes unified; the oracle baseline moves `0b0617fee` → `d883a5ee1` and
+fourteen of the ledger's fifteen drift rows are absorbed or ratified (bug 119
+stays with the unported `p4.9k`). Landed: bug 122's memory-subject prefix
+(P4.D153), bug 121's user-attachment re-hydration (P4.D154), the `0506517d3`
+collapse's seven corrections with the Pascal placeholder classifier on both
+sides (P4.D155), bug 120 + the About sentences + the `qt-checkbox` and
+Answer Confirmation row (P4.D156), the `d4138b96b` dead-code decision —
+thirteen symbols deleted, seven families split (P4.D157), the Opus 5 sampling
+strip + the provider-corpus re-check + the `2edd823c0` restore arms + the
+`docs/v4/` mirror (P4.D158). At the wire: Zod 4.5.4's continuable
+`unrecognized_keys` fixed on both engine twins (the §3 review's headline —
+both lanes had diffed the Zod locale, the change is in core), the two
+custom-tools placeholder readers, P4.D157's three doc references, and the
+`0506517d3` neutrality sweep (409 families: 402 green, the seven non-green rows all run to ground — three were Zod 4.5's code-point length rule, one a fixture-vintage artifact, one an oracle mock lagging the collapse, one a moved import, one the deliberate repo-writer — none the collapse's; it is NEUTRAL). Gate: fmt/clippy both feature sets clean; release build; 496 binaries / 2,802 / 0 / 1 ignored with the 67-var env block (Tier R 216/0 inside it); 409-family sweep 402 + 6 repaired + 1 refused; the round's families by name from the pin zero SKIP; ng 380 files / 5,962+; full Playwright 274/274 zero skips. Round
+record: `docs/developer/porting/status-log.md`.
+
 #### 2026-09-05 — docs(porting): the P4.D157 lane record — thirteen symbols, all delete; seven families split, none frozen
 
 _Docs-only change._ (No crate versions bumped.)

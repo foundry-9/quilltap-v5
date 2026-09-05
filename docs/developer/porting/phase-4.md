@@ -6256,6 +6256,96 @@ baseline `8872d7efc`, drift debt CLEARED):
 PB1 stays parked by the standing rule. The `qtap-export.schema.json`
 file port remains a NAMED standalone flag.
 
+## The `d883a5ee1` drift catch-up round (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158) — UNIFIED 2026-09-05
+
+**UNIFIED on main (2026-09-05) — ALL SIX ORDERS CLOSED; the oracle baseline
+MOVES to `d883a5ee1` and the drift debt is CLEARED** (fourteen rows absorbed
+or ratified; `15573c3a1` / bug 119 stays UNPROCESSED for the unported `p4.9k`,
+by the ledger's own instruction). Landed: bug 122's memory-subject prefix
+through the three self-facing formatters at v4's template positions and
+inside the token estimate, the RAW-path `find_names_by_ids`, the resolver's
+zero-query early return, three call sites, the oracle case's positional arity
+fixed FIRST (P4.D153) ∥ bug 121's USER-side attachment walk as a fourth
+`message_context_leaves` leaf with v4's ten cases, the re-hydration BEFORE
+`build_context` with the skip-whole budget and the `unsupported`-with-error
+drop, the `load_user_attachments` seam, the orchestrator corpus widened to SEE
+the splice (P4.D154) ∥ the `0506517d3` collapse's six server-side
+corrections + the Pascal placeholder classifier ONCE on each side — five of
+the seven were measured present in v5 (P4.D155) ∥ bug 120 red-first on Tier R
+(214 → 216/0), the three About sentences, the two `qt-checkbox` attributes,
+the Answer Confirmation row on the shared toggle row, (f1) a convergence by
+construction (P4.D156) ∥ the `d4138b96b` dead-code decision: thirteen
+symbols, every one option (ii) DELETE — not one twin had a production caller —
+seven families SPLIT, none frozen, the LoRA bounds pinned at their new home
+(P4.D157) ∥ the Opus 5 sampling strip red-first on two new corpus rows, every
+provider corpus re-recorded at the pin with exactly two version-marker fields
+moving, the three packaging rows ratified on that measurement, `2edd823c0`'s
+four bag-key blind spots as restore arms over the new committed
+`restore-archive-bag-keys.zip`, the `docs/v4/` mirror refreshed, the §G help
+bank (P4.D158). **The §3 review's headline catch, fixed at the wire — it
+contradicted a lane's ratification:** `6e1a64ea6`'s `zod` 4.4.3 → 4.5.4 DID
+move v5 bytes. Both lanes diffed the LOCALE; the change is in core
+`schemas.js` — a strict object's `unrecognized_keys` issue is now
+`continue: true`, so an object with a stray key stays a live union branch and
+its refines fire. Both hand-rolled Zod engines (`custom_tool_types.rs` and
+its SPA twin) took the flag plus parsed-value `hasComparator` semantics,
+red-first in two steps then green (258 definitions); the SPA's committed
+corpus refreshed (13 rows) and nine hand-captured rows re-captured. Also at
+the wire: the re-affirmation selection through the ONE `selection_from_
+profile` (D155's should-fix), the name-lookup pool failure logged (D153), the
+two `screens/custom-tools/**` placeholder readers neither lane owned, D157's
+three doc references, and **P4.D158's unit 3 run here — the `0506517d3`
+neutrality sweep: 409 families: 402 green, the seven non-green rows all run to ground — three were Zod 4.5's code-point length rule, one a fixture-vintage artifact, one an oracle mock lagging the collapse, one a moved import, one the deliberate repo-writer — none the collapse's; it is NEUTRAL**. Gate: fmt/clippy both feature sets clean; release build; 496 binaries / 2,802 / 0 / 1 ignored with the 67-var env block (Tier R 216/0 inside it); 409-family sweep 402 + 6 repaired + 1 refused; the round's families by name from the pin zero SKIP; ng 380 files / 5,962+; full Playwright 274/274 zero skips. Versions: core 0.0.795,
+harness 0.0.685, cli 0.0.18, SPA 0.5.646. Round record: `status-log.md` →
+"Round record — the `d883a5ee1` drift catch-up round unification".
+
+**Next candidates, in rough value order** (updated at this unification,
+2026-09-05):
+
+1. **The owed dogfood pass** on the Friday copy over this round's surfaces
+   (the 💸 list in the round record: bug 122 on a real multi-character turn,
+   bug 121's second-responder quote, the opus-5 send on a real profile,
+   `instances default --json`, the Workbench's bare `{{state.}}`, the
+   priority-5 params on the wire) + the standing queue (Pascal's group tier,
+   the Brahma deep query, dedup/summaries, #101, the LoRA wire-byte look).
+2. **`p4.9i2` — help/HelpChat as a dedicated round** (the bank gained this
+   round's rows: `help/file-uploads.md` "A word on company",
+   `help/memory-recall-relevance.md` "Whose Life Is It, Anyway?", the four
+   `e9a9c538e` help files, the help-chat API-key sentence; it also owns bug
+   119's `p4.9k` sibling — the character optimizer with `15573c3a1`'s
+   post-fix shape).
+3. **P4.73's remainder:** `POST /api/v1/images?action=generate` and
+   P4.62(a)'s FILES leg, plus the review's recorded items (the DELETE's
+   orphan cleanup vs the archived-character guard, `zod_url_ok`'s
+   authority-less schemes, the two `[Images v1]` info lines, the unbounded
+   JSON read, the order-dependent `cannedFetch`).
+4. **The Zod-emulation maintenance item this round opened:** v5 hand-rolls
+   Zod semantics in TWO engines (`pascal/custom_tool_types.rs` + the SPA
+   twin) and transcribes Zod sentences at ~150 edge sites; the oracle's
+   `node_modules` resolve the LIVE tree, so every v4 dependency bump is a
+   regen event for all of them. Worth a committed `zod-version` tripwire (a
+   harness test that reads v4's installed `zod` version and fails when it
+   moves past the recorded one) so the next bump is caught at ordering, not
+   at a family's first red.
+5. **The census's honest totality** — the per-variant allow-list of the
+   fields v4 really reads from the URL and the ~160 unclassified body-key
+   rows; then the fixes the census names.
+6. **The present-but-null validation lead** (`api/**`-wide).
+7. The carried smalls: the thirteen `CaptureLayer` copies → one
+   `#[cfg(test)]` helper; the `?action=` endpoint census; `files_write_
+   routes.rs`'s transcribed DDL; the `chat_files_post_*` 500-vs-400
+   divergence; the streaming column's duplicated markup; the thirteenth
+   participant-status copy + five harness copies; the `MessageContextSeams`
+   dead `provider` argument on both methods; `render_template`'s four
+   missing `logger.debug` lines (handler-logging inventory); the
+   `announcer_tier3` fixture's blindness to the memory-subject prefix (the
+   shared `post-office` pair needs a targeted memory).
+
+PB1 stays parked by the standing rule. The `qtap-export.schema.json` file
+port remains a NAMED standalone flag.
+
+**The ordering-time section follows for history:**
+
 ## The `d883a5ee1` drift catch-up round (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158) — ORDERED 2026-09-05
 
 **Six parallel lanes, all drift.** The ledger's §2 probe passed at ordering
