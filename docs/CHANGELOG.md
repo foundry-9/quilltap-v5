@@ -415,6 +415,17 @@ Also landed, the five items the P4.73 unification review recorded:
 
 `handler-logging-inventory.md` gains its first `app/api/**` file, seeded so the
 generate route's eight lines are dispositioned.
+#### 2026-09-05 — test(harness): add a `zod` version tripwire against the v4 checkout
+
+_Versions: harness 0.0.686._
+
+`zod_version_guard.rs`: a recorded constant (v4's installed `zod` at the
+oracle baseline) checked against the checkout's `node_modules/zod/
+package.json`, FAILing loudly — never skipping — when it moves, and naming
+the regen obligation (both hand-rolled Zod engines, the SPA corpus, the ~150
+edge sites) plus the P4.D158 measurement to repeat. A loud `SKIP:` only when
+the checkout itself is absent. Closes the gap the `d883a5ee1` round found by
+consequence rather than by design (phase-4 candidate 4).
 
 #### 2026-09-05 — docs(setupphase): order the `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77)
 

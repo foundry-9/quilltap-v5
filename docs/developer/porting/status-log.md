@@ -107607,3 +107607,29 @@ only the full workspace run says which.
   `api::images::images_generate` uses `zod_len_min_ok` / `zod_len_max_ok` for
   the identical schema, so the two sibling routes now disagree on astral
   prompts. Observed, not fixed.
+## Lane record — P4.77 unit 1: the `zod` version tripwire (2026-09-05)
+
+Work order `p4.77-zod-tripwire-ratification-capture-layer.md`, item 1 (phase-4
+candidate 4 from the `d883a5ee1` round). `crates/quilltap-harness/tests/
+zod_version_guard.rs` (new): a recorded constant (`4.5.4`, v4's installed `zod`
+at the `d883a5ee1` baseline), a `QT_V4_CHECKOUT`-locator (default
+`$HOME/source/quilltap-server`) reading `node_modules/zod/package.json`'s
+`"version"` field, a loud `SKIP:` line when the checkout (or its
+`node_modules`) is absent, and a **FAIL** — never a skip — when the version has
+moved, naming the obligation (regenerate both hand-rolled Zod engines, the SPA
+corpus, and the ~150 edge sites) and citing the P4.D158 unit 2 item 4 lane
+record by name as the precedent measurement to repeat. Shape precedent:
+`spelling_guard.rs` (repo-reading, no fixture), `db_error_key_guard.rs`
+(executable census against a recorded constant). No recipe stage — nothing to
+regenerate, only the checkout's installed `zod` to read.
+
+**Mutation proof:** edited `RECORDED_ZOD_VERSION` to `"4.5.3"` — the test
+reddened with the full obligation message (`left: "4.5.4" right: "4.5.3"`);
+reverted. **Positive proof:** green against the real checkout (`4.5.4`) and
+green (SKIP) against `QT_V4_CHECKOUT=/tmp/nope-does-not-exist`. **Sweep-driver
+proof:** `recipe_sweep.py --list` classifies it `ok` (not `nothing_to_run` /
+`non_extractable`) alongside `db_error_key_guard`/`spelling_guard`;
+`--self-test` clean; `--run zod_version_guard` runs end-to-end through the
+driver.
+
+Versions: harness 0.0.686.
