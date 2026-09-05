@@ -387,6 +387,26 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — refactor(pascal): the renderer substitutes through the regex engine, not through arithmetic of ours
+
+_Versions: core 0.0.783._
+
+A follow-up to the placeholder collapse. The first shape of `render_template`
+after routing through `scan_placeholders` walked the scanned occurrences and
+re-found each `whole` string from the previous match's end, splicing the answer
+in by index. That is *correct* — every occurrence of a `{{…}}` literal is
+itself a match, so `find` from `last` can only land on the intended one — but
+correctness by argument is exactly what this port distrusts, and the argument
+was a paragraph long.
+
+It is now `PLACEHOLDER_PATTERN.replace_all(message, |caps| …)`, which is v4's
+own `message.replace(PATTERN, (whole, rawKey) => …)` shape: the substitution
+positions are the engine's. The classification and lookup are unchanged — the
+same `classify_placeholder` + `resolve_placeholder_value` pair — and
+`pascal_custom_tools_execution_equivalence`'s 51 `renderTemplate` rows (the
+seven prototype rows among them) are green against the same oracle before and
+after.
+
 #### 2026-09-05 — docs(orders): P4.D155 closed — the lane record for the `0506517d3` collapse's corrections
 
 _Docs-only change._ (No crate versions bumped.)

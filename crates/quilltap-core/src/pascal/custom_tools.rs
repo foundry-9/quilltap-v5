@@ -10,6 +10,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::state::paths::{get_at_path, parse_path, PathKey};
+use regex::Captures;
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
@@ -25,7 +26,7 @@ use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, Ran
 use super::expressions::{evaluate_expression, parse_expression};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number};
 use super::metadata_match::{js_primitive, metadata_comparator_holds};
-use super::placeholders::{classify_placeholder, scan_placeholders, PlaceholderRef};
+use super::placeholders::{classify_placeholder, PlaceholderRef, PLACEHOLDER_PATTERN};
 use crate::jsstr::{self, js_trim};
 
 /// A run that could not be completed. Never becomes a fabricated outcome.
@@ -1316,31 +1317,28 @@ pub struct TemplateVars<'a> {
 /// absent or holds a list or an object: the placeholder left standing tells the
 /// author exactly which key their character lacks.
 pub fn render_template(message: &str, vars: &TemplateVars) -> String {
-    let mut out = String::with_capacity(message.len());
-    let mut last = 0usize;
-    for scanned in scan_placeholders(message) {
-        // `scan_placeholders` walks the same pattern in the same order, so the
-        // next occurrence is always at or after `last`.
-        let Some(at) = message[last..].find(&scanned.whole).map(|i| last + i) else {
-            continue;
-        };
-        out.push_str(&message[last..at]);
-        out.push_str(&match resolve_placeholder_value(&scanned.place_ref, vars) {
-            // Numbers render through `format_value`; anything else through
-            // its JS string form.
-            Some(ResolvedValue::Number(n)) => format_value(n),
-            Some(ResolvedValue::String(s)) => s,
-            Some(ResolvedValue::Bool(b)) => b.to_string(),
-            // Nothing renderable: leave the hole visible. v4 logs WHY at
-            // debug (no such metadata key / not a primitive / unknown
-            // placeholder); v5's renderer has never carried those debug
-            // lines, and this collapse does not add them.
-            None => scanned.whole.clone(),
-        });
-        last = at + scanned.whole.len();
-    }
-    out.push_str(&message[last..]);
-    out
+    // v4's `message.replace(PATTERN, (whole, rawKey) => …)`: one pass, each
+    // occurrence classified and looked up through the shared pair. Kept as a
+    // regex replacement rather than a scan-and-splice so the substitution
+    // positions are the engine's, not arithmetic of ours.
+    PLACEHOLDER_PATTERN
+        .replace_all(message, |caps: &Captures| {
+            let whole = caps.get(0).map_or("", |m| m.as_str());
+            let key = js_trim(caps.get(1).map_or("", |m| m.as_str()));
+            match resolve_placeholder_value(&classify_placeholder(key), vars) {
+                // Numbers render through `format_value`; anything else through
+                // its JS string form.
+                Some(ResolvedValue::Number(n)) => format_value(n),
+                Some(ResolvedValue::String(s)) => s,
+                Some(ResolvedValue::Bool(b)) => b.to_string(),
+                // Nothing renderable: leave the hole visible. v4 logs WHY at
+                // debug (no such metadata key / not a primitive / unknown
+                // placeholder); v5's renderer has never carried those debug
+                // lines, and this collapse does not add them.
+                None => whole.to_string(),
+            }
+        })
+        .into_owned()
 }
 
 /// v4 `resolvePlaceholderValue(ref, vars)` (NEW at `0506517d3`) — the value a
