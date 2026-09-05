@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — feat(help): sync the help tree at boot — `ensure_help_docs_synced` wired into the host assembly (P4.9I2A unit 2)
+
+_Versions: host 0.0.98._
+
+The core's `ensure_help_docs_synced` had no production caller (its own doc comment
+said so). The host `assemble` now runs it over the embedded help tree on every
+assemble/unlock — after the partitions open and the built-in seeds run (so
+`help_doc_chunks` exists), before the job pump starts (the sync enqueues HELP_DOC
+embedding jobs) — on a fresh OS thread with its own runtime, the `seed_built_ins`
+thread-bridge idiom, so the async writer call is legal from both the sync boot path
+and an async `Unlock`. Best-effort as in v4: a failure warns and the boot continues.
+Recorded divergence: v4 syncs LAZILY on the first help read
+(`HelpSearch.loadFromDatabase`); v5 syncs EAGERLY at boot — observable only as
+timing and log lines, the rows are identical. This is what makes the P4.D77
+upgrade chunk backfill reachable for the first time.
+
+New host test `host_help_docs_boot`: a fresh instance boots to 120 `help_docs`
+rows with chunks; a second boot touches no row (the `contentHash` short-circuit);
+and one `EMBEDDING_REINDEX_ALL` pumped through the registry restores an emptied
+table from the EMBEDDED tree. Mutation-proven both ways: the ensure call removed
+reads 0 at boot; the retired `current_dir()` walk restored at the reindex
+registration reads 0 after the reindex (tests run from the crate dir, which has no
+`help/`).
+
 #### 2026-09-05 — feat(help): ship the help tree — vendor v4's `help/` at the pin and embed it in the host binary (P4.9I2A unit 1)
 
 _Versions: host 0.0.97, harness 0.0.686._

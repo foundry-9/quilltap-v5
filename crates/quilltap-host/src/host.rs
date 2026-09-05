@@ -480,6 +480,19 @@ impl EngineAssembler for HostAssembler {
             seed_sample_content(db)?;
         }
 
+        // === P4.9I2A: the boot-time help-docs sync ===
+        // v4's `ensureHelpDocsSynced()` is LAZY — it runs on the first read of
+        // any help route or tool (`HelpSearch.loadFromDatabase`). v5 runs it
+        // EAGERLY here, after the partitions are open and the built-in seeds
+        // have run (so `help_doc_chunks` exists) and BEFORE the job pump starts
+        // below (the sync enqueues HELP_DOC embedding jobs). A recorded
+        // divergence: observable only as timing and log lines — the rows are
+        // identical, and this is what finally makes the P4.D77 chunk BACKFILL
+        // reachable on an upgraded instance (it had no production caller).
+        // Best-effort as in v4 (swallow + log; help loading never blocks boot).
+        ensure_help_docs_synced_at_boot(db);
+        // === end P4.9I2A ===
+
         // The terminal manager (P4.1c) — one per assembly (it holds this
         // assembly's Db); published on the host slot for the transport's
         // terminal routes.
@@ -913,6 +926,54 @@ impl EngineAssembler for HostAssembler {
             image_describe,
             // === end P4.9E4A ===
         })
+    }
+}
+
+/// P4.9I2A — run `ensure_help_docs_synced` over the EMBEDDED help tree
+/// (`files_store::embedded_help_source_files`, the same table the
+/// `EMBEDDING_REINDEX_ALL` handler reads) on a fresh OS thread with its own
+/// current-thread runtime, so the async `Db::write` inside it is legal whether
+/// `assemble` was reached from the sync boot path or an async `Unlock` dispatch
+/// (the `seed_built_ins` thread-bridge idiom). v4's ensure swallows every
+/// failure into a log line and carries on; so does this — a boot never fails
+/// because the help tree would not sync.
+fn ensure_help_docs_synced_at_boot(db: &Db) {
+    use quilltap_core::services::help_doc_sync::ensure_help_docs_synced;
+
+    let db = db.clone();
+    let outcome = std::thread::spawn(move || {
+        let files = crate::files_store::embedded_help_source_files();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| format!("help-docs sync runtime: {e}"))?;
+        rt.block_on(ensure_help_docs_synced(&db, &files))
+            .map_err(|e| e.to_string())
+    })
+    .join();
+    match outcome {
+        Ok(Ok(Some(result))) => tracing::info!(
+            target: "quilltap::boot",
+            total_on_disk = result.total_on_disk,
+            created = result.created,
+            updated = result.updated,
+            unchanged = result.unchanged,
+            deleted = result.deleted,
+            failed = result.failed,
+            chunks_written = result.chunks_written,
+            "Help documents synced from the embedded tree",
+        ),
+        // Docs current (or the chunk backfill ran) — v4 logs nothing here.
+        Ok(Ok(None)) => {}
+        Ok(Err(e)) => tracing::warn!(
+            target: "quilltap::boot",
+            error = %e,
+            "Help-docs sync failed at boot; continuing (help loads what it can)",
+        ),
+        Err(_) => tracing::warn!(
+            target: "quilltap::boot",
+            "Help-docs sync thread panicked at boot; continuing",
+        ),
     }
 }
 

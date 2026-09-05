@@ -106926,3 +106926,26 @@ the checkout's own `help/` is byte-identical to the pin's.
   build machine (v4 walks at runtime on the user's machine); both are the
   same sorted order now, so the only residual is a `help/` edited after the
   build — which the guard refuses in-tree and `rerun-if-changed` rebuilds.
+
+### Unit 2 — the boot-time ensure (Tier 1 item 2)
+
+- `host.rs::assemble` → `ensure_help_docs_synced_at_boot(db)` right after the
+  built-in seeds and before the pump spawn: `ensure_help_docs_synced(&db,
+  &embedded_help_source_files())` on a fresh OS thread + current-thread
+  runtime (the `seed_built_ins` idiom), warn-and-continue (v4 swallows too).
+  Info line `Help documents synced from the embedded tree` with the seven
+  result counts when a sync ran; silent when the docs were current (v4 logs
+  nothing on that path either).
+- **Recorded divergence: eager vs lazy.** v4 runs the ensure on the first help
+  route/tool read; v5 at boot. Rows identical; only timing + log lines differ.
+  The P4.D77 upgrade backfill is now reachable in production (its own tests
+  unchanged and green).
+- `host_help_docs_boot` (NEW host test, three legs): fresh provision + boot →
+  120 `help_docs` + chunks; second boot → count 120 and every `updatedAt`
+  unchanged; DELETE both tables + one `EMBEDDING_REINDEX_ALL` (`scope: all`,
+  the provisioned default profile) pumped to COMPLETED → 120 rows again.
+- **Mutations (both RED, both reverted, `cmp` clean):** (i) the ensure call
+  removed → leg 1 `left: 0 / right: 120`; (ii) the `current_dir()` walk
+  restored at the reindex registration → leg 3 `left: 0 / right: 120` (tests
+  run from `crates/quilltap-host`, which has no `help/`). Full host suite
+  green after (11 binaries).
