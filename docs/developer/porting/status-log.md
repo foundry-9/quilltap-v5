@@ -107185,3 +107185,65 @@ the checkout's own `help/` is byte-identical to the pin's.
 help character per send, plus every tool call, plus the cheap-LLM summary fold
 at an interchange checkpoint. Order premise corrected en route: the api-key
 failure sentences are v4's consolidated `describeProfileApiKeyFailure` pair.
+
+### Edits outside the Ownership table (loud, for the unifier)
+
+Every file the lane touched is in its own column or unowned by any of the
+four orders; none is in another lane's column. The unowned ones, each a
+necessity of the port, not a choice:
+
+- `crates/quilltap-core/src/services/chat_events.rs` — the NEW `ChatEvent::Error`
+  frame (v4's per-participant `{type:'error', error, errorType, details}` help
+  frame had no v5 twin) and `TurnCompletePayload.skipped` widened to
+  `Option<bool>` with `skip_serializing_if` (the help orchestrator's
+  `turnComplete` carries no `skipped` key; the Salon's does). Additive; the
+  Salon wire is byte-unchanged.
+- `crates/quilltap-core/src/services/orchestrator.rs` — the ONE Salon site now
+  writes `skipped: Some(chain_result.skipped)` (the widening above).
+- `crates/quilltap-core/src/services/mod.rs`, `crates/quilltap-core/src/api/mod.rs`
+  — fenced `pub mod` registrations only.
+- `crates/quilltap-web/tests/{common/mod.rs, dispatch_wrong_type_census.rs,
+  chat_create_end_to_end.rs, chat_send_smoke.rs}` — the `help-chat` fixture
+  materializer, the `HelpDocsSearch.q` census row (the census test fails
+  closed on any new typed field), and `help_chat_send: None` in two
+  `SpineBundle` literals (compile-required by the new seam field).
+- `harness/tools/handler_log_inventory.py` — the survey widened to the help
+  routes/orchestrator/pure modules so the owned `.md` rows could be REGENERATED
+  rather than hand-written (AREA labels; no change to how existing rows are
+  classified — MEASURED: all 205 of main's rows are present in the 226-row
+  output with level / message / v5 site / status unchanged; only the v4
+  `line` column moved, because this survey ran at the `d883a5ee1` pin where
+  main's was cut at `0b0617fee`).
+- `crates/quilltap-{harness,web}/Cargo.toml`, `Cargo.lock` — version bumps.
+
+### The lane's verification gate (2026-09-05, at `6f0906bf`)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -D warnings` clean in BOTH feature sets (default + `quilltap-core/
+  native-transport`); `cargo build --workspace` + `--release` clean.
+- `CARGO_INCREMENTAL=0 cargo test --workspace` with the lane's seven oracle
+  env vars exported (`QT_ORACLE_HELP_{TREE,RESOLVER,SYSTEM_PROMPT,SNIPPET,
+  DOCS_ROUTES,CHATS_ROUTES,ORCH}`): **506 test binaries / 2,850 passed /
+  0 failed / 1 ignored — exit 0, zero `SKIP:` lines** (main at the lane's
+  base: 496 / 2,806; the delta is exactly the lane's ten new binaries).
+  The three `Failed to resolve default embedding profile` WARN lines in
+  the log are pre-existing boot warnings from venues without an
+  `embedding_profiles` table, not failures.
+- `git diff main -- apps/web/` EMPTY; the working tree clean at every
+  commit; the ledger's §2 probe PASSED before the gate (checkout on
+  `bugfix` at `2b49f51aa`, tree clean, both logs empty — PIN REQUIRED at
+  `d883a5ee1`, satisfied by the lane's own pin worktree
+  `/tmp/qt-v4-pin-p49i2a-d883a5ee1`).
+- Disk: 108 GB free before, 95 GB after; the worktree's `target/` removed
+  at lane close.
+- **By name from the pin, through the sweep driver** (`recipe_sweep.py --v4
+  /tmp/qt-v4-pin-p49i2a-d883a5ee1 --run <family>`, each its own invocation,
+  full logs kept): the lane's seven families — `help_tree_equivalence`,
+  `help_context_resolver_equivalence`, `help_system_prompt_equivalence`,
+  `help_snippet_equivalence`, `help_docs_routes_equivalence`,
+  `help_chats_routes_equivalence`, `help_chat_orchestrator_tier3_equivalence`
+  — and eleven neighbours for neutrality — `help_doc_sync`, `help_doc_ensure`,
+  `help_docs_tier2`, `help_tools`, `help_doc_chunking`, `help_doc_slug`,
+  `help_doc_sync_guards`, `help_docs_upsert_tier2`, `brahma_console_routes`,
+  `brahma_console_tier3`, `brahma_orchestrator_tier3` — **18/18 ok, exit 0
+  each, zero SKIP, zero MISMATCH**, no tracked-fixture write warned.

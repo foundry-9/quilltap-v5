@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — docs(help): the P4.9I2A lane's gate record, its by-name sweep from the pin, and the edits outside its Ownership table
+
+_Docs-only change._
+
+The help/HelpChat server lane's closing record in `status-log.md`: the full
+workspace gate at `6f0906bf` (506 test binaries / 2,850 / 0, zero SKIP, both
+clippy feature sets, release build), the eighteen help and Brahma families
+regenerated and re-run by name from the `d883a5ee1` pin worktree, and the
+loud list of the files the lane touched that sit in no lane's Ownership
+column (the additive `ChatEvent::Error` frame + `skipped: Option<bool>`
+widening, the two `mod.rs` registrations, the web test venue, the inventory
+generator). The order header's commit count corrected to nine.
+
 #### 2026-09-05 — test(help): v4's help unit suites ported, the route/orchestrator log lines pinned, the logging inventory widened (P4.9I2A unit 8, Tier 2)
 
 _Versions: core 0.0.800, host 0.0.101._
