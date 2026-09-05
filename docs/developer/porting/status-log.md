@@ -106353,3 +106353,130 @@ Help content in this drift, none of it ported:
   were not routes and are corrected.
 
 The unifier carries these into `phase-4.md`'s `p4.9i2` candidate row.
+
+## Lane record — P4.D158 unit 3: the `0506517d3` neutrality sweep (2026-09-05)
+
+**Status: the sweep's EXECUTION is OPEN, blocked on the order's own §C
+serialization. Everything it depends on is prepared, validated and committed.**
+
+### Why it did not run in this lane's window
+
+§C: `recipe_sweep.py --run-all` is single-flight repo-wide and belongs to
+P4.D158 alone, and it runs **AFTER P4.D153–P4.D157 have closed their
+branches**. At every check through this lane — the last taken at the end of the
+lane's own workspace gate — all five siblings were still mid-lane, with dirty
+trees and commits minutes old. The constraint is not about tree content (the
+sweep runs against THIS worktree, which the siblings' branches do not touch);
+it is about resources. A `--run-all` regenerates ~428 families' oracles into
+the shared `/tmp/oracle-*.ndjson` paths the siblings' own per-family `--run`
+regens are using for their own gates, so running it now would silently corrupt
+five lanes' evidence. Deferring the execution is the order's instruction, not a
+judgment call; **it is NOT a deferral of the obligation** — the sweep is the
+neutrality proof for `0506517d3` and is still owed.
+
+### What IS discharged
+
+**1. `0506517d3` deleted and renamed nothing.** `git show --diff-filter=DR
+--name-only` is empty, matching the ledger. 256 files, +8,241/−6,847.
+
+**2. The exclusion list, validated name-by-name against the driver's registry.**
+The driver knows **466 families**. The order's §A names 22 explicitly and two
+by pattern (every `pascal_*` and the self-inventory families); resolved, that is
+**38 excluded, 428 to run**. Every one of the 22 explicit names resolves to a
+real family — checked mechanically against `--list --json`, because the driver
+refuses unknown family names only at run time and a typo would have surfaced as
+a mid-sweep abort. The 16 pattern matches are `pascal_build_tools_roster`,
+`pascal_custom_tool{_definition,s_execution,s_route}_equivalence`,
+`pascal_{definition_reader,expressions,llm_consult,roster,run_custom,
+run_custom_handler,simulate,tool_vocabulary,workbench,workbench_route,writers}_*`
+and `self_inventory_equivalence`. P4.D157's seven (`cheap_model`,
+`model_selection`, `llm_errors`, `message_formatter`, `post_office_host`,
+`chat_timestamp`, `token_estimation`) are in the list already — they
+`run_failed` at the target pin by design.
+
+The list is committed as `harness/tools/sweep-results/
+2026-09-05-d883a5ee1-p4.d158-neutrality.exclude` beside where the artifact will
+land, so whoever runs the sweep does not have to re-derive it.
+
+**3. The driver is healthy.** `--self-test` → **0 failures** (read-only; it
+checks recipe headers against cross-alias defaults, the P4.53 guard).
+
+**4. The pre-sweep attribution map** the order asks for — the highest-risk
+rewrites read at hunk level BEFORE the sweep, each mapped to the family that
+would redden, so a red is attributable at once rather than investigated cold:
+
+| v4 file (± lines) | families that would redden |
+|---|---|
+| `lib/tools/almanack/render.ts` (1,060) + `index.ts` (275) | `almanack_render_equivalence`, `almanack_tier2_equivalence` |
+| `lib/documents/operator-doc-http.ts` (366) | `doc_edit_leaves_*`, `doc_edit_path_resolver_*`, `doc_ui_*` (+ `documents_routes_*`, **P4.D155's**) |
+| `lib/pascal/tool-draft.ts` (342) + `custom-tools.ts` (316) | every `pascal_*` — **all P4.D155's, all excluded** |
+| `app/api/v1/chats/route.ts` (306) | `chat_create_capstone_*`, the `chats_*_tier2` set, `query_param_semantics_*` |
+| `app/salon/[id]/hooks/useChatControls.ts` (294) | **no Rust family — SPA, P4.D156 owns `apps/web`** |
+| `app/api/v1/wardrobe/transfers/route.ts` (281) | `wardrobe_transfers_tier2_*`, `wardrobe_routes_*`, `group_wardrobe_routes_*` |
+| `chats/[id]/actions/documents.ts` (281) + `app/api/v1/documents/route.ts` (248) | `chat_documents_tier2_*`, `doc_mount_documents_tier2_*`, `documents_rename_target_*` |
+| `lib/chat/file-attachment-fallback.ts` (247) | `attach_mount_file_*`, `attachment_anchor_*` (+ `file_attachment_tier3_*`, **P4.D154's**) |
+| `lib/tools/handlers/doc-edit-handler.ts` (226) | `doc_edit_leaves_*`, `doc_fm_*`, `doc_text_*` |
+| `lib/tools/handlers/state-handler.ts` (214) | `state_cascade_*`, `state_routes_*`, `state_sql_tools_*`, `turn_state_*` |
+| `lib/mount-index/mount-wardrobe-route-factory.ts` (204) | the `doc_mount_*_tier2` set, `builtin_mounts_*`, `backup_mount_index_coercion_*` |
+
+**The single highest-risk detail read:** the almanack rewrite extracts a shared
+`table(push, headers, rows)` whose separator row is
+`'-'.repeat(h.length + 2)` per header. That is one convention imposed on every
+table in a 1,060-line renderer — precisely the shape of the P4.D128
+title-cleaner divergence that no family could see until someone looked. If any
+almanack family reddens on a separator row, this is the hunk.
+
+**Three rows are already covered by this lane's own work** rather than by the
+sweep: `0506517d3` touched no provider builder or plugin bundle, and unit 2
+regenerated every provider corpus at `d883a5ee1` and found only two SDK
+version markers — which is a neutrality proof for the provider surface at the
+same sha, taken independently.
+
+### The exact recipe, ready to run
+
+```bash
+cd <this worktree>
+python3 harness/tools/recipe_sweep.py \
+  --v4 /tmp/qt-v4-pin-p4d158-d883a5ee1 \
+  --run-all \
+  --exclude "$(cat harness/tools/sweep-results/2026-09-05-d883a5ee1-p4.d158-neutrality.exclude)" \
+  --label "P4.D158 unit 3 — the 0506517d3 neutrality sweep at d883a5ee1" \
+  --results harness/tools/sweep-results/2026-09-05-d883a5ee1-p4.d158-neutrality.json
+```
+
+Capture the full log (never `| tail` — the standing rule), then record run /
+green / excluded-by-§A / `nothing_to_run` / skipped-with-reason. **Any
+unexplained red is an ESCALATION, not a patch:** name the family, the differing
+bytes and the responsible v4 hunk from the table above, and do not change v5
+inside the sweep. A red on a sibling's §A surface belongs to that lane.
+
+⚠ The pin `/tmp/qt-v4-pin-p4d158-d883a5ee1` must still exist and be at
+`d883a5ee1` when the sweep runs; re-run the ledger's §2 freshness probe first.
+
+## Lane record — P4.D158: two corrections to this lane's own earlier entries (2026-09-05)
+
+Both are §5.3 catches taken late, recorded rather than silently edited.
+
+**1. `google-request` was not regenerated by the script the order names.** The
+order says `regenerate-google-wire.sh` produces "`google-wire` + `google-
+request`". It does not — it writes `google-wire.recorded.ndjson` alone
+(`:25`). `google-request.recorded.ndjson` is produced by
+`record-google-request.mjs`, which has no wrapper script. The unit-2 record's
+"byte-identical" claim for it was therefore unearned when written: the file had
+simply not been touched. It has since been regenerated at the pin
+(`cd $PIN/plugins/dist/qtap-plugin-google && node <V5>/harness/oracle/
+providers/record-google-request.mjs --out <V5>/harness/oracle/fixtures/
+request-envelopes/google-request.recorded.ndjson`) and IS byte-identical, 9
+rows. The claim now stands on a measurement. **Worth a wrapper script** —
+every other corpus in the family has one, and this is exactly how a corpus
+quietly stops being re-recorded.
+
+**2. Two details in the §G help bank were the ledger's wording, not the
+hunks'.** `e288ae2ec`'s `help/file-uploads.md` addition is a **bolded lead-in
+paragraph** ("**A word on company.** When several characters share a room…"),
+not a `##` section. And `e9a9c538e`'s "three corrected `url:` values" are two
+front-matter `url:` corrections (`brahma-console.md` `/brahma-console` → `/`,
+`help-chat.md` `/help-chat` → `/`) plus one in-BODY tool-call example
+(`salon-host-introductions.md`: `help_navigate(url: "/salon")` →
+`"/salon/:id"`). The bank's substance is unchanged; the description is now the
+hunks'.

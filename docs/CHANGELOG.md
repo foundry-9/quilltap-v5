@@ -806,6 +806,36 @@ red against the pinned v4 — this fix is what closes them.
 `completion_behavior` gains a scoped guard for the fish block, because the
 blanket flag-coverage test asks only whether `-l 'json'` appears anywhere in
 a template, and it already did — on the top-level `quilltap --json`.
+#### 2026-09-05 — docs(sweep): prepare the `0506517d3` neutrality sweep and record why its execution waits
+
+_Docs-only change._ (No crate versions bumped.)
+
+The sweep itself is P4.D158's unit 3 and is **still owed**. It could not run in
+this lane's window: the order's §C makes `recipe_sweep.py --run-all`
+single-flight repo-wide and gates it on P4.D153–P4.D157 closing, and all five
+were still mid-lane at every check, with dirty trees and commits minutes old.
+A `--run-all` regenerates ~428 families' oracles into the shared
+`/tmp/oracle-*.ndjson` paths those lanes are using for their own gates, so
+running it early would corrupt five lanes' evidence rather than prove anything.
+
+What that leaves is prepared and committed so the run is mechanical: the
+exclusion list resolved and validated name-by-name against the driver's
+466-family registry (38 excluded — the order's 22 explicit §A names plus 16
+`pascal_*`/self-inventory matches — leaving 428 to run), saved beside where the
+artifact will land; the driver's `--self-test` clean at 0 failures;
+`0506517d3` confirmed to have deleted and renamed nothing; and a pre-sweep
+attribution map tying each of the twelve highest-risk rewrites to the families
+that would redden, so a red is attributable immediately instead of
+investigated cold. The single riskiest hunk is named: the almanack renderer's
+new shared `table()` imposes one separator-row convention
+(`'-'.repeat(h.length + 2)`) across a 1,060-line file.
+
+Also recorded: two §5.3 corrections to this lane's own earlier entries — that
+`regenerate-google-wire.sh` does not produce `google-request` (it has no
+wrapper script; the corpus has since been regenerated at the pin directly and
+IS byte-identical), and that two details in the §G help bank were the ledger's
+wording rather than the hunks'.
+
 #### 2026-09-05 — docs(v4): refresh the reference mirror at `d883a5ee1` and read its new `?action=` rows against v5
 
 _Docs-only change._ (No crate versions bumped.)
