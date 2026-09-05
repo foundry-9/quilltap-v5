@@ -12,6 +12,52 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-04 — docs(drift): v4's bug-121 attachment re-hydration lands on a surface v5 reproduces whole
+
+_Docs-only change._ (No crate versions bumped.)
+
+A `/driftcheck` from a clean `main`. Both branches probed: `bugfix` is unmoved
+(re-measured by content — 681 files, net-negative against `main`, the
+squash-topology signature), the v5 checkout is clean and on `main`, and v4's
+`main` has moved one commit to `e288ae2ec` (`4.9.0-dev.134`). **DRIFT PENDING —
+14 past `0b0617fee`; PIN REQUIRED**, unchanged.
+
+The new row is v4's **bug 121**, filed and fixed the same day from its own live
+Friday instance: an attached file was expanded into prompt text at
+request-assembly time and stored nowhere, so it reached the first character to
+answer and nobody afterward — in the reported six-character scene a 29 KB
+transcript reached 1 of 13 model calls while the attachment chip sat in the UI
+saying otherwise. v4's fix is a read-side derivation: a USER-side counterpart to
+the Lantern walk (`collectUnseenUserAttachmentsForCharacter`), a
+`rehydrateUserAttachments` pass that runs before `buildContext` so the spliced
+text is budgeted like any other message body, and one hoisted
+`attachmentHistoryCutoff` shared by both walks. Nothing is persisted, which is
+what repairs existing chats.
+
+**v5 reproduces it whole, and the row says so from measurement, not inference.**
+`services/message_context.rs:408` is the only attachment walk in the tree;
+section K (`:947`–`:978`) computes the cutoff inline and seeds
+`merged_attachments` from `attachments_to_send` alone; `:871` feeds
+`build_conversation_messages` with no re-hydration step; and `chat_files.rs:386
+load_and_process_files`, called from `orchestrator.rs:1543`, is the same
+"expand for this request, store only the pointer" shape v4 just fixed. The
+port's parts already exist (`process_file_attachment_fallback`,
+`format_fallback_as_message_prefix`, and `load_lantern_images` as the model for
+the new seam), and the new v4 export is pure, so it is a fourth leaf for
+`message_context_leaves_equivalence` — v4 shipped ten cases for it.
+
+The regen rule gains a fourth reason of its own kind. `e288ae2ec` rewrites
+`context-builder.service.ts`, which `harness/oracle/cases/message-context-leaves.ts`
+imports; all three imported symbols survive (unlike `d4138b96b`, which breaks
+seven cases), and the one that moved did so by a verified-neutral extraction —
+but the same file now carries a new pre-`buildContext` step, so a pin-free
+`build_context`/`orchestrator` tier-3 regen would compare v5 against a v4 that
+re-hydrates.
+
+`generateDDL` and `lib/database/schema` are confirmed untouched across all
+fourteen commits — no D23 re-dump is owed. Not a convergence row: bugs 119, 120
+and 121 are all v4's own findings.
+
 #### 2026-09-04 — docs(drift): the hunk-level survey of the thirteen-commit release-checklist drift
 
 _Docs-only change._ (No crate versions bumped.)

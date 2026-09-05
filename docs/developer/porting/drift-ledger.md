@@ -24,68 +24,85 @@ probe verifies against._
   21:04 -0500, v4 `4.9.0-dev.120`), adopted at the `0b0617fee` drift catch-up
   round unification (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152,
   2026-09-03).
-- **Checked:** 2026-09-04, at the END of the follow-ups round 2 unification
-  (the `/unify` §6 drift step — the round's §2 probe had PASSED at its start
-  with v4 `main` at `15573c3a1`, and the checkout was found at `06658535f`
-  during cleanup). Every regen of that round ran from a pinned worktree at
-  `0b0617fee`, so the unified gate is unaffected; the twelve commits below
-  arrived DURING the round.
-- **Re-checked:** 2026-09-04, immediately after that unification merged — a
-  full `/driftcheck` run from a clean `main`. It found nothing new on either
-  branch (`06658535f..main` and `3a76b17df..bugfix` both empty, tree clean), so
-  it adds no §3 row and moves no disposition. What it DID do is **discharge the
-  hunk-level survey the verdict below had deferred to the catch-up order**: all
-  twelve rows in §3 are now written from their shipped hunks and from measured
-  v5 intersections, not from diffstats. **One classification moved, and it moved
-  materially: `d4138b96b`, from NO-PORT?-with-a-check to PORT — see its row.**
-  The other eleven kept their class but traded inference for measurement, and
-  three of them now name a v5 site that **measurably reproduces the v4 defect**
-  (`48f4b42ec` → `request_builder/anthropic.rs:31`; `af2023c9a` →
-  `instances_cmd.rs:314`; `0506517d3`'s correction (d) →
-  `brahma_console/mod.rs:359`). `bugfix` was re-measured
-  by CONTENT per §4 step 2: `main..bugfix` over `lib/ app/ packages/ plugins/`
-  is 681 files / +60,360 / **−173,933**, net-negative because bugfix is *behind*
-  main — the squash-topology signature, nothing genuinely unabsorbed.
-- **v4 `main` HEAD at check:** `06658535f` — "chore(packages): install the
-  published plugin-utils 2.6.1 everywhere" (2026-09-04) — **THIRTEEN commits
-  past the baseline** (the bug-119 row + twelve new, all dated 2026-09-04,
-  v4's 4.9 release-checklist push). `origin/main` level with `main`.
+- **Checked:** 2026-09-04 (late) — a full `/driftcheck` from a clean `main` in
+  the v5 checkout. **One new v4 commit since the last check:** `e288ae2ec`
+  (bug 121, the user-attachment re-hydration), appended to §3 as a **PORT**
+  row surveyed at hunk level. No existing disposition moved, and no earlier
+  row's facts changed.
+- **Prior checks the same day (their findings stand, not repeated below):** the
+  follow-ups round 2 unification's `/unify` §6 drift step recorded the twelve
+  release-checklist commits that landed DURING that round (every regen of that
+  round ran from a pinned worktree at `0b0617fee`, so its gate is unaffected);
+  the post-merge `/driftcheck` then **discharged the hunk-level survey of all
+  twelve rows** — written from shipped hunks and measured v5 intersections
+  rather than diffstats. That survey moved one classification materially
+  (`d4138b96b`, NO-PORT?-with-a-check → **PORT**) and named three v5 sites that
+  **measurably reproduce the v4 defect** (`48f4b42ec` →
+  `request_builder/anthropic.rs:31`; `af2023c9a` → `instances_cmd.rs:314`;
+  `0506517d3`'s correction (d) → `brahma_console/mod.rs:359`).
+- **v4 `main` HEAD at check:** `e288ae2ec` — "fix(chat): re-hydrate user
+  attachments so every character sees them (bug 121)" (2026-09-04 22:25 -0500,
+  v4 `4.9.0-dev.134`) — **FOURTEEN commits past the baseline**. `origin/main`
+  level with `main` (0 either way).
 - **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4 fork
-  marker; `3a76b17df..bugfix` empty).
+  marker; `3a76b17df..bugfix` empty). Re-measured by CONTENT per §4 step 2:
+  `main..bugfix` over `lib/ app/ packages/ plugins/` is 681 files / +60,390 /
+  **−174,201**, net-negative because bugfix is *behind* main — the
+  squash-topology signature, nothing genuinely unabsorbed.
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
 - **Checkout at check:** branch `main`, **tree CLEAN**. `git worktree list`
-  shows the checkout alone (the unify's pin worktree was removed at cleanup).
-- **Verdict: DRIFT PENDING — 13 commits past the baseline.** §3 holds the
-  bug-119 row (`p4.9k`'s, unchanged) plus twelve rows, all now surveyed at hunk
-  level. Classes: **5 PORT** — `0506517d3` (seven behaviour corrections + a
-  neutrality obligation over 256 files), `d4138b96b` (the vestigial-cruft class,
-  **and it breaks seven committed oracle cases**), `48f4b42ec` (one regex, v5
-  reproduces the bug), `af2023c9a` (CLI Tier R, v5 reproduces it and then some),
-  `bbcb318c6` (two SPA attributes) — plus `e9a9c538e` **PORT** for three About
-  strings on top of a large reference-mirror refresh; **3 NO-PORT? carrying a
+  shows the checkout alone (no pin worktrees outstanding).
+- **Verdict: DRIFT PENDING — 14 commits past the baseline.** §3 holds the
+  bug-119 row (`p4.9k`'s, unchanged), the twelve release-checklist rows from
+  v4's 4.9 push, and the new `e288ae2ec`. Classes: **6 PORT on live v5
+  surfaces** — `e288ae2ec` (a new chat-spine feature: the USER-side attachment
+  walk + read-side re-hydration; **v5 reproduces the bug whole**),
+  `0506517d3` (seven behaviour corrections + a neutrality obligation over 256
+  files), `d4138b96b` (the vestigial-cruft class, **and it breaks seven
+  committed oracle cases**), `48f4b42ec` (one regex, v5 reproduces the bug),
+  `af2023c9a` (CLI Tier R, v5 reproduces it and then some), `bbcb318c6` (two
+  SPA attributes) — plus `e9a9c538e` **PORT** for three About strings on top of
+  a large reference-mirror refresh, and `15573c3a1` **PORT on a surface v5 has
+  never had** (the character optimizer, `p4.9k`); **3 NO-PORT? carrying a
   measurement obligation** (`b52b996c1`, `6e1a64ea6`, `06658535f` — the
   wire-neutrality claim is a claim until a corpus says otherwise); and **3
   NO-PORT?** ratifiable as they stand (`49f66f571`, measured payload-neutral;
-  `a0e6fb42a` and `2edd823c0`, tests only). **No convergence rows** — every bug
-  in the batch (120) is v4's own release-checklist finding, and
-  `docs/developer/bugs.md` shows no port-filed bug newly fixed; the bug-104/111
-  regression tests in `a0e6fb42a` pin filings this port made, but those fixes
-  were absorbed rounds ago and no pin trips.
-- **`generateDDL` and `lib/database/schema` are UNTOUCHED across all thirteen
+  `a0e6fb42a` and `2edd823c0`, tests only). **No convergence rows** — bugs 119,
+  120 and 121 are all v4's own findings (121 from v4's live Friday instance,
+  not from this port's dogfood walks), and `docs/developer/bugs.md` shows no
+  port-filed bug newly fixed; the bug-104/111 regression tests in `a0e6fb42a`
+  pin filings this port made, but those fixes were absorbed rounds ago and no
+  pin trips.
+- **`generateDDL` and `lib/database/schema` are UNTOUCHED across all fourteen
   commits — no D23 re-dump is owed.** Checked mechanically over the whole batch
   (`git show --name-only` matches neither path), not inferred from subject
   lines; `0506517d3` rewrites twelve 4.9 *migration scripts* onto shared helpers
-  but adds no column and emits no new DDL.
-- **Regen rule in force: PIN REQUIRED** at **`0b0617fee`** (§5.1) — and the
-  survey upgraded the *reason* from prudent to load-bearing. Three of the
-  thirteen rebuild every bundle under `plugins/dist/` (the third symlink class),
-  so a pin-free regen would import a rebuilt Anthropic plugin and the `npm
-  update`d SDKs — that much was known. What the hunk survey added:
-  **`d4138b96b` deletes fourteen exports that seven committed oracle cases
-  import BY NAME**, so a pin-free regen of those families does not diff wrong,
-  it fails to link at all; and `0506517d3` rewrote 256 files underneath a large
-  fraction of the corpus. Pin every regen until a catch-up round moves the
-  baseline.
+  but adds no column and emits no new DDL, and `e288ae2ec` writes nothing to the
+  database at all (its fix is a read-side derivation, which is why it repairs
+  existing chats).
+- **Regen rule in force: PIN REQUIRED** at **`0b0617fee`** (§5.1) — unchanged,
+  and the hunk survey had already upgraded the *reason* from prudent to
+  load-bearing. Three of the fourteen rebuild every bundle under
+  `plugins/dist/` (the third symlink class), so a pin-free regen would import a
+  rebuilt Anthropic plugin and the `npm update`d SDKs — that much was known.
+  What the hunk survey added: **`d4138b96b` deletes fourteen exports that seven
+  committed oracle cases import BY NAME**, so a pin-free regen of those families
+  does not diff wrong, it fails to link at all; and `0506517d3` rewrote 256
+  files underneath a large fraction of the corpus. `e288ae2ec` adds a
+  fourth reason of its own kind: it rewrites
+  `lib/services/chat-message/context-builder.service.ts`, which
+  `harness/oracle/cases/message-context-leaves.ts` imports — **all three
+  imported symbols survive** (`buildConversationMessages`,
+  `normalizeWhisperRoles`, `collectLanternImageFileIdsForCharacter`), and the
+  one that moved did so by a verified-neutral extraction, so this family would
+  not break; but the same file now carries a new export and a new pre-`buildContext`
+  step, so a pin-free `build_context`/`orchestrator` tier-3 regen would compare
+  v5 against a v4 that re-hydrates. Pin every regen until a catch-up round moves
+  the baseline.
+- _Superseded (the earlier 2026-09-04 checks): DRIFT PENDING — 13 commits past
+  the baseline, v4 `main` HEAD `06658535f`, PIN REQUIRED at `0b0617fee`. The
+  same-day post-merge re-check re-measured `bugfix` at 681 files / +60,360 /
+  −173,933 and found nothing new on either branch._
 - _Superseded (the 2026-09-03 `/driftcheck`): DRIFT PENDING — 1 commit past
   the baseline (`15573c3a1`), PIN REQUIRED at `0b0617fee`; the probe at the
   follow-ups round 2's start (2026-09-04) re-measured it identical._
@@ -152,6 +169,7 @@ when absorbed/ratified.
 | `af2023c9a` | 2026-09-04 | fix(cli): instances default --json was read as an instance name (bug 120) | **PORT (CLI Tier R) — NOT a convergence (v4's own release-checklist finding)** | **Hunks: `packages/quilltap/lib/instances-commands.js` — the `default` arm becomes `const json = rest.includes('--json'); cmdDefault(rest.filter(a => a !== '--json'), { json });` (was `cmdDefault(rest)`), plus the comment explaining why reading is not enough; the `instances --help` verb line becomes `list [--json]`; and `lib/completion/fish.template` gains a `for verb in list ls` block offering `--json`.** Two compounding mistakes in v4: the flag was never *read* (so `cmdDefault`'s JSON branch was unreachable) and never *removed* (so `args.length` was 1, and `--json` became an instance name to set). Six new cases in `packages/quilltap/lib/__tests__/instances-default-json.test.js` drive the real binary; two fail against the old dispatch. → **v5 intersection: `crates/quilltap-cli/src/instances_cmd.rs`.** **Measured: v5 has the same defect and then some** — `:48` is `"default" => cmd_default(&rest)`, and `cmd_default` (`:314`) has **no `--json` branch at all**, so v5 must port the whole post-fix shape, not just the strip. v5's `list` arm (`:32`) already reads both `--names-only` and `--json`, so only `default` is affected. Also owed: `crates/quilltap-cli/src/help/instances_help.txt:7` (`list` → `list [--json]`, byte-copied) and `help/completion/fish.template:236` (the new `list ls` `--json` block, in v4's exact placement between the `names-only` line and the `default --clear` line). Tier R should go red-first on the three affected cases. Docs half (NO-PORT for behaviour, worth mirroring): `instances restore-key` added to the CLI package README and `help/cli-instances.md`; CLI.md records `--names-only` as deliberately undocumented completion plumbing. | UNPROCESSED |
 | `6e1a64ea6` | 2026-09-04 | chore(deps): npm update across app, packages, and plugins | **NO-PORT? — with a MEASUREMENT obligation (the SDK wire re-check)** | **Hunks: "dependency movement only; no source changes" — verified: no `lib/`, `app/`, or `components/` file appears. But all fifteen plugin bundles are rebuilt (+127,912/−50,475) and the SDK jumps are the largest this port has seen.** Root: **`openai` 7.4.0 → 7.10.0**, **`@openrouter/sdk` 1.2.32 → 1.2.106**, **`zod` 4.4.3 → 4.5.4**, `next` 16.3.0 → 16.3.4, `sharp` 0.35.3 → 0.35.4, `@tanstack/react-query` 5.101.4 → 5.102.8, jest 30.5.1, plus dev-tool patches. Packages: `@quilltap/plugin-utils` 2.6.1. Every plugin's own `openai` moves to ^7.10.0 and openrouter's to ^1.2.106. → **v5 intersection: two, and the second is the one to worry about.** (1) **The provider wire** — v5 hand-rolls the HTTP the SDKs emit, so this is the P4.D34/P4.D75/P4.D105 re-check: regenerate all four provider corpora at the new baseline and assert byte-identity, and re-confirm the three recorded SDK refusals still refuse (§the `v4-sdk-behavior-the-raw-wire-must-reproduce` rule — the SDK *throwing* on a non-2xx is part of the contract, and finding #104 was that lesson learned the hard way). (2) **`zod` 4.4 → 4.5** — v5 byte-copies Zod's own `ZodError.message` bodies into refusal envelopes at many edges (P4.D71's `chat_settings` arms, P4.62's `validationError` envelope, the `zod_uuid` gate transcribed from Zod 4's own regex, P4.55/P4.D122's guard-order arms). **A minor-version change to Zod's message text or its uuid regex would move bytes v5 has hard-copied, silently, at edges no SDK corpus covers** — the settings/routes families are the ones to regenerate and read. Also here: `public/schemas/plugin-manifest.schema.json` re-emits `extendsTheme` as `"type": ["string","null"]` instead of an `anyOf` pair (a zod-4.5 JSON-Schema emission difference, theme manifests only — v5's manifest generator reads plugin `manifest.json` files, not this schema). And the root `postcss` override is repaired to the self-referencing `$postcss` form, without which `npm install` fails EOVERRIDE — **relevant to anyone rebuilding v4's `node_modules` for an oracle run.** | UNPROCESSED |
 | `06658535f` | 2026-09-04 | chore(packages): install the published plugin-utils 2.6.1 everywhere | **NO-PORT? — ratify with the same corpus measurement as `6e1a64ea6`** | **Hunks: no source and no bundle `index.js`.** Root `package.json`/lockfile take `@quilltap/plugin-utils` ^2.6.1 and `@quilltap/plugin-types` ^2.6.0; all fifteen plugins' `package.json` + `manifest.json` version fields follow; `packages/quilltap` and the README version stamp move to `4.9.0-dev.133`. Since no `index.js` changed, the emitted plugin code is identical to `6e1a64ea6`'s — this is the version-consistency tail of that sweep. → **v5 intersection: none beyond the corpus re-check already owed above.** ⚠ **v4 HEAD is this commit**, so it is the sha every pin-vs-tip comparison is measured against; the *baseline* stays `0b0617fee` until a round moves it. | UNPROCESSED |
+| `e288ae2ec` | 2026-09-04 | fix(chat): re-hydrate user attachments so every character sees them (bug 121) | **PORT (chat spine — a new read-side derivation; v5 REPRODUCES the bug whole)** | **NOT a convergence** — v4's own filing, from a live Friday scene (`df82edc2`, 2026-09-04 21:28–21:33 UTC) in which one character quoted an attached 29 KB transcript and the next said she could not read it. **Hunks: ONE lib file, `lib/services/chat-message/context-builder.service.ts` (+298/−36).** Four changes. **(a)** the stop rule inside `collectLanternImageFileIdsForCharacter` is extracted to a new module-private `isCharactersOwnPriorResponse(msg, characterParticipantId, isMultiCharacter)` — **verified neutral at the hunk level** (multi → `participantId === characterParticipantId`; single → `!(Array.isArray(attachments) && attachments.length > 0)`, byte-for-byte the old inline pair). **(b)** NEW exported `collectUnseenUserAttachmentsForCharacter(existingMessages, characterParticipantId, isMultiCharacter, historyCutoff, lookback)` — the USER-side counterpart: same reverse tail-walk, `type !== 'message'` skipped without cost; an ASSISTANT row either **breaks** (own prior response) or counts against `scanned` and continues; non-USER rows skipped; a USER row counts, then needs a non-empty `attachments` array **and** an `id` (no row id ⇒ nowhere to splice); `historyCutoff && createdAt < historyCutoff` skips (the joining-participant guard, symmetric with the Lantern walk); string-typed ids deduped through a `seen` set; returns `{messageId, fileIds}[]` **reversed into chronological order**. **(c)** NEW private `rehydrateUserAttachments(...)` — returns nothing when there is no `characterParticipantId`; wraps everything in one try/catch that logs `logger.warn('Failed to re-hydrate user attachments from history', {error, characterParticipantId})` and leaves the turn exactly as it was; per unseen row it calls `loadChatFilesForLLM(fileIds, {provider})` then `processFileAttachmentFallback` per file, and **mirrors `loadAndProcessFiles`'s filter**: `type === 'unsupported'` keeps the raw bytes only when `!fallbackResult.error` (a failed fallback DROPS the file rather than tripping the provider's no-image refusal), otherwise `formatFallbackAsMessagePrefix` text is accumulated **oldest-first against a `REHYDRATED_ATTACHMENT_CHAR_BUDGET = 80_000` ceiling that SKIPS a file whole rather than truncating it** (a `skippedForBudget` counter drives one `logger.warn('Re-hydrated attachments exceeded the per-turn budget; some were not re-sent', {skippedForBudget, budget, characterParticipantId})`), plus a `logger.debug('Re-hydrated user attachments from history', {messagesExpanded, rawAttachmentsKept, charactersUsed, characterParticipantId})`. New constant `USER_ATTACHMENT_LOOKBACK = 20` (distinct from the Lantern walk's `ASSISTANT_IMAGE_LOOKBACK = 6`). **(d)** in `buildMessageContext`: `hasPriorResponse` + the cutoff are **hoisted out of the Lantern try-block** into one `attachmentHistoryCutoff` (`characterParticipant?.id` — safe, the Lantern block dereferences it non-null two blocks later) shared by both walks; `rehydrateUserAttachments` runs **before `buildContext`** so the spliced text is budgeted/compressed/trimmed like any other message body; the prefix is spliced per carrying message id into a `messagesForConversation` copy fed to `buildConversationMessages` (`filteredExistingMessages` untouched, and unchanged by reference when nothing was re-hydrated); `mergedAttachmentsToSend` seeds from `[...attachmentsToSend, ...rehydratedAttachmentsToKeep]` and the Lantern merge chains onto `mergedAttachmentsToSend` instead of re-seeding from `attachmentsToSend`. **Nothing is persisted** — v4 states this deliberately: existing chats are repaired, and the behaviour survives regenerate, swipe, import and restore. → **v5 intersection: `crates/quilltap-core/src/services/message_context.rs`** (the `buildMessageContext` wrapper, ported 2026-07-03 in Phase 3's chat-orchestration wave; its three pure leaves ride the tier-1 `message_context_leaves_equivalence`, 12 cases driving v4's REAL exports). **Measured: v5 has the pre-fix shape exactly** — `:408 collect_lantern_image_file_ids_for_character` is the only attachment walk; section K (`:947`–`:978`) computes `has_prior_response`/`history_cutoff` **inline** and seeds `merged_attachments` from `attachments_to_send` alone; `:871` feeds `build_conversation_messages(&filtered, is_multi)` with no re-hydration step; and there is no `collect_unseen_user_*` or rehydrate anywhere in `crates/`. The request-assembly expansion is `services/chat_files.rs:386 load_and_process_files`, called from `orchestrator.rs:1543` — the same "expand for this request, store only the pointer" shape v4 just fixed, so **v5 reproduces bug 121 whole, on every chat from the second turn onward and on every character after the first in a multi-character turn.** The port's parts already exist: `file_fallback::process_file_attachment_fallback` (`:1468`) and `format_fallback_as_message_prefix` (`:438`), and `chat_files.rs:469 load_lantern_images` is the model for the new load seam (`MessageContextSeams::load_lantern_images`, `message_context.rs:484` — the USER-side loader wants a sibling method on that trait, not a direct call, or the wrapper stops being unit-testable). **The differential shape:** the new walk is pure and exported, so it is a fourth leaf for `message_context_leaves_equivalence` (v4 shipped **ten** cases for it — empty, the reported second-character shape, no-re-delivery, chronological multi-collect, dedupe of a re-attached id, the history cutoff, the missing row id, the single-character `participantId`-absent stop, the lookback cap, and non-message rows); the re-hydration itself is tier-3 over `build_context`/`orchestrator` (the budget skip and the `unsupported`-with-error drop are the two arms a corpus must actually discriminate, and the `messagesForConversation` splice is what `build_context_tier3` would see). ⚠ **The oracle case `harness/oracle/cases/message-context-leaves.ts` imports all three surviving symbols by name — it does NOT break** (unlike `d4138b96b`), but a pin-free tier-3 regen would compare v5 against a v4 that re-hydrates. **NO-PORT within the commit:** `README.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` (+ the new `bugs/fixed/bug-121-text-attachment-first-responder-only.md`, 199 lines — **read it when this is ordered**, it carries the 13-call table and the `v5 status: Applies` ruling), the 113 new lines in `__tests__/unit/lib/services/chat-message/context-builder.service.test.ts`, `help/file-uploads.md` (a new "A word on company" paragraph — banks to `p4.9i2`), and the version bumps (`4.9.0-dev.133` → `.134`). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
