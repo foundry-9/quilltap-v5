@@ -180,6 +180,28 @@ oracle case, and the runner's count guard moves 7 → 5 buckets.
 The oracle case shrinks 33 → 24 rows; every surviving row is byte-identical
 to the pre-split oracle regenerated at `0b0617fee` (the last sha at which the
 case links), and the split case regenerates clean at `d883a5ee1`.
+#### 2026-09-05 — feat(db): resolve character names off the raw path, skipping the vault overlay (bug 122, part 1)
+
+_Versions: core 0.0.777._
+
+`characters_read::find_names_by_ids` — the port of v4 `d883a5ee1`'s
+`CharactersRepository.findNamesByIds`. Ids are deduped and blanks dropped,
+an empty list queries nothing, names are JS-trimmed and blank-after-trim
+rows left out of the map, and a read failure logs v4's `Error resolving
+character names` and yields an EMPTY map rather than an `Err`.
+
+The point is what it does NOT take: a mount connection. v4's method calls
+`super.findByIds` deliberately, bypassing the vault overlay, because `name`
+is a plain DB column and this runs on the per-turn context path — a
+character whose vault is unreadable must cost the caller a *name*, not the
+whole turn. v5's signature makes that structural rather than conventional.
+The unit test seeds a linked character whose mount has no `properties.json`
+keystone and asserts both halves on the same pair of connections: the
+overlaid `find_by_ids` drops the row (without which the second assertion
+would be vacuous), and `find_names_by_ids` still resolves the name.
+
+Nothing calls it yet; the memory-subject prefix (parts 2 and 3) is what
+will.
 
 #### 2026-09-05 — docs(orders): the `d883a5ee1` drift catch-up round ordered — P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158
 

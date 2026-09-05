@@ -47,6 +47,8 @@
 //! The JSON-array filters (`tags`, `avatarOverrides.imageId`) use SQLite
 //! `json_each` — the same selection v4's query translator emits.
 
+use std::collections::{HashMap, HashSet};
+
 use rusqlite::{Connection, Row};
 use serde_json::{Map, Value};
 
@@ -388,6 +390,81 @@ pub fn find_by_avatar_override_image_id(
     )
 }
 
+/// Resolve character ids to display names — **without the vault overlay** (v4
+/// `d883a5ee1` / bug 122, `CharactersRepository.findNamesByIds`).
+///
+/// `name` is a plain slim column, so the overlay has nothing to add here, and
+/// skipping it is the point: this runs on the per-turn context path (the
+/// memory-subject prefix), where a character whose vault is unreadable must
+/// cost the caller a *name*, not the whole turn — [`find_by_id`] answers
+/// `StoreUnavailable` on that shelf by design, and [`find_by_ids`] silently
+/// drops the row. **The signature is the proof:** there is no mount
+/// connection to reach a vault with. Ids with no row, or with a blank name,
+/// are simply absent from the map; callers degrade rather than assume a hit.
+///
+/// Ids are deduped and blanks dropped first (v4 filters `typeof id ===
+/// 'string' && id.length > 0` into a `Set`); an empty list queries nothing.
+/// A read failure logs v4's `Error resolving character names` and yields an
+/// EMPTY map rather than an `Err` — v4 wraps the body in `safeQuery(…, new
+/// Map())`, and this port keeps the fail-soft leg because the turn is what it
+/// protects. (v4's `withStrictRepositoryFailures` scope, which suspends that
+/// fallback, is not on this path.)
+pub fn find_names_by_ids(main: &Connection, ids: &[String]) -> HashMap<String, String> {
+    let mut unique: Vec<String> = Vec::new();
+    let mut seen: HashSet<&str> = HashSet::new();
+    for id in ids {
+        if !id.is_empty() && seen.insert(id.as_str()) {
+            unique.push(id.clone());
+        }
+    }
+    if unique.is_empty() {
+        return HashMap::new();
+    }
+
+    let placeholders = (1..=unique.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let params: Vec<&dyn rusqlite::ToSql> =
+        unique.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+    let rows = match query_raw(main, &format!("id IN ({placeholders})"), &params) {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::memory",
+                collection = "characters",
+                count = unique.len(),
+                error = %e,
+                "Error resolving character names"
+            );
+            return HashMap::new();
+        }
+    };
+
+    let mut names = HashMap::new();
+    for row in rows {
+        // v4 reads the hydrated row: `typeof row.name === 'string' ? row.name.trim() : ''`,
+        // and keeps the pair only when the id is truthy and the trimmed name non-empty.
+        let obj = match row.as_object() {
+            Some(o) => o,
+            None => continue,
+        };
+        let id = match obj.get("id").and_then(Value::as_str) {
+            Some(s) if !s.is_empty() => s,
+            _ => continue,
+        };
+        let name = obj
+            .get("name")
+            .and_then(Value::as_str)
+            .map(crate::jsstr::js_trim)
+            .unwrap_or("");
+        if !name.is_empty() {
+            names.insert(id.to_string(), name.to_string());
+        }
+    }
+    names
+}
+
 /// Count characters whose `defaultImageId` equals `image_id` — the length of v4's
 /// `findByDefaultImageId(image_id)` result, WITHOUT the vault overlay (the sweep's
 /// `skipReason` only consults `.length > 0`, and the overlay never adds or removes
@@ -455,4 +532,120 @@ pub fn find_core_whisper_enabled(
         rusqlite::Error::QueryReturnedNoRows => Ok(None),
         other => Err(other.into()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+
+    /// A `characters` table at the post-`d553f72a` shape, plus the vault link
+    /// column the overlay keys on.
+    fn main_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE characters (id TEXT PRIMARY KEY NOT NULL, userId TEXT NOT NULL, \
+             name TEXT NOT NULL, defaultImageId TEXT, defaultConnectionProfileId TEXT, \
+             defaultPartnerId TEXT, defaultRoleplayTemplateId TEXT, defaultImageProfileId TEXT, \
+             sillyTavernData TEXT, isFavorite INTEGER, npc INTEGER, controlledBy TEXT, \
+             defaultAgentModeEnabled INTEGER, defaultHelpToolsEnabled INTEGER, \
+             defaultTimestampConfig TEXT, defaultScenarioId TEXT, defaultSystemPromptId TEXT, \
+             characterDocumentMountPointId TEXT, canDressThemselves INTEGER, \
+             canCreateOutfits INTEGER, systemTransparency TEXT, coreWhisperEnabled INTEGER, \
+             canBeCarina INTEGER, partnerLinks TEXT, tags TEXT, avatarOverrides TEXT, \
+             createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, archivedAt TEXT, \
+             archiveFileId TEXT, archivedAvatarFileId TEXT);",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn insert(conn: &Connection, id: &str, name: &str, mount: Option<&str>) {
+        conn.execute(
+            "INSERT INTO characters (id, userId, name, characterDocumentMountPointId, \
+             partnerLinks, tags, avatarOverrides, createdAt, updatedAt) \
+             VALUES (?1, 'u1', ?2, ?3, '[]', '[]', '[]', \
+             '2026-09-05T00:00:00.000Z', '2026-09-05T00:00:00.000Z')",
+            params![id, name, mount],
+        )
+        .unwrap();
+    }
+
+    /// The mount-index side with the three overlay tables present but EMPTY:
+    /// a linked character's `properties.json` keystone is missing, so its vault
+    /// is unavailable — the shelf v4's `findById` throws
+    /// `CharacterVaultUnavailableError` from and `findByIds` drops.
+    fn unreadable_mount() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_files (id TEXT PRIMARY KEY NOT NULL, fileType TEXT);
+             CREATE TABLE doc_mount_documents (id TEXT PRIMARY KEY NOT NULL, \
+                fileId TEXT NOT NULL, content TEXT, createdAt TEXT, updatedAt TEXT);
+             CREATE TABLE doc_mount_file_links (id TEXT PRIMARY KEY NOT NULL, \
+                fileId TEXT NOT NULL, mountPointId TEXT NOT NULL, relativePath TEXT NOT NULL, \
+                fileName TEXT, lastModified TEXT);",
+        )
+        .unwrap();
+        conn
+    }
+
+    /// The proof that the name lookup does not go through the vault: the SAME
+    /// row, on the SAME pair of connections, is dropped by the overlaid
+    /// `find_by_ids` and still resolved by `find_names_by_ids`. Without the
+    /// first assertion the second would be vacuous — it is what establishes
+    /// that this vault really is unreadable.
+    #[test]
+    fn names_resolve_through_an_unreadable_vault() {
+        let main = main_db();
+        insert(&main, "c-marion", "Marion", Some("mount-1"));
+        let mount = unreadable_mount();
+
+        let overlaid = find_by_ids(&main, &mount, &["c-marion".to_string()]).unwrap();
+        assert!(
+            overlaid.is_empty(),
+            "the overlaid read must drop this row — otherwise the vault is readable \
+             and the test below proves nothing"
+        );
+
+        let names = find_names_by_ids(&main, &["c-marion".to_string()]);
+        assert_eq!(names.get("c-marion").map(String::as_str), Some("Marion"));
+    }
+
+    #[test]
+    fn empty_and_blank_ids_query_nothing() {
+        // A table-less connection: any query at all would error (and fail soft
+        // to an empty map, which would look identical) — so build the main DB
+        // and assert on the ids instead.
+        let main = main_db();
+        assert!(find_names_by_ids(&main, &[]).is_empty());
+        assert!(find_names_by_ids(&main, &[String::new()]).is_empty());
+    }
+
+    #[test]
+    fn dedupes_ids_and_skips_missing_rows_and_blank_names() {
+        let main = main_db();
+        insert(&main, "c1", "  Ada  ", None);
+        insert(&main, "c2", "   ", None);
+
+        let names = find_names_by_ids(
+            &main,
+            &[
+                "c1".to_string(),
+                "c1".to_string(),
+                "c2".to_string(),
+                "c-absent".to_string(),
+            ],
+        );
+        // Trimmed (v4 `.trim()`), blank-after-trim dropped, absent id absent.
+        assert_eq!(names.len(), 1);
+        assert_eq!(names.get("c1").map(String::as_str), Some("Ada"));
+    }
+
+    /// A read failure yields an empty map, never an `Err` up the turn (v4's
+    /// `safeQuery(..., new Map())`).
+    #[test]
+    fn a_read_failure_is_an_empty_map() {
+        let main = Connection::open_in_memory().unwrap(); // no `characters` table
+        assert!(find_names_by_ids(&main, &["c1".to_string()]).is_empty());
+    }
 }
