@@ -18,9 +18,10 @@
  * - **Eval failure is fail-soft at run time** — the effect is skipped with a
  *   debug log; a broken effect never sinks a roll.
  *
- * Pure and client-safe: no logging, no I/O, no imports. v4's Workbench runs
- * this parser in the browser for its warning pass, and so does v5's — which is
- * why this file exists at all rather than the SPA asking the server.
+ * Pure and client-safe: no logging, no I/O, and since v4 `0506517d3` the one
+ * import is the equally pure placeholder classifier. v4's Workbench runs this
+ * parser in the browser for its warning pass, and so does v5's — which is why
+ * this file exists at all rather than the SPA asking the server.
  *
  * # Why the sentences are load-bearing
  *
@@ -37,6 +38,8 @@
  * There are THREE copies of this parser (v4 TS, this, and the Rust twin in
  * `quilltap-core`); v4's is the oracle for both ports.
  */
+
+import { classifyPlaceholder } from './placeholders';
 
 /** A value an expression may carry: the three primitive types and no others. */
 export type ExprValue = number | string | boolean;
@@ -106,11 +109,7 @@ type Token =
 
 /** The reference families the grammar admits — `renderTemplate`'s, verbatim. */
 function isKnownRef(name: string): boolean {
-  if (name === 'value' || name === 'roll' || name === 'dice' || name === 'llm') return true;
-  for (const prefix of ['params.', 'metadata.', 'state.']) {
-    if (name.startsWith(prefix) && name.length > prefix.length) return true;
-  }
-  return false;
+  return classifyPlaceholder(name).kind !== 'unknown';
 }
 
 class ExpressionError extends Error {}

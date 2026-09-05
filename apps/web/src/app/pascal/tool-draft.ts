@@ -50,6 +50,7 @@ import {
 } from './custom-tool-types';
 import { parseDiceNotation } from './dice-notation';
 import { parseExpression } from './expressions';
+import { scanPlaceholders } from './placeholders';
 
 /** The `$schema` value the Builder writes when a file carries none. */
 export const DEFAULT_SCHEMA_VALUE = '/schemas/qtap-custom-tool.schema.json';
@@ -917,106 +918,113 @@ function validateNumberOrParam(
   }
 }
 
-/** Placeholder families the template renderer understands. */
-const PLACEHOLDER_PATTERN = /\{\{([^}]+)\}\}/g;
+/**
+ * How one templated field treats `{{llm}}`: legitimate whenever the oracle is
+ * on (messages, the chip label), or never — the consult prompt cannot quote an
+ * answer that does not exist yet.
+ */
+type LlmPlaceholderRule = 'warn-if-disabled' | 'forbid';
+
+/**
+ * The placeholder audit every templated field shares — outcome messages, the
+ * chip label, and the consult prompt. Warnings only: an unknown placeholder
+ * renders as written, per the runtime convention, and the load-time schema
+ * imposes no reference rule on any of these strings.
+ *
+ * Metadata keys are undeclared by nature: every `{{metadata.<key>}}` is
+ * presumptively legitimate, and an absent key rendering verbatim at run time
+ * is the runtime's convention, not an authoring error (§4.4.2). `{{state.…}}`
+ * is the same kind of thing, but only the chip label has ever admitted it
+ * (`allowState`); the message and prompt audits still flag it as unknown.
+ *
+ * v4 `0506517d3` correction (e): the three audits used to spell this chain out
+ * separately and shared one `g`-flagged regex's `lastIndex`, resetting it by
+ * hand at each entrance. Two edges moved when they collapsed onto
+ * `scanPlaceholders` + `classifyPlaceholder` — a bare `{{params.}}` now reads
+ * as an unknown placeholder rather than "names no declared parameter", and a
+ * bare `{{metadata.}}` (and, in the chip label, a bare `{{state.}}`) is
+ * reported at all where it used to pass silently.
+ */
+function auditPlaceholders(
+  text: string,
+  where: DraftIssue['where'],
+  draft: ToolDraft,
+  issues: DraftIssue[],
+  rules: { llm: LlmPlaceholderRule; allowState: boolean },
+): void {
+  const declaredParams = new Set(draft.parameters.map((p) => p.name));
+  for (const { key, ref } of scanPlaceholders(text)) {
+    switch (ref.kind) {
+      case 'value':
+      case 'roll':
+      case 'metadata':
+        break;
+      case 'dice':
+        if (draft.rollForm !== 'dice') {
+          issues.push(warn(where, '{{dice}} renders as an empty string outside the dice form'));
+        }
+        break;
+      case 'llm':
+        if (rules.llm === 'forbid') {
+          issues.push(
+            warn(where, '{{llm}} is not available here — the consult cannot quote its own answer'),
+          );
+        } else if (!draft.llmEnabled) {
+          issues.push(
+            warn(where, '{{llm}} renders as written unless the LLM consult is enabled'),
+          );
+        }
+        break;
+      case 'params':
+        if (!declaredParams.has(ref.name)) {
+          issues.push(
+            warn(where, `{{${key}}} names no declared parameter — it will render as written`),
+          );
+        }
+        break;
+      case 'state':
+        if (!rules.allowState) {
+          issues.push(
+            warn(
+              where,
+              `{{${key}}} is not a placeholder this build knows — it will render as written`,
+            ),
+          );
+        }
+        break;
+      case 'unknown':
+        issues.push(
+          warn(
+            where,
+            `{{${key}}} is not a placeholder this build knows — it will render as written`,
+          ),
+        );
+        break;
+    }
+  }
+}
 
 function validateMessagePlaceholders(
   outcome: DraftOutcome,
   draft: ToolDraft,
   issues: DraftIssue[],
 ): void {
-  const declaredParams = new Set(draft.parameters.map((p) => p.name));
-  PLACEHOLDER_PATTERN.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = PLACEHOLDER_PATTERN.exec(outcome.message)) !== null) {
-    const key = match[1].trim();
-    if (key === 'value' || key === 'roll') continue;
-    if (key === 'dice') {
-      if (draft.rollForm !== 'dice') {
-        issues.push(
-          warn(
-            { section: 'message', id: outcome.id },
-            '{{dice}} renders as an empty string outside the dice form',
-          ),
-        );
-      }
-      continue;
-    }
-    if (key === 'llm') {
-      if (!draft.llmEnabled) {
-        issues.push(
-          warn(
-            { section: 'message', id: outcome.id },
-            '{{llm}} renders as written unless the LLM consult is enabled',
-          ),
-        );
-      }
-      continue;
-    }
-    if (key.startsWith('params.')) {
-      if (!declaredParams.has(key.slice('params.'.length))) {
-        issues.push(
-          warn(
-            { section: 'message', id: outcome.id },
-            `{{${key}}} names no declared parameter — it will render as written`,
-          ),
-        );
-      }
-      continue;
-    }
-    // Metadata keys are undeclared by nature: every {{metadata.<key>}} is
-    // presumptively legitimate, and an absent key rendering verbatim at run time
-    // is the runtime's convention, not an authoring error (§4.4.2).
-    if (key.startsWith('metadata.')) continue;
-    issues.push(
-      warn(
-        { section: 'message', id: outcome.id },
-        `{{${key}}} is not a placeholder this build knows — it will render as written`,
-      ),
-    );
-  }
+  auditPlaceholders(outcome.message, { section: 'message', id: outcome.id }, draft, issues, {
+    llm: 'warn-if-disabled',
+    allowState: false,
+  });
 }
 
 /**
  * The chip label's placeholder audit — the same families an outcome message
  * takes, `{{llm}}` included (the label renders after the consult, so quoting
- * the answer is legitimate iff the oracle is enabled). Warnings only: an
- * unknown placeholder renders as written, per the runtime convention, and the
- * load-time schema imposes no reference rule on the label.
+ * the answer is legitimate iff the oracle is enabled).
  */
 function validateChipLabelPlaceholders(draft: ToolDraft, issues: DraftIssue[]): void {
-  const declaredParams = new Set(draft.parameters.map((p) => p.name));
-  const where: DraftIssue['where'] = { section: 'identity', field: 'chipLabel' };
-  PLACEHOLDER_PATTERN.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = PLACEHOLDER_PATTERN.exec(draft.chipLabel)) !== null) {
-    const key = match[1].trim();
-    if (key === 'value' || key === 'roll') continue;
-    if (key === 'dice') {
-      if (draft.rollForm !== 'dice') {
-        issues.push(warn(where, '{{dice}} renders as an empty string outside the dice form'));
-      }
-      continue;
-    }
-    if (key === 'llm') {
-      if (!draft.llmEnabled) {
-        issues.push(warn(where, '{{llm}} renders as written unless the LLM consult is enabled'));
-      }
-      continue;
-    }
-    if (key.startsWith('params.')) {
-      if (!declaredParams.has(key.slice('params.'.length))) {
-        issues.push(
-          warn(where, `{{${key}}} names no declared parameter — it will render as written`),
-        );
-      }
-      continue;
-    }
-    if (key.startsWith('metadata.') || key.startsWith('state.')) continue;
-    issues.push(
-      warn(where, `{{${key}}} is not a placeholder this build knows — it will render as written`),
-    );
-  }
+  auditPlaceholders(draft.chipLabel, { section: 'identity', field: 'chipLabel' }, draft, issues, {
+    llm: 'warn-if-disabled',
+    allowState: true,
+  });
 }
 
 /**
@@ -1025,36 +1033,10 @@ function validateChipLabelPlaceholders(draft: ToolDraft, issues: DraftIssue[]): 
  * not exist yet.
  */
 function validateLlmPromptPlaceholders(draft: ToolDraft, issues: DraftIssue[]): void {
-  const declaredParams = new Set(draft.parameters.map((p) => p.name));
-  const where: DraftIssue['where'] = { section: 'llm', field: 'prompt' };
-  PLACEHOLDER_PATTERN.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = PLACEHOLDER_PATTERN.exec(draft.llmPrompt)) !== null) {
-    const key = match[1].trim();
-    if (key === 'value' || key === 'roll') continue;
-    if (key === 'dice') {
-      if (draft.rollForm !== 'dice') {
-        issues.push(warn(where, '{{dice}} renders as an empty string outside the dice form'));
-      }
-      continue;
-    }
-    if (key === 'llm') {
-      issues.push(
-        warn(where, '{{llm}} is not available here — the consult cannot quote its own answer'),
-      );
-      continue;
-    }
-    if (key.startsWith('params.')) {
-      if (!declaredParams.has(key.slice('params.'.length))) {
-        issues.push(warn(where, `{{${key}}} names no declared parameter — it will render as written`));
-      }
-      continue;
-    }
-    if (key.startsWith('metadata.')) continue;
-    issues.push(
-      warn(where, `{{${key}}} is not a placeholder this build knows — it will render as written`),
-    );
-  }
+  auditPlaceholders(draft.llmPrompt, { section: 'llm', field: 'prompt' }, draft, issues, {
+    llm: 'forbid',
+    allowState: false,
+  });
 }
 
 function validateCondition(

@@ -387,6 +387,51 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — feat(pascal): the client placeholder twin, and the three draft audits collapse onto it (v4 `0506517d3` correction (e), client half)
+
+_Versions: SPA 0.5.643._
+
+`apps/web/src/app/pascal/placeholders.ts` is v4's `lib/pascal/placeholders.ts`
+character for character from `PLACEHOLDER_PATTERN` down (verified by `diff`
+against the pinned checkout). The three Workbench draft audits —
+`validateMessagePlaceholders`, `validateChipLabelPlaceholders`,
+`validateLlmPromptPlaceholders` — are now one `auditPlaceholders` over
+`scanPlaceholders`, exactly as v4 collapsed them, and `expressions.ts`'s
+`isKnownRef` reads the classifier too. The shared `g`-flagged regex whose
+`lastIndex` each audit reset by hand is gone: `scanPlaceholders` builds a fresh
+`RegExp` per call.
+
+**Two author-facing sentences moved, which is the correction.** A bare
+`{{params.}}` used to reach the params arm with an empty name and be reported
+as "names no declared parameter" — sending an author to look for a parameter
+list they cannot fix; it names nothing and now reads "is not a placeholder this
+build knows". And a bare `{{metadata.}}` (and, in the chip label alone, a bare
+`{{state.}}`) used to be skipped on the PREFIX and pass in silence; it is
+reported now. Four new spec rows pin those, plus two that pin what did NOT move
+— a real `{{state.path}}` is still fine in the chip label and still flagged in
+a message or a consult prompt (`allowState`, now explicit instead of three
+divergent skip lists). Dropping the three `key.length > PREFIX.length` guards
+reddens all four correction rows and the classifier's own.
+
+**One order premise refuted by measurement.** The order expected
+`{{params.toString}}` to be able to leak prototype source in the browser
+because "the Workbench renders in the browser". It does not: neither v4 nor v5
+has a client-side `renderTemplate` — the Proving Bench posts a roll and renders
+what the SERVER returns (`grep renderTemplate` finds only prose in both trees).
+So the leak is server-side only, where the Rust half's corpus pins it; the
+client spec pins CLASSIFICATION of `toString` / `constructor` / `__proto__` /
+`hasOwnProperty` instead, which is the part this module decides.
+
+**Two sites this lane may not touch, named for the unifier.** v4's same commit
+also replaced `ProvingBench`'s `/\{\{\s*state\./` state probe with
+`scanPlaceholders(...).some(p => p.ref.kind === 'state')` and
+`OutcomesSection`'s inline `/\{\{[^}]+\}\}/g` with the exported
+`PLACEHOLDER_PATTERN`. v5 reproduces both — `screens/custom-tools/proving-bench.ts:537`
+and `screens/custom-tools/outcomes-section.ts:842` — and `apps/web/src/app/screens/**`
+belongs to P4.D156 in this round's ownership table. The probe one is a real
+edge (the old regex matches a bare `{{state.}}` and an unterminated
+`{{state.foo`); the pattern one is neutral.
+
 #### 2026-09-05 — feat(pascal): one placeholder classifier for every server reader (v4 `0506517d3` correction (e), server half)
 
 _Versions: core 0.0.782._

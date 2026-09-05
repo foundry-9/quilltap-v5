@@ -475,6 +475,42 @@ describe('validateDraft', () => {
     expect(validateDraft(draft!)).toEqual([]);
   });
 
+  it('reports a bare family prefix as an unknown placeholder, not a missing name', () => {
+    // v4 `0506517d3` correction (e). Before the three audits collapsed onto
+    // `classifyPlaceholder`, `{{params.}}` reached the params arm with an empty
+    // name and was reported as "names no declared parameter" — a sentence that
+    // sends the author looking for a parameter list they cannot fix. It names
+    // nothing at all, so it is unknown.
+    const draft = draftFromDefinition({
+      name: 'bare',
+      description: 'x',
+      parameters: { bonus: { type: 'number', default: 0 } },
+      outcomes: [{ when: true, message: 'bare {{params.}} suffix.', state: 'info' }],
+    });
+    const issues = validateDraft(draft!);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].severity).toBe('warning');
+    expect(issues[0].message).toBe(
+      '{{params.}} is not a placeholder this build knows — it will render as written',
+    );
+  });
+
+  it('reports a bare {{metadata.}}, which used to pass in silence', () => {
+    // The metadata arm skipped on the PREFIX, so a bare `{{metadata.}}` — which
+    // names no key and renders verbatim — was waved through. Classification
+    // sends it to `unknown`, where the audit does speak.
+    const draft = draftFromDefinition({
+      name: 'bare-meta',
+      description: 'x',
+      outcomes: [{ when: true, message: 'bare {{metadata.}} suffix.', state: 'info' }],
+    });
+    const issues = validateDraft(draft!);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toBe(
+      '{{metadata.}} is not a placeholder this build knows — it will render as written',
+    );
+  });
+
   it('warns on a typo placeholder but does not block', () => {
     const draft = draftFromDefinition({
       name: 'typo',
@@ -1017,6 +1053,60 @@ describe('the chip label in the draft', () => {
     );
     expect(issues).toHaveLength(1);
     expect(issues[0].severity).toBe('warning');
+  });
+
+  it('still admits a real {{state.path}} but reports a bare {{state.}}', () => {
+    // The chip label is the ONE audit that admits `{{state.…}}` (`allowState`),
+    // and pre-collapse it skipped on the prefix — so a bare `{{state.}}` was
+    // silently allowed alongside a real path. v4 `0506517d3` correction (e)
+    // splits them: a path is still fine, a bare prefix is unknown.
+    const draft = newDraft();
+    draft.chipLabel = '{{state.encounter.count}}';
+    expect(
+      validateDraft(draft).filter(
+        (i) => i.where.section === 'identity' && i.where.field === 'chipLabel',
+      ),
+    ).toEqual([]);
+
+    draft.chipLabel = 'bare {{state.}}';
+    const bare = validateDraft(draft).filter(
+      (i) => i.where.section === 'identity' && i.where.field === 'chipLabel',
+    );
+    expect(bare).toHaveLength(1);
+    expect(bare[0].message).toBe(
+      '{{state.}} is not a placeholder this build knows — it will render as written',
+    );
+  });
+
+  it('flags a {{state.path}} in an outcome message and in the consult prompt', () => {
+    // The other side of `allowState`: only the chip label admits state. The
+    // message and prompt audits report it as unknown — the shape the collapse
+    // made explicit rather than implicit in three separate skip lists.
+    const message = newDraft();
+    message.name = 'st';
+    message.description = 'x';
+    message.outcomes[0].message = 'stakes {{state.difficulty}}';
+    expect(
+      validateDraft(message)
+        .filter((i) => i.where.section === 'message')
+        .map((i) => i.message),
+    ).toEqual([
+      '{{state.difficulty}} is not a placeholder this build knows — it will render as written',
+    ]);
+
+    const prompt = newDraft();
+    prompt.name = 'st2';
+    prompt.description = 'x';
+    prompt.llmEnabled = true;
+    prompt.llmPrompt = 'at {{state.difficulty}}, wise?';
+    prompt.llmErrorMessage = 'Silence.';
+    expect(
+      validateDraft(prompt)
+        .filter((i) => i.where.section === 'llm')
+        .map((i) => i.message),
+    ).toEqual([
+      '{{state.difficulty}} is not a placeholder this build knows — it will render as written',
+    ]);
   });
 });
 
