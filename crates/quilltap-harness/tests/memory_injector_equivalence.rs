@@ -554,7 +554,9 @@ fn memory_injector_matches_oracle() {
                     got.memories_used, out.memories_used,
                     "memories '{id}' memoriesUsed"
                 );
-                if got.content.contains("About Marion: ") || got.content.contains("About another character: ") {
+                if got.content.contains("About Marion: ")
+                    || got.content.contains("About another character: ")
+                {
                     prefixed_memories += 1;
                 }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);
@@ -626,7 +628,9 @@ fn memory_injector_matches_oracle() {
                     got.memories_used, out.memories_used,
                     "frozen '{id}' memoriesUsed"
                 );
-                if got.content.contains("About Marion: ") || got.content.contains("About another character: ") {
+                if got.content.contains("About Marion: ")
+                    || got.content.contains("About another character: ")
+                {
                     prefixed_frozen += 1;
                 }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);
@@ -654,7 +658,9 @@ fn memory_injector_matches_oracle() {
                     got.memories_used, out.memories_used,
                     "head '{id}' memoriesUsed"
                 );
-                if got.content.contains("About Marion: ") || got.content.contains("About another character: ") {
+                if got.content.contains("About Marion: ")
+                    || got.content.contains("About another character: ")
+                {
                     prefixed_head += 1;
                 }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);

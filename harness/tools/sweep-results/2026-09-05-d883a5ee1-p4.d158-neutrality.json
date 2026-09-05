@@ -576,10 +576,88 @@
       "cause": null,
       "exit": 0,
       "warnings": []
+    },
+    {
+      "family": "background_jobs_tier2_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "backup_mount_index_coercion_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "backup_uuid_remap_equivalence",
+      "status": "refused_repo_write",
+      "cause": "recipe writes into the repo (policy 1): QT_CORPUS_OUT=$V5W/harness/oracle/fixtures/uuid-remap-corpus.json \\",
+      "exit": 2,
+      "warnings": []
+    },
+    {
+      "family": "bare_cheap_llm_executor_guard",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "builtin_mounts_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "builtin_templates_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "canon_scenario_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "canonicalize_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "carina_memory_extraction_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "carina_parser_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "carina_runner_tier3_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
     }
   ],
   "totals": {
-    "ok": 15,
-    "run_failed": 1
+    "ok": 25,
+    "run_failed": 1,
+    "refused_repo_write": 1
   }
 }
