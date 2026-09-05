@@ -1,8 +1,17 @@
 /**
  * Oracle case #29 (Wave 7 / B21): cheap-model classifiers.
  *
- * Drives the REAL helpers:
- *   isCheapModel, estimateModelCost, getCheapestModel (lib/llm/cheap-llm.ts)
+ * Drives the REAL helper:
+ *   getCheapestModel (lib/llm/cheap-llm.ts)
+ *
+ * P4.D157 (v4 d4138b96b, the 4.9 dead-code sweep) DELETED isCheapModel and
+ * estimateModelCost; the `classify` rows they produced left this case with the
+ * v5 twins (neither had a production caller on either side — v5's
+ * `is_cheap_model` was reached only from `estimate_model_cost`, which nothing
+ * called). `getCheapestModel` survives and stays live in v5 (`cheap_llm.rs`),
+ * so the family survives on its `cheapest` rows. Do not re-add the deleted
+ * names: a named import of a deleted export makes this whole case fail to LINK,
+ * emitting a ZERO-byte NDJSON.
  *
  * In a bare run the plugin registry returns no cheap config
  * (getCheapModelConfig → null), so every call takes the hardcoded fallback-table
@@ -14,7 +23,7 @@
  *     > /tmp/oracle-cheap-model.ndjson
  */
 
-import { isCheapModel, estimateModelCost, getCheapestModel } from '@/lib/llm/cheap-llm';
+import { getCheapestModel } from '@/lib/llm/cheap-llm';
 import type { Provider } from '@/lib/schemas/types';
 
 const rows: unknown[] = [];
@@ -29,50 +38,7 @@ const PROVIDERS: Provider[] = [
   'OPENAI_COMPATIBLE',
 ];
 
-// Model-name shapes exercising every branch: exact-recommended hits, the
-// expensive vetoes (opus/o1/o3/ultra/pro), the "4o w/o mini" + sonnet mid-tier
-// vetoes, each cheap indicator, dashed-vs-undashed o1/o3, and unknowns.
-const MODELS = [
-  'claude-haiku-4-5-20251001',
-  'claude-3-haiku-20240307',
-  'gpt-4o-mini',
-  'gpt-3.5-turbo',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'grok-2-mini',
-  'llama3.2:3b',
-  'phi3:mini',
-  'claude-opus-4-1',
-  'claude-3-5-sonnet',
-  'gpt-4o',
-  'o1-preview',
-  'o1mini',
-  'o3-mini',
-  'o3mini',
-  'gemini-1.5-pro',
-  'gemini-2.0-pro',
-  'grok-2-ultra',
-  'mixtral:8x7b',
-  'gemma2:2b',
-  'mistral:7b-instant',
-  'some-tiny-model',
-  'a-small-thing',
-  'turbo-v2',
-  'flash-lite',
-  'totally-unknown-xyz',
-  'GPT-4O-MINI',
-];
-
 for (const provider of PROVIDERS) {
-  for (const model of MODELS) {
-    rows.push({
-      kind: 'classify',
-      provider,
-      model,
-      cheap: isCheapModel(provider, model),
-      cost: estimateModelCost(provider, model),
-    });
-  }
   rows.push({ kind: 'cheapest', provider, out: getCheapestModel(provider) });
 }
 

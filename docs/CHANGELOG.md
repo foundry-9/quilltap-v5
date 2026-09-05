@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — chore(dead-code): retire the cheap-model classifiers v4 deleted (P4.D157 unit 2)
+
+_Versions: core 0.0.778, harness 0.0.673._
+
+v4 `d4138b96b` removed `isCheapModel` and `estimateModelCost` from
+`lib/llm/cheap-llm.ts`; `harness/oracle/cases/cheap-model.ts` imports both by
+name, so the case fails to LINK at any sha past that commit.
+
+Measured on this side: `is_cheap_model` was reached only from
+`estimate_model_cost`'s ladder (`cheap_model.rs:117` — production code, but
+inside a function nothing called), and `estimate_model_cost` had no caller
+outside the differential. Both are deleted, together with the
+`LEGACY_RECOMMENDED_CHEAP_MODELS` table only they consulted and the
+registry-precedence unit test that drove them.
+
+`getCheapestModel` survives in v4 and stays live in v5
+(`cheap_llm::select_cheap_llm`), so the family survives on its `cheapest`
+rows: the case shrinks 203 → 7 rows, every surviving row byte-identical to
+the pre-split oracle at `0b0617fee`, and it regenerates clean at
+`d883a5ee1`.
+
 #### 2026-09-05 — chore(dead-code): retire the context-usage gauges v4 deleted (P4.D157 unit 1)
 
 _Versions: core 0.0.777, harness 0.0.672._
