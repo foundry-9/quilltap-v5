@@ -13,12 +13,11 @@
 //!
 //! Run: `cargo test -p quilltap-harness --test nanogpt_lora_wire_log`
 
-use std::sync::{Arc, Mutex};
-
 use quilltap_core::image_gen::lora_support::ImageLoraSpec;
 use quilltap_core::model::image::{ImageGenParams, ImageProvider};
 use quilltap_core::model::image_dialects::{build_image_request, RealImageProvider};
 use quilltap_core::model::wire::{wire_key, CannedWireTransport, WireResponse};
+use quilltap_core::test_support::CaptureLayer;
 use serde_json::json;
 
 /// v4's two sentences, anchored to the first field that follows them.
@@ -30,40 +29,6 @@ use serde_json::json;
 /// Pinning the trailing ` context=` makes the match exact at the end.
 const FAILED_MSG: &str = "NanoGPT image request failed context=";
 const POSTING_MSG: &str = "Posting NanoGPT image request context=";
-use tracing_subscriber::layer::SubscriberExt;
-
-struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-struct FieldVisitor(String);
-impl tracing::field::Visit for FieldVisitor {
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        self.0.push_str(&format!(" {}={}", field.name(), value));
-    }
-    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        self.0.push_str(&format!(" {}={}", field.name(), value));
-    }
-    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
-        self.0.push_str(&format!(" {}={}", field.name(), value));
-    }
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.0.push_str(&format!(" {value:?}"));
-        } else {
-            self.0.push_str(&format!(" {}={value:?}", field.name()));
-        }
-    }
-}
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
-        let meta = event.metadata();
-        let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-        event.record(&mut visitor);
-        self.0.lock().unwrap().push(visitor.0);
-    }
-}
 
 /// A `url`-family NanoGPT request carrying an adapter, a scale, a preset and a
 /// passthrough key — so every field of the two log lines has something to say.
@@ -91,6 +56,9 @@ fn run(status: u16, body: &str) -> Vec<String> {
 }
 
 fn run_with(p: ImageGenParams, status: u16, body: &str) -> Vec<String> {
+    use std::sync::{Arc, Mutex};
+    use tracing_subscriber::layer::SubscriberExt;
+
     let request = build_image_request("NANOGPT", &p).expect("build");
     let transport = CannedWireTransport::new().with_raw_response(
         wire_key(&request.method, &request.url, &request.body_string()),

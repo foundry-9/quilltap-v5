@@ -1131,44 +1131,14 @@ fn generate_unique_filename(
 #[cfg(test)]
 mod chat_upload_tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
-    use tracing_subscriber::layer::SubscriberExt;
+    use crate::test_support::captured_with;
 
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-    #[derive(Default)]
-    struct V(String);
-    impl tracing::field::Visit for V {
-        fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
-            self.0.push_str(&format!(" {}={v}", f.name()));
-        }
-        fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
-            if f.name() == "message" {
-                self.0.push_str(&format!(" {v:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={v:?}", f.name()));
-            }
-        }
-    }
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(&self, e: &tracing::Event<'_>, _c: tracing_subscriber::layer::Context<'_, S>) {
-            let mut v = V::default();
-            e.record(&mut v);
-            self.0
-                .lock()
-                .unwrap()
-                .push(format!("{}{}", e.metadata().level(), v.0));
-        }
-    }
-
+    /// `crate::test_support`'s `CaptureLayer` renders `"<LEVEL> <target> …"`,
+    /// so a line still `starts_with("WARN ")` (the target follows the same
+    /// space) — the assertions below only ever check for a trailing
+    /// substring, never the exact prefix beyond that.
     fn capture(pre: &str, stored: &str) -> (String, Vec<String>) {
-        let logs = Arc::new(Mutex::new(Vec::new()));
-        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        let out = {
-            let _g = tracing::subscriber::set_default(sub);
-            resolve_stored_sha256(pre, stored.to_string(), "shot.png", "image/webp")
-        };
-        let l = logs.lock().unwrap().clone();
-        (out, l)
+        captured_with(|| resolve_stored_sha256(pre, stored.to_string(), "shot.png", "image/webp"))
     }
 
     /// The bridge wins, and says so with v4's sentence and its five fields.

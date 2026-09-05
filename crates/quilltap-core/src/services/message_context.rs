@@ -1590,6 +1590,17 @@ mod tests {
             .block_on(f)
     }
 
+    // NOT migrated to `crate::test_support` (P4.77's census surveyed this
+    // site and found it genuinely different, not a drifted copy): this
+    // `FieldVisitor` never overrides `record_str`, so a plain `&str` field —
+    // `character_participant_id` here, passed bare rather than with `%` —
+    // falls through `tracing::field::Visit`'s own default straight to
+    // `record_debug`, which quotes it. `the_budget_skips_a_file_whole_…` and
+    // `a_load_failure_warns_…` below pin that exact quoting
+    // (`character_participant_id=\"cp\"`). The shared visitor implements
+    // `record_str` explicitly (Display, unquoted) precisely because every
+    // OTHER site relies on that instead — swapping this site to the shared
+    // one silently un-quotes the field and reddens both tests. Kept local.
     struct CaptureLayer(Arc<Mutex<Vec<String>>>);
     struct FieldVisitor(String);
     impl tracing::field::Visit for FieldVisitor {

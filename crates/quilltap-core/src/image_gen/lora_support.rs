@@ -459,7 +459,7 @@ mod scale_bounds_tests {
 #[cfg(test)]
 mod log_context_tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
+    use crate::test_support::captured;
 
     // === P4.70: the `[Image LoRA]` caller spread ===
     //
@@ -471,52 +471,9 @@ mod log_context_tests {
     // not which generation dropped it.
     //
     // A differential cannot see a log-only fix, so the capture layer is the
-    // proof. One test per line, each mutation (deleting one field from one
-    // `tracing::warn!`) reddening exactly one of them.
-
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-
-    struct FieldVisitor(String);
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
-    }
-
-    /// Run `f` with a capturing subscriber installed and hand back the lines.
-    /// `set_default` is THREAD-scoped, so parallel tests cannot steal each
-    /// other's subscriber.
-    fn captured(f: impl FnOnce()) -> Vec<String> {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
-        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        {
-            let _guard = tracing::subscriber::set_default(subscriber);
-            f();
-        }
-        let out = logs.lock().unwrap().clone();
-        out
-    }
+    // proof (`crate::test_support`, P4.77). One test per line, each mutation
+    // (deleting one field from one `tracing::warn!`) reddening exactly one of
+    // them.
 
     /// The spread a caller supplies — v4's `tools.generate_image` shape.
     fn ctx() -> LoraLogContext {

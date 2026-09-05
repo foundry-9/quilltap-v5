@@ -1410,6 +1410,7 @@ mod tests {
     use crate::db::runtime::DbPaths;
     use crate::db::Writer;
     use crate::model::completion::CannedCompletionProvider;
+    use crate::test_support::CaptureLayer;
 
     fn selection(provider: &str, model: &str) -> CheapLlmSelection {
         CheapLlmSelection {
@@ -1515,46 +1516,6 @@ mod tests {
                 }
                 std::future::pending().await
             }
-        }
-    }
-
-    /// A `tracing` layer that captures `LEVEL target msg field=value …` for
-    /// every event, so the abandonment warn can be asserted field by field —
-    /// the fields ARE the deliverable here (the incident's whole cost was that
-    /// a stall logged nothing at all).
-    struct CaptureLayer(std::sync::Arc<Mutex<Vec<String>>>);
-
-    struct FieldVisitor(String);
-
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
         }
     }
 

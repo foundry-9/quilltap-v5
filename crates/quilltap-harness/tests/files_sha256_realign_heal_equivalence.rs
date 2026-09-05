@@ -48,6 +48,15 @@ use tracing_subscriber::layer::SubscriberExt;
 const MIGRATION_ID: &str = "realign-file-entry-sha256-v1";
 
 // ── the capturing tracing layer (thread-scoped: the standing note) ───────────
+//
+// NOT migrated to `quilltap_core::test_support` (P4.77's consolidation census
+// surveyed this site and found it genuinely different, not a drifted copy):
+// this rig captures a structured `CapturedEvent { message, fields:
+// BTreeMap<…> }` per event, filtered to WARN level only, so the family's
+// assertions can address fields by key rather than substring-search a flat
+// line — the shared module's `captured() -> Vec<String>` idiom cannot express
+// either the level filter or the per-field map without becoming this file's
+// shape. Kept local.
 
 #[derive(Clone, Debug)]
 struct CapturedEvent {

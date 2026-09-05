@@ -589,7 +589,6 @@ mod tests {
     use super::*;
     use crate::db::background_jobs::{BjCreate, CreateOptions};
     use crate::db::runtime::Db;
-    use std::cell::RefCell;
     use std::sync::atomic::AtomicUsize;
     use std::sync::Mutex;
     use tempfile::tempdir;
@@ -691,95 +690,21 @@ mod tests {
     }
 
     // === P4.18 unit 5: the failed-job log-surface smoke test ===
-
-    /// A minimal `tracing` capturing layer: it records `"<LEVEL> <target> <msg>"`
-    /// for every event, so the smoke test can assert the runner narrates a
-    /// failure instead of swallowing it in silence (the pre-P4.18 behavior that
-    /// cost findings #23/#26 hours of invisible failure arms).
-    ///
-    /// P4.40: it captures into a per-THREAD buffer and is installed ONCE as the
-    /// process-GLOBAL default. Both halves are load-bearing, and the original
-    /// `set_default` (thread-local subscriber, no global) is exactly what made
-    /// this test flake 17 runs in 25 under `--test-threads=8`:
-    ///
-    ///   - `tracing` caches each callsite's `Interest` GLOBALLY, on first use.
-    ///     A sibling test that fails a job (`handler_failure_marks_failed`) hits
-    ///     the very same `tracing::warn!("Job failed")` callsite; if it gets
-    ///     there first, with no subscriber on ITS thread, the callsite is
-    ///     cached `Interest::never()` for the whole process and the macro is
-    ///     skipped from then on. A thread-local `set_default` does NOT rebuild
-    ///     that cache, so this test captured literally nothing — not even the
-    ///     "Dispatching job" INFO — and the failure read as "the runner stopped
-    ///     logging". `set_global_default` DOES rebuild it, which is what makes
-    ///     the capture reachable regardless of who ran first.
-    ///   - A global subscriber is then live for every other test in the binary,
-    ///     so the sink must not be shared: the per-thread buffer keeps a
-    ///     sibling's events out of this test's capture, and the `Option`
-    ///     (armed/disarmed) keeps every other test from accumulating strings it
-    ///     will never read.
-    ///
-    /// Nothing about what the test PROVES changes — same durable effect (the
-    /// FAILED row), same exact WARN level and `quilltap::jobs` target.
-    struct CaptureLayer;
-
-    thread_local! {
-        /// `Some` only while this thread is inside `capture_events`.
-        static CAPTURED: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
-    }
-
-    /// Install the global capturing subscriber exactly once per test binary.
-    fn install_capture_subscriber() {
-        static INIT: std::sync::Once = std::sync::Once::new();
-        INIT.call_once(|| {
-            use tracing_subscriber::layer::SubscriberExt;
-            // Ignore an error: another test binary layout could conceivably have
-            // set one already, and the capture below is a no-op if so — which
-            // the assertions would catch loudly rather than silently.
-            let _ = tracing::subscriber::set_global_default(
-                tracing_subscriber::registry().with(CaptureLayer),
-            );
-        });
-    }
-
-    /// Arm this thread's capture buffer, run `f`, and return everything the
-    /// runner narrated on this thread while it ran.
-    async fn capture_events<F: std::future::Future<Output = ()>>(f: F) -> String {
-        install_capture_subscriber();
-        CAPTURED.with(|c| *c.borrow_mut() = Some(Vec::new()));
-        f.await;
-        let lines = CAPTURED
-            .with(|c| c.borrow_mut().take())
-            .expect("capture buffer armed");
-        lines.join("\n")
-    }
-
-    struct MessageVisitor(String);
-    impl tracing::field::Visit for MessageVisitor {
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0 = format!("{value:?}");
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            CAPTURED.with(|cell| {
-                let mut cell = cell.borrow_mut();
-                let Some(buf) = cell.as_mut() else {
-                    return; // this thread is not capturing
-                };
-                let mut visitor = MessageVisitor(String::new());
-                event.record(&mut visitor);
-                let meta = event.metadata();
-                buf.push(format!("{} {} {}", meta.level(), meta.target(), visitor.0));
-            });
-        }
-    }
+    //
+    // The capturing rig this smoke test needs is `crate::test_support`'s
+    // `global_capture::capture_events` (P4.77) — the one holdout idiom in that
+    // module, kept genuinely distinct from every other site's thread-scoped
+    // `set_default`. See the module doc there for why: `tracing` caches each
+    // callsite's `Interest` GLOBALLY on first use, so a thread-scoped
+    // subscriber can lose this test's callsite forever to whichever sibling
+    // test reaches it first with nothing armed on ITS thread — measured here
+    // as 17 flakes in 25 runs under `--test-threads=8` before P4.40 fixed it
+    // with a process-global subscriber over a per-thread buffer instead.
+    //
+    // Nothing about what the test PROVES changed when this moved: same
+    // durable effect (the FAILED row), same exact WARN level and
+    // `quilltap::jobs` target.
+    use crate::test_support::global_capture::capture_events;
 
     /// A failed job emits a `quilltap::jobs` WARN "Job failed" event (P4.18) —
     /// log records are operator output, not data, so this is a plain smoke

@@ -252,7 +252,7 @@ pub fn parse_title_verdict(content: &str, task_label: &str, chat_id: Option<&str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
+    use crate::test_support::captured;
 
     const LABEL: &str = "consider-title-update";
 
@@ -260,51 +260,10 @@ mod tests {
         parse_title_verdict(json, LABEL, None)
     }
 
-    // ── The captured-warn rig (the `cheap_llm_exec.rs` / `build_context.rs`
-    // idiom): the three warn arms and the ONE case that must stay silent are
-    // v4 test cases too, so they are pinned the same way. ──
-
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-
-    struct FieldVisitor(String);
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
-    }
-
-    /// Run `f` with a capturing subscriber installed and hand back the lines.
-    fn captured(f: impl FnOnce()) -> Vec<String> {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
-        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        {
-            let _guard = tracing::subscriber::set_default(subscriber);
-            f();
-        }
-        let out = logs.lock().unwrap().clone();
-        out
-    }
+    // ── The captured-warn rig (`crate::test_support`, P4.77 — formerly the
+    // `cheap_llm_exec.rs` / `build_context.rs` idiom copy-pasted here): the
+    // three warn arms and the ONE case that must stay silent are v4 test
+    // cases too, so they are pinned the same way. ──
 
     // ── v4 `__tests__/title-verdict.test.ts`, mirrored 1:1 ──
 

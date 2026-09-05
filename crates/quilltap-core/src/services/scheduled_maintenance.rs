@@ -417,6 +417,7 @@ pub use queue_service::DAY_MS;
 mod tests {
     use super::*;
     use crate::db::runtime::Db;
+    use crate::test_support::captured_with as captured;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// A recording store that "removes" every transcript except a named one
@@ -432,34 +433,13 @@ mod tests {
         }
     }
 
-    // ---- the tracing capture layer (thread-scoped; the `cost_events.rs` idiom).
-
-    struct FieldVisitor(String);
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
-            self.0.push_str(&format!(" {}={:?}", f.name(), v));
-        }
-    }
-    struct CaptureLayer(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(&self, e: &tracing::Event<'_>, _c: tracing_subscriber::layer::Context<'_, S>) {
-            let m = e.metadata();
-            let mut v = FieldVisitor(format!("{} {}", m.level(), m.target()));
-            e.record(&mut v);
-            self.0.lock().unwrap().push(v.0);
-        }
-    }
-    fn captured<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        let out = {
-            let _g = tracing::subscriber::set_default(sub);
-            f()
-        };
-        let lines = logs.lock().unwrap().clone();
-        (out, lines)
-    }
+    // The tracing capture layer is `crate::test_support` (P4.77 — formerly the
+    // `cost_events.rs` idiom copy-pasted here; thread-scoped via
+    // `set_default`). Every field this module logs is either bare numeric
+    // (Debug/Display render identically) or carried with `%`/`?`, whose
+    // wrapper's own `Debug` forwards to the inner value's own formatting —
+    // so the shared visitor's explicit per-type handling changes no byte any
+    // assertion here checks.
 
     /// A storage backend that lists nothing — the thumbnail sweep needs one and
     /// this test is not about it.

@@ -3781,6 +3781,7 @@ mod phase_ceiling_tests {
 
     use super::*;
     use crate::services::memory_recap::MemoryRecapResult;
+    use crate::test_support::CaptureLayer;
 
     /// v4's literal, spelled out rather than read back from the constant, so
     /// moving the bound has to be a deliberate edit here too.
@@ -3916,38 +3917,6 @@ mod phase_ceiling_tests {
             .await;
         }
         assert!(logs.lock().unwrap().is_empty());
-    }
-
-    struct CaptureLayer(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
-    struct FieldVisitor(String);
-
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
     }
 }
 
@@ -4318,6 +4287,7 @@ mod inter_character_log_tests {
     use super::*;
     use crate::model::completion::{CompletionError, CompletionParams, CompletionResponse};
     use crate::model::embedding::{EmbeddingError, EmbeddingPriority, EmbeddingResult};
+    use crate::test_support::CaptureLayer;
     use std::sync::{Arc, Mutex};
 
     const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -4574,37 +4544,5 @@ mod inter_character_log_tests {
         let line = the_line(&lines).unwrap_or_else(|| panic!("no line; captured: {lines:?}"));
         assert!(line.contains("loaded_count=0"), "{line}");
         assert!(line.contains("included_count=0"), "{line}");
-    }
-
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-    struct FieldVisitor(String);
-
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
     }
 }

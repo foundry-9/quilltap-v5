@@ -667,41 +667,9 @@ fn title_update_runner_registration_e2e() {
 //     sentence, and returns null (`system-events.service.ts:73`). v5's seams are
 //     `Option`-returning for the same reason.
 
+use quilltap_core::test_support::CaptureLayer;
 use std::sync::{Arc, Mutex};
 use tracing_subscriber::layer::SubscriberExt;
-
-struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-struct FieldVisitor(String);
-impl tracing::field::Visit for FieldVisitor {
-    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        self.0.push_str(&format!(" {}={}", field.name(), value));
-    }
-    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        self.0.push_str(&format!(" {}={}", field.name(), value));
-    }
-    fn record_f64(&mut self, field: &tracing::field::Field, value: f64) {
-        self.0.push_str(&format!(" {}={}", field.name(), value));
-    }
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.0.push_str(&format!(" {value:?}"));
-        } else {
-            self.0.push_str(&format!(" {}={value:?}", field.name()));
-        }
-    }
-}
-impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
-        let meta = event.metadata();
-        let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-        event.record(&mut visitor);
-        self.0.lock().unwrap().push(visitor.0);
-    }
-}
 
 /// Drive the REAL handler `runs` times over ONE fresh copy of the committed
 /// fixture and return every line it logged.

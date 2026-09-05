@@ -171,51 +171,12 @@ pub(crate) fn action_required_response(
 #[cfg(test)]
 mod action_warn_pins {
     use super::*;
-    use std::sync::{Arc, Mutex};
-
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-
-    struct FieldVisitor(String);
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
-    }
-
-    /// `set_default` is THREAD-scoped, so parallel tests cannot steal each
-    /// other's subscriber (memory note
-    /// `a-process-global-test-seam-must-be-thread-scoped`).
-    fn captured(f: impl FnOnce()) -> Vec<String> {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
-        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        {
-            let _guard = tracing::subscriber::set_default(subscriber);
-            f();
-        }
-        let out = logs.lock().unwrap().clone();
-        out
-    }
+    // The capture rig is `quilltap_core::test_support` (P4.77), reached
+    // across the crate boundary via the `test-support` feature (enabled only
+    // under `[dev-dependencies]`); `set_default` is THREAD-scoped, so
+    // parallel tests cannot steal each other's subscriber (memory note
+    // `a-process-global-test-seam-must-be-thread-scoped`).
+    use quilltap_core::test_support::captured;
 
     fn line_with<'a>(lines: &'a [String], sentence: &str) -> &'a String {
         lines

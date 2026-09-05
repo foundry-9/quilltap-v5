@@ -399,42 +399,7 @@ mod tests {
         assert!(rx.try_recv().is_err(), "a pre-arming publish is dropped");
     }
 
-    /// A `tracing` layer capturing `LEVEL target msg field=value …` per event.
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-
-    struct FieldVisitor(String);
-
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
-    }
+    use crate::test_support::CaptureLayer;
 
     /// P4.D127 / v4 `21f573039` — the per-publish coalesce trace is GONE, and
     /// the counter it used to print is not.

@@ -415,6 +415,22 @@ Also landed, the five items the P4.73 unification review recorded:
 
 `handler-logging-inventory.md` gains its first `app/api/**` file, seeded so the
 generate route's eight lines are dispositioned.
+#### 2026-09-05 — refactor(test): consolidate 19 copy-pasted tracing capture layers into `quilltap-core::test_support`
+
+_Versions: core 0.0.797, host 0.0.97, web 0.0.115, harness 0.0.687._
+
+A behaviour-neutral test-only refactor: one shared `CaptureLayer`/
+`FieldVisitor`/`captured`/`captured_with` rig (plus `job_runner.rs`'s
+distinct process-global `global_capture` idiom) replaces 19 independently
+copy-pasted instances across core/host/web/harness test modules, reached
+across crate boundaries via a new `test-support` Cargo feature enabled only
+under `[dev-dependencies]`. Two sites stay local by design and are
+documented inline (`message_context.rs`'s quoted-string contract;
+`files_sha256_realign_heal_equivalence.rs`'s structured per-field capture).
+Proven via every touched family's existing tests staying green plus three
+mutation re-proofs (the thread-scoped/Interest-cache idiom, the
+presence+silence idiom, the coalescing idiom), each reddening and reverted.
+
 #### 2026-09-05 — docs(unify): the P4.77 4.9.0-release ratification evidence + mirror refresh (P4.D159)
 
 _Docs-only change._

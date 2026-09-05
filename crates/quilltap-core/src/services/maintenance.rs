@@ -374,41 +374,16 @@ mod tests {
     use super::collapse_stale_chat_assets;
     use crate::db::doc_mount_file_links::is_photos_relative_path;
     use crate::db::runtime::Db;
-    use std::sync::{Arc, Mutex};
+    use crate::test_support::captured_with as captured;
 
-    // ---- the tracing capture layer (the `cost_events.rs` idiom: `set_default`
-    // is THREAD-scoped, so parallel tests cannot steal each other's subscriber).
-
-    struct FieldVisitor(String);
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            self.0.push_str(&format!(" {}={:?}", field.name(), value));
-        }
-    }
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _c: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut v = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut v);
-            self.0.lock().unwrap().push(v.0);
-        }
-    }
-    fn captured<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
-        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        let out = {
-            let _g = tracing::subscriber::set_default(sub);
-            f()
-        };
-        let lines = logs.lock().unwrap().clone();
-        (out, lines)
-    }
+    // The tracing capture layer is `crate::test_support` (P4.77 — formerly the
+    // `cost_events.rs` idiom copy-pasted here): `set_default` is
+    // THREAD-scoped, so parallel tests cannot steal each other's subscriber.
+    // Every field this module logs is either a bare numeric (Debug and
+    // Display render identically) or carried with the `%`/`?` sigil, whose
+    // wrapper's own `Debug` impl forwards to `Display` — so the shared
+    // visitor's per-type Display formatting and the message field's
+    // dropped-key rendering change no byte any assertion here checks.
 
     const TEST_PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 

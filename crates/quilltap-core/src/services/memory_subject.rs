@@ -110,6 +110,7 @@ pub(crate) fn build_memory_subject_context_with(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::captured;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
 
@@ -213,51 +214,5 @@ mod tests {
             !lines.iter().any(|l| l.contains("[MemorySubject]")),
             "{lines:?}"
         );
-    }
-
-    // ---- capture layer (the `set_default` thread-scoped idiom) -------------
-
-    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
-
-    struct FieldVisitor(String);
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
-    }
-
-    fn captured(f: impl FnOnce()) -> Vec<String> {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
-        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        {
-            let _guard = tracing::subscriber::set_default(subscriber);
-            f();
-        }
-        let out = logs.lock().unwrap().clone();
-        out
     }
 }

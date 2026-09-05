@@ -2293,6 +2293,7 @@ pub fn build_wardrobe_item_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::captured;
 
     #[test]
     fn shape_is_a_v8_uuid() {
@@ -2453,48 +2454,7 @@ mod tests {
     // and `:453`) used to happen in silence here. The drop itself is
     // v4-faithful and stays; what was missing is the only signal that a
     // component reference has gone. Pinned with the capturing-layer idiom
-    // (`title_verdict.rs` / `cheap_llm_exec.rs`), presence AND silence. ──
-
-    struct CaptureLayer(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
-
-    struct FieldVisitor(String);
-    impl tracing::field::Visit for FieldVisitor {
-        fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-            self.0.push_str(&format!(" {}={}", field.name(), value));
-        }
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            if field.name() == "message" {
-                self.0.push_str(&format!(" {value:?}"));
-            } else {
-                self.0.push_str(&format!(" {}={value:?}", field.name()));
-            }
-        }
-    }
-
-    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
-        fn on_event(
-            &self,
-            event: &tracing::Event<'_>,
-            _ctx: tracing_subscriber::layer::Context<'_, S>,
-        ) {
-            let meta = event.metadata();
-            let mut visitor = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
-    }
-
-    fn captured(f: impl FnOnce()) -> Vec<String> {
-        use tracing_subscriber::layer::SubscriberExt;
-        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
-        {
-            let _guard = tracing::subscriber::set_default(subscriber);
-            f();
-        }
-        let out = logs.lock().unwrap().clone();
-        out
-    }
+    // (`crate::test_support`, P4.77), presence AND silence. ──
 
     #[test]
     fn an_unknown_component_ref_is_dropped_loudly() {

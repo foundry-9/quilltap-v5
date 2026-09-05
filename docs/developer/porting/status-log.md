@@ -107689,3 +107689,111 @@ is the ledger's doc-sync nit, discharged.
 
 Docs-only; no crate version bumped.
 
+
+## Lane record — P4.77 unit 3: the `CaptureLayer` consolidation (2026-09-05)
+
+Work order `p4.77-zod-tripwire-ratification-capture-layer.md`, item 3. The
+candidate list said thirteen copies of the same `#[cfg(test)]` tracing
+capture layer; `grep -rln "struct CaptureLayer" crates --include='*.rs' |
+grep -v target` said **19** at lane start — the census itself was the first
+correction. A behaviour-neutral test-only refactor: no production code
+changed (item 4's `render_template` lines are a separate commit), no
+differential regenerated for its own sake — the proof is the existing
+families' tests staying green plus mutation re-proofs through the new
+helper.
+
+**The new shared module:** `crates/quilltap-core/src/test_support.rs`,
+gated `#[cfg(any(test, feature = "test-support"))]` — plain `#[cfg(test)]`
+is invisible across a crate boundary, so `quilltap-host`/`quilltap-web`/
+`quilltap-harness` reach it by enabling the new `test-support` feature
+**only** under their own `[dev-dependencies]` (never `[dependencies]`, so it
+never leaks into a non-test build — confirmed: `cargo build --workspace`
+links nothing new). `quilltap-core`'s own `tracing-subscriber` moved from
+dev-only to an **optional** normal dependency gated by the same feature,
+because a downstream crate's test build needs it linked as a real
+dependency of the core rlib it depends on, not merely as core's own
+dev-dependency (which never reaches a consumer). Two idioms live in the
+module, not one — genuinely different contracts, not two drifted copies of
+the same thing:
+
+- `CaptureLayer`/`FieldVisitor`/`captured`/`captured_with` — the dominant
+  shape (16 of the 19 sites): a fresh `Arc<Mutex<Vec<String>>>` per test,
+  installed via the THREAD-scoped `tracing::subscriber::set_default`. The
+  shared `FieldVisitor` implements the UNION of every variant any site
+  implemented (`str`/`u64`/`i64`/`f64`/`bool`/`debug`) — verified
+  behaviour-neutral by construction: `tracing::field::Visit`'s own default
+  methods for the untyped variants already delegate to `record_debug`, and
+  Debug/Display render identically for str/u64/i64/bool (the one gap, whole-
+  number `f64`, was checked against every migrated site's production
+  `tracing::*!` calls and confirmed unreached).
+- `global_capture::capture_events` — `job_runner.rs`'s one holdout: a
+  process-global `set_global_default` installed once, with a per-THREAD
+  buffer behind a `thread_local!`, because `tracing` caches each callsite's
+  `Interest` GLOBALLY on first use and a thread-scoped subscriber can lose
+  the callsite forever to whichever sibling test reaches it first with
+  nothing armed on its thread (measured pre-P4.40 as 17 flakes in 25 runs
+  under `--test-threads=8`). Moved into the shared module verbatim, still
+  documented in place; re-ran `cargo test -p quilltap-core --lib
+  services::job_runner -- --test-threads=8` three times post-move, all
+  green.
+
+**Two sites deliberately NOT migrated, with the census's own evidence for
+why (Tier 3's "land three helpers … and say so" — here it is two
+exceptions, not a third helper):**
+
+- `services/message_context.rs` — its `FieldVisitor` never overrides
+  `record_str`, so the bare (non-`%`) `&str` field
+  `character_participant_id` falls through the trait's own default straight
+  to `record_debug`, which QUOTES it (`Debug` on `&str` adds quotes); two of
+  its own tests pin that exact quoting
+  (`character_participant_id=\"cp\"`). Migrating to the shared visitor
+  (which implements `record_str` explicitly, Display, unquoted) reddened
+  both — caught by running the file's tests immediately after the edit, not
+  by inspection. Reverted, documented inline at the site.
+- `quilltap-harness/tests/files_sha256_realign_heal_equivalence.rs` — its
+  rig captures a structured `CapturedEvent { message, fields:
+  BTreeMap<String,String> }` per event, filtered to WARN level only, so the
+  family's assertions can address fields by key. The shared module's flat
+  `Vec<String>` idiom cannot express the level filter or the per-field map
+  without becoming this file's own shape. Documented inline, not migrated.
+
+Two other sites (`services/maintenance.rs`, `services/scheduled_maintenance.rs`)
+also lacked `record_str`, but were confirmed SAFE to migrate: every field
+either uses the `%`/`?` sigil (whose wrapper's own `Debug` impl forwards to
+the inner value's formatting, unaffected by which visitor method fires) or is
+a bare numeric (Debug/Display identical). Verified by migrating and running
+each file's tests before trusting the reasoning — both stayed green.
+
+**Mutation proofs, one per idiom, re-run through the migrated helper (each
+reddened, then reverted):**
+
+1. Thread-scoped/`Interest`-cache idiom (`global_capture`,
+   `job_runner.rs`): deleted the production `tracing::warn!("Job failed",
+   …)` call entirely — `failed_job_emits_a_tracing_event` reddened
+   (`expected a 'Job failed' event; captured: INFO … Dispatching job`).
+2. Presence+silence idiom (`title_verdict.rs`): gated the no-usable-title
+   warn behind `if false && …` — `warns_when_a_rename_is_requested_with_no_readable_title`
+   reddened (`the no-usable-title warn`), all 23 siblings stayed green.
+3. Coalescing idiom (`realtime/bus.rs`): froze the `*coalesced += 1`
+   counter at 0 — `a_coalesced_publish_is_silent_and_the_flush_still_counts_it`
+   reddened (`the flush line must still report coalesced=11; captured: …
+   coalesced=0`), exactly the mutation the
+   `coalescing-hides-its-own-mutation-proofs` memory note names as the one
+   that first slipped through undetected.
+
+(A fourth, informal proof caught a genuinely weak PRE-EXISTING assertion —
+`job_runner.rs`'s own `captured.contains("Job failed")` accepted a retargeted
+`"Job failed (muted)"` message, the same prefix-match trap the
+`capture-layer-target-assert-is-a-prefix-match` note describes for a
+*target* rather than a *message*. Left as-is — fixing a pre-existing
+assertion's strength is out of this item's scope [test-only refactor,
+behaviour-neutral], but recorded here for a future maintenance pass.)
+
+**Verification:** `cargo build --workspace` (confirms the feature never
+leaks); `cargo fmt --all --check`; `cargo clippy --workspace --all-targets
+-- -D warnings` and again with `--features quilltap-core/native-transport`,
+both clean; every touched file's own test module re-run individually
+(green); the full `cargo test --workspace` gate (this unit's changes plus
+unit 4's, see the combined gate below).
+
+Versions: core 0.0.797, host 0.0.97, web 0.0.115, harness 0.0.687.
