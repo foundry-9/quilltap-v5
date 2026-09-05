@@ -138,4 +138,29 @@ describe('AnswerConfirmationSettings', () => {
       'Failed to update answer-confirmation settings',
     );
   });
+
+  /**
+   * v4 `0506517d3` correction (f3): the card's hand-built
+   * `flex items-start gap-3 p-4 border …` label was replaced by the shared
+   * `SettingsToggleRow`, which the composer toggles already used — so the row
+   * now wears `qt-settings-toggle-row`, its heading `qt-settings-section-heading`,
+   * and its body `qt-text-small mt-1`. v5 adopts the SIBLING markup (six cards
+   * already carry it), not v4's React component.
+   */
+  it('wears the shared qt-settings-toggle-row styling (v4 0506517d3 (f3))', async () => {
+    const stub = cardStub(settingsRow());
+    const fixture = await mountCard(AnswerConfirmationSettings, stub);
+    const el = fixture.nativeElement as HTMLElement;
+
+    const row = el.querySelector('label.qt-settings-toggle-row');
+    expect(row).toBeTruthy();
+    // The hand-built label is gone, not merely joined.
+    expect(el.querySelector('label.qt-hover-accent')).toBeNull();
+
+    expect(row?.querySelector('input.qt-checkbox.mt-1')).toBeTruthy();
+    const heading = row?.querySelector('.qt-settings-section-heading');
+    expect(heading?.textContent?.trim()).toBe('Confirm looked-up answers by default');
+    const body = row?.querySelector('.qt-text-small.mt-1');
+    expect(body?.textContent).toContain('a swift second reader');
+  });
 });

@@ -39,29 +39,31 @@ import { SettingsCard } from './settings-card';
         }
 
         <div class="space-y-3">
-          <label
-            class="flex items-start gap-3 p-4 border qt-border-default rounded qt-hover-accent cursor-pointer transition-colors"
-          >
-            <input
-              type="checkbox"
-              class="qt-checkbox mt-1"
-              [checked]="enabled()"
-              [disabled]="saving()"
-              (change)="onUpdate({ enabled: $any($event.target).checked })"
-            />
-            <div class="flex-1">
-              <div class="font-medium">Confirm looked-up answers by default</div>
-              <div class="qt-text-small">
-                When a character's reply rests on their recollections or a lookup (a web search, a
-                peek back through the conversation, or a document read), a swift second reader
-                checks the reply for contradictions before it lands. Should something ring false,
-                the character is asked to stand by their words or amend them — and every checked
-                reply wears a small mark you can hover for the particulars. This adds a round-trip
-                or two per qualifying turn, so it arrives switched off; enable it here, or for a
-                particular project or chat.
+          <div>
+            <label class="qt-settings-toggle-row">
+              <input
+                type="checkbox"
+                class="qt-checkbox mt-1"
+                [checked]="enabled()"
+                [disabled]="saving()"
+                (change)="onUpdate({ enabled: $any($event.target).checked })"
+              />
+              <div class="flex-1">
+                <div class="qt-settings-section-heading">
+                  Confirm looked-up answers by default
+                </div>
+                <div class="qt-text-small mt-1">
+                  When a character's reply rests on their recollections or a lookup (a web search,
+                  a peek back through the conversation, or a document read), a swift second reader
+                  checks the reply for contradictions before it lands. Should something ring false,
+                  the character is asked to stand by their words or amend them — and every checked
+                  reply wears a small mark you can hover for the particulars. This adds a
+                  round-trip or two per qualifying turn, so it arrives switched off; enable it
+                  here, or for a particular project or chat.
+                </div>
               </div>
-            </div>
-          </label>
+            </label>
+          </div>
         </div>
       </qt-settings-card>
     }

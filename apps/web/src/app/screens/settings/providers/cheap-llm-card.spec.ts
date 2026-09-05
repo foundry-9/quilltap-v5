@@ -73,4 +73,33 @@ describe('CheapLlmCard', () => {
     expect(settings['fallbackToLocal']).toBe(false);
     expect(settings['embeddingProvider']).toBe('OPENAI');
   });
+
+  /**
+   * v4 `bbcb318c6` (release-checklist item 7): the "Allow a Similar-Tier
+   * Stand-In" input had copied its "Fallback to Local" sibling's raw
+   * `className="rounded"`, and both moved onto the shared `qt-checkbox`. v5's
+   * two inputs carried NO class at all — neither the old spelling nor the new —
+   * so this pins the post-fix one on both, in v4's on-screen order.
+   */
+  it('dresses both checkboxes in qt-checkbox (v4 bbcb318c6)', async () => {
+    const client: Partial<CoreClient> = {
+      dispatchExpect: makeDispatchExpect({
+        cheapLLMSettings: { strategy: 'PROVIDER_CHEAPEST', fallbackToLocal: false },
+      }),
+    };
+    const fixture = await render(client);
+
+    const boxes = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('input[type="checkbox"]'),
+    ) as HTMLInputElement[];
+    const labelled = boxes.map((b) => ({
+      text: b.closest('label')?.textContent ?? '',
+      cls: b.getAttribute('class'),
+    }));
+
+    const fallback = labelled.find((r) => r.text.includes('Fallback to Local'));
+    const standIn = labelled.find((r) => r.text.includes('Allow a Similar-Tier Stand-In'));
+    expect(fallback?.cls).toBe('qt-checkbox');
+    expect(standIn?.cls).toBe('qt-checkbox');
+  });
 });

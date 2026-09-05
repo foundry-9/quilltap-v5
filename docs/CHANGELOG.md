@@ -689,6 +689,24 @@ the closed row, resolves its path, and the store answers "no such document".
 The case ran RED against v4's real handler at the `d883a5ee1` pin — v5
 `404 "File not found not found"` vs v4 `404 "File not found"` — and green after
 the one-token fix.
+#### 2026-09-05 — style(settings): the cheap-LLM checkboxes and the Answer Confirmation row take their shared classes
+
+_Versions: SPA 0.5.644._
+
+Two of the release checklist's style corrections. v4's `bbcb318c6` moved the
+"Fallback to Local" and "Allow a Similar-Tier Stand-In" inputs off a raw
+`className="rounded"` onto `qt-checkbox`; v5's two carried no class at all —
+neither the old spelling nor the new — so both take `qt-checkbox`. v4's
+`0506517d3` correction (f3) replaced the Answer Confirmation card's hand-built
+`flex items-start gap-3 p-4 border …` label with the shared `SettingsToggleRow`;
+v5 adopts the SIBLING markup rather than v4's React component, since six
+chat-settings cards already carry `qt-settings-toggle-row`,
+`qt-settings-section-heading` and `qt-text-small mt-1`.
+
+Both classes already existed in the stylesheet, so `check-qt-classes` stays
+green. Each spec was run RED against the pre-port tree; removing one
+`qt-checkbox` or restoring the hand-built label list reddens the matching one.
+
 #### 2026-09-05 — docs(about): the Lantern, Concierge and multi-provider bullets carry 4.9's late features
 
 _Versions: SPA 0.5.643._

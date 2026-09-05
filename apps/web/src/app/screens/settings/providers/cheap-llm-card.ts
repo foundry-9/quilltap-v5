@@ -149,6 +149,7 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
         >
           <input
             type="checkbox"
+            class="qt-checkbox"
             [checked]="cheap().fallbackToLocal"
             [disabled]="saving()"
             (change)="update({ fallbackToLocal: $any($event.target).checked })"
@@ -167,6 +168,7 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
         >
           <input
             type="checkbox"
+            class="qt-checkbox"
             [checked]="cheap().allowCheapFallback ?? false"
             [disabled]="saving()"
             (change)="update({ allowCheapFallback: $any($event.target).checked })"
