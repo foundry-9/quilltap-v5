@@ -104772,3 +104772,251 @@ core 0.0.783, harness 0.0.677 (from the round base core 0.0.776, harness
 
 Nothing. This lane deletes code that has no production caller on either side
 and adds two unit pins; no user-visible surface moves.
+## Lane record — P4.D153 (the `d883a5ee1` drift catch-up round): the memory-subject prefix, bug 122
+
+**Branch:** `claude/p4-memory-subject-prefix-bug-a56373`. **Target commit:**
+v4 `d883a5ee1` ("fix(memory): name the subject of a memory about someone
+else (bug 122)"). **Baseline at lane start:** `0b0617fee`, regen rule **PIN
+REQUIRED** — the drift-ledger §2 freshness probe PASSED at lane start (v4 on
+`main`, tree clean, `d883a5ee1..main` empty, `3a76b17df..bugfix` empty) and
+every regen in this lane ran from the lane-unique detached worktree
+`/tmp/qt-v4-pin-p4d153-d883a5ee1` through `recipe_sweep.py --v4 <pin> --run
+<family>`.
+
+**Status: CLOSED.** Tier 1 items 1–7 landed; Tier 2 items 8–9 landed; Tier 3
+was "none expected" and none was needed. Three commits.
+
+### Unit 1 — `characters_read::find_names_by_ids`, on the RAW path (Tier 1 item 3)
+
+v4's `CharactersRepository.findNamesByIds` (`characters.repository.ts:183`)
+deduped non-empty string ids into a `Set`, returns `new Map()` on empty, and
+wraps the body in `safeQuery(..., 'Error resolving character names',
+{count}, new Map())` — and inside it calls **`super.findByIds`**, the base
+repository, deliberately skipping the vault overlay. v5's
+`find_by_ids` IS the overlaid twin, so the port could not reuse it.
+
+`find_names_by_ids(main: &Connection, ids: &[String]) -> HashMap<String,
+String>` goes through `query_raw`'s `id IN (…)` placeholder form and takes
+**no mount connection at all** — v4 has a `super` to reach past, v5 has a
+signature that cannot reach a vault. Names are JS-trimmed and rows whose
+name is blank after trimming are absent from the map; a read failure logs
+v4's sentence with `collection` and `count` and yields an EMPTY map, never
+an `Err` up the turn.
+
+One faithfulness note carried in the code: a NULL `name` cell makes
+`query_raw` error, so the whole batch degrades to an empty map — which is
+what v4 does too, because `name` is required in its Zod schema and the parse
+throws inside the same `safeQuery`.
+
+Four unit tests. The load-bearing one seeds a vault-LINKED character on a
+mount whose three overlay tables exist but hold no `properties.json`
+keystone, and asserts BOTH halves over the same pair of connections: the
+overlaid `find_by_ids` drops the row, and `find_names_by_ids` still answers
+`Marion`. The first assertion is not decoration — without it the second
+would be vacuous, since a readable vault resolves the name either way.
+
+### Unit 2 — the prefix, the three formatters, the resolver, the three call sites (Tier 1 items 1, 2, 4, 5; Tier 2 items 8, 9)
+
+`MemorySubjectContext` + `format_memory_subject_prefix` in
+`memory_injector.rs`, byte-exact on v4's four arms (absent/empty → `""`, own
+id → `""`, resolved → `About <Name>: `, unresolved or blank-after-trim →
+`About another character: `). Spliced into all three self-facing formatters
+at v4's exact template positions — memories `- [{when_tag}] {prefix}{body}`,
+frozen `- {prefix}{summary}`, head `{id_tag} {when_tag} {prefix}{summary}` —
+and in each case built BEFORE `estimate_tokens`, so the prefix is paid for
+out of the block's budget.
+
+**v5's parameter ORDER could not be copied** (v5 takes `now_ms`/`max_tokens`
+where v4 takes `provider`), so `subject: &MemorySubjectContext` goes last on
+all three. It is a required reference, not an `Option` — v4 makes both
+struct fields and the parameter required precisely because omission is how
+the defect arrived, and in Rust the compiler is that requirement.
+
+`services/memory_subject.rs` is v4's `lib/memory/memory-subject.ts`: the one
+place that turns a pool into the context, deliberately outside the injector
+so that module stays pure formatting with no repository reach. The
+insertion-ordered subject set filters absent / empty / own ids, **returns
+with NO query when it is empty**, and otherwise makes exactly one lookup and
+logs v4's four-field debug line.
+
+The three call sites: `build_context.rs` (ONE build over the union of
+`frozen_archive` and `dynamic_head_results`, before either formatter),
+`carina_query.rs` (the answerer's recall), `announcer/character_voiced.rs`
+(the announcement recall). Tier 2 item 9 — v4's three contributing
+conditions that were **not** the bug (`isRecentlyAddressed` was correct;
+`multiCharacterPrefill: 0`, from bug 85's fix, left no trailing `[Name]`
+anchor; all three seats ran the same cheap model) — rides as a comment at
+the per-turn site so nobody "fixes" them later.
+
+Tier 2 item 8 landed as `crates/quilltap-harness/tests/
+memory_subject_call_site_guard.rs`, a source census in the
+`db_error_key_guard` idiom: exactly one build per v4 call site and no
+fourth; the per-turn build's argument list mentions both pools and
+`.chain(`; and no production site formats under
+`MemorySubjectContext::default()` (whose empty `self_character_id` would
+prefix the character's OWN memories — the opposite of the fix).
+
+#### The corpus: 72 → 95 rows (Tier 1 item 6)
+
+`harness/oracle/cases/memory-injector.ts` called all three formatters
+positionally with `undefined as never`, which is exactly the silent-regen
+hazard the ledger names, so the arity fix was this lane's first edit and
+every regen ran at the pin. Added: a `prefix` kind with **ten** arms (null /
+undefined / empty string / own id / resolved / resolved-with-padding-trimmed
+/ unresolved / map-has-blank-name / empty self id / astral name), and for
+each of the three self-facing formatters targeted rows for resolved,
+unresolved and own-id plus one budget row where the prefix is what pushes
+the second line past `maxTokens`; the memories kind also gets a mixed row
+proving the prefix is per LINE, not per block.
+
+**Every pre-existing self-facing row leaves `aboutCharacterId` null and is
+therefore VACUOUS for this change** — it would stay green under any subject
+context. The runner therefore carries coverage floors: `count >= 95`,
+`prefix_rows >= 10`, and at least two rows per self-facing kind whose
+rendered content actually contains `About `. A regenerated oracle that
+silently lost the targeted rows would otherwise pass.
+
+#### A real fidelity gap, caught on the differential's first run
+
+`prefix-resolved-padded` came back `About \u{feff} \n Marion: `. The
+module-local `js_trim` in `memory_injector.rs` is a **documented
+approximation** (`str::trim`) that does not strip U+FEFF or handle U+0085
+the way JS does; a character name is operator-supplied text that can carry a
+BOM. The new function uses the canonical `crate::jsstr::js_trim`, with a
+comment saying why it does not use its own module's helper.
+
+**The local helper's own callers (the metadata tag's keyword/adjustment
+trims, `narrativeTime`) are v4 surfaces this lane must not touch, so that
+divergence stays PRE-EXISTING and is recorded here rather than fixed.** No
+corpus row exposes it today (nothing in the corpus carries a BOM or U+0085
+in a keyword or narrative time), so it is latent, not live. A future lane
+that owns `memory_injector.rs` more broadly should delegate the local
+helper to `jsstr::js_trim` — measured byte-neutral over the present corpus.
+
+### Unit 3 — the tier-3 consequence families (Tier 1 item 7)
+
+Measured before believed, per the ledger's "a green regen is not coverage".
+
+* **`build_context_tier3_equivalence` — DISCRIMINATING, green.** The
+  fixture already held Ada's memory about Bea, and it reaches the dynamic
+  head: the pinned oracle carries **six** prefixed head entries. (The
+  twenty-one `About Bea:` lines under `## Memories About Other Characters`
+  are `format_inter_character_memories_for_context`'s pre-existing
+  attribution — the one formatter of four that was always right — counted
+  separately so they cannot be mistaken for this change's coverage.) That
+  only exercised the HEAD half of the union, so pantry crate 12 became an
+  archive anchor about **Charlie**, who is absent from Ada's recall pool;
+  sixty archive lines now carry `About Charlie: `.
+* **`carina_query_tier3_equivalence` — WAS BLIND, now discriminating,
+  green.** Its one memory was about nobody and the builder hard-coded
+  `aboutCharacterId: null`. The builder now carries the field and the corpus
+  holds two more of Sage's memories: one about Alice (resolved through the
+  REAL characters repository on the real two-database fixture) and one about
+  an id with no `characters` row, which drives the absent-from-the-map leg
+  into `About another character: ` end to end. Both appear once in the fresh
+  oracle.
+* **`announcer_tier3_equivalence` — MEASURED BLIND, green, NOT widened.** It
+  renders `Most relevant memories for this turn:` thirteen times and carries
+  zero prefixes: every memory in its fixture is the announcer's own. That is
+  a NEUTRALITY result (the call site compiles; the block is byte-unchanged),
+  not a coverage one. Its fixture is the committed shared
+  `crates/quilltap-web/tests/fixtures/post-office-{main,mount}.db` pair,
+  which this lane does not own and whose widening would invalidate the
+  post-office families — recorded rather than fixed. **A future lane that
+  owns those fixtures should plant one about-someone-else memory in the
+  announcer's store; until then the announcement path's prefix is pinned by
+  the call-site census and the tier-1 corpus only.**
+
+### The mutation proofs
+
+| # | Mutation | Reddened |
+|---|---|---|
+| M1 | drop the prefix from the MEMORIES line template | `memories 'mem-subject-resolved' content` |
+| M2 | drop the prefix from the FROZEN line template | `frozen 'frozen-subject-resolved' content` |
+| M3 | drop the prefix from the HEAD entry template | `head 'head-subject-resolved' content` |
+| M4 | take `estimate_tokens` on the UN-prefixed line (all three) | the three `*-subject-budget-cut` rows, each attributed over a corpus narrowed to that kind — the second line smuggles itself past the budget |
+| M5 | delete the empty-subject-set early return | `a_purely_first_person_store_costs_no_query` (the DB is touched) **and** `the_first_person_path_logs_nothing` |
+| M6 | route the name lookup through the vault overlay (`overlay_many(main, …)`) | `names_resolve_through_an_unreadable_vault` only — the three unlinked-character tests stay green, which is the attribution |
+| M7 | format Carina's recall under `MemorySubjectContext::default()` | `carina_query_tier3` `memory_recall: result diverges` |
+| M8 | replace the FROZEN half of the per-turn union with `iter::empty()` | `build_context_tier3` — sixty `About Charlie:` become `About another character:` |
+| M9 | format the per-turn head under a default context | `build_context_tier3` `pre_searched_head_suppresses_fallback` — the head's `About Bea:` disappears |
+
+Two of these are worth their own note. **M8 was GREEN before the fixture was
+widened** — the union claim was unmeasurable until an archive-only subject
+existed, which is the "a differential cannot see a dropped batch" class
+again. And **M7's first attempt did not apply** (the anchor string had moved
+under `cargo fmt`) and reported a meaningless green; it was re-applied,
+verified applied, and only then believed.
+
+### The gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+-D warnings` clean in BOTH feature sets (default and
+`--features quilltap-core/native-transport`); `cargo build --workspace`
+clean; `cargo test --workspace` with the lane's env block (the four oracle
+variables, the four fixture variables and `TZ=UTC`): **495 test binaries /
+2,793 passed / 0 failed / 1 ignored — exit 0, and ZERO `SKIP:` lines**, so
+all four families are positively confirmed to have RUN. (+1 binary and +13
+tests against the round's base of 494 / 2,780 — exactly this lane's delta:
+4 `characters_read` + 4 `memory_subject` + 2 prefix-table + 3 call-site
+census.) The four §A families re-run by name
+through the sweep driver against oracles regenerated fresh at
+`d883a5ee1`, with the changed bytes grepped
+(`About ` counts: memory-injector 19 lines, build-context 27 `About Bea:` +
+81 `About Charlie:`, carina 1 `About Alice:` + 1 `About another
+character:`, announcer 0 — the announcer zero being the recorded blindness,
+not a failure).
+
+### Fixtures changed, and what that invalidates
+
+* `harness/oracle/fixtures/build-context-tier3.json` (one memory gains
+  `aboutCharacterId`) + `build-context-tier3-fixture.ts` (already carried
+  the field) → invalidates `/tmp/qt-build-context-{main,mount}.db` and
+  `/tmp/oracle-build-context.ndjson`; **any other family staging that pair
+  must rebuild it.**
+* `harness/oracle/fixtures/carina-query-tier3.json` (two memories added) +
+  `build-carina-query-fixture.ts` (carries `aboutCharacterId`) →
+  invalidates `/tmp/qt-carina-query-{main,mount}.db` and
+  `/tmp/oracle-carina-query.ndjson`.
+* No committed `.db` file changed. No schema changed (bug 122 is entirely
+  read-side, which is why it repairs existing chats and stores).
+
+### Regen recipes (all from the pin)
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d153-d883a5ee1   # git worktree add --detach at d883a5ee1 + the three symlink classes
+python3 harness/tools/recipe_sweep.py --v4 "$PIN" --run memory_injector_equivalence
+python3 harness/tools/recipe_sweep.py --v4 "$PIN" --run build_context_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --v4 "$PIN" --run carina_query_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --v4 "$PIN" --run announcer_tier3_equivalence
+```
+
+Env block for the workspace gate:
+
+```
+QT_ORACLE_MEMORY_INJECTOR=/tmp/oracle-memory-injector.ndjson
+QT_ORACLE_BUILD_CONTEXT=/tmp/oracle-build-context.ndjson
+QT_FIXTURE_BC_MAIN=/tmp/qt-build-context-main.db
+QT_FIXTURE_BC_MOUNT=/tmp/qt-build-context-mount.db
+QT_ORACLE_CARINA_QUERY=/tmp/oracle-carina-query.ndjson
+QT_FIXTURE_CARINA_MAIN=/tmp/qt-carina-query-main.db
+QT_FIXTURE_CARINA_MOUNT=/tmp/qt-carina-query-mount.db
+QT_ORACLE_ANNOUNCER_TIER3=/tmp/oracle-announcer-tier3.ndjson
+TZ=UTC
+```
+
+### 💸 The dogfood queue gains
+
+A real multi-character turn on the Friday copy where a character holds
+memories about someone else: the `## Memory Anchors` / `Most relevant
+memories for this turn:` blocks should name their subjects, and the
+character's own memories should stay bare — v4 verified its fix against the
+real rows (chat `9703231c`, log `f485521b`) and this is the same population.
+Plus a Carina answer whose recall crosses into another character's life, and
+`combined.log` carrying `[MemorySubject] Resolved memory subjects` with a
+`resolvedCount` below its `subjectCount` (the degraded-name path on real
+data, where a memory's subject may be a deleted character).
+
+### Versions
+
+core 0.0.778, harness 0.0.672; host / web / cli / tauri / SPA untouched.
