@@ -454,6 +454,40 @@ fn completions_offer_every_flag_the_help_text_advertises() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
+/// v4 bug 120 (`af2023c9a`) also closed the completion half: `instances --help`
+/// names `--json` on the `list` line, and the FISH template — alone of the
+/// three — offered it on no instances verb at all. bash's `inst_flags` and
+/// zsh's `inst_opts` already carried it (verified against v4's own templates at
+/// the pin: the hunk touches `fish.template` only), so the offer is scoped to
+/// the two `list` spellings exactly as v4 spells it. The blanket flag-coverage
+/// test above cannot see this: it asks only whether `-l 'json'` appears
+/// ANYWHERE in the template, and it did — on the top-level `quilltap --json`.
+#[test]
+fn fish_offers_json_on_both_instances_list_spellings() {
+    assert!(
+        FISH_TEMPLATE.contains(
+            "for verb in list ls
+  complete -c quilltap -n \"__quilltap_using_subverb instances $verb\" -l 'json' -d 'JSON output'
+end
+"
+        ),
+        "fish template is missing v4's `instances list|ls --json` block"
+    );
+    // v4 places it between the `--names-only` line and the `default --clear`
+    // line; a block in the wrong section would still satisfy the containment
+    // check above, so the neighbours are pinned too.
+    let names_only = FISH_TEMPLATE
+        .find("-l 'names-only' -d 'Print one name per line'")
+        .expect("locate the instances --names-only offer");
+    let json_block = FISH_TEMPLATE
+        .find("for verb in list ls")
+        .expect("locate the instances list --json block");
+    let clear = FISH_TEMPLATE
+        .find("instances default' -l 'clear'")
+        .expect("locate the instances default --clear offer");
+    assert!(names_only < json_block && json_block < clear);
+}
+
 /// bash cannot infer which flags swallow the next word, so it carries explicit
 /// `vf_*` lists. A valued flag missing from its list makes the flag's value look
 /// like the subcommand's verb — the bug 101 failure mode. zsh and fish take the

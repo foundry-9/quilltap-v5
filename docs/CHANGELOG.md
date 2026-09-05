@@ -689,6 +689,32 @@ the closed row, resolves its path, and the store answers "no such document".
 The case ran RED against v4's real handler at the `d883a5ee1` pin — v5
 `404 "File not found not found"` vs v4 `404 "File not found"` — and green after
 the one-token fix.
+#### 2026-09-05 — fix(cli): `instances default --json` is read and stripped, not taken as an instance name (bug 120)
+
+_Versions: cli 0.0.18._
+
+v4's `af2023c9a` (release-checklist item 12). `cmdDefault` takes both an
+options object and a positional instance name, and the dispatcher called it
+with neither read nor stripped: the JSON branch was unreachable, and `--json`
+became the name of an instance to set. v5 had the same defect and one more —
+`cmd_default` had no JSON branch at all — so the arm now filters and reads
+together and the report emits v4's compact `{"defaultInstance": …}` (JSON
+`null` when none is set, not the plain report's `(none)`).
+
+The completion half moves with it: `instances --help` names `--json` on the
+`list` line, and the fish template offers it on `list`/`ls` in v4's exact
+slot. bash's `inst_flags` and zsh's `inst_opts` already carried the flag —
+verified against v4's own templates at the pin, whose hunk touches
+`fish.template` alone.
+
+Tier R gains the two `instances default --json` cases (the empty registry and
+one with a default planted by pre-hook, which no single invocation can
+arrange): 214 cases / 2 failures → **216 / 0**. The two failures it started
+with were the existing `instances help` and `completion fish` cases, already
+red against the pinned v4 — this fix is what closes them.
+`completion_behavior` gains a scoped guard for the fish block, because the
+blanket flag-coverage test asks only whether `-l 'json'` appears anywhere in
+a template, and it already did — on the top-level `quilltap --json`.
 
 #### 2026-09-05 — docs(orders): the `d883a5ee1` drift catch-up round ordered — P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158
 

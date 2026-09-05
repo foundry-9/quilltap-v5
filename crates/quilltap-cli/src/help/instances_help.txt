@@ -4,7 +4,7 @@ Quilltap Instance Registry
 Usage: quilltap instances <verb> [args]
 
 Verbs:
-  list                          List registered instances (default)
+  list [--json]                 List registered instances (default)
   show <name>                   Show one instance (passphrase status only)
   path                          Print the path to instances.json
   add <name> [<path>]           Register an instance (prompts for missing path / passphrase)

@@ -45,7 +45,17 @@ pub fn run(args: &[String]) {
         "add" | "create" => cmd_add(&rest),
         "remove" | "rm" | "delete" => cmd_remove(&rest),
         "set-passphrase" | "passphrase" => cmd_set_passphrase(&rest),
-        "default" => cmd_default(&rest),
+        "default" => {
+            // `--json` has to be lifted out of the positionals as well as read:
+            // cmd_default treats args[0] as the instance name to set, so leaving the
+            // flag in place made `instances default --json` try to set an instance
+            // literally named "--json" and left cmd_default's json branch unreachable.
+            // (v4 bug 120, `af2023c9a`. The `list` arm above needs no filter only
+            // because `cmd_list` has no positionals to corrupt.)
+            let json = rest.iter().any(|a| a == "--json");
+            let positional: Vec<String> = rest.iter().filter(|a| *a != "--json").cloned().collect();
+            cmd_default(&positional, json)
+        }
         "rename" => cmd_rename(&rest),
         "restore-key" | "rebuild-key" => crate::restore_key::cmd_restore_key(&rest),
         _ => {
@@ -311,12 +321,26 @@ fn cmd_set_passphrase(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_default(args: &[String]) -> Result<(), String> {
+fn cmd_default(args: &[String], json: bool) -> Result<(), String> {
     let registry = InstanceRegistry::at_default_location();
     if args.is_empty() {
-        match registry.get_default_instance()? {
-            Some(current) => out::log(&current),
-            None => out::log("(none)"),
+        let current = registry.get_default_instance()?;
+        if json {
+            // v4 `JSON.stringify({ defaultInstance: current })` — the absent
+            // default is JSON `null`, not the `(none)` the plain report prints.
+            let mut obj = Map::new();
+            obj.insert(
+                "defaultInstance".to_string(),
+                match &current {
+                    Some(name) => Value::String(name.clone()),
+                    None => Value::Null,
+                },
+            );
+            out::log(&Value::Object(obj).to_string());
+        } else if let Some(current) = current {
+            out::log(&current);
+        } else {
+            out::log("(none)");
         }
         return Ok(());
     }

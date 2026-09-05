@@ -3151,6 +3151,48 @@ fn cli_differential() {
         "instances default clear",
         &["instances", "default", "--clear"],
     );
+
+    // ---------------- instances default --json (v4 bug 120, af2023c9a) -----
+    // `cmdDefault` takes BOTH an options object and a positional name, so the
+    // dispatcher has to STRIP `--json` as well as read it. Reading without
+    // stripping leaves one positional, which sends control past the report
+    // branch and makes the flag the name of an instance to set. Both arms
+    // below fail against the pre-fix dispatch on either side; the second needs
+    // a default already recorded, which no single invocation can arrange, so
+    // it is planted in the registry by a pre-hook.
+    ctx.case(
+        "instances default json none",
+        &["instances", "default", "--json"],
+    );
+    {
+        #[cfg(target_os = "macos")]
+        let reg_rel = "home/Library/Application Support/Quilltap/instances.json";
+        #[cfg(not(target_os = "macos"))]
+        let reg_rel = "home/.quilltap/instances.json";
+        let default_pre = move |live: &Path| {
+            let reg = live.join(reg_rel);
+            let raw = std::fs::read_to_string(&reg).unwrap();
+            let mut v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+            v["defaultInstance"] = serde_json::Value::String("instA".to_string());
+            std::fs::write(
+                &reg,
+                format!("{}\n", serde_json::to_string_pretty(&v).unwrap()),
+            )
+            .unwrap();
+        };
+        ctx.case_with(
+            "instances default json set",
+            &[
+                "instances".to_string(),
+                "default".to_string(),
+                "--json".to_string(),
+            ],
+            CaseOpts {
+                pre: Some(Box::new(default_pre)),
+                ..Default::default()
+            },
+        );
+    }
     ctx.case(
         "instances rename",
         &["instances", "rename", "instA", "Friday"],
