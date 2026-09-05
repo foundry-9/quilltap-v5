@@ -106435,9 +106435,19 @@ same sha, taken independently.
 ### The exact recipe, ready to run
 
 ```bash
+# Build a FRESH pin first — a detached pin never survives the round that made
+# it (§5.1 / P4.34's F6), and this lane removed its own at close:
+PIN=/tmp/qt-v4-pin-<runner>-d883a5ee1
+git -C ~/source/quilltap-server worktree add --detach "$PIN" d883a5ee1
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules "$PIN/packages/quilltap/node_modules"
+for d in ~/source/quilltap-server/plugins/dist/*/; do
+  [ -d "$d/node_modules" ] && ln -sfn "$d/node_modules" "$PIN/plugins/dist/$(basename "$d")/node_modules"
+done
+
 cd <this worktree>
 python3 harness/tools/recipe_sweep.py \
-  --v4 /tmp/qt-v4-pin-p4d158-d883a5ee1 \
+  --v4 "$PIN" \
   --run-all \
   --exclude "$(cat harness/tools/sweep-results/2026-09-05-d883a5ee1-p4.d158-neutrality.exclude)" \
   --label "P4.D158 unit 3 — the 0506517d3 neutrality sweep at d883a5ee1" \
@@ -106450,8 +106460,9 @@ unexplained red is an ESCALATION, not a patch:** name the family, the differing
 bytes and the responsible v4 hunk from the table above, and do not change v5
 inside the sweep. A red on a sibling's §A surface belongs to that lane.
 
-⚠ The pin `/tmp/qt-v4-pin-p4d158-d883a5ee1` must still exist and be at
-`d883a5ee1` when the sweep runs; re-run the ledger's §2 freshness probe first.
+⚠ Re-run the ledger's §2 freshness probe before building the pin — if v4 has
+moved past `d883a5ee1` by then, the sweep's baseline is a decision for whoever
+runs it, not an assumption to inherit from this record.
 
 ## Lane record — P4.D158: two corrections to this lane's own earlier entries (2026-09-05)
 
