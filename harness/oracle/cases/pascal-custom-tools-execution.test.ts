@@ -138,6 +138,18 @@ describe('renderTemplate', () => {
       ['unknown-placeholder', 'what is {{nonsense}} here'],
       ['unknown-param', 'missing {{params.ghost}}'],
       ['params-prefix-only', 'bare {{params.}}'],
+      // v4 `0506517d3` correction (e): `{{params.toString}}` no longer renders
+      // prototype function source. The pre-fix renderer tested `name in
+      // vars.params`, which reaches `Object.prototype`, and then `String(v)`d
+      // whatever it found — so a character's message could carry the text of
+      // `Object.prototype.toString`. The post-fix path looks the value up and
+      // renders only a primitive, so the placeholder is left as written. v5's
+      // params lookup is an association-list scan with no prototype to reach,
+      // and these rows are how the corpus says so on both sides.
+      ['params-prototype-tostring', 'x {{params.toString}} y'],
+      ['params-prototype-constructor', 'x {{params.constructor}} y'],
+      ['params-prototype-hasownproperty', 'x {{params.hasOwnProperty}} y'],
+      ['params-prototype-proto', 'x {{params.__proto__}} y'],
       ['empty-braces', 'empty {{}} here'],
       ['adjacent', '{{value}}{{value}}'],
       ['repeated', '{{value}} and {{value}} and {{roll}}'],
@@ -154,6 +166,11 @@ describe('renderTemplate', () => {
       ['metadata-non-primitive-object', 'n {{metadata.nested}} m'],
       ['metadata-non-primitive-list', 'l {{metadata.list}} m'],
       ['metadata-prefix-only', 'bare {{metadata.}}'],
+      // The same prototype question on the metadata sheet. This arm was already
+      // safe pre-fix (`vars.metadata?.[name]` then `isPrimitive`), so the rows
+      // pin that the collapse did not move it.
+      ['metadata-prototype-tostring', 'x {{metadata.toString}} y'],
+      ['metadata-prototype-constructor', 'x {{metadata.constructor}} y'],
       ['metadata-whitespace', '{{  metadata.house  }}'],
       // The 616930db {{llm}} placeholder.
       ['llm-renders-output', 'the oracle says {{llm}}'],
@@ -1263,6 +1280,9 @@ describe('$state resolution', () => {
       ['state-missing-left-verbatim', 'x {{state.ghost}} y'],
       ['state-non-primitive-left-verbatim', 'crew {{state.crew}} here'],
       ['state-prefix-only', 'bare {{state.}}'],
+      // `state.` is path-parsed rather than key-indexed, but a prototype name is
+      // still a legal path segment — pinned for the same reason.
+      ['state-prototype-tostring', 'x {{state.toString}} y'],
       ['state-whitespace', '{{  state.weather  }}'],
     ];
     for (const [id, message] of templates) {

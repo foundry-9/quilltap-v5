@@ -17,9 +17,10 @@
 //! - **Eval failure is fail-soft at run time** — the effect is skipped with a
 //!   debug log; a broken effect never sinks a roll.
 //!
-//! Pure: no logging, no I/O. (v4 calls this "client-safe" because its Workbench
-//! runs the parser in the browser; v5's browser half is its own TypeScript port
-//! under `apps/web/src/app/pascal/`.)
+//! Pure: no logging, no I/O, and since v4 `0506517d3` the one import is the
+//! equally pure placeholder classifier ([`super::placeholders`]). (v4 calls this
+//! "client-safe" because its Workbench runs the parser in the browser; v5's
+//! browser half is its own TypeScript port under `apps/web/src/app/pascal/`.)
 //!
 //! ## Every error sentence is user-visible payload
 //!
@@ -30,6 +31,7 @@
 //! therefore walks code units rather than `char`s.
 
 use super::js_value::{number_to_string, to_precision};
+use super::placeholders::{classify_placeholder, PlaceholderRef};
 use crate::jsstr::js_trim;
 
 /// A value an expression can produce: v4's `number | string | boolean`.
@@ -122,19 +124,12 @@ enum Token {
 }
 
 /// The reference families the grammar admits — `render_template`'s, verbatim.
+///
+/// v4 `0506517d3` routed this through the shared classifier; so does v5. The
+/// one rule it carries is the one this module had already spelled out by hand:
+/// a bare family prefix (`params.`) names nothing and is not a known ref.
 fn is_known_ref(name: &str) -> bool {
-    if name == "value" || name == "roll" || name == "dice" || name == "llm" {
-        return true;
-    }
-    for prefix in ["params.", "metadata.", "state."] {
-        if name
-            .strip_prefix(prefix)
-            .is_some_and(|rest| !rest.is_empty())
-        {
-            return true;
-        }
-    }
-    false
+    !matches!(classify_placeholder(name), PlaceholderRef::Unknown { .. })
 }
 
 /// v4's `ExpressionError` — a thrown message caught at the two entry points.

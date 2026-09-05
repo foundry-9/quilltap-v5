@@ -7,6 +7,7 @@ pub mod expressions;
 pub mod js_value;
 pub mod llm_consult;
 pub mod metadata_match;
+pub mod placeholders;
 pub mod roster;
 pub mod side_effects;
 pub mod tool_gate;

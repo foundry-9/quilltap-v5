@@ -10,11 +10,9 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::state::paths::{get_at_path, parse_path, PathKey};
-use regex::{Captures, Regex};
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
-use std::sync::LazyLock;
 
 use super::custom_tool_types::{
     is_state_ref_value, parse_effect_target, AnyOperand, CustomToolLlm, CustomToolParameter,
@@ -27,6 +25,7 @@ use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, Ran
 use super::expressions::{evaluate_expression, parse_expression};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number};
 use super::metadata_match::{js_primitive, metadata_comparator_holds};
+use super::placeholders::{classify_placeholder, scan_placeholders, PlaceholderRef};
 use crate::jsstr::{self, js_trim};
 
 /// A run that could not be completed. Never becomes a fabricated outcome.
@@ -1207,36 +1206,20 @@ fn effect_target_to_value(target: &EffectTarget) -> Value {
 /// fail-soft way.
 fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Vec<ResolvedEffect> {
     // Mirrors `render_template`'s lookups exactly — the grammar admits no name
-    // the template does not already substitute.
+    // the template does not already substitute. v4 `0506517d3` made that literal
+    // rather than a promise: both readers now classify with
+    // `classifyPlaceholder` and look the value up with `resolvePlaceholderValue`.
+    let template_vars = TemplateVars {
+        value: subjects.base.value,
+        roll: subjects.base.roll,
+        dice: subjects.dice,
+        params: subjects.base.params,
+        metadata: subjects.base.metadata,
+        llm: subjects.base.llm,
+        state: subjects.base.state,
+    };
     let mut resolve_ref = |refname: &str| -> Option<ResolvedValue> {
-        match refname {
-            "value" => return Some(ResolvedValue::Number(subjects.base.value)),
-            "roll" => return Some(ResolvedValue::Number(subjects.base.roll)),
-            "dice" => return Some(ResolvedValue::String(subjects.dice.to_string())),
-            "llm" => {
-                return subjects
-                    .base
-                    .llm
-                    .map(|l| ResolvedValue::String(l.output.clone()))
-            }
-            _ => {}
-        }
-        if let Some(name) = refname.strip_prefix("params.") {
-            return lookup(subjects.base.params, name).cloned();
-        }
-        if let Some(name) = refname.strip_prefix("metadata.") {
-            return subjects
-                .base
-                .metadata
-                .and_then(|m| m.get(name))
-                .and_then(js_primitive);
-        }
-        if let Some(path) = refname.strip_prefix("state.") {
-            let empty = Value::Object(Map::new());
-            let state = subjects.base.state.unwrap_or(&empty);
-            return get_at_path(state, &parse_path(Some(path))).and_then(|v| js_primitive(&v));
-        }
-        None
+        resolve_placeholder_value(&classify_placeholder(refname), &template_vars)
     };
 
     let skipped = |index: usize, reason: String| -> ResolvedEffect {
@@ -1313,9 +1296,6 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
 /// is re-exported here, as v4 re-exports it, for every existing importer.
 pub use super::expressions::format_value;
 
-static TEMPLATE_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{\{([^}]+)\}\}").expect("template pattern compiles"));
-
 /// The substitutions [`render_template`] draws on.
 pub struct TemplateVars<'a> {
     pub value: f64,
@@ -1336,80 +1316,72 @@ pub struct TemplateVars<'a> {
 /// absent or holds a list or an object: the placeholder left standing tells the
 /// author exactly which key their character lacks.
 pub fn render_template(message: &str, vars: &TemplateVars) -> String {
-    TEMPLATE_RE
-        .replace_all(message, |caps: &Captures| {
-            let whole = caps.get(0).map_or("", |m| m.as_str());
-            let key = js_trim(caps.get(1).map_or("", |m| m.as_str()));
+    let mut out = String::with_capacity(message.len());
+    let mut last = 0usize;
+    for scanned in scan_placeholders(message) {
+        // `scan_placeholders` walks the same pattern in the same order, so the
+        // next occurrence is always at or after `last`.
+        let Some(at) = message[last..].find(&scanned.whole).map(|i| last + i) else {
+            continue;
+        };
+        out.push_str(&message[last..at]);
+        out.push_str(&match resolve_placeholder_value(&scanned.place_ref, vars) {
+            // Numbers render through `format_value`; anything else through
+            // its JS string form.
+            Some(ResolvedValue::Number(n)) => format_value(n),
+            Some(ResolvedValue::String(s)) => s,
+            Some(ResolvedValue::Bool(b)) => b.to_string(),
+            // Nothing renderable: leave the hole visible. v4 logs WHY at
+            // debug (no such metadata key / not a primitive / unknown
+            // placeholder); v5's renderer has never carried those debug
+            // lines, and this collapse does not add them.
+            None => scanned.whole.clone(),
+        });
+        last = at + scanned.whole.len();
+    }
+    out.push_str(&message[last..]);
+    out
+}
 
-            if key == "value" {
-                return format_value(vars.value);
-            }
-            if key == "roll" {
-                return format_value(vars.roll);
-            }
-            if key == "dice" {
-                return vars.dice.to_string();
-            }
-
-            if key == "llm" {
-                // No consult to render (the prompt's own pass, or a tool with no
-                // `llm` block): the placeholder is left as written.
-                return match vars.llm {
-                    Some(llm) => llm.output.clone(),
-                    None => whole.to_string(),
-                };
-            }
-
-            if let Some(name) = key.strip_prefix("params.") {
-                if let Some(v) = lookup(vars.params, name) {
-                    return match v {
-                        ResolvedValue::Number(n) => format_value(*n),
-                        ResolvedValue::String(s) => s.clone(),
-                        ResolvedValue::Bool(b) => b.to_string(),
-                    };
-                }
-            }
-
-            if let Some(name) = key.strip_prefix("metadata.") {
-                // A primitive renders (numbers via `format_value`, else String);
-                // a missing key or a list/object leaves the placeholder verbatim.
-                if let Some(v) = vars
-                    .metadata
-                    .and_then(|m| m.get(name))
-                    .and_then(js_primitive)
-                {
-                    return match v {
-                        ResolvedValue::Number(n) => format_value(n),
-                        ResolvedValue::String(s) => s,
-                        ResolvedValue::Bool(b) => b.to_string(),
-                    };
-                }
-                return whole.to_string();
-            }
-
-            if let Some(state_path) = key.strip_prefix("state.") {
-                // `{{state.path}}` follows the `{{metadata.*}}` doctrine: render
-                // the value when the path holds a primitive, otherwise leave the
-                // placeholder as written so the hole in the sentence is visible
-                // rather than silently eaten. `state.` is stripped and the
-                // remainder is a full state path (v4 `f48f34dc`).
-                let empty = Value::Object(Map::new());
-                let found =
-                    get_at_path(vars.state.unwrap_or(&empty), &parse_path(Some(state_path)));
-                if let Some(v) = found.as_ref().and_then(js_primitive) {
-                    return match v {
-                        ResolvedValue::Number(n) => format_value(n),
-                        ResolvedValue::String(s) => s,
-                        ResolvedValue::Bool(b) => b.to_string(),
-                    };
-                }
-                return whole.to_string();
-            }
-
-            // An unknown placeholder is left verbatim — v4 logs it at debug.
-            whole.to_string()
-        })
-        .into_owned()
+/// v4 `resolvePlaceholderValue(ref, vars)` (NEW at `0506517d3`) — the value a
+/// classified placeholder names in a run's subjects. The two readers, the
+/// template renderer and the effect-expression resolver, share this lookup;
+/// before the collapse each spelled the same chain out for itself.
+///
+/// v4 returns the value RAW and lets each reader apply `isPrimitive`; v5 applies
+/// it here, because both readers already did and neither v5 reader has anything
+/// to say about a non-primitive that the other does not. (v4's renderer says it
+/// in a debug log v5 does not emit; its resolver simply skips the effect.)
+///
+/// `{{params.toString}}` is the correction that rides along, and Rust never had
+/// its cause: JS's `name in vars.params` reached `Object.prototype`, so the
+/// pre-fix renderer answered `String(Object.prototype.toString)` — the function
+/// source, spliced into a character's message. A `ResolvedParams` lookup here is
+/// an association-list scan that cannot see a prototype, and the corpus pins it
+/// on both sides so the row exists where the bug was.
+pub fn resolve_placeholder_value(
+    place_ref: &PlaceholderRef,
+    vars: &TemplateVars,
+) -> Option<ResolvedValue> {
+    match place_ref {
+        PlaceholderRef::Value => Some(ResolvedValue::Number(vars.value)),
+        PlaceholderRef::Roll => Some(ResolvedValue::Number(vars.roll)),
+        PlaceholderRef::Dice => Some(ResolvedValue::String(vars.dice.to_string())),
+        PlaceholderRef::Llm => vars.llm.map(|l| ResolvedValue::String(l.output.clone())),
+        PlaceholderRef::Params { name } => lookup(vars.params, name).cloned(),
+        PlaceholderRef::Metadata { key } => vars
+            .metadata
+            .and_then(|m| m.get(key))
+            .and_then(js_primitive),
+        PlaceholderRef::State { path } => {
+            // `state.` is stripped and the remainder is a full state path
+            // (v4 `f48f34dc`).
+            let empty = Value::Object(Map::new());
+            let state = vars.state.unwrap_or(&empty);
+            get_at_path(state, &parse_path(Some(path))).and_then(|v| js_primitive(&v))
+        }
+        PlaceholderRef::Unknown { .. } => None,
+    }
 }
 
 /// Resolve a definition's LLM consult: render the prompt, pose it through the

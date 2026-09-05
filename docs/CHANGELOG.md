@@ -387,6 +387,70 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — feat(pascal): one placeholder classifier for every server reader (v4 `0506517d3` correction (e), server half)
+
+_Versions: core 0.0.782._
+
+v4 gave the `{{placeholder}}` families one home — `lib/pascal/placeholders.ts`
+— and routed seven readers through it. Three of those seven are v5's:
+`expressions.rs`'s `is_known_ref`, `tool_vocabulary.rs`'s scanner, and
+`custom_tools.rs`'s renderer and effect resolver. The new
+`pascal/placeholders.rs` carries v4's module verbatim in shape —
+`PLACEHOLDER_PATTERN`, `PlaceholderRef`, `classify_placeholder`,
+`scan_placeholders` — and `custom_tools.rs` gains v4's
+`resolve_placeholder_value` beside it. `TEMPLATE_RE` and
+`tool_vocabulary`'s private pattern and prefix constants are gone; only
+`STATE_PREFIX` survives there, for the effect-TARGET grammar the collapse
+deliberately left alone.
+
+**The bare-prefix rule is what the collapse decides.** `{{params.}}` names
+nothing and is `Unknown`, not a params reference with an empty name — and in
+Rust that is easy to lose, because `"params.".strip_prefix("params.")` answers
+`Some("")` rather than `None`. Every v5 site that stripped a prefix agreed with
+the rule only by what it happened to do with an empty name. Deciding it once
+makes it a rule. Dropping the three `is_empty()` guards reddens
+`pascal_expressions_equivalence` and `pascal_tool_vocabulary_equivalence`
+(whose corpora already carried `ref-empty-prefix-*` and `*-empty-suffix` rows);
+`pascal_custom_tools_execution_equivalence` stays green under that mutation and
+its module doc says why — an empty params NAME resolves to nothing, which the
+renderer treats exactly as it treats `Unknown`.
+
+**`{{params.toString}}` is the other half, and it is now measured.** v4's
+pre-fix renderer tested `name in vars.params`, which reaches
+`Object.prototype`, then `String()`d whatever it found. Regenerating
+`pascal-custom-tools-execution` against `0506517d3`'s PARENT shows what that
+meant: `x function toString() { [native code] } y` spliced into a character's
+message, and `constructor`, `hasOwnProperty` and `__proto__` the same way. v5's
+params lookup is an association-list scan with no prototype to reach, so it has
+always answered the post-fix shape — but the rows exist on both sides now
+(seven of them, across params, metadata and state), and v5 goes RED against a
+pre-fix v4 oracle.
+
+One real fidelity gain rides along: `collect_placeholders` trimmed with Rust's
+`.trim()`, and JS trims U+FEFF where Rust does not, so a
+`{{\u{FEFF}params.x}}` used to be dropped by the vocabulary scanner.
+`scan_placeholders` trims the way v4 does.
+
+**Fixture repair (the P4.52 vintage class, on a different pair).**
+`pascal_custom_tools_route_equivalence` and
+`pascal_run_custom_handler_equivalence` could no longer REGENERATE: v4's
+`BaseRepository` writes the whole validated entity, and the committed
+`pascal-run-custom-main.db` predated nine columns — the P4.D135 fallback-chain
+pair among them, which is where the regen died. The new
+`migrate-pascal-run-custom-columns.ts` applies v4's own migration ALTERs behind
+v4's own missing-column guard (`characters` ×3, `chat_settings` ×3,
+`connection_profiles` ×3; the mount partition needed nothing, and the two
+MANAGED_FIELDS columns stay deliberately absent for P4.52's recorded reason).
+All four consumers of the pair re-run green.
+
+**Escalated, not this lane's:** `pascal_custom_tool_definition_equivalence` is
+RED at the pin on `metadata-misspelled-comparator` — Zod 4.5's union error path
+reports only the matching branch (`outcomes.0.when.metadata.faction: …`) where
+v5 carries the whole union sentence. Reproduced with v4 source at the OLD
+baseline against the same (4.5.4) node_modules, so it is the `6e1a64ea6`
+dependency bump the ledger predicted would move bytes v5 has hard-copied —
+P4.D158's row, and no part of this correction touches that code path.
+
 #### 2026-09-05 — fix(cheap-llm): one `selectionFromProfile`, and the priority-5 rungs stop dropping a profile's params (v4 `0506517d3` correction (a))
 
 _Versions: core 0.0.781, harness 0.0.673._

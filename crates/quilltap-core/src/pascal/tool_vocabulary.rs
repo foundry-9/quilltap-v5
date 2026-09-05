@@ -25,28 +25,19 @@
 //! on purpose, and this summary keeps that line: it says "this tool reads
 //! `hasAnsibleAccess`", never "it succeeds when `hasAnsibleAccess` is true".
 
-use std::sync::LazyLock;
-
-use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
 
 use super::custom_tool_types::{
     is_state_ref_value, parse_effect_target, EffectTarget, EffectValue, QtapCustomTool, When,
 };
+use super::placeholders::{scan_placeholders, PlaceholderRef};
 use crate::collation::locale_compare;
 
-/// The placeholder families `render_template` understands.
-///
-/// v4 declares this `g`-flagged and resets `lastIndex` per call; a Rust
-/// `find_iter` is stateless, so only the MATCHING semantics carry over —
-/// `[^}]+` (so `{{}}` never matches and a `}` cannot appear inside a
-/// placeholder), then `.trim()` on the capture.
-static PLACEHOLDER_PATTERN: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\{\{([^}]+)\}\}").expect("placeholder pattern compiles"));
-
-const PARAMS_PREFIX: &str = "params.";
-const METADATA_PREFIX: &str = "metadata.";
+/// v4 `0506517d3` moved the pattern and the three family prefixes into
+/// [`super::placeholders`]; only `state.` is still spelled here, and only
+/// because the effect-TARGET syntax (a different grammar, which the collapse
+/// deliberately left alone) needs its length to re-slice a parsed raw target.
 const STATE_PREFIX: &str = "state.";
 
 /// What a definition quotes. Every field means "this tool actually says so".
@@ -216,46 +207,29 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
 }
 
 /// Harvest every placeholder family out of one rendered string.
+///
+/// v4 `0506517d3` routed this through [`scan_placeholders`]; so does v5. The
+/// three bare-prefix keys were dropped by this scanner before the collapse too
+/// — `declared.contains("")` is false, and the metadata/state arms guarded the
+/// empty remainder by hand — so the counts do not move. What DOES move is the
+/// trim: the hand-rolled loop used Rust's `.trim()`, and JS trims U+FEFF where
+/// Rust does not, so `{{\u{FEFF}params.x}}` used to classify as unknown here
+/// and be dropped. `scan_placeholders` trims the way v4 does.
 fn collect_placeholders(text: &str, declared: &[&str], found: &mut Found) {
-    for caps in PLACEHOLDER_PATTERN.captures_iter(text) {
-        let key = caps[1].trim();
-
-        match key {
-            "value" => {
-                found.value = true;
-                continue;
+    for scanned in scan_placeholders(text) {
+        match scanned.place_ref {
+            PlaceholderRef::Value => found.value = true,
+            PlaceholderRef::Roll => found.roll = true,
+            PlaceholderRef::Dice => found.dice = true,
+            PlaceholderRef::Llm => found.llm = true,
+            PlaceholderRef::Params { ref name } => {
+                if declared.contains(&name.as_str()) {
+                    add(&mut found.params, name);
+                }
             }
-            "roll" => {
-                found.roll = true;
-                continue;
-            }
-            "dice" => {
-                found.dice = true;
-                continue;
-            }
-            "llm" => {
-                found.llm = true;
-                continue;
-            }
-            _ => {}
-        }
-
-        if let Some(name) = key.strip_prefix(PARAMS_PREFIX) {
-            if declared.contains(&name) {
-                add(&mut found.params, name);
-            }
-            continue;
-        }
-        if let Some(name) = key.strip_prefix(METADATA_PREFIX) {
-            if !name.is_empty() {
-                add(&mut found.metadata, name);
-            }
-            continue;
-        }
-        if let Some(path) = key.strip_prefix(STATE_PREFIX) {
-            if !path.is_empty() {
-                add(&mut found.state, path);
-            }
+            PlaceholderRef::Metadata { ref key } => add(&mut found.metadata, key),
+            PlaceholderRef::State { ref path } => add(&mut found.state, path),
+            PlaceholderRef::Unknown { .. } => {}
         }
     }
 }
