@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — docs(porting): the P4.D157 lane record — thirteen symbols, all delete; seven families split, none frozen
+
+_Docs-only change._ (No crate versions bumped.)
+
+The lane record for the `d4138b96b` dead-code sweep decision, appended to
+`status-log.md`: the evidence pair verbatim (all seven cases emit a
+zero-byte NDJSON at `d883a5ee1` and link at `0b0617fee`), the per-symbol
+decision table with the caller evidence by line number, the two order
+premises measurement corrected, the seven families' before/after row counts
+with their byte-identity proofs, the Tier-2 census over the other 38 deleted
+names, and the three stale doc references in unowned files handed to the
+unifier with suggested replacement text. The order's status header is
+updated to CLOSED.
+
 #### 2026-09-05 — test(image-gen): pin the LoRA scale bounds against their new v4 home (P4.D157 item 5)
 
 _Versions: core 0.0.783._

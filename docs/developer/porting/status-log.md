@@ -104460,3 +104460,315 @@ branches deleted with the temp branch, the `.git/info/attributes` union rule
 removed, the unify's pinned v4 worktree removed, the `/tmp` oracle NDJSONs /
 fixture mirrors / sweep and gate logs / the Playwright output removed, no
 debug servers left running.
+
+---
+
+## P4.D157 — the `d4138b96b` dead-code sweep: a per-symbol DECISION for the seven oracle cases it takes dark (2026-09-05)
+
+**Lane branch:** `claude/p4-dead-code-sweep-40b441`. **Order:**
+`work-orders/p4.d157-dead-code-sweep-decision.md`. **Oracle baseline
+`0b0617fee`; this lane's target `d4138b96b`, regenerated at the round pin
+`d883a5ee1`.** Freshness probe at lane start AND before the gate's regen
+batch: v4 on `main`, tree clean, `d883a5ee1..main` empty,
+`3a76b17df..bugfix` empty — PASS both times.
+
+### The evidence pair (item 2 — recorded verbatim)
+
+Both pins built per ledger §5.1 (three symlink classes each);
+`/tmp/qt-v4-pin-p4d157-d883a5ee1` and `/tmp/qt-v4-pin-p4d157-0b0617fee`.
+Each of the seven cases run from each pin, stdout redirected, stderr kept:
+
+```
+d883a5ee1 cheap-model       rc=1 bytes=0     rows=0
+d883a5ee1 model-selection   rc=1 bytes=0     rows=0
+d883a5ee1 llm-errors        rc=1 bytes=0     rows=0
+d883a5ee1 message-formatter rc=1 bytes=0     rows=0
+d883a5ee1 post-office-host  rc=1 bytes=0     rows=0
+d883a5ee1 chat-timestamp    rc=1 bytes=0     rows=0
+d883a5ee1 token-estimation  rc=1 bytes=0     rows=0
+0b0617fee cheap-model       rc=0 bytes=17801 rows=203
+0b0617fee model-selection   rc=0 bytes=10596 rows=29
+0b0617fee llm-errors        rc=0 bytes=16242 rows=54
+0b0617fee message-formatter rc=0 bytes=20723 rows=118
+0b0617fee post-office-host  rc=0 bytes=9653  rows=58
+0b0617fee chat-timestamp    rc=0 bytes=73455 rows=187
+0b0617fee token-estimation  rc=0 bytes=4038  rows=33
+```
+
+Every `d883a5ee1` failure is the same shape, at module evaluation, before a
+single row is written:
+
+```
+SyntaxError: The requested module '@/lib/llm/cheap-llm' does not provide an
+  export named 'estimateModelCost'
+    at #asyncInstantiate (node:internal/modules/esm/module_job:319:21)
+```
+
+…and the six siblings identically for `calculateCostTier`,
+`getUserFriendlyError`, `buildMultiCharacterContextSection`,
+`buildMultiCharacterRosterContent`, `formatTimestampForSystemPrompt`,
+`getContextUsagePercent`. **This is the ledger's predicted failure mode
+exactly: not a wrong diff, a zero-byte NDJSON** — the "empty-file trap" of
+§5.1, which a careless reader would call drift.
+
+### Correction to the order's (and the ledger's) count: THIRTEEN, not fourteen
+
+The recipe from `a-v4-dead-code-sweep-breaks-oracle-imports`, re-run at the
+pin over all 51 deleted export names, and then confirmed by reading each of
+the seven cases' actual `import { … } from '@/lib/…'` blocks (not the bare
+grep), finds **thirteen** symbols imported by name across the seven cases —
+and the order's own item-1 enumeration lists thirteen too. The prose
+"fourteen" in both the order and drift-ledger §1 is one high. A widened
+regex over every removed `export` line (including the re-export form) adds
+only `export { DEFAULT_LORA_SCALE, resolveLoraScaleBounds } from './lora-scale'`,
+which no oracle case imports. No transitive case-to-case import widens it
+(measured: nothing under `harness/oracle/cases` imports any of the seven).
+
+### The decision table — thirteen symbols, ALL option (ii) DELETE
+
+The rule applied per symbol: a PRODUCTION caller (outside `#[cfg(test)]`)
+→ (iii) unit pin; no production caller → (ii) delete. **Not one of the
+thirteen twins had a production caller in v5, so option (i) FROZEN is used
+zero times, (iii) zero times, and no family is frozen or exempted — the
+sweep driver's exempt list is untouched and `--self-test` is unchanged at
+0 failures.** No v5 twin has an SPA counterpart either (measured: 0 hits
+for all thirteen camelCase names under `apps/web/src`).
+
+| # | v4 symbol (module) | v5 twin | Evidence — every caller | Decision |
+|---|---|---|---|---|
+| 1 | `isCheapModel` (`llm/cheap-llm.ts`) | `cheap_model.rs:62` | `:117` only, inside `estimate_model_cost` (production code, dead function); `:152/:153/:162` test mod (`#[cfg(test)]` at `:141`) | (ii) delete |
+| 2 | `estimateModelCost` (`llm/cheap-llm.ts`) | `cheap_model.rs:98` | `:156` test mod only | (ii) delete |
+| 3 | `getModelsUnderCost` (`llm/pricing.ts`) | `pricing.rs:113` | none | (ii) delete |
+| 4 | `calculateCostTier` (`llm/pricing.ts`) | `pricing.rs:128` | none | (ii) delete |
+| 5 | `calculateSavings` (`llm/pricing.ts`) | `pricing.rs:145` | none | (ii) delete |
+| 6 | `handleProviderError` (`llm/errors.ts`) | `services/llm_errors.rs:242` | `:352/:358/:367/:393`, all test mod (`#[cfg(test)]` at `:345`); two doc-link mentions in `model/completion_provider.rs:137` + `model/transport.rs:206` are prose | (ii) delete |
+| 7 | `getUserFriendlyError` (`llm/errors.ts`) | `llm_errors.rs:293 user_friendly_error` | `:375/:386/:395`, all test mod | (ii) delete |
+| 8 | `buildMultiCharacterContextSection` (`llm/message-formatter.ts`) | `message_formatter.rs:364` | `host_notifications.rs:301/:315` — production, but the bodies of rows 9 and 10 | (ii) delete |
+| 9 | `buildMultiCharacterRosterContent` (`host-notifications/writer.ts`) | `host_notifications.rs:297` | `:1058` only, inside `post_host_multi_character_roster_announcement` (`:1051`), which has **ZERO callers across `crates/`** | (ii) delete |
+| 10 | `buildMultiCharacterRosterOpaqueContent` (same) | `host_notifications.rs:311` | `:1059`, same dead caller | (ii) delete |
+| 11 | `formatTimestampForSystemPrompt` (`chat/timestamp-utils.ts`) | `chat_timestamp.rs:740` | `:1054/:1058`, both test mod (`#[cfg(test)]` at `:920`) | (ii) delete |
+| 12 | `getContextUsagePercent` (`tokens/token-counter.ts`) | `token_estimation.rs:138` | `:164` only, inside `get_context_warning_level` (row 13) | (ii) delete |
+| 13 | `getContextWarningLevel` (same) | `token_estimation.rs:163` | none | (ii) delete |
+
+Deleted **with** them, as the cascade the deletions orphan (all inside
+owned files): `recommended_cheap_models` (the
+`LEGACY_RECOMMENDED_CHEAP_MODELS` table, consulted only by row 1);
+`post_host_multi_character_roster_announcement` + its
+`HostMultiCharacterRosterAnnouncement` params struct;
+`OtherParticipant` / `ParticipantPronouns` (taken only by row 8 — v4 spells
+that shape inline in the deleted signature, so it went the same way there);
+and the four unit tests that existed only to drive rows 1/2, 6/7 and 11.
+`zero_tokens_are_falsy` kept its default-message half, which the surviving
+constructors still own.
+
+### Two order premises corrected by measurement
+
+1. **The order guessed `cheap_model.rs:117` sits "inside `get_cheapest_model`'s
+   ladder".** It does not: `:117` is inside **`estimate_model_cost`**, which
+   is itself dead. `get_cheapest_model` (`:134`) never calls
+   `is_cheap_model` — it is the LIVE survivor (`cheap_llm.rs:327`, production;
+   that file's `#[cfg(test)]` starts at `:452`) and v4 kept it. So rows 1+2
+   are a dead PAIR, not a live function plus a dead one. v4's own
+   `DEAD-CODE-REPORT.md` names a different holder on its side —
+   `isCheapModel`'s last caller there was `validateCheapLLMConfig` (a symbol
+   v5 never ported) — so the cluster is dead on both sides but with a
+   different internal shape. Recorded because it is the sort of detail a
+   later reader would otherwise "fix" back.
+2. **The roster chain is dead on BOTH sides, and v5 invented its own head.**
+   v4 has **never** had a `postHostMultiCharacterRosterAnnouncement`:
+   measured zero hits under `lib/` and `app/` at both pins, and v4's report
+   says the poster "went in the 2026-06-03 sweep" — i.e. it was already gone
+   when v5 ported the builders. v5's `:1051` was a port-side extrapolation
+   from the sibling announcements that never acquired a caller. The live
+   roster path is intact on both sides: v4 builds it through
+   `buildOtherParticipantsInfo` in `context-manager.ts`, and v5's twin
+   `build_other_participants_info` is live in `system_prompt.rs` and untouched
+   by this lane.
+
+### The seven families — split, not retired
+
+Every case keeps its surviving rows in their original `kind`s and order, so
+the split is provable by diff. **Zero families retired ⇒ the workspace test
+binary count does NOT move** (the order's "moves down by exactly the retired
+number" is 0).
+
+| Family | rows before → after | surviving rows vs the `0b0617fee` pre-split oracle | count guard |
+|---|---|---|---|
+| `cheap_model_equivalence` | 203 → 7 | byte-identical (`diff` empty) | — (single counter) |
+| `model_selection_equivalence` | 29 → 18 | byte-identical | 8 → 5 buckets |
+| `llm_errors_equivalence` | 54 → 30 | field-for-field identical once `userFriendly` is dropped from `construct` (see below) | single counter → per-kind `[2]` |
+| `message_formatter_equivalence` | 118 → 109 | byte-identical | — |
+| `post_office_host_equivalence` | 58 → 54 | byte-identical | — |
+| `chat_timestamp_equivalence` | 187 → 185 | byte-identical | `format` removed from the family-floor list (7 → 6 families) |
+| `token_estimation_equivalence` | 33 → 24 | byte-identical | 7 → 5 buckets |
+
+**The one field change in the whole split**, recorded loudly rather than
+claimed as byte-identity: `llm-errors`' `construct` rows carried
+`userFriendly` beside `name`/`message`. Dropping the whole `construct` kind
+would have lost the constructor default-message / `retryAfter` /
+content-value coverage that survives in v4, so the field came out instead
+and the rows stayed. Proven with a field-for-field comparison in Python
+(pre-split minus `handle` rows, minus the `userFriendly` key, vs the fresh
+post-split oracle): 30 = 30, every remaining key byte-identical.
+
+`llm_errors_equivalence` also gained a real guard on the way: it had ONE
+total row counter, so a vanished kind could not redden it. It now counts
+`[construct, predicate]` and asserts both non-zero — `counts [17, 13]`.
+
+### Tier 2 — the census over the other 38 deleted names: ZERO deletions owed
+
+The remaining 38 names were checked for a v5 twin (camelCase grep across
+`crates`, since every v5 port cites the v4 symbol in its doc comment, plus
+hand-written snake spellings for the acronym cases my mechanical converter
+mangled — `IMAGE_PROFILE_LORAS_KEY`, `isMongoDBEnabled`, `STPersona`,
+`validateCheapLLMConfig`). Cross-checked against v4's own
+`DEAD-CODE-REPORT.md` table at the pin, which is file-by-file ground truth.
+**Not one is a zero-caller v5 twin.** Every name falls into one of three
+buckets:
+
+- **Absent from v5 entirely (29):** the Mongo relics (`META_KEYS`,
+  `getMetaValue`, `setMetaValue`, `deleteMetaValue`, `getAllMetaValues`,
+  `ensureMetaTable`, `recordMigration`, `getLastMigration`,
+  `sqliteDatabaseExists`, `getDataBackend`, `isMongoDBEnabled`,
+  `getPreferredBackend`, `setPreferredBackend`, `clearPreferredBackend`);
+  the SillyTavern persona module (`STPersona`, `importSTPersona`,
+  `importSTPersonaAsCharacter`, `exportSTPersona` — v5's 63 "sillytavern"
+  hits are all the `sillyTavernMetadata` DB **column**, which v4 did not
+  touch); the Next/React-shaped ones (`useNavbarCollapse`, `requireAuth`,
+  `validateRequestBody`, `routeSupportsDebug`, `toggleSource`,
+  `hasShellCapability`, `queueMemoriesSchema`, `setStateSchema`,
+  `ChatParticipantData`, `fetchActiveDocumentRecord`,
+  `V1_MIGRATION_DEPRECATION`); plus `getContextStatus` (none of its three
+  message strings appears anywhere in `crates` or `apps/web/src`),
+  `calculateAvailableSpace` (v5 ported `PROVIDER_LIMITS` into
+  `tools/generate_image.rs:922` but never that helper), and
+  `validateCheapLLMConfig`.
+- **A LIVE v5 twin of something v4 KEPT (4):** `IMAGE_PROFILE_LORAS_KEY` →
+  `image_gen/lora_validation.rs:27`, a plain `&str` literal (**not** a
+  re-export from a module that lost it — item 5's specific question) with a
+  live caller at `:183`; `createUuidRemapper` → v5 restore constructs the
+  remapper directly, exactly as v4 now does, and `services/backup/uuid_remapper.rs`
+  is live; `calculateSha256` was a one-line alias of `sha256OfBuffer` and v5
+  ported the **primitive**, not the alias (60 sha256 sites, no alias).
+- **v5 ported the PRIMITIVE v4 kept, not the wrapper it deleted (3):**
+  `publishCreationProgress` / `finishCreationProgress` /
+  `failCreationProgress` were v4's module-level delegation wrappers; v5's
+  `services/creation_progress.rs` `emit()` / `finish()` / `fail()` are
+  channel METHODS — the analogue of v4's surviving
+  `createCreationProgressEmitter` path, and they merely cite the wrapper
+  names in doc comments.
+
+So Tier 2 lands with a table and **no code change**, which is the honest
+result rather than a shortfall. No maintenance candidate is opened by it.
+
+### Item 5 — the LoRA bounds, in their new home
+
+v4 `d4138b96b` moved `DEFAULT_LORA_SCALE` + `resolveLoraScaleBounds` out of
+`lib/image-gen/lora-support.ts` into the client-safe
+`lib/image-gen/lora-scale.ts` and dropped the re-export. **Measured
+value-neutral:** `{ min: 0, max: 2, default: 1, step: 0.05 }` character for
+character at `0b0617fee` (old home, `lora-support.ts:40`) and at `d883a5ee1`
+(new home). Both v5 transcriptions still equal it —
+`image_gen/lora_support.rs:37` and the SPA's `lora-list-editor.ts:36`
+`DEFAULT_SCALE`. Nothing had ever pinned the four literals, so a new
+`scale_bounds_tests` module does: one test on the constant field by field,
+one on `resolveLoraScaleBounds`' `step ?? DEFAULT.step` fallback.
+**Mutation-proven:** `max: 2.0 → 4.0` reddens the first and only the first;
+replacing `.or(DEFAULT_LORA_SCALE.step)` with a bare `declared.step` reddens
+the second and only the second.
+
+**The order's predicted comment re-point for P4.D156 is NOT owed** — measured:
+`lora-list-editor.ts`'s comment reads "Mirrors `DEFAULT_LORA_SCALE` on the
+server side", naming the constant, not the module it used to live in. There
+is nothing stale in that file. P4.D156 needs to do nothing here; a nicety
+would be naming the new `lib/image-gen/lora-scale.ts` home, and that is
+offered, not required.
+
+### Ownership note — one interpretation recorded
+
+Item 5 is a Tier-1 deliverable and names `image_gen/lora_support.rs:37` as
+the thing to pin, but that file is not in the lane's ownership row and the
+Mandate's "must NOT touch" clause reads on it. The edit landed as ordered —
+it is additive (a new `#[cfg(test)]` module plus one doc paragraph on the
+constant), no sibling lane owns `image_gen/**` this round, and refusing it
+would have narrowed a Tier-1 deliverable silently. Flagged here so the
+unifier can see the call rather than discover it.
+
+### For the unifier — three stale references in files this lane may not edit
+
+None is a build, clippy or test failure (a dangling intra-doc link is a
+`cargo doc` warning only), and all three are prose:
+
+1. `crates/quilltap-core/src/model/completion_provider.rs:137` — the intra-doc
+   link `[`handle_provider_error`](crate::services::llm_errors::handle_provider_error)`
+   now dangles. Suggested: "…Errors carry the transport message (higher layers
+   classify on the [`LlmErrorKind`](crate::services::llm_errors::LlmErrorKind)
+   taxonomy)."
+2. `crates/quilltap-core/src/model/transport.rs:206` — the same dangling link.
+   Suggested: "The message is what the failover service's
+   `is*`/`parse*` detectors read."
+3. `crates/quilltap-core/src/lib.rs:78-79` and `:87` — the module-doc prose
+   still advertises `cheap_model`'s "classifiers (`is_cheap_model`,
+   `estimate_model_cost`, …)" and `token_estimation`'s "context-usage %".
+   Backticked code spans, not links, so nothing dangles; the claims are now
+   wrong. **`lib.rs` is owned by NOBODY this round (§D)** — recorded, not
+   edited. No `pub use` re-export of any deleted symbol exists in `lib.rs`;
+   only `pub mod` declarations, and no module was emptied.
+
+### Verification
+
+- Per family, through the sanctioned driver:
+  `python3 harness/tools/recipe_sweep.py --run <family> --v4 /tmp/qt-v4-pin-p4d157-d883a5ee1`
+  — all seven `recipe ran end-to-end`, zero SKIP.
+- `--self-test`: 0 failures (no exemption edit was needed — nothing frozen).
+- Fresh oracles for the gate regenerated one per clean invocation from the
+  `d883a5ee1` pin into the lane-unique `/tmp/qt-p4d157-oracles/`; each grepped
+  for its RETIRED kinds — all zero.
+- The `d883a5ee1`/`0b0617fee` pin question has no discriminating marker for
+  these seven families (their surviving rows are identical at both pins —
+  measured, and itself the finding that the intervening drift does not touch
+  them). The pin proof here is structural and stronger: the pre-split cases
+  provably do NOT link at `d883a5ee1` (the evidence pair above), and the
+  post-split ones do.
+
+### Gate
+
+`cargo fmt --all --check` 0; `cargo clippy --workspace --all-targets -- -D
+warnings` 0 in **both** feature sets (default and
+`--features quilltap-core/native-transport`); `cargo build --workspace` 0;
+`cargo test --workspace -- --nocapture` (full log to a file + a sentinel,
+never `| tail`) **exit 0 — 494 test binaries / 2,776 passed / 0 failed /
+1 ignored**, zero `test result: FAILED`. The binary count is UNCHANGED from
+the round's base (no family retired, so none was expected to move).
+
+All seven of this lane's families **positively confirmed to have RUN**, by
+their own success lines rather than by the absence of a red:
+
+```
+OK: cheap-model matched oracle (7 rows).
+OK: model-selection matched oracle (counts [3, 1, 8, 3, 3]).
+OK: llm-errors matched oracle (30 rows, counts [17, 13]).
+OK: message-formatter matched oracle (109 rows).
+post-office-host: 54 rows matched
+OK: chat-timestamp matched oracle (185 rows, kinds: {"calc": 89, "calcAt": 47,
+    "ensure": 12, "inject": 12, "parseTz": 20, "resolve": 5}).
+OK: token-estimation matched oracle (counts [6, 3, 3, 5, 7]).
+```
+
+…and none of the seven `QT_ORACLE_*` variables appears in a `SKIP:` line
+(checked per variable: 0 each). The log's 418 `SKIP:` lines are OTHER lanes'
+families, whose oracle variables this lane deliberately did not set; they are
+proven at their own owners' gates.
+
+`python3 harness/tools/recipe_sweep.py --self-test`: 0 failures (no exemption
+edit was needed).
+
+### Versions
+
+core 0.0.783, harness 0.0.677 (from the round base core 0.0.776, harness
+0.0.671). web / host / cli / tauri / SPA untouched.
+
+### 💸 The dogfood queue gains
+
+Nothing. This lane deletes code that has no production caller on either side
+and adds two unit pins; no user-visible surface moves.
