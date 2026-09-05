@@ -203,6 +203,56 @@ append-only docs — nothing else. `apps/web/src/styles/**` needed no edit
 authored: every surface this lane moved is pinned at unit-spec level, and the
 existing suite was run once at close on port 4319 per §E.
 
+### Verification gate (2026-09-05, at close)
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean; and again
+  with `--features quilltap-core/native-transport` — clean.
+- `cargo build --workspace` — clean.
+- `cargo test --workspace` with the pin env vars
+  (`QT_V4_CHECKOUT=/tmp/qt-v4-pin-p4d156-d883a5ee1`, `QT_NODE=…/v24.13.1/bin/node`):
+  **494 test binaries / 2,781 passed / 0 failed / 1 ignored — exit 0, ZERO
+  `SKIP:` lines.** Tier R RAN inside it (its binary is the 395.77 s row — the
+  case count itself is hidden on a PASS without `--nocapture`, memory note
+  `tier-r-case-count-hidden-on-pass`, and was read as **216 / 0** from the
+  dedicated `--nocapture` run above). `completion_behavior` 8 / 0.
+- SPA: `npm test` **378 files / 5,951 passed / 0 failed**; `npm run build`
+  clean; `npm run lint` clean (`check-qt-classes`: 950 qt-* classes defined,
+  every guarded reference resolves, 5/5 self-test).
+- Playwright, the existing suite once on port 4319 (§E):
+  **273 passed / 1 failed / 0 skipped (25.5 m)**. The one red is
+  `salon-thinking-indicator.spec.ts:45` (`.qt-thinking-indicator` still at 1
+  when the beat expects 0) — a Salon streaming surface with **zero overlap**
+  with anything this lane touched (its subjects are `chat/quill-animation.ts`
+  and `styles/qt-components/_chat.css`; the lane's ten SPA files are all under
+  `screens/`), and it is **green re-run in isolation 3/3** (11.5 m / 10.3 m /
+  10.1 m). Recorded as the standing full-suite intermittent class, not fixed
+  here.
+
+### Traps worth carrying (memory-note candidates)
+
+1. **`env!("CARGO_BIN_EXE_…")` makes a long differential editable out from
+   under itself.** `cli_differential` resolves the v5 binary to a fixed
+   `target/debug/` path at compile time, then re-execs it per case for six
+   minutes. Any OTHER cargo invocation in the same worktree — here an innocent
+   `cargo test -p quilltap-cli --test completion_behavior` — rebuilds that
+   binary from whatever source is on disk NOW. The run does not fail, restart,
+   or say anything: its early cases compared one build and its late cases
+   another. The rule is the workspace-gate rule one level down — **do not edit
+   crate source while ANY long test of that crate is running**, and prefer a
+   post-port green plus an explicit mutation over a red-first run you have to
+   keep still for.
+2. **A Tier R case needing prior registry state uses `CaseOpts.pre`.** Each
+   case copies the master fixture fresh before EACH side, so no case can build
+   on the one before it; `instances default json set` plants
+   `defaultInstance` in `instances.json` in its pre-hook.
+3. **A blanket "does the template mention this flag" guard is not a scoped
+   one.** `completions_offer_every_flag_the_help_text_advertises` was already
+   green on the missing fish block, because `-l 'json'` appears in the template
+   for the top-level `quilltap --json`. A per-subcommand claim needs a
+   per-subcommand assertion — including its NEIGHBOURS, or a correctly-spelled
+   block in the wrong section still passes.
+
 ## Lane record — P4.D146 (absent characters out of story backgrounds + the project background-mode narrowing) — v4 `70505745a`
 
 Ordered against round baseline **`4622411fd`**; the lane's target commit is

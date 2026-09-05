@@ -689,6 +689,25 @@ the closed row, resolves its path, and the store answers "no such document".
 The case ran RED against v4's real handler at the `d883a5ee1` pin — v5
 `404 "File not found not found"` vs v4 `404 "File not found"` — and green after
 the one-token fix.
+#### 2026-09-05 — docs(porting): the P4.D156 lane's verification gate and its two order corrections
+
+_Docs-only change._ (No crate versions bumped.)
+
+The lane record's gate section and the closed status header. Gate: fmt clean;
+clippy clean in both feature sets; `cargo test --workspace` **494 binaries /
+2,781 passed / 0 failed / 1 ignored, zero SKIP** with the pin env vars (Tier R
+ran inside it, its dedicated `--nocapture` run reading **216 cases / 0
+failures**); SPA 378 files / 5,951 tests, build and lint clean; Playwright
+**273 / 1 / 0**, the one red `salon-thinking-indicator.spec.ts:45` — zero
+overlap with anything this lane touched and green 3/3 in isolation, so the
+standing full-suite intermittent class.
+
+Two order facts corrected by measurement: `instances --help` was already a
+Tier R case, so the honest arithmetic is 214 → **216**, not the ordered 217;
+and (f2)'s NO-COUNTERPART is the whole of v4's
+`saveGeneratedPhysicalDescription`, not merely its wizard half, since both of
+its callers at the pin are AI-wizard apply paths.
+
 #### 2026-09-05 — test(characters): pin the outfit-choice toasts and the server-sentence preference (v4 `0506517d3` (f1)/(f2))
 
 _Versions: SPA 0.5.645._
