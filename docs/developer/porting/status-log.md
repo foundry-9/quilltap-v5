@@ -106480,3 +106480,42 @@ front-matter `url:` corrections (`brahma-console.md` `/brahma-console` → `/`,
 (`salon-host-introductions.md`: `help_navigate(url: "/salon")` →
 `"/salon/:id"`). The bank's substance is unchanged; the description is now the
 hunks'.
+
+## Lane record — P4.D158: the lane gate (2026-09-05)
+
+Branch `claude/p4-d158-wire-recheck-df0ce5`, five commits.
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean, in BOTH
+  feature sets (plain and `--features quilltap-core/native-transport`).
+- `cargo build --workspace` — clean.
+- `cargo test --workspace --no-fail-fast` with the lane's four env vars
+  (`QT_ORACLE_SYSTEM_RESTORE`, `QT_ORACLE_RESTORE_GUARDS`,
+  `QT_ORACLE_PROVIDER_REGISTRY`, `QT_ORACLE_OPENROUTER_SDK_PRICING`, all
+  pointing at oracles generated from THIS lane's pin):
+  **494 test binaries / 2,780 passed / 0 failed / 1 ignored — exit 0, and ZERO
+  `SKIP:` lines** (verified by a plain case-sensitive `grep -c SKIP` = 0; all
+  44 case-insensitive hits are test NAMES like `skip_signal::…`).
+- `harness/tools/check_spelling.py` — exit 0. The refreshed `docs/v4/` mirror
+  does contain "Quilttap" in v4's own historical changelogs, and is exempt by
+  design: `ALLOWED_PREFIXES = ("docs/v4/",)`. Nothing this lane authored
+  carries the misspelling (`git diff main..HEAD | grep -c` = 0).
+- Run with `CARGO_INCREMENTAL=0` throughout; the worktree's
+  `target/debug/incremental` stayed at 0 B.
+
+**One honesty note on the zero-SKIP number.** This lane set four env vars, so
+the families that came back green on `/tmp/oracle-*.ndjson` paths it did not
+generate were reading files left on this machine by prior rounds and by the
+five sibling lanes' in-flight regens. That they all passed is consistent with
+every lane pinning at `d883a5ee1`, but it is **not** this lane's proof of them.
+The families P4.D158 owns were each proven BY NAME against oracles generated
+from `/tmp/qt-v4-pin-p4d158-d883a5ee1`, recorded in the unit records above.
+
+The ledger's §2 freshness probe was re-run before each regen batch and at the
+end of the gate: v4 on `main`, tree clean, `d883a5ee1..main` and
+`3a76b17df..bugfix` both empty, the lane pin present and at `d883a5ee1`.
+**No corpus byte moved anywhere but the opus-5 rows and the two SDK version
+markers, so the mandate's escalation clause never fired.**
+
+Versions: core 0.0.777, harness 0.0.674. No other crate touched; no SPA change;
+no Playwright (§E).
