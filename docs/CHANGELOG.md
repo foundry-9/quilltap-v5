@@ -12,6 +12,53 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — docs(drift): v4's bug-122 memory-subject prefix, and the first drift row that would fail a regen silently
+
+_Docs-only change._ (No crate versions bumped.)
+
+A `/driftcheck` from a clean `main`. `bugfix` unmoved, the v5 checkout clean and
+on `main`, v4's `main` one commit further at `d883a5ee1` (`4.9.0-dev.135`).
+**DRIFT PENDING — 15 past `0b0617fee`; PIN REQUIRED**, unchanged.
+
+The new row is v4's **bug 122**, filed and fixed the same day from its own live
+Friday instance: a character's memory store is keyed on `characterId` alone and
+holds self-memories beside about-others memories, separated only by
+`aboutCharacterId` — and of the four formatters that render memories into
+context, exactly one attributed its lines. The other three printed bare
+summaries under a second-person heading, so a character read other people's
+lives as autobiography and answered in their voice. v4's fix is one required
+prefix function (`formatMemorySubjectPrefix` → `About <Name>: `, or
+`About another character: ` when the id resolves to no name) threaded through
+all three self-facing formatters, a new `lib/memory/memory-subject.ts` that
+turns a pool into that context without a query when the store is purely
+first-person, and `CharactersRepository.findNamesByIds` — which deliberately
+skips the vault overlay, because on the per-turn path an unreadable vault must
+cost a name and not the turn.
+
+**v5 reproduces it whole, measured.** `about_character_id` is read at exactly
+two sites in `memory_injector.rs`, both inside
+`format_inter_character_memories_for_context`; the other three formatters take
+no subject and emit no prefix, and the three production call sites
+(`build_context.rs:2500`/`:2502`, `carina_query.rs:1062`,
+`announcer/character_voiced.rs:374`) mirror v4's pre-fix ones exactly. The row
+also records that the repository half does not port mechanically: v5's
+`find_by_ids` is the overlaid twin, so the new lookup must go to the raw path or
+it reintroduces the vault dependency v4's docblock exists to refuse.
+
+**The regen rule gains its sharpest reason yet, and it is a silent one.**
+`d883a5ee1` changes the arity of three exported formatters that
+`harness/oracle/cases/memory-injector.ts` calls positionally, and `tsx`
+transpiles without type-checking — so a pin-free regen does not fail to compile.
+`formatDynamicMemoryHead(memories, undefined as never, options)` would pass the
+options object where `subject` now belongs and regenerate every budget and
+entry-cap case against v4's default budget, while the other two arms would take
+`subject: undefined` and stay green only because their fixtures leave
+`aboutCharacterId` null — vacuously.
+
+`generateDDL` and `lib/database/schema` are confirmed untouched across all
+fifteen commits. Not a convergence row: bugs 119 through 122 are all v4's own
+findings.
+
 #### 2026-09-04 — docs(drift): v4's bug-121 attachment re-hydration lands on a surface v5 reproduces whole
 
 _Docs-only change._ (No crate versions bumped.)

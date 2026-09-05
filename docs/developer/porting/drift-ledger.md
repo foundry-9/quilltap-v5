@@ -24,39 +24,40 @@ probe verifies against._
   21:04 -0500, v4 `4.9.0-dev.120`), adopted at the `0b0617fee` drift catch-up
   round unification (P4.D148 ∥ P4.D149 ∥ P4.D150 ∥ P4.D151 ∥ P4.D152,
   2026-09-03).
-- **Checked:** 2026-09-04 (late) — a full `/driftcheck` from a clean `main` in
-  the v5 checkout. **One new v4 commit since the last check:** `e288ae2ec`
-  (bug 121, the user-attachment re-hydration), appended to §3 as a **PORT**
-  row surveyed at hunk level. No existing disposition moved, and no earlier
-  row's facts changed.
-- **Prior checks the same day (their findings stand, not repeated below):** the
-  follow-ups round 2 unification's `/unify` §6 drift step recorded the twelve
+- **Checked:** 2026-09-05 — a `/driftcheck` from a clean `main` in the v5
+  checkout. **One new v4 commit since the last check:** `d883a5ee1` (bug 122,
+  the memory-subject prefix), appended to §3 as a **PORT** row surveyed at hunk
+  level. No existing disposition moved, and no earlier row's facts changed.
+- **Prior checks (their findings stand, not repeated below):** the follow-ups
+  round 2 unification's `/unify` §6 drift step recorded the twelve
   release-checklist commits that landed DURING that round (every regen of that
   round ran from a pinned worktree at `0b0617fee`, so its gate is unaffected);
-  the post-merge `/driftcheck` then **discharged the hunk-level survey of all
-  twelve rows** — written from shipped hunks and measured v5 intersections
-  rather than diffstats. That survey moved one classification materially
-  (`d4138b96b`, NO-PORT?-with-a-check → **PORT**) and named three v5 sites that
-  **measurably reproduce the v4 defect** (`48f4b42ec` →
+  the post-merge `/driftcheck` on 2026-09-04 **discharged the hunk-level survey
+  of all twelve rows** — written from shipped hunks and measured v5
+  intersections rather than diffstats. That survey moved one classification
+  materially (`d4138b96b`, NO-PORT?-with-a-check → **PORT**) and named three v5
+  sites that **measurably reproduce the v4 defect** (`48f4b42ec` →
   `request_builder/anthropic.rs:31`; `af2023c9a` → `instances_cmd.rs:314`;
-  `0506517d3`'s correction (d) → `brahma_console/mod.rs:359`).
-- **v4 `main` HEAD at check:** `e288ae2ec` — "fix(chat): re-hydrate user
-  attachments so every character sees them (bug 121)" (2026-09-04 22:25 -0500,
-  v4 `4.9.0-dev.134`) — **FOURTEEN commits past the baseline**. `origin/main`
-  level with `main` (0 either way).
+  `0506517d3`'s correction (d) → `brahma_console/mod.rs:359`). The later
+  2026-09-04 check added `e288ae2ec` (bug 121) as a fourth such row.
+- **v4 `main` HEAD at check:** `d883a5ee1` — "fix(memory): name the subject of
+  a memory about someone else (bug 122)" (2026-09-05 00:48 -0500, v4
+  `4.9.0-dev.135`) — **FIFTEEN commits past the baseline**.
 - **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4 fork
-  marker; `3a76b17df..bugfix` empty). Re-measured by CONTENT per §4 step 2:
-  `main..bugfix` over `lib/ app/ packages/ plugins/` is 681 files / +60,390 /
-  **−174,201**, net-negative because bugfix is *behind* main — the
-  squash-topology signature, nothing genuinely unabsorbed.
+  marker; `3a76b17df..bugfix` empty). Measured by CONTENT per §4 step 2 at the
+  previous check: `main..bugfix` over `lib/ app/ packages/ plugins/` is
+  net-negative because bugfix is *behind* main — the squash-topology signature,
+  nothing genuinely unabsorbed.
 - **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
 - **Checkout at check:** branch `main`, **tree CLEAN**. `git worktree list`
   shows the checkout alone (no pin worktrees outstanding).
-- **Verdict: DRIFT PENDING — 14 commits past the baseline.** §3 holds the
+- **Verdict: DRIFT PENDING — 15 commits past the baseline.** §3 holds the
   bug-119 row (`p4.9k`'s, unchanged), the twelve release-checklist rows from
-  v4's 4.9 push, and the new `e288ae2ec`. Classes: **6 PORT on live v5
-  surfaces** — `e288ae2ec` (a new chat-spine feature: the USER-side attachment
-  walk + read-side re-hydration; **v5 reproduces the bug whole**),
+  v4's 4.9 push, and the two live-Friday bug fixes `e288ae2ec` (121) and
+  `d883a5ee1` (122). Classes: **7 PORT on live v5 surfaces** — `d883a5ee1` (the
+  memory-subject prefix across three self-facing formatters and three call
+  sites; **v5 reproduces the bug whole**), `e288ae2ec` (the USER-side
+  attachment walk + read-side re-hydration; **v5 reproduces the bug whole**),
   `0506517d3` (seven behaviour corrections + a neutrality obligation over 256
   files), `d4138b96b` (the vestigial-cruft class, **and it breaks seven
   committed oracle cases**), `48f4b42ec` (one regex, v5 reproduces the bug),
@@ -68,41 +69,46 @@ probe verifies against._
   wire-neutrality claim is a claim until a corpus says otherwise); and **3
   NO-PORT?** ratifiable as they stand (`49f66f571`, measured payload-neutral;
   `a0e6fb42a` and `2edd823c0`, tests only). **No convergence rows** — bugs 119,
-  120 and 121 are all v4's own findings (121 from v4's live Friday instance,
-  not from this port's dogfood walks), and `docs/developer/bugs.md` shows no
-  port-filed bug newly fixed; the bug-104/111 regression tests in `a0e6fb42a`
-  pin filings this port made, but those fixes were absorbed rounds ago and no
-  pin trips.
-- **`generateDDL` and `lib/database/schema` are UNTOUCHED across all fourteen
+  120, 121 and 122 are all v4's own findings (121 and 122 from v4's live Friday
+  instance, not from this port's dogfood walks), and `docs/developer/bugs.md`
+  shows no port-filed bug newly fixed; the bug-104/111 regression tests in
+  `a0e6fb42a` pin filings this port made, but those fixes were absorbed rounds
+  ago and no pin trips.
+- **`generateDDL` and `lib/database/schema` are UNTOUCHED across all fifteen
   commits — no D23 re-dump is owed.** Checked mechanically over the whole batch
   (`git show --name-only` matches neither path), not inferred from subject
   lines; `0506517d3` rewrites twelve 4.9 *migration scripts* onto shared helpers
-  but adds no column and emits no new DDL, and `e288ae2ec` writes nothing to the
-  database at all (its fix is a read-side derivation, which is why it repairs
-  existing chats).
+  but adds no column and emits no new DDL, and neither `e288ae2ec` nor
+  `d883a5ee1` writes anything to the database at all (both fixes are read-side
+  derivations, which is why they repair existing chats and stores).
 - **Regen rule in force: PIN REQUIRED** at **`0b0617fee`** (§5.1) — unchanged,
-  and the hunk survey had already upgraded the *reason* from prudent to
-  load-bearing. Three of the fourteen rebuild every bundle under
-  `plugins/dist/` (the third symlink class), so a pin-free regen would import a
-  rebuilt Anthropic plugin and the `npm update`d SDKs — that much was known.
-  What the hunk survey added: **`d4138b96b` deletes fourteen exports that seven
-  committed oracle cases import BY NAME**, so a pin-free regen of those families
-  does not diff wrong, it fails to link at all; and `0506517d3` rewrote 256
-  files underneath a large fraction of the corpus. `e288ae2ec` adds a
-  fourth reason of its own kind: it rewrites
-  `lib/services/chat-message/context-builder.service.ts`, which
-  `harness/oracle/cases/message-context-leaves.ts` imports — **all three
-  imported symbols survive** (`buildConversationMessages`,
-  `normalizeWhisperRoles`, `collectLanternImageFileIdsForCharacter`), and the
-  one that moved did so by a verified-neutral extraction, so this family would
-  not break; but the same file now carries a new export and a new pre-`buildContext`
-  step, so a pin-free `build_context`/`orchestrator` tier-3 regen would compare
-  v5 against a v4 that re-hydrates. Pin every regen until a catch-up round moves
-  the baseline.
-- _Superseded (the earlier 2026-09-04 checks): DRIFT PENDING — 13 commits past
-  the baseline, v4 `main` HEAD `06658535f`, PIN REQUIRED at `0b0617fee`. The
-  same-day post-merge re-check re-measured `bugfix` at 681 files / +60,360 /
-  −173,933 and found nothing new on either branch._
+  and now with five distinct reasons, one of which is newly the sharpest.
+  (1) Three of the fifteen rebuild every bundle under `plugins/dist/` (the third
+  symlink class), so a pin-free regen would import a rebuilt Anthropic plugin
+  and the `npm update`d SDKs. (2) **`d4138b96b` deletes fourteen exports that
+  seven committed oracle cases import BY NAME** — a pin-free regen of those
+  families does not diff wrong, it fails to link at all. (3) `0506517d3` rewrote
+  256 files underneath a large fraction of the corpus. (4) `e288ae2ec` rewrites
+  `context-builder.service.ts`: all three symbols
+  `harness/oracle/cases/message-context-leaves.ts` imports survive and the one
+  that moved did so by a verified-neutral extraction, but the file now carries a
+  new pre-`buildContext` step, so a pin-free `build_context`/`orchestrator`
+  tier-3 regen would compare v5 against a v4 that re-hydrates. (5) **`d883a5ee1`
+  changes the ARITY of three exported formatters that
+  `harness/oracle/cases/memory-injector.ts` calls positionally** — and because
+  `tsx` transpiles without type-checking, a pin-free regen fails **silently**,
+  not loudly: `formatDynamicMemoryHead(memories, undefined as never, options)`
+  (`:632`) now passes the options object where `subject` belongs and defaults
+  the budget, so every `maxTokens`/`maxEntries` head arm would be regenerated
+  against v4's DEFAULT budget; the `formatMemoriesForContext` (`:340`) and
+  `formatFrozenMemoryArchive` (`:570`) arms would take `subject: undefined` and
+  stay green only because their fixtures leave `aboutCharacterId` null (`:92`),
+  i.e. vacuously. Pin every regen until a catch-up round moves the baseline.
+- _Superseded (the 2026-09-04 checks): DRIFT PENDING — first 13 then 14 commits
+  past the baseline (v4 `main` HEAD `06658535f`, then `e288ae2ec`), PIN REQUIRED
+  at `0b0617fee` throughout. The post-merge re-check measured `bugfix` at 681
+  files / +60,360 / −173,933; the 14-commit check re-measured it at
+  +60,390 / −174,201._
 - _Superseded (the 2026-09-03 `/driftcheck`): DRIFT PENDING — 1 commit past
   the baseline (`15573c3a1`), PIN REQUIRED at `0b0617fee`; the probe at the
   follow-ups round 2's start (2026-09-04) re-measured it identical._
@@ -170,6 +176,7 @@ when absorbed/ratified.
 | `6e1a64ea6` | 2026-09-04 | chore(deps): npm update across app, packages, and plugins | **NO-PORT? — with a MEASUREMENT obligation (the SDK wire re-check)** | **Hunks: "dependency movement only; no source changes" — verified: no `lib/`, `app/`, or `components/` file appears. But all fifteen plugin bundles are rebuilt (+127,912/−50,475) and the SDK jumps are the largest this port has seen.** Root: **`openai` 7.4.0 → 7.10.0**, **`@openrouter/sdk` 1.2.32 → 1.2.106**, **`zod` 4.4.3 → 4.5.4**, `next` 16.3.0 → 16.3.4, `sharp` 0.35.3 → 0.35.4, `@tanstack/react-query` 5.101.4 → 5.102.8, jest 30.5.1, plus dev-tool patches. Packages: `@quilltap/plugin-utils` 2.6.1. Every plugin's own `openai` moves to ^7.10.0 and openrouter's to ^1.2.106. → **v5 intersection: two, and the second is the one to worry about.** (1) **The provider wire** — v5 hand-rolls the HTTP the SDKs emit, so this is the P4.D34/P4.D75/P4.D105 re-check: regenerate all four provider corpora at the new baseline and assert byte-identity, and re-confirm the three recorded SDK refusals still refuse (§the `v4-sdk-behavior-the-raw-wire-must-reproduce` rule — the SDK *throwing* on a non-2xx is part of the contract, and finding #104 was that lesson learned the hard way). (2) **`zod` 4.4 → 4.5** — v5 byte-copies Zod's own `ZodError.message` bodies into refusal envelopes at many edges (P4.D71's `chat_settings` arms, P4.62's `validationError` envelope, the `zod_uuid` gate transcribed from Zod 4's own regex, P4.55/P4.D122's guard-order arms). **A minor-version change to Zod's message text or its uuid regex would move bytes v5 has hard-copied, silently, at edges no SDK corpus covers** — the settings/routes families are the ones to regenerate and read. Also here: `public/schemas/plugin-manifest.schema.json` re-emits `extendsTheme` as `"type": ["string","null"]` instead of an `anyOf` pair (a zod-4.5 JSON-Schema emission difference, theme manifests only — v5's manifest generator reads plugin `manifest.json` files, not this schema). And the root `postcss` override is repaired to the self-referencing `$postcss` form, without which `npm install` fails EOVERRIDE — **relevant to anyone rebuilding v4's `node_modules` for an oracle run.** | UNPROCESSED |
 | `06658535f` | 2026-09-04 | chore(packages): install the published plugin-utils 2.6.1 everywhere | **NO-PORT? — ratify with the same corpus measurement as `6e1a64ea6`** | **Hunks: no source and no bundle `index.js`.** Root `package.json`/lockfile take `@quilltap/plugin-utils` ^2.6.1 and `@quilltap/plugin-types` ^2.6.0; all fifteen plugins' `package.json` + `manifest.json` version fields follow; `packages/quilltap` and the README version stamp move to `4.9.0-dev.133`. Since no `index.js` changed, the emitted plugin code is identical to `6e1a64ea6`'s — this is the version-consistency tail of that sweep. → **v5 intersection: none beyond the corpus re-check already owed above.** ⚠ **v4 HEAD is this commit**, so it is the sha every pin-vs-tip comparison is measured against; the *baseline* stays `0b0617fee` until a round moves it. | UNPROCESSED |
 | `e288ae2ec` | 2026-09-04 | fix(chat): re-hydrate user attachments so every character sees them (bug 121) | **PORT (chat spine — a new read-side derivation; v5 REPRODUCES the bug whole)** | **NOT a convergence** — v4's own filing, from a live Friday scene (`df82edc2`, 2026-09-04 21:28–21:33 UTC) in which one character quoted an attached 29 KB transcript and the next said she could not read it. **Hunks: ONE lib file, `lib/services/chat-message/context-builder.service.ts` (+298/−36).** Four changes. **(a)** the stop rule inside `collectLanternImageFileIdsForCharacter` is extracted to a new module-private `isCharactersOwnPriorResponse(msg, characterParticipantId, isMultiCharacter)` — **verified neutral at the hunk level** (multi → `participantId === characterParticipantId`; single → `!(Array.isArray(attachments) && attachments.length > 0)`, byte-for-byte the old inline pair). **(b)** NEW exported `collectUnseenUserAttachmentsForCharacter(existingMessages, characterParticipantId, isMultiCharacter, historyCutoff, lookback)` — the USER-side counterpart: same reverse tail-walk, `type !== 'message'` skipped without cost; an ASSISTANT row either **breaks** (own prior response) or counts against `scanned` and continues; non-USER rows skipped; a USER row counts, then needs a non-empty `attachments` array **and** an `id` (no row id ⇒ nowhere to splice); `historyCutoff && createdAt < historyCutoff` skips (the joining-participant guard, symmetric with the Lantern walk); string-typed ids deduped through a `seen` set; returns `{messageId, fileIds}[]` **reversed into chronological order**. **(c)** NEW private `rehydrateUserAttachments(...)` — returns nothing when there is no `characterParticipantId`; wraps everything in one try/catch that logs `logger.warn('Failed to re-hydrate user attachments from history', {error, characterParticipantId})` and leaves the turn exactly as it was; per unseen row it calls `loadChatFilesForLLM(fileIds, {provider})` then `processFileAttachmentFallback` per file, and **mirrors `loadAndProcessFiles`'s filter**: `type === 'unsupported'` keeps the raw bytes only when `!fallbackResult.error` (a failed fallback DROPS the file rather than tripping the provider's no-image refusal), otherwise `formatFallbackAsMessagePrefix` text is accumulated **oldest-first against a `REHYDRATED_ATTACHMENT_CHAR_BUDGET = 80_000` ceiling that SKIPS a file whole rather than truncating it** (a `skippedForBudget` counter drives one `logger.warn('Re-hydrated attachments exceeded the per-turn budget; some were not re-sent', {skippedForBudget, budget, characterParticipantId})`), plus a `logger.debug('Re-hydrated user attachments from history', {messagesExpanded, rawAttachmentsKept, charactersUsed, characterParticipantId})`. New constant `USER_ATTACHMENT_LOOKBACK = 20` (distinct from the Lantern walk's `ASSISTANT_IMAGE_LOOKBACK = 6`). **(d)** in `buildMessageContext`: `hasPriorResponse` + the cutoff are **hoisted out of the Lantern try-block** into one `attachmentHistoryCutoff` (`characterParticipant?.id` — safe, the Lantern block dereferences it non-null two blocks later) shared by both walks; `rehydrateUserAttachments` runs **before `buildContext`** so the spliced text is budgeted/compressed/trimmed like any other message body; the prefix is spliced per carrying message id into a `messagesForConversation` copy fed to `buildConversationMessages` (`filteredExistingMessages` untouched, and unchanged by reference when nothing was re-hydrated); `mergedAttachmentsToSend` seeds from `[...attachmentsToSend, ...rehydratedAttachmentsToKeep]` and the Lantern merge chains onto `mergedAttachmentsToSend` instead of re-seeding from `attachmentsToSend`. **Nothing is persisted** — v4 states this deliberately: existing chats are repaired, and the behaviour survives regenerate, swipe, import and restore. → **v5 intersection: `crates/quilltap-core/src/services/message_context.rs`** (the `buildMessageContext` wrapper, ported 2026-07-03 in Phase 3's chat-orchestration wave; its three pure leaves ride the tier-1 `message_context_leaves_equivalence`, 12 cases driving v4's REAL exports). **Measured: v5 has the pre-fix shape exactly** — `:408 collect_lantern_image_file_ids_for_character` is the only attachment walk; section K (`:947`–`:978`) computes `has_prior_response`/`history_cutoff` **inline** and seeds `merged_attachments` from `attachments_to_send` alone; `:871` feeds `build_conversation_messages(&filtered, is_multi)` with no re-hydration step; and there is no `collect_unseen_user_*` or rehydrate anywhere in `crates/`. The request-assembly expansion is `services/chat_files.rs:386 load_and_process_files`, called from `orchestrator.rs:1543` — the same "expand for this request, store only the pointer" shape v4 just fixed, so **v5 reproduces bug 121 whole, on every chat from the second turn onward and on every character after the first in a multi-character turn.** The port's parts already exist: `file_fallback::process_file_attachment_fallback` (`:1468`) and `format_fallback_as_message_prefix` (`:438`), and `chat_files.rs:469 load_lantern_images` is the model for the new load seam (`MessageContextSeams::load_lantern_images`, `message_context.rs:484` — the USER-side loader wants a sibling method on that trait, not a direct call, or the wrapper stops being unit-testable). **The differential shape:** the new walk is pure and exported, so it is a fourth leaf for `message_context_leaves_equivalence` (v4 shipped **ten** cases for it — empty, the reported second-character shape, no-re-delivery, chronological multi-collect, dedupe of a re-attached id, the history cutoff, the missing row id, the single-character `participantId`-absent stop, the lookback cap, and non-message rows); the re-hydration itself is tier-3 over `build_context`/`orchestrator` (the budget skip and the `unsupported`-with-error drop are the two arms a corpus must actually discriminate, and the `messagesForConversation` splice is what `build_context_tier3` would see). ⚠ **The oracle case `harness/oracle/cases/message-context-leaves.ts` imports all three surviving symbols by name — it does NOT break** (unlike `d4138b96b`), but a pin-free tier-3 regen would compare v5 against a v4 that re-hydrates. **NO-PORT within the commit:** `README.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` (+ the new `bugs/fixed/bug-121-text-attachment-first-responder-only.md`, 199 lines — **read it when this is ordered**, it carries the 13-call table and the `v5 status: Applies` ruling), the 113 new lines in `__tests__/unit/lib/services/chat-message/context-builder.service.test.ts`, `help/file-uploads.md` (a new "A word on company" paragraph — banks to `p4.9i2`), and the version bumps (`4.9.0-dev.133` → `.134`). | UNPROCESSED |
+| `d883a5ee1` | 2026-09-05 | fix(memory): name the subject of a memory about someone else (bug 122) | **PORT (memory context — a required prefix through three formatters and three call sites; v5 REPRODUCES the bug whole)** | **NOT a convergence** — v4's own filing, from a live Friday scene (`9703231c`, log `f485521b`, 2026-09-05 05:13 UTC) in which Kumar answered a question addressed to Marion **as** Marion, with her children and her history, fluently. A character's store is keyed on `characterId` alone and holds self-memories and about-others memories side by side, separated only by `aboutCharacterId`; **four formatters render memories into context and exactly one attributed its lines** (`formatInterCharacterMemoriesForContext`), while the other three printed the bare summary under `buildCommonplaceLLMContext`'s second-person heading *"You remember the following entries that bear on this moment"*. **Hunks: four lib files + one new module.** **(a)** `lib/chat/context/memory-injector.ts` (+71/−…): NEW exported `interface MemorySubjectContext { selfCharacterId: string; characterNames: ReadonlyMap<string,string> }` and NEW exported `formatMemorySubjectPrefix(aboutCharacterId, subject)` — `''` when `aboutCharacterId` is falsy (untargeted memories read correctly in the first person), `''` when it equals `selfCharacterId`, else `` `About ${name}: ` `` on a **trimmed** name from the map, else the literal `'About another character: '`. **Both interface fields and the new parameter are REQUIRED, deliberately** — v4 states omission is exactly how the defect arrived. The prefix is spliced into three line builders: `formatMemoriesForContext` (`- [${age…}] ${prefix}${body}${meta}` — the prefix goes AFTER the bracket tag, before the body), `formatFrozenMemoryArchive` (`- ${prefix}${summary}${meta}`), and `formatDynamicMemoryHead` (`${idTag} ${whenTag} ${prefix}${summary}${meta}`); **the token estimate is taken on the prefixed line in all three**, so the prefix is paid for out of the block's budget rather than smuggled past it (v4 says so explicitly for the archive, and its byte-stability holds because both prefix inputs are stable within a compaction generation). **Signature changes:** `formatMemoriesForContext(memories, maxTokens, provider, subject)` (4th), `formatFrozenMemoryArchive(memories, maxTokens, provider, subject)` (4th), `formatDynamicMemoryHead(memories, provider, subject, options)` — **`subject` is inserted THIRD, pushing `options` to fourth**. **(b)** NEW `lib/memory/memory-subject.ts` (59 lines): `buildMemorySubjectContext(selfCharacterId, memories)` collects `aboutCharacterId`s that are neither absent nor the character's own into a `Set`, **returns `{selfCharacterId, characterNames: new Map()}` with NO query at all when the set is empty**, else calls `findNamesByIds` and logs `logger.debug('[MemorySubject] Resolved memory subjects', {characterId, memoryCount, subjectCount, resolvedCount})`. It lives outside the injector so that module stays pure formatting with no repository reach. **(c)** `CharactersRepository.findNamesByIds(ids)` — dedupes non-empty string ids, `new Map()` on empty input, then `safeQuery(..., 'Error resolving character names', {count}, new Map())`; inside, it calls **`super.findByIds`** — the BASE repository, **deliberately skipping the vault overlay**, because `name` is a plain DB column and on the per-turn path an unreadable vault must cost a *name*, not the turn (`findById` throws `CharacterVaultUnavailableError` on that shelf); rows with a blank/non-string name are simply absent from the map. **(d)** three call sites: `lib/chat/context-manager.ts` builds ONE `memorySubject` over the **union** of `frozenArchive` and `dynamicHeadResults.map(r => r.memory)` before formatting both (one lookup per turn), `lib/services/carina/carina.service.ts` builds it over the answerer's search results, `lib/services/announcer/character-voiced.ts` over the announcement recall. v4 names three contributing conditions that were **not** the bug (`isRecentlyAddressed` was correct; `multiCharacterPrefill: 0` from bug 85's fix left no trailing `[Name]` anchor; all three seats ran the same cheap model). → **v5 intersection: `crates/quilltap-core/src/memory_injector.rs`** (the four formatters, ported in the Phase-3 memory family and grown through the episodic-recall campaign; tier-1 family `memory_injector_equivalence`, 72 rows). **Measured: v5 is the pre-fix shape exactly.** `about_character_id` exists on `InjectorMemory` (`:170`) but is read at **only two sites, `:627` and `:643`, both inside `format_inter_character_memories_for_context`** (`:600`) — the same one-of-four attribution v4 just fixed; `format_memories_for_context` (`:491`), `format_frozen_memory_archive` (`:792`) and `format_dynamic_memory_head` (`:860`) take no subject and emit no prefix, and there is no `About another character` string anywhere in `crates/`. The three production call sites mirror v4's exactly: `services/build_context.rs:2500` + `:2502` (archive then head, the union-lookup site), `services/carina_query.rs:1062`, `services/announcer/character_voiced.rs:374`. **So v5 hands every character other people's lives as autobiography, on every turn, in every multi-character chat — plus Carina answerers and character-voiced announcements.** ⚠ **The repository half does NOT port mechanically:** v5's `db/characters_read.rs:344 find_by_ids` calls `overlay_many(...)`, i.e. it IS the overlaid twin of v4's `CharactersRepository.findByIds` — the new lookup must go to the RAW path (`query_raw` with the `id IN (…)` placeholders), or the port reintroduces exactly the vault dependency v4's docblock exists to refuse. Note also that v5's formatters take `now_ms`/`max_tokens` positionally where v4 takes `provider`, so the parameter ORDER cannot be copied; what must be copied byte-for-byte is the prefix text, its placement within each of the three line templates, and its inclusion in the token estimate. **The differential shape:** `formatMemorySubjectPrefix` is pure and exported — a natural new leaf for `memory_injector_equivalence`, whose self-facing arms currently leave `aboutCharacterId` null (`memory-injector.ts:92` defaults it) and so would be **vacuous** for this change; the three self-facing arms need targeted-memory cases (resolved name, blank/absent name → `About another character: `, and own-id → no prefix), and the budget interaction wants a case where the prefix is what pushes a line past `maxTokens`. Tier-3 consequence: `build_context`, `carina` and the announcer families all render these blocks. ⚠⚠ **This commit is the sharpest pin reason yet, because it fails SILENTLY:** `harness/oracle/cases/memory-injector.ts` calls all three formatters **positionally** — `:340 formatMemoriesForContext(memories, maxTokens, undefined as never)`, `:570 formatFrozenMemoryArchive(memories, maxTokens, undefined as never)`, `:632 formatDynamicMemoryHead(memories, undefined as never, options)` — and `tsx` transpiles without type-checking, so a pin-free regen does not fail to compile: the head arm passes its `{maxTokens, maxEntries}` object where `subject` belongs and **regenerates every budget/entry-cap case against v4's DEFAULT budget**, while the other two take `subject: undefined` and stay green only because their fixtures leave `aboutCharacterId` null. **NO-PORT within the commit:** `README.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` (+ the new `bugs/fixed/bug-122-unattributed-self-memories.md`, 225 lines — **read it when this is ordered**; its `v5 status` is **Applies** and its stated lesson is that *a pool and a voice are two different questions*), the five v4 test files (`context-management`, `memory-injector`, the new `memory-subject`, `ranking-blend`, `episodic-visibility` — the last three are arity updates), `help/memory-recall-relevance.md` (a new "Whose Life Is It, Anyway?" section — banks to `p4.9i2`), and the version bumps (`4.9.0-dev.134` → `.135`). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
