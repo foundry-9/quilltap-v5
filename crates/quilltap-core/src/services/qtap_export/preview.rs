@@ -201,20 +201,17 @@ pub fn preview_export(
             let ids: Vec<String> = if all {
                 all_files
                     .iter()
-                    // ⚠ NOT the excluded-files predicate. v4 `01e481f6`
-                    // converted THREE call sites — `streamFiles`,
-                    // `resolveExportIds` and the wizard's entity picker
-                    // (`handleExportEntities`) — and left `previewExport`'s
-                    // inline two-clause filter alone
-                    // (`quilltap-export-service.ts:306`). So the PREVIEW still
-                    // lists a character-archive bundle that the export itself
-                    // will then skip. Carried verbatim: this lane's survey said
-                    // four sites and the differential said three
-                    // (`preview_files_all` is the case that says so).
-                    .filter(|f| {
-                        f.get("category").and_then(Value::as_str) != Some("BACKUP")
-                            && f.get("folderPath").and_then(Value::as_str) != Some("/backups")
-                    })
+                    // The FOURTH call site of the excluded-files predicate, as
+                    // of v4 `0506517d3` (correction (b)). `01e481f6` converted
+                    // three — `streamFiles`, `resolveExportIds` and the
+                    // wizard's entity picker — and left `previewExport`'s
+                    // inline two-clause filter (BACKUP + `/backups`) alone, so
+                    // the preview counted the ARCHIVE bundles the writer then
+                    // refused. `preview_files_all` is the case that says so:
+                    // the `system-data-*` fixture carries one file excluded by
+                    // CATEGORY and one by FOLDER, so both clauses are
+                    // independently load-bearing here.
+                    .filter(|f| !super::is_file_excluded_from_export(f))
                     .filter_map(|f| f.get("id").and_then(Value::as_str).map(str::to_string))
                     .collect()
             } else {

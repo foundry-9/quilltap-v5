@@ -387,6 +387,28 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — fix(export): the wizard's preview stops counting files the writer refuses (v4 `0506517d3` correction (b))
+
+_Versions: core 0.0.779._
+
+`previewExport`'s `files` count carried its own inline two-clause filter
+(`BACKUP` + `/backups`) while the three sites that actually write an export had
+moved to `isFileExcludedFromExport` at `01e481f6`. So the preview promised the
+operator character-archive bundles the writer then skipped. v4 closed the gap
+in its release-checklist collapse; v5's `preview.rs` reproduced the divergence
+verbatim, down to the comment saying so, and now routes through
+`is_file_excluded_from_export` as the predicate's FOURTH call site.
+
+No fixture change was needed and none was made. The order allowed for planting
+an excluded file; the measurement said the committed `system-data-*` family
+already carries the pair `extend-system-data-archive-substrate.ts` added for
+exactly this predicate — one file excluded by CATEGORY (`lorian-archive.qtap`,
+`ARCHIVE`) and one by FOLDER (`stray-note.txt`, `/archives`) — so both clauses
+are independently load-bearing. Against v4's real `previewExport` at the
+`d883a5ee1` pin, `preview_files_all` listed seven entities on the v5 side and
+five on v4's; green after. The `excluded_files.rs` header, which recorded the
+three-site state as deliberate, now records the fourth and what measures it.
+
 #### 2026-09-05 — fix(brahma): one sentence for a profile's API-key failure (v4 `0506517d3` correction (d))
 
 _Versions: core 0.0.778._
