@@ -30,7 +30,13 @@ use crate::image_gen::{match_model, ModelInfo};
 use crate::pascal::js_value::{to_js_string, to_number};
 
 /// Scale bounds used when a plugin declares `loraSupport` but no `scale` block
-/// (v4 `DEFAULT_LORA_SCALE`).
+/// (v4 `DEFAULT_LORA_SCALE`). **v4 `d4138b96b` MOVED this constant and
+/// `resolveLoraScaleBounds` out of `lora-support.ts` into the client-safe
+/// `lib/image-gen/lora-scale.ts`** (the bounds were dead in the old module while
+/// the profile editor carried a byte-identical copy) and dropped the re-export.
+/// The move was value-neutral — measured identical at `0b0617fee` and
+/// `d883a5ee1` — and `default_lora_scale_matches_v4` below pins the four
+/// literals against their NEW home so a future v4 edit there cannot pass unseen.
 ///
 /// Permissive on purpose — the provider's own default applies when the user
 /// leaves the slider alone, and every provider surveyed tops out at or below 4.
@@ -404,6 +410,50 @@ pub fn lora_trigger_phrases(loras: &[ImageLoraSpec]) -> Vec<String> {
 /// (v4 `joinLoraTriggerPhrases`).
 pub fn join_lora_trigger_phrases(loras: &[ImageLoraSpec]) -> String {
     lora_trigger_phrases(loras).join(", ")
+}
+
+#[cfg(test)]
+mod scale_bounds_tests {
+    use super::*;
+
+    /// P4.D157: v4's LoRA scale bounds now live in `lib/image-gen/lora-scale.ts`
+    /// (moved out of `lora-support.ts` by `d4138b96b`). The four literals are
+    /// transcribed twice in v5 — here and in the SPA's `lora-list-editor.ts`
+    /// `DEFAULT_SCALE` — so pin the server copy against the values in the new
+    /// home. A drift here is a real behaviour change: these bounds are what the
+    /// editor's slider offers and what the capper falls back to.
+    #[test]
+    fn default_lora_scale_matches_v4() {
+        // v4 `lib/image-gen/lora-scale.ts`:
+        //   export const DEFAULT_LORA_SCALE =
+        //     { min: 0, max: 2, default: 1, step: 0.05 } as const;
+        assert_eq!(DEFAULT_LORA_SCALE.min, 0.0);
+        assert_eq!(DEFAULT_LORA_SCALE.max, 2.0);
+        assert_eq!(DEFAULT_LORA_SCALE.default, 1.0);
+        assert_eq!(DEFAULT_LORA_SCALE.step, Some(0.05));
+    }
+
+    /// v4 `resolveLoraScaleBounds`: a declared block with no `step` falls back
+    /// to the default's step, and the other three come from the declaration.
+    #[test]
+    fn resolve_bounds_step_falls_back_to_the_default() {
+        let declared = ImageLoraSupport {
+            max_loras: 2.0,
+            scale: Some(LoraScale {
+                min: 0.25,
+                max: 4.0,
+                default: 0.8,
+                step: None,
+            }),
+            source_kinds: vec!["hf-repo".to_string()],
+            supports_private_weights_token: None,
+        };
+        let got = resolve_lora_scale_bounds(&declared);
+        assert_eq!(got.min, 0.25);
+        assert_eq!(got.max, 4.0);
+        assert_eq!(got.default, 0.8);
+        assert_eq!(got.step, DEFAULT_LORA_SCALE.step);
+    }
 }
 
 #[cfg(test)]

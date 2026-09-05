@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — test(image-gen): pin the LoRA scale bounds against their new v4 home (P4.D157 item 5)
+
+_Versions: core 0.0.783._
+
+v4 `d4138b96b` moved `DEFAULT_LORA_SCALE` and `resolveLoraScaleBounds` out of
+`lib/image-gen/lora-support.ts` (where the bounds were dead while the profile
+editor carried a byte-identical copy) into the client-safe
+`lib/image-gen/lora-scale.ts`, and dropped the re-export.
+
+The move is value-neutral: `{ min: 0, max: 2, default: 1, step: 0.05 }` is
+byte-identical at `0b0617fee` (old home) and `d883a5ee1` (new home), and both
+v5 transcriptions — `image_gen/lora_support.rs` and the SPA's
+`lora-list-editor.ts` `DEFAULT_SCALE` — still equal it. Neither needed a value
+change.
+
+Nothing pinned those four literals, so a new `scale_bounds_tests` module does:
+one test asserts the constant field by field against the values in the new
+home, another asserts `resolveLoraScaleBounds`'s `step ?? DEFAULT.step`
+fallback. Mutation-proven — `max: 2.0 → 4.0` reddens the first and only the
+first; replacing the `.or(DEFAULT_LORA_SCALE.step)` fallback with a bare
+`declared.step` reddens the second and only the second.
+
+The `IMAGE_PROFILE_LORAS_KEY` deleted in the same commit has a v5 twin at
+`image_gen/lora_validation.rs:27`, and it is a plain `&str` literal with a
+live caller, not a re-export from a module that lost it — nothing to do.
+
 #### 2026-09-05 — chore(dead-code): retire the Host multi-character roster chain v4 deleted (P4.D157 unit 6)
 
 _Versions: core 0.0.782, harness 0.0.677._
