@@ -105343,3 +105343,325 @@ lane-unique `/tmp/qt-p4d154-gate/` first (the `/tmp` collision rule).
 
 **Versions:** core 0.0.778, harness 0.0.673. No other crate touched; no SPA
 file touched; no Playwright authored or run (§E).
+## Lane record — P4.D155: the `0506517d3` collapse's seven behaviour corrections (server) + the Pascal placeholder classifier on both sides
+
+**Branch** `claude/p4-d155-collapse-corrections-156867`. **Target commit**
+`0506517d3` ("collapse the 4.9 diff's duplicates onto single owners", 256
+files) — this lane ports the SEVEN corrections that fell out of it, not the
+refactor. **Pin:** `/tmp/qt-v4-pin-p4d155-d883a5ee1` (round baseline
+`d883a5ee1`); every regen from it, per §B. Freshness probe at lane start:
+branch `main`, tree CLEAN, `d883a5ee1..main` and `3a76b17df..bugfix` both
+empty — PASS.
+
+### What landed, correction by correction
+
+**(c) the document-delete 404 body — `File not found`, once.** v5 passed the
+whole sentence to `not_found()`, which renders `<resource> not found`, so the
+chat-scoped delete answered `File not found not found`; the standalone delete
+already said `not_found("File")` — the exact two-site divergence v4 collapsed,
+reproduced. **The order's prescribed arm could not reach the 404.** A
+`chatDocumentId` absent from the fixture resolves to null and answers 400
+`No active document to delete`; the existing `chat_delete_document` case (R3)
+is a project-scope row in a project-less chat and answers 400 `Could not
+resolve path: …` on BOTH sides — it never reaches the delete at all. The 404
+needs a row that EXISTS over a file that does not, so
+`chat_delete_document_missing` deletes R1 (`notes/alpha.md`, a database store)
+**twice**: `resolveTargetDocument` looks a named id up by id alone, with no
+active filter, so the second call still finds the closed row, resolves its
+path, and the store reports no such document. RED first against v4's real
+handler at the pin (v5 `File not found not found` / v4 `File not found`), green
+after.
+
+**(d) the Brahma API-key sentence — one `describeProfileApiKeyFailure`.** v5
+reproduced both halves of v4's divergence: `brahma_console/mod.rs:359`
+lowercase, `orchestrator.rs:288` capitalised. `ProfileApiKeyFailure::describe()`
+now sits beside the existing `as_str()` (which keeps carrying v4's
+machine-readable `reason` token) and both sites read it. RED first on
+`brahma_console_tier3_equivalence`'s existing `no_key_configured` arm;
+`brahma_console_routes_equivalence` and `brahma_orchestrator_tier3_equivalence`
+re-run at the pin, unmoved. **v4's third caller is the help chat**, which has no
+v5 counterpart — that surface stays banked to `p4.9i2`, named in `describe`'s
+doc comment so a fourth site cannot be written fresh.
+
+**(b) the export preview's excluded files.** `previewExport`'s `files` count
+kept its own inline two-clause filter (BACKUP + `/backups`) after `01e481f6`
+moved the three writing sites onto `isFileExcludedFromExport`, so the preview
+promised archive bundles the writer then skipped; v5 carried the divergence
+verbatim, comment and all. Now the predicate's FOURTH call site.
+**No fixture change, and the order allowed for one:** the measurement says the
+committed `system-data-*` family already carries the pair
+`extend-system-data-archive-substrate.ts` added for exactly this predicate —
+one file excluded by CATEGORY (`lorian-archive.qtap`) and one by FOLDER
+(`stray-note.txt`, `/archives`) — so both clauses are independently
+load-bearing. A redundant runtime plant was written, measured as redundant, and
+reverted. `preview_files_all` ran RED at the pin (v5 seven entities, v4 five).
+`excluded_files.rs`'s header, which defended the three-site state as
+deliberate, now records the fourth and what measures it.
+
+**(g) the self-inventory catch — MEASURED, nothing to port.** v4 dropped an
+empty `try/catch` around `resolveStandingInstructionsSection`; v5's resolver
+returns `Option<String>` — infallible by construction, logging its own per-leg
+failures — so v5 has never had a catch to remove and neither swallows nor
+propagates. The call-site comment had *defended v4's silent swallow as
+deliberate*, which is now the opposite of v4's shape; it records the
+measurement and the sha instead. `self_inventory_equivalence` re-run at the
+pin, unmoved.
+
+**(a) the cheap-LLM selection collapse, and its three corrections.**
+`selection_from_profile(profile, local_base_url_fallback)` is now the one place
+a selection is assembled from a profile; `base_url_or_localhost` is retired and
+every rung of `get_cheap_llm_provider` goes through it, as v4's eight literals
+now do. The three behaviour deltas v5 reproduced:
+
+1. priority-5 "current profile is Ollama" carried NO `profile_parameters`;
+2. priority-5 "current profile → cheapest model" carried none either;
+3. `cheap_llm_exec.rs`'s uncensored fallback and `answer_confirmation.rs`'s
+   re-affirmation selection hard-coded `is_local: false`.
+
+**The family this needed did not exist, so it was written.**
+`cheap_llm_fallback_equivalence` drives `buildCheapFallbackSelections`, not the
+ladder; every tier-3 family that resolves a selection records a canned key of
+`provider|model|temperature|messages`, which carries NEITHER corrected field.
+So the corrections were structurally unmeasurable. NEW tier-1
+**`cheap_llm_selection_equivalence`** drives v4's real `selectionFromProfile` /
+`getCheapLLMProvider` / `resolveUncensoredCheapLLMSelection` over a 26-row
+corpus both sides read (`harness/oracle/fixtures/cheap-llm-selection.json` —
+profile shapes with a `parameters` bag, a `maxContext` for the Ollama `num_ctx`
+injection, a blank base URL, are exactly what a transcribed corpus drifts on).
+**Every row also carries `deadlineFor`'s background deadline**, which turns
+`isLocal` from a field nobody diffs into a number: 180 000 vs 90 000.
+
+*This is the family the order asked the lane to name as driving
+`get_cheap_llm_provider`.* The plugin registry is empty on both sides
+deliberately (nothing initializes it under `tsx`, and the Rust side passes
+`registry_cheapest_for_current: None`), so priority 5 resolves through
+`LEGACY_CHEAPEST_MODEL_MAP`; `p5_cheapest_deepseek_params` is the
+out-of-vocabulary row that map does not cover — v4 returns `undefined` and
+`JSON.stringify` OMITS `modelName`, where v5 surfaces `""`, the divergence
+`get_cheap_llm_provider`'s own comment already recorded. The reader normalizes
+exactly that.
+
+**Two sites v4 keeps private take unit pins.**
+`shouldAttemptUncensoredFallback` and the answer-confirmation re-affirmation
+are not exported, and no differential reaches their fields. The existing
+`each_attempt_gets_a_fresh_budget` had **asserted the pre-fix 90 s** on an
+OLLAMA uncensored profile and went RED on the fix — its profile is now
+deliberately REMOTE so it stays about the fresh budget, and the new
+`an_ollama_uncensored_fallback_takes_the_local_budget` pins 180 s. The
+re-affirmation literal was extracted as `reaffirmation_selection`
+(`ReaffirmationProfile` is a narrower type than `CheapLlmProfile`) with
+`reaffirmation_selection_derives_is_local` beside it. Both mutation-proven.
+
+**Out of ownership, loudly.** `services/answer_confirmation.rs` is unowned in
+this round's table. The edit is one derived boolean plus its extraction; no
+sibling lane names the file, and the order's own mandate names "the
+answer-confirmation … selections" as part of (a). **P4.D153's
+`services/announcer/character_voiced.rs` needed nothing** — v4's `buildSelection`
+there was already the shared shape, and so is v5's `build_selection`; the v4
+hunk is behaviour-neutral.
+
+**(e) the placeholder classifier, both sides.** NEW
+`crates/quilltap-core/src/pascal/placeholders.rs` (v4's module in shape:
+`PLACEHOLDER_PATTERN`, `PlaceholderRef`, `classify_placeholder`,
+`scan_placeholders`) plus `resolve_placeholder_value` in `custom_tools.rs`, and
+NEW `apps/web/src/app/pascal/placeholders.ts` — **`diff`-verified byte-identical
+to v4's file from `PLACEHOLDER_PATTERN` down.** Readers routed: server —
+`expressions.rs::is_known_ref`, `tool_vocabulary.rs::collect_placeholders`,
+`custom_tools.rs`'s renderer and effect resolver (`TEMPLATE_RE` and
+`tool_vocabulary`'s private pattern/prefix constants retired; only
+`STATE_PREFIX` survives, for the effect-TARGET grammar the collapse
+deliberately left alone); client — the three draft audits collapsed onto one
+`auditPlaceholders`, and `expressions.ts::isKnownRef`.
+
+*The bare-prefix rule is what the collapse decides.* In Rust it is easy to
+lose: `"params.".strip_prefix("params.")` answers `Some("")`, not `None`, so
+every v5 site agreed with v4's rule only by what it then did with an empty
+name. **Per-site measurement (the order asked for it):** `expressions.rs`
+already had the length guard; `tool_vocabulary` dropped all three bare keys by
+coincidence (`declared.contains("")` is false; the metadata/state arms guarded
+by hand); the renderer and the effect resolver treat an empty NAME exactly as
+they treat `Unknown`. So the server collapse is behaviour-neutral — and the
+mutation says which families can see the rule at all: dropping the three
+`is_empty()` guards reddens `pascal_expressions_equivalence` and
+`pascal_tool_vocabulary_equivalence`, while
+`pascal_custom_tools_execution_equivalence` stays green (its doc comment says
+why). `parse_effect_target` is deliberately NOT routed through the classifier —
+v4 did not route it either; it is a different grammar.
+
+*`{{params.toString}}` is now measured, not asserted.* Seven new corpus rows
+(params / metadata / state × the prototype names) were regenerated against
+**`0506517d3`'s PARENT**: pre-fix v4 renders
+`x function toString() { [native code] } y` into a character's message, and
+`constructor` / `hasOwnProperty` / `__proto__` the same way, because
+`name in vars.params` reaches `Object.prototype`. v5's association-list lookup
+has no prototype to reach, so it has always answered the post-fix shape — and
+it goes **RED against that pre-fix oracle**, which is the row's proof.
+
+*One fidelity gain rode along:* `collect_placeholders` trimmed with Rust's
+`.trim()`, and JS trims U+FEFF where Rust does not, so `{{\u{FEFF}params.x}}`
+used to be dropped by the vocabulary scanner. `scan_placeholders` trims as v4
+does.
+
+*Client: two author-facing sentences moved.* A bare `{{params.}}` used to be
+reported as "names no declared parameter" — sending an author to look for a
+parameter list they cannot fix — and now reads "is not a placeholder this build
+knows"; a bare `{{metadata.}}` (and, in the chip label alone, a bare
+`{{state.}}`) used to pass in SILENCE and is reported now. Four new spec rows
+pin those; two more pin what did not move (`{{state.path}}` still allowed in
+the chip label, still flagged in a message and a consult prompt — `allowState`,
+now explicit instead of three divergent skip lists). Dropping the three
+`key.length > PREFIX.length` guards in the TS twin reddens all four plus the
+classifier's own row.
+
+**An order premise REFUTED by measurement.** The order expected
+`{{params.toString}}` to be able to leak in the browser "because the Workbench
+renders in the browser". It cannot: **neither v4 nor v5 has a client-side
+`renderTemplate`** — the Proving Bench posts a roll and renders what the SERVER
+returns (`grep renderTemplate` over `components/`+`app/` in the pinned v4 tree
+and over `apps/web/src` finds only prose). The leak is server-side only; the
+client spec pins CLASSIFICATION of the prototype names, which is what this
+module decides.
+
+### Fixture repair — the P4.52 vintage class, on a different pair
+
+`pascal_custom_tools_route_equivalence` and
+`pascal_run_custom_handler_equivalence` **could not REGENERATE** at the pin:
+v4's `BaseRepository` writes the whole validated entity, and the committed
+`pascal-run-custom-main.db` predated nine columns — the regen died on
+`table connection_profiles has no column named allowTierFallback`, the P4.D135
+fallback-chain pair, which no pascal family had regenerated across since. The
+new `harness/oracle/fixtures/migrate-pascal-run-custom-columns.ts` applies v4's
+own migration ALTERs behind v4's own missing-column guard: `characters` ×3
+(`archivedAt`, `archiveFileId`, `archivedAvatarFileId`), `chat_settings` ×3
+(`composerEmoji`, `composerUnicode`, `smartTypographySettings`),
+`connection_profiles` ×3 (`multiCharacterPrefill`, `fallbackProfileId`,
+`allowTierFallback`). The MOUNT partition needed nothing; the two MANAGED_FIELDS
+columns (`characters.metadata`, `characters.canChooseOutfit`) stay deliberately
+absent for P4.52's recorded reason. **All four consumers of the pair re-run
+green** (`pascal_custom_tools_route`, `pascal_run_custom_handler`,
+`pascal_definition_reader`, `pascal_build_tools_roster`).
+
+### ⚠ Escalated — NOT this lane's, and needs the unifier's attention
+
+**`pascal_custom_tool_definition_equivalence` is RED at the pin**, on the single
+case `metadata-misspelled-comparator`:
+
+```
+  v5:  outcomes.0.when: Invalid input: expected true — or — metadata.faction: Unrecognized key: "nonsense"
+  v4:  outcomes.0.when.metadata.faction: Unrecognized key: "nonsense"
+```
+
+Zod 4.5's union error path reports only the matching branch where v5 carries
+the whole union sentence. **Reproduced with v4 SOURCE at the OLD baseline
+`0b0617fee` against the same (4.5.4) `node_modules`** — the oracle's
+`node_modules` is symlinked from the live checkout, so a source-pinned regen
+still resolves the CURRENT dependency tree, and that run failed identically.
+That is the `6e1a64ea6` npm-update row (`zod` 4.4.3 → 4.5.4), **ORDERED to
+P4.D158**, whose ledger entry predicted exactly this: "a minor-version change
+to Zod's message text would move bytes v5 has hard-copied, silently, at edges
+no SDK corpus covers". No part of correction (e) touches
+`format_definition_issues` or `custom_tool_types.rs` (`git diff` over the file
+is empty across this lane).
+
+### ⚠ Two client sites this lane may not touch
+
+v4's same commit also replaced `ProvingBench`'s `/\{\{\s*state\./` probe with
+`scanPlaceholders(...).some(p => p.ref.kind === 'state')`, and
+`OutcomesSection`'s inline `/\{\{[^}]+\}\}/g` with the exported
+`PLACEHOLDER_PATTERN`. v5 reproduces both — `screens/custom-tools/proving-bench.ts:537`
+and `screens/custom-tools/outcomes-section.ts:842` — and
+`apps/web/src/app/screens/**` belongs to **P4.D156** in this round's ownership
+table, while P4.D156's mandate is corrections (f). Neither lane owns them by
+mandate; the unifier should place them. The probe one is a real edge (the old
+regex matches a bare `{{state.}}` and an unterminated `{{state.foo`); the
+pattern one is neutral.
+
+### Deferrals (loud)
+
+- **The help-chat API-key sentence** — v4's third `describeProfileApiKeyFailure`
+  caller. Unported surface, banked to `p4.9i2`, named in `describe`'s doc.
+- **v4's "Left alone on purpose" list is not this lane's to finish** (the
+  NanoGPT/DeepSeek/Z.AI base re-implementations, the two `core-execution.ts`
+  task maps, `executeCheapLLMTask`'s positional parameters, the wardrobe dialog
+  loaders) — nothing from it was touched.
+- **(f), the three client corrections** — P4.D156's, untouched.
+
+### Fixtures changed / oracles invalidated
+
+- `crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db` — nine columns
+  added in place (above). Consumers: `pascal_custom_tools_route_equivalence`,
+  `pascal_run_custom_handler_equivalence`, `pascal_definition_reader_equivalence`,
+  `pascal_build_tools_roster` — all four re-run green at the pin. The mount half
+  is unchanged.
+- No other committed fixture moved. `system-data-*` was NOT widened (measured
+  as already carrying what (b) needs).
+
+### The new family's regen recipe
+
+```
+cd ~/source/quilltap-server            # or the pinned worktree
+TZ=UTC ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <V5W>/harness/oracle/cases/cheap-llm-selection.ts \
+  > /tmp/oracle-cheap-llm-selection.ndjson
+QT_ORACLE_CHEAP_LLM_SELECTION=/tmp/oracle-cheap-llm-selection.ndjson \
+  cargo test -p quilltap-harness --test cheap_llm_selection_equivalence -- --nocapture
+```
+
+It is a plain `tsx` case (pure functions, no DB, no jest, no mocks) and the
+sweep driver reads it from the test header.
+
+### Mutation proofs
+
+| mutation | what reddened |
+|---|---|
+| `is_local: false` back on the uncensored pick (`cheap_llm.rs`) | `cheap_llm_selection_equivalence`: `unc_configured_ollama_blank_url`, `unc_scan_any_compatible` — both the boolean AND `deadlineMs` 180000→90000 |
+| `profile_parameters: None` back on both priority-5 branches | all four `p5_*` rows |
+| `is_local: false` in `reaffirmation_selection` | `reaffirmation_selection_derives_is_local` |
+| (the fix itself, red-first) an OLLAMA uncensored fallback | `each_attempt_gets_a_fresh_budget` asserted the pre-fix `90000ms budget` and FAILED on the fix — split into the remote-profile original + the new local-budget pin |
+| restore the inline export filter | `preview_files_all` |
+| `not_found("File not found")` back | `chat_delete_document_missing` |
+| the lowercase Brahma sentence back | `brahma_console_tier3`'s `no_key_configured` |
+| drop the three `is_empty()` guards (Rust classifier) | `pascal_expressions_equivalence`, `pascal_tool_vocabulary_equivalence` (execution stays green — an empty params NAME already resolves to nothing) |
+| drop the three `key.length > PREFIX.length` guards (TS twin) | 4 rows: the classifier spec's bare-prefix row + the three draft-audit correction rows |
+| regenerate the execution oracle at `0506517d3`'s PARENT | the seven prototype rows — v4 pre-fix renders `function toString() { [native code] }`; v5 RED against it |
+
+### P4.D155 — the verification gate
+
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with
+  `--features quilltap-core/native-transport`.
+- `cargo build --workspace` clean.
+- **The §A family sweep, by name, oracles regenerated FRESH from
+  `/tmp/qt-v4-pin-p4d155-d883a5ee1` through `recipe_sweep.py --v4 <pin> --run`:
+  26 families attempted, 24 GREEN, zero `SKIP:` lines.** The two that are not
+  green are both accounted for: `pascal_custom_tool_definition_equivalence` is
+  the escalated Zod 4.5 red above (P4.D158's `6e1a64ea6` row), and
+  `p4_6ay_workbench_wire_contract` is the driver's `nothing_to_run` REFUSAL by
+  design — it is an in-process integration arm with no oracle at all, and it
+  runs under `cargo test --workspace` like any other test.
+- `cargo test --workspace` with the lane's 32-variable env block (every §A
+  family's `QT_ORACLE_*` / `QT_FIXTURE_*`), full log captured — never piped
+  through `tail`.
+- SPA: `npm run lint` (the `check-qt-classes` guard, 950 classes, 5/5
+  self-tests) clean; `npm test` **379 files / 5,956 tests, 0 failed**;
+  `npm run build` clean.
+- No Playwright authored and none run (§E — port 4319 is P4.D156's this round).
+
+### Versions
+
+core 0.0.782, harness 0.0.673, SPA 0.5.643. `web`, `host`, `cli` and `tauri`
+unchanged — this lane touched none of them.
+
+### 💸 The dogfood queue gains
+
+A real cheap-LLM fallback on the Friday copy where the CURRENT profile carries
+provider params (a DeepSeek `thinking: false`, or an Ollama profile with a Max
+Context) and NO cheap profile is configured — the priority-5 rung should now
+put those params on the wire, which `wire-tap.py` can see; an Ollama uncensored
+profile on a flagged chat, whose cheap-task fallback should now take the 180 s
+local budget and skip the API-key lookup entirely; the export wizard's preview
+count on an instance holding a character-archive bundle (the preview and the
+written `.qtap` should agree for the first time); a Brahma one-shot against a
+key-less profile (the capitalised sentence); and a Workbench draft carrying
+`{{params.}}` and `{{metadata.}}`, whose warnings now name what is actually
+wrong.

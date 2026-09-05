@@ -387,6 +387,24 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — docs(orders): P4.D155 closed — the lane record for the `0506517d3` collapse's corrections
+
+_Docs-only change._ (No crate versions bumped.)
+
+The lane record for P4.D155, appended to `status-log.md`: what landed for each
+of the six in-scope corrections, the fixture-vintage repair the lane had to make
+before two of its own §A families could regenerate, the two escalations that
+belong to other lanes, the mutation-proof table, the new family's regen recipe,
+and the gate. The work order's status header moves to CLOSED with the exact
+tier-by-tier disposition.
+
+Two findings in it are worth reading even by someone not carrying this round:
+the order's prescribed arm for correction (c) could not reach the 404 it was
+meant to measure (an unknown document id answers 400, and the existing case's
+row answers 400 for a different reason), and the order's premise that
+`{{params.toString}}` could leak in the browser is false in both trees —
+neither v4 nor v5 renders a template client-side.
+
 #### 2026-09-05 — feat(pascal): the client placeholder twin, and the three draft audits collapse onto it (v4 `0506517d3` correction (e), client half)
 
 _Versions: SPA 0.5.643._
