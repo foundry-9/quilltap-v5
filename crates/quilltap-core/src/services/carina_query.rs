@@ -1059,10 +1059,19 @@ where
     }
     let injector: Vec<crate::memory_injector::InjectorResult> =
         results.iter().map(injector_result_from_search).collect();
+    // The search runs over the answerer's whole store, so it surfaces what they
+    // know about other people too — those lines must name their subject or the
+    // answerer reads them as their own life (v4 `d883a5ee1`, bug 122).
+    let subject = crate::services::memory_subject::build_memory_subject_context(
+        deps.db,
+        character_id,
+        injector.iter().map(|r| r.memory.about_character_id.clone()),
+    );
     let formatted = crate::memory_injector::format_memories_for_context(
         &injector,
         CARINA_MEMORY_TOKEN_BUDGET,
         now_ms,
+        &subject,
     );
     if formatted.content.is_empty() || formatted.memories_used == 0 {
         return None;

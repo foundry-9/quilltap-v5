@@ -124,6 +124,7 @@ pub mod memory_gate;
 pub mod memory_processor;
 pub mod memory_recap;
 pub mod memory_service;
+pub mod memory_subject;
 pub mod message_attachment_adapter;
 pub mod message_context;
 pub mod message_finalizer;

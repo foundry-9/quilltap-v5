@@ -17,9 +17,10 @@
 use quilltap_core::memory_injector::{
     format_current_scene_state, format_dynamic_memory_head, format_frozen_memory_archive,
     format_inter_character_memories_for_context, format_memories_for_context,
-    format_memory_metadata_tag, format_summary_for_context, DebugInterCharacterMemoryInfo,
-    DebugMemoryInfo, InjectorMemory, InjectorResult, MetadataTagOpts, RecallAdjustment, SceneState,
-    SceneStateCharacter, SceneStateEmissionEntry,
+    format_memory_metadata_tag, format_memory_subject_prefix, format_summary_for_context,
+    DebugInterCharacterMemoryInfo, DebugMemoryInfo, InjectorMemory, InjectorResult,
+    MemorySubjectContext, MetadataTagOpts, RecallAdjustment, SceneState, SceneStateCharacter,
+    SceneStateEmissionEntry,
 };
 use serde::Deserialize;
 
@@ -258,6 +259,14 @@ enum Row {
         prior_emission: Vec<WirePriorEmission>,
         out: WireSceneOut,
     },
+    #[serde(rename = "prefix")]
+    Prefix {
+        id: String,
+        #[serde(rename = "aboutCharacterId")]
+        about_character_id: Option<String>,
+        subject: WireSubject,
+        out: String,
+    },
     #[serde(rename = "memories")]
     Memories {
         id: String,
@@ -266,6 +275,7 @@ enum Row {
         max_tokens: i64,
         #[serde(rename = "nowMs")]
         now_ms: f64,
+        subject: WireSubject,
         out: WireMemOut,
     },
     #[serde(rename = "inter")]
@@ -288,6 +298,7 @@ enum Row {
         memories: Vec<WireMem>,
         #[serde(rename = "maxTokens")]
         max_tokens: i64,
+        subject: WireSubject,
         out: WireMemOut,
     },
     #[serde(rename = "head")]
@@ -297,6 +308,7 @@ enum Row {
         options: WireHeadOptions,
         #[serde(rename = "nowMs")]
         now_ms: f64,
+        subject: WireSubject,
         out: WireMemOut,
     },
     #[serde(rename = "summary")]
@@ -307,6 +319,27 @@ enum Row {
         max_tokens: i64,
         out: WireSummaryOut,
     },
+}
+
+/// The `MemorySubjectContext` a self-facing row is formatted under (v4
+/// `d883a5ee1`, bug 122). Emitted on EVERY memories/frozen/head row so no arm
+/// can silently fall back to a default the oracle never used.
+#[derive(Deserialize)]
+struct WireSubject {
+    #[serde(rename = "selfCharacterId")]
+    self_character_id: String,
+    /// `[[id, name], …]` — a JS Map serialised in insertion order.
+    #[serde(rename = "characterNames")]
+    character_names: Vec<(String, String)>,
+}
+
+impl WireSubject {
+    fn into_ctx(self) -> MemorySubjectContext {
+        MemorySubjectContext {
+            self_character_id: self.self_character_id,
+            character_names: self.character_names.into_iter().collect(),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -397,6 +430,15 @@ fn memory_injector_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut count = 0usize;
+    // Coverage floors (v4 `d883a5ee1`, bug 122). The pre-existing self-facing
+    // rows all leave `aboutCharacterId` null, so they are VACUOUS for the
+    // subject prefix and would stay green under any context. These counters are
+    // what say the targeted rows are still in the corpus — a regenerated oracle
+    // that silently lost them would otherwise pass.
+    let mut prefix_rows = 0usize;
+    let mut prefixed_memories = 0usize;
+    let mut prefixed_frozen = 0usize;
+    let mut prefixed_head = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Row = serde_json::from_str(line)
             .unwrap_or_else(|e| panic!("parse error on line: {e}\n{line}"));
@@ -478,16 +520,31 @@ fn memory_injector_matches_oracle() {
                     assert_eq!(g.1.emitted_at, w.emitted_at, "scene '{id}' emittedAt");
                 }
             }
+            Row::Prefix {
+                id,
+                about_character_id,
+                subject,
+                out,
+            } => {
+                let got = format_memory_subject_prefix(
+                    about_character_id.as_deref(),
+                    &subject.into_ctx(),
+                );
+                assert_eq!(got, out, "prefix '{id}'");
+                prefix_rows += 1;
+            }
             Row::Memories {
                 id,
                 memories,
                 max_tokens,
                 now_ms,
+                subject,
                 out,
             } => {
                 let results: Vec<InjectorResult> =
                     memories.into_iter().map(|r| r.into_result()).collect();
-                let got = format_memories_for_context(&results, max_tokens, now_ms);
+                let got =
+                    format_memories_for_context(&results, max_tokens, now_ms, &subject.into_ctx());
                 assert_eq!(got.content, out.content, "memories '{id}' content");
                 assert_eq!(
                     got.token_count, out.token_count,
@@ -497,6 +554,9 @@ fn memory_injector_matches_oracle() {
                     got.memories_used, out.memories_used,
                     "memories '{id}' memoriesUsed"
                 );
+                if got.content.contains("About ") {
+                    prefixed_memories += 1;
+                }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);
             }
             Row::Inter {
@@ -554,17 +614,21 @@ fn memory_injector_matches_oracle() {
                 id,
                 memories,
                 max_tokens,
+                subject,
                 out,
             } => {
                 let mems: Vec<InjectorMemory> =
                     memories.into_iter().map(|m| m.into_mem()).collect();
-                let got = format_frozen_memory_archive(&mems, max_tokens);
+                let got = format_frozen_memory_archive(&mems, max_tokens, &subject.into_ctx());
                 assert_eq!(got.content, out.content, "frozen '{id}' content");
                 assert_eq!(got.token_count, out.token_count, "frozen '{id}' tokenCount");
                 assert_eq!(
                     got.memories_used, out.memories_used,
                     "frozen '{id}' memoriesUsed"
                 );
+                if got.content.contains("About ") {
+                    prefixed_frozen += 1;
+                }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);
             }
             Row::Head {
@@ -572,6 +636,7 @@ fn memory_injector_matches_oracle() {
                 memories,
                 options,
                 now_ms,
+                subject,
                 out,
             } => {
                 let results: Vec<InjectorResult> =
@@ -581,6 +646,7 @@ fn memory_injector_matches_oracle() {
                     options.max_tokens,
                     options.max_entries,
                     now_ms,
+                    &subject.into_ctx(),
                 );
                 assert_eq!(got.content, out.content, "head '{id}' content");
                 assert_eq!(got.token_count, out.token_count, "head '{id}' tokenCount");
@@ -588,6 +654,9 @@ fn memory_injector_matches_oracle() {
                     got.memories_used, out.memories_used,
                     "head '{id}' memoriesUsed"
                 );
+                if got.content.contains("About ") {
+                    prefixed_head += 1;
+                }
                 assert_debug_mem(&got.debug_memories, &out.debug_memories, &id);
             }
             Row::Summary {
@@ -604,6 +673,17 @@ fn memory_injector_matches_oracle() {
         count += 1;
     }
 
-    assert!(count > 0, "oracle file looks empty: {count}");
-    eprintln!("OK: memory-injector matched oracle ({count} rows).");
+    // 72 rows before bug 122 + 23 targeted ones (10 `prefix` + 5/4/4 across the
+    // three self-facing formatters).
+    assert!(count >= 95, "oracle lost rows: {count} < 95");
+    assert!(prefix_rows >= 10, "prefix arms lost: {prefix_rows} < 10");
+    assert!(
+        prefixed_memories >= 2 && prefixed_frozen >= 2 && prefixed_head >= 2,
+        "a self-facing formatter has no rows that actually PRINT a subject prefix \
+         (memories {prefixed_memories}, frozen {prefixed_frozen}, head {prefixed_head})"
+    );
+    eprintln!(
+        "OK: memory-injector matched oracle ({count} rows; {prefix_rows} prefix, \
+         prefixed lines {prefixed_memories}/{prefixed_frozen}/{prefixed_head})."
+    );
 }

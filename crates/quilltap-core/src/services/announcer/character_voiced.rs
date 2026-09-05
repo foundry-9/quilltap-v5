@@ -371,7 +371,16 @@ where
         Ok(results) if !results.is_empty() => {
             let injector: Vec<InjectorResult> =
                 results.iter().map(injector_result_from_search).collect();
-            let formatted = format_dynamic_memory_head(&injector, None, Some(12), params.now_ms);
+            // The recall spans the character's whole store, so it carries their
+            // memories about other people too; attribute them or the rewrite
+            // reads someone else's life as its own (v4 `d883a5ee1`, bug 122).
+            let subject = crate::services::memory_subject::build_memory_subject_context(
+                db,
+                &character_id,
+                injector.iter().map(|r| r.memory.about_character_id.clone()),
+            );
+            let formatted =
+                format_dynamic_memory_head(&injector, None, Some(12), params.now_ms, &subject);
             if !formatted.content.is_empty() {
                 recall_text = build_commonplace_llm_context(&CommonplaceParts {
                     relevant: Some(formatted.content),

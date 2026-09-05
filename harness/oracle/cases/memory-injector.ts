@@ -47,12 +47,14 @@ class PinnedDate extends RealDate {
 
 import {
   formatMemoryMetadataTag,
+  formatMemorySubjectPrefix,
   formatCurrentSceneState,
   formatMemoriesForContext,
   formatInterCharacterMemoriesForContext,
   formatFrozenMemoryArchive,
   formatDynamicMemoryHead,
   formatSummaryForContext,
+  type MemorySubjectContext,
   type SceneStateEmissionEntry,
 } from '@/lib/chat/context/memory-injector';
 import type { Memory } from '@/lib/schemas/types';
@@ -317,6 +319,81 @@ sceneCase(
 );
 
 // ===========================================================================
+// The memory-subject prefix (v4 d883a5ee1, bug 122)
+// ===========================================================================
+// Three self-facing formatters take a REQUIRED MemorySubjectContext. Every
+// pre-existing row in this corpus leaves `aboutCharacterId` null, so it is
+// VACUOUS for the prefix and stays byte-identical under SELF_SUBJECT — the
+// targeted rows below are what make the change measurable.
+
+const SELF_ID = 'c0000000-0000-4000-8000-00000000ku00';
+const MARION_ID = 'c0000000-0000-4000-8000-000000006d61';
+const GHOST_ID = 'c0000000-0000-4000-8000-000000006768';
+const BLANK_ID = 'c0000000-0000-4000-8000-000000006262';
+
+function subject(pairs: Array<[string, string]> = []): MemorySubjectContext {
+  return { selfCharacterId: SELF_ID, characterNames: new Map(pairs) };
+}
+function wireSubject(s: MemorySubjectContext): Record<string, unknown> {
+  return {
+    selfCharacterId: s.selfCharacterId,
+    characterNames: Array.from(s.characterNames.entries()),
+  };
+}
+/** The default for every pre-existing (untargeted) row. */
+const SELF_SUBJECT = subject();
+// The three budget-cut rows below are tuned so the SECOND line fits when it is
+// printed bare and does NOT once its `About another character: ` prefix is on
+// it — that is what pins "the estimate is taken on the prefixed line". Move
+// them and the mutation (estimating the un-prefixed line) stops reddening.
+const MEM_SUBJECT_BUDGET = 66;
+const FROZEN_SUBJECT_BUDGET = 38;
+const HEAD_SUBJECT_BUDGET = 75;
+
+/** The map the targeted rows resolve against. */
+const NAMED_SUBJECT = subject([
+  [MARION_ID, 'Marion'],
+  [BLANK_ID, '   '],
+]);
+
+function prefixCase(
+  id: string,
+  aboutCharacterId: string | null | undefined,
+  s: MemorySubjectContext,
+) {
+  const out = formatMemorySubjectPrefix(aboutCharacterId, s);
+  emit({
+    kind: 'prefix',
+    id,
+    aboutCharacterId: aboutCharacterId ?? null,
+    subject: wireSubject(s),
+    out,
+  });
+}
+
+prefixCase('prefix-null', null, NAMED_SUBJECT);
+prefixCase('prefix-undefined', undefined, NAMED_SUBJECT);
+prefixCase('prefix-empty-string', '', NAMED_SUBJECT);
+prefixCase('prefix-own-id', SELF_ID, NAMED_SUBJECT);
+prefixCase('prefix-resolved', MARION_ID, NAMED_SUBJECT);
+// The map's value is trimmed before it is tested and before it is printed.
+prefixCase(
+  'prefix-resolved-padded',
+  MARION_ID,
+  subject([[MARION_ID, '\u{feff} \n Marion \t ']]),
+);
+prefixCase('prefix-unresolved', GHOST_ID, NAMED_SUBJECT);
+// A map entry that trims to nothing is falsy → the same fallback as no entry.
+prefixCase('prefix-map-blank-name', BLANK_ID, NAMED_SUBJECT);
+// An empty selfCharacterId cannot match a real id, so the subject still prints.
+prefixCase('prefix-empty-self-id', MARION_ID, {
+  selfCharacterId: '',
+  characterNames: new Map([[MARION_ID, 'Marion']]),
+});
+// An astral name rides through verbatim.
+prefixCase('prefix-astral-name', MARION_ID, subject([[MARION_ID, '𝑀arion 🎩']]));
+
+// ===========================================================================
 // Shared memory corpus for the list formatters
 // ===========================================================================
 function m(
@@ -336,14 +413,20 @@ function res(
 // ===========================================================================
 // formatMemoriesForContext
 // ===========================================================================
-function memoriesCase(id: string, memories: SemanticSearchResult[], maxTokens: number) {
-  const out = formatMemoriesForContext(memories, maxTokens, undefined as never);
+function memoriesCase(
+  id: string,
+  memories: SemanticSearchResult[],
+  maxTokens: number,
+  subj: MemorySubjectContext = SELF_SUBJECT,
+) {
+  const out = formatMemoriesForContext(memories, maxTokens, undefined as never, subj);
   emit({
     kind: 'memories',
     id,
     memories: memories.map(wireResult),
     maxTokens,
     nowMs: FIXED_NOW_MS,
+    subject: wireSubject(subj),
     out: {
       content: out.content,
       tokenCount: out.tokenCount,
@@ -460,6 +543,51 @@ memoriesCase(
   2000,
 );
 
+
+// --- targeted memories (bug 122): whose life is this line about? -----------
+memoriesCase(
+  'mem-subject-resolved',
+  [res(m('sr', { content: 'Reassured Marie about her wish.', importance: 0.9, aboutCharacterId: MARION_ID }), 0.8)],
+  1000,
+  NAMED_SUBJECT,
+);
+memoriesCase(
+  'mem-subject-unresolved',
+  [res(m('su', { content: 'Struggles to become offered mother.', importance: 0.9, aboutCharacterId: GHOST_ID }), 0.8)],
+  1000,
+  NAMED_SUBJECT,
+);
+memoriesCase(
+  'mem-subject-own',
+  [res(m('so', { content: 'Kept the brass sextant.', importance: 0.9, aboutCharacterId: SELF_ID }), 0.8)],
+  1000,
+  NAMED_SUBJECT,
+);
+// Own memory first, then one about someone else, then an untargeted one — the
+// prefix is per LINE, not per block.
+memoriesCase(
+  'mem-subject-mixed',
+  [
+    res(m('mx1', { content: 'Own recollection.', importance: 0.95, aboutCharacterId: SELF_ID }), 0.9),
+    res(m('mx2', { content: 'Her children.', importance: 0.9, aboutCharacterId: MARION_ID }), 0.85),
+    res(m('mx3', { content: 'A nameless subject.', importance: 0.85, aboutCharacterId: GHOST_ID }), 0.8),
+    res(m('mx4', { content: 'About nobody in particular.', importance: 0.8 }), 0.75),
+  ],
+  1000,
+  NAMED_SUBJECT,
+);
+// The prefix is inside the block budget: the same two lines fit unprefixed and
+// the second one does not once `About another character: ` is on it.
+memoriesCase(
+  'mem-subject-budget-cut',
+  [
+    res(m('sb1', { content: 'x'.repeat(20), importance: 0.9 }), 0.9),
+    res(m('sb2', { content: 'y'.repeat(20), importance: 0.85, aboutCharacterId: GHOST_ID }), 0.9),
+  ],
+  MEM_SUBJECT_BUDGET,
+  NAMED_SUBJECT,
+);
+
 // ===========================================================================
 // formatInterCharacterMemoriesForContext
 // ===========================================================================
@@ -566,13 +694,19 @@ interCase(
 // ===========================================================================
 // formatFrozenMemoryArchive
 // ===========================================================================
-function frozenCase(id: string, memories: Memory[], maxTokens: number) {
-  const out = formatFrozenMemoryArchive(memories, maxTokens, undefined as never);
+function frozenCase(
+  id: string,
+  memories: Memory[],
+  maxTokens: number,
+  subj: MemorySubjectContext = SELF_SUBJECT,
+) {
+  const out = formatFrozenMemoryArchive(memories, maxTokens, undefined as never, subj);
   emit({
     kind: 'frozen',
     id,
     memories: memories.map(wireMem),
     maxTokens,
+    subject: wireSubject(subj),
     out: {
       content: out.content,
       tokenCount: out.tokenCount,
@@ -621,6 +755,36 @@ frozenCase(
   1000,
 );
 
+
+// --- targeted frozen anchors (bug 122) ------------------------------------
+frozenCase(
+  'frozen-subject-resolved',
+  [m('fsr', { summary: 'Her body, her past.', importance: 0.9, aboutCharacterId: MARION_ID })],
+  1000,
+  NAMED_SUBJECT,
+);
+frozenCase(
+  'frozen-subject-unresolved',
+  [m('fsu', { summary: 'A stranger to the map.', importance: 0.9, aboutCharacterId: GHOST_ID })],
+  1000,
+  NAMED_SUBJECT,
+);
+frozenCase(
+  'frozen-subject-own',
+  [m('fso', { summary: 'The pact was sealed.', importance: 0.9, aboutCharacterId: SELF_ID })],
+  1000,
+  NAMED_SUBJECT,
+);
+frozenCase(
+  'frozen-subject-budget-cut',
+  [
+    m('fsb1', { summary: 'a'.repeat(20), importance: 0.9 }),
+    m('fsb2', { summary: 'b'.repeat(20), importance: 0.85, aboutCharacterId: GHOST_ID }),
+  ],
+  FROZEN_SUBJECT_BUDGET,
+  NAMED_SUBJECT,
+);
+
 // ===========================================================================
 // formatDynamicMemoryHead
 // ===========================================================================
@@ -628,14 +792,16 @@ function headCase(
   id: string,
   memories: SemanticSearchResult[],
   options: { maxTokens?: number; maxEntries?: number },
+  subj: MemorySubjectContext = SELF_SUBJECT,
 ) {
-  const out = formatDynamicMemoryHead(memories, undefined as never, options);
+  const out = formatDynamicMemoryHead(memories, undefined as never, subj, options);
   emit({
     kind: 'head',
     id,
     memories: memories.map(wireResult),
     options: { maxTokens: options.maxTokens ?? null, maxEntries: options.maxEntries ?? null },
     nowMs: FIXED_NOW_MS,
+    subject: wireSubject(subj),
     out: {
       content: out.content,
       tokenCount: out.tokenCount,
@@ -738,6 +904,36 @@ headCase(
     ),
   ],
   {},
+);
+
+
+// --- targeted head entries (bug 122) --------------------------------------
+headCase(
+  'head-subject-resolved',
+  [res(m('hsraaaa', { summary: 'Her wish, reassured.', importance: 0.9, aboutCharacterId: MARION_ID }), 0.8)],
+  {},
+  NAMED_SUBJECT,
+);
+headCase(
+  'head-subject-unresolved',
+  [res(m('hsubbbb', { summary: 'An unnamed subject.', importance: 0.9, aboutCharacterId: GHOST_ID }), 0.8)],
+  {},
+  NAMED_SUBJECT,
+);
+headCase(
+  'head-subject-own',
+  [res(m('hsocccc', { summary: 'Genuinely his own.', importance: 0.9, aboutCharacterId: SELF_ID }), 0.8)],
+  {},
+  NAMED_SUBJECT,
+);
+headCase(
+  'head-subject-budget-cut',
+  [
+    res(m('hsb1aaa', { summary: 'a'.repeat(20), importance: 0.95 }), 0.95),
+    res(m('hsb2bbb', { summary: 'b'.repeat(20), importance: 0.9, aboutCharacterId: GHOST_ID }), 0.9),
+  ],
+  { maxTokens: HEAD_SUBJECT_BUDGET },
+  NAMED_SUBJECT,
 );
 
 // ===========================================================================

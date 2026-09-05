@@ -180,6 +180,44 @@ oracle case, and the runner's count guard moves 7 → 5 buckets.
 The oracle case shrinks 33 → 24 rows; every surviving row is byte-identical
 to the pre-split oracle regenerated at `0b0617fee` (the last sha at which the
 case links), and the split case regenerates clean at `d883a5ee1`.
+#### 2026-09-05 — fix(memory): name the subject of a memory about someone else (bug 122)
+
+_Versions: core 0.0.778, harness 0.0.672._
+
+The port of v4 `d883a5ee1`. A character's memory store is keyed on
+`characterId` alone: it holds what they remember about themselves and what
+they remember about everyone else, separated only by `aboutCharacterId`.
+Four formatters render memories into context and exactly one of them said
+whose life a line described, so a character read other people's actions,
+relationships and physical history as autobiography — and answered as them.
+
+`MemorySubjectContext` and `format_memory_subject_prefix` now sit beside the
+formatters and are threaded through all three self-facing blocks
+(`## Memory Anchors`, `## Relevant Memories`, `Most relevant memories for
+this turn:`). Own memories and untargeted ones stay unprefixed; anything
+else gets `About <Name>: `, falling back to `About another character: ` when
+the id resolves to no name. The parameter is required rather than optional,
+because omission is exactly how the defect arrived — in Rust the compiler is
+what enforces that. The prefix is built BEFORE each line's token estimate,
+so it is paid for out of the block's budget rather than smuggled past it.
+
+`services::memory_subject::build_memory_subject_context` is the one place
+that turns a pool into that context. It lives outside the injector so that
+module stays pure formatting with no repository reach, and it queries
+nothing for a purely first-person store. Three call sites supply it: the
+per-turn build (ONE lookup over the union of both pools), Carina's answerer
+recall, and character-voiced announcements.
+
+The tier-1 corpus grew 72 → 95 rows: a new `prefix` kind with ten arms, plus
+targeted memories/frozen/head rows for the resolved, unresolved and own-id
+cases and one per formatter where the prefix is what pushes a line past
+`maxTokens`. Its first run caught a real fidelity gap — the module-local
+`js_trim` is a documented `str::trim` approximation that does not strip
+U+FEFF, so a BOM-padded character name printed the BOM; the new function
+uses the canonical `jsstr::js_trim` instead. A source census pins the three
+call sites, the union, and that no production site formats under a default
+context.
+
 #### 2026-09-05 — feat(db): resolve character names off the raw path, skipping the vault overlay (bug 122, part 1)
 
 _Versions: core 0.0.777._

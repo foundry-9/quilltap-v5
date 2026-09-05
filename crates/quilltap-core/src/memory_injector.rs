@@ -154,6 +154,86 @@ pub fn format_memory_metadata_tag(opts: &MetadataTagOpts) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// The memory-subject prefix (v4 d883a5ee1, bug 122)
+// ---------------------------------------------------------------------------
+
+/// Whose life a memory line describes, for the SELF-facing memory blocks.
+///
+/// A character's memory store is keyed on `characterId` alone: the same store
+/// holds what they remember about themselves and what they remember about
+/// everyone else, and `aboutCharacterId` is the only thing that tells the two
+/// apart. Every self-facing block — `## Memory Anchors`, `## Relevant
+/// Memories`, `Most relevant memories for this turn:` — is delivered under a
+/// second-person heading ("You remember the following entries that bear on this
+/// moment"), so a line about someone else, printed bare, reads as
+/// autobiography.
+///
+/// That is bug 122: Kumar's own-memory blocks handed him "struggles to become
+/// offered mother" and "reassured Marie about her wish" — both Marion's — with
+/// no subject, and he answered the turn as Marion, fluently. Only
+/// [`format_inter_character_memories_for_context`] was attributing its lines.
+///
+/// v4 makes both fields REQUIRED rather than optional so a new call site has to
+/// decide whose store it is printing; an unattributed self-facing block is
+/// exactly the defect. v5 carries that as a required `&MemorySubjectContext`
+/// parameter on all three formatters — the compiler is the "required" v4 asks
+/// for. (v5's parameter ORDER is its own: it takes `now_ms`/`max_tokens` where
+/// v4 takes `provider`, so the subject goes last rather than at v4's index.)
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MemorySubjectContext {
+    /// The character whose store this is. Their own memories go unprefixed.
+    pub self_character_id: String,
+    /// `aboutCharacterId` → display name. Ids absent from the map still get a
+    /// prefix.
+    pub character_names: std::collections::HashMap<String, String>,
+}
+
+/// Build the subject prefix for one self-facing memory line (v4
+/// `formatMemorySubjectPrefix`).
+///
+/// Returns `""` for the character's own memories and for untargeted ones (no
+/// `aboutCharacterId` — those are about nobody in particular and read correctly
+/// in the first person). Otherwise `About <Name>: `, falling back to
+/// `About another character: ` when the id resolves to no name: the job is to
+/// break the first-person reading, and a nameless subject does that as well as
+/// a named one. Losing the name is a degraded line; losing the prefix is the
+/// bug.
+pub fn format_memory_subject_prefix(
+    about_character_id: Option<&str>,
+    subject: &MemorySubjectContext,
+) -> String {
+    // v4's `if (!aboutCharacterId)` — absent AND empty-string are both falsy.
+    let about = match about_character_id {
+        Some(id) if !id.is_empty() => id,
+        _ => return String::new(),
+    };
+    if about == subject.self_character_id {
+        return String::new();
+    }
+    // `subject.characterNames.get(id)?.trim()` — a map entry that trims to
+    // nothing is falsy, so it lands on the same fallback as a missing entry.
+    //
+    // ⚠ The CANONICAL [`crate::jsstr::js_trim`], not this module's local
+    // `js_trim`. That local helper is a documented approximation
+    // (`str::trim`) that diverges from JS on U+FEFF and U+0085; a character
+    // name is operator-supplied text that can carry a BOM, and the corpus row
+    // `prefix-resolved-padded` caught the divergence on this function's first
+    // differential run. The local helper's own callers (the metadata tag,
+    // narrativeTime) are v4 surfaces this lane must not touch — the gap there
+    // is pre-existing and recorded, not fixed here.
+    let name = subject
+        .character_names
+        .get(about)
+        .map(|n| crate::jsstr::js_trim(n))
+        .unwrap_or("");
+    if name.is_empty() {
+        "About another character: ".to_string()
+    } else {
+        format!("About {name}: ")
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Input shapes (the Memory / SemanticSearchResult subset the formatters read).
 // ---------------------------------------------------------------------------
 
@@ -488,10 +568,14 @@ fn cmp_num(diff: f64) -> std::cmp::Ordering {
 }
 
 /// Format memories for injection into context.
+///
+/// Self-facing block: `subject` attributes any line the character holds about
+/// someone else (see [`format_memory_subject_prefix`], v4 bug 122).
 pub fn format_memories_for_context(
     memories: &[InjectorResult],
     max_tokens: i64,
     now_ms: f64,
+    subject: &MemorySubjectContext,
 ) -> FormattedMemoriesResult {
     if memories.is_empty() {
         return empty_memories_result();
@@ -554,7 +638,10 @@ pub fn format_memories_for_context(
             Some(n) => format!("{age} · {n}"),
             None => age,
         };
-        let memory_line = format!("- [{when_tag}] {body}{meta}");
+        let prefix = format_memory_subject_prefix(r.memory.about_character_id.as_deref(), subject);
+        let memory_line = format!("- [{when_tag}] {prefix}{body}{meta}");
+        // The estimate is taken on the PREFIXED line, exactly as v4 takes it —
+        // the prefix is paid for out of the block's budget, not smuggled past it.
         let line_tokens = estimate_tokens(&format!("{memory_line}\n"));
 
         if current_tokens + line_tokens > max_tokens {
@@ -792,6 +879,7 @@ pub fn format_inter_character_memories_for_context(
 pub fn format_frozen_memory_archive(
     memories: &[InjectorMemory],
     max_tokens: i64,
+    subject: &MemorySubjectContext,
 ) -> FormattedMemoriesResult {
     if memories.is_empty() {
         return empty_memories_result();
@@ -815,7 +903,12 @@ pub fn format_frozen_memory_archive(
             keywords: Some(&memory.keywords),
             ..Default::default()
         });
-        let memory_line = format!("- {summary}{meta}");
+        // The subject prefix is derived from `aboutCharacterId` and the name
+        // map, both of which are stable within a compaction generation — so it
+        // costs the archive none of its byte-stability. It is built BEFORE the
+        // estimate, so it is paid for out of the block's budget.
+        let prefix = format_memory_subject_prefix(memory.about_character_id.as_deref(), subject);
+        let memory_line = format!("- {prefix}{summary}{meta}");
         let line_tokens = estimate_tokens(&format!("{memory_line}\n"));
         if current_tokens + line_tokens > max_tokens {
             break;
@@ -862,6 +955,7 @@ pub fn format_dynamic_memory_head(
     max_tokens: Option<i64>,
     max_entries: Option<usize>,
     now_ms: f64,
+    subject: &MemorySubjectContext,
 ) -> FormattedMemoriesResult {
     let max_tokens = max_tokens.unwrap_or(DYNAMIC_HEAD_TOKEN_BUDGET);
     let max_entries = max_entries.unwrap_or(DYNAMIC_HEAD_DEFAULT_SIZE);
@@ -945,7 +1039,9 @@ pub fn format_dynamic_memory_head(
             keywords: Some(&r.memory.keywords),
             adjustments: fired.as_deref(),
         });
-        let entry = format!("{id_tag} {when_tag} {summary}{meta}");
+        let prefix = format_memory_subject_prefix(r.memory.about_character_id.as_deref(), subject);
+        let entry = format!("{id_tag} {when_tag} {prefix}{summary}{meta}");
+        // Estimated on the PREFIXED entry — v4 takes it there too.
         let candidate_tokens = estimate_tokens(&format!("{entry}\n"));
         if current_tokens + candidate_tokens > max_tokens {
             break;
@@ -1075,7 +1171,13 @@ mod episodic_visibility_tests {
     fn head_age_label_reads_the_event_clock() {
         // ~ last week (8 days before the frozen now).
         let results = vec![result(8.0 * 86_400_000.0, None)];
-        let formatted = format_dynamic_memory_head(&results, None, None, NOW_MS);
+        let formatted = format_dynamic_memory_head(
+            &results,
+            None,
+            None,
+            NOW_MS,
+            &MemorySubjectContext::default(),
+        );
         assert!(
             formatted.content.contains("[last week]"),
             "content: {}",
@@ -1086,7 +1188,13 @@ mod episodic_visibility_tests {
     #[test]
     fn head_carries_narrative_time_verbatim() {
         let results = vec![result(0.0, Some("the third night at sea"))];
-        let formatted = format_dynamic_memory_head(&results, None, None, NOW_MS);
+        let formatted = format_dynamic_memory_head(
+            &results,
+            None,
+            None,
+            NOW_MS,
+            &MemorySubjectContext::default(),
+        );
         assert!(
             formatted
                 .content
@@ -1187,14 +1295,25 @@ mod intransitive_comparator_regression {
         // fires for some pairs and the epsilon rule for the rest, so BOTH
         // intransitivity sources are live.
         let results = epsilon_ladder(200, true);
-        let formatted = format_dynamic_memory_head(&results, None, None, NOW_MS);
+        let formatted = format_dynamic_memory_head(
+            &results,
+            None,
+            None,
+            NOW_MS,
+            &MemorySubjectContext::default(),
+        );
         assert!(formatted.memories_used > 0, "the head produced no entries");
     }
 
     #[test]
     fn memories_for_context_survives_the_intransitive_comparator() {
         let results = epsilon_ladder(200, false);
-        let formatted = format_memories_for_context(&results, 100_000, NOW_MS);
+        let formatted = format_memories_for_context(
+            &results,
+            100_000,
+            NOW_MS,
+            &MemorySubjectContext::default(),
+        );
         assert!(
             formatted.memories_used > 0,
             "the memory block produced no entries"
@@ -1216,7 +1335,13 @@ mod intransitive_comparator_regression {
                 blended_after: Some(((i % 7) as f64) * 0.03),
             });
         }
-        let formatted = format_dynamic_memory_head(&results, None, None, NOW_MS);
+        let formatted = format_dynamic_memory_head(
+            &results,
+            None,
+            None,
+            NOW_MS,
+            &MemorySubjectContext::default(),
+        );
         assert!(formatted.memories_used > 0, "the head produced no entries");
         let blended: Vec<f64> = formatted
             .debug_memories
@@ -1226,6 +1351,69 @@ mod intransitive_comparator_regression {
         assert!(
             blended.windows(2).all(|w| w[0] >= w[1]),
             "head not in descending blended order: {blended:?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The memory-subject prefix (v4 d883a5ee1, bug 122) — the four arms
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod memory_subject_prefix_tests {
+    use super::*;
+
+    fn subject(pairs: &[(&str, &str)]) -> MemorySubjectContext {
+        MemorySubjectContext {
+            self_character_id: "c-kumar".to_string(),
+            character_names: pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn the_four_arms() {
+        let s = subject(&[("c-marion", "Marion"), ("c-blank", "   ")]);
+
+        // 1. No subject at all — the memory is about nobody in particular and
+        //    reads correctly in the first person. (v4's `!aboutCharacterId`
+        //    also catches the empty string.)
+        assert_eq!(format_memory_subject_prefix(None, &s), "");
+        assert_eq!(format_memory_subject_prefix(Some(""), &s), "");
+
+        // 2. The character's own memory — unprefixed.
+        assert_eq!(format_memory_subject_prefix(Some("c-kumar"), &s), "");
+
+        // 3. Resolved to a name.
+        assert_eq!(
+            format_memory_subject_prefix(Some("c-marion"), &s),
+            "About Marion: "
+        );
+
+        // 4. Unresolved — breaking the first-person reading is the job; the
+        //    name is the nicety.
+        assert_eq!(
+            format_memory_subject_prefix(Some("c-nobody"), &s),
+            "About another character: "
+        );
+        // A map entry that trims to nothing is falsy in v4, so it lands on the
+        // same fallback as a missing entry.
+        assert_eq!(
+            format_memory_subject_prefix(Some("c-blank"), &s),
+            "About another character: "
+        );
+    }
+
+    /// v4 trims the mapped name (`?.trim()`) before deciding and before
+    /// printing it.
+    #[test]
+    fn the_mapped_name_is_js_trimmed() {
+        let s = subject(&[("c-marion", "\u{feff} \n Marion \t ")]);
+        assert_eq!(
+            format_memory_subject_prefix(Some("c-marion"), &s),
+            "About Marion: "
         );
     }
 }

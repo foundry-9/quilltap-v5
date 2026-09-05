@@ -2497,7 +2497,40 @@ where
         })
         .min(budget.memory_budget);
         let archive_budget = (budget.memory_budget - dynamic_head_budget).max(0);
-        let archive_formatted = format_frozen_memory_archive(&frozen_archive, archive_budget);
+
+        // Both pools below are keyed on `characterId` alone, so each carries this
+        // character's memories ABOUT other people alongside their own — and both
+        // are delivered under "You remember the following entries…". Resolve the
+        // subjects so those lines can say whose life they describe (v4
+        // `d883a5ee1`, bug 122). Names are looked up rather than taken from
+        // `participant_characters` because a memory's subject is frequently
+        // someone not in the room (in v4's reported scene, one character
+        // accounted for 91 of the responder's).
+        //
+        // ONE lookup for the turn, over the UNION of both pools — v4 builds the
+        // context once here and hands the same value to both formatters.
+        //
+        // v4 records three contributing conditions that were NOT the bug and
+        // must not be "fixed" on the way past: `isRecentlyAddressed` was
+        // correct (the turn note rightly forbade the responder from passing);
+        // `multiCharacterPrefill: 0`, from bug 85's fix, left no trailing
+        // `[Name]` anchor between the memories and the first generated token;
+        // and all three seats ran the same cheap model.
+        let memory_subject = crate::services::memory_subject::build_memory_subject_context(
+            db,
+            &input.character.id,
+            frozen_archive
+                .iter()
+                .map(|m| m.about_character_id.clone())
+                .chain(
+                    dynamic_head_results
+                        .iter()
+                        .map(|r| r.memory.about_character_id.clone()),
+                ),
+        );
+
+        let archive_formatted =
+            format_frozen_memory_archive(&frozen_archive, archive_budget, &memory_subject);
 
         let head_formatted = format_dynamic_memory_head(
             &dynamic_head_results,
@@ -2508,6 +2541,7 @@ where
                 DYNAMIC_HEAD_DEFAULT_SIZE
             }),
             now_ms_f,
+            &memory_subject,
         );
 
         whispered_memory_ids = head_formatted
