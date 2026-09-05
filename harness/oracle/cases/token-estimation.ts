@@ -3,7 +3,14 @@
  *
  * Drives the REAL pure functions from v4's lib/tokens/token-counter.ts:
  * estimateTokens, countMessageTokens, countMessagesTokens, truncateToTokenLimit,
- * getContextUsagePercent, getContextWarningLevel. All exported in v4.
+ * countToolSchemaTokens. All exported in v4.
+ *
+ * P4.D157 (v4 d4138b96b, the 4.9 dead-code sweep) DELETED getContextUsagePercent
+ * and getContextWarningLevel — the context-usage gauges — from token-counter.ts.
+ * Their rows came out of this case with the v5 twins (neither had a production
+ * caller on either side); the remaining rows are byte-identical to the pre-split
+ * oracle. Do not re-add them: a named import of a deleted export makes this whole
+ * case fail to LINK, emitting a ZERO-byte NDJSON.
  *
  * All rows omit the provider, so the estimator uses the default 3.5
  * chars-per-token (no plugin-registry dependency). The Rust port takes that rate
@@ -21,8 +28,6 @@ import {
   countMessageTokens,
   countMessagesTokens,
   truncateToTokenLimit,
-  getContextUsagePercent,
-  getContextWarningLevel,
   countToolSchemaTokens,
 } from '@/lib/tokens/token-counter';
 
@@ -33,8 +38,6 @@ type Row =
   | { kind: 'message'; id: string; role: string; content: string; out: number }
   | { kind: 'conversation'; id: string; messages: Msg[]; out: number }
   | { kind: 'truncate'; id: string; text: string; maxTokens: number; suffix: string; out: string }
-  | { kind: 'usage'; id: string; usedTokens: number; contextLimit: number; out: number }
-  | { kind: 'warning'; id: string; usedTokens: number; contextLimit: number; out: string }
   | { kind: 'toolSchema'; id: string; tools: unknown[]; out: number };
 
 const rows: Row[] = [];
@@ -88,29 +91,6 @@ const truncCases: Array<[string, string, number, string]> = [
 ];
 for (const [id, text, maxTokens, suffix] of truncCases) {
   rows.push({ kind: 'truncate', id, text, maxTokens, suffix, out: truncateToTokenLimit(text, maxTokens, undefined, suffix) });
-}
-
-// getContextUsagePercent(used, limit) — Math.round, cap 100, limit<=0 → 100.
-const usageCases: Array<[string, number, number]> = [
-  ['half', 50000, 100000], // 50
-  ['round-up', 805, 1000], // 80.5 → 81
-  ['over', 150000, 100000], // 150 → cap 100
-  ['zero-limit', 100, 0], // → 100
-  ['low', 1, 100000], // ~0 → 0
-];
-for (const [id, used, limit] of usageCases) {
-  rows.push({ kind: 'usage', id, usedTokens: used, contextLimit: limit, out: getContextUsagePercent(used, limit) });
-}
-
-// getContextWarningLevel(used, limit)
-const warnCases: Array<[string, number, number]> = [
-  ['ok', 5000, 100000], // 5% → ok
-  ['warning-80', 80000, 100000], // 80 → warning
-  ['critical-95', 95000, 100000], // 95 → critical
-  ['boundary-79', 79000, 100000], // 79 → ok
-];
-for (const [id, used, limit] of warnCases) {
-  rows.push({ kind: 'warning', id, usedTokens: used, contextLimit: limit, out: getContextWarningLevel(used, limit) });
 }
 
 // countToolSchemaTokens(tools, provider) — v4 `f933ba9c` (bug 70). The tools ride

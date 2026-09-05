@@ -130,20 +130,6 @@ pub fn truncate_to_token_limit(
     out
 }
 
-/// Percentage of the context window used, rounded and capped at 100. A
-/// non-positive limit yields 100 (treat as full).
-///
-/// Mirrors JS `Math.round` for non-negative input as `floor(x + 0.5)` (the
-/// ECMAScript identity), so the .5 rounding matches exactly.
-pub fn get_context_usage_percent(used_tokens: i64, context_limit: i64) -> i64 {
-    if context_limit <= 0 {
-        return 100;
-    }
-    let pct = (used_tokens as f64 / context_limit as f64) * 100.0;
-    let rounded = (pct + 0.5).floor() as i64;
-    rounded.min(100)
-}
-
 /// Format a token count for display ("1.5k", "125k", "2.3M"). This is the
 /// token-counter.ts variant: a lowercase `k` thousands suffix (the
 /// format-tokens.ts twin in [`crate::format_tokens`] uses uppercase `K`). Below
@@ -157,16 +143,4 @@ pub fn format_token_count(tokens: f64) -> String {
         return format!("{}k", crate::jsnum::to_fixed(tokens / 1_000.0, 1));
     }
     format!("{tokens}")
-}
-
-/// Context-usage warning level: `critical` at ≥95%, `warning` at ≥80%, else `ok`.
-pub fn get_context_warning_level(used_tokens: i64, context_limit: i64) -> &'static str {
-    let percent = get_context_usage_percent(used_tokens, context_limit);
-    if percent >= 95 {
-        "critical"
-    } else if percent >= 80 {
-        "warning"
-    } else {
-        "ok"
-    }
 }

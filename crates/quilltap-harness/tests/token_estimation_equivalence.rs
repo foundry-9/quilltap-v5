@@ -1,8 +1,13 @@
 //! Tier-1 differential test #11 (Wave 1 / B3): character-based token estimation.
 //!
 //! Covers estimateTokens / countMessageTokens / countMessagesTokens /
-//! truncateToTokenLimit / getContextUsagePercent / getContextWarningLevel, all
-//! on the default 3.5 chars-per-token path. Counts and strings exact.
+//! truncateToTokenLimit / countToolSchemaTokens, all on the default 3.5
+//! chars-per-token path. Counts and strings exact.
+//!
+//! P4.D157: v4 `d4138b96b` deleted `getContextUsagePercent` /
+//! `getContextWarningLevel`; neither twin had a production caller in v5 either,
+//! so both were deleted here and their `usage`/`warning` rows left the case
+//! (33 → 24 rows; every surviving row byte-identical).
 //!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
@@ -14,8 +19,7 @@
 
 use quilltap_core::token_estimation::{
     count_message_tokens, count_messages_tokens, count_tool_schema_tokens, estimate_tokens,
-    get_context_usage_percent, get_context_warning_level, truncate_to_token_limit,
-    DEFAULT_CHARS_PER_TOKEN,
+    truncate_to_token_limit, DEFAULT_CHARS_PER_TOKEN,
 };
 use serde::Deserialize;
 
@@ -54,24 +58,6 @@ enum OracleRow {
         suffix: String,
         out: String,
     },
-    #[serde(rename = "usage")]
-    Usage {
-        id: String,
-        #[serde(rename = "usedTokens")]
-        used_tokens: i64,
-        #[serde(rename = "contextLimit")]
-        context_limit: i64,
-        out: i64,
-    },
-    #[serde(rename = "warning")]
-    Warning {
-        id: String,
-        #[serde(rename = "usedTokens")]
-        used_tokens: i64,
-        #[serde(rename = "contextLimit")]
-        context_limit: i64,
-        out: String,
-    },
     /// v4 `countToolSchemaTokens` (`f933ba9c`): the serialized tool slate plus 4
     /// tokens of framing per tool. The tools ride as JSON so both sides measure
     /// the same bytes. The circular-definition→0 arm cannot be shipped through
@@ -98,7 +84,7 @@ fn token_estimation_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
-    let mut counts = [0usize; 7];
+    let mut counts = [0usize; 5];
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
             OracleRow::Estimate { id, text, out } => {
@@ -142,39 +128,13 @@ fn token_estimation_matches_oracle() {
                 );
                 counts[3] += 1;
             }
-            OracleRow::Usage {
-                id,
-                used_tokens,
-                context_limit,
-                out,
-            } => {
-                assert_eq!(
-                    get_context_usage_percent(used_tokens, context_limit),
-                    out,
-                    "usage '{id}'"
-                );
-                counts[4] += 1;
-            }
-            OracleRow::Warning {
-                id,
-                used_tokens,
-                context_limit,
-                out,
-            } => {
-                assert_eq!(
-                    get_context_warning_level(used_tokens, context_limit),
-                    out,
-                    "warning '{id}'"
-                );
-                counts[5] += 1;
-            }
             OracleRow::ToolSchema { id, tools, out } => {
                 assert_eq!(
                     count_tool_schema_tokens(&tools, CPT),
                     out,
                     "toolSchema '{id}'"
                 );
-                counts[6] += 1;
+                counts[4] += 1;
             }
         }
     }

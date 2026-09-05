@@ -12,6 +12,27 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — chore(dead-code): retire the context-usage gauges v4 deleted (P4.D157 unit 1)
+
+_Versions: core 0.0.777, harness 0.0.672._
+
+v4 `d4138b96b` (the 4.9 release dead-code sweep) removed
+`getContextUsagePercent` and `getContextWarningLevel` from
+`lib/tokens/token-counter.ts`. `harness/oracle/cases/token-estimation.ts`
+imports both by name, so at any sha past that commit the case does not diff
+wrong — it fails to LINK, and the redirect leaves a zero-byte NDJSON.
+
+Measured: neither v5 twin has a production caller.
+`get_context_usage_percent` was called only from
+`get_context_warning_level`'s own body, and `get_context_warning_level` had
+no caller at all outside the differential — a dead pair, matching v4's
+finding. Both are deleted, their `usage`/`warning` rows come out of the
+oracle case, and the runner's count guard moves 7 → 5 buckets.
+
+The oracle case shrinks 33 → 24 rows; every surviving row is byte-identical
+to the pre-split oracle regenerated at `0b0617fee` (the last sha at which the
+case links), and the split case regenerates clean at `d883a5ee1`.
+
 #### 2026-09-05 — docs(orders): the `d883a5ee1` drift catch-up round ordered — P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158
 
 _Docs-only change._ (No crate versions bumped.)
