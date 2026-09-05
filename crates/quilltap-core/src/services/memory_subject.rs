@@ -40,9 +40,21 @@ pub fn build_memory_subject_context(
     build_memory_subject_context_with(self_character_id, about_character_ids, &|ids| {
         // v4's `safeQuery(..., new Map())` fallback lives inside
         // `find_names_by_ids`; a read-pool failure before it gets there lands on
-        // the same empty map.
-        db.read_main(|conn| Ok(crate::db::characters_read::find_names_by_ids(conn, ids)))
-            .unwrap_or_default()
+        // the same empty map — and logs the same sentence, so an operator reading
+        // `combined.log` sees WHY a block came back unprefixed (the §3 review at
+        // the `d883a5ee1` unification: a silent pool failure was the one leg v4
+        // never has, since its `safeQuery` wraps the whole body).
+        match db.read_main(|conn| Ok(crate::db::characters_read::find_names_by_ids(conn, ids))) {
+            Ok(names) => names,
+            Err(e) => {
+                tracing::error!(
+                    count = ids.len(),
+                    error = %e,
+                    "Error resolving character names"
+                );
+                std::collections::HashMap::new()
+            }
+        }
     })
 }
 

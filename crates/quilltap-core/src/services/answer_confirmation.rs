@@ -610,27 +610,29 @@ fn build_reaffirmation_user(
 /// is the pin; the shape itself is proven against v4 by
 /// `cheap_llm_selection_equivalence`.
 ///
-/// `ReaffirmationProfile` is a narrower shape than [`CheapLlmProfile`], so the
-/// derivation is spelled here rather than routed through
-/// [`crate::cheap_llm::selection_from_profile`] — the two must agree, and the
-/// pin below asserts they do on the field that moved.
+/// `ReaffirmationProfile` is a narrower shape than [`CheapLlmProfile`], so it is
+/// widened (the four fields it lacks take their defaults — none of them feeds
+/// `selectionFromProfile`) and routed through the ONE
+/// [`crate::cheap_llm::selection_from_profile`], exactly as v4 collapsed this
+/// site (`answer-confirmation.service.ts:386` → `selectionFromProfile(
+/// connectionProfile)`, no `localBaseUrlFallback`). The §3 review at the
+/// `d883a5ee1` unification found the earlier re-spelled derivation agreed with
+/// the shared builder today but had nothing pinning that agreement.
 fn reaffirmation_selection(profile: &ReaffirmationProfile) -> CheapLlmSelection {
-    CheapLlmSelection {
-        provider: profile.provider.clone(),
-        model_name: profile.model_name.clone(),
-        // JS `profile.baseUrl || undefined`; v4 passes no `localBaseUrlFallback`
-        // at this site, so a blank base URL stays blank.
-        base_url: profile.base_url.clone().filter(|s| !s.is_empty()),
-        connection_profile_id: Some(profile.id.clone()),
-        is_local: profile.provider == "OLLAMA",
-        // v4 `d9c5a1c7`: the inline `parameters && typeof === 'object'` copy
-        // became `profileParams(connectionProfile)`, so the Ollama `num_ctx`
-        // injection reaches the re-affirmation call too.
-        profile_parameters: crate::cheap_llm::profile_params_parts(
-            &profile.provider,
-            profile.parameters.as_ref(),
-            profile.max_context,
-        ),
+    crate::cheap_llm::selection_from_profile(&CheapLlmProfile::from(profile), false)
+}
+
+impl From<&ReaffirmationProfile> for CheapLlmProfile {
+    fn from(p: &ReaffirmationProfile) -> Self {
+        CheapLlmProfile {
+            id: p.id.clone(),
+            provider: p.provider.clone(),
+            model_name: p.model_name.clone(),
+            base_url: p.base_url.clone(),
+            parameters: p.parameters.clone(),
+            max_context: p.max_context,
+            ..CheapLlmProfile::default()
+        }
     }
 }
 

@@ -609,6 +609,13 @@ impl<CMP: CompletionProvider + Sync> crate::services::message_context::MessageCo
         file_ids: &[String],
         _provider: &str,
     ) -> Result<UserAttachmentLoad, String> {
+        // Granularity note (§3 review, the `d883a5ee1` unification): this seam
+        // answers all-or-nothing per carrying MESSAGE, where v4 pushes each kept
+        // attachment as it goes inside its one try/catch — so a throw mid-loop
+        // would keep the earlier files' bytes in v4 and lose that row's in v5.
+        // Unreachable on both sides today (`loadChatFilesForLLM` swallows per
+        // file, `chat-files-v2.ts:678`, and nothing below returns `Err`); recorded
+        // so the difference is named if a loader ever grows a hard failure.
         // v4 `rehydrateUserAttachments` reads `args.connectionProfile.provider`
         // (the responding profile), the same source the K section uses — NOT the
         // possibly-rerouted formatting provider the seam passes.

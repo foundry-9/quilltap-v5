@@ -703,7 +703,7 @@ pub struct RehydratedUserAttachments {
 /// existed. v4 declares its two accumulators OUTSIDE the try, so a mid-walk throw
 /// returns what earlier rows already contributed rather than nothing — kept here
 /// by breaking out of the loop instead of discarding.
-pub async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
+async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
     mc_seams: &MCS,
     messages: &[WhisperMessage],
     character_participant_id: &str,
@@ -1188,6 +1188,10 @@ where
             && m.role.as_deref() == Some("ASSISTANT")
             && m.participant_id.as_deref() == Some(responding_id)
     });
+    // v4: `isMultiCharacter && characterParticipant && !hasHistoryAccess &&
+    // !hasPriorResponse` — the `characterParticipant` conjunct is JS truthiness on
+    // the participant row, spelled here as a non-empty id (an absent row has no
+    // id AND no `created_at`, so the cutoff is `None` either way).
     let attachment_history_cutoff: Option<String> = if is_multi
         && !responding_id.is_empty()
         && !params.has_history_access
