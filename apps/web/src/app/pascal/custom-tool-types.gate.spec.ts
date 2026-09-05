@@ -117,7 +117,7 @@ const ROWS: Row[] = [
     id: "gate-both-clauses-one-malformed",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"a\":{\"eq\":true}}},\"withheldWhen\":{\"metadata\":{\"b\":{\"nope\":1}}}}",
     success: false,
-    reason: "withheldWhen.metadata.b: Unrecognized key: \"nope\"",
+    reason: "withheldWhen.metadata.b: Unrecognized key: \"nope\"; withheldWhen.metadata.b: must specify at least one comparator (gt, gte, lt, lte, eq, neq, contains, ncontains); withheldWhen: declares both availableWhen and withheldWhen \u2014 a definition gates one way or the other. Fold the second test into the first, remembering that a key the character lacks never matches.",
     data: null,
   },
   {
@@ -180,7 +180,7 @@ const ROWS: Row[] = [
     id: "gate-unknown-comparator",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"notes\":{\"startsWith\":\"a\"}}}}",
     success: false,
-    reason: "availableWhen.metadata.notes: Unrecognized key: \"startsWith\"",
+    reason: "availableWhen.metadata.notes: Unrecognized key: \"startsWith\"; availableWhen.metadata.notes: must specify at least one comparator (gt, gte, lt, lte, eq, neq, contains, ncontains)",
     data: null,
   },
   {

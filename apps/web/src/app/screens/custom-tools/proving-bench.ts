@@ -14,6 +14,7 @@ import type {
   CustomToolRunResult,
 } from '../../core/core-contract';
 import { displayTitle, isStateRef } from '../../pascal/custom-tool-types';
+import { scanPlaceholders } from '../../pascal/placeholders';
 import { definitionFromDraft, gateFromConditions, type ToolDraft } from '../../pascal/tool-draft';
 import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/tool-gate';
 import { Icon } from '../../ui/icon';
@@ -534,7 +535,9 @@ export class ProvingBench {
           (f) => d.rollRange[f].kind === 'state',
         )) ||
       d.parameters.some((p) => isStateRef(p.defaultValue)) ||
-      /\{\{\s*state\./.test(d.outcomes.map((o) => o.message).join('\n'))
+      // v4 `0506517d3` (ProvingBench.tsx:168): the classifier, not a regex probe —
+      // a bare `{{state.}}` or an unterminated `{{state.foo` no longer counts.
+      d.outcomes.some((o) => scanPlaceholders(o.message).some((p) => p.ref.kind === 'state'))
     );
   });
 

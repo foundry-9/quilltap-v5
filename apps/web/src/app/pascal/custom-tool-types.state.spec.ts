@@ -81,7 +81,7 @@ const ROWS: Row[] = [
     id: "state-extra-key",
     inputJson: "{\"name\":\"draw\",\"description\":\"x\",\"roll\":{\"min\":{\"$state\":\"game.low\",\"fallback\":0,\"extra\":1}},\"outcomes\":[{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "roll: Invalid input: expected string, received object — or — min: Invalid input: expected number, received object — or — $param: Invalid input: expected string, received undefined; Unrecognized keys: \"$state\", \"fallback\", \"extra\" — or — Unrecognized key: \"extra\"",
+    reason: "roll.min: Unrecognized key: \"extra\"",
     data: null,
   },
   {

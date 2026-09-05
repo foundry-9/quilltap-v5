@@ -203,7 +203,8 @@ impl TransportResponse {
 }
 
 /// A transport error (a network/timeout/abort failure, or a non-2xx status). The
-/// message feeds [`handle_provider_error`](crate::services::llm_errors::handle_provider_error).
+/// message is what the failover service's `is*`/`parse*` detectors read (the
+/// `handle_provider_error` normalizer went with v4's `d4138b96b` sweep, P4.D157).
 #[derive(Clone, Debug)]
 pub struct TransportError {
     pub message: String,

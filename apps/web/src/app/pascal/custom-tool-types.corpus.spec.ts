@@ -8,7 +8,9 @@
  * browser and the server must phrase the same file's rejection identically.
  *
  * This replays the COMMITTED oracle corpus — 299 rows generated from v4's REAL
- * `QtapCustomToolSchema` at `c4d4b0de` (see
+ * `QtapCustomToolSchema` at `d883a5ee1` under Zod 4.5.4 (refreshed at the
+ * `d883a5ee1` unification: thirteen unrecognized-key rows moved when Zod made
+ * `unrecognized_keys` continuable — v4 `6e1a64ea6`; first captured at `c4d4b0de`; see
  * `src/testing/fixtures/README.md` for provenance and the regen recipe) — and
  * byte-compares four things per row:
  *

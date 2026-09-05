@@ -426,6 +426,23 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
       outcomes: [{ when: true, message: 'It is {{ state.weather }}.', state: 'info' }],
     })!;
     expect((await render(stateTemplate, stubClient())).componentInstance.testsState()).toBe(true);
+
+    // v4 `0506517d3` (ProvingBench.tsx:168): the probe is the placeholder
+    // CLASSIFIER, not `/\{\{\s*state\./` — so a bare family prefix and an
+    // unterminated brace, both of which the old regex matched, no longer count.
+    const bareStatePrefix = draftFromDefinition({
+      name: 'draw',
+      description: 'x',
+      outcomes: [{ when: true, message: 'Nothing here: {{state.}}.', state: 'info' }],
+    })!;
+    expect((await render(bareStatePrefix, stubClient())).componentInstance.testsState()).toBe(false);
+
+    const unterminated = draftFromDefinition({
+      name: 'draw',
+      description: 'x',
+      outcomes: [{ when: true, message: 'Broken {{state.weather and on.', state: 'info' }],
+    })!;
+    expect((await render(unterminated, stubClient())).componentInstance.testsState()).toBe(false);
   });
 
   it('hints that $state refs will use fallbacks when the mock is empty — and not otherwise', async () => {

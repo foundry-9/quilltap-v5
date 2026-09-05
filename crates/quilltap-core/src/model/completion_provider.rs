@@ -133,8 +133,9 @@ pub(crate) fn request_input_from_params(
 /// `quilltap_host::host_gateway`). Until P4.71 this argument did not exist and
 /// the rewrite was called with a hard `None`, so a profile pointing at
 /// `http://localhost:11434` inside a container was never rewritten. Errors carry the
-/// transport message (higher layers classify via
-/// [`handle_provider_error`](crate::services::llm_errors::handle_provider_error)).
+/// transport message (higher layers classify on the
+/// [`LlmErrorKind`](crate::services::llm_errors::LlmErrorKind) taxonomy; the
+/// `handle_provider_error` normalizer went with v4's `d4138b96b` dead-code sweep, P4.D157).
 #[allow(clippy::too_many_arguments)]
 pub fn execute_completion<'a, T: ProviderTransport + ?Sized>(
     transport: &'a T,

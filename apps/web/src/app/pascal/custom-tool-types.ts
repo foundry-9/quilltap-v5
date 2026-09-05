@@ -760,13 +760,19 @@ function parseEnum<T extends string>(input: unknown, options: readonly T[]): Res
 
 /**
  * The strict-object tail: report keys outside `known` as ONE issue, in the
- * input's own order. Zod raises this AFTER the shape, and it is aborting.
+ * input's own order. Zod raises this AFTER the shape. Since Zod 4.5.4 (v4
+ * `6e1a64ea6`, `zod` 4.4.3 → 4.5.4) the issue carries `continue: true`: the
+ * object is NOT aborted, its refines still run, and inside a union it stays a
+ * live branch — so a `when: true | {…}` with a stray key now reports the object
+ * branch alone (with its refine) where 4.4.3 wrapped both branches under
+ * `invalid_union`. The server twin (`custom_tool_types.rs::unrecognized_keys`)
+ * carries the same flag; `pascal_custom_tool_definition_equivalence` is the pin.
  */
 function unrecognizedKeys(obj: Record<string, unknown>, known: readonly string[]): Issue[] {
   const extra = Object.keys(obj).filter((k) => !known.includes(k));
   if (extra.length === 0) return [];
   const quoted = extra.map((k) => `"${k}"`).join(', ');
-  return [hardIssue(extra.length === 1 ? `Unrecognized key: ${quoted}` : `Unrecognized keys: ${quoted}`)];
+  return [checkIssue(extra.length === 1 ? `Unrecognized key: ${quoted}` : `Unrecognized keys: ${quoted}`)];
 }
 
 // --------------------------------------------------------- schema validators
@@ -877,8 +883,10 @@ function parseNumericComparator(input: unknown): Res<NumericComparator> {
   issues.push(...unrecognizedKeys(input, NUMERIC_COMPARATOR_KEYS));
 
   if (aborted(issues)) return { value: undefined, issues };
-  // `.refine(hasComparator, AT_LEAST_ONE)` — runs only when nothing aborted.
-  if (!COMPARATOR_KEYS.some((k) => hasKey(input, k))) issues.push(checkIssue(AT_LEAST_ONE));
+  // `.refine(hasComparator, AT_LEAST_ONE)` — runs only when nothing aborted, over
+  // the PARSED value: a stray containment key was stripped as unrecognized and
+  // cannot satisfy it (under Zod 4.5.4 it no longer aborts the object either).
+  if (!NUMERIC_COMPARATOR_KEYS.some((k) => hasKey(input, k))) issues.push(checkIssue(AT_LEAST_ONE));
   return { value: out, issues };
 }
 
@@ -1313,7 +1321,10 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
   if (aborted(issues)) return { value: undefined, issues };
 
   // `.refine(…)` — must test something.
-  const hasComparator = COMPARATOR_KEYS.some((k) => hasKey(input, k));
+  // `hasComparator` reads the PARSED value, where a strict object has stripped
+  // every unrecognized key — only the six comparators this level declares can
+  // satisfy it (a stray `contains` here is an unrecognized key, not a comparator).
+  const hasComparator = NUMERIC_COMPARATOR_KEYS.some((k) => hasKey(input, k));
   const hasParams = paramsPresent && out.params !== undefined && Object.keys(out.params).length > 0;
   const hasMetadata =
     metadataPresent && out.metadata !== undefined && Object.keys(out.metadata).length > 0;
@@ -1402,7 +1413,10 @@ function parseEffectWhen(input: unknown): Res<EffectWhen> {
 
   if (aborted(issues)) return { value: undefined, issues };
 
-  const hasComparator = COMPARATOR_KEYS.some((k) => hasKey(input, k));
+  // `hasComparator` reads the PARSED value, where a strict object has stripped
+  // every unrecognized key — only the six comparators this level declares can
+  // satisfy it (a stray `contains` here is an unrecognized key, not a comparator).
+  const hasComparator = NUMERIC_COMPARATOR_KEYS.some((k) => hasKey(input, k));
   const hasParams = paramsPresent && out.params !== undefined && Object.keys(out.params).length > 0;
   const hasMetadata =
     metadataPresent && out.metadata !== undefined && Object.keys(out.metadata).length > 0;

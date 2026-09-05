@@ -204,7 +204,7 @@ const ROWS: Row[] = [
     id: "when-llm-misspelled",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"llm\":{\"eq\":\"a\",\"gt3\":1}},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}],\"llm\":{\"prompt\":\"Answer YES or NO: is {{value}} auspicious?\",\"errorMessage\":\"The wire went dead.\"}}",
     success: false,
-    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 llm: Unrecognized key: \"gt3\"",
+    reason: "outcomes.0.when.llm: Unrecognized key: \"gt3\"",
     data: null,
   },
   {
@@ -274,14 +274,14 @@ const ROWS: Row[] = [
     id: "contains-bare-value",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"contains\":\"x\"},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 Unrecognized key: \"contains\"",
+    reason: "outcomes.0.when: Unrecognized key: \"contains\"; outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, or a non-empty `metadata`",
     data: null,
   },
   {
     id: "contains-raw-roll",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"roll\":{\"contains\":\"x\"}},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 roll: Unrecognized key: \"contains\"",
+    reason: "outcomes.0.when.roll: Unrecognized key: \"contains\"; outcomes.0.when.roll: must specify at least one comparator (gt, gte, lt, lte, eq, neq)",
     data: null,
   },
   {

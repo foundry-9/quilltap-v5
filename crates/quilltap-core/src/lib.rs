@@ -75,16 +75,18 @@
 //!     New-Chat scenario-text combiner; oracle-verified.
 //!   * `model_classes` — the built-in LLM capability tiers and their lookups;
 //!     oracle-verified.
-//!   * `cheap_model` — the cheap-model classifiers (`is_cheap_model`,
-//!     `estimate_model_cost`, `get_cheapest_model`) and their deprecated fallback
-//!     tables; the registry-sourced recommended-list / default-model are injected
-//!     (the string heuristics are pure); oracle-verified.
+//!   * `cheap_model` — the cheap-model picker (`get_cheapest_model`) and its
+//!     deprecated fallback tables; the registry-sourced recommended-list /
+//!     default-model are injected (the string heuristics are pure);
+//!     oracle-verified. (`is_cheap_model` / `estimate_model_cost` went with v4's
+//!     `d4138b96b` dead-code sweep, P4.D157.)
 //!   * `model_context` — the context-window lookup (`get_model_context_limit` +
 //!     `has_extended_context` / `get_safe_input_limit`): its override/default
 //!     tables ported as constants, with the plugin model-info / `FALLBACK_PRICING`
 //!     rows / registry default injected; oracle-verified.
 //!   * `token_estimation` — character-based token counting (estimate / per-message
-//!     / per-conversation, truncation, context-usage %); oracle-verified.
+//!     / per-conversation, truncation); oracle-verified. (The context-usage %
+//!     gauges went with v4's `d4138b96b` dead-code sweep, P4.D157.)
 //!   * `turn_state` — the multi-character turn-rotation state machine (queue
 //!     ops, history-derived state, the spoken-this-cycle wrap); oracle-verified.
 //!   * `all_llm_pause` — the logarithmic auto-pause thresholds for all-LLM

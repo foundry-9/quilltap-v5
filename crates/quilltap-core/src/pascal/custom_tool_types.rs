@@ -27,6 +27,8 @@
 //!
 //! 1. An issue is **aborting** unless it came from a check (a `refine` /
 //!    `superRefine`), which marks its issues `continue: true`.
+//!    Since Zod 4.5.4 (v4 `6e1a64ea6`) a strict object's `unrecognized_keys` issue
+//!    is ALSO continuable — see [`unrecognized_keys`].
 //! 2. **Checks are skipped when the value already has an aborting issue** — that
 //!    is what stops the top-level `superRefine` from walking an `outcomes` that
 //!    failed to parse. When only continuable issues exist, the value still
@@ -1098,7 +1100,16 @@ fn unrecognized_keys(obj: &serde_json::Map<String, Value>, known: &[&str]) -> Ve
     } else {
         format!("Unrecognized keys: {quoted}")
     };
-    vec![Issue::hard(message)]
+    // Zod 4.5.4 (v4 `6e1a64ea6`, `zod` 4.4.3 → 4.5.4): `$ZodObject`'s
+    // `unrecognized_keys` issue now carries `continue: true`, so a strict object
+    // with a stray key is NOT aborted — its checks still run, and inside a union
+    // it stays a live branch. That is what flips rule 3 above for the
+    // `when: true | {…}` unions: with the literal branch aborted and the object
+    // branch continuable, Zod hoists the object branch's issues alone
+    // (`outcomes.0.when.metadata.faction: Unrecognized key: "nonsense"`) where
+    // 4.4.3 wrapped both under `invalid_union` (`… expected true — or — …`).
+    // Under 4.4.3 this was `Issue::hard`; the differential caught the move.
+    vec![Issue::check(message)]
 }
 
 fn as_object(input: Option<&Value>) -> Result<&serde_json::Map<String, Value>, Res<()>> {
@@ -1302,10 +1313,12 @@ fn parse_numeric_comparator(input: Option<&Value>) -> Res<NumericComparator> {
         };
     }
     // `.refine(hasComparator, AT_LEAST_ONE)` — runs only when nothing aborted.
-    // `hasComparator` walks the full eight keys, but a numeric comparator can
-    // never carry a containment one: it would already have aborted as
-    // unrecognized.
-    if !COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k)) {
+    // `hasComparator` walks the full eight keys, but over the PARSED value,
+    // from which a strict object has already stripped every unrecognized key —
+    // so a containment key on a numeric comparator can never count. Under Zod
+    // 4.4.3 that key aborted the object before the refine ran; since 4.5.4
+    // (`unrecognized_keys` continuable) the refine runs and must not see it.
+    if !NUMERIC_COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k)) {
         issues.push(Issue::check(AT_LEAST_ONE));
     }
     Res {
@@ -2019,8 +2032,12 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
         };
     }
 
-    // `.refine(…)` — must test something.
-    let has_comparator = COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k));
+    // `.refine(…)` — must test something. `hasComparator` reads the PARSED
+    // value, where a strict object has stripped every unrecognized key, so only
+    // the six comparators this level declares can satisfy it (a stray
+    // `contains` here is an unrecognized key, not a comparator — Zod 4.5.4
+    // keeps the object alive through it and the refine then fires too).
+    let has_comparator = NUMERIC_COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k));
     let has_params = params_present && out.params.as_ref().is_some_and(|p| !p.is_empty());
     let has_metadata = metadata_present && out.metadata.as_ref().is_some_and(|m| !m.is_empty());
     if !has_comparator

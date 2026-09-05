@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 
 import { MAX_MESSAGE_LENGTH, MAX_OUTCOMES, type OutcomeState } from '../../pascal/custom-tool-types';
+import { PLACEHOLDER_PATTERN } from '../../pascal/placeholders';
 import {
   CONTAINMENT_COMPARATORS,
   ORDERING_COMPARATORS,
@@ -839,7 +840,8 @@ export class OutcomeMessageEditor {
 
   /** Placeholders present in the text, for the visibility strip. */
   readonly placeholders = computed(() =>
-    [...this.outcome().message.matchAll(/\{\{[^}]+\}\}/g)].map((m) => m[0]),
+    // v4 `0506517d3` (OutcomesSection.tsx:771): the shared pattern, not an inline copy.
+    [...this.outcome().message.matchAll(PLACEHOLDER_PATTERN)].map((m) => m[0]),
   );
 
   protected onInput(event: Event): void {
