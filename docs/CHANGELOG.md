@@ -470,6 +470,43 @@ the regen obligation (both hand-rolled Zod engines, the SPA corpus, the ~150
 edge sites) plus the P4.D158 measurement to repeat. A loud `SKIP:` only when
 the checkout itself is absent. Closes the gap the `d883a5ee1` round found by
 consequence rather than by design (phase-4 candidate 4).
+#### 2026-09-05 — feat(help): the help-chat stream fold and labelFromUrl (P4.9I2B unit 2)
+
+_Versions: SPA 0.5.648._
+
+`help/help-stream.ts` ports v4's `useHelpChatStreaming` read loop as a pure
+fold plus `labelFromUrl`. It is deliberately NOT a reuse of the Salon's
+`chat-stream.reducer`: v4's help hook keeps one content buffer and CLEARS it on
+a `status` frame, so a tool pass reads as "working" rather than as a truncated
+answer — the two machines disagree on exactly that, and the help surface wants
+v4's answer. The `help_navigate` → navigation-link and `help_search` →
+suggested-link extractions come with it, string-or-object result parsing and
+swallowing catch included.
+
+Three shape divergences are recorded on the module. Two are forced by v5's flat
+frame envelope: v4 reads `event.turnStart.participantId` and
+`event.status.participantId` off nested objects where v5 carries `participantId`
+as a sibling, and v4's `status` is an object where v5's is a string (only its
+presence is load-bearing). The third is behavioural and deliberate — v4 records
+`event.error` bare, so v5 does too, not the shared reducer's
+`${error}: ${details}` join.
+
+`labelFromUrl` is transcribed verbatim and pinned by the 35-vector capture of
+v4's real function, which reaches quirks v4's own suite never asks about: `+`
+decoding to a space, a leading hyphen surviving in `tab` but producing a double
+space in `section`, an empty `tab` skipped as falsy, `/setupwizard`
+prefix-matching `/setup`. v4's own 127-line jest suite is ported case-for-case
+on top, run green at the pin first.
+
+Eight mutations were run. Six reddened immediately; two survived and were
+answered rather than waved through. The shared-reducer `details` join survived
+because the only error case used `details: ''` — which the join skips — so an
+arm with a non-empty `details` was added, and it is what makes the divergence
+measurable at all, since §B pins the production value at empty. The
+`navigationUrl` fallback's first mutation never applied (a bad sed anchor, which
+looks exactly like a surviving mutation in the log); re-applied properly it
+reddens one case.
+
 #### 2026-09-05 — feat(help): the help wire contract and the Guide's category tables (P4.9I2B unit 1)
 
 _Versions: SPA 0.5.647._
