@@ -19,8 +19,10 @@
  *  - v4 reads `event.turnStart.participantId` / `event.status.participantId`
  *    from NESTED objects; v5's frame carries `participantId` as a SIBLING of
  *    the `turnStart` / `status` markers, so those reads move to the sibling.
- *  - v4's `status` is an object; v5's is the `ResponseStatus` string. Only its
- *    presence is load-bearing here, which both shapes express.
+ *  - v4 reads the participant off `event.status.participantId`; v5's
+ *    `ResponseStatus` carries `characterId`, and §B routes the participant
+ *    through the envelope's sibling `participantId` instead. Only the status
+ *    frame's PRESENCE is otherwise load-bearing here.
  *
  * One recorded BEHAVIOURAL divergence, deliberate: v4 records `event.error`
  * bare, so v5 does too — NOT the shared reducer's `${error}: ${details}` join.

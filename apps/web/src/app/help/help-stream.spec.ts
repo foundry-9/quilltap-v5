@@ -23,6 +23,9 @@ import type { ChatStreamFrame } from '../core/core-contract';
 import { initialHelpStreamState, labelFromUrl, reduceHelpFrame } from './help-stream';
 import vectors from './__fixtures__/label-from-url-vectors.json';
 
+/** A `status` frame's payload — only its PRESENCE is load-bearing in the fold. */
+const STATUS = { stage: 'executing_tools', message: 'Consulting the archives...' };
+
 function fold(frames: ChatStreamFrame[]) {
   return frames.reduce(reduceHelpFrame, initialHelpStreamState());
 }
@@ -141,7 +144,7 @@ describe('labelFromUrl', () => {
 
 describe('reduceHelpFrame — content and turns', () => {
   it('appends content chunks and clears the tool indicator', () => {
-    const s = fold([{ status: 'thinking' }, { content: 'Hel' }, { content: 'lo' }]);
+    const s = fold([{ status: STATUS }, { content: 'Hel' }, { content: 'lo' }]);
     expect(s.streamingContent).toBe('Hello');
     expect(s.isExecutingTools).toBe(false);
   });
@@ -171,17 +174,17 @@ describe('reduceHelpFrame — content and turns', () => {
     // This is the branch that makes the help fold NOT the Salon reducer: v4
     // wipes stale prose so a tool pass reads as "working", not as a truncated
     // answer.
-    const s = fold([{ content: 'partial answer' }, { status: 'executing_tools' }]);
+    const s = fold([{ content: 'partial answer' }, { status: STATUS }]);
     expect(s.streamingContent).toBe('');
     expect(s.isExecutingTools).toBe(true);
   });
 
   it('status carries a participant id when it has one, else keeps the current', () => {
-    const withId = fold([{ status: 'thinking', participantId: 'p-9' }]);
+    const withId = fold([{ status: STATUS, participantId: 'p-9' }]);
     expect(withId.streamingParticipantId).toBe('p-9');
     const without = fold([
       { turnStart: true, participantId: 'p-1' },
-      { status: 'thinking' },
+      { status: STATUS },
     ]);
     expect(without.streamingParticipantId).toBe('p-1');
   });
@@ -323,7 +326,7 @@ describe('reduceHelpFrame — one frame, several markers', () => {
   it('applies the branches in the v4 order: content then status wins the buffer', () => {
     // v4's read loop uses independent `if`s, so a frame carrying both leaves
     // the LATER branch's clear in place.
-    const s = fold([{ content: 'text', status: 'executing_tools' }]);
+    const s = fold([{ content: 'text', status: STATUS }]);
     expect(s.streamingContent).toBe('');
     expect(s.isExecutingTools).toBe(true);
   });

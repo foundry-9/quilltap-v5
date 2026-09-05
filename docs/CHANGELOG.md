@@ -470,6 +470,60 @@ the regen obligation (both hand-rolled Zod engines, the SPA corpus, the ~150
 edge sites) plus the P4.D158 measurement to repeat. A loud `SKIP:` only when
 the checkout itself is absent. Closes the gap the `d883a5ee1` round found by
 consequence rather than by design (phase-4 candidate 4).
+#### 2026-09-05 — feat(help): the help state service and the whole Guide tab (P4.9I2B units 3–4)
+
+_Versions: SPA 0.5.649._
+
+`help/help.service.ts` ports v4's `help-chat-provider.tsx`: the eligibility
+query, the two localStorage keys with their different encodings (a JSON array
+for the selection, a PLAIN string for the last chat id — with v4's one-shot
+repair for values a prior build double-quoted, kept because instances written by
+that build still exist), the auto-select of the first tool-capable character,
+`openHelpChat` always resetting to the launcher, and the route watcher that
+re-anchors an OPEN chat with a chat in hand.
+
+`isEligible` derives from the character LIST, not the payload's own `eligible`
+flag, because v4 does — a disagreement between the two would show as an enabled
+Help button over an empty picker.
+
+**A v4 finding, reproduced deliberately.** `currentPageUrl` carries the PATH
+ONLY, because v4 reads `usePathname()` and Next's own typings state the contract
+outright (`usePathname() // returns "/dashboard" on /dashboard?foo=bar`). The
+consequence is that the seven `?tab=` rows of `URL_CATEGORY_MAP` can never match
+from `getCategoryForUrl(currentPageUrl)`, so the Guide always expands Settings &
+System from any settings screen rather than Appearance, Commonplace Book,
+Content Routing or AI Providers. The fix belongs in v4 (pass the search string,
+or read `useSearchParams`); porting a unilateral repair would make v5's Guide
+behave differently from the oracle. Pinned by a spec so neither side drifts.
+
+The Guide tab lands whole: `help-guide-tab.ts` (three layers, the two-speed
+search — instant client-side title filter, 200 ms-debounced server text search
+whose hits are TAGGED with the query that produced them so a slow response
+cannot leak — and the reader's back stack with scroll restore),
+`help-category-section.ts`, `help-guide-search.ts`, `help-welcome-card.ts`
+(copy byte-pinned against a capture of v4's rendered component),
+`help-topic-reader.ts`, `help-doc-markdown.ts` and `help-navigate.ts`.
+
+**A second v4 finding, measured rather than reasoned.** v4's `HelpTopicReader`
+carries a `blockquote` override that would turn the "Open this page in Quilltap"
+callout at the head of every help document into a `qt-help-guide-nav-callout`.
+That branch is unreachable: ReactMarkdown renders the inner link through the `a`
+override first, so the text the callout regex sees is
+`"\nOpen this page in Quilltap\n"` with no `](url)` left in it. Rendering v4's
+real pipeline over a real callout at the pin confirms it — what v4 actually
+produces is a plain `<blockquote>` around a `qt-help-guide-page-link` button.
+v5 implements the reachable shape and records the branch as a NO-PORT; v5's
+rendered output was diffed against v4's recording element for element.
+
+The markdown pipeline is v4's four plugins in v4's order, deliberately not the
+Salon renderer — that one always applies the roleplay patterns, which would wrap
+every bracketed and quoted run in a manual in narration spans.
+
+Two arms could not be seen through the rendering tests and were given
+discriminators rather than shipped unmeasured: `buildDocumentMap` (no
+`EXCLUDED_DOCUMENTS` slug appears in any category, so deleting the filter
+entirely survived every rendering case) and, in unit 1, the category tie-break.
+
 #### 2026-09-05 — feat(help): the help-chat stream fold and labelFromUrl (P4.9I2B unit 2)
 
 _Versions: SPA 0.5.648._

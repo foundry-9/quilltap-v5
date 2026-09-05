@@ -203,7 +203,10 @@ describe('P4.9I2B v4 capture', () => {
       path.join(OUT, 'param-routes-vectors.json'),
       JSON.stringify({ paramRoutes: paramVectors }, null, 2) + '\n',
     )
-    fs.writeFileSync(path.join(OUT, 'welcome-card.html'), welcomeHtml + '\n')
+    fs.writeFileSync(
+      path.join(OUT, 'welcome-card.json'),
+      JSON.stringify({ html: welcomeHtml }, null, 2) + '\n',
+    )
 
     expect(categoryVectors.length).toBeGreaterThanOrEqual(20)
   })

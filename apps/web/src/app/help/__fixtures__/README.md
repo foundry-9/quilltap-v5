@@ -11,7 +11,7 @@ and `help-entity-picker.ts` byte-for-byte (memory note
 | `help-guide-vectors.json` | 32 `getCategoryForUrl(...)` results from v4's real function |
 | `label-from-url-vectors.json` | 35 `labelFromUrl(...)` results from `hooks/useHelpChatStreaming.ts` |
 | `param-routes-vectors.json` | `HelpEntityPicker.tsx`'s private `PARAM_ROUTES`, probed through the exported `hasParamSegments` / `findParamRoute` |
-| `welcome-card.html` | `HelpWelcomeCard` rendered to static markup — the four `WELCOME_LINKS` and the Wodehouse copy |
+| `welcome-card.json` | `HelpWelcomeCard` rendered to static markup — the four `WELCOME_LINKS` and the Wodehouse copy |
 
 **The recorder is `apps/web/oracle/help-guide-capture.test.tsx`**; its header
 carries the regen recipe (a pinned v4 worktree — jest ignores paths outside the
