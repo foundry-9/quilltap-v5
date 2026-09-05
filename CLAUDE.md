@@ -2883,6 +2883,53 @@ records THERE. Update this summary only when a phase or round completes.
   sweep for `0506517d3` (409 families: 402 green, the seven non-green rows all run to ground — three were Zod 4.5's code-point length rule, one a fixture-vintage artifact, one an oracle mock lagging the collapse, one a moved import, one the deliberate repo-writer — none the collapse's; it is NEUTRAL). Gate: fmt/clippy both feature sets clean; release build; 496 binaries / 2,802 / 0 / 1 ignored with the 67-var env block (Tier R 216/0 inside it); 409-family sweep 402 + 6 repaired + 1 refused; the round's families by name from the pin zero SKIP; ng 380 files / 5,962+; full Playwright 274/274 zero skips. Versions:
   core 0.0.795, harness 0.0.685, cli 0.0.18, SPA 0.5.646. **The owed
   dogfood pass is the top next candidate.** Round record: `status-log.md`.
+- **The follow-ups-round-2 + `d883a5ee1`-round dogfood pass RAN (2026-09-05,
+  agent-driven, on the Friday copy) — 22 rows, 18 PASS, ONE finding found and
+  FIXED, and the round's whole 💸 queue discharged bar three cost items.** Walk
+  doc: `dogfood-walks/2026-09-05-images-route-memory-subject-pass.md`; record in
+  `status-log.md`. The ledger's §2 probe **passed** at walk start (v4 HEAD = the
+  baseline, no drift), so nothing could blame drift. **The pre-walk measurement
+  handed the pass its best proof:** v4 had run its own bug-122 fix on this
+  instance all day, so `llm_logs` already held v4's post-fix bytes
+  (`[m_fb6d] [today] About Charlie: …`) for the same chat and character v5 was
+  then driven through. **FIXED: finding #110** — the daily maintenance pass
+  **deletes the operator's generated images in total silence**; found by
+  consequence when `files` IMAGE fell 2,831 → 2,827 between two measurements and
+  only `lastMaintenanceSweepAt` recorded that anything happened. The deletion is
+  v4-faithful; the silence was the port divergence — v4 emits eleven lines v5
+  dropped, and the collapse's own comments named the warn they were dropping
+  (**finding #103's exact shape**). It had also escaped the P4.74 logging
+  inventory, which surveys only `lib/background-jobs/handlers/*.ts` (scope gap
+  recorded as a standing note). Fixed with v4's sentences at v4's levels, four
+  capture-layer tests, six mutations; `maintenance_sweep_tier2_equivalence` green
+  on a fresh oracle so behaviour is unmoved (`fda5852e`, core 0.0.796; gate 496
+  binaries / 2,806 / 0, zero SKIP). **Proven live:** bug 122 verified row by row
+  against `memories` (the *own-id* silences are half the proof); bug 121 spliced
+  back into its carrying message for a third seat; the whole `/api/v1/images`
+  collection route incl. the omit-null rule on real NULL rows, the `IMAGE_IN_USE`
+  refusal and `?action=bogus` falling through to upload as v4's route does; the
+  host pixel codec on the real chat-attachment path (188-byte PNG → 92 bytes of
+  genuine WebP), closing P4.D152's candidate; the streaming avatar with its danger
+  ring in the *waiting* state; the cheap-LLM priority-5 carry on a tapped Ollama
+  wire with profile-only keys planted so the cheap task's sampling could not mask
+  them; the uncensored desk on a Flagged chat; `instances default --json` in all
+  four arms; the About sentences (U+0027); the Workbench's four placeholder arms
+  with the `allowState` split proven both ways; and the export preview at
+  2,885 = 2,895 − 10. ⭐ **Pascal's group tier CLOSED after six deferrals — and
+  the reason it kept failing is the result:** a manual operator run has no
+  invoking character, so the group tier is not searchable and the write correctly
+  falls to chat; the project tier resolved in the identical setup, and adding
+  `asCharacterId` gave `tier: "group", previous: 42`. Also banked: clearing every
+  `isCheap` flag does NOT reach priority 5 — `cheapLLMSettings`'
+  `defaultCheapProfileId`/`userDefinedProfileId` sit above it. **Five instrument
+  errors caught**, incl. a gate piped through `tail` (CLAUDE.md's own named
+  mistake) reporting 58 binaries for a 496-binary run, and the bug-121 gesture
+  landing on the authoring seat because 12,388 of 12,607 user messages here carry
+  a `participantId`. **Still owed:** the Brahma key-less sentence (blocked — all
+  eleven providers have keys), the Opus 5 *byte* strip (HTTPS + a pre-builder
+  projection; the outcome passed), the Brahma deep query, dedup/summaries, and
+  #101. Every setting the walk changed was restored and every probe artifact
+  removed.
 - **Oracle baseline: `d883a5ee1` (2026-09-05, v4 main — bug 122 fixed),
   adopted at the `d883a5ee1` drift catch-up round unification (2026-09-05).**
   **Drift state, the drift-check method, and the pinned-worktree regen

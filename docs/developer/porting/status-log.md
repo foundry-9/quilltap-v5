@@ -106758,3 +106758,116 @@ the LoRA wire-byte look).
 ### Cleanup
 
 Performed after the fast-forward: the six lane worktrees removed and their branches deleted with the temp branch; the `.git/info/attributes` union rule removed; both unify pin worktrees (`/tmp/qt-v4-pin-unify-d883a5ee1`, `/tmp/qt-v4-pin-unify-0b0617fee`) removed; the `/tmp` oracle NDJSONs / fixture shields / sweep and gate logs / the Playwright output removed; no debug servers left running.
+
+## Dogfood pass — the follow-ups round 2 + the `d883a5ee1` drift catch-up round (2026-09-05)
+
+Agent-driven, on the Friday copy (`~/qt-dogfood-friday`, data synced 12:45–12:51;
+the instance auto-unlocks, so no human unlock step was needed). Walk doc:
+`dogfood-walks/2026-09-05-images-route-memory-subject-pass.md`. **22 rows: 18
+PASS, 3 DEFERRED-TO-HUMAN (cost), 1 BLOCKED. ONE finding, found and FIXED.**
+
+**Drift state at walk start:** the ledger's §2 probe **PASSED** — v4 on `main`,
+tree clean, `d883a5ee1..main` and `3a76b17df..bugfix` both empty, so **v4 HEAD
+equals the baseline and there was NO DRIFT**. §3's one row (`15573c3a1`, bug 119)
+is an unported `p4.9k` surface. No step could blame the drift, and none did.
+
+### The pre-walk measurement handed the pass its best proof (ledger §5.5)
+
+v4 had been running its own bug-122 fix on this instance all day: `llm_logs`
+carries v4-written `CHAT_MESSAGE` rows from **17:44** whose request holds the
+head formatter's post-fix bytes verbatim — `[m_fb6d] [today] About Charlie: will
+never close door to wives` — in chat `8f47fb30…` for **Abigail**. So the bug-122
+step stopped being "does v5 print a prefix" and became a cross-implementation
+comparison on the same chat and character. Also measured before planning: 31,224
+memories of which **18,501** are about another character; 2,831 IMAGE rows with
+**254** carrying NULL optionals and **10** character-archive `.qtap` bundles;
+**no `claude-opus-5` profile exists** (so A4 had to create one); **10** profiles
+flagged `isCheap`; Ollama up with one model.
+
+### FIXED — finding #110: the daily maintenance sweep deletes in silence
+
+Found **by consequence**: the copy's `files` IMAGE count fell **2,831 → 2,827**
+between two measurements minutes apart, and nothing in `combined.log`, on stdout
+or in any table said why — only `instance_settings.lastMaintenanceSweepAt`
+(`18:01:03.361Z`) recorded that a pass had run. The deleter is
+`collapse_stale_chat_assets`; **the deletion is v4-faithful and correct, the
+silence was the port divergence.** v4 emits eleven lines v5 dropped (the pass's
+two bookends with the whole summary, `runSweep`'s seven `<Sweep> failed —
+continuing` warns, `Failed to record lastMaintenanceSweepAt`, plus `Collapsed
+stale chat assets` per chat and `Stale-chat asset collapse complete`); v5 had
+zero info lines and five of seven failure arms said nothing, while the collapse's
+own comments (`/* v4 warns + continues */`) named the warn being dropped —
+**finding #103's exact shape**. It had also escaped the P4.74 logging inventory,
+whose generator surveys only `lib/background-jobs/handlers/*.ts` (a standing note
+now records that scope gap). Fixed with v4's sentences at v4's levels, four
+capture-layer tests and six mutations; `maintenance_sweep_tier2_equivalence`
+re-ran green against an oracle regenerated fresh at the baseline, so behaviour is
+unmoved. Commit `fda5852e`, core 0.0.796. Gate: **496 test binaries / 2,806
+passed / 0 failed / 1 ignored, zero SKIP**; clippy both feature sets; release
+build.
+
+### Proven live
+
+**Bug 122** on a real Abigail turn, verified row by row against `memories`: 21 of
+37 frozen lines prefixed (`- About Charlie: …`), and — the proof's other half —
+the two head lines and six sampled unprefixed lines are all **own-id** memories,
+so the prefix appears exactly where v4's rule puts it and nowhere else. **Bug
+121** on a third seat that neither authored nor had seen the upload: the file is
+spliced back into its **carrying message**, not restated at the tail. **The
+`/api/v1/images` collection route** end to end on real data — the omit-null rule
+exact on a NULL-optional row (four keys absent, `url` an explicit null), 2,827
+rows against 2,827, the `IMAGE_IN_USE` refusal with its `associations` bag
+writing nothing, the orphan delete taking the bytes with it, upload + sha256
+dedup, and `?action=bogus` **falling through to upload** exactly as v4's
+`if (action === 'generate') … else handleUploadOrImport` does. **The host pixel
+codec on the real chat-attachment path** (a 188-byte PNG stored as 92 bytes of
+genuine `RIFF…WEBP`), closing P4.D152's named candidate. **The streaming bubble's
+avatar** with the danger ring, present at t=4 ms in the *waiting* state. **The
+cheap-LLM priority-5 carry** on a tapped Ollama wire, with profile-only keys
+(`top_k 33`, `repeat_penalty 1.17`, `keep_alive "7m"`, `num_ctx 40960`) planted
+so the cheap task's own sampling could not mask them. **The uncensored desk**
+routing a Flagged chat's cheap tasks to the local profile. **Pascal's group
+tier**, closed after six deferrals. Plus `instances default --json` in all four
+arms with the real registry untouched, the About page's three widened sentences
+(apostrophe rendering as U+0027), the Workbench's four placeholder arms with the
+`allowState` split proven both ways, the `qt-checkbox` adoptions with a measured
+v4-faithful negative control, the corrected `File not found` 404, and the export
+preview at **2,885 = 2,895 − 10**.
+
+### ⭐ Two results worth carrying beyond the walk
+
+**Pascal's group tier failed for six passes because a manual run cannot reach
+it.** A bare operator run wrote to the **chat** tier even with the key in the
+group tier — and that is correct: a manual run has no invoking character, so the
+group tier is not searchable. The identical setup with the key in the **project**
+tier resolved `tier: "project"`, proving the mechanism was reached; adding
+`asCharacterId` resolved **`tier: "group", previous: 42, next: 7`**. **And
+clearing every `isCheap` flag does not make the cheap ladder fall to priority 5**
+— `cheapLLMSettings.defaultCheapProfileId` and `.userDefinedProfileId` sit above
+it; a first pass showed cheap tasks still going to DeepSeek until both were
+cleared.
+
+### Instrument errors — five, all caught
+
+A gate piped through `tail -60` (CLAUDE.md's own named mistake) reported 58
+binaries for a 496-binary run; a nonce the first responder *quoted* was not an
+attachment probe (only a needle from the file body discriminates); the obvious
+bug-121 gesture lands on the **authoring** seat because **12,388 of 12,607** user
+messages here carry a `participantId`; a wrong field name (`mountPointId` for
+`mountPoint`) made `documentDelete` answer `File not found` for a file `GET`
+returns 200 for; and `wire-tap.py` truncates bodies at ~8 KB.
+
+### Still owed
+
+`describe()`'s Brahma sentence (**BLOCKED**: all eleven providers have keys, and
+both profile entrances refuse a dangling `apiKeyId`, so reaching it means
+deleting a real key); the Opus 5 **byte** strip (Anthropic is HTTPS and
+`llm_logs.request` is a pre-builder projection — the outcome passed, the bytes
+stay corpus-pinned); the Brahma deep-query budget, memory dedup + conversation
+summaries, and NanoGPT caching (#101) — all three human/cost; and the LoRA
+wire-byte look (still blocked for the same TLS reason).
+
+**Every setting the walk changed was restored** (ten `isCheap` flags, the
+cheap-LLM and danger-settings bags, the Ollama profile's baseUrl and parameters),
+and every probe artifact removed (the throwaway profiles, the Brahma chats' host
+profiles, the `walk_group_probe` tool, and all three state tiers).

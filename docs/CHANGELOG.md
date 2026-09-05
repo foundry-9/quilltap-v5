@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — docs(dogfood): the follow-ups-round-2 + `d883a5ee1`-round walk record
+
+_Docs-only change._
+
+The walk doc for the 2026-09-05 pass (22 rows, 18 PASS, one finding), its
+`status-log.md` record, the finding #110 row, the standing note about the
+handler-logging inventory's scope gap, and the CLAUDE.md status bullet.
+
 #### 2026-09-05 — fix(maintenance): say out loud what the daily sweep deletes (dogfood finding #110)
 
 _Versions: core 0.0.796._
