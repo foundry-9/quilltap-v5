@@ -470,6 +470,46 @@ the regen obligation (both hand-rolled Zod engines, the SPA corpus, the ~150
 edge sites) plus the P4.D158 measurement to repeat. A loud `SKIP:` only when
 the checkout itself is absent. Closes the gap the `d883a5ee1` round found by
 consequence rather than by design (phase-4 candidate 4).
+#### 2026-09-05 — feat(help): the help wire contract and the Guide's category tables (P4.9I2B unit 1)
+
+_Versions: SPA 0.5.647._
+
+The first unit of the HelpChat SPA lane: the pure data core the rest of the
+family sits on.
+
+`help/help-wire.ts` declares the thirteen §B request DTOs (`helpDocsList`
+through `helpChatSend`) and the response DTOs mirroring v4's route JSON
+name-for-name, plus `HelpApi` — the dispatch client that speaks them over the
+one transport seam. The DTOs are lane-local until the unifier folds them into
+`core-contract.ts` and runs the name-for-name diff against `api/types.rs`
+(§S.3), so `HelpApi` casts each request at a single private method: that cast
+is the whole inert-in-lane surface (the Brahma precedent).
+
+`help/help-categories.ts` transcribes v4's `lib/help-guide/categories.ts` 1:1 —
+the eleven categories and their 68 slugs, the fifteen-row URL map, and
+`getCategoryForUrl` whose body is byte-identical to v4's. Two things are pinned
+rather than tidied: v4's `chats` category names the slug `shell-tools`, which
+has no document (the Guide silently omits it, because topics resolve through
+the loaded document map), and the URL map's prefix matching is deliberately
+not segment-aware, so `/settingsish` matches `/settings`.
+
+Nothing here shipped on inspection. `apps/web/oracle/help-guide-capture.test.tsx`
+runs v4's REAL modules inside a worktree pinned at `d883a5ee1` and records five
+fixtures — the three tables, 32 `getCategoryForUrl` vectors, 35 `labelFromUrl`
+vectors, the `PARAM_ROUTES` probe, and the welcome card's rendered markup — and
+the recorder was re-run from its committed copy to prove it reproduces all five
+byte-identically. The parity spec asserts table byte-identity, drives the
+corpus, and ports v4's own 187-line jest suite case-for-case (green at the pin
+before transcription).
+
+Five mutations were run against the spec. Four reddened it; the fifth — the
+longest-pattern tie-break collapsed to first-wins — **survived all 32 vectors**,
+because v4's table lists the seven `?tab=` rows before bare `/settings`, so
+first-wins and longest-wins agree on every URL the real map can produce. The
+rule is real defensive behaviour a future row could depend on, so the reduce was
+lifted into a named `mostSpecificMatch` (v4's expression verbatim; only its home
+moved) and given a discriminating test with a reversed-order list. The mutation
+now reddens exactly one test.
 
 #### 2026-09-05 — docs(setupphase): order the `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77)
 

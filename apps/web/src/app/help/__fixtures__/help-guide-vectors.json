@@ -1,0 +1,132 @@
+{
+  "getCategoryForUrl": [
+    {
+      "url": "/",
+      "categoryId": "getting-started"
+    },
+    {
+      "url": "",
+      "categoryId": null
+    },
+    {
+      "url": "/something",
+      "categoryId": null
+    },
+    {
+      "url": "/unknown-page",
+      "categoryId": null
+    },
+    {
+      "url": "/aurora",
+      "categoryId": "characters"
+    },
+    {
+      "url": "/aurora/123/edit",
+      "categoryId": "characters"
+    },
+    {
+      "url": "/salon",
+      "categoryId": "chats"
+    },
+    {
+      "url": "/salon/abc",
+      "categoryId": "chats"
+    },
+    {
+      "url": "/prospero",
+      "categoryId": "projects"
+    },
+    {
+      "url": "/prospero/p1/files",
+      "categoryId": "projects"
+    },
+    {
+      "url": "/files",
+      "categoryId": "files"
+    },
+    {
+      "url": "/files/folder/x",
+      "categoryId": "files"
+    },
+    {
+      "url": "/profile",
+      "categoryId": "account"
+    },
+    {
+      "url": "/setup",
+      "categoryId": "getting-started"
+    },
+    {
+      "url": "/setup/wizard",
+      "categoryId": "getting-started"
+    },
+    {
+      "url": "/settings",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/settings?tab=system",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/settings?tab=templates",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/settings?tab=images",
+      "categoryId": "content-routing"
+    },
+    {
+      "url": "/settings?tab=memory",
+      "categoryId": "memory-search"
+    },
+    {
+      "url": "/settings?tab=appearance",
+      "categoryId": "appearance"
+    },
+    {
+      "url": "/settings?tab=chat",
+      "categoryId": "chats"
+    },
+    {
+      "url": "/settings?tab=providers",
+      "categoryId": "ai-providers"
+    },
+    {
+      "url": "/settings?tab=unknown",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/settings?tab=system&foo=bar",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/settings?foo=bar",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/settings?tab=",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/settings/",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/?tab=system",
+      "categoryId": "getting-started"
+    },
+    {
+      "url": "/settingsish",
+      "categoryId": "settings-system"
+    },
+    {
+      "url": "/aurora?tab=chat",
+      "categoryId": "characters"
+    },
+    {
+      "url": "/salon?tab=providers",
+      "categoryId": "chats"
+    }
+  ]
+}

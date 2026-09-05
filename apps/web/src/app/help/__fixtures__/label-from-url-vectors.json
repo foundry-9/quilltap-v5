@@ -1,0 +1,144 @@
+{
+  "labelFromUrl": [
+    {
+      "url": "/settings",
+      "label": "Settings"
+    },
+    {
+      "url": "/aurora",
+      "label": "Characters"
+    },
+    {
+      "url": "/salon",
+      "label": "Chats"
+    },
+    {
+      "url": "/prospero",
+      "label": "Projects"
+    },
+    {
+      "url": "/profile",
+      "label": "Profile"
+    },
+    {
+      "url": "/files",
+      "label": "Files"
+    },
+    {
+      "url": "/setup",
+      "label": "Setup"
+    },
+    {
+      "url": "/unknown",
+      "label": "/unknown"
+    },
+    {
+      "url": "",
+      "label": ""
+    },
+    {
+      "url": "/",
+      "label": "/"
+    },
+    {
+      "url": "/settings?tab=chat",
+      "label": "Settings → Chat"
+    },
+    {
+      "url": "/settings?tab=appearance",
+      "label": "Settings → Appearance"
+    },
+    {
+      "url": "/settings?tab=system",
+      "label": "Settings → System"
+    },
+    {
+      "url": "/settings?tab=my-tab",
+      "label": "Settings → My tab"
+    },
+    {
+      "url": "/settings?tab=chat&section=dangerous-content",
+      "label": "Settings → Chat → Dangerous Content"
+    },
+    {
+      "url": "/settings?tab=system&section=data-management",
+      "label": "Settings → System → Data Management"
+    },
+    {
+      "url": "/settings?tab=appearance&section=theme-color-palette",
+      "label": "Settings → Appearance → Theme Color Palette"
+    },
+    {
+      "url": "/settings?section=general",
+      "label": "Settings → General"
+    },
+    {
+      "url": "/settings?section=appearance",
+      "label": "Settings → Appearance"
+    },
+    {
+      "url": "/settings?",
+      "label": "Settings"
+    },
+    {
+      "url": "/settings?other=value&tab=chat",
+      "label": "Settings → Chat"
+    },
+    {
+      "url": "/settings?section=test&tab=chat",
+      "label": "Settings → Chat → Test"
+    },
+    {
+      "url": "/aurora?tab=browse&section=sort-options",
+      "label": "Characters → Browse → Sort Options"
+    },
+    {
+      "url": "/salon?tab=settings",
+      "label": "Chats → Settings"
+    },
+    {
+      "url": "/profile?section=account-security",
+      "label": "Profile → Account Security"
+    },
+    {
+      "url": "/settings?tab=Chat",
+      "label": "Settings → Chat"
+    },
+    {
+      "url": "/settings?tab=a-b-c",
+      "label": "Settings → A b c"
+    },
+    {
+      "url": "/settings?tab=my_tab",
+      "label": "Settings → My_tab"
+    },
+    {
+      "url": "/settings?tab=&section=x",
+      "label": "Settings → X"
+    },
+    {
+      "url": "/settings?tab=multi+word",
+      "label": "Settings → Multi word"
+    },
+    {
+      "url": "/settings?tab=-lead",
+      "label": "Settings → -lead"
+    },
+    {
+      "url": "/settings?section=-lead-ing",
+      "label": "Settings →  Lead Ing"
+    },
+    {
+      "url": "/aurora/123?tab=edit",
+      "label": "Characters → Edit"
+    },
+    {
+      "url": "/setupwizard",
+      "label": "Setup"
+    },
+    {
+      "url": "/settings?tab=chat&section=",
+      "label": "Settings → Chat"
+    }
+  ]
+}
