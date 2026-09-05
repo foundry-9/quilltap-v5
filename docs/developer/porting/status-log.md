@@ -106270,3 +106270,86 @@ missing is loud rather than silent.
 **Zero v5 source changed by this unit** — v5 already carried all four
 faithfully. The deliverable is that a future regression in any of them now has
 a named arm to redden, which is the whole point of `2edd823c0`.
+
+## Lane record — P4.D158 unit 4 item 10: the `docs/v4/` mirror + the `?action=` read (2026-09-05)
+
+`e9a9c538e`'s DOCS half (its three About strings belong to P4.D156).
+
+### The mirror refresh
+
+The P4.61 recipe, mechanical: `rsync -ri --exclude '.DS_Store' "$PIN/docs/"
+docs/v4/` (no `--delete`, so the mirror's selective `docs/v4/help/` survives)
+plus `docs/v4/help/database-protection.md` from the pin's `help/`, from
+`/tmp/qt-v4-pin-p4d158-d883a5ee1`. `diff -rq` clean afterwards except the
+expected `Only in docs/v4` lines (the selective help additions).
+
+**This run: 21 modified, 34 added, 0 deleted; 292 → 326 files.** Counted from
+`git status`, not from rsync's itemization — rsync reports 291 "transferred"
+because it also refreshes mtimes on byte-identical files, and only git knows
+which contents actually moved. The modified set is `developer/API.md`,
+`developer/bugs.md`, the two changelogs, `BACKUP-RESTORE.md`, `DEPLOYMENT.md`,
+seven other `developer/` docs, three `bugs/fixed/` rows and three feature docs;
+the added set is dominated by `bugs/fixed/bug-100…122`. No v5 prose was edited
+to match — the mirror is reference-only.
+
+### The `?action=` read against `query_param_semantics_equivalence`
+
+**The order's count is low.** It says "fourteen live `?action=` values that had
+no entry"; the added `#### …?action=` headings in the refreshed `API.md` are
+**25, over 21 distinct action values** (several are documented per method:
+`embeddings` on GET/POST/PUT, `backfill-embeddings` and `regenerate-all` on
+GET+POST, four memories config knobs on GET+POST, `theme-preference` on
+GET+PUT). Recorded per §5.3 — the order's paragraph is prose like any other.
+
+**Every one of the 21 is served by v5.** Nine reach an HTTP `?action=` edge in
+`quilltap-web`; twelve are dispatch verbs with no v1 REST edge, which is the
+locked boundary rather than a gap — v5's REST edges exist where v4-URL parity
+was needed (raw bytes, the CLI), and everything else rides `POST /api/dispatch`.
+`query_param_semantics_equivalence` is an HTTP-edge family, so it can only
+reach the first group.
+
+| v4 `?action=` | v5 surface | in the `?action=` family's endpoint list? |
+|---|---|---|
+| `chats/[id]?action=group-stores` | verb (`api/types.rs:3154`) | endpoint `/api/v1/chats/{CHAT}` is covered |
+| `chats/[id]?action=outfit-summary` | HTTP `wardrobe_routes.rs` | endpoint covered |
+| `chats/[id]?action=scenario` | verb (`api/scenarios.rs`) | endpoint covered |
+| `chats/[id]/files?action=attach-mount-file` | HTTP `files_routes.rs` | **yes — `/api/v1/chats/{CHAT}/files` is a family row** |
+| `embedding-profiles?action=fetch-models` | HTTP `embedding_profiles_routes.rs` | endpoint covered |
+| `embedding-profiles?action=list-models` | HTTP `embedding_profiles_routes.rs` | endpoint covered |
+| `embedding-profiles?action=list-providers` | HTTP `embedding_profiles_routes.rs` | **yes — a family row** |
+| `image-profiles?action=options-schema` | verb `ImageProfileOptionsSchema` | **GAP — no `/api/v1/image-profiles` HTTP route at all** |
+| `image-profiles?action=lora-metadata` | verb `ImageProfileLoraMetadata` | **GAP — same route** |
+| `memories?action=backfill-embeddings` | verb (`api/memories.rs:1295/1518`) | **GAP — no `/api/v1/memories` HTTP route** |
+| `memories?action=character-memory-counts` | verb (`api/memories.rs`) | **GAP — same** |
+| `memories?action=embeddings` | verb (`api/settings.rs`) | **GAP — same** |
+| `memories?action=regenerate-all` | verb (`api/memories.rs`) | **GAP — same** |
+| `memories?action=extraction-concurrency` | verb (`api/memories.rs`) | **GAP — same** |
+| `memories?action=extraction-limits-config` | verb (`api/memories.rs`) | **GAP — same** |
+| `memories?action=housekeeping-config` | verb (`api/memories.rs`) | **GAP — same** |
+| `memories?action=recall-config` | verb (`api/memories.rs`) | **GAP — same** |
+| `memories?action=housekeep-sweep` | verb (`api/memories.rs`) | **GAP — same** |
+| `mount-points?action=semantic-search` | verb `MountSemanticSearch` | **GAP — the family covers the ITEM route `/api/v1/mount-points/{ITEM}`, not the COLLECTION route this action sits on** |
+| `user/profile?action=theme-preference` | HTTP `profile_routes.rs` | **yes — `/api/v1/user/profile` is a family row** |
+| `user/profile?action=set-avatar` | HTTP `profile_routes.rs` | **yes — same row** |
+
+**No port is owed by this table** — every value is served, and the twelve
+"GAP" rows are gaps in *`?action=` HTTP coverage*, not in behaviour. They are
+recorded as the honest answer to the order's question: if v5 ever grows
+`/api/v1/memories` or `/api/v1/image-profiles` REST edges for v4-URL parity,
+these are the rows that would need `?action=` semantics arms, and the
+mount-points COLLECTION route is the one place where an edge already exists on
+a neighbouring path and the action still has none.
+
+### `p4.9i2` bank (§G — banked ONCE, by this lane, for the unifier)
+
+Help content in this drift, none of it ported:
+
+- **`e288ae2ec` → `help/file-uploads.md`**, a new "A word on company" section
+  (the USER-side attachment re-hydration bug 121's user-facing explanation).
+- **`d883a5ee1` → `help/memory-recall-relevance.md`**, a new "Whose Life Is It,
+  Anyway?" section (the bug-122 memory-subject prefix).
+- **`e9a9c538e` → four `help/` files**: `homepage.md` gains an **In-Chat
+  Navigation** section, and three pages carried `url:` front-matter values that
+  were not routes and are corrected.
+
+The unifier carries these into `phase-4.md`'s `p4.9i2` candidate row.

@@ -806,6 +806,29 @@ red against the pinned v4 — this fix is what closes them.
 `completion_behavior` gains a scoped guard for the fish block, because the
 blanket flag-coverage test asks only whether `-l 'json'` appears anywhere in
 a template, and it already did — on the top-level `quilltap --json`.
+#### 2026-09-05 — docs(v4): refresh the reference mirror at `d883a5ee1` and read its new `?action=` rows against v5
+
+_Docs-only change._ (No crate versions bumped.)
+
+`e9a9c538e`'s documentation half. `docs/v4/` re-synced mechanically from the
+pinned v4 worktree (`.DS_Store` excluded, no `--delete` so the mirror's
+selective `help/` survives), plus `help/database-protection.md`: **21 modified,
+34 added, 0 deleted**, 292 → 326 files, `diff -rq` clean. Counted from git,
+not from rsync's itemization, which reports every mtime refresh as a transfer.
+
+The refreshed `developer/API.md` documents `?action=` endpoints that had no
+entry before — **25 added headings over 21 distinct action values**, not the
+fourteen the work order estimated. All 21 are served by v5: nine through an
+HTTP `?action=` edge, twelve as dispatch verbs with no v1 REST edge, which is
+the locked transport boundary rather than a gap. The lane record carries the
+row-by-row table, including the twelve values that `query_param_semantics_
+equivalence` cannot reach because v5 registers no `/api/v1/memories` or
+`/api/v1/image-profiles` HTTP route, and the one — `mount-points?action=
+semantic-search` — that sits on a collection route whose item sibling the
+family already covers. No port is owed.
+
+The three help-file hunks in this drift are banked once for `p4.9i2`.
+
 #### 2026-09-05 — test(restore): pin the four 4.9/4.10 additions that ride inside an existing column (v4 `2edd823c0`)
 
 _Versions: harness 0.0.674._
