@@ -271,6 +271,39 @@ would be vacuous), and `find_names_by_ids` still resolves the name.
 
 Nothing calls it yet; the memory-subject prefix (parts 2 and 3) is what
 will.
+#### 2026-09-05 — port(chat): the USER-side attachment walk, the shared own-prior-response stop rule (v4 bug 121, part 1)
+
+_Versions: core 0.0.777, harness 0.0.672._
+
+The first half of v4's `e288ae2ec` (bug 121): the pure leaves.
+
+`isCharactersOwnPriorResponse` is extracted out of the Lantern walk into its
+own predicate, byte-for-byte the inline pair it replaces — multi-character
+compares `participantId`, single-character falls back to the structural
+signal (an ASSISTANT message without attachments is the character's own
+turn). The extraction's neutrality proof is the Lantern leaf's four
+differential rows staying green.
+
+`collect_unseen_user_attachments_for_character` is the USER-side counterpart:
+the same reverse tail-walk, the same stop rule, keyed on `role: USER`, and it
+returns `{messageId, fileIds}` rows in chronological order so a caller can
+splice each file back in at the message that carried it. A non-`message` row
+costs nothing against the lookback; an ASSISTANT row either stops the walk or
+counts and continues; a USER row counts, then needs a non-empty `attachments`
+array AND a row id (no id means nowhere to splice); the history cutoff
+excludes uploads older than a joining character's arrival; ids are deduped
+newest-first through a `seen` set. The two constants land with it:
+`USER_ATTACHMENT_LOOKBACK = 20` (distinct from the Lantern walk's 6) and
+`REHYDRATED_ATTACHMENT_CHAR_BUDGET = 80_000`.
+
+`message_context_leaves_equivalence` gains the fourth leaf: v4's own ten
+shipped cases, transcribed name-for-name, driving v4's REAL export. The
+corpus goes 12 → 22 rows and the runner gained per-kind floors so an oracle
+regenerated from a tree that predates `e288ae2ec` cannot pass vacuously. Run
+red-first: the runner panicked on `unknown oracle kind: unseen` before the
+port existed. Mutation-proven — dropping the row-id guard reddens
+`skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
+reddens `no-redelivery-after-the-character-answered`.
 
 #### 2026-09-05 — docs(orders): the `d883a5ee1` drift catch-up round ordered — P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158
 

@@ -6,12 +6,17 @@
  *   - buildConversationMessages
  *   - normalizeWhisperRoles
  *   - collectLanternImageFileIdsForCharacter
+ *   - collectUnseenUserAttachmentsForCharacter (bug 121, `e288ae2ec`)
  *
  * The corpus stresses the edge cases the orchestrator-tier3 composition corpus
  * cannot easily reach: TOOL-result rendering (verbatim vs the >3-turn elision, the
  * compact-args slice, an unparseable payload dropped), the `assistantAfter` reverse
  * pass, the whisper re-role / opaque-body-swap / attachment exemption, and the
- * Lantern walk's own-turn stop / history cutoff / dedup / lookback cap / reversal.
+ * Lantern walk's own-turn stop / history cutoff / dedup / lookback cap / reversal,
+ * and — for the USER-side walk bug 121 added — v4's own ten shipped cases,
+ * transcribed from `__tests__/unit/lib/services/chat-message/
+ * context-builder.service.test.ts` (`collectUnseenUserAttachmentsForCharacter
+ * (bug 121)`) so the corpus asks exactly what v4 asks.
  *
  * Each output message is projected to the WhisperMessage field set with null/
  * undefined keys dropped, so `JSON.stringify`'s `undefined`-dropping and v4's
@@ -29,6 +34,7 @@ import {
   buildConversationMessages,
   normalizeWhisperRoles,
   collectLanternImageFileIdsForCharacter,
+  collectUnseenUserAttachmentsForCharacter,
 } from '@/lib/services/chat-message/context-builder.service';
 
 type Msg = Record<string, unknown>;
@@ -284,6 +290,147 @@ const lanternCases: LanternCase[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// collectUnseenUserAttachmentsForCharacter corpus (bug 121, `e288ae2ec`).
+//
+// v4's ten shipped cases, transcribed name-for-name from its own suite. The
+// walk is the USER-side counterpart of the Lantern walk: same reverse tail
+// walk, same "stop at the character's own prior response" rule, keyed on
+// role: USER, returning `{ messageId, fileIds }` so each file is spliced back
+// in at the message that carried it.
+// ---------------------------------------------------------------------------
+
+interface UnseenCase {
+  name: string;
+  characterParticipantId: string;
+  isMultiCharacter: boolean;
+  historyCutoff: string | null;
+  lookback: number;
+  messages: Msg[];
+}
+
+/** v4's `LOOKBACK` in the shipped suite — its `USER_ATTACHMENT_LOOKBACK`. */
+const UNSEEN_LOOKBACK = 20;
+
+const unseenCases: UnseenCase[] = [
+  {
+    name: 'empty-when-no-user-attachments',
+    characterParticipantId: 'char-1',
+    isMultiCharacter: true,
+    historyCutoff: null,
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'message', role: 'USER', content: 'hi', id: 'm1' },
+      { type: 'message', role: 'ASSISTANT', content: 'hello', id: 'm2', participantId: 'char-2' },
+    ],
+  },
+  {
+    name: 'reported-shape-second-character-still-gets-the-upload',
+    characterParticipantId: 'friday',
+    isMultiCharacter: true,
+    historyCutoff: null,
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'message', role: 'ASSISTANT', content: 'earlier Friday turn', id: 'm1', participantId: 'friday' },
+      { type: 'message', role: 'USER', content: 'Oh, and read this transcript.', id: 'm2', attachments: ['transcript'] },
+      { type: 'message', role: 'ASSISTANT', content: 'Abigail quotes it', id: 'm3', participantId: 'abigail' },
+    ],
+  },
+  {
+    name: 'no-redelivery-after-the-character-answered',
+    characterParticipantId: 'friday',
+    isMultiCharacter: true,
+    historyCutoff: null,
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'message', role: 'USER', content: 'read this', id: 'm1', attachments: ['transcript'] },
+      { type: 'message', role: 'ASSISTANT', content: 'Friday answers', id: 'm2', participantId: 'friday' },
+      { type: 'message', role: 'USER', content: 'and now?', id: 'm3' },
+    ],
+  },
+  {
+    name: 'chronological-multi-collect-oldest-first',
+    characterParticipantId: 'friday',
+    isMultiCharacter: true,
+    historyCutoff: null,
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'message', role: 'ASSISTANT', content: 'own prior', id: 'm0', participantId: 'friday' },
+      { type: 'message', role: 'USER', content: 'one', id: 'm1', attachments: ['file-a'] },
+      { type: 'message', role: 'ASSISTANT', content: 'other char', id: 'm2', participantId: 'abigail' },
+      { type: 'message', role: 'USER', content: 'two', id: 'm3', attachments: ['file-b', 'file-c'] },
+    ],
+  },
+  {
+    name: 'dedupes-a-reattached-file-id',
+    characterParticipantId: 'friday',
+    isMultiCharacter: true,
+    historyCutoff: null,
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'message', role: 'USER', content: 'one', id: 'm1', attachments: ['file-a'] },
+      { type: 'message', role: 'USER', content: 'again', id: 'm2', attachments: ['file-a'] },
+    ],
+  },
+  {
+    name: 'honours-the-history-cutoff',
+    characterParticipantId: 'friday',
+    isMultiCharacter: true,
+    historyCutoff: '2026-09-04T11:00:00.000Z',
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'message', role: 'USER', content: 'before you joined', id: 'm1', attachments: ['old'], createdAt: '2026-09-04T10:00:00.000Z' },
+      { type: 'message', role: 'USER', content: 'after you joined', id: 'm2', attachments: ['new'], createdAt: '2026-09-04T12:00:00.000Z' },
+    ],
+  },
+  {
+    name: 'skips-a-message-with-no-row-id',
+    characterParticipantId: 'friday',
+    isMultiCharacter: true,
+    historyCutoff: null,
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'message', role: 'USER', content: 'orphan', attachments: ['file-a'] },
+    ],
+  },
+  {
+    name: 'single-character-stop-participantid-absent',
+    characterParticipantId: 'friday',
+    isMultiCharacter: false,
+    historyCutoff: null,
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'message', role: 'USER', content: 'old upload', id: 'm1', attachments: ['old'] },
+      { type: 'message', role: 'ASSISTANT', content: 'own reply', id: 'm2' },
+      { type: 'message', role: 'USER', content: 'new upload', id: 'm3', attachments: ['new'] },
+    ],
+  },
+  {
+    name: 'respects-the-lookback-cap',
+    characterParticipantId: 'friday',
+    isMultiCharacter: true,
+    historyCutoff: null,
+    lookback: 3,
+    messages: [
+      { type: 'message', role: 'USER', content: 'ancient', id: 'm0', attachments: ['ancient'] },
+      ...Array.from({ length: 5 }, (_, i) => ({
+        type: 'message', role: 'USER', content: `filler ${i}`, id: `f${i}`,
+      })),
+    ],
+  },
+  {
+    name: 'ignores-non-message-rows',
+    characterParticipantId: 'friday',
+    isMultiCharacter: true,
+    historyCutoff: null,
+    lookback: UNSEEN_LOOKBACK,
+    messages: [
+      { type: 'system', role: 'USER', content: '', id: 's1', attachments: ['file-a'] },
+      { type: 'message', role: 'USER', content: 'real', id: 'm1', attachments: ['file-b'] },
+    ],
+  },
+];
+
+// ---------------------------------------------------------------------------
 // Emit.
 // ---------------------------------------------------------------------------
 
@@ -332,6 +479,28 @@ for (const c of lanternCases) {
   lines.push(
     JSON.stringify({
       kind: 'lantern',
+      name: c.name,
+      characterParticipantId: c.characterParticipantId,
+      isMultiCharacter: c.isMultiCharacter,
+      historyCutoff: c.historyCutoff,
+      lookback: c.lookback,
+      messages: c.messages,
+      output: out,
+    })
+  );
+}
+
+for (const c of unseenCases) {
+  const out = collectUnseenUserAttachmentsForCharacter(
+    c.messages as never,
+    c.characterParticipantId,
+    c.isMultiCharacter,
+    c.historyCutoff,
+    c.lookback
+  );
+  lines.push(
+    JSON.stringify({
+      kind: 'unseen',
       name: c.name,
       characterParticipantId: c.characterParticipantId,
       isMultiCharacter: c.isMultiCharacter,

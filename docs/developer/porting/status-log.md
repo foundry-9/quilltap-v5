@@ -105020,3 +105020,82 @@ data, where a memory's subject may be a deleted character).
 ### Versions
 
 core 0.0.778, harness 0.0.672; host / web / cli / tauri / SPA untouched.
+## P4.D154 — re-hydrate user attachments so every character sees them (v4 bug 121, `e288ae2ec`)
+
+Lane branch `claude/user-attachment-rehydration-bug-9a5151`, opened
+2026-09-05 in the `d883a5ee1` drift catch-up round (P4.D153 ∥ P4.D154 ∥
+P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158). Baseline `0b0617fee`; the round's
+target pin is `d883a5ee1`. The drift-ledger §2 freshness probe PASSED at
+lane start (v4 on `main`, tree clean, `d883a5ee1..main` and
+`3a76b17df..bugfix` both empty), so every regen in this lane runs from the
+lane-unique pinned worktree `/tmp/qt-v4-pin-p4d154-d883a5ee1` per §5.1 and
+the order's §B.
+
+### Unit 1 — the pure leaves: the shared stop rule + the USER-side walk
+
+**The extraction (v4 (a)).** `isCharactersOwnPriorResponse` lifted out of
+`collect_lantern_image_file_ids_for_character` into its own predicate,
+byte-for-byte the inline pair it replaces. v4 verified the extraction neutral
+at the hunk level; v5's neutrality proof is measured — the Lantern leaf's
+four differential rows stayed green with the walk now calling the extracted
+predicate.
+
+**The walk (v4 (b)).** `collect_unseen_user_attachments_for_character`
+(`pub`, returning `Vec<UnseenUserAttachments>`), plus
+`USER_ATTACHMENT_LOOKBACK = 20` and
+`REHYDRATED_ATTACHMENT_CHAR_BUDGET = 80_000`. Every branch carried:
+`type !== 'message'` skipped WITHOUT cost; an ASSISTANT row either BREAKS
+(own prior response) or counts against `scanned` and continues; non-USER
+rows skipped; a USER row counts, then needs a non-empty `attachments` array
+AND a row id; the history cutoff skip; the `seen` dedup applied BEFORE the
+set is updated (so a repeated id inside ONE message's own array survives
+twice, as v4's filter-then-add does); the result reversed into chronological
+order.
+
+**The differential.** `message_context_leaves_equivalence` gains a fourth
+leaf driving v4's REAL export, with v4's own TEN shipped cases transcribed
+name-for-name from
+`__tests__/unit/lib/services/chat-message/context-builder.service.test.ts`.
+The corpus goes **12 → 22 rows**, exactly as the order predicted, and all ten
+outputs reproduce v4's shipped expectations.
+
+- **Red-first, measured:** with the widened oracle and no `unseen` arm in the
+  runner, `message_context_leaves_match_oracle` panicked
+  `unknown oracle kind: unseen`.
+- **Stale-oracle floors added:** the runner now asserts exactly 10 `unseen`
+  rows and ≥ 4 `lantern` rows. An oracle regenerated from a tree that predates
+  `e288ae2ec` carries no `unseen` rows at all, and without the floor every
+  assertion above would pass vacuously.
+- **Mutation-proven (each reddened exactly one named row):** dropping the
+  row-id guard (`msg.id.as_deref().filter(non-empty)` → `unwrap_or("")`)
+  reddened `skips-a-message-with-no-row-id`; walking ASSISTANT rows without
+  breaking on the own-prior-response reddened
+  `no-redelivery-after-the-character-answered`.
+
+**Pin verification.** The `unseen` rows can only be produced by a tree that
+exports `collectUnseenUserAttachmentsForCharacter` — their presence in the
+fresh NDJSON is itself the marker that the regen ran against `d883a5ee1` and
+not the `0b0617fee` baseline.
+
+**Regen recipe (this lane):**
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d154-d883a5ee1
+cd "$PIN"
+~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+  <v5-worktree>/harness/oracle/cases/message-context-leaves.ts \
+  > /tmp/qt-p4d154-oracle-mcl.ndjson
+QT_ORACLE_MESSAGE_CONTEXT_LEAVES=/tmp/qt-p4d154-oracle-mcl.ndjson \
+  cargo test -p quilltap-harness --test message_context_leaves_equivalence
+```
+
+**A pre-existing divergence noticed but NOT touched** (out of this order's
+mandate, recorded so it is not re-discovered): `WhisperMessage::from_value`
+drops non-string entries from `attachments` at parse, so a row whose
+attachments are `[123]` has `has_attachments() == false` in v5 where v4 sees
+a length-1 array. Inside both walks' *collection* arms the outcome is
+identical (v4's `typeof id === 'string'` filter empties it a step later), but
+`is_characters_own_prior_response`'s single-character arm reads
+`has_attachments()` directly, so such a row would stop v5's walk and not v4's.
+No corpus row (v4's or ours) carries a non-string attachment; the divergence
+predates this lane, living in the Lantern walk since the original port.

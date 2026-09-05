@@ -1,7 +1,8 @@
 //! Tier-1 differential test: the `buildMessageContext` pure leaves
 //! (`quilltap_core::services::message_context` — v4
 //! `context-builder.service.ts`'s `buildConversationMessages` /
-//! `normalizeWhisperRoles` / `collectLanternImageFileIdsForCharacter`).
+//! `normalizeWhisperRoles` / `collectLanternImageFileIdsForCharacter` /
+//! `collectUnseenUserAttachmentsForCharacter`).
 //!
 //! The oracle drives v4's REAL exported leaves over a fixed corpus; this test
 //! re-runs the ported leaves on the same inputs and compares each output
@@ -20,7 +21,8 @@
 use quilltap_core::services::build_context::MessageWithParticipant;
 use quilltap_core::services::message_context::{
     build_conversation_messages, collect_lantern_image_file_ids_for_character,
-    normalize_whisper_roles, ConversationMessage, WhisperMessage,
+    collect_unseen_user_attachments_for_character, normalize_whisper_roles, ConversationMessage,
+    WhisperMessage,
 };
 use serde_json::{json, Map, Value};
 
@@ -136,12 +138,14 @@ fn message_context_leaves_match_oracle() {
     };
     let text = std::fs::read_to_string(&path).expect("oracle readable");
     let mut count = 0usize;
+    let mut by_kind: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("oracle line parses");
         let kind = row.get("kind").and_then(Value::as_str).unwrap();
         let name = row.get("name").and_then(Value::as_str).unwrap();
         let messages = parse_messages(row.get("messages").unwrap());
         count += 1;
+        *by_kind.entry(kind.to_string()).or_default() += 1;
 
         match kind {
             "bcm" => {
@@ -199,8 +203,47 @@ fn message_context_leaves_match_oracle() {
                 let got = json!(out);
                 assert_eq_json(name, "collectLantern", &got, row.get("output").unwrap());
             }
+            "unseen" => {
+                let cp = row
+                    .get("characterParticipantId")
+                    .and_then(Value::as_str)
+                    .unwrap();
+                let is_multi = row
+                    .get("isMultiCharacter")
+                    .and_then(Value::as_bool)
+                    .unwrap();
+                let cutoff = row.get("historyCutoff").and_then(Value::as_str);
+                let lookback = row.get("lookback").and_then(Value::as_u64).unwrap() as usize;
+                let out = collect_unseen_user_attachments_for_character(
+                    &messages, cp, is_multi, cutoff, lookback,
+                );
+                let got = Value::Array(
+                    out.iter()
+                        .map(|u| json!({ "messageId": u.message_id, "fileIds": u.file_ids }))
+                        .collect(),
+                );
+                assert_eq_json(
+                    name,
+                    "collectUnseenUserAttachments",
+                    &got,
+                    row.get("output").unwrap(),
+                );
+            }
             other => panic!("unknown oracle kind: {other}"),
         }
     }
     assert!(count > 0, "no oracle rows exercised");
+    // Stale-oracle floors. An oracle regenerated from a tree that predates
+    // `e288ae2ec` carries no `unseen` rows at all and every assertion above
+    // would pass vacuously; v4 ships TEN cases for the USER-side walk and this
+    // corpus transcribes all ten.
+    assert_eq!(
+        by_kind.get("unseen").copied().unwrap_or(0),
+        10,
+        "expected v4's ten collectUnseenUserAttachmentsForCharacter cases; got {by_kind:?}"
+    );
+    assert!(
+        by_kind.get("lantern").copied().unwrap_or(0) >= 4,
+        "the Lantern leaf's rows went missing: {by_kind:?}"
+    );
 }

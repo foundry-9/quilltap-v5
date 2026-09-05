@@ -426,13 +426,9 @@ pub fn collect_lantern_image_file_ids_for_character(
         }
         let has_attachments = msg.has_attachments();
 
-        // The character's own previous ASSISTANT turn stops the walk.
-        let is_own_prior_response = if is_multi_character {
-            msg.participant_id.as_deref() == Some(character_participant_id)
-        } else {
-            !has_attachments
-        };
-        if is_own_prior_response {
+        // Anything older than the character's own previous turn was already
+        // delivered, so we stop the walk there.
+        if is_characters_own_prior_response(msg, character_participant_id, is_multi_character) {
             break;
         }
 
@@ -460,6 +456,152 @@ pub fn collect_lantern_image_file_ids_for_character(
     collected.reverse();
     collected
 }
+
+/// Has this ASSISTANT message been authored by the character we are building
+/// context for? Both attachment walkers stop there: anything older was already
+/// delivered on a previous turn and must not be re-sent (v4
+/// `isCharactersOwnPriorResponse`, extracted by `e288ae2ec` from the inline pair
+/// that had lived in the Lantern walk — byte-for-byte the same two tests).
+///
+/// Multi-character chats set `participantId` on every character response, while
+/// Staff notifications leave it null — a direct id match is enough. Single-
+/// character chats don't populate participantId on character responses, so we
+/// fall back to the structural signal: Staff image notifications always carry
+/// attachments and character responses never do, so an ASSISTANT message
+/// without attachments is the character's own prior turn.
+fn is_characters_own_prior_response(
+    msg: &WhisperMessage,
+    character_participant_id: &str,
+    is_multi_character: bool,
+) -> bool {
+    if is_multi_character {
+        return msg.participant_id.as_deref() == Some(character_participant_id);
+    }
+    !msg.has_attachments()
+}
+
+/// One carrying message and the file ids on it this character has not been shown
+/// (v4's `{ messageId, fileIds }`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnseenUserAttachments {
+    pub message_id: String,
+    pub file_ids: Vec<String>,
+}
+
+/// The USER-side counterpart of [`collect_lantern_image_file_ids_for_character`]
+/// (v4 `collectUnseenUserAttachmentsForCharacter`, `e288ae2ec` / bug 121): walk
+/// the tail of `messages` and collect the attachments the *human* shared that
+/// this character has not yet been shown.
+///
+/// Bug 121. A file the user attaches is expanded into prompt text (or carried as
+/// raw bytes) at request-assembly time by `load_and_process_files`, from the
+/// `fileIds` on that one request, and the expansion is never written down —
+/// `chat_messages` keeps the user's typed words and a pointer. The second
+/// character to speak in a multi-character turn is a fresh request with no
+/// `fileIds`, assembling context from those rows, so it received the typed words
+/// alone: in the reported scene a 29 KB transcript reached 1 of 13 model calls
+/// while the attachment chip sat in the UI telling the user otherwise. The
+/// Lantern walk could not cover it, because its first filter is
+/// `role !== 'ASSISTANT'` and a user upload is a USER-role message.
+///
+/// Returns rows in chronological order so the caller can splice each file back in
+/// at the message that carried it, rather than restating it at the tail. The same
+/// "stop at the character's own prior response" rule bounds the walk and gives the
+/// budget for free: a character is shown a given attachment once, on its first
+/// turn after the upload, and never again.
+///
+/// `history_cutoff` (ISO timestamp) excludes uploads older than a joining
+/// character's arrival; `lookback` caps the scan for very long chats.
+pub fn collect_unseen_user_attachments_for_character(
+    messages: &[WhisperMessage],
+    character_participant_id: &str,
+    is_multi_character: bool,
+    history_cutoff: Option<&str>,
+    lookback: usize,
+) -> Vec<UnseenUserAttachments> {
+    let mut collected: Vec<UnseenUserAttachments> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut scanned = 0usize;
+    let mut i = messages.len();
+    while i > 0 && scanned < lookback {
+        i -= 1;
+        let msg = &messages[i];
+        // A non-message event costs nothing against the lookback.
+        if msg.message_type.as_deref() != Some("message") {
+            continue;
+        }
+
+        if msg.role.as_deref() == Some("ASSISTANT") {
+            if is_characters_own_prior_response(msg, character_participant_id, is_multi_character) {
+                break;
+            }
+            scanned += 1;
+            continue;
+        }
+
+        if msg.role.as_deref() != Some("USER") {
+            continue;
+        }
+        scanned += 1;
+
+        let Some(atts) = &msg.attachments else {
+            continue;
+        };
+        if atts.is_empty() {
+            continue;
+        }
+        // No row id ⇒ nowhere to splice the text back in.
+        let Some(message_id) = msg.id.as_deref().filter(|id| !id.is_empty()) else {
+            continue;
+        };
+
+        // A joining participant without history access must not see uploads from
+        // before they arrived — symmetric with the Lantern walk's own guard.
+        if let (Some(cutoff), Some(created)) = (history_cutoff, msg.created_at.as_deref()) {
+            if created < cutoff {
+                continue;
+            }
+        }
+
+        let file_ids: Vec<String> = atts
+            .iter()
+            .filter(|id| !seen.contains(id.as_str()))
+            .cloned()
+            .collect();
+        if file_ids.is_empty() {
+            continue;
+        }
+        for id in &file_ids {
+            seen.insert(id.clone());
+        }
+        collected.push(UnseenUserAttachments {
+            message_id: message_id.to_string(),
+            file_ids,
+        });
+    }
+
+    collected.reverse();
+    collected
+}
+
+/// How far back either attachment walk will look for a user upload the character
+/// has not seen (v4 `USER_ATTACHMENT_LOOKBACK`). The real bound is the
+/// character's own previous turn; this is the safety cap for a very long chat, or
+/// a character that has never spoken and so has no previous turn to stop at.
+pub const USER_ATTACHMENT_LOOKBACK: usize = 20;
+
+/// Ceiling on the re-hydrated text a single turn may carry, in characters (v4
+/// `REHYDRATED_ATTACHMENT_CHAR_BUDGET`).
+///
+/// The walk already bounds *how many* uploads come back (one pass per character,
+/// per upload), but not how large they are, and a user may attach a novel. Files
+/// are taken oldest-first until the budget is spent; what does not fit is skipped
+/// with a warning rather than silently truncated mid-document, because half a
+/// transcript is a worse input than none and a model given one has no way to tell.
+/// ~80k characters is roughly 20k tokens — comfortably inside a modern window, and
+/// `build_context` still compresses and trims what this produces like any other
+/// message body.
+pub const REHYDRATED_ATTACHMENT_CHAR_BUDGET: usize = 80_000;
 
 // ===========================================================================
 // The K file-loading seam (unported wave-4 file subsystem).
