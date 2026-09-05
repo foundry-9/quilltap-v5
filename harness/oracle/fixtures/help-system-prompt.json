@@ -1,0 +1,395 @@
+{
+  "cases": [
+    {
+      "name": "minimal-no-options",
+      "character": {
+        "name": "Thistle"
+      }
+    },
+    {
+      "name": "full-character-no-options",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "full-with-tools",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "toolInstructions": "You have tools. {{char}} helps {{user}} in {{scenario}}."
+    },
+    {
+      "name": "full-tools-empty-string",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "toolInstructions": ""
+    },
+    {
+      "name": "full-page-context",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "pageContext": {
+        "title": "Chat Settings",
+        "content": "# Chat Settings\nBody **bold**",
+        "url": "/settings?tab=chat",
+        "matchType": "exact"
+      }
+    },
+    {
+      "name": "full-page-and-two-additional",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "pageContext": {
+        "title": "Chats",
+        "content": "Chats body",
+        "url": "/salon",
+        "matchType": "exact"
+      },
+      "additionalPageContexts": [
+        {
+          "title": "Search",
+          "content": "Search body",
+          "url": "*",
+          "matchType": "exact"
+        },
+        {
+          "title": "Sidebar",
+          "content": "Sidebar body",
+          "url": "*",
+          "matchType": "exact"
+        }
+      ]
+    },
+    {
+      "name": "additional-without-primary",
+      "character": {
+        "name": "Thistle"
+      },
+      "pageContext": null,
+      "additionalPageContexts": [
+        {
+          "title": "Search",
+          "content": "Search body",
+          "url": "*",
+          "matchType": "exact"
+        }
+      ]
+    },
+    {
+      "name": "user-character",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "userCharacter": {
+        "name": "Friday",
+        "description": ""
+      }
+    },
+    {
+      "name": "user-character-empty-name",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "userCharacter": {
+        "name": "",
+        "description": "A persona line."
+      }
+    },
+    {
+      "name": "user-character-null",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "userCharacter": null,
+      "toolInstructions": "You have tools. {{char}} helps {{user}} in {{scenario}}."
+    },
+    {
+      "name": "other-names-one",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "otherCharacterNames": [
+        "Thistle"
+      ]
+    },
+    {
+      "name": "other-names-three",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "otherCharacterNames": [
+        "Thistle",
+        "Quiet Bob",
+        "Rook"
+      ]
+    },
+    {
+      "name": "other-names-empty",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "otherCharacterNames": []
+    },
+    {
+      "name": "personality-empty-string",
+      "character": {
+        "name": "Quiet Bob",
+        "personality": "",
+        "description": ""
+      }
+    },
+    {
+      "name": "pronouns-partial",
+      "character": {
+        "name": "Rook",
+        "pronouns": {
+          "subject": "they"
+        }
+      }
+    },
+    {
+      "name": "pronouns-null",
+      "character": {
+        "name": "Wren",
+        "pronouns": null,
+        "personality": "Dry {{char}}."
+      }
+    },
+    {
+      "name": "everything",
+      "character": {
+        "name": "Marigold",
+        "description": "A brisk librarian of the Guide.",
+        "personality": "Brisk, warm, fond of {{user}}'s questions; {{char}} keeps answers short.\n\nSecond paragraph about {{scenario}} and {{persona}}.",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "scenarios": [
+          {
+            "content": "Archived {{user}}",
+            "archived": true
+          },
+          {
+            "content": "At the desk with {{user}}",
+            "archived": false
+          }
+        ]
+      },
+      "userCharacter": {
+        "name": "Friday",
+        "description": "Persona {{char}}"
+      },
+      "pageContext": {
+        "title": "Chats",
+        "content": "Chats body",
+        "url": "/salon",
+        "matchType": "exact"
+      },
+      "additionalPageContexts": [
+        {
+          "title": "Search",
+          "content": "S",
+          "url": "*",
+          "matchType": "exact"
+        }
+      ],
+      "otherCharacterNames": [
+        "Thistle"
+      ],
+      "toolInstructions": "You have tools. {{char}} helps {{user}} in {{scenario}}."
+    }
+  ]
+}

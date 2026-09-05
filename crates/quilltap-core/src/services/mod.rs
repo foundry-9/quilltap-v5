@@ -209,3 +209,6 @@ pub mod embedding_dimension_reconcile;
 // === P4.d28: the Markdown transcript export ===
 pub mod markdown_transcript;
 // === end P4.d28 ===
+// === P4.9I2A: the help/HelpChat server family ===
+pub mod help_chat;
+// === end P4.9I2A ===

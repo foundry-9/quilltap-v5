@@ -106949,3 +106949,71 @@ the checkout's own `help/` is byte-identical to the pin's.
   restored at the reindex registration → leg 3 `left: 0 / right: 120` (tests
   run from `crates/quilltap-host`, which has no `help/`). Full host suite
   green after (11 binaries).
+
+### Unit 3 — the pure modules + three tier-1 families (Tier 1 items 3/5, pure half)
+
+- `services/help_chat/{mod,context_resolver,system_prompt,guide_search}.rs`
+  (NEW). `HelpDocument::from_row` + `get_document(idOrSlug)` are v4's
+  `HelpSearch` projections; **recorded divergence: no process cache**
+  (`invalidate()` has no twin; rows read per call).
+- Resolver fidelity, each pinned by a corpus row: `split('?')` third-part drop;
+  `if (urlQuery)` truthiness (`/settings?` = `/settings`); URLSearchParams
+  (`+`, `%20`, repeated keys FIRST-wins, count incl. repeats); stable sorts;
+  pattern specificity over the WHOLE url's segments; prefix over UTF-16
+  `url.length` (so `/settings/wizard/step-2` resolves to the THEMES doc —
+  its query string makes it the longest); `*` as an INPUT resolves `exact`;
+  `''` → wildcard; the **duplicate-wildcard quirk** (`doc.id === primary.url`
+  never true → `/nowhere` yields `[search, search, sidebar]`) — reproduced,
+  **candidate upstream filing**.
+- System prompt: byte-exact; `undefined` interpolation on a partial `pronouns`
+  object; `{{scenario}}`/`{{persona}}` from `firstActiveScenarioContent` +
+  the user character's description.
+- Guide search: UTF-16 everywhere (`js_index_of`, `utf16_len`); JS whitespace
+  collapse via `is_js_ws`; **recorded divergence:** a window splitting a
+  surrogate pair decodes to U+FFFD where v4 ships a lone surrogate (the tree
+  has 24 astral chars in 4 files; JSON carrying `\ude00` is unparseable by
+  serde — the corpus row sits on a pair boundary).
+- Families (oracles fresh from the pin): `help_context_resolver_equivalence`
+  (jest, `@/lib/help-search` mocked — 38 rows / 4 sets),
+  `help_system_prompt_equivalence` (tsx — 17 cases), `help_snippet_equivalence`
+  (jest — the REAL route handler over 11 docs × 18 queries; `buildSnippet` is
+  private in v4). All GREEN first run.
+- **Mutations (all RED, all reverted):** resolver dedup → id compare (RED);
+  reinforcement gate always-on (RED, 3 cases); regex passes swapped — GREEN at
+  first because every corpus fence abutted whitespace, where order is
+  invisible; the `lambda` row (a fence hugging text) added → RED;
+  `chars()`-indexed snippet → RED; unstable title-hit sort → RED.
+- **Instrument error caught and banked (memory note
+  `zsh-env-var-does-not-word-split`):** `env $ENV cargo test` in zsh passes ONE
+  mangled variable — the first family read a nonexistent path (RED) and the
+  other two SKIPped as `ok`; three "green mutations" were skips. Re-run with
+  exported vars.
+- Order premise corrected: the api-key failure sentences are v4's consolidated
+  `describeProfileApiKeyFailure` (`No API key configured for this connection
+  profile` / `API key not found`) — the "short sentences" the order named are
+  pre-`0506517d3`; v5's `ProfileApiKeyFailure::describe` already matches.
+
+### Unit 4 — the `help-chat-{main,mount}.db` fixture
+
+- Builder `harness/oracle/fixtures/build-help-chat-fixture.ts` (v4's REAL
+  repos at the pin; spec `help-chat-web.json`; every id pinned and written to
+  `help-chat-main.db.meta.json`): 3 users (A owns everything; B's only profile
+  refuses tools; C has no help character), 2 api keys, 5 profiles (P1 default
+  tool-capable, P2 `allowToolUse:false`, P3 `text-block`, P4 a DANGLING
+  `apiKeyId`, PB1), 6 vault-backed characters (help on with/without a default
+  profile; help off; B's two; C's one), 2 IMAGE files linked to C1/C2, ONE
+  `chat_settings` row (A, with `cheapLLMSettings`), 14 chats (11 help chats
+  for A with distinct `updatedAt`s + distinct `helpPageUrl`s incl. NULL, H1
+  with a 5-row transcript incl. a TOOL row, H2 with 3; HB1 for B; a salon and
+  a brahma chat), 17 `help_docs` + 117 chunks minted by v4's REAL
+  `syncHelpDocs()` over a scratch `help/` holding the 17 chosen shipped files,
+  `background_jobs` present + EMPTY.
+- **Finding (v4 dead arm):** `handleEligibility`'s `img.tags?.includes('avatar')`
+  can never fire — `FileEntrySchema.tags` is `z.array(z.uuid())` and the base
+  repo re-validates on READ, so a row with the literal tag is dropped from
+  every read. Both sides fall through to `images[0]` on real data; F1 carries a
+  UUID tag so the fallback runs with a TAGGED file.
+- Builder notes: `updatedAt`/`lastMessageAt` re-pinned after `addMessage`
+  (which stamps the wall clock); `messageCount` is v4's `countVisibleMessages`
+  (SYSTEM/TOOL excluded → H1 = 3, H2 = 2); P4's dangling key inserts through
+  the ordinary repo (no FK, no existence check).

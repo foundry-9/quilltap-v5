@@ -1,0 +1,79 @@
+{
+  "docs": [
+    {
+      "slug": "alpha",
+      "title": "Alpha Settings",
+      "content": "# Alpha\n\nThe *quick* brown fox mentions `describe` once.\n\n| a | b |\n|---|---|\n> quoted line about timeouts\n\n```ts\nconst x = 1\n```\nAfter the fence describe again."
+    },
+    {
+      "slug": "beta",
+      "title": "Beta Guide",
+      "content": "Beta body has no special word. filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler uncensored tail more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more "
+    },
+    {
+      "slug": "gamma",
+      "title": "Describe Everything",
+      "content": "Gamma content without the title word in prose."
+    },
+    {
+      "slug": "delta",
+      "title": "Delta",
+      "content": "describe at the very start, then d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d d "
+    },
+    {
+      "slug": "epsilon",
+      "title": "Epsilon",
+      "content": "İstanbul filler filler filler filler filler filler describe here after a dotted capital I. tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail tail "
+    },
+    {
+      "slug": "zeta",
+      "title": "Zeta",
+      "content": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀 emoji lead then  describe after astral chars, more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more more "
+    },
+    {
+      "slug": "eta",
+      "title": "Eta Describe",
+      "content": "Eta prose mentions describe too."
+    },
+    {
+      "slug": "theta",
+      "title": "Theta",
+      "content": "Ends with the word describe"
+    },
+    {
+      "slug": "iota",
+      "title": "Iota",
+      "content": "tab\tand nbsp sep   spaces   around describe\r\nwindows line"
+    },
+    {
+      "slug": "kappa",
+      "title": "UPPER Describe",
+      "content": "lower content"
+    },
+    {
+      "slug": "lambda",
+      "title": "Lambda",
+      "content": "hugging```fenced```text then describe and a lone``double``tick and ````four````quad."
+    }
+  ],
+  "queries": [
+    "describe",
+    "DESCRIBE",
+    "d",
+    " d ",
+    "😀",
+    "de",
+    "timeouts",
+    "uncensored",
+    "fox",
+    "Describe Everything",
+    "xyz-no-match",
+    "  describe  ",
+    "quoted",
+    "İ",
+    "i̇stanbul",
+    "**",
+    "tail",
+    "start"
+  ]
+}

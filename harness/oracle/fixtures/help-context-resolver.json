@@ -1,0 +1,389 @@
+{
+  "sets": {
+    "full": [
+      {
+        "id": "search",
+        "slug": "search",
+        "title": "Title search",
+        "path": "help/search.md",
+        "url": "*",
+        "content": "Content of search."
+      },
+      {
+        "id": "sidebar",
+        "slug": "sidebar",
+        "title": "Title sidebar",
+        "path": "help/sidebar.md",
+        "url": "*",
+        "content": "Content of sidebar."
+      },
+      {
+        "id": "brahma",
+        "slug": "brahma",
+        "title": "Title brahma",
+        "path": "help/brahma.md",
+        "url": "/",
+        "content": "Content of brahma."
+      },
+      {
+        "id": "homepage",
+        "slug": "homepage",
+        "title": "Title homepage",
+        "path": "help/homepage.md",
+        "url": "/",
+        "content": "Content of homepage."
+      },
+      {
+        "id": "chats",
+        "slug": "chats",
+        "title": "Title chats",
+        "path": "help/chats.md",
+        "url": "/salon",
+        "content": "Content of chats."
+      },
+      {
+        "id": "agent-mode",
+        "slug": "agent-mode",
+        "title": "Title agent-mode",
+        "path": "help/agent-mode.md",
+        "url": "/salon/:id",
+        "content": "Content of agent-mode."
+      },
+      {
+        "id": "chat-state",
+        "slug": "chat-state",
+        "title": "Title chat-state",
+        "path": "help/chat-state.md",
+        "url": "/salon/:id",
+        "content": "Content of chat-state."
+      },
+      {
+        "id": "chat-settings",
+        "slug": "chat-settings",
+        "title": "Title chat-settings",
+        "path": "help/chat-settings.md",
+        "url": "/settings?tab=chat",
+        "content": "Content of chat-settings."
+      },
+      {
+        "id": "taboo",
+        "slug": "taboo",
+        "title": "Title taboo",
+        "path": "help/taboo.md",
+        "url": "/settings?tab=chat&section=taboo",
+        "content": "Content of taboo."
+      },
+      {
+        "id": "system-tools",
+        "slug": "system-tools",
+        "title": "Title system-tools",
+        "path": "help/system-tools.md",
+        "url": "/settings?tab=system",
+        "content": "Content of system-tools."
+      },
+      {
+        "id": "settings",
+        "slug": "settings",
+        "title": "Title settings",
+        "path": "help/settings.md",
+        "url": "/settings",
+        "content": "Content of settings."
+      },
+      {
+        "id": "setup-wizard",
+        "slug": "setup-wizard",
+        "title": "Title setup-wizard",
+        "path": "help/setup-wizard.md",
+        "url": "/settings/wizard",
+        "content": "Content of setup-wizard."
+      },
+      {
+        "id": "characters",
+        "slug": "characters",
+        "title": "Title characters",
+        "path": "help/characters.md",
+        "url": "/aurora",
+        "content": "Content of characters."
+      },
+      {
+        "id": "character-editing",
+        "slug": "character-editing",
+        "title": "Title character-editing",
+        "path": "help/character-editing.md",
+        "url": "/aurora/:id/edit",
+        "content": "Content of character-editing."
+      },
+      {
+        "id": "character-creation",
+        "slug": "character-creation",
+        "title": "Title character-creation",
+        "path": "help/character-creation.md",
+        "url": "/aurora/new",
+        "content": "Content of character-creation."
+      },
+      {
+        "id": "files",
+        "slug": "files",
+        "title": "Title files",
+        "path": "help/files.md",
+        "url": "/files",
+        "content": "Content of files."
+      },
+      {
+        "id": "project-chats",
+        "slug": "project-chats",
+        "title": "Title project-chats",
+        "path": "help/project-chats.md",
+        "url": "/prospero/:id",
+        "content": "Content of project-chats."
+      },
+      {
+        "id": "themes",
+        "slug": "themes",
+        "title": "Title themes",
+        "path": "help/themes.md",
+        "url": "/settings?tab=appearance&section=appearance",
+        "content": "Content of themes."
+      },
+      {
+        "id": "deep",
+        "slug": "deep",
+        "title": "Title deep",
+        "path": "help/deep.md",
+        "url": "/a/b/:c/d",
+        "content": "Content of deep."
+      },
+      {
+        "id": "deep2",
+        "slug": "deep2",
+        "title": "Title deep2",
+        "path": "help/deep2.md",
+        "url": "/a/:b/:c/d",
+        "content": "Content of deep2."
+      },
+      {
+        "id": "plus",
+        "slug": "plus",
+        "title": "Title plus",
+        "path": "help/plus.md",
+        "url": "/x?q=a+b",
+        "content": "Content of plus."
+      },
+      {
+        "id": "enc",
+        "slug": "enc",
+        "title": "Title enc",
+        "path": "help/enc.md",
+        "url": "/x?q=a%20b",
+        "content": "Content of enc."
+      },
+      {
+        "id": "weird",
+        "slug": "weird",
+        "title": "Title weird",
+        "path": "help/weird.md",
+        "url": "/w?k=1?junk",
+        "content": "Content of weird."
+      },
+      {
+        "id": "dupkey",
+        "slug": "dupkey",
+        "title": "Title dupkey",
+        "path": "help/dupkey.md",
+        "url": "/y?k=1&k=2",
+        "content": "Content of dupkey."
+      },
+      {
+        "id": "emoji",
+        "slug": "emoji",
+        "title": "Title emoji",
+        "path": "help/emoji.md",
+        "url": "/😀/:id",
+        "content": "Content of emoji."
+      }
+    ],
+    "bare": [
+      {
+        "id": "chats",
+        "slug": "chats",
+        "title": "Title chats",
+        "path": "help/chats.md",
+        "url": "/salon",
+        "content": "Content of chats."
+      },
+      {
+        "id": "agent-mode",
+        "slug": "agent-mode",
+        "title": "Title agent-mode",
+        "path": "help/agent-mode.md",
+        "url": "/salon/:id",
+        "content": "Content of agent-mode."
+      }
+    ],
+    "onlyhome": [
+      {
+        "id": "homepage",
+        "slug": "homepage",
+        "title": "Title homepage",
+        "path": "help/homepage.md",
+        "url": "/",
+        "content": "Content of homepage."
+      }
+    ],
+    "empty": []
+  },
+  "urls": [
+    {
+      "set": "full",
+      "url": "/settings?tab=chat"
+    },
+    {
+      "set": "full",
+      "url": "/settings?tab=chat&section=taboo"
+    },
+    {
+      "set": "full",
+      "url": "/settings?section=taboo&tab=chat"
+    },
+    {
+      "set": "full",
+      "url": "/settings?tab=chat&extra=1"
+    },
+    {
+      "set": "full",
+      "url": "/settings?tab=memory"
+    },
+    {
+      "set": "full",
+      "url": "/settings"
+    },
+    {
+      "set": "full",
+      "url": "/settings?"
+    },
+    {
+      "set": "full",
+      "url": "/settings/wizard"
+    },
+    {
+      "set": "full",
+      "url": "/settings/wizard/step-2"
+    },
+    {
+      "set": "full",
+      "url": "/salon"
+    },
+    {
+      "set": "full",
+      "url": "/salon/abc-123"
+    },
+    {
+      "set": "full",
+      "url": "/salon/abc/extra"
+    },
+    {
+      "set": "full",
+      "url": "/aurora"
+    },
+    {
+      "set": "full",
+      "url": "/aurora/new"
+    },
+    {
+      "set": "full",
+      "url": "/aurora/xyz/edit"
+    },
+    {
+      "set": "full",
+      "url": "/aurora/xyz"
+    },
+    {
+      "set": "full",
+      "url": "/prospero/p-1"
+    },
+    {
+      "set": "full",
+      "url": "/prospero"
+    },
+    {
+      "set": "full",
+      "url": "/files"
+    },
+    {
+      "set": "full",
+      "url": "/files?x=1"
+    },
+    {
+      "set": "full",
+      "url": "/"
+    },
+    {
+      "set": "full",
+      "url": "/nowhere"
+    },
+    {
+      "set": "full",
+      "url": "/a/b/c/d"
+    },
+    {
+      "set": "full",
+      "url": "/x?q=a+b"
+    },
+    {
+      "set": "full",
+      "url": "/x?q=a%20b"
+    },
+    {
+      "set": "full",
+      "url": "/x?q=a b"
+    },
+    {
+      "set": "full",
+      "url": ""
+    },
+    {
+      "set": "full",
+      "url": "*"
+    },
+    {
+      "set": "full",
+      "url": "/w?k=1"
+    },
+    {
+      "set": "full",
+      "url": "/w?k=1?junk"
+    },
+    {
+      "set": "full",
+      "url": "/y?k=1"
+    },
+    {
+      "set": "full",
+      "url": "/y?k=2&k=1"
+    },
+    {
+      "set": "full",
+      "url": "/😀/abc"
+    },
+    {
+      "set": "full",
+      "url": "/settings?tab=chat&section=taboo&tab=system"
+    },
+    {
+      "set": "bare",
+      "url": "/files"
+    },
+    {
+      "set": "bare",
+      "url": "/salon/x"
+    },
+    {
+      "set": "onlyhome",
+      "url": "/anything/else"
+    },
+    {
+      "set": "empty",
+      "url": "/salon"
+    }
+  ]
+}

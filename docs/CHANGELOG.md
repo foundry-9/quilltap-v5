@@ -12,6 +12,58 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — test(help): the committed `help-chat-{main,mount}.db` fixture + its builder (P4.9I2A unit 4)
+
+_No crate versions bumped._
+
+The test-pepper substrate for the help-server differentials (the help-docs routes,
+the help-chats routes, the tier-3 orchestrator), built through v4's REAL
+repositories at the pin: three users, two api keys, five connection profiles (one
+refusing tools, one text-block, one with a deliberately dangling api-key id), six
+vault-backed characters covering every eligibility branch, two linked image files,
+one `chat_settings` row with `cheapLLMSettings`, fourteen chats (eleven help chats
+with distinct timestamps and page URLs including a NULL one, two with transcripts,
+plus a salon and a brahma chat for the list filters), and seventeen `help_docs`
+rows with 117 section chunks minted by v4's own `syncHelpDocs()` over a curated
+subset of the shipped tree. `background_jobs` exists and is empty. Every pinned
+id is documented in `help-chat-main.db.meta.json`.
+
+Finding recorded: v4's eligibility route looks for the literal tag `'avatar'` on a
+character's files, but the files schema types `tags` as UUIDs and the base
+repository re-validates on read, so that arm can never fire with valid data; both
+implementations fall through to the first linked image.
+
+#### 2026-09-05 — feat(help): the help-chat pure modules — context resolver, help system prompt, Guide text search (P4.9I2A unit 3)
+
+_Versions: core 0.0.797, harness 0.0.687._
+
+Three new pure modules under `services/help_chat/`: `context_resolver` (v4's
+six-strategy URL → help-document resolver — exact, query, pattern, prefix,
+wildcard, fallback — plus `resolveAll`, with v4's `split('?')` third-part drop, the
+`if (urlQuery)` truthiness gate, WHATWG `URLSearchParams` semantics, stable-sort
+ties, whole-url specificity measures, and the duplicate-wildcard quirk reproduced
+deliberately — v4 dedups by comparing a doc ID against a URL, which never
+matches, so a wildcard primary is pushed twice; recorded as a candidate upstream
+filing); `system_prompt` (`buildHelpChatSystemPrompt` byte-exact, with the
+`undefined` interpolation for a partial pronouns object); and `guide_search`
+(`buildSnippet` + the search mapper: the lopsided 30/160 window, the
+fence-before-furniture regex order, JS whitespace collapse, UTF-16 indices
+throughout — a one-astral-char query is NOT short-circuited, and the
+lowercase-content index is applied to the original content as v4 does). One
+recorded divergence: a snippet window that splits a surrogate pair decodes lossily
+where v4 ships a lone surrogate that JSON cannot even round-trip.
+
+Three tier-1 families, each over a committed corpus and v4's REAL code:
+`help_context_resolver_equivalence` (38 URL rows over four document sets, jest
+with `@/lib/help-search` mocked as v4's own unit test does),
+`help_system_prompt_equivalence` (17 option combinations, tsx), and
+`help_snippet_equivalence` (11 docs × 18 queries through the REAL
+`?action=search` route handler, since `buildSnippet` is module-private). Five
+mutations reddened: the resolver dedup "fixed" to compare ids, the reinforcement
+gate widened, the regex passes swapped (after the corpus gained a fence hugging
+text — every other fence abutted whitespace, where order is invisible), a
+`chars()`-indexed snippet, and an unstable title-hit sort.
+
 #### 2026-09-05 — feat(help): sync the help tree at boot — `ensure_help_docs_synced` wired into the host assembly (P4.9I2A unit 2)
 
 _Versions: host 0.0.98._
