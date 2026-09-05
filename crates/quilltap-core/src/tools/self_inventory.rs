@@ -1508,10 +1508,15 @@ fn build_prompt_section(
     //
     // Standing instructions (v4 `8f868109`) ARE included: they are substantive
     // conduct guidance a character should be able to introspect, and the repos
-    // are already in hand. v4's catch here is EMPTY — an unused `err` binding, no
-    // logging, unlike every other resolve site — so the swallow is silent on this
-    // path by design. v5's resolver is infallible by construction (it logs its
-    // own per-leg failures and returns), which is the same observable behavior.
+    // are already in hand. Fails soft like the live path.
+    //
+    // v4 used to wrap this call in an EMPTY `try/catch` — an unused `err`
+    // binding, no logging, unlike every other resolve site — and DROPPED it at
+    // `0506517d3` (correction (g)) on the grounds that the resolver already
+    // fails soft. Measured against v5 at that sha: there is nothing to port.
+    // v5's resolver is infallible by construction (it logs its own per-leg
+    // failures and returns an `Option`), so v5 has never had a catch to remove
+    // and neither swallows an error nor propagates one here.
     let standing_instructions = crate::standing_instructions::resolve_standing_instructions_section(
         db,
         json_str(&chat, "projectId").as_deref(),

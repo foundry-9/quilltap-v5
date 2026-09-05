@@ -387,6 +387,25 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — docs(self-inventory): v4's dropped empty catch has no v5 counterpart (v4 `0506517d3` correction (g))
+
+_Versions: core 0.0.780._
+
+The seventh correction, measured rather than ported. v4 wrapped the
+self-inventory builder's `resolveStandingInstructionsSection` call in an empty
+`try/catch` — an unused `err` binding, no logging — and dropped it at
+`0506517d3` because the resolver already fails soft. v5's
+`resolve_standing_instructions_section` returns `Option<String>`: it is
+infallible by construction, logs its own per-leg failures, and has never had a
+catch to remove. So there is nothing to change, in either direction — v5
+neither swallows an error here nor propagates one.
+
+The comment at the call site said the opposite of what v4 now does (it
+defended v4's silent swallow as deliberate). It now records the measurement and
+the sha instead, so the next reader of that line does not go looking for a
+`catch` to match. `self_inventory_equivalence` re-run at the `d883a5ee1` pin,
+unmoved.
+
 #### 2026-09-05 — fix(export): the wizard's preview stops counting files the writer refuses (v4 `0506517d3` correction (b))
 
 _Versions: core 0.0.779._
