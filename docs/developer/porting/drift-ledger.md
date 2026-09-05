@@ -24,55 +24,118 @@ probe verifies against._
   `4.9.0-dev.135`), adopted at the `d883a5ee1` drift catch-up round
   unification (P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158,
   2026-09-05).
-- **Checked:** 2026-09-05 at the unification — the §2 probe re-run from the
-  v5 `main` checkout immediately before the baseline move: v4 on `main`, tree
-  CLEAN, `d883a5ee1..main` EMPTY, `3a76b17df..bugfix` EMPTY. **No drift arrived
-  during the round.**
-- **v4 `main` HEAD at check:** `d883a5ee1` — equal to the baseline.
-- **v4 `bugfix` tip at check:** `3a76b17df` — **unmoved** (the bare 4.8.4 fork
-  marker; behind main by the squash topology, nothing unabsorbed).
-- **v4 `release` tip at check:** `8736d7042` ("release: 4.8.4") — unchanged.
-- **Checkout at check:** branch `main`, tree CLEAN; `git worktree list` shows
-  the checkout plus the unification's own pin worktree
-  (`/tmp/qt-v4-pin-unify-d883a5ee1`), removed at the round's cleanup.
-- **Verdict: NO DRIFT — v4 HEAD equals the baseline.** §3 holds ONE row:
-  `15573c3a1` (bug 119, the character optimizer — an unported `p4.9k` surface,
-  UNPROCESSED by design; it precedes the baseline and its obligation is that
-  `p4.9k` ports the POST-FIX shape, citing the sha). Fourteen rows were
-  ABSORBED / NO-PORT-RATIFIED at this unification and retired to §6.
-- **`generateDDL` and `lib/database/schema` UNTOUCHED across the absorbed
-  batch — no D23 re-dump was owed and none was done.**
-- **Regen rule in force: PIN NOT REQUIRED** — v4 HEAD is the baseline and the
-  checkout is clean. It flips back to PIN REQUIRED the moment either the §2
-  probe shows a commit past `d883a5ee1` or the tree goes dirty in
-  `lib/`/`app/`/`packages/`/`plugins/` (§5.1). ⚠ Two standing hazards survive
-  the move and are worth re-reading before any regen: `harness/oracle/cases/
-  memory-injector.ts` now passes a REAL `MemorySubjectContext` positionally
-  (P4.D153) — a future arity change in v4 would again fail silently under
-  `tsx`; and the seven families `d4138b96b` took dark were SPLIT (P4.D157),
-  so a regen of `cheap-model`/`model-selection`/`llm-errors`/
-  `message-formatter`/`post-office-host`/`chat-timestamp`/`token-estimation`
-  at any sha BEFORE `d4138b96b` is now the one that would not match.
-- **The oracle `node_modules` resolve the LIVE dependency tree, never a pin's**
-  (found at this round's unification): the pin worktree symlinks the
-  checkout's `node_modules`, so a source-pinned regen still runs on the
-  CURRENT `zod`/SDK versions. A dependency bump (here `6e1a64ea6`'s `zod`
-  4.4.3 → 4.5.4) therefore reaches every family the moment the checkout
-  installs it, whatever sha the source pin names — and it reached one
-  (`pascal_custom_tool_definition_equivalence`, fixed at the unification).
-  A future `npm update` in v4 is a regen event for every Zod-transcribing
-  family, not just the provider corpora.
-- _Superseded (the 2026-09-05 `/driftcheck` before this round): DRIFT PENDING
-  — 15 commits past `0b0617fee`, PIN REQUIRED at `0b0617fee` for five recorded
-  reasons; all fifteen are now absorbed/ratified (fourteen) or deliberately
-  held (`15573c3a1`). Its reason (5) — the memory-injector arity trap — is the
-  standing hazard recorded above._
-- _Superseded (the 2026-09-04 checks): DRIFT PENDING — first 13 then 14 commits
-  past the baseline, PIN REQUIRED at `0b0617fee` throughout._
-- _Superseded (the 2026-09-03 `/driftcheck`): DRIFT PENDING — 1 commit past
-  the baseline (`15573c3a1`), PIN REQUIRED at `0b0617fee`._
-- **Release shape:** still no `release: 4.9.0` squash and no 4.9 bugfix fork;
-  v4 develops on `main` alone. Keep probing BOTH branches.
+- **Checked:** 2026-09-05, a full `/driftcheck` from the v5 `main` checkout
+  (this is the second check of the day — the first was the pre-round one, and
+  the unification's own probe sat between them).
+- **v4 `main` HEAD at check:** `c2232cd9a` ("dev: started 4.10.0
+  development", 2026-09-05 13:04 -0500, `4.10.0-dev.0`) — **4 commits past
+  the baseline.**
+- **v4 `bugfix` tip at check:** `2b49f51aa` ("bugfix: started 4.9.0 bug
+  branch", 2026-09-05 13:04 -0500, `4.9.1-bugfix.0`) — **MOVED** from the
+  recorded `3a76b17df`. The old tip was the bare 4.8.4 fork marker; the
+  branch has been re-forked from the 4.9.0 release.
+- **v4 `release` tip at check:** `b0eea4642` ("release: 4.9.0") — **MOVED**
+  from the recorded `8736d7042` (4.8.4).
+- **Checkout at check:** branch **`bugfix`** (not `main`), tree CLEAN,
+  root `package.json` at `4.9.1-bugfix.0`. `git worktree list` shows the
+  checkout alone — the previous round's pin worktree was removed at its
+  cleanup, as recorded.
+- **Verdict: DRIFT PENDING — 4 commits past the baseline, and NOT ONE of
+  them changes a byte of code.** v4 cut the **4.9.0 release**: final release
+  notes, the squash onto `release`, the merge back into `main`, and the
+  4.10.0 dev bump; then it re-forked `bugfix` for 4.9.1. **Measured, not
+  inferred:** `git diff --stat d883a5ee1 c2232cd9a` touches exactly FIVE
+  files — `README.md`, `docs/CHANGELOG.md`, `docs/releases/4.9.0.md`,
+  `package.json`, `package-lock.json` — and
+  `git diff --stat d883a5ee1 b0eea4642 -- lib/ app/ packages/ plugins/
+  scripts/ server.ts public/ types/ hooks/ components/` is **EMPTY**, as is
+  `git diff --stat main bugfix -- lib/ app/ packages/ plugins/ scripts/
+  server.ts public/`. The giant stats on `b0eea4642` and `2b49f51aa` are the
+  **squash topology** (their parents are the old 4.8.4 release/fork markers),
+  not new content — exactly the trap §4 step 2 warns about. §3 gains four
+  **NO-PORT?** rows plus the standing `15573c3a1` row (bug 119, an unported
+  `p4.9k` surface, UNPROCESSED by design — it precedes the baseline).
+- **`generateDDL` and `lib/database/schema` UNTOUCHED — no D23 re-dump is
+  owed.** Nothing in `lib/`, `app/`, `packages/`, `plugins/` moved at all.
+- **Regen rule in force: PIN REQUIRED at `d883a5ee1`** — HEAD is past the
+  baseline AND the checkout is on the wrong branch, so §5.1's two triggers
+  both fire and the rule applies as written. **But record what the pin is
+  actually buying this time, so nobody mistakes the situation:** every code
+  path is byte-identical across the baseline, `main`, `release` and
+  `bugfix`, so a pinned and an unpinned regen of any *code* family produce
+  the same bytes. The one real exposure is the **version string**, and it is
+  contained — see the next bullet. The rule returns to PIN NOT REQUIRED the
+  moment the baseline moves to `c2232cd9a` (a pure ratification, see §3) and
+  the checkout is put back on `main`.
+- **⚠ The checkout is on `bugfix`. Put it back on `main` before any regen
+  batch** — not because the code differs (it does not) but because §5.1's
+  discipline is worth more than the one-off reasoning, and because the
+  version differs (`4.9.1-bugfix.0` vs `4.10.0-dev.0`). v4 is the human's
+  active repo: **ask, never switch it yourself.**
+- **The version string reaches three families' NDJSON — and all three are
+  version-transparent BY CONSTRUCTION, so this bump cannot redden them**
+  (verified this check, and this is the first time the port has seen a
+  version *width* change: `4.9.0-dev.135` is 13 chars, `4.10.0-dev.0` is 12,
+  `4.9.1-bugfix.0` is 14). `harness/oracle/cases/system-export.test.ts:396`
+  and `character-archive-tier2.test.ts:322` read the live `package.json` and
+  **emit** it (`_meta.appVersion` / the case's `appVersion`) so the Rust side
+  injects the same string — which is precisely why
+  `character-archive`'s `files.size` stays a real comparand rather than a
+  version artifact; `system-backup.test.ts` **normalizes**
+  `manifest.appVersion` on both sides. Each regenerated NDJSON is therefore
+  self-consistent whatever version the checkout sits on. The only hazard
+  would be hand-editing one of those NDJSONs, or a fourth family growing a
+  version read without the emit-and-inject pattern.
+- **v4-side observation, inert for the port but worth knowing:**
+  `packages/quilltap/package.json` is **stale at `4.9.0-dev.135`** on BOTH
+  `main` and `bugfix`, where the release/dev-bump previously moved all three
+  version files together (the `15573c3a1` row documents the three-file
+  pattern). The npm-published CLI package therefore no longer matches the
+  release. This cannot affect the port — grep confirms **no `--version`
+  comparand anywhere** in `harness/oracle/` or `crates/quilltap-harness/`,
+  and the `"version"` literals in `crates/quilltap-cli/tests/
+  cli_differential.rs` are the `.dbkey` wrapper field, not a package
+  version — so Tier R is unaffected. A candidate to mention upstream, not a
+  filing this port owns.
+- **Doc-sync nit:** `docs/v4/releases/4.9.0.md` in the reference mirror is
+  the PRE-final copy (the mirror was refreshed at the last round, pinned at
+  `d883a5ee1`, which precedes `6cbe2b027`'s rewrite). Refresh it whenever
+  the mirror is next touched; nothing reads it mechanically.
+- _Superseded (the 2026-09-05 unification probe): NO DRIFT — v4 HEAD equal to
+  the baseline, checkout on `main` and CLEAN, PIN NOT REQUIRED. Its two
+  standing hazards SURVIVE and still apply to every regen:_
+  `harness/oracle/cases/memory-injector.ts` _now passes a REAL_
+  `MemorySubjectContext` _positionally (P4.D153) — a future arity change in
+  v4 would again fail silently under_ `tsx`_; and the seven families_
+  `d4138b96b` _took dark were SPLIT (P4.D157), so a regen of_
+  `cheap-model`/`model-selection`/`llm-errors`/`message-formatter`/
+  `post-office-host`/`chat-timestamp`/`token-estimation` _at any sha BEFORE_
+  `d4138b96b` _is the one that would not match._
+- _Superseded, and STILL TRUE — re-read before any regen:_ **the oracle
+  `node_modules` resolve the LIVE dependency tree, never a pin's.** The pin
+  worktree symlinks the checkout's `node_modules`, so a source-pinned regen
+  still runs on the CURRENT `zod`/SDK versions. A dependency bump (found at
+  the last round: `6e1a64ea6`'s `zod` 4.4.3 → 4.5.4) therefore reaches every
+  family the moment the checkout installs it, whatever sha the source pin
+  names — and it reached one
+  (`pascal_custom_tool_definition_equivalence`). A future `npm update` in v4
+  is a regen event for every Zod-transcribing family, not just the provider
+  corpora. **`package-lock.json` moved in this drift, but by the version
+  field only — no dependency changed** (verified: the whole lock hunk is the
+  two `"version"` lines).
+- _Superseded (the 2026-09-05 `/driftcheck` before the last round): DRIFT
+  PENDING — 15 commits past `0b0617fee`, PIN REQUIRED at `0b0617fee`._
+- _Superseded (the 2026-09-04 checks): DRIFT PENDING — first 13 then 14
+  commits past the baseline, PIN REQUIRED at `0b0617fee` throughout._
+- **Release shape — CHANGED at this check.** v4 has released **4.9.0** and
+  now develops on `main` at **4.10.0-dev**, with a **4.9.1 bugfix fork**
+  (`bugfix` = `2b49f51aa`, code-identical to `main`). This is the first time
+  since the 4.8.x cycle that a live bugfix branch exists, so §4 step 2's
+  two-branch rule is load-bearing again: measure `bugfix` by CONTENT, never
+  its commit list. `2b49f51aa` gets **no §3 row** — it is not an ancestor of
+  `main`, so no baseline move will ever pass it, and its content is nil
+  against `main`; it is recorded here instead, and the next check compares
+  against it by content.
 
 ## §2 The freshness probe
 
@@ -113,6 +176,10 @@ when absorbed/ratified.
 |---|---|---|---|---|---|
 
 | `15573c3a1` | 2026-09-02 | fix(optimizer): a non-array sub-step answer no longer kills the run (bug 119) | **PORT (deferred surface — no v5 counterpart today)** | **NOT a convergence** — v4's own filing, from a screenshot of the Refine-from-Memories confirmation screen showing the minified `q.filter is not a function`. **Hunks: ONE lib file, `lib/services/character-optimizer.service.ts` (+60/-4), three changes.** (a) NEW exported `coerceSuggestionArray(value: unknown): OptimizerSuggestion[]` placed after `coerceSuggestionText` — array passes through; non-object/nullish → `[]`; else the FIRST array-valued property among the ordered key list `['suggestions','items','results','data','amendments']`; else a lone object whose `field` is a `string` becomes a one-element array (`field` is called "the shape's fingerprint"); else `[]`. (b) inside the sub-step body, `parseLLMJson<OptimizerSuggestion[]>(raw)` becomes `parseLLMJson<unknown>(raw)` + `coerceSuggestionArray(...)`, and a non-array answer logs `logger.warn('[CharacterOptimizer] Sub-step answered with a non-array; coerced', {characterId, subStep: label, parsedType, recovered})` — note `parsedType` is computed as `Array.isArray(rawParsed) ? 'array' : typeof rawParsed` **inside a branch already known to be non-array**, so it can only ever emit `typeof`; the pre-existing unparseable-JSON `catch` is untouched. (c) the closure `runSubStep` is renamed `runSubStepCore` and a NEW `runSubStep` wraps it in try/catch, logging `logger.error('[CharacterOptimizer] Sub-step failed unexpectedly; continuing', {characterId, subStep: label}, err)` and emitting `onProgress({type:'substep_complete', step:'generating', partialSuggestions: []})` — so one bad pass no longer aborts the fan-out (general fields / each scenario / each system prompt / physical description / wardrobe / aliases / proposed prompts). Explicitly **NOT done** (v4 says so): Zod validation at the sub-step boundary, and moving `logLLMCall` ahead of the filter chain. → **v5 intersection: NONE.** The character optimizer has **never been ported** — `m6-screen-parity.md:546` lists `CharacterOptimizerModal` (`components/characters/optimizer/CharacterOptimizerModal.tsx`, `CharacterDetailView.tsx:373`) as **absent → MISSING → `p4.9k`**, and `phase-4.md:779` / `:5099` carry it among the tier-3 LLM-service deferrals (ai-wizard / optimizer / rename / ai-import); grep confirms no `character_optimizer` / `OptimizerSuggestion` / `runSubStep` anywhere in `crates/` or `apps/`. So there is **nothing to port now and no family to regenerate** — the obligation is that **`p4.9k` ports the POST-FIX shape**, and its work order must cite this sha so the pre-fix inline `.filter` is never transcribed. Also note the class does not transfer mechanically: v4's bug is a TypeScript *cast* (`return JSON.parse(cleaned) as T`) that JS never checks, whereas v5 has no `parseLLMJson` twin at all (`services/answer_confirmation.rs:464 extract_json` returns a `Value` and every reader is explicit) — a Rust `serde_json` deserialize into `Vec<T>` would return `Err`, landing in the equivalent of the parse `catch` rather than throwing at `.filter`. The port's live obligation is therefore the *design* lesson v4's `bugs.md` states — normalise before treating a model answer as an array, and contain a fan-out failure to the pass that caused it — carried into `p4.9k`'s order, plus the coercion table byte-for-byte (the key list is ordered and load-bearing). **NO-PORT within the commit:** `README.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` (+ the new `bugs/fixed/bug-119-optimizer-substep-non-array.md`, 186 lines — read it when `p4.9k` runs), the 47 new lines in `__tests__/unit/lib/services/character-optimizer-helpers.test.ts`, and the version bumps (`4.9.0-dev.120` → `.121` across `package.json`, `package-lock.json`, `packages/quilltap/package.json`). | UNPROCESSED |
+| `6cbe2b027` | 2026-09-05 | Release notes 4.9.0 final update | **NO-PORT?** (docs-only — evidence complete, ratification is mechanical) | **ONE file, `docs/releases/4.9.0.md` (+20/-6), zero code.** The 4.9.0 release-notes prose finalised: `pubDate` 2026-08-31 → 2026-09-05, the front-matter `description` extended with the two late repairs, four new body paragraphs (the bug-121 attachment re-derivation; the bug-114/117/112 Quick-hide + Concierge list marks; the bug-122 memory attribution; the last-day trio — Opus 5 sampling, `instances default --json`, and the release-checklist refactor finds), the repair count 54 → 57, the migration count "Five" → "Eight" (naming `collapse-duplicate-folders-v1`, `realign-file-entry-sha256-v1`, `recompute-chat-last-message-at-v1`), a new Upgrading paragraph on the two Quick-hide behaviour changes and the two retired project background modes, and the sign-off re-dated. → **v5 intersection: NONE mechanically.** Every feature the new prose describes is already ABSORBED — bug 121/122 (P4.D154, P4.D153, the baseline itself), the list marks (P4.D143), bugs 114/117 (P4.D145, P4.D152), bug 112 (P4.D141), the Opus 5 strip and `instances default --json` (P4.D157, P4.D155/bug 120), the `0506517d3` refactor collapse (P4.D156, measured NEUTRAL by the 409-family sweep). **The prose is a useful cross-check and nothing more** — it is v4's own account of work this port has already landed, and §5.3 applies to it as to any commit message: it is not a spec. **Doc-sync nit:** `docs/v4/releases/4.9.0.md` in the reference mirror is the pre-final copy; refresh it whenever the mirror is next touched. | UNPROCESSED |
+| `b0eea4642` | 2026-09-05 | release: 4.9.0 | **NO-PORT?** (branch squash — zero content vs the baseline) | **The 1,317-file / +232,624 stat is TOPOLOGY, not content** — this commit's parent is `8736d7042` ("release: 4.8.4"), so its diff is the whole 4.8.4 → 4.9.0 span replayed onto the `release` branch. **Measured against the baseline instead, which is the only comparison that means anything:** `git diff --stat d883a5ee1 b0eea4642 -- lib/ app/ packages/ plugins/ scripts/ server.ts public/ types/ hooks/ components/` is **EMPTY**, and the all-paths diff is the five doc/version files alone. → **v5 intersection: NONE.** Nothing to port, no family to regenerate. This is the canonical instance of the trap §4 step 2 names: a release-branch squash's commit list and stat both lie, and only a content diff against the baseline tells the truth. `release` tip moves `8736d7042` → `b0eea4642`. | UNPROCESSED |
+| `f6794c840` | 2026-09-05 | merge: 4.9.0 back into main | **NO-PORT?** (merge commit — four version/doc files) | **A merge of `6cbe2b027` and `b0eea4642`, resolving to four files: `README.md`, `docs/CHANGELOG.md`, `package.json`, `package-lock.json` (+5/-5), zero code.** The version markers settle at `4.9.0`. → **v5 intersection: NONE.** | UNPROCESSED |
+| `c2232cd9a` | 2026-09-05 | dev: started 4.10.0 development | **NO-PORT?** (version bump — evidence complete) | **Four files (+6/-4), zero code:** `package.json` and `package-lock.json` `4.9.0` → **`4.10.0-dev.0`**, the `README.md` version badge, and a new `### 4.10-dev` heading above `### 4.9.0` in `docs/CHANGELOG.md`. → **v5 intersection: NONE in code**, but note two things for the next regen batch. (1) **The version string reaches three oracle families** — `system-export.test.ts:396` and `character-archive-tier2.test.ts:322` read the live `package.json` and EMIT it for the Rust side to inject; `system-backup.test.ts` normalizes `manifest.appVersion` on both sides. All three are version-transparent **by construction**, so this bump cannot redden them — and this is the first *width* change the port has seen (13 → 12 chars; `bugfix` is 14), which is exactly the case the emit-and-inject design was built for (`character-archive`'s `files.size`). (2) **`packages/quilltap/package.json` was NOT bumped** and is stale at `4.9.0-dev.135` on both branches, breaking v4's own three-file bump pattern (see the `15573c3a1` row). Inert here — no `--version` comparand exists anywhere in `harness/oracle/` or `crates/quilltap-harness/`, and `cli_differential.rs`'s `"version"` literals are the `.dbkey` wrapper field — so **Tier R is unaffected**. A candidate to mention upstream. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

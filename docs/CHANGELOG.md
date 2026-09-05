@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — docs(drift): record v4's 4.9.0 release — 4 commits, zero code
+
+_Docs-only change._
+
+`/driftcheck` against the `d883a5ee1` baseline. v4 cut the **4.9.0 release**:
+final release notes (`6cbe2b027`), the squash onto `release` (`b0eea4642`),
+the merge back into `main` (`f6794c840`), and the 4.10.0 dev bump
+(`c2232cd9a`); it then re-forked `bugfix` for 4.9.1 (`2b49f51aa`). **Not one
+of them changes a byte of code** — the whole baseline-to-HEAD delta is five
+files: `README.md`, `docs/CHANGELOG.md`, `docs/releases/4.9.0.md`,
+`package.json`, `package-lock.json`. The 1,317-file stats on the release and
+bugfix commits are squash topology (their parents are the old 4.8.4 markers),
+which is the trap the ledger's §4 step 2 names; measured against the baseline
+instead, every code path is empty.
+
+Ledger §1 rewritten, four **NO-PORT?** rows appended to §3 with the evidence
+so ratification at the next unification is mechanical. Recorded alongside:
+the regen rule flips to **PIN REQUIRED** (HEAD past the baseline, and the
+checkout is sitting on `bugfix`), with the measured note that the pin buys
+nothing for code this time because the trees are byte-identical; the version
+string reaches three oracle families and all three are version-transparent by
+construction, which this first version-*width* change (13 → 12 chars)
+exercises; `packages/quilltap/package.json` is stale at `4.9.0-dev.135` on
+both branches, inert here because no `--version` comparand exists anywhere in
+the harness; and `docs/v4/releases/4.9.0.md` in the mirror is the pre-final
+copy.
+
 #### 2026-09-05 — docs(dogfood): the follow-ups-round-2 + `d883a5ee1`-round walk record
 
 _Docs-only change._
