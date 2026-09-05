@@ -105917,3 +105917,102 @@ written `.qtap` should agree for the first time); a Brahma one-shot against a
 key-less profile (the capitalised sentence); and a Workbench draft carrying
 `{{params.}}` and `{{metadata.}}`, whose warnings now name what is actually
 wrong.
+## Lane record — P4.D158 unit 2: the packaging trio's wire re-check (2026-09-05)
+
+The `d883a5ee1` drift catch-up round, lane P4.D158. v4's three packaging
+commits — `b52b996c1` (plugin-utils 2.4.0 → ^2.6.0 everywhere, five bundles
+rebuilt), `6e1a64ea6` (`npm update` across app/packages/plugins, all fifteen
+bundles rebuilt), `06658535f` (the 2.6.1 version-consistency tail) — each
+claim the provider wire did not move. This unit answers the claim with a
+corpus, per the P4.D33 / P4.D48 / P4.D76 / P4.D105 method.
+
+### The environment proof (before any regen)
+
+Run from the lane pin `/tmp/qt-v4-pin-p4d158-d883a5ee1` (all three symlink
+classes; §5.1), with the `createRequire` walk — **not**
+`require('<pkg>/package.json')`, which dies on a strict `exports` map:
+
+| package | resolved from | version | `package.json` mtime |
+|---|---|---|---|
+| `openai` | six plugin dirs | **7.10.0** | 2026-09-04 |
+| `@openrouter/sdk` | openrouter plugin | **1.2.106** | 2026-09-04 |
+| `zod` | root | **4.5.4** | 2026-09-04 |
+| `next` | root | 16.3.4 | — |
+| `@anthropic-ai/sdk` | anthropic plugin | **0.115.0** | **2026-08-04 — UNMOVED** |
+| `@google/genai` | google plugin | 1.52.0 | 2026-05-14 — unmoved |
+
+The anthropic and google rows are the load-bearing ones: their SDKs did not
+move this round, so their recorded rows must come back byte-identical WHOLE,
+and any movement there would be a finding rather than a marker.
+
+### The measurement
+
+Every recorded corpus regenerated at the pin in one clean batch
+(`regenerate-request-envelopes.sh`, `regenerate-google-wire.sh`,
+`regenerate-response-bodies.sh`, `regenerate-stream-fixtures.sh`,
+`regenerate-tool-wire.sh`, `regenerate-image-fixtures.sh`, plus
+`record-moderation-wire.mjs` and `record-web-search-wire.mjs` run from their
+own plugin dirs, plus `gen-provider-manifests.mjs`). `git diff` is the
+pre/post.
+
+**Corpora that did not move at all — byte-identical:** `google-wire`,
+`google-request`, `response-bodies`, all five stream decoders' fixtures,
+`tool-wire`, `moderation-wire`, `web-search-wire`, and all **eleven**
+generated provider manifests (rewritten — mtimes confirm — and identical;
+the manifests carry no `version` field at all, so even the anthropic plugin's
+1.0.54 → 1.0.55 bump is invisible to them, and `extendsTheme` appears in none
+of them, which is why `6e1a64ea6`'s zod-4.5 JSON-Schema emission change to
+`public/schemas/plugin-manifest.schema.json` is genuinely out of scope).
+
+**Corpora that moved — two, and only in self-dating markers:**
+
+| corpus | rows | rows moved | fields that moved |
+|---|---|---|---|
+| `request-envelopes.recorded.ndjson` | 343 | 215 | `headers.x-stainless-package-version` `7.4.0`→`7.10.0` (202); `headers.user-agent` `speakeasy-sdk/typescript 1.2.32 …`→`1.2.106 …` (13) |
+| `image-dialects.recorded.ndjson` | 97 | 11 | the same two fields (8 / 3) |
+
+A field-level walk over every changed row found **no other differing key
+anywhere** — and an explicit whole-value comparison of `body`, `url`,
+`method`, `result`, `refused`, `error` and `input` (headers subtracted)
+came back **identical on all 440 rows of both corpora**. Per provider:
+
+- **anthropic 38/38 byte-identical whole**, **ollama 62/62 byte-identical
+  whole** (raw `fetch`, no SDK); google/grok/nanogpt in image-dialects
+  likewise 18/10/32 untouched.
+- deepseek 26, grok 18, nanogpt 68, openai 26, openai-compatible 40, z-ai 24
+  moved on the openai marker alone; openrouter 13 of 41 on the user-agent
+  alone.
+
+So `b52b996c1`'s explicit claim — that `OpenAICompatibleProvider`'s new
+`buildRequestBody(params, stream)` spreads the streaming keys **in position**
+between `stop` and `user` "so the serialized body stays byte-identical" — is
+now measured rather than believed, across six providers and both modes.
+
+**The recorded client-side refusal still refuses**, byte-identical: the
+corpus carries exactly one today, `openrouter` / `tool-roundtrip` / `send`
+(`"Input validation failed: ["`). The P4.21-era OpenRouter *vision* refusals
+are no longer refusals in the corpus — its `image-attachment send` rows carry
+real bodies — because v4 landed its own non-streaming vision path (bug 31/45);
+that retirement predates this round and is not drift.
+
+### Consumers re-run at the pin
+
+`request_builder_equivalence`, `request_builder_google_wire_equivalence`,
+`request_builder_google_equivalence`, `response_parse_equivalence`,
+`tool_wire_equivalence`, `tool_wire_call_site`, `stream_decoders_equivalence`,
+`moderation_wire_equivalence`, `web_search_wire_equivalence`,
+`image_dialects_equivalence` — all green, zero SKIP. The two env-var families
+were generated at the pin and run too: `provider_registry_equivalence`
+(278-row oracle) and `openrouter_sdk_pricing_equivalence` (the REAL
+`@openrouter/sdk` 1.2.106 in the loop — "OK: 5 openrouter SDK pricing
+scenario(s) matched v4"). `provider_registry_equivalence` prints no case count
+on a pass, so its consumption was proven by mutation: renaming `OPENAI` to
+`MUTANT` in the oracle's first row reddens it at `:188`. (A first mutation
+attempt — `"toolFormat":"anthropic"` → `"MUTANT"` — never applied; the
+memory-note rule *verify the mutation APPLIED* earned its keep again.)
+
+### Verdict
+
+`b52b996c1`, `6e1a64ea6` and `06658535f` are **NO-PORT, ratified on the
+measurement** for the provider wire. The Zod half of `6e1a64ea6` is unit 2
+item 4, recorded separately.

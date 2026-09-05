@@ -806,6 +806,28 @@ red against the pinned v4 — this fix is what closes them.
 `completion_behavior` gains a scoped guard for the fish block, because the
 blanket flag-coverage test asks only whether `-l 'json'` appears anywhere in
 a template, and it already did — on the top-level `quilltap --json`.
+#### 2026-09-05 — test(providers): re-record every provider corpus at `d883a5ee1` — the packaging churn moved two version markers and nothing else
+
+_Versions: harness 0.0.672._
+
+v4's `b52b996c1` / `6e1a64ea6` / `06658535f` reinstalled `@quilltap/plugin-utils`
+2.4.0 → 2.6.1, rebuilt all fifteen plugin bundles, and jumped `openai`
+7.4.0 → 7.10.0, `@openrouter/sdk` 1.2.32 → 1.2.106 and `zod` 4.4.3 → 4.5.4.
+All three claimed wire neutrality. Claims are not measurements, so every
+recorded corpus was regenerated from a worktree pinned at `d883a5ee1` and
+diffed field by field.
+
+Two fields moved, both self-dating SDK markers:
+`headers.x-stainless-package-version` `7.4.0` → `7.10.0` on 210 rows and
+`headers.user-agent` `speakeasy-sdk/typescript 1.2.32 …` → `1.2.106 …` on 16.
+**No request body, url, method, refusal or parse result moved on any row of
+any corpus.** The `plugin-utils` 2.6 `buildRequestBody` refactor spreads the
+streaming keys in position, exactly as its comment claims — the corpus is the
+proof. Anthropic's 38 envelope rows and Ollama's 62 are byte-identical whole
+(anthropic's SDK did not move; Ollama uses raw `fetch`), as are the whole
+google-wire, google-request, response-bodies, stream, tool-wire,
+moderation-wire and web-search-wire corpora and all eleven generated provider
+manifests.
 
 #### 2026-09-05 — docs(orders): the `d883a5ee1` drift catch-up round ordered — P4.D153 ∥ P4.D154 ∥ P4.D155 ∥ P4.D156 ∥ P4.D157 ∥ P4.D158
 
