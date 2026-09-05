@@ -12,6 +12,52 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — feat(help): the help-docs read verbs + the help-chats dispatch family, with their REST edges (P4.9I2A units 5–6)
+
+_Versions: core 0.0.798, harness 0.0.688, web 0.0.115, host 0.0.99._
+
+Thirteen new dispatch verbs inside a `// === P4.9I2A ===` fence in `api/types.rs`
+and `engine.rs`: the four help-docs reads (`HelpDocsList`, `HelpDocsChatCount`,
+`HelpDocsSearch { q }`, `HelpDocGet { id }` — id OR slug) and the nine help-chats
+verbs (`HelpChatList`, `HelpChatEligibility`, `HelpChatCreate`, `HelpChatGet`,
+`HelpChatRename`, `HelpChatUpdateContext`, `HelpChatDelete`, `HelpChatMessages`,
+`HelpChatSend`), three `Response` family variants (`HelpDocs`, `HelpChat`,
+`HelpChatSend`), and a new `HelpChatSendDriver` seam on the engine assembly whose
+absence answers a NAMED refusal (`help chat send not available: no
+HelpChatSendDriver is assembled`) — never a silent no-op; the host wire lands with
+the orchestrator. Handlers in the new `api/help_docs.rs` and `api/help_chats.rs`
+mirror v4's route JSON name-for-name: the six-null create echo (v4 returns its
+input literal), verify-then-parse on rename/update-context/send (a bad body on a
+missing or salon chat is a 404), the first-miss 404 BEFORE the help-enabled 400 on
+create, `helpPageUrl` written by a raw single-column UPDATE (not a `ChatUpdate`
+setter), and the two SYSTEM rows create and update-context write. Body fields ride
+RAW through the `Request` enum so v4's uncaught Zod refusals are reproduced at the
+handler.
+
+REST edges in the new `quilltap-web/src/help_routes.rs` at v4's paths, unwrapping
+the envelope to raw bodies, 201 on create; the help-DOCS route keeps v4's
+default-serving `?action=` shape (unknown or empty action → the list) while the
+help-CHATS routes keep the envelope shape (`?action=` → the no-action leg; unknown
+→ v4's `Unknown action: X. Available actions: …` 400).
+
+Recorded: `verifyHelpChat` never checks `userId` (reproduced — user B reads A's
+chat); the list sort's JS NaN comparator has no total-order twin (an unparseable
+`updatedAt` sorts last in v5; the fixture carries none); and v4's eligibility
+`'avatar'` tag arm is unreachable with valid data (tags are UUIDs) — reproduced
+literally, it falls through to the first linked image.
+
+New families over the committed `help-chat-*` pair: `help_docs_routes_equivalence`
+(19 cases) and `help_chats_routes_equivalence` (49 cases incl. `messagesAfter`
+rowid-ordered projections), both green on their first run; plus the web wire test
+`help_web_routes` (both action shapes, the 201, the missing-key refusal, the
+send-driver refusal after v4's prologue, and the boot ensure growing the fixture's
+17 docs to 120). Mutation-proven: the create guard order (RED only after the
+corpus gained a missing-id + help-disabled row — a missing id beside a help-enabled
+one answers 404 under either order), the six-null echo, rename's verify-then-parse,
+the list sort direction, and a `userId` gate on the verify (all RED, reverted).
+The web wrong-type census gained the `helpDocsSearch.q` query row and its
+route-identifier exclusion count moved 403 → 410.
+
 #### 2026-09-05 — test(help): the committed `help-chat-{main,mount}.db` fixture + its builder (P4.9I2A unit 4)
 
 _No crate versions bumped._

@@ -91,6 +91,10 @@ pub mod chat_cast;
 // === end P4.9E1A ===
 // === P4.9P: the global-search endpoint (append-only) ===
 pub mod ui_search;
+// === P4.9I2A: the help/HelpChat server family (help-docs reads + help-chats) ===
+pub mod help_chats;
+pub mod help_docs;
+// === end P4.9I2A ===
 // === end P4.9P ===
 pub mod types;
 

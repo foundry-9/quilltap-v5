@@ -3306,6 +3306,80 @@ pub enum Request {
         id: String,
     },
     // === end P4.73 ===
+
+    // === P4.9I2A: the help/HelpChat server family (§B of the order) ===
+    /// v4 `GET /api/v1/help-docs` — every help document's listing row
+    /// (`{id, slug, title, path, url}`).
+    HelpDocsList,
+    /// v4 `GET /api/v1/help-docs?action=chat-count` — the user's salon chat count.
+    HelpDocsChatCount,
+    /// v4 `GET /api/v1/help-docs?action=search&q=` — the Guide text search.
+    /// `q` is `searchParams.get('q') ?? ''`: absent reads as the empty string.
+    HelpDocsSearch {
+        #[serde(default)]
+        q: Option<String>,
+    },
+    /// v4 `GET /api/v1/help-docs/{id}` — one document by DB id OR slug.
+    HelpDocGet {
+        id: String,
+    },
+    /// v4 `GET /api/v1/help-chats` — the user's help chats.
+    HelpChatList,
+    /// v4 `GET /api/v1/help-chats?action=eligibility` — the help-eligible
+    /// characters + reasons.
+    HelpChatEligibility,
+    /// v4 `POST /api/v1/help-chats` — create a help chat. Both fields ride RAW:
+    /// v4's `createHelpChatSchema.parse` is uncaught and runs INSIDE the
+    /// handler, so a wrong-typed body is the flat 400 `Validation error`, and a
+    /// missing key is the same (not a silent default).
+    #[serde(rename_all = "camelCase")]
+    HelpChatCreate {
+        #[serde(default)]
+        character_ids: serde_json::Value,
+        #[serde(default)]
+        page_url: serde_json::Value,
+    },
+    /// v4 `GET /api/v1/help-chats/{id}` — chat detail.
+    #[serde(rename_all = "camelCase")]
+    HelpChatGet {
+        chat_id: String,
+    },
+    /// v4 `PATCH /api/v1/help-chats/{id}` (no action) — rename. RAW: `renameSchema`
+    /// parses AFTER `verifyHelpChat` (a bad body on a non-help chat is a 404).
+    #[serde(rename_all = "camelCase")]
+    HelpChatRename {
+        chat_id: String,
+        title: serde_json::Value,
+    },
+    /// v4 `PATCH /api/v1/help-chats/{id}?action=update-context` — the page
+    /// context. RAW: `updateContextSchema` parses AFTER the verify.
+    #[serde(rename_all = "camelCase")]
+    HelpChatUpdateContext {
+        chat_id: String,
+        page_url: serde_json::Value,
+    },
+    /// v4 `DELETE /api/v1/help-chats/{id}`.
+    #[serde(rename_all = "camelCase")]
+    HelpChatDelete {
+        chat_id: String,
+    },
+    /// v4 `GET /api/v1/help-chats/{id}/messages` — the transcript.
+    #[serde(rename_all = "camelCase")]
+    HelpChatMessages {
+        chat_id: String,
+    },
+    /// v4 `POST /api/v1/help-chats/{id}/messages` — send + stream (the help
+    /// orchestrator; frames ride the Event channel, chat-scoped). RAW body
+    /// fields, validated after `verifyHelpChat` — the Brahma send's exact
+    /// shape. `fileIds` is accepted and IGNORED, as v4's orchestrator ignores it.
+    #[serde(rename_all = "camelCase")]
+    HelpChatSend {
+        chat_id: String,
+        content: serde_json::Value,
+        #[serde(default)]
+        file_ids: Option<serde_json::Value>,
+    },
+    // === end P4.9I2A ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===
@@ -3775,6 +3849,21 @@ pub enum Response {
     /// — the `PhotoGallery` precedent. Pinned by `images_routes_equivalence`.
     Images(serde_json::Value),
     // === end P4.73 ===
+    // === P4.9I2A: the help/HelpChat server family — append-only ===
+    /// v4 help-docs route bodies (`{ documents }` / `{ count }` / `{ matches }` /
+    /// `{ document }`) — one family variant carrying v4's literals verbatim.
+    /// Pinned by `help_docs_routes_equivalence`.
+    HelpDocs(serde_json::Value),
+    /// v4 help-chats CRUD bodies (`{ chats }` / `{ eligible, characters, reasons }`
+    /// / `{ chat }` / `{ messages }` / `{ message }`). Pinned by
+    /// `help_chats_routes_equivalence`. Send's reply is the separate
+    /// `HelpChatSend` variant.
+    HelpChat(serde_json::Value),
+    /// v4 help-chat send reply (`{ messageId }`) — the orchestrator's typed
+    /// dispatch result; the stream frames ride the Event channel (the
+    /// `ChatSend` architecture).
+    HelpChatSend(serde_json::Value),
+    // === end P4.9I2A ===
     Error(CoreError),
 }
 

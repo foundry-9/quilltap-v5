@@ -281,6 +281,14 @@ pub struct EngineAssembly {
     /// undescribed image (cached / kept-image / non-image arms never reach it).
     pub image_describe: Option<Arc<dyn super::chat_media::ImageDescribeDriver>>,
     // === end P4.9E4A ===
+    // === P4.9I2A: the help-chat orchestrator send driver ===
+    /// The help-chat send driver (the orchestrator — `brahma_console_send`'s
+    /// sibling; only the composing host can construct the streaming/tool/cost
+    /// bundle). `None` (read-only embedders) → the `HelpChatSend` arm answers a
+    /// NAMED refusal, never a silent no-op. ⚠ LIVE once the host wires it: one
+    /// streamed model call per help character per send, plus tool calls.
+    pub help_chat_send: Option<Arc<dyn super::help_chats::HelpChatSendDriver>>,
+    // === end P4.9I2A ===
 }
 
 impl EngineAssembly {
@@ -334,6 +342,9 @@ impl EngineAssembly {
             // === P4.9E4A ===
             image_describe: None,
             // === end P4.9E4A ===
+            // === P4.9I2A ===
+            help_chat_send: None,
+            // === end P4.9I2A ===
         }
     }
 }
@@ -547,6 +558,11 @@ struct ReadyEngine {
     /// ladder resolves to `''` and the attach still succeeds).
     image_describe: Option<Arc<dyn super::chat_media::ImageDescribeDriver>>,
     // === end P4.9E4A ===
+    // === P4.9I2A ===
+    /// The help-chat send driver (P4.9I2A; `None` for read-only embedders — the
+    /// `HelpChatSend` arm answers the named not-assembled refusal).
+    help_chat_send: Option<Arc<dyn super::help_chats::HelpChatSendDriver>>,
+    // === end P4.9I2A ===
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -4953,6 +4969,99 @@ impl CoreEngine {
                     Err(r) => r,
                 }
             } // === end P4.9I1A ===
+
+            // === P4.9I2A: the help/HelpChat server family ===
+            Request::HelpDocsList => match self.ready_db() {
+                Ok(db) => super::help_docs::help_docs_list(&db),
+                Err(r) => r,
+            },
+            Request::HelpDocsChatCount => match self.ready_db() {
+                Ok(db) => super::help_docs::help_docs_chat_count(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::HelpDocsSearch { q } => match self.ready_db() {
+                Ok(db) => super::help_docs::help_docs_search(&db, q.as_deref()),
+                Err(r) => r,
+            },
+            Request::HelpDocGet { id } => match self.ready_db() {
+                Ok(db) => super::help_docs::help_doc_get(&db, &id),
+                Err(r) => r,
+            },
+            Request::HelpChatList => match self.ready_db() {
+                Ok(db) => super::help_chats::help_chat_list(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::HelpChatEligibility => match self.ready_db() {
+                Ok(db) => super::help_chats::help_chat_eligibility(&db, SINGLE_USER_ID),
+                Err(r) => r,
+            },
+            Request::HelpChatCreate {
+                character_ids,
+                page_url,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::help_chats::help_chat_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_ids,
+                        &page_url,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::HelpChatGet { chat_id } => match self.ready_db() {
+                Ok(db) => super::help_chats::help_chat_get(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::HelpChatRename { chat_id, title } => match self.ready_db() {
+                Ok(db) => super::help_chats::help_chat_rename(&db, &chat_id, &title).await,
+                Err(r) => r,
+            },
+            Request::HelpChatUpdateContext { chat_id, page_url } => match self.ready_db() {
+                Ok(db) => {
+                    super::help_chats::help_chat_update_context(&db, &chat_id, &page_url).await
+                }
+                Err(r) => r,
+            },
+            Request::HelpChatDelete { chat_id } => match self.ready_db() {
+                Ok(db) => super::help_chats::help_chat_delete(&db, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::HelpChatMessages { chat_id } => match self.ready_db() {
+                Ok(db) => super::help_chats::help_chat_messages(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::HelpChatSend {
+                chat_id,
+                content,
+                file_ids,
+            } => {
+                // The help-type gate AND the body validation, in v4's order
+                // (`verifyHelpChat` before `sendMessageSchema.parse`), then the
+                // driver. Validating at the transport edge would answer 400
+                // where v4 answers 404.
+                match self.ready_db() {
+                    Ok(db) => match super::help_chats::help_chat_send_prepare(
+                        &db,
+                        &chat_id,
+                        &content,
+                        file_ids.as_ref(),
+                    ) {
+                        Ok((content, file_ids)) => {
+                            self.help_chat_send(super::help_chats::HelpChatSendRequest {
+                                user_id: SINGLE_USER_ID.to_string(),
+                                chat_id,
+                                content,
+                                file_ids,
+                            })
+                            .await
+                        }
+                        Err(r) => r,
+                    },
+                    Err(r) => r,
+                }
+            } // === end P4.9I2A ===
         }
     }
 
@@ -5514,6 +5623,35 @@ impl CoreEngine {
         }
     }
 
+    /// The `HelpChatSend` arm (P4.9I2A): readiness-gated (D2), then delegated to
+    /// the assembly's help-chat orchestrator driver (mirrors
+    /// [`Self::brahma_console_send`]). A ready engine without a driver (a
+    /// read-only embedder, a canned test factory) answers a NAMED refusal —
+    /// never a silent no-op — so a missing host wire cannot pass for a send.
+    async fn help_chat_send(&self, req: super::help_chats::HelpChatSendRequest) -> Response {
+        let driver = {
+            let state = self.inner.state.lock().unwrap();
+            match &*state {
+                EngineState::Ready(r) => match &r.help_chat_send {
+                    Some(d) => Arc::clone(d),
+                    None => {
+                        return Response::error(
+                            ErrorKind::Internal,
+                            "help chat send not available: no HelpChatSendDriver is assembled",
+                        );
+                    }
+                },
+                EngineState::Locked { pepper_state, .. } => {
+                    return Response::locked(*pepper_state);
+                }
+            }
+        };
+        match driver.send(req).await {
+            Ok(dto) => Response::HelpChatSend(dto),
+            Err(e) => Response::Error(e),
+        }
+    }
+
     fn health(&self) -> Response {
         let (ready, pepper_state) = match &*self.inner.state.lock().unwrap() {
             EngineState::Ready(r) => (true, r.pepper_state),
@@ -6037,6 +6175,9 @@ fn open_ready(
         // === P4.9E4A ===
         image_describe: assembly.image_describe,
         // === end P4.9E4A ===
+        // === P4.9I2A ===
+        help_chat_send: assembly.help_chat_send,
+        // === end P4.9I2A ===
     })
 }
 

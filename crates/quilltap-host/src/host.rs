@@ -925,6 +925,11 @@ impl EngineAssembler for HostAssembler {
             // image with neither a cached description nor kept-image markdown. ===
             image_describe,
             // === end P4.9E4A ===
+            // === P4.9I2A: the help-chat send driver — the host wire lands with
+            // the orchestrator (unit 7); until then the `HelpChatSend` arm answers
+            // its NAMED refusal. ===
+            help_chat_send: None,
+            // === end P4.9I2A ===
         })
     }
 }

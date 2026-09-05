@@ -107017,3 +107017,46 @@ the checkout's own `help/` is byte-identical to the pin's.
   (which stamps the wall clock); `messageCount` is v4's `countVisibleMessages`
   (SYSTEM/TOOL excluded → H1 = 3, H2 = 2); P4's dangling key inserts through
   the ordinary repo (no FK, no existence check).
+
+### Units 5–6 — the help-docs read verbs + the help-chats dispatch family + REST edges (Tier 1 items 3–4)
+
+- `api/help_docs.rs` (NEW): list / chat-count / search / get — v4's four bodies
+  name-for-name; `load_documents` reads the table per call (the no-cache
+  divergence). `api/help_chats.rs` (NEW): the nine verbs + `verify_help_chat`
+  + `help_chat_send_prepare` (verify FIRST, then the Brahma send-body parser —
+  the SAME Zod schema, reused not copied) + the `HelpChatSendDriver` seam.
+  Fenced appends in `types.rs` (13 `Request` variants, 3 `Response` variants),
+  `engine.rs` (assembly field, ready field, copy, 13 arms, `help_chat_send`
+  with the NAMED refusal), `host.rs` (`help_chat_send: None` until unit 7).
+  `quilltap-web/src/help_routes.rs` (NEW) + `lib.rs` registration.
+- Fidelity notes carried: the six-null create echo (re-read + inject, the
+  Brahma idiom); `helpPageUrl` via raw `UPDATE chats … updatedAt` (no
+  `ChatUpdate` setter; the set-model precedent); update-context re-reads BEFORE
+  the SYSTEM row lands (v4 returns the update's own return); create's first
+  miss → 404 BEFORE the help check; `!chat.chatType || === 'salon'` JS
+  truthiness on chat-count; eligibility's `=== true` / `!== false` strictness
+  and the `'avatar'` tag arm reproduced literally though unreachable.
+- **Recorded divergences:** `verify_help_chat` has NO userId gate (v4's
+  doc comment lies; pinned by `get_other_user_still_200`); the list sort maps
+  an unparseable `updatedAt` to LAST (v4's NaN comparator is not a total
+  order — memory note `js-nan-comparator-is-not-a-total-order`; the fixture
+  carries only parseable stamps).
+- Families (fresh from the pin): `help_docs_routes_equivalence` 19/19 and
+  `help_chats_routes_equivalence` 49/49, GREEN first run, `checked ==
+  oracle.len()` asserted. The two envelope-400 rows compare the EDGE's fixed
+  sentence (they never reach a handler in v4 either).
+- **Mutations (help-chats; all reverted):** create help-check-before-existence
+  — GREEN at first (the order row paired MISSING with a help-ENABLED id: 404
+  under either order); the `create_missing_and_help_disabled_404_not_400` row
+  added → RED; six-null echo dropped → RED (2 cases); rename parse-before-
+  verify → RED (2 cases: 400 where 404); list sort ascending → RED; a userId
+  gate on verify → RED (3 cases).
+- `help_web_routes` (NEW web wire test over a served help-chat instance —
+  `materialize_help_chat_instance` added to the web tests' `common`, with the
+  `rewrite_user_ids` step the first run showed missing: three users → chat
+  count 0): both `?action=` shapes, 201, the missing-`characterIds` 400 (decoded
+  THROUGH the enum), the send arm's NAMED refusal after v4's prologue (404/400
+  first; the refusal writes nothing), and the boot ensure growing 17 → 120
+  docs with the fixture's ids preserved.
+- `dispatch_wrong_type_census`: the `HelpDocsSearch.q` `V4::Query` row; the
+  route-identifier exclusion 403 → 410 (7 `id`/`chat_id` fields).

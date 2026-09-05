@@ -189,6 +189,54 @@ pub fn materialize_characters_instance() -> tempfile::TempDir {
     base
 }
 
+/// P4.9I2A: materialize an instance dir from the committed `help-chat-*`
+/// fixture (three users, six vault-backed characters, fourteen chats — eleven
+/// of them help chats — and seventeen synced `help_docs`; the fixture owner
+/// `FIXTURE_USER` is rewritten to the engine's single user). Used by the
+/// help-docs / help-chats
+/// web-edge tests. NOTE: booting a host over it runs the boot-time help-docs
+/// ensure, which syncs the EMBEDDED 120-file tree into `help_docs` — the
+/// fixture's 17 rows are all shipped files, so they survive (content hashes
+/// agree) and 103 more are created.
+#[allow(dead_code)]
+pub fn materialize_help_chat_instance() -> tempfile::TempDir {
+    let base = tempfile::tempdir().expect("tempdir");
+    let data = base.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::copy(
+        fixtures_dir().join("help-chat-main.db"),
+        data.join("quilltap.db"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures_dir().join("help-chat-mount.db"),
+        data.join("quilltap-mount-index.db"),
+    )
+    .unwrap();
+    {
+        let w = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
+        w.connection().execute_batch(LLM_LOGS_DDL).unwrap();
+    }
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+        // The fixture owner (USER_A = `FIXTURE_USER`) becomes the engine's
+        // `SINGLE_USER_ID`; users B and C keep their ids (the served instance
+        // sees only A's rows through the single-user dispatch).
+        rewrite_user_ids(w.connection());
+        // The terminal routes need the table (the P4.1c DDL); the fixture's
+        // corpus never spawns a terminal.
+        w.connection()
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS terminal_sessions (\
+                   id TEXT PRIMARY KEY, chatId TEXT, label TEXT, shell TEXT, \
+                   cwd TEXT, startedAt TEXT, exitedAt TEXT, exitCode REAL, \
+                   transcriptPath TEXT, createdAt TEXT, updatedAt TEXT);",
+            )
+            .unwrap();
+    }
+    base
+}
+
 /// Materialize an instance dir from the committed P4.6ak text-replacements
 /// fixture (three rules + three chats + a background file), user ids rewritten.
 /// Used by the text-replacements + get-background web-edge tests.

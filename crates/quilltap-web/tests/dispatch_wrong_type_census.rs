@@ -2199,6 +2199,15 @@ const CENSUS: &[Row] = &[
         v4: V4::Query,
         note: "`ui/search/route.ts:87-93` `searchParams`",
     },
+    // === P4.9I2A: the help-docs Guide text search ===
+    Row {
+        variant: "HelpDocsSearch",
+        field: "q",
+        rust_type: "Option<String>",
+        v4: V4::Query,
+        note: "`help-docs/route.ts:83` `searchParams.get('q') ?? ''` — a query string, never a body; absent → `''`",
+    },
+    // === end P4.9I2A ===
     Row {
         variant: "UiSearch",
         field: "types",
@@ -2418,7 +2427,9 @@ fn is_route_identifier(field: &str) -> bool {
 /// `phase-4.md`'s candidates. Until then the excluded set's size is asserted
 /// here so it cannot grow unnoticed, and the header no longer calls the
 /// census total.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 403;
+// P4.9I2A added seven route identifiers (`HelpDocGet.id` + six `HelpChat*.chat_id`),
+// every one of them a v4 `/[id]/` URL segment — 403 → 410.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 410;
 
 #[test]
 fn census_covers_every_typed_request_field() {

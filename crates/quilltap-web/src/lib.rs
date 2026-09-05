@@ -24,6 +24,7 @@
 pub mod backup_routes;
 // === end P4.9G5 ===
 pub mod brahma_routes;
+// P4.9I2A: the help-docs + help-chats REST edges.
 pub mod characters_routes;
 pub mod chats_routes;
 pub mod custom_tools_routes;
@@ -32,6 +33,7 @@ pub mod embedding_profiles_routes;
 pub mod events;
 pub mod files_routes;
 pub mod health;
+pub mod help_routes;
 // === P4.49: the file log transport (combined.log / error.log + rotation) ===
 pub mod log_file;
 // === end P4.49 ===
@@ -540,6 +542,31 @@ pub fn build_router(state: SharedState) -> Router {
                 .post(brahma_routes::brahma_console_messages_post),
         )
         // === end P4.9I1A ===
+        // === P4.9I2A: the help-docs read + help-chats CRUD/send surface ===
+        .route(
+            "/api/v1/help-docs",
+            get(help_routes::help_docs_collection_get),
+        )
+        .route(
+            "/api/v1/help-docs/{id}",
+            get(help_routes::help_docs_item_get),
+        )
+        .route(
+            "/api/v1/help-chats",
+            get(help_routes::help_chats_collection_get)
+                .post(help_routes::help_chats_collection_post),
+        )
+        .route(
+            "/api/v1/help-chats/{id}",
+            get(help_routes::help_chats_item_get)
+                .patch(help_routes::help_chats_item_patch)
+                .delete(help_routes::help_chats_item_delete),
+        )
+        .route(
+            "/api/v1/help-chats/{id}/messages",
+            get(help_routes::help_chats_messages_get).post(help_routes::help_chats_messages_post),
+        )
+        // === end P4.9I2A ===
         // === P4.9c: the user-profile + data-dir surface (lane C, append-only) ===
         .route(
             "/api/v1/user/profile",
