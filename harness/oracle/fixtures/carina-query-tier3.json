@@ -198,6 +198,38 @@
         0.0
       ],
       "createdAt": "2026-06-01T00:00:00.000Z"
+    },
+    {
+      "_comment": "bug 122: Sage remembers something about ALICE. Its subject must be named, or the answerer reads it as their own life. The vector is near the pinned query embedding so the same memory_recall case retrieves it.",
+      "id": "00000000-0000-4000-8000-6d656d320000",
+      "characterId": "00000000-0000-4000-8000-736167650000",
+      "aboutCharacterId": "00000000-0000-4000-8000-616c69636500",
+      "content": "Alice climbed the north tower alone last winter.",
+      "summary": "Alice's climb of the north tower.",
+      "importance": 0.5,
+      "vector": [
+        0.98,
+        0.199,
+        0.0,
+        0.0
+      ],
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    },
+    {
+      "_comment": "bug 122, the unresolved arm through the REAL repository: this aboutCharacterId matches no `characters` row, so `findNamesByIds` leaves it out of the map and the line falls back to `About another character: `.",
+      "id": "00000000-0000-4000-8000-6d656d330000",
+      "characterId": "00000000-0000-4000-8000-736167650000",
+      "aboutCharacterId": "00000000-0000-4000-8000-676f6e650000",
+      "content": "Someone long gone left a mark on the tower stair.",
+      "summary": "A vanished hand on the tower stair.",
+      "importance": 0.5,
+      "vector": [
+        0.96,
+        0.28,
+        0.0,
+        0.0
+      ],
+      "createdAt": "2026-06-01T00:00:00.000Z"
     }
   ],
   "priorExchanges": [

@@ -180,6 +180,37 @@ oracle case, and the runner's count guard moves 7 → 5 buckets.
 The oracle case shrinks 33 → 24 rows; every surviving row is byte-identical
 to the pre-split oracle regenerated at `0b0617fee` (the last sha at which the
 case links), and the split case regenerates clean at `d883a5ee1`.
+#### 2026-09-05 — test(harness): make the tier-3 memory blocks carry a subject other than their owner
+
+_No crate versions bumped._
+
+The bug-122 prefix only shows up in a tier-3 block when the fixture holds a
+memory whose `aboutCharacterId` is neither absent nor the owner's own.
+Measured first, then widened where it was missing.
+
+`build-context-tier3` already had one (Ada's memory about Bea) and it
+reaches the dynamic head, so the family was discriminating on day one — but
+only through the head. One pantry-crate anchor is now about Charlie, who is
+not in Ada's recall pool, so his name can reach the prefix ONLY through the
+archive half of the union the per-turn build resolves. Dropping that half
+now turns `About Charlie:` into `About another character:` and reddens the
+family; before, the union was pinned by the source census alone.
+
+`carina-query-tier3` had one memory, about nobody. It gains two: one about
+Alice (resolved through the real characters repository) and one about an id
+with no row at all, which exercises the `About another character: `
+fallback end to end rather than at the pure tier. The builder carries
+`aboutCharacterId` instead of hard-coding `null`.
+
+`announcer_tier3` renders the head block thirteen times and is green, but
+every memory in it is the announcer's own, so it is a NEUTRALITY proof for
+this change, not a coverage one — its fixture is the committed shared
+`post-office` pair, which this lane does not own. Recorded rather than
+widened.
+
+All three regenerated from a worktree pinned at `d883a5ee1` and re-run by
+name.
+
 #### 2026-09-05 — fix(memory): name the subject of a memory about someone else (bug 122)
 
 _Versions: core 0.0.778, harness 0.0.672._

@@ -237,7 +237,9 @@
       "content": "Cataloged pantry crate number 12 in the cellar ledgerbook.",
       "summary": "Pantry crate 12.",
       "importance": 0.95,
-      "vector": null
+      "vector": null,
+      "aboutCharacterId": "ca000000-0000-4000-8000-0000000000a3",
+      "_comment": "bug 122 (v4 d883a5ee1): one FROZEN-ARCHIVE anchor about someone else. Charlie is not in Ada's semantic-recall pool, so his name can only reach the prefix through the archive half of the union the per-turn build resolves — which is what makes the union measurable here rather than only census-pinned."
     },
     {
       "id": "ce000000-0000-4000-8000-00000000f013",

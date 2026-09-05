@@ -57,6 +57,12 @@ interface ProfileSpec {
 interface SeedMemory {
   id: string;
   characterId: string;
+  /**
+   * Whose life the memory describes (v4 `d883a5ee1`, bug 122). Absent = the
+   * owner's own. A store keyed on `characterId` alone holds both, so the
+   * answerer's recall must be able to carry an about-someone-else row.
+   */
+  aboutCharacterId?: string | null;
   content: string;
   summary: string;
   importance: number;
@@ -220,13 +226,13 @@ async function main(): Promise<void> {
     );
   }
 
-  // Sage's seed memory + its vector index entry.
+  // Sage's seed memories + their vector index entries.
   const vectors = new VectorIndicesRepository();
   for (const m of spec.seedMemories) {
     await repos.memories.create(
       {
         characterId: m.characterId,
-        aboutCharacterId: null,
+        aboutCharacterId: m.aboutCharacterId ?? null,
         chatId: null,
         projectId: null,
         content: m.content,
