@@ -105639,9 +105639,17 @@ sweep driver reads it from the test header.
   `p4_6ay_workbench_wire_contract` is the driver's `nothing_to_run` REFUSAL by
   design — it is an in-process integration arm with no oracle at all, and it
   runs under `cargo test --workspace` like any other test.
-- `cargo test --workspace` with the lane's 32-variable env block (every §A
-  family's `QT_ORACLE_*` / `QT_FIXTURE_*`), full log captured — never piped
-  through `tail`.
+- `cargo test --workspace` with the lane's env block (every §A family's
+  `QT_ORACLE_*` / `QT_FIXTURE_*`), full log captured — never piped through
+  `tail`. **495 test binaries / 2,786 passed / 0 failed / 1 ignored — exit 0.**
+  The FIRST run carried all 32 variables and stopped at binary 268 on the
+  escalated Zod family (`cargo test --workspace` is fail-fast per binary), so
+  the gate of record withholds **one** variable — `QT_ORACLE_PASCAL_DEFINITION`
+  — and the rest of the tree runs. ⚠ **That family therefore SKIPs inside the
+  workspace run, and its skip is invisible**: cargo captures a passing test's
+  stdout, so the "zero `SKIP:` lines" above is the capture speaking, not a
+  claim that every family ran. Its real result is the by-name RED recorded
+  above, which is the point of the escalation.
 - SPA: `npm run lint` (the `check-qt-classes` guard, 950 classes, 5/5
   self-tests) clean; `npm test` **379 files / 5,956 tests, 0 failed**;
   `npm run build` clean.
@@ -105649,7 +105657,7 @@ sweep driver reads it from the test header.
 
 ### Versions
 
-core 0.0.782, harness 0.0.673, SPA 0.5.643. `web`, `host`, `cli` and `tauri`
+core 0.0.783, harness 0.0.673, SPA 0.5.643. `web`, `host`, `cli` and `tauri`
 unchanged — this lane touched none of them.
 
 ### 💸 The dogfood queue gains

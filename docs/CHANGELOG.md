@@ -387,6 +387,22 @@ red-first: the runner panicked on `unknown oracle kind: unseen` before the
 port existed. Mutation-proven — dropping the row-id guard reddens
 `skips-a-message-with-no-row-id`; walking ASSISTANT rows without breaking
 reddens `no-redelivery-after-the-character-answered`.
+#### 2026-09-05 — docs(status): P4.D155's gate, and what "zero SKIP lines" does not mean
+
+_Docs-only change._ (No crate versions bumped.)
+
+The gate section of P4.D155's lane record, corrected after the run. **495 test
+binaries / 2,786 passed / 0 failed / 1 ignored, exit 0.** The first attempt
+carried the whole env block and stopped at binary 268 on the escalated Zod
+family — `cargo test --workspace` is fail-fast per binary — so the gate of
+record withholds exactly one variable, `QT_ORACLE_PASCAL_DEFINITION`.
+
+The correction worth having in writing: that family then SKIPs inside the
+workspace run and **its skip is invisible**, because cargo captures a passing
+test's stdout. "Zero `SKIP:` lines" in a green log is the capture speaking, not
+evidence that every family ran. The family's real result is the by-name RED
+recorded a few paragraphs up, which is what the escalation is about.
+
 #### 2026-09-05 — refactor(pascal): the renderer substitutes through the regex engine, not through arithmetic of ours
 
 _Versions: core 0.0.783._
