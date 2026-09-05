@@ -105306,3 +105306,40 @@ carries a `files` table, three rows, and three pinned message timestamps) — it
 builder is the only producer and `orchestrator_tier3_equivalence` its only
 consumer, so no other family is affected. The `file-attachment` pair is
 unchanged.
+
+### P4.D154 — the lane gate
+
+Run 2026-09-05 from the lane worktree, with the fixtures copied to a
+lane-unique `/tmp/qt-p4d154-gate/` first (the `/tmp` collision rule).
+
+- `cargo fmt --all --check` — clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean, **both**
+  feature sets (default and `--features quilltap-core/native-transport`).
+- `cargo build --workspace` — clean.
+- `cargo test --workspace` with the lane's env block
+  (`QT_ORACLE_MESSAGE_CONTEXT_LEAVES`, `QT_ORACLE_ORCHESTRATOR` +
+  `QT_FIXTURE_ORCH_*`, `QT_ORACLE_FILE_ATTACHMENT` + `QT_FIXTURE_FILE_ATTACH_*`):
+  **494 test binaries / 2,785 passed / 0 failed / 1 ignored — exit 0, ZERO
+  `SKIP:` lines.** All three §A families positively confirmed to have RUN by
+  name in the log (`file_attachment_matches_oracle`,
+  `message_context_leaves_match_oracle`, `orchestrator_tier3_matches_oracle`),
+  not inferred from the absence of a red. (The log's three `FAILED` hits are
+  the word inside an unrelated pre-existing WARN sentence — "Failed to resolve
+  default embedding profile; FAILED-status exclusion disabled" — the
+  `gate-log-failed-grep-lies` trap; every `test result:` line reports 0 failed
+  and cargo exited 0.)
+- The three §A families ALSO run by name through
+  `recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d154-d883a5ee1 --run <family>`, each
+  regenerating its oracle from the pin first: all three
+  `recipe ran end-to-end`. Changed bytes grepped in the driver's own fresh
+  NDJSONs — 10 `"kind":"unseen"` rows with v4's ten case names; the
+  `[User attached text file: transcript.md]` prefix present in the
+  orchestrator NDJSON; the kept `dossier.pdf` bag present; and
+  `Attachment Processing Failed` **absent** (the zip is dropped silently, as
+  v4 drops it).
+- The drift-ledger §2 freshness probe was re-run mid-lane (v4 still on `main`,
+  tree still clean, both logs still empty) per §5.1's "the checkout can go
+  dirty MID-LANE" note.
+
+**Versions:** core 0.0.778, harness 0.0.673. No other crate touched; no SPA
+file touched; no Playwright authored or run (§E).
