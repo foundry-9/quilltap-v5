@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — chore(dead-code): retire the pricing tier helpers v4 deleted (P4.D157 unit 3)
+
+_Versions: core 0.0.779, harness 0.0.674._
+
+v4 `d4138b96b` removed `getModelsUnderCost`, `calculateCostTier` and
+`calculateSavings` from `lib/llm/pricing.ts`;
+`harness/oracle/cases/model-selection.ts` imports all three by name, so the
+case fails to LINK at any sha past that commit.
+
+Measured on this side: none of the three v5 twins had a caller anywhere in
+`crates/` outside its own definition and the differential. All three are
+deleted; their `underCost` / `tier` / `savings` rows leave the oracle case
+(29 → 18 rows, every surviving row byte-identical to the pre-split oracle at
+`0b0617fee`), and the runner's count guard moves 8 → 5 buckets.
+
+`getAverageCostPer1M` / `sortByCost` / `findCheapestModel` and the
+model-classes half survive on both sides and keep the family.
+
 #### 2026-09-05 — chore(dead-code): retire the cheap-model classifiers v4 deleted (P4.D157 unit 2)
 
 _Versions: core 0.0.778, harness 0.0.673._

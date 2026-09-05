@@ -3,9 +3,14 @@
 //! [`estimate_cost`] is the dollar cost of a completion given its
 //! prompt/completion token counts and the model's per-1M-token rates. The
 //! cost-aware model-selection siblings — [`get_average_cost_per_1m`],
-//! [`sort_by_cost`], [`find_cheapest_model`], [`get_models_under_cost`],
-//! [`calculate_cost_tier`], [`calculate_savings`] — operate over a fuller
+//! [`sort_by_cost`], [`find_cheapest_model`] — operate over a fuller
 //! [`ModelPricing`] row.
+//!
+//! P4.D157 (v4 `d4138b96b`, the 4.9 dead-code sweep): v4 deleted
+//! `getModelsUnderCost`, `calculateCostTier` and `calculateSavings` as
+//! unreferenced. Measured here too — none of the three twins had a caller
+//! anywhere in v5 outside its own definition and the differential — so all
+//! three were deleted with them.
 //!
 //! NB: in v4 `estimateCost` is defined but not yet enforced in the autonomous
 //! run loop (the spend cap `budgetEstimatedSpendCapUSD` is carried but unchecked
@@ -106,47 +111,4 @@ pub fn find_cheapest_model(
         return None;
     }
     sort_by_cost(&candidates).into_iter().next()
-}
-
-/// All models whose average cost is at or below the threshold, in input order
-/// (v4 filters the list as-is; it does not sort).
-pub fn get_models_under_cost(
-    models: &[ModelPricing],
-    max_average_cost_per_1m: f64,
-) -> Vec<ModelPricing> {
-    models
-        .iter()
-        .filter(|m| get_average_cost_per_1m(m) <= max_average_cost_per_1m)
-        .cloned()
-        .collect()
-}
-
-/// Map a model's average cost to a coarse tier 1–5. (v4 has a leading `=== 0`
-/// arm that also returns 1; it's subsumed by `< 0.5` since `0 < 0.5`, so it's
-/// collapsed here — same result.) Thresholds: free/very-cheap → 1, `< 2.0` → 2,
-/// `< 10.0` → 3, `< 50.0` → 4, else 5.
-pub fn calculate_cost_tier(pricing: &ModelPricing) -> i64 {
-    let avg = get_average_cost_per_1m(pricing);
-    if avg < 0.5 {
-        1
-    } else if avg < 2.0 {
-        2
-    } else if avg < 10.0 {
-        3
-    } else if avg < 50.0 {
-        4
-    } else {
-        5
-    }
-}
-
-/// Cost savings of `cheaper` relative to `expensive`, as a percentage. Returns
-/// `0.0` when the expensive model is free (avoids dividing by zero).
-pub fn calculate_savings(expensive_model: &ModelPricing, cheaper_model: &ModelPricing) -> f64 {
-    let expensive_cost = get_average_cost_per_1m(expensive_model);
-    let cheaper_cost = get_average_cost_per_1m(cheaper_model);
-    if expensive_cost == 0.0 {
-        return 0.0;
-    }
-    ((expensive_cost - cheaper_cost) / expensive_cost) * 100.0
 }

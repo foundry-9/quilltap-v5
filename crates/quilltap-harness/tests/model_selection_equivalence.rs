@@ -1,10 +1,14 @@
 //! Tier-1 differential test #9 (Wave 1 / B1): cost-aware model selection +
 //! model classes.
 //!
-//! Covers getAverageCostPer1M / sortByCost / findCheapestModel /
-//! getModelsUnderCost / calculateCostTier / calculateSavings (pricing.ts) and
+//! Covers getAverageCostPer1M / sortByCost / findCheapestModel (pricing.ts) and
 //! getModelClass / isValidModelClassName (model-classes.ts). Floats within
 //! 1e-12; orderings and ids exact.
+//!
+//! P4.D157: v4 `d4138b96b` deleted `getModelsUnderCost` / `calculateCostTier` /
+//! `calculateSavings`; no v5 twin had a caller either, so all three were deleted
+//! here and their `underCost` / `tier` / `savings` rows left the case
+//! (29 -> 18 rows; every surviving row byte-identical).
 //!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
@@ -17,8 +21,7 @@
 use quilltap_core::model_classes::get_model_class;
 use quilltap_core::model_classes::is_valid_model_class_name;
 use quilltap_core::pricing::{
-    calculate_cost_tier, calculate_savings, find_cheapest_model, get_average_cost_per_1m,
-    get_models_under_cost, sort_by_cost, FindCheapestOptions, ModelPricing,
+    find_cheapest_model, get_average_cost_per_1m, sort_by_cost, FindCheapestOptions, ModelPricing,
 };
 use serde::Deserialize;
 
@@ -86,30 +89,10 @@ enum OracleRow {
         model: WireModel,
         out: f64,
     },
-    #[serde(rename = "tier")]
-    Tier {
-        id: String,
-        model: WireModel,
-        out: i64,
-    },
-    #[serde(rename = "savings")]
-    Savings {
-        id: String,
-        expensive: WireModel,
-        cheaper: WireModel,
-        out: f64,
-    },
     #[serde(rename = "sort")]
     Sort {
         id: String,
         models: Vec<WireModel>,
-        out: Vec<String>,
-    },
-    #[serde(rename = "underCost")]
-    UnderCost {
-        id: String,
-        models: Vec<WireModel>,
-        max: f64,
         out: Vec<String>,
     },
     #[serde(rename = "cheapest")]
@@ -142,7 +125,7 @@ fn model_selection_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
-    let mut counts = [0usize; 8];
+    let mut counts = [0usize; 5];
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
             OracleRow::Avg { id, model, out } => {
@@ -153,43 +136,13 @@ fn model_selection_matches_oracle() {
                 );
                 counts[0] += 1;
             }
-            OracleRow::Tier { id, model, out } => {
-                assert_eq!(calculate_cost_tier(&model.to_core()), out, "tier '{id}'");
-                counts[1] += 1;
-            }
-            OracleRow::Savings {
-                id,
-                expensive,
-                cheaper,
-                out,
-            } => {
-                let got = calculate_savings(&expensive.to_core(), &cheaper.to_core());
-                assert!(
-                    (got - out).abs() < 1e-12,
-                    "savings '{id}': rust={got} oracle={out}"
-                );
-                counts[2] += 1;
-            }
             OracleRow::Sort { id, models, out } => {
                 let got: Vec<String> = sort_by_cost(&to_core_vec(&models))
                     .into_iter()
                     .map(|m| m.model_id)
                     .collect();
                 assert_eq!(got, out, "sort '{id}'");
-                counts[3] += 1;
-            }
-            OracleRow::UnderCost {
-                id,
-                models,
-                max,
-                out,
-            } => {
-                let got: Vec<String> = get_models_under_cost(&to_core_vec(&models), max)
-                    .into_iter()
-                    .map(|m| m.model_id)
-                    .collect();
-                assert_eq!(got, out, "underCost '{id}'");
-                counts[4] += 1;
+                counts[1] += 1;
             }
             OracleRow::Cheapest {
                 id,
@@ -204,7 +157,7 @@ fn model_selection_matches_oracle() {
                 };
                 let got = find_cheapest_model(&to_core_vec(&models), options).map(|m| m.model_id);
                 assert_eq!(got, out, "cheapest '{id}'");
-                counts[5] += 1;
+                counts[2] += 1;
             }
             OracleRow::ModelClass { id, name, out } => {
                 let got = get_model_class(&name);
@@ -224,11 +177,11 @@ fn model_selection_matches_oracle() {
                         o.is_some()
                     ),
                 }
-                counts[6] += 1;
+                counts[3] += 1;
             }
             OracleRow::ValidName { id, name, out } => {
                 assert_eq!(is_valid_model_class_name(&name), out, "validName '{id}'");
-                counts[7] += 1;
+                counts[4] += 1;
             }
         }
     }
