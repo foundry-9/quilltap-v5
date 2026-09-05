@@ -107121,3 +107121,67 @@ the checkout's own `help/` is byte-identical to the pin's.
   deterministic in rowid order, so the leading hypothesis (a tie flip on the
   three rows the case writes within one ms) does not hold on its face; the
   differential prints the first differing line if it recurs at the gate.
+
+### Unit 8 — Tier 2: the v4 unit suites, the log pins, the inventory (items 8–10)
+
+- v4's `match-url-pattern.test.ts` (20) + `context-resolver.test.ts` (30) →
+  `context_resolver::v4_cases`; `system-prompt-builder.test.ts` (25) →
+  `system_prompt::v4_cases` (over the REAL template processor and identity
+  reinforcement — v4 mocks both); `orchestrator.test.ts` cases 2/3/4/6/8 →
+  `orchestrator::log_context_tests` over the committed fixture (the three
+  guards in v4's order, the USER message saved BEFORE processing, the `'/'`
+  fallback on the fixture's rows, plus the id-less tool-row drop). 62 core
+  `help_` tests green.
+- Capture-layer pins (`log_context_tests` modules — the shape the inventory
+  generator recognizes): the eight route lines + the orchestrator's
+  per-participant error line (with its `error` frame bytes). The host's outer
+  catch now logs v4's `Help chat message error` (was a v5-invented sentence).
+- `harness/tools/handler_log_inventory.py`: the survey gains
+  `app/api/v1/help-docs/**`, `app/api/v1/help-chats/**`, the orchestrator, the
+  two pure modules, `help-search.ts` + four AREA labels. Regenerated at the pin:
+  226 rows; the help rows — help-chats routes 4/4 PINNED, help-docs routes 4
+  PINNED + 4 UNPINNED (the catch arms — unreachable without a broken table),
+  orchestrator 1 PINNED + 4 UNPINNED + 1 host-side (`Help chat message error`,
+  noted in core), `help-search.ts` 3 NO-PORT-RECORDED. (The pure modules'
+  `helpChatLogger.*` child-logger lines are invisible to the generator's
+  `logger.` regex; their NO-PORT notes sit in the module docs.)
+- **The `p4.9i2` bank is DISCHARGED by unit 1** (the vendored tree IS the pin,
+  so every banked copy delta is present — measured: `Two questions, not one`
+  in `connection-profiles.md`, `When a Provider Refuses Outright` in
+  `dangerous-content.md`, `Consulting the Shelf of Past Conversations` in
+  `memory-recall-relevance.md`, six `describe_image` mentions in
+  `keep-image-tools.md`, the `discreet doorman` copy in `math-notation.md`).
+  Sections for the unifier to mark: `phase-4.md` §`### \`p4.9i2\` bank —
+  help/connection-profiles.md (P4.D111)` (line ~5718), `… file-uploads.md +
+  chat-settings.md (P4.D151)` (~7528), `… chats.md + dangerous-content.md
+  (P4.D149)` (~7563); `m6-screen-parity.md` §1.6 row 11's P4.d11 / P4.D77 (a)
+  + (c) / P4.D93 / P4.D95 / P4.D106 / P4.D108 bank notes. The P4.D77 bank's
+  half (a) (the Guide text search) landed as unit 3 + 5; half (b) is
+  P4.9I2B's.
+
+### The lane's divergence list (for the unifier and the SPA lane)
+
+1. **Eager vs lazy sync** — the boot ensure runs at `assemble`; v4 syncs on the
+   first help read. Rows identical.
+2. **No process cache** — `help_docs` read per call; no `invalidate()` twin;
+   `Help documents loaded from database` has no event.
+3. **`fileIds` on send accepted-ignored** — v4's own behavior, pinned.
+4. **Duplicate-wildcard quirk reproduced** (`doc.id === primary.url` never
+   true) — candidate upstream filing.
+5. **`verify_help_chat` has no userId gate** — v4's doc comment lies; pinned.
+6. **Lone-surrogate snippet window** → U+FFFD where v4 ships an unpaired half.
+7. **List sort on an unparseable `updatedAt`** → last (v4's NaN comparator).
+8. **Id-less `tool` rows dropped at the stream conversion** — v4's plugins drop
+   them at format time (same wire); **candidate upstream filing: v4's help loop
+   never feeds a tool result back to the model.**
+9. **The async tail is awaited** (v4 fire-and-forget).
+10. **The walker order fix** — v5's `find_markdown_files` now sorts by name
+    bytes as Node's `readdirSync` does (a pre-existing v5 defect, not a
+    divergence from v4).
+11. The eligibility `'avatar'` tag arm is reproduced literally though
+    unreachable with valid data (tags are UUIDs) — v4 dead code.
+
+**💸 LIVE:** `HelpChatSend` is wired on the spine — one streamed model call per
+help character per send, plus every tool call, plus the cheap-LLM summary fold
+at an interchange checkpoint. Order premise corrected en route: the api-key
+failure sentences are v4's consolidated `describeProfileApiKeyFailure` pair.

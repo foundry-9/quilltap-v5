@@ -677,3 +677,89 @@ pub fn help_chat_send_prepare(
     verify_help_chat(db, chat_id)?;
     super::brahma::parse_brahma_send_body(content, file_ids)
 }
+
+/// Capture-layer pins for the four v4 route log lines this module carries
+/// (`Help chat created` / `Help chat renamed` / `Help chat context updated` /
+/// `Help chat deleted`), over a fresh copy of the committed `help-chat-*` fixture.
+#[cfg(test)]
+mod log_context_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use std::sync::{Arc, Mutex};
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const USER_A: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
+    const C1: &str = "b0000002-0000-4000-8000-000000000001";
+    const H2: &str = "c1000002-0000-4000-8000-000000000002";
+    const H3: &str = "c1000002-0000-4000-8000-000000000003";
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push_str(&format!(" {}={:?}", field.name(), value));
+        }
+    }
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _c: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut v = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut v);
+            self.0.lock().unwrap().push(v.0);
+        }
+    }
+    fn fixture_db() -> (tempfile::TempDir, Db) {
+        let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../quilltap-web/tests/fixtures");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(src.join("help-chat-main.db"), dir.path().join("main.db")).unwrap();
+        std::fs::copy(src.join("help-chat-mount.db"), dir.path().join("mount.db")).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: dir.path().join("main.db"),
+                mount_index: Some(dir.path().join("mount.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    #[tokio::test]
+    async fn the_four_route_lines_fire() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let (_dir, db) = fixture_db();
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let _g = tracing::subscriber::set_default(sub);
+
+        let created = help_chat_create(&db, USER_A, &json!([C1]), &json!("/salon")).await;
+        assert!(matches!(created, Response::HelpChat(_)), "{created:?}");
+        let _ = help_chat_rename(&db, H2, &json!("Renamed")).await;
+        let _ = help_chat_update_context(&db, H2, &json!("/files")).await;
+        let _ = help_chat_delete(&db, H3).await;
+
+        let lines = logs.lock().unwrap().clone();
+        for needle in [
+            "Help chat created",
+            "Help chat renamed",
+            "Help chat context updated",
+            "Help chat deleted",
+        ] {
+            assert!(
+                lines
+                    .iter()
+                    .any(|l| l.contains("INFO") && l.contains(needle)),
+                "missing {needle:?} in {lines:?}"
+            );
+        }
+        assert!(lines.iter().any(|l| l.contains("Help chat created")
+            && l.contains("character_count=1")
+            && l.contains("page_url=/salon")));
+    }
+}

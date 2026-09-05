@@ -1699,7 +1699,7 @@ where
                     target: "quilltap::chat",
                     chat_id = %chat_id,
                     error = %e.message,
-                    "Help chat send failed",
+                    "Help chat message error",
                 );
                 let _ = self.events.send(Event::chat_error(
                     &chat_id,

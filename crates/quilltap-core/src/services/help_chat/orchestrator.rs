@@ -62,6 +62,11 @@
 //! 2. **The async tail is awaited.** v4 fires `triggerAsyncTasks` without
 //!    awaiting (`.catch`-warned promises); v5 awaits it before returning so the
 //!    enqueue is durable when the dispatch reply lands. Same rows, later reply.
+//!
+//! v4's outer catch logs `Help chat message error` and emits the `fatal_error`
+//! frame; in v5 both live in the HOST driver (`quilltap-host/src/spine.rs`,
+//! `run_help_send`), which is why the core-scoped logging inventory lists that
+//! one line without a core site.
 
 use std::future::Future;
 
@@ -1124,4 +1129,222 @@ async fn persist_message(db: &Db, chat_id: &str, message: Value) -> Result<(), H
     db.write(move |ws| ws.main().chat_messages().add_message(&cid, &event))
         .await
         .map_err(|e| HelpSendError::new(e.to_string()))
+}
+
+/// The unit pins v4 keeps beside the orchestrator
+/// (`__tests__/unit/lib/services/help-chat/orchestrator.test.ts`, cases 2/3/6/8 —
+/// the guards and the `'/'` fallback), the per-participant `error` frame with
+/// its captured `Error processing help response for participant` log line, and
+/// the id-less tool-row drop at the stream conversion. Over a fresh copy of the
+/// committed `help-chat-*` fixture; the streaming seam is a stub that answers
+/// nothing (no case here reaches a model call). The tier-3 family
+/// `help_chat_orchestrator_tier3_equivalence` is the arbiter for the loop itself.
+#[cfg(test)]
+mod log_context_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::model::stream::{StreamChunkResult, StreamError};
+    use crate::services::chat_events::RecordingSink;
+    use crate::services::message_finalizer::NoCostTracking;
+    use crate::services::tool_execution::CannedToolRunner;
+    use std::sync::{Arc, Mutex};
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const USER_A: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
+    const H2: &str = "c1000002-0000-4000-8000-000000000002";
+    const H3: &str = "c1000002-0000-4000-8000-000000000003";
+    const SALON: &str = "c1000002-0000-4000-8000-000000000031";
+    const MISSING: &str = "00000000-0000-4000-8000-0000000000ff";
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push_str(&format!(" {}={:?}", field.name(), value));
+        }
+    }
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _c: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut v = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut v);
+            self.0.lock().unwrap().push(v.0);
+        }
+    }
+    /// A streaming seam that answers every call with a stream error — no case
+    /// here may reach it.
+    struct NoStream;
+    impl StreamingCompletionProvider for NoStream {
+        async fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &StreamParams,
+        ) -> tokio::sync::mpsc::Receiver<StreamChunkResult> {
+            let (tx, rx) = tokio::sync::mpsc::channel(1);
+            let _ = tx
+                .send(Err(StreamError::new("unexpected model call")))
+                .await;
+            rx
+        }
+    }
+    struct NoDetect;
+    impl ToolCallDetector for NoDetect {
+        fn detect(&self, _raw: &Value, _provider: &str) -> Vec<ToolCall> {
+            Vec::new()
+        }
+    }
+    fn fixture_db() -> (tempfile::TempDir, Db) {
+        let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../quilltap-web/tests/fixtures");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(src.join("help-chat-main.db"), dir.path().join("main.db")).unwrap();
+        std::fs::copy(src.join("help-chat-mount.db"), dir.path().join("mount.db")).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: dir.path().join("main.db"),
+                mount_index: Some(dir.path().join("mount.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+    async fn send(
+        db: &Db,
+        sink: &RecordingSink,
+        user: &str,
+        chat: &str,
+    ) -> Result<HelpSendResult, HelpSendError> {
+        let runner = CannedToolRunner::new();
+        let mut cost = NoCostTracking;
+        let mut deps = HelpSendDeps {
+            db,
+            streaming: &NoStream,
+            tool_runner: &runner,
+            tool_detector: &NoDetect,
+            cost: &mut cost,
+            summary_check: &NoHelpContextSummaryCheck,
+            model_supports_native_tools: true,
+        };
+        let opts = HelpChatSendOptions {
+            content: "Hello".into(),
+            file_ids: Vec::new(),
+        };
+        handle_help_chat_message(&mut deps, sink, user, chat, &opts).await
+    }
+    fn message_count(db: &Db, chat: &str) -> usize {
+        let cid = chat.to_string();
+        db.read_main(move |c| chats_messages_read::get_messages(c, &cid))
+            .unwrap()
+            .len()
+    }
+
+    /// v4 cases 2 / 3 / 8: the three guards are top-level errors, in v4's order.
+    #[tokio::test]
+    async fn the_three_guards() {
+        let (_dir, db) = fixture_db();
+        let sink = RecordingSink::new();
+        assert_eq!(
+            send(&db, &sink, USER_A, MISSING).await.unwrap_err().message,
+            "Chat not found"
+        );
+        assert_eq!(
+            send(&db, &sink, "someone-else", H2)
+                .await
+                .unwrap_err()
+                .message,
+            "Unauthorized"
+        );
+        assert_eq!(
+            send(&db, &sink, USER_A, SALON).await.unwrap_err().message,
+            "Not a help chat"
+        );
+        assert!(sink.events().is_empty(), "a guard emits no frame");
+        // None of the guards saved the user message.
+        assert_eq!(message_count(&db, H2), 3);
+    }
+
+    /// v4 case 4 + the per-participant failure: the USER message is saved BEFORE
+    /// processing, the failing participant (H3's Thistle has no connection
+    /// profile) becomes an `error` frame with v4's sentence, the loop continues
+    /// to the end (result `None`), and the log line is captured.
+    #[tokio::test]
+    async fn per_participant_failure_is_a_frame_and_a_log_line() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let (_dir, db) = fixture_db();
+        let sink = RecordingSink::new();
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let result = {
+            let _g = tracing::subscriber::set_default(sub);
+            send(&db, &sink, USER_A, H3).await.unwrap()
+        };
+        assert_eq!(result.message_id, None);
+        assert_eq!(message_count(&db, H3), 1, "the USER message is saved first");
+        let frames = sink.events_json();
+        assert_eq!(
+            frames,
+            vec![
+                serde_json::json!({ "error": "No connection profile for help character", "errorType": "processing_error", "details": "" })
+            ]
+        );
+        let lines = logs.lock().unwrap().clone();
+        assert!(
+            lines.iter().any(|l| l.contains("ERROR")
+                && l.contains("Error processing help response for participant")
+                && l.contains("No connection profile for help character")),
+            "{lines:?}"
+        );
+    }
+
+    /// v4 case 6: a NULL `helpPageUrl` resolves as `'/'` — H2 has NULL, and the
+    /// fixture's `/` documents exist, so the primary context is the first `/` doc
+    /// (brahma-console.md, first by name). Observable here through the system
+    /// prompt the stub receives: the model call happens, so the streaming stub
+    /// records nothing — the tier-3 family pins the bytes; this pin is the
+    /// resolver's own answer on the fixture rows.
+    #[test]
+    fn null_help_page_url_falls_back_to_root() {
+        let (_dir, db) = fixture_db();
+        let docs = load_help_documents(&db).unwrap();
+        let all = resolve_all_help_content_for_url("/", &docs);
+        assert_eq!(all[0].title, "The Brahma Console");
+        assert_eq!(
+            all[0].match_type,
+            super::super::context_resolver::MatchType::Exact
+        );
+        // Plus the two wildcard docs (search, sidebar) — by name order.
+        assert_eq!(
+            all.iter()
+                .skip(1)
+                .map(|c| c.title.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Search Bar", "Left Sidebar"]
+        );
+    }
+
+    /// The stream conversion drops an id-less `tool` row (the plugins' filter,
+    /// hoisted) and maps the other three roles 1:1.
+    #[test]
+    fn to_stream_messages_drops_idless_tool_rows() {
+        let slate = vec![
+            msg("system", "S"),
+            msg("user", "U"),
+            msg("assistant", "A"),
+            msg("tool", "{\"tool\":\"x\"}"),
+            msg("user", "U2"),
+        ];
+        let out = to_stream_messages(&slate);
+        assert_eq!(
+            out.iter().map(|m| m.role_str()).collect::<Vec<_>>(),
+            vec!["system", "user", "assistant", "user"]
+        );
+        assert_eq!(out[3].content(), "U2");
+    }
 }

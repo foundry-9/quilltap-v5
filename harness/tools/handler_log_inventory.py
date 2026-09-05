@@ -37,7 +37,18 @@ V5  = pathlib.Path('crates/quilltap-core/src')
 files = (sorted(PIN.glob('lib/background-jobs/handlers/*.ts'))
          + [PIN/'lib/services/system-events.service.ts']
          + [PIN/'lib/services/token-tracking.service.ts']
-         + [PIN/'lib/chat/file-attachment-fallback.ts'])
+         + [PIN/'lib/chat/file-attachment-fallback.ts']
+         # P4.9I2A: the help/HelpChat server family — the two route families the
+         # order asks the inventory to carry, plus the orchestrator and the two
+         # pure modules whose debug lines the port records as NO-PORT (a pure
+         # module has no tracing) and `help-search.ts` (the in-process cache the
+         # port does not keep, so its load line has no event to log).
+         + sorted(PIN.glob('app/api/v1/help-docs/**/route.ts'))
+         + sorted(PIN.glob('app/api/v1/help-chats/**/route.ts'))
+         + [PIN/'lib/services/help-chat/orchestrator.service.ts']
+         + [PIN/'lib/help-chat/context-resolver.ts']
+         + [PIN/'lib/help-chat/system-prompt-builder.ts']
+         + [PIN/'lib/help-search.ts'])
 CALL = re.compile(r"logger\.(info|warn|error|debug)\(\s*(?:'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|\"((?:[^\"\\]|\\.)*)\")")
 
 # every v5 source line, for sentence lookup
@@ -120,8 +131,13 @@ counts = Counter(r['disp'] for r in rows)
 
 AREA = {
     'lib/background-jobs/handlers': 'The background-job handlers',
+    'lib/services/help-chat': 'The help-chat orchestrator (P4.9I2A)',
     'lib/services': 'The system-events service',
     'lib/chat': 'The file-attachment fallback (the describe path)',
+    'app/api/v1/help-docs': 'The help-docs routes (P4.9I2A)',
+    'app/api/v1/help-chats': 'The help-chats routes (P4.9I2A)',
+    'lib/help-chat': 'The help-chat pure modules (P4.9I2A)',
+    'lib/help-search.ts': 'The HelpSearch cache (P4.9I2A — no v5 twin)',
 }
 def area_of(f):
     for k, v in AREA.items():

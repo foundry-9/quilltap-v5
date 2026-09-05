@@ -28,6 +28,16 @@
 //!   `duplicate-wildcard` corpus row) and recorded as a candidate upstream
 //!   filing; the port never fixes v4's bugs silently.
 
+//! ## v4 log lines deliberately NOT ported (a pure module has no tracing)
+//!
+//! `helpChatLogger.debug('Help docs not loaded, attempting to load from database')`,
+//! `helpChatLogger.error('Failed to load help docs from database')` (the lazy
+//! load v5 does not perform — the boot ensure already synced), `helpChatLogger.warn('No help documents available')`,
+//! `helpChatLogger.debug('Resolving help content for URL')`, `helpChatLogger.warn('Document not found after matching')`,
+//! `helpChatLogger.debug('Resolved help content')` and `helpChatLogger.warn('No help content found for URL')`
+//! are diagnostics around a pure computation; the resolver's outcome is what the
+//! differential pins.
+
 use super::HelpDocument;
 use crate::jsstr::utf16_len;
 
@@ -327,5 +337,268 @@ mod tests {
         assert_eq!(all.len(), 2);
         assert_eq!(all[0].doc_id, "side");
         assert_eq!(all[1].doc_id, "side");
+    }
+}
+
+/// v4's own `__tests__/unit/lib/help-chat/context-resolver.test.ts` and
+/// `match-url-pattern.test.ts`, ported case for case (Tier 2 item 8). The corpus
+/// family `help_context_resolver_equivalence` is the arbiter against v4's REAL
+/// code; these are the unit pins v4 keeps beside it.
+#[cfg(test)]
+mod v4_cases {
+    use super::*;
+
+    fn d(id: &str, title: &str, url: &str, content: &str) -> HelpDocument {
+        HelpDocument {
+            id: id.to_string(),
+            slug: id.to_string(),
+            title: title.to_string(),
+            path: format!("help/{id}.md"),
+            url: url.to_string(),
+            content: content.to_string(),
+        }
+    }
+    fn r(url: &str, docs: &[HelpDocument]) -> Option<HelpPageContext> {
+        resolve_help_content_for_url(url, docs)
+    }
+
+    // --- exact matches ---
+    #[test]
+    fn exact_match_including_query_params() {
+        let docs = [d(
+            "doc-settings-chat",
+            "Chat Settings",
+            "/settings?tab=chat",
+            "Chat settings help",
+        )];
+        let got = r("/settings?tab=chat", &docs).unwrap();
+        assert_eq!(got.url, "/settings?tab=chat");
+        assert_eq!(got.match_type, MatchType::Exact);
+    }
+    #[test]
+    fn exact_path_match_without_query_and_root() {
+        let docs = [d(
+            "doc-settings",
+            "Settings",
+            "/settings",
+            "Settings page help",
+        )];
+        assert_eq!(r("/settings", &docs).unwrap().url, "/settings");
+        let home = [d("doc-home", "Home", "/", "Home page help")];
+        assert_eq!(r("/", &home).unwrap().url, "/");
+    }
+    #[test]
+    fn returns_content_from_matched_document() {
+        let docs = [d(
+            "doc-aurora",
+            "Aurora Characters",
+            "/aurora",
+            "Aurora help",
+        )];
+        let got = r("/aurora", &docs).unwrap();
+        assert_eq!(
+            (got.title.as_str(), got.content.as_str()),
+            ("Aurora Characters", "Aurora help")
+        );
+    }
+    // --- query param specificity ---
+    #[test]
+    fn exact_match_for_path_with_matching_query_params() {
+        let docs = [
+            d("settings-base", "Settings", "/settings", "Settings"),
+            d(
+                "settings-chat",
+                "Chat Settings",
+                "/settings?tab=chat",
+                "Chat Settings",
+            ),
+        ];
+        let got = r("/settings?tab=chat", &docs).unwrap();
+        assert_eq!(
+            (got.match_type, got.url.as_str()),
+            (MatchType::Exact, "/settings?tab=chat")
+        );
+    }
+    #[test]
+    fn prefers_more_specific_query_param_match() {
+        let docs = [
+            d("settings-base", "Settings", "/settings", "Settings"),
+            d(
+                "settings-chat",
+                "Chat Settings",
+                "/settings?tab=chat",
+                "Chat Settings",
+            ),
+            d(
+                "settings-appearance",
+                "Appearance Settings",
+                "/settings?tab=appearance&section=colors",
+                "Appearance",
+            ),
+        ];
+        assert_eq!(
+            r("/settings?tab=appearance&section=colors", &docs)
+                .unwrap()
+                .title,
+            "Appearance Settings"
+        );
+    }
+    // --- pattern matches ---
+    #[test]
+    fn pattern_matches() {
+        let docs = [d(
+            "doc-aurora-id",
+            "Character Detail",
+            "/aurora/:id",
+            "Character detail help",
+        )];
+        let got = r("/aurora/char-123", &docs).unwrap();
+        assert_eq!(
+            (got.url.as_str(), got.match_type),
+            ("/aurora/:id", MatchType::Pattern)
+        );
+        let edit = [d(
+            "doc-aurora-id-edit",
+            "Character Edit",
+            "/aurora/:id/edit",
+            "Character edit help",
+        )];
+        let got = r("/aurora/abc-def/edit", &edit).unwrap();
+        assert_eq!(
+            (got.url.as_str(), got.match_type),
+            ("/aurora/:id/edit", MatchType::Pattern)
+        );
+    }
+    #[test]
+    fn prefers_most_specific_pattern() {
+        let docs = [
+            d("aurora-generic", "Aurora", "/aurora/:id", "Aurora"),
+            d("aurora-edit", "Edit Character", "/aurora/:id/edit", "Edit"),
+        ];
+        assert_eq!(
+            r("/aurora/abc/edit", &docs).unwrap().title,
+            "Edit Character"
+        );
+    }
+    // --- prefix matches ---
+    #[test]
+    fn prefix_match_and_longest_prefix_wins() {
+        let docs = [d("settings-base", "Settings", "/settings", "Settings")];
+        let got = r("/settings/sub/page", &docs).unwrap();
+        assert_eq!(
+            (got.match_type, got.url.as_str()),
+            (MatchType::Prefix, "/settings")
+        );
+        let two = [
+            d("settings", "Settings", "/settings", "Settings"),
+            d("settings-chat", "Chat Settings", "/settings/chat", "Chat"),
+        ];
+        assert_eq!(
+            r("/settings/chat/some/deep/path", &two).unwrap().title,
+            "Chat Settings"
+        );
+    }
+    // --- wildcard / fallback ---
+    #[test]
+    fn wildcard_and_fallback() {
+        let side = [d("sidebar", "Sidebar", "*", "Sidebar help")];
+        let got = r("/any/random/path", &side).unwrap();
+        assert_eq!(
+            (got.match_type, got.title.as_str()),
+            (MatchType::Wildcard, "Sidebar")
+        );
+        let home = [d("home", "Home", "/", "Home page")];
+        let got = r("/completely/unknown/path", &home).unwrap();
+        assert_eq!(
+            (got.match_type, got.url.as_str()),
+            (MatchType::Fallback, "/")
+        );
+        assert!(r("/any/path", &[]).is_none());
+    }
+    // --- strategy priority ---
+    #[test]
+    fn exact_beats_pattern_and_pattern_beats_prefix() {
+        let docs = [
+            d("exact", "Exact Match", "/settings?tab=chat", "Exact"),
+            d("pattern", "Pattern Match", "/settings/:id", "Pattern"),
+        ];
+        assert_eq!(r("/settings?tab=chat", &docs).unwrap().title, "Exact Match");
+        let docs = [
+            d("pattern", "Pattern Match", "/aurora/:id", "Pattern"),
+            d("prefix", "Prefix Match", "/au", "Prefix"),
+        ];
+        let got = r("/aurora/abc-123", &docs).unwrap();
+        assert_eq!(
+            (got.title.as_str(), got.match_type),
+            ("Pattern Match", MatchType::Pattern)
+        );
+    }
+    // --- edge cases ---
+    #[test]
+    fn edge_cases() {
+        assert!(r("/any/path", &[]).is_none());
+        let home = [d("home", "Home", "/", "Home")];
+        assert!(r("/", &home).is_some());
+        let multi = [d(
+            "settings",
+            "Settings",
+            "/settings?tab=appearance&section=colors",
+            "Settings",
+        )];
+        assert_eq!(
+            r("/settings?tab=appearance&section=colors", &multi)
+                .unwrap()
+                .match_type,
+            MatchType::Exact
+        );
+    }
+    // --- resolveAllHelpContentForUrl ---
+    #[test]
+    fn resolve_all_shapes() {
+        let one = [d("doc-settings", "Settings", "/settings", "Settings")];
+        assert_eq!(resolve_all_help_content_for_url("/settings", &one).len(), 1);
+        let with_wild = [
+            d("doc-aurora", "Aurora", "/aurora", "Aurora"),
+            d("doc-sidebar", "Sidebar", "*", "Sidebar"),
+        ];
+        let all = resolve_all_help_content_for_url("/aurora", &with_wild);
+        assert_eq!(
+            all.iter().map(|c| c.doc_id.as_str()).collect::<Vec<_>>(),
+            vec!["doc-aurora", "doc-sidebar"]
+        );
+        assert!(resolve_all_help_content_for_url("/unknown/path", &[]).is_empty());
+    }
+    // --- matchUrlPattern (v4's match-url-pattern.test.ts) ---
+    #[test]
+    fn match_url_pattern_cases() {
+        // exact matches
+        assert!(match_url_pattern("/settings", "/settings"));
+        assert!(match_url_pattern("/api/v1/chars", "/api/v1/chars"));
+        assert!(match_url_pattern("/", "/"));
+        // parameter matches
+        assert!(match_url_pattern("/aurora/:id", "/aurora/abc123"));
+        assert!(match_url_pattern("/api/:type/:id", "/api/chars/abc"));
+        assert!(match_url_pattern("/api/:id/edit", "/api/123/edit"));
+        assert!(match_url_pattern("/:a/:b/:c", "/x/y/z"));
+        // static segment mismatches
+        assert!(!match_url_pattern("/a/b", "/a/b/c"));
+        assert!(!match_url_pattern("/aurora", "/salon"));
+        assert!(!match_url_pattern("/api/:id/edit", "/api/123/delete"));
+        assert!(!match_url_pattern("/a/b/c", "/x/y/z"));
+        // edge cases
+        assert!(match_url_pattern("", ""));
+        assert!(!match_url_pattern("", "/a"));
+        assert!(match_url_pattern("/:id", "/anything"));
+        assert!(!match_url_pattern("/a/:id", "/a/b/c"));
+        assert!(match_url_pattern("/a/:id", "/a/"));
+        // complex patterns
+        assert!(match_url_pattern(
+            "/settings/:tab/details/:id",
+            "/settings/chat/details/123"
+        ));
+        assert!(!match_url_pattern(
+            "/settings/:tab/details/:id",
+            "/settings/chat/summary/123"
+        ));
     }
 }

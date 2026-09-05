@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — test(help): v4's help unit suites ported, the route/orchestrator log lines pinned, the logging inventory widened (P4.9I2A unit 8, Tier 2)
+
+_Versions: core 0.0.800, host 0.0.101._
+
+Tier 2 of the help/HelpChat server lane. v4's four unit suites ported case for
+case where pure or mockable: `match-url-pattern.test.ts` (20 cases) and
+`context-resolver.test.ts` (30) into the resolver's `v4_cases` module,
+`system-prompt-builder.test.ts` (25) into the prompt builder's, and the
+orchestrator suite's guards, `'/'` fallback and user-message-first cases into a
+fixture-backed module beside the orchestrator (over the committed `help-chat-*`
+pair with a streaming stub no case reaches). Capture-layer pins for the route log
+lines (`[HelpDocs] Listed help documents`, `[HelpDocs] Guide text search`,
+`[HelpDoc] Document not found`, `[HelpDoc] Document retrieved`, `Help chat
+created` / `renamed` / `context updated` / `deleted`) and the orchestrator's
+per-participant `Error processing help response for participant`, in the
+`log_context_tests` shape the inventory generator recognizes. The host's outer
+error line now carries v4's own sentence, `Help chat message error`.
+
+The handler-logging inventory generator's survey grew the help-docs and
+help-chats route files, the orchestrator, the two pure modules and
+`help-search.ts`; regenerated against the pin, the inventory now carries the two
+route families as rows (all pinned but the four unreachable catch-arm lines), the
+orchestrator's five ported lines (one pinned), and three recorded no-ports for the
+`HelpSearch` cache v5 does not keep. The pure modules' `helpChatLogger.debug`
+lines are recorded as deliberately unported (a pure module has no tracing; the
+bytes are the pin).
+
 #### 2026-09-05 — feat(help): the help-chat orchestrator, LIVE on the host's send seam (P4.9I2A unit 7)
 
 _Versions: core 0.0.799, harness 0.0.689, host 0.0.100._

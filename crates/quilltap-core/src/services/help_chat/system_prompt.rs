@@ -11,6 +11,10 @@
 //! an object; `toolInstructions` → a non-empty string; `userCharacter` → not
 //! null; `otherCharacterNames && length > 0`).
 
+//! v4's `helpChatLogger.debug('Built help chat system prompt', …)` (character
+//! name, page title, additional-context count, prompt length) is deliberately
+//! NOT ported — a pure module has no tracing; the prompt bytes are the pin.
+
 use serde_json::Value;
 
 use super::context_resolver::HelpPageContext;
@@ -204,4 +208,199 @@ pub fn build_help_chat_system_prompt(options: &HelpSystemPromptOptions<'_>) -> S
     parts.push(build_identity_reinforcement(&character_name));
 
     js_trim(&parts.join("\n\n")).to_string()
+}
+
+/// v4's own `__tests__/unit/lib/help-chat/system-prompt-builder.test.ts`, ported
+/// case for case (Tier 2 item 8) over the REAL template processor and identity
+/// reinforcement (v4 mocks both; the byte-exact family
+/// `help_system_prompt_equivalence` is the arbiter).
+#[cfg(test)]
+mod v4_cases {
+    use super::*;
+    use serde_json::json;
+
+    fn character(overrides: Value) -> Value {
+        let mut base =
+            json!({ "name": "Aria", "description": "A helpful guide", "personality": "Curious" });
+        if let (Value::Object(b), Value::Object(o)) = (&mut base, overrides) {
+            for (k, v) in o {
+                b.insert(k, v);
+            }
+        }
+        base
+    }
+    fn build(character: &Value, o: HelpSystemPromptOptions<'_>) -> String {
+        let _ = character;
+        build_help_chat_system_prompt(&o)
+    }
+    fn opts<'a>(character: &'a Value) -> HelpSystemPromptOptions<'a> {
+        HelpSystemPromptOptions {
+            character,
+            user_character: None,
+            page_context: None,
+            additional_page_contexts: &[],
+            other_character_names: None,
+            tool_instructions: None,
+        }
+    }
+    fn pc(title: &str, url: &str, content: &str) -> HelpPageContext {
+        HelpPageContext {
+            title: title.into(),
+            content: content.into(),
+            url: url.into(),
+            match_type: super::super::context_resolver::MatchType::Exact,
+            doc_id: String::new(),
+        }
+    }
+
+    #[test]
+    fn identity_and_role_sections() {
+        let c = character(json!({}));
+        let r = build(&c, opts(&c));
+        assert!(r.contains("## Character Identity"));
+        assert!(r.contains("You are Aria"));
+        assert!(r.contains("## Help Assistant Role"));
+        let v = character(json!({ "name": "Victor" }));
+        assert!(build(&v, opts(&v)).contains("as Victor"));
+    }
+    #[test]
+    fn persona_name_or_user_default() {
+        let c = character(json!({}));
+        let persona = HelpUserCharacter {
+            name: "Alice".into(),
+            description: "A curious user".into(),
+        };
+        let mut o = opts(&c);
+        o.user_character = Some(&persona);
+        assert!(build(&c, o).contains("Alice"));
+        assert!(build(&c, opts(&c)).contains(&build_identity_reinforcement("Aria")));
+    }
+    #[test]
+    fn personality_section_gated() {
+        let c = character(json!({ "personality": "Witty and sarcastic" }));
+        let r = build(&c, opts(&c));
+        assert!(r.contains("## Character Personality") && r.contains("Witty and sarcastic"));
+        let none = character(json!({ "personality": null }));
+        assert!(!build(&none, opts(&none)).contains("## Character Personality"));
+    }
+    #[test]
+    fn pronouns_section_gated() {
+        let c = character(
+            json!({ "pronouns": { "subject": "she", "object": "her", "possessive": "her" } }),
+        );
+        let r = build(&c, opts(&c));
+        assert!(r.contains("## Character Pronouns") && r.contains("she/her/her"));
+        let none = character(json!({}));
+        assert!(!build(&none, opts(&none)).contains("## Character Pronouns"));
+    }
+    #[test]
+    fn tool_instructions_and_reinforcement() {
+        let c = character(
+            json!({ "pronouns": { "subject": "they", "object": "them", "possessive": "their" } }),
+        );
+        let mut o = opts(&c);
+        o.tool_instructions = Some("## Tools\nYou have access to help_search");
+        let r = build(&c, o);
+        assert!(
+            r.contains("## Tools") && r.contains("help_search") && r.contains("tool_use block")
+        );
+        assert!(!build(&c, opts(&c)).contains("## Tools"));
+    }
+    #[test]
+    fn page_context_sections() {
+        let c = character(json!({}));
+        let page = pc("Characters Guide", "/aurora", "Learn about characters");
+        let mut o = opts(&c);
+        o.page_context = Some(&page);
+        let r = build(&c, o);
+        assert!(
+            r.contains("## Current Page Context")
+                && r.contains("Characters Guide")
+                && r.contains("/aurora")
+        );
+        assert!(r.contains("### Page Documentation") && r.contains("Learn about characters"));
+        assert!(!build(&c, opts(&c)).contains("## Current Page Context"));
+        let extra = [
+            pc("Sidebar", "/sidebar", "Sidebar help"),
+            pc("Search", "/search", "Search help"),
+        ];
+        let mut o = opts(&c);
+        o.additional_page_contexts = &extra;
+        let r = build(&c, o);
+        assert!(r.contains("### Additional Context: Sidebar") && r.contains("Sidebar help"));
+        assert!(r.contains("### Additional Context: Search") && r.contains("Search help"));
+    }
+    #[test]
+    fn persona_and_other_characters_sections() {
+        let c = character(json!({}));
+        let persona = HelpUserCharacter {
+            name: "Bob".into(),
+            description: "An experienced writer".into(),
+        };
+        let mut o = opts(&c);
+        o.user_character = Some(&persona);
+        let r = build(&c, o);
+        assert!(
+            r.contains("## User Character")
+                && r.contains("Bob")
+                && r.contains("An experienced writer")
+        );
+        assert!(!build(&c, opts(&c)).contains("## User Character"));
+        let names = vec!["Iris".to_string(), "Marcus".to_string()];
+        let mut o = opts(&c);
+        o.other_character_names = Some(&names);
+        let r = build(&c, o);
+        assert!(
+            r.contains("## Other Help Characters") && r.contains("Iris") && r.contains("Marcus")
+        );
+        let empty: Vec<String> = vec![];
+        let mut o = opts(&c);
+        o.other_character_names = Some(&empty);
+        assert!(!build(&c, o).contains("## Other Help Characters"));
+        assert!(!build(&c, opts(&c)).contains("## Other Help Characters"));
+    }
+    #[test]
+    fn bookend_trim_and_separators() {
+        let c = character(json!({ "name": "Sage", "personality": "Bold" }));
+        let r = build(&c, opts(&c));
+        assert!(r.contains(&build_identity_reinforcement("Sage")));
+        assert_eq!(r, crate::jsstr::js_trim(&r));
+        let sections: Vec<&str> = r.split("\n\n").collect();
+        assert!(sections.len() > 3);
+        assert!(sections.iter().all(|s| !s.is_empty()));
+    }
+    #[test]
+    fn complex_example_with_all_options() {
+        let c = character(
+            json!({ "name": "Echo", "personality": "Thoughtful", "pronouns": { "subject": "they", "object": "them", "possessive": "their" } }),
+        );
+        let persona = HelpUserCharacter {
+            name: "Writer".into(),
+            description: "Creative person".into(),
+        };
+        let page = pc("Guide", "/guide", "Guide content");
+        let extra = [pc("Sidebar", "/sidebar", "More")];
+        let names = vec!["Helper".to_string()];
+        let o = HelpSystemPromptOptions {
+            character: &c,
+            user_character: Some(&persona),
+            page_context: Some(&page),
+            additional_page_contexts: &extra,
+            other_character_names: Some(&names),
+            tool_instructions: Some("## Tools\nAvailable tools"),
+        };
+        let r = build(&c, o);
+        for needle in [
+            "Echo",
+            "Thoughtful",
+            "they/them/their",
+            "Writer",
+            "Guide content",
+            "Sidebar",
+            "Helper",
+            "Available tools",
+        ] {
+            assert!(r.contains(needle), "missing {needle:?}");
+        }
+    }
 }

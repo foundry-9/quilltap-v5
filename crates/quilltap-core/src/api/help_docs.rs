@@ -13,7 +13,12 @@
 //! v4 reads through `HelpSearch`'s in-process cache (`loadFromDatabase()` →
 //! `ensureHelpDocsSynced()` → `findAll()`, once). v5 reads `help_docs` per call:
 //! the boot ensure has already synced the table, so the rows are identical and
-//! only the read timing differs. There is no `invalidate()` twin.
+//! only the read timing differs. There is no `invalidate()` twin — and so v4's
+//! `logger.info('Help documents loaded from database', { documentCount })` has
+//! no event to log (deliberately NOT ported), nor do the search-path lines
+//! `No embedded help docs available for search` /
+//! `Section-level help scoring failed; falling back to whole-document scores`,
+//! which belong to `db::help_search` (the ported semantic path), not here.
 
 use serde_json::{json, Value};
 
@@ -145,5 +150,105 @@ pub fn help_doc_get(db: &Db, id_or_slug: &str) -> Response {
             tracing::error!(target: "quilltap::help", error = %e, "[HelpDoc] Error getting document");
             server_error("Failed to get help document")
         }
+    }
+}
+
+/// Capture-layer pins for the four v4 route log lines this module carries
+/// (`[HelpDocs] Listed help documents` / `[HelpDocs] Guide text search` /
+/// `[HelpDoc] Document not found` / `[HelpDoc] Document retrieved`), over a fresh
+/// copy of the committed `help-chat-*` fixture. The differential
+/// (`help_docs_routes_equivalence`) cannot see a log line; these can.
+#[cfg(test)]
+mod log_context_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use std::sync::{Arc, Mutex};
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    struct FieldVisitor(String);
+    impl tracing::field::Visit for FieldVisitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            self.0.push_str(&format!(" {}={:?}", field.name(), value));
+        }
+    }
+    struct CaptureLayer(Arc<Mutex<Vec<String>>>);
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for CaptureLayer {
+        fn on_event(
+            &self,
+            event: &tracing::Event<'_>,
+            _c: tracing_subscriber::layer::Context<'_, S>,
+        ) {
+            let meta = event.metadata();
+            let mut v = FieldVisitor(format!("{} {}", meta.level(), meta.target()));
+            event.record(&mut v);
+            self.0.lock().unwrap().push(v.0);
+        }
+    }
+    fn captured<T>(f: impl FnOnce() -> T) -> (T, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let out = {
+            let _g = tracing::subscriber::set_default(sub);
+            f()
+        };
+        let lines = logs.lock().unwrap().clone();
+        (out, lines)
+    }
+    pub(crate) fn fixture_db() -> (tempfile::TempDir, Db) {
+        let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../quilltap-web/tests/fixtures");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::copy(src.join("help-chat-main.db"), dir.path().join("main.db")).unwrap();
+        std::fs::copy(src.join("help-chat-mount.db"), dir.path().join("mount.db")).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: dir.path().join("main.db"),
+                mount_index: Some(dir.path().join("mount.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn the_four_route_lines_fire() {
+        let (_dir, db) = fixture_db();
+        let (_, lines) = captured(|| help_docs_list(&db));
+        assert!(
+            lines.iter().any(|l| l.contains("INFO")
+                && l.contains("[HelpDocs] Listed help documents")
+                && l.contains("document_count=17")),
+            "{lines:?}"
+        );
+        let (_, lines) = captured(|| help_docs_search(&db, Some("Brahma")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[HelpDocs] Guide text search") && l.contains("match_count=")),
+            "{lines:?}"
+        );
+        let (_, lines) = captured(|| help_docs_search(&db, Some("a")));
+        assert!(
+            lines.is_empty(),
+            "the short-circuit logs nothing: {lines:?}"
+        );
+        let (_, lines) = captured(|| help_doc_get(&db, "no-such-doc"));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("WARN") && l.contains("[HelpDoc] Document not found")),
+            "{lines:?}"
+        );
+        let (_, lines) = captured(|| help_doc_get(&db, "brahma-console"));
+        assert!(
+            lines.iter().any(|l| l.contains("INFO")
+                && l.contains("[HelpDoc] Document retrieved")
+                && l.contains("The Brahma Console")),
+            "{lines:?}"
+        );
     }
 }
