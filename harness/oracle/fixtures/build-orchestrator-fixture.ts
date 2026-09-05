@@ -66,6 +66,29 @@ interface MessageSpec {
   opaqueContent?: string | null;
   targetParticipantIds?: string[] | null;
   attachments?: string[];
+  /**
+   * P4.D154: an explicit row timestamp. Every seeded message defaults to
+   * `seedTimestamp`, and `getMessages` sorts `ORDER BY createdAt ASC` — so a
+   * chat whose rows all share it is a TIE whose resolution decides the tail,
+   * and the tail is what both attachment walks read backwards from. A case
+   * whose answer depends on message ORDER must pin its own stamps.
+   */
+  createdAt?: string;
+}
+/**
+ * P4.D154 (bug 121): a `files` row the corpus can attach to a USER message, so
+ * the re-hydration walk has something to load. The bytes live in the SPEC (not
+ * on disk): both differential sides mock the file-storage manager with a canned
+ * fileId → bytes table, exactly as the `file-attachment` family does.
+ */
+interface FileSpec {
+  key: string;
+  id: string;
+  originalFilename: string;
+  mimeType: string;
+  category: string;
+  fsmBytes?: number[];
+  fsmBytesUtf8?: string;
 }
 interface ChatSpec {
   id: string;
@@ -139,6 +162,8 @@ interface Spec {
     agentModeSettings?: { maxTurns: number; defaultEnabled: boolean };
   };
   characters: CharacterSpec[];
+  /** P4.D154: `files` rows for the bug-121 re-hydration case (absent = none). */
+  files?: FileSpec[];
   chats: ChatSpec[];
   /**
    * W4.10a: `apiKeyId → SYNTHETIC key value` seeded into the `api_keys` table so
@@ -317,6 +342,38 @@ async function main(): Promise<void> {
     { id: spec.chatSettings.id }
   );
 
+  // P4.D154 (bug 121): the `files` rows a USER message can carry. `files` is a
+  // lazily-created collection in v4 — the orchestrator fixture never needed it
+  // until the re-hydration walk had to resolve a real file id.
+  if (spec.files && spec.files.length > 0) {
+    const { FileEntrySchema } = await import('@/lib/schemas/types');
+    await ensureCollection('files', FileEntrySchema);
+    const chatIds = spec.chats.map((c) => c.id);
+    for (const f of spec.files) {
+      const size =
+        f.fsmBytes?.length ?? (f.fsmBytesUtf8 ? Buffer.byteLength(f.fsmBytesUtf8) : 0);
+      await repos.files.create(
+        {
+          userId: spec.userId,
+          sha256: `sha-${f.key}`.padEnd(64, '0'),
+          originalFilename: f.originalFilename,
+          mimeType: f.mimeType,
+          size,
+          // Linked to every corpus chat: `loadChatFilesForLLM` does not consult
+          // the link table (only `loadAndProcessFiles` filters by it), but a real
+          // upload is linked and the fixture should not model an orphan.
+          linkedTo: chatIds,
+          source: 'UPLOADED',
+          category: f.category,
+          tags: [],
+          storageKey: `storage/${f.key}`,
+          fileStatus: 'ok',
+        } as never,
+        { id: f.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
+      );
+    }
+  }
+
   // Chats + their opener messages.
   for (const chat of spec.chats) {
     const participants = chat.participants.map((p) => ({
@@ -367,7 +424,7 @@ async function main(): Promise<void> {
           role: m.role,
           content: m.content,
           participantId: m.participantId ?? undefined,
-          createdAt: spec.seedTimestamp,
+          createdAt: m.createdAt ?? spec.seedTimestamp,
           attachments: m.attachments ?? [],
           ...(m.systemSender !== undefined ? { systemSender: m.systemSender } : {}),
           ...(m.systemKind !== undefined ? { systemKind: m.systemKind } : {}),
@@ -396,7 +453,8 @@ async function main(): Promise<void> {
   await closeDatabase();
   process.stderr.write(
     `built orchestrator fixture: ${outMain} + ${outMount} ` +
-      `(${spec.characters.length} characters, ${spec.chats.length} chats)\n`
+      `(${spec.characters.length} characters, ${spec.chats.length} chats, ` +
+      `${spec.files?.length ?? 0} files)\n`
   );
   process.exit(0);
 }

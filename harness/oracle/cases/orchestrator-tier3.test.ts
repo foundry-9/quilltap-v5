@@ -120,6 +120,17 @@ interface Spec {
    * fixture builder; v4's REAL `findApiKeyByIdAndUserId` + the Rust `DbApiKeys`
    * resolver both read the seeded rows. Not consulted by the oracle at runtime. */
   apiKeys?: Record<string, string>;
+  /** P4.D154 (bug 121): the `files` rows the fixture seeds; their bytes back
+   * the canned file-storage-manager mock below (mirrors the Rust `CannedBytes`). */
+  files?: Array<{
+    key: string;
+    id: string;
+    originalFilename: string;
+    mimeType: string;
+    category: string;
+    fsmBytes?: number[];
+    fsmBytesUtf8?: string;
+  }>;
   calls: CallSpec[];
   streams: Record<string, ChunkSpec[][]>;
   /** W4.1g native-call detection: raw-response marker → the tool calls the
@@ -171,7 +182,7 @@ async function main(): Promise<void> {
   // `canned_completion_key`).
   const cannedStreams = new Map<
     string,
-    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sampling: Record<string, unknown>; sequences: ChunkSpec[][] }
+    { provider: string; model: string; temperature: number | null; messages: unknown[]; tools: unknown[]; modelParams: Record<string, unknown>; sampling: Record<string, unknown>; attachments: unknown[][]; sequences: ChunkSpec[][] }
   >();
   const cannedCompletions = new Map<
     string,
@@ -249,12 +260,20 @@ async function main(): Promise<void> {
       // `actualTools` reach the wire. Only the model-capability inputs are mocked
       // (checkModelSupportsTools above; provider.supportsWebSearch below).
       streamMessage: async function* streamMessage(options: {
-        messages: Array<{ role: string; content: string }>;
+        messages: Array<{ role: string; content: string; attachments?: unknown[] }>;
         connectionProfile: { provider: string; modelName: string };
         modelParams: Record<string, unknown>;
         tools?: unknown[];
       }) {
         const messages = options.messages.map((m) => ({ role: m.role, content: m.content }));
+        // P4.D154 (bug 121): the per-message attachment slate reaching the wire,
+        // positionally aligned with `messages`. The call KEY still projects
+        // role+content only (matching `canned_stream_key`), so recorded keys are
+        // unchanged; this rides alongside like `tools` / `modelParams` do. Until
+        // it existed the corpus could not see `mergedAttachmentsToSend` at all —
+        // v4 stamps the merged slate onto the anchor message only, and a v5 that
+        // dropped `rehydratedAttachmentsToKeep` would have diffed clean.
+        const attachmentsAtWire = options.messages.map((m) => m.attachments ?? []);
         const label = currentLabel;
         if (!label) throw new Error('streamMessage mock: no current label');
         const attempts = spec.streams[label];
@@ -288,7 +307,7 @@ async function main(): Promise<void> {
         const samplingAtWire = resolveSamplingParams(modelParamsAtWire) as unknown as Record<string, unknown>;
         const entry = cannedStreams.get(key);
         if (entry) entry.sequences.push(chunks);
-        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, sequences: [chunks] });
+        else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, attachments: attachmentsAtWire, sequences: [chunks] });
 
         for (const chunk of chunks) {
           if (chunk.error) throw new Error(chunk.error);
@@ -390,31 +409,52 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/services/llm-logging.service')
   );
 
-  // ---- buildMessageContext → the REAL wrapper; mock ONLY the K file-loader ----
-  // v4's `buildMessageContext` (context-builder.service.ts) is now ported as
+  // ---- buildMessageContext → the REAL wrapper, and (P4.D154) the REAL file
+  //      loader + fallback under it ----
+  // v4's `buildMessageContext` (context-builder.service.ts) is ported as
   // `quilltap_core::services::message_context`, so the oracle drives the REAL
   // wrapper (whisper pre-filters / opaque-anywhere / normalization, the ported
   // `buildContext`, `formatMessagesForProvider`, and the multi-character scene
-  // block). The ONLY thing mocked inside it is section K, the unported wave-4 file
-  // subsystem (`loadChatFilesForLLM` + `processFileAttachmentFallback` +
-  // `formatFallbackAsMessagePrefix`) — mirrored by the Rust
-  // `NoopMessageContextSeams` (empty prefix / no attachments). The corpus keeps
-  // message attachments empty, so `collectLanternImageFileIdsForCharacter` returns
-  // `[]` and these are never reached; they are mocked defensively so the real file
-  // subsystem is never touched.
-  jest.doMock('@/lib/chat-files-v2', () => {
-    const actual = jest.requireActual('@/lib/chat-files-v2');
-    return { __esModule: true, ...actual, loadChatFilesForLLM: async () => [] };
-  });
-  jest.doMock('@/lib/chat/file-attachment-fallback', () => {
-    const actual = jest.requireActual('@/lib/chat/file-attachment-fallback');
-    return {
-      __esModule: true,
-      ...actual,
-      processFileAttachmentFallback: async () => ({ type: 'unsupported' }),
-      formatFallbackAsMessagePrefix: () => '',
-    };
-  });
+  // block).
+  //
+  // Section K's file subsystem USED to be mocked here to `[]` / `unsupported` /
+  // `''`, matching the Rust `NoopMessageContextSeams` — which was honest while
+  // the corpus carried no user attachments, and became a blind spot the moment
+  // v4's bug-121 fix (`e288ae2ec`) added a read-side re-hydration that loads
+  // them. Both walks now run REAL on BOTH sides: the Rust orchestrator wires
+  // `RealMessageContextSeams` in production, reading the same `files` rows out
+  // of the same fixture, so the only thing that has to be mocked is the host
+  // byte layer (below) — the seam the Rust side supplies as `CannedBytes`.
+  //
+  // The corpus's planted files are deliberately chosen so nothing model-backed
+  // runs: a `text/markdown` file (inlined by the text branch), an
+  // `application/pdf` (natively supported by the responding ANTHROPIC profile,
+  // so its raw bytes are kept), and an `application/zip` (neither text nor
+  // image nor supported → `unsupported` WITH an error → dropped in silence).
+  jest.doMock('@/lib/chat-files-v2', () => jest.requireActual('@/lib/chat-files-v2'));
+  jest.doMock('@/lib/chat/file-attachment-fallback', () =>
+    jest.requireActual('@/lib/chat/file-attachment-fallback')
+  );
+
+  // The host byte layer: fileId → the spec's bytes (the Rust `CannedBytes`
+  // twin). A file id the spec does not carry throws, exactly as a storage miss
+  // does — `loadChatFilesForLLM` catches and skips it.
+  const fsmByFileId: Record<string, Buffer> = {};
+  for (const f of spec.files ?? []) {
+    if (f.fsmBytesUtf8 !== undefined) fsmByFileId[f.id] = Buffer.from(f.fsmBytesUtf8, 'utf-8');
+    else if (f.fsmBytes) fsmByFileId[f.id] = Buffer.from(f.fsmBytes);
+    else fsmByFileId[f.id] = Buffer.alloc(0);
+  }
+  jest.doMock('@/lib/file-storage/manager', () => ({
+    __esModule: true,
+    fileStorageManager: {
+      downloadFile: async (entry: { id: string }) => {
+        const buf = fsmByFileId[entry.id];
+        if (buf === undefined) throw new Error(`no canned bytes for fileId ${entry.id}`);
+        return buf;
+      },
+    },
+  }));
 
   // ---- buildContext feeders (W4.6a) ----
   // The mount-pool / recall-settings / frozen-archive / core-whisper-config /

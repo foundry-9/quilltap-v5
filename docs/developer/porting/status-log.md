@@ -105173,3 +105173,136 @@ The three log lines are capture-pinned through a THREAD-scoped
 `capture-layer-target-assert-is-a-prefix-match` — the level is asserted with
 `starts_with`, the fields with `contains`). The budget arithmetic counts
 UTF-16 units, matching v4's `text.length`.
+
+### Unit 3 — the orchestrator tier-3 corpus can SEE the re-hydration
+
+**The stale mock, named.** The orchestrator oracle mocked
+`loadChatFilesForLLM → []`, `processFileAttachmentFallback → {type:
+'unsupported'}` and `formatFallbackAsMessagePrefix → ''`, mirrored on the Rust
+side by `NotConfiguredBytes` and a corpus with no `files` rows and no message
+attachments (`orchestrator-tier3.test.ts` said so in a comment). Both sides
+produced empty and AGREED — the P4.20 / P4.36 stale-mock class, one commit away
+from making the port's headline change invisible.
+
+**The un-mock.** The oracle now loads v4's REAL `chat-files-v2` and
+`file-attachment-fallback` and mocks only `@/lib/file-storage/manager` with a
+canned `fileId → bytes` table; the Rust harness replaces `NotConfiguredBytes`
+with a `CannedBytes` built from the same spec rows. The Rust orchestrator wires
+`RealMessageContextSeams` in PRODUCTION, so both sides run the same real loader
+over the same fixture rows and only the host byte layer is canned.
+
+**The planted case** (`rehydrate_user_attachments`, the reported shape): Jeeves
+speaks; the human attaches three files; Friday answers; the turn responds as
+Jeeves, whose own prior turn stops the walk one row past the upload. The three
+files are chosen so nothing model-backed runs — the responding profile is the
+corpus's existing ANTHROPIC "Primary", and no new connection profile was added
+(a new one could have moved `PROVIDER_CHEAPEST`'s cheap-LLM pick for unrelated
+calls):
+
+| file | mime | arm |
+|---|---|---|
+| `transcript.md` | `text/markdown` | NOT in ANTHROPIC's capability map (`text/plain` is) → text branch → **inlined**, spliced ahead of the user's typed words |
+| `dossier.pdf` | `application/pdf` | IS in the map → `unsupported`, no error → **raw bytes kept** and anchored |
+| `archive.zip` | `application/zip` | neither text nor image nor supported → `unsupported` WITH an error → **dropped in silence** (no `⚠️` prefix on this path) |
+
+**A load-bearing fixture fix: per-message `createdAt`.** Every seeded message
+defaulted to `seedTimestamp` and `getMessages` sorts `ORDER BY createdAt ASC`,
+so a chat whose rows all share it is a TIE — and the tie resolves REVERSED, which
+the corpus never had to care about because no case's answer depended on message
+order. Both attachment walks read backwards from the tail, so the first regen
+put Jeeves's own turn last, broke the walk immediately and collected nothing.
+`MessageSpec.createdAt` (defaulting to `seedTimestamp`, so every existing chat
+is untouched) pins the three rows. **Worth a memory note.**
+
+**`attachmentsAtWire`, a new recorded-not-keyed comparand.** The canned call key
+projects role + content only, and v4 stamps `mergedAttachmentsToSend` onto the
+anchor message ALONE — so before this, nothing in the corpus could see the merge
+and a v5 that dropped `rehydrated_attachments_to_keep` would have diffed clean.
+It joins `tools` / `modelParams` / `sampling` in the established shape (recorded
+alongside, asserted per key, never in the key), with a stale-oracle floor
+asserting exactly ONE call carries a non-empty slate.
+
+**Neutrality — MEASURED, not asserted.** A baseline oracle was generated at the
+pin BEFORE any corpus change and kept. After normalizing minted UUIDs and
+timestamps (the raw NDJSON is not stable across runs — the fixture is rebuilt
+and ids are minted fresh), the widened oracle differs by:
+
+- **4 rows only in the widened oracle:** the planted call's `events`, its
+  `cannedStream`, and the two cheap-LLM keyword-distill `cannedCompletion`s.
+- **0 rows only in the baseline.**
+- **0 shared per-call rows differing.**
+- The four aggregates (`chats` +1, `chat_messages` +4, `background_jobs` +2,
+  `llmlogs` +2) gained rows and lost NONE, and **every added row is about the
+  planted chat**.
+
+The Rust side was also run against the BASELINE oracle with the port already in
+(unit 2 landed): green over all 36 pre-existing calls — the port's own
+neutrality half, separate from the corpus widening's.
+
+**Mutation proofs (four; each reddened a named arm):**
+
+| Mutation | Reddened |
+|---|---|
+| M6 — no re-hydration at all (the pre-fix v5 shape) | `event trace mismatch for rehydrate_user_attachments` |
+| M7 — the Lantern block re-seeds `merged_attachments` from `attachments_to_send` | `attachment slate at wire mismatch` (proves the new comparand is not vacuous) |
+| M8 — keep an errored `unsupported` file | `attachment slate at wire mismatch` (the zip's bytes appear) |
+| M9 — splice AFTER `build_context` instead of before | `llm_logs rows diverge` |
+
+**M9 answers the order's open question: the corpus CAN see the ordering.** The
+order asked for the "before `build_context`" claim to be measured and said to
+say so if the corpus could not. It can — but not through the request bytes: the
+planted body is 64 characters, so `build_context` passes it through untouched
+and the outgoing request would be byte-identical either way. What sees it is
+`build_context`'s OWN cheap-LLM call: the memory-keyword distill's prompt
+carries the conversation text, and its `llm_logs` row therefore carries the
+re-hydrated transcript. Splice after `build_context` and the distill prompt
+loses it. (The mutation was written, compiled and run — it splices into
+`built_context.messages` by `metadata.message_id` instead of into the list fed
+to `build_conversation_messages`.)
+
+**Tier 2 item 7 — the budget-discriminating tier-3 row — NOT landed, deliberately,
+and the reason is recorded.** Discriminating the 80,000-character ceiling at
+tier 3 needs a body over the ceiling, which (a) would push ~160 KB of generated
+text through the canned stream key on both sides, and (b) would very likely trip
+`build_context`'s compression/trim path, changing the whole row's shape for
+reasons unrelated to the budget. The order allows exactly this trade: "if the
+builder can carry it cheaply; otherwise the unit pin of item 4 stands and the
+record says so." **It stands** —
+`the_budget_skips_a_file_whole_and_the_next_smaller_one_still_lands` (unit 2)
+drives the real wrapper over a 79,996-character file, an overflowing one and a
+fitting one, and its truncate-instead-of-skip mutation reddens it.
+
+**`file_attachment_tier3_equivalence` regenerated at the pin (Tier-1 item 6):
+GREEN, 62 oracle rows, no v5 change.** v4 did not touch the fallback in
+`e288ae2ec`, and this lane's `load_user_attachments` consumes
+`process_file_attachment_fallback` / `format_fallback_as_message_prefix`
+without changing them.
+
+**Regen recipes (this lane).** Both from `PIN=/tmp/qt-v4-pin-p4d154-d883a5ee1`,
+Node 24 at `~/.nvm/versions/node/v24.13.1/bin`, staged copies under
+`/tmp/qt-p4d154-*` so no sibling lane's `/tmp` is touched:
+
+```bash
+# orchestrator_tier3_equivalence
+cd "$PIN"
+QT_FIXTURE_OUT=/tmp/qt-p4d154-orch-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-p4d154-orch-mount.db \
+  $N/npx tsx <v5w>/harness/oracle/fixtures/build-orchestrator-fixture.ts
+QT_FIXTURE_ORCH_MAIN=/tmp/qt-p4d154-orch-main.db QT_FIXTURE_ORCH_MOUNT=/tmp/qt-p4d154-orch-mount.db \
+TZ=UTC QT_ORACLE_OUT=/tmp/qt-p4d154-oracle-orch.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=180000 \
+  --roots "$PWD" --roots /tmp/qt-p4d154-orch-oracle/cases -- orchestrator-tier3
+
+# file_attachment_tier3_equivalence
+QT_FIXTURE_FILE_ATTACH_MAIN=/tmp/qt-p4d154-fa-main.db QT_FIXTURE_FILE_ATTACH_MOUNT=/tmp/qt-p4d154-fa-mount.db \
+  $N/node --import tsx <v5w>/harness/oracle/fixtures/build-file-attachment-fixture.ts
+QT_FIXTURE_FILE_ATTACH_MAIN=… QT_FIXTURE_FILE_ATTACH_MOUNT=… \
+QT_ORACLE_OUT=/tmp/qt-p4d154-oracle-fa.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=120000 \
+  --roots "$PWD" --roots /tmp/qt-p4d154-fa-oracle/cases -- file-attachment-tier3
+```
+
+**Fixtures invalidated:** the `QT_FIXTURE_ORCH_*` pair MUST be rebuilt (it now
+carries a `files` table, three rows, and three pinned message timestamps) — its
+builder is the only producer and `orchestrator_tier3_equivalence` its only
+consumer, so no other family is affected. The `file-attachment` pair is
+unchanged.

@@ -134,6 +134,19 @@ struct PtrW {
     created_at: String,
 }
 
+/// P4.D154 (bug 121): a corpus `files` row. The fixture builder seeds the DB
+/// row; the BYTES live here and back the canned host byte layer on both sides
+/// (the oracle mocks `fileStorageManager.downloadFile` from the same table).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileSpecW {
+    id: String,
+    #[serde(default)]
+    fsm_bytes: Vec<u8>,
+    #[serde(default)]
+    fsm_bytes_utf8: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
@@ -142,6 +155,8 @@ struct Spec {
     frozen_now_ms: i64,
     #[serde(default)]
     local_offset_minutes: i64,
+    #[serde(default)]
+    files: Vec<FileSpecW>,
     calls: Vec<CallW>,
     // W4.10a: the fixture builder seeds `api_keys` from the spec's `apiKeys` map;
     // the Rust harness no longer reads it (the real `DbApiKeys` resolver reads the
@@ -198,6 +213,12 @@ struct CannedStreamW {
     /// pass the identical array — proven per call.
     #[serde(default)]
     tools: Value,
+    /// P4.D154 (bug 121): the per-message attachment slate at the wire,
+    /// positionally aligned with `messages`. v4 stamps the merged slate onto the
+    /// anchor message only, so this is the only comparand that can see
+    /// `mergedAttachmentsToSend` — the call key projects role+content alone.
+    #[serde(default)]
+    attachments: Value,
     /// P4.D79: the whole `modelParams` bag v4 passed to `streamMessage` for this
     /// call key (v4 `profileParams(effectiveProfile) ?? {}`). Recorded because
     /// the key only carries the temperature — v5 was passing NO profile
@@ -282,6 +303,10 @@ struct QueuedStreamingProvider {
     /// P4.D83: the sampling knobs the ORACLE recorded / the RUST side passed.
     expected_sampling: HashMap<String, Value>,
     recorded_sampling: Mutex<HashMap<String, Value>>,
+    /// P4.D154 (bug 121): the per-message attachment slate the ORACLE recorded
+    /// at the wire, per call key.
+    expected_attachments: HashMap<String, Value>,
+    recorded_attachments: Mutex<HashMap<String, Value>>,
 }
 
 /// The three knobs as `{temperature?, maxTokens?, topP?}` with absent knobs
@@ -306,6 +331,7 @@ impl QueuedStreamingProvider {
         let mut expected_tools: HashMap<String, Value> = HashMap::new();
         let mut expected_model_params: HashMap<String, Value> = HashMap::new();
         let mut expected_sampling: HashMap<String, Value> = HashMap::new();
+        let mut expected_attachments: HashMap<String, Value> = HashMap::new();
         for row in rows {
             let messages = to_completion_messages(&row.messages);
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
@@ -333,7 +359,16 @@ impl QueuedStreamingProvider {
             } else {
                 Value::Object(serde_json::Map::new())
             };
-            expected_sampling.insert(key, sampling);
+            expected_sampling.insert(key.clone(), sampling);
+            // A missing/null recorded slate normalizes to `[]` (an oracle from
+            // before this comparand existed); the floor below catches that case
+            // loudly rather than letting it pass as "no attachments anywhere".
+            let atts = if row.attachments.is_array() {
+                row.attachments.clone()
+            } else {
+                Value::Array(Vec::new())
+            };
+            expected_attachments.insert(key, atts);
         }
         Self {
             queues: Mutex::new(queues),
@@ -343,6 +378,8 @@ impl QueuedStreamingProvider {
             recorded_model_params: Mutex::new(HashMap::new()),
             expected_sampling,
             recorded_sampling: Mutex::new(HashMap::new()),
+            expected_attachments,
+            recorded_attachments: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -383,6 +420,28 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                 .entry(key.clone())
                 .or_insert_with(|| {
                     sampling_object(params.temperature, params.max_tokens, params.top_p)
+                });
+            // P4.D154 (bug 121): the per-message attachment slate, positionally
+            // aligned with `params.messages` — only `StreamMessage::User` can
+            // carry one, so every other role contributes `[]`.
+            self.recorded_attachments
+                .lock()
+                .unwrap()
+                .entry(key.clone())
+                .or_insert_with(|| {
+                    Value::Array(
+                        params
+                            .messages
+                            .iter()
+                            .map(|m| match m {
+                                quilltap_core::model::stream::StreamMessage::User {
+                                    attachments,
+                                    ..
+                                } => Value::Array(attachments.clone()),
+                                _ => Value::Array(Vec::new()),
+                            })
+                            .collect(),
+                    )
                 });
         }
         let sequence: Vec<StreamChunkResult> = {
@@ -602,6 +661,29 @@ fn dump_table(db: &Db, table: &str) -> Value {
 }
 
 // ---------------------------------------------------------------------------
+// The canned host byte layer (P4.D154, bug 121).
+// ---------------------------------------------------------------------------
+
+/// fileId → the spec's bytes, mirroring the oracle's
+/// `fileStorageManager.downloadFile` mock. A file id the spec does not carry
+/// errors exactly as a storage miss does — `load_chat_files_for_llm` logs and
+/// skips it, as v4's own catch does.
+struct CannedBytes {
+    by_file_id: HashMap<String, Vec<u8>>,
+}
+impl quilltap_core::services::chat_files::FileBytesStore for CannedBytes {
+    fn download_file(
+        &self,
+        entry: &quilltap_core::db::files::FileEntry,
+    ) -> Result<Vec<u8>, String> {
+        match self.by_file_id.get(&entry.id) {
+            Some(b) => Ok(b.clone()),
+            None => Err(format!("no canned bytes for fileId {}", entry.id)),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The test.
 // ---------------------------------------------------------------------------
 
@@ -787,6 +869,23 @@ fn orchestrator_tier3_matches_oracle() {
 
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
 
+    // P4.D154 (bug 121): the host byte layer the re-hydration reads through.
+    // The corpus's planted files are text / pdf / zip, so nothing image-shaped
+    // reaches the transcoder and `NotConfiguredTranscoder` stays honest.
+    let canned_bytes = CannedBytes {
+        by_file_id: spec
+            .files
+            .iter()
+            .map(|f| {
+                let bytes = match &f.fsm_bytes_utf8 {
+                    Some(t) => t.as_bytes().to_vec(),
+                    None => f.fsm_bytes.clone(),
+                };
+                (f.id.clone(), bytes)
+            })
+            .collect(),
+    };
+
     for call in &spec.calls {
         let sink = RecordingSink::new();
         // W4.11a: a per-call executor that logs each cheap-LLM provider call into
@@ -835,10 +934,13 @@ fn orchestrator_tier3_matches_oracle() {
             pricing: &pricing,
             build_context_seams: &bc_seams,
             orchestrator_seams: &orchestrator_seams,
-            // The attachment subsystem (W4.4b): the corpus keeps `fileIds` empty
-            // and carries no prior-image message attachments, so `loadAndProcessFiles`
-            // early-returns and the Lantern K-seam is never invoked — these are inert.
-            file_bytes: &quilltap_core::services::chat_files::NotConfiguredBytes,
+            // The attachment subsystem (W4.4b). The corpus keeps request `fileIds`
+            // empty, so `load_and_process_files` still early-returns; but since
+            // P4.D154 a planted USER message DOES carry attachments, so the
+            // bug-121 re-hydration seam reads real `files` rows out of the fixture
+            // through the canned byte store above (the oracle mocks the same layer
+            // and runs v4's REAL loader + fallback over it).
+            file_bytes: &canned_bytes,
             image_transcoder: &quilltap_core::files::image_processing::NotConfiguredTranscoder,
             danger_router: &router,
             confirmation: &mut confirmation,
@@ -1078,6 +1180,44 @@ fn orchestrator_tier3_matches_oracle() {
                 "the oracle recorded a stream call v5 never made:\n{key}"
             );
         }
+    }
+
+    // --- the ATTACHMENT slate AT THE WIRE (P4.D154, v4 `e288ae2ec` / bug 121) ---
+    // v4 stamps `mergedAttachmentsToSend` onto the anchor message only, and the
+    // canned call key projects role + content alone — so this is the ONLY
+    // comparand that can see the merge. Without it a v5 that dropped
+    // `rehydrated_attachments_to_keep` (or kept an errored `unsupported` file)
+    // would diff clean.
+    {
+        let recorded = streaming.recorded_attachments.lock().unwrap();
+        for (key, got) in recorded.iter() {
+            let want = streaming.expected_attachments.get(key).unwrap_or_else(|| {
+                panic!(
+                    "Rust made a stream call with no oracle-recorded attachments for key:\n{key}"
+                )
+            });
+            assert_eq!(
+                got, want,
+                "attachment slate at wire mismatch for key:\n{key}"
+            );
+        }
+        // Stale-oracle floor: the corpus plants a natively-supported file on a
+        // re-hydrated user message, so at least one recorded call MUST carry a
+        // non-empty slate. An oracle regenerated from a tree without the fix (or
+        // without this recording) would make every arm above vacuous.
+        let carriers = recorded
+            .values()
+            .filter(|v| {
+                v.as_array().is_some_and(|per_msg| {
+                    per_msg.iter().any(|a| !a.as_array().unwrap().is_empty())
+                })
+            })
+            .count();
+        assert_eq!(
+            carriers, 1,
+            "expected exactly one stream call carrying attachments (the bug-121 \
+             re-hydration row); the corpus or the oracle has gone stale"
+        );
     }
 
     // --- table dumps (minted-values remap) ---

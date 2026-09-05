@@ -164,6 +164,59 @@
    "connectionProfileId": "ab000079-0000-4000-8000-00000000007a"
   }
  ],
+ "files": [
+  {
+   "key": "transcript",
+   "id": "fe000001-0000-4000-8000-0000000000e1",
+   "originalFilename": "transcript.md",
+   "mimeType": "text/markdown",
+   "category": "ATTACHMENT",
+   "fsmBytesUtf8": "The ledger records forty-two casks of Madeira, landed at Bristol."
+  },
+  {
+   "key": "dossier",
+   "id": "fe000002-0000-4000-8000-0000000000e2",
+   "originalFilename": "dossier.pdf",
+   "mimeType": "application/pdf",
+   "category": "ATTACHMENT",
+   "fsmBytes": [
+    37,
+    80,
+    68,
+    70,
+    45,
+    49,
+    46,
+    52,
+    10,
+    37,
+    226,
+    227,
+    207,
+    211,
+    10
+   ]
+  },
+  {
+   "key": "archive",
+   "id": "fe000003-0000-4000-8000-0000000000e3",
+   "originalFilename": "archive.zip",
+   "mimeType": "application/zip",
+   "category": "ATTACHMENT",
+   "fsmBytes": [
+    80,
+    75,
+    3,
+    4,
+    20,
+    0,
+    0,
+    0,
+    8,
+    0
+   ]
+  }
+ ],
  "chats": [
   {
    "id": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
@@ -1178,6 +1231,59 @@
     }
    ],
    "forceToolsOnNextMessage": true
+  },
+  {
+   "id": "fe100001-0000-4000-8000-0000000000f1",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "fe1a0001-0000-4000-8000-0000000000a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "fe1b0002-0000-4000-8000-0000000000b2",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "fe1c0003-0000-4000-8000-0000000000c3",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "fe110001-0000-4000-8000-000000000101",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Jeeves inclines his head.",
+     "participantId": "fe1b0002-0000-4000-8000-0000000000b2"
+    },
+    {
+     "id": "fe110002-0000-4000-8000-000000000102",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "USER",
+     "content": "Read this transcript, would you.",
+     "participantId": "fe1c0003-0000-4000-8000-0000000000c3",
+     "attachments": [
+      "fe000001-0000-4000-8000-0000000000e1",
+      "fe000002-0000-4000-8000-0000000000e2",
+      "fe000003-0000-4000-8000-0000000000e3"
+     ]
+    },
+    {
+     "id": "fe110003-0000-4000-8000-000000000103",
+     "createdAt": "2026-01-02T03:04:08.000Z",
+     "role": "ASSISTANT",
+     "content": "Friday has read it already.",
+     "participantId": "fe1a0001-0000-4000-8000-0000000000a1"
+    }
+   ]
   }
  ],
  "calls": [
@@ -1579,6 +1685,17 @@
    "streamLabel": "moderation_refusal",
    "cheapLLMSettings": false,
    "summaryCheck": false
+  },
+  {
+   "name": "rehydrate_user_attachments",
+   "kind": "single",
+   "chatId": "fe100001-0000-4000-8000-0000000000f1",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "rehydrate_user_attachments",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "fe1b0002-0000-4000-8000-0000000000b2"
   }
  ],
  "streams": {
@@ -2472,6 +2589,21 @@
       "promptTokens": 20,
       "completionTokens": 5,
       "totalTokens": 25
+     }
+    }
+   ]
+  ],
+  "rehydrate_user_attachments": [
+   [
+    {
+     "content": "Jeeves recites the ledger back, cask for cask."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 140,
+      "completionTokens": 18,
+      "totalTokens": 158
      }
     }
    ]

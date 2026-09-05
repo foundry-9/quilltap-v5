@@ -271,6 +271,49 @@ would be vacuous), and `find_names_by_ids` still resolves the name.
 
 Nothing calls it yet; the memory-subject prefix (parts 2 and 3) is what
 will.
+#### 2026-09-05 — test(harness): the orchestrator corpus can see the bug-121 re-hydration (v4 bug 121, part 3)
+
+_Versions: harness 0.0.673._
+
+The orchestrator tier-3 corpus kept message attachments empty and mocked the
+whole K file subsystem to `[]` / `unsupported` / `''` — honest while nothing
+carried an attachment, a blind spot the moment v4's `e288ae2ec` added a
+read-side re-hydration that loads them. Both sides now run the REAL loader and
+the REAL fallback: the oracle un-mocks `loadChatFilesForLLM`,
+`processFileAttachmentFallback` and `formatFallbackAsMessagePrefix`, and mocks
+only the host byte layer with a canned fileId → bytes table (the twin of the
+Rust `CannedBytes`, which replaces `NotConfiguredBytes` in the harness deps).
+
+The fixture builder gains `files` rows and per-message `createdAt`. The latter
+is load-bearing: every seeded message defaulted to `seedTimestamp` and
+`getMessages` sorts `ORDER BY createdAt ASC`, so a chat whose rows all share it
+is a tie whose resolution decides the tail — and the tail is what both
+attachment walks read backwards from. The first regen of the planted chat
+returned its three messages in reverse and collected nothing.
+
+The planted case is the reported shape: Jeeves speaks, the human attaches three
+files, Friday answers, and the turn responds as Jeeves. The three files pick
+out three arms with nothing model-backed: `transcript.md` (`text/markdown`,
+which the responding ANTHROPIC profile does not natively take, so it is
+inlined), `dossier.pdf` (which it does, so the raw bytes are kept), and
+`archive.zip` (neither text nor image nor supported → `unsupported` WITH an
+error → dropped in silence, no `⚠️` line).
+
+`attachmentsAtWire` joins `tools` / `modelParams` / `sampling` as a
+recorded-not-keyed comparand on both sides: v4 stamps the merged slate onto the
+anchor message only and the call key projects role + content alone, so nothing
+else could see `mergedAttachmentsToSend`. A stale-oracle floor requires exactly
+one call to carry a non-empty slate.
+
+Neutrality measured, not asserted: after normalizing minted ids and timestamps,
+the widened oracle differs from the baseline by four new rows (the planted
+call's events, its stream, two cheap-LLM distills) and by additions ONLY to the
+aggregate tables — every added row about the planted chat, none removed, none
+changed. Four mutation proofs, each reddening a named arm; the fourth settles
+an open question in the order — moving the re-hydration after `build_context`
+IS visible, through the `llm_logs` row of the memory-keyword distill that
+`build_context` itself fires.
+
 #### 2026-09-05 — port(chat): re-hydrate the human's own attachments before buildContext (v4 bug 121, part 2)
 
 _Versions: core 0.0.778._
