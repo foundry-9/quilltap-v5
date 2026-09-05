@@ -107060,3 +107060,64 @@ the checkout's own `help/` is byte-identical to the pin's.
   docs with the fixture's ids preserved.
 - `dispatch_wrong_type_census`: the `HelpDocsSearch.q` `V4::Query` row; the
   route-identifier exclusion 403 → 410 (7 `id`/`chat_id` fields).
+
+### Unit 7 — the orchestrator + the LIVE send seam (Tier 1 item 6)
+
+- `services/help_chat/orchestrator.rs` (NEW, 1,100 lines): `handle_help_chat_message`
+  / `process_help_response` / `trigger_async_tasks`, generic over the Brahma
+  seams + a NEW `HelpContextSummaryCheck` seam (`NoHelpContextSummaryCheck` for
+  the differential; `summary_check.rs`'s `HelpSummaryCheck` for production —
+  the Courier's private `run_summary_check` composition, in core because
+  `cheap_llm_profile_from_value` is crate-private). Constants carried:
+  `HELP_MAX_AGENT_TURNS = 10`, `MAX_DUPLICATE_TOOL_CALLS = 2`, the nudge
+  sentence with `${duplicateCount + 1}`, every error sentence.
+- `ChatEvent::Error { error, errorType, details }` (NEW variant + constructor,
+  v4 `encodeErrorEvent` bytes — the mid-stream `processing_error`; the top-level
+  `fatal_error` stays the host's `EventPayload::ChatError`).
+  `TurnCompletePayload.skipped: Option<bool>` (Salon `Some`, help `None` → key
+  omitted, as v4's `data` spread does) — one Salon site + one chat_events test
+  literal updated.
+- `buildTools` flag vector measured from v4's positional call: agent ON, help
+  ON, wardrobe ON (the `!== false` defaults), workspace ON, document editing /
+  carina / sql / memory-exclusion OFF. Text-block instructions are built
+  REGARDLESS of the tool count (v4 `:258` — unlike Brahma's `&& tools.length`).
+- **Recorded divergences:** (1) id-less `tool` rows dropped at `to_stream_messages`
+  — v4's plugins drop them at format time (anthropic `formatMessagesWithAttachments`,
+  openai-compatible, ollama: `if (m.role === "tool" && !m.toolCallId) return false`;
+  OpenAI Responses: `Skipping tool message without toolCallId`), so the wire is
+  identical; the oracle's canned key is recorded over the same filtered list.
+  **⚠ Candidate upstream filing:** the help loop's own tool RESULT row is id-less
+  too, so v4 never feeds a tool result back to the model on the next turn. (2)
+  the async tail is AWAITED (v4 fire-and-forget) — same rows, later reply.
+- Spine: `run_help_send` + the `HelpChatSendDriver` impl (thread bridge),
+  `SpineBundle.help_chat_send`, the factory wire `Some(Arc::clone(&spine))`;
+  host.rs: a fenced two-line pickup off the bundle BEFORE the destructuring
+  tuple (the tuple untouched for P4.76). **💸 LIVE.**
+- `help_chat_orchestrator_tier3_equivalence` (NEW; jest oracle
+  `help-chat-orchestrator-tier3.test.ts`, corpus `help-chat-orchestrator-tier3.json`,
+  11 cases / 26 canned streams; comparands: frames, message rows incl.
+  `participantId`, the chat's `background_jobs` rows with the minted opener id
+  reduced to presence). **First run RED on every case (12 canned misses):**
+  v4's LAZY `ensureHelpDocsSynced` ran inside the oracle with `cwd = the pin`
+  and re-synced the 120-file tree over the fixture's 17 docs, so every prompt
+  carried a third `### Additional Context: Width Toggle Button`; pinned to a
+  no-op as the routes oracle already does (the differential's `QT_HELP_ORCH_DUMP_DIR`
+  miss dump is what made the diff legible) → GREEN 11/11, `frames OK` /
+  `messages OK` / `jobs OK` counted under `--nocapture`.
+- **Mutations (all RED, all reverted; baseline 33 OK lines = 11 × 3 under
+  `--nocapture`):** turn cap 10 → 25 (RED: every case's force-final turn moves);
+  id-less tool rows KEPT on the wire as an empty-id `StreamMessage::Tool` (RED:
+  canned misses on every case with history or a tool turn); `turnComplete`
+  carrying `skipped: Some(false)` (RED: both multi-character cases); the
+  memory-extraction leg removed (RED: JOBS on every case with `cheapLLMSettings`);
+  the nudge count `duplicate_count` instead of `+ 1` (RED: the guard case, one
+  canned miss).
+- **Observed once, not reproduced (1 in 9 runs), recorded to watch:** under the
+  `skipped` mutation run the single-participant `native_help_navigate_turn`
+  case reported a MESSAGES mismatch the mutation cannot cause; three re-runs
+  of the same mutation and five baselines were clean. Both engines read
+  `ORDER BY createdAt ASC` (v4 `sort: {createdAt: 1}`) over the
+  `idx_chat_messages_created…` index, which makes same-millisecond ties
+  deterministic in rowid order, so the leading hypothesis (a tie flip on the
+  three rows the case writes within one ms) does not hold on its face; the
+  differential prints the first differing line if it recurs at the gate.

@@ -1634,6 +1634,95 @@ where
         }
     }
 
+    /// One help-chat send turn (P4.9I2A — the help orchestrator, `run_brahma_send`'s
+    /// sibling): the streaming provider + the built-in tool runner/detector + the
+    /// pricing cost tracker + the production summary-check seam (the spine's
+    /// completion + embedding providers and a logging cheap executor for the
+    /// sending user/chat), around the ported [`handle_help_chat_message`]. Returns
+    /// the send reply body; on failure emits v4's transport-shell error frame
+    /// (`fatal_error`) and returns the `CoreError`.
+    /// ⚠ LIVE: one streamed model call per help character per send (plus tool
+    /// calls, plus the cheap-LLM summary fold at a checkpoint).
+    async fn run_help_send(
+        self,
+        req: quilltap_core::api::help_chats::HelpChatSendRequest,
+    ) -> Result<serde_json::Value, CoreError> {
+        use quilltap_core::services::help_chat::orchestrator::{
+            handle_help_chat_message, HelpChatSendOptions, HelpSendDeps,
+        };
+        use quilltap_core::services::help_chat::summary_check::HelpSummaryCheck;
+
+        let db = self.db.clone();
+        let chat_id = req.chat_id.clone();
+        let sink = BroadcastSink {
+            chat_id: chat_id.clone(),
+            tx: self.events.clone(),
+        };
+        let detector = RegistryToolCallDetector::built_in();
+        let runner = self.tool_runner();
+        let mut cost = PricingCostTracker {
+            fetcher: &self.pricing,
+            ctx: build_pricing_context(&db, &req.user_id),
+        };
+        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+            db: db.clone(),
+            user_id: req.user_id.clone(),
+            chat_id: Some(chat_id.clone()),
+            message_id: None,
+            ctx: LogContext::none(),
+        });
+        let summary_check = HelpSummaryCheck {
+            completion: &*self.completion,
+            embedding: &*self.embedding,
+            executor: &executor,
+        };
+        let mut deps = HelpSendDeps {
+            db: &db,
+            streaming: &*self.streaming,
+            tool_runner: &runner,
+            tool_detector: &detector,
+            cost: &mut cost,
+            summary_check: &summary_check,
+            // The same `checkModelSupportsTools` default the Brahma/carina engines
+            // use for a per-participant profile the spine cannot know here.
+            model_supports_native_tools: true,
+        };
+        let opts = HelpChatSendOptions {
+            content: req.content.clone(),
+            file_ids: req.file_ids.clone(),
+        };
+        match handle_help_chat_message(&mut deps, &sink, &req.user_id, &chat_id, &opts).await {
+            Ok(result) => Ok(serde_json::json!({ "messageId": result.message_id })),
+            Err(e) => {
+                // v4 `encodeErrorEvent(message, 'fatal_error', '')`.
+                tracing::error!(
+                    target: "quilltap::chat",
+                    chat_id = %chat_id,
+                    error = %e.message,
+                    "Help chat send failed",
+                );
+                let _ = self.events.send(Event::chat_error(
+                    &chat_id,
+                    ChatErrorPayload {
+                        error: e.message.clone(),
+                        error_type: "fatal_error".to_string(),
+                        details: String::new(),
+                    },
+                ));
+                Err(CoreError {
+                    kind: ErrorKind::Internal,
+                    message: e.message,
+                    pepper_state: None,
+                    code: None,
+                    associations: None,
+                    character_id: None,
+                    entity: None,
+                    details: None,
+                })
+            }
+        }
+    }
+
     /// One autonomous-room step (the `AUTONOMOUS_ROOM_TURN` runner body): the
     /// same deps construction as [`Self::run_send`] around the ported
     /// [`enclave_step`]. The step selects its own speaker, so the profile
@@ -2097,6 +2186,58 @@ where
                 Err(CoreError {
                     kind: ErrorKind::Internal,
                     message: "chat send thread panicked".to_string(),
+                    pepper_state: None,
+                    code: None,
+                    associations: None,
+                    character_id: None,
+                    entity: None,
+                    details: None,
+                })
+            })
+        })
+    }
+}
+
+impl<EMB, CMP, STR, PF> quilltap_core::api::help_chats::HelpChatSendDriver
+    for ChatSpine<EMB, CMP, STR, PF>
+where
+    EMB: EmbeddingProvider + Send + Sync + 'static,
+    CMP: CompletionProvider + Send + Sync + 'static,
+    STR: StreamingCompletionProvider + Send + Sync + 'static,
+    PF: PricingFetch + Send + Sync + 'static,
+{
+    fn send(
+        &self,
+        req: quilltap_core::api::help_chats::HelpChatSendRequest,
+    ) -> quilltap_core::api::help_chats::HelpChatSendFuture<'_> {
+        let state = self.clone_state();
+        Box::pin(async move {
+            // The Send bridge (module header): the turn runs on its own thread +
+            // current-thread runtime; the driver future awaits a oneshot.
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let result = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt.block_on(state.run_help_send(req)),
+                    Err(e) => Err(CoreError {
+                        kind: ErrorKind::Internal,
+                        message: format!("spine runtime: {e}"),
+                        pepper_state: None,
+                        code: None,
+                        associations: None,
+                        character_id: None,
+                        entity: None,
+                        details: None,
+                    }),
+                };
+                let _ = tx.send(result);
+            });
+            rx.await.unwrap_or_else(|_| {
+                Err(CoreError {
+                    kind: ErrorKind::Internal,
+                    message: "help chat send thread panicked".to_string(),
                     pepper_state: None,
                     code: None,
                     associations: None,
@@ -3015,6 +3156,9 @@ pub struct SpineBundle {
     /// The Brahma Console send driver (P4.9I1A — the orchestrator; `None` for
     /// canned test factories — the arm answers "not assembled").
     pub brahma_console_send: Option<Arc<dyn quilltap_core::api::brahma::BrahmaConsoleSendDriver>>,
+    /// The help-chat send driver (P4.9I2A — the help orchestrator; `None` for
+    /// canned test factories — the arm answers its NAMED refusal). ⚠ LIVE spend.
+    pub help_chat_send: Option<Arc<dyn quilltap_core::api::help_chats::HelpChatSendDriver>>,
     /// The recall-replay runner (P4.d13 — episodic recall §3; `None` for canned
     /// test factories — the arm answers the loud not-assembled error).
     pub recall_replay: Option<Arc<dyn quilltap_core::api::recall_replay::RecallReplayDriver>>,
@@ -3322,6 +3466,10 @@ impl SpineFactory for ProductionSpineFactory {
             // P4.9I1A: the Brahma Console orchestrator — the same spine backs it
             // (streaming + tool runner + pricing), on real spend.
             brahma_console_send: Some(Arc::clone(&spine) as _),
+            // P4.9I2A: the help-chat orchestrator — the same spine backs it
+            // (streaming + tool runner + pricing + the summary-check seam), on
+            // real spend. 💸 One streamed call per help character per send.
+            help_chat_send: Some(Arc::clone(&spine) as _),
             // P4.9E2A (the unification wire): the in-character announcement
             // rewriter, LIVE. The lane shipped the runner and its seam but owned
             // neither `spine.rs` nor the host's assembly, so it left the seam

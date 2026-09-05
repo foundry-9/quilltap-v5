@@ -1,0 +1,603 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "users": {
+    "A": "e18e05bc-63e8-4539-8a85-719b7a508850",
+    "B": "f28e15cd-74f9-4640-9b96-82ac8b619961"
+  },
+  "detection": {
+    "help_search_import": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "import a character"
+        },
+        "callId": "call_hs1"
+      }
+    ],
+    "help_navigate_chat": [
+      {
+        "name": "help_navigate",
+        "arguments": {
+          "url": "/settings?tab=chat",
+          "label": "Chat Settings"
+        },
+        "callId": "call_hn1"
+      }
+    ],
+    "help_search_taboo": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "taboo"
+        },
+        "callId": "call_hs2"
+      }
+    ],
+    "submit_final": [
+      {
+        "name": "submit_final_response",
+        "arguments": {
+          "response": "Taboo is the list of phrases the house never utters."
+        },
+        "callId": "call_sf1"
+      }
+    ],
+    "help_search_turn1": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 1"
+        },
+        "callId": "call_t1"
+      }
+    ],
+    "help_search_turn2": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 2"
+        },
+        "callId": "call_t2"
+      }
+    ],
+    "help_search_turn3": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 3"
+        },
+        "callId": "call_t3"
+      }
+    ],
+    "help_search_turn4": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 4"
+        },
+        "callId": "call_t4"
+      }
+    ],
+    "help_search_turn5": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 5"
+        },
+        "callId": "call_t5"
+      }
+    ],
+    "help_search_turn6": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 6"
+        },
+        "callId": "call_t6"
+      }
+    ],
+    "help_search_turn7": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 7"
+        },
+        "callId": "call_t7"
+      }
+    ],
+    "help_search_turn8": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 8"
+        },
+        "callId": "call_t8"
+      }
+    ],
+    "help_search_turn9": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "turn 9"
+        },
+        "callId": "call_t9"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "single_no_tool_null_page_url",
+      "chatId": "c1000002-0000-4000-8000-000000000002",
+      "content": "Where do I find the settings?",
+      "streams": [
+        [
+          {
+            "content": "Settings live under the gear icon."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "two_characters_with_tool_history",
+      "chatId": "c1000002-0000-4000-8000-000000000001",
+      "content": "And how do I edit one?",
+      "streams": [
+        [
+          {
+            "content": "Marigold: Open the character and press Edit."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            }
+          }
+        ],
+        [
+          {
+            "content": "Thistle here — the pencil icon does it."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 13,
+              "completionTokens": 7,
+              "totalTokens": 20
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "native_help_search_turn",
+      "chatId": "c1000002-0000-4000-8000-000000000004",
+      "content": "How do I import a character?",
+      "streams": [
+        [
+          {
+            "content": "Let me look that up."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_import"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Use Aurora's Import button — the docs cover it."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 21,
+              "completionTokens": 9,
+              "totalTokens": 30
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "native_help_navigate_turn",
+      "chatId": "c1000002-0000-4000-8000-000000000005",
+      "content": "Take me to the chat settings.",
+      "streams": [
+        [
+          {
+            "content": "Here you go."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_navigate_chat"
+            }
+          }
+        ],
+        [
+          {
+            "content": "That button will carry you there."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 19,
+              "completionTokens": 6,
+              "totalTokens": 25
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "text_block_turn",
+      "chatId": "c1000002-0000-4000-8000-000000000006",
+      "content": "What is the Salon?",
+      "streams": [
+        [
+          {
+            "content": "[[HELP_NAVIGATE {\"url\": \"/salon\", \"label\": \"Open the Salon\"}]][[/HELP_NAVIGATE]] The Salon is where chats live."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            }
+          }
+        ],
+        [
+          {
+            "content": "It is the room of conversations."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 17,
+              "completionTokens": 8,
+              "totalTokens": 25
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "duplicate_call_guard",
+      "chatId": "c1000002-0000-4000-8000-000000000007",
+      "content": "Search for taboo.",
+      "streams": [
+        [
+          {
+            "content": "Searching."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_taboo"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Searching again."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_taboo"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Once more."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_taboo"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Taboo lives under Settings → Chat."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 23,
+              "completionTokens": 9,
+              "totalTokens": 32
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "submit_final_response_arm",
+      "chatId": "c1000002-0000-4000-8000-000000000008",
+      "content": "Summarise taboo for me.",
+      "streams": [
+        [
+          {
+            "content": ""
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "submit_final"
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "submit_final_json_text_fallback",
+      "chatId": "c1000002-0000-4000-8000-000000000009",
+      "content": "How do I create a character?",
+      "streams": [
+        [
+          {
+            "content": "{\"response\":\"Press New Character in Aurora.\"}"
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "ten_turn_cap",
+      "chatId": "c1000002-0000-4000-8000-000000000010",
+      "content": "Keep searching.",
+      "streams": [
+        [
+          {
+            "content": "Turn 1."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn1"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Turn 2."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn2"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Turn 3."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn3"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Turn 4."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn4"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Turn 5."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn5"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Turn 6."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn6"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Turn 7."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn7"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Turn 8."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn8"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Turn 9."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_turn9"
+            }
+          }
+        ],
+        [
+          {
+            "content": "I ran out of turns; the answer is the Prospero page."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 31,
+              "completionTokens": 12,
+              "totalTokens": 43
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "no_api_key_participant_then_the_other_answers",
+      "chatId": "c1000002-0000-4000-8000-000000000011",
+      "content": "Who edits characters?",
+      "streams": [
+        [
+          {
+            "content": "Thistle answers alone: the Edit page."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "async_tail_suppressed_no_cheap_settings",
+      "chatId": "c1000002-0000-4000-8000-000000000021",
+      "user": "B",
+      "content": "Hello Rook.",
+      "streams": [
+        [
+          {
+            "content": "Rook here, without tools."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            }
+          }
+        ]
+      ]
+    }
+  ]
+}

@@ -12,6 +12,51 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — feat(help): the help-chat orchestrator, LIVE on the host's send seam (P4.9I2A unit 7)
+
+_Versions: core 0.0.799, harness 0.0.689, host 0.0.100._
+
+`services/help_chat/orchestrator.rs` ports v4's `handleHelpChatMessage` +
+`processHelpResponse` + `triggerAsyncTasks` whole: every active `llm`-controlled
+participant gets its own agent loop over the help system prompt (page context
+resolved from `helpPageUrl || '/'` over the `help_docs` table), with v4's fixed
+`maxAgentTurns = 10`, the older duplicate-call guard (`MAX_DUPLICATE_TOOL_CALLS =
+2`, the plain `JSON.stringify` signature, the nudge sentence naming the count), the
+`submit_final_response` arm and its JSON-text fallback, `turnStart` /
+`turnComplete` (no `skipped` key) / `chainComplete` frames on multi-character sends,
+a per-participant failure as a mid-stream `error` frame (`processing_error`) that
+CONTINUES the loop — a new `ChatEvent::Error` variant, v4's `encodeErrorEvent`
+bytes — and the async tail firing BOTH the context-summary check (a new
+`HelpContextSummaryCheck` seam; the production impl `summary_check.rs` composes the
+spine's providers) AND per-turn memory extraction, since help chats DO form memories.
+The `turnComplete` payload's `skipped` became `Option<bool>` (the Salon passes
+`Some`; help omits the key as v4 does).
+
+Two recorded divergences at the provider seam: an id-less `tool` history row is
+dropped at the stream conversion — v4 hands it to the plugin, and every plugin
+drops it at format time (`if (m.role === "tool" && !m.toolCallId) return false`),
+so the wire is identical, and this also means v4's help loop never feeds a tool
+result back to the model on the next turn — a candidate upstream filing; and the
+async tail is awaited rather than fire-and-forget. Order premise corrected: the
+api-key failure sentences are the consolidated `describeProfileApiKeyFailure` ones.
+
+Wired LIVE: `HelpChatSendDriver` on the spine (the thread-bridge idiom), the bundle
+field, and the host's two-line pickup off the bundle (the destructuring tuple
+untouched). 💸 Real spend: one streamed model call per help character per send,
+plus tool calls, plus the cheap-LLM summary fold at a checkpoint.
+
+New tier-3 family `help_chat_orchestrator_tier3_equivalence` over the committed
+fixture: eleven cases (single character with a NULL page URL, two characters over a
+transcript with a TOOL row, native `help_search`, native `help_navigate`, a
+text-block turn, the duplicate-call guard, `submit_final_response`, the JSON-text
+fallback, the 10-turn cap, a dangling-api-key participant whose partner still
+answers, and a user without `chat_settings` whose tail is suppressed) comparing the
+frame trace, the persisted rows and the `background_jobs` enqueue. Its first run
+caught v4's LAZY ensure re-syncing the whole shipped tree over the fixture inside the
+oracle (a third wildcard document in every prompt) — pinned to a no-op as the routes
+oracle does. Mutation-proven: the turn cap, the tool-row drop, a `skipped` key, the
+memory-extraction leg, the nudge count.
+
 #### 2026-09-05 — feat(help): the help-docs read verbs + the help-chats dispatch family, with their REST edges (P4.9I2A units 5–6)
 
 _Versions: core 0.0.798, harness 0.0.688, web 0.0.115, host 0.0.99._

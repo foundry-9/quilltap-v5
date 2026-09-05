@@ -184,6 +184,8 @@ impl SpineFactory for SmokeSpineFactory {
             image_generation: None,
             consult: None,
             brahma_console_send: None,
+            // P4.9I2A: the help-chat send driver — none in this canned bundle.
+            help_chat_send: None,
             recall_replay: None,
             announcement_preview: None,
             // P4.9E3A: canned test factory — no tool runner, so `run-tool`

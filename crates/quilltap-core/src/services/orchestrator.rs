@@ -3875,7 +3875,7 @@ where
                         chain_depth,
                         // v4 passes `chainResult.skipped === true` (always present
                         // on chained turns).
-                        skipped: chain_result.skipped,
+                        skipped: Some(chain_result.skipped),
                     }));
                 // A skipped turn advanced the rotation (Host turn-pass record) —
                 // fall through to the next decideNextTurn iteration. Only a

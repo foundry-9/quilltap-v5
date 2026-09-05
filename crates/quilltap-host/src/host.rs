@@ -604,6 +604,13 @@ impl EngineAssembler for HostAssembler {
         for (job_type, handler) in &self.extra {
             registry.register(job_type.clone(), Box::new(SharedHandler(handler.clone())));
         }
+        // === P4.9I2A: the help-chat send driver, read off the bundle BEFORE the
+        // tuple below consumes it (a fenced two-line pickup — the tuple stays
+        // untouched for the sibling lane). ===
+        let help_chat_send = spine_bundle
+            .as_ref()
+            .and_then(|bundle| bundle.help_chat_send.clone());
+        // === end P4.9I2A ===
         let (
             chat_send,
             chat_create,
@@ -925,10 +932,11 @@ impl EngineAssembler for HostAssembler {
             // image with neither a cached description nor kept-image markdown. ===
             image_describe,
             // === end P4.9E4A ===
-            // === P4.9I2A: the help-chat send driver — the host wire lands with
-            // the orchestrator (unit 7); until then the `HelpChatSend` arm answers
-            // its NAMED refusal. ===
-            help_chat_send: None,
+            // === P4.9I2A: the help-chat send driver, LIVE from the spine (⚠ real
+            // spend: one streamed call per help character per send). Spine-less
+            // assemblies keep `None` → the `HelpChatSend` arm answers its NAMED
+            // refusal. ===
+            help_chat_send,
             // === end P4.9I2A ===
         })
     }

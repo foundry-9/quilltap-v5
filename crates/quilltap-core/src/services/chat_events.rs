@@ -343,6 +343,18 @@ pub enum ChatEvent {
         #[serde(rename = "pascalResult")]
         pascal_result: serde_json::Value,
     },
+    /// `{error, errorType, details}` — v4 `encodeErrorEvent(error, errorType,
+    /// details)` emitted MID-STREAM by an orchestrator that continues afterwards
+    /// (the help-chat loop's per-participant `processing_error`, P4.9I2A). The
+    /// TOP-LEVEL `fatal_error` frame stays the transport-shell
+    /// `EventPayload::ChatError`, emitted by the host on `Err` — this variant is
+    /// for the failures a loop reports and survives. Same bytes as v4's frame.
+    Error {
+        error: String,
+        #[serde(rename = "errorType")]
+        error_type: String,
+        details: String,
+    },
     /// `{done:true, …}` — the payload spreads flat next to `done: true`. Boxed:
     /// the full finalizer payload is by far the largest variant
     /// (clippy::large_enum_variant), and every event is heap-bound for the
@@ -385,9 +397,13 @@ pub struct TurnCompletePayload {
     pub message_id: String,
     pub chain_depth: i64,
     /// "Nothing to add" turn-skipping: whether the chained turn was passed. The
-    /// chain driver ALWAYS passes `chainResult.skipped === true` (b90cd1f5), so
-    /// the key is present on every chained turn's frame.
-    pub skipped: bool,
+    /// Salon chain driver ALWAYS passes `chainResult.skipped === true` (b90cd1f5),
+    /// so the key is present on every Salon chained turn's frame — `Some`. The
+    /// help-chat loop (P4.9I2A) emits v4's `{participantId, messageId,
+    /// chainDepth}` with NO `skipped` key — `None` omits it (v4's `data` spread
+    /// carries only the keys the caller passed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<bool>,
 }
 
 /// The `chainComplete` frame payload (v4 `encodeChainCompleteEvent`'s `data`).
@@ -488,6 +504,19 @@ impl ChatEvent {
     }
 
     /// A `turnStart` event.
+    /// v4 `encodeErrorEvent(error, errorType, details)` as a mid-stream frame.
+    pub fn error(
+        error: impl Into<String>,
+        error_type: impl Into<String>,
+        details: impl Into<String>,
+    ) -> Self {
+        ChatEvent::Error {
+            error: error.into(),
+            error_type: error_type.into(),
+            details: details.into(),
+        }
+    }
+
     pub fn turn_start(payload: TurnStartPayload) -> Self {
         ChatEvent::TurnStart {
             turn_start: TrueBool,
@@ -791,7 +820,7 @@ mod tests {
                 participant_id: "p1".into(),
                 message_id: "m1".into(),
                 chain_depth: 1,
-                skipped: false,
+                skipped: Some(false),
             }))
             .unwrap(),
             json!({ "turnComplete": true, "participantId": "p1", "messageId": "m1", "chainDepth": 1, "skipped": false })

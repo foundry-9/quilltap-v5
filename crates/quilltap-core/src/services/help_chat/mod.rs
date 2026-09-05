@@ -10,8 +10,10 @@
 //!   `handleSearch` mapper: the Guide's plain substring search over document
 //!   TEXT, plus the `listDocuments` / `getDocument(idOrSlug)` projections of v4
 //!   `lib/help-search.ts`.
-//! - `orchestrator` (unit 7) — v4 `lib/services/help-chat/orchestrator.service.ts`:
+//! - [`orchestrator`] — v4 `lib/services/help-chat/orchestrator.service.ts`:
 //!   the help-chat send loop (all selected help characters answer in turn).
+//! - [`summary_check`] — the async tail's context-summary seam, production impl
+//!   (v4 `triggerContextSummaryCheck`), constructed by the host.
 //!
 //! ## One recorded divergence: no process cache
 //!
@@ -24,6 +26,8 @@
 
 pub mod context_resolver;
 pub mod guide_search;
+pub mod orchestrator;
+pub mod summary_check;
 pub mod system_prompt;
 
 use serde_json::Value;
