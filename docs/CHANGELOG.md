@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — docs(drift): the 4.9.2 squash puts bugs 124/125 on main — the ordered round repointed to one pin (`f699da6f6`)
+
+_Docs-only change._
+
+`/driftcheck`, the second of the day, run right after the round was ordered.
+v4 `main` moved 3 more commits (`8fbf2afe0` "release: 4.9.2", `d489b04a3`
+the merge back, `f699da6f6` a 2,615-line CHANGELOG → `CHANGELOG_V4.md`
+move) and `bugfix` 1 (`1a2b2164c`, the 4.9.3 branch start). All four are
+carriers/docs; the substantive fact is measured, not inferred: `git diff
+20913d2aa main` over the code paths is EMPTY, so the 4.9.2 squash carries
+exactly `20913d2aa`'s bug-124/125 content and the `main..bugfix` content
+diff is now empty. Schema and zod untouched.
+
+The ledger's §1 is rewritten (verdict DRIFT PENDING — 10 commits across
+both branches, the 2 substantive ones already ORDERED), four §3 rows are
+appended and marked `ORDERED(p4.d160)` (the docs-mirror + ratification
+item), hazard 5 (the `@google/genai` jest mock) is scoped to the fourteen
+jest-run oracle cases that load the plugin tree, and the `20913d2aa` row
+records its arrival on `main`. The five just-written work orders are
+repointed in place: one pin sha for the whole round, `f699da6f6`, P4.D162's
+`20913d2aa` exception retired, the shared block re-checked byte-identical
+across all five; `phase-4.md`'s ORDERED section follows.
+
 #### 2026-09-06 — docs(porting): order the `ba34fa367` 4.9.1 drift catch-up round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79)
 
 _Docs-only change._

@@ -6395,18 +6395,21 @@ from the pin zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Play
 
 PB1 stays parked by the standing rule.
 
-## The `ba34fa367` 4.9.1 drift catch-up + `chatCreate`-parse + Brahma round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79) — ORDERED 2026-09-06
+## The `f699da6f6` 4.9.x drift catch-up + `chatCreate`-parse + Brahma round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79) — ORDERED 2026-09-06
 
-**Baseline `c2232cd9a`; v4 `main` HEAD `ba34fa367` (2 past — the 4.9.1
-release squash + merge, carrying bug 123), v4 `bugfix` tip `20913d2aa`
-(bugs 124 + 125, bugfix-only); regen rule PIN REQUIRED.** The ledger's §2
-probe passed at ordering (checkout on `bugfix`, tree clean, both logs
-empty). The drift debt is two substantive commits, both on fully-ported
+**Baseline `c2232cd9a`; v4 `main` HEAD `f699da6f6` (5 past — the 4.9.1
+and 4.9.2 release cycles + a CHANGELOG move; bug 123 via the 4.9.1 squash,
+bugs 124 + 125 via the 4.9.2 squash `8fbf2afe0`), v4 `bugfix` tip
+`1a2b2164c` (the 4.9.3 branch start, docs only); regen rule PIN REQUIRED,
+one pin sha for every lane.** The orders were first drafted against
+`ba34fa367` with a `20913d2aa` second pin for P4.D162; a second `/driftcheck`
+the same day found the 4.9.2 squash on `main` and the orders were repointed
+in place (`a77c402c` → the follow-up commit). The drift debt is two substantive commits, both on fully-ported
 surfaces and one of them this port's own dogfood filings (#112/#114) coming
 back fixed; the standing rule clears it first, and the round's two
 non-drift lanes take the two order-sized items the `p4.9i2` dogfood pass
 banked (finding #115 and finding #111's Brahma remainder). Round name in the
-work orders: "the `ba34fa367` 4.9.1 drift catch-up round".
+work orders: "the `f699da6f6` 4.9.x drift catch-up round".
 
 - **P4.D160 — bug 123, server** (`work-orders/p4.d160-bug123-paused-chain-
   server.md`): the `paused` key on `ChainCompletePayload` (per-emit
@@ -6432,8 +6435,8 @@ work orders: "the `ba34fa367` 4.9.1 drift catch-up round".
   the help-chat oracle records the FULL slate per stream call (today's
   `{role, content}` key is blind to the pairing) plus an id-less case, and
   the google corpus gains the real wardrobe tool schemas (no corpus row
-  carries a nested `additionalProperties` today). Pins at `20913d2aa` (the
-  round's one second pin). Tier 2: the GOOGLE profile in the help-chat
+  carries a nested `additionalProperties` today). Pins at the round's
+  `f699da6f6` like every lane (its former `20913d2aa` exception retired). Tier 2: the GOOGLE profile in the help-chat
   fixture (the `p4.9i2` follow-up 1).
 - **P4.78 — `chatCreate` whole-body parse** (`work-orders/p4.78-chat-create-
   whole-body-parse.md`): v4's `createChatSchema` as ONE validation stage

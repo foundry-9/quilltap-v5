@@ -23,36 +23,41 @@ probe verifies against._
   main, 2026-09-05 13:04 -0500, `4.10.0-dev.0`), adopted at the `p4.9i2`
   help/HelpChat round unification (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77,
   2026-09-05). CLAUDE.md's Status bullet agrees (checked this run).
-- **Checked:** 2026-09-06, a full `/driftcheck` from the main checkout.
-- **v4 `main` HEAD at check:** `ba34fa367` ("merge: 4.9.1 back into main",
-  2026-09-05 23:00 -0500) — **2 commits past the baseline** (`5eaf98cf1`
-  "release: 4.9.1" + the merge).
-- **v4 `bugfix` tip at check:** `20913d2aa` ("fix: help-chat tool results
-  reach every provider; Google accepts the wardrobe tools (bugs 124, 125)",
-  2026-09-06 06:44 -0500, `4.9.2-bugfix.1`) — 4 commits past the previously
-  recorded `2b49f51aa`, of which **exactly one is unabsorbed by `main` by
-  CONTENT**: `20913d2aa`. Measured, not inferred —
-  `git diff main bugfix -- lib/ app/ packages/ plugins/ help/` is three code
-  files (`lib/services/help-chat/orchestrator.service.ts`, the google plugin's
-  `provider.ts`/`index.js`/`manifest.json`/`package.json`) plus the
-  `packages/quilltap` version line, and nothing else.
-- **v4 `release` tip at check:** `5eaf98cf1` ("release: 4.9.1").
+- **Checked:** 2026-09-06 (second check of the day), a full `/driftcheck`
+  from the main checkout, run right after the `f699da6f6` 4.9.x drift catch-up round (first drafted against `ba34fa367`) was ordered
+  (`a77c402c`) and folded into those orders in the same commit.
+- **v4 `main` HEAD at check:** `f699da6f6` ("docs: CHANGELOG update for
+  4.10", 2026-09-06 07:55 -0500) — **5 commits past the baseline**: the 4.9.1
+  cycle (`5eaf98cf1` + `ba34fa367`) and now the 4.9.2 cycle (`8fbf2afe0`
+  "release: 4.9.2" + `d489b04a3` "merge: 4.9.2 back into main") plus the
+  CHANGELOG move. **`git diff 20913d2aa main -- lib/ app/ packages/ plugins/
+  help/ jest.config.ts __mocks__/ __tests__/` is EMPTY** — the 4.9.2 squash
+  carries exactly `20913d2aa`'s content, so **bugs 124/125 are now on
+  `main`** and the `main..bugfix` content diff over those paths is empty.
+- **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
+  branch", 2026-09-06 07:38 -0500, `4.9.3-bugfix.0`) — 1 commit past the
+  previously recorded `20913d2aa`, docs + versions only (README badge,
+  `docs/releases/4.9.2.md`, `package.json` + lock, a 4-line CHANGELOG
+  touch). Nothing unabsorbed by `main` by CONTENT.
+- **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2").
 - **Checkout at check:** branch **`bugfix`** (not `main`), tree CLEAN.
-- **Verdict: DRIFT PENDING — 6 new commits, 2 of them substantive:**
-  bug 123 (`fef7ce4f7`, reaching main through the 4.9.1 release squash) and
-  bugs 124 + 125 (`20913d2aa`, bugfix-only). The other four are the branch
-  start, the release squash, the merge back, and the bug-filing docs commit.
-  **Both substantive rows land on fully-ported surfaces**; bugs 124/125 are
-  **this port's own dogfood filings coming back fixed** (findings #112/#114).
+- **Verdict: DRIFT PENDING — 10 commits past the baseline across both
+  branches, 2 of them substantive and BOTH ALREADY ORDERED** (bug 123 →
+  P4.D160/P4.D161; bugs 124/125 → P4.D162). The four commits new since the
+  first check today are carriers/docs: the 4.9.2 squash + merge (carrying
+  `20913d2aa`), the CHANGELOG→`CHANGELOG_V4.md` move (2,615 lines relocated,
+  `docs/` only), and the 4.9.3 bugfix branch start. All four ride P4.D160's
+  docs-mirror + ratification item; the round's orders were updated in this
+  commit to pin at `f699da6f6` with NO second pin.
 - **`generateDDL` and `lib/database/schema` UNTOUCHED** since the last D23
-  re-dump — measured (`git diff c2232cd9a..main -- lib/database/` and
-  `git diff c2232cd9a bugfix -- lib/database/` are both empty); no re-dump
-  owed.
-- **Regen rule in force: PIN REQUIRED at `c2232cd9a`** — now for BOTH of
-  §5.1's triggers: v4 HEAD is past the baseline *and* the checkout sits on
-  `bugfix`. (The previous §1 carried pin-required for the checkout alone;
-  that milder reading no longer applies — there is real code drift on both
-  branches.) v4 is the human's active repo: ask, never switch it.
+  re-dump — measured (`git diff --stat c2232cd9a..main -- lib/database/` and
+  `... c2232cd9a bugfix -- lib/database/` both empty); no re-dump owed.
+  Installed `zod` still `4.5.4` (the harness `zod_version_guard` stands).
+- **Regen rule in force: PIN REQUIRED at `c2232cd9a`** for baseline-fidelity
+  regens; the ordered round pins at its TARGET `f699da6f6` (v4 `main` HEAD)
+  for every lane, per the orders' §B. Both §5.1 triggers hold (HEAD past the
+  baseline; checkout on `bugfix`). v4 is the human's active repo: ask, never
+  switch it.
 - **Standing hazards that SURVIVE every baseline move (re-read before any
   regen):** (1) the oracle `node_modules` resolve the LIVE dependency tree,
   never a pin's — a v4 dependency bump is a regen event for every
@@ -70,24 +75,38 @@ probe verifies against._
   `build.rs`, and `help_tree_equivalence` diffs the embedded table against
   v4's REAL `ensureHelpDocsSynced` walking the checkout. **A v4 `help/`
   change is therefore a real port obligation, not a bank**, and reddens that
-  family at the baseline move. This drift moves two files (`turn-skipping.md`,
-  `chat-turn-manager.md`) — v5's copies are byte-identical to the BASELINE
-  and differ from `main` (measured); (5) **NEW at `20913d2aa`:
-  `jest.config.ts` gained `'^@google/genai$' → __mocks__/@google/genai.ts`**
-  (a manual mock, `GoogleGenAI` as a `jest.fn`), because the SDK is ESM-only.
-  Every jest oracle that loads the google plugin now resolves the mock —
-  re-verify the google-family oracles regenerate byte-unchanged when the
-  baseline moves past it; (6) `packages/quilltap/package.json` is out of step
-  with the app on both branches (`4.9.1-bugfix.1` on main against the app's
-  `4.10.0-dev.0`; `4.9.2-bugfix.1` on bugfix) — a v4-side nit; no
-  `--version` comparand exists, Tier R unaffected.
+  family at the baseline move. The current drift moves two files
+  (`turn-skipping.md`, `chat-turn-manager.md`; v5's copies are byte-identical
+  to the BASELINE and differ from `main` — measured again this check;
+  P4.D160 re-vendors them); (5) **since `8fbf2afe0` on `main` (originally
+  `20913d2aa`): `jest.config.ts` maps `'^@google/genai$'` →
+  `__mocks__/@google/genai.ts`** (a manual mock, `GoogleGenAI` as a
+  `jest.fn`), because the SDK is ESM-only. Every JEST-run oracle that loads
+  the google plugin now resolves the mock at any pin from the 4.9.2 squash
+  forward — `tsx`/`node` recorders are unaffected. Re-verify the
+  google-family oracles regenerate byte-unchanged when the baseline moves
+  past it (this check: FOURTEEN committed jest-run oracle cases load the plugin
+  tree — `orchestrator-tier3`, `help-chat-orchestrator-tier3`,
+  `brahma-orchestrator-tier3`, `brahma-console-tier3`, `enclave-step-tier3`,
+  `embedding-provider-tier3`, `avatar-job`, `danger-routing`,
+  `danger-gatekeeper`, `image-gen-leaves`, `image-profiles-routes`,
+  `image-generation`, `image-generate-route`, `settings-routes` — the first
+  four belong to the ordered round's P4.D160 / P4.D162 / P4.79 lanes, each
+  of which must record that its regen at the pin still matched); (6) `packages/quilltap/package.json` now reads `4.9.2-bugfix.1`
+  on BOTH branches against the app's `4.10.0-dev.0` (main) /
+  `4.9.3-bugfix.0` (bugfix) — a v4-side nit; no `--version` comparand
+  exists, Tier R unaffected.
 - **Release shape:** v4 develops on `main` at 4.10.0-dev with a live 4.9.x
-  `bugfix` fork; the 4.9.1 cycle has already run once (fork `d40497411` →
-  fix `fef7ce4f7` → squash `5eaf98cf1` → merge `ba34fa367`) and the branch is
-  open again at `4.9.2-bugfix.1`. §4 step 2's two-branch rule is load-bearing
-  — measure `bugfix` by CONTENT, never its commit list.
-- _Superseded (the 2026-09-05 unification's probe): NO DRIFT at
-  `c2232cd9a`, PIN REQUIRED for the `bugfix` checkout alone._
+  `bugfix` fork; the cycle has now run TWICE in two days (fork → fix →
+  `release: X` squash onto `release` → merge back into `main`; the 4.9.1
+  and 4.9.2 cycles both complete) and the branch is open again at
+  `4.9.3-bugfix.0`. §4 step 2's two-branch rule is load-bearing — measure
+  `bugfix` by CONTENT, never its commit list. Expect the next fix to land on
+  `bugfix` first and reach `main` by squash within hours.
+- _Superseded (the first 2026-09-06 check): DRIFT PENDING — 6 commits, main
+  HEAD `ba34fa367`, bugfix tip `20913d2aa` with bugs 124/125 bugfix-only;
+  the ordered round's original target `ba34fa367` + a P4.D162 second pin at
+  `20913d2aa`, both replaced by the single `f699da6f6` pin in this commit._
 
 ## §2 The freshness probe
 
@@ -139,7 +158,15 @@ when absorbed/ratified.
 
 | `02b77ab0f` | 2026-09-05 | docs(bugs): file bugs 124 and 125 — both UNCONFIRMED on live v4, found on the v5 port's dogfood copy | **NO-PORT?** | **Three docs files, zero code:** `docs/developer/bugs.md` (+2 index rows) and the two new `bugs/bug-124-help-tool-rows-lack-ids.md` (71 lines) / `bugs/bug-125-google-rejects-nested-additional-properties.md` (59 lines). **This is v4 accepting THIS PORT's filings** — dogfood findings #112 and #114 from the 2026-09-06 `p4.9i2` help-round walk, filed upstream at `bcf8a16c` on the v5 side. Ratify as docs; the substance arrives at `20913d2aa`. Worth reading at port time: v4's own `bugs.md` rows now carry an explicit **v5 status** for each (both "reproduces faithfully"), which is the upstream author agreeing with the walk's diagnosis. | ORDERED(p4.d160) |
 
-| `20913d2aa` | 2026-09-06 | fix: help-chat tool results reach every provider; Google accepts the wardrobe tools (bugs 124, 125) | **PORT ×2 — this port's own filings, fixed upstream** | ⚠ **Bugfix-branch only; NOT yet on `main`** (the one content-unabsorbed commit, §1). **Not a §3 CONVERGENCE in the pin sense:** v5 never fixed either bug — it reproduced both faithfully and filed them — so there are **no both-directions divergence pins to trip** and the fix arrives *unpinned* unless the port adds coverage (see the corpus warning below). **Hunks: 1 `lib/` file + the google plugin (4 files) + jest infra + 2 test files + docs + versions.** **Bug 124 — `lib/services/help-chat/orchestrator.service.ts`:** imports `buildAssistantToolCallMessage` / `buildToolResultMessages` from `lib/services/chat-message/tool-call-threading` (the chokepoint the Salon and Brahma Console already use); a new `let lastToolResultContent: string | null = null` replaces the stuck-loop reminder's `[...conversationMessages].reverse().find(m => m.role === 'tool')` (a threaded id-less result is `[Tool Result: …]` **user** text and would never be found under role `tool`); `conversationMessages.push({role:'assistant', content: currentResponse})` becomes `push(buildAssistantToolCallMessage(toolCallsToProcess, currentResponse))`; the tool-result loop becomes `toolResult.toolMessages.map(tm => ({...tm, content: JSON.stringify({tool: tm.toolName, success: tm.success, result: tm.content})}))` → `buildToolResultMessages(threadedResults)` pushed spread, with `lastToolResultContent = resultMessages[resultMessages.length - 1]?.content ?? null`; plus a new `logger.debug('Threaded help-chat tool results into the conversation', {chatId, characterName, turn, toolNames, pairedByCallId, framedAsText})`. **Bug 125 — `plugins/dist/qtap-plugin-google/provider.ts` (+ the rebuilt `index.js`, `manifest.json`/`package.json` → 1.1.51):** `'additionalProperties'` is added at the HEAD of `UNSUPPORTED_SCHEMA_FIELDS`, and both the list and `sanitizeSchemaForGoogle` are now `export`ed so a unit pin can hold them. → **v5 intersection, measured — both surfaces are ported and both reproduce.** Bug 124: `crates/quilltap-core/src/services/help_chat/orchestrator.rs` (≈`:880-985`) pushes `msg("assistant", current_response)` and, per tool message, `msg("tool", json!({tool, success, result}).to_string())` — v4's exact pre-fix shape — and its stuck-loop reminder does the same `.rev().find(|m| m.role == "tool")`. **The chokepoint is ALREADY ported**: `crates/quilltap-core/src/services/tool_call_threading.rs` (`build_assistant_tool_call_message` `:125`, `build_tool_result_messages` `:221`), used by the Salon / Brahma / native + text tool loops — so the port is *routing the help loop through the primitive it already has*, not writing one. Family: `help_chat_orchestrator_tier3_equivalence` will red at the baseline move **by design** (the slate the follow-up stream receives changes); the per-provider id-less-tool-row DROP rule (`keeps_idless_tool_rows`, `orchestrator.rs` doc-comment `:54`, landed by the P4.9I2 §3 review) is untouched by this fix and must stay. Bug 125: `crates/quilltap-core/src/model/request_builder/google.rs:23` `UNSUPPORTED_SCHEMA_FIELDS` mirrors v4's list entry for entry and likewise lacks `additionalProperties` — a one-entry addition at the head (keep v4's order for the transcription even though the check is a `contains`). ⚠ **the google-wire / `request_builder_equivalence` corpora carry NO tool schema with a nested `items.additionalProperties`**, which is why no differential ever saw the bug (finding #114's recorded blind spot) — the port must ADD such a row or the fix ships unmeasured; the two shapes in hand are `wardrobe_wear` / `wardrobe_take_off` (`operations.items`). **Regen hazard (§1 hazard 5):** the same commit maps `^@google/genai$` to a new manual mock in `jest.config.ts`, so google-loading oracles resolve a stub SDK from this sha forward. **Unblocks:** dogfood finding #112 (a tool-needing help turn ending in silence on nine of ten providers) and finding #114 — and with it **the live proof of the P4.9I2 §3 GOOGLE-keeps-id-less-tool-rows leg**, which #114 was blocking. **NO-PORT within the commit:** `__tests__/unit/lib/services/help-chat/orchestrator.test.ts` (+93), the new `__tests__/unit/plugins/google-schema-sanitizer.test.ts` (+83), the new `__mocks__/@google/genai.ts`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` + both bug docs moved to `bugs/fixed/` with FIXED paragraphs, `README.md`, versions. | ORDERED(p4.d162) |
+| `20913d2aa` | 2026-09-06 | fix: help-chat tool results reach every provider; Google accepts the wardrobe tools (bugs 124, 125) | **PORT ×2 — this port's own filings, fixed upstream** | ⚠ **Bugfix-branch only; NOT yet on `main`** (the one content-unabsorbed commit, §1). **Not a §3 CONVERGENCE in the pin sense:** v5 never fixed either bug — it reproduced both faithfully and filed them — so there are **no both-directions divergence pins to trip** and the fix arrives *unpinned* unless the port adds coverage (see the corpus warning below). **Hunks: 1 `lib/` file + the google plugin (4 files) + jest infra + 2 test files + docs + versions.** **Bug 124 — `lib/services/help-chat/orchestrator.service.ts`:** imports `buildAssistantToolCallMessage` / `buildToolResultMessages` from `lib/services/chat-message/tool-call-threading` (the chokepoint the Salon and Brahma Console already use); a new `let lastToolResultContent: string | null = null` replaces the stuck-loop reminder's `[...conversationMessages].reverse().find(m => m.role === 'tool')` (a threaded id-less result is `[Tool Result: …]` **user** text and would never be found under role `tool`); `conversationMessages.push({role:'assistant', content: currentResponse})` becomes `push(buildAssistantToolCallMessage(toolCallsToProcess, currentResponse))`; the tool-result loop becomes `toolResult.toolMessages.map(tm => ({...tm, content: JSON.stringify({tool: tm.toolName, success: tm.success, result: tm.content})}))` → `buildToolResultMessages(threadedResults)` pushed spread, with `lastToolResultContent = resultMessages[resultMessages.length - 1]?.content ?? null`; plus a new `logger.debug('Threaded help-chat tool results into the conversation', {chatId, characterName, turn, toolNames, pairedByCallId, framedAsText})`. **Bug 125 — `plugins/dist/qtap-plugin-google/provider.ts` (+ the rebuilt `index.js`, `manifest.json`/`package.json` → 1.1.51):** `'additionalProperties'` is added at the HEAD of `UNSUPPORTED_SCHEMA_FIELDS`, and both the list and `sanitizeSchemaForGoogle` are now `export`ed so a unit pin can hold them. → **v5 intersection, measured — both surfaces are ported and both reproduce.** Bug 124: `crates/quilltap-core/src/services/help_chat/orchestrator.rs` (≈`:880-985`) pushes `msg("assistant", current_response)` and, per tool message, `msg("tool", json!({tool, success, result}).to_string())` — v4's exact pre-fix shape — and its stuck-loop reminder does the same `.rev().find(|m| m.role == "tool")`. **The chokepoint is ALREADY ported**: `crates/quilltap-core/src/services/tool_call_threading.rs` (`build_assistant_tool_call_message` `:125`, `build_tool_result_messages` `:221`), used by the Salon / Brahma / native + text tool loops — so the port is *routing the help loop through the primitive it already has*, not writing one. Family: `help_chat_orchestrator_tier3_equivalence` will red at the baseline move **by design** (the slate the follow-up stream receives changes); the per-provider id-less-tool-row DROP rule (`keeps_idless_tool_rows`, `orchestrator.rs` doc-comment `:54`, landed by the P4.9I2 §3 review) is untouched by this fix and must stay. Bug 125: `crates/quilltap-core/src/model/request_builder/google.rs:23` `UNSUPPORTED_SCHEMA_FIELDS` mirrors v4's list entry for entry and likewise lacks `additionalProperties` — a one-entry addition at the head (keep v4's order for the transcription even though the check is a `contains`). ⚠ **the google-wire / `request_builder_equivalence` corpora carry NO tool schema with a nested `items.additionalProperties`**, which is why no differential ever saw the bug (finding #114's recorded blind spot) — the port must ADD such a row or the fix ships unmeasured; the two shapes in hand are `wardrobe_wear` / `wardrobe_take_off` (`operations.items`). **Regen hazard (§1 hazard 5):** the same commit maps `^@google/genai$` to a new manual mock in `jest.config.ts`, so google-loading oracles resolve a stub SDK from this sha forward. **Unblocks:** dogfood finding #112 (a tool-needing help turn ending in silence on nine of ten providers) and finding #114 — and with it **the live proof of the P4.9I2 §3 GOOGLE-keeps-id-less-tool-rows leg**, which #114 was blocking. **NO-PORT within the commit:** `__tests__/unit/lib/services/help-chat/orchestrator.test.ts` (+93), the new `__tests__/unit/plugins/google-schema-sanitizer.test.ts` (+83), the new `__mocks__/@google/genai.ts`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` + both bug docs moved to `bugs/fixed/` with FIXED paragraphs, `README.md`, versions. **Update (2026-09-06, second check): reached `main` by CONTENT through the 4.9.2 release squash `8fbf2afe0` + merge `d489b04a3` — `git diff 20913d2aa main` over the code paths is EMPTY. P4.D162 therefore pins at the round's single `f699da6f6` pin (its former `20913d2aa` exception is retired) and `/unify` marks this row ABSORBED in the ordinary way when the baseline moves to `f699da6f6`.** | ORDERED(p4.d162) |
+
+| `8fbf2afe0` | 2026-09-06 | release: 4.9.2 | **NO-PORT? (carrier)** | The squash of the 4.9.2 bugfix cycle onto `release`, and the route by which bugs 124/125 reach `main`. **Its code content is exactly `20913d2aa`** — measured: `git diff 20913d2aa main -- lib/ app/ packages/ plugins/ help/ jest.config.ts __mocks__/ __tests__/` is empty. The 18-file stat = `20913d2aa`'s 17 files + `docs/releases/4.9.2.md` (86 lines) and the version lines (`4.9.2-bugfix.1` → `4.9.2`). → **v5 intersection: none of its own**; the docs follow-through is copying `docs/releases/4.9.2.md` into the `docs/v4/releases/` mirror, which **P4.D160's Tier 1 item 6 now names**. Ratify as a carrier with `20913d2aa`. | ORDERED(p4.d160) |
+
+| `d489b04a3` | 2026-09-06 | merge: 4.9.2 back into main | **NO-PORT? (carrier)** | The merge of the 4.9.2 release back onto `main` (15 files = `8fbf2afe0` minus `README.md`/`package.json`/`package-lock.json`; main keeps `4.10.0-dev.0` but takes `packages/quilltap/package.json` at `4.9.2-bugfix.1` — §1 hazard 6). Ratify as a carrier with `8fbf2afe0`. | ORDERED(p4.d160) |
+
+| `f699da6f6` | 2026-09-06 | docs: CHANGELOG update for 4.10 | **NO-PORT?** | **Two docs files, zero code:** 2,615 lines MOVED from `docs/CHANGELOG.md` into `docs/CHANGELOG_V4.md` (the 4.x history archived as 4.10 development starts). → **v5 intersection: the `docs/v4/` mirror only** — `docs/v4/CHANGELOG.md` and `docs/v4/CHANGELOG_V4.md` both exist and both change; **P4.D160's mirror refresh at the pin covers it** (the refresh is a `diff -r` of `docs/` at the pin, so the move is picked up mechanically). Ratify by the two-file stat. This is the round's pin sha (v4 `main` HEAD at the second check). | ORDERED(p4.d160) |
+
+| `1a2b2164c` | 2026-09-06 | bugfix: started 4.9.2 bug branch | **NO-PORT?** | Bugfix-only branch start for the NEXT patch (`4.9.3-bugfix.0`): `README.md` badge, `docs/releases/4.9.2.md` (the same 86 lines as on `release`), `package.json` + lock, a 4-line `docs/CHANGELOG.md` touch. **Zero `lib/`, `app/`, `packages/`, `plugins/`, `help/`.** → **v5 intersection: NONE** (the release-notes file reaches the mirror through `f699da6f6`'s main-side copy). Ratify with the five-file list. Not an ancestor of `main`; ratified by content like every bugfix-side bookkeeping commit. | ORDERED(p4.d160) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
