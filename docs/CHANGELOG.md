@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — test(e2e): pin the Brahma Console's profile to the mock — two beats were green on a salvage sentence
+
+_Versions: SPA 0.5.657._
+
+The unified full Playwright run reddened two `workspace-brahma-console-flow`
+beats (a different pair on each of two runs; 5/5 green alone). The failed
+beat's trace holds the answer: the console's send returned `error sending
+request for url (http://localhost:8080/v1/chat/completions)` — the launcher's
+first send creates the chat with no pinned profile, the server falls back to
+the user's default connection profile, and in the full suite an earlier spec
+leaves a dead-endpoint understudy at `localhost:8080` flagged default (the trap
+`seed-help-fixture.ts` already pins the help seat against). The beats had been
+passing because the pre-P4.79 orchestrator swallowed the stream error and
+synthesised its budget-exhaustion salvage sentence as the assistant bubble;
+P4.79 propagates the error as v4 does, so the vacuous green became an honest
+red. Spec-side fix only: `beforeAll` pins the console's default to the profile
+global-setup rewired to the mock.
+
 #### 2026-09-06 — fix(unify): the §3 review's should-fixes across P4.78, P4.D162 and P4.D161
 
 _No crate versions bumped (folded into the round's unification bump)._

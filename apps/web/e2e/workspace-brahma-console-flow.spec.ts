@@ -70,6 +70,43 @@ test.beforeAll(async () => {
   }
 });
 
+// Pin the console's engine to the profile that targets THIS spec's canned LLM.
+//
+// The launcher's first send creates the chat with no pinned profile, so the
+// server falls back to the user's DEFAULT connection profile. In the full
+// suite an earlier spec leaves a different profile flagged default — a
+// dead-endpoint understudy at `localhost:8080` (the same shared-state trap
+// `seed-help-fixture.ts` pins the help seat against) — and every send died on
+// `error sending request for url (http://localhost:8080/v1/chat/completions)`
+// while the file passed alone. Before P4.79 that failure was INVISIBLE here:
+// the streaming orchestrator swallowed the mid-stream error and synthesised
+// its budget-exhaustion salvage sentence as the assistant bubble, so these
+// beats were green on a reply that was never a reply. P4.79 made the error
+// propagate as v4's `for await` does, and the vacuous green became an honest
+// red (the `f699da6f6` round's unification gate, 2026-09-06). A beat that
+// depends on state another spec leaves is the standing trap; pinning the
+// default here removes the dependency.
+test.beforeAll(async () => {
+  if (!brahmaReady) return;
+  const ctx = await pwRequest.newContext();
+  try {
+    const list = await ctx.post(`${BASE_URL}/api/dispatch`, { data: { type: 'connectionProfileList' } });
+    const body = (await list.json().catch(() => null)) as
+      | { data?: { profiles?: Array<{ id: string; baseUrl?: string | null; isDefault?: boolean }> } | Array<{ id: string; baseUrl?: string | null; isDefault?: boolean }> }
+      | null;
+    const rows = Array.isArray(body?.data) ? body!.data : (body?.data?.profiles ?? []);
+    const mockProfile = rows.find((p) => (p.baseUrl ?? '').includes(`127.0.0.1:${MOCK_LLM_PORT}`));
+    if (mockProfile && !mockProfile.isDefault) {
+      const res = await ctx.post(`${BASE_URL}/api/dispatch`, {
+        data: { type: 'connectionProfileUpdate', profileId: mockProfile.id, profile: { isDefault: true } },
+      });
+      if (!res.ok()) throw new Error(`could not pin the console's default profile: ${res.status()}`);
+    }
+  } finally {
+    await ctx.dispose();
+  }
+});
+
 /** Unlock only when the passphrase screen is showing (the shared server stays unlocked). */
 async function openWorkspace(page: Page): Promise<void> {
   await page.goto('/');
