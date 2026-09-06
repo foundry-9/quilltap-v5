@@ -2993,9 +2993,49 @@ records THERE. Update this summary only when a phase or round completes.
   vacuous first pass caught and re-run), the FILES leg's bytes-then-refuse
   orphan, the four `render_template` debug lines live. Still owed (human):
   B3/B4 image spend, the Brahma deep query, dedup/summaries, #101.
-- **Oracle baseline: `c2232cd9a` (2026-09-05, v4 main — the 4.10.0 dev bump
-  after the 4.9.0 release; zero code past `d883a5ee1`), adopted at the
-  `p4.9i2` help/HelpChat round unification (2026-09-05).**
+- **The `f699da6f6` 4.9.x drift catch-up round (P4.D160 ∥ P4.D161 ∥
+  P4.D162 ∥ P4.78 ∥ P4.79): UNIFIED on main (2026-09-06) — ALL FIVE CLOSED;
+  the oracle baseline MOVES to `f699da6f6` and the drift debt is CLEARED**
+  (v4's 4.9.1 + 4.9.2 release cycles; bug 119's row stays for `p4.9k`). Bug
+  123 whole — server: the per-emit OPTIONAL `paused` chain-complete key (v4
+  set it at the four `executeTurnChain` emits only), the paused early-return
+  with v4's info line, two re-vendored help pages; SPA: the seat-keyed Skip
+  banner (three sentences byte-exact), the overlay-aware Skip with a SILENT
+  unpause-first, the pause-you-did-not-cause toasts after the single
+  reconcile point, v4's pause-sync drift a mutation-proven NO-COUNTERPART
+  (v5 holds no local pause latch), two live beats ∥ bugs 124/125 whole —
+  this port's own dogfood filings #112/#114 coming back fixed: the help loop
+  through the `tool_call_threading` primitive it already had, with the
+  family's FULL-slate comparand (the `{role, content}` key was blind to the
+  pairing) + an id-less case; `additionalProperties` at the head of Google's
+  strip list with the real wardrobe schemas appended to the recorded corpus
+  (pre-existing rows byte-identical); a GOOGLE seat in the help-chat fixture
+  pinning `keeps_idless_tool_rows` in BOTH directions ∥ finding #115 —
+  v4's whole `createChatSchema` as ONE validation stage ahead of any work,
+  36 → 108 capstone cases with the Zod `details` byte comparand (**43 bodies
+  v4 refuses had been CREATING chats**; 14 more answered a downstream
+  sentence); the host wire for `details` is a one-line, tripwire-held
+  deferral ∥ finding #111's Brahma remainder — both engines log every
+  streamed turn, and a mid-stream provider error stops the turn instead of
+  persisting a half reply. **The §3 review: NO blocking findings** (the
+  fifth such round); eight should-fixes on the unify branch — headline:
+  D162's tie normalizer was transitive and uncapped (a burst case could
+  quietly become a multiset compare), and P4.78 had three ported rules no
+  corpus arm measured. **The reconcile's own catch: four identical version
+  bumps auto-merged silently across five lanes** — recounted as base + total
+  bumps. Every lane's first §2 probe FAILED (v4 ran its 4.9.2 cycle between
+  ordering and pickup) and every lane STOPped as designed until the orders
+  were repointed to one pin. Gate: 9/9 families fresh from the pin zero
+  SKIP; google corpora re-recorded byte-identical; 508 test binaries / 2,891 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0 (the round's eight block families confirmed RUN by per-binary duration: capstone 3.31 s, orchestrator 3.02 s, help-chat 1.29 s, help tree 1.02 s); clippy both
+  feature sets; release build; ng 387 files / 6,268; full Playwright 284 passed / 0 failed / 0 skipped (7.6 m), exit 0 — the suite grew 282 → 284 with P4.D161's two toast beats; the two Brahma beats green on a real reply.
+  Versions: core 0.0.811, harness 0.0.700, web 0.0.120, host 0.0.105, SPA
+  0.5.657. 💸 the dogfood queue gains a REAL server-side pause announced,
+  the off-turn Skip, the #112/#114 live legs, a Console question's
+  `llm_logs` rows, a `controlledBy: "LLM"` create refused. **The owed
+  dogfood pass is the top next candidate.** Round record: `status-log.md`.
+- **Oracle baseline: `f699da6f6` (2026-09-06, v4 main — the tip of the
+  4.9.1 + 4.9.2 release cycles), adopted at the `f699da6f6` 4.9.x drift
+  catch-up round unification (2026-09-06).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

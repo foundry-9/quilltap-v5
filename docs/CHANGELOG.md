@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — unify: the `f699da6f6` 4.9.x drift catch-up round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79) — baseline → `f699da6f6`
+
+_Versions: core 0.0.811, harness 0.0.700, web 0.0.120, host 0.0.105, SPA 0.5.657._
+
+Five lanes unified: bug 123 server (P4.D160) and SPA (P4.D161), bugs 124/125
+(P4.D162), the whole-body `createChatSchema` stage for finding #115 (P4.78),
+and the Brahma `llm_logs` + mid-stream-error remainders (P4.79). The oracle
+baseline moves `c2232cd9a` → `f699da6f6`; every ledger row but bug 119's is
+absorbed or ratified; the regen rule stays PIN REQUIRED only while the v4
+checkout sits on `bugfix`.
+
+Reconcile: cherry-picked D160 → D162 → P4.78 → P4.79 → D161; no source
+conflicts. Four identical version bumps auto-merged silently across the
+lanes — recounted as base + total bumps (`528b75c0`). §3 review: no blocking
+findings; eight should-fixes on the unify branch (`cdf8c31f`). Wires: the
+`chainComplete` `paused` key diffed name-for-name across server and client.
+
+Gate: 9/9 affected families regenerated fresh from the `f699da6f6` pin
+through the sweep driver, zero SKIP, the capstone and help-chat families
+re-run after the review fixes; the two google recorded corpora re-recorded
+byte-identical; fmt + clippy (both feature sets) + release build clean;
+`cargo test --workspace` 508 test binaries / 2,891 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0 (the round's eight block families confirmed RUN by per-binary duration: capstone 3.31 s, orchestrator 3.02 s, help-chat 1.29 s, help tree 1.02 s) (the Brahma one-shot family by name in its
+own invocation, 1 passed — `[llm_logs] 17 CHAT_MESSAGE row(s), expected 17`); `npm test` 387 files / 6,268; `npm run build`
+clean; full Playwright 284 passed / 0 failed / 0 skipped (7.6 m), exit 0 — the suite grew 282 → 284 with P4.D161's two toast beats; the two Brahma beats green on a real reply — after the gate's own catch: two Brahma
+Console beats had been green on the budget-exhaustion salvage sentence a
+swallowed stream error produced, and P4.79's honest error propagation turned
+them red in the full suite (an earlier spec leaves a `localhost:8080`
+understudy as the default profile; the spec now pins the console to the mock
+profile in `beforeAll`, zero product code).
+
 #### 2026-09-06 — test(e2e): pin the Brahma Console's profile to the mock — two beats were green on a salvage sentence
 
 _Versions: SPA 0.5.657._

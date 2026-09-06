@@ -109535,7 +109535,7 @@ QT_ORACLE_BRAHMA_ROUTES=/tmp/oracle-brahma-routes.ndjson \
   future lane touching just one must check the other still passes.
 
 Versions: core 0.0.807, harness 0.0.696; host/web/cli/tauri/SPA unchanged.
-## P4.D161 — bug 123's client half: the Skip banner on the speaking seat, the pause-you-did-not-cause toast (lane record, in progress)
+## P4.D161 — bug 123's client half: the Skip banner on the speaking seat, the pause-you-did-not-cause toast (lane record)
 
 **Order:** `work-orders/p4.d161-bug123-skip-banner-pause-toast-spa.md`. **Pin:**
 `/tmp/qt-v4-pin-p4d161-f699da6f6` (round pin `f699da6f6`; §2 probe passed at
@@ -109834,3 +109834,266 @@ CLI calls and each debug-build PBKDF2 unwrap costs ~5 s of CPU — a debug
 global-setup ran for over ten minutes without reaching the server launch,
 while release finishes in seconds. (`e2e/support/env.ts` prefers
 `target/release` when present.) Worth a README line in a lane that owns it.
+
+
+---
+
+## Round record — the `f699da6f6` 4.9.x drift catch-up round unification (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79, 2026-09-06)
+
+**UNIFIED on main — ALL FIVE ORDERS CLOSED; the oracle baseline MOVES
+`c2232cd9a` → `f699da6f6` (v4 `main` HEAD — the 4.9.1 + 4.9.2 release cycles;
+every §3 row but bug 119's is absorbed or ratified; §6 of the ledger). The
+regen rule stays PIN REQUIRED for ONE reason: the v4 checkout still sits on
+`bugfix`.** The round was ordered (`a77c402c`), repointed the same day when a
+second `/driftcheck` found the 4.9.2 squash on `main` (`025ab29c`), carried
+out in five parallel lanes, and unified within the day.
+
+### §1 Survey
+
+Five lane branches, all clean at survey, all based on `025ab29c`: P4.D160
+(2 commits), P4.D161 (7), P4.D162 (4), P4.78 (1), P4.79 (1). The ledger's §2
+probe PASSED at unification start AND again before the baseline move (v4 on
+`bugfix`, tree clean, `git log f699da6f6..main` and `git log 1a2b2164c..bugfix`
+both empty — no drift arrived mid-round; the day's drift all arrived BETWEEN
+ordering and pickup, which is why every lane's first probe FAILED and every
+lane STOPped, as designed, until the orders were repointed). Scope verified
+against each order's tiers from the lane records, not the headers: D160 Tier
+1 items 1–6 + Tier 2 7 (item 8 measured already-reachable — three existing
+cases stop on a mid-chain `paused` decision); D161 Tier 1 items 1–6 (item 7 a
+measured NO-BEAT: the refusal is unreachable through the UI by construction,
+so the parity spec drives the handler as v4's jest does); D162 Tier 1 items
+1–4 + Tier 2 5–6; P4.78 Tier 1 + Tier 2 (one loud deferral, executable);
+P4.79 all of Tier 1 + the Tier 2 one-shot arm. Recount from the tips: core
+0.0.806 + 5 bumps → **0.0.811**, harness 0.0.695 + 5 → **0.0.700**, web
+0.0.120, host 0.0.105, SPA 0.5.657.
+
+Doubts carried into §3: P4.78's out-of-ownership edit (`quilltap-web/tests/
+chat_create_end_to_end.rs` `PROGRESS_ID`); D160's two compile-forced one-
+liners outside its ownership (`help_chat/orchestrator.rs` `paused: None`,
+`host/spine.rs` `user_id`); D162's `canonicalize_ties` normalization
+(how narrow is it really?); D161's `busy()` standing in for v4's three
+in-flight flags.
+
+### §2 Reconcile
+
+`unify/f699da6f6-round` from main; cherry-picked D160 → D162 → P4.78 → P4.79
+→ D161 (server before the SPA that reads its frame key; D162 after D160
+because D160's `paused: None` one-liner lives in D162's file — it merged
+clean, and the line is present in the union). Source-level conflicts:
+NONE. Version conflicts: the manifests were checked version-only per lane
+BEFORE any take-theirs (the `p4.9i2` round's lesson), and **the silent
+auto-merge trap fired in full**: D160, D162, P4.78 and P4.79 all moved core
+`0.0.806 → 0.0.807` and harness `0.0.695 → 0.0.696` off the same base, so the
+merged manifests read `0.0.807 / 0.0.696` after fifteen clean picks — four
+bumps lost without a single conflict marker. Recounted as base + total bumps
+in its own commit (`528b75c0`), `Cargo.lock` synced with `cargo metadata`.
+The union-merged CHANGELOG (13 lane entries, newest first, one month header)
+and status-log (seven lane headings) were checked for glued paragraphs:
+none. One scripted-handler slip on the way: the first conflict loop was
+written `for f in $conf` under zsh, which does not word-split — the memory
+note `zsh-env-var-does-not-word-split`'s sibling — so a three-file version
+conflict read as "unresolved"; redone with `${(f)…}`.
+
+### §3 Review — what it found (three parallel reviewers, verdict owned here)
+
+**Blocking: NONE** — the fifth such round. The whole combined diff was read
+(every hunk of the five server/SPA surfaces; the corpora by shape); the
+reviewers went deep on P4.78 vs v4's `createChatSchema`, D162 vs v4's
+`orchestrator.service.ts` + `tool-call-threading.ts`, and D161 vs the four
+Salon client hunks at `fef7ce4f7`, character by character on every sentence.
+
+**Should-fix, all fixed on the unify branch (`cdf8c31f`, rustfmt `+1`):**
+
+1. **P4.78 — the Zod UUID pattern had grown a second home.** `chat_create.rs`
+   transcribed `ZOD_UUID_PATTERN` byte-for-byte beside the one in
+   `api/settings.rs`; a future Zod pattern change would move one and not the
+   other. Now ONE home (`api::settings::ZOD_UUID_PATTERN`, `pub(crate)`),
+   beside the `is_zod_uuid` predicate it already reused.
+2. **P4.78 — dead scaffolding that contradicted the stage.**
+   `ChatCreateParticipant` kept a `Deserialize` derive, a hand-written
+   `Default` and `default_participant_type()` returning `"CHARACTER"` — all
+   unreachable (the only construction path is `from_raw`), and the default
+   said the opposite of the validation stage, which refuses a missing `type`.
+   Removed; `#[derive(Default)]` with an empty `kind`.
+3. **P4.78 — a vacuous secondary assertion.** `every_wrong_typed_field_still_
+   decodes` built every body with `"participants": []` — itself a `too_small`
+   refusal — so its `validate_create_body(...).is_err()` passed whatever key
+   was under test. Now seeds a valid participant.
+4. **P4.78 — three ported rules with no corpus arm** (a mutation deleting
+   them reddened nothing): the participant's legacy `imageProfileId` uuid
+   check, a MISSING participant `type` (only the wrong-string arm existed),
+   and `groupScenarioPath`'s 500-astral ACCEPT sibling (its two siblings and
+   `scheduleCron` all had one). Three corpus rows added (105 → 108),
+   regenerated at the pin through the driver, green — and mutation-proven at
+   the wire: dropping the participant `imageProfileId` check reddens
+   `vb_participant_image_profile_id_not_uuid` (`status 500 != 400` — the body
+   sails past the stage into the downstream lookup); accepting a missing `type`
+   reddens exactly `vb_participant_type_missing` (`v4 answered 400 but the
+   port succeeded`). (The first attempt at these proofs passed the env block
+   through a zsh variable and SKIPped as `ok` in 0.00 s — the
+   `zsh-env-var-does-not-word-split` trap, caught by the duration.)
+5. **P4.D162 — `canonicalize_ties` could widen far past the pair it was
+   measured on.** The relaxation is transitive and uncapped: a chain of
+   one-sided ties merges its whole run, so a burst case (`ten_turn_cap`,
+   ~20 rows) could quietly become a multiset compare on the v5 side alone,
+   and a persist-order regression between the ASSISTANT tool turn and its
+   TOOL row — the measured NORMAL case, ~1 ms apart — would be unmeasurable.
+   Now asserts the largest relaxed group is ≤ 2 and says so loudly.
+6. **P4.D162 — unit 3's GOOGLE keep-arm had no coverage floor.** The slate
+   comparand asserted paired rows and framed rows exist, but not a KEPT
+   id-less `tool` row — the entire point of the GOOGLE seat. If PG1/H12 ever
+   left the fixture, M9/M10 would evaporate green (the vacuous-green class
+   this lane found twice itself). A third floor added.
+7. **P4.D162 — the family header's corpus count and enumeration were stale**
+   (13 → 14; `google_seat_tool_turn` unnamed; a chat-sharing claim wrong).
+8. **P4.D161 — two new doc comments mis-stated v5's own `hasActiveCharacters`**
+   as v4's `useTurnManagement` twin (`!== 'user'`) when it is spelled
+   `=== 'llm'` — v5's narrowing, and the exact predicate dogfood #115 tripped
+   on; `userTurnName`'s comment still described the pre-fix banner; an
+   orphaned doc comment in `turn-controls.ts`; a note on the e2e injector's
+   getter returning the wrapper.
+
+**Notes recorded, not acted on:** P4.78's progress emitter is still built
+by the host BEFORE the parse (v4 builds it after; unobservable — nothing
+publishes before the stage; `quilltap-host` is NOBODY's); the slate
+projection twins are asymmetric on `name` (unreachable — `StreamMessage`
+carries `name` only on `Tool`); the GOOGLE id-less arm now forwards
+`m.name` (behaviour-neutral, closer to v4).
+
+**The two out-of-ownership judgment calls, both RATIFIED:** P4.78's
+`PROGRESS_ID` → a UUID is exactly one opaque constant, independently
+confirmed the sole Zod violation in that body (a green gate for a body v4's
+real route 400s was the alternative); D160's two one-liners are prescribed
+by value in its own §G / point 3 and are behaviour-neutral (the extended
+`chat_events` frame pin asserts `paused: None` omits the key; the help
+family ran green beside D160's own).
+
+### §4 Wires
+
+The round's one cross-lane contract (§G, the `chainComplete` frame's
+`paused` key) was diffed name-for-name: server `ChainCompletePayload.paused:
+Option<bool>` with `skip_serializing_if`, set at exactly the four
+`execute_turn_chain` emits and `None` at the fair-rotation and help-chat
+emits; client `ChatStreamFrame.paused?: boolean` read `=== true` — the two
+agree, and D161's toast beat was authored against exactly the bytes D160
+emits (it rewrites the REAL `chainComplete` frame at the `EventSource`
+because it landed independent of D160's order; on the unified tree the
+server now emits the key for real, and the beat's injection is a no-op on
+the `paused` key it sets — the live server-side proof is the dogfood
+walk's). No beat waited on another lane; no annotated skip to lift.
+
+### §5 Gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets
+  -- -D warnings` clean in BOTH feature sets (default and
+  `--features quilltap-core/native-transport`), re-run after the review
+  fixes; `cargo build --workspace --release` clean, rebuilt after the review
+  fixes so Playwright ran against the final tree.
+- **Every affected oracle regenerated FRESH from the `f699da6f6` pin**
+  (`/tmp/qt-v4-pin-unify-f699da6f6`, three symlink classes) through the
+  sweep driver, one family per invocation: `orchestrator_tier3_equivalence`,
+  `help_tree_equivalence`, `help_chat_orchestrator_tier3_equivalence`,
+  `help_chats_routes_equivalence`, `help_docs_routes_equivalence`,
+  `chat_create_capstone_equivalence`, `brahma_orchestrator_tier3_equivalence`,
+  `brahma_console_tier3_equivalence`, `brahma_console_routes_equivalence` —
+  **9/9 ok, zero `SKIP` lines**; the capstone and help-chat families re-run
+  through the driver after the review fixes (108 cases; 14 cases), green.
+  Pin markers: `"paused":true` ×5 in the fresh orchestrator NDJSON (absent at
+  `c2232cd9a`). The two google recorded corpora re-recorded at the pin
+  (`dump-wardrobe-tool-params.mjs` + `record-google-request.mjs
+  --wardrobe-params`, `regenerate-google-wire.sh`): **byte-identical** —
+  `git status` over `harness/oracle/fixtures/request-envelopes/` empty.
+- `cargo test --workspace --no-fail-fast` with the round's env block
+  (the nine families' oracle vars + fixture paths, the committed pairs for
+  help-chat and brahma-orchestrator/routes): **508 test binaries / 2,891 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0 (the round's eight block families confirmed RUN by per-binary duration: capstone 3.31 s, orchestrator 3.02 s, help-chat 1.29 s, help tree 1.02 s)**. The Brahma
+  one-shot family shares `QT_FIXTURE_BRAHMA_*` with the committed-pair
+  families under DIFFERENT values, so it ran in its own invocation by name:
+  **1 passed — `[llm_logs] 17 CHAT_MESSAGE row(s), expected 17`**.
+- SPA: `npm run lint` clean; `npm test` **387 files / 6,268 tests / 0
+  failed**; `npm run build` clean; full Playwright against the rebuilt
+  release binaries: **284 passed / 0 failed / 0 skipped (7.6 m), exit 0 — the suite grew 282 → 284 with P4.D161's two toast beats; the two Brahma beats green on a real reply**.
+
+**The gate's own catch — two Brahma Console beats were vacuously green, and
+P4.79 made them honest.** The first full run came back 282 / 2 failed, the
+second 282 / 2 failed on a DIFFERENT pair inside `workspace-brahma-console-
+flow.spec.ts` (`posing a question…`, `new conversation…`, then `the header
+model picker…`), all timing out on the assistant bubble; the spec is 5/5
+green alone in ~300 ms a beat. Run to ground through the failed beat's
+Playwright trace rather than guessed: the console's send answered
+`500 {"kind":"internal","message":"error sending request for url
+(http://localhost:8080/v1/chat/completions)"}` — port **8080**, not the
+mock's 45301. The launcher's first send creates the chat with no pinned
+profile, the server falls back to the user's DEFAULT connection profile
+(`find_default`, `isDefault = 1`), and in the full suite an earlier spec
+leaves a dead-endpoint understudy at `localhost:8080` flagged default — the
+SAME shared-state trap `seed-help-fixture.ts` had already documented and
+pinned the help seat against on the `p4.9i2` full run. The Brahma beats
+never needed the pin because the failure was invisible: before P4.79 the
+streaming orchestrator's `Err(_) => break` left `full_response` empty and
+the budget-exhaustion salvage (Bug 47) synthesised *"I reached my N-turn
+budget before I could compose a final answer."* as the assistant bubble —
+the beat's `.qt-help-msg-assistant` was satisfied by a sentence that was
+never a reply. P4.79 propagates the error as v4's `for await` does, so the
+vacuous green became an honest red at the FIRST unified full run (P4.79
+ran no Playwright per §E — the unifier is the first to see the union).
+**Fixed spec-side, zero product code:** the spec's `beforeAll` now pins the
+console's default to the profile global-setup rewired to the mock
+(`connectionProfileList` → the `127.0.0.1:${MOCK_LLM_PORT}` row →
+`connectionProfileUpdate {isDefault: true}` when it is not already the
+default), with the trap named in the comment; the Brahma beats now assert
+a real reply. Which earlier spec flips the default is recorded as a
+follow-up, not chased here (the help seed did not chase it either).
+
+### §6 Docs + baseline
+
+CHANGELOG unification entry; the five order status headers (all CLOSED);
+`phase-4.md` UNIFIED section + the refreshed next-candidates list; the
+drift ledger's §1 rewritten (baseline `f699da6f6`, both branches re-probed
+at the move, PIN REQUIRED for the `bugfix` checkout alone) and its §3 rows
+retired to §6 (bug 119's `15573c3a1` stays for `p4.9k`); the two
+`dogfood-findings.md` standing notes this round discharged (#115's
+`chatCreate` parse; #111's Brahma remainder) closed with pointers, and
+D161's found composer divergence added as a new standing note (its lane
+could not write that file); CLAUDE.md's Status gained the round's bullet.
+
+### Follow-ups named by this round
+
+1. **The host wire for `chatCreate`'s Zod `details`** — one line in
+   `quilltap-host/src/spine.rs::map_create_error` (`details:
+   e.details().cloned().map(Box::new)`), held by the executable tripwire
+   `p4_78_host_wire_details_carry_is_deferred`; and the progress emitter's
+   creation moving BELOW the parse (v4 `route.ts:1090`), same file.
+2. **The composer's `hasActiveCharacters` twin** (D161's find): v5 binds the
+   narrow `controlledBy === 'llm'` predicate where v4's composer reads the
+   wide `useParticipants` one — a chat whose only active character is the
+   human's own has a working composer in v4 and a disabled one in v5. Now a
+   standing note in `dogfood-findings.md`.
+3. **`text_block_turn` measures less than its name claims** (D162's banked
+   finding): the case never parses its `[[HELP_NAVIGATE …]]` markers as a
+   tool call on either side, so its second scripted stream is dead; make it
+   fire or rename it.
+4. **`execute_turn_chain` carries one of v4's four chain-stop log lines**
+   (D160's note): `singleTurn: skipping chain loop`, `Chain stopped: empty
+   response`, `Chain error, stopping` are pre-existing gaps for the
+   handler-logging inventory.
+5. Two `docs/v4/` files v4 no longer has (`WINDOWS.md`, `help/database-
+   protection.md`) — the mirror habit is additive; a deliberate prune wants
+   its own line.
+6. `apps/web/README.md` still prescribes a plain `cargo build` for the e2e
+   where release binaries are what make global-setup finish in seconds
+   (D161's measurement) — a README line for a lane that owns it.
+7. **Which earlier spec flips the shared instance's DEFAULT connection
+   profile to the `localhost:8080` understudy** — the state both the help seed
+   and now the Brahma spec pin against rather than chase. One `grep` over the
+   full-suite server log for `connectionProfileUpdate`/`Create` with
+   `isDefault` would name it; a spec that restores what it changed is the
+   durable fix.
+8. 💸 the dogfood queue gains: a REAL server-side pause announced (the
+   chain-error safety stop on a broken profile → the warning toast; a paused
+   chat's `paused: true` frame on a real send), the off-turn Skip banner and
+   an impersonated Skip lifting a pause, a tool-needing help turn answering
+   on a non-Google provider (#112 UNBLOCKED), a GOOGLE-seated tool-enabled
+   turn carrying the wardrobe tools without a 400 (#114 UNBLOCKED — and with
+   it the P4.9I2 §3 GOOGLE-keeps-id-less-tool-rows live leg), a Brahma
+   Console question leaving its `llm_logs` rows, and a `controlledBy: "LLM"`
+   create refused with v4's `details` (engine-side; the wire half is item 1).

@@ -6395,6 +6395,79 @@ from the pin zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Play
 
 PB1 stays parked by the standing rule.
 
+## The `f699da6f6` 4.9.x drift catch-up + `chatCreate`-parse + Brahma round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79) — UNIFIED 2026-09-06
+
+**UNIFIED on main (2026-09-06) — ALL FIVE ORDERS CLOSED; the oracle baseline
+MOVES to `f699da6f6` and the drift debt is CLEARED** (bug 119's `15573c3a1`
+stays for `p4.9k`; the regen rule stays PIN REQUIRED only while the v4
+checkout sits on `bugfix`). Bug 123 whole (server: the per-emit optional
+`paused` chain-complete key + the paused early-return with v4's info line +
+two re-vendored help pages; SPA: the seat-keyed Skip banner, the overlay-aware
+Skip with a SILENT unpause-first, the pause-you-did-not-cause toasts, v4's
+pause-sync drift a mutation-proven NO-COUNTERPART, two live beats), bugs
+124/125 whole (the help loop through the tool-call threading primitive with
+the family's FULL-slate comparand + an id-less case; `additionalProperties`
+at the head of Google's strip list with the real wardrobe schemas in the
+recorded corpus; a GOOGLE seat in the help-chat fixture — **dogfood findings
+#112/#114 UNBLOCKED**), finding #115 (v4's whole `createChatSchema` as ONE
+validation stage, 36 → 108 capstone cases with the Zod `details` byte
+comparand — 43 refused bodies had been CREATING chats; the host wire for
+`details` stays a one-line, tripwire-held deferral), and finding #111's
+Brahma remainder (both engines log every streamed turn; a mid-stream provider
+error stops the turn instead of persisting a half reply). **The §3 review
+found NO blocking findings** (the fifth such round); eight should-fixes
+landed on the unify branch — headline: P4.D162's tie normalizer was
+transitive and uncapped, and P4.78 had three ported rules no corpus arm
+measured. The reconcile's own catch: four identical version bumps
+auto-merged silently across the five lanes (recounted, base + total bumps).
+Gate: 9/9 families fresh from the pin zero SKIP + the two re-run families
+after the review fixes; the google corpora re-recorded byte-identical;
+508 test binaries / 2,891 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0 (the round's eight block families confirmed RUN by per-binary duration: capstone 3.31 s, orchestrator 3.02 s, help-chat 1.29 s, help tree 1.02 s); ng 387 files / 6,268; full Playwright 284 passed / 0 failed / 0 skipped (7.6 m), exit 0 — the suite grew 282 → 284 with P4.D161's two toast beats; the two Brahma beats green on a real reply. Versions: core
+0.0.811, harness 0.0.700, web 0.0.120, host 0.0.105, SPA 0.5.657. Round
+record: `status-log.md` → "Round record — the `f699da6f6` 4.9.x drift
+catch-up round unification".
+
+**Next candidates, in rough value order** (updated at this unification,
+2026-09-06):
+
+1. **The owed dogfood pass** on the Friday copy over this round's surfaces:
+   a REAL server-side pause announced (a chain-error safety stop on a broken
+   profile → the warning toast; a paused chat's `paused: true` frame on a
+   real send), the off-turn Skip banner + an impersonated Skip lifting a
+   pause, a tool-needing help turn answering on a non-Google provider
+   (#112), a GOOGLE-seated tool-enabled turn carrying the wardrobe tools
+   without a 400 (#114 + the P4.9I2 §3 GOOGLE-keeps-id-less-tool-rows live
+   leg), a Brahma Console question leaving its `llm_logs` rows, a
+   `controlledBy: "LLM"` create refused — plus the standing queue (the Help
+   dialog end to end, `POST /api/v1/images?action=generate` with a real key,
+   the first boot's 120-doc sync, Pascal's group tier, the Brahma deep query,
+   dedup/summaries, #101, the LoRA wire-byte look).
+2. **The two one-line host items in `quilltap-host/src/spine.rs`**: the
+   `chatCreate` Zod `details` wire (`map_create_error`, held by
+   `p4_78_host_wire_details_carry_is_deferred`) and the progress emitter's
+   creation moving below the parse; and **the composer's `hasActiveCharacters`
+   twin** (`dogfood-findings.md` standing note — v5 disables the composer in
+   a chat whose only active character is the human's own).
+3. **`p4.9k` — the character AI dialogs** (wizard / optimizer / rename /
+   ai-import, ~8,000 lines across v4 services and client; bug 119's post-fix
+   shape; the ledger's one remaining row).
+4. The smalls this round named: which e2e spec flips the shared instance's
+   default connection profile to the `localhost:8080` understudy (both the
+   help seed and the Brahma spec now pin against it instead of chasing it);
+   `text_block_turn`'s dead second stream; the
+   three chain-stop log lines `execute_turn_chain` lacks (the handler-logging
+   inventory); the two `docs/v4/` files v4 deleted; the e2e README's
+   release-binary line; the `p4.9i2` round's carried items (the five
+   `CaptureLayer` copies → `test_support`; the sweep driver's SHELL_START
+   class; `image_profiles.rs:655`'s UTF-16 count; v4's `chat_settings`
+   read-time validation drop).
+5. The census's honest totality and the present-but-null validation lead;
+   the carried smalls (the `MessageContextSeams` dead argument, the
+   `announcer_tier3` fixture's targeted memory, the thirteenth
+   participant-status copy).
+
+PB1 stays parked by the standing rule.
+
 ## The `f699da6f6` 4.9.x drift catch-up + `chatCreate`-parse + Brahma round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79) — ORDERED 2026-09-06
 
 **Baseline `c2232cd9a`; v4 `main` HEAD `f699da6f6` (5 past — the 4.9.1

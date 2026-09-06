@@ -599,6 +599,15 @@ catch, since every fixture is built fresh.
 
 ### `chatCreate` lacks v4's whole-body Zod parse (2026-09-06, finding #115)
 
+**CLOSED by P4.78 (unified 2026-09-06).** The whole `createChatSchema` is one
+validation stage ahead of any work, arm-pinned against v4's real route (105 →
+108 capstone cases incl. the Zod `details` byte comparand); the engine half is
+complete. **What remains is the HOST WIRE**: `quilltap-host/src/spine.rs::
+map_create_error` still hard-codes `details: None`, held by the executable
+tripwire `p4_78_host_wire_details_carry_is_deferred` — one line for a
+host-owning lane. The note below is the original, kept for the record.
+
+
 `handle_create` (`crates/quilltap-core/src/services/chat_create.rs`) parses only
 `conciergeState` and `roleplayTemplateId`; v4 runs `createChatSchema.parse(body)`
 (`app/api/v1/chats/route.ts:88-130`) before any work. Ten arms are unported:
@@ -612,6 +621,15 @@ already pins that for one field).
 
 ### The Brahma console's streamed turns still write no `llm_logs` rows (2026-09-06, finding #111's remainder)
 
+**CLOSED by P4.79 (unified 2026-09-06).** Both Brahma engines log every
+completed streamed turn's `CHAT_MESSAGE` row (`characterId`/`messageId` NULL,
+measured `durationMs`), pinned by row count against completed canned streams in
+both tier-3 families; a mid-stream provider error now stops the turn as v4's
+`for await` does instead of persisting a half reply. 💸 the live look at a real
+Console question's rows is on the dogfood queue. The note below is the
+original, kept for the record.
+
+
 Finding #111 fixed the help orchestrator's missing `CHAT_MESSAGE` rows; the Brahma
 console's `stream_turn` (`crates/quilltap-core/src/services/brahma_console/orchestrator.rs`)
 and the one-shot service have the identical gap — v4's `streamMessage` logs every call
@@ -624,6 +642,24 @@ commit with the Brahma family run by name, which the dogfood walk did not do.
 **Measured live on the walk's E2 (2026-09-06):** one Console question ran three
 Brahma stream calls (two `run_sql` turns + the answer) and wrote **zero** `llm_logs`
 rows.
+
+### The composer's `hasActiveCharacters` reads v4's NARROW twin (2026-09-06, found by P4.D161 in passing)
+
+v4 has two predicates of that name: `useParticipants.hasActiveCharacters`
+(`type === 'CHARACTER' && isActive`, no control filter — what the SSE hook,
+the Skip banner and the COMPOSER read, `SalonView.tsx:483/:1470/:1539`) and
+`useTurnManagement`'s (`… && controlledBy !== 'user'`, `handleContinue`'s
+first arm only). v5's `salon-conversation.ts` has ONE computed
+(`hasActiveCharacters`, spelled `controlledBy === 'llm'` — narrower still than
+v4's `!== 'user'`), correct for its own site (`onSidebarSkip`), and ALSO bound
+to the composer's enablement, where v4 passes the wide one. **Consequence:** in
+a chat whose only active character is the human's own, v4 enables the composer
+and v5 disables it with "Add a character to start chatting…". P4.D161 added
+`hasAnyActiveCharacter` (the wide twin) for the Skip banner's gate and
+deliberately did NOT re-point the composer — that is a composer-enablement
+change beyond bug 123's client half, unmeasured against the e2e beats, and it
+sits on the same predicate finding #115 tripped (`controlledBy: "LLM"`). One
+lane, one spec, one beat.
 
 ### The handler-logging inventory's scope misses the daily maintenance sweep (2026-09-05, finding #110)
 
