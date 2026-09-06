@@ -136,7 +136,6 @@ impl ChatCreateParticipant {
     }
 }
 
-
 /// The tri-state read of a `.optional()` / `.nullable().optional()` key:
 /// absent → `None`, explicit null → `Some(None)`, a value → `Some(Some(v))`.
 fn raw_tri_state(obj: &Map<String, Value>, key: &str) -> Option<Option<Value>> {
