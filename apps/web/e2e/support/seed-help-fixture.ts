@@ -38,6 +38,8 @@ interface CharacterRow {
    *  the eligibility payload's is `connectionProfileId`. */
   defaultConnectionProfileId?: string | null;
   connectionProfileId?: string | null;
+  /** The archive tombstone — an archived character refuses every write. */
+  archivedAt?: string | null;
 }
 
 async function dispatch(
@@ -76,7 +78,21 @@ export async function seedHelpFixture(
   // arm does NOT make the send work (the `p4.9i2` unification's first live
   // run: the seat was eligible and every send died on that sentence). So when
   // no character has one, give the seat the instance's default profile.
-  const target = characters.find((c) => c.defaultConnectionProfileId) ?? characters[0];
+  // Only a LIVE character can be seated: the archived island global-setup
+  // seeds refuses every write (the archive tombstone), and in the full suite
+  // the list's order is whatever earlier specs left, so the pick must skip
+  // `archivedAt` rows and fall through on a refusal (the `p4.9i2`
+  // unification's gate-of-record run: the seed landed on a refusing row, every
+  // Ask beat skipped and the Guide's entry stayed disabled).
+  const live = characters.filter((c) => !c.archivedAt);
+  if (live.length === 0) {
+    return { eligible: false, reason: 'the shared instance has no live (un-archived) character' };
+  }
+  const candidates = [
+    ...live.filter((c) => c.defaultConnectionProfileId),
+    ...live.filter((c) => !c.defaultConnectionProfileId),
+  ];
+  let target = candidates[0];
   // ALWAYS seat the character on the profile that targets the spec's canned
   // LLM (global-setup rewrote the fixture's OPENAI_COMPATIBLE profile to
   // `http://127.0.0.1:${MOCK_LLM_PORT}/v1`). In the full suite an earlier spec
@@ -104,18 +120,26 @@ export async function seedHelpFixture(
   };
 
   // `characterUpdate` merges the partial bag under `character` — the same door
-  // the characters Defaults tab's per-field autosave uses.
-  const update = await dispatch(ctx, baseUrl, {
-    type: 'characterUpdate',
-    characterId: target.id,
-    character: patch,
-  });
-  if (update?.type === 'error') {
-    return {
-      eligible: false,
-      characterId: target.id,
-      reason: `characterUpdate refused: ${String(update.data?.['message'] ?? 'unknown')}`,
-    };
+  // the characters Defaults tab's per-field autosave uses. Try each live
+  // candidate until one accepts.
+  let refused = '';
+  let seated = false;
+  for (const candidate of candidates) {
+    const update = await dispatch(ctx, baseUrl, {
+      type: 'characterUpdate',
+      characterId: candidate.id,
+      character: patch,
+    });
+    if (update?.type === 'error') {
+      refused = String(update.data?.['message'] ?? 'unknown');
+      continue;
+    }
+    target = candidate;
+    seated = true;
+    break;
+  }
+  if (!seated) {
+    return { eligible: false, characterId: target.id, reason: `characterUpdate refused: ${refused}` };
   }
 
   // The server is the arbiter of eligibility, not this seed's arithmetic.
