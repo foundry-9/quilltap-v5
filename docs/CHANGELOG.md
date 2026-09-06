@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — fix(host): serve `data:` URLs in the image import fetch seam (dogfood finding #113)
+
+_Versions: host 0.0.104._
+
+`POST /api/v1/images` with a `data:` URL answered a flat 500: reqwest refuses
+the scheme, while Node's fetch runs the Fetch Standard's data: URL processor
+and v4 imports the payload (the P4.76 review's measured `png;base64,….webp`
+shape). The host seam now runs that processor locally — comma split, MIME
+trim, percent-decode, the `;base64` suffix with forgiving-base64 decode, the
+`text/plain` defaults, a reduced MIME parse+serialize — answering `200 OK`
+with the mediatype as `content-type`, and a malformed payload as the thrown
+fetch. Pinned by six vectors measured on Node 24, mutation-proven.
+
 #### 2026-09-06 — fix(help-chat): log every streamed help turn to `llm_logs` (dogfood finding #111)
 
 _Versions: core 0.0.806, harness 0.0.695._
