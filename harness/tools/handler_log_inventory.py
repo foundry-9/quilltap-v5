@@ -55,7 +55,8 @@ files = (sorted(PIN.glob('lib/background-jobs/handlers/*.ts'))
          + [PIN/'lib/services/help-chat/orchestrator.service.ts']
          + [PIN/'lib/help-chat/context-resolver.ts']
          + [PIN/'lib/help-chat/system-prompt-builder.ts']
-         + [PIN/'lib/help-search.ts'])
+         + [PIN/'lib/help-search.ts']
+         # P4.76: the images-collection route — the survey's first `app/api/**` seed.
          + [PIN/'app/api/v1/images/route.ts'])
 CALL = re.compile(r"logger\.(info|warn|error|debug)\(\s*(?:'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`|\"((?:[^\"\\]|\\.)*)\")")
 

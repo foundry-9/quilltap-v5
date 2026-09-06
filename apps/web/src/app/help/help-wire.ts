@@ -2,12 +2,10 @@
  * The help wire contract (§B of the `p4.9i2` round) + the dispatch client that
  * speaks it.
  *
- * Declared LANE-LOCALLY: the thirteen `help*` request DTOs live here until the
- * unifier folds them into `core-contract.ts` and runs the name-for-name wire
- * diff against `api/types.rs` (§S.3). Until then the server verbs do not exist,
- * so {@link HelpApi} casts each request at the ONE transport seam
- * ({@link CoreClient}) — that cast is the whole inert-in-lane surface the
- * unifier retires (the Brahma precedent, `brahma-wire.ts`).
+ * The thirteen `help*` request DTOs were declared lane-locally and FOLDED into
+ * `core-contract.ts` at the `p4.9i2` unification (§S.3), where the name-for-name
+ * wire diff against `api/types.rs` ran clean (13/13); this module re-exports
+ * them and adds the response DTOs (the Brahma precedent, `brahma-wire.ts`).
  *
  * Response DTOs mirror v4's route JSON name-for-name, derived from the v4
  * handlers at the anchors cited on each type. Lane P4.9I2A's tier-2 differential
@@ -19,81 +17,43 @@
 import { Injectable, inject } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import type { CoreRequest } from '../core/core-contract';
+
+import type {
+  HelpDocsListRequest,
+  HelpDocsChatCountRequest,
+  HelpDocsSearchRequest,
+  HelpDocGetRequest,
+  HelpChatListRequest,
+  HelpChatEligibilityRequest,
+  HelpChatCreateRequest,
+  HelpChatGetRequest,
+  HelpChatRenameRequest,
+  HelpChatUpdateContextRequest,
+  HelpChatDeleteRequest,
+  HelpChatMessagesRequest,
+  HelpChatSendRequest,
+} from '../core/core-contract';
 
 // ============================================================================
-// Request DTOs (§B) — folded into `core-contract.ts` at unification (§S.3)
+// Request DTOs (§B) — FOLDED into `core-contract.ts` at the unification (§S.3);
+// re-exported here so the help family keeps one import site.
 // ============================================================================
 
-/** `GET /api/v1/help-docs` — the document index (`help-docs/route.ts:20-36`). */
-export interface HelpDocsListRequest {
-  type: 'helpDocsList';
-}
-/** `GET /api/v1/help-docs?action=chat-count` (`help-docs/route.ts:117-134`). */
-export interface HelpDocsChatCountRequest {
-  type: 'helpDocsChatCount';
-}
-/** `GET /api/v1/help-docs?action=search&q=` (`help-docs/route.ts:38-115`). */
-export interface HelpDocsSearchRequest {
-  type: 'helpDocsSearch';
-  q: string;
-}
-/** `GET /api/v1/help-docs/{id}` — a DB id OR a slug (`[id]/route.ts:24-59`). */
-export interface HelpDocGetRequest {
-  type: 'helpDocGet';
-  id: string;
-}
-/** `GET /api/v1/help-chats` (`help-chats/route.ts:40-73`). */
-export interface HelpChatListRequest {
-  type: 'helpChatList';
-}
-/** `GET /api/v1/help-chats?action=eligibility` (`help-chats/route.ts:78-119`). */
-export interface HelpChatEligibilityRequest {
-  type: 'helpChatEligibility';
-}
-/** `POST /api/v1/help-chats` (`help-chats/route.ts:124-217`). */
-export interface HelpChatCreateRequest {
-  type: 'helpChatCreate';
-  characterIds: string[];
-  pageUrl: string;
-}
-/** `GET /api/v1/help-chats/{id}` (`[id]/route.ts:69-91`). */
-export interface HelpChatGetRequest {
-  type: 'helpChatGet';
-  chatId: string;
-}
-/** `PATCH /api/v1/help-chats/{id}` (`[id]/route.ts:98-123`). */
-export interface HelpChatRenameRequest {
-  type: 'helpChatRename';
-  chatId: string;
-  title: string;
-}
-/** `PATCH …/{id}?action=update-context` (`[id]/route.ts:128-164`). */
-export interface HelpChatUpdateContextRequest {
-  type: 'helpChatUpdateContext';
-  chatId: string;
-  pageUrl: string;
-}
-/** `DELETE /api/v1/help-chats/{id}` (`[id]/route.ts:169-190`). */
-export interface HelpChatDeleteRequest {
-  type: 'helpChatDelete';
-  chatId: string;
-}
-/** `GET /api/v1/help-chats/{id}/messages` (`messages/route.ts:92-105`). */
-export interface HelpChatMessagesRequest {
-  type: 'helpChatMessages';
-  chatId: string;
-}
-/**
- * `POST /api/v1/help-chats/{id}/messages` (`messages/route.ts:60-86`).
- * `fileIds` is accepted-and-ignored, exactly as v4 accepts it.
- */
-export interface HelpChatSendRequest {
-  type: 'helpChatSend';
-  chatId: string;
-  content: string;
-  fileIds?: string[];
-}
+export type {
+  HelpDocsListRequest,
+  HelpDocsChatCountRequest,
+  HelpDocsSearchRequest,
+  HelpDocGetRequest,
+  HelpChatListRequest,
+  HelpChatEligibilityRequest,
+  HelpChatCreateRequest,
+  HelpChatGetRequest,
+  HelpChatRenameRequest,
+  HelpChatUpdateContextRequest,
+  HelpChatDeleteRequest,
+  HelpChatMessagesRequest,
+  HelpChatSendRequest,
+} from '../core/core-contract';
 
 /** The thirteen-verb request union (each member becomes a `CoreRequest`). */
 export type HelpRequest =
@@ -217,16 +177,15 @@ export interface HelpSendResult {
 
 /**
  * Speaks the thirteen §B verbs over the ONE transport seam ({@link CoreClient}).
- * Every method routes through {@link dispatchHelp}; that cast is the
- * inert-in-lane surface the unifier retires when the DTOs fold.
+ * Every method routes through {@link dispatchHelp}.
  */
 @Injectable({ providedIn: 'root' })
 export class HelpApi {
   private readonly core = inject(CoreClient);
 
-  /** The thirteen verbs become `CoreRequest` variants at unification (§S.3). */
+  /** The thirteen verbs ARE `CoreRequest` variants since the fold (§S.3). */
   private dispatchHelp(req: HelpRequest): Promise<Record<string, unknown>> {
-    return this.core.dispatchData(req as unknown as CoreRequest);
+    return this.core.dispatchData(req);
   }
 
   // --- help docs -----------------------------------------------------------

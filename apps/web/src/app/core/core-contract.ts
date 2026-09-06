@@ -5245,6 +5245,20 @@ export type MemoryRequest =
   | BrahmaConsoleDeleteRequest
   | BrahmaConsoleMessagesRequest
   | BrahmaConsoleSendRequest
+  // P4.9I2B (folded at the `p4.9i2` unification): the help/HelpChat family.
+  | HelpDocsListRequest
+  | HelpDocsChatCountRequest
+  | HelpDocsSearchRequest
+  | HelpDocGetRequest
+  | HelpChatListRequest
+  | HelpChatEligibilityRequest
+  | HelpChatCreateRequest
+  | HelpChatGetRequest
+  | HelpChatRenameRequest
+  | HelpChatUpdateContextRequest
+  | HelpChatDeleteRequest
+  | HelpChatMessagesRequest
+  | HelpChatSendRequest
   // P4.9G2 — the Data & System tab's sixteen §1 verbs (P4.9G1 delivers them in
   // `api/types.rs`; this lane mirrors them name-for-name, the unifier diffs the
   // two at unification). The interfaces live in the P4.9G2 block appended at the
@@ -6404,6 +6418,83 @@ export interface ImageInfoGetRequest {
   type: 'imageInfoGet';
   id: string;
 }
+
+// === P4.9I2B (folded at the `p4.9i2` unification; §B of that round pins every
+// name and payload against `api/types.rs`'s `=== P4.9I2A ===` block — the
+// name-for-name diff ran clean, 13/13): the help/HelpChat dispatch family.
+// `help/help-wire.ts` re-exports these and adds the response DTOs.
+
+/** `GET /api/v1/help-docs` — the document index (`help-docs/route.ts:20-36`). */
+export interface HelpDocsListRequest {
+  type: 'helpDocsList';
+}
+/** `GET /api/v1/help-docs?action=chat-count` (`help-docs/route.ts:117-134`). */
+export interface HelpDocsChatCountRequest {
+  type: 'helpDocsChatCount';
+}
+/** `GET /api/v1/help-docs?action=search&q=` (`help-docs/route.ts:38-115`). */
+export interface HelpDocsSearchRequest {
+  type: 'helpDocsSearch';
+  q: string;
+}
+/** `GET /api/v1/help-docs/{id}` — a DB id OR a slug (`[id]/route.ts:24-59`). */
+export interface HelpDocGetRequest {
+  type: 'helpDocGet';
+  id: string;
+}
+/** `GET /api/v1/help-chats` (`help-chats/route.ts:40-73`). */
+export interface HelpChatListRequest {
+  type: 'helpChatList';
+}
+/** `GET /api/v1/help-chats?action=eligibility` (`help-chats/route.ts:78-119`). */
+export interface HelpChatEligibilityRequest {
+  type: 'helpChatEligibility';
+}
+/** `POST /api/v1/help-chats` (`help-chats/route.ts:124-217`). */
+export interface HelpChatCreateRequest {
+  type: 'helpChatCreate';
+  characterIds: string[];
+  pageUrl: string;
+}
+/** `GET /api/v1/help-chats/{id}` (`[id]/route.ts:69-91`). */
+export interface HelpChatGetRequest {
+  type: 'helpChatGet';
+  chatId: string;
+}
+/** `PATCH /api/v1/help-chats/{id}` (`[id]/route.ts:98-123`). */
+export interface HelpChatRenameRequest {
+  type: 'helpChatRename';
+  chatId: string;
+  title: string;
+}
+/** `PATCH …/{id}?action=update-context` (`[id]/route.ts:128-164`). */
+export interface HelpChatUpdateContextRequest {
+  type: 'helpChatUpdateContext';
+  chatId: string;
+  pageUrl: string;
+}
+/** `DELETE /api/v1/help-chats/{id}` (`[id]/route.ts:169-190`). */
+export interface HelpChatDeleteRequest {
+  type: 'helpChatDelete';
+  chatId: string;
+}
+/** `GET /api/v1/help-chats/{id}/messages` (`messages/route.ts:92-105`). */
+export interface HelpChatMessagesRequest {
+  type: 'helpChatMessages';
+  chatId: string;
+}
+/**
+ * `POST /api/v1/help-chats/{id}/messages` (`messages/route.ts:60-86`).
+ * `fileIds` is accepted-and-ignored, exactly as v4 accepts it.
+ */
+export interface HelpChatSendRequest {
+  type: 'helpChatSend';
+  chatId: string;
+  content: string;
+  fileIds?: string[];
+}
+
+// === end P4.9I2B ===
 
 // === P4.73: the `/api/v1/images` COLLECTION surface, mirrored NAME-FOR-NAME
 // from `api/types.rs`'s `=== P4.73 ===` block. Type-only this round: the SPA

@@ -4,6 +4,7 @@ import { Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/rou
 import { BrahmaEntry } from '../brahma/brahma-entry';
 import { CoreClient } from '../core/core-client';
 import { DocumentsRailEntry } from '../documents/documents-rail-entry';
+import { HelpEntry } from '../help/help-entry';
 import { FirstRunService } from '../startup/first-run.service';
 import { ThemeService } from '../theme/theme.service';
 import { ThemeSwitcher } from '../theme/theme-switcher';
@@ -99,6 +100,7 @@ const NAV_ITEMS: NavItem[] = [
     WardrobeControlDialog,
     BrahmaEntry,
     DocumentsRailEntry,
+    HelpEntry,
     AutoLockProvider,
   ],
   template: `
@@ -137,6 +139,10 @@ const NAV_ITEMS: NavItem[] = [
           <div class="qt-left-sidebar-footer-actions">
             <!-- v4 sidebar-footer.tsx:309 — the profile dropdown. -->
             <qt-user-menu />
+            <!-- v4 sidebar-footer.tsx:203-212 — the Help entry (eligibility-
+                 gated; hosts its own dialog). Mounted at the p4.9i2 unification
+                 (P4.9I2B's AT-UNIFY table), BEFORE the Brahma entry as in v4. -->
+            <qt-help-entry />
             <!-- v4 sidebar-footer.tsx:213-226 — the Brahma Console entry
                  (eligibility-gated; hosts its own floating dialog). -->
             <qt-brahma-entry />
