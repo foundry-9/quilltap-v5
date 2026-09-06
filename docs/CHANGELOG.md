@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — docs(v4): refresh the reference mirror at `f699da6f6` and record the eight carrier/docs rows
+
+_Docs-only change._
+
+The `docs/v4/` mirror is brought to the round's pin: **5 files added**
+(`releases/4.9.1.md`, `releases/4.9.2.md`, and the three bug docs
+`bug-123-silent-pause-sync-drift.md`, `bug-124-help-tool-rows-lack-ids.md`,
+`bug-125-google-rejects-nested-additional-properties.md` — the last two this
+port's own dogfood filings, now marked FIXED upstream) and **3 modified**
+(`CHANGELOG.md`, `CHANGELOG_V4.md`, `developer/bugs.md`, the last carrying an
+explicit `v5 status` row per bug). After the refresh the mirror is
+byte-identical to `f699da6f6:docs/` on every shared path.
+
+Two files stay in the mirror that v4 no longer has — `WINDOWS.md` (deleted at
+`2b49f51aa`) and `help/database-protection.md`. The established mirror habit is
+additive + modified, so they were left alone and are named in the lane record
+rather than deleted on a lane's own initiative.
+
+The P4.D160 lane record also carries the `git show --stat` file lists for the
+eight carrier/docs drift rows (`d40497411`, `5eaf98cf1`, `ba34fa367`,
+`02b77ab0f`, `8fbf2afe0`, `d489b04a3`, `f699da6f6`, `1a2b2164c`), so the
+unifier ratifies them by file list rather than by subject line.
+
 #### 2026-09-06 — docs(drift): the 4.9.2 squash puts bugs 124/125 on main — the ordered round repointed to one pin (`f699da6f6`)
 
 _Docs-only change._
