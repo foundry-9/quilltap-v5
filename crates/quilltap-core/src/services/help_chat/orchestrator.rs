@@ -300,8 +300,15 @@ mod stream_conversion_tests {
     #[test]
     fn nine_providers_drop_the_idless_tool_row() {
         for p in [
-            "ANTHROPIC", "OPENAI", "OLLAMA", "OPENROUTER", "NANOGPT", "DEEPSEEK",
-            "OPENAI_COMPATIBLE", "GROK", "Z_AI",
+            "ANTHROPIC",
+            "OPENAI",
+            "OLLAMA",
+            "OPENROUTER",
+            "NANOGPT",
+            "DEEPSEEK",
+            "OPENAI_COMPATIBLE",
+            "GROK",
+            "Z_AI",
         ] {
             let out = to_stream_messages(p, &slate());
             assert_eq!(out.len(), 3, "{p} must drop the id-less tool row");
@@ -314,7 +321,11 @@ mod stream_conversion_tests {
         let out = to_stream_messages("GOOGLE", &slate());
         assert_eq!(out.len(), 4);
         match &out[3] {
-            StreamMessage::Tool { call_id, name, content } => {
+            StreamMessage::Tool {
+                call_id,
+                name,
+                content,
+            } => {
                 assert!(call_id.is_empty());
                 assert!(name.is_none());
                 assert_eq!(content, "{\"tool\":\"help_search\"}");

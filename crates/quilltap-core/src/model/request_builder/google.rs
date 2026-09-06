@@ -662,7 +662,10 @@ mod function_response_name_tests {
 
     #[test]
     fn the_or_chain_falls_through_empty_strings() {
-        assert_eq!(function_response_name(Some("help_search"), "call-1"), "help_search");
+        assert_eq!(
+            function_response_name(Some("help_search"), "call-1"),
+            "help_search"
+        );
         assert_eq!(function_response_name(Some(""), "call-1"), "call-1");
         assert_eq!(function_response_name(None, "call-1"), "call-1");
         assert_eq!(function_response_name(None, ""), "unknown_function");
