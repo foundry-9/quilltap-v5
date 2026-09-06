@@ -12,6 +12,43 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — docs(drift): record the 4.9.1 drift — bug 123 on main, bugs 124/125 on bugfix
+
+_Docs-only change._
+
+`/driftcheck` against the `c2232cd9a` baseline. **DRIFT PENDING — six new
+commits, two substantive**, and the checkout still sits on `bugfix`, so the
+regen rule is PIN REQUIRED at the baseline for both of §5.1's triggers.
+
+`fef7ce4f7` (bug 123, reaching `main` through the `5eaf98cf1` release squash
+and the `ba34fa367` merge) is a PORT across three ported surfaces: the turn
+chain's paused early-return now announces itself (`chainComplete
+{ reason: 'paused', paused: true }` plus a log line), every chain-complete
+carries `paused`, the Salon reconciles its pause flag on every fetch and toasts
+a pause the user did not cause, and the Skip banner is keyed on the seat the
+composer speaks as rather than on whose turn the client thinks it is. Measured
+against v5: the server half applies and v5 has the silence
+(`services/orchestrator.rs` returns on `initial.is_paused` with no event);
+the Skip-banner half applies; the client pause-sync half may have **no v5
+counterpart** (the SPA reads `isPaused` off the fetched resource, with no local
+flag to drift) and must be measured before anything is transcribed.
+
+`20913d2aa` (bugs 124/125, bugfix-only and not yet on `main`) is this port's
+own dogfood filings coming back fixed: the help loop threads its turn through
+`buildAssistantToolCallMessage` / `buildToolResultMessages`, and
+`additionalProperties` joins Google's unsupported-schema list. Both surfaces
+are ported and both reproduce in v5; the threading chokepoint already exists in
+`services/tool_call_threading.rs`, so the port is routing, not writing. Neither
+carries a divergence pin, and the google corpora have no nested
+`items.additionalProperties` row — the fix ships unmeasured unless the port
+adds one.
+
+Two new standing hazards recorded in §1: `help/**` is a vendored v5 artifact
+since P4.9I2A (this drift moves two files, and `help_tree_equivalence` reds on
+them), and `jest.config.ts` now maps `@google/genai` to a manual mock, which
+every google-loading oracle resolves from that sha forward. `generateDDL` and
+`lib/database/schema` are untouched — no D23 re-dump owed.
+
 #### 2026-09-06 — docs(dogfood): findings #112/#114 filed upstream as v4 bugs 124/125 (unconfirmed)
 
 _Docs-only change._
