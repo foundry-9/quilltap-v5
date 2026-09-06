@@ -111,7 +111,6 @@ export class TurnControls {
    * user-driven seat, on or off turn, so the wording has to say which it is.
    */
   readonly isSeatsTurn = input(false);
-  /** A refusal message from a rejected skip (v4's exact copy), or null. */
   /** The next LLM speaker's name, or null to hide the Nudge button. */
   readonly nudgeTargetName = input<string | null>(null);
 

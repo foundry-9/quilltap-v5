@@ -24,8 +24,8 @@
 //! comparand asserts the corpus keeps exercising BOTH arms (paired by id, and
 //! id-less framed as `[Tool Result: …]` user text).
 //!
-//! Corpus (13 cases, each into a fixture chat — the last two share theirs with an
-//! earlier case and run after it): single character with a NULL `helpPageUrl`
+//! Corpus (14 cases, each into a fixture chat — two of the later cases share
+//! theirs with an earlier case and run after it): single character with a NULL `helpPageUrl`
 //! (→ `/`); two characters over a transcript carrying a TOOL row
 //! (`turnStart`/`turnComplete`/`chainComplete`, no `skipped` key); a native
 //! `help_search` turn; a native `help_navigate` turn; a text-block turn (profile
@@ -39,7 +39,10 @@
 //! bytes distinguish the reminder's new source (`lastToolResultContent`) from the
 //! pre-bug-124 `.reverse().find(m => m.role === "tool")`: an id'd result's content
 //! is the same JSON string either way, an id-less one is `[Tool Result: …]` text
-//! that no role search can find.
+//! that no role search can find; and `google_seat_tool_turn` — one native
+//! `help_search` turn on the GOOGLE-seated H12, whose history carries an id-less
+//! TOOL row, so BOTH directions of `keeps_idless_tool_rows` (GOOGLE keeps, the
+//! nine drop) are corpus-visible for the first time.
 //!
 //! Generate (Node 24, from the v4 checkout — mirror to /tmp; jest ignores .claude/):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -436,6 +439,7 @@ fn canonicalize_ties(
         return (got, want);
     }
     let mut start = 0usize;
+    let mut max_group = 1usize;
     for i in 1..=got.len() {
         let boundary = i == got.len()
             || (got_created[i] != got_created[i - 1] && want_created[i] != want_created[i - 1]);
@@ -444,10 +448,23 @@ fn canonicalize_ties(
                 let key = |v: &Value| serde_json::to_string(v).unwrap_or_default();
                 got[start..i].sort_by_key(key);
                 want[start..i].sort_by_key(key);
+                max_group = max_group.max(i - start);
             }
             start = i;
         }
     }
+    // The relaxation is transitive (a chain of one-sided ties merges its whole
+    // run), so it could in principle widen far past the one measured pair —
+    // the ASSISTANT tool turn and its TOOL row ~1 ms apart — and quietly turn a
+    // burst case (`ten_turn_cap`) into a multiset compare. Cap it at the pair:
+    // anything wider reddens loudly instead of relaxing silently (the §3
+    // review of the unify).
+    assert!(
+        max_group <= 2,
+        "canonicalize_ties relaxed a run of {max_group} rows — wider than the \
+         measured same-millisecond pair; a persist-order regression could hide \
+         in it. Measure the timestamps before widening this cap."
+    );
     (got, want)
 }
 
@@ -764,6 +781,18 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
         assert!(
             framed > 0,
             "the corpus lost its ID-LESS `[Tool Result: …]` framing rows"
+        );
+        // …and the GOOGLE seat's KEPT id-less history row (unit 3): without it
+        // the M9/M10 mutations of `keeps_idless_tool_rows` go vacuously green —
+        // the exact class this family found twice (the §3 review of the unify).
+        let kept_idless = want
+            .iter()
+            .flat_map(|s| s.as_array().unwrap())
+            .filter(|m| m["role"] == "tool" && m.get("toolCallId").is_none())
+            .count();
+        assert!(
+            kept_idless > 0,
+            "the corpus lost its GOOGLE kept id-less `tool` row (unit 3's seat)"
         );
         if slate_mismatches == 0 {
             eprintln!(

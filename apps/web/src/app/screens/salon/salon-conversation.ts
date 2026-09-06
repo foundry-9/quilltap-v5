@@ -2036,10 +2036,13 @@ export class SalonConversation {
   });
 
   /**
-   * The name whose (user-driven) turn it is, or null when it isn't.
+   * The name of the seat the Skip banner is about — the seat the composer
+   * speaks as, on or off turn since v4 bug 123 — or null when the banner is
+   * hidden (`bannerSeat` holds the three gates; `isSeatsTurn` says whether the
+   * rotation has actually landed on it).
    *
    * Gated on `isUserDrivenSeat` over the impersonation overlay, matching v4's
-   * composer turn banner since `1bed814f` (`SalonView.tsx:~1428` —
+   * Skip banner (`SalonView.tsx:1457-1515` at `fef7ce4f7` —
    * `isUserDrivenSeat({ id, controlledBy }, impersonatingParticipantIds)`). An
    * impersonated seat keeps `controlledBy: 'llm'` (v4 Bug 44 overlay), so its
    * own turn is announced via the overlay — matching what the server returns
@@ -2061,7 +2064,9 @@ export class SalonConversation {
    *  2. the room has an active character at all. This is v4's
    *     `useParticipants.hasActiveCharacters` (`type === 'CHARACTER' && isActive`,
    *     NO `controlledBy` filter) — deliberately NOT v5's `hasActiveCharacters`,
-   *     which is the `useTurnManagement` twin (`controlledBy !== 'user'`) and is
+   *     which is spelled `controlledBy === 'llm'` — v5's NARROWING of v4's
+   *     `useTurnManagement` twin (`useTurnManagement.ts:121`, `!== 'user'`),
+   *     tracked with dogfood finding #115 — and is
    *     the right predicate for its own site, `onSidebarSkip`;
    *  3. there IS a seat the composer speaks as, and it is user-driven — the
    *     overlay, not the bare `controlledBy` column (Bug 44).
@@ -2090,8 +2095,9 @@ export class SalonConversation {
   /**
    * v4 `useParticipants.hasActiveCharacters` (`useParticipants.ts:70-72`) — any
    * active CHARACTER, whoever drives it. Distinct from this component's
-   * `hasActiveCharacters`, which is v4's `useTurnManagement` twin
-   * (`useTurnManagement.ts:121`, `controlledBy !== 'user'`); v4 keeps both and
+   * `hasActiveCharacters`, which is spelled `controlledBy === 'llm'` — v5's
+   * NARROWING of v4's `useTurnManagement` twin (`useTurnManagement.ts:121`,
+   * `!== 'user'`), tracked with dogfood finding #115; v4 keeps both and
    * this lane needs the wider one for the Skip banner's gate.
    */
   private readonly hasAnyActiveCharacter = computed(() =>

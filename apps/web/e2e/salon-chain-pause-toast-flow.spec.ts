@@ -53,7 +53,10 @@ const INFO = 'Auto-responses are paused. Press Resume in the sidebar to let the 
  *
  * Patches the `onmessage` accessor on `EventSource.prototype` before app boot,
  * where the real transport assigns its handler (`core-transport.ts:151`);
- * every other frame passes through untouched.
+ * every other frame passes through untouched. (The patched getter returns
+ * whatever the native slot holds — the WRAPPER, not the handler the app
+ * assigned. Nothing in `core-transport.ts` reads `es.onmessage` back, so
+ * identity round-tripping is not relied on; do not start relying on it.)
  */
 async function injectPausedChainComplete(page: Page, reason: string): Promise<void> {
   await page.addInitScript((chainReason) => {

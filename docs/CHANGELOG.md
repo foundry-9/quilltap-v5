@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — fix(unify): the §3 review's should-fixes across P4.78, P4.D162 and P4.D161
+
+_No crate versions bumped (folded into the round's unification bump)._
+
+The unification review of the `f699da6f6` round (three parallel reviewers plus
+the unifier's own read; no blocking findings). Fixed on the unify branch:
+
+- **P4.78:** the Zod UUID pattern had grown a second home — `chat_create.rs`
+  now imports `api::settings::ZOD_UUID_PATTERN` (made `pub(crate)`); the
+  `ChatCreateParticipant` struct lost its dead `Deserialize` derive, hand-written
+  `Default` and `default_participant_type()` helper — the only construction path
+  is `from_raw`, and defaulting a missing `type` to `CHARACTER` contradicted the
+  stage, which refuses that body; `every_wrong_typed_field_still_decodes` seeded
+  every body with `"participants": []`, itself a refusal, so its second assertion
+  measured nothing — it now seeds a valid participant; three ported rules had no
+  corpus arm (a mutation deleting them reddened nothing) — the capstone corpus
+  gains `vb_participant_image_profile_id_not_uuid`, `vb_participant_type_missing`
+  and the `groupScenarioPath` 500-astral ACCEPT sibling (105 → 108 cases).
+- **P4.D162:** `canonicalize_ties` is transitive and uncapped, so a chain of
+  one-sided ties could widen far past the measured same-millisecond pair and
+  quietly turn a burst case into a multiset compare — it now asserts the largest
+  relaxed group is at most 2; the slate comparand gains a third coverage floor
+  (a GOOGLE kept id-less `tool` row must exist, or unit 3's M9/M10 mutations go
+  vacuously green); the family header's corpus count (13 → 14) and enumeration
+  now name `google_seat_tool_turn`.
+- **P4.D161:** two new doc comments described v5's `hasActiveCharacters` as v4's
+  `useTurnManagement` twin (`!== 'user'`) when it is the narrower `=== 'llm'` —
+  the predicate finding #115 tripped on — now stated as v5's narrowing, tracked
+  with #115; `userTurnName`'s comment still described the pre-fix banner; an
+  orphaned doc comment in `turn-controls.ts`; a note on the e2e injector's getter
+  returning the wrapper.
+
 #### 2026-09-06 — fix(orchestrator): never stop a chain without saying why — the `paused` chain-complete key (v4 bug 123)
 
 _Versions: core 0.0.807, harness 0.0.696, host 0.0.105._

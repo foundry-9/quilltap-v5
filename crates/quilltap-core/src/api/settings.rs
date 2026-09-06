@@ -556,7 +556,7 @@ enum ZodIssue {
 /// body (stringified with the surrounding slashes), so it is transcribed, not
 /// re-derived. Note the RFC nibbles: version `1-8`, variant `89abAB`, with the
 /// nil and max UUIDs allowed as literal alternatives.
-const ZOD_UUID_PATTERN: &str = "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/";
+pub(crate) const ZOD_UUID_PATTERN: &str = "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/";
 
 /// `true` when `s` satisfies [`ZOD_UUID_PATTERN`]. Hand-matched rather than
 /// regex-compiled: the shape is fixed and the crate has no regex dependency.

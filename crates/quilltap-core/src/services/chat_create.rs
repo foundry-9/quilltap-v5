@@ -101,29 +101,20 @@ use super::aurora_notifications::post_opening_outfit_whisper;
 /// One requested participant (v4 `createParticipantSchema`). `character_id` is
 /// `Option` so v4's `if (!data.characterId)` "characterId is required" check is
 /// reproduced rather than failing at deserialize.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+///
+/// Built ONLY by [`Self::from_raw`] (the lenient view over the raw body — P4.78);
+/// there is deliberately no `Deserialize` and no `"CHARACTER"` default for a
+/// missing `type`: the validation stage refuses that body (`invalid_value` on
+/// `participants[i].type`), so a default here would contradict it.
+#[derive(Debug, Clone, Default)]
 pub struct ChatCreateParticipant {
-    #[serde(rename = "type", default = "default_participant_type")]
+    /// v4 `type: z.literal('CHARACTER')` — the raw string as sent.
     pub kind: String,
     pub character_id: Option<String>,
     pub connection_profile_id: Option<String>,
     pub image_profile_id: Option<String>,
     pub controlled_by: Option<String>,
     pub selected_system_prompt_id: Option<String>,
-}
-
-impl Default for ChatCreateParticipant {
-    fn default() -> Self {
-        ChatCreateParticipant {
-            kind: default_participant_type(),
-            character_id: None,
-            connection_profile_id: None,
-            image_profile_id: None,
-            controlled_by: None,
-            selected_system_prompt_id: None,
-        }
-    }
 }
 
 impl ChatCreateParticipant {
@@ -135,7 +126,7 @@ impl ChatCreateParticipant {
         };
         let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
         ChatCreateParticipant {
-            kind: s("type").unwrap_or_else(default_participant_type),
+            kind: s("type").unwrap_or_default(),
             character_id: s("characterId"),
             connection_profile_id: s("connectionProfileId"),
             image_profile_id: s("imageProfileId"),
@@ -145,9 +136,6 @@ impl ChatCreateParticipant {
     }
 }
 
-fn default_participant_type() -> String {
-    "CHARACTER".to_string()
-}
 
 /// The tri-state read of a `.optional()` / `.nullable().optional()` key:
 /// absent → `None`, explicit null → `Some(None)`, a value → `Some(Some(v))`.
@@ -421,8 +409,10 @@ pub enum CreateZodIssue {
     },
 }
 
-/// Zod 4's `z.uuid()` pattern, echoed verbatim in every `invalid_format` issue.
-const ZOD_UUID_PATTERN: &str = "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/";
+/// Zod 4's `z.uuid()` pattern, echoed verbatim in every `invalid_format` issue —
+/// ONE home, shared with the settings routes' Zod envelope (`api/settings.rs`),
+/// so a future Zod pattern change moves both at once.
+use crate::api::settings::ZOD_UUID_PATTERN;
 
 /// JS `Number.MAX_SAFE_INTEGER` — the bound `z.number().int()` reports as
 /// `format: "safeint"`.
@@ -3194,7 +3184,13 @@ mod tests {
             ("conciergeState", json!(42)),
             ("roleplayTemplateId", json!(42)),
         ] {
-            let body = json!({ "participants": [], key: bad });
+            // A VALID participant, so the second assertion below measures the
+            // wrong-typed key under test and not the empty-array refusal (the §3
+            // review of the unify caught the vacuous spelling).
+            let body = json!({
+                "participants": [{ "type": "CHARACTER", "characterId": "11111111-1111-4111-8111-111111111111" }],
+                key: bad,
+            });
             let decoded = serde_json::from_value::<ChatCreateRequest>(body.clone());
             assert!(
                 decoded.is_ok(),
