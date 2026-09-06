@@ -492,14 +492,19 @@ pub async fn image_delete(
 /// ran — still point at the image. The fixture's `CHAR_ARCH_PEER` /
 /// `CHAR_ARCHIVED` pair exists to make exactly that visible.
 fn refuse_if_archived(main: &rusqlite::Connection, character_id: &str) -> Result<(), DbError> {
-    let archived_at: Option<String> = main
-        .query_row(
-            "SELECT archivedAt FROM characters WHERE id = ?1",
-            rusqlite::params![character_id],
-            |r| r.get::<_, Option<String>>(0),
-        )
-        .ok()
-        .flatten();
+    // A missing row is "not archived"; a FAILED read is an error, as v4's
+    // `_findById` throw reaches the route's outer catch (the §3 review of the
+    // `p4.9i2` unification — a guard whose job is to refuse must not read a
+    // failure as permission).
+    let archived_at: Option<String> = match main.query_row(
+        "SELECT archivedAt FROM characters WHERE id = ?1",
+        rusqlite::params![character_id],
+        |r| r.get::<_, Option<String>>(0),
+    ) {
+        Ok(v) => v,
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(e.into()),
+    };
     // v4 `if (!existing?.archivedAt) return` — JS-falsy, so an empty string is
     // not archived either.
     if archived_at.is_some_and(|s| !s.is_empty()) {
@@ -762,8 +767,15 @@ fn parse_import_body(
     tags: Option<&Value>,
 ) -> Result<(String, Option<Vec<Value>>), Response> {
     let bad = || Response::error(ErrorKind::BadRequest, "Validation error");
+    // Zod's `z.url()` OUTPUT is not its input: `$ZodURL` (zod/v4/core/
+    // schemas.cjs:324) sets `payload.value = stripTabAndNewline(value.trim())`,
+    // so v4 fetches — and derives the filename from — the trimmed string with
+    // every ASCII tab / LF / CR removed (WHATWG's own pre-parse strip). Normalize
+    // FIRST, then validate the normalized bytes (the §3 review of the `p4.9i2`
+    // unification).
     let url = url
         .and_then(Value::as_str)
+        .map(zod_url_output)
         .filter(|s| zod_url_ok(s))
         .ok_or_else(bad)?;
     let tags = match tags {
@@ -801,6 +813,15 @@ fn parse_import_body(
         }
     };
     Ok((url.to_string(), tags))
+}
+
+/// Zod 4.5's `z.url()` output normalization: `stripTabAndNewline(value.trim())`
+/// — a JS `trim`, then every U+0009 / U+000A / U+000D removed.
+fn zod_url_output(raw: &str) -> String {
+    crate::jsstr::js_trim(raw)
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect()
 }
 
 /// WHATWG's six special schemes. They are the ones that REQUIRE a host (all but
@@ -987,7 +1008,19 @@ fn whatwg_pathname(url: &str) -> String {
     let end = after_authority
         .find(['?', '#'])
         .unwrap_or(after_authority.len());
-    after_authority[..end].to_string()
+    let path = &after_authority[..end];
+    // A special scheme's path treats `\` as `/` (WHATWG "special" parsing):
+    // `https://h/a\b.png` → `/a/b.png` (measured on Node 24). Non-special
+    // schemes keep the byte. NOT reproduced here, and named so the next reader
+    // does not assume them: percent-ENCODING of the path (`/a b.png` →
+    // `/a%20b.png` in Node, so v4 stores `a%20b.png` where v5 stores `a b.png`),
+    // dot-segment normalization, IDNA, host percent-decoding, forbidden code
+    // points and port validity — the §3 review of the `p4.9i2` unification.
+    if special {
+        path.replace('\\', "/")
+    } else {
+        path.to_string()
+    }
 }
 
 #[cfg(test)]

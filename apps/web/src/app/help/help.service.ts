@@ -20,7 +20,7 @@
  * @module help/help.service
  */
 
-import { DestroyRef, Injectable, computed, effect, inject, signal, untracked } from '@angular/core';
+import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { injectQuery } from '@tanstack/angular-query-experimental';
@@ -89,12 +89,14 @@ export class HelpService {
     // v4 auto-selects the FIRST tool-capable character when nothing is picked
     // (`help-chat-provider.tsx:126-131`), so the composer is usable the moment
     // the dialog opens rather than demanding a pick first. v4 runs this in the
-    // same effect that syncs the query data; here it is its own effect reading
-    // the settled list.
+    // same effect that syncs the query data — an effect whose deps include
+    // `selectedCharacterIds.length` (`:140`), so deselecting the LAST seat
+    // re-fires it and the first tool-capable seat snaps back. Tracking the
+    // selection here reproduces that (the §3 review of the `p4.9i2` unification).
     effect(() => {
       const eligible = this.toolCapableCharacters();
       if (eligible.length === 0) return;
-      if (untracked(() => this.selectedCharacterIds()).length > 0) return;
+      if (this.selectedCharacterIds().length > 0) return;
       const autoSelected = [eligible[0].id];
       this.selectedCharacterIds.set(autoSelected);
       saveStorageValue(STORAGE_KEY_SELECTED, autoSelected);

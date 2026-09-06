@@ -1408,7 +1408,8 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
 /// v4 returns the value RAW and lets each reader apply `isPrimitive`; v5 applies
 /// it here, because both readers already did and neither v5 reader has anything
 /// to say about a non-primitive that the other does not. (v4's renderer says it
-/// in a debug log v5 does not emit; its resolver simply skips the effect.)
+/// in a debug log — ported at `render_template`, P4.77 — and its resolver
+/// simply skips the effect.)
 ///
 /// `{{params.toString}}` is the correction that rides along, and Rust never had
 /// its cause: JS's `name in vars.params` reached `Object.prototype`, so the

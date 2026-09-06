@@ -32,6 +32,7 @@ import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
 import { Icon } from '../ui/icon';
 import { renderHelpDocument } from './help-doc-markdown';
+import { CoreDispatchError } from '../core/core-contract';
 import { HelpApi } from './help-wire';
 
 @Component({
@@ -102,11 +103,22 @@ export class HelpTopicReader {
         try {
           const doc = await this.api.docGet(id);
           if (cancelled) return;
-          if (!doc) throw new Error('Document not found');
+          if (!doc) {
+            // v4 `HelpTopicReader.tsx:96` — the 404 sentence.
+            this.error.set('Document not found');
+            return;
+          }
           this.content.set(doc.content);
         } catch (err) {
           if (cancelled) return;
-          this.error.set(err instanceof Error ? err.message : 'Failed to load document');
+          // v4 `HelpTopicReader.tsx:96`: `Document not found` on a 404, else
+          // `Failed to load document` — never the server's own sentence (a miss
+          // arrives as a `not-found` dispatch error here, not a null document).
+          this.error.set(
+            err instanceof CoreDispatchError && err.kind === 'not-found'
+              ? 'Document not found'
+              : 'Failed to load document',
+          );
         } finally {
           if (!cancelled) this.loading.set(false);
         }

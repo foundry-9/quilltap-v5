@@ -47,18 +47,27 @@
 //!
 //! ## Two recorded divergences at the provider seam
 //!
-//! 1. **Id-less `tool` history rows are dropped at the STREAM conversion.** v4
-//!    hands `{role: 'tool', content}` (no `toolCallId`) to the plugin, and every
-//!    plugin then drops it at format time (`qtap-plugin-anthropic`
-//!    `formatMessagesWithAttachments`: `if (m.role === "tool" && !m.toolCallId)
-//!    return false`; `openai-compatible` / `ollama` the same filter; the OpenAI
-//!    Responses formatter logs `Skipping tool message without toolCallId`). v5's
-//!    `StreamMessage::Tool` requires an id by construction, so the drop moves
-//!    ONE layer up, to [`to_stream_messages`] here — the wire is identical. ⚠
-//!    This means v4's help agent loop never feeds a tool RESULT back to the model
-//!    on the next turn (the result row it pushes is id-less too): a **candidate
-//!    upstream filing**, reproduced faithfully, recorded in the lane record.
-//!    The tier-3 oracle's canned key is recorded over the same filtered list.
+//! 1. **Id-less `tool` history rows are dropped at the STREAM conversion — for
+//!    nine of the ten providers.** v4 hands `{role: 'tool', content}` (no
+//!    `toolCallId`) to the plugin, and NINE plugins drop it at format time
+//!    (`qtap-plugin-anthropic` `formatMessagesWithAttachments`: `if (m.role ===
+//!    "tool" && !m.toolCallId) return false`; `ollama`, `openrouter`, `nanogpt`,
+//!    `deepseek`, `openai-compatible`, `openai`, `grok`, `z-ai` the same filter
+//!    or the Responses formatter's `Skipping tool message without toolCallId`).
+//!    **GOOGLE does NOT** (`qtap-plugin-google/provider.ts:376`: `if (msg.role
+//!    === 'tool' || msg.toolCallId)` keeps it and emits a `functionResponse`
+//!    named `msg.name || msg.toolCallId || 'unknown_function'`). v5's
+//!    `StreamMessage::Tool` requires an id by construction, so the nine-plugin
+//!    drop moves ONE layer up, to [`to_stream_messages`] here, keyed on the
+//!    provider; for GOOGLE the row is carried as an EMPTY-id `Tool` message and
+//!    the google builder's `unknown_function` fallback (v4's `||` chain) fires —
+//!    the wire is identical per provider. ⚠ On those nine providers v4's help
+//!    agent loop never feeds a tool RESULT back to the model on the next turn
+//!    (the result row it pushes is id-less too): a **candidate upstream
+//!    filing**, reproduced faithfully. The tier-3 oracle's canned key is
+//!    recorded over the same per-provider filtered list; the fixture carries no
+//!    GOOGLE profile yet, so the GOOGLE leg is pinned at unit tier (a corpus arm
+//!    is the named follow-up — the §3 review of this round).
 //! 2. **The async tail is awaited.** v4 fires `triggerAsyncTasks` without
 //!    awaiting (`.catch`-warned promises); v5 awaits it before returning so the
 //!    enqueue is durable when the dispatch reply lands. Same rows, later reply.
@@ -251,18 +260,68 @@ fn msg(role: &str, content: impl Into<String>) -> HelpMessage {
 }
 
 /// The help slate → the provider seam's messages. `system`/`user`/`assistant`
-/// map 1:1; an id-less `tool` row is DROPPED — the plugins' own filter, hoisted
-/// one layer (module doc, divergence 1).
-pub fn to_stream_messages(messages: &[HelpMessage]) -> Vec<StreamMessage> {
+/// map 1:1; an id-less `tool` row is DROPPED for every provider whose v4 plugin
+/// drops it at format time — all but GOOGLE, which keeps it as an empty-id
+/// `Tool` message so the google builder emits v4's `unknown_function`
+/// `functionResponse` (module doc, divergence 1).
+pub fn to_stream_messages(provider: &str, messages: &[HelpMessage]) -> Vec<StreamMessage> {
+    let keeps_idless_tool_rows = provider == "GOOGLE";
     messages
         .iter()
         .filter_map(|m| match m.role.as_str() {
             "system" => Some(StreamMessage::system(m.content.clone())),
             "assistant" => Some(StreamMessage::assistant(m.content.clone())),
+            "tool" if keeps_idless_tool_rows => Some(StreamMessage::Tool {
+                call_id: String::new(),
+                name: None,
+                content: m.content.clone(),
+            }),
             "tool" => None,
             _ => Some(StreamMessage::user(m.content.clone())),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod stream_conversion_tests {
+    //! The per-provider id-less tool-row rule (the §3 review's catch at the
+    //! `p4.9i2` unification): nine plugins drop, GOOGLE keeps.
+    use super::*;
+
+    fn slate() -> Vec<HelpMessage> {
+        vec![
+            msg("system", "sys"),
+            msg("user", "hi"),
+            msg("assistant", "call"),
+            msg("tool", "{\"tool\":\"help_search\"}"),
+        ]
+    }
+
+    #[test]
+    fn nine_providers_drop_the_idless_tool_row() {
+        for p in [
+            "ANTHROPIC", "OPENAI", "OLLAMA", "OPENROUTER", "NANOGPT", "DEEPSEEK",
+            "OPENAI_COMPATIBLE", "GROK", "Z_AI",
+        ] {
+            let out = to_stream_messages(p, &slate());
+            assert_eq!(out.len(), 3, "{p} must drop the id-less tool row");
+            assert!(!out.iter().any(|m| matches!(m, StreamMessage::Tool { .. })));
+        }
+    }
+
+    #[test]
+    fn google_keeps_the_idless_tool_row_with_an_empty_id() {
+        let out = to_stream_messages("GOOGLE", &slate());
+        assert_eq!(out.len(), 4);
+        match &out[3] {
+            StreamMessage::Tool { call_id, name, content } => {
+                assert!(call_id.is_empty());
+                assert!(name.is_none());
+                assert_eq!(content, "{\"tool\":\"help_search\"}");
+            }
+            other => panic!("expected a Tool row, got {other:?}"),
+        }
+    }
 }
 
 // ===========================================================================
@@ -696,6 +755,13 @@ where
             cache_key.clone(),
         )
         .await;
+        // v4 `:352`: a throw inside the `for await` propagates out of
+        // `processHelpResponse` — the participant fails, nothing is persisted
+        // (the §3 review of the `p4.9i2` unification; the Brahma orchestrator's
+        // `break` is the pre-existing sibling shape, recorded there).
+        if let Some(e) = turn.error {
+            return Err(HelpSendError::new(e));
+        }
         let mut current_response = turn.content;
         total_prompt_tokens += turn.usage.map(|u| u.prompt_tokens).unwrap_or(0);
         total_completion_tokens += turn.usage.map(|u| u.completion_tokens).unwrap_or(0);
@@ -1055,6 +1121,11 @@ struct StreamTurnResult {
     content: String,
     raw_response: Option<Value>,
     usage: Option<crate::model::stream::StreamUsage>,
+    /// A provider error mid-stream. v4's `for await (const chunk of
+    /// streamMessage(...))` THROWS here, which reaches the per-participant catch
+    /// (an `error {errorType: 'processing_error'}` frame, no assistant row); the
+    /// chunks already forwarded stay forwarded on both sides.
+    error: Option<String>,
 }
 
 /// One streamed LLM call, forwarding content chunks to `sink` (v4's per-chunk
@@ -1072,7 +1143,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     cache_key: Option<String>,
 ) -> StreamTurnResult {
     let params = StreamParams {
-        messages: to_stream_messages(messages),
+        messages: to_stream_messages(provider, messages),
         model: model.to_string(),
         // v4 passes `modelParams: {}` — no sampling overrides.
         temperature: None,
@@ -1097,6 +1168,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     let mut content = String::new();
     let mut raw: Option<Value> = None;
     let mut usage: Option<crate::model::stream::StreamUsage> = None;
+    let mut error: Option<String> = None;
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
@@ -1111,13 +1183,17 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
                     raw = Some(r);
                 }
             }
-            Err(_) => break,
+            Err(e) => {
+                error = Some(e.to_string());
+                break;
+            }
         }
     }
     StreamTurnResult {
         content,
         raw_response: raw,
         usage,
+        error,
     }
 }
 
@@ -1340,7 +1416,7 @@ mod log_context_tests {
             msg("tool", "{\"tool\":\"x\"}"),
             msg("user", "U2"),
         ];
-        let out = to_stream_messages(&slate);
+        let out = to_stream_messages("ANTHROPIC", &slate);
         assert_eq!(
             out.iter().map(|m| m.role_str()).collect::<Vec<_>>(),
             vec!["system", "user", "assistant", "user"]

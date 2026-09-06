@@ -213,7 +213,7 @@ function getInitialTab(): HelpTab {
                       <span class="text-xs qt-text-secondary">{{ chat.messageCount }}</span>
                       <button
                         type="button"
-                        class="opacity-0 group-hover:opacity-100 p-0.5 rounded qt-text-secondary hover:qt-text-destructive transition-all"
+                        class="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:qt-bg-destructive/20 qt-text-secondary hover:qt-text-destructive transition-all"
                         title="Delete"
                         (click)="$event.stopPropagation(); handleDeleteChat(chat.id)"
                       >
@@ -464,7 +464,8 @@ export class HelpDialog {
     await this.stream.sendMessage(chatId, content, () => void this.loadMessages(chatId));
     // Reconcile against the persisted transcript, then drop the live overlay.
     await this.loadMessages(chatId);
-    void this.refetchPastChats();
+    // v4 refetches the launcher's list only on delete and when the launcher
+    // becomes visible again (its query's `enabled` gate), never after a send.
     this.stream.reset();
   }
 

@@ -279,12 +279,18 @@ pub fn help_chat_eligibility(db: &Db, user_id: &str) -> Response {
                 // v4 `repos.files.findByLinkedTo(char.id)` — every file whose
                 // `linkedTo` JSON array contains the id, rowid order (v4's
                 // unordered scan); then the first tagged `avatar`, else `images[0]`.
+                // `repos.files` is a `UserScopedRepository` (`filterByUser` after
+                // the base read), so another user's linked file never counts —
+                // the §3 review of the `p4.9i2` unification. v4's base read also
+                // drops a row that fails `FileEntrySchema`; v5 marshals with
+                // defaults there (the pre-existing reader shape, recorded).
                 let mut stmt = main.prepare(
                     "SELECT id, tags FROM files \
-                     WHERE EXISTS (SELECT 1 FROM json_each(files.linkedTo) WHERE value = ?1)",
+                     WHERE userId = ?2 \
+                       AND EXISTS (SELECT 1 FROM json_each(files.linkedTo) WHERE value = ?1)",
                 )?;
                 let images: Vec<(String, Vec<String>)> = stmt
-                    .query_map(rusqlite::params![char_id], |r| {
+                    .query_map(rusqlite::params![char_id, user_id], |r| {
                         let id: String = r.get(0)?;
                         let tags: Option<String> = r.get(1)?;
                         Ok((id, tags))

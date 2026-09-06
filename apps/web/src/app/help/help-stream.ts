@@ -209,7 +209,9 @@ export function reduceHelpFrame(prev: HelpStreamState, frame: ChatStreamFrame): 
       ...s,
       isExecutingTools: true,
       streamingContent: '',
-      streamingParticipantId: frame.participantId ?? s.streamingParticipantId,
+      // v4 `event.status.participantId || prev.streamingParticipantId` — JS
+      // `||`, so an empty id falls back too.
+      streamingParticipantId: frame.participantId || s.streamingParticipantId,
     };
   }
 

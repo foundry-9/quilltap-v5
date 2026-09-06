@@ -598,6 +598,21 @@
           }
         ]
       ]
+    },
+    {
+      "name": "stream_error_mid_turn",
+      "chatId": "c1000002-0000-4000-8000-000000000002",
+      "content": "Half a thought, please.",
+      "streams": [
+        [
+          {
+            "content": "Half a"
+          },
+          {
+            "error": "the provider hung up"
+          }
+        ]
+      ]
     }
   ]
 }

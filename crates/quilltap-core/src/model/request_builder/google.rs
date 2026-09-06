@@ -248,9 +248,11 @@ pub fn format_messages_for_google(
     for msg in &merged {
         // Tool result. v4's arm also caught "any message with a toolCallId"
         // regardless of role — unrepresentable in the carrying enum (only a
-        // Tool variant pairs by id), so that half is gone; and the
-        // `"unknown_function"` fallback is unreachable (name falls back to the
-        // REQUIRED call id) but kept as v4's written chain.
+        // Tool variant pairs by id), so that half is gone. The name is v4's
+        // `msg.name || msg.toolCallId || 'unknown_function'` chain: the help
+        // orchestrator carries an id-LESS history row to this builder (v4's
+        // google plugin is the one of ten that keeps such rows), so the
+        // `"unknown_function"` fallback is reachable and JS-falsy on `""`.
         if let StreamMessage::Tool {
             call_id,
             name,
@@ -259,7 +261,7 @@ pub fn format_messages_for_google(
         {
             let response = serde_json::from_str::<Value>(content)
                 .unwrap_or_else(|_| json!({ "result": content }));
-            let function_name = name.clone().unwrap_or_else(|| call_id.clone());
+            let function_name = function_response_name(name.as_deref(), call_id);
             pending.push(
                 json!({ "functionResponse": { "name": function_name, "response": response } }),
             );
@@ -642,4 +644,28 @@ pub fn build_tools(input: &RequestInput) -> (Vec<Value>, bool) {
     }
     let has_tools = !tools.is_empty();
     (tools, has_tools)
+}
+
+/// v4 `msg.name || msg.toolCallId || 'unknown_function'` — JS `||`, so an empty
+/// string falls through at each step.
+fn function_response_name(name: Option<&str>, call_id: &str) -> String {
+    match name {
+        Some(n) if !n.is_empty() => n.to_string(),
+        _ if !call_id.is_empty() => call_id.to_string(),
+        _ => "unknown_function".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod function_response_name_tests {
+    use super::function_response_name;
+
+    #[test]
+    fn the_or_chain_falls_through_empty_strings() {
+        assert_eq!(function_response_name(Some("help_search"), "call-1"), "help_search");
+        assert_eq!(function_response_name(Some(""), "call-1"), "call-1");
+        assert_eq!(function_response_name(None, "call-1"), "call-1");
+        assert_eq!(function_response_name(None, ""), "unknown_function");
+        assert_eq!(function_response_name(Some(""), ""), "unknown_function");
+    }
 }

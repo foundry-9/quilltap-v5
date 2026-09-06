@@ -156,6 +156,18 @@ describe('HelpService — eligibility', () => {
     expect(svc.selectedCharacterIds()).toEqual(['c-9']);
   });
 
+  it('snaps the first tool-capable seat back when the last selection is toggled off (v4 `:140`)', async () => {
+    const svc = setup([INCAPABLE, CAPABLE]);
+    await settle();
+    expect(svc.selectedCharacterIds()).toEqual(['c-1']);
+    svc.toggleCharacter('c-1');
+    await settle();
+    // v4's auto-select effect lists `selectedCharacterIds.length` in its deps,
+    // so the count dropping to 0 re-runs it and re-selects `eligible[0]`.
+    expect(svc.selectedCharacterIds()).toEqual(['c-1']);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY_SELECTED)!)).toEqual(['c-1']);
+  });
+
   it('uses the v4 eligibility query key', () => {
     expect(HELP_ELIGIBILITY_QUERY_KEY).toEqual(['help-chat', 'eligibility']);
   });

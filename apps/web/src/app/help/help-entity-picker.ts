@@ -15,7 +15,18 @@
  * @module help/help-entity-picker
  */
 
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  afterRenderEffect,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../core/core-client';
@@ -131,6 +142,7 @@ interface EntityItem {
         @if (items().length > 5) {
           <div class="px-2 pb-1">
             <input
+              #filterInput
               type="text"
               class="qt-help-entity-picker-filter"
               [placeholder]="'Filter ' + (route()?.entityLabel?.toLowerCase() || 'item') + 's...'"
@@ -181,6 +193,12 @@ export class HelpEntityPicker {
   private readonly core = inject(CoreClient);
 
   protected readonly filter = signal('');
+  /** v4 `HelpEntityPicker.tsx:150` `autoFocus` — the filter input takes focus the
+   *  render it appears (the §3 review of the `p4.9i2` unification). */
+  private readonly filterInput = viewChild<ElementRef<HTMLInputElement>>('filterInput');
+  private readonly focusFilter = afterRenderEffect(() => {
+    this.filterInput()?.nativeElement.focus();
+  });
   protected readonly route = computed(() => findParamRoute(this.urlTemplate()));
 
   private readonly listQuery = injectQuery(() => {

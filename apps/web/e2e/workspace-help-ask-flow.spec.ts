@@ -176,7 +176,9 @@ test.describe('P4.9I2B — Help, the Ask tab', () => {
     await openAsk(page);
     const rows = page.locator('qt-help-dialog .qt-help-past-chat');
     const before = await rows.count();
-    test.skip(before === 0, 'no past help chat to delete — the send beats seed one');
+    // The send beats seed one; if they regressed, this must go RED, not skip
+    // (the §3 review of the `p4.9i2` unification).
+    expect(before, 'the send beats seed a past chat for this beat').toBeGreaterThan(0);
 
     await rows.first().locator('button[title="Delete"]').click();
     await expect(rows).toHaveCount(before - 1, { timeout: 10_000 });

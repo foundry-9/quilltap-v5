@@ -258,11 +258,15 @@ describe('HelpDialog — the Ask launcher', () => {
     expect(api['chatCreate']).not.toHaveBeenCalled();
   });
 
-  it('toggles a seat and persists the selection', async () => {
+  it('toggling the only seat off snaps it back (v4 `help-chat-provider.tsx:140`)', async () => {
+    // v4's auto-select effect lists `selectedCharacterIds.length` in its deps:
+    // the count dropping to 0 re-runs it and re-selects `eligible[0]`, so the
+    // last tool-capable seat can never be left deselected (the §3 review of
+    // the `p4.9i2` unification — the pre-fix spec pinned `[]`).
     const { fixture } = await openAsk();
     q<HTMLButtonElement>(fixture, '.qt-help-char-pill')!.click();
     await settle(fixture);
-    expect(JSON.parse(localStorage.getItem('quilltap:help-chat-selected-characters')!)).toEqual([]);
+    expect(JSON.parse(localStorage.getItem('quilltap:help-chat-selected-characters')!)).toEqual(['c-1']);
   });
 });
 

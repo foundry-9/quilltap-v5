@@ -146,13 +146,19 @@ async function main(): Promise<void> {
           temperature: opts.modelParams?.temperature ?? null,
           // The plugins' filter (anthropic/openai-compatible/ollama
           // `formatMessages…`, the OpenAI Responses formatter's skip): an
-          // id-less tool row never reaches the wire.
+          // id-less tool row never reaches the wire — on NINE of the ten
+          // providers. GOOGLE's plugin keeps it (`provider.ts:376`), so the
+          // recorded key keeps it there too (the §3 review of the `p4.9i2`
+          // unification; the fixture carries no GOOGLE profile yet).
           messages: opts.messages
-            .filter((m) => !(m.role === 'tool' && !m.toolCallId))
+            .filter((m) => opts.connectionProfile.provider === 'GOOGLE' || !(m.role === 'tool' && !m.toolCallId))
             .map((m) => ({ role: m.role, content: m.content })),
           sequences: [seq],
         });
         for (const chunk of seq) {
+          // A scripted mid-stream throw: v4's `for await` propagates it out of
+          // `processHelpResponse` (the per-participant `error` frame, no row).
+          if (chunk.error) throw new Error(chunk.error);
           if (chunk.done) yield { done: true, usage: chunk.usage ?? undefined, rawResponse: chunk.rawResponse };
           else yield { content: chunk.content };
         }

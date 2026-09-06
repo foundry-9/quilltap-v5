@@ -120,6 +120,11 @@ struct ChunkW {
     usage: Option<UsageW>,
     #[serde(default)]
     raw_response: Option<Value>,
+    /// A scripted mid-stream throw (the oracle's `streamMessage` mock throws
+    /// `new Error(error)` after the chunks before it) — replayed as an `Err`
+    /// chunk so the Rust loop meets the same failure at the same point.
+    #[serde(default)]
+    error: Option<String>,
 }
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -150,6 +155,9 @@ fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
         .collect()
 }
 fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
+    if let Some(e) = &c.error {
+        return Err(StreamError::new(e.clone()));
+    }
     if c.done == Some(true) {
         let usage = c.usage.as_ref().map(|u| StreamUsage {
             prompt_tokens: u.prompt_tokens,

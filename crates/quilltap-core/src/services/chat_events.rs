@@ -503,7 +503,6 @@ impl ChatEvent {
         }
     }
 
-    /// A `turnStart` event.
     /// v4 `encodeErrorEvent(error, errorType, details)` as a mid-stream frame.
     pub fn error(
         error: impl Into<String>,
@@ -517,6 +516,7 @@ impl ChatEvent {
         }
     }
 
+    /// A `turnStart` event.
     pub fn turn_start(payload: TurnStartPayload) -> Self {
         ChatEvent::TurnStart {
             turn_start: TrueBool,
