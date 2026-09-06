@@ -113,3 +113,82 @@ mod tests {
         assert_eq!(table_sql(&conn, "help_doc_chunks").as_deref(), Some(fresh));
     }
 }
+
+/// `help_docs` — v4's `generateDDL` shape (`fresh_schema.json`, the D23
+/// re-dump), which is the ONLY shape v4 ever creates it in: the base
+/// repository `ensureCollection`s lazily on first use
+/// (`base.repository.ts`), so an instance that predates the collection grows
+/// the table the first time any help read runs. v5 has no lazy ensure, so a
+/// pre-help_docs instance (the e2e `salon-*` fixture is one — 18 tables, no
+/// `help_docs`) made the boot sync fail `no such table`, emptied the Guide and
+/// killed every help send. Found by the activated e2e beats' first live run at
+/// the `p4.9i2` unification; the P4.D77 chunks ensure below is the precedent.
+pub const HELP_DOCS_TABLE_DDL: &str = r#"CREATE TABLE IF NOT EXISTS "help_docs" (
+  "id" TEXT PRIMARY KEY NOT NULL,
+  "title" TEXT NOT NULL,
+  "path" TEXT NOT NULL,
+  "url" TEXT NOT NULL,
+  "content" TEXT NOT NULL,
+  "contentHash" TEXT NOT NULL,
+  "embedding" TEXT,
+  "createdAt" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL
+)"#;
+
+/// The one index `generateDDL` emits for `help_docs`.
+pub const HELP_DOCS_INDEX_DDL: &str =
+    r#"CREATE INDEX IF NOT EXISTS "idx_help_docs_createdAt" ON "help_docs" ("createdAt" DESC)"#;
+
+/// Create `help_docs` (+ its `createdAt` index) if the main partition lacks it.
+/// Idempotent; a no-op on every boot after the first. Must run BEFORE
+/// [`ensure_help_doc_chunks_table`] only by convention (the two are
+/// independent), and before the boot-time `ensure_help_docs_synced`, which
+/// reads the table.
+pub fn ensure_help_docs_table(main: &Connection) -> Result<(), DbError> {
+    main.execute_batch(HELP_DOCS_TABLE_DDL)?;
+    main.execute_batch(HELP_DOCS_INDEX_DDL)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod help_docs_table_ensure_tests {
+    use super::*;
+
+    fn has_table(c: &Connection, name: &str) -> bool {
+        c.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [name],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+            == 1
+    }
+
+    #[test]
+    fn creates_the_missing_table_and_is_idempotent() {
+        let c = Connection::open_in_memory().unwrap();
+        assert!(!has_table(&c, "help_docs"));
+        ensure_help_docs_table(&c).unwrap();
+        assert!(has_table(&c, "help_docs"));
+        c.execute(
+            "INSERT INTO help_docs (id, title, path, url, content, contentHash, createdAt, updatedAt) \
+             VALUES ('d1', 't', 'help/t.md', '/', 'x', 'h', 'now', 'now')",
+            [],
+        )
+        .unwrap();
+        // The second call must neither fail nor touch the row.
+        ensure_help_docs_table(&c).unwrap();
+        let n: i64 = c
+            .query_row("SELECT count(*) FROM help_docs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1);
+        let idx: i64 = c
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_help_docs_createdAt'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(idx, 1);
+    }
+}

@@ -1180,6 +1180,13 @@ fn seed_built_ins(db: &Db) -> Result<(), String> {
             // the MIGRATION shape, exactly as v4's own migration would.
             quilltap_core::db::help_doc_chunks_repair::ensure_help_doc_chunks_table(main)?;
             // === end P4.D77 ===
+            // === p4.9i2 unification: the `help_docs` table itself ===
+            // v4 grows this collection lazily (`ensureCollection` on the first
+            // help read); v5's boot sync READS it, so a pre-help_docs instance
+            // (the e2e `salon-*` fixture) failed the sync, emptied the Guide
+            // and killed every help send — the activated beats' first live run.
+            quilltap_core::db::help_doc_chunks_repair::ensure_help_docs_table(main)?;
+            // === end p4.9i2 unification ===
             // === P4.6BM (replaces the P4.6BL stand-in) ===
             // v4's startup reconcile (`instrumentation.ts` PHASE 3.6): scan for
             // chats the Scriptorium pipeline left half-finished — arm (A) real

@@ -32,6 +32,9 @@ interface CharacterRow {
   id: string;
   name?: string;
   defaultHelpToolsEnabled?: boolean;
+  /** The list DTO's spelling (`core-contract.ts` `defaultConnectionProfileId`);
+   *  the eligibility payload's is `connectionProfileId`. */
+  defaultConnectionProfileId?: string | null;
   connectionProfileId?: string | null;
 }
 
@@ -64,16 +67,31 @@ export async function seedHelpFixture(
     return { eligible: false, reason: 'the shared instance has no characters' };
   }
 
-  // Prefer a character that already carries a connection profile — that is the
-  // half of eligibility this seed cannot manufacture.
-  const target = characters.find((c) => c.connectionProfileId) ?? characters[0];
+  // Prefer a character that already carries a DEFAULT connection profile:
+  // v4's help create copies `char.defaultConnectionProfileId || null` onto the
+  // participant and `processHelpResponse` throws `No connection profile for
+  // help character` on null — eligibility's "any tool-capable profile exists"
+  // arm does NOT make the send work (the `p4.9i2` unification's first live
+  // run: the seat was eligible and every send died on that sentence). So when
+  // no character has one, give the seat the instance's default profile.
+  const target = characters.find((c) => c.defaultConnectionProfileId) ?? characters[0];
+  const patch: Record<string, unknown> = { defaultHelpToolsEnabled: true };
+  if (!target.defaultConnectionProfileId) {
+    const profiles = await dispatch(ctx, baseUrl, { type: 'connectionProfileList' });
+    const rows =
+      (profiles?.data?.['profiles'] as Array<{ id: string; isDefault?: boolean }> | undefined) ??
+      (Array.isArray(profiles?.data) ? (profiles.data as Array<{ id: string; isDefault?: boolean }>) : []);
+    const chosen = rows.find((p) => p.isDefault) ?? rows[0];
+    if (!chosen) return { eligible: false, characterId: target.id, reason: 'no connection profile to seat the help character on' };
+    patch['defaultConnectionProfileId'] = chosen.id;
+  }
 
-  // `characterUpdate` takes the whole form bag under `character` (v4's
-  // PUT /characters/:id) — the same door the characters Defaults tab uses.
+  // `characterUpdate` merges the partial bag under `character` — the same door
+  // the characters Defaults tab's per-field autosave uses.
   const update = await dispatch(ctx, baseUrl, {
     type: 'characterUpdate',
     characterId: target.id,
-    character: { defaultHelpToolsEnabled: true },
+    character: patch,
   });
   if (update?.type === 'error') {
     return {

@@ -158,3 +158,49 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     );
     assert!(count(&db, "SELECT count(*) FROM help_doc_chunks") > 0);
 }
+
+/// The `p4.9i2` unification's catch: an instance WITHOUT a `help_docs` table
+/// (v4 creates the collection lazily on the first help read; the e2e `salon-*`
+/// fixture is such an instance — 18 tables, none of them help) must get the
+/// table at boot and then the full sync — not a `no such table` warn, an empty
+/// Guide and a dead Ask tab. Mutation: remove the `ensure_help_docs_table` call
+/// in `host.rs`'s boot repairs → the second boot reads 0 (or fails the read).
+#[tokio::test]
+async fn boot_creates_a_missing_help_docs_table_before_syncing() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    provision_fresh_instance(&data, PEPPER).expect("provision");
+    let expected = embedded_help_count() as i64;
+
+    // Boot once, then DROP both help tables — the pre-help_docs vintage.
+    let host = Host::start(hermetic_config(dir.path())).unwrap();
+    let db = host.core().db().expect("engine ready");
+    assert_eq!(count(&db, "SELECT count(*) FROM help_docs"), expected);
+    db.write(|ws| {
+        let c = ws.main().connection();
+        c.execute_batch("DROP TABLE help_doc_chunks; DROP TABLE help_docs;")?;
+        Ok(())
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        count(
+            &db,
+            "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name LIKE 'help_%'"
+        ),
+        0
+    );
+    drop(db);
+    drop(host);
+
+    // The next boot must recreate the table AND sync the whole tree into it.
+    let host = Host::start(hermetic_config(dir.path())).unwrap();
+    let db = host.core().db().expect("engine ready");
+    assert_eq!(
+        count(&db, "SELECT count(*) FROM help_docs"),
+        expected,
+        "a missing help_docs table must be created at boot, then synced"
+    );
+    assert!(count(&db, "SELECT count(*) FROM help_doc_chunks") > 0);
+}

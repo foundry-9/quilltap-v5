@@ -51,6 +51,14 @@ test.beforeAll(async () => {
 
   const ctx = await pwRequest.newContext();
   try {
+    // The shared server boots LOCKED; every dispatch below is readiness-gated,
+    // so unlock over the API first (the `page-toolbar-flow` precedent) — in
+    // the full suite an earlier spec has done it, in isolation nobody has
+    // (the `p4.9i2` unification's first isolated run: probe ok, seed refused,
+    // every beat skipped).
+    await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: { type: 'unlock', passphrase: E2E_PASSPHRASE },
+    });
     // Probe: is `helpChatEligibility` handled? In-lane the Rust core has no
     // such variant → "unknown variant" error → not ready.
     const res = await ctx.post(`${BASE_URL}/api/dispatch`, {

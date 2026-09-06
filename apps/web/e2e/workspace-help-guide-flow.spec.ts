@@ -1,6 +1,7 @@
 import { expect, request as pwRequest, test, type Page } from '@playwright/test';
 
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
+import { seedHelpFixture } from './support/seed-help-fixture';
 
 /**
  * ORDERING: rides the SHARED global-setup server, so the filename must sort
@@ -33,6 +34,17 @@ test.beforeAll(async () => {
   // DOMAIN error) means the handler exists → ready.
   try {
     const ctx = await pwRequest.newContext();
+    // The shared server boots LOCKED; every dispatch below is readiness-gated,
+    // so unlock over the API first (the `page-toolbar-flow` precedent) — in
+    // the full suite an earlier spec has done it, in isolation nobody has.
+    await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: { type: 'unlock', passphrase: E2E_PASSPHRASE },
+    });
+    // v4 DISABLES the rail entry unless a help-enabled character with a
+    // tool-capable connection exists (`sidebar-footer.tsx:207`), so the Guide
+    // is unreachable without the seed the Ask spec makes — seed here too
+    // (idempotent; it reports rather than throws).
+    await seedHelpFixture(ctx, BASE_URL);
     const res = await ctx.post(`${BASE_URL}/api/dispatch`, { data: { type: 'helpDocsList' } });
     const body = (await res.json().catch(() => null)) as
       | { type?: string; data?: { message?: string } }
@@ -102,22 +114,27 @@ test.describe('P4.9I2B — the Help Guide', () => {
     await expect(page.locator('.qt-help-guide-category-badge').first()).toBeVisible();
   });
 
-  test('the category matching the current page is auto-expanded', async ({ page }) => {
+  test('under the workspace shell nothing auto-expands (v4 pathname `/workspace`); a header click expands', async ({ page }) => {
     await openWorkspace(page);
     if (!(await guard(page))) return;
 
-    // The workspace resting path is `/workspace`, which matches no
-    // URL_CATEGORY_MAP row, so nothing auto-expands there. Route to /aurora
-    // first — `getCategoryForUrl('/aurora')` is `characters`.
+    // v4's own `/aurora` page redirects into `/workspace?open=aurora`
+    // (`app/aurora/page.tsx:13` → `redirectToWorkspaceTab`), so under the
+    // default tabbed shell `usePathname()` reads `/workspace` on EVERY page —
+    // which matches no `URL_CATEGORY_MAP` row and auto-expands nothing (the
+    // `p4.9i2` unification's first live run: the pre-fix gesture routed to
+    // `/aurora` expecting `characters` to open, a path v4 cannot reach). The
+    // reachable shape is the manual expand.
     await page.goto('/aurora');
     await expect(page.locator('aside.qt-left-sidebar')).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/\/workspace/);
     await openGuide(page);
-
+    await expect(page.locator('.qt-help-guide-category-header[aria-expanded="true"]')).toHaveCount(0);
     const characters = page
-      .locator('.qt-help-guide-category', {
-        has: page.locator('.qt-help-guide-category-label', { hasText: 'Characters (Aurora)' }),
-      })
+      .locator('.qt-help-guide-category')
+      .filter({ has: page.locator('.qt-help-guide-category-label', { hasText: 'Characters (Aurora)' }) })
       .first();
+    await characters.locator('.qt-help-guide-category-header').click();
     await expect(characters.locator('.qt-help-guide-category-header')).toHaveAttribute(
       'aria-expanded',
       'true',
@@ -150,9 +167,15 @@ test.describe('P4.9I2B — the Help Guide', () => {
   test('opening a topic renders the reader, and its page link navigates', async ({ page }) => {
     await openWorkspace(page);
     if (!(await guard(page))) return;
-    await page.goto('/aurora');
-    await expect(page.locator('aside.qt-left-sidebar')).toBeVisible({ timeout: 15_000 });
     await openGuide(page);
+    // Nothing is auto-expanded under the workspace shell (beat 2's finding):
+    // open a category by hand, as a v4 user must.
+    await page
+      .locator('.qt-help-guide-category')
+      .filter({ has: page.locator('.qt-help-guide-category-label', { hasText: 'Characters (Aurora)' }) })
+      .first()
+      .locator('.qt-help-guide-category-header')
+      .click();
 
     const topic = page.locator('.qt-help-guide-topic').first();
     await expect(topic).toBeVisible();
@@ -171,10 +194,18 @@ test.describe('P4.9I2B — the Help Guide', () => {
     if ((await pageLink.count()) > 0) {
       const label = (await pageLink.textContent())?.trim();
       expect(label && label.length > 0).toBe(true);
+      const tabsBefore = await page.locator('.qt-tab-strip .qt-tab').count();
       await pageLink.click();
-      // Navigation happened: either the workspace opened a tab in place, or the
-      // route changed. Both leave the Guide's reader behind.
-      await expect(reader).toBeHidden({ timeout: 10_000 });
+      // v4's `handleNavigatePage` is `navigate(url)` and nothing else
+      // (`HelpGuideTab.tsx:211-213`): inside the workspace the href opens or
+      // focuses a tab IN PLACE, and the Guide's reader STAYS open over it. The
+      // pre-fix assertion ("leaves the reader behind") was an invention — the
+      // `p4.9i2` unification's first live run.
+      await expect
+        .poll(async () => page.locator('.qt-tab-strip .qt-tab').count(), { timeout: 10_000 })
+        .toBeGreaterThanOrEqual(tabsBefore);
+      await expect(page).toHaveURL(/\/workspace/);
+      await expect(reader).toBeVisible();
     }
 
     // Back returns to the category list.
