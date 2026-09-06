@@ -232,6 +232,35 @@ and that crate is outside this lane's ownership; a `chatCreate` refusal reaches
 an HTTP/Tauri caller with v4's sentence and without v4's issue array. The gap is
 held by an executable tripwire (`p4_78_host_wire_details_carry_is_deferred`)
 that fails the day a host-owning lane closes it.
+#### 2026-09-06 — fix(brahma): the console's streamed turns write their `llm_logs` row, and a mid-stream provider error stops the turn instead of persisting a half reply
+
+_Versions: core 0.0.807, harness 0.0.696._
+
+Closes finding #111's other half (P4.79): both Brahma engines — the
+streaming, transcript-persisting orchestrator and the isolated one-shot
+console the Carina engine invokes — bypassed `primary_stream`'s logger
+entirely, so a real Brahma turn left no `CHAT_MESSAGE` row in `llm_logs`
+where v4 logs every `streamMessage` call on a clean end. `stream_turn`
+(orchestrator) and `run_stream` (one-shot) now take an optional stream-log
+carrier, stamp `started_at_ms` before the first chunk, and call
+`primary_stream::log_chat_message_call` with `characterId`/`messageId` both
+NULL (the console has neither) — pinned by `brahma_orchestrator_tier3_
+equivalence` and `brahma_console_tier3_equivalence` over a provisioned
+llm-logs partition (mutation-proven: disabling the log call reddens the
+row-count pin).
+
+Both engines' `Err(_) => break` on a mid-stream provider error is also
+reshaped to propagate — the same finding-3 class the `p4.9i2` §3 review
+fixed in the help loop. v4's `for await` throws out of `processBrahmaResponse`
+to `handleBrahmaConsoleMessage`'s outer catch (the `fatal_error` SSE frame,
+nothing persisted); the streaming orchestrator's `handle_brahma_console_message`
+now returns `Err` the same way, and the one-shot's `run_brahma_query`
+(which never throws, by its own established idiom) answers `{ok: false,
+detail}` instead of accepting a billed half reply as a final answer. A new
+`stream_error_mid_turn` corpus case in both tier-3 oracles scripts the
+throw red-first; the committed `brahma-{main,mount}.db` pair (shared with
+`brahma_console_routes_equivalence`) was widened with a new pinned chat via
+its builder, every pre-existing row reproduced byte-identical.
 
 #### 2026-09-06 — docs(drift): the 4.9.2 squash puts bugs 124/125 on main — the ordered round repointed to one pin (`f699da6f6`)
 

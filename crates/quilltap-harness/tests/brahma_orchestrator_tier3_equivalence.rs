@@ -16,13 +16,29 @@
 //! timestamps dropped) are diffed against the oracle.
 //!
 //! Corpus: a plain no-tool final; a native `run_sql` turn; a text-block tool turn;
-//! the `submit_final_response` arm; the duplicate-call stuck guard. (The agent-turn
-//! cap is now an operator-set instance setting — `resolve_brahma_max_agent_turns`,
-//! default 50, over a fixture with no `brahmaConsole` key — proven by the
+//! the `submit_final_response` arm; the duplicate-call stuck guard; the
+//! agent-turn-budget salvage; a scripted mid-stream provider throw
+//! (`stream_error_mid_turn`, P4.79 finding #111's sibling — v4's `for await`
+//! propagates it to `handleBrahmaConsoleMessage`'s outer catch: the `fatal_error`
+//! SSE frame, nothing persisted). v5 splits that outer catch to the caller (the
+//! module docs), so this case is recognized by an `error` key in the oracle's
+//! OWN recorded events, not by name — `handle_brahma_console_message` must
+//! answer `Err` with the identical message text, forward only the chunks that
+//! arrived before the throw, and persist NOTHING (a billed half reply would be
+//! the finding-3 shape). (The agent-turn cap is now an operator-set instance
+//! setting — `resolve_brahma_max_agent_turns`, default 50, over a fixture with
+//! no `brahmaConsole` key — proven by the
 //! `loop_bound_forces_a_final_answer_at_the_operator_cap` unit test in the
 //! orchestrator's own `tests`, mirroring the one-shot engine. Its default-50 value
 //! also rides the recorded system-prompt bytes here — `build_agent_mode_instructions(50)`
 //! — so this oracle must be regenerated at v4 `6452e2c3`+ (P4.D57).)
+//!
+//! The committed `brahma-{main,mount}.db` pair (shared with
+//! `brahma_console_routes_equivalence`) was REBUILT from
+//! `harness/oracle/fixtures/build-brahma-console-web-fixture.ts` after adding its
+//! pinned CHAT_G (`c1000000-...011`) for this case — every pre-existing id/row
+//! reproduced byte-identical (the one legitimate drift, CHAT_A's wall-clock
+//! `lastMessageAt`, is already blanked by the routes differential).
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — the oracle lives under
 //! `.claude/`, which jest ignores, so mirror it to /tmp):
@@ -128,6 +144,10 @@ struct ChunkW {
     usage: Option<UsageW>,
     #[serde(default)]
     raw_response: Option<Value>,
+    /// A scripted mid-stream provider throw (P4.79's `stream_error_mid_turn`) —
+    /// v4's `for await` propagates it out of `processBrahmaResponse`.
+    #[serde(default)]
+    error: Option<String>,
 }
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -159,6 +179,9 @@ fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
 }
 
 fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
+    if let Some(e) = &c.error {
+        return Err(StreamError::new(e.clone()));
+    }
     if c.done == Some(true) {
         let usage = c.usage.as_ref().map(|u| StreamUsage {
             prompt_tokens: u.prompt_tokens,
@@ -186,6 +209,11 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
 
 struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, VecDeque<Vec<StreamChunkResult>>>>,
+    /// Served sequences that ran to `done` (no scripted throw) — the number of
+    /// `CHAT_MESSAGE` rows v4's `streamMessage` logger would have written
+    /// (dogfood finding #111's other half — the streaming orchestrator wrote
+    /// none where v4 logs every call).
+    completed_streams: Mutex<i64>,
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
@@ -200,6 +228,7 @@ impl QueuedStreamingProvider {
         }
         Self {
             queues: Mutex::new(queues),
+            completed_streams: Mutex::new(0),
         }
     }
 }
@@ -219,7 +248,12 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
-                Some(seq) => seq,
+                Some(seq) => {
+                    if !seq.iter().any(Result::is_err) {
+                        *self.completed_streams.lock().unwrap() += 1;
+                    }
+                    seq
+                }
                 None => vec![Err(StreamError::new(format!(
                     "no canned stream queued for key ({provider}, model {}, {} msgs)",
                     params.model,
@@ -411,11 +445,24 @@ async fn brahma_orchestrator_tier3_matches_oracle() {
     }
     let detector = MarkerDetector { by_marker };
 
+    // An llm-logs partition beside the fixture pair, so the per-turn
+    // `CHAT_MESSAGE` rows are a comparand-shaped pin (dogfood finding #111's
+    // other half — the streaming orchestrator bypassed `primary_stream`'s
+    // logger and a real Brahma turn left NO row where v4 logs every
+    // `streamMessage` call). The oracle's mock sits above v4's logger, so the
+    // oracle cannot emit these rows — this leg is a v5 pin against the
+    // canned-stream count, not a differential.
+    let llm_dir = tempfile::tempdir().unwrap();
+    let llm_data = llm_dir.path().join("data");
+    std::fs::create_dir_all(&llm_data).unwrap();
+    quilltap_core::services::provisioning::provision_fresh_instance(&llm_data, PEPPER)
+        .expect("provision an llm-logs partition");
+    let work_llm_logs = llm_data.join("quilltap-llm-logs.db");
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            llm_logs: Some(work_llm_logs),
         },
         PEPPER,
     )
@@ -460,19 +507,57 @@ async fn brahma_orchestrator_tier3_matches_oracle() {
         };
         let result =
             handle_brahma_console_message(&mut deps, &sink, USER, &case.chat_id, &opts).await;
-        if let Err(e) = &result {
+
+        // v4's `handleBrahmaConsoleMessage` catches a mid-stream throw itself and
+        // emits a `fatal_error` SSE frame (`{error, errorType, details}`) before
+        // closing — so the oracle's recorded events carry that frame. v5 splits
+        // the outer catch to the caller (the module docs: CORE returns `Err`, the
+        // HOST driver emits the transport-shell error frame — the same split
+        // `ChatSend` uses), so a scripted-error case is recognized by an `error`
+        // key in the oracle's OWN recorded events, not by case name.
+        let oracle_case_events: Vec<Value> =
+            oracle_events.get(&case.name).cloned().unwrap_or_default();
+        let expected_error: Option<String> = oracle_case_events
+            .iter()
+            .find_map(|e| e.get("error").and_then(Value::as_str).map(str::to_string));
+
+        if let Some(want_err) = &expected_error {
+            match &result {
+                Ok(_) => {
+                    eprintln!(
+                        "[{}] expected a mid-stream error ({want_err:?}) but the orchestrator succeeded",
+                        case.name
+                    );
+                    failed.push(format!("{}_error", case.name));
+                    continue;
+                }
+                Err(e) => {
+                    let got_err = e.to_string();
+                    if &got_err != want_err {
+                        eprintln!(
+                            "[{}] ERROR TEXT MISMATCH:\n  GOT : {got_err}\n  WANT: {want_err}",
+                            case.name
+                        );
+                        failed.push(format!("{}_error_text", case.name));
+                    } else {
+                        eprintln!("[{}] errored as expected: {got_err}", case.name);
+                    }
+                }
+            }
+        } else if let Err(e) = &result {
             eprintln!("[{}] orchestrator errored: {e}", case.name);
             failed.push(format!("{}_error", case.name));
             continue;
         }
 
-        // Frames.
+        // Frames. On a scripted-error case, only the content/reasoning chunks
+        // forwarded BEFORE the throw are comparable — v5's core never emits the
+        // trailing transport-shell error frame (that is the host's job), so it is
+        // dropped from the oracle side before diffing.
         let got_frames: Vec<Value> = sink.events_json().into_iter().map(blank_frame).collect();
-        let want_frames: Vec<Value> = oracle_events
-            .get(&case.name)
-            .cloned()
-            .unwrap_or_default()
+        let want_frames: Vec<Value> = oracle_case_events
             .into_iter()
+            .filter(|e| e.get("error").is_none())
             .map(blank_frame)
             .collect();
         let got_f = norm(&Value::Array(got_frames));
@@ -522,6 +607,60 @@ async fn brahma_orchestrator_tier3_matches_oracle() {
             eprintln!("[{}] messages OK.", case.name);
         }
     }
+
+    // Finding #111's pin: one CHAT_MESSAGE row per completed Brahma stream call
+    // (a scripted mid-stream throw logs nothing — v4 logs on `chunk.done`), v4's
+    // console shape — `messageId` NULL (the console carries none) and
+    // `characterId` NULL (no character at all), `connectionProfileId` the
+    // resolved profile's, a MEASURED duration (finding #100). Mutations: remove
+    // `log_chat_message_call` in `stream_turn` → 0 rows; hard-code `durationMs`
+    // to 0 → the `nonneg_dur`/positive-duration census below reddens.
+    let (rows, null_mid, null_char, with_profile, nonneg_dur): (i64, i64, i64, i64, i64) = db
+        .read_llm_logs(|c| {
+            Ok(c.query_row(
+                "SELECT count(*), coalesce(sum(messageId IS NULL), 0), \
+                 coalesce(sum(characterId IS NULL), 0), \
+                 coalesce(sum(connectionProfileId IS NOT NULL), 0), \
+                 coalesce(sum(durationMs >= 0), 0) \
+                 FROM llm_logs WHERE type = 'CHAT_MESSAGE'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )?)
+        })
+        .unwrap();
+    let expected_chat_message_rows = *streaming.completed_streams.lock().unwrap();
+    if rows != expected_chat_message_rows {
+        eprintln!(
+            "LLM_LOGS ROW COUNT MISMATCH: got {rows}, want {expected_chat_message_rows} \
+             (one CHAT_MESSAGE row per completed Brahma stream call)"
+        );
+        failed.push("llm_logs_row_count".to_string());
+    }
+    if rows == 0 {
+        eprintln!("LLM_LOGS: the pin must see at least one completed turn");
+        failed.push("llm_logs_zero_rows".to_string());
+    }
+    if null_mid != rows {
+        eprintln!(
+            "LLM_LOGS: the Brahma console passes no messageId → every row's cell must be NULL"
+        );
+        failed.push("llm_logs_message_id".to_string());
+    }
+    if null_char != rows {
+        eprintln!(
+            "LLM_LOGS: the Brahma console has no character → every row's characterId must be NULL"
+        );
+        failed.push("llm_logs_character_id".to_string());
+    }
+    if with_profile != rows {
+        eprintln!("LLM_LOGS: every row must carry the resolved connectionProfileId");
+        failed.push("llm_logs_connection_profile_id".to_string());
+    }
+    if nonneg_dur != rows {
+        eprintln!("LLM_LOGS: durationMs must be a measured, non-negative value on every row");
+        failed.push("llm_logs_duration".to_string());
+    }
+    eprintln!("[llm_logs] {rows} CHAT_MESSAGE row(s), expected {expected_chat_message_rows}.");
 
     drop(db);
     let _ = std::fs::remove_file(&work_main);

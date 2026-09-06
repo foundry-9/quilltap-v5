@@ -417,6 +417,21 @@ where
         character_id: String::new(),
     };
 
+    // v4 gates the CHAT_MESSAGE log on `if (userId)`; the console never has a
+    // `messageId` or `characterId` to carry (dogfood finding #111's other half —
+    // the streaming orchestrator wrote no `llm_logs` row at all).
+    let stream_log = (!user_id.is_empty()).then(|| BrahmaStreamLog {
+        db,
+        user_id,
+        chat_id,
+        profile: crate::services::primary_stream::EffectiveProfile {
+            id: profile_id.clone(),
+            provider: provider.clone(),
+            model_name: model.clone(),
+            base_url: base_url.clone(),
+        },
+    });
+
     // Loop state (faithful to v4 processBrahmaResponse).
     let mut agent_turn_count: i64 = 0;
     let mut full_response = String::new();
@@ -446,8 +461,16 @@ where
             &conversation_messages,
             &effective_tools,
             &prior_reasoning,
+            stream_log.as_ref(),
         )
         .await;
+        // v4 `:343`: a throw inside the `for await` propagates out of
+        // `processBrahmaResponse` to `handleBrahmaConsoleMessage`'s outer catch —
+        // the turn fails, nothing is persisted (the `p4.9i2` §3 review fixed the
+        // same class in the help loop; this is finding-3's Brahma sibling).
+        if let Some(e) = turn.error {
+            return Err(BrahmaSendError::new(e));
+        }
         let mut current_response = turn.content;
         let turn_reasoning = turn.turn_reasoning;
         run_reasoning = format!("{prior_reasoning}{turn_reasoning}");
@@ -774,6 +797,19 @@ where
 // Helpers.
 // ===========================================================================
 
+/// What one Brahma turn's `CHAT_MESSAGE` `llm_logs` row needs (v4's
+/// `streamMessage({..., userId, chatId})` — no `characterId`, no `messageId`:
+/// the console has neither). v4 logs EVERY `streamMessage` call at `chunk.done`
+/// (`streaming.service.ts:444`); the streaming orchestrator bypassed
+/// `primary_stream`'s logger entirely, so a real Brahma turn left no row at all
+/// — dogfood finding #111's other half (2026-09-06).
+struct BrahmaStreamLog<'a> {
+    db: &'a Db,
+    user_id: &'a str,
+    chat_id: &'a str,
+    profile: crate::services::primary_stream::EffectiveProfile,
+}
+
 /// The pieces one streamed agent turn yields.
 struct StreamTurnResult {
     content: String,
@@ -784,6 +820,11 @@ struct StreamTurnResult {
     /// The last usage chunk this turn (None when the provider sent none — v4's
     /// `streamUsage ?? null`).
     usage: Option<crate::model::stream::StreamUsage>,
+    /// A provider error mid-stream. v4's `for await (const chunk of
+    /// streamMessage(...))` THROWS here, which reaches `handleBrahmaConsoleMessage`'s
+    /// outer catch (the `fatal_error` SSE frame, no assistant row persisted); the
+    /// chunks already forwarded stay forwarded on both sides.
+    error: Option<String>,
 }
 
 /// Run one streamed LLM call, forwarding content + cumulative reasoning to `sink`
@@ -798,7 +839,11 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     messages: &[ThreadedMessage],
     tools: &[Value],
     prior_reasoning: &str,
+    log: Option<&BrahmaStreamLog<'_>>,
 ) -> StreamTurnResult {
+    // v4 `streaming.service.ts:382` — `const startTime = Date.now()`, captured
+    // immediately before the provider loop.
+    let started_at_ms = crate::clock::now_unix_ms();
     // v4: `tools.length > 0 ? tools : undefined`.
     let tools_value = if tools.is_empty() {
         None
@@ -828,6 +873,9 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     let mut turn_reasoning = String::new();
     let mut thought_signature: Option<String> = None;
     let mut usage: Option<crate::model::stream::StreamUsage> = None;
+    let mut cache_usage: Option<crate::model::stream::StreamCacheUsage> = None;
+    let mut raw_provider_usage: Option<Value> = None;
+    let mut error: Option<String> = None;
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
@@ -848,6 +896,12 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
                 if let Some(u) = c.usage {
                     usage = Some(u);
                 }
+                if let Some(cu) = c.cache_usage {
+                    cache_usage = Some(cu);
+                }
+                if let Some(rpu) = c.raw_provider_usage {
+                    raw_provider_usage = Some(rpu);
+                }
                 if let Some(r) = c.raw_response {
                     raw = Some(r);
                 }
@@ -855,7 +909,35 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
                     thought_signature = Some(ts);
                 }
             }
-            Err(_) => break,
+            Err(e) => {
+                error = Some(e.to_string());
+                break;
+            }
+        }
+    }
+    // v4 logs the call on `chunk.done` (a thrown stream logs nothing).
+    if error.is_none() {
+        if let Some(l) = log {
+            let ctx = crate::services::primary_stream::StreamLogCtx {
+                db: l.db,
+                user_id: l.user_id,
+                chat_id: l.chat_id,
+                message_id: "",
+                character_id: None,
+                log_context: &crate::services::llm_logging::LogContext::none(),
+                started_at_ms,
+            };
+            crate::services::primary_stream::log_chat_message_call(
+                &ctx,
+                &l.profile,
+                &params,
+                content.clone(),
+                usage,
+                cache_usage,
+                raw_provider_usage,
+                raw.clone(),
+            )
+            .await;
         }
     }
     StreamTurnResult {
@@ -864,6 +946,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
         turn_reasoning,
         thought_signature,
         usage,
+        error,
     }
 }
 

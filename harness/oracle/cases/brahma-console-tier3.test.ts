@@ -53,6 +53,8 @@ interface ChunkSpec {
   content?: string;
   done?: boolean;
   rawResponse?: unknown;
+  /** A scripted mid-stream provider throw (P4.79's `stream_error_mid_turn`). */
+  error?: string;
 }
 interface CaseSpec {
   name: string;
@@ -153,6 +155,10 @@ async function main(): Promise<void> {
           sequences: [seq],
         });
         for (const chunk of seq) {
+          // A scripted mid-stream throw: v4's `for await` propagates it out of
+          // `runBrahmaQuery` itself (no internal try/catch there) — the same
+          // shape the `p4.9i2` §3 review pinned in the help loop.
+          if (chunk.error) throw new Error(chunk.error);
           if (chunk.done) {
             yield { done: true, rawResponse: chunk.rawResponse };
           } else {
@@ -232,12 +238,24 @@ async function main(): Promise<void> {
       await setBrahmaConsoleSettings({ maxAgentTurns: call.maxAgentTurns });
     }
 
-    const result = await runBrahmaQuery({
-      repos,
-      userId: call.userId,
-      chatId: spec.chatId,
-      question: call.question,
-    });
+    // `runBrahmaQuery` has NO try/catch of its own — a scripted mid-stream throw
+    // propagates straight out of the awaited call (v4's real caller,
+    // `answerAsBrahma`, wraps the whole thing and converts any thrown error into
+    // `{ok: false, error: {kind: 'llm-failed', detail}}`; the ENGINE's own return
+    // shape on this path is therefore undefined in v4, so the oracle records it
+    // in the same `{ok, detail}` shape `runBrahmaQuery`'s OWN failure returns
+    // already use — matching v5's `run_brahma_query`, which never throws).
+    let result: { ok: boolean; answer?: string; detail?: string };
+    try {
+      result = await runBrahmaQuery({
+        repos,
+        userId: call.userId,
+        chatId: spec.chatId,
+        question: call.question,
+      });
+    } catch (err) {
+      result = { ok: false, detail: err instanceof Error ? err.message : String(err) };
+    }
 
     lines.push(JSON.stringify({ kind: 'result', call: call.name, result }));
   }

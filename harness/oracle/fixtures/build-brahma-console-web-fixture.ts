@@ -20,7 +20,10 @@
  *     (pinned P1, empty — the delete + tier-3 send target), CHAT_C (unpinned
  *     `consoleConnectionProfileId: null` — the default-fallback resolution arm),
  *   - ONE non-brahma salon chat (pins the list filter + the `verify_brahma_chat`
- *     404 arm).
+ *     404 arm),
+ *   - CHAT_G (pinned P1, empty — P4.79's `stream_error_mid_turn` tier-3 arm: a
+ *     mid-stream provider throw, v4's `for await` propagating it to
+ *     `handleBrahmaConsoleMessage`'s outer catch with nothing persisted).
  *
  * Regenerate (Node 24, from the v4 checkout) + re-copy the committed .db files:
  *   N=~/.nvm/versions/node/v24.13.1/bin
@@ -56,6 +59,7 @@ const CHAT_SALON = 'c1000000-0000-4000-8000-00000000000d'; // non-brahma (list f
 const CHAT_D = 'c1000000-0000-4000-8000-00000000000e'; // brahma, pinned P3 (text-block)
 const CHAT_E = 'c1000000-0000-4000-8000-00000000000f'; // brahma, pinned P1 (tier-3 submit_final)
 const CHAT_F = 'c1000000-0000-4000-8000-000000000010'; // brahma, pinned P1 (tier-3 dup_stuck)
+const CHAT_G = 'c1000000-0000-4000-8000-000000000011'; // brahma, pinned P1 (tier-3 stream_error_mid_turn, P4.79)
 
 // Pinned message ids for CHAT_A's transcript.
 const MSG_A1 = 'd1000000-0000-4000-8000-000000000001'; // USER
@@ -244,6 +248,7 @@ async function main(): Promise<void> {
   await mkBrahma(CHAT_D, 'A Text-Block Audience at the Console', P3);
   await mkBrahma(CHAT_E, 'A Second Fresh Audience', P1);
   await mkBrahma(CHAT_F, 'A Third Fresh Audience', P1);
+  await mkBrahma(CHAT_G, 'A Curtailed Audience at the Console', P1);
 
   // 4. CHAT_A's transcript (via addMessage, so lastMessageAt/messageCount bake).
   //    USER → empty tool-turn ASSISTANT → TOOL row → substantive ASSISTANT.
@@ -290,7 +295,7 @@ async function main(): Promise<void> {
   await closeDatabase();
   process.stderr.write(
     `built brahma-console-web fixture: main=${mainOut} mount=${mountOut} ` +
-      `(2 users, 3 profiles, 6 brahma chats [A has 4 msgs], 1 salon)\n`,
+      `(2 users, 3 profiles, 7 brahma chats [A has 4 msgs], 1 salon)\n`,
   );
   process.exit(0);
 }

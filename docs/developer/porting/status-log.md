@@ -109323,3 +109323,215 @@ The finding-#115 standing note in `dogfood-findings.md` is the unifier's to
 close — this lane does not edit that file's standing notes.
 
 Versions: core 0.0.807, harness 0.0.696.
+## Lane record — P4.79 (the Brahma Console's two remainders: `llm_logs` rows for
+both engines' streamed turns, and a mid-stream provider error that stops the
+turn instead of persisting a half reply) (2026-09-06)
+
+Closes finding #111's Brahma-side remainder (the help orchestrator's half
+landed at `4abbfe3b`) and the finding-3 sibling the `p4.9i2` §3 review named
+for this engine (`brahma_console/orchestrator.rs:858`).
+
+**Freshness note:** the lane's freshness probe failed at start (v4 had moved
+past the order's `ba34fa367` pin to `f699da6f6` on `main` and `1a2b2164c` on
+`bugfix` between ordering and pickup) — stopped and reported per the carryout
+rule rather than porting against unrecorded drift. The round's orders had
+already been repointed to the single `f699da6f6` pin in `025ab29c`; fast-
+forwarding the lane branch onto that docs-only commit cleared the mismatch and
+the probe passed. Regenerated everything below from `/tmp/qt-v4-pin-p479-
+f699da6f6`, a lane-unique detached worktree per ledger §5.1.
+
+### Tier 1 — the log carrier + the mid-stream error fix (both engines)
+
+**Survey, `lib/services/brahma-console/orchestrator.service.ts`:** the stream
+loop (`:343 for await (const chunk of streamMessage({...}))`) calls v4's real
+`streamMessage`, which logs a `CHAT_MESSAGE` row on `chunk.done` regardless of
+caller (`streaming.service.ts:444`) — a thrown chunk never reaches `done`, so a
+scripted mid-stream throw logs nothing on either side. The outer catch that
+receives the propagated throw lives in `handleBrahmaConsoleMessage`'s stream
+`start()` (`:160`, not `:637` as the order's line reference named — that line
+sits inside the unrelated `triggerAsyncTasks` catch at this pin): it logs, emits
+`encodeErrorEvent(message, 'fatal_error', '')`, and closes — no assistant row is
+ever reached (that write sits AFTER the agent loop, `:578`). The one-shot
+(`one-shot.service.ts`, `runBrahmaQuery`) has NO try/catch of its own; a thrown
+chunk propagates straight out of the function to its real caller
+(`carina.service.ts`'s `answerAsBrahma`, which wraps the whole call and converts
+any thrown error into `{ok: false, error: {kind: 'llm-failed', detail}}`).
+
+**v5 before this lane:** `orchestrator.rs`'s `stream_turn` had no logging at all
+(`grep log_chat_message_call|llm_log` → nothing) and `Err(_) => break` on a
+mid-stream error — the finding-3 shape: whatever content had streamed became
+`current_response`, treated as a normal (if truncated) answer, persisted and
+logged. `brahma_console/mod.rs`'s one-shot `run_stream` had the identical
+`Err(_) => break`, with no logging either, and no error signal at all in its
+return tuple — a mid-stream throw was silently indistinguishable from a stream
+that simply ended.
+
+**The fix, mirroring the help precedent exactly** (`help_chat/orchestrator.rs`,
+landed at finding #111): both `stream_turn` (orchestrator.rs) and `run_stream`
+(mod.rs, restructured from a 4-tuple into `RunStreamResult` to carry the new
+field) gained an optional stream-log carrier (`BrahmaStreamLog`/
+`OneShotStreamLog`, each just `db`/`user_id`/`chat_id`/`profile:
+EffectiveProfile` — Brahma has no character at all, so `character_id: None`
+unconditionally, unlike help's per-seat carry) and now also capture
+`cache_usage`/`raw_provider_usage` per chunk (v4's real `streaming.service.ts`
+tracks both on every chunk regardless of whether a cache key was sent; neither
+v5 engine captured them before, since neither had ever logged). `started_at_ms`
+is stamped via `crate::clock::now_unix_ms()` immediately before the provider
+call (v4 `:382`). On a clean end (`error.is_none()`), `primary_stream::
+log_chat_message_call` is called with `message_id: ""` (→ NULL, v4 passes none)
+and `character_id: None` (→ NULL). On `Err(e)`, `error = Some(e.to_string())`
+replaces the bare `break`; the orchestrator's call site does `if let Some(e) =
+turn.error { return Err(BrahmaSendError::new(e)); }` (propagating out of
+`handle_brahma_console_message` — the module docs already described this exact
+split: CORE returns `Err`, the HOST driver maps it to the transport-shell error
+frame, "the same split `ChatSend` uses"); the one-shot's call site does `if let
+Some(e) = stream.error { return fail(e); }`, preserving `run_brahma_query`'s
+existing "never throws" contract (already the established idiom for the
+api-key/tool-build failure paths — v4 doesn't catch those either).
+
+### The fixture — a rebuild, not a migrate
+
+The committed `crates/quilltap-web/tests/fixtures/brahma-{main,mount}.db` pair
+(shared by `brahma_orchestrator_tier3_equivalence` and
+`brahma_console_routes_equivalence`) needed a new chat for the scripted-error
+case — `handle_brahma_console_message` 404s on an unknown chat id, and the
+one-shot's own committed pair regenerates fresh into `/tmp` every run (no
+persistence, no chat needed there at all). Per `fixture-rebuild-vs-migrate-in-
+place`: every id `harness/oracle/fixtures/build-brahma-console-web-fixture.ts`
+mints is PINNED (`CHAT_A`…`CHAT_F`, `CHAT_SALON`) and every consumer hard-codes
+those same pins, so a rebuild reproduces every pre-existing row rather than
+corrupting them. Added `CHAT_G` (`c1000000-…011`, pinned to `P1`, empty) and
+re-ran the builder from the pinned worktree; a full row-by-row dump (all seven
+pre-existing chat ids, `chats_read::find_by_id`) confirmed byte-identical
+JSON except `CHAT_A`'s `lastMessageAt` (a wall-clock stamp `addMessage` sets
+independently of the passed `createdAt` — a PRE-EXISTING non-determinism the
+routes differential already blanks as volatile, `["id", "createdAt",
+"updatedAt", "lastMessageAt"]`). `brahma_console_routes_equivalence` regenerated
+and re-ran clean (all 30 cases, including `list`, which now sees 7 brahma
+chats for USER_A instead of 6).
+
+### The corpus arms
+
+**`brahma_orchestrator_tier3_equivalence`:** a new `stream_error_mid_turn` case
+(`CHAT_G`, `streams: [[{content:"Half a"}, {error:"the provider hung up"}]]`).
+The oracle `.test.ts` generator scripts `if (chunk.error) throw new
+Error(chunk.error)` (identical to the `p4.9i2` §3 review's help fix); the
+recorded events are `[{content:"Half a"}, {error, errorType:'fatal_error',
+details:''}]` and the persisted rows are `[USER]` only (no assistant row). Since
+v5 splits the error frame to the host (never emitted by core), the Rust side
+recognizes a scripted-error case by an `error` key in the oracle's OWN recorded
+events (not by case name), asserts `result` is `Err` with the identical message
+text, and compares frames against the oracle's events with any `error`-bearing
+entry dropped before the diff.
+
+**`brahma_console_tier3_equivalence`:** a new `stream_error_mid_turn` case
+(reusing the shared `chatId` — the one-shot never reads chat state, so no new
+row is needed). Because `runBrahmaQuery` has no try/catch of its own, the
+oracle driver itself would throw uncaught on this case; wrapped the call in
+`try/catch` and recorded the SAME `{ok, detail}` shape the engine's own
+existing failure returns already use (`{ok:false, detail:"the provider hung
+up"}`) — the honest representation of what v5's "never throws" `fail(...)`
+idiom is already standing in for at this exact boundary, documented inline as a
+harness modeling choice rather than a literal v4 return shape (v4's `runBrahma
+Query` has no defined return on this path at all; the shape only exists once
+you're past the `answerAsBrahma` wrapper, which v5 has not ported).
+
+**The `llm_logs` row-count pin (both families):** a `completed_streams` counter
+on each `QueuedStreamingProvider` (help's exact idiom — increments only for a
+served sequence with no `Err` entries) compared against `SELECT count(*) …
+WHERE type='CHAT_MESSAGE'` over a freshly `provision_fresh_instance`'d llm-logs
+partition (neither family had one before — `llm_logs: None`). Asserts row
+count, `messageId IS NULL` on every row (both engines), `characterId IS NULL`
+on every row (Brahma has none — unlike help's per-character carry),
+`connectionProfileId IS NOT NULL`, and `durationMs >= 0` on every row.
+Orchestrator: 15 rows (6 cases × their completed streams; the error case
+contributes 0). One-shot: 17 rows.
+
+### Mutation proofs (each reverted after confirming red)
+
+- **Log call disabled** (`if false && error.is_none() { … }`) in both
+  `stream_turn` and `run_stream` → the row-count pin reddens in both families
+  (`0 vs 15` / `0 vs 17`).
+- **`duration_ms` hard-coded to `0.0`** in `primary_stream::
+  log_chat_message_call` (the shared, NOBODY-owned function both engines
+  call) → the pre-existing `llm_log_duration_guard` whole-tree census reddens
+  (this lane wrote no new hard-coded-zero site of its own to guard against;
+  the existing census already covers any call into the shared logger).
+- **`Err(_) => break` restored** in both engines → the orchestrator's
+  `stream_error_mid_turn` case reddens on BOTH the result comparison
+  (`expected a mid-stream error … but the orchestrator succeeded`) and the
+  `llm_logs` count (`16 vs 15` — the half reply got persisted AND logged,
+  the exact finding-3 shape); the one-shot's case reddens on the result
+  comparison alone (`{ok:true,answer:"Half a"}` vs `{ok:false,detail:"the
+  provider hung up"}`).
+
+### Deferrals
+
+None. Both Tier 1 items and the Tier 2 one-shot mid-stream arm all landed;
+Tier 3 named none expected and none were found.
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D
+warnings` clean on both feature sets (plain + `quilltap-core/native-transport`);
+`cargo build --workspace` clean. `cargo test --workspace` (full log +
+sentinel, never `| tail`) with the three families' oracle/fixture env vars:
+**502 test binaries / 2,876 tests / 0 failed** (exit 0), zero `SKIP:` lines
+anywhere in the log; the three families confirmed RUN by name, not skipped.
+`brahma_orchestrator_tier3_equivalence`, `brahma_console_tier3_equivalence`,
+and `brahma_console_routes_equivalence` re-run by name from the pinned
+`f699da6f6` oracles after the final `Cargo.lock` refresh, all green.
+
+Regen recipes (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`, from a
+lane-unique `/tmp/qt-v4-pin-p479-f699da6f6` detached worktree with the three
+`ledger §5.1` symlink classes):
+
+```bash
+# orchestrator family (committed fixture; the case + fixture JSON mirrored to
+# /tmp because jest ignores .claude/)
+QT_FIXTURE_BRAHMA_MAIN=<repo>/crates/quilltap-web/tests/fixtures/brahma-main.db \
+QT_FIXTURE_BRAHMA_MOUNT=<repo>/crates/quilltap-web/tests/fixtures/brahma-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-brahma-orch.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots /tmp/<mirror>/cases -- brahma-orchestrator-tier3
+QT_ORACLE_BRAHMA_ORCH=/tmp/oracle-brahma-orch.ndjson \
+  cargo test -p quilltap-harness --test brahma_orchestrator_tier3_equivalence
+
+# one-shot family (fixture regenerated fresh into /tmp, never committed)
+QT_FIXTURE_OUT=/tmp/qt-brahma-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-brahma-mount.db \
+  npx tsx <repo>/harness/oracle/fixtures/build-brahma-console-fixture.ts
+QT_FIXTURE_BRAHMA_MAIN=/tmp/qt-brahma-main.db QT_FIXTURE_BRAHMA_MOUNT=/tmp/qt-brahma-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-brahma.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots /tmp/<mirror>/cases -- brahma-console-tier3
+QT_ORACLE_BRAHMA=/tmp/oracle-brahma.ndjson \
+QT_FIXTURE_BRAHMA_MAIN=/tmp/qt-brahma-main.db QT_FIXTURE_BRAHMA_MOUNT=/tmp/qt-brahma-mount.db \
+  cargo test -p quilltap-harness --test brahma_console_tier3_equivalence
+
+# routes family (consumer, regen-only — same committed fixture as the orchestrator)
+QT_FIXTURE_BRAHMA_MAIN=<repo>/crates/quilltap-web/tests/fixtures/brahma-main.db \
+QT_FIXTURE_BRAHMA_MOUNT=<repo>/crates/quilltap-web/tests/fixtures/brahma-mount.db \
+QT_ORACLE_OUT=/tmp/oracle-brahma-routes.ndjson \
+  npx jest --silent --watchman=false --testTimeout=120000 \
+    --roots "$PWD" --roots /tmp/<mirror>/cases -- brahma-console-routes
+QT_ORACLE_BRAHMA_ROUTES=/tmp/oracle-brahma-routes.ndjson \
+  cargo test -p quilltap-harness --test brahma_console_routes_equivalence
+```
+
+### Gotchas for the next lane touching this family
+
+- The order's `processBrahmaResponse` line references (`:343`, `:637`) drift
+  with the pin — always re-locate by content (`grep -n "for await"` /
+  `grep -n "^export async function handleBrahmaConsoleMessage"`), never trust a
+  cited line number without checking it.
+- The one-shot and orchestrator families use TWO DIFFERENT fixture strategies
+  for the "same-looking" `brahma-{main,mount}.db` names: the orchestrator's
+  pair is COMMITTED (`crates/quilltap-web/tests/fixtures/`); the one-shot's is
+  built FRESH into `/tmp` every run from `brahma-console-tier3.json` via
+  `build-brahma-console-fixture.ts`. Don't assume one recipe covers both.
+  `brahma_console_routes_equivalence` shares the orchestrator's committed pair.
+- Widening the orchestrator's committed fixture needs the ROUTES family's
+  companion regen too (same pair) — `§A` lists both as this lane's, but a
+  future lane touching just one must check the other still passes.
+
+Versions: core 0.0.807, harness 0.0.696; host/web/cli/tauri/SPA unchanged.

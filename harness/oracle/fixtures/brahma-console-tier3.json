@@ -158,6 +158,15 @@
         [ { "done": true, "rawResponse": { "marker": "bx4" } } ],
         [ { "content": "" }, { "done": true, "rawResponse": { "marker": "bx5" } } ]
       ]
+    },
+    {
+      "name": "stream_error_mid_turn",
+      "userId": "a1111111-1111-4111-8111-111111111111",
+      "question": "Half a thought, please.",
+      "streams": [
+        [ { "content": "Half a" }, { "error": "the provider hung up" } ]
+      ],
+      "expect": { "ok": false, "detail": "the provider hung up" }
     }
   ]
 }

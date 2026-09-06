@@ -17,8 +17,14 @@
 //!
 //! Cases: no-profile; the two api-key detail strings; a plain answer; submit via
 //! tool args AND via the raw-text fallback; empty → 'empty response'; a `run_sql`
-//! iteration (real SELECT + continuation); and the duplicate-call stuck-loop
-//! guard (the byte-exact nudge is proven by the 4th continuation's canned key).
+//! iteration (real SELECT + continuation); the duplicate-call stuck-loop guard
+//! (the byte-exact nudge is proven by the 4th continuation's canned key); the
+//! agent-turn-budget salvage; and a scripted mid-stream provider throw
+//! (`stream_error_mid_turn`, P4.79 — v4's `for await` propagates it straight out
+//! of `runBrahmaQuery`, which has no try/catch of its own; the oracle records
+//! the shape v4's real caller, `answerAsBrahma`, converts an uncaught throw
+//! into, matching v5's own "never throws" `fail(...)` idiom already used for
+//! the api-key/tool-build failure paths above).
 //!
 //! Generate the fixture + oracle output (Node 24, from the v4 checkout — the
 //! oracle lives under `.claude/`, which jest ignores, so mirror it to /tmp):
@@ -115,6 +121,11 @@ struct ChunkW {
     done: Option<bool>,
     #[serde(default)]
     raw_response: Option<Value>,
+    /// A scripted mid-stream provider throw (P4.79's `stream_error_mid_turn`) —
+    /// v4's `for await` propagates it out of `runBrahmaQuery` itself (no
+    /// internal try/catch there).
+    #[serde(default)]
+    error: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -141,6 +152,9 @@ fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
 }
 
 fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
+    if let Some(e) = &c.error {
+        return Err(StreamError::new(e.clone()));
+    }
     if c.done == Some(true) {
         let mut chunk = StreamChunk::done(None::<StreamUsage>);
         chunk.raw_response = c.raw_response.clone();
@@ -155,6 +169,11 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
 
 struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>>>,
+    /// Served sequences that ran to `done` (no scripted throw) — the number of
+    /// `CHAT_MESSAGE` rows v4's `streamMessage` logger would have written
+    /// (dogfood finding #111's other half — the one-shot engine wrote none where
+    /// v4 logs every call).
+    completed_streams: Mutex<i64>,
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
@@ -170,6 +189,7 @@ impl QueuedStreamingProvider {
         }
         Self {
             queues: Mutex::new(queues),
+            completed_streams: Mutex::new(0),
         }
     }
 }
@@ -189,7 +209,12 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
-                Some(seq) => seq,
+                Some(seq) => {
+                    if !seq.iter().any(Result::is_err) {
+                        *self.completed_streams.lock().unwrap() += 1;
+                    }
+                    seq
+                }
                 None => vec![Err(StreamError::new(format!(
                     "no canned stream queued for key ({provider}, model {}, {} msgs)",
                     params.model,
@@ -326,11 +351,27 @@ async fn brahma_console_tier3_matches_oracle() {
     }
     let detector = MarkerDetector { by_marker };
 
+    // An llm-logs partition beside the fixture pair, so the per-query
+    // `CHAT_MESSAGE` rows are a comparand-shaped pin (dogfood finding #111's
+    // other half — the one-shot engine bypassed `primary_stream`'s logger and a
+    // real Brahma query left NO row where v4 logs every `streamMessage` call).
+    // The oracle's mock sits above v4's logger, so the oracle cannot emit these
+    // rows — this leg is a v5 pin against the canned-stream count, not a
+    // differential.
+    let llm_dir = tempfile::tempdir().unwrap();
+    let llm_data = llm_dir.path().join("data");
+    std::fs::create_dir_all(&llm_data).unwrap();
+    quilltap_core::services::provisioning::provision_fresh_instance(
+        &llm_data,
+        &spec.test_pepper_base64,
+    )
+    .expect("provision an llm-logs partition");
+    let work_llm_logs = llm_data.join("quilltap-llm-logs.db");
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            llm_logs: Some(work_llm_logs),
         },
         &spec.test_pepper_base64,
     )
@@ -374,6 +415,44 @@ async fn brahma_console_tier3_matches_oracle() {
             .clone();
         assert_eq!(got, want, "{}: result diverges", case.name);
     }
+
+    // Finding #111's pin: one CHAT_MESSAGE row per completed one-shot stream
+    // call (a scripted mid-stream throw logs nothing — v4 logs on `chunk.done`),
+    // v4's console shape — `messageId` NULL (the engine carries none) and
+    // `characterId` NULL (no character at all), `connectionProfileId` the
+    // resolved profile's, a MEASURED duration. Mutations: remove
+    // `log_chat_message_call` in `run_stream` → 0 rows; hard-code `durationMs`
+    // to 0 → `llm_log_duration_guard` reddens.
+    let (rows, null_mid, null_char, with_profile, nonneg_dur): (i64, i64, i64, i64, i64) = db
+        .read_llm_logs(|c| {
+            Ok(c.query_row(
+                "SELECT count(*), coalesce(sum(messageId IS NULL), 0), \
+                 coalesce(sum(characterId IS NULL), 0), \
+                 coalesce(sum(connectionProfileId IS NOT NULL), 0), \
+                 coalesce(sum(durationMs >= 0), 0) \
+                 FROM llm_logs WHERE type = 'CHAT_MESSAGE'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )?)
+        })
+        .unwrap();
+    let expected_chat_message_rows = *streaming.completed_streams.lock().unwrap();
+    assert_eq!(
+        rows, expected_chat_message_rows,
+        "one CHAT_MESSAGE row per completed one-shot stream call"
+    );
+    assert!(rows > 0, "the pin must see at least one completed turn");
+    assert_eq!(
+        null_mid, rows,
+        "the one-shot engine passes no messageId → NULL"
+    );
+    assert_eq!(
+        null_char, rows,
+        "the one-shot engine has no character → characterId NULL"
+    );
+    assert_eq!(with_profile, rows);
+    assert_eq!(nonneg_dur, rows);
+    eprintln!("[llm_logs] {rows} CHAT_MESSAGE row(s), expected {expected_chat_message_rows}.");
 
     drop(db);
     let _ = std::fs::remove_file(&work_main);

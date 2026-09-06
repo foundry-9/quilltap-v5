@@ -60,6 +60,8 @@ interface ChunkSpec {
   done?: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number } | null;
   rawResponse?: unknown;
+  /** A scripted mid-stream provider throw (P4.79's `stream_error_mid_turn`). */
+  error?: string;
 }
 interface CaseSpec {
   name: string;
@@ -169,6 +171,11 @@ async function main(): Promise<void> {
           sequences: [seq],
         });
         for (const chunk of seq) {
+          // A scripted mid-stream throw: v4's `for await` propagates it out of
+          // `processBrahmaResponse` to `handleBrahmaConsoleMessage`'s outer
+          // catch (the `fatal_error` SSE frame, nothing persisted) — the same
+          // shape the `p4.9i2` §3 review pinned in the help loop.
+          if (chunk.error) throw new Error(chunk.error);
           if (chunk.done) {
             yield { done: true, usage: chunk.usage ?? undefined, rawResponse: chunk.rawResponse };
           } else if (chunk.reasoning !== undefined) {

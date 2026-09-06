@@ -241,10 +241,38 @@ impl EventSink for NoopSink {
     fn emit(&self, _event: ChatEvent) {}
 }
 
-/// One streamed LLM call → `(answer, rawResponse, reasoning, thoughtSignature)`.
-/// The slate crosses the stream boundary losslessly (v4 passes
-/// `ThreadedMessage[]` straight to `streamMessage`; P4.13 unit 2 made the v5
-/// boundary carry the tool-call linkage instead of flattening it away).
+/// What one one-shot turn's `CHAT_MESSAGE` `llm_logs` row needs (v4's
+/// `streamMessage({..., userId, chatId})` — no `characterId`, no `messageId`:
+/// the console has neither). v4 logs EVERY `streamMessage` call at `chunk.done`
+/// (`streaming.service.ts:444`); the one-shot engine bypassed
+/// `primary_stream`'s logger entirely, so a real Brahma query left no row at
+/// all — dogfood finding #111's other half (2026-09-06).
+struct OneShotStreamLog<'a> {
+    db: &'a Db,
+    user_id: &'a str,
+    chat_id: &'a str,
+    profile: crate::services::primary_stream::EffectiveProfile,
+}
+
+/// The pieces one streamed LLM call yields.
+struct RunStreamResult {
+    answer: String,
+    raw_response: Option<Value>,
+    /// The turn's cumulative reasoning (last-wins; DISPLAY ONLY).
+    reasoning: String,
+    thought_signature: Option<String>,
+    /// A provider error mid-stream. v4's `for await` propagates it out of
+    /// `runBrahmaQuery` to the caller (`answerAsBrahma`'s try/catch, which
+    /// persists nothing and answers `{ok: false, error: {kind: 'llm-failed'}}`);
+    /// the chunks already forwarded stay forwarded on both sides. v5 has no
+    /// live-forward here (the one-shot's `sink` is a no-op — v4's is too), so
+    /// only the accumulated `answer` up to the throw matters.
+    error: Option<String>,
+}
+
+/// One streamed LLM call. The slate crosses the stream boundary losslessly (v4
+/// passes `ThreadedMessage[]` straight to `streamMessage`; P4.13 unit 2 made the
+/// v5 boundary carry the tool-call linkage instead of flattening it away).
 async fn run_stream<STR: StreamingCompletionProvider>(
     streaming: &STR,
     provider: &str,
@@ -252,7 +280,11 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     model: &str,
     messages: &[ThreadedMessage],
     tools: &[Value],
-) -> (String, Option<Value>, String, Option<String>) {
+    log: Option<&OneShotStreamLog<'_>>,
+) -> RunStreamResult {
+    // v4 `streaming.service.ts:382` — `const startTime = Date.now()`, captured
+    // immediately before the provider loop.
+    let started_at_ms = crate::clock::now_unix_ms();
     // v4: `tools.length > 0 ? tools : undefined`.
     let tools_value = if tools.is_empty() {
         None
@@ -281,6 +313,10 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     let mut raw: Option<Value> = None;
     let mut reasoning = String::new();
     let mut thought_signature: Option<String> = None;
+    let mut usage: Option<crate::model::stream::StreamUsage> = None;
+    let mut cache_usage: Option<crate::model::stream::StreamCacheUsage> = None;
+    let mut raw_provider_usage: Option<Value> = None;
+    let mut error: Option<String> = None;
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
@@ -290,6 +326,15 @@ async fn run_stream<STR: StreamingCompletionProvider>(
                     }
                 }
                 answer.push_str(&c.content);
+                if let Some(u) = c.usage {
+                    usage = Some(u);
+                }
+                if let Some(cu) = c.cache_usage {
+                    cache_usage = Some(cu);
+                }
+                if let Some(rpu) = c.raw_provider_usage {
+                    raw_provider_usage = Some(rpu);
+                }
                 if let Some(raw_r) = c.raw_response {
                     raw = Some(raw_r);
                 }
@@ -297,10 +342,44 @@ async fn run_stream<STR: StreamingCompletionProvider>(
                     thought_signature = Some(ts);
                 }
             }
-            Err(_) => break,
+            Err(e) => {
+                error = Some(e.to_string());
+                break;
+            }
         }
     }
-    (answer, raw, reasoning, thought_signature)
+    // v4 logs the call on `chunk.done` (a thrown stream logs nothing).
+    if error.is_none() {
+        if let Some(l) = log {
+            let ctx = crate::services::primary_stream::StreamLogCtx {
+                db: l.db,
+                user_id: l.user_id,
+                chat_id: l.chat_id,
+                message_id: "",
+                character_id: None,
+                log_context: &crate::services::llm_logging::LogContext::none(),
+                started_at_ms,
+            };
+            crate::services::primary_stream::log_chat_message_call(
+                &ctx,
+                &l.profile,
+                &params,
+                answer.clone(),
+                usage,
+                cache_usage,
+                raw_provider_usage,
+                raw.clone(),
+            )
+            .await;
+        }
+    }
+    RunStreamResult {
+        answer,
+        raw_response: raw,
+        reasoning,
+        thought_signature,
+        error,
+    }
 }
 
 fn fail(detail: impl Into<String>) -> BrahmaConsoleResult {
@@ -333,6 +412,7 @@ where
     let provider = s(&profile, "provider").unwrap_or_default();
     let model = s(&profile, "modelName").unwrap_or_default();
     let base_url = s(&profile, "baseUrl");
+    let profile_id = s(&profile, "id").unwrap_or_default();
 
     // 2. API key: v4's `resolveConnectionProfileApiKey` (bug 81) — required where
     //    required, forwarded where merely accepted, and loud on a dangling id
@@ -470,6 +550,21 @@ where
         character_id: String::new(),
     };
 
+    // v4 gates the CHAT_MESSAGE log on `if (userId)`; the one-shot console never
+    // has a `messageId` or `characterId` to carry (dogfood finding #111's other
+    // half — the one-shot engine wrote no `llm_logs` row at all).
+    let stream_log = (!user_id.is_empty()).then(|| OneShotStreamLog {
+        db: deps.db,
+        user_id,
+        chat_id,
+        profile: crate::services::primary_stream::EffectiveProfile {
+            id: profile_id.clone(),
+            provider: provider.clone(),
+            model_name: model.clone(),
+            base_url: base_url.clone(),
+        },
+    });
+
     // 7. The agent tool loop (its OWN loop, faithful to v4) — bounded by the
     //    operator-set `max_agent_turns` resolved above.
     let mut agent_turn_count: i64 = 0;
@@ -487,16 +582,28 @@ where
             conversation_messages.push(plain_message("user", &build_force_final_message()));
         }
 
-        let (mut current_response, raw_response, turn_reasoning, turn_thought_signature) =
-            run_stream(
-                deps.streaming,
-                &provider,
-                base_url.as_deref(),
-                &model,
-                &conversation_messages,
-                &effective_tools,
-            )
-            .await;
+        let stream = run_stream(
+            deps.streaming,
+            &provider,
+            base_url.as_deref(),
+            &model,
+            &conversation_messages,
+            &effective_tools,
+            stream_log.as_ref(),
+        )
+        .await;
+        // v4's `for await` propagates a mid-stream throw out of `runBrahmaQuery`
+        // to the caller (`answerAsBrahma`'s own try/catch, which never persists
+        // and converts it to `{ok: false, error: {kind: 'llm-failed', ...}}`) —
+        // the same class as the streaming orchestrator's finding-3 fix, mapped
+        // onto this engine's "never throws" idiom.
+        if let Some(e) = stream.error {
+            return fail(e);
+        }
+        let mut current_response = stream.answer;
+        let raw_response = stream.raw_response;
+        let turn_reasoning = stream.reasoning;
+        let turn_thought_signature = stream.thought_signature;
 
         // Detect tool calls (native or text-block).
         let mut has_tool_calls = false;

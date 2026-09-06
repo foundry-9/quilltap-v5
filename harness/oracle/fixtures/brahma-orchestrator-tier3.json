@@ -96,6 +96,14 @@
         [{ "done": true, "rawResponse": { "marker": "bx4" } }],
         [{ "content": "" }, { "done": true, "rawResponse": { "marker": "bx5" } }]
       ]
+    },
+    {
+      "name": "stream_error_mid_turn",
+      "chatId": "c1000000-0000-4000-8000-000000000011",
+      "content": "Half a thought, please.",
+      "streams": [
+        [{ "content": "Half a" }, { "error": "the provider hung up" }]
+      ]
     }
   ]
 }
