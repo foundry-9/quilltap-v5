@@ -5717,6 +5717,11 @@ PB1 stays parked by the standing rule. Round record: `status-log.md`.
 
 ### `p4.9i2` bank — `help/connection-profiles.md` (P4.D111, v4 `0ba942b1`)
 
+**DISCHARGED at the `p4.9i2` round unification (2026-09-05):** P4.9I2A vendored
+the whole `help/` tree at the `d883a5ee1` pin (byte-identical, `diff -r` empty),
+so this banked delta is present in the shipped tree — measured by grep in the
+lane record. Kept for history.
+
 Banked 2026-08-23 by the bug-97 convergence lane. v4's `0ba942b1` added ONE
 paragraph to `help/connection-profiles.md`, immediately after the
 "They are not the same question…" paragraph (v4 line 417) and immediately
@@ -7527,6 +7532,11 @@ file port remains a NAMED standalone flag.
 
 ### `p4.9i2` bank — `help/file-uploads.md` + `help/chat-settings.md` (P4.D151, v4 `0b0617fee`)
 
+**DISCHARGED at the `p4.9i2` round unification (2026-09-05):** P4.9I2A vendored
+the whole `help/` tree at the `d883a5ee1` pin (byte-identical, `diff -r` empty),
+so this banked delta is present in the shipped tree — measured by grep in the
+lane record. Kept for history.
+
 Banked 2026-09-03 by the bug-116 lane. v4's `0b0617fee` touched two help docs.
 Both are carried VERBATIM for the `p4.9i2` help-doc port — the house voice is
 v4's and must not be re-worded.
@@ -7561,6 +7571,11 @@ are only true once P4.D152's `sha256` realignment + boot heal have landed. If
 `p4.9i2` runs before P4.D152 closes, bank the paragraph but do not publish it.
 The rest of the `p4.9i2` bank is unchanged.
 ### `p4.9i2` bank — `help/chats.md` + `help/dangerous-content.md` (P4.D149, v4 `303288fb4`)
+
+**DISCHARGED at the `p4.9i2` round unification (2026-09-05):** P4.9I2A vendored
+the whole `help/` tree at the `d883a5ee1` pin (byte-identical, `diff -r` empty),
+so this banked delta is present in the shipped tree — measured by grep in the
+lane record. Kept for history.
 
 Banked 2026-09-03 by the Concierge-at-creation SPA lane. v5 renders no help
 surface yet (the whole `p4.9i2` pool), so the two hunks below are carried here
