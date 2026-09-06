@@ -116,6 +116,10 @@ interface ChatSpec {
   impersonatingParticipantIds?: string[];
   /** P4.D60 (Bug 51): the seat the human is currently speaking as. */
   activeTypingParticipantId?: string | null;
+  /** P4.D160 (v4 bug 123): the chat is paused. `executeTurnChain`'s paused
+   * early-return needs a chat whose `isPaused` is already set when the initial
+   * turn lands — the corpus had no way to say so before. */
+  isPaused?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -412,6 +416,7 @@ async function main(): Promise<void> {
         ...(chat.activeTypingParticipantId !== undefined
           ? { activeTypingParticipantId: chat.activeTypingParticipantId }
           : {}),
+        ...(chat.isPaused !== undefined ? { isPaused: chat.isPaused } : {}),
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );

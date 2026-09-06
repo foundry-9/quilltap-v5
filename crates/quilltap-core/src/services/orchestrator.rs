@@ -906,6 +906,9 @@ where
         reason: "user_turn".to_string(),
         next_speaker_id: Some(next_seat_id),
         chain_depth: 0,
+        // v4 left `orchestrator.service.ts:1892` untouched at `fef7ce4f7` — this
+        // frame carries NO `paused` key. `None` omits it.
+        paused: None,
     }));
 
     Ok(Some(ProcessMessageResult {
@@ -3704,6 +3707,10 @@ pub use crate::services::message_finalizer::ProcessMessageResult as ChainResult;
 /// `process_chained_message` closure is the re-entry into `process_message`.
 pub struct ExecuteTurnChainOptions {
     pub chat_id: String,
+    /// The owning user. v4 has it in `executeTurnChain`'s own parameter list and
+    /// logs it beside `chatId` on every chain-stop line (P4.D160 carries the
+    /// paused early-return's `logger.info`, which needs both).
+    pub user_id: String,
     /// The initial `processMessage` result (whether to chain at all is decided
     /// from it).
     pub initial_result: ProcessMessageResult,
@@ -3786,19 +3793,44 @@ where
 {
     let db = deps.db;
     let initial = &opts.initial_result;
-    // v4: only chain for a multi-character chat that produced content and isn't
-    // paused. A skipped initial turn ("nothing to add") is NOT terminal — it
-    // advanced the rotation via a Host turn-pass record, so the chain must
-    // continue to the next speaker. Only a genuinely empty (no content, no skip)
-    // initial turn stops here.
-    if !initial.is_multi_character
-        || (!initial.has_content && !initial.skipped)
-        || initial.is_paused
-    {
+    // v4: only chain for a multi-character chat that produced content. A skipped
+    // initial turn ("nothing to add") is NOT terminal — it advanced the rotation
+    // via a Host turn-pass record, so the chain must continue to the next
+    // speaker. Only a genuinely empty (no content, no skip) initial turn stops
+    // here. (`isPaused` used to ride this guard; bug 123 moved it below, so a
+    // paused chat stops LOUDLY instead of returning in silence.)
+    if !initial.is_multi_character || (!initial.has_content && !initial.skipped) {
         return Ok(());
     }
     // Single-turn callers enqueue the next turn themselves.
     if opts.single_turn {
+        return Ok(());
+    }
+
+    // A paused chat stops here too — but never silently. The flag may have been
+    // set by the Pause button, by the all-LLM threshold, or by the chain-error
+    // handler below on an earlier turn, and the client's copy of it can be stale
+    // (bug 123: a re-pause that fetched as paused→paused never reached the Salon,
+    // so every later message got exactly one reply and no explanation). Emit the
+    // same `paused` chain-complete a mid-chain pause decision would, so the client
+    // refetches, reconciles its pause state, and can tell the user.
+    //
+    // v4 places this AFTER the single-turn guard, so a single-turn caller still
+    // gets nothing.
+    if initial.is_paused {
+        tracing::info!(
+            chat_id = %opts.chat_id,
+            user_id = %opts.user_id,
+            "[TurnOrchestrator] Chat paused, not chaining after initial turn",
+        );
+        let _ = turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None).await;
+        deps.sink
+            .emit(ChatEvent::chain_complete(ChainCompletePayload {
+                reason: "paused".to_string(),
+                next_speaker_id: None,
+                chain_depth: 0,
+                paused: Some(true),
+            }));
         return Ok(());
     }
 
@@ -3844,6 +3876,7 @@ where
                     reason: chain_reason_str(decision.reason).to_string(),
                     next_speaker_id: final_next_speaker,
                     chain_depth,
+                    paused: Some(decision.reason == ChainReason::Paused),
                 }));
             break;
         }
@@ -3888,12 +3921,20 @@ where
                             reason: "error".to_string(),
                             next_speaker_id: None,
                             chain_depth,
+                            // An empty reply stops the chain but does NOT pause the
+                            // chat — the next user message chains normally. Said
+                            // explicitly so the client never infers a pause from
+                            // `reason: 'error'` alone.
+                            paused: Some(false),
                         }));
                     break;
                 }
             }
             Err(_chain_error) => {
-                // v4: pause the chat + persist null + chainComplete{error}.
+                // Safety stop: pause so a failing provider cannot be re-polled turn
+                // after turn. The pause outlives this stream — the user lifts it
+                // with Resume — so it must be announced (`paused: true`), not just
+                // recorded (bug 123).
                 let chat_id_owned = opts.chat_id.clone();
                 db.write(move |w| {
                     w.main().chats().update(
@@ -3912,6 +3953,7 @@ where
                         reason: "error".to_string(),
                         next_speaker_id: None,
                         chain_depth,
+                        paused: Some(true),
                     }));
                 break;
             }
@@ -4541,7 +4583,6 @@ mod tests {
         // pass did not reach.
         let _activity = crate::services::activity_registry::ActivityTestGuard::new();
         let (_dir, db) = test_db();
-        let sink = RecordingSink::new();
         let embedding = CannedEmbeddingProvider::new();
         let completion = crate::model::completion::CannedCompletionProvider::new();
         let streaming = crate::model::stream::CannedStreamingProvider::new();
@@ -4554,14 +4595,37 @@ mod tests {
             crate::services::carina_runner::ProsperoCarinaErrorArgs,
         ) -> Result<(), crate::services::carina_runner::CarinaRunError> = |_a| Ok(());
 
-        // (is_multi, has_content, is_paused, single_turn) → all must skip.
-        let cases = [
-            (false, true, false, false),
-            (true, false, false, false),
-            (true, true, true, false),
-            (true, true, false, true),
+        // (is_multi, has_content, is_paused, single_turn, expected frames).
+        //
+        // P4.D160 (v4 bug 123): the `is_paused` row's expectation FLIPPED. It used
+        // to ride the first guard and skip in silence; v4 moved it below the
+        // single-turn guard, where it now persists a null turn participant and
+        // emits the `paused` chain-complete. Every other row still skips.
+        let cases: [(bool, bool, bool, bool, Vec<serde_json::Value>); 5] = [
+            (false, true, false, false, vec![]),
+            (true, false, false, false, vec![]),
+            (
+                true,
+                true,
+                true,
+                false,
+                vec![serde_json::json!({
+                    "chainComplete": true,
+                    "reason": "paused",
+                    "nextSpeakerId": null,
+                    "chainDepth": 0,
+                    "paused": true,
+                })],
+            ),
+            (true, true, false, true, vec![]),
+            // A single-turn caller on a PAUSED chat still gets nothing: v4 places
+            // the paused return AFTER the single-turn guard.
+            (true, true, true, true, vec![]),
         ];
-        for (is_multi, has_content, is_paused, single_turn) in cases {
+        for (is_multi, has_content, is_paused, single_turn, want) in cases {
+            // A per-row sink: the rows are independent guard cases, and the
+            // paused row's frame must be attributable to that row alone.
+            let sink = RecordingSink::new();
             let mut confirmation = message_finalizer::NoAnswerConfirmation;
             let mut compression = message_finalizer::NoAsyncCompression;
             let mut cost = message_finalizer::NoCostTracking;
@@ -4593,35 +4657,73 @@ mod tests {
                 image_describe: None,
                 photo_bytes: None,
             };
-            execute_turn_chain(
-                &mut deps,
-                ExecuteTurnChainOptions {
-                    chat_id: "chat-x".into(),
-                    initial_result: ProcessMessageResult {
-                        is_multi_character: is_multi,
-                        has_content,
-                        message_id: "m".into(),
-                        user_participant_id: None,
-                        is_paused,
-                        scene_tracking_character_ids: None,
-                        skipped: false,
-                        skipped_participant_id: None,
+            let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+            {
+                use tracing_subscriber::layer::SubscriberExt;
+                let _g = tracing::subscriber::set_default(
+                    tracing_subscriber::registry()
+                        .with(crate::test_support::CaptureLayer(logs.clone())),
+                );
+                execute_turn_chain(
+                    &mut deps,
+                    ExecuteTurnChainOptions {
+                        chat_id: "chat-x".into(),
+                        user_id: "user-x".into(),
+                        initial_result: ProcessMessageResult {
+                            is_multi_character: is_multi,
+                            has_content,
+                            message_id: "m".into(),
+                            user_participant_id: None,
+                            is_paused,
+                            scene_tracking_character_ids: None,
+                            skipped: false,
+                            skipped_participant_id: None,
+                        },
+                        initial_continue_mode: false,
+                        never_pause_for_user: false,
+                        single_turn,
+                        chain_start_time_ms: 0,
+                        config: ChainConfig::default(),
                     },
-                    initial_continue_mode: false,
-                    never_pause_for_user: false,
-                    single_turn,
-                    chain_start_time_ms: 0,
-                    config: ChainConfig::default(),
-                },
-                0,
-                0.0,
-                chain_input,
-            )
-            .await
-            .expect("chain");
+                    0,
+                    0.0,
+                    chain_input,
+                )
+                .await
+                .expect("chain");
+            }
+            assert_eq!(
+                sink.events_json(),
+                want,
+                "guard row ({is_multi}, {has_content}, {is_paused}, {single_turn})"
+            );
+            // v4's `logger.info('[TurnOrchestrator] Chat paused, not chaining
+            // after initial turn', { chatId, userId })` — fired on exactly the
+            // row that emits the frame, and on no other.
+            let lines = logs.lock().unwrap().clone();
+            let paused_lines: Vec<&String> = lines
+                .iter()
+                .filter(|l| {
+                    l.contains("[TurnOrchestrator] Chat paused, not chaining after initial turn")
+                })
+                .collect();
+            if want.is_empty() {
+                assert!(
+                    paused_lines.is_empty(),
+                    "a silently-skipping row must not log the pause line: {lines:?}"
+                );
+            } else {
+                assert_eq!(paused_lines.len(), 1, "one line, once: {lines:?}");
+                // The rendered line, byte-for-byte. `tracing` records the
+                // format-args message FIRST and `FieldVisitor` prints it bare
+                // (`Arguments`' Debug is its Display — no quotes), then the two
+                // fields in declaration order.
+                assert_eq!(
+                    paused_lines[0],
+                    "INFO quilltap_core::services::orchestrator [TurnOrchestrator] Chat paused, not chaining after initial turn chat_id=chat-x user_id=user-x",
+                );
+            }
         }
-        // No frames emitted (every case skipped).
-        assert!(sink.events().is_empty());
     }
 
     /// The marshaling helpers pull the fields the spine consumes.

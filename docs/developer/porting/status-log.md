@@ -108488,3 +108488,264 @@ when the value is set through the native setter + an `input` event. A foreground
 background.
 
 Versions: core 0.0.806, harness 0.0.695, host 0.0.104.
+
+---
+
+## P4.D160 — never stop a chain without saying why (v4 bug 123): the `paused` chain-complete key, the paused early-return, the re-vendored help pages, and the 4.9.x docs mirror
+
+**Lane branch:** `claude/p4-d160-paused-chain-server-947326`.
+**Round:** the `f699da6f6` 4.9.x drift catch-up (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥
+P4.78 ∥ P4.79). **Target commit:** v4 `fef7ce4f7`, reaching `main` through the
+`5eaf98cf1` release squash and the `ba34fa367` merge. **Pin:** `f699da6f6`
+(lane-unique detached worktree `/tmp/qt-v4-pin-p4d160-f699da6f6`, three symlink
+classes). **Control pin:** `c2232cd9a` (`/tmp/qt-v4-ctrl-p4d160-c2232cd9a`).
+
+### Lane start — the probe FAILED once, and the lane STOPPED
+
+The ledger's §2 probe was run first, as the order requires. It **failed**:
+`git log ba34fa367..main` carried three commits and `git log 20913d2aa..bugfix`
+one — v4 had run its whole **4.9.2** release cycle in the hours between the
+round being ordered and the lane opening. The lane stopped and reported without
+writing a line of code, per `carryout` rule 1 (a lane never runs `/driftcheck`
+and never ports against unrecorded drift). The measurement handed to the human
+was that the drift added **zero new code**: `git diff 20913d2aa main -- lib/
+app/ packages/ plugins/ help/` was empty, so the 4.9.2 cycle was `20913d2aa`'s
+content (bugs 124/125, already ORDERED to P4.D162) migrating from `bugfix` onto
+`main` by squash + merge, plus the `CHANGELOG.md` → `CHANGELOG_V4.md` move and
+two branch-bookkeeping commits. `/driftcheck` then re-derived §1 and repointed
+the round's five orders to the single `f699da6f6` pin (`025ab29c`); the lane
+fast-forwarded onto that base and re-ran the probe, which passed.
+
+**Worth keeping:** in this round the lane-start probe was not a formality. v4
+moved twice in one day and P4.D162's whole reason for a second pin
+(*"bugs 124/125 exist ONLY on `bugfix`"*) was falsified within hours of the
+order being written.
+
+### The corpus was blind — measured before anything was ported
+
+`harness/oracle/fixtures/orchestrator-tier3.json` (35 chats / 36 calls) and
+`build-orchestrator-fixture.ts` contained **no `isPaused` anywhere**. A regen at
+the pin against the UNWIDENED corpus was run first, purely to measure. It
+answered two questions the order left open:
+
+- **The pin verified.** `"paused":true` × 3 in the fresh NDJSON (absent at
+  `c2232cd9a`).
+- **The mid-chain `paused` decision is already reachable** — Tier-2 item 8
+  needed no new arm. Three existing cases (`skip_fire`, `nudge_withhold`,
+  `skip_disabled`) stop on `decision.reason == 'paused'` at chainDepth 1–2.
+- **The empty-response `paused: false` arm is already reachable** —
+  `multi_chain`'s second turn comes back empty (`reason: "error"`,
+  `chainDepth: 1`).
+- **`fair_rotation_pause` records the key-ABSENT frame** — `user_turn`,
+  `chainDepth 0`, no `paused` key. That row is the tripwire for a bare `bool`.
+
+So only two arms were genuinely missing, and both were added:
+`paused_initial_stop` (a paused two-character chat whose canned first turn has
+content) and `chain_error_pause` (a chained turn whose canned stream throws).
+Row counts: chats **35 → 37**, calls **36 → 38**, streams **34 → 36**; the JSON
+round-trips byte-identically through `json.dumps(indent=1)`, so the diff is a
+pure 98-line addition with nothing else moved. `ChatSpec` gained `isPaused?:
+boolean` threaded into `repos.chats.create`.
+
+### Pre-port RED, recorded
+
+Regen at the pin, run against unported v5: **FAILED at `single_basic`**, and the
+whole diff was one key —
+
+```
+GOT: {"chainComplete":true,"chainDepth":0,"nextSpeakerId":"93e0…","reason":"user_turn"}
+EXP: {"chainComplete":true,"chainDepth":0,"nextSpeakerId":"93e0…","paused":false,"reason":"user_turn"}
+```
+
+v4's own frames for the two new arms, read out of the fresh oracle before the
+port existed:
+
+```
+paused_initial_stop  {"chainComplete":true,"chainDepth":0,"nextSpeakerId":null,"paused":true,"reason":"paused"}
+chain_error_pause    {"chainComplete":true,"chainDepth":1,"nextSpeakerId":null,"paused":true,"reason":"error"}
+```
+
+### What landed
+
+1. **`ChainCompletePayload.paused: Option<bool>`** with
+   `skip_serializing_if = "Option::is_none"` and v4's why-comment carried
+   verbatim (`reason` alone cannot say it: an `error` stop pauses when a chained
+   turn *threw* but not when it merely came back empty). The `:829` frame-bytes
+   pin keeps its `cycle_complete` assertion for the ABSENT arm and gains two
+   more for the `Some(true)` / `Some(false)` bytes.
+2. **The four `execute_turn_chain` changes, in v4's order.** The first guard
+   loses `|| initial.is_paused`; the paused early-return is placed AFTER the
+   single-turn guard (so a single-turn caller still gets nothing) and logs,
+   persists `None`, emits, returns; the mid-chain emit gains
+   `paused: Some(decision.reason == ChainReason::Paused)`; the empty-response
+   stop `Some(false)`; the chain-error safety stop `Some(true)`. v4's three
+   why-comments are carried, including the rewritten one on the `Err` arm.
+3. **The fair-rotation `user_turn` emit (`orchestrator.rs` ≈`:905`) stays
+   `paused: None`** — v4 left `orchestrator.service.ts:1892` alone.
+4. **The info line** — `tracing::info!` at `info` with `chat_id` / `user_id`,
+   through the shared `test_support::CaptureLayer` (no new rig: the file had
+   none, and P4.77's consolidated layer is used as-is).
+5. **The guard-table test FLIPPED, not duplicated.** The existing
+   `(is_multi, has_content, is_paused, single_turn)` table now carries an
+   expected-frames column; the `is_paused` row's expectation moved from "skips
+   silently" to the paused frame + the one log line, and a **fifth row** was
+   added (`single_turn` AND `is_paused`) to pin v4's ordering — the paused
+   return sits below the single-turn guard, so that row still emits nothing.
+6. **The two `help/` pages byte-copied** from the pin. The whole 120-file
+   vendored tree was then verified file-list-identical and byte-identical to
+   `f699da6f6:help/` (0 differing files).
+7. **The `docs/v4/` mirror refreshed** at the pin: **5 added** (`releases/
+   4.9.1.md`, `releases/4.9.2.md`, `developer/bugs/fixed/bug-123-silent-pause-
+   sync-drift.md`, `bug-124-help-tool-rows-lack-ids.md`,
+   `bug-125-google-rejects-nested-additional-properties.md`), **3 modified**
+   (`CHANGELOG.md`, `CHANGELOG_V4.md`, `developer/bugs.md`). After the refresh
+   the mirror is byte-identical to `f699da6f6:docs/` on every shared path.
+
+### Mutation proofs — six, each reddening exactly the named arm
+
+| # | mutation | arm that reddened |
+|---|---|---|
+| 1 | restore `\|\| initial.is_paused` to the first guard | `paused_initial_stop` |
+| 2 | drop `paused` from the chain-error safety stop | `chain_error_pause` |
+| 3 | empty-response stop says `paused: true` | `multi_chain` |
+| 4 | the field is a bare `bool` | `fair_rotation_pause` |
+| 5 | delete the info line | the capture pin (`one line, once: []`) |
+| 6 | drift the message by one word (`after the initial turn`) | the capture pin |
+
+**Mutation 4 had to be redone.** The first attempt replaced `paused: Some(true),`
+as a bare substring, which also caught **`is_paused: Some(true),`** — the
+`ChatUpdate` on the chain-error path — and produced `E0308`. A compile error is
+not a red: it proves the mutation was malformed, not that the corpus can see the
+change. Redone with a `(?<![A-Za-z0-9_])` anchor and an explicit
+"`is_paused` intact?" assertion printed before the build, it compiled and
+reddened `fair_rotation_pause` as designed. **Worth a memory note: a blanket
+string mutation on a field name that is a SUFFIX of a sibling field name mutates
+the sibling too, and the resulting build failure reads like a successful red.**
+
+### Out of the lane's Ownership — two compile-forced one-liners, flagged loudly
+
+Adding a non-`Default` field to `ChainCompletePayload` forces every construction
+site to name it. Two of those sites are outside this lane's §D ownership, and
+**both are edits this order's own §G / point 3 prescribes by value**:
+
+- `crates/quilltap-core/src/services/help_chat/orchestrator.rs:488` — one line,
+  `paused: None,` (§G: the key is ABSENT on the help-chat orchestrator's
+  `chainComplete`, which v4 left untouched). **P4.D162's file.**
+- `crates/quilltap-host/src/spine.rs:1506` — one line,
+  `user_id: SINGLE_USER_ID.to_string(),` (the same user the initial turn and
+  `make_chain_input` already carry), forced by adding `user_id` to
+  `ExecuteTurnChainOptions` so the log line can carry v4's second field.
+  **§D NOBODY.**
+
+Neither is a behaviour change; both are mechanical and named here so the
+unifier expects a one-line conflict at each. Nothing else outside the lane's
+ownership was touched. `crates/quilltap-web` and `crates/quilltap-tauri` were
+re-measured and carry **no** `chainComplete` reference at all, so the §D "a lane
+that finds a schema pin STOPs" condition did not arise.
+
+`help_chat_orchestrator_tier3_equivalence` is P4.D162's family and is provably
+unmoved by this lane: `paused: None` omits the key, and the extended
+`chat_events` frame pin asserts exactly that.
+
+### NO-PORT ratification evidence (file lists, not subject lines)
+
+Eight carrier/docs commits, `git show --stat` file lists in
+`/tmp/qt-d160-logs/noport-evidence.txt` and reproduced here in brief:
+
+- `d40497411` (4.9.1 branch start): `README.md`, `docs/releases/4.9.1.md`,
+  `package.json`, `package-lock.json`. Zero `lib/` `app/` `help/`.
+- `5eaf98cf1` (release: 4.9.1): `fef7ce4f7`'s 15 files + `docs/releases/
+  4.9.1.md` + `README.md` + the three version files. Nothing unique to it —
+  `git diff 20913d2aa main` over the code paths is empty.
+- `ba34fa367` (merge back): the same minus `README.md` / `package*.json`.
+  Leaves `packages/quilltap/package.json` out of step with the app (a v4 nit).
+- `02b77ab0f` (bug filings): `docs/developer/bugs.md` + the two new bug docs.
+- `8fbf2afe0` (release: 4.9.2): `20913d2aa`'s 17 files + `docs/releases/
+  4.9.2.md` + versions.
+- `d489b04a3` (merge back): the same 15 minus `README.md` / `package*.json`.
+- `f699da6f6`: `docs/CHANGELOG.md` + `docs/CHANGELOG_V4.md` only (2,615 lines
+  relocated).
+- `1a2b2164c` (4.9.3 branch start): `README.md`, `docs/CHANGELOG.md`,
+  `docs/releases/4.9.2.md`, `package.json`, `package-lock.json`.
+
+### Recorded, not acted on
+
+- **Two files in `docs/v4/` that v4 no longer has:** `WINDOWS.md` (deleted by
+  v4 at `2b49f51aa`) and `help/database-protection.md`. The P4.D158/P4.59 mirror
+  habit is additive + modified, so they were left in place and are named here
+  rather than deleted on this lane's initiative.
+- **`execute_turn_chain` carries one of v4's four log lines.** v4 also logs
+  `[TurnOrchestrator] singleTurn: skipping chain loop`, `Chain stopped: empty
+  response`, and `Chain error, stopping`; v5 has none of the three. All three
+  are PRE-EXISTING gaps, unrelated to bug 123 and outside this order's mandate
+  (which names only the new info line). They belong with the P4.74
+  handler-logging inventory — noted so a future lane does not have to
+  rediscover them.
+
+### Verification gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -D
+  warnings` clean in BOTH feature sets (default and
+  `--features quilltap-core/native-transport`); `cargo build --workspace` clean.
+- `cargo test --workspace` with `QT_ORACLE_ORCHESTRATOR` + the
+  `QT_FIXTURE_ORCH_*` pair + `QT_ORACLE_HELP_TREE`: **508 test binaries / 2,876
+  passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0.** Both §A families
+  confirmed RUN by name in the log (`orchestrator_tier3_matches_oracle`,
+  `shipped_help_tree_matches_oracle`), and `help_chat_orchestrator_tier3_
+  matches_oracle` ran green alongside them, which is the positive check that
+  the `paused: None` one-liner in P4.D162's file moved no bytes.
+- `harness/tools/check_spelling.py` exit 0.
+- The two §A families by name through the sweep driver at the pin:
+  `orchestrator_tier3_equivalence` **ok**, `help_tree_equivalence` **ok**.
+  Sibling reader `help_tree_embed_guard` **ok**.
+- **The `c2232cd9a` control runs, both recorded:** `help_tree_equivalence`
+  against a control oracle generated from `/tmp/qt-v4-ctrl-p4d160-c2232cd9a`
+  is **RED** (`docs[26] differs`, `chunks[186] differs`) — the pin proof for
+  the two re-vendored pages. The orchestrator family's pre-port RED against
+  the `f699da6f6` oracle is quoted above.
+- Pin verified on every regen: the fresh orchestrator NDJSON carries
+  `"paused":true` ×3 (absent at `c2232cd9a`), and the fresh help-tree NDJSON
+  carries `When a Turn Fails` ×1 (absent at `c2232cd9a`).
+- **No Playwright** (§E — port 4319 is P4.D161's for the round).
+
+### Regen recipes (verbatim, as run)
+
+Both go through the sanctioned driver, one invocation at a time, from the
+worktree root:
+
+```bash
+python3 harness/tools/recipe_sweep.py --force \
+  --v4 /tmp/qt-v4-pin-p4d160-f699da6f6 --run orchestrator_tier3_equivalence
+python3 harness/tools/recipe_sweep.py --force \
+  --v4 /tmp/qt-v4-pin-p4d160-f699da6f6 --run help_tree_equivalence
+```
+
+The control (a red-by-construction run, not part of the gate):
+
+```bash
+N=~/.nvm/versions/node/v24.13.1/bin
+TMPO=/tmp/qt-d160-help-ctrl; rm -rf $TMPO; mkdir -p $TMPO/cases
+cp harness/oracle/cases/help-tree-sync.test.ts $TMPO/cases/
+cd /tmp/qt-v4-ctrl-p4d160-c2232cd9a
+QT_ORACLE_OUT=/tmp/qt-d160-oracle-help-tree-c2232cd9a.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots $TMPO/cases -- help-tree-sync
+# then, from the worktree:
+QT_ORACLE_HELP_TREE=/tmp/qt-d160-oracle-help-tree-c2232cd9a.ndjson \
+  cargo test -p quilltap-harness --test help_tree_equivalence   # expect RED
+```
+
+Ledger §1 hazard 5 (the `@google/genai` manual mock, live from the 4.9.2 squash
+on): `orchestrator-tier3` is one of the fourteen jest-run oracle cases that load
+the plugin tree. **Its regen at the pin matched** — the family is green and the
+only bytes that moved anywhere in the NDJSON are the `paused` keys and the two
+new arms.
+
+**Fixtures changed, and what that invalidates:** `orchestrator-tier3.json` +
+`build-orchestrator-fixture.ts` only (both §A, this lane's). `/tmp/qt-orch-
+main.db` / `/tmp/qt-orch-mount.db` are rebuilt by the recipe and are not
+committed. **No committed `.db` was touched, so no sibling family is
+invalidated.** The vendored `help/` tree is read by `help_tree_equivalence` and
+`help_tree_embed_guard`; both were re-run by name and are green.
+
+Versions: core 0.0.807, harness 0.0.696, host 0.0.105.

@@ -415,6 +415,20 @@ pub struct ChainCompletePayload {
     pub reason: String,
     pub next_speaker_id: Option<String>,
     pub chain_depth: i64,
+    /// True when the chat is (or has just been) marked `isPaused` as part of this
+    /// stop — a `paused` decision, the paused early-return, or the chain-error
+    /// handler that pauses as its safety stop. `reason` alone cannot say so: an
+    /// `error` stop pauses when a chained turn threw but not when it merely came
+    /// back empty. The Salon uses this to announce the pause instead of letting
+    /// the room fall silent with no explanation (bug 123).
+    ///
+    /// `Option` because v4 spreads only the keys the caller passed: the four
+    /// `executeTurnChain` emits carry it, and the fair-rotation `user_turn` emit
+    /// (`orchestrator.service.ts:1892`) and the help-chat orchestrator's
+    /// (`help-chat/orchestrator.service.ts:156`) do NOT — v4 left both untouched
+    /// at `fef7ce4f7`, so a bare `bool` would add a key v4 never sends.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paused: Option<bool>,
 }
 
 /// The `pendingExternalTurn` frame payload (v4 `encodePendingExternalTurnEvent`'s
@@ -825,14 +839,40 @@ mod tests {
             .unwrap(),
             json!({ "turnComplete": true, "participantId": "p1", "messageId": "m1", "chainDepth": 1, "skipped": false })
         );
+        // P4.D160: `paused: None` OMITS the key — the shape the fair-rotation
+        // `user_turn` emit and the help-chat orchestrator's `cycle_complete`
+        // still send, because v4 left both untouched at `fef7ce4f7`.
         assert_eq!(
             serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
                 reason: "cycle_complete".into(),
                 next_speaker_id: None,
                 chain_depth: 2,
+                paused: None,
             }))
             .unwrap(),
             json!({ "chainComplete": true, "reason": "cycle_complete", "nextSpeakerId": null, "chainDepth": 2 })
+        );
+        // …and the two present arms, byte-for-byte as v4's `JSON.stringify` of
+        // `{ chainComplete: true, ...data }` renders them (bug 123).
+        assert_eq!(
+            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+                reason: "paused".into(),
+                next_speaker_id: None,
+                chain_depth: 0,
+                paused: Some(true),
+            }))
+            .unwrap(),
+            json!({ "chainComplete": true, "reason": "paused", "nextSpeakerId": null, "chainDepth": 0, "paused": true })
+        );
+        assert_eq!(
+            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+                reason: "error".into(),
+                next_speaker_id: None,
+                chain_depth: 3,
+                paused: Some(false),
+            }))
+            .unwrap(),
+            json!({ "chainComplete": true, "reason": "error", "nextSpeakerId": null, "chainDepth": 3, "paused": false })
         );
     }
 

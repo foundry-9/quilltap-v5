@@ -1062,6 +1062,7 @@ fn orchestrator_tier3_matches_oracle() {
                         &mut deps,
                         ExecuteTurnChainOptions {
                             chat_id: call.chat_id.clone(),
+                            user_id: spec.user_id.clone(),
                             initial_result: result,
                             initial_continue_mode: call.continue_mode,
                             never_pause_for_user: false,

@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — fix(orchestrator): never stop a chain without saying why — the `paused` chain-complete key (v4 bug 123)
+
+_Versions: core 0.0.807, harness 0.0.696, host 0.0.105._
+
+Port of the server half of v4 `fef7ce4f7`. `execute_turn_chain` no longer
+returns on a paused chat in silence: `is_paused` comes off the first guard and
+becomes its own early-return, placed after the single-turn guard exactly as v4
+places it, which logs `[TurnOrchestrator] Chat paused, not chaining after
+initial turn`, persists a null turn participant, and emits
+`chainComplete { reason: "paused", nextSpeakerId: null, chainDepth: 0,
+paused: true }`. A single-turn caller on a paused chat still gets nothing.
+
+`ChainCompletePayload` gains `paused: Option<bool>` with
+`skip_serializing_if`, carrying v4's why-comment: `reason` alone cannot say
+whether the chat was paused, because an `error` stop pauses when a chained turn
+*threw* but not when it merely came back empty. The key rides exactly the four
+`execute_turn_chain` emits — the new paused return (`true`), the mid-chain
+decision (`decision.reason == Paused`), the empty-response stop (`false`), the
+chain-error safety stop (`true`) — and is ABSENT on the fair-rotation
+`user_turn` emit and on the help-chat orchestrator's `chainComplete`, both of
+which v4 left untouched. `ExecuteTurnChainOptions` gains `user_id` so the log
+line can carry it beside `chat_id`, as v4's does.
+
+The `orchestrator-tier3` corpus was blind to all of this: it had no `isPaused`
+anywhere. It gains `isPaused` on `ChatSpec` and two arms — `paused_initial_stop`
+(a paused two-character chat whose first turn has content) and
+`chain_error_pause` (a chained turn whose canned stream throws). Chats 35 → 37,
+calls 36 → 38, streams 34 → 36. Six mutation proofs, each reddening exactly one
+arm: restoring `|| initial.is_paused` reds `paused_initial_stop`; dropping
+`paused` from the chain-error emit reds `chain_error_pause`; flipping the
+empty-response emit to `true` reds `multi_chain`; making the field a bare `bool`
+reds `fair_rotation_pause` (the one corpus row v4 sends without the key);
+deleting the info line and drifting it by one word both red the capture pin.
+
+The same commit re-vendors the two `help/` pages `fef7ce4f7` rewrote —
+`turn-skipping.md` and `chat-turn-manager.md` (the new `### When a Turn Fails`
+section) — byte-copied from the pin. The whole 120-file vendored tree is
+file-list- and byte-identical to `f699da6f6:help/`; `help_tree_equivalence` is
+green at that pin and red against a `c2232cd9a` oracle, which is the pin proof.
+
 #### 2026-09-06 — docs(v4): refresh the reference mirror at `f699da6f6` and record the eight carrier/docs rows
 
 _Docs-only change._

@@ -489,6 +489,9 @@ where
             reason: "cycle_complete".to_string(),
             next_speaker_id: None,
             chain_depth: (active.len() - 1) as i64,
+            // v4 left `help-chat/orchestrator.service.ts:156` untouched at
+            // `fef7ce4f7` — this frame carries NO `paused` key (P4.D160 §G).
+            paused: None,
         }));
     }
 

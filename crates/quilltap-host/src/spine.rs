@@ -1505,6 +1505,10 @@ where
             &mut deps,
             ExecuteTurnChainOptions {
                 chat_id: chat_id.clone(),
+                // The same user the initial turn and every chained turn carry
+                // (`make_chain_input` above). P4.D160: `execute_turn_chain` logs
+                // it beside `chat_id` on the paused stop.
+                user_id: SINGLE_USER_ID.to_string(),
                 initial_result: initial,
                 initial_continue_mode: req.continue_mode,
                 never_pause_for_user: false,

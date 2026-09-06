@@ -1284,6 +1284,47 @@
      "participantId": "fe1a0001-0000-4000-8000-0000000000a1"
     }
    ]
+  },
+  {
+   "id": "9a050001-0000-4000-8000-0000000000a1",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "9a05000a-0000-4000-8000-0000000000a2",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "9a05000b-0000-4000-8000-0000000000a3",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "9c8a0002-0000-4000-8000-0000000000e1",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "9c8a000a-0000-4000-8000-0000000000e2",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "9c8a000b-0000-4000-8000-0000000000e3",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
   }
  ],
  "calls": [
@@ -1696,6 +1737,28 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "fe1b0002-0000-4000-8000-0000000000b2"
+  },
+  {
+   "name": "paused_initial_stop",
+   "kind": "chain",
+   "chatId": "9a050001-0000-4000-8000-0000000000a1",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "paused_initial",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "9a05000a-0000-4000-8000-0000000000a2"
+  },
+  {
+   "name": "chain_error_pause",
+   "kind": "chain",
+   "chatId": "9c8a0002-0000-4000-8000-0000000000e1",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "chain_error",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "9c8a000a-0000-4000-8000-0000000000e2"
   }
  ],
  "streams": {
@@ -2605,6 +2668,41 @@
       "completionTokens": 18,
       "totalTokens": 158
      }
+    }
+   ]
+  ],
+  "paused_initial": [
+   [
+    {
+     "content": "Friday answers, and the room goes quiet."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 8,
+      "totalTokens": 48
+     }
+    }
+   ]
+  ],
+  "chain_error": [
+   [
+    {
+     "content": "Friday speaks first."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 4,
+      "totalTokens": 44
+     }
+    }
+   ],
+   [
+    {
+     "error": "upstream connection reset"
     }
    ]
   ]
