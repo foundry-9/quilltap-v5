@@ -6395,6 +6395,68 @@ from the pin zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Play
 
 PB1 stays parked by the standing rule.
 
+## The `ba34fa367` 4.9.1 drift catch-up + `chatCreate`-parse + Brahma round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79) — ORDERED 2026-09-06
+
+**Baseline `c2232cd9a`; v4 `main` HEAD `ba34fa367` (2 past — the 4.9.1
+release squash + merge, carrying bug 123), v4 `bugfix` tip `20913d2aa`
+(bugs 124 + 125, bugfix-only); regen rule PIN REQUIRED.** The ledger's §2
+probe passed at ordering (checkout on `bugfix`, tree clean, both logs
+empty). The drift debt is two substantive commits, both on fully-ported
+surfaces and one of them this port's own dogfood filings (#112/#114) coming
+back fixed; the standing rule clears it first, and the round's two
+non-drift lanes take the two order-sized items the `p4.9i2` dogfood pass
+banked (finding #115 and finding #111's Brahma remainder). Round name in the
+work orders: "the `ba34fa367` 4.9.1 drift catch-up round".
+
+- **P4.D160 — bug 123, server** (`work-orders/p4.d160-bug123-paused-chain-
+  server.md`): the `paused` key on `ChainCompletePayload` (per-emit
+  OPTIONAL — v4 set it at the four `executeTurnChain` sites only), the
+  paused early-return with v4's info line + null turn participant, the
+  `orchestrator_tier3` corpus arms that can finally reach the guard (the
+  corpus has no `isPaused` anywhere today), the two re-vendored `help/`
+  pages (`help_tree_equivalence` at the pin), the `docs/v4/` mirror at
+  4.9.1, and the NO-PORT evidence for the four carrier/docs rows.
+- **P4.D161 — bug 123, SPA** (`work-orders/p4.d161-bug123-skip-banner-
+  pause-toast-spa.md`): the Skip banner keyed on the seat the composer
+  speaks as (three sentences, three gates), the overlay-aware Skip with
+  unpause-first and the withheld auto-continue, the pause-you-did-not-cause
+  toasts after the single reconcile point, v4's pause-sync drift MEASURED
+  (expected NO-COUNTERPART — v5 holds no local pause flag), parity specs,
+  two live beats. Bound to P4.D160 by the §G frame contract.
+- **P4.D162 — bugs 124 + 125** (`work-orders/p4.d162-help-tool-threading-
+  google-additional-properties.md`): the help loop routed through the
+  `tool_call_threading` primitive it already had (assistant `toolCalls`,
+  results paired by `toolCallId`, id-less results framed as user text, the
+  tracked stuck-loop reminder, the debug line); `additionalProperties` at
+  the head of Google's strip list; **both families widened to SEE the fix** —
+  the help-chat oracle records the FULL slate per stream call (today's
+  `{role, content}` key is blind to the pairing) plus an id-less case, and
+  the google corpus gains the real wardrobe tool schemas (no corpus row
+  carries a nested `additionalProperties` today). Pins at `20913d2aa` (the
+  round's one second pin). Tier 2: the GOOGLE profile in the help-chat
+  fixture (the `p4.9i2` follow-up 1).
+- **P4.78 — `chatCreate` whole-body parse** (`work-orders/p4.78-chat-create-
+  whole-body-parse.md`): v4's `createChatSchema` as ONE validation stage
+  ahead of any work, one refusing capstone arm per rule paired with its
+  accepting sibling (36 → ~65 cases; the astral-plane `max(500)` case pins
+  Zod 4.5's code-point rule), the composite guard-order case; Tier 2 the
+  Zod `details` envelope through the P4.D138 carry, measured per arm.
+- **P4.79 — the Brahma remainders** (`work-orders/p4.79-brahma-llm-logs-
+  and-midstream-error.md`): finding #111's other half (both Brahma stream
+  paths log to `llm_logs` with a measured duration, pinned by row count
+  against completed canned streams) and the `p4.9i2` follow-up 2 (the
+  mid-stream `Err(_) => break` reshaped to v4's propagation, with a
+  scripted-error corpus arm).
+
+Deliberately left out of the round: `p4.9k` (bug 119's post-fix optimizer
+— the one remaining ledger row, an unported vertical of its own size); the
+dispatch census's honest totality + the present-but-null lead; the carried
+smalls; the `CaptureLayer` → `test_support` consolidation; the sweep
+driver's SHELL_START class; `image_profiles.rs:655`'s UTF-16 count; the
+handler-logging inventory's scope widening (finding #110's note); and the
+owed dogfood pass — which gains every surface above and runs after the
+unification.
+
 ## The `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77) — ORDERED 2026-09-05
 
 **Baseline `d883a5ee1`; v4 HEAD `c2232cd9a` — four docs/version-only

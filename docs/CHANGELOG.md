@@ -12,6 +12,40 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — docs(porting): order the `ba34fa367` 4.9.1 drift catch-up round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79)
+
+_Docs-only change._
+
+`/setupphase`. The drift ledger's §2 probe passed (checkout on `bugfix`,
+tree clean, both logs empty), so the round was planned from the ledger's six
+rows: bug 123 (`fef7ce4f7`, on `main` via the 4.9.1 squash + merge
+`ba34fa367`) splits into a server lane and an SPA lane bound by one frame
+contract; bugs 124/125 (`20913d2aa`, bugfix-only — this port's own filings
+#112/#114 coming back fixed) take a third lane that pins at the bugfix tip;
+the four carrier/docs rows ride the server lane as NO-PORT evidence + the
+`docs/v4/` mirror. Two non-drift lanes take the `p4.9i2` dogfood pass's
+order-sized items: finding #115 (`chatCreate` lacks v4's whole
+`createChatSchema` parse) and finding #111's Brahma remainder (no `llm_logs`
+rows) together with the banked mid-stream `break`.
+
+Five work orders under `docs/developer/porting/work-orders/`
+(`p4.d160-bug123-paused-chain-server.md`,
+`p4.d161-bug123-skip-banner-pause-toast-spa.md`,
+`p4.d162-help-tool-threading-google-additional-properties.md`,
+`p4.78-chat-create-whole-body-parse.md`,
+`p4.79-brahma-llm-logs-and-midstream-error.md`), each with a dated fresh v4
+survey from the shipped hunks and a shared contract block that is
+byte-identical across all five (md5-checked). Two survey findings shape the
+orders: v4's new `paused` key is set at the four `executeTurnChain` emits
+ONLY (the fair-rotation and help-chat `chainComplete`s carry none — so the
+Rust field is per-emit optional), and both families that should see bugs
+124/125 are blind to them today (the help-chat oracle keys canned streams on
+`{role, content}` alone; no google corpus row carries a nested
+`additionalProperties`) — both lanes widen their comparands red-first.
+
+The ledger's §3 rows are marked ORDERED (bug 119's `15573c3a1` stays
+UNPROCESSED for `p4.9k`); `phase-4.md` gains the round's ORDERED section.
+
 #### 2026-09-06 — docs(drift): record the 4.9.1 drift — bug 123 on main, bugs 124/125 on bugfix
 
 _Docs-only change._
