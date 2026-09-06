@@ -109770,3 +109770,33 @@ asked); and **the e2e needs RELEASE binaries in practice** — `README.md` says
 `cargo build`, but global-setup makes ~50 CLI writes and each debug-build
 PBKDF2 unwrap costs ~5 s, so a debug global-setup takes minutes per run where
 release takes seconds.
+
+### A pre-existing divergence found in passing (NOT fixed — needs its own order)
+
+Measuring gate 2 turned up a v5 fidelity gap **outside this lane's mandate**,
+recorded here rather than patched, and NOT written into `dogfood-findings.md`
+(that file is unowned this round — the `carryout` rule 3).
+
+**v5's composer enablement reads the wrong `hasActiveCharacters` twin.** v4 has
+two:
+
+| v4 site | predicate | v4 readers |
+|---|---|---|
+| `useParticipants.ts:70-72` | `type === 'CHARACTER' && isActive` | `SalonView.tsx:483` (the SSE hook), `:1470` (the Skip banner), `:1539` (the COMPOSER) |
+| `useTurnManagement.ts:121` | `… && controlledBy !== 'user'` | `handleContinue`'s first arm only |
+
+v5 has one computed (`salon-conversation.ts:1834`), spelled
+`controlledBy === 'llm'` — the `useTurnManagement` flavour. It correctly serves
+`onSidebarSkip` (`:2522`, v4's `handleContinue` arm), and it is ALSO bound to
+the composer at `:462`, where v4 passes the wider one.
+
+**Consequence:** in a chat whose only active character is the human's own,
+v4 enables the composer and v5 disables it with "Add a character to start
+chatting…". That shape is not hypothetical — dogfood finding #115 hit exactly
+this predicate from the other direction (a stored `controlledBy: "LLM"` the SPA
+would not match).
+
+This lane added `hasAnyActiveCharacter` for its own gate and did NOT re-point
+the composer binding: changing composer enablement is beyond bug 123's client
+half, unmeasured against the e2e beats, and belongs with #115's `createChatSchema`
+order, which is already queued against the same predicate.
