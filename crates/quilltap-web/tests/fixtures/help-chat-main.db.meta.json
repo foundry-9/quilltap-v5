@@ -19,7 +19,8 @@
     "c0000002-0000-4000-8000-000000000002": "P2 — USER_A \"No Tools\", allowToolUse:false (excluded from toolCapableProfiles)",
     "c0000002-0000-4000-8000-000000000003": "P3 — USER_A \"Text-Block Help\", pseudoToolMode:text-block (H6 seat)",
     "c0000002-0000-4000-8000-000000000004": "P4 — USER_A \"Dangling Key\", apiKeyId points at a row that does not exist (H11 seat 0)",
-    "c0000002-0000-4000-8000-000000000011": "PB1 — USER_B \"B No Tools\", isDefault but allowToolUse:false"
+    "c0000002-0000-4000-8000-000000000011": "PB1 — USER_B \"B No Tools\", isDefault but allowToolUse:false",
+    "c0000002-0000-4000-8000-000000000005": "PG1 — USER_A \"Google Help\", provider GOOGLE, tool-capable (H12 seat) — the one plugin that KEEPS an id-less tool row"
   },
   "characters": {
     "b0000002-0000-4000-8000-000000000001": "C1 Marigold — USER_A, defaultHelpToolsEnabled true, defaultConnectionProfileId P1, pronouns she/her/hers, no avatarUrl",
@@ -49,6 +50,7 @@
     "c1000002-0000-4000-8000-000000000009": "H9 — USER_A, chatType help, helpPageUrl /aurora/new, updatedAt 2026-05-09T00:00:00.000Z, seats: Marigold(b0000002-0000-4000-8000-000000000001) profile=c0000002-0000-4000-8000-000000000001 participant=d0000002-0000-4000-8000-000000000018 | no history",
     "c1000002-0000-4000-8000-000000000010": "H10 — USER_A, chatType help, helpPageUrl /prospero/p-1, updatedAt 2026-05-10T00:00:00.000Z, seats: Marigold(b0000002-0000-4000-8000-000000000001) profile=c0000002-0000-4000-8000-000000000001 participant=d0000002-0000-4000-8000-000000000020 | no history",
     "c1000002-0000-4000-8000-000000000011": "H11 — USER_A, chatType help, helpPageUrl /aurora/xyz/edit, updatedAt 2026-05-11T00:00:00.000Z, seats: Marigold(b0000002-0000-4000-8000-000000000001) profile=c0000002-0000-4000-8000-000000000004 participant=d0000002-0000-4000-8000-000000000022 | Thistle(b0000002-0000-4000-8000-000000000002) profile=c0000002-0000-4000-8000-000000000001 participant=d0000002-0000-4000-8000-000000000023 | no history",
+    "c1000002-0000-4000-8000-000000000012": "H12 — USER_A, chatType help, helpPageUrl /settings?tab=providers, updatedAt 2026-05-12T00:00:00.000Z, seats: Marigold(b0000002-0000-4000-8000-000000000001) profile=c0000002-0000-4000-8000-000000000005 participant=d0000002-0000-4000-8000-000000000024 | 5 messages",
     "c1000002-0000-4000-8000-000000000021": "HB1 — USER_B, chatType help, helpPageUrl /salon, updatedAt 2026-05-01T00:00:00.000Z, seat Rook(b0000002-0000-4000-8000-000000000011) profile=c0000002-0000-4000-8000-000000000011 participant=d0000002-0000-4000-8000-000000000042, no history",
     "c1000002-0000-4000-8000-000000000031": "S1 — USER_A, chatType salon, title \"An Ordinary Salon\", no participants (list-filter arm)",
     "c1000002-0000-4000-8000-000000000032": "B1 — USER_A, chatType brahma, title \"A Console\", consoleConnectionProfileId c0000002-0000-4000-8000-000000000001 (list-filter arm)"
@@ -61,7 +63,12 @@
     "d1000002-0000-4000-8000-000000000005": "H1 #5 ASSISTANT \"Use Aurora to add a character.\" participantId d0000002-0000-4000-8000-000000000002 @00:00:05Z",
     "d1000002-0000-4000-8000-000000000011": "H2 #1 SYSTEM \"Help chat initiated for page: /\" @00:00:01Z",
     "d1000002-0000-4000-8000-000000000012": "H2 #2 USER \"hi\" @00:00:02Z",
-    "d1000002-0000-4000-8000-000000000013": "H2 #3 ASSISTANT \"hello\" participantId d0000002-0000-4000-8000-000000000004 @00:00:03Z"
+    "d1000002-0000-4000-8000-000000000013": "H2 #3 ASSISTANT \"hello\" participantId d0000002-0000-4000-8000-000000000004 @00:00:03Z",
+    "d1000002-0000-4000-8000-000000000021": "H12 #1 SYSTEM \"Help chat initiated for page: /settings?tab=providers\" @00:00:01Z",
+    "d1000002-0000-4000-8000-000000000022": "H12 #2 USER \"Which providers can I use?\" @00:00:02Z",
+    "d1000002-0000-4000-8000-000000000023": "H12 #3 ASSISTANT \"\" (empty tool-turn) participantId d0000002-0000-4000-8000-000000000024 @00:00:03Z",
+    "d1000002-0000-4000-8000-000000000024": "H12 #4 TOOL help_search result JSON (id-less on read — the GOOGLE-keeps arm) @00:00:04Z",
+    "d1000002-0000-4000-8000-000000000025": "H12 #5 ASSISTANT \"Settings holds the provider list.\" participantId d0000002-0000-4000-8000-000000000024 @00:00:05Z"
   },
   "helpDocs": {
     "note": "Minted by v4's real syncHelpDocs() over a scratch help/ holding exactly the spec's helpDocFiles, byte-copied from the v4 checkout. No embedding profile existed at sync time, so background_jobs is EMPTY and no doc/chunk carries an embedding.",
@@ -74,109 +81,109 @@
       "failed": 0,
       "chunksWritten": 117,
       "changedIds": [
-        "4a902168-3b4b-4c3c-b1c3-3c319d8a4643",
-        "d1c8c363-e1c4-48fa-90fb-da0c4229dd9f",
-        "b7c63158-783a-4482-90e6-c63664a5df7d",
-        "67bbe6e6-d6b3-436d-b608-05f97e5dae38",
-        "8563fe4e-2c87-4b81-9a38-e85ed9018c46",
-        "20f28af2-8b7e-46fb-b90e-5174b84fb2ea",
-        "49d241e5-87f1-427d-84b7-f472bb1d6f21",
-        "ef27ceda-8ba5-4ceb-85ff-d0d160c54986",
-        "64750d1b-e25d-4f83-b2dc-6cc3a31fcbe9",
-        "28d8f5c1-77cb-4e15-947c-79bee0caf2e4",
-        "72746217-f9ad-4e3d-8cf9-2220a9c7e1fb",
-        "d14b9f9c-88ac-4242-b14b-d3814872a70a",
-        "1b5864c3-d41d-4d9c-9411-aba175081504",
-        "a0918252-7086-420d-a2c8-3bebb29d5884",
-        "0889c121-86a0-4d15-bfe1-61fd84e59dbd",
-        "5ccd7ab7-90e1-4e56-8cfc-d53cddc2aaad",
-        "5128e31a-aa52-40a6-af82-166e0c3cd43a"
+        "6fc977d2-0c1b-484d-909b-c9ca0fd41df2",
+        "c7b63208-4d3d-45d7-9798-519c7eb21079",
+        "1a146d67-68c4-4eff-b4dd-8146ec9ed5d0",
+        "7a137202-40cb-400a-af49-e7f084d37b2f",
+        "f73961b3-b1aa-4423-a591-75a13ffb9de5",
+        "6753c993-62d7-41c0-8323-f2ab49b3ffa2",
+        "63115403-209c-4517-92ee-75072b196194",
+        "699a9126-7cec-412c-a517-d9f3d7b58519",
+        "04126a9a-8b2c-4b00-aac4-78eda760562d",
+        "1797182a-6113-485a-af96-0fed4db099e0",
+        "93483a2e-90e1-464b-8102-9e6dfbe6208e",
+        "26377b22-a262-4940-8292-a4f108b647c9",
+        "1132efe1-a0d0-4261-acdf-83d39782ac65",
+        "4d19de47-e9c2-4d8f-86ef-a929cc62363f",
+        "4dcf878d-e7d7-48fc-a8db-c16be2781f51",
+        "f8ee9624-05c4-425c-b786-12d41cdb43cf",
+        "1277241b-d45e-4c47-afc9-156813be9479"
       ]
     },
     "chunkCount": 117,
     "byPath": {
       "help/agent-mode.md": {
-        "id": "4a902168-3b4b-4c3c-b1c3-3c319d8a4643",
+        "id": "6fc977d2-0c1b-484d-909b-c9ca0fd41df2",
         "title": "Agent Mode",
         "url": "/salon/:id"
       },
       "help/brahma-console.md": {
-        "id": "d1c8c363-e1c4-48fa-90fb-da0c4229dd9f",
+        "id": "c7b63208-4d3d-45d7-9798-519c7eb21079",
         "title": "The Brahma Console",
         "url": "/"
       },
       "help/character-creation.md": {
-        "id": "b7c63158-783a-4482-90e6-c63664a5df7d",
+        "id": "1a146d67-68c4-4eff-b4dd-8146ec9ed5d0",
         "title": "Creating Characters",
         "url": "/aurora/new"
       },
       "help/character-editing.md": {
-        "id": "67bbe6e6-d6b3-436d-b608-05f97e5dae38",
+        "id": "7a137202-40cb-400a-af49-e7f084d37b2f",
         "title": "Editing Characters",
         "url": "/aurora/:id/edit"
       },
       "help/characters.md": {
-        "id": "8563fe4e-2c87-4b81-9a38-e85ed9018c46",
+        "id": "f73961b3-b1aa-4423-a591-75a13ffb9de5",
         "title": "Characters Overview",
         "url": "/aurora"
       },
       "help/chat-settings.md": {
-        "id": "20f28af2-8b7e-46fb-b90e-5174b84fb2ea",
+        "id": "6753c993-62d7-41c0-8323-f2ab49b3ffa2",
         "title": "Chat Settings",
         "url": "/settings?tab=chat"
       },
       "help/chat-state.md": {
-        "id": "49d241e5-87f1-427d-84b7-f472bb1d6f21",
+        "id": "63115403-209c-4517-92ee-75072b196194",
         "title": "Chat State",
         "url": "/salon/:id"
       },
       "help/chats.md": {
-        "id": "ef27ceda-8ba5-4ceb-85ff-d0d160c54986",
+        "id": "699a9126-7cec-412c-a517-d9f3d7b58519",
         "title": "Chats Overview",
         "url": "/salon"
       },
       "help/files.md": {
-        "id": "64750d1b-e25d-4f83-b2dc-6cc3a31fcbe9",
+        "id": "04126a9a-8b2c-4b00-aac4-78eda760562d",
         "title": "Files Management",
         "url": "/files"
       },
       "help/homepage.md": {
-        "id": "28d8f5c1-77cb-4e15-947c-79bee0caf2e4",
+        "id": "1797182a-6113-485a-af96-0fed4db099e0",
         "title": "Homepage",
         "url": "/"
       },
       "help/project-chats.md": {
-        "id": "72746217-f9ad-4e3d-8cf9-2220a9c7e1fb",
+        "id": "93483a2e-90e1-464b-8102-9e6dfbe6208e",
         "title": "Project Chats",
         "url": "/prospero/:id"
       },
       "help/search.md": {
-        "id": "d14b9f9c-88ac-4242-b14b-d3814872a70a",
+        "id": "26377b22-a262-4940-8292-a4f108b647c9",
         "title": "Search Bar",
         "url": "*"
       },
       "help/settings.md": {
-        "id": "1b5864c3-d41d-4d9c-9411-aba175081504",
+        "id": "1132efe1-a0d0-4261-acdf-83d39782ac65",
         "title": "Settings",
         "url": "/settings"
       },
       "help/setup-wizard.md": {
-        "id": "a0918252-7086-420d-a2c8-3bebb29d5884",
+        "id": "4d19de47-e9c2-4d8f-86ef-a929cc62363f",
         "title": "AI Stack Setup Wizard",
         "url": "/settings/wizard"
       },
       "help/sidebar.md": {
-        "id": "0889c121-86a0-4d15-bfe1-61fd84e59dbd",
+        "id": "4dcf878d-e7d7-48fc-a8db-c16be2781f51",
         "title": "Left Sidebar",
         "url": "*"
       },
       "help/system-tools.md": {
-        "id": "5ccd7ab7-90e1-4e56-8cfc-d53cddc2aaad",
+        "id": "f8ee9624-05c4-425c-b786-12d41cdb43cf",
         "title": "System Tools",
         "url": "/settings?tab=system"
       },
       "help/taboo.md": {
-        "id": "5128e31a-aa52-40a6-af82-166e0c3cd43a",
+        "id": "1277241b-d45e-4c47-afc9-156813be9479",
         "title": "Taboo — Phrases Not Uttered in This House",
         "url": "/settings?tab=chat&section=taboo"
       }

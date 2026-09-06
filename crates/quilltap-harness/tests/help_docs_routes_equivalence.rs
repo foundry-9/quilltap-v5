@@ -44,7 +44,20 @@ use serde_json::{json, Value};
 const USER_A: &str = "e18e05bc-63e8-4539-8a85-719b7a508850";
 const USER_C: &str = "a38e25de-85fa-4751-ac07-93bd9c72a072";
 /// The fixture's minted id for `help/brahma-console.md` (`help-chat-main.db.meta.json`).
-const BRAHMA_DOC_ID: &str = "d1c8c363-e1c4-48fa-90fb-da0c4229dd9f";
+/// The fixture's `help/brahma-console.md` row id — DERIVED from the committed
+/// `help-chat-main.db.meta.json`, never transcribed. v4's real `syncHelpDocs()`
+/// mints doc ids with `randomUUID`, so every fixture rebuild re-mints them; a
+/// literal here goes stale SILENTLY and turns `get_by_id` into a 404-vs-404
+/// agreement that passes while measuring nothing (it did, at P4.D162's
+/// rebuild — caught by consequence, not by the family).
+fn brahma_doc_id() -> String {
+    let meta = std::fs::read_to_string(fixtures_dir().join("help-chat-main.db.meta.json")).unwrap();
+    let v: Value = serde_json::from_str(&meta).unwrap();
+    v["helpDocs"]["byPath"]["help/brahma-console.md"]["id"]
+        .as_str()
+        .expect("brahma-console doc id in the fixture meta")
+        .to_string()
+}
 
 #[derive(Deserialize)]
 struct Spec {
@@ -218,7 +231,7 @@ fn help_docs_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "getid");
-        check("get_by_id", &help_docs::help_doc_get(&db, BRAHMA_DOC_ID));
+        check("get_by_id", &help_docs::help_doc_get(&db, &brahma_doc_id()));
     }
     {
         let db = fresh_db(&spec, "getslug");

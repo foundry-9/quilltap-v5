@@ -109028,3 +109028,99 @@ rows → still unequal) and `a_count_divergence_is_untouched`. M4 and M5 were
 re-proven RED under the normalization, so it hides nothing this unit relies on.
 
 Versions: core 0.0.808, harness 0.0.696.
+
+---
+
+## Lane record — P4.D162 unit 3 (Tier 2 item 5): a GOOGLE seat in the help-chat fixture
+
+**Pin:** `/tmp/qt-v4-pin-p4d162-f699da6f6`. **§2 probe re-run before this unit's
+regen batch: PASS.**
+
+### Why
+
+The `p4.9i2` §3 review landed the per-provider id-less tool-row rule
+(`keeps_idless_tool_rows`) and named its corpus arm as the follow-up, because
+the fixture carried nothing but ANTHROPIC profiles. Only the DROP side could
+redden; the KEEP side — GOOGLE's plugin at `provider.ts:376` — was pinned at
+unit tier. Bug 124 makes this doubly relevant: after the fix an id-less `tool`
+row can only arrive from persisted TOOL HISTORY, which is exactly the shape the
+rule governs.
+
+### What landed
+
+- **`PG1`** — `c0000002-0000-4000-8000-000000000005`, USER_A, provider GOOGLE,
+  tool-capable, on the same fictional model so `checkModelSupportsTools` still
+  answers `true` without a pricing fetch.
+- **`H12`** — a twelfth USER_A help chat seated with PG1
+  (`helpPageUrl /settings?tab=providers`, `updatedAt 2026-05-12`), carrying H1's
+  five-row transcript shape (SYSTEM → USER → empty tool-turn ASSISTANT → TOOL →
+  ASSISTANT) so its TOOL row is read back id-less.
+- **`google_seat_tool_turn`** — one native `help_search` turn in H12.
+
+Measured in the fresh oracle: both GOOGLE canned rows carry the id-less history
+`tool` row (KEPT), and the second also carries the newly-PAIRED one — the two
+shapes side by side in one slate.
+
+### Mutation proofs (both directions, for the first time)
+
+| # | mutation | result |
+|---|---|---|
+| M9 | `keeps_idless_tool_rows = false` (GOOGLE drops like the nine) | `google_seat_tool_turn` frames + messages + slate RED |
+| M10 | `keeps_idless_tool_rows = true` (everyone keeps) | `two_characters_with_tool_history` (ANTHROPIC) frames + messages + slate RED |
+
+### The rebuild's fallout — one loud, one SILENT
+
+The pair is content-deterministic (every id and timestamp pinned) but NOT
+byte-deterministic: the `.db` files are ChaCha20-encrypted, so page bytes differ
+per build, and v4's REAL `syncHelpDocs()` mints `help_docs` ids with
+`randomUUID` — so a rebuild re-mints all 17. Two places had transcribed one of
+those ids:
+
+- `quilltap-web/tests/help_web_routes.rs` failed **loudly** ("the fixture's
+  unchanged rows keep their ids").
+- `help_docs_routes_equivalence`'s `get_by_id` case did **not**. Both sides
+  fetched the now-nonexistent id, both answered 404, and the family passed —
+  **a vacuous green my own rebuild created**, found by grepping the literal
+  after the loud one, not by any test.
+
+Both sides now DERIVE the id from the committed `help-chat-main.db.meta.json`
+the builder writes beside the databases (`helpDocs.byPath['help/brahma-console.md'].id`),
+so the fixture and its readers cannot drift apart. Verified by consequence: the
+regenerated oracle's `get_by_id` is a 200 carrying the real Brahma Console
+document, not a 404.
+
+**Standing lesson (worth a memory note):** a fixture rebuild that re-mints ids
+can turn a positive case into a *symmetric failure* that both sides agree on.
+After any rebuild, grep every transcribed id from the OLD fixture across the
+tree — a green family is not evidence the case still measures anything.
+
+### Consumers re-run by name (all green)
+
+`help_chat_orchestrator_tier3_equivalence` (fresh oracle),
+`help_chats_routes_equivalence` (fresh, 49 cases),
+`help_docs_routes_equivalence` (fresh, 19 cases), `quilltap-web`'s
+`help_web_routes` (its chat-count assertion 11 → 12, with the reason in a
+comment), and the two `quilltap-core` fixture-backed test modules
+(`api::help_chats`, `api::help_docs`) — the latter two carry no counts and
+needed no edit.
+
+### Regen recipes
+
+The fixture (run from the pin; writes the committed pair + meta):
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d162-f699da6f6; V5W=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin
+cd "$PIN"
+QT_FIXTURE_HELP_CHAT_MAIN=$V5W/crates/quilltap-web/tests/fixtures/help-chat-main.db \
+QT_FIXTURE_HELP_CHAT_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/help-chat-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/fixtures/build-help-chat-fixture.ts
+```
+
+⚠ **Rebuild ONCE, then regenerate all three oracles against that build** — the
+doc ids change every time.
+
+The two routes oracles use lane-unique staging (`/tmp/qt-d162-help-chats-routes`,
+`/tmp/qt-d162-help-docs-routes`) in place of the recipes' shared `/tmp/…` paths
+(§C), and are otherwise the recipes in their headers.
+
+Versions: harness 0.0.697, web 0.0.120.

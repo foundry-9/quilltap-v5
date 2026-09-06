@@ -130,6 +130,15 @@
           "query": "taboo"
         }
       }
+    ],
+    "help_search_google": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "providers"
+        },
+        "callId": "call_g1"
+      }
     ]
   },
   "cases": [
@@ -685,6 +694,42 @@
               "promptTokens": 23,
               "completionTokens": 9,
               "totalTokens": 32
+            }
+          }
+        ]
+      ]
+    },
+    {
+      "name": "google_seat_tool_turn",
+      "chatId": "c1000002-0000-4000-8000-000000000012",
+      "content": "Which providers accept a key?",
+      "streams": [
+        [
+          {
+            "content": "Let me check."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_google"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Every provider but the local ones."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 21,
+              "completionTokens": 9,
+              "totalTokens": 30
             }
           }
         ]

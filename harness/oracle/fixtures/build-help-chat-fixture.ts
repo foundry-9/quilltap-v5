@@ -10,11 +10,17 @@
  * the harness):
  *   - THREE users: USER_A (the fixture owner), USER_B (the ownership/404 arm),
  *     USER_C (a user with NO tool-capable profile and no chat_settings row),
- *   - TWO api keys + FIVE connection profiles. All ANTHROPIC on a fictional
- *     model absent from FALLBACK_PRICING, so v4's `checkModelSupportsTools`
- *     answers `true` deterministically (no pricing fetch). P1 default/tool
- *     capable, P2 `allowToolUse: false`, P3 `pseudoToolMode: 'text-block'`,
- *     P4 carrying a DANGLING `apiKeyId`, PB1 (USER_B) default but tool-less,
+ *   - TWO api keys + SIX connection profiles, on a fictional model absent from
+ *     FALLBACK_PRICING so v4's `checkModelSupportsTools` answers `true`
+ *     deterministically (no pricing fetch). Five are ANTHROPIC — P1
+ *     default/tool capable, P2 `allowToolUse: false`, P3 `pseudoToolMode:
+ *     'text-block'`, P4 carrying a DANGLING `apiKeyId`, PB1 (USER_B) default
+ *     but tool-less — and PG1 is **GOOGLE**, the one provider whose plugin
+ *     KEEPS an id-less `tool` row instead of dropping it at format time
+ *     (`qtap-plugin-google/provider.ts:376`). Before PG1 that branch — the
+ *     orchestrator's `keeps_idless_tool_rows` rule and the oracle's matching
+ *     filter — was pinned at unit tier only (the §3 review of the `p4.9i2`
+ *     unification named the corpus arm as its follow-up),
  *   - SIX characters across the three users, each with its own vault (created
  *     through `repos.characters.create`, never raw SQL), covering every
  *     `handleEligibility` branch: help-enabled with a pinned profile, help
@@ -23,12 +29,14 @@
  *   - TWO legacy IMAGE `files` rows linked to C1/C2 (the avatar-resolution
  *     arm: `findByLinkedTo` → tag match → `images[0]`),
  *   - ONE `chat_settings` row (USER_A only) carrying `cheapLLMSettings`,
- *   - FOURTEEN chats: ELEVEN `help` chats for USER_A with distinct
+ *   - FIFTEEN chats: TWELVE `help` chats for USER_A with distinct
  *     `updatedAt`s (the list-ordering arm) and distinct `helpPageUrl`s (the
  *     page-context arms, incl. a NULL one), ONE `help` chat for USER_B (the
  *     404/ownership arm), plus a `salon` and a `brahma` chat (the list-filter
  *     arms). H1 carries a five-row transcript (SYSTEM → USER → empty tool-turn
- *     ASSISTANT → TOOL → ASSISTANT); H2 carries three,
+ *     ASSISTANT → TOOL → ASSISTANT); H2 carries three; H12 is the GOOGLE seat
+ *     and carries H1's five-row shape so its id-less TOOL history row reaches
+ *     the provider seam,
  *   - SEVENTEEN `help_docs` rows + their section chunks, minted by v4's REAL
  *     `syncHelpDocs()` over a scratch `help/` holding exactly the spec's
  *     `helpDocFiles` (byte-copied from the v4 checkout's `help/`), so titles,
@@ -89,6 +97,7 @@ const P2 = 'c0000002-0000-4000-8000-000000000002'; // USER_A allowToolUse: false
 const P3 = 'c0000002-0000-4000-8000-000000000003'; // USER_A pseudoToolMode text-block
 const P4 = 'c0000002-0000-4000-8000-000000000004'; // USER_A dangling apiKeyId
 const PB1 = 'c0000002-0000-4000-8000-000000000011'; // USER_B default, tool-less
+const PG1 = 'c0000002-0000-4000-8000-000000000005'; // USER_A GOOGLE, tool-capable
 
 // Characters.
 const C1 = 'b0000002-0000-4000-8000-000000000001'; // USER_A help-on, pinned P1
@@ -147,6 +156,7 @@ const HELP_PAGE_URLS: Array<string | null> = [
   '/aurora/new', // H9
   '/prospero/p-1', // H10
   '/aurora/xyz/edit', // H11
+  '/settings?tab=providers', // H12 — the GOOGLE seat
 ];
 
 /** Distinct `updatedAt` per help chat (the list-ordering arm). */
@@ -162,6 +172,7 @@ const HELP_UPDATED_AT = [
   '2026-05-09T00:00:00.000Z', // H9
   '2026-05-10T00:00:00.000Z', // H10
   '2026-05-11T00:00:00.000Z', // H11
+  '2026-05-12T00:00:00.000Z', // H12
 ];
 
 /** Per help chat: the characters seated, and each seat's pinned profile. */
@@ -183,6 +194,7 @@ const HELP_SEATS: Array<Array<{ characterId: string; connectionProfileId: string
     { characterId: C1, connectionProfileId: P4 }, // dangling api key
     { characterId: C2, connectionProfileId: P1 },
   ], // H11
+  [{ characterId: C1, connectionProfileId: PG1 }], // H12 — the GOOGLE seat
 ];
 
 const CHARACTER_NAME: Record<string, string> = {
@@ -364,6 +376,11 @@ async function main(): Promise<void> {
   // through the ordinary repository create — no raw-SQL escape hatch needed.
   await mkProfile(P4, USER_A, 'Dangling Key', K_DANGLING, false);
   await mkProfile(PB1, USER_B, 'B No Tools', KB, true, { allowToolUse: false });
+  // The GOOGLE seat. Its plugin is the ONE that keeps an id-less `tool` row
+  // (`provider.ts:376` — `if (msg.role === 'tool' || msg.toolCallId)`), so H12
+  // is what makes the orchestrator's `keeps_idless_tool_rows` branch and the
+  // oracle's matching filter corpus-visible.
+  await mkProfile(PG1, USER_A, 'Google Help', KA, false, { provider: 'GOOGLE' });
 
   // ── 4. Characters (each mints its own vault store) ────────────────────────
   const mkCharacter = async (
@@ -502,7 +519,7 @@ async function main(): Promise<void> {
   };
 
   const helpParticipants: Record<string, string[]> = {};
-  for (let n = 1; n <= 11; n++) {
+  for (let n = 1; n <= 12; n++) {
     const id = helpChatId(n);
     helpParticipants[id] = await mkHelpChat(
       id,
@@ -628,6 +645,49 @@ async function main(): Promise<void> {
     llmExtras(H2),
   );
 
+  // H12 — the GOOGLE seat. It carries H1's five-row shape (SYSTEM → USER →
+  // empty tool-turn ASSISTANT → TOOL → ASSISTANT) so its persisted TOOL row
+  // arrives as an ID-LESS `tool` message: the ONE shape whose treatment differs
+  // by provider (nine plugins drop it, GOOGLE keeps it and emits an
+  // `unknown_function` `functionResponse`).
+  const H12 = helpChatId(12);
+  await addMsg(
+    H12,
+    `${MSG_PREFIX}21`,
+    'SYSTEM',
+    'Help chat initiated for page: /settings?tab=providers',
+    '2026-05-01T00:00:01.000Z',
+  );
+  await addMsg(
+    H12,
+    `${MSG_PREFIX}22`,
+    'USER',
+    'Which providers can I use?',
+    '2026-05-01T00:00:02.000Z',
+  );
+  await addMsg(H12, `${MSG_PREFIX}23`, 'ASSISTANT', '', '2026-05-01T00:00:03.000Z', llmExtras(H12));
+  await addMsg(
+    H12,
+    `${MSG_PREFIX}24`,
+    'TOOL',
+    JSON.stringify({
+      toolName: 'help_search',
+      success: true,
+      result: 'Found: Providers (/settings?tab=providers)',
+      arguments: { query: 'providers' },
+      callId: 'call_prior_google',
+    }),
+    '2026-05-01T00:00:04.000Z',
+  );
+  await addMsg(
+    H12,
+    `${MSG_PREFIX}25`,
+    'ASSISTANT',
+    'Settings holds the provider list.',
+    '2026-05-01T00:00:05.000Z',
+    llmExtras(H12),
+  );
+
   // `addMessage` stamps the chat row's `updatedAt`/`lastMessageAt` with the
   // WALL CLOCK, so restore the pinned values after the transcripts land.
   await repos.chats.update(H1, {
@@ -637,6 +697,10 @@ async function main(): Promise<void> {
   await repos.chats.update(H2, {
     updatedAt: HELP_UPDATED_AT[1],
     lastMessageAt: '2026-05-01T00:00:03.000Z',
+  } as never);
+  await repos.chats.update(H12, {
+    updatedAt: HELP_UPDATED_AT[11],
+    lastMessageAt: '2026-05-01T00:00:05.000Z',
   } as never);
 
   // ── 9. Help docs — v4's REAL syncHelpDocs over the curated subset ─────────
@@ -706,6 +770,7 @@ async function main(): Promise<void> {
       [P3]: 'P3 — USER_A "Text-Block Help", pseudoToolMode:text-block (H6 seat)',
       [P4]: 'P4 — USER_A "Dangling Key", apiKeyId points at a row that does not exist (H11 seat 0)',
       [PB1]: 'PB1 — USER_B "B No Tools", isDefault but allowToolUse:false',
+      [PG1]: 'PG1 — USER_A "Google Help", provider GOOGLE, tool-capable (H12 seat) — the one plugin that KEEPS an id-less tool row',
     },
     characters: {
       [C1]: 'C1 Marigold — USER_A, defaultHelpToolsEnabled true, defaultConnectionProfileId P1, pronouns she/her/hers, no avatarUrl',
@@ -730,7 +795,7 @@ async function main(): Promise<void> {
     },
     chats: {
       ...Object.fromEntries(
-        Array.from({ length: 11 }, (_, i) => {
+        Array.from({ length: 12 }, (_, i) => {
           const n = i + 1;
           const id = helpChatId(n);
           const seats = HELP_SEATS[i]
@@ -740,7 +805,11 @@ async function main(): Promise<void> {
             )
             .join(' | ');
           const history =
-            n === 1 ? ' | 5 messages' : n === 2 ? ' | 3 messages' : ' | no history';
+            n === 1 || n === 12
+              ? ' | 5 messages'
+              : n === 2
+                ? ' | 3 messages'
+                : ' | no history';
           return [
             id,
             `H${n} — USER_A, chatType help, helpPageUrl ${HELP_PAGE_URLS[i] ?? 'NULL'}, updatedAt ${HELP_UPDATED_AT[i]}, seats: ${seats}${history}`,
@@ -760,6 +829,11 @@ async function main(): Promise<void> {
       [`${MSG_PREFIX}11`]: 'H2 #1 SYSTEM "Help chat initiated for page: /" @00:00:01Z',
       [`${MSG_PREFIX}12`]: 'H2 #2 USER "hi" @00:00:02Z',
       [`${MSG_PREFIX}13`]: `H2 #3 ASSISTANT "hello" participantId ${helpParticipants[H2][0]} @00:00:03Z`,
+      [`${MSG_PREFIX}21`]: 'H12 #1 SYSTEM "Help chat initiated for page: /settings?tab=providers" @00:00:01Z',
+      [`${MSG_PREFIX}22`]: 'H12 #2 USER "Which providers can I use?" @00:00:02Z',
+      [`${MSG_PREFIX}23`]: `H12 #3 ASSISTANT "" (empty tool-turn) participantId ${helpParticipants[H12][0]} @00:00:03Z`,
+      [`${MSG_PREFIX}24`]: 'H12 #4 TOOL help_search result JSON (id-less on read — the GOOGLE-keeps arm) @00:00:04Z',
+      [`${MSG_PREFIX}25`]: `H12 #5 ASSISTANT "Settings holds the provider list." participantId ${helpParticipants[H12][0]} @00:00:05Z`,
     },
     helpDocs: {
       note:
@@ -789,7 +863,7 @@ async function main(): Promise<void> {
   }
   process.stderr.write(
     `built help-chat fixture: main=${mainOut} mount=${mountOut} meta=${metaOut} ` +
-      `(3 users, 5 profiles, 6 characters, 2 files, 14 chats, ` +
+      `(3 users, 6 profiles, 6 characters, 2 files, 15 chats, ` +
       `${helpDocRows.length} help_docs / ${chunkCount} chunks, 0 jobs)\n`,
   );
   process.exit(0);

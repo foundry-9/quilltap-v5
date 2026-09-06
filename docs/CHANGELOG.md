@@ -74,6 +74,27 @@ The P4.D160 lane record also carries the `git show --stat` file lists for the
 eight carrier/docs drift rows (`d40497411`, `5eaf98cf1`, `ba34fa367`,
 `02b77ab0f`, `8fbf2afe0`, `d489b04a3`, `f699da6f6`, `1a2b2164c`), so the
 unifier ratifies them by file list rather than by subject line.
+#### 2026-09-06 — test(help-chat): a GOOGLE seat in the fixture pins the id-less tool-row rule from both sides
+
+_Versions: harness 0.0.697, web 0.0.120._
+
+The help-chat fixture carried only ANTHROPIC profiles, so the one branch that
+distinguishes the providers — GOOGLE's plugin KEEPS an id-less `tool` row where
+the other nine drop it at format time — was pinned at unit tier only. It now has
+a corpus arm: `PG1` (a GOOGLE, tool-capable profile) and `H12`, a help chat
+seated with it and carrying H1's five-row transcript, so its persisted TOOL row
+reaches the provider seam id-less. A new tier-3 case, `google_seat_tool_turn`,
+drives one native tool turn there. Flipping `keeps_idless_tool_rows` off reddens
+the GOOGLE case; flipping it on for everyone reddens the ANTHROPIC one — both
+directions are corpus-visible for the first time.
+
+Rebuilding the fixture re-mints the `help_docs` ids (v4's real `syncHelpDocs`
+uses `randomUUID`), which staled two transcribed literals. One failed loudly in
+the `quilltap-web` help test. The other did not: `help_docs_routes`' `get_by_id`
+case quietly became a 404-vs-404 agreement — passing while measuring nothing.
+Both sides now derive the id from the committed `.meta.json` the builder writes
+beside the databases, so the two can never drift apart again.
+
 #### 2026-09-06 — fix(help-chat): thread the agent loop's tool turns through the shared primitive (v4 bug 124 / dogfood #112)
 
 _Versions: core 0.0.808, harness 0.0.696._

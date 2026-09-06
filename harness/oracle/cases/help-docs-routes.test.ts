@@ -40,7 +40,23 @@ interface Spec {
 
 const BASE = 'http://localhost/api/v1/help-docs';
 // The fixture's minted id for help/brahma-console.md (help-chat-main.db.meta.json).
-const BRAHMA_DOC_ID = 'd1c8c363-e1c4-48fa-90fb-da0c4229dd9f';
+/**
+ * The fixture's `help/brahma-console.md` row id — DERIVED from the committed
+ * `<main>.meta.json` the builder writes beside the databases, never
+ * transcribed. v4's real `syncHelpDocs()` mints doc ids with `randomUUID`, so
+ * every fixture rebuild re-mints them; a literal here goes stale SILENTLY and
+ * turns `get_by_id` into a 404-vs-404 agreement that passes while measuring
+ * nothing (it did, at P4.D162's rebuild — caught by consequence).
+ */
+function brahmaDocId(): string {
+  const metaPath = `${process.env.QT_FIXTURE_HELP_CHAT_MAIN}.meta.json`;
+  const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8')) as {
+    helpDocs: { byPath: Record<string, { id: string }> };
+  };
+  const row = meta.helpDocs.byPath['help/brahma-console.md'];
+  if (!row?.id) throw new Error(`no brahma-console doc id in ${metaPath}`);
+  return row.id;
+}
 
 function mockRequest(url: string, body?: unknown): unknown {
   return {
@@ -110,7 +126,7 @@ const CASES: CaseSpec[] = [
   { name: 'list_empty_action_falls_through', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=`))) },
   { name: 'chat_count_user_a', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=chat-count`))) },
   { name: 'chat_count_user_c', user: 'C', run: (r) => respond(r.collection.GET(mockRequest(`${BASE}?action=chat-count`))) },
-  { name: 'get_by_id', run: (r) => respond(r.item.GET(mockRequest(`${BASE}/${BRAHMA_DOC_ID}`), params(BRAHMA_DOC_ID))) },
+  { name: 'get_by_id', run: (r) => respond(r.item.GET(mockRequest(`${BASE}/${brahmaDocId()}`), params(brahmaDocId()))) },
   { name: 'get_by_slug', run: (r) => respond(r.item.GET(mockRequest(`${BASE}/brahma-console`), params('brahma-console'))) },
   { name: 'get_missing_404', run: (r) => respond(r.item.GET(mockRequest(`${BASE}/no-such-doc`), params('no-such-doc'))) },
   ...([

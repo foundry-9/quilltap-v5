@@ -28,7 +28,24 @@ mod common;
 
 use serde_json::{json, Value};
 
-const BRAHMA_DOC_ID: &str = "d1c8c363-e1c4-48fa-90fb-da0c4229dd9f";
+/// The fixture's `help/brahma-console.md` row id — DERIVED from the committed
+/// `help-chat-main.db.meta.json`, never transcribed. v4's real `syncHelpDocs()`
+/// mints doc ids with `randomUUID`, so every fixture rebuild re-mints them and a
+/// literal here goes stale silently (it did, at P4.D162's rebuild). The meta
+/// file is written by the builder alongside the databases, so the two can never
+/// drift apart.
+fn brahma_doc_id() -> String {
+    let meta = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/help-chat-main.db.meta.json"),
+    )
+    .expect("the committed fixture meta");
+    let v: serde_json::Value = serde_json::from_str(&meta).expect("meta json");
+    v["helpDocs"]["byPath"]["help/brahma-console.md"]["id"]
+        .as_str()
+        .expect("brahma-console doc id in the fixture meta")
+        .to_string()
+}
 const C1: &str = "b0000002-0000-4000-8000-000000000001";
 const C2: &str = "b0000002-0000-4000-8000-000000000002";
 const H1: &str = "c1000002-0000-4000-8000-000000000001";
@@ -82,7 +99,7 @@ async fn help_web_edges() {
     assert_eq!(docs.len(), 120, "the boot ensure synced the embedded tree");
     assert!(
         docs.iter()
-            .any(|d| d["id"] == BRAHMA_DOC_ID && d["slug"] == "brahma-console"),
+            .any(|d| d["id"] == brahma_doc_id().as_str() && d["slug"] == "brahma-console"),
         "the fixture's unchanged rows keep their ids"
     );
     // --- 1. help-docs: the default-serving action shape ---
@@ -116,7 +133,7 @@ async fn help_web_edges() {
         .any(|m| m["slug"] == "brahma-console" && m["titleHit"] == true));
     let (status, body) = get(&client, &addr, "/api/v1/help-docs/brahma-console").await;
     assert_eq!(status, 200);
-    assert_eq!(body["document"]["id"], BRAHMA_DOC_ID);
+    assert_eq!(body["document"]["id"], brahma_doc_id().as_str());
     assert!(
         body["document"].get("slug").is_none(),
         "the single-document body has NO slug"
@@ -130,12 +147,14 @@ async fn help_web_edges() {
     // --- help-chats: the envelope action shape ---
     let (status, body) = get(&client, &addr, "/api/v1/help-chats").await;
     assert_eq!(status, 200);
-    assert_eq!(body["chats"].as_array().map(|a| a.len()), Some(11));
+    // TWELVE since P4.D162 added H12, the GOOGLE seat (the fixture's only
+    // non-ANTHROPIC profile — the one plugin that KEEPS an id-less tool row).
+    assert_eq!(body["chats"].as_array().map(|a| a.len()), Some(12));
     let (status, body) = get(&client, &addr, "/api/v1/help-chats?action=").await;
     assert_eq!(status, 200);
     assert_eq!(
         body["chats"].as_array().map(|a| a.len()),
-        Some(11),
+        Some(12),
         "empty action → the no-action leg"
     );
     let (status, body) = get(&client, &addr, "/api/v1/help-chats?action=eligibility").await;
