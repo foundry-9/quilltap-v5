@@ -20,7 +20,9 @@
 //!   builds it from `allProfiles` + `cheapLLMSettings` and hands it straight to
 //!   the classifier, so recording it is the only way to pin
 //!   `build_cheap_llm_selection` on this path. An EMPTY array is the comparand
-//!   for the two gate conjuncts (`mode != 'OFF'`, `scanImagePrompts`);
+//!   of the two gate conjuncts (`mode != 'OFF'`, `scanImagePrompts`) — this
+//!   line must not START with a shell keyword: `recipe_sweep.py` read the
+//!   previous `for …` wording as a run line (the P4.34 SHELL_START class);
 //! * **the post-mutation `files` rows and Lantern mount links** — so a refusal
 //!   proves it wrote NOTHING, and the store write's path/mime/sha are pinned.
 //!
