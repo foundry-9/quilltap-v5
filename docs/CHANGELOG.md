@@ -74,6 +74,34 @@ The P4.D160 lane record also carries the `git show --stat` file lists for the
 eight carrier/docs drift rows (`d40497411`, `5eaf98cf1`, `ba34fa367`,
 `02b77ab0f`, `8fbf2afe0`, `d489b04a3`, `f699da6f6`, `1a2b2164c`), so the
 unifier ratifies them by file list rather than by subject line.
+#### 2026-09-06 — fix(google): additionalProperties heads the schema strip list (v4 bug 125 / dogfood #114)
+
+_Versions: core 0.0.807._
+
+Google's function-calling API is an OpenAPI subset that refuses
+`additionalProperties` anywhere inside a declaration. The top-level one never
+reached the wire — `build_tools` forwards `properties` + `required` only — but
+the one Zod emits on an array's `items` object, the wardrobe tools'
+`operations`, survived `sanitize_schema_for_google` and 400'd every
+tool-enabled turn whose slate carried `wardrobe_wear` / `wardrobe_take_off`.
+The port of v4 `20913d2aa`: one entry at the head of
+`UNSUPPORTED_SCHEMA_FIELDS`, carrying v4's comment, in v4's order.
+
+The bug shipped unmeasured because no recorded google corpus row carried a
+schema with a nested `additionalProperties`. Two rows now do: the recorder
+gained `--wardrobe-params`, fed by the new
+`harness/oracle/providers/dump-wardrobe-tool-params.mjs`, which runs v4's REAL
+`zodToOpenAISchema` over its REAL `wardrobeWearToolInputSchema` /
+`wardrobeTakeOffToolInputSchema` at the pin and asserts the premise
+(`operations.items.additionalProperties === false`) rather than trusting it.
+The two new `google-request.recorded.ndjson` rows are red against the pre-fix
+builder and green after; the nine pre-existing rows re-recorded byte-identical,
+and `google-wire.recorded.ndjson` re-recorded byte-identical (18 rows).
+
+A unit pin mirrors v4's new `google-schema-sanitizer.test.ts` over v5's REAL
+catalog definitions — measured byte-equal to v4's converter output — so a fix
+applied in the wrong home (stripping the key from the schemas instead of adding
+it to the list) is caught.
 
 #### 2026-09-06 — docs(drift): the 4.9.2 squash puts bugs 124/125 on main — the ordered round repointed to one pin (`f699da6f6`)
 

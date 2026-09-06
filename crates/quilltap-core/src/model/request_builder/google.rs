@@ -19,8 +19,15 @@ use serde_json::{json, Map, Value};
 use super::{att_fail, att_id, att_str, RequestInput, StreamAttachmentResults, StreamMessage};
 
 /// JSON-Schema fields Google's function-calling API rejects (v4
-/// `UNSUPPORTED_SCHEMA_FIELDS`).
+/// `UNSUPPORTED_SCHEMA_FIELDS`). v4's order is kept for the transcription even
+/// though the check is a `contains`.
 const UNSUPPORTED_SCHEMA_FIELDS: &[&str] = &[
+    // Bug 125: Google refuses `additionalProperties` anywhere inside a
+    // declaration — the top-level one is dropped by construction (only
+    // `properties` + `required` are forwarded), but the one Zod emits on an
+    // array's `items` object (wardrobe_wear / wardrobe_take_off `operations`)
+    // reached the wire and 400'd the whole tool-enabled turn.
+    "additionalProperties",
     "propertyNames",
     "additionalItems",
     "contains",
@@ -670,5 +677,120 @@ mod function_response_name_tests {
         assert_eq!(function_response_name(None, "call-1"), "call-1");
         assert_eq!(function_response_name(None, ""), "unknown_function");
         assert_eq!(function_response_name(Some(""), ""), "unknown_function");
+    }
+}
+
+#[cfg(test)]
+mod schema_sanitizer_tests {
+    //! Bug 125's regression pin — the v5 mirror of v4's
+    //! `__tests__/unit/plugins/google-schema-sanitizer.test.ts`.
+    //!
+    //! Google's function-calling API is an OpenAPI subset that refuses
+    //! `additionalProperties` anywhere inside a declaration. The top-level one
+    //! never reached the wire ([`build_tools`] forwards `properties` +
+    //! `required` only), but the one Zod emits on an array's `items` object —
+    //! the wardrobe tools' `operations` — survived the recursive sanitizer and
+    //! 400'd every tool-enabled turn whose slate carried them (v5 dogfood
+    //! finding #114 → v4 bug 125, fixed at `20913d2aa`).
+    //!
+    //! The pin feeds the REAL catalog definitions through the sanitizer, so a
+    //! fix applied in the wrong home — stripping the key from the wardrobe
+    //! schemas instead of adding it to the strip list — leaves the third test
+    //! (the generic schema) red.
+    use super::*;
+    use crate::tools::definitions::definition_by_key;
+
+    /// Every key that appears anywhere in a nested schema (v4's `collectKeys`).
+    fn collect_keys(node: &Value, out: &mut std::collections::BTreeSet<String>) {
+        match node {
+            Value::Array(a) => a.iter().for_each(|c| collect_keys(c, out)),
+            Value::Object(o) => {
+                for (k, v) in o {
+                    out.insert(k.clone());
+                    collect_keys(v, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn keys(node: &Value) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        collect_keys(node, &mut out);
+        out
+    }
+
+    #[test]
+    fn lists_additional_properties_among_the_stripped_fields() {
+        assert!(UNSUPPORTED_SCHEMA_FIELDS.contains(&"additionalProperties"));
+    }
+
+    #[test]
+    fn strips_the_additional_properties_nested_under_wardrobe_operations_items() {
+        for key in ["wardrobeWear", "wardrobeTakeOff"] {
+            let def = definition_by_key(key).unwrap_or_else(|| panic!("catalog entry {key}"));
+            let params = &def["parameters"];
+            // The premise: the catalog really does carry one on the item object
+            // (it is byte-equal to v4's `zodToOpenAISchema` output).
+            assert_eq!(
+                params["properties"]["operations"]["items"]["additionalProperties"],
+                Value::Bool(false),
+                "{key}: premise — operations.items carries additionalProperties"
+            );
+
+            // What the declaration builder forwards (`properties` only).
+            let sanitized = sanitize_schema_for_google(&params["properties"]);
+
+            assert!(
+                !keys(&sanitized).contains("additionalProperties"),
+                "{key}: additionalProperties survived the sanitizer"
+            );
+            // The rest of the item schema is intact.
+            let items = &sanitized["operations"]["items"];
+            assert_eq!(items["type"], Value::String("OBJECT".into()), "{key}");
+            let got: Vec<&String> = items["properties"].as_object().unwrap().keys().collect();
+            let want: Vec<&String> = params["properties"]["operations"]["items"]["properties"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .collect();
+            assert_eq!(got, want, "{key}: item property keys");
+            assert_eq!(
+                sanitized["operations"]["minItems"], params["properties"]["operations"]["minItems"],
+                "{key}: minItems"
+            );
+        }
+    }
+
+    #[test]
+    fn strips_every_listed_field_at_any_depth_and_leaves_the_rest() {
+        let schema = json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "list": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "default": {},
+                        "properties": { "id": { "type": "string", "const": "x", "description": "kept" } },
+                        "required": ["id"],
+                    },
+                },
+            },
+        });
+        let sanitized = sanitize_schema_for_google(&schema);
+        let k = keys(&sanitized);
+        for field in UNSUPPORTED_SCHEMA_FIELDS {
+            assert!(!k.contains(*field), "{field} survived the sanitizer");
+        }
+        assert_eq!(
+            sanitized["properties"]["list"]["items"]["properties"]["id"]["description"],
+            Value::String("kept".into())
+        );
+        assert_eq!(
+            sanitized["properties"]["list"]["items"]["required"],
+            json!(["id"])
+        );
     }
 }

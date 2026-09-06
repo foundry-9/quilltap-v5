@@ -70,6 +70,29 @@ interface Spec {
 
 const MSG_COLS = ['role', 'content', 'participantId', 'provider', 'modelName', 'promptTokens', 'completionTokens', 'tokenCount'] as const;
 
+/** One message of the help loop's outgoing slate, as the plugins receive it. */
+interface SlateMessage {
+  role: string;
+  content: string;
+  name?: string;
+  toolCallId?: string;
+  toolCalls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
+}
+
+/**
+ * The five keys `buildAssistantToolCallMessage` / `buildToolResultMessages` set
+ * (bug 124), in a fixed order so the Rust side can build the identical JSON.
+ * Absent/empty optional keys are OMITTED — `JSON.stringify` drops `undefined`,
+ * and v5's carrying enum spells "no call id" as an empty string.
+ */
+function projectSlate(m: SlateMessage): Record<string, unknown> {
+  const out: Record<string, unknown> = { role: m.role, content: m.content };
+  if (m.toolCallId) out.toolCallId = m.toolCallId;
+  if (m.name) out.name = m.name;
+  if (m.toolCalls && m.toolCalls.length > 0) out.toolCalls = m.toolCalls;
+  return out;
+}
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(fs.readFileSync(join(here, '..', 'fixtures', 'help-chat-orchestrator-tier3.json'), 'utf8')) as Spec;
@@ -96,7 +119,7 @@ async function main(): Promise<void> {
 
   let currentCase: CaseSpec = spec.cases[0];
   let streamCallIndex = 0;
-  const cannedRows: Array<{ provider: string; model: string; temperature: number | null; messages: Array<{ role: string; content: string }>; sequences: ChunkSpec[][] }> = [];
+  const cannedRows: Array<{ provider: string; model: string; temperature: number | null; messages: Array<{ role: string; content: string }>; slate: Array<Record<string, unknown>>; sequences: ChunkSpec[][] }> = [];
 
   jest.resetModules();
   const cipherDriverPath = require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers');
@@ -133,26 +156,35 @@ async function main(): Promise<void> {
       __esModule: true,
       ...actual,
       streamMessage: async function* (opts: {
-        messages: Array<{ role: string; content: string; toolCallId?: string }>;
+        messages: SlateMessage[];
         connectionProfile: { provider: string; modelName: string };
         modelParams?: { temperature?: number };
       }) {
         const seq = currentCase.streams[streamCallIndex];
         streamCallIndex += 1;
         if (!seq) throw new Error(`no scripted stream #${streamCallIndex - 1} for case ${currentCase.name}`);
+        // The plugins' filter (anthropic/openai-compatible/ollama
+        // `formatMessages…`, the OpenAI Responses formatter's skip): an
+        // id-less tool row never reaches the wire — on NINE of the ten
+        // providers. GOOGLE's plugin keeps it (`provider.ts:376`), so the
+        // recorded slate keeps it there too (the §3 review of the `p4.9i2`
+        // unification). This is where v5's `to_stream_messages` drops it, so
+        // filtering here compares like with like.
+        const filtered = opts.messages.filter(
+          (m) => opts.connectionProfile.provider === 'GOOGLE' || !(m.role === 'tool' && !m.toolCallId),
+        );
         cannedRows.push({
           provider: opts.connectionProfile.provider,
           model: opts.connectionProfile.modelName,
           temperature: opts.modelParams?.temperature ?? null,
-          // The plugins' filter (anthropic/openai-compatible/ollama
-          // `formatMessages…`, the OpenAI Responses formatter's skip): an
-          // id-less tool row never reaches the wire — on NINE of the ten
-          // providers. GOOGLE's plugin keeps it (`provider.ts:376`), so the
-          // recorded key keeps it there too (the §3 review of the `p4.9i2`
-          // unification; the fixture carries no GOOGLE profile yet).
-          messages: opts.messages
-            .filter((m) => opts.connectionProfile.provider === 'GOOGLE' || !(m.role === 'tool' && !m.toolCallId))
-            .map((m) => ({ role: m.role, content: m.content })),
+          // The canned KEY (`provider|model|temperature|messages`), unchanged —
+          // both sides hash role+content only.
+          messages: filtered.map((m) => ({ role: m.role, content: m.content })),
+          // Bug 124's comparand: the FULL slate the model is handed, carrying
+          // the three keys the threading helpers set. The key above is blind to
+          // them, so without this the pairing ships unmeasured (the P4.58
+          // blind-spot class).
+          slate: filtered.map(projectSlate),
           sequences: [seq],
         });
         for (const chunk of seq) {

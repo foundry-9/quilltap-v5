@@ -18,10 +18,23 @@
  *   cd ~/source/quilltap-server/plugins/dist/qtap-plugin-google
  *   node <V5>/harness/oracle/providers/record-google-request.mjs --out <ndjson>
  *
+ * `--wardrobe-params <json>` appends the two BUG-125 vectors: the real
+ * `wardrobe_wear` / `wardrobe_take_off` declarations, whose `operations.items`
+ * carries the `additionalProperties: false` Zod emits and Google refuses.
+ * Produce the file with the sibling `dump-wardrobe-tool-params.mjs` (run from
+ * the v4 ROOT — the `@/` alias does not resolve from the plugin dir). Without
+ * the flag the recorder emits exactly the pre-bug-125 case list, so a partial
+ * re-record cannot silently drop those rows.
+ *
+ * NOTE: this recorder runs under `tsx`, importing `provider.ts` directly — v4's
+ * `jest.config.ts` mapping of `^@google/genai$` to `__mocks__/@google/genai.ts`
+ * (added at `20913d2aa`, drift-ledger hazard 5) applies to JEST oracles only and
+ * never to this one; the SDK loaded here is the real ESM package.
+ *
  * Line shape: { case, input, contents, systemInstruction, shouldDisableTools, wireTools }.
  */
 
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
@@ -110,6 +123,40 @@ const CASES = [
   { name: 'attachment-no-data', params: { model: 'gemini-2.5-flash', messages: [SYS, { role: 'user', content: 'What is in this image?', attachments: [IMG_NO_DATA] }], temperature: 0.5, maxTokens: 1000, topP: 0.9 } },
 ];
 
+/**
+ * Bug 125 — the two REAL wardrobe declarations, appended only when
+ * `--wardrobe-params` supplies v4's `zodToOpenAISchema` output. Their
+ * `operations.items.additionalProperties` is the key that used to survive the
+ * recursive sanitizer and reach the wire.
+ */
+function wardrobeCases(params) {
+  const tool = (name, description, parameters) => ({ name, description, parameters });
+  return [
+    {
+      name: 'wardrobe-wear-tools',
+      params: {
+        model: 'gemini-2.5-flash',
+        messages: [SYS, USER],
+        tools: [tool('wardrobe_wear', 'Put on one or more wardrobe items.', params.wear)],
+        temperature: 0.5,
+        maxTokens: 1000,
+        topP: 0.9,
+      },
+    },
+    {
+      name: 'wardrobe-take-off-tools',
+      params: {
+        model: 'gemini-2.5-flash',
+        messages: [SYS, USER],
+        tools: [tool('wardrobe_take_off', 'Take off one or more worn wardrobe items.', params.takeOff)],
+        temperature: 0.5,
+        maxTokens: 1000,
+        topP: 0.9,
+      },
+    },
+  ];
+}
+
 async function main() {
   const args = parseArgs();
   const outPath = args.out;
@@ -120,8 +167,14 @@ async function main() {
   const { GoogleProvider } = await import(pathToFileURL(resolve('provider.ts')));
   const inst = new GoogleProvider();
 
+  const cases = [...CASES];
+  if (args['wardrobe-params']) {
+    const params = JSON.parse(readFileSync(args['wardrobe-params'], 'utf8'));
+    cases.push(...wardrobeCases(params));
+  }
+
   const lines = [];
-  for (const c of CASES) {
+  for (const c of cases) {
     const params = { webSearchEnabled: false, ...c.params };
     const hasTools =
       (params.tools && params.tools.length > 0) || params.webSearchEnabled === true;

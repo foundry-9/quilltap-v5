@@ -108749,3 +108749,110 @@ invalidated.** The vendored `help/` tree is read by `help_tree_equivalence` and
 `help_tree_embed_guard`; both were re-run by name and are green.
 
 Versions: core 0.0.807, harness 0.0.696, host 0.0.105.
+## Lane record — P4.D162 unit 1 (v4 bug 125 / dogfood #114): `additionalProperties` heads Google's strip list
+
+**Lane:** `claude/help-tool-threading-google-5b47bd`, the `f699da6f6` 4.9.x
+drift catch-up round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79).
+**Pin:** `/tmp/qt-v4-pin-p4d162-f699da6f6` (§B's one pin for the round; the
+earlier draft's `20913d2aa` exception was retired when the 4.9.2 squash put the
+content on `main` — measured EMPTY diff over every ported path).
+**Freshness probe at lane start:** PASS — checkout on `bugfix`, tree clean,
+`git log f699da6f6..main` and `git log 1a2b2164c..bugfix` both empty.
+
+### The port
+
+One entry — `"additionalProperties"` at the HEAD of
+`UNSUPPORTED_SCHEMA_FIELDS` (`model/request_builder/google.rs`), carrying v4's
+comment and keeping v4's order for the transcription even though the check is a
+`contains`. v4's `20913d2aa` also `export`s the list and `sanitizeSchemaForGoogle`
+so its unit pin can hold them; v5's are already `pub` / crate-visible, so nothing
+else moved.
+
+### The premise, measured rather than assumed
+
+v5's committed catalog definitions for `wardrobe_wear` / `wardrobe_take_off`
+(`tools/definitions/data.rs`) are **byte-equal to v4's `zodToOpenAISchema`
+output at the pin** — verified by running v4's REAL converter over its REAL
+`wardrobeWearToolInputSchema` / `wardrobeTakeOffToolInputSchema` and comparing
+the parsed `parameters` objects. Both carry `additionalProperties: false` at the
+TOP level and under `operations.items`; only the latter reaches the wire, which
+is exactly what v4's bug doc says.
+
+### Closing the corpus blind spot (the P4.58 class)
+
+No committed google row carried a schema with a nested `additionalProperties`,
+which is why no differential ever saw the bug. Delivered:
+
+- **`harness/oracle/providers/dump-wardrobe-tool-params.mjs`** (new) — runs from
+  the v4 ROOT (the `@/` alias does not resolve from the plugin dir) and writes
+  `{wear, takeOff}` from v4's real Zod schemas + converter. It **asserts the
+  premise** (`operations.items.additionalProperties === false`) and exits
+  non-zero otherwise, so a future v4 converter change is loud at record time
+  instead of a silently vacuous corpus row.
+- **`record-google-request.mjs`** gained `--wardrobe-params <json>`; without the
+  flag it emits exactly the pre-bug-125 case list, so a partial re-record cannot
+  silently drop the new rows.
+- Two appended rows, `wardrobe-wear-tools` / `wardrobe-take-off-tools`. The nine
+  pre-existing rows re-recorded **byte-identical** (diff of the first 9 lines
+  against the committed file — the P4.21 / P4.D107 precedent).
+
+### Red-first + mutation proofs
+
+- **Red-first:** with the two rows appended and the entry NOT yet added,
+  `request_builder_google_equivalence` FAILS on `wardrobe-wear-tools`, and the
+  ONLY difference in the whole declaration is `"additionalProperties":false` on
+  `operations.items`. Green after the one-entry change.
+- **M1 — remove the entry from the strip list:** unit pin 2 of 3 RED
+  (`lists_additional_properties_among_the_stripped_fields`,
+  `strips_the_additional_properties_nested_under_wardrobe_operations_items`),
+  corpus family RED.
+- **M2 — the WRONG-HOME fix** (revert the list entry AND strip the key from the
+  two wardrobe catalog definitions instead): unit pins 1 and 2 RED, corpus family
+  RED (the corpus feeds its own recorded `input.tools`, not the catalog, so it
+  cannot be fooled by editing the schemas).
+  ⚠ **Order correction (the §5.3 class, applied to the order's own prose):** the
+  order predicted M2 would redden *v4's third test* (the generic schema). It does
+  NOT, and cannot — that test loops over `UNSUPPORTED_SCHEMA_FIELDS`, so removing
+  the entry removes the check. The mutation is caught, and caught harder, by
+  tests 1 + 2 + the corpus. v4's own suite has the same property.
+
+### The sanitizer unit pin
+
+`schema_sanitizer_tests` in `google.rs` mirrors v4's new
+`__tests__/unit/plugins/google-schema-sanitizer.test.ts` 1:1 over v5's REAL
+catalog definitions: the strip list contains the key; the two wardrobe schemas
+lose it at every depth while `items.type == "OBJECT"`, the item `properties` key
+ORDER and `minItems` survive; and the generic schema loses every listed field at
+any depth while `description` / `required` survive.
+
+### Regen recipes (both run from the pin)
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d162-f699da6f6; V5=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin
+# google-request.recorded.ndjson (the build_tools / sanitizer corpus)
+( cd "$PIN" && $N/npx tsx "$V5/harness/oracle/providers/dump-wardrobe-tool-params.mjs" \
+    --out /tmp/qt-d162-wardrobe-params.json )
+( cd "$PIN/plugins/dist/qtap-plugin-google" && $N/npx tsx \
+    "$V5/harness/oracle/providers/record-google-request.mjs" \
+    --out $V5/harness/oracle/fixtures/request-envelopes/google-request.recorded.ndjson \
+    --wardrobe-params /tmp/qt-d162-wardrobe-params.json )
+# google-wire.recorded.ndjson — regen-only, expected byte-identical
+V4="$PIN" V5="$V5" bash $V5/harness/oracle/providers/regenerate-google-wire.sh
+```
+
+Both corpora are committed, so `request_builder_google_equivalence` and
+`request_builder_google_wire_equivalence` need no env var and run in every plain
+`cargo test`. Re-recorded at the pin this unit: the wire corpus came back
+**byte-identical**, 18 rows.
+
+### Ledger hazard 5 — measured, not assumed
+
+`20913d2aa` maps `^@google/genai$` to a manual `__mocks__` stub in v4's
+`jest.config.ts`. **Neither google recorder is affected**: both run under `tsx`,
+importing `provider.ts` directly, so the real ESM SDK loads and the recorded
+bytes are the real ones. Recorded in the recorder's header so the next regen
+does not re-derive it. (The hazard still stands for JEST oracles that load the
+google plugin — this lane's help-chat oracle does, through
+`initializeProviderRegistry`; see unit 2.)
+
+Versions: core 0.0.807.

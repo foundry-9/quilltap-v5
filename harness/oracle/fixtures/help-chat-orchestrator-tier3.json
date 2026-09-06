@@ -122,6 +122,14 @@
         },
         "callId": "call_t9"
       }
+    ],
+    "help_search_idless": [
+      {
+        "name": "help_search",
+        "arguments": {
+          "query": "taboo"
+        }
+      }
     ]
   },
   "cases": [
@@ -610,6 +618,74 @@
           },
           {
             "error": "the provider hung up"
+          }
+        ]
+      ]
+    },
+    {
+      "name": "duplicate_call_guard_idless",
+      "chatId": "c1000002-0000-4000-8000-000000000008",
+      "content": "Search for taboo, twice over.",
+      "streams": [
+        [
+          {
+            "content": "Searching."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_idless"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Searching again."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_idless"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Once more."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 11,
+              "completionTokens": 5,
+              "totalTokens": 16
+            },
+            "rawResponse": {
+              "marker": "help_search_idless"
+            }
+          }
+        ],
+        [
+          {
+            "content": "Taboo lives under Settings → Chat."
+          },
+          {
+            "done": true,
+            "usage": {
+              "promptTokens": 23,
+              "completionTokens": 9,
+              "totalTokens": 32
+            }
           }
         ]
       ]
