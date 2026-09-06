@@ -261,6 +261,26 @@ detail}` instead of accepting a billed half reply as a final answer. A new
 throw red-first; the committed `brahma-{main,mount}.db` pair (shared with
 `brahma_console_routes_equivalence`) was widened with a new pinned chat via
 its builder, every pre-existing row reproduced byte-identical.
+#### 2026-09-06 — feat(spa): carry `paused` and `reason` off the chainComplete frame (v4 bug 123)
+
+_Versions: SPA 0.5.652._
+
+P4.D161 unit 1. `ChatStreamFrame` gains the optional `paused` boolean of the
+`chainComplete` contract (§G of the round's orders; v4
+`useSSEStreaming.ts:98`), and the pure stream reducer carries both `reason`
+and `paused` onto `ChatStreamState` as `chainReason` / `chainPaused`.
+
+v4 consumes the frame in an `onChainComplete` callback that runs inside the
+stream loop. v5's fold is deliberately pure and the pause announcement is a
+side effect raised by the vertical after the reconcile — long after the frame
+has been folded away — so the two facts have to survive the fold rather than
+being handed to a callback. `paused` is read as `=== true` exactly as v4 reads
+it (`:690`), so an absent key and an explicit `false` are the same answer;
+`reason` stays literal in the reducer and the vertical applies v4's
+`|| 'no_next_speaker'` default at the callback boundary (`:687`).
+
+Three reducer specs, mutation-proven: pinning `chainPaused` to `false` and
+`chainReason` to `null` each redden.
 
 #### 2026-09-06 — docs(drift): the 4.9.2 squash puts bugs 124/125 on main — the ordered round repointed to one pin (`f699da6f6`)
 

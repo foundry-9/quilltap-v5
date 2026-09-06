@@ -4110,6 +4110,15 @@ export interface ChatStreamFrame {
   chainDepth?: number;
   nextSpeakerId?: string | null;
   reason?: string;
+  /**
+   * `chainComplete` only: the chat is (or was just) marked paused as part of
+   * this stop (v4 bug 123, `useSSEStreaming.ts:98`). Present on exactly the
+   * four `execute_turn_chain` emits, and ABSENT on the fair-rotation
+   * `user_turn` emit and on the help-chat orchestrator's `chainComplete`,
+   * which v4 did not touch — so absent and `false` mean the same thing to the
+   * client, which reads `data.paused === true` (v4 `:690`).
+   */
+  paused?: boolean;
 
   // mid-turn posted messages (full MessageEvent objects)
   carinaAnswer?: PostedMessage;

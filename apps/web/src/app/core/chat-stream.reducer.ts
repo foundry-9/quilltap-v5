@@ -149,6 +149,20 @@ export interface ChatStreamState {
   error: string | null;
   /** The terminal chain has completed (chainComplete, or a non-chained final done). */
   finished: boolean;
+  /**
+   * The `chainComplete` frame's stated reason, or null when the chain ended
+   * without one (a non-chained final `done`). v4 defaults it at the callback
+   * boundary (`useSSEStreaming.ts:687` — `data.reason || 'no_next_speaker'`);
+   * the reducer stays literal and the vertical applies v4's default.
+   */
+  chainReason: string | null;
+  /**
+   * The `chainComplete` frame's `paused` flag (v4 bug 123, `:690` —
+   * `data.paused === true`, so absent and `false` are the same answer). The
+   * fold must CARRY it: the pause announcement is raised by the vertical after
+   * the reconcile, long after this frame has been folded away.
+   */
+  chainPaused: boolean;
   /** The terminal `done` payload for dispatch-reply reconciliation. */
   finalDone: FinalDoneInfo | null;
   // --- internal bookkeeping ---
@@ -170,6 +184,8 @@ export function initialChatStreamState(): ChatStreamState {
     messages: [],
     error: null,
     finished: false,
+    chainReason: null,
+    chainPaused: false,
     finalDone: null,
     toolBatchSeq: 0,
   };
@@ -294,6 +310,11 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
       waitingForResponse: false,
       respondingParticipantId: null,
       finished: true,
+      // v4 `useSSEStreaming.ts:686-691` builds the onChainComplete event here.
+      // v5's fold is pure and the announcement is a side effect, so the two
+      // fields it needs ride the state to the vertical instead of a callback.
+      chainReason: frame.reason ?? null,
+      chainPaused: frame.paused === true,
     };
   }
 

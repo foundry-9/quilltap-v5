@@ -225,6 +225,43 @@ describe('chat stream reducer', () => {
     expect(parked.finalDone?.pendingExternalTurn).toBe(true);
   });
 
+  // v4 bug 123 (`useSSEStreaming.ts:686-691`): the chainComplete frame carries
+  // `reason` and `paused`, and the client reads `data.paused === true` — so an
+  // absent key and an explicit `false` are the same answer. v5's fold is pure
+  // and the announcement happens after the reconcile, so the two facts must
+  // survive the fold rather than being consumed by a callback.
+  it('carries reason and paused off a chainComplete frame', () => {
+    const s = reduceChatFrame(initialChatStreamState(), {
+      chainComplete: true,
+      reason: 'error',
+      paused: true,
+      chainDepth: 2,
+    });
+    expect(s.finished).toBe(true);
+    expect(s.chainReason).toBe('error');
+    expect(s.chainPaused).toBe(true);
+  });
+
+  it('reads an absent or false `paused` alike, and a missing reason as null', () => {
+    const absent = reduceChatFrame(initialChatStreamState(), { chainComplete: true });
+    expect(absent.chainPaused).toBe(false);
+    expect(absent.chainReason).toBeNull();
+
+    const explicitFalse = reduceChatFrame(initialChatStreamState(), {
+      chainComplete: true,
+      reason: 'no_next_speaker',
+      paused: false,
+    });
+    expect(explicitFalse.chainPaused).toBe(false);
+    expect(explicitFalse.chainReason).toBe('no_next_speaker');
+  });
+
+  it('starts a fresh stream unpaused with no chain reason', () => {
+    const fresh = initialChatStreamState();
+    expect(fresh.chainPaused).toBe(false);
+    expect(fresh.chainReason).toBeNull();
+  });
+
   it('applies an answer-confirmation revision to the bubble content', () => {
     const done = foldChatFrames(framesFor(singleTurnTrace, FIXTURE_CHAT_ID));
     const revised = reduceChatFrame(done, {

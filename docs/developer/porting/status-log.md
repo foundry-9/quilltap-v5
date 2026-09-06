@@ -109535,3 +109535,31 @@ QT_ORACLE_BRAHMA_ROUTES=/tmp/oracle-brahma-routes.ndjson \
   future lane touching just one must check the other still passes.
 
 Versions: core 0.0.807, harness 0.0.696; host/web/cli/tauri/SPA unchanged.
+## P4.D161 — bug 123's client half: the Skip banner on the speaking seat, the pause-you-did-not-cause toast (lane record, in progress)
+
+**Order:** `work-orders/p4.d161-bug123-skip-banner-pause-toast-spa.md`. **Pin:**
+`/tmp/qt-v4-pin-p4d161-f699da6f6` (round pin `f699da6f6`; §2 probe passed at
+lane start — branch `bugfix`, tree clean, both logs empty). **Target commit:**
+`fef7ce4f7`. No Rust family; no oracle regenerated.
+
+### Unit 1 — the frame carry (§G) and the reducer
+
+`ChatStreamFrame.paused?: boolean` (the §G key, `Option<bool>` server-side,
+absent on the two emits v4 did not touch) and `ChatStreamState.chainReason` /
+`chainPaused`, set on the `chainComplete` arm.
+
+The shape divergence is structural and deliberate: v4 builds its
+`onChainComplete` event inside `readSSEStream` (`useSSEStreaming.ts:686-691`)
+and consumes it in a callback that still has the closure. v5's fold is a pure
+reducer and the announcement is a side effect raised by the vertical AFTER the
+reconcile, so the two facts ride the state instead. `paused` is read
+`=== true` exactly as v4 reads it, so absent ≡ `false`; `reason` stays literal
+in the reducer and v4's `|| 'no_next_speaker'` default is applied at the
+vertical's callback boundary, where v4 applies it.
+
+Specs (`core/chat-stream.reducer.spec.ts`, 3 new, 17 total green): the carry;
+absent-or-false alike + a missing reason as null; a fresh state unpaused.
+**Mutations:** M1 `chainPaused: false` → 1 red; M2 `chainReason: null` → 2 red;
+M3 `!!frame.paused` for `=== true` → GREEN and recorded as such — the field is
+typed `boolean`, so no vector discriminates the two spellings (v4's `=== true`
+is transcribed regardless).
