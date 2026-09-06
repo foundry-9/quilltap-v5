@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — docs(dogfood): findings #112/#114 filed upstream as v4 bugs 124/125 (unconfirmed)
+
+_Docs-only change._
+
+Both filed in v4's catalogue on its `bugfix` branch, marked UNCONFIRMED on live
+v4 (the v4 side is established by source reading; one live gesture each
+confirms). The findings rows, the walk doc's human remainder, and the
+status-log record now point at the bug numbers.
+
 #### 2026-09-06 — docs(dogfood): the `p4.9i2` help-round walk record (findings #111–#115)
 
 _Docs-only change._

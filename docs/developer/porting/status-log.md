@@ -108424,14 +108424,14 @@ byte for byte, `source=IMPORTED`, 98-byte WebP through the host codec.
 
 ### RECORDED — three findings that are not v5 defects to fix here
 
-- **#112 (v4-faithful, candidate upstream filing):** a tool-needing help turn
+- **#112 (v4-faithful — FILED as v4 bug 124, unconfirmed on live v4):** a tool-needing help turn
   ends in silence on nine of ten providers. The help loop pushes id-less `tool`
   rows and the plugins drop them (`qtap-plugin-nanogpt/provider.ts:174`), so the
   model never sees a result, repeats the search, and the duplicate-call guard
   ends the turn EMPTY (v4's `if (fullResponse)` writes nothing). A8 measured it
   on the wire: three identical `help_search` calls, zero `tool` rows in the
   logged requests. HUMAN cross-check on live v4 owed.
-- **#114 (v4-faithful, candidate upstream filing):** Google's API refuses
+- **#114 (v4-faithful — FILED as v4 bug 125, unconfirmed on live v4):** Google's API refuses
   `additionalProperties` inside an array `items` schema; `wardrobe_wear` and
   `wardrobe_take_off` carry one, so **every tool-enabled turn on a GOOGLE seat
   whose slate holds the wardrobe tools is a 400** (the help slate does). v4's

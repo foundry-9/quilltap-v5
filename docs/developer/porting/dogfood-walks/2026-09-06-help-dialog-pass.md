@@ -146,7 +146,7 @@ row, bug 119, is the unported `p4.9k`). Nothing in this walk can blame drift.
 - **#112 — RECORDED, v4-faithful.** A tool-needing help turn ends in silence
   on nine of ten providers because the loop's tool rows carry no
   `toolCallId` and the plugins drop id-less tool rows; only GOOGLE keeps them.
-  Candidate upstream filing after the HUMAN cross-check on live v4.
+  FILED as v4 bug 124, unconfirmed pending the HUMAN cross-check on live v4.
 - **#113 — FIXED.** `POST /api/v1/images {url: 'data:…'}` was a flat 500:
   reqwest has no `data:` URL processor; Node's fetch does, so v4 imports the
   payload. The host seam now runs the Fetch Standard's processor locally
@@ -156,8 +156,8 @@ row, bug 119, is the unported `p4.9k`). Nothing in this walk can blame drift.
   `wardrobe_take_off` carry one, so **every tool-enabled turn on a GOOGLE seat
   whose slate holds the wardrobe tools answers a 400** — the help slate does.
   v4's sanitizer and v5's twin strip the same list, and neither strips it.
-  Candidate upstream filing (fix v4's `UNSUPPORTED_SCHEMA_FIELDS` or the two
-  definitions; v5 follows at the baseline move).
+  FILED as v4 bug 125, unconfirmed on live v4 (fix v4's
+  `UNSUPPORTED_SCHEMA_FIELDS`; v5 follows at the baseline move).
 - **#115 — RECORDED, needs an order.** `chatCreate` stored `controlledBy: "LLM"`
   (v4's Zod enum refuses it); the seat then read as LLM to the server and as
   not-LLM to the SPA, disabling the Salon composer. v5 lacks v4's whole
@@ -182,7 +182,7 @@ which 2 fixed, 2 BLOCKED, 5 deferred here). What is left for the human:
 2. **D1** — a Brahma deep query on the raised budget (paid).
 3. **D2 / D3** — dedup + summaries regeneration (cost), and the #101 caching
    cost question (judgement).
-4. **Two cross-checks on the live v4 (port 3000), before filing upstream:**
+4. **Two cross-checks on the live v4 (port 3000) — both are FILED as v4 bugs 124 and 125, marked UNCONFIRMED; the gesture confirms or refutes:**
    - **#112** — in the Help dialog, Ask Riya *"Where do I change the app's
      theme? Take me there."* Expect the same silent ending (tool calls run,
      every assistant turn empty, nothing on screen), because the help loop's
