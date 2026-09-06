@@ -18,6 +18,8 @@
 
 import type { APIRequestContext } from '@playwright/test';
 
+import { MOCK_LLM_PORT } from './env';
+
 /** What the seed found and did — reported by the beats' guard, never thrown. */
 export interface HelpSeedResult {
   /** True when at least one character now answers eligible with a tool-capable profile. */
@@ -75,16 +77,31 @@ export async function seedHelpFixture(
   // run: the seat was eligible and every send died on that sentence). So when
   // no character has one, give the seat the instance's default profile.
   const target = characters.find((c) => c.defaultConnectionProfileId) ?? characters[0];
-  const patch: Record<string, unknown> = { defaultHelpToolsEnabled: true };
-  if (!target.defaultConnectionProfileId) {
-    const profiles = await dispatch(ctx, baseUrl, { type: 'connectionProfileList' });
-    const rows =
-      (profiles?.data?.['profiles'] as Array<{ id: string; isDefault?: boolean }> | undefined) ??
-      (Array.isArray(profiles?.data) ? (profiles.data as Array<{ id: string; isDefault?: boolean }>) : []);
-    const chosen = rows.find((p) => p.isDefault) ?? rows[0];
-    if (!chosen) return { eligible: false, characterId: target.id, reason: 'no connection profile to seat the help character on' };
-    patch['defaultConnectionProfileId'] = chosen.id;
+  // ALWAYS seat the character on the profile that targets the spec's canned
+  // LLM (global-setup rewrote the fixture's OPENAI_COMPATIBLE profile to
+  // `http://127.0.0.1:${MOCK_LLM_PORT}/v1`). In the full suite an earlier spec
+  // leaves other profiles behind — a dead-endpoint understudy at
+  // `localhost:8080` was the seat's default on the `p4.9i2` unification's
+  // full run, and every send died on `error sending request` while the file
+  // passed alone. A beat that depends on state another spec leaves is the
+  // standing trap; pinning the seat's profile here removes the dependency.
+  const profiles = await dispatch(ctx, baseUrl, { type: 'connectionProfileList' });
+  const profileRows =
+    (profiles?.data?.['profiles'] as Array<{ id: string; baseUrl?: string; isDefault?: boolean }> | undefined) ??
+    (Array.isArray(profiles?.data)
+      ? (profiles.data as Array<{ id: string; baseUrl?: string; isDefault?: boolean }>)
+      : []);
+  const chosen =
+    profileRows.find((p) => (p.baseUrl ?? '').includes(`127.0.0.1:${MOCK_LLM_PORT}`)) ??
+    profileRows.find((p) => p.isDefault) ??
+    profileRows[0];
+  if (!chosen) {
+    return { eligible: false, characterId: target.id, reason: 'no connection profile to seat the help character on' };
   }
+  const patch: Record<string, unknown> = {
+    defaultHelpToolsEnabled: true,
+    defaultConnectionProfileId: chosen.id,
+  };
 
   // `characterUpdate` merges the partial bag under `character` — the same door
   // the characters Defaults tab's per-field autosave uses.
