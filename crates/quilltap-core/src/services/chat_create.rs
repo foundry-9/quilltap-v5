@@ -53,6 +53,7 @@ use crate::services::avatar_generation::{
 use crate::services::chat_continuation::apply_chat_continuation;
 use crate::services::chat_enrichment::{enrich_participant_summary, EnrichedParticipantSummary};
 use crate::services::chat_initialize::{build_chat_context, ChatContext};
+use crate::services::chat_participants::VALIDATION_ERROR;
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::creation_progress::CreationProgressEmitter;
 use crate::services::dangerous_content::chat_override::{
@@ -125,23 +126,72 @@ impl Default for ChatCreateParticipant {
     }
 }
 
+impl ChatCreateParticipant {
+    /// The LENIENT read of one raw participant object — see
+    /// [`ChatCreateRequest::from_raw`] for why nothing here may fail.
+    fn from_raw(v: &Value) -> Self {
+        let Some(obj) = v.as_object() else {
+            return Self::default();
+        };
+        let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        ChatCreateParticipant {
+            kind: s("type").unwrap_or_else(default_participant_type),
+            character_id: s("characterId"),
+            connection_profile_id: s("connectionProfileId"),
+            image_profile_id: s("imageProfileId"),
+            controlled_by: s("controlledBy"),
+            selected_system_prompt_id: s("selectedSystemPromptId"),
+        }
+    }
+}
+
 fn default_participant_type() -> String {
     "CHARACTER".to_string()
 }
 
-fn de_double_opt_value<'de, D: serde::Deserializer<'de>>(
-    de: D,
-) -> Result<Option<Option<Value>>, D::Error> {
-    use serde::Deserialize as _;
-    let v = Value::deserialize(de)?;
-    Ok(Some(if v.is_null() { None } else { Some(v) }))
+/// The tri-state read of a `.optional()` / `.nullable().optional()` key:
+/// absent → `None`, explicit null → `Some(None)`, a value → `Some(Some(v))`.
+fn raw_tri_state(obj: &Map<String, Value>, key: &str) -> Option<Option<Value>> {
+    obj.get(key)
+        .map(|v| if v.is_null() { None } else { Some(v.clone()) })
 }
 
-/// The chat-creation request (v4 `createChatSchema`). Every field carries a
-/// serde default so a sparse dispatch payload deserializes.
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+/// A JS-integer read: `1` and `1.0` are both integers to Zod's `z.number()
+/// .int()`, so an integral float must reach the typed view rather than being
+/// dropped (`vb_ok_freshness_window_integral_float` stores `1`). Anything
+/// non-integral, out of the safe range, or of the wrong type is left `None` —
+/// the validation stage has already refused every such body.
+fn raw_js_int(obj: &Map<String, Value>, key: &str) -> Option<i64> {
+    let n = obj.get(key)?.as_f64()?;
+    if !n.is_finite() || n.fract() != 0.0 || n.abs() > MAX_SAFE_INTEGER {
+        return None;
+    }
+    Some(n as i64)
+}
+
+/// The chat-creation request (v4 `createChatSchema`).
+///
+/// ⚠ The typed fields below are a LENIENT view over [`Self::raw`], built by
+/// [`Self::from_raw`] — the decode can never fail. That is deliberate and
+/// load-bearing: v4 Zod-parses the whole body inside the route handler, so a
+/// wrong-typed field must answer the route's `400 Validation error` envelope
+/// (P4.78 / dogfood finding #115), and a serde failure at the transport
+/// boundary would answer the host's `invalid chatCreate request: …` instead
+/// (the P4.60 wrong-type-collapse convention; the shape P4.73 fixed for
+/// `conciergeState` / `roleplayTemplateId` one field at a time, generalized
+/// here to the whole body).
+///
+/// The typed view is therefore only meaningful for a body
+/// [`validate_create_body`] has ACCEPTED — which is why `handle_create` runs
+/// that stage over [`Self::raw`] as its first statement, before it reads a
+/// single typed field. A dropped value here is unreachable in production, not
+/// silently tolerated.
+#[derive(Debug, Clone, Default)]
 pub struct ChatCreateRequest {
+    /// The body exactly as it arrived — what the validation stage reads. The
+    /// typed fields cannot express "present but the wrong type", and that
+    /// distinction is the whole of v4's refusal.
+    pub raw: Map<String, Value>,
     pub participants: Vec<ChatCreateParticipant>,
     pub title: Option<String>,
     /// Free-text scenario notes (layered beneath any resolved preset body).
@@ -155,7 +205,6 @@ pub struct ChatCreateRequest {
     /// is NOT nullable: an explicit JSON `null` REJECTS (400). The double
     /// `Option` keeps that arm expressible (absent → `None`, null →
     /// `Some(None)`, object → `Some(Some(v))`).
-    #[serde(deserialize_with = "de_double_opt_value")]
     pub timestamp_config: Option<Option<Value>>,
     pub project_id: Option<String>,
     /// Chat-level image profile (shared by all participants).
@@ -177,7 +226,6 @@ pub struct ChatCreateRequest {
     /// error` 400 — a boundary that refused it with the transport's own
     /// `Invalid request: …` would never get there (the P4.60
     /// wrong-type-collapse convention; MEASURED at `rt_wrong_type_400`).
-    #[serde(deserialize_with = "de_double_opt_value")]
     pub roleplay_template_id: Option<Option<Value>>,
     /// v4 [`303288fb4`] `conciergeState:
     /// z.enum(['monitored','flagged','vouched','uncensored']).optional()` — the
@@ -202,7 +250,6 @@ pub struct ChatCreateRequest {
     /// RAW `Value` for the same reason as [`Self::roleplay_template_id`]: a
     /// wrong TYPE must reach the handler, not fail the decode (MEASURED at
     /// `cs_wrong_type_400`).
-    #[serde(deserialize_with = "de_double_opt_value")]
     pub concierge_state: Option<Option<Value>>,
     pub outfit_selections: Option<Vec<Value>>,
     pub avatar_generation_enabled: Option<bool>,
@@ -219,6 +266,759 @@ pub struct ChatCreateRequest {
     pub run_visibility: Option<String>,
     pub run_destructive_tools_allowed: Option<bool>,
     pub budget_exclude_cache_hits: Option<bool>,
+}
+
+impl ChatCreateRequest {
+    /// Build the typed view from a raw body, dropping anything of the wrong
+    /// shape rather than failing. See the struct's note: the drops are
+    /// unreachable for a body [`validate_create_body`] accepted, and every
+    /// body it refuses never reaches a typed read.
+    pub fn from_raw(raw: Map<String, Value>) -> Self {
+        let s = |k: &str| raw.get(k).and_then(|v| v.as_str()).map(str::to_string);
+        let b = |k: &str| raw.get(k).and_then(|v| v.as_bool());
+        ChatCreateRequest {
+            participants: raw
+                .get("participants")
+                .and_then(|v| v.as_array())
+                .map(|a| a.iter().map(ChatCreateParticipant::from_raw).collect())
+                .unwrap_or_default(),
+            title: s("title"),
+            scenario: s("scenario"),
+            scenario_id: s("scenarioId"),
+            project_scenario_path: s("projectScenarioPath"),
+            general_scenario_path: s("generalScenarioPath"),
+            group_scenario_path: s("groupScenarioPath"),
+            group_scenario_group_id: s("groupScenarioGroupId"),
+            timestamp_config: raw_tri_state(&raw, "timestampConfig"),
+            project_id: s("projectId"),
+            image_profile_id: s("imageProfileId"),
+            roleplay_template_id: raw_tri_state(&raw, "roleplayTemplateId"),
+            concierge_state: raw_tri_state(&raw, "conciergeState"),
+            outfit_selections: raw
+                .get("outfitSelections")
+                .and_then(|v| v.as_array())
+                .cloned(),
+            avatar_generation_enabled: b("avatarGenerationEnabled"),
+            continuation_from_chat_id: s("continuationFromChatId"),
+            progress_id: s("progressId"),
+            chat_type: s("chatType"),
+            schedule_cron: s("scheduleCron"),
+            schedule_freshness_window_ms: raw_js_int(&raw, "scheduleFreshnessWindowMs"),
+            budget_max_turns: raw_js_int(&raw, "budgetMaxTurns"),
+            budget_max_tokens: raw_js_int(&raw, "budgetMaxTokens"),
+            budget_max_wall_clock_ms: raw_js_int(&raw, "budgetMaxWallClockMs"),
+            budget_estimated_spend_cap_usd: raw
+                .get("budgetEstimatedSpendCapUSD")
+                .and_then(|v| v.as_f64()),
+            run_visibility: s("runVisibility"),
+            run_destructive_tools_allowed: b("runDestructiveToolsAllowed"),
+            budget_exclude_cache_hits: b("budgetExcludeCacheHits"),
+            raw,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ChatCreateRequest {
+    /// Infallible for any JSON OBJECT (a non-object body is still a decode
+    /// error — v4's `req.json()` would have thrown first). See
+    /// [`ChatCreateRequest::from_raw`].
+    fn deserialize<D: serde::Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
+        Ok(ChatCreateRequest::from_raw(Map::deserialize(de)?))
+    }
+}
+
+// ============================================================================
+// The whole-body validation stage (v4 `createChatSchema.parse`)
+// ============================================================================
+
+/// v4 zod 4's issue objects for `createChatSchema`, in the key order
+/// `JSON.stringify` emits — the `image_gen::lora_validation::LoraZodIssue`
+/// idiom (P4.D138), widened for this schema's extra codes. Untagged variants
+/// rather than one struct of optional keys: `Option` skipping cannot reorder,
+/// and each code puts a different key first (`invalid_type` leads with
+/// `expected`, the size issues with `origin`, `invalid_value` with `code`, and
+/// the safe-integer bound with `code` before `origin`).
+///
+/// Every shape here was MEASURED against v4's real route at the `f699da6f6`
+/// pin, not inferred from Zod's source — see the corpus arms named in each
+/// constructor.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(untagged)]
+pub enum CreateZodIssue {
+    /// `z.string()` / `z.boolean()` / `z.number()` / `z.array()` / `z.object()`.
+    InvalidType {
+        expected: &'static str,
+        code: &'static str,
+        path: Vec<Value>,
+        message: String,
+    },
+    /// `z.number().int()`'s own type failure — Zod 4 reports the `safeint`
+    /// format alongside `expected: "int"` (`vb_freshness_window_fractional`).
+    InvalidIntType {
+        expected: &'static str,
+        format: &'static str,
+        code: &'static str,
+        path: Vec<Value>,
+        message: String,
+    },
+    /// `z.enum([...])` and `z.literal(...)` — both report `invalid_value`, and
+    /// both do so for a wrong TYPE as well as an out-of-domain value
+    /// (`cs_wrong_type_400`, `vb_participant_type_persona`).
+    InvalidValue {
+        code: &'static str,
+        values: Vec<Value>,
+        path: Vec<Value>,
+        message: String,
+    },
+    /// `z.uuid()` — the pattern is echoed verbatim in the issue
+    /// (`vb_participant_character_id_not_uuid`).
+    InvalidFormat {
+        origin: &'static str,
+        code: &'static str,
+        format: &'static str,
+        pattern: &'static str,
+        path: Vec<Value>,
+        message: &'static str,
+    },
+    TooSmall {
+        origin: &'static str,
+        code: &'static str,
+        minimum: Value,
+        inclusive: bool,
+        path: Vec<Value>,
+        message: String,
+    },
+    TooBig {
+        origin: &'static str,
+        code: &'static str,
+        maximum: Value,
+        inclusive: bool,
+        path: Vec<Value>,
+        message: String,
+    },
+    /// The safe-integer ceiling of `z.number().int()`, which carries Zod's
+    /// `note` and puts `code` before `origin` (`vb_budget_max_turns_unsafe_int`).
+    TooBigInt {
+        code: &'static str,
+        maximum: Value,
+        note: &'static str,
+        origin: &'static str,
+        inclusive: bool,
+        path: Vec<Value>,
+        message: String,
+    },
+    /// The safe-integer floor — the mirror of [`Self::TooBigInt`]. Measured at
+    /// `vb_budget_max_turns_unsafe_negative`, which also proves the bound does
+    /// NOT abort the following `positive()` check: that body answers TWO issues.
+    TooSmallInt {
+        code: &'static str,
+        minimum: Value,
+        note: &'static str,
+        origin: &'static str,
+        inclusive: bool,
+        path: Vec<Value>,
+        message: String,
+    },
+}
+
+/// Zod 4's `z.uuid()` pattern, echoed verbatim in every `invalid_format` issue.
+const ZOD_UUID_PATTERN: &str = "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/";
+
+/// JS `Number.MAX_SAFE_INTEGER` — the bound `z.number().int()` reports as
+/// `format: "safeint"`.
+const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+/// The `details` array of v4's `validationError(err)` body, ready for
+/// [`CoreError::details`](crate::api::types::CoreError::details).
+pub fn create_issue_details(issues: &[CreateZodIssue]) -> Value {
+    serde_json::to_value(issues).unwrap_or(Value::Null)
+}
+
+/// v4 `util.parsedType` — the received-type word in an `invalid_type` message.
+/// The same table [`crate::api::chat_outfits::received`] carries; kept local
+/// because this module renders whole issue objects rather than sentences.
+fn parsed_type(v: Option<&Value>) -> &'static str {
+    match v {
+        None => "undefined",
+        Some(Value::Null) => "null",
+        Some(Value::Bool(_)) => "boolean",
+        Some(Value::Number(_)) => "number",
+        Some(Value::String(_)) => "string",
+        Some(Value::Array(_)) => "array",
+        Some(Value::Object(_)) => "object",
+    }
+}
+
+fn invalid_type(expected: &'static str, path: Vec<Value>, got: Option<&Value>) -> CreateZodIssue {
+    CreateZodIssue::InvalidType {
+        expected,
+        code: "invalid_type",
+        path,
+        message: format!(
+            "Invalid input: expected {expected}, received {}",
+            parsed_type(got)
+        ),
+    }
+}
+
+fn invalid_uuid(path: Vec<Value>) -> CreateZodIssue {
+    CreateZodIssue::InvalidFormat {
+        origin: "string",
+        code: "invalid_format",
+        format: "uuid",
+        pattern: ZOD_UUID_PATTERN,
+        path,
+        message: "Invalid UUID",
+    }
+}
+
+/// `z.enum([...])` — the message quotes every member and joins with `|`.
+fn invalid_enum(values: &[&str], path: Vec<Value>) -> CreateZodIssue {
+    CreateZodIssue::InvalidValue {
+        code: "invalid_value",
+        values: values.iter().map(|v| json!(v)).collect(),
+        path,
+        message: format!(
+            "Invalid option: expected one of {}",
+            values
+                .iter()
+                .map(|v| format!("\"{v}\""))
+                .collect::<Vec<_>>()
+                .join("|")
+        ),
+    }
+}
+
+/// `z.literal(v)` — the same `invalid_value` code as an enum, a different
+/// message (`Invalid input: expected "CHARACTER"`).
+fn invalid_literal(value: &'static str, path: Vec<Value>) -> CreateZodIssue {
+    CreateZodIssue::InvalidValue {
+        code: "invalid_value",
+        values: vec![json!(value)],
+        path,
+        message: format!("Invalid input: expected \"{value}\""),
+    }
+}
+
+/// A path built from a schema key and (optionally) an array index / sub-key.
+fn path(parts: &[Value]) -> Vec<Value> {
+    parts.to_vec()
+}
+
+fn key(k: &str) -> Value {
+    Value::String(k.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// The per-primitive checks. Each takes the value AS FOUND (`None` = the key was
+// absent, which every `.optional()` / `.default()` field accepts) so the
+// present-but-null arm stays distinguishable — `.optional()` is NOT nullable.
+// ---------------------------------------------------------------------------
+
+/// `z.string().optional()` (and, with `max`, `z.string().max(N).optional()`).
+/// The `max` bound counts CODE POINTS, not UTF-16 units (Zod 4.5, P4.D158 §3) —
+/// `vb_ok_project_scenario_path_500_astral` is the discriminator.
+fn check_opt_string(
+    v: Option<&Value>,
+    at: Vec<Value>,
+    max: Option<usize>,
+    issues: &mut Vec<CreateZodIssue>,
+) {
+    let Some(v) = v else { return };
+    let Some(s) = v.as_str() else {
+        issues.push(invalid_type("string", at, Some(v)));
+        return;
+    };
+    if let Some(max) = max {
+        if s.chars().count() > max {
+            issues.push(CreateZodIssue::TooBig {
+                origin: "string",
+                code: "too_big",
+                maximum: json!(max),
+                inclusive: true,
+                path: at,
+                message: format!("Too big: expected string to have <={max} characters"),
+            });
+        }
+    }
+}
+
+/// `z.string().nullable().optional()` — absent OR null is fine.
+fn check_nullable_opt_string(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
+    match v {
+        None | Some(Value::Null) => {}
+        Some(other) => check_opt_string(Some(other), at, None, issues),
+    }
+}
+
+/// `z.uuid().optional()`.
+fn check_opt_uuid(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
+    let Some(v) = v else { return };
+    check_required_uuid(Some(v), at, issues);
+}
+
+/// `z.uuid()` — required. An absent key is `received undefined`, not a format
+/// failure (`vb_participant_character_id_missing`).
+fn check_required_uuid(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
+    match v.and_then(|v| v.as_str()) {
+        Some(s) if crate::api::chat_outfits::is_zod_uuid(s) => {}
+        Some(_) => issues.push(invalid_uuid(at)),
+        None => issues.push(invalid_type("string", at, v)),
+    }
+}
+
+/// `z.boolean()` (optional, or with a `.default()` — both accept an absent key).
+fn check_opt_bool(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
+    let Some(v) = v else { return };
+    if !v.is_boolean() {
+        issues.push(invalid_type("boolean", at, Some(v)));
+    }
+}
+
+/// `z.enum([...])` (optional, or with a `.default()`). A wrong TYPE reports
+/// `invalid_value` exactly like an out-of-domain string does.
+fn check_opt_enum(
+    v: Option<&Value>,
+    values: &[&str],
+    at: Vec<Value>,
+    issues: &mut Vec<CreateZodIssue>,
+) {
+    let Some(v) = v else { return };
+    match v.as_str() {
+        Some(s) if values.contains(&s) => {}
+        _ => issues.push(invalid_enum(values, at)),
+    }
+}
+
+/// `z.enum([...])` REQUIRED — an absent key reports the same `invalid_value`
+/// (`vb_outfit_selection_mode_missing`).
+fn check_required_enum(
+    v: Option<&Value>,
+    values: &[&str],
+    at: Vec<Value>,
+    issues: &mut Vec<CreateZodIssue>,
+) {
+    match v.and_then(|v| v.as_str()) {
+        Some(s) if values.contains(&s) => {}
+        _ => issues.push(invalid_enum(values, at)),
+    }
+}
+
+/// The shared body of `z.number().int()`: the number check, then the integer
+/// check (which ABORTS — `vb_budget_max_turns_negative_fractional` answers one
+/// issue, not two), then the safe-integer bounds (which do NOT abort — see
+/// [`CreateZodIssue::TooSmallInt`]). Returns the value when it is a number, so
+/// the caller can run its own `positive()` / `min(1)` bound after.
+fn check_int_bounds(v: &Value, at: &[Value], issues: &mut Vec<CreateZodIssue>) -> Option<f64> {
+    let Some(n) = v.as_f64() else {
+        issues.push(invalid_type("number", path(at), Some(v)));
+        return None;
+    };
+    if !n.is_finite() || n.fract() != 0.0 {
+        issues.push(CreateZodIssue::InvalidIntType {
+            expected: "int",
+            format: "safeint",
+            code: "invalid_type",
+            path: path(at),
+            message: "Invalid input: expected int, received number".to_string(),
+        });
+        return None;
+    }
+    if n > MAX_SAFE_INTEGER {
+        issues.push(CreateZodIssue::TooBigInt {
+            code: "too_big",
+            maximum: json!(MAX_SAFE_INTEGER as i64),
+            note: "Integers must be within the safe integer range.",
+            origin: "int",
+            inclusive: true,
+            path: path(at),
+            message: format!("Too big: expected int to be <={}", MAX_SAFE_INTEGER as i64),
+        });
+    } else if n < -MAX_SAFE_INTEGER {
+        issues.push(CreateZodIssue::TooSmallInt {
+            code: "too_small",
+            minimum: json!(-(MAX_SAFE_INTEGER as i64)),
+            note: "Integers must be within the safe integer range.",
+            origin: "int",
+            inclusive: true,
+            path: path(at),
+            message: format!(
+                "Too small: expected int to be >=-{}",
+                MAX_SAFE_INTEGER as i64
+            ),
+        });
+    }
+    Some(n)
+}
+
+/// `z.number().int().positive().optional()`. The `positive()` bound reports
+/// `origin: "number"` (not `"int"`) — measured, not assumed.
+fn check_opt_int_positive(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
+    let Some(v) = v else { return };
+    let Some(n) = check_int_bounds(v, &at, issues) else {
+        return;
+    };
+    if n <= 0.0 {
+        issues.push(CreateZodIssue::TooSmall {
+            origin: "number",
+            code: "too_small",
+            minimum: json!(0),
+            inclusive: false,
+            path: at,
+            message: "Too small: expected number to be >0".to_string(),
+        });
+    }
+}
+
+/// `z.number().int().min(1)` — `timestampConfig.intervalMinutes`. Same integer
+/// machinery, an inclusive bound (`tc_bad_value_rejected`).
+fn check_opt_int_min(
+    v: Option<&Value>,
+    minimum: i64,
+    at: Vec<Value>,
+    issues: &mut Vec<CreateZodIssue>,
+) {
+    let Some(v) = v else { return };
+    let Some(n) = check_int_bounds(v, &at, issues) else {
+        return;
+    };
+    if n < minimum as f64 {
+        issues.push(CreateZodIssue::TooSmall {
+            origin: "number",
+            code: "too_small",
+            minimum: json!(minimum),
+            inclusive: true,
+            path: at,
+            message: format!("Too small: expected number to be >={minimum}"),
+        });
+    }
+}
+
+/// `z.number().positive().optional()` — no `int()`, so `1.5` is legal
+/// (`vb_ok_spend_cap_fractional`).
+fn check_opt_number_positive(v: Option<&Value>, at: Vec<Value>, issues: &mut Vec<CreateZodIssue>) {
+    let Some(v) = v else { return };
+    let Some(n) = v.as_f64() else {
+        issues.push(invalid_type("number", at, Some(v)));
+        return;
+    };
+    if n <= 0.0 {
+        issues.push(CreateZodIssue::TooSmall {
+            origin: "number",
+            code: "too_small",
+            minimum: json!(0),
+            inclusive: false,
+            path: at,
+            message: "Too small: expected number to be >0".to_string(),
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The sub-schemas
+// ---------------------------------------------------------------------------
+
+/// v4 `createParticipantSchema`, in its declaration order (which is the order
+/// Zod reports issues in).
+fn check_participant(v: &Value, index: usize, issues: &mut Vec<CreateZodIssue>) {
+    let idx = json!(index);
+    let base = |k: &str| path(&[key("participants"), idx.clone(), key(k)]);
+    let Some(obj) = v.as_object() else {
+        issues.push(invalid_type(
+            "object",
+            path(&[key("participants"), idx]),
+            Some(v),
+        ));
+        return;
+    };
+    match obj.get("type").and_then(|t| t.as_str()) {
+        Some("CHARACTER") => {}
+        _ => issues.push(invalid_literal("CHARACTER", base("type"))),
+    }
+    check_required_uuid(obj.get("characterId"), base("characterId"), issues);
+    check_opt_uuid(
+        obj.get("connectionProfileId"),
+        base("connectionProfileId"),
+        issues,
+    );
+    // Legacy, ignored by the handler — but still schema-checked by v4.
+    check_opt_uuid(obj.get("imageProfileId"), base("imageProfileId"), issues);
+    check_opt_enum(
+        obj.get("controlledBy"),
+        &["llm", "user"],
+        base("controlledBy"),
+        issues,
+    );
+    check_opt_uuid(
+        obj.get("selectedSystemPromptId"),
+        base("selectedSystemPromptId"),
+        issues,
+    );
+}
+
+/// v4 `TimestampConfigSchema` (`lib/schemas/settings.types.ts`). Every field
+/// carries a `.default()` or is `.nullable().optional()`, so an absent key is
+/// always fine; a PRESENT one is checked.
+fn check_timestamp_config(obj: &Map<String, Value>, issues: &mut Vec<CreateZodIssue>) {
+    let at = |k: &str| path(&[key("timestampConfig"), key(k)]);
+    check_opt_enum(
+        obj.get("mode"),
+        &["NONE", "START_ONLY", "EVERY_MESSAGE", "EVERY_N_MINUTES"],
+        at("mode"),
+        issues,
+    );
+    check_opt_enum(
+        obj.get("format"),
+        &["ISO8601", "FRIENDLY", "DATE_ONLY", "TIME_ONLY", "CUSTOM"],
+        at("format"),
+        issues,
+    );
+    check_nullable_opt_string(obj.get("customFormat"), at("customFormat"), issues);
+    check_opt_bool(obj.get("useFictionalTime"), at("useFictionalTime"), issues);
+    check_nullable_opt_string(
+        obj.get("fictionalBaseTimestamp"),
+        at("fictionalBaseTimestamp"),
+        issues,
+    );
+    check_nullable_opt_string(
+        obj.get("fictionalBaseRealTime"),
+        at("fictionalBaseRealTime"),
+        issues,
+    );
+    check_opt_bool(obj.get("autoPrepend"), at("autoPrepend"), issues);
+    check_nullable_opt_string(obj.get("timezone"), at("timezone"), issues);
+    check_opt_int_min(obj.get("intervalMinutes"), 1, at("intervalMinutes"), issues);
+}
+
+/// v4 `EquippedSlotsSchema` — five slots since P4.D87 (`hair` is a hairdo, not
+/// hair), each `z.array(UUIDSchema).default([])`.
+const WARDROBE_SLOT_KEYS: [&str; 5] = ["top", "bottom", "footwear", "accessories", "hair"];
+
+/// v4 `OutfitSelectionSchema` (`lib/schemas/wardrobe.types.ts`).
+fn check_outfit_selection(v: &Value, index: usize, issues: &mut Vec<CreateZodIssue>) {
+    let idx = json!(index);
+    let base = |k: &str| path(&[key("outfitSelections"), idx.clone(), key(k)]);
+    let Some(obj) = v.as_object() else {
+        issues.push(invalid_type(
+            "object",
+            path(&[key("outfitSelections"), idx]),
+            Some(v),
+        ));
+        return;
+    };
+    check_required_uuid(obj.get("characterId"), base("characterId"), issues);
+    check_required_enum(
+        obj.get("mode"),
+        &["default", "manual", "llm_choose", "none", "previous_chat"],
+        base("mode"),
+        issues,
+    );
+    let Some(slots) = obj.get("slots") else {
+        return;
+    };
+    let Some(slots) = slots.as_object() else {
+        issues.push(invalid_type("object", base("slots"), obj.get("slots")));
+        return;
+    };
+    for slot in WARDROBE_SLOT_KEYS {
+        let Some(v) = slots.get(slot) else { continue };
+        let at_slot = path(&[
+            key("outfitSelections"),
+            idx.clone(),
+            key("slots"),
+            key(slot),
+        ]);
+        let Some(items) = v.as_array() else {
+            issues.push(invalid_type("array", at_slot, Some(v)));
+            continue;
+        };
+        for (i, item) in items.iter().enumerate() {
+            let at_item = path(&[
+                key("outfitSelections"),
+                idx.clone(),
+                key("slots"),
+                key(slot),
+                json!(i),
+            ]);
+            check_required_uuid(Some(item), at_item, issues);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The stage itself
+// ---------------------------------------------------------------------------
+
+/// v4 `createChatSchema.parse(body)` (`app/api/v1/chats/route.ts:98-187`,
+/// called at `:1084` as the FIRST statement after `req.json()`).
+///
+/// One pass over the raw body in the schema's own key order — which is the
+/// order Zod reports issues in (`vb_two_issues_schema_order`) — collecting
+/// EVERY issue rather than stopping at the first, exactly as `.parse` does on
+/// an object. Unknown keys are stripped, never refused
+/// (`vb_ok_unknown_key_stripped`).
+///
+/// The refusal is v4's middleware envelope: an uncaught `ZodError` reaches
+/// `createContextHandler` (`lib/api/middleware/context.ts:166`) →
+/// `validationError(error)` (`lib/api/responses.ts:108`) → `{error:
+/// 'Validation error', details: err.issues}` at 400 — and, critically, BEFORE
+/// the creation-progress emitter (`:1090`) and the continuation ownership
+/// lookup (`:1097`), so a wrong-typed field answers 400 even when the
+/// continuation chat is missing (`vb_title_wrong_type_before_404`).
+pub fn validate_create_body(body: &Map<String, Value>) -> Result<(), Vec<CreateZodIssue>> {
+    let mut issues: Vec<CreateZodIssue> = Vec::new();
+    let at = |k: &str| path(&[key(k)]);
+
+    // participants: z.array(createParticipantSchema).min(1, '…')
+    match body.get("participants") {
+        Some(Value::Array(list)) => {
+            for (i, p) in list.iter().enumerate() {
+                check_participant(p, i, &mut issues);
+            }
+            if list.is_empty() {
+                issues.push(CreateZodIssue::TooSmall {
+                    origin: "array",
+                    code: "too_small",
+                    minimum: json!(1),
+                    inclusive: true,
+                    path: at("participants"),
+                    message: "At least one participant is required".to_string(),
+                });
+            }
+        }
+        other => issues.push(invalid_type("array", at("participants"), other)),
+    }
+
+    check_opt_string(body.get("title"), at("title"), None, &mut issues);
+    check_opt_string(body.get("scenario"), at("scenario"), None, &mut issues);
+    check_opt_uuid(body.get("scenarioId"), at("scenarioId"), &mut issues);
+    check_opt_string(
+        body.get("projectScenarioPath"),
+        at("projectScenarioPath"),
+        Some(500),
+        &mut issues,
+    );
+    check_opt_string(
+        body.get("generalScenarioPath"),
+        at("generalScenarioPath"),
+        Some(500),
+        &mut issues,
+    );
+    check_opt_string(
+        body.get("groupScenarioPath"),
+        at("groupScenarioPath"),
+        Some(500),
+        &mut issues,
+    );
+    check_opt_uuid(
+        body.get("groupScenarioGroupId"),
+        at("groupScenarioGroupId"),
+        &mut issues,
+    );
+    // timestampConfig: TimestampConfigSchema.optional() — `.optional()` is NOT
+    // nullable, so an explicit null is an object type failure
+    // (`tc_explicit_null_rejected`).
+    match body.get("timestampConfig") {
+        None => {}
+        Some(Value::Object(obj)) => check_timestamp_config(obj, &mut issues),
+        other => issues.push(invalid_type("object", at("timestampConfig"), other)),
+    }
+    check_opt_uuid(body.get("projectId"), at("projectId"), &mut issues);
+    check_opt_uuid(
+        body.get("imageProfileId"),
+        at("imageProfileId"),
+        &mut issues,
+    );
+    // roleplayTemplateId: z.uuid().nullable().optional() — a deliberate null.
+    match body.get("roleplayTemplateId") {
+        None | Some(Value::Null) => {}
+        other => check_opt_uuid(other, at("roleplayTemplateId"), &mut issues),
+    }
+    check_opt_enum(
+        body.get("conciergeState"),
+        &["monitored", "flagged", "vouched", "uncensored"],
+        at("conciergeState"),
+        &mut issues,
+    );
+    match body.get("outfitSelections") {
+        None => {}
+        Some(Value::Array(list)) => {
+            for (i, sel) in list.iter().enumerate() {
+                check_outfit_selection(sel, i, &mut issues);
+            }
+        }
+        other => issues.push(invalid_type("array", at("outfitSelections"), other)),
+    }
+    check_opt_bool(
+        body.get("avatarGenerationEnabled"),
+        at("avatarGenerationEnabled"),
+        &mut issues,
+    );
+    check_opt_uuid(
+        body.get("continuationFromChatId"),
+        at("continuationFromChatId"),
+        &mut issues,
+    );
+    check_opt_uuid(body.get("progressId"), at("progressId"), &mut issues);
+    check_opt_enum(
+        body.get("chatType"),
+        &["salon", "autonomous"],
+        at("chatType"),
+        &mut issues,
+    );
+    check_opt_string(
+        body.get("scheduleCron"),
+        at("scheduleCron"),
+        Some(120),
+        &mut issues,
+    );
+    check_opt_int_positive(
+        body.get("scheduleFreshnessWindowMs"),
+        at("scheduleFreshnessWindowMs"),
+        &mut issues,
+    );
+    check_opt_int_positive(
+        body.get("budgetMaxTurns"),
+        at("budgetMaxTurns"),
+        &mut issues,
+    );
+    check_opt_int_positive(
+        body.get("budgetMaxTokens"),
+        at("budgetMaxTokens"),
+        &mut issues,
+    );
+    check_opt_int_positive(
+        body.get("budgetMaxWallClockMs"),
+        at("budgetMaxWallClockMs"),
+        &mut issues,
+    );
+    check_opt_number_positive(
+        body.get("budgetEstimatedSpendCapUSD"),
+        at("budgetEstimatedSpendCapUSD"),
+        &mut issues,
+    );
+    check_opt_enum(
+        body.get("runVisibility"),
+        &["owner_only", "household", "open"],
+        at("runVisibility"),
+        &mut issues,
+    );
+    check_opt_bool(
+        body.get("runDestructiveToolsAllowed"),
+        at("runDestructiveToolsAllowed"),
+        &mut issues,
+    );
+    check_opt_bool(
+        body.get("budgetExcludeCacheHits"),
+        at("budgetExcludeCacheHits"),
+        &mut issues,
+    );
+
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(issues)
+    }
 }
 
 // ============================================================================
@@ -272,20 +1072,62 @@ pub struct ChatCreateResult {
     pub participants: Vec<EnrichedParticipantSummary>,
 }
 
+/// The payload of [`HandleCreateError::BadRequest`]: v4's sentence, plus the
+/// `details` bag its `validationError(err)` envelope carries beside it.
+///
+/// A single tuple field rather than a second one on the variant, so the
+/// composing host's `HandleCreateError::BadRequest(_)` arm is untouched.
+#[derive(Debug)]
+pub struct BadRequestBody {
+    /// The `error` sentence — v4's flat `'Validation error'` for a Zod refusal,
+    /// or a handler's own `badRequest(...)` copy.
+    pub message: String,
+    /// v4 `validationError(err).details` — the raw Zod issue array. `None` for
+    /// a plain `badRequest(...)`, which has no `details` key at all.
+    pub details: Option<Value>,
+}
+
 /// v4's `handleCreate` failure modes: `notFound` (404), `badRequest` (400), and
 /// everything else (500) as a `Db` wrap.
 #[derive(Debug)]
 pub enum HandleCreateError {
     NotFound(String),
-    BadRequest(String),
+    BadRequest(BadRequestBody),
     Db(DbError),
+}
+
+impl HandleCreateError {
+    /// A plain `badRequest(message)` — no `details` key.
+    pub fn bad_request(message: impl Into<String>) -> Self {
+        HandleCreateError::BadRequest(BadRequestBody {
+            message: message.into(),
+            details: None,
+        })
+    }
+
+    /// v4's `validationError(err)` envelope — the fixed `'Validation error'`
+    /// sentence plus the Zod issue array.
+    pub fn validation_error(issues: &[CreateZodIssue]) -> Self {
+        HandleCreateError::BadRequest(BadRequestBody {
+            message: VALIDATION_ERROR.to_string(),
+            details: Some(create_issue_details(issues)),
+        })
+    }
+
+    /// The `details` bag a 400 carries, when it has one.
+    pub fn details(&self) -> Option<&Value> {
+        match self {
+            HandleCreateError::BadRequest(b) => b.details.as_ref(),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for HandleCreateError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             HandleCreateError::NotFound(what) => write!(f, "{what} not found"),
-            HandleCreateError::BadRequest(msg) => write!(f, "{msg}"),
+            HandleCreateError::BadRequest(b) => write!(f, "{}", b.message),
             HandleCreateError::Db(e) => write!(f, "{e}"),
         }
     }
@@ -325,54 +1167,44 @@ where
     STR: StreamingCompletionProvider + Send + Sync,
 {
     let user_id = SINGLE_USER_ID;
+
+    // v4 `route.ts:1084` `const validatedData = createChatSchema.parse(body)` —
+    // the FIRST statement after `req.json()`, ahead of the creation-progress
+    // emitter (`:1090`), the continuation ownership lookup (`:1097`) and every
+    // read below. ONE stage over the whole body: v5 used to refuse three fields
+    // ad hoc (`conciergeState`, `roleplayTemplateId`, `timestampConfig`) and let
+    // the rest through, which is dogfood finding #115 — a stored
+    // `controlledBy: "LLM"` split the server's and the SPA's readers on the
+    // Friday copy because nothing ever refused it. An uncaught `ZodError` is
+    // v4's `{error: 'Validation error', details: err.issues}` at 400, and it
+    // writes nothing.
+    if let Err(issues) = validate_create_body(&req.raw) {
+        return Err(HandleCreateError::validation_error(&issues));
+    }
+
     let is_autonomous = req.chat_type.as_deref() == Some("autonomous");
 
-    // v4 `303288fb4` `createChatSchema.conciergeState` — parsed with the rest of
-    // the body BEFORE any work, so a bad value never reaches `repos.chats.create`
-    // (v4's own suite pins exactly that). `.optional()` is not nullable: an
-    // explicit `null` refuses like `timestampConfig`'s does.
-    let requested_concierge_state: Option<ConciergeState> = match &req.concierge_state {
-        None => None,
-        Some(None) => {
-            return Err(HandleCreateError::BadRequest(
-                "Validation error".to_string(),
-            ))
-        }
-        // A wrong TYPE lands here as well as an out-of-domain string, and v4's
-        // `z.enum` refuses both with the same sentence.
-        Some(Some(raw)) => Some(
-            raw.as_str()
+    // v4 `303288fb4` `createChatSchema.conciergeState`. The refusals moved into
+    // the stage above (an explicit null and a wrong type both land on v4's
+    // `z.enum` `invalid_value`); what stays here is the NORMALIZATION of an
+    // already-validated value to the typed state.
+    let requested_concierge_state: Option<ConciergeState> =
+        req.concierge_state.as_ref().and_then(|v| {
+            v.as_ref()
+                .and_then(|raw| raw.as_str())
                 .and_then(ConciergeState::from_wire)
-                .ok_or_else(|| HandleCreateError::BadRequest("Validation error".to_string()))?,
-        ),
-    };
+        });
 
-    // v4 `roleplayTemplateId: z.uuid().nullable().optional()`. The field arrives
-    // RAW so a wrong TYPE reaches this refusal rather than failing the decode;
-    // normalize it to the string tri-state here — and do it HERE, beside
-    // `conciergeState`, because v4 Zod-parses the whole body at `route.ts:993`
-    // before any lookup: a wrong type must answer 400 even when the
-    // continuation chat is missing (the §3 review of the follow-ups round 2
-    // found it sitting after the 404; `rt_wrong_type_before_404` pins the
-    // order). The RESOLUTION (does the template exist) stays where v4 does it.
-    //
-    // ⚠ Only the wrong-TYPE arm is MEASURED (`rt_wrong_type_400`). v4's
-    // `z.uuid()` would also refuse a non-UUID STRING, and the empty-string
-    // allowance below predates this lane; no corpus case covers either, so
-    // neither is changed here. Recorded in the lane record as an unmeasured
-    // question rather than guessed at.
-    let requested_roleplay_template_id: Option<Option<String>> = match &req.roleplay_template_id {
-        None => None,
-        Some(None) => Some(None),
-        Some(Some(v)) => match v.as_str() {
-            Some(s) => Some(Some(s.to_string())),
-            None => {
-                return Err(HandleCreateError::BadRequest(
-                    "Validation error".to_string(),
-                ))
-            }
-        },
-    };
+    // v4 `roleplayTemplateId: z.uuid().nullable().optional()`. The wrong-TYPE
+    // and non-UUID-STRING refusals are the stage's (P4.78 closed the unmeasured
+    // note this comment used to carry — `vb_roleplay_template_id_not_uuid` now
+    // pins the format arm the port previously let through). What stays here is
+    // the tri-state normalization; the RESOLUTION (does the template exist)
+    // stays where v4 does it, below.
+    let requested_roleplay_template_id: Option<Option<String>> = req
+        .roleplay_template_id
+        .as_ref()
+        .map(|v| v.as_ref().and_then(|v| v.as_str()).map(str::to_string));
     emitter.status("Assembling the cast\u{2026}");
 
     // 1. Continuation ownership pre-check (before any create work).
@@ -391,8 +1223,8 @@ where
             .iter()
             .any(|p| p.controlled_by.as_deref() == Some("user"))
         {
-            return Err(HandleCreateError::BadRequest(
-                "Autonomous rooms cannot include user-controlled participants".to_string(),
+            return Err(HandleCreateError::bad_request(
+                "Autonomous rooms cannot include user-controlled participants",
             ));
         }
         let llm_char_count = req
@@ -403,8 +1235,8 @@ where
             })
             .count();
         if llm_char_count < 2 {
-            return Err(HandleCreateError::BadRequest(
-                "Autonomous rooms require at least two LLM-controlled characters".to_string(),
+            return Err(HandleCreateError::bad_request(
+                "Autonomous rooms require at least two LLM-controlled characters",
             ));
         }
         if let Some(cron_raw) = req.schedule_cron.as_deref() {
@@ -413,7 +1245,7 @@ where
                 match cron::try_next_occurrence(expr, deps.now_ms, &deps.tz) {
                     Ok(next) => autonomous_next_run_at = next.map(iso_from_unix_ms),
                     Err(_) => {
-                        return Err(HandleCreateError::BadRequest(format!(
+                        return Err(HandleCreateError::bad_request(format!(
                             "Invalid cron expression: {expr}"
                         )))
                     }
@@ -557,17 +1389,16 @@ where
     // stripped) before the fallback chain; a bad value is the middleware's 400
     // (`Validation error`). The stored defaults in the chain re-normalize at
     // the repository write (db/chats.rs), as v4's `_create` validate does.
+    // The REFUSALS (an explicit null, a non-object, a bad inner field) are the
+    // stage's; `parse_timestamp_config` is kept for what it alone does —
+    // materializing `TimestampConfigSchema`'s defaults and stripping unknown
+    // keys. Its own error arm is unreachable for a body the stage accepted, and
+    // answers the same sentence WITHOUT v4's `details` if the two ever disagree.
     let request_timestamp_config: Option<Value> = match &req.timestamp_config {
-        None => None,
-        // v4's `.optional()` (not nullable) — an explicit null REJECTS.
-        Some(None) => {
-            return Err(HandleCreateError::BadRequest(
-                "Validation error".to_string(),
-            ))
-        }
+        None | Some(None) => None,
         Some(Some(v)) => Some(
             chat_timestamp::parse_timestamp_config(v)
-                .map_err(|_| HandleCreateError::BadRequest("Validation error".to_string()))?,
+                .map_err(|_| HandleCreateError::bad_request(VALIDATION_ERROR))?,
         ),
     };
     let resolved_timestamp_config: Value = chat_timestamp::ensure_fictional_base_real_time(
@@ -604,8 +1435,8 @@ where
         if !requested.is_empty()
             && crate::db::roleplay_templates::find_full_json_by_id(main, requested)?.is_none()
         {
-            return Err(HandleCreateError::BadRequest(
-                "Roleplay template not found".to_string(),
+            return Err(HandleCreateError::bad_request(
+                "Roleplay template not found",
             ));
         }
     }
@@ -926,14 +1757,12 @@ fn build_all_participants(
     for (i, data) in participants_data.iter().enumerate() {
         // v4 `buildCharacterParticipant`.
         let Some(character_id) = data.character_id.as_deref() else {
-            return Err(HandleCreateError::BadRequest(
-                "characterId is required for CHARACTER participants".to_string(),
+            return Err(HandleCreateError::bad_request(
+                "characterId is required for CHARACTER participants",
             ));
         };
         let Some(character) = characters_read::find_by_id(main, mount, character_id)? else {
-            return Err(HandleCreateError::BadRequest(
-                "Character not found".to_string(),
-            ));
+            return Err(HandleCreateError::bad_request("Character not found"));
         };
 
         let controlled_by = data
@@ -950,23 +1779,20 @@ fn build_all_participants(
         let is_user_controlled = controlled_by == "user";
 
         if !is_user_controlled && data.connection_profile_id.is_none() {
-            return Err(HandleCreateError::BadRequest(
-                "connectionProfileId is required for LLM-controlled CHARACTER participants"
-                    .to_string(),
+            return Err(HandleCreateError::bad_request(
+                "connectionProfileId is required for LLM-controlled CHARACTER participants",
             ));
         }
         if let Some(cpid) = data.connection_profile_id.as_deref() {
             if connection_profiles::find_by_id(main, cpid)?.is_none() {
-                return Err(HandleCreateError::BadRequest(
-                    "Connection profile not found".to_string(),
+                return Err(HandleCreateError::bad_request(
+                    "Connection profile not found",
                 ));
             }
         }
         if let Some(ipid) = data.image_profile_id.as_deref() {
             if image_profiles::find_by_id(main, ipid)?.is_none() {
-                return Err(HandleCreateError::BadRequest(
-                    "Image profile not found".to_string(),
-                ));
+                return Err(HandleCreateError::bad_request("Image profile not found"));
             }
         }
 
@@ -1028,8 +1854,8 @@ fn build_all_participants(
     }
 
     if candidates.is_empty() {
-        return Err(HandleCreateError::BadRequest(
-            "At least one LLM-controlled CHARACTER participant is required".to_string(),
+        return Err(HandleCreateError::bad_request(
+            "At least one LLM-controlled CHARACTER participant is required",
         ));
     }
 
@@ -2340,5 +3166,105 @@ mod tests {
         assert_eq!(b.max_tokens, Some(128.0));
         assert_eq!(b.temperature, None);
         assert_eq!(b.top_p, None);
+    }
+
+    // ------------------------------------------------------------------
+    // P4.78 — the whole-body validation stage and the lenient decode.
+    // The BEHAVIOUR is pinned arm-by-arm against v4's real route by
+    // `chat_create_capstone_equivalence`; these guard the two seams the
+    // differential cannot see from outside.
+    // ------------------------------------------------------------------
+
+    /// The decode can never fail on an object — that is what lets a wrong-typed
+    /// field reach `handle_create` and answer v4's 400 instead of the host's
+    /// `invalid chatCreate request: …`. A regression here would move the
+    /// envelope without moving any corpus row (the refusal would simply never
+    /// be reached), so it is asserted directly.
+    #[test]
+    fn every_wrong_typed_field_still_decodes() {
+        for (key, bad) in [
+            ("title", json!(42)),
+            ("participants", json!("nope")),
+            ("outfitSelections", json!("nope")),
+            ("avatarGenerationEnabled", json!("yes")),
+            ("budgetMaxTurns", json!("x")),
+            ("budgetEstimatedSpendCapUSD", json!(true)),
+            ("chatType", json!(7)),
+            ("timestampConfig", json!(42)),
+            ("conciergeState", json!(42)),
+            ("roleplayTemplateId", json!(42)),
+        ] {
+            let body = json!({ "participants": [], key: bad });
+            let decoded = serde_json::from_value::<ChatCreateRequest>(body.clone());
+            assert!(
+                decoded.is_ok(),
+                "`{key}` failed the decode — the refusal can no longer reach \
+                 the handler: {decoded:?}"
+            );
+            // …and the raw value is still there for the stage to refuse.
+            assert!(validate_create_body(body.as_object().unwrap()).is_err());
+        }
+    }
+
+    /// Zod's `z.number().int()` accepts an integral FLOAT (`1.0` is an int;
+    /// `1.5` is not), so the typed view must too — otherwise a body the stage
+    /// accepted would silently lose its value. `vb_ok_freshness_window_integral_float`
+    /// pins the stored `1`; this pins the reader that produces it.
+    #[test]
+    fn integral_floats_reach_the_typed_view() {
+        let req = ChatCreateRequest::from_raw(
+            json!({
+                "participants": [],
+                "scheduleFreshnessWindowMs": 1.0,
+                "budgetMaxTurns": 9007199254740991_i64,
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+        );
+        assert_eq!(req.schedule_freshness_window_ms, Some(1));
+        assert_eq!(req.budget_max_turns, Some(9007199254740991));
+
+        // A non-integral or out-of-safe-range value is dropped rather than
+        // rounded — unreachable in production because the stage refuses it
+        // first, which this asserts in the same breath.
+        let raw = json!({ "participants": [], "budgetMaxTurns": 1.5 });
+        let obj = raw.as_object().unwrap();
+        assert_eq!(
+            ChatCreateRequest::from_raw(obj.clone()).budget_max_turns,
+            None
+        );
+        assert!(validate_create_body(obj).is_err());
+    }
+
+    /// The stage collects EVERY issue in the schema's key order rather than
+    /// stopping at the first — `vb_two_issues_schema_order` measures it against
+    /// v4, this states the invariant in one line.
+    #[test]
+    fn the_stage_collects_issues_in_schema_order() {
+        let raw = json!({
+            "participants": [{ "type": "CHARACTER", "characterId": "11111111-1111-4111-8111-111111111111" }],
+            "chatType": "brahma",
+            "title": 42,
+        });
+        let issues = validate_create_body(raw.as_object().unwrap()).unwrap_err();
+        let rendered = create_issue_details(&issues);
+        let paths: Vec<&str> = rendered
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["path"][0].as_str().unwrap())
+            .collect();
+        assert_eq!(paths, vec!["title", "chatType"]);
+    }
+
+    /// An unknown key is STRIPPED, never refused (`vb_ok_unknown_key_stripped`).
+    #[test]
+    fn unknown_keys_are_stripped_not_refused() {
+        let raw = json!({
+            "participants": [{ "type": "CHARACTER", "characterId": "11111111-1111-4111-8111-111111111111" }],
+            "notAField": "whatever",
+        });
+        assert!(validate_create_body(raw.as_object().unwrap()).is_ok());
     }
 }

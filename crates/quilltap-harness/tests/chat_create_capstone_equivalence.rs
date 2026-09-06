@@ -8,6 +8,15 @@
 //! to a first-appearance token (so the created chat/participant/message ids line up
 //! by structure; the fixture-baked ids are identical both sides → identical tokens).
 //!
+//! P4.78 extended the CORPUS (not the fixture) with 69 arms for v4's whole
+//! `createChatSchema` — one refusing case per rule, each paired with the
+//! accepting sibling that proves the stage does not OVER-refuse — and widened
+//! the reject branch to compare v4's Zod `details` array byte-for-byte, closing
+//! the family's standing error-envelope deferral. Before the stage landed, 43
+//! of those bodies were ACCEPTED by the port and created a chat (dogfood
+//! finding #115's measurement); 14 more answered a downstream sentence instead
+//! of v4's `Validation error`.
+//!
 //! P4.D44 extended the fixture with three roleplay templates plus the two
 //! defaults that name them (`chat_settings.defaultRoleplayTemplateId` and the
 //! Lantern project's `defaultRoleplayTemplateId`), and added the five `rt_*`
@@ -59,7 +68,7 @@ use quilltap_core::model::stream::{
     StreamUsage, StreamingCompletionProvider,
 };
 use quilltap_core::services::chat_create::{
-    handle_create, ChatCreateDeps, ChatCreateRequest, ChatCreateResult,
+    handle_create, ChatCreateDeps, ChatCreateRequest, ChatCreateResult, HandleCreateError,
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::creation_progress::{CreationProgressBus, CreationProgressEmitter};
@@ -651,9 +660,16 @@ fn chat_create_capstone_matches_oracle() {
 
         // P4.9E3B: the request-level rejection arms (a bad / explicit-null
         // timestampConfig — v4's route-level Zod parse → 400 `Validation
-        // error`; P4.D148 adds the `conciergeState` pair). The oracle row's
-        // status selects the branch; the Zod `details` array stays the standing
-        // error-envelope deferral.
+        // error`; P4.D148 adds the `conciergeState` pair; P4.78 adds an arm per
+        // `createChatSchema` rule). The oracle row's `status` selects the
+        // branch.
+        //
+        // P4.78 closed the standing error-envelope deferral: v4's
+        // `validationError(err)` body is `{error, details: err.issues}`, and
+        // `details` is now compared BYTE-FOR-BYTE (serialized, so key order
+        // counts — Zod's issue objects put a different key first per code).
+        // The oracle has always captured `body` whole; only this comparand
+        // ignored the array.
         let want_status = want["status"].as_u64().unwrap_or(201);
         if want_status != 201 {
             let err = match create_result {
@@ -663,9 +679,18 @@ fn chat_create_capstone_matches_oracle() {
                     c.name
                 ),
             };
+            // v4's `notFound(what)` is a 404, not a 500 — the arm no corpus
+            // case reached until P4.78's `vb_ok_project_id_nil_uuid` (a
+            // well-formed but unknown `projectId`, which is an accepting
+            // sibling for the uuid-format rule precisely because it gets PAST
+            // the validation stage). Without it that case reads as a port
+            // divergence when the only thing wrong is this mapping.
             let (got_status, got_msg) = match &err {
-                quilltap_core::services::chat_create::HandleCreateError::BadRequest(m) => {
-                    (400u64, m.clone())
+                quilltap_core::services::chat_create::HandleCreateError::BadRequest(b) => {
+                    (400u64, b.message.clone())
+                }
+                e @ quilltap_core::services::chat_create::HandleCreateError::NotFound(_) => {
+                    (404u64, e.to_string())
                 }
                 other => (500u64, other.to_string()),
             };
@@ -676,6 +701,19 @@ fn chat_create_capstone_matches_oracle() {
             );
             let want_error = want["body"]["error"].as_str().unwrap_or_default();
             assert_eq!(got_msg, want_error, "case {}: error copy mismatch", c.name);
+
+            // The Zod issue array, byte-for-byte. `null` on either side means
+            // the body had no `details` key at all (v4's plain `badRequest(…)`
+            // / `notFound(…)`), which is itself a comparand: a port that
+            // answered the right sentence with the wrong envelope reddens here.
+            let want_details = want["body"].get("details").cloned().unwrap_or(Value::Null);
+            let got_details = err.details().cloned().unwrap_or(Value::Null);
+            assert_eq!(
+                serde_json::to_string(&got_details).unwrap(),
+                serde_json::to_string(&want_details).unwrap(),
+                "case {}: Zod `details` mismatch",
+                c.name
+            );
 
             // A refusal must also have written nothing: v4's Zod parse rejects
             // before `repos.chats.create` is reached (its own suite asserts
@@ -911,4 +949,48 @@ fn chat_create_capstone_matches_oracle() {
             c.name
         );
     }
+}
+
+/// **P4.78's one loud deferral, made executable.**
+///
+/// The differential above proves the ENGINE half: `handle_create` answers v4's
+/// `{error: 'Validation error', details: [...]}` and
+/// [`HandleCreateError::details`] carries the issue array byte-for-byte. It
+/// does NOT reach the wire: the `HandleCreateError` → `CoreError` mapping lives
+/// in `quilltap-host/src/spine.rs::map_create_error`, which hard-codes
+/// `details: None`, and `crates/quilltap-host/**` is NOBODY's file this round
+/// (the P4.78 order's Ownership table). So a `chatCreate` refusal reaches an
+/// HTTP/Tauri caller today with v4's sentence and WITHOUT v4's `details` array.
+///
+/// The ordered shape is one line — `details: e.details().cloned().map(Box::new)`
+/// in `map_create_error`, taken before `e.to_string()` moves it. This test is
+/// the tripwire: it asserts the gap is still there, so the day a lane that owns
+/// the host closes it, this fails and says so rather than leaving a stale
+/// deferral in the docs.
+#[test]
+fn p4_78_host_wire_details_carry_is_deferred() {
+    let spine = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("the harness crate sits two levels under the repo root")
+        .join("crates/quilltap-host/src/spine.rs");
+    let src =
+        std::fs::read_to_string(&spine).unwrap_or_else(|e| panic!("read {}: {e}", spine.display()));
+    let start = src
+        .find("fn map_create_error(")
+        .expect("quilltap-host no longer declares `map_create_error`");
+    let body = &src[start..start + 700.min(src.len() - start)];
+    assert!(
+        body.contains("details: None"),
+        "`map_create_error` no longer drops the Zod `details` bag — P4.78's \
+         deferral has been discharged by a host-owning lane. Delete this test \
+         and the deferral note in the P4.78 lane record, and add the wire \
+         assertion the discharge deserves."
+    );
+    // …and the bag it is dropping is really there to drop.
+    assert!(
+        HandleCreateError::validation_error(&[]).details().is_some(),
+        "the engine half regressed: a validation refusal no longer carries \
+         `details`, so there is nothing for the host to forward"
+    );
 }

@@ -178,6 +178,60 @@ A unit pin mirrors v4's new `google-schema-sanitizer.test.ts` over v5's REAL
 catalog definitions — measured byte-equal to v4's converter output — so a fix
 applied in the wrong home (stripping the key from the schemas instead of adding
 it to the list) is caught.
+#### 2026-09-06 — fix(chat-create): parse the whole create body v4's way — `createChatSchema` as one validation stage, with the Zod `details` envelope (dogfood finding #115)
+
+_Versions: core 0.0.807, harness 0.0.696._
+
+`chatCreate` refused three fields ad hoc (`conciergeState`, `roleplayTemplateId`,
+`timestampConfig`) and let the rest of the body through. v4 Zod-parses the whole
+thing at `app/api/v1/chats/route.ts:1084`, as the first statement after
+`req.json()`. Measured against v4's real route at the `f699da6f6` pin: **43 of
+the 66 refusing bodies in the widened corpus were ACCEPTED by the port and
+created a chat**, and 14 more answered a downstream sentence
+(`Character not found`, `Connection profile not found`, `Source chat not found`)
+where v4 answers `Validation error`. A stored `controlledBy: "LLM"` — legal to
+v5, refused by v4 — is what split the server's and the SPA's readers on the
+Friday copy.
+
+`validate_create_body` is now the first statement of `handle_create`, ahead of
+the creation-progress emitter and the continuation ownership lookup, covering
+every rule in `createChatSchema` and its two sub-schemas
+(`TimestampConfigSchema`, `OutfitSelectionSchema` with the five wardrobe slots).
+The three ad-hoc arms are subsumed — what stays at their old sites is
+normalization, not refusal. Zod's issue objects are reproduced
+code-for-code and key-for-key, so the family now compares v4's `details` array
+byte-for-byte; that closes the reject branch's standing error-envelope
+deferral. Bounds follow Zod 4.5: `max(N)` counts CODE POINTS (a 500-astral-char
+path is legal at 1,000 UTF-16 units), `z.number().int()` accepts an integral
+float (`1.0`) and reports its own safe-integer bounds, and an enum reports
+`invalid_value` for a wrong TYPE as readily as for a wrong string.
+
+`ChatCreateRequest` is now a lenient view over the raw body it also carries: the
+decode can never fail, because a serde failure at the transport boundary would
+answer the host's `invalid chatCreate request: …` instead of v4's 400. That
+generalizes what P4.73 did for two fields to the whole body.
+
+Corpus 36 → 105 cases: one refusing arm per rule, thirteen accepting siblings
+(so an over-refusing stage is caught too), the guard-order composite, and the
+issue-order case. Eight mutation proofs, each reddening exactly its own arm —
+including counting UTF-16 units in `max()`, which reddens the astral-path
+ACCEPT case, and moving the stage below the continuation lookup, which reddens
+the before-404 case. The reject branch also gained v4's `notFound` → 404
+mapping, which no corpus case had reached before.
+
+One v5 test was sending a body v4 refuses, and the gate caught it:
+`chat_create_end_to_end.rs` used `progressId: "green-room-e2e"` against
+`z.uuid().optional()`. The constant is now a UUID (the value is an opaque
+Green-Room correlation id). ⚠ That file is unowned by this round's contract —
+the change is one `const`, no product code, and the lane record explains the
+call so it can be reverted at the wire if the unifier prefers.
+
+**Deferred, loudly:** the `details` bag does not reach the wire.
+`map_create_error` in `quilltap-host/src/spine.rs` hard-codes `details: None`,
+and that crate is outside this lane's ownership; a `chatCreate` refusal reaches
+an HTTP/Tauri caller with v4's sentence and without v4's issue array. The gap is
+held by an executable tripwire (`p4_78_host_wire_details_carry_is_deferred`)
+that fails the day a host-owning lane closes it.
 
 #### 2026-09-06 — docs(drift): the 4.9.2 squash puts bugs 124/125 on main — the ordered round repointed to one pin (`f699da6f6`)
 

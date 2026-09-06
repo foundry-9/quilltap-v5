@@ -42,7 +42,13 @@ const FRIDAY_CHARACTER_ID: &str = "969a21df-73ad-465f-8f6c-2bc52d90ddc6";
 /// The fixture's ANTHROPIC connection profile (apiKeyId `None` → the greeting
 /// path proceeds with an empty key, straight to the canned stream — no network).
 const ANTHROPIC_PROFILE_ID: &str = "a1cb6066-2fcc-4006-a7db-ddb2fc6e2221";
-const PROGRESS_ID: &str = "green-room-e2e";
+/// v4 `createChatSchema.progressId: z.uuid().optional()` — this was
+/// `"green-room-e2e"` until P4.78, and the body it rides in was therefore one
+/// v4's real route answers `400 Validation error` to. v5 only accepted it
+/// because `chatCreate` never parsed the whole body (dogfood finding #115);
+/// the value is opaque to everything here (a Green-Room correlation id) so a
+/// UUID does the same job.
+const PROGRESS_ID: &str = "8f2c1e40-0000-4000-8000-00000000e2e0";
 const GREETING_REPLY: &str = "Ahoy — the players are ready.";
 
 // ---------------------------------------------------------------------------

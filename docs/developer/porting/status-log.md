@@ -109124,3 +109124,202 @@ The two routes oracles use lane-unique staging (`/tmp/qt-d162-help-chats-routes`
 (§C), and are otherwise the recipes in their headers.
 
 Versions: harness 0.0.697, web 0.0.120.
+## P4.78 — `chatCreate` parses its whole body the way v4 does (dogfood finding #115)
+
+**Lane branch `claude/chat-create-body-parse-3af92e`; the `f699da6f6` 4.9.x
+drift catch-up round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79). CLOSED —
+Tier 1 and Tier 2 both landed; one loud deferral, made executable.**
+
+### The freshness probe (twice)
+
+The lane's FIRST probe **FAILED** and it STOPped and reported: v4 had shipped
+the 4.9.2 cycle (`8fbf2afe0` release, `d489b04a3` merge-back, `f699da6f6` a
+CHANGELOG move) plus `1a2b2164c` on `bugfix` while the round was being ordered,
+so the ledger's §1 was stale. `/driftcheck` was re-run from the main checkout
+(`025ab29c`) and repointed the whole round from `ba34fa367` to a single
+`f699da6f6` pin; the lane re-based on that commit and the probe then passed
+(branch `bugfix`, tree clean, both logs empty). Measured on the way and worth
+keeping: `app/api/v1/chats/route.ts`, `lib/schemas/settings.types.ts`,
+`lib/schemas/wardrobe.types.ts`, `lib/api/responses.ts` and
+`lib/api/middleware/context.ts` are **byte-identical from the baseline
+`c2232cd9a` through `f699da6f6`** — this lane's surface never moved, so the pin
+was hygiene, exactly as the order predicted.
+
+Regen venue: `/tmp/qt-v4-pin-p478-f699da6f6` (lane-unique, three symlink
+classes); the capstone recipe's `/tmp/qt-cc-*` staging run under the
+lane-unique `/tmp/qt-p478-cc-*` prefix per §C.
+
+### What v4 actually does (surveyed, not assumed)
+
+The order's survey stopped at `:175`; reading to the schema's closing brace
+(`route.ts:98-187`) found **four more fields** it had not listed:
+`budgetEstimatedSpendCapUSD: z.number().positive()` (note: **no `int()`**, so
+`1.5` is legal), `runVisibility: z.enum(['owner_only','household','open'])`,
+`runDestructiveToolsAllowed: z.boolean()`, and `budgetExcludeCacheHits:
+z.boolean()`. All four are ported and corpus-pinned.
+
+Every issue SHAPE was measured against v4's real route rather than inferred
+from Zod's source — three exploratory oracle passes (87, then 114, then 123
+cases) whose findings are now permanent arms:
+
+| rule | v4's issue |
+|---|---|
+| `z.string()` / `z.boolean()` / `z.number()` / `z.array()` / `z.object()` | `{expected, code, path, message}` |
+| `z.number().int()`'s own failure | `{expected: "int", format: "safeint", code, path, message}` |
+| `z.enum([...])` **and a wrong TYPE** | `{code, values, path, message: 'Invalid option: expected one of "a"\|"b"'}` |
+| `z.literal('CHARACTER')` | `invalid_value`, `values: ["CHARACTER"]`, but message `Invalid input: expected "CHARACTER"` |
+| `z.uuid()` | `{origin, code, format: "uuid", pattern, path, message: "Invalid UUID"}` — the pattern echoed verbatim |
+| `.max(N)` on a string | `{origin: "string", code, maximum, inclusive: true, path, message}` |
+| `.positive()` | `{origin: "number", code: "too_small", minimum: 0, inclusive: false, …}` — **`origin: "number"` even on an `int()` chain** |
+| `z.number().int()`'s safe-integer ceiling | `{code, maximum, note, origin: "int", inclusive, path, message}` — `code` BEFORE `origin`, and it carries a `note` |
+
+Four behaviours that would have been guessed wrong:
+
+- **`.optional()` is not nullable.** `title: null` is an `invalid_type`
+  (`received null`), not an absent key.
+- **The int check ABORTS, the safeint bounds do NOT.** `budgetMaxTurns: -1.5`
+  answers ONE issue; `-1e21` answers TWO (the safeint floor *and* the
+  `positive()` bound). Both are pinned.
+- **`max(N)` counts code points** (Zod 4.5, P4.D158 §3): 500 astral characters
+  = 1,000 UTF-16 units and v4 answers **201**.
+- **`z.number().int()` accepts an integral float.** `1.0` is an int to Zod;
+  `1.5` is not. `vb_ok_freshness_window_integral_float` is an autonomous room
+  precisely so the accepted `1` lands in the `chats` row and is diffed.
+
+### The RED-FIRST measurement — finding #115's real size
+
+With the lenient decode in place but the stage disabled, the whole corpus was
+run to completion (a throwaway harness patch that reports instead of
+asserting). Of the 66 bodies v4 refuses:
+
+- **43 were ACCEPTED by the port and created a chat.** Named in full in the
+  lane's regen log; they include `vb_participant_controlled_by_uppercase`
+  (finding #115's own live shape), every `outfitSelections` arm, every number
+  arm, all three `*ScenarioPath` length arms, `chatType`, `runVisibility`,
+  and — from the *pre-existing* corpus — `cs_invalid_value_400`,
+  `cs_null_rejected`, `cs_wrong_type_400`, `rt_wrong_type_400` and
+  `tc_explicit_null_rejected`, which had only ever been green because the
+  ad-hoc arms ran on a strict decode that this lane replaced.
+- **14 answered the wrong sentence**, mostly a downstream refusal standing in
+  for the schema: `Character not found` for a non-UUID `characterId`,
+  `Connection profile not found` for a non-UUID `connectionProfileId`,
+  `Roleplay template not found` for a non-UUID `roleplayTemplateId`,
+  `At least one LLM-controlled CHARACTER participant is required` for a missing
+  / null / non-array / empty `participants`, `Source chat not found` for a
+  non-UUID `continuationFromChatId`.
+- **8 matched the sentence but not the envelope** (no `details` array).
+- **2 already matched whole.**
+
+### What landed
+
+1. **`validate_create_body`** — one pass over the raw body in the schema's own
+   key order (which is the order Zod reports issues in), collecting EVERY issue
+   rather than stopping at the first, and placed as the FIRST statement of
+   `handle_create`: before the progress emitter, before the continuation
+   ownership lookup, before any read. Unknown keys are stripped, never refused.
+2. **`ChatCreateRequest` is a lenient view over a `raw: Map` it now carries.**
+   Its `Deserialize` cannot fail on an object. That is load-bearing rather than
+   sloppy: a serde failure at the transport boundary answers the HOST's
+   `invalid chatCreate request: …`, not v4's 400 — the P4.60
+   wrong-type-collapse convention, and exactly the shape P4.73 fixed one field
+   at a time for `conciergeState` / `roleplayTemplateId`. This generalizes it to
+   the whole body, so no field needed widening one by one.
+3. **The three ad-hoc arms are subsumed.** What remains at their old sites is
+   normalization only. `parse_timestamp_config` is kept for what it alone does
+   (materializing `TimestampConfigSchema`'s defaults, stripping unknown keys);
+   its error arm is unreachable for a body the stage accepted and is documented
+   as such. The `roleplayTemplateId` comment's standing "⚠ only the wrong-TYPE
+   arm is MEASURED" note is **discharged** — `vb_roleplay_template_id_not_uuid`
+   now pins the format arm the port used to let through.
+4. **`HandleCreateError::BadRequest` carries a `BadRequestBody { message,
+   details }`** — a single tuple field on purpose, so the composing host's
+   `HandleCreateError::BadRequest(_)` arm compiles untouched.
+5. **The corpus: 36 → 105 cases** (69 new), and the reject branch compares
+   `body.details` **byte-for-byte** (serialized, so key order counts). The
+   family's standing error-envelope deferral is closed.
+
+### A comparand gap the new arms exposed
+
+The reject branch mapped `BadRequest` → 400 and **everything else → 500**, so a
+`HandleCreateError::NotFound` read as a 500. No corpus case had reached that arm
+before; `vb_ok_project_id_nil_uuid` — a well-formed but unknown `projectId`,
+which is an accepting sibling precisely because it gets PAST the stage — does,
+and v4 answers 404. The mapping now has its `NotFound` arm. Without it the case
+would have read as a port divergence when the only thing wrong was the harness.
+
+### Mutation proofs (8, each reddening exactly its own arm)
+
+| mutation | first red |
+|---|---|
+| drop the participant `controlledBy` enum | `vb_participant_controlled_by_uppercase` |
+| drop `projectScenarioPath`'s `max(500)` | `vb_project_scenario_path_too_long` |
+| count UTF-16 units in `max()` | `vb_ok_project_scenario_path_500_astral` (the **accept** case) |
+| drop the whole `participants` rule | `vb_participants_missing` |
+| drop the uuid FORMAT check (keep the type check) | `vb_participant_character_id_not_uuid` |
+| drop the `z.number().int()` integrality check | `vb_freshness_window_fractional` |
+| drop the `timestampConfig.mode` enum | `vb_timestamp_config_mode_null` |
+| move the stage BELOW the continuation lookup | `rt_wrong_type_before_404` |
+
+### Deferred — loudly, and executably
+
+**The Zod `details` bag does not reach the wire.** `map_create_error`
+(`quilltap-host/src/spine.rs`) hard-codes `details: None`, and
+`crates/quilltap-host/**` is NOBODY's file this round. So an HTTP or Tauri
+caller gets v4's `Validation error` sentence **without** v4's issue array; the
+engine half is complete and differentially proven. The ordered shape is one
+line — `details: e.details().cloned().map(Box::new)` in `map_create_error`,
+taken before `e.to_string()` moves it. Rather than leave that as prose, the
+harness carries `p4_78_host_wire_details_carry_is_deferred`, which asserts the
+gap is still there and fails the day a host-owning lane closes it.
+
+Also recorded, not acted on: three pre-existing duplicate `progressId`s in the
+original 36 cases (`…fa`/`…fb`/`…fc`, each pairing a 201 case with a refusal
+that emits no frames). Inert — every case runs on a fresh DB and a fresh bus —
+and not this lane's to renumber.
+
+### ⚠ One OUT-OF-OWNERSHIP edit, made deliberately — the unifier may veto it
+
+The workspace gate caught a v5 test sending a body **v4's real route refuses**:
+`crates/quilltap-web/tests/chat_create_end_to_end.rs` set
+`const PROGRESS_ID = "green-room-e2e"`, and
+`createChatSchema.progressId` is `z.uuid().optional()`. The test had been
+asserting a 200 for a body v4 answers `400 Validation error` to — the same class
+as finding #115 itself, one layer down, and it only ever passed because
+`chatCreate` did not parse the whole body. Measured: `progressId` is the SOLE
+violation in that body (`characterId` and `connectionProfileId` are both valid
+Zod UUIDs), and the constant is opaque — a Green-Room correlation id used in
+exactly two places (the request and the frame filter).
+
+**That file is UNOWNED this round** (the order's Ownership table grants
+P4.D162 only `crates/quilltap-web/tests/fixtures/help-chat-*.db`; nothing else
+under `quilltap-web/tests/`), so the contract says a lane STOPs and reports.
+The judgment call taken here was to make the one-line constant change anyway,
+because the alternative was to hand the unifier a knowingly-RED workspace gate
+(`commit.md` §5 says fix every failure regardless of cause) over a fix that is
+mechanically forced — there is exactly one correct shape for that value — and
+because no sibling lane's §A families or §D seams touch that file. The edit is
+one `const`, zero product code, trivially revertible, and carries a comment
+naming P4.78 and the reason. **If the unifier disagrees, reverting it and
+fixing it at the wire costs one line.**
+
+The stage was NOT loosened to accommodate it (the order's Tier-3 rule). The
+SPA needed no change — the New-Chat dialog already sends `llm`/`user` and a
+real UUID `progressId`.
+
+### Gate
+
+`cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D
+warnings` clean in BOTH feature sets; `cargo build --workspace`; the full
+workspace test run and the by-name sweep are recorded with the commit.
+`dispatch_wrong_type_census`'s three `ChatCreate` assertions still hold by
+construction — the trio keeps its `Option<Option<Value>>` types and the decode
+still ACCEPTS a wrong type so the handler can refuse it.
+
+**No Playwright** (§E — port 4319 is P4.D161's for the round). No SPA change:
+the New-Chat dialog already sends `llm`/`user`, and nothing the stage refuses is
+a body the SPA sends (the Tier-3 condition did not fire).
+
+The finding-#115 standing note in `dogfood-findings.md` is the unifier's to
+close — this lane does not edit that file's standing notes.
+
+Versions: core 0.0.807, harness 0.0.696.
