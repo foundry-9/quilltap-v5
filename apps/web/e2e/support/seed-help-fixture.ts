@@ -114,6 +114,23 @@ export async function seedHelpFixture(
   if (!chosen) {
     return { eligible: false, characterId: target.id, reason: 'no connection profile to seat the help character on' };
   }
+  // Eligibility's other half is the PROFILE: v4 counts a profile tool-capable
+  // only when `allowToolUse !== false`, and an earlier spec in the full suite
+  // switches that flag off on this very profile (the gate-of-record run's
+  // skip reason: `No tool-capable connection profiles available`). Restore
+  // it on the seat's profile; the flag is what the send's tool loop needs
+  // anyway.
+  const profileUpdate = await dispatch(ctx, baseUrl, {
+    type: 'connectionProfileUpdate',
+    profileId: chosen.id,
+    profile: { allowToolUse: true },
+  });
+  if (profileUpdate?.type === 'error') {
+    return {
+      eligible: false,
+      reason: `connectionProfileUpdate refused: ${String(profileUpdate.data?.['message'] ?? 'unknown')}`,
+    };
+  }
   const patch: Record<string, unknown> = {
     defaultHelpToolsEnabled: true,
     defaultConnectionProfileId: chosen.id,
