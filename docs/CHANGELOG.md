@@ -261,6 +261,35 @@ detail}` instead of accepting a billed half reply as a final answer. A new
 throw red-first; the committed `brahma-{main,mount}.db` pair (shared with
 `brahma_console_routes_equivalence`) was widened with a new pinned chat via
 its builder, every pre-existing row reproduced byte-identical.
+#### 2026-09-06 — test(spa): the two live beats for the Skip banner and the pause toast (v4 bug 123)
+
+_Versions: SPA 0.5.656._
+
+P4.D161 unit 6. The off-turn Skip banner joins the `salon-dialogs-flow` overlay
+beat, and a new `salon-chain-pause-toast-flow` proves both announcement arms
+against the real server.
+
+The banner half was previously unprovable in a beat, and that note is in the
+file: the old banner needed the weighted-random rotation to land on a chosen
+seat, which no seeded chat can force. Bug 123 removes the requirement — the
+banner follows the seat the composer speaks as — so it can now be asserted
+directly. The exact sentence is pinned by asking the server whose turn it is
+through `chatTurnAction query`, an independent source, rather than accepting
+either wording.
+
+The toast half injects one thing at the wire: the `paused` key P4.D160 will add
+to the `chainComplete` frame, on that frame. Everything downstream is real —
+the live `EventSource`, the transport's parse, the reducer's carry, the
+pre-reconcile snapshot, the four gates and the real toast stack. This keeps the
+beat independent of P4.D160's landing order, since the client reads an optional
+key.
+
+The first run was a measurement and corrected the injection point: a send to
+Group Expedition streams two chained turns, so an earlier draft that appended a
+synthetic frame after the first `done` was overwritten by the real
+`chainComplete` arriving later with no `paused`. That is correct reducer
+behaviour — the last chainComplete wins — and the wrong injection point.
+
 #### 2026-09-06 — test(spa): pin the single source of truth for the pause flag (v4 bug 123's (C) half)
 
 _Versions: SPA 0.5.655._

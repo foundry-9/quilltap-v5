@@ -40,6 +40,43 @@ async function openChat(page: Page, title: string): Promise<string> {
   return id;
 }
 
+/**
+ * The seat the composer speaks as when nobody is impersonating (the chat's
+ * genuine user-controlled character) and whether the rotation has landed on it
+ * — both read from the SERVER, so the banner's wording can be pinned exactly
+ * rather than guessed from a weighted-random turn (P4.D161, v4 bug 123).
+ */
+async function readOwnerSeatAndTurn(
+  page: Page,
+  chatId: string,
+): Promise<{ name: string; isItsTurn: boolean }> {
+  const chatResp = await page.request.post('/api/dispatch', {
+    data: { type: 'chatGet', chatId },
+  });
+  expect(chatResp.ok(), `chatGet → ${chatResp.status()}`).toBe(true);
+  const chatBody = (await chatResp.json()) as {
+    data?: {
+      chat?: {
+        participants?: Array<{ id: string; controlledBy?: string; character?: { name?: string } }>;
+      };
+    };
+  };
+  const owner = (chatBody.data?.chat?.participants ?? []).find((p) => p.controlledBy === 'user');
+  expect(owner?.character?.name, 'the chat has a user-controlled character').toBeTruthy();
+
+  const turnResp = await page.request.post('/api/dispatch', {
+    data: { type: 'chatTurnAction', chatId, action: 'query' },
+  });
+  expect(turnResp.ok(), `chatTurnAction query → ${turnResp.status()}`).toBe(true);
+  const turnBody = (await turnResp.json()) as {
+    data?: { turn?: { nextSpeakerId?: string | null } };
+  };
+  return {
+    name: owner!.character!.name!,
+    isItsTurn: turnBody.data?.turn?.nextSpeakerId === owner!.id,
+  };
+}
+
 /** The chat's project, straight off the chat read. */
 async function readProjectId(page: Page, chatId: string): Promise<string | null> {
   const resp = await page.request.post('/api/dispatch', { data: { type: 'chatGet', chatId } });
@@ -358,6 +395,31 @@ test.describe('P4.9E3C — speaking as a character', () => {
     const speakingAsCue = page.locator('.qt-speaking-as-avatar');
     await expect(speakingAsCue).toBeVisible({ timeout: 15_000 });
     expect(await speakingAsCue.getAttribute('aria-label')).toMatch(/^Speaking as /);
+
+    // P4.D161 (v4 bug 123): the Skip banner is now keyed on the seat the
+    // composer speaks as, not on the rotation's next speaker — so it stands
+    // HERE, whoever's turn it happens to be, and names the owner seat. That is
+    // the whole of the fix, and it is what makes this half of it provable in a
+    // beat at all: the note above records that the OLD banner could not be,
+    // because no seeded chat can force a weighted-random rotation onto a
+    // chosen seat. Nothing forces it now; the banner does not need the turn.
+    //
+    // The exact sentence is pinned by asking the SERVER whose turn it is — an
+    // independent source, the same `chatTurnAction query` the client reads —
+    // rather than accepting either wording.
+    const bannerText = page.locator('.qt-chat-user-turn-banner span');
+    await expect(bannerText).toBeVisible({ timeout: 15_000 });
+    const owner = await readOwnerSeatAndTurn(page, chatId);
+    await expect(bannerText).toHaveText(
+      owner.isItsTurn
+        ? `${owner.name}'s turn — type as them, or skip to let someone else respond.`
+        : `Speaking as ${owner.name} — type, or skip to let someone else take the floor.`,
+      { timeout: 15_000 },
+    );
+    // Not must-speak, so the pass is on offer.
+    await expect(
+      page.locator('.qt-chat-user-turn-banner').getByRole('button', { name: 'Skip' }),
+    ).toBeVisible();
 
     await openSidebarSection(page, 'Participants');
 

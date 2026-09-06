@@ -109725,3 +109725,48 @@ pause state without waiting for a refetch, where v5 waits for the invalidate to
 land. That is a latency difference, not a drift — and v5's is the stricter of
 the two, since what it eventually shows is the server's value rather than a
 local optimistic guess.
+
+### Unit 6 — the two live beats
+
+**Beat A — the off-turn Skip banner** (`salon-dialogs-flow.spec.ts`, in the
+existing overlay beat). The file already carried a note that the banner half of
+Bug 46(a) could NOT be proven in a beat, because the old banner needed the
+weighted-random rotation to land on a chosen seat and no seeded chat can force
+that. **Bug 123 retires that constraint** — the banner follows the seat the
+composer speaks as — so the assertion is now direct: before impersonating, the
+banner stands and names the owner seat. The exact sentence is pinned by asking
+the SERVER whose turn it is (`chatTurnAction query`, the same independent source
+the client reads) and expecting the matching one of v4's two wordings, plus the
+Skip button. **Green on its first run.**
+
+**Beat B — the pause toast** (new `salon-chain-pause-toast-flow.spec.ts`, two
+cases: the error arm warns, any other reason informs). Injects exactly one
+thing at the wire — the `paused` key P4.D160 adds to the `chainComplete` frame,
+on that frame — and drives everything downstream for real: the live
+`EventSource`, the transport's parse, the reducer's carry, the pre-reconcile
+snapshot, the four gates, the real toast stack. That keeps the beat independent
+of P4.D160's landing order, which the order allows because the client reads an
+OPTIONAL key.
+
+**Its first run FAILED, and the measurement is the useful part.** Two hypotheses
+(a paused fixture chat closing gate 2; an all-LLM room closing gate 3) were both
+REFUTED by a throwaway probe: Group Expedition is unpaused and Cleo is a genuine
+`controlledBy: 'user'` seat. The probe's frame dump gave the real answer — a
+send to Group Expedition streams **two chained turns**, so the wire carries two
+`done` frames and then ONE `chainComplete`, today with keys
+`chatId,chainComplete,reason,nextSpeakerId,chainDepth` and **no `paused`**,
+exactly as §G describes a pre-D160 server. The first draft APPENDED a synthetic
+`chainComplete` after the first `done`; the real one then arrived later and
+reset `chainPaused` to false, because the reducer's arm reads
+`frame.paused === true` on every chainComplete and the last one wins. That is
+correct reducer behaviour and a wrong injection point. Re-pointed to rewrite the
+REAL frame — which is also the truer simulation of what D160 will do — both
+cases pass.
+
+Two side-findings worth keeping: **the probe's own first run had no mock LLM**,
+so the turn errored and the dump showed no `done` frame at all (a probe that is
+not itself instrumented correctly answers a different question than the one
+asked); and **the e2e needs RELEASE binaries in practice** — `README.md` says
+`cargo build`, but global-setup makes ~50 CLI writes and each debug-build
+PBKDF2 unwrap costs ~5 s, so a debug global-setup takes minutes per run where
+release takes seconds.
