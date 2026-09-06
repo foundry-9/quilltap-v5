@@ -1398,11 +1398,25 @@ export class SalonConversation {
   protected readonly isAllLLM = computed(() => {
     const c = this.chat();
     if (!c) return false;
-    const anyUserControlled = c.participants.some(
+    if (!this.isAllLLMRoom()) return false;
+    return !c.messages.some((m) => m.role === 'USER');
+  });
+
+  /**
+   * v4's RAW `isAllLLMChat(participantsAsBase)` (`lib/chat/turn-manager/utils.ts:212`
+   * — no present participant is `controlledBy: 'user'`), without
+   * `useParticipants.isAllLLM`'s extra "and nobody has ever sent a USER
+   * message" clause. The two are NOT interchangeable and v4 uses both: the
+   * modal opener reads the composite above, while `announceChainPause` reads
+   * this bare predicate (`useSSEStreaming.ts:387`), so a room of LLMs that has
+   * been typed into still suppresses the pause toast in favour of the modal.
+   */
+  private readonly isAllLLMRoom = computed(() => {
+    const c = this.chat();
+    if (!c) return false;
+    return !c.participants.some(
       (p) => isParticipantPresent(p.status) && p.controlledBy === 'user',
     );
-    if (anyUserControlled) return false;
-    return !c.messages.some((m) => m.role === 'USER');
   });
   /** v4's opener predicate — `chat.isPaused && isAllLLM` (`SalonView.tsx:1228`). */
   private readonly allLLMPauseActive = computed(() => !!this.chat()?.isPaused && this.isAllLLM());
@@ -2759,6 +2773,36 @@ export class SalonConversation {
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
+  /**
+   * v4 `announceChainPause` (`useSSEStreaming.ts:378-393`, bug 123). A chain
+   * that stops because the chat is paused used to do so in silence — the room
+   * simply stopped answering, one reply per message, and the sidebar's Pause
+   * button was the only place the state was visible. Say so.
+   *
+   * Four gates, in v4's order:
+   *  1. the stop was not a pause at all (`!event.paused`);
+   *  2. the user paused it themselves — `pausedBefore` is v5's `isPausedRef`,
+   *     the client's belief BEFORE this turn's reconcile, so the news is judged
+   *     against what the user already knew. They got the toggle's own toast;
+   *  3. an all-LLM room, where `AllLLMPauseModal` explains the stop — read off
+   *     v4's BARE `isAllLLMChat`, not the composite `isAllLLM`;
+   *  4. a failed turn warns; anything else informs.
+   */
+  private announceChainPause(reason: string, paused: boolean, pausedBefore: boolean): void {
+    if (!paused) return;
+    if (pausedBefore) return;
+    if (this.isAllLLMRoom()) return;
+    if (reason === 'error') {
+      this.toasts.showWarning(
+        "A character's turn failed, so auto-responses are paused. Press Resume in the sidebar to carry on.",
+      );
+    } else {
+      this.toasts.showInfo(
+        'Auto-responses are paused. Press Resume in the sidebar to let the others answer.',
+      );
+    }
+  }
+
   protected onNudge(): void {
     // Bug 48: an impersonate-takes-turn override is a user-driven turn — no nudge.
     if (this.turnOverride()) return;
@@ -2874,7 +2918,19 @@ export class SalonConversation {
 
     // Reconcile: refetch the canonical chat (v4 `fetchChat()` on done), then clear
     // the optimistic overlays so the streamed bubbles hand off without duplication.
+    //
+    // v4 mirrors `isPaused` into `isPausedRef` precisely so the chain-pause
+    // callback, which runs AFTER `await fetchChat()`, can still ask what the
+    // client believed BEFORE the reconcile — a pause is only news if the user
+    // did not already know about it. React's ref lags the fetch by a render;
+    // v5 has no such lag, so the snapshot is explicit and taken here.
+    const pausedBefore = this.chat()?.isPaused === true;
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+    // v4 calls `announceChainPause(event)` immediately after `fetchChat()` at
+    // BOTH chain-complete sites (`:956` send, `:1132` continue-mode); v5's one
+    // reconcile point stands in for both. v4 defaults the reason at the
+    // callback boundary (`:687`), so `||` — an empty reason falls back too.
+    this.announceChainPause(state.chainReason || 'no_next_speaker', state.chainPaused, pausedBefore);
     // Wake the queue badges — the turn just enqueued post-turn jobs (v4 fires
     // notifyQueueChange at all four useSSEStreaming completion callbacks
     // (:771/:827/:1018/:1038); v5's single reconcile point covers them).

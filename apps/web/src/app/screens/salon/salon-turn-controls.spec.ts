@@ -10,6 +10,7 @@ import type {
   ChatDetail,
   CoreRequest,
   CoreResponse,
+  ChatStreamFrame,
   MessageDto,
   ParticipantDetail,
   ScopedEvent,
@@ -142,6 +143,19 @@ interface StubOptions {
   skip?:
     | { turn: { nextSpeakerId: string | null; nextSpeakerControlledBy: string | null } }
     | { error: string };
+  /**
+   * Stream frames a `chatSend` emits before it resolves — the wire seam for the
+   * bug-123 chain-pause announcement. `runTurn` subscribes to `events$` before
+   * it dispatches, so a synchronous emit from inside the mock is folded exactly
+   * as a real frame would be.
+   */
+  chainFrames?: ChatStreamFrame[];
+  /**
+   * The chat a `chatGet` returns once a `chatSend` has run — the real
+   * chain-pause shape, where the server paused the chat during the chain and
+   * the post-turn reconcile brings that back.
+   */
+  chatAfterSend?: ChatDetail;
 }
 
 function stubClient(
@@ -151,7 +165,10 @@ function stubClient(
   client: Partial<CoreClient>;
   dispatch: ReturnType<typeof vi.fn>;
   dispatchData: ReturnType<typeof vi.fn>;
+  stream: ReturnType<typeof coreStreamStub>;
 } {
+  const stream = coreStreamStub();
+  let sent = false;
   // onSelectSpeaker reads the reply through dispatchData (v4 handleSetActiveSpeaker
   // applies it — the chat GET projects no activeTypingParticipantId).
   const dispatchData = vi.fn(async (req: CoreRequest) =>
@@ -165,7 +182,7 @@ function stubClient(
   const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
     switch (req.type) {
       case 'chatGet':
-        return { type: 'chat', data: { chat } };
+        return { type: 'chat', data: { chat: sent && opts.chatAfterSend ? opts.chatAfterSend : chat } };
       case 'chatSettings':
         return {
           type: 'chatSettings',
@@ -191,6 +208,10 @@ function stubClient(
         }
         return { type: 'turnAction', data: {} };
       case 'chatSend':
+        sent = true;
+        for (const frame of opts.chainFrames ?? []) {
+          stream.frames.next({ chatId: 'chat-1', ...frame } as ScopedEvent);
+        }
         return {
           type: 'chatSend',
           data: { messageId: 'x', hasContent: true, isMultiCharacter: true, isPaused: false },
@@ -202,8 +223,9 @@ function stubClient(
   return {
     dispatch,
     dispatchData,
+    stream,
     client: {
-      ...coreStreamStub(),
+      ...stream,
       dispatch,
       dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
       dispatchExpect: (async (req: CoreRequest, expect: string) => {
@@ -355,6 +377,136 @@ describe('Salon turn controls', () => {
     expect(toasts()).toEqual([
       { type: 'error', message: 'Failed to skip turn. Please try again.' },
     ]);
+  });
+
+  // -------------------------------------------------------------------------
+  // The chain-pause announcement (v4 bug 123, `useSSEStreaming.announceChainPause`)
+  // -------------------------------------------------------------------------
+
+  /** Send a message and drain the turn. */
+  async function sendAndSettle(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    (
+      fixture.componentInstance as unknown as {
+        send(p: { content: string; fileIds: string[] }): void;
+      }
+    ).send({ content: 'carry on', fileIds: [] });
+    for (let i = 0; i < 8; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  it('warns when a chain stops paused because a turn FAILED', async () => {
+    const { client } = stubClient(groupChat(), {
+      chainFrames: [{ chainComplete: true, reason: 'error', paused: true }],
+    });
+    const fixture = await render(client);
+    await sendAndSettle(fixture);
+    expect(toasts()).toContainEqual({
+      type: 'warning',
+      message:
+        "A character's turn failed, so auto-responses are paused. Press Resume in the sidebar to carry on.",
+    });
+  });
+
+  it('informs when a chain stops paused for any other reason', async () => {
+    const { client } = stubClient(groupChat(), {
+      chainFrames: [{ chainComplete: true, reason: 'paused', paused: true }],
+    });
+    const fixture = await render(client);
+    await sendAndSettle(fixture);
+    expect(toasts()).toContainEqual({
+      type: 'info',
+      message: 'Auto-responses are paused. Press Resume in the sidebar to let the others answer.',
+    });
+  });
+
+  it('says nothing when the chainComplete carries no `paused` key at all', async () => {
+    const { client } = stubClient(groupChat(), {
+      chainFrames: [{ chainComplete: true, reason: 'no_next_speaker' }],
+    });
+    const fixture = await render(client);
+    await sendAndSettle(fixture);
+    expect(toasts()).toEqual([]);
+  });
+
+  it('says nothing when the chainComplete carries `paused: false`', async () => {
+    // The empty-response stop: v4 emits reason 'error' with paused FALSE, so the
+    // reason alone must never be enough to warn.
+    const { client } = stubClient(groupChat(), {
+      chainFrames: [{ chainComplete: true, reason: 'error', paused: false }],
+    });
+    const fixture = await render(client);
+    await sendAndSettle(fixture);
+    expect(toasts()).toEqual([]);
+  });
+
+  // Gate 2: the user paused it themselves, so they already had the toggle's own
+  // toast — judged against what the client believed BEFORE the reconcile.
+  it('says nothing when the client already believed the chat was paused', async () => {
+    const { client } = stubClient(groupChat({ isPaused: true }), {
+      chainFrames: [{ chainComplete: true, reason: 'error', paused: true }],
+    });
+    const fixture = await render(client);
+    await sendAndSettle(fixture);
+    expect(toasts()).toEqual([]);
+  });
+
+  // Gate 3: an all-LLM room keeps AllLLMPauseModal, which explains the stop. v4
+  // reads the BARE `isAllLLMChat` here — a room of LLMs that HAS been typed into
+  // (so the composite `isAllLLM` is false) still suppresses the toast.
+  it('says nothing in an all-LLM room, even one that has been typed into', async () => {
+    const allLLM = groupChat({
+      participants: [
+        participant({ id: 'pA', character: charOf('cA', 'Aaron') }),
+        participant({ id: 'pB', character: charOf('cB', 'Beatrice') }),
+      ],
+      messages: [
+        message({
+          id: 'u0',
+          role: 'USER',
+          content: 'Begin.',
+          createdAt: '2024-01-01T00:00:00.500Z',
+        }),
+      ],
+    });
+    const { client } = stubClient(allLLM, {
+      chainFrames: [{ chainComplete: true, reason: 'error', paused: true }],
+    });
+    const fixture = await render(client);
+    await sendAndSettle(fixture);
+    expect(toasts()).toEqual([]);
+  });
+
+  /**
+   * A FORWARD guard, deliberately not a discriminator — and the distinction is
+   * recorded rather than papered over.
+   *
+   * The real shape of bug 123 is the server pausing the chat mid-chain, so the
+   * post-turn reconcile brings `isPaused: true` back. If gate 2 ever came to be
+   * judged against the RECONCILED chat, it would swallow every genuine
+   * announcement and the fix would be dead. This case pins that it does not.
+   *
+   * It cannot, today, tell v4's ordering (snapshot before the reconcile) from
+   * the opposite: measured 2026-09-06 with a probe, `chat()` still reads the
+   * PRE-reconcile value immediately after `await invalidateQueries` — the
+   * refetch has not settled into the resource yet — so both spellings read
+   * `false` here and the obvious mutation stays green. v4's ordering is kept
+   * because it is faithful and correct whenever the resource DOES settle
+   * sooner; this case is what would redden if that day came.
+   */
+  it('a reconcile that brings back `isPaused: true` does not swallow the news', async () => {
+    const { client } = stubClient(groupChat({ isPaused: false }), {
+      chainFrames: [{ chainComplete: true, reason: 'error', paused: true }],
+      chatAfterSend: groupChat({ isPaused: true }),
+    });
+    const fixture = await render(client);
+    await sendAndSettle(fixture);
+    expect(toasts()).toContainEqual({
+      type: 'warning',
+      message:
+        "A character's turn failed, so auto-responses are paused. Press Resume in the sidebar to carry on.",
+    });
   });
 
   it('renders the Speaking-As selector with two user-controlled characters', async () => {

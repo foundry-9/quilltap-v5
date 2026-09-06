@@ -109563,3 +109563,47 @@ absent-or-false alike + a missing reason as null; a fresh state unpaused.
 M3 `!!frame.paused` for `=== true` → GREEN and recorded as such — the field is
 typed `boolean`, so no vector discriminates the two spellings (v4's `=== true`
 is transcribed regardless).
+
+### Unit 2 — the chain-pause announcement
+
+v4's `announceChainPause` (`useSSEStreaming.ts:378-393`) ported whole: both
+sentences byte-for-byte, the four gates in v4's order, raised after v5's single
+reconcile point (v4 calls it after `fetchChat()` at BOTH chain-complete sites,
+`:956` send and `:1132` continue-mode; the one reconcile stands in for both, as
+it already does for `notifyQueueChange` and the Bug-77 notice clear).
+
+Two fidelity points the survey settled, neither obvious from the hunk:
+
+- **Gate 3 reads v4's BARE `isAllLLMChat`** (`lib/chat/turn-manager/utils.ts:212`
+  — no present participant is `controlledBy: 'user'`), NOT `useParticipants`'s
+  composite `isAllLLM`, which adds "and no USER message has ever been sent". v4
+  uses both predicates and this site takes the bare one, so a room of LLMs that
+  HAS been typed into still suppresses the toast in favour of the modal. v5 had
+  only the composite; the bare one is extracted as `isAllLLMRoom` and the
+  composite now builds on it (behaviour-identical).
+- **Gate 2 is judged against the PRE-reconcile belief.** That is what v4's
+  `isPausedRef` is for. The real shape of the bug is the server pausing
+  mid-chain, so the reconciled chat says paused — judged against it, gate 2
+  would swallow every genuine announcement.
+
+Specs (7 new in `salon-turn-controls.spec.ts`, 14 total green) over a new
+stream-frame seam in `stubClient` (`chainFrames` emitted synchronously from
+inside the `chatSend` mock — `runTurn` subscribes before it dispatches, so the
+frame folds exactly as a real one does), plus `chatAfterSend` for the
+reconcile-brings-back-paused shape. **Mutations:** M4 drop gate 1 → 2 red; M5
+drop gate 2 → 1 red; M6 drop gate 3 → 1 red; M7 warn/info swap → 3 red; M9
+bare→composite predicate → 1 red (the typed-into all-LLM case).
+
+**Measured and recorded, not papered over:** the pre-reconcile ORDERING has no
+discriminating vector at unit tier. A probe showed `chat()` still reads the
+pre-reconcile value immediately after `await invalidateQueries` — the refetch
+has not settled into the resource yet — so moving the snapshot after the
+reconcile stays GREEN (M8). v4's ordering is kept because it is faithful and
+correct whichever way the resource settles; the `chatAfterSend` case is a
+forward guard that would redden if it ever settled sooner, and its doc comment
+says exactly that rather than claiming a proof it does not have.
+
+**Lane trap banked:** reverting a mutation with `git checkout <spec file>`
+destroyed the whole unit's uncommitted spec work (the file's last commit
+predated it). The memory note `mutation-proof-revert-by-file-backup` names this
+exact failure; use the `cp` backup for BOTH files, source and spec.

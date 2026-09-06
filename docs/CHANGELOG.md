@@ -261,6 +261,39 @@ detail}` instead of accepting a billed half reply as a final answer. A new
 throw red-first; the committed `brahma-{main,mount}.db` pair (shared with
 `brahma_console_routes_equivalence`) was widened with a new pinned chat via
 its builder, every pre-existing row reproduced byte-identical.
+#### 2026-09-06 — feat(spa): announce a pause the user did not cause (v4 bug 123)
+
+_Versions: SPA 0.5.653._
+
+P4.D161 unit 2. A chain that stops because the chat is paused used to do so in
+silence: the room simply stopped answering, one reply per message. v5 now
+raises v4's two sentences from `announceChainPause`
+(`useSSEStreaming.ts:378-393`), byte-for-byte, after the single reconcile
+point that stands in for v4's two `fetchChat()` sites.
+
+The four gates are v4's, in v4's order: not a pause at all; the user paused it
+themselves (so they already had the toggle's toast); an all-LLM room, where
+`AllLLMPauseModal` explains the stop; then error → warning, anything else →
+info. Gate 3 reads v4's BARE `isAllLLMChat` predicate, extracted here as
+`isAllLLMRoom`, not the composite `isAllLLM` the modal opener uses — the two
+are not interchangeable and v4 uses both, so a room of LLMs that has been
+typed into still suppresses the toast.
+
+Gate 2's "is this news?" is judged against the client's belief BEFORE the
+reconcile, which is what v4's `isPausedRef` exists to preserve: the real shape
+of the bug is the server pausing mid-chain, so the reconciled chat says
+paused, and judging against it would swallow every genuine announcement.
+
+Seven specs over a new stream-frame seam in the turn-controls stub. Mutations:
+each of the four gates dropped reddens; the warning/info swap reddens; and
+swapping the bare predicate for the composite reddens the typed-into all-LLM
+case. Recorded and not papered over: the pre-reconcile ORDERING itself has no
+discriminating vector at unit tier — measured with a probe, `chat()` still
+reads the pre-reconcile value straight after `await invalidateQueries`, so
+both spellings agree there. v4's ordering is kept as the faithful and
+forward-safe one, with a guard case that would redden if the resource ever
+settled sooner.
+
 #### 2026-09-06 — feat(spa): carry `paused` and `reason` off the chainComplete frame (v4 bug 123)
 
 _Versions: SPA 0.5.652._
