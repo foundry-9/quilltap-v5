@@ -108381,3 +108381,110 @@ status bullet; CHANGELOG entry. Versions: core 0.0.805, harness 0.0.694, web
    /api/v1/images?action=generate` with a real key + an AUTO_ROUTE reroute,
    the first boot's 120-doc sync on a real instance and the P4.D77 backfill
    finally reachable.
+
+## Dogfood pass — the `p4.9i2` help/HelpChat round (2026-09-05/06)
+
+Agent-driven, on the Friday copy (`~/qt-dogfood-friday`, rsynced 21:30–21:42 by
+the human; the instance auto-unlocks; the server on **3400** because 3000 was in
+use). Walk doc: `dogfood-walks/2026-09-06-help-dialog-pass.md`. **31 rows: 21
+PASS, 3 FAIL-with-finding (2 FIXED, 1 v4-faithful), 2 BLOCKED, 5
+DEFERRED-TO-HUMAN. Five findings recorded (#111–#115), two fixed on main.**
+
+**Drift state at walk start:** the ledger's §2 probe passed (baseline
+`c2232cd9a`, no drift); nothing could blame drift.
+
+### FIXED — finding #111: help (and Brahma) streamed turns wrote no `llm_logs` rows
+
+A real Ask turn with a ten-call tool loop left only the async tail's jobs in
+`llm_logs` — not one `CHAT_MESSAGE` row — so A7's page-context proof had nothing
+to read. v4 logs every `streamMessage` call at `chunk.done` regardless of
+caller; v5 logged only inside the Salon's `primary_stream`, which the help and
+Brahma loops bypass (the P4.D49 per-site port reached the six Salon sites and
+stopped), and `log_chat_message_call` stamped an always-present `messageId`
+where v4's help rows carry NULL. Fixed for help (`4abbfe3b`, core 0.0.806,
+harness 0.0.695): `stream_turn` takes an optional `HelpStreamLog` and logs on a
+clean stream end; pinned in `help_chat_orchestrator_tier3_equivalence` over a
+provisioned llm-logs partition (26 rows, `messageId` NULL,
+`characterId`/`connectionProfileId` set, `durationMs >= 0`; the log call
+disabled → `0 vs 26`). Live: row `ff19a3a6…` with Riya's id, her NANOGPT profile,
+2,910 ms. **Brahma's identical gap was then MEASURED live on E2** (three stream
+calls, zero rows) and is the recorded follow-up in the findings' standing notes.
+
+### FIXED — finding #113: importing an image from a `data:` URL was a flat 500
+
+`POST /api/v1/images {url: "data:image/png;base64,…"}` — the exact shape the
+P4.76 review measured on v4 as a 201 — answered `500 Internal server error`,
+because reqwest refuses the scheme where Node's fetch runs the Fetch Standard's
+data: URL processor. Fixed in the host seam (`587999c4`, host 0.0.104): the
+processor transcribed from the standard (comma split, MIME trim, percent-decode,
+the `;base64` suffix with forgiving-base64, the `text/plain` defaults, a reduced
+MIME parse+serialize), pinned by six vectors measured on Node 24.13.1 and
+mutation-proven. Live re-run: 201, `originalFilename` **`png;base64,iVBOR….webp`**
+byte for byte, `source=IMPORTED`, 98-byte WebP through the host codec.
+
+### RECORDED — three findings that are not v5 defects to fix here
+
+- **#112 (v4-faithful, candidate upstream filing):** a tool-needing help turn
+  ends in silence on nine of ten providers. The help loop pushes id-less `tool`
+  rows and the plugins drop them (`qtap-plugin-nanogpt/provider.ts:174`), so the
+  model never sees a result, repeats the search, and the duplicate-call guard
+  ends the turn EMPTY (v4's `if (fullResponse)` writes nothing). A8 measured it
+  on the wire: three identical `help_search` calls, zero `tool` rows in the
+  logged requests. HUMAN cross-check on live v4 owed.
+- **#114 (v4-faithful, candidate upstream filing):** Google's API refuses
+  `additionalProperties` inside an array `items` schema; `wardrobe_wear` and
+  `wardrobe_take_off` carry one, so **every tool-enabled turn on a GOOGLE seat
+  whose slate holds the wardrobe tools is a 400** (the help slate does). v4's
+  `sanitizeSchemaForGoogle` and v5's twin strip a byte-identical list that
+  names neither; the google-wire corpora carry no row with the shape. It BLOCKS
+  the P4.9I2 §3 finding's GOOGLE-keeps-tool-rows live leg. HUMAN cross-check owed.
+- **#115 (needs an order):** `chatCreate` accepted and STORED `controlledBy:
+  "LLM"` where v4's Zod enum 400s — found by the walk's own dispatch gesture;
+  the seat then read as LLM to the server (greetings ran) and as not-LLM to the
+  SPA (the Salon composer disabled, *Add a character to start chatting*). v5's
+  `handle_create` parses only `conciergeState` + `roleplayTemplateId`; ten
+  `createChatSchema` arms are unported (listed in the standing note).
+
+### Proven live
+
+The whole Help dialog: the rail entry, the Guide's categories/search/reader,
+the Ask launcher over v4's twelve real help chats, a Riya turn with its
+`CHAT_MESSAGE` row and the page context in the prompt (`## Current Page
+Context` → *The Tabbed Workspace*, exactly three `### Additional Context:`
+wildcard docs, the **10 tool iterations** cap on the wire), a two-seat chain
+with all seven v4 frame kinds (`turnStart` for the second seat only,
+`turnComplete` with NO `skipped` key, one `chainComplete`), delete + reload +
+persisted seats, the seat snap-back discriminated (deselecting one of two seats
+does NOT snap; the last deselection re-lights the first tool-capable seat), the
+entry's enabled rule. P4.76: the generate route's Zod gate arm by arm against
+v4's real schema (a first pass was VACUOUS — every shape lacked the required
+`profileId` — and was re-run with a present-but-absent one so a valid parse
+answers `Connection profile not found`), the route-only 400, the FILES leg's
+three tag arms **with the bytes written first as v4 orders it** (an orphan
+mount blob + file row from the refused upload, no main row), the
+`?action=bogus` upload fall-through with the WebP transcode. P4.77: all four
+`render_template` debug lines in `combined.log` from a Workbench dry run. E:
+the Salon streams with `turnComplete.skipped === false`, the Brahma composer.
+
+### Two v4-faithful observations, recorded not filed
+
+- The MEMORY_EXTRACTION *system-event* row stamps the seat's model while the
+  call went to the cheap LLM — 40/40 v4-written help-chat rows differ from
+  their `llm_logs` row the same way.
+- A Salon chat with one LLM character and **no user-controlled seat**
+  monologues to `maxChainDepth` 20 — v4's `selectNextSpeaker` says so in words
+  (*only one CHARACTER participant … let them continue*). Measured: all 400
+  most-recent v4-written Salon chats carry a `controlledBy: 'user'` seat, so
+  the shape never arises through the UI; E1 reached it through a dispatch
+  gesture and was paused at 16 turns (`chainComplete reason=paused`).
+
+### Instrument notes banked
+
+`document.querySelector` on a workspace with several open tabs returns the
+FIRST tab's hidden composer — scope every probe to the visible element (a
+"disabled send button" was the wrong tab's). The help composer's Enter works
+when the value is set through the native setter + an `input` event. A foreground
+`sleep` is refused by the harness; wait with a bounded `until` loop in the
+background.
+
+Versions: core 0.0.806, harness 0.0.695, host 0.0.104.

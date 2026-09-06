@@ -2968,6 +2968,31 @@ records THERE. Update this summary only when a phase or round completes.
   0.5.651. 💸 the dogfood queue gains the Help dialog end to end, the
   generate route with a real key, a GOOGLE-seated help chat. Round record:
   `status-log.md`.
+- **The `p4.9i2` help-round dogfood pass RAN (2026-09-05/06, agent-driven, on
+  the Friday copy) — 31 rows, 21 PASS, findings #111–#115: TWO FIXED on main,
+  two v4-faithful filing candidates, one order-sized gap.** Walk doc:
+  `dogfood-walks/2026-09-06-help-dialog-pass.md`; record in `status-log.md`.
+  **FIXED #111** — help streamed turns wrote no `llm_logs` rows (v4 logs every
+  `streamMessage`; the loop bypassed `primary_stream`'s logger; `messageId`
+  NULL as v4's help rows carry; tier-3 pinned, 26 rows, mutation-proven);
+  Brahma's identical gap measured live (three calls, zero rows) and recorded
+  as the follow-up. **FIXED #113** — a `data:` URL image import was a flat 500
+  (reqwest has no data: URL processor; Node's fetch does) — the Fetch
+  Standard's processor now runs in the host seam, six Node-measured vectors.
+  **Recorded, v4-faithful, to cross-check on live v4 then file:** #112 (a
+  tool-needing help turn ends silent on nine of ten providers — the loop's
+  tool rows carry no `toolCallId` and the plugins drop them) and #114
+  (Google refuses `additionalProperties` under `items` — `wardrobe_wear`/
+  `wardrobe_take_off` — so every tool-enabled GOOGLE turn with the wardrobe
+  tools in its slate is a 400; blocks the P4.9I2 §3 GOOGLE-keeps-tool-rows
+  live leg). **Needs an order:** #115 — `chatCreate` lacks v4's whole
+  `createChatSchema` parse (ten arms; a stored `controlledBy: "LLM"` split the
+  server's and the SPA's readers). Also proven: the page context in the
+  prompt, the two-seat chain's seven frame kinds, the seat snap-back
+  discriminated, the generate route's Zod arms against v4's real schema (a
+  vacuous first pass caught and re-run), the FILES leg's bytes-then-refuse
+  orphan, the four `render_template` debug lines live. Still owed (human):
+  B3/B4 image spend, the Brahma deep query, dedup/summaries, #101.
 - **Oracle baseline: `c2232cd9a` (2026-09-05, v4 main — the 4.10.0 dev bump
   after the 4.9.0 release; zero code past `d883a5ee1`), adopted at the
   `p4.9i2` help/HelpChat round unification (2026-09-05).**

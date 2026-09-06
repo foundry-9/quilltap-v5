@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — docs(dogfood): the `p4.9i2` help-round walk record (findings #111–#115)
+
+_Docs-only change._
+
+The walk doc (31 rows: 21 PASS, 3 FAIL-with-finding of which 2 fixed, 2
+BLOCKED, 5 deferred to the human), the status-log record, the CLAUDE.md status
+bullet, and the findings rows #112 (the help tool loop's id-less tool rows,
+v4-faithful), #114 (Google refuses `additionalProperties` under `items` on the
+wardrobe tools, v4-faithful) and #115 (`chatCreate` lacks v4's whole
+`createChatSchema` parse — needs an order), with the Brahma `llm_logs` gap
+measured live and recorded as #111's follow-up.
+
 #### 2026-09-06 — fix(host): serve `data:` URLs in the image import fetch seam (dogfood finding #113)
 
 _Versions: host 0.0.104._
