@@ -74,6 +74,21 @@ The P4.D160 lane record also carries the `git show --stat` file lists for the
 eight carrier/docs drift rows (`d40497411`, `5eaf98cf1`, `ba34fa367`,
 `02b77ab0f`, `8fbf2afe0`, `d489b04a3`, `f699da6f6`, `1a2b2164c`), so the
 unifier ratifies them by file list rather than by subject line.
+#### 2026-09-06 — docs(porting): P4.D162 closed whole — bugs 124 and 125 ported with the coverage they lacked
+
+_Docs-only change._
+
+The order's status header records what landed against each tiered deliverable
+and the two corrections its own prose needed, both measured rather than argued:
+the wrong-home mutation reddens the strip-list test and the wardrobe test plus
+the corpus, not v4's third test; and `text_block_turn` yields no id-less tool
+call, because v4 never parses its markers as a tool call at all.
+
+Dogfood findings #112 and #114 are unblocked — both surfaces are ported and
+differentially pinned. Their live legs, and with them the P4.9I2 §3
+GOOGLE-keeps-id-less-tool-rows leg that #114 was blocking, join the owed
+dogfood queue.
+
 #### 2026-09-06 — test(help-chat): a GOOGLE seat in the fixture pins the id-less tool-row rule from both sides
 
 _Versions: harness 0.0.697, web 0.0.120._
