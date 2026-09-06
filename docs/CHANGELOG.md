@@ -261,6 +261,38 @@ detail}` instead of accepting a billed half reply as a final answer. A new
 throw red-first; the committed `brahma-{main,mount}.db` pair (shared with
 `brahma_console_routes_equivalence`) was widened with a new pinned chat via
 its builder, every pre-existing row reproduced byte-identical.
+#### 2026-09-06 — test(spa): pin the single source of truth for the pause flag (v4 bug 123's (C) half)
+
+_Versions: SPA 0.5.655._
+
+P4.D161 unit 4 of the order's deliverables — the measurement it asked for,
+finished and recorded as a NO-COUNTERPART with evidence rather than a
+transcribed fix for a bug v5 does not have.
+
+v4's pause-sync drift needed two sources of truth: a local `isPaused` useState
+in `useChatControls` and the fetched `chat.isPaused`. They drifted because the
+sync effect keyed on a transition of the fetched value while Resume flipped
+only the local one, so server-paused → Resume → server-paused was
+paused→paused, no transition, no sync. v4's fix re-keys the effect on `chat`
+and has `setPauseState` write the fetched object too.
+
+v5 has one source. `chat()` is `computed(() => chatQuery.data() ?? null)`;
+all nine `isPaused` readers derive from it, and both writers dispatch
+`chatUpdate` then invalidate `chatKeys.detail`. There is no sync effect to
+re-key and no second object to write, and a grep for a local latch
+(`userStopped|pausedLocal|isPausedLocal`) finds nothing. Each of v4's three
+new pause-sync cases is mapped to why it has no v5 analogue in the lane
+record.
+
+Rather than leave that as prose, the structural premise is now executable: a
+spec pins that with a server which never actually pauses, a toggle leaves the
+UI reading "not paused". Mutation-proven — reintroducing v4's local latch
+reddens exactly that case.
+
+Recorded, not fixed: v4's `setChat` patch also makes its UI show the new pause
+state without waiting for a refetch, where v5 waits for the invalidate. That is
+a latency difference, not a drift.
+
 #### 2026-09-06 — feat(spa): the Skip banner follows the seat the composer speaks as (v4 bug 123)
 
 _Versions: SPA 0.5.654._

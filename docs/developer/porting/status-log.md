@@ -109667,3 +109667,61 @@ before impersonating"), both asserting `userTurnName() === null` off-turn, which
 is precisely what bug 123 changes. Re-expressed for what each was really about:
 the LLM seat is never NAMED and `isSeatsTurn` is false. Full SPA suite 387 files
 / 6,267 tests green.
+
+### Unit 5 — the (C) pause-sync drift: a measured NO-COUNTERPART
+
+The order (and the ledger row) asked for the measurement to be FINISHED before
+anything was transcribed. It is, and the answer is that v4's drift has no v5
+counterpart — structurally, not incidentally.
+
+**What v4's bug needs:** two sources of truth. `useChatControls` holds a local
+`isPaused` useState AND reads the fetched `chat.isPaused`; the sync effect keyed
+on a TRANSITION of the fetched value (`[chat?.isPaused]`) while `setPauseState`
+flipped only the local one. Server-paused → Resume → server-paused is then
+paused→paused: no transition, no sync, and the Salon reports "not paused"
+forever while every message draws exactly one reply. v4's fix re-keys the effect
+on `chat` (a fresh object each fetch) and writes the fetched object too.
+
+**What v5 has:** one source.
+
+- `chat()` is `computed(() => this.chatQuery.data() ?? null)`
+  (`salon-conversation.ts:1062`) — a derived read of the query resource, never a
+  latched copy.
+- Every `isPaused` READER goes through it: the sidebar binding `:353` (`c` from
+  the `@if (chat(); as c)`), the turn-controls binding `:449`,
+  `allLLMPauseActive` `:1423`, `onSidebarNudge` `:2593`, the new Skip unpause
+  `:2229`, `onTogglePause` `:2895`, and the announcer's snapshot `:3051`.
+  Measured by grepping every `isPaused` occurrence in `apps/web/src/app`; the
+  only others are the presentational `input()`s those bindings feed and an
+  unrelated `now.service.ts` local function.
+- Every WRITER dispatches `chatUpdate { isPaused }` and invalidates
+  `chatKeys.detail`: `setPauseState` `:2874` (serving both `onTogglePause` and
+  `unpauseChat`) and `onAllLLMStop` `:1478`.
+- `grep -rn "userStopped|pausedLocal|isPausedLocal|pauseSignal"` over
+  `apps/web/src/app` → nothing.
+
+**v4's three new pause-sync cases, mapped:**
+
+1. *"re-syncs from a fetch whose paused value did not change (the drift)"* — no
+   analogue. There is no sync effect; every reader re-derives on every read, so
+   a same-value fetch is not an event that can be missed. The failure mode needs
+   a transition-keyed effect, and there is none.
+2. *"writes the new pause value into the fetched chat object as well"* — no
+   analogue. There is no second object. v5 persists and invalidates, so the next
+   read is the server's own value.
+3. *"leaves the flag alone when the chat has not loaded"* — no analogue.
+   `chat()` is null until loaded and every reader is `?.`-guarded or inside the
+   `@if`; there is no flag to leave alone.
+
+**Made executable rather than asserted.** A prose "v5 cannot have this bug" ages
+badly, so the premise is pinned: *holds no local pause latch: the server is the
+only source of truth* — against a stub whose chat never actually pauses, a
+toggle must leave the notice away. **M24** reintroduces v4's latch (a
+`pausedLatch` signal set by `setPauseState` and read by the binding) and reddens
+exactly that case, and nothing else.
+
+**Recorded, not fixed:** v4's `setChat` patch also lets its UI show the new
+pause state without waiting for a refetch, where v5 waits for the invalidate to
+land. That is a latency difference, not a drift — and v5's is the stricter of
+the two, since what it eventually shows is the server's value rather than a
+local optimistic guess.

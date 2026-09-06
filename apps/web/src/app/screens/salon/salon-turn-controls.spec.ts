@@ -802,6 +802,44 @@ describe('Salon turn controls', () => {
     });
   });
 
+  /**
+   * v4 bug 123's pause-sync half has NO v5 counterpart, and this case is the
+   * executable form of the reason — not a prose claim in a lane record.
+   *
+   * v4 kept TWO sources of truth for the pause: a local `isPaused` useState in
+   * `useChatControls` and the fetched `chat.isPaused`. They drifted because the
+   * sync effect keyed on a *transition* of the fetched value while Resume
+   * flipped only the local one — so server-paused → Resume → server-paused
+   * again was paused→paused, no transition, no sync, and the Salon reported
+   * "not paused" forever. v4's fix re-keys the effect on `chat` and has
+   * `setPauseState` write the fetched object too.
+   *
+   * v5 has ONE source: `chat()` is `computed(() => chatQuery.data())`, every
+   * reader derives from it, and every writer dispatches `chatUpdate` and
+   * invalidates. There is no effect to re-key and no second object to write.
+   *
+   * The guard: with a server that never actually pauses, a toggle must leave
+   * the UI reading "not paused". Any local latch — the thing that made v4's
+   * drift possible — would light the notice here and redden this.
+   */
+  it('holds no local pause latch: the server is the only source of truth', async () => {
+    const { client } = stubClient(groupChat({ isPaused: false }));
+    const fixture = await render(client);
+    expect(fixture.nativeElement.querySelector('.qt-chat-paused-banner')).toBeFalsy();
+
+    await (
+      fixture.componentInstance as unknown as { onTogglePause(): Promise<void> }
+    ).onTogglePause();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+
+    // The stub's chat still says `isPaused: false`, so the notice must stay
+    // away however loudly the toggle was pressed.
+    expect(fixture.nativeElement.querySelector('.qt-chat-paused-banner')).toBeFalsy();
+  });
+
   it('renders the Speaking-As selector with two user-controlled characters', async () => {
     const chat = groupChat({
       participants: [
