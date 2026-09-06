@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-05 — unify: the `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77)
+
+_Versions: core 0.0.805, harness 0.0.694, web 0.0.119, host 0.0.103, SPA 0.5.651._
+
+The last unported vertical of any size lands whole. **The Help dialog is
+live:** the sidebar's question-mark entry opens the Guide (the 120-file help
+library, vendored from v4 at the pin and embedded in the binary — a fresh v5
+instance syncs it at boot, so `help_search` finally has rows to read) and the
+Ask tab (help-enabled characters answer in character over the help tools, with
+navigation buttons). Server: the help-docs read verbs, the nine help-chats
+verbs, the six-strategy context resolver, the byte-exact help system prompt,
+the help-chat orchestrator on a live send seam. Also landed: `POST
+/api/v1/images?action=generate` end to end with P4.73 closed whole; the `zod`
+version tripwire; 19 → 6 copy-pasted tracing capture rigs; `render_template`'s
+four debug lines; the 4.9.0 release ratified and the oracle baseline moved to
+`c2232cd9a`.
+
+**The §3 review caught four blocking findings before main:** a
+version-only conflict resolution that dropped P4.77's whole `test-support`
+feature block; a plugin filter hoisted as universal when v4's GOOGLE plugin
+keeps id-less tool rows (now per-provider, with v4's `unknown_function`
+chain); a `break` where v4 THROWS on a mid-stream provider error (a failed
+model call became a billed half reply — fixed with a new corpus arm); and the
+two unifier wires — and the activated help beats' first live run found a
+fifth: v5 never created the `help_docs` table (v4 grows the collection
+lazily), so a pre-help_docs instance booted to an empty Guide and dead
+sends; a boot-time ensure closes it. Twelve should-fixes fixed (the seat snap-back the specs had
+pinned the wrong way, the reader's sentences, Zod's URL output
+normalization, the user-scoped avatar lookup, …). Gate: 26 families fresh
+from the pin, zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Playwright
+282/282 zero skips.
+
 #### 2026-09-05 — docs(help): the P4.9I2A lane's gate record, its by-name sweep from the pin, and the edits outside its Ownership table
 
 _Docs-only change._

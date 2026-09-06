@@ -2930,8 +2930,47 @@ records THERE. Update this summary only when a phase or round completes.
   projection; the outcome passed), the Brahma deep query, dedup/summaries, and
   #101. Every setting the walk changed was restored and every probe artifact
   removed.
-- **Oracle baseline: `d883a5ee1` (2026-09-05, v4 main — bug 122 fixed),
-  adopted at the `d883a5ee1` drift catch-up round unification (2026-09-05).**
+- **The `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77):
+  UNIFIED on main (2026-09-05) — ALL FOUR CLOSED; the oracle baseline MOVES
+  to `c2232cd9a` (the 4.9.0 release cut ratified as zero-code).** The last
+  unported vertical of any size: the help/HelpChat family whole — v4's
+  120-file `help/` tree vendored at the pin and EMBEDDED in the binary (v5
+  had NO help tree; the host's cwd walk had synced an empty one since
+  P4.6BM), the boot-time ensure wired (the P4.D77 backfill finally
+  reachable), the help-docs read verbs + the nine help-chats verbs + REST
+  edges, the six-strategy context resolver (v4's duplicate-wildcard quirk
+  reproduced, a candidate upstream filing), the byte-exact help system
+  prompt, the help-chat orchestrator on a LIVE send seam (`maxAgentTurns =
+  10`; help chats DO extract memories) with seven differentials incl. a
+  whole-tree content oracle and a tier-3 orchestrator family (12 cases);
+  the SPA's Help dialog (Guide + Ask, the streaming fold, the entity picker,
+  the rail entry) with v4's jest suites as parity specs ∥ P4.73 CLOSED WHOLE
+  (`?action=generate` over an erased image-generation seam with a
+  frozen-clock 37-case oracle; the FILES leg; the five recorded items) ∥
+  P4.77 (the `zod` version tripwire; P4.D159's ratification; 19 → 6 capture
+  rigs; `render_template`'s debug lines). **The §3 review caught four
+  blocking findings before main:** a version-only conflict resolution that
+  dropped P4.77's `test-support` feature block (clippy's `unexpected cfg`
+  was the tripwire; every lane's non-version manifest delta audited); the
+  id-less tool-row drop applied to every provider where v4's GOOGLE plugin
+  KEEPS the row (per-provider now, with v4's `unknown_function` chain — a
+  GOOGLE corpus arm is the follow-up); a `break` where v4 THROWS on a
+  mid-stream provider error (a failed model call became a billed half reply
+  — fixed with the `stream_error_mid_turn` corpus arm); the two unifier
+  wires; and, from the activated help beats' first live run, **v5 never
+  created the `help_docs` table** (v4's `ensureCollection` is lazy; a
+  pre-help_docs instance booted to an empty Guide and dead sends — a boot
+  ensure now, host-leg + mutation-proven). Twelve should-fixes fixed (headline: the SPA's auto-select left the
+  LAST seat deselected where v4's effect deps re-select it — two specs had
+  pinned the pre-fix `[]`). Gate: 26 families fresh from the pin zero SKIP;
+  508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Playwright 282/282 zero skips.
+  Versions: core 0.0.805, harness 0.0.694, web 0.0.119, host 0.0.103, SPA
+  0.5.651. 💸 the dogfood queue gains the Help dialog end to end, the
+  generate route with a real key, a GOOGLE-seated help chat. Round record:
+  `status-log.md`.
+- **Oracle baseline: `c2232cd9a` (2026-09-05, v4 main — the 4.10.0 dev bump
+  after the 4.9.0 release; zero code past `d883a5ee1`), adopted at the
+  `p4.9i2` help/HelpChat round unification (2026-09-05).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

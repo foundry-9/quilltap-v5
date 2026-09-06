@@ -108158,3 +108158,226 @@ the mutation anchors BEFORE believing any red that follows a kill; assert a
 fresh backup is clean rather than trusting it; and prefer running mutations off
 a COMMITTED tree so `git checkout --` is the restore and untracked files carry
 no risk.
+
+---
+
+## Round record — the `p4.9i2` help/HelpChat round unification (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77, 2026-09-05)
+
+**UNIFIED on main — ALL FOUR ORDERS CLOSED; the oracle baseline MOVES
+`d883a5ee1` → `c2232cd9a` (P4.77's P4.D159 ratification: zero ported-code
+bytes across the four release commits; §6 of the ledger). The regen rule stays
+PIN REQUIRED for ONE reason: the v4 checkout still sits on `bugfix`.**
+
+### §1 Survey
+
+Four lane branches, all based on the ordering commit `2161a493`, all clean:
+P4.9I2A (8 commits), P4.9I2B (5), P4.76 (4), P4.77 (4). The ledger's §2 probe
+PASSED at unification start (v4 on `bugfix`, tree clean, both logs empty — no
+drift arrived mid-round). Scope verified against each order's tiers from the
+lane records, not the headers: A landed Tier 1 items 1–7 + Tier 2 8–10; B
+Tier 1 1–9 + Tier 2 10 (item 11 refuted by its own measurement); P4.76 every
+tiered item; P4.77 all four (its lane never wrote its order header — done
+here). Recount from the tips: core +4/+3/+2 → 0.0.805, harness +4/+3/+2 →
+0.0.694, web +1/+3/+1 → 0.0.119, host +5/+1/+1 → 0.0.103, SPA 0.5.651.
+
+### §2 Reconcile
+
+`unify/p4.9i2` from main; cherry-picked A → P4.76 → P4.77 → B. Source-level
+conflicts: NONE beyond the two fenced-append anchors (`types.rs`'s P4.9I2A and
+P4.76 blocks both appended at the same anchor — both kept) and the inventory
+generator's seed list (both lanes widened it — union, then the mis-indented
+seam repaired). Version conflicts auto-resolved `--ours`, **which was the
+round's first §3 finding** (below). The union-merged CHANGELOG/status-log
+were re-checked for glued paragraphs: 3 + 1 NEW seams, plus 72 + 52
+PRE-EXISTING ones from earlier rounds' union merges — all normalized (a
+blank line before every `#### 2026-` / `## Lane record` heading).
+
+### §3 Review — what it found (four parallel reviewers, verdict owned here)
+
+**Blocking, fixed on the unify branch:**
+
+1. **P4.77's `Cargo.toml` conflict was NOT version-only** — the `--ours`
+   resolution dropped the whole `test-support` feature block (core feature +
+   optional `tracing-subscriber` + three `[dev-dependencies]` enables). The
+   dev build PASSED (dev-dep features never gate the lib); clippy caught it as
+   an `unexpected cfg`. Audited every lane's non-version manifest delta —
+   this was the only one; restored from the lane's commit at the recounted
+   versions (`8e8403a4`). The playbook's named trap, and the memory note
+   carries the one-liner audit.
+2. **P4.9I2A hoisted the plugins' id-less tool-row drop above the provider
+   seam as if universal.** Nine of ten v4 plugins drop the row at format
+   time; **GOOGLE keeps it** (`provider.ts:376`) as a `functionResponse` named
+   `msg.name || msg.toolCallId || 'unknown_function'`. The tier-3 oracle was
+   blind by construction (its recorder applied the same filter). Fixed:
+   `to_stream_messages(provider, …)` keys the drop on the provider and
+   carries an empty-id `Tool` row for GOOGLE; the google builder gained v4's
+   `||` chain (`function_response_name`, its fallback now reachable); unit
+   pins both sides; the oracle recorder mirrors the rule. **Follow-up:** a
+   GOOGLE profile in the `help-chat-*` fixture so a corpus arm can see it.
+3. **P4.9I2A `break`-and-billed on a mid-stream provider error where v4
+   THROWS** out of its `for await` to the per-participant catch (an `error
+   {processing_error}` frame, NO assistant row). Fixed with the
+   `stream_error_mid_turn` corpus arm on both sides (the oracle's mock throws
+   on a scripted `{error}` chunk; the harness replays it as an `Err`); 12
+   cases, 63 canned rows, green from the pin. The Brahma orchestrator's
+   twin `break` (`brahma_console/orchestrator.rs:858`) is the same shape —
+   recorded, not this round's file.
+4. **P4.9I2B's two AT-UNIFY wires** (the shell mount, the DTO fold) — the
+   unifier's own, done (§4).
+5. **The activated help beats' first live run found a hole no lane could
+   see: v5 never creates the `help_docs` table.** v4's base repository
+   `ensureCollection`s lazily on the first help read, so a pre-help_docs
+   instance grows the table then; the e2e `salon-*` fixture IS such an
+   instance (18 tables, none of them help — probed through v4's own cipher
+   driver), so v5's boot sync failed `no such table`, the Guide listed
+   categories with zero topics and every Ask send died before the model.
+   Fixed with `ensure_help_docs_table` (v4's generateDDL shape, IF NOT
+   EXISTS) beside the P4.D77 chunks ensure in the boot repairs — unit-pinned,
+   plus a host leg that DROPs both help tables before a boot (mutation: the
+   call removed → `no such table: help_docs`, red). The kept e2e server log
+   then read `Help documents synced from the embedded tree … created=120`.
+6. **Three e2e defects in the beats themselves, all v4-side facts the
+   lane's gestures contradicted:** the seed read `connectionProfileId` off a
+   list DTO that spells it `defaultConnectionProfileId`, so every seat
+   lacked a profile and v4's own `No connection profile for help character`
+   killed the send (eligibility's "any tool-capable profile" arm does NOT
+   make a send work — v4 copies only the character's default; the seed now
+   seats the instance's default profile); both specs probed and seeded over
+   the API before anything had unlocked the shared server, so in isolation
+   every beat skipped (unlock-first now, the page-toolbar precedent); and
+   the two Guide beats routed to `/aurora` expecting `characters` to
+   auto-expand — **v4's own `/aurora` page redirects into `/workspace`**
+   (`app/aurora/page.tsx:13`), whose pathname matches no `URL_CATEGORY_MAP`
+   row, so nothing auto-expands in v4 either, and `handleNavigatePage` is
+   `navigate(url)` alone (the reader STAYS). Both beats now assert v4's
+   reachable shape (a header click expands; the page link opens a tab in
+   place with the reader still up). `global-teardown` gained
+   `E2E_KEEP_SERVER_LOG=<path>` — the diagnosis was blind without it. **And
+   the full-suite run then found the fourth:** the seat's default profile in
+   the full suite was an earlier spec's dead-endpoint understudy at
+   `localhost:8080` (the send died on `error sending request`; the file
+   passed alone twice) — the seed now seats the character on the profile
+   whose `baseUrl` targets the canned LLM, unconditionally. **Two more from
+   the next gate-of-record runs** (each proven by the JSON reporter's skip
+   reason, which the line reporter drops): the seed's pick can land on the
+   archived island in suite order (a refusing row — now only LIVE characters,
+   falling through on a refusal), and an earlier spec switches `allowToolUse`
+   off on the fixture profile so v4's `!== false` eligibility test fails
+   (`No tool-capable connection profiles available` — the seed restores the
+   flag on the profile it seats). The general lesson is the standing one: a
+   beat that inherits another spec's state must pin every input it needs.
+
+**Should-fix, fixed on the unify branch:** eligibility's avatar lookup was
+not user-scoped where v4's `repos.files` is a `UserScopedRepository`
+(scoped by `userId` now; v4's read-time schema-drop is the recorded
+pre-existing reader shape); the stolen `turn_start` doc comment; Zod's
+`z.url()` OUTPUT is `stripTabAndNewline(value.trim())` and is what v4
+fetches and names — normalized first now (`zod_url_output`); a special
+scheme's path treats `\` as `/` and the pathname's unported gaps (percent
+encoding, dot segments) are named at the site; `refuse_if_archived`
+propagates a read error instead of reading it as permission; the SPA's
+auto-select read the selection `untracked` so deselecting the LAST seat
+stuck where v4's effect deps re-select it — fixed, and **the two specs that
+pinned the pre-fix `[]` moved to v4's expectation**; the reader showed the
+server's sentence where v4 shows `Document not found` / `Failed to load
+document`; the delete button dropped `hover:qt-bg-destructive/20`; the
+status `participantId` fallback used `??` where v4 uses `||`; the picker
+filter lost v4's `autoFocus`; a refetch-after-send v4 never does was
+removed; the delete beat could pass by skip (now `expect(before > 0)`);
+`custom_tools.rs`'s doc clause falsified by P4.77's own unit.
+
+**Recorded, not changed:** the help send AWAITS the LIVE cheap-LLM summary
+fold (the lane record's "same rows, later reply" understates it — the
+Salon's own send does the same at `orchestrator.rs:3224`, so it is the
+port's shape); five new local `CaptureLayer` copies (help_docs / help_chats
+/ help orchestrator / images) were NOT folded — their visitors lack
+`record_str`, the exact quoting semantics P4.77 measured and refused to
+migrate blind; the census reads 19 → 6 (follow-up); `now_ms` per request
+vs v4's per-image `Date.now()` (frozen in the oracle); `whatwg_pathname`'s
+percent-encoding gap; v4's `chat_settings` read-validation drop that P4.76
+found (banked in its record); the Brahma `break`.
+
+### §4 Wires
+
+`<qt-help-entry />` mounted in `shell.ts` BEFORE `<qt-brahma-entry />` (v4's
+footer order); the thirteen help DTOs folded into `core-contract.ts` (the
+P4.9I2B block + the `CoreRequest` union) with the name-for-name diff against
+`api/types.rs`'s `=== P4.9I2A ===` block **13/13 clean** (variants AND field
+names, mechanically); `help-wire.ts` re-exports them and its cast is gone;
+`handler_log_inventory.py` union-merged and the `.md` REGENERATED at the pin
+(205 base + 21 help + 8 images = 234 rows); the images-generate recipe
+header's `for …` prose line reworded (the driver read it as a shell loop —
+the P4.34 SHELL_START class, new keyword); the activated help beats' first
+live run → §3 findings 5 and 6.
+
+### §5 Gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets --
+  -D warnings` clean in BOTH feature sets (after finding 1); `cargo build
+  --workspace` + `--release` clean.
+- **Oracles regenerated FRESH from the pinned worktree
+  `/tmp/qt-v4-pin-unify-d883a5ee1`** through `recipe_sweep.py --v4 <pin>
+  --run <family>`, each its own invocation, full logs kept: the round's 26
+  families by name — `help_tree`, `help_context_resolver`,
+  `help_system_prompt`, `help_snippet`, `help_docs_routes`,
+  `help_chats_routes`, `help_chat_orchestrator_tier3` (with the new arm —
+  `stream_error_mid_turn` present in the 63-row NDJSON), `images_routes`,
+  `images_generate_route`, `files_routes`, `title_update_tier3`,
+  `files_sha256_realign_heal`, `zod_version_guard`, and the neighbours
+  `help_doc_sync`, `help_doc_ensure`, `help_docs_tier2`, `help_tools`,
+  `help_doc_chunking`, `help_doc_slug`, `help_doc_sync_guards`,
+  `help_docs_upsert_tier2`, `brahma_console_routes`, `brahma_console_tier3`,
+  `brahma_orchestrator_tier3`, `request_builder_google`,
+  `request_builder_google_wire` (the google builder change's neutrality) —
+  **26/26 ok, exit 0 each, zero SKIP, zero MISMATCH.**
+- `cargo test --workspace --no-fail-fast` with the env block from the
+  sweep's own run lines. **The first run's one red was the gate's own
+  instrument:** three families export `QT_FIXTURE_BRAHMA_MAIN` and the
+  last-exported value was the orchestrator family's shield copy, whose
+  profile rows the one-shot family does not expect (`no-profile` vs `No API
+  key configured…`); the family is green alone on its own paths, and the
+  block was de-duplicated (prefer the non-shield path) for the run of record:
+  **508 test binaries / 2,872 passed / 0 failed / 1 ignored — exit 0, zero `SKIP:` lines** (the second run, on the final tree with the de-duplicated block; the first run's one red was the Brahma env collision above)
+- SPA: `npm run lint` (950 qt-* classes, every reference resolves); `npm
+  test` **387 files / 6,244 tests / 0 failed** (the two seat-selection specs
+  flipped to v4's expectation); `npm run build` clean.
+- Full Playwright ALONE on port 4319 against the fresh release build:
+  **282 passed / 0 failed / 0 skipped (7.3 m)** — the suite grew 274 → 282 with the eight activated help beats; the run of record is the sixth full run, after the boot ensure, the four seed inputs and the two Guide gestures each earned their fix from a previous run's red (§3 findings 5–6). The `salon-thinking-indicator` and `character-archive` reds seen on intermediate runs are the documented pre-existing intermittents (green here and alone)
+
+### §6 Docs + baseline
+
+The four order headers CLOSED; the three `p4.9i2` bank sections in
+`phase-4.md` and m6 row 11 DISCHARGED, the HelpChatDialog parity row →
+PARITY; the ledger's §1 rewritten (baseline `c2232cd9a`, NO DRIFT, PIN
+REQUIRED only for the `bugfix` checkout), the four rows retired to §6 as
+NO-PORT-RATIFIED; `phase-4.md` UNIFIED section + next candidates; CLAUDE.md
+status bullet; CHANGELOG entry. Versions: core 0.0.805, harness 0.0.694, web
+0.0.119, host 0.0.103, SPA 0.5.651; cli/tauri unchanged.
+
+### Follow-ups named by this round
+
+1. A GOOGLE profile in the `help-chat-*` fixture + a tool-turn corpus arm so
+   the per-provider tool-row rule is corpus-pinned, not unit-pinned.
+2. The Brahma orchestrator's `break` on a mid-stream error (the same class
+   as finding 3; `brahma_console/orchestrator.rs:858`).
+3. The five new local `CaptureLayer` copies → `test_support` once their
+   `record_str`-less quoting is measured site by site.
+3a. The page-context feature under the tabbed workspace: v4's `usePathname()`
+   is `/workspace` on every page, so the help chat's `pageUrl` and the Guide's
+   auto-expand see one path everywhere — v4-faithful (recorded), and a
+   candidate upstream filing (derive the page from the ACTIVE TAB).
+3b. Pre-existing e2e venue vintage the kept server log surfaced: `llm_logs has
+   no column named connectionProfileId` and `no such table:
+   conversation_annotations` on the salon fixture — neither this round's.
+4. `recipe_sweep.py`'s SHELL_START classifier: a doc line starting with a
+   shell keyword (`for`, and by extension `if`/`while`) reads as a run line.
+5. `api/image_profiles.rs:655` counts UTF-16 units where Zod 4.5 counts code
+   points (P4.76's observation); v4's `chat_settings` read-time validation
+   drop (P4.76's banked divergence).
+6. 💸 the dogfood queue: the Help dialog end to end on the Friday copy (a
+   real help character, the Guide search + reader, a real Ask turn with
+   `help_navigate` — the live send costs one model call per help character
+   plus the summary fold), a GOOGLE-seated help chat, `POST
+   /api/v1/images?action=generate` with a real key + an AUTO_ROUTE reroute,
+   the first boot's 120-doc sync on a real instance and the P4.D77 backfill
+   finally reachable.

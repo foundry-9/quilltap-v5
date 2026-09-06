@@ -6351,6 +6351,50 @@ port remains a NAMED standalone flag.
 
 **The ordering-time section follows for history:**
 
+## The `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77) — UNIFIED 2026-09-05
+
+**UNIFIED on main (2026-09-05) — ALL FOUR ORDERS CLOSED; the oracle baseline
+MOVES to `c2232cd9a` (P4.D159's ratification); the regen rule stays PIN
+REQUIRED only while the v4 checkout sits on `bugfix`.** The help/HelpChat
+vertical landed whole (server + SPA), P4.73 closed whole through P4.76, and
+P4.77's four maintenance items landed. **The §3 review caught four blocking
+findings** (a version-only conflict resolution that dropped a feature block;
+the id-less tool-row drop applied to GOOGLE, whose v4 plugin keeps it; a
+`break` where v4 throws on a mid-stream error; the two unifier wires) and
+twelve should-fixes, all fixed on the unify branch; **the activated help
+beats' first live run found a fifth** — v5 never created the `help_docs`
+table (v4's `ensureCollection` is lazy), now a boot-time ensure. Gate: 26 families fresh
+from the pin zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Playwright
+282/282 zero skips. Round record: `status-log.md` → "Round record — the
+`p4.9i2` help/HelpChat round unification".
+
+**Next candidates, in rough value order** (updated at this unification,
+2026-09-05):
+
+1. **The owed dogfood pass** on the Friday copy over this round's surfaces:
+   the Help dialog end to end (Guide search + reader + a real Ask turn with
+   `help_navigate`; 💸 one model call per help character per send plus the
+   summary fold), the first boot's 120-doc sync + the P4.D77 backfill on a
+   real instance, `POST /api/v1/images?action=generate` with a real key and
+   an AUTO_ROUTE reroute, a GOOGLE-seated help chat — plus the standing
+   queue (Pascal's group tier, the Brahma deep query, dedup/summaries, #101,
+   the LoRA wire-byte look).
+2. **The round's follow-ups:** a GOOGLE profile in the `help-chat-*` fixture
+   + a tool-turn corpus arm; the Brahma orchestrator's mid-stream `break`
+   (the finding-3 class); the five new local `CaptureLayer` copies →
+   `test_support` (measure `record_str` quoting per site first); the sweep
+   driver's SHELL_START keyword class; `image_profiles.rs:655`'s UTF-16 count
+   vs Zod 4.5's code points; v4's `chat_settings` read-time validation drop.
+3. **`p4.9k` — the character AI dialogs** (wizard / optimizer / rename /
+   ai-import, ~8,000 lines across v4 services and client; bug 119's post-fix
+   shape; the ledger's one remaining row).
+4. The census's honest totality and the present-but-null validation lead.
+5. The carried smalls (the `MessageContextSeams` dead argument, the
+   `announcer_tier3` fixture's targeted memory, the thirteenth
+   participant-status copy).
+
+PB1 stays parked by the standing rule.
+
 ## The `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77) — ORDERED 2026-09-05
 
 **Baseline `d883a5ee1`; v4 HEAD `c2232cd9a` — four docs/version-only
