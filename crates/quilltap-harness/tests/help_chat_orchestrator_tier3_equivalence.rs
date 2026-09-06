@@ -174,6 +174,9 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
 struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, VecDeque<Vec<StreamChunkResult>>>>,
     misses: Mutex<Vec<String>>,
+    /// Served sequences that ran to `done` (no scripted throw) — the number
+    /// of `CHAT_MESSAGE` rows v4's `streamMessage` logger would have written.
+    completed_streams: Mutex<i64>,
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
@@ -193,6 +196,7 @@ impl QueuedStreamingProvider {
         Self {
             queues: Mutex::new(queues),
             misses: Mutex::new(Vec::new()),
+            completed_streams: Mutex::new(0),
         }
     }
 }
@@ -212,7 +216,12 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
-                Some(seq) => seq,
+                Some(seq) => {
+                    if !seq.iter().any(Result::is_err) {
+                        *self.completed_streams.lock().unwrap() += 1;
+                    }
+                    seq
+                }
                 None => {
                     // Name the miss with the LAST message so a divergence is legible.
                     let last = params
@@ -415,11 +424,26 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
         .collect();
     let detector = MarkerDetector { by_marker };
 
+    // An llm-logs partition beside the fixture pair, so the per-turn
+    // `CHAT_MESSAGE` rows are a comparand-shaped pin (dogfood finding #111:
+    // the help loop bypassed `primary_stream`'s logger and a real help turn
+    // left NO row where v4 logs every `streamMessage` call). The oracle's mock
+    // sits above v4's logger, so the oracle cannot emit these rows — this leg
+    // is a v5 pin against the canned-stream count, not a differential.
+    let llm_dir = tempfile::tempdir().unwrap();
+    let llm_data = llm_dir.path().join("data");
+    std::fs::create_dir_all(&llm_data).unwrap();
+    quilltap_core::services::provisioning::provision_fresh_instance(
+        &llm_data,
+        &spec.test_pepper_base64,
+    )
+    .expect("provision an llm-logs partition");
+    let work_llm_logs = llm_data.join("quilltap-llm-logs.db");
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            llm_logs: Some(work_llm_logs),
         },
         &spec.test_pepper_base64,
     )
@@ -557,6 +581,36 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
             eprintln!("  {m}");
         }
     }
+
+    // Finding #111's pin: one CHAT_MESSAGE row per completed help turn, with
+    // v4's help shape — `messageId` NULL (the loop's `streamMessage` carries
+    // none), `characterId` the seat's, `connectionProfileId` the profile's, a
+    // measured duration. Mutation: remove the `log_chat_message_call` in
+    // `stream_turn` → 0 rows.
+    let (rows, null_mid, with_char, with_profile, nonneg_dur): (i64, i64, i64, i64, i64) = db
+        .read_llm_logs(|c| {
+            Ok(c.query_row(
+                "SELECT count(*), coalesce(sum(messageId IS NULL), 0), \
+                 coalesce(sum(characterId IS NOT NULL), 0), \
+                 coalesce(sum(connectionProfileId IS NOT NULL), 0), \
+                 coalesce(sum(durationMs >= 0), 0) \
+                 FROM llm_logs WHERE type = 'CHAT_MESSAGE'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+            )?)
+        })
+        .unwrap();
+    // v4 logs on `chunk.done`; a scripted throw logs nothing.
+    let expected_chat_message_rows = *streaming.completed_streams.lock().unwrap();
+    assert_eq!(
+        rows, expected_chat_message_rows,
+        "one CHAT_MESSAGE row per completed help turn"
+    );
+    assert!(rows > 0, "the pin must see at least one turn");
+    assert_eq!(null_mid, rows, "the help loop passes no messageId → NULL");
+    assert_eq!(with_char, rows);
+    assert_eq!(with_profile, rows);
+    assert_eq!(nonneg_dur, rows);
 
     drop(db);
     let _ = std::fs::remove_file(&work_main);

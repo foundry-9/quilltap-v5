@@ -12,6 +12,25 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-06 — fix(help-chat): log every streamed help turn to `llm_logs` (dogfood finding #111)
+
+_Versions: core 0.0.806, harness 0.0.695._
+
+A real help Ask turn wrote no `CHAT_MESSAGE` rows to `llm_logs` — only the
+async tail's jobs were logged. v4 logs every `streamMessage` call in
+`streaming.service.ts` regardless of caller; v5 logged only inside the Salon's
+`primary_stream`, which the help loop bypasses. `stream_turn` now takes an
+optional `HelpStreamLog` and calls `log_chat_message_call` on a clean stream
+end (a thrown stream logs nothing, as in v4); `message_id` is stored as NULL
+when the caller has none instead of an empty string. Pinned in
+`help_chat_orchestrator_tier3_equivalence` over a provisioned llm-logs
+partition (one row per completed canned stream, `messageId` NULL,
+`characterId`/`connectionProfileId` set, `durationMs >= 0`; mutation-proven).
+The Brahma console's `stream_turn` has the same gap and is recorded as a
+follow-up in `dogfood-findings.md`'s standing notes. Finding #112 (the help
+tool loop's id-less tool rows never reaching non-GOOGLE models — v4-faithful,
+candidate upstream filing) is recorded alongside.
+
 #### 2026-09-05 — unify: the `p4.9i2` help/HelpChat round (P4.9I2A ∥ P4.9I2B ∥ P4.76 ∥ P4.77)
 
 _Versions: core 0.0.805, harness 0.0.694, web 0.0.119, host 0.0.103, SPA 0.5.651._

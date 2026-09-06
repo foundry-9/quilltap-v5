@@ -734,6 +734,19 @@ where
         Vec::new()
     };
     let cache_key = crate::cheap_llm::build_character_cache_key(Some(&character_id));
+    // v4 gates the CHAT_MESSAGE log on `if (userId)`.
+    let stream_log = (!user_id.is_empty()).then(|| HelpStreamLog {
+        db,
+        user_id,
+        chat_id,
+        character_id: &character_id,
+        profile: crate::services::primary_stream::EffectiveProfile {
+            id: profile_id.clone(),
+            provider: provider.clone(),
+            model_name: model.clone(),
+            base_url: base_url.clone(),
+        },
+    });
     let status = StatusContext {
         character_name: character_name.clone(),
         character_id: character_id.clone(),
@@ -764,6 +777,7 @@ where
             &conversation,
             &effective_tools,
             cache_key.clone(),
+            stream_log.as_ref(),
         )
         .await;
         // v4 `:352`: a throw inside the `for await` propagates out of
@@ -1128,6 +1142,19 @@ async fn trigger_async_tasks<STR, TR, TD, COST, SUM>(
 // Helpers.
 // ===========================================================================
 
+/// What one help turn's `CHAT_MESSAGE` `llm_logs` row needs (v4's
+/// `streamMessage({... userId, chatId, characterId})` — no `messageId`). v4
+/// logs EVERY `streamMessage` call at `chunk.done` (`streaming.service.ts:444`);
+/// the port's help loop bypassed `primary_stream`'s logger entirely, so a real
+/// help turn left no row at all — dogfood finding #111 (2026-09-06).
+struct HelpStreamLog<'a> {
+    db: &'a Db,
+    user_id: &'a str,
+    chat_id: &'a str,
+    character_id: &'a str,
+    profile: crate::services::primary_stream::EffectiveProfile,
+}
+
 struct StreamTurnResult {
     content: String,
     raw_response: Option<Value>,
@@ -1152,7 +1179,10 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     messages: &[HelpMessage],
     tools: &[Value],
     cache_key: Option<String>,
+    log: Option<&HelpStreamLog<'_>>,
 ) -> StreamTurnResult {
+    // v4 `const startTime = Date.now()` immediately before the provider loop.
+    let started_at_ms = crate::clock::now_unix_ms();
     let params = StreamParams {
         messages: to_stream_messages(provider, messages),
         model: model.to_string(),
@@ -1179,6 +1209,8 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     let mut content = String::new();
     let mut raw: Option<Value> = None;
     let mut usage: Option<crate::model::stream::StreamUsage> = None;
+    let mut cache_usage: Option<crate::model::stream::StreamCacheUsage> = None;
+    let mut raw_provider_usage: Option<Value> = None;
     let mut error: Option<String> = None;
     while let Some(chunk) = rx.recv().await {
         match chunk {
@@ -1190,6 +1222,12 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
                 if let Some(u) = c.usage {
                     usage = Some(u);
                 }
+                if let Some(cu) = c.cache_usage {
+                    cache_usage = Some(cu);
+                }
+                if let Some(rpu) = c.raw_provider_usage {
+                    raw_provider_usage = Some(rpu);
+                }
                 if let Some(r) = c.raw_response {
                     raw = Some(r);
                 }
@@ -1198,6 +1236,32 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
                 error = Some(e.to_string());
                 break;
             }
+        }
+    }
+    // v4 logs the call on `chunk.done` (a thrown stream logs nothing). The
+    // help loop's `streamMessage` has no `messageId` → the row's cell is NULL.
+    if error.is_none() {
+        if let Some(l) = log {
+            let ctx = crate::services::primary_stream::StreamLogCtx {
+                db: l.db,
+                user_id: l.user_id,
+                chat_id: l.chat_id,
+                message_id: "",
+                character_id: Some(l.character_id),
+                log_context: &crate::services::llm_logging::LogContext::none(),
+                started_at_ms,
+            };
+            crate::services::primary_stream::log_chat_message_call(
+                &ctx,
+                &l.profile,
+                &params,
+                content.clone(),
+                usage,
+                cache_usage,
+                raw_provider_usage,
+                raw.clone(),
+            )
+            .await;
         }
     }
     StreamTurnResult {

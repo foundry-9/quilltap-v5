@@ -924,7 +924,11 @@ pub(crate) async fn log_chat_message_call(
     let params_log = LogLlmCallParams {
         user_id: log.user_id.to_string(),
         log_type: log_type::CHAT_MESSAGE.to_string(),
-        message_id: Some(log.message_id.to_string()),
+        // The Salon always has a message id; the help/Brahma orchestrators call
+        // `streamMessage` with NO `messageId` (v4 `help-chat/orchestrator.
+        // service.ts:352-361`), so v4 logs `undefined` → a NULL cell. An empty
+        // id here is that absence (dogfood finding #111).
+        message_id: (!log.message_id.is_empty()).then(|| log.message_id.to_string()),
         chat_id: Some(log.chat_id.to_string()),
         character_id: log.character_id.map(str::to_string),
         provider: profile.provider.clone(),
