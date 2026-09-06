@@ -1128,6 +1128,7 @@ describe('SalonConversation — the Speaking-As override does not outlive its ro
 describe('SalonConversation — the user-turn banner honours the impersonation overlay (v4 Bug 46a)', () => {
   type BannerHost = {
     userTurnName(): string | null;
+    isSeatsTurn(): boolean;
     mustSpeak(): boolean;
     turnInfo: { set(v: { nextSpeakerId: string | null; nextSpeakerControlledBy: string | null }): void };
     impersonatingLocal: { set(v: string[]): void };
@@ -1146,6 +1147,12 @@ describe('SalonConversation — the user-turn banner honours the impersonation o
     expect(inst.userTurnName()).toBe('Friday');
   });
 
+  // Re-expressed for v4 bug 123: the banner no longer keys on the rotation's
+  // next speaker at all, so "an ordinary LLM seat is not announced" is now a
+  // statement about WHOSE seat the banner names and whether it claims the turn.
+  // It names the human's own seat (they can still type as Bertie and pass), it
+  // never names the LLM, and `isSeatsTurn` is false because the rotation has
+  // not landed on the named seat.
   it('does NOT announce an ordinary LLM seat with no overlay', async () => {
     const events$ = new Subject<ScopedEvent>();
     const fixture = await render(stubClient(chatDetail(), events$));
@@ -1153,7 +1160,9 @@ describe('SalonConversation — the user-turn banner honours the impersonation o
     inst.impersonatingLocal.set([]);
     inst.turnInfo.set({ nextSpeakerId: 'p1', nextSpeakerControlledBy: 'llm' });
     fixture.detectChanges();
-    expect(inst.userTurnName()).toBeNull();
+    expect(inst.userTurnName()).not.toBe('Friday');
+    expect(inst.userTurnName()).toBe('Bertie');
+    expect(inst.isSeatsTurn()).toBe(false);
     expect(inst.mustSpeak()).toBe(false);
   });
 
@@ -1164,6 +1173,8 @@ describe('SalonConversation — the user-turn banner honours the impersonation o
     inst.turnInfo.set({ nextSpeakerId: 'pu', nextSpeakerControlledBy: 'user' });
     fixture.detectChanges();
     expect(inst.userTurnName()).toBe('Bertie');
+    // ...and now the rotation HAS landed on it, so the wording is the turn one.
+    expect(inst.isSeatsTurn()).toBe(true);
   });
 });
 
@@ -1604,7 +1615,9 @@ describe('SalonConversation — impersonating takes the current turn (v4 Bug 48)
   it('hands the turn to the impersonated seat when idle — the banner names it', async () => {
     const fixture = await render(takeTurnClient(chatDetail()));
     const inst = fixture.componentInstance as unknown as Host;
-    expect(inst.userTurnName()).toBeNull(); // no user turn before impersonating
+    // Before impersonating, the banner names the human's OWN seat and does not
+    // claim the turn (v4 bug 123 offers it off-turn; it used to be hidden here).
+    expect(inst.userTurnName()).toBe('Bertie');
 
     await inst.onImpersonate('p1'); // p1 = Friday, an LLM seat
     fixture.detectChanges();

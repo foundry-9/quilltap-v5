@@ -449,6 +449,7 @@ interface CascadePrompt {
         [isPaused]="chat()!.isPaused"
         [userTurnName]="userTurnName()"
         [mustSpeak]="mustSpeak()"
+        [isSeatsTurn]="isSeatsTurn()"
         [nudgeTargetName]="nudgeTargetName()"
         (selectSpeaker)="onSelectSpeaker($event)"
         (skipUserTurn)="onSkipUserTurn()"
@@ -2003,13 +2004,16 @@ export class SalonConversation {
   });
 
   /**
-   * The character the human is currently speaking as — resolved exactly the way
-   * the server attributes a typed message (`findActiveUserParticipant`, honouring
-   * the impersonation overlay), then hydrated with its avatar for the
-   * composer-side cue (v4 Bug 46(b), `SalonView.tsx` `speakingAsSeat`). Null when
-   * the human plays no character (e.g. an all-LLM room).
+   * The SEAT the human is currently speaking as — resolved exactly the way the
+   * server attributes a typed message (`findActiveUserParticipant`, honouring
+   * the impersonation overlay). Null when the human plays no character (e.g. an
+   * all-LLM room).
+   *
+   * v4 bug 123 split this out of `speakingAsSeat` so that BOTH the composer's
+   * voice cue and the Skip banner read it: if the composer will take words as
+   * this seat, Skip is offered for it too (`SalonView.tsx:531-556`).
    */
-  protected readonly speakingAsSeat = computed<SpeakingAsSeat | null>(() => {
+  private readonly speakingSeat = computed<ParticipantDetail | null>(() => {
     const participants = this.chat()?.participants ?? [];
     const resolved = findActiveUserParticipant(
       participants,
@@ -2018,7 +2022,15 @@ export class SalonConversation {
     );
     const seatId = resolved?.id ?? this.activeSpeakerId();
     if (!seatId) return null;
-    const p = participants.find((pp) => pp.id === seatId);
+    return participants.find((pp) => pp.id === seatId) ?? null;
+  });
+
+  /**
+   * The same seat hydrated with its avatar for the composer-side cue (v4 Bug
+   * 46(b), `SalonView.tsx:557-565`).
+   */
+  protected readonly speakingAsSeat = computed<SpeakingAsSeat | null>(() => {
+    const p = this.speakingSeat();
     if (!p?.character) return null;
     return { name: p.character.name, avatarUrl: participantAvatar(p) };
   });
@@ -2036,27 +2048,77 @@ export class SalonConversation {
    * with no "type as them" prompt and no Skip button.
    */
   protected readonly userTurnName = computed<string | null>(() => {
-    if (this.busy()) return null;
-    const next = this.nextSpeaker();
-    if (
-      !next ||
-      !isUserDrivenSeat({ id: next.id, controlledBy: next.controlledBy ?? 'llm' }, this.impersonatingIds())
-    )
-      return null;
-    return next.character?.name ?? 'this character';
+    const seat = this.bannerSeat();
+    return seat ? (seat.character?.name ?? 'this character') : null;
   });
 
-  /** Everyone else has passed → the responder must speak (no Skip button). */
+  /**
+   * The seat the Skip banner is about, or null when the banner is hidden — v4's
+   * three gates from `SalonView.tsx:1460-1470`, in v4's order:
+   *
+   *  1. nothing in flight (`streaming || waitingForResponse || sending`, which
+   *     is v5's `busy()` — the composer must be writable);
+   *  2. the room has an active character at all. This is v4's
+   *     `useParticipants.hasActiveCharacters` (`type === 'CHARACTER' && isActive`,
+   *     NO `controlledBy` filter) — deliberately NOT v5's `hasActiveCharacters`,
+   *     which is the `useTurnManagement` twin (`controlledBy !== 'user'`) and is
+   *     the right predicate for its own site, `onSidebarSkip`;
+   *  3. there IS a seat the composer speaks as, and it is user-driven — the
+   *     overlay, not the bare `controlledBy` column (Bug 44).
+   *
+   * Bug 123's change is gate 3: the banner used to key on the rotation's
+   * `nextSpeakerId`, so it appeared only once the rotation had formally landed
+   * on the seat. It now keys on the seat the composer will take words as, on or
+   * off turn — a pass is "let someone else respond", and that is as meaningful
+   * mid-rotation as it is on-turn.
+   */
+  private readonly bannerSeat = computed<ParticipantDetail | null>(() => {
+    if (this.busy()) return null;
+    if (!this.hasAnyActiveCharacter()) return null;
+    const seat = this.speakingSeat();
+    if (
+      !seat ||
+      !isUserDrivenSeat(
+        { id: seat.id, controlledBy: seat.controlledBy ?? 'llm' },
+        this.impersonatingIds(),
+      )
+    )
+      return null;
+    return seat;
+  });
+
+  /**
+   * v4 `useParticipants.hasActiveCharacters` (`useParticipants.ts:70-72`) — any
+   * active CHARACTER, whoever drives it. Distinct from this component's
+   * `hasActiveCharacters`, which is v4's `useTurnManagement` twin
+   * (`useTurnManagement.ts:121`, `controlledBy !== 'user'`); v4 keeps both and
+   * this lane needs the wider one for the Skip banner's gate.
+   */
+  private readonly hasAnyActiveCharacter = computed(() =>
+    (this.chat()?.participants ?? []).some((p) => p.type === 'CHARACTER' && p.isActive),
+  );
+
+  /**
+   * Whether the rotation has actually landed on the banner's seat — the fact
+   * that picks between v4's two non-must-speak sentences
+   * (`SalonView.tsx:1465`).
+   */
+  protected readonly isSeatsTurn = computed<boolean>(() => {
+    const seat = this.bannerSeat();
+    return !!seat && this.effectiveNextSpeakerId() === seat.id;
+  });
+
+  /**
+   * Everyone else has passed → the responder must speak (no Skip button).
+   *
+   * Computed over the BANNER'S SEAT since bug 123 (`SalonView.tsx:1483-1488`),
+   * not the rotation's next speaker: the banner is now offered off-turn, and
+   * the must-speak guard has to be about whoever the button would skip.
+   */
   protected readonly mustSpeak = computed<boolean>(() => {
     const chat = this.chat();
-    const next = this.nextSpeaker();
-    if (
-      !chat ||
-      !next ||
-      !isUserDrivenSeat({ id: next.id, controlledBy: next.controlledBy ?? 'llm' }, this.impersonatingIds()) ||
-      !next.character
-    )
-      return false;
+    const next = this.bannerSeat();
+    if (!chat || !next || !next.character) return false;
     try {
       const events: SkipEvent[] = chat.messages.map((m) => ({
         type: 'message',
@@ -2132,28 +2194,67 @@ export class SalonConversation {
     }
   }
 
+  /**
+   * v4 `handleSkipUserTurn` (`useTurnManagement.ts:210-242`, rewritten by bug
+   * 123). v4 takes the seat id as an argument and the banner passes `seat.id`;
+   * v5's banner is presentational and emits void, so the parent resolves the
+   * SAME seat it drew the banner from.
+   */
   protected async onSkipUserTurn(): Promise<void> {
     const chatId = this.chatId();
-    const target = this.nextSpeaker();
-    if (!chatId || !target) return;
+    if (!chatId) return;
+
+    // Skip is offered whenever the human can type as a seat — their own
+    // character OR one they are impersonating — whether or not the rotation has
+    // landed on it (bug 123). The server's `skipUserTurn` accepts any
+    // user-driven seat, records the pass and picks the next speaker from there;
+    // the client's guard must agree, so it reads the OVERLAY rather than the
+    // bare `controlledBy` column (Bug 44).
+    const participant = this.speakingSeat();
+    if (
+      !participant ||
+      !isUserDrivenSeat(
+        { id: participant.id, controlledBy: participant.controlledBy ?? 'llm' },
+        this.impersonatingIds(),
+      )
+    ) {
+      this.toasts.showError('Only a character you are speaking as can be skipped.');
+      return;
+    }
+
+    // Skipping is an explicit "let someone else respond" — like a nudge, it
+    // lifts a pause first, or the next speaker it hands the floor to would be
+    // refused by the pause guard and the skip would appear to do nothing.
+    // Through `unpauseChat`, which is silent: v4 does not toast a resume here.
+    if (this.chat()?.isPaused) {
+      await this.unpauseChat();
+    }
+
     const resp = await this.core.dispatch({
       type: 'chatTurnAction',
       chatId,
       action: 'skipUserTurn',
-      participantId: target.id,
+      participantId: participant.id,
     });
     if (resp.type === 'error') {
-      // v4 `handleSkipUserTurn` (:212-215): `callTurnAction` swallows the
-      // server's sentence into a console.error and the operator is told this
-      // fixed line. v5's inline skip banner — which showed the server message —
-      // was an invention of the no-toast era and goes with it.
+      // v4 `callTurnAction` swallows the server's sentence into a console.error
+      // and the operator is told this fixed line. v5's inline skip banner —
+      // which showed the server message — was an invention of the no-toast era
+      // and goes with it.
       this.toasts.showError('Failed to skip turn. Please try again.');
       return;
     }
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
-    // v4 `handleSkipUserTurn`: if the skip hands the turn to an LLM, generate.
+    // v4 `:238-241`: if the skip hands the turn to an LLM, generate — but NEVER
+    // to another seat the human drives. Bug 123 added the overlay half of that
+    // test: an impersonated seat keeps `controlledBy: 'llm'`, so without it the
+    // client would auto-generate a reply for a seat the human means to type as.
     const turn = resp.type === 'turnAction' ? (resp.data as { turn?: TurnInfo }).turn : undefined;
-    if (turn?.nextSpeakerId && turn.nextSpeakerControlledBy !== 'user') {
+    if (
+      turn?.nextSpeakerId &&
+      turn.nextSpeakerControlledBy !== 'user' &&
+      !this.impersonatingIds().includes(turn.nextSpeakerId)
+    ) {
       await this.runTurn({ continueMode: true, respondingParticipantId: turn.nextSpeakerId });
     } else {
       await this.refreshTurn();
@@ -2762,15 +2863,38 @@ export class SalonConversation {
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
-  /** v4 `togglePause` (`useChatControls.ts:194-201`). */
-  protected async onTogglePause(): Promise<void> {
+  /**
+   * v4 `setPauseState` (`useChatControls.ts:222-228`) — persist the flag, and
+   * say NOTHING. The toast belongs to `togglePause`, its caller, not here: v4
+   * has a second caller, `unpauseChat`, that must stay silent.
+   */
+  private async setPauseState(paused: boolean): Promise<void> {
     const chatId = this.chatId();
-    const chat = this.chat();
-    if (!chatId || !chat) return;
-    const paused = !chat.isPaused;
+    if (!chatId) return;
     await this.core.dispatch({ type: 'chatUpdate', chatId, chat: { isPaused: paused } });
-    this.toasts.showInfo(paused ? 'Auto-responses paused' : 'Auto-responses resumed');
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+  }
+
+  /**
+   * v4 `SalonView.tsx:683` — `unpauseChat = useCallback(() => setPauseState(false))`.
+   *
+   * SILENT, and that is the point: v4's `togglePause` is what toasts, and
+   * `unpauseChat` deliberately does not go through it. v5's sidebar nudge lifts
+   * a pause through `onTogglePause()` and so raises "Auto-responses resumed";
+   * this seam must not, or Skip would announce a resume the user did not ask
+   * for on top of the skip itself.
+   */
+  private unpauseChat(): Promise<void> {
+    return this.setPauseState(false);
+  }
+
+  /** v4 `togglePause` (`useChatControls.ts:230-238`) — persist, then ITS toast. */
+  protected async onTogglePause(): Promise<void> {
+    const chat = this.chat();
+    if (!chat) return;
+    const paused = !chat.isPaused;
+    await this.setPauseState(paused);
+    this.toasts.showInfo(paused ? 'Auto-responses paused' : 'Auto-responses resumed');
   }
 
   /**

@@ -27,9 +27,11 @@ import { SpeakerSelector, type ControlledCharacter } from './speaker-selector';
  *
  *   - The **Speaking-As** selector (v4 `SpeakerSelector`), shown when the user
  *     controls two or more characters.
- *   - The **user-turn banner** (v4 SalonView ~1394–1455): when it is a
- *     user-controlled participant's turn, prompt to type or Skip; when everyone
- *     else has passed, the must-speak copy with no Skip button.
+ *   - The **Skip banner** (v4 SalonView ~1457–1515, bug 123): shown whenever the
+ *     human can type as a seat — their own character OR one they are
+ *     impersonating this session — and not only when the rotation has formally
+ *     landed on it. The wording says whose turn it is; when everyone else has
+ *     passed, the must-speak copy with no Skip button.
  *   - The **paused-state notice** (the Pause/Resume button itself lives in the
  *     chat sidebar, v4's home for it).
  *   - **Nudge** (v4 `handleNudge`): summon the next LLM speaker out of turn.
@@ -103,6 +105,12 @@ export class TurnControls {
   readonly userTurnName = input<string | null>(null);
   /** When true, the responder must speak (everyone else passed) — no Skip. */
   readonly mustSpeak = input(false);
+  /**
+   * Whether the rotation has actually landed on the banner's seat. Since v4 bug
+   * 123 the banner is offered whenever the composer will take words as a
+   * user-driven seat, on or off turn, so the wording has to say which it is.
+   */
+  readonly isSeatsTurn = input(false);
   /** A refusal message from a rejected skip (v4's exact copy), or null. */
   /** The next LLM speaker's name, or null to hide the Nudge button. */
   readonly nudgeTargetName = input<string | null>(null);
@@ -111,10 +119,14 @@ export class TurnControls {
   readonly skipUserTurn = output<void>();
   readonly nudge = output<void>();
 
+  /** v4 `SalonView.tsx:1499-1506` — three-way, in v4's order. */
   protected readonly bannerText = computed(() => {
     const name = this.userTurnName() ?? 'this character';
-    return this.mustSpeak()
-      ? `Everyone else has passed — it falls to ${name} to say something.`
-      : `${name}'s turn — type as them, or skip to let someone else respond.`;
+    if (this.mustSpeak()) {
+      return `Everyone else has passed — it falls to ${name} to say something.`;
+    }
+    return this.isSeatsTurn()
+      ? `${name}'s turn — type as them, or skip to let someone else respond.`
+      : `Speaking as ${name} — type, or skip to let someone else take the floor.`;
   });
 }

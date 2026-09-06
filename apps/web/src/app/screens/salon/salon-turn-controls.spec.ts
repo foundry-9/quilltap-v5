@@ -132,6 +132,66 @@ function groupChat(over: Partial<ChatDetail> = {}): ChatDetail {
   };
 }
 
+/**
+ * An all-LLM room whose persisted speaking-as points at an LLM seat nobody is
+ * impersonating. `findActiveUserParticipant` rejects the selection and finds no
+ * user seat to fall back to, so the resolved seat is `pA` — present, but NOT
+ * user-driven. The one shape that reaches v4's Skip guard.
+ */
+function llmSeatChat(): ChatDetail {
+  return groupChat({
+    participants: [
+      participant({ id: 'pA', character: charOf('cA', 'Aaron') }),
+      participant({ id: 'pB', character: charOf('cB', 'Beatrice') }),
+    ],
+    activeTypingParticipantId: 'pA',
+    impersonatingParticipantIds: ['pB'],
+  });
+}
+
+/** A history where both LLM characters have passed since the last substantive
+ *  message, so the floor falls to the user seat. */
+function allOthersPassedChat(): ChatDetail {
+  return groupChat({
+    messages: [
+      message({
+        id: 's0',
+        role: 'USER',
+        participantId: 'pU',
+        content: 'Off we go.',
+        createdAt: '2024-01-01T00:00:00.500Z',
+      }),
+      message({
+        id: 'a1',
+        role: 'ASSISTANT',
+        participantId: 'pA',
+        content: 'I lead.',
+        createdAt: '2024-01-01T00:00:01.000Z',
+      }),
+      message({
+        id: 'p-a',
+        role: 'ASSISTANT',
+        participantId: null,
+        systemSender: 'host',
+        systemKind: 'turn-pass',
+        hostEvent: { participantId: 'pA' },
+        content: 'Aaron has nothing to add.',
+        createdAt: '2024-01-01T00:00:02.000Z',
+      }),
+      message({
+        id: 'p-b',
+        role: 'ASSISTANT',
+        participantId: null,
+        systemSender: 'host',
+        systemKind: 'turn-pass',
+        hostEvent: { participantId: 'pB' },
+        content: 'Beatrice has nothing to add.',
+        createdAt: '2024-01-01T00:00:03.000Z',
+      }),
+    ],
+  });
+}
+
 function charOf(id: string, name: string): ParticipantDetail['character'] {
   return { id, name, title: null, avatarUrl: null, defaultImageId: null, defaultImage: null };
 }
@@ -156,6 +216,8 @@ interface StubOptions {
    * the post-turn reconcile brings that back.
    */
   chatAfterSend?: ChatDetail;
+  /** A `chatSend` that never resolves — holds the component in `busy()`. */
+  hangSend?: boolean;
 }
 
 function stubClient(
@@ -209,6 +271,7 @@ function stubClient(
         return { type: 'turnAction', data: {} };
       case 'chatSend':
         sent = true;
+        if (opts.hangSend) return new Promise<CoreResponse>(() => {});
         for (const frame of opts.chainFrames ?? []) {
           stream.frames.next({ chatId: 'chat-1', ...frame } as ScopedEvent);
         }
@@ -377,6 +440,236 @@ describe('Salon turn controls', () => {
     expect(toasts()).toEqual([
       { type: 'error', message: 'Failed to skip turn. Please try again.' },
     ]);
+  });
+
+  // -------------------------------------------------------------------------
+  // The Skip banner keyed on the speaking seat (v4 bug 123, `SalonView.tsx:1457-1515`)
+  // -------------------------------------------------------------------------
+
+  /** The banner's rendered sentence, or null when the banner is hidden. */
+  function banner(fixture: ComponentFixture<SalonConversation>): string | null {
+    const el = fixture.nativeElement.querySelector('.qt-chat-user-turn-banner span');
+    return el ? (el.textContent as string).trim() : null;
+  }
+
+  function skipButton(fixture: ComponentFixture<SalonConversation>): HTMLButtonElement | undefined {
+    return [...fixture.nativeElement.querySelectorAll('qt-turn-controls button')].find(
+      (b) => (b as HTMLButtonElement).textContent?.trim() === 'Skip',
+    ) as HTMLButtonElement | undefined;
+  }
+
+  // The heart of bug 123: the rotation has landed on an LLM, but the composer
+  // will still take words as Bertie — so Skip is offered, worded for a pass
+  // rather than for a turn.
+  it('offers the banner off-turn, worded "Speaking as", when the seat is not next', async () => {
+    const { client } = stubClient(groupChat(), {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
+    const fixture = await render(client);
+    expect(banner(fixture)).toBe(
+      'Speaking as Bertie — type, or skip to let someone else take the floor.',
+    );
+    expect(skipButton(fixture)).toBeTruthy();
+  });
+
+  it('words it as a turn when the rotation HAS landed on the seat', async () => {
+    const { client } = stubClient(groupChat(), {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+    });
+    const fixture = await render(client);
+    expect(banner(fixture)).toBe(
+      "Bertie's turn — type as them, or skip to let someone else respond.",
+    );
+  });
+
+  // Gate 1 — the composer must be writable. v4 added `sending` to the
+  // streaming/waiting pair it already tested; v5's `busy()` is all three.
+  it('hides the banner while a send is in flight', async () => {
+    const { client } = stubClient(groupChat(), {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+      hangSend: true,
+    });
+    const fixture = await render(client);
+    expect(banner(fixture)).not.toBeNull();
+    await sendAndSettle(fixture);
+    expect(banner(fixture)).toBeNull();
+  });
+
+  // Gate 2 — v4's `useParticipants.hasActiveCharacters`: ANY active CHARACTER,
+  // whoever drives it. The seat itself is still resolvable here, so this case
+  // sees gate 2 and nothing else.
+  it('hides the banner when the room has no active character', async () => {
+    const chat = groupChat({
+      participants: [
+        participant({ id: 'pA', isActive: false, character: charOf('cA', 'Aaron') }),
+        participant({
+          id: 'pU',
+          isActive: false,
+          controlledBy: 'user',
+          character: charOf('cU', 'Bertie'),
+        }),
+      ],
+    });
+    const { client } = stubClient(chat, {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+    });
+    const fixture = await render(client);
+    expect(banner(fixture)).toBeNull();
+  });
+
+  // The gate-2 predicate is v4's WIDER `useParticipants` twin. Here the only
+  // active character is the user's own: v4 shows the banner (an active
+  // CHARACTER exists), while this component's same-named `hasActiveCharacters`
+  // — v4's `useTurnManagement` twin, `controlledBy !== 'user'` — reads false.
+  // Reading the narrow one here would hide the banner from a solo user seat.
+  it('shows the banner when the only active character is the user’s own', async () => {
+    const chat = groupChat({
+      participants: [
+        participant({ id: 'pA', isActive: false, character: charOf('cA', 'Aaron') }),
+        participant({ id: 'pU', controlledBy: 'user', character: charOf('cU', 'Bertie') }),
+      ],
+    });
+    const { client } = stubClient(chat, {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+    });
+    const fixture = await render(client);
+    expect(banner(fixture)).toBe(
+      "Bertie's turn — type as them, or skip to let someone else respond.",
+    );
+  });
+
+  // Gate 3 — the seat resolves, but the human does not speak as it (Bug 44: an
+  // LLM seat nobody is impersonating).
+  it('hides the banner for a seat that is not user-driven', async () => {
+    const { client } = stubClient(llmSeatChat());
+    const fixture = await render(client);
+    expect(banner(fixture)).toBeNull();
+  });
+
+  // The must-speak guard moved onto the SEAT with bug 123. Keyed on the
+  // rotation's next speaker (an LLM here) it would read false and offer Skip.
+  it('computes must-speak over the SEAT, not the rotation’s next speaker', async () => {
+    const { client } = stubClient(allOthersPassedChat(), {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
+    const fixture = await render(client);
+    expect(banner(fixture)).toBe(
+      'Everyone else has passed — it falls to Bertie to say something.',
+    );
+    expect(skipButton(fixture)).toBeFalsy();
+  });
+
+  // -------------------------------------------------------------------------
+  // Skip honours the overlay, lifts a pause, and withholds the auto-continue
+  // (v4 bug 123, `useTurnManagement.handleSkipUserTurn`)
+  // -------------------------------------------------------------------------
+
+  /** v4's jest suite calls the hook handler directly; so does this. */
+  function skipDirectly(fixture: ComponentFixture<SalonConversation>): Promise<void> {
+    return (
+      fixture.componentInstance as unknown as { onSkipUserTurn(): Promise<void> }
+    ).onSkipUserTurn();
+  }
+
+  it('refuses a seat the human is not speaking as, with v4’s new sentence', async () => {
+    const { client, dispatch } = stubClient(llmSeatChat());
+    const fixture = await render(client);
+    await skipDirectly(fixture);
+    expect(toasts()).toContainEqual({
+      type: 'error',
+      message: 'Only a character you are speaking as can be skipped.',
+    });
+    expect(
+      calls(dispatch, 'chatTurnAction').filter(
+        (r) => (r as { action?: string }).action === 'skipUserTurn',
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('skips an impersonated seat whose durable controlledBy is still llm', async () => {
+    const chat = groupChat({
+      participants: [
+        participant({ id: 'pA', character: charOf('cA', 'Aaron') }),
+        participant({ id: 'pB', character: charOf('cB', 'Beatrice') }),
+      ],
+      activeTypingParticipantId: 'pA',
+      impersonatingParticipantIds: ['pA'],
+    });
+    const { client, dispatch } = stubClient(chat, {
+      skip: { turn: { nextSpeakerId: 'pB', nextSpeakerControlledBy: 'llm' } },
+    });
+    const fixture = await render(client);
+    await skipDirectly(fixture);
+    const skips = calls(dispatch, 'chatTurnAction').filter(
+      (r) => (r as { action?: string }).action === 'skipUserTurn',
+    );
+    expect(skips).toHaveLength(1);
+    expect((skips[0] as { participantId?: string }).participantId).toBe('pA');
+    expect(toasts()).toEqual([]);
+  });
+
+  // v4 `:216-221`: "like a nudge, it lifts a pause first, or the next speaker it
+  // hands the floor to would be refused by the pause guard". Through
+  // `unpauseChat` — SILENT, because v4's toast lives in `togglePause`.
+  it('lifts a pause BEFORE skipping, and says nothing about it', async () => {
+    const { client, dispatch } = stubClient(groupChat({ isPaused: true }), {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+      skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
+    });
+    const fixture = await render(client);
+    await skipDirectly(fixture);
+
+    const order = dispatch.mock.calls
+      .map((c) => c[0] as CoreRequest)
+      .filter(
+        (r) =>
+          r.type === 'chatUpdate' ||
+          (r.type === 'chatTurnAction' && (r as { action?: string }).action === 'skipUserTurn'),
+      )
+      .map((r) => r.type);
+    expect(order).toEqual(['chatUpdate', 'chatTurnAction']);
+    const update = dispatch.mock.calls
+      .map((c) => c[0] as CoreRequest)
+      .find((r) => r.type === 'chatUpdate') as { chat?: { isPaused?: boolean } };
+    expect(update.chat?.isPaused).toBe(false);
+    expect(toasts().map((t) => t.message)).not.toContain('Auto-responses resumed');
+  });
+
+  it('does not lift a pause that is not there', async () => {
+    const { client, dispatch } = stubClient(groupChat({ isPaused: false }), {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+      skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
+    });
+    const fixture = await render(client);
+    await skipDirectly(fixture);
+    expect(calls(dispatch, 'chatUpdate')).toHaveLength(0);
+  });
+
+  it('hands the floor on to an LLM next speaker', async () => {
+    const { client, dispatch } = stubClient(groupChat(), {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+      skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
+    });
+    const fixture = await render(client);
+    await skipDirectly(fixture);
+    expect(calls(dispatch, 'chatSend')).toHaveLength(1);
+  });
+
+  // Bug 123's overlay half of the auto-continue test: an impersonated seat keeps
+  // `controlledBy: 'llm'`, so without the overlay check the client would
+  // generate a reply for a seat the human means to type as.
+  it('withholds the auto-continue when the next speaker is an impersonated seat', async () => {
+    const chat = groupChat({
+      activeTypingParticipantId: 'pU',
+      impersonatingParticipantIds: ['pA'],
+    });
+    const { client, dispatch } = stubClient(chat, {
+      query: { nextSpeakerId: 'pU', nextSpeakerControlledBy: 'user' },
+      skip: { turn: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' } },
+    });
+    const fixture = await render(client);
+    await skipDirectly(fixture);
+    expect(calls(dispatch, 'chatSend')).toHaveLength(0);
   });
 
   // -------------------------------------------------------------------------

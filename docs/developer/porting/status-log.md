@@ -109607,3 +109607,63 @@ says exactly that rather than claiming a proof it does not have.
 destroyed the whole unit's uncommitted spec work (the file's last commit
 predated it). The memory note `mutation-proof-revert-by-file-backup` names this
 exact failure; use the `cp` backup for BOTH files, source and spec.
+
+### Units 3 + 4 — the Skip banner on the speaking seat, and the rewritten Skip
+
+`speakingSeat` split out of `speakingAsSeat` as v4 split it (`SalonView.tsx:531-565`),
+so the composer cue and the banner read ONE resolution. The banner's gates are
+v4's three in v4's order, the wording is v4's three-way, must-speak moved onto
+the banner's seat, and `onSkipUserTurn` is v4's rewritten `handleSkipUserTurn`.
+
+Three fidelity points the survey settled that the hunk alone does not give:
+
+- **Gate 2 needs v4's WIDER `hasActiveCharacters`.** v4 has TWO: `useParticipants`'s
+  (`type === 'CHARACTER' && isActive`, no control filter — what the banner, the
+  SSE hook and the composer all read) and `useTurnManagement`'s
+  (`… && controlledBy !== 'user'`). v5 has ONE computed, and it is the
+  `useTurnManagement` flavour — correct for its own site, `onSidebarSkip`
+  (v4 `handleContinue`'s first arm). The banner takes a new
+  `hasAnyActiveCharacter`. Discriminated by a spec: a room whose only active
+  character is the user's own shows the banner in v4 and would be hidden by the
+  narrow twin (M12 reddens).
+- **v4's `unpauseChat` is SILENT.** It is `setPauseState(false)`
+  (`SalonView.tsx:683`), and the toast lives in `togglePause`
+  (`useChatControls.ts:230-238`). v5 had no such split — `onTogglePause` did the
+  dispatch and the toast together, and the sidebar nudge lifts a pause through
+  it. Skip must not raise "Auto-responses resumed" on top of the skip, so
+  `setPauseState` / `unpauseChat` are extracted and `onTogglePause` now composes
+  them (M22 reddens).
+- **The auto-continue's overlay half.** Bug 123 added
+  `!impersonatingParticipantIds.includes(nextSpeakerId)` to v4's
+  `nextSpeakerControlledBy !== 'user'` test. Without it the client would
+  auto-generate a reply for a seat the human means to type as, since an
+  impersonated seat keeps `controlledBy: 'llm'`.
+
+**Specs:** 12 new in `salon-turn-controls.spec.ts` (27 in the file). Banner —
+off-turn "Speaking as" wording / on-turn wording / hidden while sending / hidden
+with no active character / shown when the only active character is the user's
+own / hidden for a non-user-driven seat / must-speak over the seat. Skip —
+v4's new refusal sentence with nothing dispatched / an impersonated seat skipped
+by id / the unpause dispatched BEFORE the skip and silent / no unpause when not
+paused / the hand-off fired for an LLM / withheld for an impersonated seat.
+
+The non-user-driven-seat shape is reached the way it is reachable in production:
+an all-LLM room whose persisted `activeTypingParticipantId` names an LLM seat
+nobody impersonates, so `findActiveUserParticipant` rejects the selection and
+has no user seat to fall back to. v4's own jest suite calls the handler
+directly; so do these.
+
+**Mutations M10–M23, each reddening:** M10 gate 1; M11 gate 2; M12 gate 2 via
+the narrow twin; M13 the banner keyed back on `nextSpeaker()`; M14 gate 3; M15
+`isSeatsTurn` pinned false; M16 pinned true; M17 must-speak keyed back on
+`nextSpeaker()`; M18 the third sentence swapped for the second; M19 the skip
+guard dropped; M20 the OLD refusal sentence; M21 the unpause moved after the
+skip; M22 the unpause routed through the toasting `onTogglePause`; M23 the
+overlay check dropped from the auto-continue.
+
+**Two existing specs pinned the PRE-fix banner** (`salon-conversation.spec.ts` —
+Bug 46a's "does NOT announce an ordinary LLM seat" and Bug 48's "no user turn
+before impersonating"), both asserting `userTurnName() === null` off-turn, which
+is precisely what bug 123 changes. Re-expressed for what each was really about:
+the LLM seat is never NAMED and `isSeatsTurn` is false. Full SPA suite 387 files
+/ 6,267 tests green.

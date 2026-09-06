@@ -261,6 +261,46 @@ detail}` instead of accepting a billed half reply as a final answer. A new
 throw red-first; the committed `brahma-{main,mount}.db` pair (shared with
 `brahma_console_routes_equivalence`) was widened with a new pinned chat via
 its builder, every pre-existing row reproduced byte-identical.
+#### 2026-09-06 — feat(spa): the Skip banner follows the seat the composer speaks as (v4 bug 123)
+
+_Versions: SPA 0.5.654._
+
+P4.D161 units 3 and 4. The Salon's Skip banner used to appear only once the
+rotation had formally landed on a user-driven seat. It now appears whenever the
+composer will take words as one — the human's own character or a seat they are
+impersonating — on or off turn, because a pass is "let someone else respond"
+and that is as meaningful mid-rotation as it is on-turn.
+
+`speakingSeat` is split out of `speakingAsSeat` exactly as v4 split it, so the
+composer's voice cue and the banner read one resolution. The banner's three
+gates are v4's: nothing in flight, the room has an active character, and the
+resolved seat is user-driven through the overlay (Bug 44), not the bare
+`controlledBy` column. Gate 2 needs v4's WIDER `useParticipants`
+`hasActiveCharacters` (any active CHARACTER) — added as `hasAnyActiveCharacter`,
+because this component's same-named computed is v4's `useTurnManagement` twin
+(`controlledBy !== 'user'`) and is correct for its own site. The wording is
+three-way with v4's new third sentence, and the must-speak guard moved onto the
+banner's seat.
+
+`onSkipUserTurn` gains v4's rewritten guard — the new refusal sentence "Only a
+character you are speaking as can be skipped." replaces "Only user-controlled
+characters can be skipped." — lifts a pause first the way a nudge does, and
+withholds the auto-continue when the next speaker is a seat the human
+impersonates. The unpause goes through a new silent `setPauseState`/`unpauseChat`
+pair mirroring v4's split: v4's toast lives in `togglePause`, and Skip must not
+announce a resume the user did not ask for.
+
+Twelve new specs. Mutations M10–M23, each reddening: the three gates dropped;
+gate 2 reading the narrow twin; the banner keyed back on the next speaker; the
+seat's-turn fact pinned either way; must-speak keyed back on the next speaker;
+the third sentence swapped for the second; the skip guard dropped; the old
+refusal sentence; the unpause moved after the skip; the unpause routed through
+the toasting toggle; and the overlay check dropped from the auto-continue.
+
+Two existing specs asserted the pre-fix banner (hidden off-turn) and are
+re-expressed for what they were really about — that an ordinary LLM seat is
+never named and never claims the turn.
+
 #### 2026-09-06 — feat(spa): announce a pause the user did not cause (v4 bug 123)
 
 _Versions: SPA 0.5.653._
