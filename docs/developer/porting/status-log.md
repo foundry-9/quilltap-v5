@@ -108856,3 +108856,175 @@ google plugin — this lane's help-chat oracle does, through
 `initializeProviderRegistry`; see unit 2.)
 
 Versions: core 0.0.807.
+
+---
+
+## Lane record — P4.D162 unit 2 (v4 bug 124 / dogfood #112): the help-chat loop threaded through the primitive it already had
+
+**Pin:** `/tmp/qt-v4-pin-p4d162-f699da6f6`. **§2 probe re-run before this
+unit's regen batch: PASS** (branch `bugfix`, clean, both logs empty).
+
+### The port
+
+`services/help_chat/orchestrator.rs`, mirroring v4's hunks:
+
+- The slate's carrying type is now `ThreadedMessage` (v4's own
+  `conversationMessages` element type since the fix); the local `HelpMessage`
+  struct is GONE and `msg()` builds a content-only `ThreadedMessage` — the rows
+  v4 still pushes as bare `{role, content}` objects (system prompt, history,
+  force-final, the stuck-loop nudge, and the duplicate guard's own assistant
+  echo, which v4 deliberately did NOT route through the primitive).
+- The tool turn is `build_assistant_tool_call_message(&detected,
+  &current_response, None, None)` — v4 calls it with two args, so both optional
+  continuation fields are absent. ⚠ Note this also brings v4's
+  whitespace-collapse rule (`trim().length > 0 ? currentResponse : ''`) to the
+  help path, which the old verbatim push did not have.
+- The results are mapped to the SAME
+  `JSON.stringify({tool, success, result})` bytes the pre-fix push wrote, then
+  threaded by `build_tool_result_messages`; `last_tool_result_content` takes the
+  last result's content.
+- The stuck-loop reminder reads `last_tool_result_content` — v4's
+  `.reverse().find(m => m.role === 'tool')` is gone, with v4's WHY comment
+  carried (a framed id-less result is `user` text and no role search finds it).
+- v4's new `logger.debug('Threaded help-chat tool results into the
+  conversation', …)` at target `quilltap::help`.
+
+`to_stream_messages(provider, &[ThreadedMessage])` keeps the per-provider rule
+for ID-LESS `tool` rows only — which now reach the seam solely from persisted
+TOOL history (v4 did not change history loading). Everything the primitive
+builds goes through the shared `tool_call_threading::to_stream_message`, and the
+help rule runs BEFORE delegating, because that converter documents its own
+id-less `tool` arm as unreachable-from-the-primitive and falls back to user
+text — not what the nine plugins do with a history row. `tool_call_threading.rs`
+was NOT touched (§D NOBODY); it is called.
+
+### Closing the family's blind spot (measured, the P4.58 class)
+
+The canned key is `provider|model|temperature|messages` with `messages` reduced
+to `{role, content}` on BOTH sides, so `toolCalls`, `toolCallId` and `name` were
+never comparands. Delivered:
+
+- The oracle records, per streamed call, the **full slate** projected to the
+  five keys the threading helpers set (`role`, `content`, `toolCallId?`,
+  `name?`, `toolCalls?`) — after the same per-provider id-less filter the key
+  uses, so both sides compare like with like. Optional keys are OMITTED when
+  absent or empty (`JSON.stringify` drops `undefined`; v5 spells "no call id" as
+  an empty string).
+- The Rust family records the slate `QueuedStreamingProvider` RECEIVED and
+  diffs it call by call, in order, with a count check. It also asserts the
+  corpus keeps exercising BOTH arms — paired rows AND `[Tool Result: …]` framed
+  rows — so the comparand cannot go vacuous.
+- New corpus case **`duplicate_call_guard_idless`**: the duplicate guard over a
+  detection with NO `callId`. This is the ONLY case whose nudge bytes
+  distinguish the reminder's new source: an id'd result's content is the same
+  JSON string either way, an id-less one is `[Tool Result: help_search]\n{…}`
+  that no role search can reach. Measured in the fresh oracle — the id'd
+  guard's reminder starts `…tool call:\n{"tool":"help_search"…`, the id-less
+  one `…tool call:\n[Tool Result: help_search]\n{…`.
+
+Corpus now 13 cases / 31 streamed calls / 52 paired rows / 52 assistant turns
+with `toolCalls` / 5 framed rows.
+
+### Red-first, measured in two stages (as the order asked)
+
+- **(a) unported v5 + the PRE-widening comparand** against the pinned post-fix
+  oracle: RED — 5 canned-stream MISSES and 10 failures across
+  `native_help_search_turn`, `native_help_navigate_turn`,
+  `duplicate_call_guard`, `ten_turn_cap`, `duplicate_call_guard_idless`
+  (frames + messages). This is the ROLE-SEQUENCE red the order predicted: the
+  id'd `tool` row now survives the plugin filter, so the key gains a row and v5
+  misses the canned stream.
+- **(b) unported v5 + the WIDENED comparand**: additionally `SLATE COUNT
+  MISMATCH: v5 made 19 streamed calls, v4 recorded 31` plus per-call slate
+  diffs — the pairing red.
+
+### Mutation proofs
+
+| # | mutation | result |
+|---|---|---|
+| M3 | push a content-only assistant row instead of the primitive's | slate comparand RED (8+ calls) |
+| M4 | drop the `toolCallId` from each threaded result row | frames + messages + slate RED on all four tool cases |
+| M5 | revert the reminder to `.rev().find(role == "tool")` | RED on **exactly** `duplicate_call_guard_idless` (frames, messages, slate #30) — nothing else |
+| M6 | delete the `tracing::debug!` | capture pin RED ("no threading debug line") |
+| M7 | swap `paired_by_call_id` / `framed_as_text` | capture pin RED |
+| M8 | count paired with `call_id.is_some()` (the JS-truthiness audit shape) | **SURVIVED at first** — closed by adding an EMPTY-call-id arm to the capture pin, then RED |
+
+M8 is worth keeping in mind: v4 counts on `tm.callId` under JS truthiness and
+the primitive pairs on `!id.is_empty()`, so an empty-string id is framed text on
+both. Nothing in the corpus produces one, so only a unit arm can hold it.
+
+### Tier 2 item 6 — the stream-conversion tests
+
+`stream_conversion_tests` gained `every_provider_keeps_a_paired_tool_row` (all
+ten providers keep an id'd `tool` row with its `call_id`/`name`, and the
+assistant turn keeps its `toolCalls` with `JSON.stringify`d arguments) and
+`an_idless_result_is_framed_as_user_text_for_every_provider`. The nine-provider
+list is now a shared const.
+
+### Regen recipe
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d162-f699da6f6; V5W=<worktree>; N=~/.nvm/versions/node/v24.13.1/bin
+mkdir -p /tmp/qt-d162-help-orch/cases /tmp/qt-d162-help-orch/fixtures
+cp $V5W/harness/oracle/cases/help-chat-orchestrator-tier3.test.ts /tmp/qt-d162-help-orch/cases/
+cp $V5W/harness/oracle/fixtures/help-chat-orchestrator-tier3.json /tmp/qt-d162-help-orch/fixtures/
+cd "$PIN"
+QT_FIXTURE_HELP_CHAT_MAIN=$V5W/crates/quilltap-web/tests/fixtures/help-chat-main.db \
+QT_FIXTURE_HELP_CHAT_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/help-chat-mount.db \
+QT_ORACLE_OUT=/tmp/qt-d162-oracle-help-orch.ndjson \
+  $N/npx jest --silent --watchman=false --testTimeout=300000 \
+    --roots "$PWD" --roots /tmp/qt-d162-help-orch/cases -- "help-chat-orchestrator-tier3"
+```
+
+The §C lane-unique staging (`/tmp/qt-d162-help-orch`) replaces the recipe's
+shared `/tmp/help-orch`. **Pin verified** by `toolCallId` appearing inside a
+recorded slate — absent at `c2232cd9a` and at `ba34fa367`, because the pre-fix
+loop never set one.
+
+⚠ **Ledger hazard 5 applies to THIS oracle**: it loads all ten provider plugins
+through `initializeProviderRegistry` under jest, so from `8fbf2afe0` on the
+google plugin resolves the `__mocks__/@google/genai.ts` stub. It regenerates
+cleanly at the pin and the family is green; the mock is never reached because
+the oracle mocks `streamMessage` above the plugin layer. (The two google
+recorders run under `tsx` and are unaffected — unit 1's record.)
+
+### Banked finding — `text_block_turn` does not exercise the text-block tool path
+
+Measured while looking for a natural id-less arm: the `text_block_turn` case
+scripts two streams but only ONE is consumed, and the persisted ASSISTANT row
+still carries its `[[HELP_NAVIGATE …]]` markers — v4 never parses them as a tool
+call there, so the second scripted stream is dead. Both sides agree (the family
+is green), so it is not a port defect; but the case does not measure what its
+name claims, and it is why the corpus had no id-less arm at all. Worth an order
+of its own to either make the case fire or rename it. (`parseTextBlocksFromResponse`
+returns `{name, arguments}` with no `callId`, so a working text-block turn WOULD
+be a second id-less arm.)
+
+### The gate's own catch — a pre-existing tie the by-name run never saw
+
+The first full-workspace run with `QT_ORACLE_HELP_ORCH` set (unit 1's gate ran
+without it, so the family SKIPped) reddened `native_help_navigate_turn_messages`
+with `GOT "role": "TOOL"` where v4 had `"ASSISTANT"` — green in isolation, twice.
+**Measured, not guessed:** a probe of the persisted `createdAt` values shows the
+ASSISTANT tool turn at `…02.289Z` and its TOOL row at `…02.290Z` — a **1 ms**
+margin (`help_search`'s is 7 ms; `help_navigate` is pure and instant). Both
+sides read with `ORDER BY createdAt ASC` and **no tiebreak**, in v4 as in v5, so
+when a loaded run collapses those two writes into one millisecond the pair comes
+back in an order neither implementation defines.
+
+Not a bug-124 regression: the ASSISTANT persist and `save_tool_messages` sit
+exactly where they did, and the port adds only microseconds between them. It is
+a pre-existing property of this differential that had never run under load with
+its env var set.
+
+Fixed in the comparand, as narrowly as the non-determinism allows: the oracle
+now ships each case's per-row `createdAt` (for GROUPING only — it is not a
+comparand; both sides mint their own), and `canonicalize_ties` keeps a boundary
+between two adjacent rows only when BOTH sides gave them different timestamps,
+sorting canonically inside whatever groups remain. Rows separated by a real
+boundary stay strictly ordered. Four unit tests hold the contract, including
+`canonicalize_ties_still_catches_a_real_reorder` (distinct timestamps, swapped
+rows → still unequal) and `a_count_divergence_is_untouched`. M4 and M5 were
+re-proven RED under the normalization, so it hides nothing this unit relies on.
+
+Versions: core 0.0.808, harness 0.0.696.

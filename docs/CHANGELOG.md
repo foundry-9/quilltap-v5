@@ -74,6 +74,46 @@ The P4.D160 lane record also carries the `git show --stat` file lists for the
 eight carrier/docs drift rows (`d40497411`, `5eaf98cf1`, `ba34fa367`,
 `02b77ab0f`, `8fbf2afe0`, `d489b04a3`, `f699da6f6`, `1a2b2164c`), so the
 unifier ratifies them by file list rather than by subject line.
+#### 2026-09-06 — fix(help-chat): thread the agent loop's tool turns through the shared primitive (v4 bug 124 / dogfood #112)
+
+_Versions: core 0.0.808, harness 0.0.696._
+
+The help chat's agent loop pushed tool results as `tool` rows with no
+`toolCallId` and an assistant turn with no `toolCalls`. Every plugin but Google
+drops an unpaired tool row, so the model never saw its own search result,
+searched again, and the duplicate-call guard forced an empty final — a
+tool-needing help turn ended in silence on nine of ten providers. The port of
+v4 `20913d2aa`'s bug-124 half routes the loop through
+`services::tool_call_threading` — the chokepoint the Salon and Brahma Console
+already used — so a result with a call id is paired natively and one without is
+framed as `[Tool Result: <name>]` user text. The stuck-loop reminder now tracks
+the last result directly (`last_tool_result_content`) instead of searching the
+slate by role, because a framed result is a `user` row no role search can find.
+v4's new debug line ships with it.
+
+The help slate is now a `Vec<ThreadedMessage>`. The per-provider id-less
+tool-row rule is unchanged and now applies where it always belonged — to
+persisted TOOL history rows, which v4 still loads id-less; everything the
+primitive builds goes through the shared converter, and the rule runs before
+delegating because that converter documents its own id-less `tool` arm as
+unreachable.
+
+The tier-3 family could not see any of this: its canned key hashes `role` +
+`content`, so `toolCalls`, `toolCallId` and `name` were never compared. The
+oracle now records each streamed call's full slate projected to those five keys,
+and the Rust side compares the slate the provider actually received, call by
+call in order, asserting the corpus keeps exercising both threading arms. A new
+corpus case, `duplicate_call_guard_idless`, drives the guard over a detection
+with no `callId` — the only case whose nudge bytes distinguish the reminder's
+new source from the old role search.
+
+Riding along: the family's first full-workspace run exposed a pre-existing tie.
+`getMessages` is `ORDER BY createdAt ASC` with no tiebreak on both sides, and a
+tool turn's ASSISTANT and TOOL rows can land in the same millisecond (measured 1
+ms apart for `help_navigate`), so their order is undefined. The oracle now ships
+per-row `createdAt` for grouping only, and the comparand keeps a boundary
+between adjacent rows only when both sides timestamped them differently.
+
 #### 2026-09-06 — fix(google): additionalProperties heads the schema strip list (v4 bug 125 / dogfood #114)
 
 _Versions: core 0.0.807._

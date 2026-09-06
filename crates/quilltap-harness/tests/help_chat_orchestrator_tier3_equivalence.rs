@@ -14,15 +14,32 @@
 //! (the async tail's MEMORY_EXTRACTION enqueue — the context-summary check is the
 //! no-op seam on both sides).
 //!
-//! Corpus (11 cases, each into its OWN fixture chat): single character with a NULL
-//! `helpPageUrl` (→ `/`); two characters over a transcript carrying a TOOL row
+//! **Plus, since v4 bug 124 (`20913d2aa`): the FULL SLATE of every streamed call,
+//! in order.** The canned key hashes `role`+`content` only, so `toolCalls`,
+//! `toolCallId` and `name` — the three keys the threading helpers set — were
+//! invisible to it (the P4.58 blind-spot class). The oracle now records each
+//! call's slate projected to those five keys after the same per-provider filter,
+//! and this side records what `QueuedStreamingProvider` was handed. A pairing
+//! regression that leaves the ROLE SEQUENCE intact reddens only there, and the
+//! comparand asserts the corpus keeps exercising BOTH arms (paired by id, and
+//! id-less framed as `[Tool Result: …]` user text).
+//!
+//! Corpus (13 cases, each into a fixture chat — the last two share theirs with an
+//! earlier case and run after it): single character with a NULL `helpPageUrl`
+//! (→ `/`); two characters over a transcript carrying a TOOL row
 //! (`turnStart`/`turnComplete`/`chainComplete`, no `skipped` key); a native
 //! `help_search` turn; a native `help_navigate` turn; a text-block turn (profile
 //! P3); the duplicate-call guard (three identical calls → the nudge); the
 //! `submit_final_response` arm; the JSON-text fallback; the 10-turn cap; a
 //! participant whose profile's api key is dangling (`API key not found` as a
-//! per-participant `error` frame, the OTHER participant still answering); and user
-//! B's chat with NO `chat_settings` row (the async tail suppressed — no job).
+//! per-participant `error` frame, the OTHER participant still answering); user
+//! B's chat with NO `chat_settings` row (the async tail suppressed — no job); a
+//! mid-stream provider throw; and `duplicate_call_guard_idless` — the same guard
+//! over a detection that carries NO `callId`, which is the ONLY case whose nudge
+//! bytes distinguish the reminder's new source (`lastToolResultContent`) from the
+//! pre-bug-124 `.reverse().find(m => m.role === "tool")`: an id'd result's content
+//! is the same JSON string either way, an id-less one is `[Tool Result: …]` text
+//! that no role search can find.
 //!
 //! Generate (Node 24, from the v4 checkout — mirror to /tmp; jest ignores .claude/):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -138,7 +155,45 @@ struct CannedStreamW {
     model: String,
     temperature: Option<f64>,
     messages: Vec<CannedMsgW>,
+    /// The FULL slate v4 handed the plugin on this call, projected to the five
+    /// keys the threading helpers set (`role`, `content`, `toolCallId?`,
+    /// `name?`, `toolCalls?`), after the same per-provider id-less filter the
+    /// canned key uses. The key itself is role+content only, so without this
+    /// field bug 124's pairing is invisible on both sides (the P4.58
+    /// blind-spot class).
+    slate: Vec<Value>,
     sequences: Vec<Vec<ChunkW>>,
+}
+
+/// The Rust twin of the oracle's `projectSlate` — same five keys, same fixed
+/// order, same omission rules (`JSON.stringify` drops `undefined`; v5 spells
+/// "no call id" as an empty string).
+fn project_slate_message(m: &quilltap_core::model::stream::StreamMessage) -> Value {
+    use quilltap_core::model::stream::StreamMessage as SM;
+    let mut o = serde_json::Map::new();
+    o.insert("role".to_string(), Value::String(m.role_str().to_string()));
+    o.insert(
+        "content".to_string(),
+        Value::String(m.content().to_string()),
+    );
+    match m {
+        SM::Tool { call_id, name, .. } => {
+            if !call_id.is_empty() {
+                o.insert("toolCallId".to_string(), Value::String(call_id.clone()));
+            }
+            if let Some(n) = name.as_deref().filter(|n| !n.is_empty()) {
+                o.insert("name".to_string(), Value::String(n.to_string()));
+            }
+        }
+        SM::Assistant { tool_calls, .. } if !tool_calls.is_empty() => {
+            o.insert(
+                "toolCalls".to_string(),
+                serde_json::to_value(tool_calls).unwrap(),
+            );
+        }
+        _ => {}
+    }
+    Value::Object(o)
 }
 
 fn to_completion_messages(m: &[CannedMsgW]) -> Vec<CompletionMessage> {
@@ -177,6 +232,9 @@ struct QueuedStreamingProvider {
     /// Served sequences that ran to `done` (no scripted throw) — the number
     /// of `CHAT_MESSAGE` rows v4's `streamMessage` logger would have written.
     completed_streams: Mutex<i64>,
+    /// Every slate this provider was handed, in call order — bug 124's
+    /// comparand, diffed against the oracle's recorded `slate` rows.
+    received_slates: Mutex<Vec<Value>>,
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
@@ -197,6 +255,7 @@ impl QueuedStreamingProvider {
             queues: Mutex::new(queues),
             misses: Mutex::new(Vec::new()),
             completed_streams: Mutex::new(0),
+            received_slates: Mutex::new(Vec::new()),
         }
     }
 }
@@ -213,6 +272,9 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             params.temperature,
             &params.messages,
         );
+        self.received_slates.lock().unwrap().push(Value::Array(
+            params.messages.iter().map(project_slate_message).collect(),
+        ));
         let sequence: Vec<StreamChunkResult> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
@@ -347,6 +409,48 @@ fn project_message(m: &Value) -> Value {
     canon_numbers(&mut v);
     v
 }
+/// Rows written inside ONE millisecond come back in an order neither side
+/// defines: `getMessages` is `ORDER BY createdAt ASC` with no tiebreak, in v4
+/// and in v5 alike, and both sides mint their own `createdAt` at write time.
+/// Measured on `native_help_navigate_turn`: the ASSISTANT tool turn and its
+/// TOOL row land ~1 ms apart, so a loaded full-workspace run collapses them and
+/// the pair can come back either way round.
+///
+/// This relaxes EXACTLY that and nothing else: a boundary between two adjacent
+/// rows survives only when BOTH sides gave those rows different timestamps
+/// (the coarsest partition consistent with both), and the rows inside a
+/// surviving group are sorted canonically on both sides. Rows separated by a
+/// real boundary stay strictly ordered, so a genuine ordering divergence still
+/// reddens — see `canonicalize_ties_still_catches_a_real_reorder`.
+fn canonicalize_ties(
+    mut got: Vec<Value>,
+    mut want: Vec<Value>,
+    got_created: &[String],
+    want_created: &[String],
+) -> (Vec<Value>, Vec<Value>) {
+    // Only meaningful when both sides produced the same number of rows and both
+    // timestamp lists are present; otherwise leave the sequences untouched so
+    // the count divergence surfaces as itself.
+    if got.len() != want.len() || got_created.len() != got.len() || want_created.len() != want.len()
+    {
+        return (got, want);
+    }
+    let mut start = 0usize;
+    for i in 1..=got.len() {
+        let boundary = i == got.len()
+            || (got_created[i] != got_created[i - 1] && want_created[i] != want_created[i - 1]);
+        if boundary {
+            if i - start > 1 {
+                let key = |v: &Value| serde_json::to_string(v).unwrap_or_default();
+                got[start..i].sort_by_key(key);
+                want[start..i].sort_by_key(key);
+            }
+            start = i;
+        }
+    }
+    (got, want)
+}
+
 fn first_diff(got: &str, want: &str) -> String {
     let g: Vec<&str> = got.lines().collect();
     let w: Vec<&str> = want.lines().collect();
@@ -371,6 +475,7 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
 
     let mut oracle_events: HashMap<String, Vec<Value>> = HashMap::new();
     let mut oracle_messages: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut oracle_created_at: HashMap<String, Vec<String>> = HashMap::new();
     let mut oracle_jobs: HashMap<String, Vec<Value>> = HashMap::new();
     let mut oracle_streams: Vec<CannedStreamW> = Vec::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
@@ -381,6 +486,17 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
                 oracle_events.insert(call(), v["events"].as_array().cloned().unwrap_or_default());
             }
             Some("messages") => {
+                oracle_created_at.insert(
+                    call(),
+                    v["createdAt"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .map(|x| x.as_str().unwrap_or_default().to_string())
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                );
                 oracle_messages.insert(call(), v["rows"].as_array().cloned().unwrap_or_default());
             }
             Some("jobs") => {
@@ -503,15 +619,30 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
         let messages = db
             .read_main(move |c| quilltap_core::db::chats_messages_read::get_messages(c, &cid))
             .unwrap();
-        let got_rows: Vec<Value> = messages
+        let persisted: Vec<&Value> = messages
             .iter()
             .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
-            .map(project_message)
             .collect();
+        let got_rows: Vec<Value> = persisted.iter().map(|m| project_message(m)).collect();
         let want_rows: Vec<Value> = oracle_messages[&case.name]
             .iter()
             .map(project_message)
             .collect();
+        let got_created: Vec<String> = persisted
+            .iter()
+            .map(|m| {
+                m.get("createdAt")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .collect();
+        let want_created = oracle_created_at
+            .get(&case.name)
+            .cloned()
+            .unwrap_or_default();
+        let (got_rows, want_rows) =
+            canonicalize_ties(got_rows, want_rows, &got_created, &want_created);
         let (g, w) = (
             norm(&Value::Array(got_rows)),
             norm(&Value::Array(want_rows)),
@@ -574,6 +705,79 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
         }
     }
 
+    // Bug 124's comparand: the FULL slate each streamed call received, call by
+    // call in order. The canned key is role+content only, so `toolCalls`,
+    // `toolCallId` and `name` — the three keys the threading helpers set — were
+    // never compared before this. A pairing regression that leaves the role
+    // sequence intact (an assistant row without its `toolCalls`, a `tool` row
+    // without its id) reddens HERE and nowhere else.
+    {
+        let got = streaming.received_slates.lock().unwrap().clone();
+        let want: Vec<Value> = oracle_streams
+            .iter()
+            .map(|r| Value::Array(r.slate.clone()))
+            .collect();
+        if got.len() != want.len() {
+            eprintln!(
+                "SLATE COUNT MISMATCH: v5 made {} streamed calls, v4 recorded {}",
+                got.len(),
+                want.len()
+            );
+            failed.push("slate_count".to_string());
+        }
+        let mut slate_mismatches = 0usize;
+        for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+            let (gs, ws) = (norm(g), norm(w));
+            if gs != ws {
+                eprintln!("SLATE #{i} MISMATCH:\n{}", first_diff(&gs, &ws));
+                failed.push(format!("slate_{i}"));
+                slate_mismatches += 1;
+            }
+        }
+        // The corpus must actually exercise BOTH threading arms, or the
+        // comparand is vacuous: an id'd result pairs natively, an id-less one
+        // is framed as `[Tool Result: …]` user text (v4's two bug-124 tests).
+        let paired = want
+            .iter()
+            .flat_map(|s| s.as_array().unwrap())
+            .filter(|m| m.get("toolCallId").is_some())
+            .count();
+        let with_calls = want
+            .iter()
+            .flat_map(|s| s.as_array().unwrap())
+            .filter(|m| m.get("toolCalls").is_some())
+            .count();
+        let framed = want
+            .iter()
+            .flat_map(|s| s.as_array().unwrap())
+            .filter(|m| {
+                m["role"] == "user"
+                    && m["content"]
+                        .as_str()
+                        .is_some_and(|c| c.starts_with("[Tool Result: "))
+            })
+            .count();
+        assert!(
+            paired > 0 && with_calls > 0,
+            "the corpus lost its PAIRED tool-threading rows (toolCallId {paired}, toolCalls {with_calls})"
+        );
+        assert!(
+            framed > 0,
+            "the corpus lost its ID-LESS `[Tool Result: …]` framing rows"
+        );
+        if slate_mismatches == 0 {
+            eprintln!(
+                "slates OK ({} calls; {paired} paired rows, {with_calls} assistant turns with toolCalls, {framed} framed rows).",
+                got.len()
+            );
+        } else {
+            eprintln!(
+                "SLATES: {slate_mismatches} of {} calls diverged.",
+                got.len()
+            );
+        }
+    }
+
     let misses = streaming.misses.lock().unwrap().clone();
     if !misses.is_empty() {
         eprintln!("CANNED-STREAM MISSES ({}):", misses.len());
@@ -619,4 +823,75 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
         failed.is_empty(),
         "help-chat-orchestrator tier-3 FAILED: {failed:?}"
     );
+}
+
+#[cfg(test)]
+mod tie_normalization_tests {
+    use super::canonicalize_ties;
+    use serde_json::json;
+
+    fn rows(names: &[&str]) -> Vec<serde_json::Value> {
+        names.iter().map(|n| json!({ "role": n })).collect()
+    }
+
+    /// A same-millisecond pair is order-insensitive — the measured
+    /// ASSISTANT/TOOL collapse on `native_help_navigate_turn`.
+    #[test]
+    fn a_same_millisecond_pair_is_order_insensitive() {
+        let ts = ["t0", "t1", "t1", "t2"].map(String::from);
+        let (g, w) = canonicalize_ties(
+            rows(&["USER", "TOOL", "ASSISTANT", "ASSISTANT2"]),
+            rows(&["USER", "ASSISTANT", "TOOL", "ASSISTANT2"]),
+            &ts,
+            &ts,
+        );
+        assert_eq!(g, w);
+    }
+
+    /// A tie on EITHER side relaxes that boundary: whichever side tied read its
+    /// two rows in an order SQLite never defined, so comparing them to the
+    /// other side's order is comparing noise. (Hence the boundary test is
+    /// "both sides gave these rows different timestamps".)
+    #[test]
+    fn a_one_sided_tie_relaxes_the_boundary_too() {
+        for (gt, wt) in [
+            (["t1", "t1"], ["t1", "t2"]), // v5 tied, v4 did not
+            (["t1", "t2"], ["t1", "t1"]), // v4 tied, v5 did not
+        ] {
+            let (g, w) = canonicalize_ties(
+                rows(&["TOOL", "ASSISTANT"]),
+                rows(&["ASSISTANT", "TOOL"]),
+                &gt.map(String::from),
+                &wt.map(String::from),
+            );
+            assert_eq!(g, w);
+        }
+    }
+
+    /// The mutation that matters: rows with DIFFERENT timestamps on both sides
+    /// are still strictly ordered, so a genuine reorder reddens.
+    #[test]
+    fn canonicalize_ties_still_catches_a_real_reorder() {
+        let ts = ["t0", "t1", "t2"].map(String::from);
+        let (g, w) = canonicalize_ties(
+            rows(&["USER", "TOOL", "ASSISTANT"]),
+            rows(&["USER", "ASSISTANT", "TOOL"]),
+            &ts,
+            &ts,
+        );
+        assert_ne!(g, w, "distinct timestamps must stay strictly ordered");
+    }
+
+    /// A row-count divergence is left alone so it surfaces as itself.
+    #[test]
+    fn a_count_divergence_is_untouched() {
+        let (g, w) = canonicalize_ties(
+            rows(&["USER"]),
+            rows(&["USER", "ASSISTANT"]),
+            &["t0".to_string()],
+            &["t0".to_string(), "t0".to_string()],
+        );
+        assert_eq!(g.len(), 1);
+        assert_eq!(w.len(), 2);
+    }
 }

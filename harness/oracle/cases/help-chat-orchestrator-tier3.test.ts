@@ -17,7 +17,10 @@
  *     (`if (m.role === "tool" && !m.toolCallId) return false`), which is where
  *     v5's `to_stream_messages` drops it too (the orchestrator module doc,
  *     divergence 1). `buildTools` stays REAL (ANTHROPIC + a fictional model →
- *     `checkModelSupportsTools` true).
+ *     `checkModelSupportsTools` true). Each call ALSO records its full `slate`
+ *     (bug 124) — the same filtered list projected to the five keys the
+ *     threading helpers set — because the key above is blind to `toolCalls`,
+ *     `toolCallId` and `name`.
  *   - `detectToolCallsInResponse`: canned by the raw response's `marker`.
  *     `processToolCalls` + `saveToolMessages` + every handler stay REAL —
  *     `help_search` runs the real keyword fallback over the fixture's 17 docs (no
@@ -284,7 +287,20 @@ async function main(): Promise<void> {
       };
     });
     lines.push(JSON.stringify({ kind: 'events', call: call.name, events }));
-    lines.push(JSON.stringify({ kind: 'messages', call: call.name, rows }));
+    // `createdAt` is NOT a comparand (both sides mint their own). It rides
+    // along so the Rust side can see where v4's rows share a millisecond:
+    // `getMessages` is `ORDER BY createdAt ASC` with no tiebreak on BOTH
+    // sides, so two rows written inside one millisecond come back in an order
+    // neither side defines. Measured: an ASSISTANT tool turn and its TOOL row
+    // are ~1 ms apart for `help_navigate`.
+    lines.push(
+      JSON.stringify({
+        kind: 'messages',
+        call: call.name,
+        rows,
+        createdAt: rawMessages.filter((m) => m.type === 'message').map((m) => String(m.createdAt ?? '')),
+      }),
+    );
     lines.push(JSON.stringify({ kind: 'jobs', call: call.name, jobs }));
   }
   for (const row of cannedRows) lines.push(JSON.stringify({ kind: 'cannedStream', ...row }));

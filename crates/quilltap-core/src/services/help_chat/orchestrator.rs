@@ -106,9 +106,13 @@ use crate::services::pseudo_tool::{
     parse_text_blocks_from_response, strip_text_block_markers_from_response,
 };
 use crate::services::tool_build::{build_tools, BuildToolsInput};
+use crate::services::tool_call_threading::{
+    self, build_assistant_tool_call_message, build_tool_result_messages, DetectedToolCall,
+    ThreadedMessage,
+};
 use crate::services::tool_execution::{
     create_tool_context, process_tool_calls, save_tool_messages, StatusContext, ToolCall,
-    ToolRunner,
+    ToolMessage, ToolRunner,
 };
 use crate::tools::pseudo_tool_support::ToolMode;
 
@@ -244,40 +248,59 @@ fn truthy(v: Option<&Value>) -> bool {
     }
 }
 
-/// One `{role, content}` message of the help loop's conversation (v4's local
-/// `conversationMessages` shape — the loop never attaches native tool calls or
-/// call ids; a tool result is a plain `tool`-role row).
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HelpMessage {
-    pub role: String,
-    pub content: String,
-}
-fn msg(role: &str, content: impl Into<String>) -> HelpMessage {
-    HelpMessage {
+/// A content-only message of the help loop's conversation. Since v4 bug 124
+/// (`20913d2aa`) the slate is a [`ThreadedMessage`] like the Salon's and the
+/// Brahma Console's, so a tool turn can carry its `toolCalls` and each result
+/// can be paired back by `toolCallId`; the rows this helper builds — the system
+/// prompt, the history, the force-final and stuck-loop nudges, and the
+/// duplicate-guard's own assistant echo — are the ones v4 still pushes as bare
+/// `{role, content}` objects.
+fn msg(role: &str, content: impl Into<String>) -> ThreadedMessage {
+    ThreadedMessage {
         role: role.to_string(),
         content: content.into(),
+        name: None,
+        thought_signature: None,
+        reasoning_content: None,
+        tool_call_id: None,
+        tool_calls: None,
+        cache_control: None,
+        attachments: None,
     }
 }
 
-/// The help slate → the provider seam's messages. `system`/`user`/`assistant`
-/// map 1:1; an id-less `tool` row is DROPPED for every provider whose v4 plugin
-/// drops it at format time — all but GOOGLE, which keeps it as an empty-id
-/// `Tool` message so the google builder emits v4's `unknown_function`
-/// `functionResponse` (module doc, divergence 1).
-pub fn to_stream_messages(provider: &str, messages: &[HelpMessage]) -> Vec<StreamMessage> {
+/// The help slate → the provider seam's messages.
+///
+/// Everything the threading primitive builds goes through the SHARED converter
+/// ([`tool_call_threading::to_stream_message`]) — including a `tool` row it
+/// PAIRED, which every provider now receives.
+///
+/// The one help-local rule is the ID-LESS `tool` row, which reaches this seam
+/// only from persisted TOOL history (v4 loads those as `{role: 'tool',
+/// content}` and did not change that at `20913d2aa`). Such a row is DROPPED for
+/// every provider whose v4 plugin drops it at format time — all but GOOGLE,
+/// which keeps it as an empty-id `Tool` message so the google builder emits
+/// v4's `unknown_function` `functionResponse` (module doc, divergence 1). The
+/// rule must run BEFORE delegating: the shared converter documents its own
+/// id-less `tool` arm as unreachable from the primitive and falls back to user
+/// text there, which is not what these nine plugins do with a history row.
+pub fn to_stream_messages(provider: &str, messages: &[ThreadedMessage]) -> Vec<StreamMessage> {
     let keeps_idless_tool_rows = provider == "GOOGLE";
     messages
         .iter()
-        .filter_map(|m| match m.role.as_str() {
-            "system" => Some(StreamMessage::system(m.content.clone())),
-            "assistant" => Some(StreamMessage::assistant(m.content.clone())),
-            "tool" if keeps_idless_tool_rows => Some(StreamMessage::Tool {
-                call_id: String::new(),
-                name: None,
-                content: m.content.clone(),
-            }),
-            "tool" => None,
-            _ => Some(StreamMessage::user(m.content.clone())),
+        .filter_map(|m| {
+            let idless_tool_row =
+                m.role == "tool" && m.tool_call_id.as_deref().is_none_or(|id| id.is_empty());
+            if idless_tool_row {
+                return keeps_idless_tool_rows.then(|| StreamMessage::Tool {
+                    call_id: String::new(),
+                    // v4's google plugin reads `msg.name || msg.toolCallId ||
+                    // 'unknown_function'`; a history row carries no name.
+                    name: m.name.clone(),
+                    content: m.content.clone(),
+                });
+            }
+            Some(tool_call_threading::to_stream_message(m))
         })
         .collect()
 }
@@ -285,10 +308,24 @@ pub fn to_stream_messages(provider: &str, messages: &[HelpMessage]) -> Vec<Strea
 #[cfg(test)]
 mod stream_conversion_tests {
     //! The per-provider id-less tool-row rule (the §3 review's catch at the
-    //! `p4.9i2` unification): nine plugins drop, GOOGLE keeps.
+    //! `p4.9i2` unification): nine plugins drop, GOOGLE keeps. Since v4 bug 124
+    //! the rule applies to HISTORY rows only — a result the threading primitive
+    //! PAIRED carries a `toolCallId` and reaches every provider.
     use super::*;
 
-    fn slate() -> Vec<HelpMessage> {
+    const NINE_DROPPING_PROVIDERS: [&str; 9] = [
+        "ANTHROPIC",
+        "OPENAI",
+        "OLLAMA",
+        "OPENROUTER",
+        "NANOGPT",
+        "DEEPSEEK",
+        "OPENAI_COMPATIBLE",
+        "GROK",
+        "Z_AI",
+    ];
+
+    fn slate() -> Vec<ThreadedMessage> {
         vec![
             msg("system", "sys"),
             msg("user", "hi"),
@@ -299,17 +336,7 @@ mod stream_conversion_tests {
 
     #[test]
     fn nine_providers_drop_the_idless_tool_row() {
-        for p in [
-            "ANTHROPIC",
-            "OPENAI",
-            "OLLAMA",
-            "OPENROUTER",
-            "NANOGPT",
-            "DEEPSEEK",
-            "OPENAI_COMPATIBLE",
-            "GROK",
-            "Z_AI",
-        ] {
+        for p in NINE_DROPPING_PROVIDERS {
             let out = to_stream_messages(p, &slate());
             assert_eq!(out.len(), 3, "{p} must drop the id-less tool row");
             assert!(!out.iter().any(|m| matches!(m, StreamMessage::Tool { .. })));
@@ -331,6 +358,96 @@ mod stream_conversion_tests {
                 assert_eq!(content, "{\"tool\":\"help_search\"}");
             }
             other => panic!("expected a Tool row, got {other:?}"),
+        }
+    }
+
+    /// Bug 124's other half: a result the primitive PAIRED reaches every
+    /// provider, GOOGLE and the nine alike — the drop rule is about id-LESS
+    /// history rows, and nothing else. The assistant turn keeps its `toolCalls`
+    /// through the same conversion.
+    #[test]
+    fn every_provider_keeps_a_paired_tool_row() {
+        let calls = [DetectedToolCall {
+            name: "help_search".to_string(),
+            arguments: json!({ "query": "taboo" }),
+            call_id: Some("call_hs2".to_string()),
+        }];
+        let results = [ToolMessage {
+            tool_name: "help_search".to_string(),
+            success: true,
+            content: "{\"tool\":\"help_search\"}".to_string(),
+            call_id: Some("call_hs2".to_string()),
+            ..Default::default()
+        }];
+        let mut slate = vec![msg("system", "sys"), msg("user", "hi")];
+        slate.push(build_assistant_tool_call_message(
+            &calls,
+            "Searching.",
+            None,
+            None,
+        ));
+        slate.extend(build_tool_result_messages(&results));
+
+        for p in NINE_DROPPING_PROVIDERS.iter().chain(["GOOGLE"].iter()) {
+            let out = to_stream_messages(p, &slate);
+            assert_eq!(
+                out.iter().map(|m| m.role_str()).collect::<Vec<_>>(),
+                vec!["system", "user", "assistant", "tool"],
+                "{p} must keep the paired tool row"
+            );
+            match &out[3] {
+                StreamMessage::Tool {
+                    call_id,
+                    name,
+                    content,
+                } => {
+                    assert_eq!(call_id, "call_hs2", "{p}");
+                    assert_eq!(name.as_deref(), Some("help_search"), "{p}");
+                    assert_eq!(content, "{\"tool\":\"help_search\"}", "{p}");
+                }
+                other => panic!("{p}: expected a Tool row, got {other:?}"),
+            }
+            match &out[2] {
+                StreamMessage::Assistant {
+                    content,
+                    tool_calls,
+                    ..
+                } => {
+                    assert_eq!(content, "Searching.", "{p}");
+                    assert_eq!(tool_calls.len(), 1, "{p}");
+                    assert_eq!(tool_calls[0].id, "call_hs2", "{p}");
+                    assert_eq!(tool_calls[0].function.name, "help_search", "{p}");
+                    assert_eq!(
+                        tool_calls[0].function.arguments, "{\"query\":\"taboo\"}",
+                        "{p}"
+                    );
+                }
+                other => panic!("{p}: expected an Assistant row, got {other:?}"),
+            }
+        }
+    }
+
+    /// An id-LESS result never becomes a `tool` row at all: the primitive frames
+    /// it as `[Tool Result: <name>]` user text, which every provider carries.
+    #[test]
+    fn an_idless_result_is_framed_as_user_text_for_every_provider() {
+        let results = [ToolMessage {
+            tool_name: "help_navigate".to_string(),
+            success: true,
+            content: "{\"tool\":\"help_navigate\"}".to_string(),
+            call_id: None,
+            ..Default::default()
+        }];
+        let slate = build_tool_result_messages(&results);
+        for p in NINE_DROPPING_PROVIDERS.iter().chain(["GOOGLE"].iter()) {
+            let out = to_stream_messages(p, &slate);
+            assert_eq!(out.len(), 1, "{p}");
+            assert_eq!(out[0].role_str(), "user", "{p}");
+            assert_eq!(
+                out[0].content(),
+                "[Tool Result: help_navigate]\n{\"tool\":\"help_navigate\"}",
+                "{p}"
+            );
         }
     }
 }
@@ -716,7 +833,7 @@ where
     let history = db
         .read_main(move |c| chats_messages_read::get_messages(c, &cid))
         .map_err(|e| HelpSendError::new(e.to_string()))?;
-    let mut conversation: Vec<HelpMessage> = vec![msg("system", system_prompt)];
+    let mut conversation: Vec<ThreadedMessage> = vec![msg("system", system_prompt)];
     for m in &history {
         if m.get("type").and_then(Value::as_str) != Some("message") {
             continue;
@@ -761,6 +878,12 @@ where
     let mut total_prompt_tokens: i64 = 0;
     let mut total_completion_tokens: i64 = 0;
     let mut tool_call_history: Vec<String> = Vec::new();
+    // The most recent tool result this turn produced, kept for the stuck-loop
+    // nudge. Tracked here rather than searched for by role, because a result
+    // without a provider call id is threaded as `[Tool Result: …]` user text
+    // (see `build_tool_result_messages`) and would not be found under role
+    // 'tool' (v4 bug 124).
+    let mut last_tool_result_content: Option<String> = None;
 
     while agent_turn_count <= HELP_MAX_AGENT_TURNS {
         agent_turn_count += 1;
@@ -889,15 +1012,12 @@ where
                     tool_names = ?calls.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
                     "Agent stuck in tool call loop, forcing final response"
                 );
-                // The most recent tool result in the conversation, echoed back.
-                let tool_data_reminder = conversation
-                    .iter()
-                    .rev()
-                    .find(|m| m.role == "tool")
-                    .map(|m| {
+                // Echo the most recent tool result back to the model.
+                let tool_data_reminder = last_tool_result_content
+                    .as_deref()
+                    .map(|c| {
                         format!(
-                            "\n\nHere is the data you already received from your previous tool call:\n{}",
-                            m.content
+                            "\n\nHere is the data you already received from your previous tool call:\n{c}"
                         )
                     })
                     .unwrap_or_default();
@@ -932,7 +1052,29 @@ where
                 }),
             )
             .await?;
-            conversation.push(msg("assistant", current_response.clone()));
+
+            // Bug 124: the assistant turn must carry the `toolCalls` it made and
+            // each result must be paired back by `toolCallId`, exactly as the
+            // Salon's native loop does. Every plugin but Google drops an id-less
+            // `tool` row, so without the pairing the model never saw its own
+            // results, searched again, and the duplicate guard forced an empty
+            // final. The shared helpers frame id-less results (pseudo-tool path)
+            // as `[Tool Result: …]` user text instead. v4 passes neither optional
+            // continuation field here.
+            let detected: Vec<DetectedToolCall> = calls
+                .iter()
+                .map(|tc| DetectedToolCall {
+                    name: tc.name.clone(),
+                    arguments: tc.arguments.clone(),
+                    call_id: tc.call_id.clone(),
+                })
+                .collect();
+            conversation.push(build_assistant_tool_call_message(
+                &detected,
+                &current_response,
+                None,
+                None,
+            ));
 
             // Execute tools (per-tool status frames are emitted inside).
             let tool_context = create_tool_context(
@@ -974,15 +1116,48 @@ where
                 .await
                 .map_err(|e| HelpSendError::new(e.to_string()))?;
 
-                // Add tool results to the conversation for the next iteration:
-                // `JSON.stringify({ tool, success, result })`.
-                for tm in &tool_result.tool_messages {
-                    conversation.push(msg(
-                        "tool",
-                        json!({ "tool": tm.tool_name, "success": tm.success, "result": tm.content })
+                // Add tool results to the conversation for the next iteration,
+                // paired to the call that produced them. The content is the same
+                // `JSON.stringify({ tool, success, result })` bytes the pre-bug-124
+                // push wrote; only the threading around it is new.
+                let threaded: Vec<ToolMessage> = tool_result
+                    .tool_messages
+                    .iter()
+                    .map(|tm| ToolMessage {
+                        content: json!({ "tool": tm.tool_name, "success": tm.success, "result": tm.content })
                             .to_string(),
-                    ));
-                }
+                        ..tm.clone()
+                    })
+                    .collect();
+                let result_messages = build_tool_result_messages(&threaded);
+                conversation.extend(result_messages.iter().cloned());
+                last_tool_result_content = result_messages.last().map(|m| m.content.clone());
+
+                tracing::debug!(
+                    target: "quilltap::help",
+                    chat_id = %chat_id,
+                    character_name = %character_name,
+                    turn = agent_turn_count,
+                    tool_names = ?tool_result
+                        .tool_messages
+                        .iter()
+                        .map(|tm| tm.tool_name.as_str())
+                        .collect::<Vec<_>>(),
+                    // v4 counts on `tm.callId` — JS truthiness, so an EMPTY
+                    // string counts as framed-as-text, matching the primitive's
+                    // own `!id.is_empty()` pairing test.
+                    paired_by_call_id = tool_result
+                        .tool_messages
+                        .iter()
+                        .filter(|tm| tm.call_id.as_deref().is_some_and(|id| !id.is_empty()))
+                        .count(),
+                    framed_as_text = tool_result
+                        .tool_messages
+                        .iter()
+                        .filter(|tm| tm.call_id.as_deref().is_none_or(|id| id.is_empty()))
+                        .count(),
+                    "Threaded help-chat tool results into the conversation"
+                );
             }
 
             continue;
@@ -1179,7 +1354,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     provider: &str,
     base_url: Option<&str>,
     model: &str,
-    messages: &[HelpMessage],
+    messages: &[ThreadedMessage],
     tools: &[Value],
     cache_key: Option<String>,
     log: Option<&HelpStreamLog<'_>>,
@@ -1300,7 +1475,7 @@ mod log_context_tests {
     use crate::model::stream::{StreamChunkResult, StreamError};
     use crate::services::chat_events::RecordingSink;
     use crate::services::message_finalizer::NoCostTracking;
-    use crate::services::tool_execution::CannedToolRunner;
+    use crate::services::tool_execution::{CannedToolRunner, ToolResult};
     use std::sync::{Arc, Mutex};
 
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
@@ -1422,6 +1597,140 @@ mod log_context_tests {
         assert!(sink.events().is_empty(), "a guard emits no frame");
         // None of the guards saved the user message.
         assert_eq!(message_count(&db, H2), 3);
+    }
+
+    /// A streaming seam that answers the FIRST call with a tool-call turn (the
+    /// raw response carries a marker the detector reads) and the second with the
+    /// final answer — the two turns bug 124's threading sits between.
+    #[derive(Default)]
+    struct ToolTurnThenAnswer(std::sync::atomic::AtomicUsize);
+    impl StreamingCompletionProvider for ToolTurnThenAnswer {
+        async fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            _params: &StreamParams,
+        ) -> tokio::sync::mpsc::Receiver<StreamChunkResult> {
+            use std::sync::atomic::Ordering;
+            // Per-instance, not a process-global static: each arm of the test
+            // builds its own seam and must start from the tool-call turn.
+            let n = self.0.fetch_add(1, Ordering::SeqCst);
+            let (tx, rx) = tokio::sync::mpsc::channel(4);
+            if n == 0 {
+                let _ = tx
+                    .send(Ok(crate::model::stream::StreamChunk::content(
+                        "Let me look.".to_string(),
+                    )))
+                    .await;
+                let mut done = crate::model::stream::StreamChunk::done(None);
+                done.raw_response = Some(json!({ "marker": "call" }));
+                let _ = tx.send(Ok(done)).await;
+            } else {
+                let _ = tx
+                    .send(Ok(crate::model::stream::StreamChunk::content(
+                        "Appearance.".to_string(),
+                    )))
+                    .await;
+                let _ = tx
+                    .send(Ok(crate::model::stream::StreamChunk::done(None)))
+                    .await;
+            }
+            rx
+        }
+    }
+    struct OneCall(Option<String>);
+    impl ToolCallDetector for OneCall {
+        fn detect(&self, raw: &Value, _provider: &str) -> Vec<ToolCall> {
+            if raw.get("marker").and_then(Value::as_str) != Some("call") {
+                return Vec::new();
+            }
+            vec![ToolCall {
+                name: "help_search".to_string(),
+                arguments: json!({ "query": "theme" }),
+                call_id: self.0.clone(),
+            }]
+        }
+    }
+
+    /// Bug 124's debug line — v4's `logger.debug('Threaded help-chat tool
+    /// results into the conversation', …)`. `pairedByCallId` / `framedAsText`
+    /// are counts over `tm.callId` under JS truthiness, so the two arms are
+    /// driven separately. Mutation: delete the `tracing::debug!` → both arms
+    /// fail on the missing line; swap the two counts → the assertions fail.
+    #[tokio::test]
+    async fn the_threading_debug_line_counts_both_arms() {
+        use tracing_subscriber::layer::SubscriberExt;
+        // The third arm is the JS-truthiness pin: v4 counts on `tm.callId`, so an
+        // EMPTY-string id is framed as text and counted as framed. A v5 spelling
+        // of `call_id.is_some()` passes the first two arms and fails this one.
+        for (call_id, want_paired, want_framed) in [
+            (Some("call_1".to_string()), 1usize, 0usize),
+            (None, 0, 1),
+            (Some(String::new()), 0, 1),
+        ] {
+            let (_dir, db) = fixture_db();
+            let sink = RecordingSink::new();
+            let mut runner = CannedToolRunner::new();
+            let call = ToolCall {
+                name: "help_search".to_string(),
+                arguments: json!({ "query": "theme" }),
+                call_id: call_id.clone(),
+            };
+            runner.register(
+                &call,
+                ToolResult {
+                    tool_name: "help_search".to_string(),
+                    success: true,
+                    result: json!({ "formattedText": "Found it." }),
+                    error: None,
+                    message: None,
+                    metadata: None,
+                },
+            );
+            let detector = OneCall(call_id.clone());
+            let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+            let sub = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+            {
+                let _g = tracing::subscriber::set_default(sub);
+                let mut cost = NoCostTracking;
+                let mut deps = HelpSendDeps {
+                    db: &db,
+                    streaming: &ToolTurnThenAnswer::default(),
+                    tool_runner: &runner,
+                    tool_detector: &detector,
+                    cost: &mut cost,
+                    summary_check: &NoHelpContextSummaryCheck,
+                    model_supports_native_tools: true,
+                };
+                let opts = HelpChatSendOptions {
+                    content: "Where do I change the theme?".into(),
+                    file_ids: Vec::new(),
+                };
+                handle_help_chat_message(&mut deps, &sink, USER_A, H2, &opts)
+                    .await
+                    .unwrap();
+            }
+            let lines = logs.lock().unwrap().clone();
+            let line = lines
+                .iter()
+                .find(|l| l.contains("Threaded help-chat tool results into the conversation"))
+                .unwrap_or_else(|| {
+                    panic!("no threading debug line (call_id {call_id:?}); saw {lines:?}")
+                });
+            assert!(line.contains("DEBUG quilltap::help"), "{line}");
+            assert!(line.contains("tool_names=[\"help_search\"]"), "{line}");
+            assert!(
+                line.contains(&format!("paired_by_call_id={want_paired}")),
+                "{line}"
+            );
+            assert!(
+                line.contains(&format!("framed_as_text={want_framed}")),
+                "{line}"
+            );
+            // v4 increments `agentTurnCount` at the top of the loop from 0, so
+            // the turn that ran the tool is 1 (v5 mirrors the counter exactly).
+            assert!(line.contains("turn=1"), "{line}");
+        }
     }
 
     /// v4 case 4 + the per-participant failure: the USER message is saved BEFORE
