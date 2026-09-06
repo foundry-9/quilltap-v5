@@ -109800,3 +109800,37 @@ This lane added `hasAnyActiveCharacter` for its own gate and did NOT re-point
 the composer binding: changing composer enablement is beyond bug 123's client
 half, unmeasured against the e2e beats, and belongs with #115's `createChatSchema`
 order, which is already queued against the same predicate.
+
+### P4.D161 — the lane's verification gate
+
+- `npm run lint` (incl. `check-qt-classes --self-test` 5/5): **clean** — 950
+  `qt-*` classes defined, every guarded reference resolves.
+- `npm test`: **387 files / 6,268 tests / 0 failed** (the file count is
+  unchanged; the lane adds cases to three existing spec files).
+- `npm run build`: clean.
+- **Full Playwright suite on port 4319: 284 passed / 0 failed / 0 skipped
+  (7.3 m), exit 0.** The suite grew 282 → 284 with the two new toast beats;
+  Beat A rides the existing overlay beat.
+- The lane runs **NO Rust family and regenerates no oracle**, and touches no
+  crate — so no cargo gate was run, and no crate version moved. (`apps/web/**`
+  plus the two append-only docs is the whole diff; verified by
+  `git log main..HEAD --name-only`.)
+
+**One red on the FIRST full run, run to ground and NOT this lane's:**
+`workbench-flow.spec.ts:349` ("a $state operand + mock state decides which row
+a preview roll lands on") — a strict-mode violation where
+`getByText('Cleared the gate.')` matched both the rendered `<p>` and the JSON
+source `<pre>` that quotes the same sentence. It is the **documented
+full-suite-only intermittent at that exact file:line**, recorded in the P4.9E3C
+lane record ("passed in isolation and in the second full run") and again in the
+`p4.9l` round's fragile-beat list. Evidence it is not this lane's: the file is
+not among the twelve this lane touched (all `apps/web` Salon/reducer/contract
+surfaces plus two docs); `workbench-flow.spec.ts` re-ran **10/10 green in
+isolation**; and the **second full suite was 284/284 green**.
+
+**Binaries:** the e2e wants RELEASE builds in practice. `apps/web/README.md`
+prescribes a plain `cargo build`, but global-setup makes ~50 `quilltap db`
+CLI calls and each debug-build PBKDF2 unwrap costs ~5 s of CPU — a debug
+global-setup ran for over ten minutes without reaching the server launch,
+while release finishes in seconds. (`e2e/support/env.ts` prefers
+`target/release` when present.) Worth a README line in a lane that owns it.
