@@ -12,6 +12,47 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(drift): v4 drift check — one commit past `f699da6f6` (character subprompts)
+
+_Versions: docs-only; no crate source touched._
+
+`/driftcheck` from the main checkout. **DRIFT PENDING — 1 commit.** v4 `main`
+HEAD is `2f4254b42` ("feat: character subprompts — per-chat optional
+instructions from the vault", 2026-09-07, `4.10.0-dev.1`); the baseline stays
+`f699da6f6`. `bugfix` is unmoved at `1a2b2164c` and carries nothing
+unabsorbed — its `main..bugfix` content diff is non-empty only because the
+branch is *behind* main by that one feature. The v4 checkout has returned to
+`main` and is clean, so the regen rule's reason changes: pins are still
+required, now because HEAD is past the baseline rather than because the
+checkout sat on `bugfix`.
+
+The commit is a substantial PORT-NEW feature — 57 files, +2442/−17 — landing
+on ten already-ported surfaces: a new `lib/subprompts/` pair (vault-backed
+`Subprompts/*.md` storage plus the chat fan-out that recompiles every seat
+carrying an edited subprompt), the `## Additional Instructions` block rendered
+directly after the base system prompt in both the identity stack and the
+greeting, `selectedSubpromptIds` on the participant record threaded through
+chat creation, the participant-update recompile trigger, the enrichment
+projection and the export schema, the green-room dressing call, two new
+`/api/v1/characters/[id]/subprompts` route files, and eleven client files
+including a thirteenth `field-hints` entry. `generateDDL` and
+`lib/database/schema` are untouched (no D23 re-dump owed; the ids live in the
+existing `chats.participants` JSON), and neither
+`IDENTITY_STACK_BUILDER_VERSION` nor `PROMPT_CACHE_STRUCTURE_VERSION` moves —
+deliberately, since a seat with nothing selected stays byte-identical.
+
+⚠ The vendored-`help/` hazard recorded at P4.9I2A has fired for the first
+time: v5's workspace-root `help/` is byte-identical to `f699da6f6:help/` and
+now differs from v4 in exactly the four files this commit touched (one of them
+new), so `help_tree_equivalence` will red the moment an oracle is regenerated
+at v4 HEAD. Re-vendoring is a real obligation of the catch-up round.
+
+Ledger §1 rewritten (branch tips, checkout posture, verdict, the changed regen
+rule, the fired help hazard); the new row appended to §3 as UNPROCESSED with
+the byte-level shape of the prompt block, the guard-order note on the new
+routes, the v5 homes for each surface, and the families that will move. The
+standing `15573c3a1` (bug 119) row is unchanged — ORDERED(P4.9K1), partial.
+
 #### 2026-09-07 — unify: the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81) — baseline stays `f699da6f6`
 _Versions: core 0.0.819, harness 0.0.708, web 0.0.123, host 0.0.106, SPA 0.5.665; cli/tauri unchanged_
 

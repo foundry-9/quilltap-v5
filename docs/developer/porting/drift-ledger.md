@@ -24,31 +24,48 @@ probe verifies against._
   carrying bug 123 via the 4.9.1 squash and bugs 124/125 via the 4.9.2 squash
   `8fbf2afe0`), adopted at the `f699da6f6` 4.9.x drift catch-up round
   unification (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79, 2026-09-06).
-  CLAUDE.md's Status bullet agrees (updated in the same commit).
-- **Checked:** 2026-09-07, the `p4.9k` character-generators round's
-  unification probe (branch `bugfix`, tree clean, both logs empty — v4 did
-  not move during the round; the baseline STAYS). Previously 2026-09-06, the
-  `f699da6f6` unification's own two-branch probe.
-- **v4 `main` HEAD at check:** `f699da6f6` — **AT the baseline** (zero
-  commits past it).
+  CLAUDE.md's Status bullet agrees.
+- **Checked:** 2026-09-07, a full `/driftcheck` from the main checkout.
+  Previously 2026-09-07, the `p4.9k` round's unification probe (which passed —
+  v4 moved AFTER that round closed).
+- **v4 `main` HEAD at check:** `2f4254b42` ("feat: character subprompts —
+  per-chat optional instructions from the vault", 2026-09-07 07:43 -0500,
+  `4.10.0-dev.1`) — **ONE commit past the baseline.**
 - **v4 `bugfix` tip at check:** `1a2b2164c` ("bugfix: started 4.9.2 bug
-  branch", `4.9.3-bugfix.0`) — docs + versions only; the `main..bugfix`
-  content diff over `lib/ app/ packages/ plugins/ help/ jest.config.ts
-  __mocks__/` is EMPTY. Nothing unabsorbed by content.
+  branch", `4.9.3-bugfix.0`) — UNMOVED. The `main..bugfix` CONTENT diff over
+  `lib/ app/ packages/ plugins/ help/ jest.config.ts __mocks__/` is now
+  non-empty **only because `bugfix` is BEHIND main by `2f4254b42`**: every
+  hunk is that commit in reverse (28 files, −1401/+11, the "+" side being the
+  pre-subprompts form of the same lines), plus `packages/quilltap/package.json`
+  at `4.9.2-bugfix.1`. **Nothing unabsorbed on `bugfix`.**
 - **v4 `release` tip at check:** `8fbf2afe0` ("release: 4.9.2").
-- **Checkout at check:** branch **`bugfix`** (not `main`), tree CLEAN.
-- **Verdict: CLEAR** — v4 `main` HEAD is the baseline and `bugfix` carries
-  no unabsorbed content. The one §3 row that remains is `15573c3a1` (bug
-  119), UNPROCESSED by design for the unported `p4.9k` surface.
-- **`generateDDL` and `lib/database/schema` UNTOUCHED** across the whole
-  `c2232cd9a..f699da6f6` span — measured; no re-dump owed. Installed `zod`
-  still `4.5.4`.
-- **Regen rule in force: PIN REQUIRED for ONE reason — the v4 checkout sits
-  on `bugfix`.** A regen run from the checkout would import the `bugfix`
-  tree; pin a detached worktree at `f699da6f6` per §5.1 for every regen
-  until the checkout returns to `main` (v4 is the human's active repo: ask,
-  never switch it). The moment it does, the rule relaxes to "no pin needed
-  while HEAD stays at the baseline".
+- **Checkout at check:** branch **`main`** (it RETURNED to `main` from
+  `bugfix` since the last check), tree CLEAN.
+- **Verdict: DRIFT PENDING — 1 commit** (`2f4254b42`, a substantial PORT-NEW
+  feature: 57 files, +2442/−17, touching ten `lib/`+`app/api` surfaces this
+  port has already landed, plus four `help/` files). Plus the standing
+  `15573c3a1` (bug 119) row, ORDERED(P4.9K1) and PARTIAL — its runner half
+  rides P4.9K1's OPEN remainder.
+- **`generateDDL` and `lib/database/schema` UNTOUCHED** by `2f4254b42` —
+  measured (`git show --stat 2f4254b42 -- lib/database/` is empty); **no D23
+  re-dump owed.** `selectedSubpromptIds` lives inside the existing
+  `chats.participants` JSON column; the only `DDL.md` hunk is a one-line
+  trailing comment on that column. Installed `zod` still `4.5.4` (the
+  `zod_version_guard` record holds).
+- **⚠ The `help/**` hazard has FIRED (first time since P4.9I2A vendored it).**
+  v5's workspace-root `help/` is byte-identical to `f699da6f6:help/` and now
+  differs from v4 `main` in exactly the four files `2f4254b42` touched: a NEW
+  `help/character-subprompts.md` (92 lines) plus edits to
+  `character-system-prompts.md` (+5), `chat-participants.md` (+9) and
+  `chats.md` (+1) — 120 files here vs 121 there. `help_tree_equivalence`
+  diffs the embedded table against v4's REAL `ensureHelpDocsSynced` walking
+  the checkout, so it **will go RED the moment an oracle is regenerated at v4
+  HEAD**, by design. Re-vendoring the four files is a real port obligation of
+  the catch-up round (and re-slices `help_doc_chunks`).
+- **Regen rule in force: PIN REQUIRED — because v4 `main` HEAD is past the
+  baseline.** (The previous reason — the checkout sitting on `bugfix` — is
+  GONE; the checkout is on `main` and clean.) Pin a detached worktree at
+  `f699da6f6` per §5.1 for every regen until the baseline moves.
 - **Standing hazards that SURVIVE every baseline move (re-read before any
   regen):** (1) the oracle `node_modules` resolve the LIVE dependency tree,
   never a pin's — a v4 dependency bump is a regen event for every
@@ -61,34 +78,28 @@ probe verifies against._
   were SPLIT (P4.D157) — a regen of `cheap-model`/`model-selection`/
   `llm-errors`/`message-formatter`/`post-office-host`/`chat-timestamp`/
   `token-estimation` at any sha BEFORE `d4138b96b` would not match;
-  (4) **`help/**` is a VENDORED v5 ARTIFACT since P4.9I2A** — the workspace
-  root's `help/` (120 files) is embedded into `quilltap-host` by its
-  `build.rs`, and `help_tree_equivalence` diffs the embedded table against
-  v4's REAL `ensureHelpDocsSynced` walking the checkout; a v4 `help/` change
-  is a real port obligation (P4.D160 re-vendored two pages this round; the
-  tree is byte-identical to `f699da6f6:help/`); (5) **since `8fbf2afe0`,
-  v4's `jest.config.ts` maps `'^@google/genai$'` → `__mocks__/@google/genai.ts`**
-  (a manual mock; the SDK is ESM-only). Fourteen committed jest-run oracle
-  cases load the plugin tree (`orchestrator-tier3`,
-  `help-chat-orchestrator-tier3`, `brahma-orchestrator-tier3`,
-  `brahma-console-tier3`, `enclave-step-tier3`, `embedding-provider-tier3`,
-  `avatar-job`, `danger-routing`, `danger-gatekeeper`, `image-gen-leaves`,
-  `image-profiles-routes`, `image-generation`, `image-generate-route`,
-  `settings-routes`); the four in this round's lanes regenerated cleanly at
-  the pin (the mock is never reached — those oracles mock `streamMessage`
-  above the plugin layer); the `tsx`/`node` recorders are unaffected; (6)
-  `packages/quilltap/package.json` reads `4.9.2-bugfix.1` on both branches
-  against the app's `4.10.0-dev.0` / `4.9.3-bugfix.0` — a v4-side nit, no
-  `--version` comparand, Tier R unaffected.
+  (4) **`help/**` is a VENDORED v5 ARTIFACT since P4.9I2A** — see the fired
+  hazard above; (5) **since `8fbf2afe0`, v4's `jest.config.ts` maps
+  `'^@google/genai$'` → `__mocks__/@google/genai.ts`** (a manual mock; the SDK
+  is ESM-only). Fourteen committed jest-run oracle cases load the plugin tree
+  (`orchestrator-tier3`, `help-chat-orchestrator-tier3`,
+  `brahma-orchestrator-tier3`, `brahma-console-tier3`, `enclave-step-tier3`,
+  `embedding-provider-tier3`, `avatar-job`, `danger-routing`,
+  `danger-gatekeeper`, `image-gen-leaves`, `image-profiles-routes`,
+  `image-generation`, `image-generate-route`, `settings-routes`); the mock is
+  never reached by the four proven at the last round's pin (those oracles mock
+  `streamMessage` above the plugin layer); the `tsx`/`node` recorders are
+  unaffected; (6) `packages/quilltap/package.json` reads `4.9.2-bugfix.1` on
+  `bugfix` and `4.10.0-dev.1` on `main` against the app's own version — a
+  v4-side nit, no `--version` comparand, Tier R unaffected.
 - **Release shape:** v4 develops on `main` at 4.10.0-dev with a live 4.9.x
   `bugfix` fork; the fork → fix → `release: X` squash → merge-back cycle has
-  run twice in two days and the branch is open again at `4.9.3-bugfix.0`.
-  Expect the next fix to land on `bugfix` first and reach `main` by squash
-  within hours; §4 step 2's two-branch rule is load-bearing — measure
-  `bugfix` by CONTENT, never its commit list.
-- _Superseded (the second 2026-09-06 check): DRIFT PENDING — 10 commits
-  across both branches, main HEAD `f699da6f6`, bugfix tip `1a2b2164c`, both
-  substantive rows ORDERED; all absorbed by this unification._
+  run twice. `bugfix` is currently idle at its branch-start commit while main
+  takes feature work. §4 step 2's two-branch rule stays load-bearing — measure
+  `bugfix` by CONTENT, never its commit list, and remember a content diff can
+  be non-empty simply because `bugfix` is behind.
+- _Superseded (2026-09-07, the `p4.9k` unification probe): CLEAR — main HEAD
+  at the baseline, checkout on `bugfix` (clean), pin required for that reason._
 
 ## §2 The freshness probe
 
@@ -127,6 +138,8 @@ when absorbed/ratified.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
+
+| `2f4254b42` | 2026-09-07 | feat: character subprompts — per-chat optional instructions from the vault | **PORT-NEW (a whole feature, landing on ten already-ported surfaces)** | **NOT a convergence** — `docs/developer/bugs.md` is untouched; no bug number, no v5 filing behind it. **57 files, +2442/−17.** The feature: a character may carry *subprompts* — short Markdown instructions in a root-level `Subprompts/` folder of the character's database-backed vault (frontmatter `title`, second-person body, **file name sans `.md` IS the id**, so a selection survives title edits). The folder is a lazy convention like Pascal's `Tools/` — never scaffolded, created on first write, a missing folder lists as `[]` rather than erroring. A chat picks which are in play **per participant** via a new `selectedSubpromptIds` on the participant record. **NEW `lib/subprompts/` (2 modules, 500 lines):** `subprompts.ts` — the pure helpers `isValidSubpromptId` (one path segment; rejects `.`/`..`, `[\\/<>:"\|?*]`, any charCode < 32, untrimmed, len 0 or > 120), `subpromptPathForId`, `slugifySubpromptTitle` (NFKD → strip combining marks → lower → `[^a-z0-9]+`→`-` → trim `-` → **slice(0,60)** → re-trim trailing `-`; empty ⇒ `'subprompt'`), `composeSubpromptContent` (`serializeFrontmatter({title})` + `\n` + `content.trim()` + `\n`), `parseSubpromptContent` (title falls back to the **id** when frontmatter carries none, body from `bodyStartOffset` with leading `\n+` stripped and `trimEnd`); the read/write ops `listSubpromptsInVault` (prefix-filtered to ROOT `.md` files only — case-insensitive prefix + no nested `/` — sorted `title.localeCompare` then `id.localeCompare`, an unreadable file **skipped with a warn** so one bad file cannot hide the rest), `listCharacterSubprompts`, `readCharacterSubprompt`, **`resolveSelectedSubprompts`** (returns vault-listing order, i.e. by title, **not** tick order; ids matched case-INSENSITIVELY; missing ids dropped with a debug line; any read error fails soft to `[]` — "a deleted subprompt must never sink a turn"), `createCharacterSubprompt` (ensureFolderPath then a collision-free id `base`, `base-2`, `base-3`…), `updateCharacterSubprompt` (id never changes), `deleteCharacterSubprompt`; two error classes (`SubpromptNotFoundError`, `SubpromptValidationError`) and the two caps (`TITLE_MAX 100`, `ID_MAX 120`). Vault resolution is **split**: reads use `findByIdRaw` overlay-free and **archived characters still resolve** (a chat still carrying the seat must keep compiling the same prompt); writes REFUSE an archived character (`CharacterArchivedError`) and provision a vault for a live character lacking one, with a warn. `chat-fanout.ts` — `fanOutSubpromptChange(characterId, subpromptId, {removeSelection})`: over `repos.chats.findByCharacterId`, for each **LLM-controlled, non-removed** seat whose selection contains the id (case-insensitive), optionally strip the id from the persisted selection FIRST, then `compileIdentityStackForParticipant`; per-seat failures warn and fall through to the read-through fallback; `publishRealtime('chats', chat.id)` per touched chat; returns `{chatsTouched, seatsRecompiled}`. **The prompt shape (byte-exact, two independent renderers):** in `buildIdentityStack` — `\n## Additional Instructions\nThe following also apply to you in this conversation.\n` followed by the subprompts joined by `\n\n`, each `### <title>\n<processTemplate(content, templateContext)>`, pushed **directly after the base system prompt** and before the author-carried blocks; the greeting path (`lib/chat/initialize.ts buildSystemPrompt`) renders the SAME text with `prompt += '\n\n' + …` and builds its own six-key template context (`char/user/description/personality/scenario/persona`). ⚠ **`IDENTITY_STACK_BUILDER_VERSION` stays 2 and `PROMPT_CACHE_STRUCTURE_VERSION` stays 4 — deliberate and stated:** a seat with nothing selected is byte-identical to before the feature, which is what the CI goldens require; the new pin is a *variant* test in `__tests__/unit/cache-determinism/system-prompt.test.ts` (+34). **Wiring:** `system-prompt-compiler/compiler.ts buildStackFor` resolves the seat's subprompts (async, from the vault) and **bakes them into the cached stack**; `context-manager.ts buildContext` resolves them ONLY on the read-through fallback (`precompiledIdentityStack ? null : await resolve…`) since a precompiled stack already carries them; `system-prompt-builder.ts` gains the optional `subprompts` on BOTH `BuildIdentityStackOptions` and `BuildSystemPromptOptions`. **Green room:** `apply-outfit-selections.ts` gains `resolveSubpromptsForSeat` (a **lazy `await import`** — the orchestrator otherwise never touches the mount-index store; seat = same character, `controlledBy !== 'user'`, `status !== 'removed'`; soft-fails to `[]`) and passes them to `chooseLLMOutfit`, which gains a `subprompts` parameter, a NEW bullet in `OUTFIT_SELECTION_PROMPT` ("- Any additional instructions in play for this scene, when provided — …honour anything in them that bears on dress") and a `subpromptsNote` appended after `instructionsNote` in the user-content template. **Schema/API:** `ChatParticipantSchema` + `ChatParticipantBaseSchema` gain `selectedSubpromptIds: z.array(z.string().min(1).max(120)).optional()`; `createParticipantSchema` (chats POST) and `updateParticipantSchema` gain the same with `.max(100)`; `handleParticipantUpdate` recompiles when EITHER the system prompt changed OR an **order-insensitive** `sameIdSet` compare of the selections differs (new local helper), with a new debug line; `chats/route.ts` carries the ids through `buildCharacterParticipant` (**`isUserControlled ? [] : (data.selectedSubpromptIds ?? [])`**), through the `llmCandidates`/`firstCharacter` types, and resolves `openerSubprompts` before composing the greeting; `chat-enrichment.service.ts` projects `selectedSubpromptIds: participant.selectedSubpromptIds ?? []` onto `EnrichedParticipantDetail`. **TWO NEW ROUTE FILES:** `app/api/v1/characters/[id]/subprompts/route.ts` (GET list / POST create — `notFound('Character')`, `conflict('Character is archived; subprompts cannot be added')`, `badRequest(error.message)`, `serverError('Failed to list subprompts')` / `'Failed to create subprompt'`, `publishRealtime('characters', characterId)`) and `.../[subpromptId]/route.ts` (GET/PUT/DELETE — `badRequest('Invalid subprompt id')`, `notFound('Subprompt')`, the archived-conflict sentences per verb, PUT and DELETE each calling `fanOutSubpromptChange` and folding its counts into the info log). Note the **guard order**: POST/PUT parse the body BEFORE the character 404 (`schema.parse(body)` first), while GET/DELETE validate the id first — the `a6870c5a` guard-order class, to be measured not assumed. **Realtime:** `queryKeys.characters.subprompts(id)` + the `characters` topic mapping. **Export:** `qtap-export.schema.json` documents `selectedSubpromptIds` (and, newly, `selectedSystemPromptId`) on the participant object — the carry is by-participants-blob, no writer change. **Client (11 files, ~640 lines):** a new `components/subprompts/` (`SubpromptPicker`, `SubpromptEditorModal` — a Lexical editor with an in-place "New subprompt…" that ticks the new one on, `useCharacterSubprompts`), a `SubpromptsSection` under the Aurora System Prompts tab, the picker under the system-prompt selector in BOTH New-Chat forms (single + multi) and on the Salon `ParticipantCard`, and a new `subprompt` entry in `components/prompt-fields/field-hints.ts` (label `'Subprompt'` + helper + example — the P4.D103 twelve-key hints table becomes thirteen). AI Wizard and Optimizer explicitly untouched. → **v5 intersection: WIDE but all on landed surfaces; `subprompt` appears NOWHERE in `crates/` or `apps/` today (grepped).** The v5 homes: `services/system_prompt_compiler.rs` + `system_prompt.rs` (the identity stack + its version stamp — P4.D103, the version-stamped `compiledIdentityStacks` envelope), `services/build_context.rs` (the read-through fallback), `services/chat_initialize.rs` (the greeting), `services/chat_create.rs` + **P4.78's whole `createChatSchema` validation stage** (the capstone corpus at 108 cases — a new participant key moves it), `services/chat_participants.rs` (the update verb + recompile trigger), `services/chat_enrichment.rs` (the GET projection), the wardrobe `llm_choose` path (P4.D39's tri-tier dressing / P4.D119's per-tier instructions cascade — the new prompt bullet and note sit beside the instructions v5 already carries), the character vault document store (P4.2's overlay + `character-vault`), the realtime topic map (P4.D123–D125), and the SPA's New-Chat (P4.D44), Salon participant card, Aurora System Prompts tab, and `app/ui/prompt-field-hints.ts`. **Families that will move:** `system_prompt_equivalence` + the identity-stack goldens, `identity_compiler_equivalence`, `initial_greeting_equivalence`, `chat_create_capstone_equivalence`, `chats_participants_tier2_equivalence`, `participant_resolver_tier2_equivalence`, `build_context_tier3_equivalence`, `outfit_llm_choose_tier3_equivalence` + `chats_outfits_tier2_equivalence`, the characters routes families, and — see §1's fired hazard — **`help_tree_equivalence` + the `help_doc_*` chunking/sync families** (4 help files, one of them new). **NO-PORT within the commit:** `README.md`, `docs/CHANGELOG.md`, `docs/developer/API.md`, `DDL.md` (a one-line column comment — **no schema change**), `PROMPT_ARCHITECTURE.md`, the new `docs/developer/features/complete/character-subprompts.md` (62 lines — read it when the round runs), `.claude/commands/update-documentation.md`, the six test files (+574), and the version bumps (`4.9.0-dev.121` → `4.10.0-dev.1`). | **UNPROCESSED** |
 
 | `15573c3a1` | 2026-09-02 | fix(optimizer): a non-array sub-step answer no longer kills the run (bug 119) | **PORT (deferred surface — no v5 counterpart today)** | **NOT a convergence** — v4's own filing, from a screenshot of the Refine-from-Memories confirmation screen showing the minified `q.filter is not a function`. **Hunks: ONE lib file, `lib/services/character-optimizer.service.ts` (+60/-4), three changes.** (a) NEW exported `coerceSuggestionArray(value: unknown): OptimizerSuggestion[]` placed after `coerceSuggestionText` — array passes through; non-object/nullish → `[]`; else the FIRST array-valued property among the ordered key list `['suggestions','items','results','data','amendments']`; else a lone object whose `field` is a `string` becomes a one-element array (`field` is called "the shape's fingerprint"); else `[]`. (b) inside the sub-step body, `parseLLMJson<OptimizerSuggestion[]>(raw)` becomes `parseLLMJson<unknown>(raw)` + `coerceSuggestionArray(...)`, and a non-array answer logs `logger.warn('[CharacterOptimizer] Sub-step answered with a non-array; coerced', {characterId, subStep: label, parsedType, recovered})` — note `parsedType` is computed as `Array.isArray(rawParsed) ? 'array' : typeof rawParsed` **inside a branch already known to be non-array**, so it can only ever emit `typeof`; the pre-existing unparseable-JSON `catch` is untouched. (c) the closure `runSubStep` is renamed `runSubStepCore` and a NEW `runSubStep` wraps it in try/catch, logging `logger.error('[CharacterOptimizer] Sub-step failed unexpectedly; continuing', {characterId, subStep: label}, err)` and emitting `onProgress({type:'substep_complete', step:'generating', partialSuggestions: []})` — so one bad pass no longer aborts the fan-out (general fields / each scenario / each system prompt / physical description / wardrobe / aliases / proposed prompts). Explicitly **NOT done** (v4 says so): Zod validation at the sub-step boundary, and moving `logLLMCall` ahead of the filter chain. → **v5 intersection: NONE.** The character optimizer has **never been ported** — `m6-screen-parity.md:546` lists `CharacterOptimizerModal` (`components/characters/optimizer/CharacterOptimizerModal.tsx`, `CharacterDetailView.tsx:373`) as **absent → MISSING → `p4.9k`**, and `phase-4.md:779` / `:5099` carry it among the tier-3 LLM-service deferrals (ai-wizard / optimizer / rename / ai-import); grep confirms no `character_optimizer` / `OptimizerSuggestion` / `runSubStep` anywhere in `crates/` or `apps/`. So there is **nothing to port now and no family to regenerate** — the obligation is that **`p4.9k` ports the POST-FIX shape**, and its work order must cite this sha so the pre-fix inline `.filter` is never transcribed. Also note the class does not transfer mechanically: v4's bug is a TypeScript *cast* (`return JSON.parse(cleaned) as T`) that JS never checks, whereas v5 has no `parseLLMJson` twin at all (`services/answer_confirmation.rs:464 extract_json` returns a `Value` and every reader is explicit) — a Rust `serde_json` deserialize into `Vec<T>` would return `Err`, landing in the equivalent of the parse `catch` rather than throwing at `.filter`. The port's live obligation is therefore the *design* lesson v4's `bugs.md` states — normalise before treating a model answer as an array, and contain a fan-out failure to the pass that caused it — carried into `p4.9k`'s order, plus the coercion table byte-for-byte (the key list is ordered and load-bearing). **NO-PORT within the commit:** `README.md`, `docs/CHANGELOG.md`, `docs/developer/bugs.md` (+ the new `bugs/fixed/bug-119-optimizer-substep-non-array.md`, 186 lines — read it when `p4.9k` runs), the 47 new lines in `__tests__/unit/lib/services/character-optimizer-helpers.test.ts`, and the version bumps (`4.9.0-dev.120` → `.121` across `package.json`, `package-lock.json`, `packages/quilltap/package.json`). | **ORDERED(P4.9K1)** — 2026-09-07, the `p4.9k` character-generators round (`work-orders/p4.9k1-generators-server-detail.md`). **PARTIAL at the round's unification (2026-09-07):** the pure half is on main (`coerce_suggestion_array` byte-exact incl. the ordered key list, over `character_optimizer_prompts_equivalence`); the runner half — `runSubStep`/`runSubStepCore` containment + the two log lines — stays with P4.9K1's OPEN remainder, so the row stays ORDERED |
 
