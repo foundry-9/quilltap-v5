@@ -113308,3 +113308,137 @@ replaces (the workspace check is the net).
 **Cleanup:** the worktree's `target/` removed (`rm -rf`), the
 `/tmp/qt-ai-import-oracle` and `/tmp/k-lane-gates` scratch dirs removed;
 the committed fixtures and the `/tmp/oracle-*.ndjson` oracles kept.
+## Lane record — P4.D165 (character subprompts, the SPA half)
+
+**Branch:** `claude/p4-d165-character-subprompts-af51e1`. **Commits:**
+`c2495495` (the wire + keys + hints), `3ac62acd` (the picker + the editor
+dialog), `edc1c4dc` (the Aurora section), `e6962cf5` (New Chat), `c2c15d02`
+(the Salon), `8461c193` (the gated e2e walk + Tier 2). Freshness probe at lane
+start: checkout `main`, tree clean, `2f4254b42..main` and `1a2b2164c..bugfix`
+both empty — matched the ledger, so PIN REQUIRED stood and the lane's one
+v4-side comparand was regenerated from a pinned worktree.
+
+**The lane runs no Rust oracle.** Its one v4-side comparand is the prompt-field
+hint table, EXECUTED at the pin (the P4.D103 mechanism) rather than hand-copied.
+
+### Regen recipe — the hint table (the lane's only oracle)
+
+```bash
+PIN=/tmp/qt-v4-pin-p4d165-2f4254b42
+git -C ~/source/quilltap-server worktree add --detach "$PIN" 2f4254b42
+ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+ln -sfn ~/source/quilltap-server/packages/quilltap/node_modules \
+        "$PIN/packages/quilltap/node_modules"
+for d in ~/source/quilltap-server/plugins/dist/*/; do
+  [ -d "$d/node_modules" ] && ln -sfn "$d/node_modules" \
+    "$PIN/plugins/dist/$(basename "$d")/node_modules"
+done
+# a tsx script importing `@/components/prompt-fields/field-hints` and printing
+# each entry as a `[key, label, helper, example]` tuple:
+cd "$PIN" && PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx <script>
+# paste the tuples in place of V4_HINTS in
+#   apps/web/src/app/ui/prompt-field-hints.spec.ts
+# then `npx prettier --write` that file (it round-trips the quote style).
+```
+
+**The order's count was wrong and the measurement corrected it:** twelve →
+thirteen, it said; v5 already carried thirteen, so the real move is **thirteen →
+fourteen**, with `subprompt` between `systemPrompt` and `physicalDescription`. A
+row-by-row content compare confirmed all thirteen pre-existing entries came back
+BYTE-IDENTICAL from the new pin, so the only delta is the added row.
+
+### The §C wire, as this lane spells it (for the unifier's name-for-name diff)
+
+Verbs (`core-contract.ts`, in the `CoreRequest` union beside the
+`characterPrompt*` family):
+
+| verb | request fields | body this lane reads |
+| --- | --- | --- |
+| `characterSubpromptList` | `characterId` | `subprompts: SubpromptRecord[]` |
+| `characterSubpromptGet` | `characterId`, `subpromptId` | `subprompt` |
+| `characterSubpromptCreate` | `characterId`, `title`, `content` | `subprompt` |
+| `characterSubpromptUpdate` | `characterId`, `subpromptId`, `title?`, `content?` | `subprompt` |
+| `characterSubpromptDelete` | `characterId`, `subpromptId` | — (nothing read) |
+
+`SubpromptRecord = { id, path, title, content, updatedAt }`, that key order.
+Participant field spelled **`selectedSubpromptIds?: string[]`** in all three
+positions — `ChatUpdateParticipantRequest` (NOT three-valued: present replaces,
+absent leaves alone, an empty set travels as `[]`),
+`ChatCreateParticipantInput`, and `ParticipantDetail` (the chat-GET
+enrichment). Update omits `title`/`content` when the caller leaves them out.
+
+### What landed
+
+1. **The wire** — `subprompts/subprompts.api.ts`: the five ops through
+   `dispatchData`, and `injectCharacterSubprompts()` (the
+   `injectCharInsertSettings` precedent) carrying v4's `enabled` gating, its
+   `enabled && isLoading` rule, invalidate-on-success for all three writes, and
+   the realtime-gated 60 s fallback poll. `characterKeys.subprompts` follows the
+   characters file's `['characters', '<what>', id]` spelling rather than v4's
+   `['characters', id, '<what>']` — the divergence the file already carries for
+   `prompts`; only the distinctness is contractual, and the `['characters']`
+   prefix mutations invalidate reaches both.
+2. **The picker + the editor dialog** with v4's copy, classes, ARIA and states
+   byte-exact, including the missing-id line-through rows (shown only once the
+   list has answered) and the keyed remount.
+3. **The Aurora section** on the System Prompts tab, in v4's slot.
+4. **New Chat**: the field on the cast entry, the omit-when-empty create rule,
+   and the picker on each LLM seat in the multi-character panel.
+5. **The Salon**: the compact picker on each LLM-driven cast card, threaded
+   card → section → sidebar → Salon, with the `Subprompts updated` round-trip.
+6. **The realtime arm**, the thirteenth… fourteenth hint, the tab-activation
+   key, the gated e2e walk, and the `m6-screen-parity.md` rows.
+
+### Findings
+
+- **`subpromptErrorMessage` is NOT `coreErrorMessage`** — caught by unit 2's own
+  spec, after unit 1 had recorded them as converged. v4 ships BOTH helpers with
+  different tails: `apiErrorMessage` (`lib/query/fetcher.ts:64`, what
+  `coreErrorMessage` ports) ends `if (err instanceof Error) return err.message`;
+  the subprompts helper (`useCharacterSubprompts.ts:43`) ends `err instanceof
+  Error && err.message ? err.message : fallback`. On a blank-message error that
+  is an empty toast versus "Failed to create subprompt". Ported with v4's tail;
+  only its `ApiFetchError` branch stays a NO-COUNTERPART.
+- **v4's single-character New-Chat picker has NO v5 home, and it is not a
+  gap.** It renders only under `showSingleCharacterControls`, which only v4's
+  `NewChatModal` ever passes true (`NewChatModal.tsx:253`); v5 never ported the
+  modal (the standing no-modal divergence), and v4's PAGE — this screen's actual
+  counterpart — passes it `false` (`NewChatPageClient.tsx:139`), so v4 renders
+  nothing there either. Recorded in `new-chat-form.ts`'s class doc beside the
+  identical finding a previous round made about the same prop, and as an
+  m6 NO-COUNTERPART row.
+- **No seed or flip site moved, because v4 moved none.** The order predicted
+  seeding `[]` in three places; `2f4254b42` touches no seeding site, so
+  `selectedSubpromptIds` is simply absent until something ticks one, and a
+  user-flip KEEPS the ids in state while the body omits them. Spec-pinned.
+- **Six pre-existing spec harnesses needed the stream surface.** A picker on a
+  cast card or a section on a tab pulls `RealtimeService` into that injector,
+  and its absence fails inside the hub's CONSTRUCTOR — nowhere near the new
+  code, and in files the new code does not name. The participant card's spec had
+  TWO mount helpers and only the workspace-wide run found the second.
+
+### Mutation proofs (each reddened exactly its own specs)
+
+The truthiness tail; the missing-id loading guard; the toggle's no-op guard; the
+`mode === 'created'` guard; the 150-character cut widened to `>=`; the trash's
+toggle replaced by a plain open; the confirm's clear moved out of the `finally`
+(the FIRST attempt survived — moving it below the try/catch is
+behaviour-identical because the catch swallows — and was replaced with one that
+discriminates); the create rule's LLM-only and non-empty guards; the picker
+panel's `controlledBy !== 'user'` guard; the card's resolved-character conjunct;
+the singular `Subprompt updated` toast; the topic map's subprompts key; and the
+topic map widened to `characterKeys.all`.
+
+### Deferred loud
+
+- `encodeURIComponent(subpromptId)` — NO-COUNTERPART, recorded in
+  `subprompts.api.ts`'s header: v5 builds no URL, the id rides as a JSON field
+  of `characterSubpromptGet` / `…Update` / `…Delete`.
+- The Lexical editor's `namespace` prop — no ProseMirror twin. `qt-markdown-field`
+  takes `recordKey` (v4's `remountKey`), `ariaLabel` and `minHeight`; there is
+  nothing for a namespace to name.
+- The e2e beats are the wire proof and are GATED on `P4D163_SERVER_LANDED`
+  (`e2e/character-subprompts-flow.spec.ts:33`). The unifier flips it after
+  P4.D163/P4.D164 land; the file's header carries the first-run recipe (the
+  character is **Bram**, nothing is pre-seeded, and beat (b) tears down what it
+  writes).

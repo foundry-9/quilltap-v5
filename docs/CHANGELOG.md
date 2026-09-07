@@ -584,6 +584,18 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — docs(subprompts): the P4.D165 lane record and the order's status header
+
+_Docs-only change._
+
+The lane record for P4.D165 (character subprompts, the SPA half): the six
+commits, the hint-table regen recipe from the pinned `2f4254b42` worktree, the
+§C wire spellings as this lane writes them (for the unifier's name-for-name
+diff), the four findings, the fourteen mutation proofs, and the two Tier 3
+deferrals. The order's status header records what the unifier still owes it —
+flipping `P4D163_SERVER_LANDED` and running the three beats as their first
+execution — and names the three order premises measurement corrected.
+
 #### 2026-09-07 — test(subprompts): the gated end-to-end walk, the realtime-refetch arm, and the m6 parity rows
 
 _Versions: SPA 0.5.671._
