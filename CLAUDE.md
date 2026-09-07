@@ -3158,6 +3158,46 @@ records THERE. Update this summary only when a phase or round completes.
   queue gains the whole subprompts feature on real data and every generator
   runner with real spend — **the owed dogfood pass is the top next
   candidate.** Round record: `status-log.md`.
+- **The `p4.9k` + `2f4254b42` dogfood pass RAN (2026-09-07, agent-driven, on
+  the Friday copy) — 24 rows, 22 PASS, 1 PARTIAL, ZERO v5 defects, and both
+  rounds' whole 💸 queue discharged.** Walk doc:
+  `dogfood-walks/2026-09-07-subprompts-generators-pass.md`; record in
+  `status-log.md`. The ledger's §2 probe passed at walk start (v4 AT the
+  baseline, §3 empty), so no step could blame drift. **The pre-walk
+  measurement bought the three headline proofs:** v4 had shipped subprompts
+  that morning and RUN the feature on the live instance before the copy was
+  taken, so v5 was judged against v4's own bytes — it reads
+  `Subprompts/initiating.md` byte-for-byte, **keeps the
+  `selectedSubpromptIds` the pre-unit-1 code dropped** through a foreign
+  participant write, and ⭐ **rebuilds the whole compiled identity stack
+  byte-identical to v4's** (md5 `b9beceb0…`, 10,133 chars, envelope version
+  2) after a selection toggle — one gesture proving the render, the compiler
+  bake, the envelope and both cache transitions. Also byte-checked against
+  v4's own artefacts: the green-room `subpromptsNote` (246 chars, IDENTICAL,
+  with the fifth bullet in all four v4 consults and v5's) and the optimizer's
+  suggestions-file frontmatter/prose (v4 wrote two in April). **Every
+  generator runner ran live:** ⭐ a dry-run rename scanned **6,858,481
+  occurrences in 1.65 s while five writes landed during it** (the §3 unify
+  read-pool fix at real scale); an execute with Additional Replacements + the
+  per-pair case flag behind v4's exact confirm; refresh-archive both arms (no
+  UI exists); an external prompt with the optional Scenario and a lowered
+  cap; ⭐ the optimizer's **vault-suggestions arm, which no spec covers**;
+  the Wizard with Skip-physical + Select-all + Background Context; and Summon
+  From Lore from the toolbar mount the spec never walks — with the recorded
+  `VALIDATION_UNAVAILABLE` divergence surfacing **honestly** as a
+  non-critical Review note. **B8 complements K1/K2's OPEN Tier-2 item 9:**
+  the raw SSE headers and `data: {json}\n\n` framing match v4's handler
+  exactly — the wire is right, only the assertions stop short. Also live:
+  `chatDelete` from the trash button that sits INSIDE the card link (the
+  interception fix), the P4.81 Zod-`details` host wire, the composer's wide
+  predicate on a purpose-built two-user-seat chat, and
+  `[TurnOrchestrator] Chain error, stopping` with its safety pause (plus a
+  free P4.D135 failover proof). **Five apparent divergences were run to
+  ground and every one is v4-faithful** — incl. the unattributed greeting
+  `llm_logs` rows (all 19 of v4's own nulls are greeting calls) and the
+  orphaned `conversation_chunks` row (v4 left four). Six instrument notes
+  banked. **Still owed (human):** the Brahma deep-query budget,
+  dedup/summaries, and #101.
 - **Oracle baseline: `2f4254b42` (2026-09-07, v4 main — "feat: character
   subprompts", `4.10.0-dev.1`), adopted at the `2f4254b42`
   character-subprompts round unification (2026-09-07).**

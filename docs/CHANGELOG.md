@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(dogfood): the `p4.9k` + `2f4254b42` rounds' pass — 24 rows, zero v5 defects, both 💸 queues discharged
+
+_Docs-only change._
+
+Records the dogfood pass over the two rounds unified on 2026-09-07: the
+character-generators round (`p4.9k`) and the character-subprompts round
+(`2f4254b42`). 24 rows — 22 PASS, 1 PARTIAL, 1 N/A, 3 deferred to the human
+— with no v5 defect found.
+
+v4 had shipped character subprompts that morning and run the feature on the
+live instance before the copy was taken, so three headline proofs are
+cross-implementation: v5 reads v4's `Subprompts/initiating.md` byte-for-byte,
+keeps the `selectedSubpromptIds` the pre-unit-1 code dropped through a
+foreign participant write, and rebuilds the whole compiled identity stack
+byte-identical to v4's (md5 `b9beceb0…`, 10,133 chars, envelope version 2)
+after a selection toggle. The green-room `subpromptsNote` (246 chars) and the
+optimizer's suggestions-file format are byte-checked against v4's own
+artefacts too.
+
+Every generator runner ran live: a dry-run rename scanned 6,858,481
+occurrences in 1.65 s while five writes landed during it (the unification's
+read-pool fix at real scale), an execute with additional replacements and the
+per-pair case flag, refresh-archive in both arms, an external prompt with
+every control moved, the optimizer's vault-suggestions arm (covered by no
+spec), the AI wizard with skip-physical + select-all + background context,
+and Summon From Lore from the toolbar mount no spec walks. The recorded
+`VALIDATION_UNAVAILABLE` divergence surfaces honestly as a non-critical
+Review note.
+
+The raw SSE bytes were captured as an honest complement to K1/K2's open
+Tier-2 item 9: the headers and `data: {json}` framing match v4's handler
+exactly, so the wire is right and only the assertions stop short.
+
+Five apparent divergences were run to ground and every one is v4-faithful,
+including the unattributed greeting `llm_logs` rows (all 19 of v4's own null
+rows are greeting calls) and the orphaned `conversation_chunks` row (v4 left
+four). Six instrument notes are banked in the walk doc.
+
 #### 2026-09-07 — docs(unify): the `2f4254b42` character-subprompts round — round record, five status headers, phase-4 UNIFIED + candidates, the ledger's baseline move, CLAUDE.md; versions after the unify fixes
 
 _Versions: core 0.0.834, harness 0.0.724, host 0.0.113, web 0.0.127, SPA 0.5.673._

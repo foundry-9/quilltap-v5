@@ -599,9 +599,56 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+### Dogfood pass — the `p4.9k` + `2f4254b42` rounds (2026-09-07): NO new findings
+
+The pass produced **zero numbered findings** — 22 PASS / 1 PARTIAL / 1 N/A
+over 24 rows. Walk doc:
+`dogfood-walks/2026-09-07-subprompts-generators-pass.md`.
+
+**Five apparent divergences were run to ground and are v4-faithful — do not
+re-file them:**
+
+1. **A collapsed, unselected subprompt picker reads `None on file`** before
+   it has looked. v4's `useCharacterSubprompts` defers the query identically
+   (`enabled: open || selectedIds.length > 0`) and computes the same summary
+   string (`SubpromptPicker.tsx:47,65-70`).
+2. **Two subprompt checkbox clicks inside ~50 ms lose the first** — the
+   second emits from a `selectedIds` prop the server round-trip has not yet
+   updated. v4's picker is the same controlled shape over the same async
+   parent. Sequential ticks persist both.
+3. **`refresh-archive` reports `queued: n` even for chats whose render job is
+   already pending.** v4's `enqueueConversationRender`
+   (`queue-service.ts:398-425`) REUSES a pending job and returns
+   `{isNew:false}` rather than throwing, so v4's own `catch` comment ("Skip
+   chats that already have a pending render job") describes an arm v4 cannot
+   reach either.
+4. **v5's `CHAT_MESSAGE` `llm_logs` rows carry no `connectionProfileId`** —
+   but all three were chat-creation greeting calls, and **all 19** of v4's
+   own null `CHAT_MESSAGE` rows since 2026-08-25 land 6–42 s after their
+   chat's `createdAt`, i.e. are greeting calls too. The greeting path is
+   unattributed in v4 as well.
+5. **One orphaned `conversation_chunks` row survives a chat delete** — the
+   instance already carried **four v4-written orphans** of the same shape
+   (2026-08-13, 2026-08-25), for chats v4 itself deleted.
+
+**Two standing notes below are discharged by this pass's live proofs** (C5,
+C6) and are marked in place.
+
+**What the pass could NOT reach, with the reason measured** (for the next
+walk's plan): `[TurnOrchestrator] singleTurn: skipping chain loop` — the only
+production site that sets `single_turn: true` is the autonomous-room enclave
+(`enclave/step.rs:687`); every interactive path passes `false`. And
+`Chain stopped: empty response` needs a chained turn returning no content and
+no skip — a provider stub, not a gesture. (`Chain error, stopping` WAS proven
+live, with its safety pause.)
+
 ### `chatCreate` lacks v4's whole-body Zod parse (2026-09-06, finding #115)
 
-**CLOSED by P4.78 (unified 2026-09-06).** The whole `createChatSchema` is one
+**CLOSED by P4.78 (unified 2026-09-06); the HOST WIRE is CLOSED too, and
+proven live on 2026-09-07** — a refused `chatCreate` answers
+`{"kind":"bad-request","message":"Validation error","details":[…]}` with the
+whole Zod issue array through the host, including finding #115's own
+`controlledBy: "LLM"` shape. The tripwire's deferral is discharged. The whole `createChatSchema` is one
 validation stage ahead of any work, arm-pinned against v4's real route (105 →
 108 capstone cases incl. the Zod `details` byte comparand); the engine half is
 complete. **What remains is the HOST WIRE**: `quilltap-host/src/spine.rs::
@@ -646,6 +693,15 @@ Brahma stream calls (two `run_sql` turns + the answer) and wrote **zero** `llm_l
 rows.
 
 ### The composer's `hasActiveCharacters` reads v4's NARROW twin (2026-09-06, found by P4.D161 in passing)
+
+**CLOSED by P4.81 item 8 (unified 2026-09-07) and proven LIVE on 2026-09-07.**
+No chat on the real instance has only user-controlled character seats, so the
+discriminating shape was built: flipping the one LLM seat in a two-seat chat
+to `User (you type)` left BOTH character seats `controlledBy: 'user'` — the
+exact case the narrow predicate reports as zero — and the composer stayed
+enabled with no `Add a character to start chatting…`. The note below is the
+original, kept for the record.
+
 
 v4 has two predicates of that name: `useParticipants.hasActiveCharacters`
 (`type === 'CHARACTER' && isActive`, no control filter — what the SSE hook,

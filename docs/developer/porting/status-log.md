@@ -113732,3 +113732,100 @@ its §3 emptied, the two rows retired to §6; `phase-4.md`'s UNIFIED section
 the CHANGELOG unification entry; the memory note. Versions: core 0.0.834,
 harness 0.0.724, host 0.0.113, web 0.0.127, SPA 0.5.673; cli/tauri
 unchanged.
+
+## Dogfood pass — the `p4.9k` + `2f4254b42` rounds (2026-09-07, agent-driven, on the Friday copy)
+
+Walk doc: `dogfood-walks/2026-09-07-subprompts-generators-pass.md`. Rows in
+`dogfood-findings.md` → "Dogfood pass — the `p4.9k` + `2f4254b42` rounds".
+
+**24 rows: 22 PASS, 1 PARTIAL, 1 N/A, 3 deferred to the human. ZERO v5
+defects, and the two rounds' whole 💸 queue discharged** — the character-
+subprompts feature on real data and **every** generator runner with real
+spend (rename dry-run + execute, refresh-archive, external prompt, the
+optimizer, the AI wizard, the AI import).
+
+The drift ledger's §2 probe passed at walk start (v4 AT the baseline, §3
+empty), so nothing on the walk could blame drift.
+
+**The pre-walk measurement bought the pass its three best proofs.** v4
+shipped subprompts at `2f4254b42` that morning and RAN the feature on the
+live instance before the copy was taken: one `Subprompts/initiating.md` in
+Abigail's vault, one seat carrying `["initiating"]`, and one chat whose
+`compiledIdentityStacks` already held the `## Additional Instructions` block
+at envelope version 2. So:
+
+- **A1** — v5 parses v4's frontmatter and body byte-for-byte and renders
+  both on the Aurora System Prompts tab and in the Salon picker
+  (`Subprompts · 1 of 1 in play`).
+- **A2** — a FOREIGN participant write (status `active → silent` and back)
+  left `["initiating"]` intact: P4.D163 unit 1's data-safety fix measured
+  against v4's own row, on the instance where the old code would have
+  dropped it.
+- **A3** — ⭐ two participant writes left v4's bake **untouched** (the
+  strict-equality read accepts it), unticking the subprompt **rebaked and
+  dropped the block** (10,133 → 9,910 chars), and re-ticking rebuilt the
+  **whole stack byte-identical to v4's** — same md5 `b9beceb0cba36f8d8474
+  d0d9cf132766`, same length, same version, block md5
+  `21923b8ca30f5aced8e4bc1faaa18497`. One toggle proves the render, the
+  compiler bake, the version envelope and both cache transitions at once.
+
+**Also proven on real data:** the CRUD path with v4's real
+`slugifySubpromptTitle` rules (an awkward title slugged exactly, the `-2`
+collision suffix, a 100-char title sliced to 60, the path held put across a
+retitle) and the delete fan-out's own line (`remove_selection=true
+chats_touched=1 seats_recompiled=1`); the eight-arm guard ladder incl. v4's
+**parse-before-404** order and the archived-character 409 sentence; the
+greeting's RAW context carrying v4's 216-byte block verbatim at offset
+4,595 of an 11,713-char persisted system prompt; and the green room in both
+halves — the fifth bullet in **all four v4-written consults and v5's**, and
+a `subpromptsNote` **byte-identical to the one v4 wrote** (246 chars), with
+the §3 review's own fix live (`[applyOutfitSelections] Subprompts in play
+for the green room chat_id=… character_id=… count=1`).
+
+**The generators, all live:** ⭐ a dry-run rename preview scanned
+**6,858,481 occurrences** in **1.65 s** while **five writes landed during
+it** (201 in 13–14 ms each) — the §3 unify fix (dry run on the read pool)
+proven at real scale; an execute with the **Additional Replacements** row
+and its per-pair case-sensitive flag, behind v4's byte-exact confirm
+sentence; `refresh-archive` in both arms with v4's exact bodies (no UI
+exists — driven by REST and by the verb); an external prompt with every
+control moved incl. the optional Scenario and a lowered token cap
+(8,846 ms, `output_length: 5449`); ⭐ the optimizer's **vault-suggestions
+arm — which no spec covers at all** — with the semantic counter line
+(`27 memoirs matched; top 10 selected for analysis`), 7 attributed calls,
+and a suggestions file whose frontmatter and prose are byte-identical in
+shape to the two v4 wrote in April; the AI Wizard with `Skip physical
+description` (which correctly disabled the step-3 row), `Select all` and a
+Background Context the model read, applying 8 fields plus 3 scenario and 10
+wardrobe vault files; and Summon From Lore from the `/characters` toolbar
+mount the spec never walks, ending `Import Successful! … (13 entities
+imported)` — with the recorded `VALIDATION_UNAVAILABLE` divergence surfacing
+**honestly and non-critically** in the Review step rather than silently.
+
+**B8 is a substantive complement to K1/K2's OPEN Tier-2 item 9:** the raw
+SSE bytes were captured, and `content-type: text/event-stream`,
+`cache-control: no-cache`, `connection: keep-alive` and the
+`data: {json}\n\n` framing all match v4's handler exactly — **the wire is
+right; only the lane's assertions stop short.**
+
+**The `p4.9k` round's other surfaces:** `chatDelete` end to end from the
+card whose trash button IS inside the card link (proving the capture-phase
+interception fix) with v4's confirm sentence and both log lines; the P4.81
+host wire carrying Zod `details`; the composer's wide predicate on a
+purpose-built two-user-seat chat. `[TurnOrchestrator] Chain error, stopping`
+was proven live with its safety pause (and gave a free live proof of
+P4.D135's failover chain); the other two chain-stop lines are not
+browser-reachable and the walk measured why.
+
+**Five apparent divergences were run to ground; every one is v4-faithful**
+(the deferred picker summary, the fast-double-click lost update, the
+`refresh-archive` reuse count, the unattributed greeting `llm_logs` rows —
+19 of v4's own are the same shape — and the orphaned `conversation_chunks`
+row, of which v4 left four). **Six instrument notes** are recorded in the
+walk doc, headed by a hidden-pane `ref` click that reports a coordinate and
+does nothing, and a background waiter whose own pattern matched the topic
+word it was waiting for.
+
+**Still owed (human):** the Brahma budget on a deep query, memory dedup +
+conversation-summary regeneration's first run, and the NanoGPT
+prompt-caching cost question (#101).
