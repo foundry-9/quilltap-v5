@@ -116,6 +116,30 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — fix(api): the image-profile generate route counts code points, as Zod 4.5 does
+
+_Versions: core 0.0.837, harness 0.0.726._
+
+P4.85 item 5. `POST /api/v1/image-profiles/{id}?action=generate` measured
+its `prompt` against `z.string().min(1).max(4000)` with
+`jsstr::utf16_len`, while the sibling `images_generate` route already used
+`jsstr::zod_len_min_ok` / `zod_len_max_ok` for the identical schema. Zod
+has counted CODE POINTS since 4.5 (v4 `6e1a64ea6`; `zod_version_guard`
+pins 4.5.4), so the two routes disagreed on any prompt with astral
+characters. Switched.
+
+`image_generate_route_equivalence` gains two arms built the same way on
+both sides: 3999 BMP characters plus one astral is 4000 code points in
+4001 UTF-16 units, which v4 accepts and runs the tool for, and one code
+point over, which v4 still refuses. Red-first — restoring `utf16_len`
+answers 400 where the oracle answers 201 on the at-max arm while the
+over-max arm stays green, so the fix cannot have been "stop counting".
+
+The at-max arm also found a latent bug in that family's own UUID
+normalizer: it sliced 36 raw bytes without a char-boundary check and
+panicked on the first non-ASCII envelope any corpus row had ever produced.
+Now `str::get`.
+
 #### 2026-09-07 — fix(api): one answer to an impossible parse state in `generators_detail`
 
 _Versions: core 0.0.836._
