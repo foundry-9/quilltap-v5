@@ -3838,7 +3838,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-host"
-version = "0.0.107"
+version = "0.0.108"
 dependencies = [
  "base64 0.22.1",
  "image",
@@ -3887,7 +3887,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-web"
-version = "0.0.124"
+version = "0.0.125"
 dependencies = [
  "axum",
  "base64 0.22.1",

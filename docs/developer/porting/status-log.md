@@ -111687,6 +111687,15 @@ a shortcut past `commit.md` §5.
   `VENDORED_FILE_COUNT = 120` — the tripwire firing as designed; moved to 121
   with the sha named in the constant's doc comment, then green.
 - Versions: harness 0.0.709, host 0.0.107 (the embed). No Rust source moved.
+- **Follow-up (caught by the P4.D163 tip gate, binary 459 of the run):**
+  two MORE count pins carried the `d883a5ee1` 120 — the host boot test
+  (`crates/quilltap-host/tests/host_help_docs_boot.rs:82`) and the web
+  `help_web_routes` boot-ensure arm (three `120`s). The "closing a
+  divergence moves the censuses that recorded it" class — the harness guard
+  was the one unit 0 knew about. Moved to 121 with the sha named; the gate's
+  fail-fast tail (host / web / tauri / sys binaries + the workspace
+  doctests: 69 binaries / 273 / 0, fmt clean) re-run green on the same tip.
+  Versions: host 0.0.108, web 0.0.125.
 
 ### Unit 1 — the participant carry (RED FIRST) + the update/create/GET arms
 

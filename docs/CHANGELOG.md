@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — test(help): move the two help-tree count pins the unit-0 re-vendor left at 120 (P4.D163 unit 0 follow-up)
+
+_Versions: host 0.0.108, web 0.0.125._
+
+The P4.D163 tip gate stopped at binary 459: `host_help_docs_boot` pins the
+embedded tree at v4's `d883a5ee1` count (120) and the unit-0 re-vendor at
+`2f4254b42` grew it to 121 (`help/character-subprompts.md`). Unit 0 moved the
+harness guard's constant and missed the host boot test and the web
+`help_web_routes` boot-ensure pins (three `120`s). All moved to 121 with the
+sha named; the gate's remaining tail (host / web / tauri / sys binaries +
+the workspace doctests) re-run green. Test-only: no Rust source moved.
+
 #### 2026-09-07 — test(subprompts): the `.qtap` carry pin + the vault-write overlay leaves `Subprompts/` alone (P4.D163 units 6–7)
 
 _Versions: core 0.0.823._
