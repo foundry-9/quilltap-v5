@@ -231,6 +231,17 @@ Deferred loudly (tier 3, named not performed): the five per-caller JSON
 extractors v5 already carries stay where they are — each is oracle-pinned in
 place, and `generators::llm_json` is a NEW home for v4's module, not a
 consolidation of them.
+#### 2026-09-07 — docs(web): the e2e prerequisites build release binaries, not debug (P4.81 item 6)
+
+_Docs-only change._
+
+`apps/web/README.md`'s e2e prerequisites prescribed a plain `cargo build
+-p quilltap-web -p quilltap-cli`; `e2e/support/env.ts` prefers
+`target/release/{quilltap-web,quilltap}` and only falls back to
+`target/debug/`, and P4.D161 measured that the debug fallback is what
+makes `global-setup.ts` take minutes instead of seconds. Corrected to
+`CARGO_INCREMENTAL=0 cargo build --workspace --release`.
+
 #### 2026-09-07 — docs(v4): prune two docs/v4/ files v4 no longer has (P4.81 item 5)
 
 _Docs-only change._

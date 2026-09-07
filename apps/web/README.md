@@ -77,9 +77,12 @@ passphrase-locked copy of the committed chat-send fixture
 Prerequisites:
 
 ```bash
-# 1. build the Rust binaries (base commit — the e2e uses the CLI to migrate the
-#    fixture schema and the web host to serve it):
-cargo build -p quilltap-web -p quilltap-cli
+# 1. build the Rust binaries — RELEASE, not debug (base commit — the e2e uses
+#    the CLI to migrate the fixture schema and the web host to serve it).
+#    `env.ts` prefers `target/release/{quilltap-web,quilltap}` and falls back
+#    to `target/debug/`; a debug build works but global-setup then takes
+#    minutes instead of seconds (P4.D161's measurement) — build release:
+CARGO_INCREMENTAL=0 cargo build --workspace --release
 
 # 2. build the SPA and install the Playwright browser (first run only):
 cd apps/web
