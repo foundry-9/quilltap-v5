@@ -99,6 +99,16 @@ const CENSUS: &[(&str, &str, &str, &str)] = &[
         "track_activity(\n        ActivityKind::Image,",
         "previews generate synchronously rather than through the job queue",
     ),
+    // — v4 `services/character-wizard.service.ts` (`generateImageDescription`,
+    // `trackActivity('image', …)`). Moved out of `NO_V5_SURFACE` by P4.9K2
+    // unit 3, which ported the wizard runner; the wrap sits on the vision call
+    // exactly where v4's does.
+    (
+        "crates/quilltap-core/src/generators/wizard.rs",
+        "async fn generate_image_description<CMP: CompletionProvider>",
+        "track_activity(\n        ActivityKind::Image,",
+        "the wizard's image source is read with a vision model — image work with no job row",
+    ),
 ];
 
 /// v4 sites with **no v5 surface to wrap**. Each row is an obligation the lane
@@ -114,14 +124,6 @@ const NO_V5_SURFACE: &[(&str, &str, &str)] = &[
         "apply_child_activity_delta",
         "NO-PORT by design: v5's job runner is in-process, so there is no child \
          to mirror and no crash mirror to zero (job_runner.rs's header).",
-    ),
-    // — v4 `services/character-wizard.service.ts`.
-    (
-        "the character wizard's image description",
-        "character_wizard",
-        "v5 has no character-wizard twin at all (verified across crates/ and \
-         apps/web; character_enrichment and creation_progress are not it). The \
-         span lands when that surface ports.",
     ),
     // — v4 `wardrobe/image-analysis.ts`.
     (

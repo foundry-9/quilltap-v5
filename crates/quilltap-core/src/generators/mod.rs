@@ -41,6 +41,7 @@ pub mod rename;
 
 // === P4.9K2 ===
 pub mod ai_import;
+pub mod file_content;
 pub mod wizard;
 pub mod wizard_prompts;
 // === end P4.9K2 ===

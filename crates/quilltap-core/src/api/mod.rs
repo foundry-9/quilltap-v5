@@ -105,6 +105,9 @@ pub mod subprompts;
 // === P4.9K1: the per-character generator verbs (§B.2) ===
 pub mod generators_detail;
 // === end P4.9K1 ===
+// === P4.9K2: the creation-pair generator verbs (§B.3) ===
+pub mod generators_wizard;
+// === end P4.9K2 ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

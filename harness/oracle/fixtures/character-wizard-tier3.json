@@ -1,0 +1,719 @@
+{
+  "cases": [
+    {
+      "name": "stream_skip_all_fields",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "",
+        "background": "A harbor town.",
+        "fieldsToGenerate": [
+          "name",
+          "title",
+          "identity",
+          "description",
+          "manifesto",
+          "personality",
+          "scenarios",
+          "exampleDialogues",
+          "firstMessage",
+          "systemPrompt",
+          "properties",
+          "physicalDescription",
+          "wardrobeItems"
+        ]
+      },
+      "calls": [
+        "Mira Lanternwright",
+        "The Harbor Keeper",
+        "Mira keeps the lanterns of Saltmere.",
+        "She hums while she works.",
+        "You keep the lanterns lit.",
+        "You fear deep water.",
+        "[{\"title\":\"Harbor at Dusk\",\"content\":\"The lanterns are being lit.\"},{\"title\":\"Market Day\",\"content\":\"Stalls crowd the quay.\"}]",
+        "{{user}}: Hi\n{{char}}: Evening.",
+        "*She looks up.* Evening.",
+        "You are Mira, the lantern keeper.",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\",\"Lanternwright\"]}",
+        "face: weathered, grey eyes, salt-white hair pulled backxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "grey eyes, white hair, weathered skin, small, a scaryyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "mmmmmmmmmm",
+        "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "## Overview\nSmall and weathered.\n\n## Face & Head\nGrey eyes.",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"imagePrompt\":\"oilskin coat\",\"types\":[\"top\",\"bogus\"],\"isDefault\":true},{\"title\":\" Brass Ring \",\"description\":\"\",\"types\":[\"accessories\"],\"isDefault\":\"no\"},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\",\"Brass Ring\",\"Ghost\"],\"replace\":true}]"
+      ]
+    },
+    {
+      "name": "json_skip_all_fields",
+      "action": "ai-wizard",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "",
+        "background": "A harbor town.",
+        "fieldsToGenerate": [
+          "name",
+          "title",
+          "identity",
+          "description",
+          "manifesto",
+          "personality",
+          "scenarios",
+          "exampleDialogues",
+          "firstMessage",
+          "systemPrompt",
+          "properties",
+          "physicalDescription",
+          "wardrobeItems"
+        ]
+      },
+      "calls": [
+        "Mira Lanternwright",
+        "The Harbor Keeper",
+        "Mira keeps the lanterns of Saltmere.",
+        "She hums while she works.",
+        "You keep the lanterns lit.",
+        "You fear deep water.",
+        "[{\"title\":\"Harbor at Dusk\",\"content\":\"The lanterns are being lit.\"},{\"title\":\"Market Day\",\"content\":\"Stalls crowd the quay.\"}]",
+        "{{user}}: Hi\n{{char}}: Evening.",
+        "*She looks up.* Evening.",
+        "You are Mira, the lantern keeper.",
+        "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Keeper\",\"Lanternwright\"]}",
+        "face: weathered, grey eyes, salt-white hair pulled backxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "grey eyes, white hair, weathered skin, small, a scaryyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "mmmmmmmmmm",
+        "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "## Overview\nSmall and weathered.\n\n## Face & Head\nGrey eyes.",
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"imagePrompt\":\"oilskin coat\",\"types\":[\"top\",\"bogus\"],\"isDefault\":true},{\"title\":\" Brass Ring \",\"description\":\"\",\"types\":[\"accessories\"],\"isDefault\":\"no\"},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\",\"Brass Ring\",\"Ghost\"],\"replace\":true}]"
+      ]
+    },
+    {
+      "name": "stream_existing_data_subset",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "existing",
+        "characterName": "Mira",
+        "background": "",
+        "existingData": {
+          "title": "Keeper",
+          "pronouns": {
+            "subject": "she",
+            "object": "her",
+            "possessive": "hers"
+          },
+          "aliases": [
+            "Keeper"
+          ],
+          "identity": "  ",
+          "scenarios": [
+            {
+              "id": "s1",
+              "title": "Harbor",
+              "content": "Dusk."
+            }
+          ],
+          "systemPrompt": "You are Mira."
+        },
+        "fieldsToGenerate": [
+          "description",
+          "personality"
+        ],
+        "characterId": "a2000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "She hums.",
+        "You fear deep water."
+      ]
+    },
+    {
+      "name": "stream_existing_data_odd_shapes",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "existing",
+        "characterName": "Mira",
+        "background": "x",
+        "existingData": {
+          "pronouns": null,
+          "aliases": [],
+          "scenarios": []
+        },
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": [
+        "The Keeper"
+      ]
+    },
+    {
+      "name": "stream_document_markdown",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "f0000002-0000-4000-8000-000000000011",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "identity"
+        ]
+      },
+      "calls": [
+        "Mira keeps the lanterns."
+      ]
+    },
+    {
+      "name": "stream_document_text_and_binary_placeholder",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "f0000002-0000-4000-8000-000000000014",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": [
+        "The Ledger Keeper"
+      ]
+    },
+    {
+      "name": "stream_document_notes_txt",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "f0000002-0000-4000-8000-000000000012",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "manifesto"
+        ]
+      },
+      "calls": [
+        "You keep the lanterns lit."
+      ]
+    },
+    {
+      "name": "stream_document_missing",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "00000000-0000-4000-8000-00000000dead",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": []
+    },
+    {
+      "name": "json_document_missing_is_500",
+      "action": "ai-wizard",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "documentId": "00000000-0000-4000-8000-00000000dead",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": []
+    },
+    {
+      "name": "stream_document_id_absent_skips_extraction",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "document",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": [
+        "The Keeper"
+      ]
+    },
+    {
+      "name": "stream_gallery_needs_vision_profile",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "gallery",
+        "imageId": "f0000002-0000-4000-8000-000000000013",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "description"
+        ]
+      },
+      "calls": []
+    },
+    {
+      "name": "stream_gallery_vision_fallback",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "visionProfileId": "c0000002-0000-4000-8000-000000000002",
+        "sourceType": "gallery",
+        "imageId": "f0000002-0000-4000-8000-000000000013",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "description",
+          "physicalDescription"
+        ]
+      },
+      "calls": [
+        "A weathered woman with grey eyes and white hair.",
+        "She hums.",
+        "face: weathered, grey eyes, salt-white hair pulled backxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "grey eyes, white hair, weathered skin, small, a scaryyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "mmmmmmmmmm",
+        "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "## Overview\nSmall and weathered.\n\n## Face & Head\nGrey eyes."
+      ]
+    },
+    {
+      "name": "stream_gallery_vision_profile_missing",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "visionProfileId": "00000000-0000-4000-8000-00000000dead",
+        "sourceType": "gallery",
+        "imageId": "f0000002-0000-4000-8000-000000000013",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": []
+    },
+    {
+      "name": "stream_upload_primary_supports_images",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000002",
+        "sourceType": "upload",
+        "imageId": "f0000002-0000-4000-8000-000000000013",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "identity"
+        ]
+      },
+      "calls": [
+        "Grey eyes, white hair.",
+        "Mira keeps the lanterns."
+      ]
+    },
+    {
+      "name": "stream_image_missing",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "visionProfileId": "c0000002-0000-4000-8000-000000000002",
+        "sourceType": "upload",
+        "imageId": "00000000-0000-4000-8000-00000000dead",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": []
+    },
+    {
+      "name": "stream_vision_call_throws",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "visionProfileId": "c0000002-0000-4000-8000-000000000002",
+        "sourceType": "gallery",
+        "imageId": "f0000002-0000-4000-8000-000000000013",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": [
+        {
+          "throws": "vision melted"
+        }
+      ]
+    },
+    {
+      "name": "stream_field_call_throws_continues",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title",
+          "identity",
+          "description"
+        ]
+      },
+      "calls": [
+        "The Keeper",
+        {
+          "throws": "provider melted"
+        },
+        "She hums."
+      ]
+    },
+    {
+      "name": "json_field_call_throws_continues",
+      "action": "ai-wizard",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title",
+          "identity",
+          "description"
+        ]
+      },
+      "calls": [
+        "The Keeper",
+        {
+          "throws": "provider melted"
+        },
+        "She hums."
+      ]
+    },
+    {
+      "name": "stream_empty_answer_is_a_field_error",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "name": "stream_scenarios_unparseable_stored_raw",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "scenarios"
+        ]
+      },
+      "calls": [
+        "Here are two scenarios: the harbor, and the market. zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+      ]
+    },
+    {
+      "name": "stream_scenarios_long_snippet",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "scenarios"
+        ]
+      },
+      "calls": [
+        "[{\"title\":\"A very long scenario title indeed\",\"content\":\"wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww\"},{\"content\":\"no title\"}]"
+      ]
+    },
+    {
+      "name": "stream_scenarios_first_without_title",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "scenarios"
+        ]
+      },
+      "calls": [
+        "[{\"content\":\"Only content here.\"},{\"title\":\"t\",\"content\":\"c\"}]"
+      ]
+    },
+    {
+      "name": "stream_name_throws_keeps_request_name",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "A harbor.",
+        "fieldsToGenerate": [
+          "name",
+          "title"
+        ]
+      },
+      "calls": [
+        {
+          "throws": "no name today"
+        },
+        "The Keeper"
+      ]
+    },
+    {
+      "name": "stream_properties_pronouns_null",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "properties"
+        ]
+      },
+      "calls": [
+        "{\"pronouns\": null, \"aliases\": [\"Keeper\", \" \", \"Lanternwright\"]}"
+      ]
+    },
+    {
+      "name": "json_properties_placeholder_pronouns",
+      "action": "ai-wizard",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "properties"
+        ]
+      },
+      "calls": [
+        "{\"pronouns\": {\"subject\": \"unknown\", \"object\": \"n/a\", \"possessive\": \"\"}, \"aliases\": []}"
+      ]
+    },
+    {
+      "name": "stream_properties_unparseable",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "properties"
+        ]
+      },
+      "calls": [
+        "She goes by Keeper, mostly."
+      ]
+    },
+    {
+      "name": "stream_wardrobe_items_sanitized",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "wardrobeItems"
+        ]
+      },
+      "calls": [
+        "[{\"title\":\"Lantern Coat\",\"description\":\"An oilskin coat.\",\"imagePrompt\":\"oilskin coat\",\"types\":[\"top\",\"bogus\"],\"isDefault\":true},{\"title\":\" Brass Ring \",\"description\":\"\",\"types\":[\"accessories\"],\"isDefault\":\"no\"},{\"title\":\"Harbor Kit\",\"description\":\"The rig.\",\"types\":[\"top\"],\"components\":[\"lantern coat\",\"Brass Ring\",\"Ghost\"],\"replace\":true}]"
+      ]
+    },
+    {
+      "name": "stream_wardrobe_unparseable",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "wardrobeItems"
+        ]
+      },
+      "calls": [
+        "No wardrobe to speak of."
+      ]
+    },
+    {
+      "name": "stream_physical_description_caps",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "physicalDescription"
+        ]
+      },
+      "calls": [
+        "face: weathered, grey eyes, salt-white hair pulled backxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "grey eyes, white hair, weathered skin, small, a scaryyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        "mmmmmmmmmm",
+        "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+        "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "## Overview\nSmall and weathered.\n\n## Face & Head\nGrey eyes."
+      ]
+    },
+    {
+      "name": "stream_physical_description_mid_throw",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "physicalDescription",
+          "title"
+        ]
+      },
+      "calls": [
+        "face: weathered, grey eyes, salt-white hair pulled backxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "grey eyes, white hair, weathered skin, small, a scaryyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+        {
+          "throws": "melted at medium"
+        },
+        "The Keeper"
+      ]
+    },
+    {
+      "name": "stream_primary_profile_missing",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "00000000-0000-4000-8000-00000000dead",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": []
+    },
+    {
+      "name": "json_primary_profile_missing_is_500",
+      "action": "ai-wizard",
+      "body": {
+        "primaryProfileId": "00000000-0000-4000-8000-00000000dead",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": [
+          "title"
+        ]
+      },
+      "calls": []
+    },
+    {
+      "name": "stream_no_fields",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "",
+        "fieldsToGenerate": []
+      },
+      "calls": []
+    },
+    {
+      "name": "zod_refusal_types",
+      "action": "ai-wizard",
+      "body": {
+        "primaryProfileId": "not-a-uuid",
+        "visionProfileId": null,
+        "sourceType": "telepathy",
+        "imageId": 5,
+        "characterName": 7,
+        "existingData": "bag",
+        "background": null,
+        "fieldsToGenerate": [
+          "title",
+          "bogus"
+        ],
+        "characterId": "nope"
+      },
+      "calls": []
+    },
+    {
+      "name": "zod_refusal_nested_existing_data",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "existing",
+        "characterName": "Mira",
+        "existingData": {
+          "title": 5,
+          "scenarios": [
+            {
+              "id": "s1",
+              "title": "t"
+            },
+            "str"
+          ],
+          "pronouns": {
+            "subject": "she"
+          },
+          "aliases": [
+            "ok",
+            3
+          ],
+          "identity": null
+        },
+        "background": "x",
+        "fieldsToGenerate": "title"
+      },
+      "calls": []
+    },
+    {
+      "name": "zod_refusal_missing_everything",
+      "action": "ai-wizard",
+      "body": {},
+      "calls": []
+    },
+    {
+      "name": "zod_refusal_non_object_body",
+      "action": "ai-wizard",
+      "body": [
+        1,
+        2
+      ],
+      "calls": []
+    }
+  ]
+}

@@ -2445,7 +2445,11 @@ const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 421;
 // P4.9K1 unit 4 added `CharacterOptimize.{character_id, progress_id}` (the route
 // param + the client-minted progress scope; its seven body fields are `Value`
 // tri-states parsed by `optimizeStreamSchema` inside the handler) — 414 → 416.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 416;
+// P4.9K2 unit 3 added `CharacterWizardStream.progress_id` + `AiImportStream.
+// progress_id` (the client-minted progress scopes; each verb's body rides as a
+// flattened `Map<String, Value>` parsed by v4's own schema / hand-rolled read
+// inside the handler) — 416 → 418.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 418;
 
 #[test]
 fn census_covers_every_typed_request_field() {

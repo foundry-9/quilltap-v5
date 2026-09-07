@@ -3596,6 +3596,51 @@ pub enum Request {
         output_mode: Option<Option<serde_json::Value>>,
     },
     // === end P4.9K1 ===
+    // === P4.9K2: the creation-pair generator verbs (§B.3) ===
+    /// v4 `POST /api/v1/characters?action=ai-wizard` (`app/api/v1/characters/
+    /// handlers/post.ts:518-534`) — the AI Wizard's NON-streaming twin. The
+    /// WHOLE body rides as the raw map: v4's `wizardRequestSchema.parse` runs
+    /// inside the handler, so every wrong-typed key reaches v4's Zod arm and
+    /// answers `Validation error` with its `details`. → [`Response::Character`]
+    /// carrying v4's `WizardResult {success, generated, errors?}`; a runner
+    /// throw (`Primary profile not found`, `Image not found`, …) is v4's
+    /// generic 500. ⚠ 💸 LIVE: one model call per requested field (six for
+    /// the physical description, one more for a vision source) once the host
+    /// driver is assembled; a driver-less engine answers the named refusal.
+    #[serde(rename_all = "camelCase")]
+    CharacterWizard {
+        #[serde(flatten)]
+        body: serde_json::Map<String, serde_json::Value>,
+    },
+    /// v4 `?action=ai-wizard-stream` (`post.ts:536-575`) — the streaming twin.
+    /// Every `onProgress` event rides [`Event::generator_progress`] under
+    /// `progress_id` and the dispatch resolves `{ terminal: <the done frame> }`
+    /// (§B.1); a throw before the field loop is a `done {error}` FRAME, never
+    /// a status. Same body + Zod arm as [`Request::CharacterWizard`].
+    #[serde(rename_all = "camelCase")]
+    CharacterWizardStream {
+        #[serde(default)]
+        progress_id: Option<String>,
+        #[serde(flatten)]
+        body: serde_json::Map<String, serde_json::Value>,
+    },
+    /// v4 `POST /api/v1/system/tools?action=ai-import-stream`
+    /// (`route.ts:1190-1260`) — Summon From Lore. The raw body rides whole:
+    /// v4's hand-rolled read (`sourceFileIds || []`, `sourceText || ''`,
+    /// `includeMemories ?? true`, `includeChats ?? false`) and its two 400s
+    /// (`Missing required field: profileId`, `Must provide at least one source
+    /// file or source text`) run inside the handler BEFORE any frame. Frames
+    /// ride `progress_id`; the dispatch resolves `{ terminal: <the done
+    /// frame> }` whose `result` is the assembled `QuilltapExport` (feed it to
+    /// `systemImportExecute`). ⚠ 💸 LIVE: up to nine model calls per run.
+    #[serde(rename_all = "camelCase")]
+    AiImportStream {
+        #[serde(default)]
+        progress_id: Option<String>,
+        #[serde(flatten)]
+        body: serde_json::Map<String, serde_json::Value>,
+    },
+    // === end P4.9K2 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===

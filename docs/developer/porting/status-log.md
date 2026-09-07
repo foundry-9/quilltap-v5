@@ -112858,3 +112858,125 @@ with the six `QT_ORACLE_*` vars of the lane's families **521 test binaries /
 2,946 passed / 0 failed, zero `SKIP:` lines, exit 0** —
 `ai_import_assembly_matches_oracle ... ok` confirmed by name. Versions: core
 0.0.823, harness 0.0.712.
+
+### Unit G (K2 unit 3) — the wizard's five generators + both runners, the two wizard verbs, `character_wizard_tier3_equivalence`
+
+**The runners.** v4's `runCharacterWizard` (`:694-952`) and
+`runCharacterWizardStreaming` (`:954-1213`) are ~250 duplicated lines; they
+are factored ONCE (`run_wizard_core`) with every difference a parameter and
+its line pairs recorded in the module: the log wording (`Starting` /
+`Complete` vs the `(streaming)` twins), the events (the streaming twin's
+`start` / `field_start` / `field_complete {snippet}` / `field_error {error}`
+/ `done`; the non-streaming twin's `WizardResult {success, generated,
+errors?}`), the `properties` snippet (`describeGeneratedProperties(props,
+'no pronouns found')` — the non-streaming twin computes none), and a throw
+before the field loop (the non-streaming twin THROWS to its route — v4's
+middleware catch answers `500 Internal server error`; the streaming twin
+catches it into `done {error, fullContent: {}, errors: {_fatal}}`). The five
+generators: `generate_field` (`[system context, user prompt]`, `temperature
+0.8`, the `No response from model` refusal, the `CHARACTER_WIZARD` log row,
+the TRIMMED content), `generate_image_description` (v4's
+`trackActivity('image', …)` through `track_activity(ActivityKind::Image, …)`;
+the download through `download_file`; the 5 MB ceiling with v4's sentence and
+`toFixed(1)`; the base64 attachment on the one user message; `maxTokens
+1000` / `temperature 0.7` / the VISION profile's parameters and its
+`baseUrl || undefined`; `No response from vision model`),
+`generate_physical_descriptions` (the six tiers in v4's insertion order —
+`PHYSICAL_DESCRIPTION_PROMPTS`, five of them private to the service and now
+byte-carried in `wizard.rs`; `full` 1500 / `complete` 400 / else 300 tokens;
+the substring caps; `name: 'AI Generated'` first), `generate_wardrobe_items`
+(the shared prompt at 2000 → `parseLLMJson` → the shared sanitizer),
+`generate_properties` (`PROPERTIES_PROMPT` at 300 → K0's
+`parse_generated_properties`). Measured and reproduced: the image source
+arms in v4's order (`Image not found` → `profileSupportsMimeType` on the
+PRIMARY (`supportsImageUpload`) → `Vision profile required for image
+analysis` → `Vision profile not found` → the vision call), the document arms
+(`Document not found` → `extractFileContent` → `!success || !content` →
+`extractResult.error || 'Failed to extract document content'`), the
+name-first rule (a context with `''` as the name, `maxTokens 100`, the
+generated name becoming the context's), the per-field `maxTokens` table,
+`scenarios` parsed as JSON with the raw-string fallback + the `rawContent`
+warn, the wizard's own `getSnippet` (string / first-scenario `title:
+content` / `shortPrompt` — each truncated at 100 with `...`), and the
+`[CharacterWizard]` lines as ONE `context=<json>` bag.
+
+**`generators::file_content`** — v4 `lib/services/file-content-extractor.ts`
+whole: the image arm (the stored description, else `[Image: name (WxH)]`),
+the 10 MB ceiling, the storage download, the PDF arm, the text/code arms
+with the 50,000-unit truncation and the extension→language table, the
+`[Binary file: name (mime, size)]` placeholder over `format_bytes`.
+**Recorded divergence:** v4 tries `require('pdf-parse')` first and only runs
+its own regex fallback when the module is absent; `pdf-parse` IS installed in
+v4's checkout, so v4 extracts PDF text through it while v5 (no PDF parser)
+always runs v4's fallback (ported with JS's `\s` spelled out over Latin-1,
+since Rust's Unicode `\s` would take U+0085). A `.pdf` source can differ in
+TEXT, never in shape; no committed fixture carries one.
+
+**The verbs** (`api/generators_wizard.rs`): `characterWizard` /
+`characterWizardStream` carry the WHOLE body as a flattened `Map` (v4's
+`wizardRequestSchema.parse` runs inside the handler); the transcribed schema
+answers Zod 4.5.4's issues in schema key order — `z.uuid()` (`invalid_type`
+for a non-string incl. `null`, `invalid_format` for a bad string), the two
+enums (`invalid_value` for absent / `null` / a stranger, at
+`fieldsToGenerate[i]` per member), `existingData`'s nested bag (each member's
+`invalid_type` at its path; `scenarios[i].content` "received undefined";
+`pronouns` nullable), the root-level `invalid_type` for a non-object body.
+The streaming verb rides K0's emitter under `progressId` and resolves
+`{ terminal }`; the non-streaming one answers `WizardResult` raw and v4's
+generic 500 on a runner throw. The driver seam `GeneratorsWizardDriver`
+(`wizard` / `wizard_stream` / `ai_import_stream`) — `None` → the named
+refusal after the parse arms; the host assembles `None` until unit 6.
+`aiImportStream`'s handler (`parse_ai_import_body` — v4's `||` / `??`
+defaults and its two 400s) lands here too, exercised in unit 5.
+
+**The differential — `character_wizard_tier3_equivalence`** (tier 3;
+`harness/oracle/cases/character-wizard-tier3.test.ts` drives v4's REAL
+`characters` collection route over a fresh copy of the pair per case,
+`createLLMProvider` scripted BY CALL INDEX with attachments recorded as
+`{id, filename, mimeType, data}`, the storage manager UN-mocked — its first
+run recorded jest.setup's "mock file content" as the document text and the
+image bytes; `logger` spied for the `[CharacterWizard]` lines; 37 cases):
+every field over `skip` on both twins (18 calls), `existing` with a full and
+an odd-shaped `existingData`, the three document sources (markdown, the
+binary placeholder, plain text) + a missing document + an absent
+`documentId`, the gallery source needing a vision profile / falling back to
+it / missing it, the upload source on the image-capable primary, a missing
+image, a vision call that throws, a field call that throws (both twins), an
+empty answer, unparseable scenarios stored raw + the two snippet shapes,
+`name` throwing, properties with null pronouns / placeholder pronouns /
+unparseable, wardrobe items sanitized / unparseable, the physical
+description's caps and a mid-tier throw, a missing primary profile (both
+twins), no fields, and four Zod refusals. Comparands: status + body, the
+whole frame trace, every model call (the vision call's base64 bytes
+included), the log lines. RESULT: GREEN on the first run — 37 cases, 81 model calls (3 vision), 134 frames, 4 Zod refusals, zero DIFFER.
+
+Mutation proofs: eight, each reddening its arm(s) — `generate_field`
+temperature 0.8 → 0.7 → 24 cases (every field-calling case); the
+`No response from model` refusal reworded → 1 (`stream_empty_answer_is_a_
+field_error`); the name-first call at 200 tokens → 3; the two vision-profile
+arms swapped → 1 (`stream_gallery_vision_profile_missing`); the streaming
+`properties` snippet fallback reworded → 1 (`stream_properties_pronouns_
+null`); the three snippets truncated at 50 → 5; the Zod `existingData.
+pronouns` arm refusing `null` → 1; the physical-description `short` cap 350 →
+300 → 4. Every mutation restored by file backup, the family re-run green.
+
+Recorded, not compared: the api key argument; the `CHARACTER_WIZARD`
+`llm_logs` rows (no partition on either side; the row shapes ported incl.
+the vision row's `attachments: [{id}]`). The dispatch wrong-type census moves
+416 → 418 (`CharacterWizardStream.progress_id`, `AiImportStream.progress_id`).
+
+**The activity-span tripwire.** The first gate run failed ONE binary —
+`activity_span_sites_guard`'s `NO_V5_SURFACE` row for `character_wizard`
+fired on the four files now naming it (P4.D123's design: the lane that
+ports the surface inherits the obligation). The row moved into `CENSUS`:
+`generators/wizard.rs :: generate_image_description` wraps the vision call
+in `track_activity(ActivityKind::Image, …)` exactly where v4's
+`trackActivity('image', …)` sits, asserted exactly once per file.
+
+**Gate** (`CARGO_INCREMENTAL=0`, full log + sentinel): `cargo fmt --all
+--check` clean; clippy both feature sets exit 0; `cargo test --workspace`
+with the lane's seven `QT_ORACLE_*` vars **522 test binaries / 2,947 passed
+/ 0 failed, zero `SKIP:` lines, exit 0** —
+`character_wizard_matches_oracle ... ok` confirmed by name (the first run's
+one red was the activity-span tripwire above, fixed by moving the row).
+Versions: core 0.0.824, harness 0.0.713, host 0.0.109.

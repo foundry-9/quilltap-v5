@@ -309,6 +309,13 @@ pub struct EngineAssembly {
     /// it. ⚠ 💸 LIVE once wired: real model spend on a real click.
     pub generators_detail: Option<Arc<dyn super::generators_detail::GeneratorsDetailDriver>>,
     // === end P4.9K1 ===
+    // === P4.9K2: the creation-pair generator driver (§B.3) ===
+    /// The wizard / AI-import driver — the composing host holds the completion
+    /// provider + storage backend the three model-calling verbs need. `None`
+    /// (read-only embedders, canned test factories) → the verbs answer a NAMED
+    /// `Unavailable` refusal AFTER v4's parse arms. ⚠ 💸 LIVE once wired.
+    pub generators_wizard: Option<Arc<dyn super::generators_wizard::GeneratorsWizardDriver>>,
+    // === end P4.9K2 ===
 }
 
 impl EngineAssembly {
@@ -371,6 +378,9 @@ impl EngineAssembly {
             // === P4.9K1 ===
             generators_detail: None,
             // === end P4.9K1 ===
+            // === P4.9K2 ===
+            generators_wizard: None,
+            // === end P4.9K2 ===
         }
     }
 }
@@ -597,6 +607,11 @@ struct ReadyEngine {
     /// embedders — the two model-calling verbs answer the named refusal).
     generators_detail: Option<Arc<dyn super::generators_detail::GeneratorsDetailDriver>>,
     // === end P4.9K1 ===
+    // === P4.9K2 ===
+    /// The creation-pair generator driver (P4.9K2; `None` for read-only
+    /// embedders — the three model-calling verbs answer the named refusal).
+    generators_wizard: Option<Arc<dyn super::generators_wizard::GeneratorsWizardDriver>>,
+    // === end P4.9K2 ===
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -3241,6 +3256,48 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.9K1 ===
+            // === P4.9K2: the creation-pair generator verbs (§B.3) ===
+            Request::CharacterWizard { body } => match self.ready_generators_wizard() {
+                Ok(driver) => {
+                    super::generators_wizard::character_wizard(
+                        driver.as_ref(),
+                        SINGLE_USER_ID,
+                        &serde_json::Value::Object(body),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterWizardStream { progress_id, body } => {
+                match self.ready_generators_wizard() {
+                    Ok(driver) => {
+                        super::generators_wizard::character_wizard_stream(
+                            driver.as_ref(),
+                            &self.inner.events,
+                            SINGLE_USER_ID,
+                            progress_id.as_deref(),
+                            &serde_json::Value::Object(body),
+                        )
+                        .await
+                    }
+                    Err(r) => r,
+                }
+            }
+            Request::AiImportStream { progress_id, body } => match self.ready_generators_wizard() {
+                Ok(driver) => {
+                    super::generators_wizard::ai_import_stream(
+                        driver.as_ref(),
+                        &self.inner.events,
+                        SINGLE_USER_ID,
+                        progress_id.as_deref(),
+                        &serde_json::Value::Object(body),
+                        crate::clock::now_unix_ms(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.9K2 ===
             Request::GroupStateGet { group_id } => match self.ready_db() {
                 Ok(db) => super::groups::group_state_get(&db, &group_id),
                 Err(r) => r,
@@ -5432,6 +5489,21 @@ impl CoreEngine {
     }
     // === end P4.9K1 ===
 
+    // === P4.9K2 ===
+    /// The (optional) creation-pair generator driver under the readiness
+    /// gate. `None` is handed through so the handler can run v4's parse arms
+    /// BEFORE answering the not-assembled refusal.
+    #[allow(clippy::type_complexity)]
+    fn ready_generators_wizard(
+        &self,
+    ) -> Result<Option<Arc<dyn super::generators_wizard::GeneratorsWizardDriver>>, Response> {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok(r.generators_wizard.clone()),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+    // === end P4.9K2 ===
+
     /// The `Db` + the (optional) document-store refresh scheduler under the
     /// readiness gate (P4.6w). `None` when unwired — the write sites loud-skip
     /// the refresh. `Err` is the locked refusal.
@@ -6489,6 +6561,9 @@ fn open_ready(
         // === P4.9K1 ===
         generators_detail: assembly.generators_detail,
         // === end P4.9K1 ===
+        // === P4.9K2 ===
+        generators_wizard: assembly.generators_wizard,
+        // === end P4.9K2 ===
     })
 }
 

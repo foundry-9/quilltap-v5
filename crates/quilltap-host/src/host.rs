@@ -957,6 +957,12 @@ impl EngineAssembler for HostAssembler {
             // answer their NAMED refusal after v4's 404 + Zod arms. ===
             generators_detail,
             // === end P4.9K1 ===
+            // === P4.9K2: the creation-pair generator driver — `None` until the
+            // driver unit wires `generators_wizard_driver.rs` from the spine
+            // bundle; the three verbs answer their NAMED refusal meanwhile,
+            // after v4's parse arms. ===
+            generators_wizard: None,
+            // === end P4.9K2 ===
         })
     }
 }

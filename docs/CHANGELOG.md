@@ -282,6 +282,50 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — feat(generators): P4.9K2 unit 3 — the AI Wizard's five generators and both runners as the `characterWizard` / `characterWizardStream` verbs (tier 3)
+
+_Versions: core 0.0.824, harness 0.0.713, host 0.0.109._
+
+Ports the runner half of v4's `lib/services/character-wizard.service.ts`:
+`generateField` (temperature 0.8, the `No response from model` refusal, the
+`CHARACTER_WIZARD` log row), `generateImageDescription` (the image-activity
+span, the storage download, the 5 MB ceiling with v4's sentence, the base64
+attachment on the vision call at 1000 tokens / 0.7, the vision-profile
+resolution arms in v4's order), `generatePhysicalDescriptions` (the six
+tiers in v4's insertion order with their token budgets and substring caps),
+`generateWardrobeItems` and `generateProperties` over the shared leaves, and
+the two runners — v4's ~250 duplicated lines factored once as
+`run_wizard_core` with every difference a parameter (the log wording, the
+progress frames, the `properties` snippet, the throw-vs-catch before the
+field loop). `generators::file_content` ports
+`lib/services/file-content-extractor.ts` whole (image / PDF-fallback / text
+/ binary-placeholder arms, the 10 MB ceiling, the 50,000-unit truncation).
+
+The verbs (`api::generators_wizard`): `characterWizard` answers
+`WizardResult` and v4's generic 500 on a runner throw; `characterWizardStream`
+rides the `generatorProgress` event under `progressId` and resolves
+`{ terminal }`; both carry the whole body and answer v4's
+`wizardRequestSchema` issues (Zod 4.5.4 wording, schema key order, nested
+paths) as the `validationError` envelope. `aiImportStream`'s handler lands
+alongside (its runner is unit 5). The `GeneratorsWizardDriver` seam — the host
+assembles `None` until unit 6, answering the named
+`AI wizard generation not available` refusal after the parse arms.
+
+New tier-3 family `character_wizard_tier3_equivalence` (37 cases driving v4's
+REAL `characters` collection route over the committed
+`character-generators-{main,mount}.db` pair; 81 scripted model calls, three of
+them vision calls with the base64 bytes compared, 134 progress frames, 4 Zod
+refusals; the `[CharacterWizard]` log lines compared as context bags). Green
+on its first run; eight mutation proofs each reddening its arm. The
+P4.D123 activity-span census's `character_wizard` existence tripwire fired
+at the gate as designed: the wizard's image-description span moved from
+`NO_V5_SURFACE` into `CENSUS` (the wrap on the vision call, exactly once).
+
+Recorded divergence: v4's `extractFileContent` runs `pdf-parse` when the
+module is installed (it is, in v4's checkout) and its own regex fallback
+otherwise; v5 carries only the fallback, so a `.pdf` source can differ in
+extracted TEXT (never in shape). No committed fixture carries one.
+
 #### 2026-09-07 — feat(generators): P4.9K2 unit 2 — the AI import's assembly leaf (`generators::ai_import`, tier 1)
 
 _Versions: core 0.0.823, harness 0.0.712._

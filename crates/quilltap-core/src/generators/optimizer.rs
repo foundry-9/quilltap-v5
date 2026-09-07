@@ -895,7 +895,7 @@ pub fn v8_json_parse_message(text: &str) -> Option<String> {
 /// The message v4's `parseLLMJson` throws for `raw`: the LAST parse in its
 /// chain is over the repaired text, and that `SyntaxError` is what propagates
 /// — so the V8 wording is computed over the same repaired bytes.
-fn llm_json_failure_message(raw: &str, err: &LlmJsonError) -> String {
+pub fn llm_json_failure_message(raw: &str, err: &LlmJsonError) -> String {
     let repaired = repair_truncated_json(&escape_control_chars_in_strings(&strip_code_fences(raw)));
     v8_json_parse_message(&repaired).unwrap_or_else(|| err.message.clone())
 }
