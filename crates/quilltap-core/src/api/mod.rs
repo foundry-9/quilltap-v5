@@ -96,6 +96,9 @@ pub mod help_chats;
 pub mod help_docs;
 // === end P4.9I2A ===
 // === end P4.9P ===
+// === P4.80: the chat DELETE handler (dogfood finding #117) ===
+pub mod chat_delete;
+// === end P4.80 ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

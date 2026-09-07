@@ -3087,6 +3087,12 @@ impl CoreEngine {
                 Ok(db) => super::salon::chat_state_reset(&db, &chat_id).await,
                 Err(r) => r,
             },
+            // === P4.80: the chat DELETE (dogfood finding #117) ===
+            Request::ChatDelete { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_delete::chat_delete(&db, &chat_id).await,
+                Err(r) => r,
+            },
+            // === end P4.80 ===
             Request::GroupStateGet { group_id } => match self.ready_db() {
                 Ok(db) => super::groups::group_state_get(&db, &group_id),
                 Err(r) => r,

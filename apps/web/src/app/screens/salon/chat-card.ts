@@ -32,6 +32,14 @@ import { ToastService } from '../../ui/toast.service';
  * The optional `removable` mode (v4 `actionType="remove"`, used by the project
  * chats section) overlays an X that emits `remove` — it DISASSOCIATES the chat
  * from its project, never deletes it.
+ *
+ * `deletable` is v4's OTHER action mode (`actionType="delete"`, `ChatCard.tsx:
+ * 366-385`), restored by P4.80 for dogfood finding #117: the destructive trash
+ * button in the card's action column, which emits `delete` for the list to
+ * confirm and dispatch. v4's two modes are mutually exclusive and render
+ * different chrome; v5's `removable` keeps its pre-existing corner placement
+ * (a recorded divergence that predates this lane), while `deletable` sits in
+ * v4's own action column with v4's classes.
  */
 @Component({
   selector: 'qt-chat-card',
@@ -143,6 +151,24 @@ import { ToastService } from '../../ui/toast.service';
             }
           </div>
         </div>
+
+        @if (deletable()) {
+          <!-- v4 ChatCard.tsx:364-385 -- the action column, outside the
+               content column so the button never wraps under the text.
+               (No backticks in an inline-template comment: they terminate the
+               TS literal.) -->
+          <div class="flex items-center">
+            <button
+              type="button"
+              class="chat-card__action inline-flex h-10 w-10 items-center justify-center rounded-lg qt-bg-destructive qt-text-on-destructive shadow transition hover:qt-bg-destructive/90"
+              title="Delete chat"
+              aria-label="Delete chat"
+              (click)="onDelete($event)"
+            >
+              <qt-icon name="trash" class="w-5 h-5" />
+            </button>
+          </div>
+        }
       </div>
     </a>
   `,
@@ -154,6 +180,15 @@ export class ChatCard {
   /** v4 `actionType="remove"` — overlay an X that disassociates from the project. */
   readonly removable = input(false);
   readonly remove = output<string>();
+  /**
+   * v4 `actionType="delete"` — the destructive trash button. Emitted rather
+   * than dispatched here, because v4's `onDelete` prop is what carries the
+   * confirmation AND the list's own refresh (`SalonListView.tsx:113-117` vs the
+   * Conversations tab's local filter); a card that deleted for itself could not
+   * tell either list what to do next.
+   */
+  readonly deletable = input(false);
+  readonly delete = output<string>();
 
   protected readonly copied = signal(false);
   protected readonly rendering = signal(false);
@@ -194,6 +229,14 @@ export class ChatCard {
     event.preventDefault();
     event.stopPropagation();
     this.remove.emit(this.chat().id);
+  }
+
+  /** v4 `handleAction` (`ChatCard.tsx:195-203`) — the whole card is a link, so
+   *  the action button must stop the navigation before it emits. */
+  protected onDelete(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.delete.emit(this.chat().id);
   }
 
   /**

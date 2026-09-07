@@ -358,30 +358,57 @@ pub async fn write_conversation_summary_to_vaults(db: &Db, input: &WriteConversa
 /// v4 `removeConversationSummariesFromVaults`: remove the conversation's summary
 /// file from every participant character's vault (matched by frontmatter
 /// `conversationId`). Best-effort per character.
+///
+/// v4 wraps each character in its own try/catch and reports BOTH outcomes —
+/// `logger.debug('Removed conversation summary from character vault', …)` when
+/// it removed anything, `logger.warn('Failed to remove conversation summary
+/// from a character vault', …)` when that character's vault refused. P4.80
+/// restored both: this sweep was silent, and the chat DELETE it hangs off is
+/// exactly where an operator asks the log what happened to a vault (findings
+/// #103 / #110 / #116 are the same class).
 pub async fn remove_conversation_summaries_from_vaults(
     db: &Db,
     chat_id: &str,
     participant_character_ids: &[String],
 ) {
     for character_id in participant_character_ids {
+        // v4 `if (!target) continue` — a character with no vault pointer is
+        // skipped in silence on both sides.
         let Some(mount_id) = resolve_vault_mount_id(db, character_id).await else {
             continue;
         };
-        let chat_id = chat_id.to_string();
-        let _ = db
+        let chat_id_owned = chat_id.to_string();
+        let mount_id_owned = mount_id.clone();
+        let removed = db
             .write(move |writers| {
                 let Some(mi) = writers.mount_index() else {
-                    return Ok(());
+                    return Ok(0usize);
                 };
                 let conn = mi.connection();
                 let links = DocMountFileLinksRepository::new(conn);
-                let paths = find_existing_summary_paths(conn, &mount_id, &chat_id)?;
+                let paths = find_existing_summary_paths(conn, &mount_id_owned, &chat_id_owned)?;
                 for path in &paths {
-                    links.delete_database_document(&mount_id, path)?;
+                    links.delete_database_document(&mount_id_owned, path)?;
                 }
-                Ok(())
+                Ok(paths.len())
             })
             .await;
+        match removed {
+            Ok(0) => {}
+            Ok(n) => tracing::debug!(
+                chat_id = %chat_id,
+                character_id = %character_id,
+                mount_point_id = %mount_id,
+                removed = n,
+                "Removed conversation summary from character vault"
+            ),
+            Err(e) => tracing::warn!(
+                chat_id = %chat_id,
+                character_id = %character_id,
+                error = %e,
+                "Failed to remove conversation summary from a character vault"
+            ),
+        }
     }
 }
 
@@ -425,21 +452,40 @@ pub async fn delete_conversation_with_vault_sweep(
         return Ok(false);
     }
 
-    // Delete the chat's messages (best-effort — v4 warns and continues).
+    // Delete the chat's messages (best-effort — v4 warns and continues). The
+    // warn was DROPPED in the original port and restored by P4.80, which gave
+    // this wrapper its first caller: `logger.warn('Failed to delete chat
+    // messages', {chatId, error})`.
     let chat_id_owned = chat_id.to_string();
-    let _ = db
+    if let Err(e) = db
         .write(move |writers| {
             writers
                 .main()
                 .chat_messages()
                 .clear_messages(&chat_id_owned)
         })
-        .await;
+        .await
+    {
+        tracing::warn!(chat_id = %chat_id, error = %e, "Failed to delete chat messages");
+    }
 
     // Sweep summaries out of each participant vault (best-effort).
+    //
+    // v4 wraps this call in its OWN try/catch → `logger.warn('Failed to sweep
+    // conversation summaries from vaults', …)`. That arm is a NO-PORT with
+    // evidence: `removeConversationSummariesFromVaults` catches every character
+    // internally and returns `void`, so the only way to reach v4's outer catch
+    // is a failure of its `await import(...)` of the bridge module — a Node
+    // module-resolution hazard with no v5 analogue (the function is linked).
+    // The per-character warn v4 DOES reach is ported inside the sweep above.
     if sync_vaults && !participant_character_ids.is_empty() {
         remove_conversation_summaries_from_vaults(db, chat_id, &participant_character_ids).await;
     }
+
+    // v4 `logger.info('Chat deleted', {chatId})` — the REPOSITORY's line, which
+    // v4 emits alongside the route's own `[Chats v1] Chat deleted`. Both are
+    // ported (the route's lives in `api::chat_delete`).
+    tracing::info!(chat_id = %chat_id, "Chat deleted");
 
     Ok(true)
 }

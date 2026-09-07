@@ -560,7 +560,7 @@ pub(crate) const ZOD_UUID_PATTERN: &str = "/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8
 
 /// `true` when `s` satisfies [`ZOD_UUID_PATTERN`]. Hand-matched rather than
 /// regex-compiled: the shape is fixed and the crate has no regex dependency.
-fn zod_uuid_ok(s: &str) -> bool {
+pub(crate) fn zod_uuid_ok(s: &str) -> bool {
     if s.eq_ignore_ascii_case("00000000-0000-0000-0000-000000000000")
         || s.eq_ignore_ascii_case("ffffffff-ffff-ffff-ffff-ffffffffffff")
     {
@@ -662,7 +662,7 @@ impl ZodIssue {
 
 /// v4 `util.parsedType` (the same table the Pascal Zod port pins). `None` is
 /// JS `undefined` — a missing key.
-fn zod_parsed_type(v: Option<&Value>) -> &'static str {
+pub(crate) fn zod_parsed_type(v: Option<&Value>) -> &'static str {
     match v {
         None => "undefined",
         Some(Value::Null) => "null",

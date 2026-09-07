@@ -35,7 +35,7 @@ function chat(over: Partial<EnrichedChatSummary>): EnrichedChatSummary {
   } as unknown as EnrichedChatSummary;
 }
 
-function render(c: EnrichedChatSummary): HTMLElement {
+function mount(c: EnrichedChatSummary, deletable = false) {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [ChatCard],
@@ -47,8 +47,15 @@ function render(c: EnrichedChatSummary): HTMLElement {
   });
   const fixture = TestBed.createComponent(ChatCard);
   fixture.componentRef.setInput('chat', c);
+  if (deletable) {
+    fixture.componentRef.setInput('deletable', true);
+  }
   fixture.detectChanges();
-  return fixture.nativeElement as HTMLElement;
+  return fixture;
+}
+
+function render(c: EnrichedChatSummary): HTMLElement {
+  return mount(c).nativeElement as HTMLElement;
 }
 
 describe('ChatCard — the activity date', () => {
@@ -60,8 +67,45 @@ describe('ChatCard — the activity date', () => {
   it('falls back to createdAt, never updatedAt, when nobody has spoken', () => {
     const el = render(chat({ lastMessageAt: null }));
     expect(el.textContent).toContain(new Date('2024-03-04T00:00:00.000Z').toLocaleDateString());
-    expect(el.textContent).not.toContain(
-      new Date('2026-08-30T00:00:00.000Z').toLocaleDateString(),
-    );
+    expect(el.textContent).not.toContain(new Date('2026-08-30T00:00:00.000Z').toLocaleDateString());
+  });
+});
+
+/**
+ * P4.80 (dogfood finding #117) — v4 `ChatCard.tsx:364-385`. The card does NOT
+ * delete: v4's `onDelete` prop carries both the confirmation and the caller's
+ * own list update (the Salon refetches, the Conversations tab filters locally),
+ * so a card that deleted for itself could not tell either list what happened.
+ *
+ * The `preventDefault` arm is the one worth pinning by consequence: the whole
+ * card is a `routerLink`, so a delete button that let the click through would
+ * navigate INTO the chat it just asked to remove.
+ */
+describe('ChatCard — the delete action', () => {
+  it('renders nothing without the deletable flag (v4 gates on the callback)', () => {
+    const el = render(chat({}));
+    expect(el.querySelector('button[title="Delete chat"]')).toBeNull();
+  });
+
+  it('renders v4’s destructive trash button with v4’s title', () => {
+    const el = mount(chat({}), true).nativeElement as HTMLElement;
+    const button = el.querySelector<HTMLButtonElement>('button[title="Delete chat"]');
+    expect(button).not.toBeNull();
+    expect(button!.className).toContain('qt-bg-destructive');
+    expect(button!.className).toContain('qt-text-on-destructive');
+    expect(button!.querySelector('qt-icon')).not.toBeNull();
+  });
+
+  it('emits the chat id and suppresses the card’s own navigation', () => {
+    const fixture = mount(chat({ id: 'c-victim' }), true);
+    const seen: string[] = [];
+    fixture.componentInstance.delete.subscribe((id: string) => seen.push(id));
+    const el = fixture.nativeElement as HTMLElement;
+    const button = el.querySelector<HTMLButtonElement>('button[title="Delete chat"]')!;
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    button.dispatchEvent(event);
+    fixture.detectChanges();
+    expect(seen).toEqual(['c-victim']);
+    expect(event.defaultPrevented).toBe(true);
   });
 });

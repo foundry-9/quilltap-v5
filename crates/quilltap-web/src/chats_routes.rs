@@ -12,15 +12,21 @@
 //!   refusing it would be an invention; the query parsing below is v4's,
 //!   parameter for parameter.
 //!
-//! The POST/PUT/DELETE legs of v4's collection route are NOT registered here —
-//! they were never part of this lane and have no v5 REST edge today; the SPA
-//! reaches them through `/api/dispatch`.
+//! The POST/PUT legs of v4's collection route are NOT registered here — they
+//! were never part of that lane and have no v5 REST edge today; the SPA reaches
+//! them through `/api/dispatch`.
+//!
+//! **P4.80 (dogfood finding #117)** adds the per-id DELETE edge below —
+//! `DELETE /api/v1/chats/{id}`, v4's whole `handleDelete` dispatch
+//! (`app/api/v1/chats/[id]/handlers/delete.ts`). Until it landed, v5 answered
+//! **405** on every one of v4's three DELETE surfaces and a salon chat could
+//! not be deleted from anywhere.
 
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response as AxumResponse};
 use quilltap_core::api::{Request as CoreRequest, Response as CoreResponse};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::files_routes::error_json;
 use crate::state::SharedState;
@@ -107,5 +113,90 @@ pub async fn chats_collection_get(
                 Err(r) => r,
             }
         }
+    }
+}
+
+// ===========================================================================
+// P4.80 — DELETE /api/v1/chats/{id}
+// ===========================================================================
+
+/// v4 `DELETE /api/v1/chats/[id]` — the transport half of `handleDelete`.
+///
+/// The DISPATCH itself (the four legs, the guard order, the Zod parse, v4's
+/// sentences) lives in `quilltap_core::api::chat_delete::chat_delete_dispatch`,
+/// so both transports answer from one piece of code and the differential can
+/// drive it. What is left here is genuinely transport: read the raw
+/// `?action=` (UNFOLDED — the `if (action)` truthiness belongs to the ported
+/// dispatch, which is why `query::first` is used rather than `query::action`),
+/// turn the request bytes into the value `await req.json()` would yield, and
+/// render the typed `Response`.
+pub async fn chat_delete(
+    State(state): State<SharedState>,
+    Path(chat_id): Path<String>,
+    Query(query): Query<crate::query::QueryPairs>,
+    body: axum::body::Bytes,
+) -> AxumResponse {
+    // v4's `getActionParam` is `searchParams.get('action')` — FIRST wins, and
+    // the empty string SURVIVES to the dispatch's own `if (action)`.
+    let raw_action = crate::query::first(&query, "action");
+
+    // `await req.json()` on an EMPTY body throws in Next just as it does here;
+    // v4 only ever reaches it on the stop-impersonate leg, where its client
+    // always sends a body. An empty body is treated as `{}` so the leg answers
+    // v4's `participantId` validation error rather than a transport 500; a body
+    // that is present but NOT JSON is the SyntaxError v4's middleware turns
+    // into 500 `Internal server error` (not a ZodError, so not a 400).
+    let json_body: Value = if body.is_empty() {
+        Value::Object(Default::default())
+    } else {
+        match serde_json::from_slice(&body) {
+            Ok(v) => v,
+            Err(_) => {
+                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+            }
+        }
+    };
+
+    // The dispatch reaches the ported composite DIRECTLY rather than through a
+    // second `Request` variant: §B of the round's contract admits exactly one
+    // new verb here (`chatDelete`, which the SPA uses), and the REST edge's
+    // extra needs — the raw action, the un-parsed body — are transport shape,
+    // not a wire contract. `files_routes::db_and_backend` is the precedent for
+    // an edge holding the `Db` itself.
+    let db = match crate::files_routes::db_and_backend(&state) {
+        Ok((db, _)) => db,
+        Err(r) => return *r,
+    };
+    let resp = quilltap_core::api::chat_delete::chat_delete_dispatch(
+        &db, &chat_id, raw_action, &json_body,
+    )
+    .await;
+    match resp {
+        // `{success: true}` (delete), `{success, previousState}` (reset-state),
+        // the impersonation body (stop-impersonate) — v4 sends each raw.
+        CoreResponse::ChatAdmin(v)
+        | CoreResponse::State(v)
+        | CoreResponse::ChatImpersonation(v) => (
+            StatusCode::OK,
+            [("content-type", "application/json")],
+            v.to_string(),
+        )
+            .into_response(),
+        // v4's `validationError` body carries `details` beside `error`; the
+        // shared mapper only knows the plain `{error}` and the store-unavailable
+        // shapes, so the Zod envelope is rendered here.
+        CoreResponse::Error(e) => match e.validation_wire_body() {
+            Some(wire) => (
+                StatusCode::BAD_REQUEST,
+                [("content-type", "application/json")],
+                wire.to_string(),
+            )
+                .into_response(),
+            None => error_to_http(e),
+        },
+        _ => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
     }
 }

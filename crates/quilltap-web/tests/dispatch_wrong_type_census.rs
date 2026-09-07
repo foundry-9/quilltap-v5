@@ -2426,7 +2426,9 @@ fn is_route_identifier(field: &str) -> bool {
 /// census total.
 // P4.9I2A added seven route identifiers (`HelpDocGet.id` + six `HelpChat*.chat_id`),
 // every one of them a v4 `/[id]/` URL segment — 403 → 410.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 410;
+// P4.80 added ONE more (`ChatDelete.chat_id`), also a genuine `/[id]/` segment:
+// v4's `handleDelete` takes it from the route params, never from a body — 410 → 411.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 411;
 
 #[test]
 fn census_covers_every_typed_request_field() {

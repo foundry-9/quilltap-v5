@@ -353,6 +353,54 @@ and returns the mapped refusal before constructing it. Pinned by a new
 wire test, `p4_81_refused_create_emits_no_progress_frame`, which drives a
 real `ChatCreateSpine::create` over an invalid body and asserts the
 engine's `Event` broadcast received nothing.
+#### 2026-09-07 — feat(chats): a salon chat can be deleted again — the `chatDelete` verb, v4's whole DELETE dispatch, and the affordance on both cards (dogfood #117)
+
+_Versions: core 0.0.813, harness 0.0.701, web 0.0.121, SPA 0.5.658._
+
+Dogfood finding #117: `DELETE /api/v1/chats/{id}` answered **405** on every
+one of v4's three DELETE surfaces and no `chatDelete` verb existed, so a
+salon chat could not be deleted anywhere in v5. The client half was a
+documented P4.6g deferral; the server half went unported with it.
+
+The whole of v4's `handleDelete` (`app/api/v1/chats/[id]/handlers/delete.ts`)
+now lives in `quilltap_core::api::chat_delete::chat_delete_dispatch` — the
+four legs (`reset-state`, `stop-impersonate`, an unknown action's warn + 400,
+the delete), the guard ORDER that puts the chat's 404 ahead of the body parse,
+and the ported `stopImpersonateSchema` Zod envelope. Both transports answer
+from that one function: the new `Request::ChatDelete` verb for the SPA, and
+`chats_routes::chat_delete` (registered as `.delete(...)` on the existing
+`/api/v1/chats/{id}` route) as a thin adapter for the CLI and curl. The
+cascade itself is the already-ported
+`services::conversation_summary_vault_bridge::delete_conversation_with_vault_sweep`,
+which had zero callers until now.
+
+Four v4 log lines the original port dropped in silence are restored with it
+(the `Failed to delete chat messages` warn, the per-vault
+`Removed conversation summary from character vault` debug and its failure
+warn, and the repository's `Chat deleted` info) — the finding #103 / #110 /
+#116 class, on a path this commit makes live. A fifth, v4's outer
+`Failed to sweep conversation summaries from vaults`, is a NO-PORT with
+evidence: `removeConversationSummariesFromVaults` catches every character
+internally, so only a failure of v4's dynamic `import()` could reach it.
+
+New differential `chat_delete_equivalence` (17 cases, tier 2) drives v4's REAL
+route handler over a fresh copy of the new committed
+`chat-delete-{main,mount,llmlogs}.db` family per case and diffs a whole-DB
+table census across all three partitions — which is the discriminator, since
+`{success: true}` says nothing about what the cascade reached. The census
+proves what v4 deletes (the chat row, its messages, its annotations, the
+summary file in every participant vault) and what it deliberately leaves
+(memories, `conversation_chunks`, `chat_documents`, `files`,
+`background_jobs`, `characters.avatarOverrides`, the Scriptorium render's
+mount-index rows, the whole `llm_logs` partition). A fourth census section lists each character's `Conversation
+Summaries/` folder through the store READER on both sides — the arm the raw
+table dump cannot make. Nine mutations, each reddening exactly its own arm. A live-server wire test pins the registration,
+the body passthrough and the `details` envelope.
+
+SPA: the salon and character-conversation cards gain v4's `actionType="delete"`
+trash button with v4's classes and title; the Salon list confirms and refetches,
+the Conversations tab confirms and filters locally, exactly as v4's two callers
+do. The confirmation sentence and the failure toast are v4's byte for byte.
 
 #### 2026-09-07 — docs(porting): order the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81)
 Docs only — no crate versions bumped. Planned by `/setupphase` from the

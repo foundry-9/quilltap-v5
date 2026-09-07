@@ -9,6 +9,283 @@
 > from that file and keeps its original in-place update conventions
 > ("update as it moves").
 
+## Lane record — P4.80 (dogfood finding #117: a salon chat can be deleted again — the `chatDelete` verb, v4's whole DELETE dispatch, and the affordance on both cards)
+
+Ordered against round baseline **`f699da6f6`** (the `p4.9k` character-generators
+round; independent of K0). **Drift-ledger §2 freshness probe at lane start
+(2026-09-07):** PASS — v4 checkout on `bugfix`, tree clean, `git log
+f699da6f6..main` empty, `git log 1a2b2164c..bugfix` empty. §1's verdict (PIN
+REQUIRED, because the checkout sits on `bugfix`) stands; the lane never wrote
+the ledger.
+
+**Pin:** one lane-unique detached worktree at
+`/tmp/qt-v4-pin-p480-f699da6f6`, all three symlink classes per ledger §5.1.
+Every fixture build, every oracle regen and every Zod probe in this record ran
+from it, never from the live checkout.
+
+**The finding.** #117 (recorded 2026-09-07, the `f699da6f6`-round dogfood
+walk): a salon chat could not be deleted on ANY v5 surface. `DELETE
+/api/v1/chats/{id}` answered **405** (`quilltap-web/src/lib.rs` registered
+`get` + `post` only) and no `chatDelete` verb existed. The client half was a
+documented P4.6g deferral whose note named only the card; the SERVER half went
+unported with it and nobody noticed, because a deferral note about a button
+does not read like a missing endpoint.
+
+### Unit 1 — the dispatch, whole, in ONE place
+
+v4's `handleDelete` (`app/api/v1/chats/[id]/handlers/delete.ts:19-64`) is four
+legs and an order:
+
+1. `?action=reset-state` → `handleResetState`; the body is never read.
+2. `?action=stop-impersonate` → **fetch the chat FIRST**, `notFound('Chat')`,
+   and only then `handleStopImpersonate`, which is where `req.json()` lives.
+   So a malformed body against a missing chat is a **404**, not a 400.
+3. any OTHER truthy action → `logger.warn('[Chats v1] Unknown DELETE action,
+   rejecting to prevent data loss', {chatId, action})` + a 400 naming the two
+   served actions. v4's comment says why: "Reject unrecognized actions to
+   prevent accidental chat deletion."
+4. no action → the delete.
+
+All four landed in `quilltap_core::api::chat_delete::chat_delete_dispatch`
+rather than in the transport, so both transports answer from one piece of code
+AND the differential can drive the guard order. `chats_routes::chat_delete` is
+a thin adapter: read the RAW `?action=` (`query::first`, NOT `query::action` —
+the `if (action)` truthiness fold belongs to the ported dispatch, where the
+corpus can see it), turn the request bytes into what `await req.json()` would
+yield, and render the typed `Response`.
+
+The edge reaches the ported composite DIRECTLY (`files_routes::db_and_backend`
+is the precedent for an edge holding the `Db`) rather than through a second
+`Request` variant: §B of the round's contract admits exactly ONE new verb here,
+`chatDelete { chatId }`, which is what the SPA dispatches.
+
+**The `stopImpersonateSchema` Zod parse** is ported issue-for-issue, MEASURED
+against the installed `zod` 4.5.4 at the pin rather than transcribed from
+memory — the first draft hard-coded `received undefined` for every
+`invalid_type`, which the probe showed wrong for `number`/`null`, and missed
+that `z.object` collects BOTH fields' issues. The `bad_body_*` corpus arms are
+the transcription's proof.
+
+**The cascade** is the already-ported
+`services::conversation_summary_vault_bridge::delete_conversation_with_vault_sweep`
+(`syncVaults = true`) — which had **zero callers** until this lane, which is
+part of why the gap survived so long.
+
+### Unit 2 — four log lines the original port dropped in silence
+
+Giving that wrapper its first caller made its silences live. v4 emits five
+lines on this path; v5 emitted none of them:
+
+| v4 line | level | ported |
+|---|---|---|
+| `[Chats v1] Unknown DELETE action, rejecting to prevent data loss` | warn | yes (`api::chat_delete`) |
+| `[Chats v1] Chat deleted` | info | yes (`api::chat_delete`) |
+| `Chat deleted` (the REPOSITORY's own, a second line) | info | yes (the bridge) |
+| `Failed to delete chat messages` | warn | yes (the bridge) |
+| `Removed conversation summary from character vault` | debug | yes (the bridge) |
+| `Failed to remove conversation summary from a character vault` | warn | yes (the bridge) |
+| `Failed to sweep conversation summaries from vaults` | warn | **NO-PORT with evidence** |
+
+The NO-PORT: v4 wraps its call to `removeConversationSummariesFromVaults` in
+its own try/catch, but that function catches every character internally and
+returns `void`, so the only way to reach the outer catch is a failure of v4's
+`await import(...)` of the bridge module — a Node module-resolution hazard with
+no v5 analogue (the function is linked). Recorded at the call site.
+
+This is the finding #103 / #110 / #116 class again, and the third time in three
+months that a ported cascade turned out to be silent where v4 narrates. ⚠ The
+edit touches `services/conversation_summary_vault_bridge.rs`, which is in no
+lane's Owns column this round (and in nobody's Must-not-touch) — an
+out-of-ownership edit, flagged here and in the lane report.
+
+### Unit 3 — the fixture: `chat-delete-{main,mount,llmlogs}.db`
+
+**The survey (recorded either way, per the order):** no committed pair
+expresses this cascade. `chat-scenario-*` and `chat-admin-*` carry no
+`conversation_annotations`, and NOTHING committed carries a participant-vault
+conversation summary — the one thing the sweep exists to remove. So the pair
+(a TRIO — the llm-logs partition is seeded too, because "a whole other database
+the delete cannot reach" is a claim worth measuring) is new, built by
+`harness/oracle/fixtures/build-chat-delete-fixture.ts` entirely through v4's
+REAL repositories and store helpers.
+
+Five chats, four characters, and a row in every table that names a chat:
+
+- **CHAT_FULL** — the happy-delete target. Two participants (ARIA, BEA), each
+  with a summary file written by v4's REAL `writeConversationSummaryToVaults`;
+  two messages; two annotations; a `conversation_chunk`; a `chat_document`; a
+  memory; a `files` row linked by `linkedTo`; a `background_job`; an `llm_log`;
+  an `avatarOverrides` entry on ARIA's character row; and a Scriptorium render
+  document in the General store.
+- **CHAT_SHARED** — ARIA again, with its OWN summary file, so "deleting one
+  chat leaves the other chat's summary alone" is measurable rather than
+  asserted.
+- **CHAT_BROKEN** — MOTE, whose summary is written FIRST and whose
+  `characterDocumentMountPointId` is then repointed at a mount point with no
+  row: the sweep can no longer find the file and the delete must succeed anyway.
+- **CHAT_STATE** (a seeded `state` bag) and **CHAT_IMP** (CLIO impersonated,
+  plus a connection profile for the hand-back).
+
+`folders` is seeded as a flat CONTROL: v4's chats carry no `folderId`, so that
+table must never move on any case. (The order listed `folders` among the
+"survives" set; the measurement says it is not chat-keyed at all — recorded.)
+
+### Unit 4 — `chat_delete_equivalence` (tier 2, 17 cases)
+
+The oracle drives v4's REAL `handleDelete` through v4's own route module, so
+the dispatch under comparison is v4's. Each case takes a fresh copy of the trio
+and then dumps a whole-DB **table census** across all three partitions, from
+SQL that lives in the shared spec and is executed VERBATIM on both sides —
+neither side can quietly select a different projection.
+
+**The census is the discriminator.** `{success: true}` says nothing about what
+the cascade reached; the whole question is what v4 deletes versus what it
+leaves. Measured: DELETED are the `chats` row, its `chat_messages`, its
+`conversation_annotations`, and the summary file in every participant vault
+(41 → 39 `doc_mount_file_links` on `delete_full`, the two `The Evening Post.md`
+links, with ARIA's `A Second Sitting.md` and MOTE's orphan standing). SURVIVING
+are `memories`, `conversation_chunks`, `chat_documents`, `files`,
+`background_jobs`, `characters.avatarOverrides`, the render document, and every
+`llm_logs` row.
+
+**Nothing is normalized but one value.** Every id and timestamp is pinned by
+the builder (the mount-index rows' minted uuids are baked into the committed
+file, so both sides read the same ones) and no case mints anything — the delete
+only removes. The ONE exception is `stop_impersonate_with_profile`, where v4's
+`updateParticipant` stamps the reassigned seat's `updatedAt`; it is
+asserted-then-stripped, scoped to that case name and that participant id, with
+v4's value required to be at-or-after the frozen instant and v5's required to
+have moved off the seed. Every other case keeps the column fully diffed, which
+is how "the refusal wrote nothing" and "`removeImpersonation` does not restamp
+the seat" are proven rather than assumed.
+
+**⚠ The trap that would have made half this family vacuous.** The first oracle
+run came back with the mount census UNMOVED on `delete_full` — 41 links before
+and after. `jest.setup.ts` mocks `@/lib/file-storage/character-vault-bridge`
+globally, and its stub answers a fake `mock-vault-mount` for every character,
+so `findExistingSummaryPaths` listed an empty folder and the sweep was a silent
+no-op **on v4's side**. Both sides would then have agreed on doing nothing. It
+was caught by consequence (the census not moving where the port said it should)
+and fixed by `doMock`ing that module and `@/lib/mount-index/character-vault` to
+`requireActual`, exactly as the `chat-scenario` oracle does. The
+`jest-oracle-*` mock-leak class, with a new member.
+
+A FOURTH census section, `vaults`, lists each character's `Conversation
+Summaries/` folder through the store READER on both sides (`list_database_files`
+/ `listDatabaseFiles`) rather than through the raw tables — a reader that
+stopped resolving a folder would leave every row standing, so this is the arm
+the table dump cannot make. Both sides take the mount POINTER off the raw
+`characters` row, never through the hydrated read, because the hydrated read
+throws `CharacterVaultUnavailableError` for exactly the broken-vault character
+this section most needs to look at (v4's own `getCharacterVaultStore` and v5's
+`resolve_vault_mount_id` both read it raw for that reason). MOTE's listing is
+empty on every case by construction — her pointer is dangling, so the reader has
+nothing to resolve; the orphaned rows her vault keeps live in the mount census.
+
+**Nine mutation proofs**, each reddening exactly its own arm:
+
+| mutation | reddened |
+|---|---|
+| the annotations sweep aimed at a nonexistent chat | `delete_full`, `delete_shared_summary`, `action_empty` (tables) |
+| the vault sweep skipped | the same three (tables) |
+| the `if (action)` guard removed | `action_bogus` (status + body + tables) |
+| the 404-before-the-body-read swapped | `stop_impersonate_missing_chat_bad_body` (status + body) |
+| both message deletes aimed elsewhere | four delete cases (status + body + tables) |
+| `[Chats v1] Chat deleted` renamed | the log pin |
+| the per-vault debug line renamed | the log pin |
+| the repository's `Chat deleted` removed | the log pin |
+| the vault census pointed at `Outfits/` | all 17 (tables) — the section is a live comparand, not an empty one everywhere |
+
+### Unit 5 — the log pin and the wire test (Tier 2, items 6 + 7)
+
+`chat_delete_log_lines` (in the family) captures over the REAL dispatch and
+pins both `Chat deleted` lines, the per-vault debug line's COUNT (two vaults,
+two lines), the unknown-action warn's level and fields, and three silences: a
+no-action delete does not warn about an action, the refusal does not announce a
+delete, and a 404 says nothing at all.
+
+`crates/quilltap-web/tests/chat_delete_route.rs` serves the real URL over a live
+server (the P4.D65 lesson — in that round no lane actually served the URL its
+two halves had agreed on). It pins the registration, all three success variants
+being unwrapped, the BODY reaching `stop-impersonate` (a participant nobody has
+answers `Participant not found`, which only an arrived body can produce), the
+`{error, details}` Zod envelope surviving the edge, the guard order over the
+wire, `?action=` deleting while `?action=zzz` refuses, and a non-JSON body
+answering 500 `Internal server error`.
+
+**One recorded divergence found here, pre-existing:** the wire test cannot ask
+`GET /api/v1/chats/{id}` whether the row is gone, because v5's per-id GET
+serves only `get-background` and `cost` and sends everything else to
+`/api/dispatch` (`wardrobe_routes::chat_action_get`). The order's item 5 named
+that GET; the beat asks the `chatGet` verb instead. Not this lane's to fix.
+
+### Unit 6 — the SPA
+
+`chat-delete.api.ts` is v4's `confirmAndDeleteChat` (`lib/chat-utils.ts:148-159`)
+— the ONE place v4's two chat lists share. The confirmation sentence is v4's
+byte for byte; the gate is `window.confirm` (v5 has no counterpart to v4's
+promise-based `showConfirmation`, and `window.confirm` is the established idiom
+here, ~19 call sites — the photos / almanack / wardrobe precedent).
+
+**The failure split is deliberate and spec-pinned in both directions:** v4
+throws its OWN `new Error('Failed to delete chat')` on a non-ok response and
+only then toasts `err.message`, so a server error's text never reaches the
+operator while a network rejection's does. A `CoreDispatchError` is v5's
+"non-ok response" and takes the fixed sentence; anything else keeps its own.
+Collapsing them either way is a real divergence and only one direction can be
+caught by reading the code.
+
+Both cards gain v4's `actionType="delete"` chrome (`ChatCard.tsx:364-385`) —
+the trash button in v4's own action column with v4's classes
+(`qt-bg-destructive qt-text-on-destructive`, `hover:qt-bg-destructive/90`) and
+`title="Delete chat"`. The card EMITS rather than deleting, because v4's
+`onDelete` prop carries both the confirmation and the caller's own list update:
+the Salon refetches (v4's `mutateChats()`), the Conversations tab filters
+LOCALLY and does not refetch (v4 splices its own array). v5's tab derives its
+list from the infinite query's cache, so the same behavior is expressed as an
+exclusion set rather than a splice — recorded at the signal.
+
+Three card specs, including the one worth having: the whole card is a
+`routerLink`, so a delete button that let the click through would navigate INTO
+the chat it just asked to remove. The `preventDefault` is asserted on the event
+object.
+
+`chat-delete-flow.spec.ts` walks both surfaces. Each beat seeds its OWN
+throwaway chat through the running server (USER-controlled seat, so no greeting
+turn and no mock LLM), and each ends at the DATABASE rather than at the list —
+a row filtered out of a client-side array looks exactly like a row that was
+deleted, so the proof is the server answering "gone" for the id afterwards. The
+Salon beat asserts the CANCEL arm first, on the same card, so it cannot pass by
+never having been able to delete at all.
+
+### Tier 3 — deferrals, loud
+
+- **The re-extract-memories card action** (v4 `onReextractMemories` — `DELETE
+  /api/v1/memories?chatId=` then `?action=queue-memories`): NOT built. v5 has
+  `memoryDeleteByChat` + `chatQueueMemories` already, so it is a small separate
+  item; the order names it as its own Tier-3 row and this lane is #117. Both
+  cards' doc comments say so at the point where v4 wires it.
+- **`GET /api/v1/chats/{id}`** is still the two-action edge described above.
+
+### Cross-lane: one tripwire moved
+
+`crates/quilltap-web/tests/dispatch_wrong_type_census.rs`'s
+`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` went 410 → 411: `ChatDelete.chat_id` is
+a genuine `/[id]/` URL segment (v4's `handleDelete` takes it from the route
+params, never from a body), so the heuristic drops it correctly and only the
+count needed re-measuring. Caught by the full workspace gate, which is what that
+constant exists for. Flagged here because the file belongs to P4.72's census,
+not to this lane.
+
+### Ownership
+
+Inside the order's Owns column except for one edit, flagged: v4's dropped log
+lines in `crates/quilltap-core/src/services/conversation_summary_vault_bridge.rs`
+(Unit 2), a file in no lane's Owns and in no lane's Must-not-touch. Two
+`pub(crate)` visibility widenings in `crates/quilltap-core/src/api/settings.rs`
+(`zod_uuid_ok`, `zod_parsed_type`) so the Zod issue helpers have ONE home
+rather than a second transcription — behavior-neutral, no other line touched.
+
 ## Lane record — P4.D156 (the client/CLI drift: bug 120's `instances default --json`, the About sentences, the cheap-LLM `qt-checkbox`, and the collapse's three client corrections)
 
 Ordered against round baseline **`d883a5ee1`** (§B); the lane's four target

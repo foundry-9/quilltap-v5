@@ -327,8 +327,12 @@ pub enum Request {
         chat_id: String,
         participant_id: String,
     },
-    /// Stop impersonating (v4 `POST …?action=stop-impersonate`); the optional new
-    /// connection profile flips the participant back to `controlledBy:'llm'`.
+    /// Stop impersonating (v4 `DELETE …?action=stop-impersonate`); the optional
+    /// new connection profile flips the participant back to `controlledBy:'llm'`.
+    ///
+    /// v4 serves this on DELETE, not POST (`handlers/delete.ts:33-40`), and its
+    /// client sends DELETE (`useImpersonation.ts:99,126`) — the doc said POST
+    /// until P4.80 gave the DELETE edge a v5 counterpart.
     #[serde(rename_all = "camelCase")]
     ChatStopImpersonate {
         chat_id: String,
@@ -3418,6 +3422,23 @@ pub enum Request {
         options: Option<serde_json::Value>,
     },
     // === end P4.76 ===
+    // === P4.80: the chat DELETE (dogfood finding #117) — append-only ===
+    /// v4 `DELETE /api/v1/chats/[id]` with NO action
+    /// (`app/api/v1/chats/[id]/handlers/delete.ts:48-63`): 404 `Chat not found`
+    /// when the row is gone, else `repos.chats.delete(chatId)` → `{success: true}`;
+    /// the handler's own catch answers 500 `Failed to delete chat`.
+    ///
+    /// The cascade is the already-ported
+    /// [`crate::services::conversation_summary_vault_bridge::delete_conversation_with_vault_sweep`]
+    /// (`syncVaults = true`) — this verb is its FIRST caller. What v4 does NOT
+    /// cascade survives here too: memories, `llm_logs`, `background_jobs`,
+    /// `chat_files` links, folders, and the Scriptorium render's mount-index
+    /// document rows (`chat_delete_equivalence` censuses every one of them).
+    #[serde(rename_all = "camelCase")]
+    ChatDelete {
+        chat_id: String,
+    },
+    // === end P4.80 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===

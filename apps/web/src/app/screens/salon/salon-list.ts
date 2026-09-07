@@ -10,7 +10,9 @@ import { ErrorAlert } from '../../ui/error-alert';
 import { Icon } from '../../ui/icon';
 import { LoadingState } from '../../ui/loading-state';
 import { QuickHideService } from '../../quick-hide/quick-hide.service';
+import { ToastService } from '../../ui/toast.service';
 import { ChatCard } from './chat-card';
+import { confirmAndDeleteChat } from './chat-delete.api';
 import { effectiveInclude, hasHiddenAutonomous } from './autonomous-visibility';
 
 /**
@@ -82,9 +84,7 @@ import { effectiveInclude, hasHiddenAutonomous } from './autonomous-visibility';
           (retry)="chats.refetch()"
         />
       } @else if (visibleChats().length === 0) {
-        <div
-          class="chat-empty-state mt-12 rounded-2xl border border-dashed px-8 py-12 text-center"
-        >
+        <div class="chat-empty-state mt-12 rounded-2xl border border-dashed px-8 py-12 text-center">
           <p class="mb-4 text-lg qt-text-small">No chats yet</p>
           <a routerLink="/salon/new" class="font-medium text-primary hover:text-primary/80"
             >Start a new chat</a
@@ -93,7 +93,7 @@ import { effectiveInclude, hasHiddenAutonomous } from './autonomous-visibility';
       } @else {
         <div class="chat-card-stack space-y-4">
           @for (chat of visibleChats(); track chat.id) {
-            <qt-chat-card [chat]="chat" />
+            <qt-chat-card [chat]="chat" [deletable]="true" (delete)="deleteChat($event)" />
           }
         </div>
       }
@@ -103,6 +103,7 @@ import { effectiveInclude, hasHiddenAutonomous } from './autonomous-visibility';
 export class SalonList {
   private readonly core = inject(CoreClient);
   private readonly quickHide = inject(QuickHideService);
+  private readonly toasts = inject(ToastService);
 
   /** The header toggle — the shared service's signal (one value, two surfaces). */
   protected readonly includeAutonomous = this.quickHide.includeAutonomousRooms;
@@ -118,8 +119,7 @@ export class SalonList {
   /** The user's room-visibility default (v4 `autonomousRoomSettings.visibilityDefault`). */
   private readonly visibilityDefault = computed<string | undefined>(() => {
     const ar = this.chatSettings.data()?.['autonomousRoomSettings'] as
-      | { visibilityDefault?: string }
-      | undefined;
+      { visibilityDefault?: string } | undefined;
     return ar?.visibilityDefault;
   });
 
@@ -153,7 +153,10 @@ export class SalonList {
   }));
 
   protected readonly showHiddenHint = computed(() =>
-    hasHiddenAutonomous(this.effectiveIncludeAutonomous(), this.autonomousRooms.data()?.length ?? 0),
+    hasHiddenAutonomous(
+      this.effectiveIncludeAutonomous(),
+      this.autonomousRooms.data()?.length ?? 0,
+    ),
   );
 
   protected toggleAutonomous(): void {
@@ -180,6 +183,18 @@ export class SalonList {
       });
     }),
   );
+
+  /**
+   * v4 `SalonListView.tsx:113-117` — confirm, delete, then REFETCH the list.
+   * v4 calls SWR's `mutateChats()`; the TanStack twin is a refetch of the same
+   * query, which is what keeps the two visibility toggles' cached variants from
+   * showing the deleted chat when the operator flips one.
+   */
+  protected async deleteChat(chatId: string): Promise<void> {
+    if (await confirmAndDeleteChat(this.core, (m) => this.toasts.showError(m), chatId)) {
+      await this.chats.refetch();
+    }
+  }
 
   protected errorMessage(): string {
     const err = this.chats.error();

@@ -411,7 +411,12 @@ pub fn build_router(state: SharedState) -> Router {
             // served there; every other action delegates to the P4.6ak handler
             // untouched) and adds the POST action edge (equip |
             // regenerate-avatar).
-            get(wardrobe_routes::chat_action_get).post(wardrobe_routes::chat_action_post),
+            // === P4.80: the DELETE leg (dogfood finding #117) — v4's whole
+            // `handleDelete` dispatch; the GET/POST stay wardrobe_routes'. ===
+            get(wardrobe_routes::chat_action_get)
+                .post(wardrobe_routes::chat_action_post)
+                .delete(chats_routes::chat_delete),
+            // === end P4.80 ===
         )
         // === end P4.6ak ===
         // === P4.9H2A: embedding-profiles management REST edges ===

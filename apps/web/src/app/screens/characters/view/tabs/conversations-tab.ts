@@ -14,6 +14,8 @@ import { injectInfiniteQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../../core/core-client';
 import { QuickHideService } from '../../../../quick-hide/quick-hide.service';
+import { ToastService } from '../../../../ui/toast.service';
+import { confirmAndDeleteChat } from '../../../salon/chat-delete.api';
 import type { CharacterChatsResult } from '../../../../core/core-contract';
 import { Icon } from '../../../../ui/icon';
 import { characterKeys, fetchCharacterChats } from '../../characters.api';
@@ -26,10 +28,13 @@ const SEARCH_DEBOUNCE_MS = 300;
  * The Conversations tab (v4 `components/character/character-conversations-tab.tsx`):
  * the per-character chat list with a debounced search box and offset pagination
  * (v4 `CHATS_PER_PAGE = 10`, infinite scroll). Each card links into the Salon
- * conversation. The v4 "Refresh Conversation Archive" / "New Chat" actions and
- * per-card delete / re-extract hit routes outside this vertical's contract and
- * are omitted (a follow-up vertical, per the P4.6g deferral list); the per-card
- * re-render went LIVE with the P4.9H2B scriptorium badge.
+ * conversation. The per-card DELETE landed with P4.80 (dogfood finding #117):
+ * v4's `deleteChat` (`character-conversations-tab.tsx:142-146`) confirms, calls
+ * the shared `confirmAndDeleteChat`, and then filters its LOCAL list — it does
+ * not refetch, and neither does this. The v4 "Refresh Conversation Archive" /
+ * "New Chat" actions and the per-card re-extract still hit routes outside this
+ * vertical's contract and are omitted (the P4.6g deferral list, narrowed);
+ * the per-card re-render went LIVE with the P4.9H2B scriptorium badge.
  */
 @Component({
   selector: 'qt-character-conversations-tab',
@@ -87,7 +92,11 @@ const SEARCH_DEBOUNCE_MS = 300;
       } @else {
         <div class="space-y-4">
           @for (chat of chats(); track chat.id) {
-            <qt-character-conversation-card [chat]="chat" />
+            <qt-character-conversation-card
+              [chat]="chat"
+              [deletable]="true"
+              (delete)="deleteChat($event)"
+            />
           }
 
           <div #loadMore class="py-4">
@@ -117,6 +126,7 @@ export class CharacterConversationsTab {
   private readonly core = inject(CoreClient);
   private readonly destroyRef = inject(DestroyRef);
   private readonly quickHide = inject(QuickHideService);
+  private readonly toasts = inject(ToastService);
 
   readonly characterId = input.required<string>();
   readonly characterName = input<string>('Character');
@@ -146,17 +156,35 @@ export class CharacterConversationsTab {
    * consumer does not consult participants (the page is already scoped to one
    * character) — handed with the derived state to the one quick-hide rule.
    */
+  /**
+   * Chats deleted on THIS page since it loaded. v4 holds its list in local
+   * state and splices the row out (`setChats(chats.filter(...))`, `:144`); v5's
+   * list is derived from the infinite query's cache, so the same "gone, without
+   * a refetch" behavior is expressed as an exclusion set rather than a splice.
+   * A page reload (or a query invalidation from elsewhere) drops it, exactly as
+   * v4's component state does.
+   */
+  private readonly deletedIds = signal<ReadonlySet<string>>(new Set());
+
   protected readonly chats = computed(() =>
     (this.chatsQuery.data()?.pages ?? [])
       .flatMap((p) => p.chats)
       .filter(
         (chat) =>
+          !this.deletedIds().has(chat.id) &&
           !this.quickHide.shouldHideChat({
             characterTags: (chat.tags ?? []).map((ct) => ct.tag.id),
             conciergeState: chat.conciergeState,
           }),
       ),
   );
+
+  /** v4 `deleteChat` (`character-conversations-tab.tsx:142-146`). */
+  protected async deleteChat(chatId: string): Promise<void> {
+    if (await confirmAndDeleteChat(this.core, (m) => this.toasts.showError(m), chatId)) {
+      this.deletedIds.update((prev) => new Set(prev).add(chatId));
+    }
+  }
 
   constructor() {
     // Infinite scroll: observe the sentinel and pull the next page as it nears

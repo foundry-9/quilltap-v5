@@ -1,0 +1,38 @@
+{
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "f0000000-0000-4000-8000-00000000000f",
+  "seedTimestamp": "2026-05-01T00:00:00.000Z",
+  "frozenNowMs": 1777939200000,
+  "fullSummaryBody": "Aria and Bea took the evening post apart, page by page.",
+  "sharedSummaryBody": "Aria alone, with the lamps unlit and the post still late.",
+  "brokenSummaryBody": "Mote said very little, and the vault will not say more.",
+  "renderBody": "A rendered transcript the Scriptorium wrote and nobody swept.",
+  "censusMain": {
+    "chats": "SELECT * FROM \"chats\" ORDER BY \"id\"",
+    "chat_messages": "SELECT * FROM \"chat_messages\" ORDER BY \"id\"",
+    "conversation_annotations": "SELECT * FROM \"conversation_annotations\" ORDER BY \"id\"",
+    "conversation_chunks": "SELECT \"id\", \"chatId\", \"interchangeIndex\", \"content\", \"participantNames\", \"messageIds\", \"createdAt\", \"updatedAt\" FROM \"conversation_chunks\" ORDER BY \"id\"",
+    "chat_documents": "SELECT * FROM \"chat_documents\" ORDER BY \"id\"",
+    "memories": "SELECT \"id\", \"characterId\", \"chatId\", \"content\", \"summary\", \"source\", \"createdAt\" FROM \"memories\" ORDER BY \"id\"",
+    "files": "SELECT \"id\", \"originalFilename\", \"category\", \"linkedTo\", \"createdAt\" FROM \"files\" ORDER BY \"id\"",
+    "background_jobs": "SELECT \"id\", \"type\", \"status\", \"payload\", \"createdAt\" FROM \"background_jobs\" ORDER BY \"id\"",
+    "characters": "SELECT \"id\", \"name\", \"avatarOverrides\", \"characterDocumentMountPointId\" FROM \"characters\" ORDER BY \"id\"",
+    "folders": "SELECT * FROM \"folders\" ORDER BY \"id\""
+  },
+  "censusMount": {
+    "doc_mount_files": "SELECT \"id\", \"sha256\", \"fileSizeBytes\", \"fileType\" FROM \"doc_mount_files\" ORDER BY \"id\"",
+    "doc_mount_documents": "SELECT \"id\", \"fileId\", \"content\", \"plainTextLength\" FROM \"doc_mount_documents\" ORDER BY \"id\"",
+    "doc_mount_file_links": "SELECT \"id\", \"mountPointId\", \"relativePath\", \"fileName\", \"fileId\" FROM \"doc_mount_file_links\" ORDER BY \"mountPointId\", \"relativePath\"",
+    "doc_mount_folders": "SELECT \"id\", \"mountPointId\", \"parentId\", \"name\", \"path\" FROM \"doc_mount_folders\" ORDER BY \"mountPointId\", \"path\"",
+    "doc_mount_chunks": "SELECT \"id\", \"linkId\", \"mountPointId\", \"chunkIndex\" FROM \"doc_mount_chunks\" ORDER BY \"id\""
+  },
+  "censusLlmLogs": {
+    "llm_logs": "SELECT \"id\", \"chatId\", \"type\", \"provider\", \"modelName\" FROM \"llm_logs\" ORDER BY \"id\""
+  },
+  "vaultCharacters": [
+    "a2000000-0000-4000-8000-000000000001",
+    "a2000000-0000-4000-8000-000000000002",
+    "a2000000-0000-4000-8000-000000000003",
+    "a2000000-0000-4000-8000-000000000004"
+  ]
+}

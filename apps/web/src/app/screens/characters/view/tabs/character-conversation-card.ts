@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { CoreClient, coreErrorMessage } from '../../../../core/core-client';
@@ -30,8 +38,13 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
  * of v4 `components/chat/ChatCard.tsx` fed by `transformCharacterChatToCardData`
  * with `showAvatars={false}`, `showProject`, `showPreview`, `useRelativeDates`.
  * The whole card links to `/salon/:id`; tags are read-only. The Scriptorium
- * badge (p4.9o) queues an on-demand render on click, as on the Salon card; the
- * v4 delete / re-extract actions remain omitted (routes outside this contract).
+ * badge (p4.9o) queues an on-demand render on click, as on the Salon card. The
+ * v4 DELETE action landed with P4.80 (dogfood finding #117) — v4 passes
+ * `actionType="delete"` here (`character-conversations-tab.tsx:368`) and the
+ * card emits for the tab to confirm and dispatch. The re-extract action
+ * (`onReextractMemories`) remains omitted: it is v4's separate
+ * `DELETE /api/v1/memories?chatId=` + `?action=queue-memories` pair, and P4.80
+ * §Tier 3 records it as its own item rather than smuggling it in here.
  *
  * Divergence noted: v4's ConversationsTab hides the story-background thumbnail
  * (its `ChatCard` gates it behind `showAvatars`, which is false here); the work
@@ -114,6 +127,24 @@ function previewOf(messages: CharacterChatSummary['messages']): string | null {
             }
           </div>
         </div>
+
+        @if (deletable()) {
+          <!-- v4 ChatCard.tsx:364-385 -- the action column, outside the
+               content column so the button never wraps under the text.
+               (No backticks in an inline-template comment: they terminate the
+               TS literal.) -->
+          <div class="flex items-center">
+            <button
+              type="button"
+              class="chat-card__action inline-flex h-10 w-10 items-center justify-center rounded-lg qt-bg-destructive qt-text-on-destructive shadow transition hover:qt-bg-destructive/90"
+              title="Delete chat"
+              aria-label="Delete chat"
+              (click)="onDelete($event)"
+            >
+              <qt-icon name="trash" class="w-5 h-5" />
+            </button>
+          </div>
+        }
       </div>
     </a>
   `,
@@ -122,6 +153,14 @@ export class CharacterConversationCard {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
   readonly chat = input.required<CharacterChatSummary>();
+  /**
+   * v4 `actionType="delete"` — the destructive trash button. Emitted rather
+   * than dispatched here: v4's `onDelete` prop carries the confirmation AND the
+   * caller's own list update, and this tab's is a LOCAL filter, not a refetch
+   * (`character-conversations-tab.tsx:142-146`).
+   */
+  readonly deletable = input(false);
+  readonly delete = output<string>();
 
   protected readonly rendering = signal(false);
 
@@ -144,6 +183,14 @@ export class CharacterConversationCard {
   protected readonly dateStr = computed(() =>
     formatChatListDate(chatActivityAt(this.chat()), this.nowMs()),
   );
+
+  /** v4 `handleAction` (`ChatCard.tsx:195-203`) — the whole card is a link, so
+   *  the action button must stop the navigation before it emits. */
+  protected onDelete(event: Event): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.delete.emit(this.chat().id);
+  }
 
   /**
    * Queue an on-demand Scriptorium render (v4 `handleRenderConversation`, the
