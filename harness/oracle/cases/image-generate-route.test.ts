@@ -71,6 +71,13 @@ const CHAT_PLAIN = 'aaaa0001-0000-4000-8000-000000000001';
 const CHAT_ORIENT = 'aaaa0002-0000-4000-8000-000000000002';
 const BOGUS_PROFILE = 'e0000000-0000-4000-8000-0000000000ff';
 
+// P4.85 item 5. `z.string().min(1).max(4000)` counts CODE POINTS since Zod 4.5.
+// 3983 + 16 BMP + one astral = 4000 code points but 4001 UTF-16 units — the
+// exact string on which a UTF-16 count and a code-point count disagree. Built,
+// never spelled, and built the SAME way on both sides.
+const ASTRAL_AT_MAX = `A moonlit tower ${'a'.repeat(3983)}\u{1F702}`;
+const ASTRAL_OVER_MAX = `A moonlit tower ${'a'.repeat(3984)}\u{1F702}`;
+
 interface Case {
   name: string;
   id: string;
@@ -148,6 +155,15 @@ async function main(): Promise<void> {
     { name: 'generate_count_over_max', id: spec.profileId, body: { prompt: 'A lighthouse at night', count: 20 } },
     // …and an EMPTY prompt fails `z.string().min(1)` at the same gate.
     { name: 'generate_prompt_empty', id: spec.profileId, body: { prompt: '', count: 1 } },
+    // P4.85 item 5 — the ASTRAL boundary. Zod ≥ 4.5 measures `.max(4000)` in
+    // CODE POINTS, so this prompt (3999 BMP + one astral = 4000 code points,
+    // 4001 UTF-16 units) is ACCEPTED and runs the tool. v5 counted UTF-16
+    // units here where its sibling `images_generate` route already counted
+    // code points, so the two disagreed on exactly this string.
+    { name: 'generate_prompt_astral_at_max', id: spec.profileId, body: { prompt: ASTRAL_AT_MAX, count: 1 } },
+    // One code point over: refused at the same gate, in code points too — so
+    // the fix cannot be "stop counting".
+    { name: 'generate_prompt_astral_over_max', id: spec.profileId, body: { prompt: ASTRAL_OVER_MAX, count: 1 } },
   ];
 
   const lines: string[] = [];

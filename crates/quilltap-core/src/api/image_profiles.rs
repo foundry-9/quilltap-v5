@@ -652,8 +652,16 @@ pub async fn image_profile_generate(
     // sibling routes' recorded omission). Without this gate a `count: 20` fell
     // through to the TOOL's own schema and answered its fixed sentence instead
     // (the §3 unification review of the follow-ups round).
-    let prompt_units = crate::jsstr::utf16_len(prompt);
-    if !(1..=4000).contains(&prompt_units) || count.is_some_and(|n| !(1..=10).contains(&n)) {
+    //
+    // `z.string().min(1).max(4000)` measures CODE POINTS since Zod 4.5 (v4
+    // `6e1a64ea6`; `zod_version_guard` pins 4.5.4), so it goes through the
+    // `jsstr::zod_len_*` helpers the sibling `images_generate` route already
+    // used for the IDENTICAL schema — P4.85 item 5. Until this lane the two
+    // routes disagreed on an astral prompt: 4000 code points is 4001+ UTF-16
+    // units, which v4 accepts and the old `utf16_len` refused.
+    let prompt_ok =
+        crate::jsstr::zod_len_min_ok(prompt, 1) && crate::jsstr::zod_len_max_ok(prompt, 4000);
+    if !prompt_ok || count.is_some_and(|n| !(1..=10).contains(&n)) {
         return bad_request("Validation error");
     }
 

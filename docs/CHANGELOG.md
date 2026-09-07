@@ -116,6 +116,40 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — fix(api): one answer to an impossible parse state in `generators_detail`
+
+_Versions: core 0.0.836._
+
+P4.85 item 3. This file answered the same impossible state — a body field
+that resolved to neither a value nor a validation issue — two different
+ways: seven `.expect("no issues")` panics in `parse_optimize_body`, and
+three silent `unwrap_or_default()`s in `parse_external_prompt_body` that
+fabricated an empty connection-profile id or a zero token budget and handed
+them to the runner. A panic across the dispatch boundary is a dead
+connection; a fabricated value is worse, because it looks like a request.
+The `rename` arm had a third spelling of the same silence,
+`serde_json::to_value(result).unwrap_or(Value::Null)` — a 200 carrying
+`null` where v4's `NextResponse.json` throwing is the middleware's 500.
+
+All ten now pass through one `resolved()` gate returning
+`GeneratorBodyRefusal::Impossible`, which answers v4's own arm for an
+uncaught non-Zod throw in a handler: `contextLogger.error('… Unhandled
+route error' …)` then `serverError('Internal server error')`
+(`lib/api/middleware/context.ts:206-207`) — logged, then a flat 500. The
+`ZodError` arm is unchanged (`GeneratorBodyRefusal::Validation` → the same
+400 `Validation error` with details).
+
+`scenarioId` is the one field left un-gated, with the reason written down:
+it is `.optional()`, so `None` is what v4 returns for an absent value, not
+a gap.
+
+Four unit tests: the impossible arm's status, sentence and log line; the
+validation arm still v4's 400; every one of the nine gated fields driven at
+its gate (the state cannot be constructed through either parse function);
+and a source census over the production zone asserting the three retired
+spellings stay retired — mutation-proven, since the first three tests all
+pass with an `unwrap_or_default()` put back.
+
 #### 2026-09-07 — fix(web): the generator re-framer's two `RecvError::Closed` arms say so
 
 _Versions: web 0.0.128._

@@ -143,6 +143,68 @@ fn require_character(db: &Db, character_id: &str) -> Result<Value, Response> {
 // ===========================================================================
 
 /// `invalid_type` — Zod 4's key order `expected, code, path, message`.
+// ===========================================================================
+// P4.85 item 3 — the ONE answer to an impossible parse state
+// ===========================================================================
+
+/// How a body parse in this file can fail.
+///
+/// v4 has only the first arm: `schema.parse(body)` either throws a `ZodError`
+/// — which nothing catches, so the context middleware answers 400
+/// `{error: 'Validation error', details}` — or returns every field. v5's
+/// hand-rolled transcriptions have a second, v5-only way out: a field that
+/// resolved to neither a value nor an issue. It cannot happen today (every
+/// `None` branch pushes an issue first), but this file used to answer that
+/// state TWO different ways — seven `.expect("no issues")` panics in
+/// [`parse_optimize_body`], and three silent `unwrap_or_default()`s in
+/// [`parse_external_prompt_body`] that fabricated an empty profile id or a
+/// zero token budget and handed them to the runner. A panic across the
+/// dispatch boundary is a dead connection; a fabricated value is worse,
+/// because it looks like a request.
+///
+/// Both are now this one arm, which is v4's own answer to any uncaught
+/// non-Zod throw inside a handler: `contextLogger.error('… Unhandled route
+/// error' …)` then `serverError('Internal server error')`
+/// (`lib/api/middleware/context.ts:206-207`) — a logged, flat 500.
+#[derive(Debug)]
+pub enum GeneratorBodyRefusal {
+    /// The `ZodError` v4 throws — the middleware's 400 + the `details` array.
+    Validation(Vec<Value>),
+    /// v5-only, never observed: the named field ended the walk unresolved
+    /// while the issue list was empty.
+    Impossible { field: &'static str },
+}
+
+impl GeneratorBodyRefusal {
+    /// The response each arm answers. `action` names v4's `?action=` for the
+    /// log line only — the client sentence is fixed either way.
+    pub fn into_response(self, action: &str) -> Response {
+        match self {
+            Self::Validation(issues) => Response::validation_error(Value::Array(issues)),
+            Self::Impossible { field } => {
+                tracing::error!(
+                    action = %action,
+                    field = %field,
+                    "[Characters v1] Unhandled route error: a body field resolved to \
+                     neither a value nor a validation issue"
+                );
+                Response::error(ErrorKind::Internal, "Internal server error")
+            }
+        }
+    }
+}
+
+/// The single gate every parsed-but-required field passes through. `None` here
+/// means the walk above pushed no issue for a field it also could not resolve
+/// — see [`GeneratorBodyRefusal::Impossible`].
+///
+/// NOT for a field whose absence is itself a value: `scenarioId` is
+/// `.optional()`, so `None` there is what v4 returns, and it is passed
+/// straight through rather than gated.
+fn resolved<T>(v: Option<T>, field: &'static str) -> Result<T, GeneratorBodyRefusal> {
+    v.ok_or(GeneratorBodyRefusal::Impossible { field })
+}
+
 fn invalid_type(expected: &str, path: &[Value], got: Option<&Value>) -> Value {
     json!({
         "expected": expected,
@@ -434,7 +496,24 @@ pub async fn character_rename(
     };
 
     match outcome {
-        Ok(result) => Response::Character(serde_json::to_value(result).unwrap_or(Value::Null)),
+        // v4 answers `NextResponse.json(result)`; a `JSON.stringify` failure
+        // there throws out of the handler and lands in the middleware's catch
+        // (a 500 `Internal server error`), never a 200 carrying `null`. This
+        // used to be `unwrap_or(Value::Null)` — the same impossible-state
+        // silence [`GeneratorBodyRefusal::Impossible`] retired, answered the
+        // same way.
+        Ok(result) => match serde_json::to_value(result) {
+            Ok(v) => Response::Character(v),
+            Err(e) => {
+                tracing::error!(
+                    character_id = %cid,
+                    error = %e,
+                    "[Characters v1] Unhandled route error: the rename result \
+                     would not serialize"
+                );
+                Response::error(ErrorKind::Internal, "Internal server error")
+            }
+        },
         Err(e) => {
             tracing::error!(
                 character_id = %cid,
@@ -485,7 +564,7 @@ pub fn parse_external_prompt_body(
     system_prompt_id: Option<&Value>,
     scenario_id: Option<&Value>,
     max_tokens: Option<&Value>,
-) -> Result<ExternalPromptRequest, Vec<Value>> {
+) -> Result<ExternalPromptRequest, GeneratorBodyRefusal> {
     let mut issues: Vec<Value> = Vec::new();
     let cp = check_uuid(
         connection_profile_id,
@@ -510,13 +589,16 @@ pub fn parse_external_prompt_body(
         &mut issues,
     );
     if !issues.is_empty() {
-        return Err(issues);
+        return Err(GeneratorBodyRefusal::Validation(issues));
     }
     Ok(ExternalPromptRequest {
-        connection_profile_id: cp.unwrap_or_default(),
-        system_prompt_id: sp.unwrap_or_default(),
+        connection_profile_id: resolved(cp, "connectionProfileId")?,
+        system_prompt_id: resolved(sp, "systemPromptId")?,
+        // The one field whose `None` is a VALUE, not a gap: `.optional()` means
+        // v4 returns `undefined` for an absent `scenarioId`, so it is passed
+        // through un-gated. A PRESENT-but-bad one already pushed its issue.
         scenario_id: sc,
-        max_tokens: mt.unwrap_or_default(),
+        max_tokens: resolved(mt, "maxTokens")?,
     })
 }
 
@@ -544,7 +626,7 @@ pub async fn character_generate_external_prompt(
         max_tokens,
     ) {
         Ok(r) => r,
-        Err(issues) => return Response::validation_error(Value::Array(issues)),
+        Err(refusal) => return refusal.into_response("generate-external-prompt"),
     };
 
     tracing::info!(
@@ -611,7 +693,7 @@ pub fn parse_optimize_body(
     since_date: Option<&Value>,
     before_date: Option<&Value>,
     output_mode: Option<&Value>,
-) -> Result<(String, OptimizerOptions), Vec<Value>> {
+) -> Result<(String, OptimizerOptions), GeneratorBodyRefusal> {
     let mut issues: Vec<Value> = Vec::new();
     let path = |key: &str| vec![Value::String(key.to_string())];
 
@@ -695,17 +777,17 @@ pub fn parse_optimize_body(
     };
 
     if !issues.is_empty() {
-        return Err(issues);
+        return Err(GeneratorBodyRefusal::Validation(issues));
     }
     Ok((
-        profile_id.expect("no issues"),
+        resolved(profile_id, "connectionProfileId")?,
         OptimizerOptions {
-            max_memories: max_memories.expect("no issues"),
-            search_query: search_query.expect("no issues"),
-            use_semantic_search: use_semantic_search.expect("no issues"),
-            since_date: since_date.expect("no issues"),
-            before_date: before_date.expect("no issues"),
-            output_mode: output_mode.expect("no issues"),
+            max_memories: resolved(max_memories, "maxMemories")?,
+            search_query: resolved(search_query, "searchQuery")?,
+            use_semantic_search: resolved(use_semantic_search, "useSemanticSearch")?,
+            since_date: resolved(since_date, "sinceDate")?,
+            before_date: resolved(before_date, "beforeDate")?,
+            output_mode: resolved(output_mode, "outputMode")?,
         },
     ))
 }
@@ -747,7 +829,7 @@ pub async fn character_optimize(
         output_mode,
     ) {
         Ok(parsed) => parsed,
-        Err(issues) => return Response::validation_error(Value::Array(issues)),
+        Err(refusal) => return refusal.into_response("optimize-stream"),
     };
 
     tracing::info!(
@@ -792,4 +874,141 @@ pub async fn character_optimize(
             .await;
     }
     Response::Character(json!({ "terminal": terminal }))
+}
+
+// ===========================================================================
+// P4.85 item 3 — the impossible-state arm, and the census that keeps it ONE
+// ===========================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn err_of(r: &Response) -> (&ErrorKind, &str) {
+        match r {
+            Response::Error(e) => (&e.kind, e.message.as_str()),
+            other => panic!("expected an error response, got {other:?}"),
+        }
+    }
+
+    /// The arm itself: v4's answer to an uncaught non-Zod throw in a handler
+    /// (`context.ts:206-207` — log, then a flat `Internal server error` 500),
+    /// and the log line that makes it findable in `combined.log`.
+    #[test]
+    fn the_impossible_arm_is_v4s_logged_500() {
+        let lines = crate::test_support::captured(|| {
+            let r = GeneratorBodyRefusal::Impossible {
+                field: "connectionProfileId",
+            }
+            .into_response("optimize-stream");
+            let (kind, message) = err_of(&r);
+            assert!(matches!(kind, ErrorKind::Internal));
+            assert_eq!(message, "Internal server error");
+        });
+        let line = lines
+            .iter()
+            .find(|l| l.contains("Unhandled route error"))
+            .unwrap_or_else(|| panic!("the impossible arm is SILENT: {lines:#?}"));
+        assert!(line.starts_with("ERROR "), "{line}");
+        assert!(line.contains("action=optimize-stream"), "{line}");
+        assert!(line.contains("field=connectionProfileId"), "{line}");
+    }
+
+    /// The Zod arm is untouched: still v4's 400 `Validation error` carrying the
+    /// details array the middleware attaches.
+    #[test]
+    fn the_validation_arm_is_still_v4s_400() {
+        let issues = vec![json!({"code": "invalid_type", "path": ["maxTokens"]})];
+        let r = GeneratorBodyRefusal::Validation(issues.clone()).into_response("x");
+        match &r {
+            Response::Error(e) => {
+                assert!(matches!(e.kind, ErrorKind::BadRequest));
+                assert_eq!(e.message, "Validation error");
+                assert_eq!(e.details.as_deref(), Some(&json!(issues)));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// **Every gated field, constructed directly.** The state cannot be reached
+    /// through either parse function today (each `None` branch pushes an issue
+    /// first), so the arm is driven at its gate — one assertion per site class,
+    /// with the field name each site would report.
+    ///
+    /// Mutation: restore `.expect("no issues")` at any optimizer site and this
+    /// still passes, which is why the source census below exists too.
+    #[test]
+    fn every_gated_field_answers_the_impossible_arm() {
+        for field in [
+            // parse_optimize_body's seven sites…
+            "connectionProfileId",
+            "maxMemories",
+            "searchQuery",
+            "useSemanticSearch",
+            "sinceDate",
+            "beforeDate",
+            "outputMode",
+            // …and parse_external_prompt_body's three.
+            "systemPromptId",
+            "maxTokens",
+        ] {
+            let r: Result<u8, _> = resolved(None, field);
+            match r {
+                Err(GeneratorBodyRefusal::Impossible { field: f }) => assert_eq!(f, field),
+                other => panic!("{field}: expected the impossible arm, got {other:?}"),
+            }
+        }
+        // A value present is a value returned — the gate is not a filter.
+        assert_eq!(resolved(Some(7u8), "maxTokens").unwrap(), 7);
+    }
+
+    /// **The census** (the `db_error_key_guard` idiom). What item 3 actually
+    /// bought is that this file answers the impossible state ONE way; a future
+    /// edit that reaches for `.expect("no issues")` or a silent
+    /// `unwrap_or_default()` again would pass every test above. This is the
+    /// guard that would not.
+    ///
+    /// The doc comments naming the retired spellings are excluded — the count
+    /// is over CODE lines only.
+    #[test]
+    fn this_file_answers_the_impossible_state_exactly_one_way() {
+        let src = include_str!("generators_detail.rs");
+        // The PRODUCTION zone only: this module's own needles would otherwise
+        // match themselves (`an-in-file-source-census-must-strip-test-modules`).
+        // The cut is floor-asserted so a future move of the `#[cfg(test)]`
+        // marker cannot shrink the zone silently.
+        let zone = src
+            .split_once("\n#[cfg(test)]\n")
+            .map(|(before, _)| before)
+            .unwrap_or(src);
+        assert!(
+            zone.lines().count() > 800,
+            "the census zone collapsed to {} lines",
+            zone.lines().count()
+        );
+        let code: Vec<&str> = zone
+            .lines()
+            .map(str::trim_start)
+            .filter(|l| !l.starts_with("//"))
+            .collect();
+        // Assembled, never spelled — a literal needle is its own false positive.
+        let no_issues = format!("expect({}no issues{})", '"', '"');
+        for banned in [
+            no_issues.as_str(),
+            "unwrap_or_default()",
+            "unwrap_or(Value::Null)",
+        ] {
+            let hits: Vec<&&str> = code.iter().filter(|l| l.contains(banned)).collect();
+            assert!(
+                hits.is_empty(),
+                "`{banned}` is back in generators_detail.rs — the impossible \
+                 state has ONE answer here (GeneratorBodyRefusal::Impossible): {hits:#?}"
+            );
+        }
+        // …and the arm it was replaced with is actually present.
+        assert!(
+            code.iter().filter(|l| l.contains("resolved(")).count() >= 9,
+            "the nine gated fields should all pass through `resolved`"
+        );
+    }
 }

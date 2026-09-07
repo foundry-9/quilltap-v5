@@ -97,9 +97,19 @@ struct ResultRow {
 struct Case {
     name: &'static str,
     id: String,
-    prompt: &'static str,
+    /// Owned, not `&'static str`: the P4.85 astral arms are BUILT (4000 code
+    /// points), never spelled, and built the same way the oracle builds them.
+    prompt: String,
     chat_id: Option<&'static str>,
     count: Option<i64>,
+}
+
+/// The oracle's `ASTRAL_AT_MAX` / `ASTRAL_OVER_MAX`, character for character:
+/// `n` BMP chars plus one astral, so the code-point count is `n + 17` while the
+/// UTF-16 count is `n + 18`. At `n = 3983` that is 4000 code points in 4001
+/// units — the one string on which the two measures disagree at Zod's bound.
+fn astral_prompt(fill: usize) -> String {
+    format!("A moonlit tower {}\u{1F702}", "a".repeat(fill))
 }
 
 // ===========================================================================
@@ -335,8 +345,10 @@ fn norm_uuids_in_string(s: &str) -> String {
     let mut map: HashMap<String, String> = HashMap::new();
     let mut i = 0;
     while i < bytes.len() {
-        if i + 36 <= bytes.len() {
-            let cand = &s[i..i + 36];
+        // `str::get` rather than a byte slice: a uuid is all ASCII, but the
+        // envelope need not be — the P4.85 astral prompt arm made this panic
+        // ("not a char boundary"), which no corpus row had ever asked before.
+        if let Some(cand) = s.get(i..i + 36) {
             let cb = cand.as_bytes();
             let shape_ok = cb.len() == 36
                 && cb[8] == b'-'
@@ -515,28 +527,28 @@ fn image_generate_route_matches_oracle() {
         Case {
             name: "generate_happy_chat",
             id: spec.profile_id.clone(),
-            prompt: "A serene mountain lake at dawn, mist over the water",
+            prompt: "A serene mountain lake at dawn, mist over the water".to_string(),
             chat_id: Some(CHAT_PLAIN),
             count: Some(1),
         },
         Case {
             name: "generate_no_chat",
             id: spec.profile_id.clone(),
-            prompt: "A quiet forest path",
+            prompt: "A quiet forest path".to_string(),
             chat_id: None,
             count: Some(1),
         },
         Case {
             name: "generate_count2",
             id: spec.profile_id.clone(),
-            prompt: "A tall waterfall in a canyon",
+            prompt: "A tall waterfall in a canyon".to_string(),
             chat_id: Some(CHAT_ORIENT),
             count: Some(2),
         },
         Case {
             name: "generate_profile_404",
             id: BOGUS_PROFILE.to_string(),
-            prompt: "anything",
+            prompt: "anything".to_string(),
             chat_id: None,
             count: Some(1),
         },
@@ -547,14 +559,35 @@ fn image_generate_route_matches_oracle() {
         Case {
             name: "generate_count_over_max",
             id: spec.profile_id.clone(),
-            prompt: "A lighthouse at night",
+            prompt: "A lighthouse at night".to_string(),
             chat_id: None,
             count: Some(20),
         },
         Case {
             name: "generate_prompt_empty",
             id: spec.profile_id.clone(),
-            prompt: "",
+            prompt: String::new(),
+            chat_id: None,
+            count: Some(1),
+        },
+        // P4.85 item 5 — the ASTRAL boundary of the SAME gate. 4000 code
+        // points in 4001 UTF-16 units: v4 accepts it and runs the tool, and
+        // v5 refused it with `Validation error` until this lane, because this
+        // route counted UTF-16 units where its sibling `images_generate`
+        // route already counted code points for the identical schema.
+        Case {
+            name: "generate_prompt_astral_at_max",
+            id: spec.profile_id.clone(),
+            prompt: astral_prompt(3983),
+            chat_id: None,
+            count: Some(1),
+        },
+        // One code point over: still refused — in code points, so the fix
+        // cannot have been "stop counting".
+        Case {
+            name: "generate_prompt_astral_over_max",
+            id: spec.profile_id.clone(),
+            prompt: astral_prompt(3984),
             chat_id: None,
             count: Some(1),
         },
@@ -589,7 +622,7 @@ fn image_generate_route_matches_oracle() {
             &runner,
             &spec.user_id,
             &case.id,
-            case.prompt,
+            &case.prompt,
             case.chat_id,
             case.count,
         ));
