@@ -212,8 +212,16 @@ fn parse_create_body(body: &Value) -> Result<SubpromptCreateInput, Response> {
         return Err(Response::validation_error(create_issue_details(&issues)));
     }
     Ok(SubpromptCreateInput {
-        title: obj["title"].as_str().unwrap_or_default().to_string(),
-        content: obj["content"].as_str().unwrap_or_default().to_string(),
+        title: obj
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        content: obj
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
     })
 }
 

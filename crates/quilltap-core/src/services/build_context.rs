@@ -1936,7 +1936,17 @@ where
                     ))
                 })
             })
-            .unwrap_or_default(),
+            .unwrap_or_else(|e| {
+                // v4 always reaches the resolver, whose catch warns; a pool
+                // failure here is the same road and must log the same line
+                // (the §3 review's catch at the `2f4254b42` unification).
+                tracing::warn!(
+                    character_id = %character_id,
+                    error = %e,
+                    "Failed to resolve selected subprompts — continuing without them"
+                );
+                Vec::new()
+            }),
         )
     } else {
         None

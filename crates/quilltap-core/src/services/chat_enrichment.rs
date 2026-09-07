@@ -531,15 +531,10 @@ pub fn enrich_participant_detail(
         connection_profile,
         image_profile,
         selected_system_prompt_id: s(participant, "selectedSystemPromptId"),
-        selected_subprompt_ids: participant
-            .get("selectedSubpromptIds")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default(),
+        selected_subprompt_ids: crate::services::orchestrator::json_str_array(
+            participant,
+            "selectedSubpromptIds",
+        ),
         talkativeness: participant.get("talkativeness").and_then(Value::as_f64),
         created_at: s(participant, "createdAt").unwrap_or_default(),
         updated_at: s(participant, "updatedAt").unwrap_or_default(),

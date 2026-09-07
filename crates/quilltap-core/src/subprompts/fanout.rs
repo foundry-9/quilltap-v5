@@ -90,14 +90,7 @@ fn seat_str<'a>(seat: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 fn seat_ids(seat: &Value) -> Vec<String> {
-    seat.get("selectedSubpromptIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
+    crate::services::orchestrator::json_str_array(seat, "selectedSubpromptIds")
 }
 
 /// Recompile every seat of `character_id` that has `subprompt_id` in play.

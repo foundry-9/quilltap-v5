@@ -36,7 +36,8 @@
 //!
 //! The commit step runs every write on the ONE writer connection pair the
 //! caller holds (the store-delete precedent — one transaction), where v4 issues
-//! them as separate repository calls. The end state is identical; the
+//! them as separate repository calls; a DRY RUN is a pure scan and the API
+//! layer runs it on the read pool, never on the writer. The end state is identical; the
 //! transaction shape is a recorded divergence (the P4.D77 class). Character
 //! fields route through [`crate::db::vault_character_update::update_character`]
 //! exactly as v4's `repos.characters.update` routes them (only `name` lands on

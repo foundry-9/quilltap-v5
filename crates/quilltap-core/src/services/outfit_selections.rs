@@ -843,14 +843,10 @@ pub async fn choose_llm_outfit<
     // `2f4254b42`). The chat row is already persisted at every call site
     // (creation — step 8 before step 9; add-participant; merge), so the seat's
     // selection is readable here. Soft-fails to none inside the resolver.
+    // The `Subprompts in play for the green room` debug line fires inside the
+    // seat resolver (v4 logs it right after the seat read, with the chatId —
+    // which this function never holds).
     let subprompts = resolve_subprompts();
-    if !subprompts.is_empty() {
-        tracing::debug!(
-            character_id,
-            count = subprompts.len(),
-            "[applyOutfitSelections] Subprompts in play for the green room"
-        );
-    }
 
     let messages = build_outfit_messages(
         character,
@@ -1024,19 +1020,24 @@ fn resolve_subprompts_for_seat_conn(
             })
         });
     let selected: Vec<String> = seat
-        .and_then(|p| p.get("selectedSubpromptIds"))
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        })
+        .map(|p| crate::services::orchestrator::json_str_array(p, "selectedSubpromptIds"))
         .unwrap_or_default();
     if selected.is_empty() {
         return Vec::new();
     }
-    crate::subprompts::resolve_selected_subprompts(main, mount, character_id, &selected)
+    let resolved =
+        crate::subprompts::resolve_selected_subprompts(main, mount, character_id, &selected);
+    // v4 `apply-outfit-selections.ts:425-429`: `{chatId, characterId, count}`
+    // — logged at the seat read, before the consult.
+    if !resolved.is_empty() {
+        tracing::debug!(
+            chat_id,
+            character_id,
+            count = resolved.len(),
+            "[applyOutfitSelections] Subprompts in play for the green room"
+        );
+    }
+    resolved
 }
 
 /// [`resolve_subprompts_for_seat_conn`] for the out-of-create entrances, which
@@ -1828,69 +1829,49 @@ mod tests {
         assert!(lines.iter().all(|l| !l.contains("green room")), "{lines:?}");
     }
 
-    /// P4.D164 (unit 7): the DEBUG line fires through `choose_llm_outfit` when
-    /// the resolver hands back items, with the count — and not when it hands
-    /// back none. Pinned at the WIRING, not the resolver.
-    #[tokio::test]
-    async fn green_room_debug_line_fires_with_the_count_only_when_subprompts_are_in_play() {
-        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
-        let (character, items, profiles) = consult_inputs();
-        // `Some(0)`: settles at once (`None` never settles — the ceiling test's
-        // arm — and would hold this pin for the whole 60 s phase ceiling).
-        let provider = SlowProvider {
-            delay_ms: Some(0),
-            in_flight: Default::default(),
-        };
-        let executor = CheapLlmTaskExecutor::new();
-        let sps = vec![SubpromptForPrompt {
-            title: "Be terse".into(),
-            content: "One line.".into(),
-        }];
-        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
-        {
-            use tracing_subscriber::layer::SubscriberExt;
-            let subscriber = tracing_subscriber::registry()
-                .with(crate::test_support::CaptureLayer(logs.clone()));
-            let _guard = tracing::subscriber::set_default(subscriber);
-            let _ = choose_llm_outfit(
-                &provider,
-                &executor,
-                Some(&character),
-                &items,
-                &profiles,
-                None,
-                None,
-                || None,
-                || sps.clone(),
-                "c1",
-                None,
+    /// The DEBUG line fires at the SEAT RESOLVER (v4 `apply-outfit-selections
+    /// .ts:425-429`, `{chatId, characterId, count}`) when the resolve hands
+    /// back items — pinned over the committed `subprompts-{main,mount}.db`
+    /// pair's LLM seat (`['terse','VERSE']` on character A). The §3 review of
+    /// the `2f4254b42` unification moved it here from the consult, which never
+    /// holds the chat id v4 logs.
+    #[test]
+    fn green_room_debug_line_carries_chat_id_character_id_and_count() {
+        use crate::test_support::captured_with;
+        const PAIR_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        const CHAR_A: &str = "a1000000-0000-4000-8000-0000000000a1";
+        const CHAT_LLM: &str = "c1000000-0000-4000-8000-000000000001";
+        let fixtures = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../quilltap-web/tests/fixtures");
+        let dir = tempfile::tempdir().unwrap();
+        let main_path = dir.path().join("main.db");
+        let mount_path = dir.path().join("mount.db");
+        std::fs::copy(fixtures.join("subprompts-main.db"), &main_path).unwrap();
+        std::fs::copy(fixtures.join("subprompts-mount.db"), &mount_path).unwrap();
+        let main = crate::db::Writer::open_writable(&main_path, PAIR_PEPPER).unwrap();
+        let mount = crate::db::Writer::open_writable(&mount_path, PAIR_PEPPER).unwrap();
+        let (out, lines) = captured_with(|| {
+            resolve_subprompts_for_seat_conn(
+                main.connection(),
+                mount.connection(),
+                CHAT_LLM,
+                CHAR_A,
             )
-            .await;
-            let _ = choose_llm_outfit(
-                &provider,
-                &executor,
-                Some(&character),
-                &items,
-                &profiles,
-                None,
-                None,
-                || None,
-                Vec::new,
-                "c1",
-                None,
-            )
-            .await;
-        }
-        let lines = logs.lock().unwrap().clone();
+        });
+        assert!(
+            !out.is_empty(),
+            "the LLM seat's selection resolves to items"
+        );
         let hits: Vec<&String> = lines
             .iter()
             .filter(|l| l.contains("Subprompts in play for the green room"))
             .collect();
-        assert_eq!(hits.len(), 1, "exactly the first consult logs: {lines:?}");
+        assert_eq!(hits.len(), 1, "exactly one debug line: {lines:?}");
         assert!(hits[0].starts_with("DEBUG "), "{}", hits[0]);
-        assert!(hits[0].contains("[applyOutfitSelections] Subprompts in play for the green room"));
         assert!(
-            hits[0].contains("character_id=c1") && hits[0].contains("count=1"),
+            hits[0].contains(&format!("chat_id={CHAT_LLM}"))
+                && hits[0].contains(&format!("character_id={CHAR_A}"))
+                && hits[0].contains(&format!("count={}", out.len())),
             "{}",
             hits[0]
         );

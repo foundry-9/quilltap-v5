@@ -410,8 +410,19 @@ pub async fn character_rename(
 
     let uid = user_id.to_string();
     let cid = character_id.to_string();
-    let outcome = db
-        .write(move |writers| {
+    // A dry run scans and writes NOTHING (v4's preview), so it runs on the
+    // read pool and never takes the single writer — the §3 review's catch at
+    // the `2f4254b42` unification: a preview over a real instance's chats and
+    // messages used to block every other write for the whole scan. Only the
+    // execute leg holds the writer pair (one transaction, the recorded shape).
+    let outcome = if request.dry_run {
+        db.read_main(|main| {
+            db.read_mount_index(|mount| {
+                run_character_rename(main, mount, &character, &request, &uid)
+            })
+        })
+    } else {
+        db.write(move |writers| {
             let mount = writers
                 .mount_index()
                 .ok_or_else(|| DbError::Internal("no mount-index database".into()))?
@@ -419,7 +430,8 @@ pub async fn character_rename(
             let main = writers.main().connection();
             run_character_rename(main, mount, &character, &request, &uid)
         })
-        .await;
+        .await
+    };
 
     match outcome {
         Ok(result) => Response::Character(serde_json::to_value(result).unwrap_or(Value::Null)),

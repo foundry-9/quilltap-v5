@@ -811,13 +811,7 @@ pub async fn handle_participant_update(
     // pre-feature seat) compares as the empty set.
     let old_selected_subprompt_ids: Vec<String> = old_participant
         .as_ref()
-        .and_then(|p| p.get("selectedSubpromptIds"))
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
+        .map(|p| crate::services::orchestrator::json_str_array(p, "selectedSubpromptIds"))
         .unwrap_or_default();
 
     // 4. The patch itself.

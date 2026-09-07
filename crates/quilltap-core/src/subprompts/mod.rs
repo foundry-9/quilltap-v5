@@ -380,3 +380,27 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod wire_key_order_tests {
+    //! §C.1 of the `2f4254b42` round: the record's wire key order is BINDING
+    //! across three lanes, and both storage/routes differentials sort keys
+    //! before comparing — so the raw serialization is pinned here (the §3
+    //! review's catch at unification).
+    use super::Subprompt;
+
+    #[test]
+    fn subprompt_record_serializes_in_the_c1_key_order() {
+        let rec = Subprompt {
+            id: "be-terse".into(),
+            path: "Subprompts/be-terse.md".into(),
+            title: "Be terse".into(),
+            content: "You keep it short.".into(),
+            updated_at: "2026-09-07T00:00:00.000Z".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&rec).unwrap(),
+            r#"{"id":"be-terse","path":"Subprompts/be-terse.md","title":"Be terse","content":"You keep it short.","updatedAt":"2026-09-07T00:00:00.000Z"}"#
+        );
+    }
+}

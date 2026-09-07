@@ -447,22 +447,22 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
     (
         "character_item_post__bare",
         400,
-        "This route serves ?action=archive, ?action=rehydrate, ?action=rename",
+        "This route serves ?action=archive, ?action=rehydrate, ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and ?action=optimize-stream; the other JSON actions live on /api/dispatch",
     ),
     (
         "character_item_post__empty",
         400,
-        "This route serves ?action=archive, ?action=rehydrate, ?action=rename",
+        "This route serves ?action=archive, ?action=rehydrate, ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and ?action=optimize-stream; the other JSON actions live on /api/dispatch",
     ),
     (
         "character_item_post__unknown",
         400,
-        "This route serves ?action=archive, ?action=rehydrate, ?action=rename",
+        "This route serves ?action=archive, ?action=rehydrate, ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and ?action=optimize-stream; the other JSON actions live on /api/dispatch",
     ),
     (
         "character_item_post__empty_then_known",
         400,
-        "This route serves ?action=archive, ?action=rehydrate, ?action=rename",
+        "This route serves ?action=archive, ?action=rehydrate, ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and ?action=optimize-stream; the other JSON actions live on /api/dispatch",
     ),
     // --- P4.72 ---
     // `GET /api/v1/characters/{id}` — v4 has NO refusal leg here at all:
@@ -500,22 +500,22 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
     (
         "characters_collection_post__bare",
         400,
-        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard",
+        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on /api/dispatch",
     ),
     (
         "characters_collection_post__empty",
         400,
-        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard",
+        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on /api/dispatch",
     ),
     (
         "characters_collection_post__unknown",
         400,
-        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard",
+        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on /api/dispatch",
     ),
     (
         "characters_collection_post__empty_then_known",
         400,
-        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard",
+        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on /api/dispatch",
     ),
     // `GET /api/v1/chats/{id}` — v4's if-chain falls through to the whole chat
     // payload; v5 hosts only the legs the dispatch channel cannot carry, split

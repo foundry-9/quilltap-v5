@@ -447,7 +447,7 @@ fn strip_validation_log_line(log_lines: &mut Vec<Value>, side: &str, reached_val
     }
 }
 
-fn normalize(mut v: Value, side: &str) -> String {
+fn normalize(mut v: Value, side: &str) -> (String, bool) {
     canon_numbers(&mut v);
     let mut reached_validation = false;
     if let Some(events) = v.get_mut("events").and_then(Value::as_array_mut) {
@@ -468,7 +468,7 @@ fn normalize(mut v: Value, side: &str) -> String {
         strip_validation_log_line(log_lines, side, reached_validation);
     }
     let serialized = serde_json::to_string_pretty(&sorted(&v)).unwrap();
-    remap_minted(&serialized)
+    (remap_minted(&serialized), reached_validation)
 }
 
 fn first_diff(got: &str, want: &str) -> String {
@@ -665,7 +665,16 @@ fn ai_import_matches_oracle() {
             "calls": want_row.calls,
             "logLines": want_row.log_lines,
         });
-        let (g, w) = (normalize(got, "v5"), normalize(want, "v4"));
+        let ((g, g_reached), (w, w_reached)) = (normalize(got, "v5"), normalize(want, "v4"));
+        // The validation pin must see the refusal DISAPPEAR too: both sides
+        // reach (or skip) the validation step together, per case (the §3
+        // review's catch at the `2f4254b42` unification — a v5 that stopped
+        // emitting its pair used to compare EQUAL after the strip).
+        assert_eq!(
+            g_reached, w_reached,
+            "case {}: reached validation on one side only (v5={g_reached}, v4={w_reached})",
+            c.name
+        );
         if g != w {
             failed.push(format!("{}:\n{}", c.name, first_diff(&g, &w)));
         }

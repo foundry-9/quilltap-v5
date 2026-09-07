@@ -183,16 +183,8 @@ fn build_stack_for(
     // `participant.selectedSubpromptIds ?? []` — a missing or non-array cell
     // is an empty selection, and the resolver returns `[]` for `[]` without
     // touching the vault.
-    let selected_subprompt_ids: Vec<String> = participant
-        .get("selectedSubpromptIds")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_string)
-                .collect()
-        })
-        .unwrap_or_default();
+    let selected_subprompt_ids: Vec<String> =
+        crate::services::orchestrator::json_str_array(participant, "selectedSubpromptIds");
     let subprompts = crate::subprompts::resolve_selected_subprompts(
         main,
         mount,
