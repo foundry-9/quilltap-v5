@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(compiler): bake the seat's subprompts into the compiled identity stack (P4.D164 unit 2)
+
+_Versions: core 0.0.825, harness 0.0.714._
+
+`build_stack_for` reads the participant's `selectedSubpromptIds` (a missing
+or non-array cell is an empty selection, as v4's `?? []`), resolves them
+through `resolve_selected_subprompts` from the character's vault, and passes
+them to the stack builder, so `chats.compiledIdentityStacks` carries the
+`## Additional Instructions` block — a selection change recompiles through
+the P4.D163 fan-out. `identity_compiler_equivalence` red-first at the pin
+over the widened `/tmp` fixture (Aria's vault gains `Subprompts/terse.md` +
+`Verse.md`; her seat selects `["terse","VERSE","gone"]`, Bob's `[]`, Sam is
+user and carries `["terse"]` that must never compile): the first run showed
+exactly Aria's missing block; green after the port with the `version: 2`
+envelope the comparand.
+
 #### 2026-09-07 — feat(system-prompt): the `## Additional Instructions` block in the identity stack (P4.D164 unit 1)
 
 _Versions: core 0.0.824, harness 0.0.713._

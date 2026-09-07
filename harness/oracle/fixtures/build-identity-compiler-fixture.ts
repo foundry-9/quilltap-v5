@@ -149,10 +149,29 @@ async function main(): Promise<void> {
   await bake(spec.samId, spec.sam);
   await bake(spec.ghostId, spec.ghost);
 
+  // [P4.D164 / v4 `2f4254b42`] Aria's vault carries a `Subprompts/` folder:
+  // `terse.md` + `Verse.md` (mixed case — the seat below selects it as
+  // "VERSE") + `nested/x.md` (must never resolve). Aria's seat selects
+  // `["terse", "VERSE", "gone"]` (one dangling), Bob's `[]`, Sam is user, so
+  // the compiled map must show Aria's `## Additional Instructions` block
+  // (title order: "Answer in verse" then "Be terse") and NOTHING on Bob.
+  {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+    const { composeSubpromptContent, SUBPROMPTS_FOLDER } = await import('@/lib/subprompts/subprompts');
+    const raw = await repos.characters.findByIdRaw(spec.ariaId);
+    const vault = raw?.characterDocumentMountPointId as string | null;
+    if (!vault) throw new Error('Aria has no vault');
+    await ensureFolderPath(vault, SUBPROMPTS_FOLDER);
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/terse.md`, composeSubpromptContent('Be terse', '{{char}} answers {{user}} in one line about {{scenario}}.'));
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/Verse.md`, composeSubpromptContent('Answer in verse', 'Every reply is a quatrain.'));
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/nested/x.md`, composeSubpromptContent('Nested', 'Must never resolve.'));
+  }
+
   const participants = [
-    { id: spec.ariaP, type: 'CHARACTER', characterId: spec.ariaId, controlledBy: 'llm', status: 'active', displayOrder: 0, isActive: true, createdAt: TS, updatedAt: TS },
-    { id: spec.bobP, type: 'CHARACTER', characterId: spec.bobId, controlledBy: 'llm', status: 'active', displayOrder: 1, isActive: true, createdAt: TS, updatedAt: TS },
-    { id: spec.samP, type: 'CHARACTER', characterId: spec.samId, controlledBy: 'user', status: 'active', displayOrder: 2, isActive: true, createdAt: TS, updatedAt: TS },
+    { id: spec.ariaP, type: 'CHARACTER', characterId: spec.ariaId, controlledBy: 'llm', status: 'active', displayOrder: 0, isActive: true, createdAt: TS, updatedAt: TS, selectedSubpromptIds: ['terse', 'VERSE', 'gone'] },
+    { id: spec.bobP, type: 'CHARACTER', characterId: spec.bobId, controlledBy: 'llm', status: 'active', displayOrder: 1, isActive: true, createdAt: TS, updatedAt: TS, selectedSubpromptIds: [] },
+    { id: spec.samP, type: 'CHARACTER', characterId: spec.samId, controlledBy: 'user', status: 'active', displayOrder: 2, isActive: true, createdAt: TS, updatedAt: TS, selectedSubpromptIds: ['terse'] },
     { id: spec.ghostP, type: 'CHARACTER', characterId: spec.ghostId, controlledBy: 'llm', status: 'removed', displayOrder: 3, isActive: false, createdAt: TS, updatedAt: TS },
   ];
   await repos.chats.create(

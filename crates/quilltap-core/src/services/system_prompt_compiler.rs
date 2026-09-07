@@ -176,12 +176,36 @@ fn build_stack_for(
         .get("selectedSystemPromptId")
         .and_then(Value::as_str);
 
+    // Subprompts ticked on for this seat (v4 `2f4254b42`, `compiler.ts:155`).
+    // Resolved here from the character's vault and BAKED into the cached
+    // stack; a selection change recompiles through
+    // [`compile_identity_stack_for_participant`] (the P4.D163 fan-out). v4's
+    // `participant.selectedSubpromptIds ?? []` — a missing or non-array cell
+    // is an empty selection, and the resolver returns `[]` for `[]` without
+    // touching the vault.
+    let selected_subprompt_ids: Vec<String> = participant
+        .get("selectedSubpromptIds")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let subprompts = crate::subprompts::resolve_selected_subprompts(
+        main,
+        mount,
+        character_id,
+        &selected_subprompt_ids,
+    );
+
     let stack = build_identity_stack(&BuildIdentityStackOptions {
         character: &character,
         user_character: user_character.as_ref(),
         selected_system_prompt_id,
         scenario_text,
-        subprompts: None,
+        subprompts: Some(&subprompts),
     });
     Ok(if stack.is_empty() { None } else { Some(stack) })
 }

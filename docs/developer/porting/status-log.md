@@ -112179,3 +112179,23 @@ Versions: core 0.0.823.
   run `QT_ORACLE_SYSTEM_PROMPT=… cargo test -p quilltap-harness --test
   system_prompt_equivalence`.
 - Versions: core 0.0.824, harness 0.0.713.
+
+### Unit 2 — the compiler bake (RED FIRST)
+
+- `services/system_prompt_compiler.rs::build_stack_for`: reads
+  `participant.selectedSubpromptIds` (missing / non-array → `[]`, v4's
+  `?? []`), resolves via `crate::subprompts::resolve_selected_subprompts(main,
+  mount, character_id, &ids)` (P4.D163's resolver — `[]` short-circuits
+  without a vault read), passes `Some(&subprompts)`.
+- `harness/oracle/fixtures/build-identity-compiler-fixture.ts` widened: Aria's
+  vault gets `Subprompts/terse.md` (templated body) + `Verse.md` (mixed case)
+  + `nested/x.md` (must never resolve); seats: Aria `["terse","VERSE","gone"]`
+  (one dangling), Bob `[]`, Sam (user) `["terse"]`. Rebuilt + regenerated at
+  the pin (the recipe in `identity_compiler_equivalence.rs`'s header, run
+  from `/tmp/qt-v4-pin-p4d163-2f4254b42`); 9 rows, 5 carrying the block
+  (Aria's cell in every compile — the block in TITLE order, "Answer in verse"
+  then "Be terse", v4's ICU-collated listing), Bob's cell block-free, no cell
+  for Sam. RED FIRST: `compiledIdentityStacks after 'base-chat'` — v5's Aria
+  cell lacked the block; green after the port. No Rust harness change (the
+  family compares the whole envelope).
+- Versions: core 0.0.825, harness 0.0.714.
