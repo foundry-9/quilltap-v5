@@ -140,6 +140,23 @@ zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
 # change to any existing DEFLATE output in the tree.
 flate2 = "1"
 
+# P4.86: the JSON-Schema engine behind `generators::qtap_schema` — v4 validates
+# the assembled AI-import export against `public/schemas/qtap-export.schema.json`
+# through ajv (`Ajv2020 {allErrors, strict:false, validateFormats} + addFormats`),
+# and without an engine v5 could only REFUSE the step (the retired
+# `VALIDATION_UNAVAILABLE`). Added under the human's written ruling of
+# 2026-09-07 — "Yes, add `jsonschema` to `quilltap-core` please." — the one
+# dependency add pre-authorized by work order P4.86.
+#
+# `default-features = false` deliberately: the vendored schema's 37 `$ref`s are
+# ALL local (`#/$defs/...`), so no remote resolution is possible or wanted, and
+# the default set would drag `reqwest` + `rustls` + `aws-lc-rs` (resolve-http)
+# and `idna` into the DEFAULT core build, which is IO-free by rule. The two
+# formats the schema asserts (`uuid`, `date-time`) are engine built-ins,
+# switched on with `should_validate_formats(true)` to match ajv's
+# `validateFormats: true` + `ajv-formats`.
+jsonschema = { version = "0.55", default-features = false }
+
 # P4.77: `test_support`'s cross-crate half needs `tracing-subscriber` linked
 # as a NORMAL (optional) dependency — a `[dev-dependencies]` entry (below)
 # only links for THIS crate's own test/bench targets, never for a downstream

@@ -348,6 +348,35 @@ a participant that is not on the chat, and a dangling
 the log line) pin its position; without them a line moved above the write
 would still pass. Mutation-proven: deleting the `tracing::info!` reddens the
 test.
+#### 2026-09-07 — build(core): add the `jsonschema` engine (P4.86, under the human's dependency ruling)
+
+_Versions: core 0.0.835._
+
+Adds `jsonschema = { version = "0.55", default-features = false }` to
+`quilltap-core` — the one dependency add pre-authorized by work order P4.86,
+under the human's written ruling of 2026-09-07: "Yes, add `jsonschema` to
+`quilltap-core` please."
+
+The engine is what lets the AI-import runner carry v4's real validation and
+repair steps instead of the `VALIDATION_UNAVAILABLE` refusal: v4 validates
+the assembled export against `public/schemas/qtap-export.schema.json` through
+ajv (`Ajv2020 { allErrors: true, strict: false, validateFormats: true }` plus
+`ajv-formats`), and a port with no JSON-Schema engine could only refuse.
+
+`default-features = false` is deliberate. The vendored schema's 37 distinct
+`$ref`s are all local (`#/$defs/...`), so remote resolution is neither
+possible nor wanted, and the default feature set would drag `reqwest`,
+`rustls`, `aws-lc-rs` (via `resolve-http`) and `idna` into the DEFAULT core
+build — which is IO-free by rule. The two formats the schema asserts (`uuid`,
+`date-time`) are engine built-ins. Transitive footprint: 22 new crates, all
+pure Rust, no network and no C (`ahash`, `allocator-api2`,
+`borrow-or-share`, `bytecount`, `email_address`, `fancy-regex`, `fluent-uri`,
+`fraction`, `jsonschema`, `jsonschema-regex`, `jsonschema-value`, `micromap`,
+`num`, `num-cmp`, `num-iter`, `outref`, `referencing`, `strum`,
+`strum_macros`, `unicode-general-category`, `uuid-simd`, `vsimd`).
+
+No source consumes it yet — the module and its differentials arrive in the
+next commits.
 
 #### 2026-09-07 — docs(setupphase): P4.86 authorized — the `jsonschema` dependency ruling granted
 
