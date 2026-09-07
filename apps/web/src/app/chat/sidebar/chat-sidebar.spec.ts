@@ -64,6 +64,7 @@ function participant(
         (togglePause)="paused.push(true)"
         (nudge)="nudged.push($event)"
         (whisper)="whispered.push($event)"
+        (subpromptsChange)="subpromptsChanged.push($event)"
       />
     </div>
   `,
@@ -101,6 +102,7 @@ class Host {
   readonly paused: boolean[] = [];
   readonly nudged: string[] = [];
   readonly whispered: string[] = [];
+  readonly subpromptsChanged: { participantId: string; subpromptIds: string[] }[] = [];
 }
 
 async function render(): Promise<ComponentFixture<Host>> {
@@ -117,7 +119,19 @@ async function render(): Promise<ComponentFixture<Host>> {
         useValue: {
           ...coreStreamStub(),
           dispatch: async () => ({ type: 'chat', data: {} }),
-          dispatchData: async () => ({ subprompts: [] }),
+          // One subprompt on file for every character, so a picker can be
+          // opened and ticked (the re-emit wiring spec below).
+          dispatchData: async () => ({
+            subprompts: [
+              {
+                id: 'be-terse',
+                path: 'Subprompts/be-terse.md',
+                title: 'Be terse',
+                content: 'You keep every reply short.',
+                updatedAt: '2026-09-07T00:00:00.000Z',
+              },
+            ],
+          }),
         },
       },
       provideTanStackQuery(new QueryClient()),
@@ -327,5 +341,39 @@ describe('ChatSidebar', () => {
     expect(
       Array.from(plain.querySelectorAll('.qt-badge-absent')).map((b) => b.textContent?.trim()),
     ).toEqual(['Absent']);
+  });
+});
+
+/**
+ * The re-emit WIRING (the `2f4254b42` unification's §3 catch): a tick inside a
+ * card's picker climbs `qt-participant-card` → `qt-participants-section` →
+ * `qt-chat-sidebar` and comes out of the sidebar's own `subpromptsChange`.
+ */
+describe('ChatSidebar — a picker tick re-emits from the sidebar', () => {
+  it('reports {participantId, subpromptIds} for the LLM seat whose box was ticked', async () => {
+    const fixture = await render();
+    const settle = async () => {
+      for (let i = 0; i < 4; i += 1) {
+        fixture.detectChanges();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      fixture.detectChanges();
+    };
+    const cards = Array.from(sidebarEl(fixture).querySelectorAll('qt-participant-card'));
+    const alice = cards.find((c) => (c.textContent ?? '').includes('Alice')) as HTMLElement | undefined;
+    expect(alice).toBeTruthy();
+    const disclosure = alice!.querySelector(
+      'qt-subprompt-picker button[title="Subprompts in play for this chat"]',
+    ) as HTMLButtonElement | null;
+    expect(disclosure).toBeTruthy();
+    disclosure!.click();
+    await settle();
+    const box = alice!.querySelector('input[aria-label="Subprompt Be terse"]') as HTMLInputElement | null;
+    expect(box).toBeTruthy();
+    box!.click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.subpromptsChanged).toEqual([
+      { participantId: 'alice', subpromptIds: ['be-terse'] },
+    ]);
   });
 });

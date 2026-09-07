@@ -5842,7 +5842,15 @@ export type ScriptoriumRequest =
   | MountFileDeleteRequest
   | MountFileUpdateRequest
   | MountBlobsListRequest
-  | SystemBrowseDirectoryRequest;
+  | SystemBrowseDirectoryRequest
+  // p4.9k generators (folded at the `2f4254b42` unification)
+  | CharacterRenameRequest
+  | CharacterRefreshArchiveRequest
+  | CharacterGenerateExternalPromptRequest
+  | CharacterOptimizeRequest
+  | CharacterWizardRequest
+  | CharacterWizardStreamRequest
+  | AiImportStreamRequest;
 
 // ===========================================================================
 // P4.d3 (lane D) — the data-retention setting client surface.
@@ -6601,6 +6609,137 @@ export interface HelpChatSendRequest {
 }
 
 // === end P4.9I2B ===
+
+// === p4.9k generators (folded at the `2f4254b42` round's unification): the
+// §B request DTOs P4.9K3/P4.9K4 declared lane-locally behind an
+// `as unknown as CoreRequest` cast until P4.9K1/P4.9K2 landed the verbs.
+// Mirrored NAME-FOR-NAME from `api/types.rs`'s `=== P4.9K1 ===` /
+// `=== P4.9K2 ===` fences (camelCase of the Rust fields; every optional
+// body field rides RAW server-side so v4's own Zod schema runs inside the
+// handler). The wire files under `screens/characters/generators/` re-export
+// these so their importers keep their paths. ===
+
+/** The generator kinds (§B.5) — the wire spelling of Rust `GeneratorKind`. */
+export type GeneratorKind = 'optimizer' | 'wizard' | 'aiImport';
+
+/**
+ * §B.5's `Event::GeneratorProgress` on the wire: `{ type: 'generatorProgress',
+ * progressId, generator, event }` — `event` is v4's own progress-event object,
+ * byte-for-byte (key order and all). Narrowed from a raw stream frame by
+ * `isGeneratorProgressEvent` (the frame carries its own `type` tag).
+ */
+export interface GeneratorProgressEvent {
+  type: 'generatorProgress';
+  progressId: string;
+  generator: GeneratorKind;
+  event: Record<string, unknown>;
+}
+
+/** v4's `additionalReplacements`/`primaryRename` pair shape (`renameSchema`). */
+export interface RenamePair {
+  oldValue: string;
+  newValue: string;
+  caseSensitive: boolean;
+}
+
+/** `characterRename` (§B.2, P4.9K1) — v4 `POST /api/v1/characters/[id]?action=rename`. */
+export interface CharacterRenameRequest {
+  type: 'characterRename';
+  characterId: string;
+  primaryRename?: RenamePair;
+  additionalReplacements?: RenamePair[];
+  dryRun?: boolean;
+}
+
+/** `characterRefreshArchive` (§B.2, P4.9K1) — `?action=refresh-archive` → `{ queued }`. */
+export interface CharacterRefreshArchiveRequest {
+  type: 'characterRefreshArchive';
+  characterId: string;
+}
+
+/** v4 `generateExternalPromptSchema` (`post.ts:70-75`). */
+export interface CharacterGenerateExternalPromptRequest {
+  type: 'characterGenerateExternalPrompt';
+  characterId: string;
+  connectionProfileId: string;
+  systemPromptId: string;
+  scenarioId?: string;
+  maxTokens: number;
+}
+
+export type OptimizerOutputMode = 'apply' | 'suggestions-file';
+
+/** v4 `optimizeStreamSchema` (`app/api/v1/characters/[id]/handlers/post.ts:60-68`). */
+export interface CharacterOptimizeRequest {
+  type: 'characterOptimize';
+  characterId: string;
+  progressId: string;
+  connectionProfileId: string;
+  maxMemories?: number;
+  searchQuery?: string;
+  useSemanticSearch?: boolean;
+  sinceDate?: string | null;
+  beforeDate?: string | null;
+  outputMode?: OptimizerOutputMode;
+}
+
+/** The wizard's field-vantage id set (v4 `GeneratableField`). */
+export type GeneratableField =
+  | 'name'
+  | 'title'
+  | 'identity'
+  | 'description'
+  | 'manifesto'
+  | 'personality'
+  | 'scenarios'
+  | 'exampleDialogues'
+  | 'firstMessage'
+  | 'systemPrompt'
+  | 'properties'
+  | 'physicalDescription'
+  | 'wardrobeItems';
+
+/** v4 `DescriptionSourceType`. */
+export type DescriptionSourceType = 'existing' | 'upload' | 'gallery' | 'document' | 'skip';
+
+/** The `WizardRequest` body §B.3 pins verbatim (v4 `wizardRequestSchema`). */
+export interface WizardRequest {
+  primaryProfileId: string;
+  visionProfileId?: string;
+  sourceType: DescriptionSourceType;
+  imageId?: string;
+  documentId?: string;
+  characterName: string;
+  existingData?: Record<string, unknown>;
+  background: string;
+  fieldsToGenerate: GeneratableField[];
+  characterId?: string;
+}
+
+/** `characterWizard` (§B.3, P4.9K2) — the non-streaming wizard; the body is flattened. */
+export interface CharacterWizardRequest extends WizardRequest {
+  type: 'characterWizard';
+}
+
+/** `characterWizardStream` (§B.3, P4.9K2) — the wizard's live call. */
+export interface CharacterWizardStreamRequest extends WizardRequest {
+  type: 'characterWizardStream';
+  progressId: string;
+}
+
+/** `aiImportStream` (§B.3, P4.9K2) — v4's hand-rolled body read (`system/tools/route.ts:1196-1212`). */
+export interface AiImportStreamRequest {
+  type: 'aiImportStream';
+  progressId: string;
+  profileId: string;
+  sourceFileIds?: string[];
+  sourceText?: string;
+  includeMemories?: boolean;
+  includeChats?: boolean;
+  existingResult?: unknown;
+  regenerateSteps?: string[];
+}
+// === end p4.9k generators ===
 
 // === P4.73: the `/api/v1/images` COLLECTION surface, mirrored NAME-FOR-NAME
 // from `api/types.rs`'s `=== P4.73 ===` block. Type-only this round: the SPA

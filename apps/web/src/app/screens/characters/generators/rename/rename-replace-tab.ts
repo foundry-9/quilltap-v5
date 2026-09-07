@@ -20,7 +20,7 @@ interface ReplacementPairForm {
  * The Rename & Replace tab — v4 `components/characters/RenameReplaceTab.tsx`
  * (455 lines): a primary name change plus additional nickname/alias
  * replacements, a dry-run **Preview** (`characterRename` §B.2, K1's verb —
- * dispatched via the `as unknown as CoreRequest` cast until the unifier folds
+ * a real `CoreRequest` member since the `2f4254b42` unification folded
  * it), grouped counts, then **Apply** with a confirmation and success toast.
  * Copy and the counts-table column order carry over verbatim.
  */

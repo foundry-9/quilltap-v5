@@ -1,45 +1,49 @@
 /**
  * The generators wire contract for the EDIT-side lane (P4.9K3): the §B DTOs
- * this lane's components dispatch, declared VERBATIM from the work order's
- * binding §B block (`docs/developer/porting/work-orders/
- * p4.9k3-generators-spa-edit-new.md`). `core-contract.ts` is frozen for this
- * round — every SPA lane declares its own copy of the §B shapes it uses, and
- * the unifier folds identical duplicate declarations into `core-contract.ts`
- * at `/unify` (§S.3).
+ * this lane's components dispatch. The request shapes now LIVE in
+ * `core-contract.ts` (folded at the `2f4254b42` round's unification, after
+ * P4.9K1/P4.9K2 landed the verbs server-side and the name-for-name diff ran
+ * against `api/types.rs`'s `=== P4.9K1 ===` / `=== P4.9K2 ===` fences) and are
+ * re-exported here so every importer keeps its path; the
+ * `as unknown as CoreRequest` casts this file carried while the verbs were
+ * SPA-only are gone — `characterRename`, `characterWizard` and
+ * `characterWizardStream` are real `CoreRequest` members.
  *
- * `characterRename` (§B.2) is K1's verb; `characterWizard`/
- * `characterWizardStream` (§B.3) are K2's. Neither exists on the real server
- * in this lane's tree, so every dispatch call here casts through
- * `as unknown as CoreRequest` (the `file-manager-transport.ts` precedent) —
- * retired at unification once the real union members land, exactly as
- * `images.api.ts`'s header describes for its own now-landed verb.
+ * The response shapes (v4's `RenamePreviewResponse`, the wizard's generated
+ * data) stay here: they are what THIS lane's components read, not wire
+ * requests.
  *
  * @module screens/characters/generators/edit-generators.api
  */
 
 import type { CoreClient } from '../../../core/core-client';
-import type { CoreRequest, ScopedEvent } from '../../../core/core-contract';
+import type {
+  CharacterRenameRequest,
+  CharacterWizardStreamRequest,
+  CoreRequest,
+  DescriptionSourceType,
+  GeneratableField,
+  GeneratorKind,
+  GeneratorProgressEvent,
+  RenamePair,
+  ScopedEvent,
+  WizardRequest,
+} from '../../../core/core-contract';
+
+export type {
+  CharacterRenameRequest,
+  CharacterWizardStreamRequest,
+  DescriptionSourceType,
+  GeneratableField,
+  GeneratorKind,
+  GeneratorProgressEvent,
+  RenamePair,
+  WizardRequest,
+};
 
 // ---------------------------------------------------------------------------
 // §B.1 — the one streaming shape every generator uses
 // ---------------------------------------------------------------------------
-
-/** The generator kinds (§B.5) — the wire spelling of `GeneratorKind`. */
-export type GeneratorKind = 'optimizer' | 'wizard' | 'aiImport';
-
-/**
- * §B.5's `Event::GeneratorProgress`, folded flat into the wire the same way
- * `ChatStreamFrame`/`CreationProgressFrame` do (`ScopedEvent`'s doc comment)
- * — except THIS event carries its own `type` tag rather than folding
- * untagged, per §B.1's frame shape. `event` is v4's own progress-event
- * object, byte-for-byte (key order and all).
- */
-export interface GeneratorProgressEvent {
-  type: 'generatorProgress';
-  progressId: string;
-  generator: GeneratorKind;
-  event: Record<string, unknown>;
-}
 
 /** Narrow a raw stream frame to a generator-progress frame for `mine`. */
 export function isGeneratorProgressEvent(
@@ -64,7 +68,7 @@ export function mintProgressId(): string {
  */
 export function streamGenerator(
   core: CoreClient,
-  request: Record<string, unknown>,
+  request: CoreRequest,
   progressId: string,
   onEvent: (event: Record<string, unknown>) => void,
 ): Promise<Record<string, unknown>> {
@@ -73,30 +77,12 @@ export function streamGenerator(
       onEvent(frame.event);
     }
   });
-  return core
-    .dispatchData(request as unknown as CoreRequest)
-    .finally(() => sub.unsubscribe());
+  return core.dispatchData(request).finally(() => sub.unsubscribe());
 }
 
 // ---------------------------------------------------------------------------
 // §B.2 — K1's per-character trio (rename is the only one this lane calls)
 // ---------------------------------------------------------------------------
-
-/** v4's `additionalReplacements`/`primaryRename` pair shape (`renameSchema`). */
-export interface RenamePair {
-  oldValue: string;
-  newValue: string;
-  caseSensitive: boolean;
-}
-
-/** `characterRename` request (§B.2, K1's verb). */
-export interface CharacterRenameRequest {
-  type: 'characterRename';
-  characterId: string;
-  primaryRename?: RenamePair;
-  additionalReplacements?: RenamePair[];
-  dryRun?: boolean;
-}
 
 /** v4's `RenamePreviewResponse` (§B.2), verbatim key order. */
 export interface RenameReplacementResult {
@@ -124,17 +110,17 @@ export interface RenamePreviewResponse {
   summary: RenameSummary;
 }
 
-/** Dispatch `characterRename` (K1's verb — casts until unification folds it). */
+/** Dispatch `characterRename` (K1's verb). */
 export async function dispatchCharacterRename(
   core: CoreClient,
   request: CharacterRenameRequest,
 ): Promise<RenamePreviewResponse> {
-  const data = await core.dispatchData(request as unknown as CoreRequest);
+  const data = await core.dispatchData(request);
   return data as unknown as RenamePreviewResponse;
 }
 
 // ---------------------------------------------------------------------------
-// §B.3 — K2's wizard pair
+// §B.3 — K2's wizard pair (the generated-data shapes the wizard reads)
 // ---------------------------------------------------------------------------
 
 /** v4's `GeneratedPhysicalDescription` (ai-wizard `types.ts`). */
@@ -181,45 +167,6 @@ export interface GeneratedCharacterData {
   properties?: GeneratedProperties;
   physicalDescription?: GeneratedPhysicalDescription;
   wardrobeItems?: GeneratedWardrobeItem[];
-}
-
-/** The wizard's field-vantage id set (v4 `GeneratableField`). */
-export type GeneratableField =
-  | 'name'
-  | 'title'
-  | 'identity'
-  | 'description'
-  | 'manifesto'
-  | 'personality'
-  | 'scenarios'
-  | 'exampleDialogues'
-  | 'firstMessage'
-  | 'systemPrompt'
-  | 'properties'
-  | 'physicalDescription'
-  | 'wardrobeItems';
-
-/** v4 `DescriptionSourceType`. */
-export type DescriptionSourceType = 'existing' | 'upload' | 'gallery' | 'document' | 'skip';
-
-/** The `WizardRequest` body §B.3 pins verbatim (v4 `wizardRequestSchema`). */
-export interface WizardRequest {
-  primaryProfileId: string;
-  visionProfileId?: string;
-  sourceType: DescriptionSourceType;
-  imageId?: string;
-  documentId?: string;
-  characterName: string;
-  existingData?: Record<string, unknown>;
-  background: string;
-  fieldsToGenerate: GeneratableField[];
-  characterId?: string;
-}
-
-/** `characterWizardStream` (§B.3, K2's verb — the wizard's ONLY live call). */
-export interface CharacterWizardStreamRequest extends WizardRequest {
-  type: 'characterWizardStream';
-  progressId: string;
 }
 
 /** v4's wizard `done` terminal event shape (`useAIWizard.ts:358-368`). */

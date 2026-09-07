@@ -3,7 +3,7 @@ import type { Subscription } from 'rxjs';
 
 import { CoreClient } from '../../../../core/core-client';
 import { fetchCharacter } from '../../characters.api';
-import { asGeneratorProgress, dispatchCharacterOptimize } from '../detail-generators.api';
+import { asGeneratorProgress, dispatchCharacterOptimize, mintProgressId } from '../detail-generators.api';
 import type {
   OptimizerFilterOptions,
   OptimizerOutputMode,
@@ -84,8 +84,7 @@ export class OptimizerState {
     this.currentIndexSig.set(0);
     this.startedAtSig.set(Date.now());
 
-    const progressId =
-      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`;
+    const progressId = mintProgressId();
 
     this.progressSub?.unsubscribe();
     this.progressSub = this.core.events$.subscribe((frame) => {

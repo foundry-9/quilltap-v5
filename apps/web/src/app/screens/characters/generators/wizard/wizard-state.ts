@@ -298,7 +298,7 @@ export class WizardState {
 
       const result = await streamGenerator(
         this.core,
-        request as unknown as Record<string, unknown>,
+        request,
         progressId,
         (event) => this.applyProgressEvent(event),
       );

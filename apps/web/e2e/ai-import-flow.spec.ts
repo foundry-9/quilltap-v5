@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 
-import { E2E_PASSPHRASE } from './support/env';
+import { createServer, type Server } from 'node:http';
+
+import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { openSidebarSection } from './support/sidebar';
-import { startMockLlm } from './support/mock-llm';
 
 /**
  * p4.9k4 — "Summon from Lore" from a Salon chat's Add-Character picker: the AI
@@ -26,20 +27,119 @@ import { startMockLlm } from './support/mock-llm';
  * while the `system_prompts` / `wardrobe_items` / `memories` steps `.map` over
  * ARRAYS (`:491`), so a single object reply throws inside assembly and the
  * run ends `done {error}` with no `result` and "Review Results" never renders.
- * STILL OWED before the first live run (flip {@link P49K2_SERVER_LANDED}): a
- * spec-local prompt-keyed mock that switches on the user-message text —
- * basics → an object with `name`, the array steps → arrays (the order allowed
- * exactly this: "extend in YOUR spec's support copy, never the shared file").
- * The reply below is only the basics step's shape, flattened.
+ * So the mock below is prompt-KEYED and NON-streaming (the runner calls
+ * `send_message`, never the stream): it reads the user message the import
+ * composes (`{source}\n\n---\n\n{instruction}`) and answers each step with
+ * the shape that step's parse and the assembly require — the `2f4254b42`
+ * unification's discharge of this beat's owed recipe. Steps are told apart by
+ * a phrase unique to each instruction (`ai_import.rs`'s prompt functions).
  */
-const P49K2_SERVER_LANDED = false;
+const P49K2_SERVER_LANDED = true;
 
-const AI_IMPORT_MOCK_REPLY = JSON.stringify({
+const BASICS_REPLY = {
   name: 'Marchpane',
+  title: 'The Confectioner',
   identity: 'A travelling confectioner of some renown.',
   description: 'Sweet-tempered and precise.',
+  manifesto: 'Every sweet is a small kindness.',
   personality: 'Endlessly patient, quietly ambitious.',
-});
+};
+
+/** One reply per import step, keyed by a phrase unique to its instruction. */
+const STEP_REPLIES: Array<[string, unknown]> = [
+  ["Extract or generate the character's basic information", BASICS_REPLY],
+  [
+    'Generate a first message and example dialogues',
+    { firstMessage: 'Good afternoon. Might I tempt you with a marzipan?', exampleDialogues: '' },
+  ],
+  [
+    'Create system prompts that instruct an AI',
+    [{ name: 'Default', content: 'You are Marchpane, a confectioner. You are patient and precise.', isDefault: true }],
+  ],
+  [
+    'Generate physical descriptions of this character',
+    {
+      headAndShouldersPrompt: 'a confectioner with flour-dusted cheeks',
+      shortPrompt: 'a confectioner with flour-dusted cheeks',
+      mediumPrompt: 'a patient confectioner with flour-dusted cheeks and steady hands',
+      longPrompt: 'a patient confectioner with flour-dusted cheeks, steady hands and a kind gaze',
+      completePrompt: 'a patient confectioner with flour-dusted cheeks, steady hands, a kind gaze and neat dark hair',
+      fullDescription: 'Marchpane has flour-dusted cheeks, steady hands, a kind gaze and neat dark hair.',
+    },
+  ],
+  ['Ground every item in the source material', []],
+  [
+    "Determine the character's pronouns and aliases",
+    { pronouns: { subject: 'she', object: 'her', possessive: 'her' }, aliases: ['March'] },
+  ],
+  [
+    'Generate memories that this character would have',
+    [{ content: 'Marchpane once won the county sugar-work prize.', summary: 'The sugar-work prize.', keywords: ['prize'], importance: 0.5 }],
+  ],
+  [
+    'Generate an example chat conversation',
+    { title: 'A first tasting', messages: [{ role: 'user', content: 'Hello.' }, { role: 'assistant', content: 'Do try the marzipan.' }] },
+  ],
+];
+
+function replyFor(userText: string): string {
+  const hit = STEP_REPLIES.find(([phrase]) => userText.includes(phrase));
+  return JSON.stringify(hit ? hit[1] : BASICS_REPLY);
+}
+
+/**
+ * A prompt-keyed, NON-streaming OPENAI-compatible chat-completions mock (the
+ * wizard beat's non-streaming shape, plus a body read): the last user
+ * message's text picks the reply.
+ */
+async function startPromptKeyedMockLlm(port: number): Promise<{ url: string; close: () => Promise<void> }> {
+  const httpServer: Server = createServer((req, res) => {
+    if (req.method === 'GET' && req.url?.includes('/models')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ id: 'mock-model' }] }));
+      return;
+    }
+    if (req.method !== 'POST' || !req.url?.includes('/chat/completions')) {
+      res.writeHead(404).end();
+      return;
+    }
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => {
+      let userText = '';
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+          messages?: Array<{ role?: string; content?: unknown }>;
+        };
+        const users = (body.messages ?? []).filter((m) => m.role === 'user');
+        const last = users[users.length - 1]?.content;
+        userText = typeof last === 'string' ? last : JSON.stringify(last ?? '');
+      } catch {
+        userText = '';
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          id: 'mock-import-1',
+          object: 'chat.completion',
+          model: 'mock-model',
+          choices: [{ index: 0, message: { role: 'assistant', content: replyFor(userText) }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 20, completion_tokens: 12, total_tokens: 32 },
+        }),
+      );
+    });
+  });
+  const boundPort: number = await new Promise((res) => {
+    httpServer.listen(port, '127.0.0.1', () => {
+      const addr = httpServer.address();
+      res(typeof addr === 'object' && addr ? addr.port : 0);
+    });
+  });
+  return {
+    url: `http://127.0.0.1:${boundPort}`,
+    close: () => new Promise<void>((res, rej) => httpServer.close((e) => (e ? rej(e) : res()))),
+  };
+}
 
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
@@ -67,7 +167,7 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
     test.skip(!P49K2_SERVER_LANDED, 'awaits P4.9K2: the aiImportStream verb + generatorProgress events');
     test.setTimeout(60_000);
 
-    const mockLlm = await startMockLlm(AI_IMPORT_MOCK_REPLY);
+    const mockLlm = await startPromptKeyedMockLlm(MOCK_LLM_PORT);
     try {
       await page.goto('/salon');
       await maybeUnlock(page);
@@ -140,7 +240,7 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
       await mockLlm.close();
       testInfo.annotations.push({
         type: 'p4.9k4',
-        description: 'Summon-from-Lore cast beat; the mock reply shape is unverified against P4.9K2.',
+        description: 'Summon-from-Lore cast beat over the prompt-keyed non-streaming mock (first live run at the 2f4254b42 unification).',
       });
     }
   });

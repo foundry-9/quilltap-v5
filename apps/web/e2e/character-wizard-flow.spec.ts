@@ -37,7 +37,7 @@ import {
  * SSE, must not be edited for this). `startNonStreamingMockLlm` below is
  * this spec's own support copy, not a shared-file change.
  */
-const P49K2_SERVER_LANDED = false;
+const P49K2_SERVER_LANDED = true;
 
 const WIZARD_PORT = 4333;
 const WIZARD_BASE_URL = `http://127.0.0.1:${WIZARD_PORT}`;
@@ -103,7 +103,7 @@ async function startNonStreamingMockLlm(port: number): Promise<{ url: string; cl
 function runCliWrite(cli: string, sql: string): void {
   const result = spawnSync(
     cli,
-    ['db', 'characters', 'sql', '--write', '--data-dir', WIZARD_INSTANCE_DIR, '--', sql],
+    ['db', '--data-dir', WIZARD_INSTANCE_DIR, '--write', sql],
     { env: { ...process.env, QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE } },
   );
   if (result.status !== 0) {

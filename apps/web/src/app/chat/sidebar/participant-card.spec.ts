@@ -380,3 +380,64 @@ describe('ParticipantCard — the subprompt picker', () => {
     expect(seen).toEqual([{ participantId: 'p-1', subpromptIds: ['terse', 'verse'] }]);
   });
 });
+
+/**
+ * The WIRING (the `2f4254b42` unification's §3 catch): the specs above drive
+ * `onSubpromptsChange` directly, so deleting the template's
+ * `(selectionChange)="onSubpromptsChange($event)"` binding left them green.
+ * This one clicks a real checkbox inside the rendered picker and expects the
+ * emission to come out of the card's own output.
+ */
+describe('ParticipantCard — the subprompt picker is WIRED to the output', () => {
+  const RECORD = {
+    id: 'be-terse',
+    path: 'Subprompts/be-terse.md',
+    title: 'Be terse',
+    content: 'You keep every reply short.',
+    updatedAt: '2026-09-07T00:00:00.000Z',
+  };
+
+  async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
+    for (let i = 0; i < 4; i += 1) {
+      fixture.detectChanges();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    fixture.detectChanges();
+  }
+
+  it('a click on a rendered checkbox reaches subpromptsChange through the template', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ParticipantCard],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        {
+          provide: CoreClient,
+          useValue: {
+            ...coreStreamStub(),
+            dispatchData: async () => ({ subprompts: [RECORD] }),
+          } as unknown as CoreClient,
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ParticipantCard);
+    fixture.componentRef.setInput('participant', participant());
+    fixture.detectChanges();
+    const seen: { participantId: string; subpromptIds: string[] }[] = [];
+    fixture.componentInstance.subpromptsChange.subscribe((e) => seen.push(e));
+
+    const el = fixture.nativeElement as HTMLElement;
+    const disclosure = el.querySelector(
+      'qt-subprompt-picker button[title="Subprompts in play for this chat"]',
+    ) as HTMLButtonElement | null;
+    expect(disclosure).toBeTruthy();
+    disclosure!.click();
+    await settle(fixture);
+
+    const box = el.querySelector('input[aria-label="Subprompt Be terse"]') as HTMLInputElement | null;
+    expect(box).toBeTruthy();
+    box!.click();
+    fixture.detectChanges();
+    expect(seen).toEqual([{ participantId: 'p-1', subpromptIds: ['be-terse'] }]);
+  });
+});

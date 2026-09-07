@@ -29,7 +29,7 @@ import {
  * `characterRename` (§B.2) is P4.9K1's verb — guarded off until the unifier
  * flips {@link P49K1_SERVER_LANDED}. Written complete per the work order.
  */
-const P49K1_SERVER_LANDED = false;
+const P49K1_SERVER_LANDED = true;
 
 const RENAME_PORT = 4334;
 const RENAME_BASE_URL = `http://127.0.0.1:${RENAME_PORT}`;

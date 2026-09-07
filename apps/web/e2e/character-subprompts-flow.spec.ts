@@ -38,7 +38,7 @@ import { openSidebarSection } from './support/sidebar';
  * nothing beyond the verbs. Every id the walk needs it reads back from the
  * server; the vault every character carries is minted by the fixture builder.
  */
-const P4D163_SERVER_LANDED = false;
+const P4D163_SERVER_LANDED = true;
 
 const CHARACTER = 'Bram';
 const SUBPROMPT_TITLE = 'Be terse';
@@ -141,7 +141,7 @@ test.describe('P4.D165 — character subprompts', () => {
     await expect(
       page.getByText('Delete this subprompt? Any chat with it in play drops it.'),
     ).toBeVisible();
-    await page.getByRole('button', { name: 'Delete', exact: true }).click();
+    await page.locator('qt-subprompts-section').getByRole('button', { name: 'Delete', exact: true }).click();
 
     await expect(page.getByText('Subprompt deleted')).toBeVisible();
     await expect(

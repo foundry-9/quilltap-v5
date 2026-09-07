@@ -7,6 +7,7 @@ import type { CharacterConnectionProfile, FileEntry } from '../../../../core/cor
 import { fetchConnectionProfiles } from '../../characters.api';
 import {
   asGeneratorProgress,
+  mintProgressId,
   dispatchAiImportStream,
   dispatchSystemImportExecute,
 } from '../detail-generators.api';
@@ -234,8 +235,7 @@ export class AiImportState {
     // Auto-advance to step 3 (v4 `:202`).
     this.currentStepSig.set(3);
 
-    const progressId =
-      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`;
+    const progressId = mintProgressId();
 
     this.progressSub?.unsubscribe();
     this.progressSub = this.core.events$.subscribe((frame) => {

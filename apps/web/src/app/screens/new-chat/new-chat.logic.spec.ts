@@ -202,6 +202,7 @@ describe('scenarioSelectPatch (v4 handleScenarioSelectChange)', () => {
     expect(next.generalScenarioPath).toBe('Scenarios/c.md');
     expect(next.scenario).toBe('typed notes');
   });
+
 });
 
 describe('scenarioSelectionPatch (v4 44a8137e handleScenarioSelectionChange)', () => {

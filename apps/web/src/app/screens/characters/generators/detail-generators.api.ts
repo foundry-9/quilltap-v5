@@ -1,72 +1,67 @@
 /**
  * The generators wire contract (p4.9k, work order P4.9K4 — DETAIL + LIST +
- * CAST hosts): the request/response DTOs for `characterOptimize`,
- * `characterGenerateExternalPrompt`, and `aiImportStream`, plus the
- * `generatorProgress` Event envelope every streaming generator folds through.
+ * CAST hosts): `characterOptimize`, `characterGenerateExternalPrompt` and
+ * `aiImportStream`, plus the `generatorProgress` Event envelope every
+ * streaming generator folds through.
  *
- * §B (the round's Shared contract, binding — identical text is declared in
- * every SPA lane's own wire file per §S.3: `core-contract.ts` is frozen this
- * round, so each lane owns its copy and the unifier folds duplicates). K1
- * ships `characterOptimize` + `characterGenerateExternalPrompt` server-side;
- * K2 ships `aiImportStream`. Neither has landed yet, so every request type
- * here is NOT a member of `CoreRequest` — dispatch casts at the one seam
- * (the `file-manager-transport.ts` / P4.6x precedent), retired when the
- * unifier folds these into `core-contract.ts`.
+ * The request shapes now LIVE in `core-contract.ts` (folded at the
+ * `2f4254b42` round's unification, once P4.9K1/P4.9K2 landed the verbs
+ * server-side and the name-for-name diff ran against `api/types.rs`'s
+ * `=== P4.9K1 ===` / `=== P4.9K2 ===` fences) and are re-exported here so
+ * every importer keeps its path; the `as unknown as CoreRequest` cast this
+ * file dispatched through while the verbs were SPA-only is gone.
  *
  * §B.1 (streaming shape): a streaming verb carries a client-minted
  * `progressId`; each v4 `onProgress(event)` becomes one
  * `{ type: 'generatorProgress', progressId, generator, event }` Event, and the
  * dispatch call itself resolves with `{ terminal: <v4's last event, verbatim> }`
- * when the run ends server-side. `Event::GeneratorProgress` is not yet a
- * `ScopedEvent` member (P4.9K0's fence in `core-contract.ts`), so
- * {@link asGeneratorProgress} narrows a raw frame defensively rather than
- * relying on the union.
+ * when the run ends server-side. {@link asGeneratorProgress} narrows a raw
+ * frame through the ONE narrowing helper (`isGeneratorProgressEvent`, in
+ * `edit-generators.api.ts`) — the two lanes' copies were folded at the same
+ * unification.
  */
 
 import type { CoreClient } from '../../../core/core-client';
-import type { CoreRequest, ScopedEvent, SystemImportExecuteRequest } from '../../../core/core-contract';
+import type {
+  AiImportStreamRequest,
+  CharacterGenerateExternalPromptRequest,
+  CharacterOptimizeRequest,
+  GeneratorKind,
+  GeneratorProgressEvent,
+  OptimizerOutputMode,
+  ScopedEvent,
+  SystemImportExecuteRequest,
+} from '../../../core/core-contract';
+import { isGeneratorProgressEvent } from './edit-generators.api';
+
+export type {
+  AiImportStreamRequest,
+  CharacterGenerateExternalPromptRequest,
+  CharacterOptimizeRequest,
+  GeneratorKind,
+  GeneratorProgressEvent,
+  OptimizerOutputMode,
+};
+export { isGeneratorProgressEvent, mintProgressId } from './edit-generators.api';
 
 // ===========================================================================
 // §B.5 — the Event kind
 // ===========================================================================
 
-export type GeneratorKind = 'optimizer' | 'wizard' | 'aiImport';
-
-/** Wire: `{ type: 'generatorProgress', progressId, generator, event }`. */
-export interface GeneratorProgressEvent {
-  type: 'generatorProgress';
-  progressId: string;
-  generator: GeneratorKind;
-  /** v4's own progress-event object for this generator, key order + bytes verbatim. */
-  event: Record<string, unknown>;
-}
-
 /**
  * Narrows a raw {@link ScopedEvent} frame to a {@link GeneratorProgressEvent}
- * for `progressId`, or `null` when the frame is unrelated. `progressId` is
- * already a real `ScopedEvent` field; `type`/`generator`/`event` are not (the
- * variant hasn't landed in `core-contract.ts` yet), so those three are read
- * through a defensive cast.
+ * for `progressId`, or `null` when the frame is unrelated.
  */
 export function asGeneratorProgress(
   frame: ScopedEvent,
   progressId: string,
 ): GeneratorProgressEvent | null {
-  if (frame.progressId !== progressId) return null;
-  const raw = frame as unknown as Partial<GeneratorProgressEvent>;
-  if (raw.type !== 'generatorProgress' || raw.event === undefined) return null;
-  return raw as GeneratorProgressEvent;
-}
-
-function dispatchGenerator(core: CoreClient, request: object): Promise<Record<string, unknown>> {
-  return core.dispatchData(request as unknown as CoreRequest);
+  return isGeneratorProgressEvent(frame, progressId) ? frame : null;
 }
 
 // ===========================================================================
 // §B.2 — characterOptimize (K1)
 // ===========================================================================
-
-export type OptimizerOutputMode = 'apply' | 'suggestions-file';
 
 /** v4 `components/characters/optimizer/types.ts` `OptimizerPhase`. */
 export type OptimizerPhase = 'preflight' | 'progress' | 'review' | 'apply' | 'suggestions-file-written';
@@ -78,20 +73,6 @@ export interface OptimizerFilterOptions {
   useSemanticSearch: boolean;
   sinceDate: string | null;
   beforeDate: string | null;
-}
-
-/** v4 `optimizeStreamSchema` (`app/api/v1/characters/[id]/handlers/post.ts:60-68`). */
-export interface CharacterOptimizeRequest {
-  type: 'characterOptimize';
-  characterId: string;
-  progressId: string;
-  connectionProfileId: string;
-  maxMemories?: number;
-  searchQuery?: string;
-  useSemanticSearch?: boolean;
-  sinceDate?: string | null;
-  beforeDate?: string | null;
-  outputMode?: OptimizerOutputMode;
 }
 
 export interface BehavioralPattern {
@@ -180,7 +161,7 @@ export async function dispatchCharacterOptimize(
   core: CoreClient,
   request: CharacterOptimizeRequest,
 ): Promise<OptimizerTerminalEvent> {
-  const data = await dispatchGenerator(core, request);
+  const data = await core.dispatchData(request);
   // §B.1: the dispatch resolves with `{ terminal }` — nothing else is defined.
   return data['terminal'] as OptimizerTerminalEvent;
 }
@@ -188,16 +169,6 @@ export async function dispatchCharacterOptimize(
 // ===========================================================================
 // §B.2 — characterGenerateExternalPrompt (K1)
 // ===========================================================================
-
-/** v4 `generateExternalPromptSchema` (`post.ts:70-75`). */
-export interface CharacterGenerateExternalPromptRequest {
-  type: 'characterGenerateExternalPrompt';
-  characterId: string;
-  connectionProfileId: string;
-  systemPromptId: string;
-  scenarioId?: string;
-  maxTokens: number;
-}
 
 /** v4's response body `{ prompt, tokensUsed }` (`post.ts:328-330`). */
 export interface ExternalPromptResult {
@@ -209,26 +180,13 @@ export async function dispatchGenerateExternalPrompt(
   core: CoreClient,
   request: CharacterGenerateExternalPromptRequest,
 ): Promise<ExternalPromptResult> {
-  const data = await dispatchGenerator(core, request);
+  const data = await core.dispatchData(request);
   return data as unknown as ExternalPromptResult;
 }
 
 // ===========================================================================
 // §B.3 — aiImportStream (K2)
 // ===========================================================================
-
-/** v4's hand-rolled body read (`app/api/v1/system/tools/route.ts:1196-1212`). */
-export interface AiImportStreamRequest {
-  type: 'aiImportStream';
-  progressId: string;
-  profileId: string;
-  sourceFileIds?: string[];
-  sourceText?: string;
-  includeMemories?: boolean;
-  includeChats?: boolean;
-  existingResult?: unknown;
-  regenerateSteps?: string[];
-}
 
 /** v4's terminal `done` event `{type, result, stepResults, errors?}`. */
 export interface AiImportDoneEvent {
@@ -242,7 +200,7 @@ export async function dispatchAiImportStream(
   core: CoreClient,
   request: AiImportStreamRequest,
 ): Promise<AiImportDoneEvent> {
-  const data = await dispatchGenerator(core, request);
+  const data = await core.dispatchData(request);
   return (data['terminal'] ?? data) as AiImportDoneEvent;
 }
 

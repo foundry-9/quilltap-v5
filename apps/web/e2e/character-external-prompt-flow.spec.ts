@@ -24,7 +24,7 @@ import { BASE_URL, E2E_PASSPHRASE } from './support/env';
  * literal `{{user}}` token via API dispatch (never SQL), so it does not
  * depend on the shared fixture's shape.
  */
-const P49K1_SERVER_LANDED = false;
+const P49K1_SERVER_LANDED = true;
 
 async function maybeUnlock(page: Page): Promise<void> {
   const passphrase = page.locator('#qt-passphrase');
