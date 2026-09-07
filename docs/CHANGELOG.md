@@ -116,6 +116,31 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — fix(web): the generator re-framer's two `RecvError::Closed` arms say so
+
+_Versions: web 0.0.128._
+
+P4.85 item 2. `generator_sse::stream_generator` had two silent `Closed` arms
+— the pre-commit race and the pump. Both are v5-only states with no v4
+counterpart at all (v4's per-route `ReadableStream` is fed by the runner's
+own callback and can neither lag nor close under a running run), and neither
+is reachable by a user today, because the broadcast's sender lives for the
+engine's life. A silent arm is still how a real fault becomes invisible, so
+both now warn at v4-less `warn` level naming the `progress_id` and which arm
+fired, beside the `Lagged` warn that was already there. The module doc
+records all three as v5-only divergences.
+
+The pre-commit arm's client shape is now MEASURED and written down: the loop
+leaves with no frame and no dispatch result, so the caller commits to a
+stream anyway — **200 with v4's three SSE headers and an empty body** — while
+the run keeps executing on the engine.
+
+Reaching either arm means dropping the last `Sender`, which a caller holding
+`&Sender` cannot do, so the body split into a private `stream_generator_from`
+taking the receiver by value (the public entry point is unchanged) and the
+two tests live in-crate. Both mutation-proven: removing either warn reddens
+exactly its test.
+
 #### 2026-09-07 — fix(salon): v4's `[Chats v1] Impersonation stopped` line, which v5 took in silence
 
 _Versions: core 0.0.835, harness 0.0.725._
