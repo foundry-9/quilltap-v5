@@ -113465,3 +113465,270 @@ directory-wide write is never a no-op here. Every such hunk was stripped in
   P4.D163/P4.D164 land; the file's header carries the first-run recipe (the
   character is **Bram**, nothing is pre-seeded, and beat (b) tears down what it
   writes).
+
+## Round record — the `2f4254b42` character-subprompts round unification (P4.D163 → P4.D164 stacked ∥ P4.D165 ∥ P4.9K1-resumed ∥ P4.9K2-resumed), 2026-09-07
+
+### §1 Survey
+
+Three lane worktrees, all CLEAN, all claiming complete: `claude/subprompts-
+server-porting-bd48c4` (13 commits — P4.D163 units 0–7 + P4.D164 units 1–6,
+the stacked pair in one worktree), `claude/generators-server-detail-wizard-
+a926d5` (9 commits — P4.9K1-resumed units A–D and P4.9K2-resumed units E–I,
+BOTH resumed orders in ONE worktree by the lane's own choice), `claude/p4-
+d165-character-subprompts-af51e1` (10 commits). Every branch based on
+`27c2093b` (the orders commit). The drift ledger's §2 probe PASSED at survey
+(checkout on `main`, clean, `2f4254b42..main` and `1a2b2164c..bugfix` EMPTY)
+and again at the reconcile, the sweep, and the docs step — v4 did not move
+during the round. Ownership audited by name-only diff: no lane touched a
+forbidden path (the generators lane never opened `apps/web/`, `subprompts/**`,
+`chats_routes.rs` or `help/`; the subprompts lane never opened
+`characters_routes.rs` or `generators/`; the SPA lane never opened `crates/`,
+`help/` or `harness/`). The cross-lane overlap was exactly the fenced files
+(`api/{types,engine,mod}.rs`, `host/spine.rs`, `web/tests/common/mod.rs`, the
+dispatch census, the manifests + lock, the two append-only docs).
+
+Delivered scope verified against each order's tier list (not the headers):
+P4.D163 Tier 0–2 whole, Tier 3 recorded; P4.D164 Tier 1–2 whole (unit 7
+folded into 3/5/6), Tier 3 recorded; P4.D165 Tier 1–2 whole; P4.9K1/K2 every
+Tier-1 item of both resume lists — **but the K lane close's "every OPEN item
+of both resume lists landed" overstates Tier 2** (§3 below). The K lane also
+recorded FIVE divergences, the first of which (`VALIDATION_UNAVAILABLE`, no
+JSON-Schema crate) is a dependency question for the human.
+
+### §2 Reconcile
+
+`unify/2f4254b42-round` from `27c2093b`; `merge=union` on the two append-only
+docs; cherry-picks in dependency order — the subprompts server lane (13,
+clean), the generators lane (9 — every pick conflicted on the version
+manifests, the lock, and the fenced shared files), the SPA lane (10, clean).
+Conflicts resolved by a scripted rule set: version lines as ours + (theirs −
+theirs-parent) — **the recount: core 819 + 9 + 6 = 834, harness 708 + 10 +
+6 = 724, host 106 + 3 + 4 = 113, web 123 + 2 + 2 = 127, SPA 665 + 8 = 673**;
+`Cargo.lock` ours per pick then `cargo update --workspace --offline` once (the
+lock diff vs main is the four crates' version lines only); fenced both-added
+blocks kept ours-then-theirs; the census constant as ours + theirs' delta.
+**The reconcile's own catches, each a commit of its own:** the census
+constant `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` landed TWICE (P4.D163's
+411 + 8 = 419 and the K lanes' 411 + 7 = 418, both off the same 411) —
+unified to 426 with the union comment (`ed8b6554`); clippy's
+`empty_line_after_doc_comments` on the merged comment block (`03045557`).
+Every manifest's non-version delta vs main audited: NONE besides the version
+lines and the K lane's `#OLD "…"` comment lines (a bump-tool artifact — left
+as merged, named a candidate). No conflict marker survived (`git grep`
+clean).
+
+### §3 Review
+
+Three parallel READ-ONLY reviewers (one per lane) read the whole combined
+diff against v4's REAL code at the pins (`/tmp/qt-v4-pin-unify-2f4254b42`
+for the subprompts lanes, `/tmp/qt-v4-pin-p49k1-f699da6f6` for the
+generators); the verdict below is the unifier's, with every hunk of the
+subprompts spine, the routes, the render sites, the K containment and the
+SPA contract read directly as well.
+
+**NO blocking findings in any lane.** Every should-fix fixed on the unify
+branch before the gate (`2366ebaf` Rust, `7354692e` SPA):
+
+- **P4.D164 — the green-room `Subprompts in play for the green room` debug
+  line dropped v4's `chatId`** (`apply-outfit-selections.ts:425-429` logs
+  `{chatId, characterId, count}`; v5 logged it inside `choose_llm_outfit`,
+  which never holds a chat id, and the pin asserted only `character_id` +
+  `count`). The #103/#110/#116 class. Moved INTO the seat resolver (v4's own
+  site, right after the seat read) at both entrances; the pin rewritten as
+  `green_room_debug_line_carries_chat_id_character_id_and_count` over the
+  committed `subprompts-{main,mount}.db` pair's LLM seat.
+- **P4.D163 — `SubpromptRecord`'s §C.1 key order was UNPINNED**: both new
+  families sort keys before comparing, so a struct-field reorder reddened
+  nothing while three lanes coded against the order. Pinned raw
+  (`subprompt_record_serializes_in_the_c1_key_order`).
+- **P4.9K2 — the AI-import validation pin could not see the refusal
+  DISAPPEAR**: `strip_validation` returned `false` with no assert when the
+  `step_start validation` pair was absent and the `validated >= 12` floor
+  counted v4 rows only, so a v5 that stopped emitting its pair compared
+  EQUAL after the strip. `normalize` now returns whether each side reached
+  validation and every case asserts the two equal.
+- **P4.9K1 — a rename PREVIEW took the RW writer for the whole scan**
+  (`generators_detail.rs:412-422` ran dry run and execute both inside
+  `db.write`; on the Friday copy that is 779 chats / ~12.6k messages
+  blocking every other write). The dry run now runs on the read pool; only
+  the execute leg holds the writer pair; `rename.rs`'s module doc corrected.
+- **P4.D164 — the `build_context` pool-failure arm** (`read_main(...).
+  unwrap_or_default()`) took v4's VALUE road but not its LOG road — v4
+  always reaches the resolver, whose catch warns. The warn is emitted on the
+  `Err` arm now.
+- **P4.D163/D164 — six hand-rolled `selectedSubpromptIds → Vec<String>`
+  reads** (`fanout.rs`, `system_prompt_compiler.rs`, `chat_enrichment.rs`,
+  `chat_participants.rs`, `outfit_selections.rs`; `chat_create.rs` keeps its
+  `Option` — absent vs present matters at the create write) consolidated
+  onto `orchestrator::json_str_array` (the P4.D60 `impersonating_ids`
+  precedent). Behaviour-neutral by the families that cover each site.
+- **P4.D163 — `parse_create_body` indexed `obj["title"]`** (a panic-shaped
+  expression on a live path, unreachable behind the issue guard) → `get`.
+- **P4.9K1/K2 — the four `?action=` recorded-divergence rows in
+  `query_param_semantics_equivalence` had become PREFIXES** (matched with
+  `starts_with`, the pinned strings stopping at `?action=rename` /
+  `?action=ai-wizard`) — the served-set sentence's tail could drift
+  unseen. Pinned as the WHOLE sentences.
+- **P4.D165 — the picker's four-hop output chain was unpinned** (`qt-
+  subprompt-picker (selectionChange)` → `participant-card` → `participants-
+  section` → `chat-sidebar` → `salon-conversation`; every spec called the
+  handlers directly, so deleting a template binding left the suite green —
+  the P4.D87 bug-77 class). Two click-driven WIRING specs: a rendered
+  checkbox clicked inside the card asserts the card's own `subpromptsChange`;
+  the same inside the sidebar Host asserts the sidebar's re-emit. Both green
+  on their first run.
+- **P4.D165 — the walk's Delete locator** (`getByRole('button', {name:
+  'Delete'})`) resolved only because Bram has no system prompts (the tab's
+  per-prompt trash has the same accessible name) — scoped to
+  `qt-subprompts-section`. A stray blank-line deletion in `new-chat.logic.
+  spec.ts` restored.
+
+**Recorded, not fixed** (each with its evidence, for the next order):
+
+- P4.9K2: a truthy non-array `sourceFileIds` (`generators_wizard.rs:487-
+  497`) answers 400 where v4's `body.sourceFileIds || []` keeps the value and
+  `.length` on a string passes the emptiness gate, streaming to a
+  `done{_fatal}`; the comment asserting `.length` is `undefined` is wrong for
+  the string case. Same class: a truthy non-array `regenerateSteps` is
+  dropped where v4 keeps it (`includes` substring-matches on a string).
+  Both corpus-blind — a corpus row (`{profileId, sourceFileIds: "abc"}`) and
+  a ruling (reproduce or pin both directions) belong to the follow-up.
+- P4.9K1/K2: the lane close's "all of Tier 2" is NOT what landed — item 9
+  (SSE bytes vs the oracle's recorded event sequence) landed as a live SHAPE
+  assertion (K1 asserts `content-type` + `no-cache`; K2's two edges assert
+  neither `Cache-Control` nor `Connection`); item 10 (`llm_logs` row counts)
+  is recorded, not compared. Both headers now say so.
+- P4.9K2 Tier 3: the ordered recording of the head-and-shoulders backfill
+  handler's wizard import was not made — v4 `character-headshoulders-
+  backfill.ts:30-34` imports `buildContextPrompt`, `generateField`,
+  `HEAD_AND_SHOULDERS_PHYSICAL_PROMPT`; v5's `CHARACTER_HEADSHOULDERS_
+  BACKFILL` is the named-refusal row at `job_runner.rs:164`, now UNBLOCKED.
+- P4.9K1/K2: 17 `.expect("no issues")` sites on the dispatch parse path
+  (sound today; the same file answers the same impossible state silently at
+  `generators_detail.rs:504-507`); `serde_json::to_value(result).unwrap_or(
+  Value::Null)` answers 200 + `null` on a serialization failure; five
+  ownership gates spell `is_none_or` where v4's `!==` refuses (unreachable —
+  the profile row marshals a required `String`); the route-level
+  `[Characters v1] … starting` lines are compared by nothing; v4's `Plugin
+  system initialization failed` arm is silently absent and v5's `pdf-parse
+  not available` line is v5-only; a dead `fallback_message` parameter is
+  threaded through nine call sites.
+- P4.D163: the character-lookup DB-error arm on POST/PUT/DELETE answers the
+  route's fixed 500 sentence where v4's `findByIdRaw` sits OUTSIDE the try
+  (the middleware's generic 500) — unreachable in the corpus; the routes
+  family compares success status by CLASS (the 201 is proven by the web wire
+  test alone); the two read verbs' 404 guard sits inside the mount closure
+  (a missing character on an instance with no mount partition would 500).
+- P4.D164: the seat resolve runs inside `choose_llm_outfit` after its early
+  returns (v4 resolves at the call site) — the P4.D119 ruling for the
+  dressing-instructions closure, now restated in the doc comment.
+- P4.D165: `SubpromptsSection.characterName` falls back to `'Character'`
+  through its host's default — v4's shape, parity.
+
+### §4 Wires
+
+- **The §C name-for-name diff — CLEAN**: the five `characterSubprompt*`
+  verbs' `type` literals, `characterId`/`subpromptId`/`title`/`content`, the
+  response body keys `subprompts`/`subprompt`/`success`, `SubpromptRecord`'s
+  key order, and `selectedSubpromptIds` in all three positions
+  (`ChatUpdateParticipantRequest` as a plain array — the Rust side is
+  `Option<Option<Value>>` so an explicit `null` reaches the Zod 400;
+  `ChatCreateParticipantInput`; the enriched participant) all match
+  `api/types.rs`'s `=== P4.D163 ===` fence, `chat_create.rs:1920` and
+  `chat_enrichment.rs:534`.
+- **The §B name-for-name diff (the K lanes vs the SPA halves on main)** —
+  the six generator verbs' request fields match camelCase-for-snake_case
+  (`characterRename`'s `primaryRename`/`additionalReplacements`/`dryRun`;
+  `characterRefreshArchive`; `characterGenerateExternalPrompt`'s four;
+  `characterOptimize`'s nine incl. `progressId`; the flattened
+  `WizardRequest` body on `characterWizard`/`characterWizardStream` (`#[serde(
+  flatten)] body`); `aiImportStream`'s eight) and `Event::GeneratorProgress`
+  serializes `{"type":"generatorProgress","progressId","generator","event"}`
+  (`types.rs:4735`, `serde(tag = "type")`). **Folded:** the six §B DTOs +
+  `GeneratorKind`/`GeneratorProgressEvent`/`RenamePair`/`WizardRequest`/
+  `GeneratableField`/`DescriptionSourceType`/`OptimizerOutputMode` into
+  `core-contract.ts` (a fenced block after the P4.9I2B one; seven new
+  `CoreRequest` members incl. `characterRefreshArchive` and
+  `characterWizard`, which no SPA surface calls yet), the two wire files
+  re-exporting so every importer keeps its path, the `as unknown as
+  CoreRequest` casts retired (`streamGenerator` / `dispatchGenerator` typed
+  `CoreRequest`), the two inline `crypto.randomUUID()` mints in
+  `optimizer-state.ts` / `ai-import-state.ts` deduped onto
+  `mintProgressId`, `asGeneratorProgress` reimplemented over
+  `isGeneratorProgressEvent`.
+- **The six ACTIVATE-AT-UNIFY gates flipped**: `P4D163_SERVER_LANDED`
+  (`character-subprompts-flow`), `P49K1_SERVER_LANDED` ×3 (`character-
+  rename-flow`, `character-external-prompt-flow`, `character-optimizer-
+  flow`), `P49K2_SERVER_LANDED` ×2 (`character-wizard-flow`, `ai-import-
+  flow`).
+- **The optimizer beat's owed recipe discharged**: the runner calls the
+  NON-streaming `send_message` (as does the AI import), so the shared SSE
+  `startMockLlm` could never have answered it — a spec-local non-streaming
+  mock (the wizard beat's shape) bound to `MOCK_LLM_PORT`; the
+  `MIN_REINFORCED_MEMORIES = 2` precondition seeded by global setup's
+  pre-server CLI write (`UPDATE memories SET reinforcementCount = 2 WHERE
+  characterId IN (SELECT id FROM characters WHERE name = 'Aria')`) — no
+  dispatch verb carries `reinforcementCount` (v4's `createMemorySchema`
+  accepts it; the port's `CreateBag` does not — a note for the next
+  memory-verb order), and the CLI write-lock refuses once the server holds
+  the instance, so global setup is the ONLY legitimate seeding site.
+- **The AI-import beat's owed prompt-keyed mock**: one reply per step keyed
+  on a phrase unique to that step's instruction (`ai_import.rs`'s prompt
+  functions; the import composes `{source}\n\n---\n\n{instruction}` as the
+  user message): basics (an object with `name`), first message, system
+  prompts (an ARRAY), physical descriptions (all six prompt keys), wardrobe
+  (`[]`), pronouns, memories (an ARRAY with `importance`), chats.
+- **The wizard beat's CLI write respelled**: its `runCliWrite` called
+  `quilltap db characters sql --write … -- <sql>` — a subcommand that does not
+  exist; global setup's spelling is `quilltap db --data-dir <dir> --write
+  <sql>`.
+
+### §5 Gate
+
+- **The oracle sweep, from the pins through the driver, one family per
+  invocation** (`--run-all --families …` with lane-unique results
+  artifacts): **18 families at `/tmp/qt-v4-pin-unify-2f4254b42`** (the four
+  subprompts families, `chats_participants_tier2`, `participant_resolver_
+  tier2`, `chat_create_capstone`, `salon_reads`, `chat_cast_routes`,
+  `system_prompt`, `identity_compiler`, `chat_context_init`,
+  `build_context_tier3`, `outfit_llm_choose_tier3`, the four help families)
+  and **14 at `/tmp/qt-v4-pin-p49k2-f699da6f6`** (the seven generator
+  families + `query_param_semantics`, the three K0 substrate families as
+  neutrality checks, and `vault_character_write` / `characters_reads` /
+  `characters_mutations` as the subprompts lane's neutrality regens) —
+  **32/32 ok, both sweeps exit 0, the repo untouched by the sweep**.
+  Freshness: every regenerated NDJSON carries this run's mtime;
+  `character-subprompts` in the help-tree oracle (1); `selectedSubpromptIds`
+  in seven NDJSONs (cctx 9, chat-cast 16, chat-create 52, chatsparts 1,
+  salon-reads 4, subprompts-routes 17, subprompts-storage 31); `Additional
+  Instructions` in the system-prompt oracle (9 rows).
+- **The env block** extracted from the sweep log's own run stages: 98
+  variables, nine of them named twice across the two sweeps
+  (`QT_FIXTURE_{CG,CHARACTERS,SP}_{MAIN,MOUNT}`, the three `*_OUT` build
+  vars) — the later value kept and every path present (the block's
+  missing-path check empty).
+- **First `cargo test --workspace` (before the review fixes)**: 529 test
+  binaries / 2,979 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit
+  0 — every round family confirmed RUN by name.
+- **The unified gate after the review fixes** (`/tmp/unify-gate2.sh`, full
+  log + sentinel, `CARGO_INCREMENTAL=0`): `cargo fmt --all --check` 0;
+  `cargo clippy --workspace --all-targets -- -D warnings` 0 in BOTH feature
+  sets; `cargo build --workspace --release` 0; `cargo test --workspace
+  --no-fail-fast` with the same env block — ****529 test binaries / 2,980 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0** (the clean re-run after the guard recount; the run before it was 529 / 2,978 / 2 — both reds the `outfit_instructions_wiring_guard`'s SOURCE COUNTS, stale after the review moved the debug line out of the consult, recounted in `9f2e1463`; clippy both feature sets + fmt re-run clean after it)**.
+- **SPA** (`/tmp/unify-spa.sh`): `npm run lint` 0 (the qt-class guard
+  included); `npm test` **405 spec files / 6,436 tests / 0 failed** (the two
+  new wiring specs green on their first run); `npm run build` 0.
+- **Full Playwright against the release binaries**: ****295 passed / 2 failed / 0 skipped (8.3 m)** — the two reds are the P4.D161 pause-toast beats (`salon-chain-pause-toast-flow.spec.ts`), the documented full-suite intermittent from the `p4.9k` round, untouched by any lane and green in this round's isolated re-run; the FIRST full run's other five reds were the six activated beats' first executions, each a spec-side gesture (recorded in §4 and the round record's §5) fixed and re-proven alone, in the import→archive pair, and then in this full run — the suite grew 288 → 297 with the six gates' flips**.
+
+- **The six activated beats' first executions (the wire's own catches, all spec-side, zero product code):** the wizard and rename specs' private instances answer `423` while locked and their health waits demanded `2xx` (global setup's own rule accepts 423; the window widened 10 → 60 s); both spelled the CLI write as a `db characters sql` subcommand that does not exist; the wizard unlocked on `/characters/new` where the roster heading never appears, matched `Physical Description Source` ambiguously (a heading AND a paragraph), and its Edit beat's premise named Identity as the filled field where the characters fixture's Aria has a filled Description and an EMPTY Identity (the rule held, the field moved; rows located by the checkbox's accessible name, never a `label` text filter); the external-prompt beat started NO mock at all (its request died on an empty port); the optimizer's seeded memories were not ABOUT-SELF (`findByCharacterAboutCharacter` — `aboutCharacterId` set beside the count); the AI import's review locator matched a hidden chat card, its wizard auto-advanced past the `Review Results` step, the joiner lands as `Pennyroyal (imported)` (the `duplicate` strategy's suffix), and its card-count assertion after Remove was wrong by design — v4's remove is SOFT, the `salon-cast-flow` precedent asserts the toast; and the summoned name `Marchpane` collided with the archive beat's seeded tombstone of the same name in the full-suite order (renamed). Two e2e-fixture facts surfaced and are recorded, not fixed: the shared instance's `llm_logs` partition lacks the P4.D49 `connectionProfileId` column, so EVERY logged LLM call in the suite fails its `llm_logs` insert with a logged ERROR (pre-existing; the STRICT-create rule meets a legacy fixture); and no dispatch verb carries `reinforcementCount` (v4's `createMemorySchema` accepts it, the port's `CreateBag` drops it — a fidelity gap for the next memory-verb order).
+
+### §6 Docs + baseline
+
+The five order status headers (unification blocks prepended; K1/K2's
+Tier-2 items 9/10 + K2's Tier-3 recording named OPEN); the drift ledger's
+§1 rewritten for the `2f4254b42` baseline (zero drift; regen rule NO PIN),
+its §3 emptied, the two rows retired to §6; `phase-4.md`'s UNIFIED section
++ the refreshed candidates; CLAUDE.md's Status bullet + the baseline bullet;
+the CHANGELOG unification entry; the memory note. Versions: core 0.0.834,
+harness 0.0.724, host 0.0.113, web 0.0.127, SPA 0.5.673; cli/tauri
+unchanged.

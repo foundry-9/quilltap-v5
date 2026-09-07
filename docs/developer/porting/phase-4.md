@@ -6395,6 +6395,131 @@ from the pin zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Play
 
 PB1 stays parked by the standing rule.
 
+## The `2f4254b42` character-subprompts round (P4.D163 → P4.D164 stacked ∥ P4.D165 ∥ P4.9K1-resumed ∥ P4.9K2-resumed) — UNIFIED 2026-09-07
+
+**UNIFIED on main (2026-09-07) — P4.D163, P4.D164, P4.D165 CLOSED; P4.9K1
+and P4.9K2 CLOSED with their Tier-2 items 9/10 (the SSE-bytes-vs-oracle
+proof and the `llm_logs` row counts) and K2's Tier-3 recording named
+honestly OPEN in their headers; the oracle baseline MOVES to `2f4254b42` and
+the drift ledger's §3 is EMPTY** (the §2 probe passed at planning, at every
+lane start, at the reconcile and at the docs step — v4 did not move during
+the round). Three lanes, 32 commits, reconciled by cherry-pick with the
+version recount honest (core 819 → 834, harness 708 → 724, host 106 → 113,
+web 123 → 127, SPA 665 → 673).
+
+The whole `2f4254b42` feature absorbed: **unit 1 of P4.D163 was a measured
+data-safety fix landed red-first** — v5's `ChatParticipant` had no unknown-key
+carry, so every v5 participant rewrite dropped a v4-written
+`selectedSubpromptIds` on the shared Friday instance; then the `subprompts`
+module (139-row tier-1 helpers; storage + fan-out + the case-insensitive
+resolver over the NEW committed `subprompts-{main,mount}.db`), the five verbs
++ REST edges + realtime with the guard ladders MEASURED (POST/PUT parse the
+body before the 404; PUT's Zod before the id check; a 100-astral-code-point
+title passing Zod and failing the service's UTF-16 rule), the four `help/`
+files re-vendored (121 files), and the prompt-assembly half stacked on top —
+the `## Additional Instructions` block with `IDENTITY_STACK_BUILDER_VERSION`
+still 2 and both P4.D103 goldens + the cross-implementation hash UNMOVED, the
+compiler bake, the fallback-only resolve in `build_context`, the greeting's
+RAW six-key context, the green room's fifth bullet + note at BOTH
+`llm_choose` entrances, and `subprompts_prompt_tier2_equivalence` proving
+compile → edit → delete-strip end to end. The SPA landed whole (the picker /
+editor / section trio, both New-Chat pickers with the omit-when-empty rule —
+the single-character picker a measured NO-COUNTERPART, since only v4's
+un-ported modal ever renders it — the participant-card picker + `Subprompts
+updated`, the realtime arm, the fourteenth hint) with its walk LIVE. The two
+resumed generator lanes landed every Tier-1 item in one worktree: the
+optimizer runner with bug 119's containment (the ledger's `15573c3a1` row
+ABSORBED), the external prompt, the rename service as a literal scan under
+ECMAScript Canonicalize + `GetSubstitution`, refresh-archive, both wizard
+runners + five generators, `ai_import` whole with its recorded
+`VALIDATION_UNAVAILABLE` refusal (no JSON-Schema crate — ⚠ **a `jsonschema`-
+class dependency is the retirement path, flagged for the human**), the NEW
+`character-generators-{main,mount}.db`, both host drivers LIVE (💸), the
+seven REST arms, and seven differentials.
+
+**The §3 review (three parallel readers, verdict owned at the wire): NO
+blocking findings, and every should-fix fixed on the unify branch before the
+gate.** Server: the green-room debug line dropped v4's `chatId` (the consult
+never holds it) — moved into the seat resolver with its pin rewritten over the
+committed pair; the `SubpromptRecord` wire key order was unpinned (both new
+families sort keys) — pinned raw; the AI-import validation pin could not see
+its refusal DISAPPEAR (a v5 that stopped emitting the pair compared EQUAL
+after the strip) — both sides' reach now asserted equal per case; a rename
+PREVIEW held the single writer for the whole scan — the dry run now runs on
+the read pool; the `build_context` pool-failure arm lost v4's warn; the six
+hand-rolled `selectedSubpromptIds` reads on one helper; the four `?action=`
+divergence rows had become PREFIXES ending at `?action=rename` — pinned
+whole. SPA: the picker's four-hop output chain was pinned only by specs
+calling the handlers directly (deleting a template binding left the suite
+green) — two click-driven wiring specs; the walk's Delete locator scoped.
+**The reconcile's own catches:** the census constant landed TWICE from the
+two server lanes (411 + 8 and 411 + 7) — unified to 426; clippy's
+`empty_line_after_doc_comments` on the merged comment block; the K lanes'
+`#OLD` version-comment lines. **Recorded, not fixed (the round record names
+each with its evidence):** two v4-truthiness arms on the AI-import body
+(`sourceFileIds` / `regenerateSteps` non-array truthy — corpus-blind, a
+corpus row + ruling wanted); 17 `.expect("no issues")` sites on the generator
+parse path; `unwrap_or(Value::Null)` answering 200 on a serialization failure;
+five `is_none_or` ownership gates (unreachable); the route-level generator log
+lines compared by nothing; the subprompt POST/PUT/DELETE character-lookup
+DB-error arm answering the route's 500 sentence where v4's escapes to the
+middleware (unreachable).
+
+**The wires:** the six §B generator DTOs folded into `core-contract.ts` with
+the `as unknown as CoreRequest` casts retired and the two progress-id mints
+deduped onto `mintProgressId`; the six ACTIVATE-AT-UNIFY gates flipped
+(`P4D163_SERVER_LANDED`, three `P49K1_`, two `P49K2_`); the optimizer beat's
+owed recipe discharged (its runner calls the NON-streaming `send_message`, so
+the shared SSE mock could never answer it — a spec-local non-streaming mock;
+the ≥ 2 reinforced memories seeded by global setup's pre-server CLI write,
+since no verb carries `reinforcementCount`); the AI-import beat's owed
+prompt-keyed non-streaming mock (one reply per step, keyed on the
+instruction phrase); the wizard beat's CLI write respelled (`quilltap db
+--data-dir … --write`, the global-setup spelling — its own was a subcommand
+that does not exist).
+
+Gate: fmt/clippy both feature sets clean; release build; the 32-family sweep
+(18 at the `2f4254b42` pin + 14 at `f699da6f6`) 32/32 ok, zero SKIP, changed
+bytes grepped (`selectedSubpromptIds` in seven NDJSONs, `character-subprompts`
+in the help tree); `cargo test --workspace` **529 test binaries / 2,980 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0** (the clean re-run after the guard recount; the run before it was 529 / 2,978 / 2 — both reds the `outfit_instructions_wiring_guard`'s SOURCE COUNTS, stale after the review moved the debug line out of the consult, recounted in `9f2e1463`; clippy both feature sets + fmt re-run clean after it); SPA lint clean,
+`npm test` 405 spec files / 6,436 passed, build clean; full Playwright
+**295 passed / 2 failed / 0 skipped (8.3 m)** — the two reds are the P4.D161 pause-toast beats (`salon-chain-pause-toast-flow.spec.ts`), the documented full-suite intermittent from the `p4.9k` round, untouched by any lane and green in this round's isolated re-run; the FIRST full run's other five reds were the six activated beats' first executions, each a spec-side gesture (recorded in §4 and the round record's §5) fixed and re-proven alone, in the import→archive pair, and then in this full run — the suite grew 288 → 297 with the six gates' flips. Versions: core 0.0.834, harness 0.0.724, host 0.0.113, web
+0.0.127, SPA 0.5.673; cli/tauri unchanged. Round record: `status-log.md` →
+"Round record — the `2f4254b42` character-subprompts round unification".
+
+**Next candidates, in rough value order** (updated at this unification,
+2026-09-07):
+
+1. **The owed dogfood pass** on the Friday copy — the whole subprompts feature
+   on real data (a subprompt authored in Aurora, ticked in New Chat, its
+   `## Additional Instructions` block byte-checked in `compiledIdentityStacks`,
+   the delete-strip fan-out across a real character's chats, the green-room
+   note on a "Let character choose" turn), the generator runners LIVE with
+   real spend (💸 the optimizer on Aria-scale memories, the external prompt,
+   a rename dry run at real scale — measure the read-pool preview against the
+   779-chat instance — the wizard from a document, Summon From Lore), plus
+   the standing queue (the Brahma deep query, dedup/summaries, #101 — human).
+2. **The generator follow-ups the review named:** the AI-import `sourceFileIds`
+   / `regenerateSteps` truthy-non-array arms (a corpus row each + a ruling:
+   reproduce v4's `done{_fatal}` or record the divergence both directions);
+   the `jsonschema`-class dependency for the validation/repair steps
+   (retires `VALIDATION_UNAVAILABLE` — needs the human's dependency ruling);
+   K1/K2 Tier-2 items 9/10 (SSE bytes against the oracle; `llm_logs` counts);
+   the head-and-shoulders backfill handler's wizard import (unblocked now —
+   `job_runner.rs:164`); the `.expect("no issues")` parse sites and the
+   `unwrap_or(Null)` 200.
+3. **The p4.9k round's smalls** carried again: the K3 review pane's three
+   missing renders; the `[Chats v1] Impersonation stopped` line;
+   `useSSEStreaming`'s continue-mode toast; the interceptor rule's
+   nested-button census; `runTemplateSave`; `promptTemplateList`; the
+   `imported` count line; the K0 `Closed`-channel drop; P4.81 item 7.
+4. The census's honest totality + the present-but-null lead; the
+   `CaptureLayer` consolidation; the sweep driver's SHELL_START class;
+   `image_profiles.rs:655`; the stray `#OLD` version-comment lines in the
+   crate manifests (a bump-tool artifact — decide whether they stay).
+
+PB1 stays parked by the standing rule.
+
 ## The `2f4254b42` character-subprompts round (P4.D163 → P4.D164 stacked ∥ P4.D165 ∥ P4.9K1-resumed ∥ P4.9K2-resumed) — ORDERED 2026-09-07
 
 **Baseline `f699da6f6`; v4 `main` HEAD `2f4254b42` (ONE past — "feat:

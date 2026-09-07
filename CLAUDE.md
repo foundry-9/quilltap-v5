@@ -3106,9 +3106,61 @@ records THERE. Update this summary only when a phase or round completes.
   fmt + clippy both feature sets clean (re-checked after the review fixes' rustfmt); release build; the seven affected families regenerated FRESH from the `f699da6f6` pin through the sweep driver (7/7, then the chat-delete family re-run at 21 rows and the wizard-prompts family at 19 contexts after the review fixes, zero SKIP, changed bytes grepped — the repaired help-chat marker present ×2 and the old form ×0, 34 calls / 6 framed rows); `cargo test --workspace` with the round's 19-variable env block **515 test binaries / 2,932 passed / 0 failed / 1 ignored, zero `SKIP:` lines, exit 0** (every round family confirmed RUN by name); mutation proofs run at the wire (the pronouns null test, the object gate, the resolver warn — each reddening exactly its rows); SPA lint clean (incl. the qt-class guard), `npm test` 401 spec files / 0 failed, build clean; full Playwright **288 passed / 0 failed / 6 skipped (the six named `P49K1/K2_SERVER_LANDED` gates), exit 0** — after the reverse-`{{user}}` beat's first live run was repaired spec-side (unlock-first, the rendered-shape assertion, select-by-value) and the two P4.D161 pause-toast beats' once-per-page hook was made per-frame (red twice in the full suite, green alone and in three pairs with the new specs); the quill spec's one red in one run is its documented slow-stream intermittent (green alone). **Next: finish K1/K2 as RUNNER-sized units (the beats'
   first-run recipes are in their headers), then the owed dogfood pass** —
   see phase-4.md. Versions: core 0.0.819, harness 0.0.708, web 0.0.123, host 0.0.106, SPA 0.5.665; cli/tauri unchanged. Round record: `status-log.md`.
-- **Oracle baseline: `f699da6f6` (2026-09-06, v4 main — the tip of the
-  4.9.1 + 4.9.2 release cycles), adopted at the `f699da6f6` 4.9.x drift
-  catch-up round unification (2026-09-06).**
+- **The `2f4254b42` character-subprompts round (P4.D163 → P4.D164 stacked ∥
+  P4.D165 ∥ P4.9K1-resumed ∥ P4.9K2-resumed): UNIFIED on main (2026-09-07)
+  — P4.D163/P4.D164/P4.D165 CLOSED, P4.9K1/P4.9K2 CLOSED with their Tier-2
+  items 9/10 + K2's Tier-3 recording named OPEN; the oracle baseline MOVES
+  to `2f4254b42` and the drift ledger's §3 is EMPTY.** v4's whole
+  character-subprompts feature absorbed: **unit 1 was a measured data-safety
+  fix landed red-first** — v5's `ChatParticipant` had no unknown-key carry,
+  so every v5 participant rewrite dropped a v4-written `selectedSubpromptIds`
+  on the shared Friday instance — then the vault-backed `subprompts` module
+  (139-row tier-1 helpers; storage + fan-out + the case-insensitive resolver
+  over the NEW committed `subprompts-{main,mount}.db`), the five verbs + REST
+  edges + realtime with the guard ladders MEASURED, the four `help/` files
+  re-vendored (121), the `## Additional Instructions` block with
+  `IDENTITY_STACK_BUILDER_VERSION` still 2 (both P4.D103 goldens + the
+  cross-implementation hash UNMOVED), the compiler bake, the fallback-only
+  resolve, the greeting's RAW six-key context, the green room at BOTH
+  `llm_choose` entrances, `subprompts_prompt_tier2_equivalence` end to end,
+  and the whole SPA half with its walk LIVE (the single-character New-Chat
+  picker a measured NO-COUNTERPART). The two resumed generator lanes landed
+  every Tier-1 item in ONE worktree: rename (a literal scan under ECMAScript
+  Canonicalize + `GetSubstitution`), the external prompt, the optimizer
+  runner with bug 119's containment (the ledger's `15573c3a1` row ABSORBED),
+  refresh-archive, both wizard runners + five generators, `ai_import` whole
+  with a recorded `VALIDATION_UNAVAILABLE` refusal (⚠ no JSON-Schema crate —
+  a `jsonschema`-class dependency is the retirement path, for the human),
+  both host drivers LIVE (💸), seven REST arms, seven differentials, the NEW
+  `character-generators-{main,mount}.db`. **The §3 review (three parallel
+  readers): NO blocking findings; every should-fix fixed on the unify
+  branch** — the green-room debug line dropped v4's `chatId` (ported at the
+  wrong SITE; moved into the seat resolver, pin rewritten over the committed
+  pair), the `SubpromptRecord` wire key order unpinned (both new families
+  sort keys — pinned raw), the AI-import validation pin blind to its own
+  refusal DISAPPEARING, a rename PREVIEW holding the single writer for the
+  whole scan (dry run → the read pool), the `build_context` pool-failure warn,
+  six `selectedSubpromptIds` reads on one helper, the `?action=` divergence
+  rows rotted to prefixes, the picker's four-hop output chain pinned only by
+  handler-direct specs (two click-driven wiring specs), the walk's ambiguous
+  Delete locator. **The reconcile's own catch:** the dispatch census constant
+  landed TWICE off the same base (unified to 426). Wires: the six §B DTOs
+  folded into `core-contract.ts` with the casts retired; six gated beats
+  flipped; the optimizer and AI-import beats' owed recipes discharged (their
+  runners call the NON-streaming `send_message`, which the shared SSE mock
+  could never answer — spec-local non-streaming mocks; the reinforced
+  memories seeded by global setup's pre-server CLI write, no verb carrying
+  `reinforcementCount`); the wizard beat's invented CLI subcommand respelled.
+  Gate: 32/32 families fresh from the two pins zero SKIP; **529 test binaries / 2,980 passed / 0 failed / 1 ignored, zero `SKIP:` lines, exit 0**;
+  clippy both feature sets; release build; ng 405 files / 6,436; full
+  Playwright **295 passed / 2 failed / 0 skipped (8.3 m)** — the two reds the P4.D161 pause-toast beats, the documented full-suite intermittent (green alone); the suite grew 288 → 297 with the six gates' flips, every activated beat green after its first-run gesture fixes. Versions: core 0.0.834, harness 0.0.724, host
+  0.0.113, web 0.0.127, SPA 0.5.673; cli/tauri unchanged. 💸 the dogfood
+  queue gains the whole subprompts feature on real data and every generator
+  runner with real spend — **the owed dogfood pass is the top next
+  candidate.** Round record: `status-log.md`.
+- **Oracle baseline: `2f4254b42` (2026-09-07, v4 main — "feat: character
+  subprompts", `4.10.0-dev.1`), adopted at the `2f4254b42`
+  character-subprompts round unification (2026-09-07).**
   **Drift state, the drift-check method, and the pinned-worktree regen
   recipe live in `docs/developer/porting/drift-ledger.md`** — maintained
   by `/driftcheck` and by `/unify` at baseline moves; the other porting

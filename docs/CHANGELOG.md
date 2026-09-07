@@ -12,6 +12,45 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(unify): the `2f4254b42` character-subprompts round — round record, five status headers, phase-4 UNIFIED + candidates, the ledger's baseline move, CLAUDE.md; versions after the unify fixes
+
+_Versions: core 0.0.834, harness 0.0.724, host 0.0.113, web 0.0.127, SPA 0.5.673._
+
+Unifies three lane branches (32 commits) onto main: the subprompts server
+pair P4.D163 → P4.D164 (the participant `selectedSubpromptIds` carry landed
+first as a measured data-safety fix — v5 used to drop a v4-written selection
+on every participant rewrite; the vault-backed `subprompts` module, fan-out,
+five verbs + REST edges + realtime over the new committed
+`subprompts-{main,mount}.db`; the four `help/` files re-vendored; the
+`## Additional Instructions` block in the identity stack with no
+builder-version bump, the compiler bake, the `build_context` fallback, the
+greeting, the green room at both entrances), the SPA half P4.D165 (picker,
+editor dialog, Aurora section, both New-Chat pickers, the participant-card
+picker, the realtime arm, the fourteenth hint; its walk live), and the
+resumed generator lanes P4.9K1/P4.9K2 (rename, external prompt, the
+optimizer runner with bug 119's containment, refresh-archive, both wizard
+runners, the AI import, both host drivers live, seven REST arms, seven
+differentials, the new `character-generators-{main,mount}.db`). The oracle
+baseline moves to `2f4254b42`; the drift ledger's §3 is empty.
+
+The §3 review found no blocking findings; its should-fixes landed on the
+unify branch: the green-room debug line moved into the seat resolver so it
+carries `chatId`; the `SubpromptRecord` key order pinned raw; the AI-import
+validation pin now sees its refusal disappear; a rename dry run scans on the
+read pool instead of the writer; the `build_context` pool-failure warn; six
+`selectedSubpromptIds` reads on one helper; the `?action=` divergence rows
+pinned as whole sentences; two click-driven wiring specs for the picker's
+output chain; the walk's Delete locator scoped. The reconcile caught the
+dispatch census constant landing twice (unified to 426). Wires: the six §B
+generator DTOs folded into `core-contract.ts` with the casts retired, six
+gated beats flipped, the optimizer and AI-import beats' owed non-streaming
+mocks and the reinforced-memory seed, the wizard beat's CLI write respelled.
+
+Gate: fmt/clippy both feature sets clean; release build; 32 families
+regenerated fresh from the pins, zero SKIP; `cargo test --workspace`
+**529 test binaries / 2,980 passed / 0 failed / 1 ignored, zero `SKIP:` lines, exit 0**; SPA lint clean, 405 spec files / 6,436 tests, build clean;
+full Playwright **295 passed / 2 failed / 0 skipped (8.3 m)** — the two reds the P4.D161 pause-toast beats, the documented full-suite intermittent (green alone); the suite grew 288 → 297 with the six gates' flips, every activated beat green after its first-run gesture fixes.
+
 #### 2026-09-07 — docs(lane): the P4.D164 lane record's verification + gate record; the P4.D163 stacked-lane close
 
 _Docs-only change._
