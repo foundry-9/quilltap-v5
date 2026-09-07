@@ -3111,6 +3111,44 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.80 ===
+            // === P4.9K1: the per-character generator verbs (§B.2) ===
+            Request::CharacterRename {
+                character_id,
+                primary_rename,
+                additional_replacements,
+                dry_run,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    // The tri-state collapses to `Option<&Value>` HERE, with an
+                    // explicit `null` kept as `Value::Null` for the Zod parse.
+                    let primary = primary_rename.map(|o| o.unwrap_or(serde_json::Value::Null));
+                    let additional =
+                        additional_replacements.map(|o| o.unwrap_or(serde_json::Value::Null));
+                    let dry = dry_run.map(|o| o.unwrap_or(serde_json::Value::Null));
+                    super::generators_detail::character_rename(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        primary.as_ref(),
+                        additional.as_ref(),
+                        dry.as_ref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterRefreshArchive { character_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::generators_detail::character_refresh_archive(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.9K1 ===
             Request::GroupStateGet { group_id } => match self.ready_db() {
                 Ok(db) => super::groups::group_state_get(&db, &group_id),
                 Err(r) => r,

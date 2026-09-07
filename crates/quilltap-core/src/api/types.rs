@@ -3501,6 +3501,43 @@ pub enum Request {
         subprompt_id: String,
     },
     // === end P4.D163 ===
+
+    // === P4.9K1: the per-character generator verbs (§B.2 of the `p4.9k` contract) ===
+    /// v4 `POST /api/v1/characters/[id]?action=rename`
+    /// (`app/api/v1/characters/[id]/handlers/post.ts:425-445`) — the bulk
+    /// Rename/Replace over a character's fields, memories and chats. The three
+    /// body fields ride RAW: v4's `renameSchema.parse` runs INSIDE the handler
+    /// AFTER the character-existence 404, so a wrong-typed field must reach
+    /// v4's `Validation error` 400 (with its Zod `details`) rather than the
+    /// transport's own decode 400 — and it must lose to the 404 when the
+    /// character is missing. → [`Response::Character`] carrying v4's
+    /// `RenamePreviewResponse`.
+    ///
+    /// Each field is the absent / explicit-`null` / value TRI-STATE
+    /// (`double_option`): `.optional()` admits only `undefined`, so a `null`
+    /// `primaryRename` is a Zod `invalid_type` where an absent one is fine —
+    /// a plain `Option<Value>` folds the two (the
+    /// `oracle-row-option-value-swallows-a-json-null` trap, caught by the
+    /// differential's `zod_null_primary` arm on its first run).
+    #[serde(rename_all = "camelCase")]
+    CharacterRename {
+        character_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        primary_rename: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        additional_replacements: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        dry_run: Option<Option<serde_json::Value>>,
+    },
+    /// v4 `POST /api/v1/characters/[id]?action=refresh-archive`
+    /// (`post.ts:336-370`) — queue a full re-render + re-embed of every chat
+    /// the character sits in. → [`Response::Character`] with `{ queued }` (no
+    /// chats) or `{ queued, total }`.
+    #[serde(rename_all = "camelCase")]
+    CharacterRefreshArchive {
+        character_id: String,
+    },
+    // === end P4.9K1 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===

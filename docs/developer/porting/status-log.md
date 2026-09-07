@@ -112396,3 +112396,93 @@ Versions: core 0.0.823.
 - **The stacked gate (`/tmp/p4d164-gate.sh`, full log `/tmp/p4d164-gate.log`, sentinel `GATE-exit=0`):** `cargo fmt --all --check` 0; `cargo clippy --workspace --all-targets -- -D warnings` 0 in BOTH feature sets (default + `quilltap-core/native-transport`); `cargo build --workspace` 0; `cargo test --workspace` with BOTH orders' env block over LANE-UNIQUE copies of every fixture + oracle (`/tmp/qt-p4d164-gate/`, the sibling-clobber trap) — **520 test binaries / 2,962 passed / 0 failed / 1 ignored, exit 0, ZERO `SKIP:` lines, zero panics**; the release build 0. The lane's families confirmed RUN by per-binary duration: system_prompt_equivalence: finished in 0.01s; identity_compiler_equivalence: finished in 0.02s; chat_context_init_equivalence: finished in 0.02s; build_context_tier3_equivalence: finished in 0.22s; outfit_llm_choose_tier3_equivalence: finished in 0.31s; chat_create_capstone_equivalence: finished in 3.92s; subprompts_prompt_tier2_equivalence: finished in 0.08s; subprompts_storage_tier2_equivalence: finished in 0.55s; subprompts_routes_equivalence: finished in 0.23s; subprompts_helpers_equivalence: finished in 0.01s; outfit_instructions_wiring_guard: finished in 0.00s; help_tree_embed_guard: finished in 0.02s. `CARGO_INCREMENTAL=0` throughout; `target/debug/incremental` (4.3 GB) reclaimed before the sweep; the release build took the disk to 2.4 GB free, so `target/` was removed right after the gate.
 - **Cleanup:** `rm -rf target` (this worktree only); both v4 pins removed (`/tmp/qt-v4-pin-p4d163-2f4254b42`, `/tmp/qt-v4-pin-p4d163n-f699da6f6` — `git worktree remove --force` + `prune`); the jest `/tmp` mirrors and mutation backups deleted; the NDJSON oracles + `/tmp` fixtures (and the gate copies under `/tmp/qt-p4d164-gate/`) LEFT for the unifier.
 - **Status at lane close:** P4.D163 — units 0–7 landed + item 8 recorded + the unit-0 count-pin follow-up (the order's OPEN items: none); P4.D164 — units 1–6 landed, unit 7 folded into units 3/5/6 (pins + differential-proven wiring), Tier 2 items 8–9 landed, Tier 3 recorded (the order's OPEN items: none). Both orders' `Status` headers are the unifier's to flip.
+## P4.9K1-resumed ∥ P4.9K2-resumed — the character-generators SERVER lanes, ONE worktree (2026-09-07) — IN PROGRESS
+
+Both orders run in one worktree on one branch
+(`claude/generators-server-detail-wizard-a926d5`, from `main` at `27c2093b`),
+by the human's own invocation of `/carryout` naming both. The two orders'
+fences (`// === P4.9K1 ===` / `// === P4.9K2 ===`) are kept as written so the
+unifier can still tell the halves apart; the ownership tables are honoured as
+if two lanes were running. Baseline `f699da6f6`; the drift-ledger §2 probe
+PASSED at lane start (checkout on `main`, clean, both log ranges empty, and
+`git show --stat 2f4254b42` over every v4 file either order names is EMPTY);
+two lane-unique pins built (`/tmp/qt-v4-pin-p49k1-f699da6f6`,
+`/tmp/qt-v4-pin-p49k2-f699da6f6`, all three symlink classes,
+`help/character-subprompts.md` absent in both). Every regen below runs from
+the K1 pin unless the record says otherwise.
+
+### Unit A (K1 items 3 + 4 + the two DB-only verbs of item 5) — `generators::rename`, `generators::refresh_archive`, `characterRename` / `characterRefreshArchive`
+
+**The port.** `crates/quilltap-core/src/generators/rename.rs` carries v4's
+`character-rename.service.ts` whole: the eight scalar fields, aliases,
+scenarios, system prompts, the physical description's eight sub-fields, the
+memories (content / summary / keywords — keywords rewritten silently with no
+preview row, as v4), the chats (title + message bodies, Staff /
+`systemSender` messages and non-`message` events skipped), the summary, and
+the execute leg. The matcher is a LITERAL UTF-16 SCAN with ECMAScript
+`Canonicalize` + a hand-rolled `GetSubstitution` — the ruling the round-1
+lane record produced from its three Node measurements — so the two
+divergences a regex port would have had to record (`ſ`/`ß` folding; `$&`,
+`` $` ``, `$'`, `$$` expansion with `$1`/`${x}` literal) do not exist. Those
+measurements are pinned as unit tests on `replace_literal`.
+`generators/refresh_archive.rs` is the route arm: the character's chats →
+one `CONVERSATION_RENDER` enqueue each (`fullReembed: true`, the pending
+job reused and still counted, a failed enqueue silently skipped);
+`{queued: 0}` for no chats, `{queued, total}` otherwise — two key sets.
+
+**The verbs.** `api/generators_detail.rs` (new, the P4.9K1 fence in
+`api/mod.rs`): `character_rename` / `character_refresh_archive` with v4's
+guard order MEASURED on the route (the lane record's item 0): the overlaid
+`findById` 404 comes BEFORE any body read (`missing_character_404_beats_zod`
+sends a Zod-invalid body and gets the 404), then `renameSchema.parse` (the
+middleware's `{error: 'Validation error', details}` 400 — the Zod-4 issues
+transcribed in the `chat_create::CreateZodIssue` shapes and byte-compared,
+FOUR refusal arms), then the route-level `At least one replacement must be
+specified` 400, then the service on the writer pair, then the catch-all
+`Failed to process rename request` 500. Neither arm refuses an ARCHIVED
+character (v4 hides the tabs client-side): a dry run on Fenn answers 200
+and an executed one trips the repository archive write guard → the 500
+(`dry_archived_fenn` / `execute_archived_fenn`). Echo (the broken vault)
+answers 200 on BOTH sides — v4's `findById` does not throw there
+(`safeQuery`'s fallback mode, P4.48), and neither does v5's overlay read.
+`Request::CharacterRename { characterId, primaryRename?,
+additionalReplacements?, dryRun? }` / `Request::CharacterRefreshArchive {
+characterId }` (§B.2 spellings, camelCase on the wire) → `Response::
+Character(v)` carrying v4's `RenamePreviewResponse` / the refresh body.
+Engine arms in the P4.9K1 fence.
+
+**The differential — `character_rename_equivalence`** (tier 2; 27 cases;
+`harness/oracle/cases/character-rename.test.ts` drives v4's REAL route over
+a fresh copy of the committed `characters-{main,mount}.db` per case;
+`harness/oracle/fixtures/character-rename-tier2.json`). Comparands: the
+response (status + body, Zod `details` included) and a five-table post-state
+census (the overlaid character; the character's `memories`; every `chats`
+row; every `chat_messages` row; every `background_jobs` row). Per-case
+seeds ride the ported repository twins on both sides
+(`repos.chats.addMessages` ↔ `ChatMessagesRepository::add_messages` for a
+Staff message; `repos.memories.update` ↔ `MemoriesRepository::update` for
+the Canonicalize / GetSubstitution / long-context probes). Normalized: the
+timestamp keys, `background_jobs.id`, the broken-vault error text.
+Recorded divergence: the execute leg's writes share ONE transaction where
+v4 issues separate repository calls (the P4.D77 class; end state identical).
+
+**The first run caught one real defect:** the verb's three body fields were
+`Option<Value>`, which swallows a JSON `null` — `zod_null_primary` answered
+200 where v4 answers the `invalid_type` 400 (`primaryRename: null` is not
+`undefined`). They now ride the `double_option` tri-state
+(`oracle-row-option-value-swallows-a-json-null`). 26/27 matched before the
+fix; 27/27 after.
+
+**Four mutation proofs**, each reddening exactly its arm(s): the dry-run
+guard inverted → the five dry cases (`dry_primary_aria`, `dry_captain_ci`,
+`order_primary_first`, `broken_vault_echo`, `dry_archived_fenn`); the
+Staff-skip predicate dropped → `staff_message_skipped`; the primary-first
+order reversed → `order_primary_first`; the ASCII-fold guard removed →
+`canonicalize_long_s`.
+
+**Measured on the way, for the record:** `refresh_archive_bram_*` — Bram
+sits in the archive extension's "Ledger of Fenn" chat, so the no-chats arm
+is DAX; a character whose seat is `absent` (Fenn) still counts, because v4's
+`findByCharacterId` matches `participants.characterId` regardless of status.
+The two `logLLMCall` rows this order's Tier-2 item 10 asks about are not on
+this unit's path (the rename service makes no model call).

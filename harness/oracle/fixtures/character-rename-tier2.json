@@ -1,0 +1,194 @@
+{
+  "$comment": "P4.9K1 — the character rename / refresh-archive corpus over the committed characters-{main,mount}.db pair. Each case runs on a FRESH copy; `seeds` are applied on BOTH sides through the ported repository twins before the request. Ids: Aria a1…01, Bram a1…02, Cleo a1…03, Dax a1…04, Echo a1…05 (broken vault), Fenn a1…06 (archived); Aria's chat c1…01; Aria's memories 0e…01 / 0e…02.",
+  "seedTimestamp": "2026-02-02T00:00:00.000Z",
+  "cases": [
+    {
+      "name": "dry_primary_aria",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "primaryRename": { "oldValue": "Aria", "newValue": "Arya" } }
+    },
+    {
+      "name": "execute_primary_aria",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "primaryRename": { "oldValue": "Aria", "newValue": "Arya" }, "dryRun": false }
+    },
+    {
+      "name": "dry_captain_ci",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "additionalReplacements": [ { "oldValue": "captain", "newValue": "skipper" } ] }
+    },
+    {
+      "name": "execute_captain_ci",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "additionalReplacements": [ { "oldValue": "captain", "newValue": "skipper" } ], "dryRun": false }
+    },
+    {
+      "name": "execute_captain_cs",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "additionalReplacements": [ { "oldValue": "Captain", "newValue": "Skipper", "caseSensitive": true } ], "dryRun": false }
+    },
+    {
+      "name": "execute_traveller",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "additionalReplacements": [ { "oldValue": "traveller", "newValue": "wayfarer" } ], "dryRun": false }
+    },
+    {
+      "name": "order_primary_first",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": {
+        "primaryRename": { "oldValue": "Cap", "newValue": "Kap" },
+        "additionalReplacements": [ { "oldValue": "Captain", "newValue": "Skipper" } ]
+      }
+    },
+    {
+      "name": "execute_no_match",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "additionalReplacements": [ { "oldValue": "Nonexistent", "newValue": "X" } ], "dryRun": false }
+    },
+    {
+      "name": "neither_pair_400",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": {}
+    },
+    {
+      "name": "zod_empty_old_value",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "primaryRename": { "oldValue": "", "newValue": "x" } }
+    },
+    {
+      "name": "zod_wrong_types",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "primaryRename": "nope", "additionalReplacements": "x", "dryRun": "yes" }
+    },
+    {
+      "name": "zod_nested_array_issues",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": {
+        "additionalReplacements": [
+          { "oldValue": "a", "newValue": "" },
+          5,
+          { "oldValue": "b", "newValue": "c", "caseSensitive": "no" },
+          { "newValue": "d" }
+        ]
+      }
+    },
+    {
+      "name": "zod_null_primary",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "body": { "primaryRename": null, "additionalReplacements": [ { "oldValue": "a", "newValue": "b" } ] }
+    },
+    {
+      "name": "missing_character_404_beats_zod",
+      "characterId": "99999999-9999-4999-8999-999999999999",
+      "action": "rename",
+      "body": { "primaryRename": "bad" }
+    },
+    {
+      "name": "broken_vault_echo",
+      "characterId": "a1000000-0000-4000-8000-000000000005",
+      "action": "rename",
+      "body": { "primaryRename": { "oldValue": "Echo", "newValue": "Ekko" } }
+    },
+    {
+      "name": "staff_message_skipped",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "seeds": [
+        {
+          "kind": "messages",
+          "chatId": "c1000000-0000-4000-8000-000000000001",
+          "events": [
+            { "type": "message", "id": "d1000000-0000-4000-8000-000000000011", "role": "ASSISTANT", "content": "Aria has joined the voyage.", "createdAt": "2026-02-02T00:00:00.000Z", "attachments": [], "systemSender": "host" },
+            { "type": "message", "id": "d1000000-0000-4000-8000-000000000012", "role": "ASSISTANT", "content": "Aria laughs: welcome aboard, Aria's crew!", "participantId": "b1000000-0000-4000-8000-000000000001", "createdAt": "2026-02-02T00:00:01.000Z", "attachments": [] }
+          ]
+        }
+      ],
+      "body": { "primaryRename": { "oldValue": "Aria", "newValue": "Arya" }, "dryRun": false }
+    },
+    {
+      "name": "canonicalize_long_s",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "seeds": [ { "kind": "memoryContent", "memoryId": "0e000000-0000-4000-8000-000000000001", "content": "Strasse Straſse" } ],
+      "body": { "additionalReplacements": [ { "oldValue": "strasse", "newValue": "X" } ], "dryRun": false }
+    },
+    {
+      "name": "canonicalize_sharp_s",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "seeds": [ { "kind": "memoryContent", "memoryId": "0e000000-0000-4000-8000-000000000001", "content": "STRAẞSE" } ],
+      "body": { "additionalReplacements": [ { "oldValue": "straßse", "newValue": "X" } ], "dryRun": false }
+    },
+    {
+      "name": "get_substitution_expands",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "seeds": [ { "kind": "memoryContent", "memoryId": "0e000000-0000-4000-8000-000000000001", "content": "Hello Bob there. Bob again." } ],
+      "body": { "additionalReplacements": [ { "oldValue": "Bob", "newValue": "[$`|$&|$'|$$|$1|${x}]", "caseSensitive": true } ], "dryRun": false }
+    },
+    {
+      "name": "context_and_keywords",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "rename",
+      "seeds": [
+        { "kind": "memoryContent", "memoryId": "0e000000-0000-4000-8000-000000000002", "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx the captain of the airship yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy", "keywords": ["captain", "airship", "Captain's log"] }
+      ],
+      "body": { "additionalReplacements": [ { "oldValue": "captain", "newValue": "skipper" } ], "dryRun": false }
+    },
+    {
+      "name": "dry_archived_fenn",
+      "characterId": "a1000000-0000-4000-8000-000000000006",
+      "action": "rename",
+      "body": { "primaryRename": { "oldValue": "Fenn", "newValue": "Finn" } }
+    },
+    {
+      "name": "execute_archived_fenn",
+      "characterId": "a1000000-0000-4000-8000-000000000006",
+      "action": "rename",
+      "body": { "primaryRename": { "oldValue": "Fenn", "newValue": "Finn" }, "dryRun": false }
+    },
+    {
+      "name": "refresh_archive_aria",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "action": "refresh-archive",
+      "body": {}
+    },
+    {
+      "name": "refresh_archive_bram_ledger_chat",
+      "characterId": "a1000000-0000-4000-8000-000000000002",
+      "action": "refresh-archive",
+      "body": {}
+    },
+    {
+      "name": "refresh_archive_dax_no_chats",
+      "characterId": "a1000000-0000-4000-8000-000000000004",
+      "action": "refresh-archive",
+      "body": {}
+    },
+    {
+      "name": "refresh_archive_fenn_absent_seat",
+      "characterId": "a1000000-0000-4000-8000-000000000006",
+      "action": "refresh-archive",
+      "body": {}
+    },
+    {
+      "name": "refresh_archive_missing_404",
+      "characterId": "99999999-9999-4999-8999-999999999999",
+      "action": "refresh-archive",
+      "body": {}
+    }
+  ]
+}

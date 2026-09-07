@@ -102,6 +102,9 @@ pub mod chat_delete;
 // === P4.D163: the character-subprompts verbs (v4 `2f4254b42`) ===
 pub mod subprompts;
 // === end P4.D163 ===
+// === P4.9K1: the per-character generator verbs (§B.2) ===
+pub mod generators_detail;
+// === end P4.9K1 ===
 pub mod types;
 
 pub use chat_create::{ChatCreateDriver, ChatCreateDriverRequest, ChatCreateFuture};

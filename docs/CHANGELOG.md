@@ -282,6 +282,39 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — feat(generators): P4.9K1 unit 2 — the character Rename/Replace service + refresh-archive as dispatch verbs, with the rename differential
+
+_Versions: core 0.0.820, harness 0.0.709._
+
+Ports v4's `lib/services/character-rename.service.ts` as
+`generators::rename` and the `refresh-archive` route arm as
+`generators::refresh_archive`, behind two new dispatch verbs
+(`characterRename`, `characterRefreshArchive`) in the new
+`api/generators_detail.rs` — v4's `POST /api/v1/characters/[id]?action=`
+guard order measured and reproduced (the character 404 before any body
+read; `renameSchema.parse` answering v4's `Validation error` 400 with its
+Zod `details`; the neither-pair 400; the catch-all 500 sentences).
+
+The matcher is a literal UTF-16 scan with ECMAScript `Canonicalize` and a
+hand-rolled `GetSubstitution` rather than a Rust regex: the K1 lane record
+measured that a `(?i)` regex folds `ſ`/`ß` where JS's non-`u` `i` flag does
+not, and that `String.prototype.replace` expands `$&`/`` $` ``/`$'`/`$$`
+while leaving `$1`/`${x}` literal — both divergences vanish instead of being
+recorded. The execute leg runs every write on the one writer pair (a
+recorded transaction-shape divergence); character fields route through the
+vault write overlay exactly as v4's `repos.characters.update` does; touched
+chats are re-rendered through the render queue.
+
+New tier-2 family `character_rename_equivalence` (27 cases over fresh copies
+of the committed characters pair, seeds applied through the repository
+twins on both sides; the response + a five-table post-state census) drove
+v4's real route. Its first run caught the `Option<Value>` null-swallow on
+the verb's three body fields (a `null` `primaryRename` is a Zod
+`invalid_type` where an absent one is fine) — they now ride the
+`double_option` tri-state. Four mutation proofs each redden exactly their
+arm: the dry-run guard inverted (the five dry cases), the Staff-skip
+predicate dropped, the primary-first order reversed, the ASCII-fold guard
+removed (`canonicalize_long_s`).
 
 #### 2026-09-07 — docs(orders): the `2f4254b42` character-subprompts round — three new work orders + two resume addenda, the ledger row ORDERED, the phase-4 ORDERED section
 

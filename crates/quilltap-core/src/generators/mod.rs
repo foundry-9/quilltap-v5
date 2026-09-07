@@ -33,6 +33,8 @@
 
 // === P4.9K1 ===
 pub mod optimizer;
+pub mod refresh_archive;
+pub mod rename;
 // === end P4.9K1 ===
 
 // === P4.9K2 ===
