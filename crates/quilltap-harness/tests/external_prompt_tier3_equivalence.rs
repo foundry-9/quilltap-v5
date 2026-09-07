@@ -48,7 +48,7 @@ use std::sync::{Arc, Mutex};
 
 use quilltap_core::api::generators_detail::{
     character_generate_external_prompt, ExternalPromptDriverRequest, GeneratorsDetailDriver,
-    GeneratorsDetailFuture,
+    GeneratorsDetailFuture, OptimizeDriverRequest,
 };
 use quilltap_core::api::types::{ErrorKind, Request, Response};
 use quilltap_core::db::connection_profiles::{ConnectionProfilesRepository, CpUpdate};
@@ -233,6 +233,14 @@ impl GeneratorsDetailDriver for TestDriver {
             )
             .await
         })
+    }
+
+    fn optimize<'a>(
+        &'a self,
+        _req: OptimizeDriverRequest,
+        _on_progress: quilltap_core::generators::optimizer::OnProgress<'a>,
+    ) -> GeneratorsDetailFuture<'a, ()> {
+        Box::pin(async { panic!("the external-prompt differential never runs the optimizer") })
     }
 }
 

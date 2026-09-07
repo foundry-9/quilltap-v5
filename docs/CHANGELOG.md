@@ -282,6 +282,50 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — feat(generators): P4.9K1 unit 4 — the character optimizer runner as the `characterOptimize` verb, streamed over the generator-progress channel
+
+_Versions: core 0.0.822, harness 0.0.711._
+
+Ports the stateful half of v4's `lib/services/character-optimizer.service.ts`
+(`runCharacterOptimizer`, the post-bug-119 shape) into `generators::optimizer`
+behind the `characterOptimize` verb: the memory pipeline (about-self search —
+semantic over the character's vector index with the text fallback, or text, or
+all — the day-boundary date filters, `rankMemoriesByWeight`, the reinforcement
+floor, the cap), the analysis call, one focused pass per sub-step (general
+fields, every scenario, every system prompt, the physical description, the
+wardrobe, the aliases, new prompts) with bug 119's containment — the
+`coerceSuggestionArray` recovery, the parse-failure skip, the call-failure
+skip, and the outer catch that logs and emits an empty frame — the
+significance filter with v4's spread-preserving text coercions and the
+new-wardrobe-item sanitize, and the suggestions-file writer
+(`Suggestions/refinement-<stamp>.md` through the database-store writer,
+byte-exact markdown). Every `onProgress` event rides `Event::GeneratorProgress`
+under the client's `progressId` (K0's emitter) and the dispatch resolves
+`{ terminal: <the last frame> }`. v4's `optimizeStreamSchema` is transcribed
+issue for issue (measured on `zod` 4.5.4: the aborting `int()` check, the
+code-point string max, `invalid_value` for the enum, `null` refused where only
+`undefined` defaults). The two bug-119 log lines and the rest of v4's
+`[CharacterOptimizer]` lines are emitted with v4's message bytes and their
+whole context bag.
+
+New tier-3 family `character_optimizer_tier3_equivalence` over the new
+committed `character-generators-{main,mount}.db` pair (built by
+`harness/oracle/fixtures/build-character-generators-fixture.ts` from v4's own
+repositories: two characters, ten memories with a 4-dim vector index, a
+default embedding profile, a vaulted rich character): 28 cases diffing the
+whole progress trace, every model call's prompt bytes, the written
+suggestions files, and the log lines — green on its first run; eleven
+mutation proofs, one of which (the semantic hit filter) survived until the
+fixture gained a vector-less memory that only the semantic path excludes.
+
+Recorded: v4's JSON-parse failure text is V8's `JSON.parse` wording —
+`v8_json_parse_message` reproduces the measured unexpected-token / end-of-input
+arms (what a prose answer produces) and falls back to serde's message
+elsewhere; v4's `Failed to log … LLM call` warn arms have no v5 counterpart
+(`log_llm_call` never throws); the two `CHARACTER_OPTIMIZER` `llm_logs` rows
+are not compared. The dispatch wrong-type census moves 414 → 416. The host
+still assembles no driver; the driver unit wires it live.
+
 #### 2026-09-07 — feat(generators): P4.9K1 unit 3 — the external-prompt generator as a driver-backed dispatch verb, plus the shared generated-wardrobe-items leaf
 
 _Versions: core 0.0.821, harness 0.0.710, host 0.0.107._

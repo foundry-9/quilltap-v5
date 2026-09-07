@@ -3196,6 +3196,50 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::CharacterOptimize {
+                character_id,
+                progress_id,
+                connection_profile_id,
+                max_memories,
+                search_query,
+                use_semantic_search,
+                since_date,
+                before_date,
+                output_mode,
+            } => match self.ready_db_and_generators_detail() {
+                Ok((db, driver)) => {
+                    let tri = |o: Option<Option<serde_json::Value>>| {
+                        o.map(|x| x.unwrap_or(serde_json::Value::Null))
+                    };
+                    let (cp, mm, sq, uss, sd, bd, om) = (
+                        tri(connection_profile_id),
+                        tri(max_memories),
+                        tri(search_query),
+                        tri(use_semantic_search),
+                        tri(since_date),
+                        tri(before_date),
+                        tri(output_mode),
+                    );
+                    super::generators_detail::character_optimize(
+                        &db,
+                        driver.as_ref(),
+                        &self.inner.events,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        progress_id.as_deref(),
+                        cp.as_ref(),
+                        mm.as_ref(),
+                        sq.as_ref(),
+                        uss.as_ref(),
+                        sd.as_ref(),
+                        bd.as_ref(),
+                        om.as_ref(),
+                        crate::clock::now_unix_ms(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             // === end P4.9K1 ===
             Request::GroupStateGet { group_id } => match self.ready_db() {
                 Ok(db) => super::groups::group_state_get(&db, &group_id),

@@ -3559,6 +3559,42 @@ pub enum Request {
         #[serde(default, deserialize_with = "double_option")]
         max_tokens: Option<Option<serde_json::Value>>,
     },
+    /// v4 `POST /api/v1/characters/[id]?action=optimize-stream`
+    /// (`post.ts:92-143`) — Aurora's "Refine from Memories": the memory
+    /// pipeline, one analysis call, one focused pass per sub-step, optionally
+    /// a `Suggestions/refinement-<stamp>.md` written into the vault. Every
+    /// `onProgress` event rides [`Event::generator_progress`] under
+    /// `progress_id` (absent → no frames) and the dispatch resolves
+    /// [`Response::Character`] `{ terminal: <the last frame> }` — v4's route
+    /// streams and never answers a status past the Zod arm, so a failed run is
+    /// an `error` FRAME. The seven body fields are the absent / `null` / value
+    /// TRI-STATE (`double_option`): `optimizeStreamSchema.parse` runs AFTER
+    /// the character 404 and a `null` `maxMemories` is a Zod `invalid_type`
+    /// where an absent one defaults to 30. ⚠ 💸 LIVE: two-plus model calls
+    /// per request once the host driver is assembled (one analysis + one per
+    /// sub-step — the general fields, every scenario, every system prompt,
+    /// the physical description, the wardrobe, the aliases, new prompts);
+    /// a driver-less engine answers the named refusal.
+    #[serde(rename_all = "camelCase")]
+    CharacterOptimize {
+        character_id: String,
+        #[serde(default)]
+        progress_id: Option<String>,
+        #[serde(default, deserialize_with = "double_option")]
+        connection_profile_id: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        max_memories: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        search_query: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        use_semantic_search: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        since_date: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        before_date: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        output_mode: Option<Option<serde_json::Value>>,
+    },
     // === end P4.9K1 ===
 }
 

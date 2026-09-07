@@ -4,10 +4,12 @@
 //! `parseLLMJson<OptimizerSuggestion[]>` cast never existed in v5 and is never
 //! transcribed here.
 //!
-//! This file carries the PURE half — the types, the coercions, and every prompt
-//! builder. Each prompt string IS wire bytes: it reaches a paid model verbatim,
-//! so all of it is diffed against v4's real exports by
-//! `character_optimizer_prompts_equivalence`.
+//! The first half of this file is the PURE half — the types, the coercions, and
+//! every prompt builder. Each prompt string IS wire bytes: it reaches a paid
+//! model verbatim, so all of it is diffed against v4's real exports by
+//! `character_optimizer_prompts_equivalence`. The second half (P4.9K1 unit 4)
+//! is the runner — `run_character_optimizer` — diffed end-to-end by
+//! `character_optimizer_tier3_equivalence`.
 //!
 //! ## Input shape
 //!
@@ -21,13 +23,44 @@
 //! exists to catch. [`crate::api::system_qtap::js_truthy`] and
 //! [`crate::pascal::js_value::to_js_string`] are those two semantics.
 
-use serde_json::Value;
+use std::collections::HashSet;
+use std::sync::OnceLock;
+
+use regex::Regex;
+use serde_json::{json, Value};
 
 use crate::api::system_qtap::js_truthy;
+use crate::cheap_llm::{build_character_cache_key, profile_params_value};
+use crate::clock::{iso_from_unix_ms, iso_to_ms};
+use crate::db::database_store::write_database_document;
+use crate::db::doc_mount_documents::DocMountDocumentsRepository;
+use crate::db::memories_read::{
+    find_by_character_about_character, search_by_content_about_character,
+};
+use crate::db::runtime::Db;
+use crate::db::vector_store::CharacterVectorStore;
+use crate::db::{
+    api_keys, characters_read, connection_profiles, embedding_profiles, wardrobe_read, DbError,
+};
 use crate::generators::field_semantics::{
     FIELD_SEMANTICS_PREAMBLE, FULL_FIELD_SEMANTICS, PROPERTIES_SEMANTICS, WARDROBE_SEMANTICS,
 };
+use crate::generators::generated_items::sanitize_generated_wardrobe_items;
+use crate::generators::llm_json::{
+    escape_control_chars_in_strings, parse_llm_json, repair_truncated_json, strip_code_fences,
+    LlmJsonError,
+};
+use crate::jsnum::to_fixed;
+use crate::jsstr::{js_trim, js_trim_end, utf16_len};
+use crate::memory_weighting::{calculate_effective_weight, MemoryInputs, DEFAULT_WEIGHTING_CONFIG};
+use crate::model::completion::{
+    CompletionMessage, CompletionParams, CompletionProvider, CompletionResponse,
+};
+use crate::model::embedding::{EmbeddingPriority, EmbeddingProvider};
 use crate::pascal::js_value::to_js_string;
+use crate::services::llm_logging::{
+    log_llm_call, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage, LogResponse,
+};
 
 // ============================================================================
 // Constants (wire bytes)
@@ -686,6 +719,1438 @@ Respond with a JSON array of suggestion objects (may be empty)."#,
     )
 }
 
+// ============================================================================
+// The runner (v4 `runCharacterOptimizer` — P4.9K1 unit 4)
+// ============================================================================
+//
+// The stateful half of the same v4 file: the memory pipeline (search → date
+// filter → rank → reinforcement filter → limit), the analysis call, the
+// per-sub-step passes with bug 119's containment, the suggestions-file writer.
+// The pure half above supplies every prompt; this half supplies the order,
+// the seams, and the events.
+//
+// ## Seams (mocked identically on both sides of the tier-3 differential)
+//
+// * The model boundary — a [`CompletionProvider`] (v4 `createLLMProvider(...)
+//   .sendMessage`), canned by the exact call on both sides.
+// * The embedding boundary — an [`EmbeddingProvider`] (v4
+//   `generateEmbeddingForUser`), canned by the exact query text.
+// * The clock — `now_ms` is a parameter (v4's `Date` is frozen by the oracle):
+//   it feeds the memory-weight decay, the suggestions-file stamp, and nothing
+//   else that is compared (the `Date.now()` durations reach only `llm_logs`).
+// * Progress — `on_progress` is v4's `onProgress` callback; the engine hands
+//   in a closure that publishes through the K0
+//   [`GeneratorProgressEmitter`](crate::services::generator_progress) AND
+//   remembers the last event for the `{ terminal }` dispatch payload.
+//
+// ## Log lines
+//
+// v4's `[CharacterOptimizer] …` lines are emitted with the SAME message bytes
+// and their whole context bag as ONE `context=<json>` field (target
+// `quilltap::character_optimizer`), which is how the differential compares
+// them against the oracle's captured `logger` calls — the two bug-119
+// containment lines among them (§R.12).
+//
+// ## Recorded divergences
+//
+// * A JSON parse failure's `error` text is V8's `JSON.parse` wording in v4.
+//   [`v8_json_parse_message`] reproduces the measured "unexpected token" and
+//   "unexpected end" arms (the shapes a prose answer produces); every other
+//   arm (a malformed token INSIDE a value, an unterminated string, trailing
+//   garbage after a valid value) falls back to serde's own message.
+// * `memory.createdAt` that fails to parse ranks as JS `NaN` (dropped by the
+//   weight threshold) — modelled by dropping the row; the repos never mint
+//   such a value.
+
+/// The `llm_logs.type` for both optimizer calls (v4 `type: 'CHARACTER_OPTIMIZER'`).
+pub const LOG_TYPE_CHARACTER_OPTIMIZER: &str = "CHARACTER_OPTIMIZER";
+
+/// The tracing target every `[CharacterOptimizer]` line is emitted under.
+pub const OPTIMIZER_LOG_TARGET: &str = "quilltap::character_optimizer";
+
+/// v4 `OptimizerOutputMode`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OptimizerOutputMode {
+    Apply,
+    SuggestionsFile,
+}
+
+impl OptimizerOutputMode {
+    /// The wire / schema spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OptimizerOutputMode::Apply => "apply",
+            OptimizerOutputMode::SuggestionsFile => "suggestions-file",
+        }
+    }
+}
+
+/// v4 `OptimizerOptions`, POST-defaults (the route's `optimizeStreamSchema`
+/// materializes every default, so the runner sees concrete values).
+#[derive(Clone, Debug, PartialEq)]
+pub struct OptimizerOptions {
+    pub max_memories: i64,
+    pub search_query: String,
+    pub use_semantic_search: bool,
+    pub since_date: Option<String>,
+    pub before_date: Option<String>,
+    pub output_mode: OptimizerOutputMode,
+}
+
+impl Default for OptimizerOptions {
+    /// The schema defaults: `maxMemories` 30, `searchQuery` `''`,
+    /// `useSemanticSearch` true, both dates `null`, `outputMode` `'apply'`.
+    fn default() -> Self {
+        OptimizerOptions {
+            max_memories: MAX_MEMORIES_FOR_ANALYSIS,
+            search_query: String::new(),
+            use_semantic_search: true,
+            since_date: None,
+            before_date: None,
+            output_mode: OptimizerOutputMode::Apply,
+        }
+    }
+}
+
+/// v4's `onProgress` callback shape.
+pub type OnProgress<'a> = &'a mut (dyn FnMut(Value) + Send);
+
+// ---------------------------------------------------------------------------
+// JS-shaped helpers
+// ---------------------------------------------------------------------------
+
+/// The first `n` UTF-16 units of `s` (JS `s.substring(0, n)`).
+fn utf16_prefix(s: &str, n: usize) -> String {
+    String::from_utf16_lossy(&s.encode_utf16().take(n).collect::<Vec<u16>>())
+}
+
+/// The last `n` UTF-16 units of `s` (JS `s.slice(-n)`).
+fn utf16_tail(s: &str, n: usize) -> String {
+    let len = utf16_len(s);
+    crate::jsstr::utf16_slice_from(s, len.saturating_sub(n))
+}
+
+/// JS `typeof` over a parsed JSON value (`null` is `'object'`; an array is
+/// excluded by the caller, which branches on `Array.isArray` first).
+fn js_typeof(v: &Value) -> &'static str {
+    match v {
+        Value::Null | Value::Object(_) | Value::Array(_) => "object",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+    }
+}
+
+/// V8's `JSON.parse` failure wording for the arms this port reproduces
+/// (measured on Node 24.13.1 at the `f699da6f6` pin, `json-parser.cc`'s
+/// `GetErrorMessageWithEllipses` rule): whitespace-only input →
+/// `Unexpected end of JSON input`; a first non-whitespace character that
+/// cannot start a JSON value → `Unexpected token '<c>', <context> is not valid
+/// JSON`, where the context is the whole source when it is shorter than 21
+/// UTF-16 units, else a 10-unit window on the side(s) of the position with
+/// `...` marking the elided side. `None` for every other shape (a failure
+/// INSIDE a value that starts legally) — the caller falls back to serde's
+/// message, a RECORDED divergence.
+pub fn v8_json_parse_message(text: &str) -> Option<String> {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    let is_ws = |u: u16| matches!(u, 0x20 | 0x09 | 0x0a | 0x0d);
+    let Some(pos) = units.iter().position(|u| !is_ws(*u)) else {
+        return Some("Unexpected end of JSON input".to_string());
+    };
+    let c = units[pos];
+    let starts_value = matches!(c, 0x7b | 0x5b | 0x22 | 0x2d) // { [ " -
+        || (0x30..=0x39).contains(&c)
+        || matches!(c, 0x74 | 0x66 | 0x6e); // t f n
+    if starts_value {
+        return None;
+    }
+    const K: usize = 10;
+    let len = units.len();
+    let sub = |a: usize, b: usize| String::from_utf16_lossy(&units[a..b]);
+    let token = sub(pos, pos + 1);
+    let message = if len < 2 * K + 1 {
+        format!(
+            "Unexpected token '{token}', \"{}\" is not valid JSON",
+            sub(0, len)
+        )
+    } else if pos < K {
+        format!(
+            "Unexpected token '{token}', \"{}\"... is not valid JSON",
+            sub(0, pos + K)
+        )
+    } else if pos >= len - K {
+        format!(
+            "Unexpected token '{token}', ...\"{}\" is not valid JSON",
+            sub(pos - K, len)
+        )
+    } else {
+        format!(
+            "Unexpected token '{token}', ...\"{}\"... is not valid JSON",
+            sub(pos - K, pos + K)
+        )
+    };
+    Some(message)
+}
+
+/// The message v4's `parseLLMJson` throws for `raw`: the LAST parse in its
+/// chain is over the repaired text, and that `SyntaxError` is what propagates
+/// — so the V8 wording is computed over the same repaired bytes.
+fn llm_json_failure_message(raw: &str, err: &LlmJsonError) -> String {
+    let repaired = repair_truncated_json(&escape_control_chars_in_strings(&strip_code_fences(raw)));
+    v8_json_parse_message(&repaired).unwrap_or_else(|| err.message.clone())
+}
+
+/// `new Date(`${d}T00:00:00.000Z`).getTime()` — `None` is JS `NaN`.
+fn day_boundary_ms(d: &str) -> Option<i64> {
+    iso_to_ms(&format!("{d}T00:00:00.000Z"))
+}
+
+/// `new Date(m.createdAt).getTime()` — `None` is JS `NaN`.
+fn created_at_ms(m: &Value) -> Option<i64> {
+    m.get("createdAt")
+        .and_then(Value::as_str)
+        .and_then(iso_to_ms)
+}
+
+/// The weighting inputs of a memory row (`None` when `createdAt` or
+/// `importance` is unusable — the JS `NaN` weight, dropped by the threshold).
+fn memory_inputs(m: &Value) -> Option<MemoryInputs> {
+    let ms = |key: &str| {
+        m.get(key)
+            .and_then(Value::as_str)
+            .and_then(iso_to_ms)
+            .map(|x| x as f64)
+    };
+    Some(MemoryInputs {
+        importance: m.get("importance").and_then(Value::as_f64)?,
+        reinforced_importance: m.get("reinforcedImportance").and_then(Value::as_f64),
+        created_at_ms: created_at_ms(m)? as f64,
+        last_reinforced_at_ms: ms("lastReinforcedAt"),
+        last_accessed_at_ms: ms("lastAccessedAt"),
+        reinforcement_count: m.get("reinforcementCount").and_then(Value::as_u64),
+        graph_degree: m
+            .get("relatedMemoryIds")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        kind_episodic: m.get("kind").and_then(Value::as_str) == Some("episodic"),
+        occurred_at_ms: crate::episodic::event_time_ms(m.get("occurredAt").and_then(Value::as_str)),
+    })
+}
+
+/// v4 `rankMemoriesByWeight(memories)` with the default config: weight every
+/// row at `now_ms`, drop those under `minWeightThreshold`, STABLE-sort
+/// descending by effective weight.
+pub fn rank_memories_by_weight(memories: Vec<Value>, now_ms: i64) -> Vec<Value> {
+    let mut weighted: Vec<(Value, f64)> = memories
+        .into_iter()
+        .filter_map(|m| {
+            let inputs = memory_inputs(&m)?;
+            let w = calculate_effective_weight(&inputs, &DEFAULT_WEIGHTING_CONFIG, now_ms as f64)
+                .effective_weight;
+            Some((m, w))
+        })
+        .filter(|(_, w)| *w >= DEFAULT_WEIGHTING_CONFIG.min_weight_threshold)
+        .collect();
+    weighted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    weighted.into_iter().map(|(m, _)| m).collect()
+}
+
+/// `memory.reinforcementCount >= MIN_REINFORCED_MEMORIES` (JS: a missing or
+/// null count compares false).
+fn is_reinforced(m: &Value) -> bool {
+    m.get("reinforcementCount")
+        .and_then(Value::as_f64)
+        .is_some_and(|n| n >= MIN_REINFORCED_MEMORIES as f64)
+}
+
+fn ctx(v: Value) -> String {
+    serde_json::to_string(&v).unwrap_or_default()
+}
+
+fn str_of(v: &Value, key: &str) -> String {
+    v.get(key).map(to_js_string).unwrap_or_default()
+}
+
+// ---------------------------------------------------------------------------
+// The model call (v4 `callOptimizerLLM`)
+// ---------------------------------------------------------------------------
+
+/// Everything a sub-step call needs that does not change between sub-steps.
+struct CallCtx<'a, CMP: CompletionProvider> {
+    completion: &'a CMP,
+    provider: String,
+    base_url: Option<String>,
+    model_name: String,
+    profile_id: String,
+    profile_parameters: Option<Value>,
+    character_id: &'a str,
+    user_id: &'a str,
+    character_context: String,
+    memory_context: String,
+}
+
+/// v4 `callOptimizerLLM` — the two-message request; `Err` carries the thrown
+/// message (a provider failure, or `No response from model` for an empty
+/// answer). `Ok` is the TRIMMED content plus the measured duration.
+async fn call_optimizer_llm<CMP: CompletionProvider>(
+    c: &CallCtx<'_, CMP>,
+    instruction: &str,
+    temperature: f64,
+    max_tokens: i64,
+) -> Result<(String, i64), String> {
+    let messages = vec![
+        CompletionMessage::system(SYSTEM_MESSAGE),
+        CompletionMessage::user(format!(
+            "{}\n\n---\n\n{}\n\n---\n\n{}",
+            c.character_context, c.memory_context, instruction
+        )),
+    ];
+    let params = CompletionParams {
+        messages,
+        model: c.model_name.clone(),
+        temperature: Some(temperature),
+        max_tokens: Some(max_tokens),
+        strict_max_tokens: false,
+        top_p: None,
+        cache_key: build_character_cache_key(Some(c.character_id)),
+        profile_parameters: c.profile_parameters.clone(),
+        attachments: Vec::new(),
+        request_timeout_ms: None,
+    };
+    let start_ms = crate::clock::now_unix_ms();
+    let response: CompletionResponse = c
+        .completion
+        .send_message(&c.provider, c.base_url.as_deref(), &params)
+        .await
+        .map_err(|e| e.message)?;
+    let duration_ms = crate::clock::now_unix_ms() - start_ms;
+    // v4 `if (!response?.content)` — JS falsy: an empty answer is a throw.
+    if response.content.is_empty() {
+        return Err("No response from model".to_string());
+    }
+    Ok((js_trim(&response.content).to_string(), duration_ms))
+}
+
+/// The `llm_logs` row both optimizer calls write (v4 `logLLMCall({... type:
+/// 'CHARACTER_OPTIMIZER' ...})`), best-effort. v4 chains a `.catch` that
+/// warns `Failed to log analysis LLM call` / `Failed to log sub-step LLM
+/// call`; v5's `log_llm_call` never throws (it swallows and answers `None`),
+/// so those two warn lines have no arm to fire from here — recorded, not
+/// simulated.
+async fn log_optimizer_call<CMP: CompletionProvider>(
+    db: &Db,
+    c: &CallCtx<'_, CMP>,
+    user_placeholder: &str,
+    temperature: f64,
+    max_tokens: i64,
+    raw: &str,
+    duration_ms: i64,
+) {
+    let _ = log_llm_call(
+        db,
+        LogLlmCallParams {
+            user_id: c.user_id.to_string(),
+            log_type: LOG_TYPE_CHARACTER_OPTIMIZER.to_string(),
+            message_id: None,
+            chat_id: None,
+            character_id: Some(c.character_id.to_string()),
+            provider: c.provider.clone(),
+            model_name: c.model_name.clone(),
+            connection_profile_id: Some(c.profile_id.clone()),
+            image_profile_id: None,
+            request: LogRequest {
+                messages: vec![
+                    LogRequestMessage {
+                        role: "system".to_string(),
+                        content: SYSTEM_MESSAGE.to_string(),
+                        attachments: None,
+                    },
+                    LogRequestMessage {
+                        role: "user".to_string(),
+                        content: user_placeholder.to_string(),
+                        attachments: None,
+                    },
+                ],
+                temperature: Some(temperature),
+                max_tokens: Some(max_tokens),
+                tools: None,
+            },
+            response: LogResponse {
+                content: utf16_prefix(raw, 500),
+                error: None,
+                finish_reason: None,
+                tool_calls: None,
+            },
+            usage: None,
+            cache_usage: None,
+            raw_provider_usage: None,
+            request_hashes: None,
+            duration_ms: Some(duration_ms as f64),
+        },
+        &LogContext::none(),
+    )
+    .await;
+}
+
+// ---------------------------------------------------------------------------
+// The sub-step pass (v4 `runSubStepCore` / `runSubStep`)
+// ---------------------------------------------------------------------------
+
+/// The per-run sub-step state v4 closes over.
+struct SubStepState {
+    index: usize,
+    total: usize,
+    all_suggestions: Vec<Value>,
+}
+
+/// v4's `{...s, id, currentValue, proposedValue, rationale, memoryExcerpts,
+/// wardrobeItem}` — a spread keeps an existing key's POSITION with the new
+/// value, appends the keys `s` lacked in literal order, and a key whose new
+/// value is `undefined` is omitted by `JSON.stringify` (the `wardrobeItem:
+/// undefined` arm).
+fn finish_suggestion(s: &serde_json::Map<String, Value>, id: String) -> Value {
+    let excerpts = match s.get("memoryExcerpts") {
+        Some(Value::Array(items)) => Value::Array(
+            items
+                .iter()
+                .map(|x| Value::String(coerce_suggestion_text(Some(x))))
+                .collect(),
+        ),
+        _ => Value::Array(Vec::new()),
+    };
+    // A brand-new wardrobe item must carry a valid structured payload;
+    // sanitize it (slot types, coerced flags) and let the filter below drop
+    // the suggestion if nothing survives.
+    let is_new_wardrobe_item = s.get("field").and_then(Value::as_str) == Some("wardrobeItems")
+        && !js_truthy(s.get("subId"));
+    let wardrobe_item: Option<Value> = if is_new_wardrobe_item && js_truthy(s.get("wardrobeItem")) {
+        sanitize_generated_wardrobe_items(&Value::Array(vec![s["wardrobeItem"].clone()]))
+            .into_iter()
+            .next()
+            .and_then(|item| serde_json::to_value(item).ok())
+    } else {
+        None
+    };
+    let overrides: [(&str, Option<Value>); 6] = [
+        ("id", Some(Value::String(id))),
+        (
+            "currentValue",
+            Some(Value::String(coerce_suggestion_text(s.get("currentValue")))),
+        ),
+        (
+            "proposedValue",
+            Some(Value::String(coerce_suggestion_text(
+                s.get("proposedValue"),
+            ))),
+        ),
+        (
+            "rationale",
+            Some(Value::String(coerce_suggestion_text(s.get("rationale")))),
+        ),
+        ("memoryExcerpts", Some(excerpts)),
+        ("wardrobeItem", wardrobe_item),
+    ];
+    let mut out = serde_json::Map::new();
+    for (k, v) in s {
+        match overrides.iter().find(|(ok, _)| ok == k) {
+            Some((_, Some(nv))) => {
+                out.insert(k.clone(), nv.clone());
+            }
+            Some((_, None)) => {} // `undefined` — omitted by JSON.stringify
+            None => {
+                out.insert(k.clone(), v.clone());
+            }
+        }
+    }
+    for (k, v) in overrides {
+        if !s.contains_key(k) {
+            if let Some(v) = v {
+                out.insert(k.to_string(), v);
+            }
+        }
+    }
+    Value::Object(out)
+}
+
+/// v4 `runSubStepCore`: one focused pass — the `substep_start` frame, the
+/// model call (a failure is CONTAINED: the warn + an empty `substep_complete`),
+/// the parse with bug 119's `coerceSuggestionArray` (a non-array answer is the
+/// coerced warn; unparseable JSON is the skipping warn), the significance
+/// filter + the defensive text coercions + the new-wardrobe-item sanitize,
+/// the `llm_logs` row, the `substep_complete` frame.
+///
+/// `Err` is v4's "unexpected throw" — every fallible step above is caught
+/// INSIDE this function exactly as v4 catches it, so today no arm reaches the
+/// outer containment; the shape is kept because bug 119 is the reason it
+/// exists, and [`contain_sub_step_outcome`] is pinned with a synthetic
+/// failure.
+#[allow(clippy::too_many_arguments)]
+async fn run_sub_step_core<CMP: CompletionProvider>(
+    db: &Db,
+    c: &CallCtx<'_, CMP>,
+    state: &mut SubStepState,
+    kind: &str,
+    label: &str,
+    instruction: &str,
+    on_progress: OnProgress<'_>,
+) -> Result<(), String> {
+    state.index += 1;
+    let sub_step = json!({
+        "kind": kind,
+        "label": label,
+        "index": state.index,
+        "total": state.total,
+    });
+    on_progress(json!({"type": "substep_start", "step": "generating", "subStep": sub_step}));
+
+    let (raw, sub_step_duration_ms) = match call_optimizer_llm(c, instruction, 0.7, 6000).await {
+        Ok(r) => r,
+        Err(error) => {
+            tracing::warn!(
+                target: OPTIMIZER_LOG_TARGET,
+                context = %ctx(json!({"characterId": c.character_id, "subStep": label, "error": error})),
+                "[CharacterOptimizer] Sub-step LLM call failed; continuing"
+            );
+            on_progress(json!({
+                "type": "substep_complete",
+                "step": "generating",
+                "subStep": sub_step,
+                "partialSuggestions": [],
+            }));
+            return Ok(());
+        }
+    };
+
+    let parsed: Vec<Value> = match parse_llm_json(&raw) {
+        Ok(raw_parsed) => {
+            let parsed = coerce_suggestion_array(&raw_parsed);
+            if !raw_parsed.is_array() {
+                tracing::warn!(
+                    target: OPTIMIZER_LOG_TARGET,
+                    context = %ctx(json!({
+                        "characterId": c.character_id,
+                        "subStep": label,
+                        "parsedType": js_typeof(&raw_parsed),
+                        "recovered": parsed.len(),
+                    })),
+                    "[CharacterOptimizer] Sub-step answered with a non-array; coerced"
+                );
+            }
+            parsed
+        }
+        Err(parse_error) => {
+            tracing::warn!(
+                target: OPTIMIZER_LOG_TARGET,
+                context = %ctx(json!({
+                    "characterId": c.character_id,
+                    "subStep": label,
+                    "rawTail": utf16_tail(&raw, 200),
+                    "error": llm_json_failure_message(&raw, &parse_error),
+                })),
+                "[CharacterOptimizer] Sub-step produced unparseable JSON; skipping"
+            );
+            Vec::new()
+        }
+    };
+
+    // `.filter((s) => s && typeof s.significance === 'number' && s.significance
+    // >= MIN_SIGNIFICANCE_THRESHOLD)` — only an object can carry a numeric
+    // `significance`; then the spread, then the new-wardrobe-item drop.
+    let filtered: Vec<Value> = parsed
+        .iter()
+        .filter_map(|s| {
+            let obj = s.as_object()?;
+            let significance = obj.get("significance")?.as_f64()?;
+            if significance < MIN_SIGNIFICANCE_THRESHOLD {
+                return None;
+            }
+            Some(finish_suggestion(obj, uuid::Uuid::new_v4().to_string()))
+        })
+        .filter(|s| {
+            !(s.get("field").and_then(Value::as_str) == Some("wardrobeItems")
+                && !js_truthy(s.get("subId"))
+                && !js_truthy(s.get("wardrobeItem")))
+        })
+        .collect();
+
+    state.all_suggestions.extend(filtered.iter().cloned());
+
+    log_optimizer_call(
+        db,
+        c,
+        &format!("[character context + memory context + {label} instruction]"),
+        0.7,
+        6000,
+        &raw,
+        sub_step_duration_ms,
+    )
+    .await;
+
+    on_progress(json!({
+        "type": "substep_complete",
+        "step": "generating",
+        "subStep": sub_step,
+        "partialSuggestions": filtered,
+    }));
+    Ok(())
+}
+
+/// v4 `runSubStep`'s catch — bug 119's containment: "One misbehaving sub-step
+/// must never cost the run. Every sub-step is a self-contained pass whose only
+/// output is appended to `allSuggestions`, so an unexpected throw is logged
+/// and skipped rather than aborting the whole optimization and discarding the
+/// suggestions already gathered." The `substep_complete` it emits carries NO
+/// `subStep` (v4's literal omits it).
+pub fn contain_sub_step_outcome(
+    character_id: &str,
+    label: &str,
+    outcome: Result<(), String>,
+    on_progress: OnProgress<'_>,
+) {
+    if let Err(error) = outcome {
+        tracing::error!(
+            target: OPTIMIZER_LOG_TARGET,
+            context = %ctx(json!({"characterId": character_id, "subStep": label})),
+            error = %error,
+            "[CharacterOptimizer] Sub-step failed unexpectedly; continuing"
+        );
+        on_progress(json!({
+            "type": "substep_complete",
+            "step": "generating",
+            "partialSuggestions": [],
+        }));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The suggestions-file writer
+// ---------------------------------------------------------------------------
+
+const SUGGESTIONS_FOLDER: &str = "Suggestions";
+
+/// v4 `yamlString` — "Quote-safe single-line YAML string. Any multi-line input
+/// is collapsed (the rendered body contains the full text anyway; this is just
+/// the frontmatter summary)."
+fn yaml_string(value: &str) -> String {
+    static NEWLINES: OnceLock<Regex> = OnceLock::new();
+    let re = NEWLINES.get_or_init(|| Regex::new(r"[\r\n]+").expect("static regex"));
+    let single = re.replace_all(value, " ");
+    format!("\"{}\"", js_trim(&single).replace('"', "\\\""))
+}
+
+/// v4 `fenceOrEmpty`.
+fn fence_or_empty(value: &str) -> String {
+    if value.is_empty() || js_trim(value).is_empty() {
+        "_(empty)_".to_string()
+    } else {
+        format!("```\n{value}\n```")
+    }
+}
+
+/// v4 `describeSuggestion` — the `####` heading of one suggestion.
+fn describe_suggestion(s: &Value) -> String {
+    let field = s.get("field").and_then(Value::as_str).unwrap_or("");
+    // `a ?? b ?? c ?? ''` — the first non-nullish, interpolated.
+    let nullish_chain = |keys: &[&str]| -> String {
+        keys.iter()
+            .find_map(|k| s.get(*k).filter(|v| !v.is_null()).map(to_js_string))
+            .unwrap_or_default()
+    };
+    match field {
+        "scenarios" => js_trim_end(&format!(
+            "Scenario: {}",
+            nullish_chain(&["subName", "title", "subId"])
+        ))
+        .to_string(),
+        "systemPrompt" => {
+            if js_truthy(s.get("subId")) {
+                format!("System prompt: {}", nullish_chain(&["subName", "subId"]))
+            } else if js_truthy(s.get("name")) {
+                format!("New system prompt: {}", str_of(s, "name"))
+            } else {
+                "New system prompt".to_string()
+            }
+        }
+        "physicalDescription" => {
+            if js_truthy(s.get("subName")) {
+                format!("Physical description: {}", str_of(s, "subName"))
+            } else {
+                "Physical description".to_string()
+            }
+        }
+        "wardrobeItems" => {
+            if js_truthy(s.get("subId")) {
+                format!("Wardrobe item: {}", nullish_chain(&["subName", "subId"]))
+            } else if js_truthy(s.get("name")) {
+                format!("New wardrobe item: {}", str_of(s, "name"))
+            } else {
+                "New wardrobe item".to_string()
+            }
+        }
+        "aliases" => {
+            if js_truthy(s.get("proposedValue")) {
+                format!("New alias: {}", str_of(s, "proposedValue"))
+            } else {
+                "New alias".to_string()
+            }
+        }
+        "identity" => "Identity".to_string(),
+        "description" => "Description".to_string(),
+        "manifesto" => "Manifesto".to_string(),
+        "personality" => "Personality".to_string(),
+        "exampleDialogues" => "Example dialogues".to_string(),
+        "talkativeness" => "Talkativeness".to_string(),
+        _ => js_interp(s.get("field")),
+    }
+}
+
+/// v4 `groupSuggestionsForReport` — the eight buckets in v4's heading order,
+/// empty buckets omitted.
+fn group_suggestions_for_report(suggestions: &[Value]) -> Vec<(&'static str, Vec<&Value>)> {
+    let mut general = Vec::new();
+    let mut scenario_updates = Vec::new();
+    let mut prompt_updates = Vec::new();
+    let mut prompt_new = Vec::new();
+    let mut physical = Vec::new();
+    let mut wardrobe = Vec::new();
+    let mut aliases = Vec::new();
+    let mut other = Vec::new();
+    for s in suggestions {
+        match s.get("field").and_then(Value::as_str) {
+            // New scenarios are no longer proposed; every scenario suggestion is a refinement.
+            Some("scenarios") => scenario_updates.push(s),
+            Some("systemPrompt") => {
+                if js_truthy(s.get("subId")) {
+                    prompt_updates.push(s)
+                } else {
+                    prompt_new.push(s)
+                }
+            }
+            Some("physicalDescription") => physical.push(s),
+            Some("wardrobeItems") => wardrobe.push(s),
+            Some("aliases") => aliases.push(s),
+            Some(
+                "identity" | "description" | "manifesto" | "personality" | "exampleDialogues"
+                | "talkativeness",
+            ) => general.push(s),
+            _ => other.push(s),
+        }
+    }
+    let mut groups = Vec::new();
+    for (heading, items) in [
+        ("General Fields", general),
+        ("Scenario Refinements", scenario_updates),
+        ("Physical Description", physical),
+        ("Wardrobe", wardrobe),
+        ("Aliases", aliases),
+        ("System Prompt Refinements", prompt_updates),
+        ("Proposed New System Prompts", prompt_new),
+        ("Other", other),
+    ] {
+        if !items.is_empty() {
+            groups.push((heading, items));
+        }
+    }
+    groups
+}
+
+/// v4 `renderSuggestionsMarkdown` (byte-exact).
+pub fn render_suggestions_markdown(
+    character: &Value,
+    analysis: &Value,
+    suggestions: &[Value],
+    memory_count: usize,
+    model_name: &str,
+    generated_at: &str,
+) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    let character_name = str_of(character, "name");
+    lines.push("---".to_string());
+    lines.push("type: character-suggestions".to_string());
+    lines.push(format!("generatedAt: {generated_at}"));
+    lines.push(format!("characterId: {}", str_of(character, "id")));
+    lines.push(format!("characterName: {}", yaml_string(&character_name)));
+    lines.push(format!("model: {}", yaml_string(model_name)));
+    lines.push(format!("memoryCount: {memory_count}"));
+    lines.push(format!("suggestionCount: {}", suggestions.len()));
+    lines.push("---".to_string());
+    lines.push(String::new());
+    lines.push(format!(
+        "# Refinement Suggestions — {}",
+        utf16_prefix(generated_at, 10)
+    ));
+    lines.push(String::new());
+    lines.push(format!(
+        "The automata have consulted {memory_count} memoir{} from {character_name}'s Commonplace Book and offer the following proposals for the consideration of author and character alike. Nothing herein has been applied — treat this as an itinerary of possible refinements, to be debated, amended, rejected, or commissioned at your leisure.",
+        if memory_count == 1 { "" } else { "s" }
+    ));
+    lines.push(String::new());
+    lines.push("## Summary".to_string());
+    lines.push(String::new());
+    lines.push(js_or(analysis.get("summary"), "_(no summary provided)_"));
+    lines.push(String::new());
+
+    let patterns = analysis
+        .get("behavioralPatterns")
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    if !patterns.is_empty() {
+        lines.push("## Behavioural Patterns Observed".to_string());
+        lines.push(String::new());
+        for (i, bp) in patterns.iter().enumerate() {
+            lines.push(format!("### {}. {}", i + 1, js_interp(bp.get("pattern"))));
+            lines.push(String::new());
+            lines.push(format!("**Evidence:** {}", js_interp(bp.get("evidence"))));
+            lines.push(String::new());
+            lines.push(format!("**Frequency:** {}", js_interp(bp.get("frequency"))));
+            lines.push(String::new());
+        }
+    }
+
+    lines.push("## Proposed Changes".to_string());
+    lines.push(String::new());
+    if suggestions.is_empty() {
+        lines.push("_No changes of sufficient significance were proposed._".to_string());
+        lines.push(String::new());
+    } else {
+        for (heading, items) in group_suggestions_for_report(suggestions) {
+            lines.push(format!("### {heading}"));
+            lines.push(String::new());
+            for s in items {
+                lines.push(format!("#### {}", describe_suggestion(s)));
+                lines.push(String::new());
+                lines.push(format!(
+                    "- **Significance:** {}",
+                    to_fixed(
+                        s.get("significance").and_then(Value::as_f64).unwrap_or(0.0),
+                        2
+                    )
+                ));
+                if js_truthy(s.get("rationale")) {
+                    lines.push(format!("- **Rationale:** {}", str_of(s, "rationale")));
+                }
+                lines.push(String::new());
+                lines.push("**Current:**".to_string());
+                lines.push(String::new());
+                lines.push(fence_or_empty(&str_of(s, "currentValue")));
+                lines.push(String::new());
+                lines.push("**Proposed:**".to_string());
+                lines.push(String::new());
+                lines.push(fence_or_empty(&str_of(s, "proposedValue")));
+                lines.push(String::new());
+                if let Some(excerpts) = s.get("memoryExcerpts").and_then(Value::as_array) {
+                    if !excerpts.is_empty() {
+                        lines.push("**Supporting memoirs:**".to_string());
+                        lines.push(String::new());
+                        for excerpt in excerpts {
+                            lines
+                                .push(format!("> {}", to_js_string(excerpt).replace('\n', "\n> ")));
+                            lines.push(String::new());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    lines.push("---".to_string());
+    lines.push(String::new());
+    lines.push(
+        "_Generated by Quilltap's Character Optimizer in suggestions-file mode. Discuss at leisure; apply only what rings true._"
+            .to_string(),
+    );
+    lines.push(String::new());
+
+    lines.join("\n")
+}
+
+/// v4 `writeSuggestionsFileToVault`: `Suggestions/refinement-<stamp>.md`
+/// through the database-store writer (the chunk pass rides along), then the
+/// info line. `Err` is the store's own message (v4's throw).
+#[allow(clippy::too_many_arguments)]
+async fn write_suggestions_file_to_vault(
+    db: &Db,
+    mount_point_id: &str,
+    character: &Value,
+    analysis: &Value,
+    suggestions: &[Value],
+    memory_count: usize,
+    model_name: &str,
+    now_ms: i64,
+) -> Result<String, String> {
+    let stamp_iso = iso_from_unix_ms(now_ms);
+    // `.replace(/[:]/g, '').replace(/\..+$/, '').replace('T', '-')`
+    let stamp_file = {
+        let no_colons = stamp_iso.replace(':', "");
+        let no_fraction = match no_colons.find('.') {
+            Some(i) => no_colons[..i].to_string(),
+            None => no_colons,
+        };
+        no_fraction.replacen('T', "-", 1)
+    };
+    let relative_path = format!("{SUGGESTIONS_FOLDER}/refinement-{stamp_file}.md");
+    let content = render_suggestions_markdown(
+        character,
+        analysis,
+        suggestions,
+        memory_count,
+        model_name,
+        &stamp_iso,
+    );
+
+    let mid = mount_point_id.to_string();
+    let rel = relative_path.clone();
+    db.write(move |writers| {
+        let mount = writers
+            .mount_index()
+            .ok_or_else(|| DbError::Internal("no mount-index database".into()))?
+            .connection();
+        write_database_document(mount, &mid, &rel, &content)
+            .map(|_| ())
+            .map_err(|e| DbError::Internal(e.to_string()))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    tracing::info!(
+        target: OPTIMIZER_LOG_TARGET,
+        context = %ctx(json!({
+            "characterId": str_of(character, "id"),
+            "mountPointId": mount_point_id,
+            "relativePath": relative_path,
+            "suggestionCount": suggestions.len(),
+        })),
+        "[CharacterOptimizer] Wrote suggestions file to vault"
+    );
+    Ok(relative_path)
+}
+
+// ---------------------------------------------------------------------------
+// The memory pipeline's semantic arm
+// ---------------------------------------------------------------------------
+
+/// The body of v4's `try { … }` around the semantic search: `Ok(None)` when
+/// embedding is unavailable (v4 falls through to text search silently),
+/// `Ok(Some(rows))` on a completed semantic pass, `Err(message)` for any
+/// failure inside the block (v4's catch → the fallback warn).
+async fn semantic_candidates<EMB: EmbeddingProvider>(
+    db: &Db,
+    embedding: &EMB,
+    character_id: &str,
+    user_id: &str,
+    search_query: &str,
+) -> Result<Option<Vec<Value>>, String> {
+    let uid = user_id.to_string();
+    let available = db
+        .read_main(move |c| embedding_profiles::find_default(c, &uid))
+        .map_err(|e| e.to_string())?
+        .is_some();
+    if !available {
+        return Ok(None);
+    }
+    let embedding_result = embedding
+        .generate_embedding_for_user(search_query, user_id, None, EmbeddingPriority::Background)
+        .await
+        .map_err(|e| e.message)?;
+    let cid = character_id.to_string();
+    let store = db
+        .read_main(move |c| CharacterVectorStore::load(c, &cid))
+        .map_err(|e| e.to_string())?;
+    let matched: HashSet<String> = store
+        .search(&embedding_result.embedding, 500)
+        .into_iter()
+        .map(|r| r.id)
+        .collect();
+    let cid = character_id.to_string();
+    let about_self = db
+        .read_main(move |c| find_by_character_about_character(c, &cid, &cid))
+        .map_err(|e| e.to_string())?;
+    Ok(Some(
+        about_self
+            .into_iter()
+            .filter(|m| {
+                m.get("id")
+                    .and_then(Value::as_str)
+                    .is_some_and(|id| matched.contains(id))
+            })
+            .collect(),
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// The runner
+// ---------------------------------------------------------------------------
+
+/// v4 `runCharacterOptimizer(characterId, connectionProfileId, userId, repos,
+/// onProgress, options)`: never fails — every throw inside v4's `try` becomes
+/// the `Optimization failed` error line plus the `error` frame.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_character_optimizer<CMP: CompletionProvider, EMB: EmbeddingProvider>(
+    db: &Db,
+    completion: &CMP,
+    embedding: &EMB,
+    character_id: &str,
+    connection_profile_id: &str,
+    user_id: &str,
+    on_progress: OnProgress<'_>,
+    options: &OptimizerOptions,
+    now_ms: i64,
+) {
+    let search_query = js_trim(&options.search_query).to_string();
+    tracing::info!(
+        target: OPTIMIZER_LOG_TARGET,
+        context = %ctx(json!({
+            "userId": user_id,
+            "characterId": character_id,
+            "connectionProfileId": connection_profile_id,
+            "maxMemories": options.max_memories,
+            "searchQuery": if search_query.is_empty() { "(none)" } else { search_query.as_str() },
+            "useSemanticSearch": options.use_semantic_search,
+            "sinceDate": options.since_date,
+            "beforeDate": options.before_date,
+        })),
+        "[CharacterOptimizer] Starting character optimization"
+    );
+
+    on_progress(json!({"type": "start"}));
+
+    let outcome = run_optimizer_inner(
+        db,
+        completion,
+        embedding,
+        character_id,
+        connection_profile_id,
+        user_id,
+        on_progress,
+        options,
+        &search_query,
+        now_ms,
+    )
+    .await;
+
+    if let Err(error_message) = outcome {
+        tracing::error!(
+            target: OPTIMIZER_LOG_TARGET,
+            context = %ctx(json!({
+                "characterId": character_id,
+                "userId": user_id,
+                "error": error_message,
+            })),
+            "[CharacterOptimizer] Optimization failed"
+        );
+        on_progress(json!({"type": "error", "error": error_message}));
+    }
+}
+
+/// The body of v4's `try` — `Err` is the thrown error's `.message`.
+#[allow(clippy::too_many_arguments)]
+async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
+    db: &Db,
+    completion: &CMP,
+    embedding: &EMB,
+    character_id: &str,
+    connection_profile_id: &str,
+    user_id: &str,
+    on_progress: OnProgress<'_>,
+    options: &OptimizerOptions,
+    search_query: &str,
+    now_ms: i64,
+) -> Result<(), String> {
+    let db_msg = |e: DbError| e.to_string();
+
+    // Step 1: Load character and memories
+    on_progress(json!({"type": "step_start", "step": "loading"}));
+
+    let cid = character_id.to_string();
+    let character = db
+        .read_main(|main| {
+            db.read_mount_index(|mount| characters_read::find_by_id(main, mount, &cid))
+        })
+        .map_err(db_msg)?
+        .filter(|c| {
+            c.get("userId")
+                .and_then(Value::as_str)
+                .is_none_or(|owner| owner == user_id)
+        })
+        .ok_or_else(|| "Character not found".to_string())?;
+
+    // Memory retrieval pipeline: search → date filter → rank → reinforcement
+    // filter → limit.
+    //
+    // The optimizer only learns from memories ABOUT the character
+    // (self-references: aboutCharacterId === characterId). Inter-character
+    // memories the character holds about other participants would skew
+    // behavioral-pattern analysis toward those others' habits. Legacy
+    // null-aboutCharacterId rows are excluded by design — the
+    // post-attribution-overhaul pipeline collapses self-references to
+    // characterId, so the null pile is genuinely unattributed and not a
+    // fallback for "self".
+    let text_search = |q: &str| {
+        let (cid, q) = (character_id.to_string(), q.to_string());
+        db.read_main(move |c| search_by_content_about_character(c, &cid, &cid, &q))
+            .map_err(db_msg)
+    };
+    let mut candidate_memories: Vec<Value> = if !search_query.is_empty() {
+        if options.use_semantic_search {
+            // Try semantic search first, fall back to text search
+            let mut used_semantic = false;
+            let mut rows = Vec::new();
+            match semantic_candidates(db, embedding, character_id, user_id, search_query).await {
+                Ok(Some(found)) => {
+                    rows = found;
+                    used_semantic = true;
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        target: OPTIMIZER_LOG_TARGET,
+                        context = %ctx(json!({"characterId": character_id, "error": error})),
+                        "[CharacterOptimizer] Semantic search failed, falling back to text search"
+                    );
+                }
+            }
+            if !used_semantic {
+                rows = text_search(search_query)?;
+            }
+            rows
+        } else {
+            // Text search only
+            text_search(search_query)?
+        }
+    } else {
+        // No search query — load all about-self memories
+        let cid = character_id.to_string();
+        db.read_main(move |c| find_by_character_about_character(c, &cid, &cid))
+            .map_err(db_msg)?
+    };
+
+    // Apply date filters (`if (sinceDate)` — JS truthy, so `''` is no filter;
+    // an unparsable day is `NaN`, against which every comparison is false).
+    if let Some(since) = options.since_date.as_deref().filter(|s| !s.is_empty()) {
+        let since_ms = day_boundary_ms(since);
+        candidate_memories.retain(|m| match (created_at_ms(m), since_ms) {
+            (Some(created), Some(since)) => created >= since,
+            _ => false,
+        });
+    }
+    if let Some(before) = options.before_date.as_deref().filter(|s| !s.is_empty()) {
+        let before_ms = day_boundary_ms(before);
+        candidate_memories.retain(|m| match (created_at_ms(m), before_ms) {
+            (Some(created), Some(before)) => created < before,
+            _ => false,
+        });
+    }
+
+    // Rank by weight and filter by reinforcement
+    let ranked = rank_memories_by_weight(candidate_memories, now_ms);
+    let reinforced: Vec<Value> = ranked.into_iter().filter(is_reinforced).collect();
+    let filtered_count = reinforced.len();
+    let qualifying_memories: Vec<Value> = reinforced
+        .into_iter()
+        .take(options.max_memories.max(0) as usize)
+        .collect();
+
+    on_progress(json!({
+        "type": "step_complete",
+        "step": "loading",
+        "memoryCount": qualifying_memories.len(),
+        "filteredCount": filtered_count,
+    }));
+
+    // Check if we have enough memories
+    if (qualifying_memories.len() as i64) < MIN_REINFORCED_MEMORIES {
+        tracing::info!(
+            target: OPTIMIZER_LOG_TARGET,
+            context = %ctx(json!({
+                "characterId": character_id,
+                "found": qualifying_memories.len(),
+                "required": MIN_REINFORCED_MEMORIES,
+            })),
+            "[CharacterOptimizer] Not enough reinforced memories for analysis"
+        );
+        on_progress(json!({
+            "type": "done",
+            "analysis": {
+                "behavioralPatterns": [],
+                "summary": "Not enough reinforced memories to analyze.",
+            },
+            "suggestions": [],
+        }));
+        return Ok(());
+    }
+
+    // Step 2: Perform analysis
+    on_progress(json!({"type": "step_start", "step": "analyzing"}));
+
+    let pid = connection_profile_id.to_string();
+    let profile = db
+        .read_main(move |c| connection_profiles::find_by_id(c, &pid))
+        .map_err(db_msg)?
+        .filter(|p| {
+            p.get("userId")
+                .and_then(Value::as_str)
+                .is_none_or(|owner| owner == user_id)
+        })
+        .ok_or_else(|| "Connection profile not found".to_string())?;
+
+    // Get API key — v4 `if (profile.apiKeyId)` → `findApiKeyByIdAndUserId` →
+    // `key_value`, else `''`. Resolved for read-order fidelity; the provider
+    // seam resolves its own (the external-prompt precedent).
+    let mut _api_key = String::new();
+    if let Some(key_id) = profile
+        .get("apiKeyId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        let (key_id, uid) = (key_id.to_string(), user_id.to_string());
+        if let Some(key) = db
+            .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
+            .map_err(db_msg)?
+        {
+            _api_key = key.key_value;
+        }
+    }
+
+    // (v4 ensures the plugin system is initialized here — the v5 provider is
+    // the assembled seam.)
+
+    // Create LLM provider — `profile.baseUrl || undefined`: TRUTHY, so an
+    // empty-string baseUrl is dropped (unlike the external prompt's `??`).
+    let provider = str_of(&profile, "provider");
+    let model_name = str_of(&profile, "modelName");
+    let base_url = profile
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+
+    // Build context strings (wardrobe rides along so every pass can see what
+    // the character already owns and wears)
+    let cid = character_id.to_string();
+    let wardrobe_items: Vec<Value> = db
+        .read_main(|main| {
+            db.read_mount_index(|mount| {
+                let docs = DocMountDocumentsRepository::new(mount);
+                wardrobe_read::find_by_character_id(main, &docs, &cid, false)
+            })
+        })
+        .map_err(db_msg)?;
+    let character_context = build_character_context(&character, Some(&wardrobe_items));
+    let wrapped: Vec<Value> = qualifying_memories
+        .iter()
+        .map(|m| json!({"memory": m}))
+        .collect();
+    let memory_context = build_memory_context(&wrapped);
+
+    let call_ctx = CallCtx {
+        completion,
+        provider,
+        base_url,
+        model_name: model_name.clone(),
+        profile_id: str_of(&profile, "id"),
+        profile_parameters: profile_params_value(&profile),
+        character_id,
+        user_id,
+        character_context,
+        memory_context,
+    };
+
+    // Call LLM for analysis
+    let (analysis_raw, analysis_duration_ms) =
+        call_optimizer_llm(&call_ctx, &get_analysis_prompt(), 0.5, 8000).await?;
+
+    let analysis: Value = match parse_llm_json(&analysis_raw) {
+        Ok(v) => v,
+        Err(parse_error) => {
+            let error = llm_json_failure_message(&analysis_raw, &parse_error);
+            tracing::error!(
+                target: OPTIMIZER_LOG_TARGET,
+                context = %ctx(json!({
+                    "characterId": character_id,
+                    "rawLength": utf16_len(&analysis_raw),
+                    "rawTail": utf16_tail(&analysis_raw, 200),
+                    "error": error,
+                })),
+                "[CharacterOptimizer] Failed to parse analysis JSON"
+            );
+            return Err(error);
+        }
+    };
+
+    // Log the LLM call
+    log_optimizer_call(
+        db,
+        &call_ctx,
+        "[character context + memory context + analysis instruction]",
+        0.5,
+        8000,
+        &analysis_raw,
+        analysis_duration_ms,
+    )
+    .await;
+
+    on_progress(json!({
+        "type": "step_complete",
+        "step": "analyzing",
+        "analysis": analysis,
+    }));
+
+    // Step 3: Generate suggestions, one focused pass per sub-step. Each pass
+    // runs the same character+memory context through the LLM but with a
+    // prompt that constrains it to a single concern (general fields, a
+    // specific scenario, a specific system prompt, or proposing new items),
+    // so per-item patterns don't get averaged out across siblings.
+    on_progress(json!({"type": "step_start", "step": "generating"}));
+
+    let existing_scenarios: Vec<Value> = character
+        .get("scenarios")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let existing_prompts: Vec<Value> = character
+        .get("systemPrompts")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+
+    // (kind, label, instruction) in v4's order.
+    let mut sub_steps: Vec<(&str, String, String)> = vec![(
+        "general",
+        "General fields".to_string(),
+        get_general_fields_suggestions_prompt(&analysis),
+    )];
+    for scenario in &existing_scenarios {
+        sub_steps.push((
+            "scenario",
+            format!("Scenario: {}", js_interp(scenario.get("title"))),
+            get_scenario_suggestion_prompt(&analysis, scenario),
+        ));
+    }
+    for prompt in &existing_prompts {
+        sub_steps.push((
+            "systemPrompt",
+            format!("System prompt: {}", js_interp(prompt.get("name"))),
+            get_system_prompt_suggestion_prompt(&analysis, prompt),
+        ));
+    }
+    sub_steps.push((
+        "physicalDescription",
+        "Physical description".to_string(),
+        get_physical_description_suggestion_prompt(
+            &analysis,
+            // `character.physicalDescription ?? null`
+            character
+                .get("physicalDescription")
+                .filter(|v| !v.is_null()),
+        ),
+    ));
+    sub_steps.push((
+        "wardrobe",
+        "Wardrobe".to_string(),
+        get_wardrobe_suggestion_prompt(&analysis, &wardrobe_items),
+    ));
+    sub_steps.push((
+        "properties",
+        "Aliases".to_string(),
+        get_properties_suggestion_prompt(&analysis, &character),
+    ));
+    sub_steps.push((
+        "newSystemPrompts",
+        "Proposed new system prompts".to_string(),
+        get_new_system_prompts_suggestion_prompt(&analysis),
+    ));
+
+    let mut state = SubStepState {
+        index: 0,
+        total: sub_steps.len(),
+        all_suggestions: Vec::new(),
+    };
+    for (kind, label, instruction) in &sub_steps {
+        let outcome = run_sub_step_core(
+            db,
+            &call_ctx,
+            &mut state,
+            kind,
+            label,
+            instruction,
+            on_progress,
+        )
+        .await;
+        contain_sub_step_outcome(character_id, label, outcome, on_progress);
+    }
+
+    let suggestions = state.all_suggestions;
+
+    on_progress(json!({
+        "type": "step_complete",
+        "step": "generating",
+        "suggestions": suggestions,
+    }));
+
+    // Optional: write the aggregated suggestions into the character's vault
+    // as a markdown document so the user (or the character, in-chat) can
+    // review and discuss them without applying anything to the live config.
+    let mut suggestions_file_path: Option<String> = None;
+    if options.output_mode == OptimizerOutputMode::SuggestionsFile {
+        let mount_point_id = character
+            .get("characterDocumentMountPointId")
+            .filter(|v| js_truthy(Some(v)))
+            .map(to_js_string)
+            .ok_or_else(|| {
+                "Suggestions-file mode requires the character to be linked to a document-store vault."
+                    .to_string()
+            })?;
+        let path = write_suggestions_file_to_vault(
+            db,
+            &mount_point_id,
+            &character,
+            &analysis,
+            &suggestions,
+            qualifying_memories.len(),
+            &model_name,
+            now_ms,
+        )
+        .await?;
+        on_progress(json!({
+            "type": "suggestions_file_written",
+            "suggestionsFilePath": path,
+        }));
+        suggestions_file_path = Some(path);
+    }
+
+    // Done
+    let mut complete_ctx = json!({
+        "characterId": character_id,
+        "characterName": str_of(&character, "name"),
+        "patternCount": analysis
+            .get("behavioralPatterns")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len),
+        "suggestionCount": suggestions.len(),
+        "outputMode": options.output_mode.as_str(),
+    });
+    if let Some(p) = &suggestions_file_path {
+        complete_ctx["suggestionsFilePath"] = Value::String(p.clone());
+    }
+    tracing::info!(
+        target: OPTIMIZER_LOG_TARGET,
+        context = %ctx(complete_ctx),
+        "[CharacterOptimizer] Character optimization complete"
+    );
+
+    let mut done = json!({
+        "type": "done",
+        "analysis": analysis,
+        "suggestions": suggestions,
+    });
+    if let Some(p) = suggestions_file_path {
+        done["suggestionsFilePath"] = Value::String(p);
+    }
+    on_progress(done);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -711,5 +2176,168 @@ mod tests {
             coerce_suggestion_text(Some(&json!([1, "a", null]))),
             r#"[1,"a",null]"#
         );
+    }
+
+    // --- the runner's helpers (P4.9K1 unit 4) ---
+
+    /// `v8_json_parse_message` against the table MEASURED on Node 24.13.1 at
+    /// the `f699da6f6` pin (`JSON.parse` of each input): the short / start /
+    /// end / surround context forms and the empty-input arm, plus the
+    /// `None` fall-through for inputs that START legally.
+    #[test]
+    fn v8_json_parse_message_matches_the_measured_table() {
+        let table: &[(&str, Option<&str>)] = &[
+            (
+                "The character is fine as she is.",
+                Some("Unexpected token 'T', \"The charac\"... is not valid JSON"),
+            ),
+            (
+                "I have no",
+                Some("Unexpected token 'I', \"I have no\" is not valid JSON"),
+            ),
+            (
+                "abc",
+                Some("Unexpected token 'a', \"abc\" is not valid JSON"),
+            ),
+            ("A", Some("Unexpected token 'A', \"A\" is not valid JSON")),
+            ("", Some("Unexpected end of JSON input")),
+            ("   \n", Some("Unexpected end of JSON input")),
+            (
+                "Sure! Here is the JSON you asked for: []",
+                Some("Unexpected token 'S', \"Sure! Here\"... is not valid JSON"),
+            ),
+            (
+                "\n\n\t  Sure thing, here it is: {}",
+                Some("Unexpected token 'S', \"\n\n\t  Sure thing\"... is not valid JSON"),
+            ),
+            (
+                "            The character",
+                Some("Unexpected token 'T', ...\"          The charac\"... is not valid JSON"),
+            ),
+            (
+                "xxxxxxxxxxxxxxxxxxxxx",
+                Some("Unexpected token 'x', \"xxxxxxxxxx\"... is not valid JSON"),
+            ),
+            (
+                "xxxxxxxxxxxxxxxxxxxx",
+                Some("Unexpected token 'x', \"xxxxxxxxxxxxxxxxxxxx\" is not valid JSON"),
+            ),
+            (".5", Some("Unexpected token '.', \".5\" is not valid JSON")),
+            // Legal starts — a failure INSIDE the value is the recorded
+            // fall-through to serde's wording.
+            ("{\"a\":1,}", None),
+            ("[1,2", None),
+            ("\"unterminated", None),
+            ("tru", None),
+            ("-", None),
+            ("12ab", None),
+        ];
+        for (input, want) in table {
+            assert_eq!(
+                v8_json_parse_message(input).as_deref(),
+                *want,
+                "input {input:?}"
+            );
+        }
+    }
+
+    /// Bug 119's outer containment (`runSubStep`'s catch): a failed core pass
+    /// logs the error line and emits a `substep_complete` WITHOUT a `subStep`
+    /// (v4's literal omits it); a succeeded pass emits nothing here.
+    #[test]
+    fn contain_sub_step_outcome_logs_and_emits_only_on_failure() {
+        let mut events: Vec<Value> = Vec::new();
+        let lines = crate::test_support::captured(|| {
+            contain_sub_step_outcome("c-1", "General fields", Ok(()), &mut |e| events.push(e));
+            contain_sub_step_outcome(
+                "c-1",
+                "Scenario: Harbor",
+                Err("boom".to_string()),
+                &mut |e| events.push(e),
+            );
+        });
+        assert_eq!(
+            events,
+            vec![
+                json!({"type": "substep_complete", "step": "generating", "partialSuggestions": []})
+            ]
+        );
+        let failed: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[CharacterOptimizer] Sub-step failed unexpectedly; continuing"))
+            .collect();
+        assert_eq!(failed.len(), 1, "exactly one containment line: {lines:#?}");
+        assert!(
+            failed[0].starts_with("ERROR ")
+                && failed[0]
+                    .contains(r#"context={"characterId":"c-1","subStep":"Scenario: Harbor"}"#)
+                && failed[0].contains("error=boom"),
+            "{}",
+            failed[0]
+        );
+    }
+
+    /// The JS spread's key discipline: an existing key keeps its POSITION with
+    /// the new value, keys the model omitted append in literal order, and a
+    /// `wardrobeItem` that resolves to `undefined` is OMITTED even when the
+    /// model sent one.
+    #[test]
+    fn finish_suggestion_keeps_spread_key_order() {
+        let s = json!({
+            "field": "description",
+            "rationale": null,
+            "currentValue": {"user": "x"},
+            "significance": 0.7,
+            "wardrobeItem": {"title": "ignored on a non-wardrobe field"},
+        });
+        let out = finish_suggestion(s.as_object().unwrap(), "ID".to_string());
+        assert_eq!(
+            serde_json::to_string(&out).unwrap(),
+            r#"{"field":"description","rationale":"","currentValue":"{\"user\":\"x\"}","significance":0.7,"id":"ID","proposedValue":"","memoryExcerpts":[]}"#
+        );
+        // A new wardrobe item: sanitized and appended LAST.
+        let s = json!({
+            "field": "wardrobeItems",
+            "significance": 0.5,
+            "wardrobeItem": {"title": " Coat ", "types": ["top", "bogus"], "isDefault": 1},
+        });
+        let out = finish_suggestion(s.as_object().unwrap(), "ID".to_string());
+        let keys: Vec<&String> = out.as_object().unwrap().keys().collect();
+        assert_eq!(
+            keys,
+            [
+                "field",
+                "significance",
+                "wardrobeItem",
+                "id",
+                "currentValue",
+                "proposedValue",
+                "rationale",
+                "memoryExcerpts"
+            ]
+        );
+        assert_eq!(out["wardrobeItem"]["title"], "Coat");
+        assert_eq!(out["wardrobeItem"]["types"], json!(["top"]));
+    }
+
+    /// `rankMemoriesByWeight` — the threshold drop, the STABLE descending sort,
+    /// and the `NaN`-weight drop for an unparsable `createdAt`.
+    #[test]
+    fn rank_memories_by_weight_orders_and_drops() {
+        let now = 1_772_446_830_000_i64;
+        let day = |d: i64| format!("2026-03-0{d}T00:00:00.000Z");
+        let mem = |id: &str, importance: f64, created: &str| json!({"id": id, "importance": importance, "createdAt": created, "relatedMemoryIds": []});
+        let ranked = rank_memories_by_weight(
+            vec![
+                mem("low", 0.04, &day(1)), // under the 0.05 floor → dropped
+                mem("a", 0.5, &day(1)),
+                mem("b", 0.9, &day(1)),
+                mem("a2", 0.5, &day(1)), // ties with `a` → stays AFTER it
+                mem("nan", 0.9, "not a date"), // JS NaN → dropped
+            ],
+            now,
+        );
+        let ids: Vec<&str> = ranked.iter().map(|m| m["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["b", "a", "a2"]);
     }
 }

@@ -112587,3 +112587,133 @@ verb's `character_id` is one more route identifier, 413 → 414); the three
 families re-run by name with `--nocapture`: rename 27 cases, external prompt
 16 cases / 8 model calls, wardrobe items 22 + 9 rows + the prompt. Versions:
 core 0.0.821, harness 0.0.710, host 0.0.107.
+
+### Unit C (K1 unit 4) — the optimizer runner: `characterOptimize`
+
+v4 `lib/services/character-optimizer.service.ts` `runCharacterOptimizer` (the
+POST-bug-119 shape) + the route's `handleOptimizeStream` — the second half of
+`generators::optimizer` (the pure half is K0's) and `api::generators_detail::
+{parse_optimize_body, character_optimize}` behind the `characterOptimize`
+verb. Streaming rides K0's `GeneratorProgressEmitter` (every `onProgress`
+event verbatim on `Event::GeneratorProgress` under the client's `progressId`)
+and the dispatch resolves `{ terminal: <last frame> }`; the driver seam gained
+`optimize(req, on_progress)`, the host still assembles `None` (unit D).
+
+**The fixture — `character-generators-{main,mount}.db` (NEW, committed;
+K2-owned, consumed here first).** The committed `characters-*` pair cannot
+exercise the optimizer at all (Aria's memories carry `aboutCharacterId: null`
+and `reinforcementCount: 1`, so every run is the "not enough" arm), so
+`harness/oracle/fixtures/build-character-generators-fixture.ts` builds a pair
+from v4's OWN repositories at the pin (`character-generators.json` is the
+spec): two connection profiles (one vision-capable), a default embedding
+profile (dims 4 — what makes `isEmbeddingAvailable` true), an uploads mount
+with four files stored under mount-blob keys so both `downloadFile` and v5's
+`download_file` read real BYTES (the K2 import arms), Mira — every prose
+field, aliases, pronouns, two system prompts, two scenarios, two wardrobe
+items, a physical description, TEN memories (eight about herself reinforced
+≥ 2, one a year old for the date arms, ONE with no vector entry, one with
+count 1, one about Nix) with a 4-dim vector index — and Nix, bare. Regen
+recipe in the builder's header; md5 main `a100b3b8…` / mount `3e0db819…`.
+
+**The runner.** Seams: the completion provider (v4 `createLLMProvider(...)
+.sendMessage`), the embedding provider (`generateEmbeddingForUser`), the clock
+(`now_ms` — the weight decay + the file stamp), `on_progress` (v4's callback).
+Measured and reproduced: the memory pipeline's three entrances (semantic →
+`isEmbeddingAvailable` = the default embedding profile, the query embedding,
+`CharacterVectorStore::search(…, 500)`, the about-self rows filtered to the
+hits; any failure in that block is the fallback WARN + text search; text
+search alone; all about-self), `if (sinceDate)` JS-truthy so `''` is no
+filter and an unparsable day is `NaN` (every comparison false),
+`rankMemoriesByWeight` (default config, the 0.05 floor, a STABLE descending
+sort), `reinforcementCount >= 2`, `slice(0, maxMemories)`; `profile.baseUrl
+|| undefined` is TRUTHY here where the external prompt's `??` is nullish; the
+two calls' exact `temperature`/`maxTokens` (0.5/8000, 0.7/6000) and
+`cacheKey`/`profileParameters`; the sub-step order and labels (`Scenario:
+${title}` interpolated); bug 119's containment in BOTH layers — the call
+failure and the parse failure caught inside the pass (the `Sub-step LLM call
+failed` / `unparseable JSON` warns + an empty `substep_complete` WITH its
+`subStep`), the non-array answer coerced with the `parsedType`/`recovered`
+warn, and the outer catch (`Sub-step failed unexpectedly; continuing`, error
+level, an empty `substep_complete` WITHOUT a `subStep`) — kept as a
+`Result` boundary though every fallible step is caught inside as v4's are,
+and pinned with a synthetic failure by `contain_sub_step_outcome_logs_and_
+emits_only_on_failure`; the spread's key discipline (an existing key keeps
+its POSITION, omitted keys append in literal order, `wardrobeItem:
+undefined` is dropped — pinned by `finish_suggestion_keeps_spread_key_order`);
+the suggestions-file stamp `refinement-2026-03-02-102030.md` and the
+byte-exact markdown (`renderSuggestionsMarkdown` whole: the YAML frontmatter,
+the eight report groups in v4's order, `describeSuggestion`'s nullish chains,
+`toFixed(2)`, the `> ` excerpt quoting, `fenceOrEmpty`). The log lines carry
+v4's message bytes and the whole context bag as ONE `context=<json>` field.
+
+**Zod.** `optimizeStreamSchema` measured on the pin's `zod` 4.5.4:
+`connectionProfileId` uuid; `maxMemories` `int()` ABORTS the bounds (5.5 → one
+`safeint` issue), `null` is `invalid_type` (only `undefined` defaults);
+`searchQuery` max 500 by CODE POINTS (`zod_len_max_ok`; 500 astral characters
+pass, 501 `x`s fail) with the `Too big: expected string to have <=500
+characters` message; the two nullable dates take `null` and refuse a number
+with `expected: "string"`; `outputMode` `invalid_value` for `null` and a
+stranger alike.
+
+**The differential — `character_optimizer_tier3_equivalence`** (tier 3;
+`harness/oracle/cases/character-optimizer-tier3.test.ts` drives v4's REAL
+route over a fresh copy of the pair per case with `createLLMProvider` scripted
+BY CALL INDEX, `generateEmbeddingForUser` canned by query text, the clock
+frozen at `frozenNowMs`, `logger` spied for the `[CharacterOptimizer]` lines;
+28 cases): the apply happy path, the coerced text fields (an object
+`currentValue`, a numeric `proposedValue`, a null `rationale`, a non-array
+`memoryExcerpts`, a `"0.9"` significance and a 0.29 one), text / semantic /
+semantic-throws-fallback / whitespace-only search, since / before / too-narrow
+/ empty-string date windows, the cap, Nix's not-enough, the four bug-119
+answer shapes (a wrapper with `suggestions` beating `items`, `items` alone, a
+lone object, a number then prose then a string), a thrown sub-step call and an
+empty answer (both contained), an unparseable analysis and a thrown analysis
+(the run fails), both suggestions-file modes (eight suggestions, and none),
+the missing profile, the 404, and three Zod refusals. Comparands: status +
+body for the refusals (v4 streams the rest — `body: null` both sides, and the
+dispatch `{terminal}` is asserted equal to the last frame), the WHOLE frame
+trace with suggestion ids masked, every model call (prompt bytes included),
+the vault's `Suggestions/` files, and the log lines (level + message +
+context). **Green on its first run** — 28 cases, 182 model calls, 497
+frames, 2 files, 60 log rows. Coverage floors on all five.
+
+**Eleven mutation proofs**, each reddening its arm(s): the scenario sub-steps
+reversed → 18; the coerced warn removed → 4 (the five bug-119 rows); a call
+failure escaping the inner catch → 2 (`substep_call_throws_contained`,
+`empty_model_answer_is_a_call_failure`); the reinforcement floor → 18; the
+file stamp's `T` kept → 2; the V8 twin disabled → 2 (`analysis_unparseable_
+fails_run`, `bug119_number_and_prose`); the significance floor → 9; the cap
+removed → `max_memories_cap`; the semantic hit filter dropped → **SURVIVED on
+the first fixture**: a 500-hit search over nine vectors matches every entry,
+so the filter was vacuous on BOTH sides — the fixture gained the vector-less
+tenth memory (the pair rebuilt, the oracle regenerated: `search_semantic_on`
+now loads 7 where the others load 8) and the re-run reddens exactly that
+case; the `searchQuery` max widened → `zod_refusal_bounds_and_nulls`; an
+empty-string `sinceDate` treated as a filter → `since_date_empty_string_is_
+no_filter`. Every mutation restored by file backup and the family re-run
+green.
+
+**Recorded, not compared / not reproduced:** (1) a JSON-parse failure's text
+is V8's `JSON.parse` wording in v4 and it reaches the WIRE (the `error` frame
+of an unparseable analysis) — `v8_json_parse_message` reproduces the measured
+`Unexpected token '<c>', "<context>"… is not valid JSON` forms (short / start
+/ end / surround windows, `GetErrorMessageWithEllipses`'s rule) and
+`Unexpected end of JSON input`, i.e. what a prose answer produces; a failure
+INSIDE a legally-started value falls back to serde's message (a divergence
+in the wire text for that shape); (2) v4's `.catch` warns `Failed to log
+analysis LLM call` / `Failed to log sub-step LLM call` have no v5 arm —
+`log_llm_call` never throws; (3) the two `CHARACTER_OPTIMIZER` `llm_logs`
+rows (no llm-logs partition on either side; the row shape ported — the
+placeholder user message, the 500-char content prefix, `connectionProfileId`);
+(4) the api key argument; (5) an unparsable `memory.createdAt` ranks as JS
+`NaN` — modelled by dropping the row (the repos never mint one). The dispatch
+wrong-type census moves 414 → 416 (`character_id` + `progress_id`).
+
+**Gate (Unit C):** fmt clean; clippy both feature sets clean (the first run
+caught a `too_many_arguments` on the suggestions-file writer and the
+external-prompt differential's `TestDriver` missing the new `optimize`
+method — both fixed, the gate re-run whole); `cargo test --workspace` with
+the four families' env vars — **519 test binaries / 2,944 passed / 0 failed,
+zero `SKIP:` lines**; the optimizer family re-run by name with `--nocapture`:
+28 cases / 182 model calls / 497 frames / 2 files / 60 log rows. Versions:
+core 0.0.822, harness 0.0.711.

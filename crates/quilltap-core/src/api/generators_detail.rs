@@ -28,6 +28,15 @@
 //!   after the 404 and the Zod arms, so a read-only embedder still answers
 //!   v4's shapes for everything short of the model call.
 //!
+//! * `optimize-stream` — `optimizeStreamSchema.parse(body)` (the same
+//!   uncaught-Zod 400), the `[Characters v1] Character optimizer starting
+//!   (streaming)` line, then the runner through the host driver: v4 answers a
+//!   `text/event-stream` of every `onProgress` event and NEVER a status past
+//!   that point (a failed run is an `error` FRAME, not a 500). v5 publishes the
+//!   same frames on the Event channel under the client's `progressId` and
+//!   resolves the dispatch with `{ terminal: <the last frame> }` (§B.1); the
+//!   REST edge re-frames them as v4's SSE bytes.
+//!
 //! Neither arm carries an archived-character refusal: v4 hides the tabs
 //! client-side (`CharacterDetailView.tsx:415`) and the server runs the request
 //! — an executed rename on a tombstone then trips the repository's archive
@@ -39,12 +48,18 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
+use tokio::sync::broadcast;
 
+use crate::api::types::{Event, GeneratorKind};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, DbError};
 use crate::generators::external_prompt::{ExternalPromptRequest, ExternalPromptResult};
+use crate::generators::optimizer::{
+    OnProgress, OptimizerOptions, OptimizerOutputMode, MAX_MEMORIES_FOR_ANALYSIS,
+};
 use crate::generators::refresh_archive::refresh_archive;
 use crate::generators::rename::{run_character_rename, RenameRequest, ReplacementPair};
+use crate::services::generator_progress::GeneratorProgressEmitter;
 
 use super::settings::{zod_parsed_type, zod_uuid_ok, ZOD_UUID_PATTERN};
 use super::types::{db_error_response, ErrorKind, Response};
@@ -78,6 +93,27 @@ pub trait GeneratorsDetailDriver: Send + Sync {
         &'a self,
         req: ExternalPromptDriverRequest,
     ) -> GeneratorsDetailFuture<'a, Result<ExternalPromptResult, DbError>>;
+
+    /// v4 `runCharacterOptimizer(characterId, connectionProfileId, userId,
+    /// repos, onProgress, options)` — never fails; every outcome is a frame
+    /// through `on_progress` (the `error` frame included).
+    fn optimize<'a>(
+        &'a self,
+        req: OptimizeDriverRequest,
+        on_progress: OnProgress<'a>,
+    ) -> GeneratorsDetailFuture<'a, ()>;
+}
+
+/// The projected `characterOptimize` a driver runs: the resolved single-user
+/// id, the route's character id, the Zod-validated profile id + options, and
+/// the wall clock the run is stamped with.
+#[derive(Clone, Debug)]
+pub struct OptimizeDriverRequest {
+    pub user_id: String,
+    pub character_id: String,
+    pub connection_profile_id: String,
+    pub options: OptimizerOptions,
+    pub now_ms: i64,
 }
 
 // ===========================================================================
@@ -538,4 +574,210 @@ pub async fn character_generate_external_prompt(
         // the middleware's 500 (or the contextful 503 for a broken vault).
         Err(e) => db_error_response(e),
     }
+}
+
+// ===========================================================================
+// characterOptimize (v4 `post.ts:92-143` `handleOptimizeStream`)
+// ===========================================================================
+
+/// v4 `optimizeStreamSchema.parse(body)` over the seven raw body fields the
+/// verb carries. `Err` is the middleware's `details` array (every issue, in
+/// schema key order — Zod collects them all). `Ok` is `(connectionProfileId,
+/// the materialized options)`.
+///
+/// Measured on the pin (`zod` 4.5.4): `.optional().default(x)` admits only
+/// `undefined` — an explicit `null` is `invalid_type` for the number / boolean
+/// fields and `invalid_value` for the enum; the two `.nullable()` dates take
+/// `null` as-is; `z.string().max(500)` counts code points (the P4.D158 rule,
+/// `jsstr::zod_len_max_ok`).
+#[allow(clippy::too_many_arguments)]
+pub fn parse_optimize_body(
+    connection_profile_id: Option<&Value>,
+    max_memories: Option<&Value>,
+    search_query: Option<&Value>,
+    use_semantic_search: Option<&Value>,
+    since_date: Option<&Value>,
+    before_date: Option<&Value>,
+    output_mode: Option<&Value>,
+) -> Result<(String, OptimizerOptions), Vec<Value>> {
+    let mut issues: Vec<Value> = Vec::new();
+    let path = |key: &str| vec![Value::String(key.to_string())];
+
+    // `connectionProfileId: z.string().uuid()`
+    let profile_id = check_uuid(
+        connection_profile_id,
+        &path("connectionProfileId"),
+        &mut issues,
+    );
+
+    // `maxMemories: z.number().int().min(5).max(200).optional().default(30)`
+    let max_memories = match max_memories {
+        None => Some(MAX_MEMORIES_FOR_ANALYSIS),
+        Some(v) => check_int_range(Some(v), 5, 200, &path("maxMemories"), &mut issues),
+    };
+
+    // `searchQuery: z.string().max(500).optional().default('')`
+    let search_query = match search_query {
+        None => Some(String::new()),
+        Some(Value::String(s)) => {
+            if crate::jsstr::zod_len_max_ok(s, 500) {
+                Some(s.clone())
+            } else {
+                issues.push(json!({
+                    "origin": "string",
+                    "code": "too_big",
+                    "maximum": 500,
+                    "inclusive": true,
+                    "path": path("searchQuery"),
+                    "message": "Too big: expected string to have <=500 characters",
+                }));
+                None
+            }
+        }
+        other => {
+            issues.push(invalid_type("string", &path("searchQuery"), other));
+            None
+        }
+    };
+
+    // `useSemanticSearch: z.boolean().optional().default(true)`
+    let use_semantic_search = match use_semantic_search {
+        None => Some(true),
+        Some(Value::Bool(b)) => Some(*b),
+        other => {
+            issues.push(invalid_type("boolean", &path("useSemanticSearch"), other));
+            None
+        }
+    };
+
+    // `sinceDate` / `beforeDate: z.string().nullable().optional().default(null)`
+    let mut nullable_string = |key: &str, v: Option<&Value>| -> Option<Option<String>> {
+        match v {
+            None | Some(Value::Null) => Some(None),
+            Some(Value::String(s)) => Some(Some(s.clone())),
+            other => {
+                issues.push(invalid_type("string", &path(key), other));
+                None
+            }
+        }
+    };
+    let since_date = nullable_string("sinceDate", since_date);
+    let before_date = nullable_string("beforeDate", before_date);
+
+    // `outputMode: z.enum(['apply', 'suggestions-file']).optional().default('apply')`
+    let output_mode = match output_mode {
+        None => Some(OptimizerOutputMode::Apply),
+        Some(Value::String(s)) if s == "apply" => Some(OptimizerOutputMode::Apply),
+        Some(Value::String(s)) if s == "suggestions-file" => {
+            Some(OptimizerOutputMode::SuggestionsFile)
+        }
+        Some(_) => {
+            issues.push(json!({
+                "code": "invalid_value",
+                "values": ["apply", "suggestions-file"],
+                "path": path("outputMode"),
+                "message": "Invalid option: expected one of \"apply\"|\"suggestions-file\"",
+            }));
+            None
+        }
+    };
+
+    if !issues.is_empty() {
+        return Err(issues);
+    }
+    Ok((
+        profile_id.expect("no issues"),
+        OptimizerOptions {
+            max_memories: max_memories.expect("no issues"),
+            search_query: search_query.expect("no issues"),
+            use_semantic_search: use_semantic_search.expect("no issues"),
+            since_date: since_date.expect("no issues"),
+            before_date: before_date.expect("no issues"),
+            output_mode: output_mode.expect("no issues"),
+        },
+    ))
+}
+
+/// v4's `optimize-stream` action, whole: 404 → Zod 400 → the route's info
+/// line → the driver refusal → the runner, every `onProgress` published
+/// through the K0 emitter under `progress_id` and the LAST event answered as
+/// the `{ terminal }` dispatch payload (§B.1). The REST SSE edge
+/// (`quilltap-web::generator_sse`) re-frames the same events as v4's
+/// `data: <JSON>\n\n` stream.
+#[allow(clippy::too_many_arguments)]
+pub async fn character_optimize(
+    db: &Db,
+    driver: Option<&Arc<dyn GeneratorsDetailDriver>>,
+    events: &broadcast::Sender<Event>,
+    user_id: &str,
+    character_id: &str,
+    progress_id: Option<&str>,
+    connection_profile_id: Option<&Value>,
+    max_memories: Option<&Value>,
+    search_query: Option<&Value>,
+    use_semantic_search: Option<&Value>,
+    since_date: Option<&Value>,
+    before_date: Option<&Value>,
+    output_mode: Option<&Value>,
+    now_ms: i64,
+) -> Response {
+    if let Err(r) = require_character(db, character_id) {
+        return r;
+    }
+
+    let (profile_id, options) = match parse_optimize_body(
+        connection_profile_id,
+        max_memories,
+        search_query,
+        use_semantic_search,
+        since_date,
+        before_date,
+        output_mode,
+    ) {
+        Ok(parsed) => parsed,
+        Err(issues) => return Response::validation_error(Value::Array(issues)),
+    };
+
+    tracing::info!(
+        user_id = %user_id,
+        character_id = %character_id,
+        connection_profile_id = %profile_id,
+        max_memories = options.max_memories,
+        search_query = %if options.search_query.is_empty() { "(none)" } else { options.search_query.as_str() },
+        use_semantic_search = options.use_semantic_search,
+        since_date = %options.since_date.as_deref().unwrap_or("null"),
+        before_date = %options.before_date.as_deref().unwrap_or("null"),
+        output_mode = %options.output_mode.as_str(),
+        "[Characters v1] Character optimizer starting (streaming)"
+    );
+
+    let Some(driver) = driver else {
+        return Response::error(
+            ErrorKind::Unavailable,
+            "character optimization not available: no GeneratorsDetailDriver is assembled",
+        );
+    };
+
+    let emitter =
+        GeneratorProgressEmitter::from_id(progress_id, GeneratorKind::Optimizer, events.clone());
+    let mut terminal: Option<Value> = None;
+    {
+        let mut sink = |event: Value| {
+            emitter.emit(event.clone());
+            terminal = Some(event);
+        };
+        driver
+            .optimize(
+                OptimizeDriverRequest {
+                    user_id: user_id.to_string(),
+                    character_id: character_id.to_string(),
+                    connection_profile_id: profile_id,
+                    options,
+                    now_ms,
+                },
+                &mut sink,
+            )
+            .await;
+    }
+    Response::Character(json!({ "terminal": terminal }))
 }

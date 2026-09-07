@@ -1,0 +1,339 @@
+{
+  "$comment": "P4.9K2 (consumed by P4.9K1's optimizer family too) — the character-generators fixture spec. Trimmed to the question: two profiles (one blind to images, one vision-capable), a default embedding profile, four upload-store files (two text, one PNG, one opaque binary), one rich character with reinforced about-self memories + vectors (the optimizer's sub-steps need reinforcementCount >= 2 AND aboutCharacterId == characterId, which the committed characters pair has none of), and one bare character. NO help docs, NO chats.",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "userId": "e18e05bc-63e8-4539-8a85-719b7a508850",
+  "seedTimestamp": "2026-03-01T00:00:00.000Z",
+  "apiKeys": [
+    {
+      "id": "a0000002-0000-4000-8000-000000000001",
+      "label": "mock-key",
+      "provider": "OPENAI_COMPATIBLE",
+      "key_value": "sk-synthetic-mock-key",
+      "isActive": true,
+      "lastUsed": null
+    },
+    {
+      "id": "a0000002-0000-4000-8000-000000000002",
+      "label": "vision-key",
+      "provider": "OPENAI",
+      "key_value": "sk-synthetic-vision-key",
+      "isActive": true,
+      "lastUsed": null
+    }
+  ],
+  "connectionProfiles": [
+    {
+      "id": "c0000002-0000-4000-8000-000000000001",
+      "name": "Local Mock",
+      "provider": "OPENAI_COMPATIBLE",
+      "modelName": "mock-model",
+      "baseUrl": "http://127.0.0.1:1/v1",
+      "apiKeyId": "a0000002-0000-4000-8000-000000000001",
+      "supportsImageUpload": false,
+      "isDefault": true
+    },
+    {
+      "id": "c0000002-0000-4000-8000-000000000002",
+      "name": "Vision Mock",
+      "provider": "OPENAI",
+      "modelName": "gpt-vision-mock",
+      "apiKeyId": "a0000002-0000-4000-8000-000000000002",
+      "supportsImageUpload": true
+    }
+  ],
+  "embeddingProfiles": [
+    {
+      "id": "e0000002-0000-4000-8000-000000000001",
+      "name": "Local Embeddings",
+      "provider": "OPENAI",
+      "apiKeyId": null,
+      "baseUrl": "http://127.0.0.1:1/v1",
+      "modelName": "mock-embed",
+      "dimensions": 4,
+      "truncateToDimensions": null,
+      "normalizeL2": false,
+      "isDefault": true,
+      "tags": []
+    }
+  ],
+  "uploadsMountPointId": "b0000002-0000-4000-8000-000000000001",
+  "files": [
+    {
+      "id": "f0000002-0000-4000-8000-000000000011",
+      "path": "uploads/lore.md",
+      "originalFilename": "lore.md",
+      "mimeType": "text/markdown",
+      "category": "DOCUMENT",
+      "textBody": "# Mira of the Lanterns\n\nMira keeps the harbor lanterns of Saltmere lit from dusk to dawn. She is the third keeper of her line; her mother's brass ring hangs from a cord at her throat and she touches it when she lies, which is seldom and badly.\n\nShe calls the harbormaster \"old barnacle\" to his face and he has never once objected. Sailors leave her small carvings on the lantern posts; she keeps every one in a tin box under the stairs.\n\nMira speaks quickly when nervous and slowly when angry. She hums while she works — the same four notes, always — and pretends she does not.\n"
+    },
+    {
+      "id": "f0000002-0000-4000-8000-000000000012",
+      "path": "uploads/notes.txt",
+      "originalFilename": "notes.txt",
+      "mimeType": "text/plain",
+      "category": "DOCUMENT",
+      "textBody": "Notes on Mira: afraid of deep water; loves salted plums; owes the chandler three months' oil money and pays it in stories."
+    },
+    {
+      "id": "f0000002-0000-4000-8000-000000000013",
+      "path": "uploads/portrait.png",
+      "originalFilename": "portrait.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "png": true
+    },
+    {
+      "id": "f0000002-0000-4000-8000-000000000014",
+      "path": "uploads/ledger.bin",
+      "originalFilename": "ledger.bin",
+      "mimeType": "application/octet-stream",
+      "category": "DOCUMENT",
+      "hexBody": "deadbeef00ff10"
+    }
+  ],
+  "characters": [
+    {
+      "id": "a2000002-0000-4000-8000-000000000001",
+      "name": "Mira",
+      "title": "Keeper of the Lanterns",
+      "identity": "Mira is the lantern-keeper of Saltmere harbor, known to every sailor who has ever docked there after dark.",
+      "description": "She speaks quickly when nervous and slowly when angry, and hums four notes while she works. She calls the harbormaster 'old barnacle' to his face.",
+      "manifesto": "You keep the lanterns lit.\nYou do not lie to sailors about the weather.",
+      "personality": "You are afraid of deep water and have never told anyone. You measure people by whether they thank you for the light.",
+      "firstMessage": "*Mira sets down the oil can and squints at you.* You're not from the boats. What brings you up the lantern stairs?",
+      "exampleDialogues": "{{user}}: Is the harbor safe tonight?\n{{char}}: *hums four notes* Safe as it ever is. Which is to say, mind the third post; the lamp there sulks.",
+      "aliases": [
+        "Mimi",
+        "Lantern-girl"
+      ],
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "hers"
+      },
+      "controlledBy": "llm",
+      "talkativeness": 0.6,
+      "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+      "systemPrompts": [
+        {
+          "name": "Default",
+          "content": "You are Mira, keeper of the Saltmere lanterns. Speak plainly; hum when you think.",
+          "isDefault": true,
+          "makeDefault": true
+        },
+        {
+          "name": "Terse",
+          "content": "You are Mira. Answer in few words.",
+          "isDefault": false
+        }
+      ],
+      "scenarios": [
+        {
+          "title": "Harbor at Dusk",
+          "content": "The lanterns are half lit; fog rolls in off the water and the last ferry is late.",
+          "makeDefault": true
+        },
+        {
+          "title": "Market Morning",
+          "content": "Saltmere's fish market, loud and wet, an hour after dawn."
+        }
+      ],
+      "wardrobe": [
+        {
+          "title": "Lantern Coat",
+          "description": "An oilcloth coat with deep pockets, smelling of lamp oil.",
+          "imagePrompt": "long oilcloth coat, deep pockets",
+          "types": [
+            "top"
+          ],
+          "isDefault": true
+        },
+        {
+          "title": "Brass Ring",
+          "description": "Her mother's brass ring on a leather cord.",
+          "types": [
+            "accessories"
+          ]
+        }
+      ],
+      "physicalDescription": {
+        "id": "51000002-0000-4000-8000-000000000001",
+        "name": "Standard",
+        "usageContext": null,
+        "headAndShouldersPrompt": "young woman, wind-tangled dark hair, soot on one cheek, oilcloth collar",
+        "shortPrompt": "young woman, dark hair, soot-smudged",
+        "mediumPrompt": "young woman with wind-tangled dark hair and a soot smudge on one cheek, sharp grey eyes",
+        "longPrompt": null,
+        "completePrompt": null,
+        "fullDescription": "Small and quick, with wind-tangled dark hair tied back with twine and a permanent smudge of soot on her left cheek. Grey eyes that narrow at weather and widen at gossip.",
+        "createdAt": "2026-03-01T00:00:00.000Z",
+        "updatedAt": "2026-03-01T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "a2000002-0000-4000-8000-000000000002",
+      "name": "Nix",
+      "description": "A quiet dockhand.",
+      "controlledBy": "llm",
+      "talkativeness": 0.5,
+      "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+    }
+  ],
+  "memories": [
+    {
+      "id": "0e000002-0000-4000-8000-000000000001",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001",
+      "content": "Mira lights the harbor lanterns every dusk without fail, even in the worst weather.",
+      "summary": "Mira never misses lighting the lanterns.",
+      "importance": 0.9,
+      "reinforcementCount": 5,
+      "createdAt": "2026-02-10T00:00:00.000Z",
+      "vector": [
+        1,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000002",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001",
+      "content": "Mira calls the harbormaster 'old barnacle' to his face and he has never objected.",
+      "summary": "Mira teases the harbormaster.",
+      "importance": 0.7,
+      "reinforcementCount": 3,
+      "createdAt": "2026-02-20T00:00:00.000Z",
+      "vector": [
+        0,
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000003",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001",
+      "content": "Mira wears her mother's brass ring on a cord and touches it when she lies.",
+      "summary": "Mira touches her ring when lying.",
+      "importance": 0.6,
+      "reinforcementCount": 2,
+      "createdAt": "2026-03-01T00:00:00.000Z",
+      "vector": [
+        0,
+        0,
+        1,
+        0
+      ]
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000004",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001",
+      "content": "Mira hummed at a wedding once and was mortified.",
+      "summary": "Mira hummed at a wedding.",
+      "importance": 0.4,
+      "reinforcementCount": 1,
+      "createdAt": "2026-03-01T00:00:00.000Z",
+      "vector": [
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000005",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000002",
+      "content": "Nix carried Mira's oil cans up the stairs without being asked.",
+      "summary": "Nix helped with the oil.",
+      "importance": 0.8,
+      "reinforcementCount": 4,
+      "createdAt": "2026-02-15T00:00:00.000Z",
+      "vector": [
+        0.5,
+        0.5,
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000006",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001",
+      "content": "Mira's lantern oil runs low every winter and she rations it by the calendar.",
+      "summary": "Mira rations winter oil.",
+      "importance": 0.5,
+      "reinforcementCount": 2,
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "vector": [
+        0.5,
+        0.5,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000007",
+      "content": "Mira keeps every carving the sailors leave in a tin box under the stairs.",
+      "summary": "Mira hoards sailors' carvings.",
+      "importance": 0.55,
+      "reinforcementCount": 2,
+      "createdAt": "2026-02-25T00:00:00.000Z",
+      "vector": [
+        0.7,
+        0,
+        0.7,
+        0
+      ],
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000008",
+      "content": "Mira pays the chandler in stories when the oil money runs short.",
+      "summary": "Mira pays debts in stories.",
+      "importance": 0.65,
+      "reinforcementCount": 3,
+      "createdAt": "2026-02-26T00:00:00.000Z",
+      "vector": [
+        0,
+        0.7,
+        0.7,
+        0
+      ],
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000009",
+      "content": "Mira refuses to lie to sailors about the weather, whatever it costs her.",
+      "summary": "Mira never lies about weather.",
+      "importance": 0.85,
+      "reinforcementCount": 6,
+      "createdAt": "2026-02-27T00:00:00.000Z",
+      "vector": [
+        0,
+        0,
+        0,
+        0.9
+      ],
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "0e000002-0000-4000-8000-000000000010",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "aboutCharacterId": "a2000002-0000-4000-8000-000000000001",
+      "content": "Mira mends the lantern wicks with sailcloth thread nobody else would think to use.",
+      "summary": "Mira mends wicks with sailcloth thread.",
+      "importance": 0.6,
+      "reinforcementCount": 3,
+      "createdAt": "2026-02-28T00:00:00.000Z",
+      "vector": null
+    }
+  ]
+}

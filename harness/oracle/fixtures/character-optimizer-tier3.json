@@ -1,0 +1,509 @@
+{
+  "$comment": "P4.9K1 — the character-optimizer corpus over the committed character-generators-{main,mount}.db pair. Mira a2…01 (9 memories: 7 reinforced about herself, one rc=1, one about Nix), Nix a2…02 (none). Minted-but-baked ids: prompts Default 41c13f30-6ddb-8763-9fc8-eec33620c6ac / Terse 980a07f5-08d5-8d84-bf51-e279382fc493; scenarios Harbor d686e052-ebcd-868d-ac59-d85d1592b6c7 / Market 96763255-40bd-8fda-ab82-a356fedcb533; wardrobe Lantern Coat 19fa04df-a394-4c10-a3c8-864ac11bad29 / Brass Ring c9565dc5-31f6-4ace-8666-c1ac165382b2. `calls` is the scripted model answer per CALL INDEX (0 = the analysis, then one per sub-step in v4's order: general, Harbor, Market, Default, Terse, physical, wardrobe, properties, newSystemPrompts); a case that ends before the model has none. `embeddings` cans `generateEmbeddingForUser` by the exact query text; `embeddingThrows` makes it throw. The wall clock is frozen at `frozenNowMs` on both sides (the suggestions-file stamp + the memory-weight decay).",
+  "frozenNowMs": 1772446830000,
+  "profileId": "c0000002-0000-4000-8000-000000000001",
+  "analysis": "{\"behavioralPatterns\":[{\"pattern\":\"Keeps the lanterns lit without fail\",\"evidence\":\"Lights them every dusk even in the worst weather\",\"frequency\":\"Every memory\"},{\"pattern\":\"Teases authority to its face\",\"evidence\":\"Calls the harbormaster old barnacle\",\"frequency\":\"Often\"}],\"summary\":\"Mira has settled into a dutiful, wry keeper whose configuration undersells her stubborn honesty.\"}",
+  "subSteps": {
+    "general": "[{\"field\":\"description\",\"currentValue\":\"She speaks quickly when nervous and slowly when angry, and hums four notes while she works. She calls the harbormaster 'old barnacle' to his face.\",\"proposedValue\":\"She speaks quickly when nervous and slowly when angry, hums four notes while she works, and needles the harbormaster to his face.\",\"rationale\":\"The teasing is a habit, not a one-off.\",\"significance\":0.6,\"memoryExcerpts\":[\"Calls the harbormaster old barnacle\"]},{\"field\":\"talkativeness\",\"currentValue\":\"0.6\",\"proposedValue\":\"0.7\",\"rationale\":\"She narrates her work.\",\"significance\":0.2,\"memoryExcerpts\":[]}]",
+    "harbor": "[{\"field\":\"scenarios\",\"subId\":\"d686e052-ebcd-868d-ac59-d85d1592b6c7\",\"subName\":\"Harbor at Dusk\",\"currentValue\":\"The lanterns are half lit; fog rolls in off the water and the last ferry is late.\",\"proposedValue\":\"The lanterns are half lit against a rolling fog; the last ferry is late and the third post's lamp sulks.\",\"rationale\":\"The sulking lamp recurs.\",\"significance\":0.35,\"memoryExcerpts\":[\"mind the third post\"]}]",
+    "market": "[]",
+    "default": "[{\"field\":\"systemPrompt\",\"subId\":\"41c13f30-6ddb-8763-9fc8-eec33620c6ac\",\"subName\":\"Default\",\"currentValue\":\"You are Mira, keeper of the Saltmere lanterns. Speak plainly; hum when you think.\",\"proposedValue\":\"You are Mira, keeper of the Saltmere lanterns. Speak plainly, hum when you think, and never soften the weather.\",\"rationale\":\"Her honesty about weather is load-bearing.\",\"significance\":0.5,\"memoryExcerpts\":[\"refuses to lie to sailors about the weather\"]}]",
+    "terse": "[]",
+    "physical": "[{\"field\":\"physicalDescription\",\"subId\":\"shortPrompt\",\"subName\":\"Short Prompt\",\"currentValue\":\"young woman, dark hair, soot-smudged\",\"proposedValue\":\"young woman, dark hair, soot-smudged, brass ring on a cord\",\"rationale\":\"The ring is always worn.\",\"significance\":0.4,\"memoryExcerpts\":[\"wears her mother's brass ring on a cord\"]}]",
+    "wardrobe": "[{\"field\":\"wardrobeItems\",\"subId\":\"19fa04df-a394-4c10-a3c8-864ac11bad29\",\"subName\":\"Lantern Coat\",\"currentValue\":\"An oilcloth coat with deep pockets, smelling of lamp oil.\",\"proposedValue\":\"An oilcloth coat with deep pockets and a tin box's worth of carvings rattling in them, smelling of lamp oil.\",\"rationale\":\"She carries the carvings.\",\"significance\":0.3,\"memoryExcerpts\":[\"keeps every carving in a tin box\"]},{\"field\":\"wardrobeItems\",\"name\":\"Twine Hair Tie\",\"currentValue\":\"\",\"proposedValue\":\"A length of tarred twine she ties her hair back with.\",\"rationale\":\"Her hair is always tied with twine.\",\"significance\":0.45,\"memoryExcerpts\":[\"dark hair tied back with twine\"],\"wardrobeItem\":{\"title\":\"Twine Hair Tie\",\"description\":\"A length of tarred twine holding her hair back.\",\"imagePrompt\":\"hair tied back with tarred twine\",\"types\":[\"hair\",\"cape\"],\"appropriateness\":\"everyday\",\"isDefault\":\"yes\"}},{\"field\":\"wardrobeItems\",\"name\":\"Ghost Garment\",\"currentValue\":\"\",\"proposedValue\":\"An item whose payload has no valid slot.\",\"rationale\":\"Should be dropped.\",\"significance\":0.9,\"memoryExcerpts\":[],\"wardrobeItem\":{\"title\":\"Ghost Garment\",\"description\":\"no slots\",\"types\":[\"cape\"]}},{\"field\":\"wardrobeItems\",\"name\":\"Payload-less\",\"currentValue\":\"\",\"proposedValue\":\"A new item with no wardrobeItem payload at all.\",\"rationale\":\"Should be dropped.\",\"significance\":0.9,\"memoryExcerpts\":[]}]",
+    "properties": "[{\"field\":\"aliases\",\"currentValue\":\"Mimi, Lantern-girl\",\"proposedValue\":\"Keeper\",\"rationale\":\"Sailors call her Keeper.\",\"significance\":0.5,\"memoryExcerpts\":[\"known to every sailor\"]}]",
+    "newPrompts": "[{\"field\":\"systemPrompt\",\"name\":\"Storm Watch\",\"currentValue\":\"\",\"proposedValue\":\"You are Mira on a storm night: terse, watchful, honest to the point of rudeness about the weather.\",\"rationale\":\"Storm nights are a distinct mode.\",\"significance\":0.55,\"memoryExcerpts\":[\"never lies about the weather\"]}]"
+  },
+  "cases": [
+    {
+      "name": "apply_happy",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "harbor",
+        "market",
+        "default",
+        "terse",
+        "physical",
+        "wardrobe",
+        "properties",
+        "newPrompts"
+      ]
+    },
+    {
+      "name": "coerced_text_fields",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        {
+          "content": "[{\"field\":\"description\",\"currentValue\":{\"user\":\"x\",\"char\":\"y\"},\"proposedValue\":42,\"rationale\":null,\"significance\":0.7,\"memoryExcerpts\":[\"a\",7,null,{\"b\":1}]},{\"field\":\"identity\",\"currentValue\":\"c\",\"proposedValue\":\"d\",\"rationale\":\"r\",\"significance\":\"0.9\",\"memoryExcerpts\":\"not an array\"},null,{\"field\":\"identity\",\"currentValue\":\"e\",\"proposedValue\":\"f\",\"rationale\":\"r\",\"significance\":0.29,\"memoryExcerpts\":[]}]"
+        },
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "search_text_only",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "searchQuery": "lantern",
+        "useSemanticSearch": false
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "search_semantic_on",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "searchQuery": "the brass ring",
+        "useSemanticSearch": true
+      },
+      "embeddings": {
+        "the brass ring": [
+          0,
+          0,
+          1,
+          0
+        ]
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "physical",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "search_semantic_throws_fallback",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "searchQuery": "weather"
+      },
+      "embeddingThrows": true,
+      "calls": [
+        "analysis",
+        "general",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "search_no_hits_not_enough",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "searchQuery": "zeppelin",
+        "useSemanticSearch": false
+      },
+      "calls": []
+    },
+    {
+      "name": "since_date",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sinceDate": "2026-02-26"
+      },
+      "calls": [
+        "analysis",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "before_date",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "beforeDate": "2026-02-15"
+      },
+      "calls": [
+        "analysis",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "date_window_too_narrow",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sinceDate": "2026-02-27",
+        "beforeDate": "2026-02-28"
+      },
+      "calls": []
+    },
+    {
+      "name": "max_memories_cap",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "maxMemories": 5
+      },
+      "calls": [
+        "analysis",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "not_enough_nix",
+      "characterId": "a2000002-0000-4000-8000-000000000002",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": []
+    },
+    {
+      "name": "bug119_wrapper_suggestions_wins",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        {
+          "content": "{\"items\":[{\"field\":\"identity\",\"currentValue\":\"i\",\"proposedValue\":\"WRONG\",\"rationale\":\"r\",\"significance\":0.5,\"memoryExcerpts\":[]}],\"suggestions\":[{\"field\":\"identity\",\"currentValue\":\"i\",\"proposedValue\":\"RIGHT\",\"rationale\":\"r\",\"significance\":0.5,\"memoryExcerpts\":[]}]}"
+        },
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "bug119_wrapper_items",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        {
+          "content": "{\"items\":[{\"field\":\"identity\",\"currentValue\":\"i\",\"proposedValue\":\"ITEMS\",\"rationale\":\"r\",\"significance\":0.5,\"memoryExcerpts\":[]}]}"
+        },
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "bug119_lone_object",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        {
+          "content": "{\"field\":\"personality\",\"currentValue\":\"p\",\"proposedValue\":\"LONE\",\"rationale\":\"r\",\"significance\":0.5,\"memoryExcerpts\":[]}"
+        },
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "bug119_number_and_prose",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        {
+          "content": "42"
+        },
+        {
+          "content": "I have no suggestions for this scenario, sorry!"
+        },
+        "[]",
+        {
+          "content": "\"just a string\""
+        },
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "substep_call_throws_contained",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        "general",
+        {
+          "throws": "provider melted"
+        },
+        "[]",
+        "default",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "newPrompts"
+      ]
+    },
+    {
+      "name": "empty_model_answer_is_a_call_failure",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "analysis",
+        {
+          "content": ""
+        },
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "analysis_unparseable_fails_run",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        {
+          "content": "The character is fine as she is."
+        }
+      ]
+    },
+    {
+      "name": "analysis_call_throws_fails_run",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        {
+          "throws": "boom"
+        }
+      ]
+    },
+    {
+      "name": "suggestions_file_mode",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "outputMode": "suggestions-file"
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "harbor",
+        "[]",
+        "default",
+        "[]",
+        "physical",
+        "wardrobe",
+        "properties",
+        "newPrompts"
+      ]
+    },
+    {
+      "name": "suggestions_file_no_suggestions",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "outputMode": "suggestions-file"
+      },
+      "calls": [
+        {
+          "content": "{\"behavioralPatterns\":[],\"summary\":\"\"}"
+        },
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]",
+        "[]"
+      ]
+    },
+    {
+      "name": "missing_profile",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000009-0000-4000-8000-000000000009"
+      },
+      "calls": []
+    },
+    {
+      "name": "missing_character_404",
+      "characterId": "99999999-9999-4999-8999-999999999999",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001"
+      },
+      "calls": []
+    },
+    {
+      "name": "zod_refusal",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "not-a-uuid",
+        "maxMemories": 3,
+        "searchQuery": 7,
+        "useSemanticSearch": "yes",
+        "sinceDate": 5,
+        "outputMode": "sideways"
+      },
+      "calls": []
+    },
+    {
+      "name": "since_date_empty_string_is_no_filter",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sinceDate": "",
+        "beforeDate": ""
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "harbor",
+        "market",
+        "default",
+        "terse",
+        "physical",
+        "wardrobe",
+        "properties",
+        "newPrompts"
+      ]
+    },
+    {
+      "name": "search_query_whitespace_only_is_no_search",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "searchQuery": "   \t ",
+        "useSemanticSearch": true
+      },
+      "calls": [
+        "analysis",
+        "general",
+        "harbor",
+        "market",
+        "default",
+        "terse",
+        "physical",
+        "wardrobe",
+        "properties",
+        "newPrompts"
+      ]
+    },
+    {
+      "name": "zod_refusal_bounds_and_nulls",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "maxMemories": 5.5,
+        "searchQuery": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "useSemanticSearch": null,
+        "beforeDate": 5,
+        "outputMode": null
+      },
+      "calls": []
+    },
+    {
+      "name": "zod_max_memories_too_big_only",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": {
+        "connectionProfileId": "c0000002-0000-4000-8000-000000000001",
+        "maxMemories": 201,
+        "sinceDate": null,
+        "outputMode": "suggestions-file"
+      },
+      "calls": []
+    }
+  ]
+}

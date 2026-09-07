@@ -2442,7 +2442,10 @@ const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 421;
 // P4.9K1 unit 3 added `CharacterGenerateExternalPrompt.character_id` (the same
 // `/api/v1/characters/[id]?action=` route param; its four body fields are
 // `Value` tri-states parsed by v4's Zod schema inside the handler) — 413 → 414.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 414;
+// P4.9K1 unit 4 added `CharacterOptimize.{character_id, progress_id}` (the route
+// param + the client-minted progress scope; its seven body fields are `Value`
+// tri-states parsed by `optimizeStreamSchema` inside the handler) — 414 → 416.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 416;
 
 #[test]
 fn census_covers_every_typed_request_field() {
