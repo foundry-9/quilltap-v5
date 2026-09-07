@@ -494,27 +494,28 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
     ),
     // `POST /api/v1/characters` — same shape: v4's `handlers/post.ts:592` falls
     // through to `handleCreate` for bare / `?action=` / unknown (a Zod 400 over
-    // the empty body); v5 serves only the multipart `import` and
-    // `reset-builtins` legs, creation being a dispatch verb.
+    // the empty body); v5 serves the multipart `import` and `reset-builtins`
+    // legs plus (P4.9K2) the two `ai-wizard` arms, creation being a dispatch
+    // verb.
     (
         "characters_collection_post__bare",
         400,
-        "This route serves ?action=import and ?action=reset-builtins only",
+        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard",
     ),
     (
         "characters_collection_post__empty",
         400,
-        "This route serves ?action=import and ?action=reset-builtins only",
+        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard",
     ),
     (
         "characters_collection_post__unknown",
         400,
-        "This route serves ?action=import and ?action=reset-builtins only",
+        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard",
     ),
     (
         "characters_collection_post__empty_then_known",
         400,
-        "This route serves ?action=import and ?action=reset-builtins only",
+        "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard",
     ),
     // `GET /api/v1/chats/{id}` — v4's if-chain falls through to the whole chat
     // payload; v5 hosts only the legs the dispatch channel cannot carry, split
@@ -605,13 +606,9 @@ const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
         400,
         "The 'capabilities-report-progress' action is not served on this route; it rides POST /api/dispatch",
     ),
-    (
-        "POST",
-        "/api/v1/system/tools",
-        "ai-import-stream",
-        400,
-        "The 'ai-import-stream' action is not served on this route; it rides POST /api/dispatch",
-    ),
+    // (`POST /api/v1/system/tools?action=ai-import-stream` was retired from
+    // this list at P4.9K2 — the edge SERVES it now; its `known` row is v4's
+    // handler on both sides and is not cross-compared like every `known`.)
     // --- P4.72: `system/unlock`'s four v4-known siblings ---
     // v4's `isUnlockAction` (`system/unlock/route.ts:102`) knows five; v5
     // aliases only `change-passphrase` at this URL because the other four have

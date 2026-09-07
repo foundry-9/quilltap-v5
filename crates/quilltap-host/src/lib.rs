@@ -63,6 +63,11 @@ pub mod wire;
 /// external-prompt runners over the spine's providers.
 pub mod generators_detail_driver;
 // === end P4.9K1 ===
+// === P4.9K2 ===
+/// The creation-pair generator driver (P4.9K2 unit 6) — the wizard + AI-import
+/// runners over the spine's provider and the disk backend.
+pub mod generators_wizard_driver;
+// === end P4.9K2 ===
 
 pub use apply_fs::ApplyFsOps;
 pub use avatar_preview::HostAvatarPreviewRenderer;

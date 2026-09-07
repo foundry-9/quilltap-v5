@@ -113098,3 +113098,82 @@ lane's eight `QT_ORACLE_*` vars **523 test binaries / 2,948 passed / 0
 failed, zero `SKIP:` lines, exit 0** — `ai_import_matches_oracle ... ok`
 and `ai_import_assembly_matches_oracle ... ok` confirmed by name. Versions:
 core 0.0.825, harness 0.0.714.
+
+### Unit I (K2 unit 6) — the host wizard driver LIVE; `?action=ai-wizard` / `?action=ai-wizard-stream` on the characters collection; `?action=ai-import-stream` on `POST /api/v1/system/tools`
+
+**The driver.** `quilltap-host::generators_wizard_driver::
+HostGeneratorsWizardDriver<CMP>` holds the spine bundle's completion
+provider `Arc`, the file-storage backend `Arc<dyn StorageBackend>`, the
+`Db` and the engine's version string; `wizard` / `wizard_stream` /
+`ai_import_stream` call the three runners directly. The spine bundle gained
+`generators_wizard: Option<Arc<dyn GeneratorsWizardDriver>>` (the K2 fence
+after K1's field; the completion `Arc` cloned before the create-spine
+literal moves it — the K1 lesson), `host.rs` picks it up where unit 3 left
+`None`, and the two canned `SpineBundle` literals in the web tests carry the
+field. **⚠ 💸 LIVE:** in production every wizard field, the vision call and
+every import step now reaches a real provider.
+
+**The REST edges.** `characters_collection_post` serves `?action=ai-wizard`
+(JSON — v4's `handleAiWizard`: the `WizardResult` body, the Zod
+`validationError` envelope, the middleware 500 on a runner throw) and
+`?action=ai-wizard-stream` (v4's `handleAiWizardStream`: the K0 re-framer
+over `generatorProgress` under a minted `progressId`); the unknown-action
+sentence grows the two names. `system_data_routes` serves
+`?action=ai-import-stream` (v4 `handleAIImportStream`): the body is read
+by hand as v4 reads it — a non-JSON body is v4's middleware 500 carrying
+V8's `JSON.parse` wording (the `optimizer.rs` twin), `null` is v4's
+`Cannot read properties of null (reading 'profileId')` 500, a non-object
+falls into the missing-`profileId` 400 — then the SSE stream.
+
+**`query_param_semantics_equivalence`** — the `ai-import-stream` UNSERVED
+row RETIRED (the edge serves it; its `known` row is v4's handler on both
+sides), the four `characters_collection_post__*` served-prefix rows re-pinned
+to `This route serves ?action=import, ?action=reset-builtins, ?action=ai-
+wizard`; the oracle regenerated from the K2 pin through the sweep driver.
+Red-first: HEAD's test against the new edges FAILED exactly where
+predicted — `unserved_known_actions_are_pinned_v5_side` on the
+`ai-import-stream` row (the edge now answers the handler's 400, not the
+refusal) and the four `characters_collection_post__*_recorded` rows
+(`RECORDED-DIVERGENCE DRIFTED` on the grown sentence); the spliced test is
+GREEN — 54 cross-compared refusal rows, 54 equality-only handler rows, the
+four recorded divergences intact (the oracle from Unit D's pinned regen —
+v4's side of this family did not move).
+
+**`generators_wizard_routes`** (the wire test): boots the generators
+instance with `ProductionSpineFactory` registered (the K1 unit-5 venue
+lesson — under the bare test config every driver is `None` and only the
+refusal is visible) — proves all three edges WIRED — GREEN: the unknown-action sentence names
+both wizard arms; `?action=ai-wizard` answers v4's Zod envelope (the
+root-level issue on `[1]`, the missing-everything issues) and the non-JSON
+500, then the driver proof — one `title` field over a profile pointed at
+`http://127.0.0.1:1` comes back `success: true` with `errors.title` holding
+the TRANSPORT's sentence, never the not-assembled refusal;
+`?action=ai-wizard-stream` answers `text/event-stream` with v4's `start` /
+`field_start` / `field_error` / `done` bytes and the Zod 400 before any
+stream; `?action=ai-import-stream` answers the two 400s, the non-JSON 500
+with V8's wording (`"not json"` names `'o'` — the unit-5 keyword scan; the
+draft's pre-fix `'n'` was the test's one red), the JSON-`null` 500 with
+v4's `Cannot read properties of null (reading 'profileId')`, the array
+body's missing-`profileId` 400, and a run streamed to its fatal
+`character_basics` transport failure with the `done` frame's `_fatal`.
+
+**Mutation proofs (wire-level, four):** the host assembling
+`generators_wizard: None` → the wizard leg answers 503 (the refusal) where
+the test demands 200; `ai-wizard-stream` routed to the JSON handler →
+`application/json` where `text/event-stream` is demanded; the
+`ai-import-stream` arm removed → the retired refusal sentence where the
+handler's 400 is demanded; the `null`-body sentence reworded → SURVIVED the
+first pass (the test never sent `null`) — the leg was added (with the
+array-body 400 beside it) and the mutation now reddens. Every mutation
+restored by file backup, the test re-run green. The splice script's own
+defect is recorded here too: it asserted the spine-literal anchor and never
+applied the replacement (a missing `replace` line) — the workspace check
+caught the missing field and the literal was applied by hand.
+
+**Gate** (`CARGO_INCREMENTAL=0`, full log + sentinel): `cargo fmt --all
+--check` clean; clippy both feature sets exit 0; `cargo test --workspace`
+with the lane's eight `QT_ORACLE_*` vars **524 test binaries / 2,949 passed
+/ 0 failed, zero `SKIP:` lines, exit 0** —
+`the_creation_pair_actions_resolve_over_the_live_assembly ... ok` and
+`query_param_semantics_match_oracle ... ok` confirmed by name. Versions:
+host 0.0.110, web 0.0.125.

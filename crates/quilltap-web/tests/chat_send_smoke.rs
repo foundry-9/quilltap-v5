@@ -204,6 +204,8 @@ impl SpineFactory for SmokeSpineFactory {
             job_handlers: Vec::new(),
             // P4.9K1: the canned factory assembles no generator driver.
             generators_detail: None,
+            // P4.9K2: nor the creation-pair one.
+            generators_wizard: None,
         }
     }
 }

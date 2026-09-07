@@ -3234,6 +3234,17 @@ pub struct SpineBundle {
     pub generators_detail:
         Option<Arc<dyn quilltap_core::api::generators_detail::GeneratorsDetailDriver>>,
     // === end P4.9K1 ===
+    // === P4.9K2 ===
+    /// The creation-pair generator driver (P4.9K2 unit 6): `characterWizard`,
+    /// `characterWizardStream` and `aiImportStream` over the SAME completion
+    /// provider the send driver holds and the instance's disk backend. `None`
+    /// for canned test factories — the verbs answer their NAMED refusal after
+    /// v4's parse arms. ⚠ 💸 LIVE: one model call per wizard field (six for
+    /// the physical description, one more for a vision source); up to nine
+    /// per import run.
+    pub generators_wizard:
+        Option<Arc<dyn quilltap_core::api::generators_wizard::GeneratorsWizardDriver>>,
+    // === end P4.9K2 ===
 }
 
 /// Builds the chat-send + chat-create drivers + the model-dependent job
@@ -3301,9 +3312,16 @@ impl SpineFactory for ProductionSpineFactory {
         let generators_completion = Arc::clone(&completion);
         let generators_embedding = Arc::clone(&embedding);
         // === end P4.9K1 ===
+        // === P4.9K2 ===
+        let wizard_completion = Arc::clone(&completion);
+        // === end P4.9K2 ===
         let env = production_self_inventory_env(&self.version, self.docs_dir.as_deref(), db);
         let backend: Arc<dyn StorageBackend> =
             Arc::new(LocalStorageBackend::new(self.base_dir.join("files")));
+        // === P4.9K2: the creation-pair driver shares the disk backend (taken
+        // here, before the file-bytes store below consumes the original). ===
+        let generators_backend: Arc<dyn StorageBackend> = Arc::clone(&backend);
+        // === end P4.9K2 ===
         let file_bytes = Arc::new(ProductionFileBytes {
             db: db.clone(),
             backend,
@@ -3569,6 +3587,18 @@ impl SpineFactory for ProductionSpineFactory {
                 },
             )),
             // === end P4.9K1 ===
+            // === P4.9K2: the creation-pair generator driver, LIVE from this
+            // assembly's provider + disk backend (⚠ 💸 real spend on a real
+            // click: the wizard's per-field calls, the import's step chain). ===
+            generators_wizard: Some(Arc::new(
+                crate::generators_wizard_driver::HostGeneratorsWizardDriver {
+                    db: db.clone(),
+                    completion: wizard_completion,
+                    backend: generators_backend,
+                    app_version: self.version.clone(),
+                },
+            )),
+            // === end P4.9K2 ===
         }
     }
 }

@@ -62,9 +62,9 @@ async fn dispatch_system(
 
 /// v4 `TOOLS_GET_ACTIONS` / `TOOLS_POST_ACTIONS` (`app/api/v1/system/tools/
 /// route.ts`) — the whole lists, and the source of the 400's tail. v5 does not
-/// serve `capabilities-report-progress` (GET) or `ai-import-stream` (POST);
-/// they stay in the tail because the tail is v4's `join(', ')` over the
-/// CONSTANT, not over what this edge dispatches.
+/// serve `capabilities-report-progress` (GET); it stays in the tail because the
+/// tail is v4's `join(', ')` over the CONSTANT, not over what this edge
+/// dispatches. (`ai-import-stream` on POST is SERVED since P4.9K2.)
 const TOOLS_GET_ACTIONS: &[&str] = &[
     "tasks-queue",
     "job-concurrency",
@@ -96,7 +96,8 @@ const TOOLS_POST_ACTIONS: &[&str] = &[
 /// stay distinguishable, which is why this takes `Option`.
 fn tools_unknown_action(action: Option<&str>, verb: &str, available: &[&str]) -> AxumResponse {
     // A v4-KNOWN action this edge does not serve (`capabilities-report-progress`
-    // on GET, `ai-import-stream` on POST — both ride `/api/dispatch` in v5) must
+    // on GET — it rides `/api/dispatch` in v5; `ai-import-stream` on POST is
+    // served since P4.9K2) must
     // not be refused as "unknown" by a sentence that lists it as available. The
     // §3 unification review put the loud, honest refusal back; the divergence is
     // RECORDED in `query_param_semantics_equivalence` (`UNSERVED_KNOWN_ACTIONS`).
@@ -516,6 +517,11 @@ pub async fn system_tools_post(
         "import-execute" => {
             crate::qtap_routes::import_execute(&state, &headers, body.clone()).await
         }
+        // === P4.9K2: Summon From Lore (v4 `handleAIImportStream`, `route.ts:
+        // 1190-1260`) — the hand-rolled body read + its two 400s run inside the
+        // handler; the run streams as v4's SSE through the K0 re-framer. ===
+        "ai-import-stream" => system_ai_import_stream(&state, parsed, &body).await,
+        // === end P4.9K2 ===
         // ── end P4.9G4 ──
         "delete-data" => {
             let Some(parsed) = parsed.as_ref() else {
@@ -842,3 +848,64 @@ pub async fn system_unlock_post(
     }
 }
 // ── end P4.9G3 ──
+
+// ===========================================================================
+// POST /api/v1/system/tools?action=ai-import-stream  (P4.9K2 unit 6)
+// ===========================================================================
+
+/// v4 `handleAIImportStream` (`route.ts:1190-1260`). The route's own try
+/// wraps `await req.json()`: a body that is not JSON answers
+/// `serverError(error.message)` — the `SyntaxError`'s V8 wording, reproduced
+/// by the optimizer's twin for the shapes it models; a `null` body throws
+/// `Cannot read properties of null (reading 'profileId')` the same way; any
+/// other non-object reads `body.profileId` as `undefined` and lands on the
+/// handler's first 400. An object rides whole into the verb (the hand-rolled
+/// read + the two 400s run inside it), and the run streams as v4's SSE
+/// through the K0 re-framer under a server-minted `progressId`.
+async fn system_ai_import_stream(
+    state: &SharedState,
+    parsed: Option<Value>,
+    body: &axum::body::Bytes,
+) -> AxumResponse {
+    let Some(parsed) = parsed else {
+        let text = String::from_utf8_lossy(body);
+        let message = quilltap_core::generators::optimizer::v8_json_parse_message(&text)
+            .unwrap_or_else(|| "Unexpected end of JSON input".to_string());
+        return error_json(StatusCode::INTERNAL_SERVER_ERROR, &message);
+    };
+    let body_map = match parsed {
+        Value::Object(m) => m,
+        Value::Null => {
+            return error_json(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Cannot read properties of null (reading 'profileId')",
+            )
+        }
+        _ => return error_json(StatusCode::BAD_REQUEST, "Missing required field: profileId"),
+    };
+    let Some(host) = state.host() else {
+        return error_json(StatusCode::SERVICE_UNAVAILABLE, "The engine is not running");
+    };
+    use quilltap_core::api::QuilltapCore as _;
+    let progress_id = uuid::Uuid::new_v4().to_string();
+    let req = CoreRequest::AiImportStream {
+        progress_id: Some(progress_id.clone()),
+        body: body_map,
+    };
+    let core = host.core().clone();
+    let dispatch = async move { core.dispatch(req).await };
+    crate::generator_sse::stream_generator(
+        host.core().event_sender(),
+        progress_id,
+        dispatch,
+        |resp: CoreResponse| match resp {
+            CoreResponse::Character(_) => Ok(()),
+            CoreResponse::Error(e) => Err(crate::characters_routes::core_error_status_body(e)),
+            _ => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "error": "Unexpected core response" }),
+            )),
+        },
+    )
+    .await
+}

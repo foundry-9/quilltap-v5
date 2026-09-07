@@ -318,7 +318,7 @@ fn status_of_kind(kind: &ErrorKind) -> StatusCode {
 /// v4's error bodies on this route as a `(status, body)` pair: the Zod
 /// `validationError` envelope (`{error, details}`), the store-unavailable
 /// `{error, <entity>Id}`, else `{error}`.
-fn core_error_status_body(e: quilltap_core::api::CoreError) -> (StatusCode, Value) {
+pub(crate) fn core_error_status_body(e: quilltap_core::api::CoreError) -> (StatusCode, Value) {
     let status = status_of_kind(&e.kind);
     let body = e
         .validation_wire_body()
@@ -745,11 +745,16 @@ pub async fn characters_import_post(
     match query.get("action").map(String::as_str) {
         Some("import") => {}
         Some("reset-builtins") => return characters_reset_builtins(&db).await,
+        // === P4.9K2: the AI Wizard's two JSON arms (v4 `handleAiWizard` /
+        // `handleAiWizardStream`, `handlers/post.ts:518-575`). ===
+        Some("ai-wizard") => return characters_ai_wizard(&state, req, false).await,
+        Some("ai-wizard-stream") => return characters_ai_wizard(&state, req, true).await,
+        // === end P4.9K2 ===
         _ => {
             return error_json(
                 StatusCode::BAD_REQUEST,
-                "This route serves ?action=import and ?action=reset-builtins only; \
-                 character creation is on /api/dispatch",
+                "This route serves ?action=import, ?action=reset-builtins, ?action=ai-wizard \
+                 and ?action=ai-wizard-stream; character creation is on /api/dispatch",
             );
         }
     }
@@ -1030,4 +1035,78 @@ fn read_avatar_bytes(db: &Db, backend: &LocalStorageBackend, id: &str) -> Option
         .ok()
         .flatten()?;
     download_file(db, backend, &entry).ok()
+}
+
+// ===========================================================================
+// POST /api/v1/characters?action=ai-wizard | ai-wizard-stream  (P4.9K2 unit 6)
+// ===========================================================================
+
+/// v4 `handleAiWizard` / `handleAiWizardStream` (`handlers/post.ts:518-575`):
+/// `await req.json()` then `wizardRequestSchema.parse` — a body that is not
+/// JSON throws into the middleware's generic `500 Internal server error`, a
+/// JSON non-object reaches the schema as the root-level `invalid_type`, and
+/// an object rides whole into the verb (v4's Zod runs inside the handler).
+/// The non-streaming twin answers `WizardResult` raw; the streaming twin is
+/// v4's `text/event-stream` through the K0 re-framer under a server-minted
+/// `progressId`.
+async fn characters_ai_wizard(state: &SharedState, req: Request, streaming: bool) -> AxumResponse {
+    use quilltap_core::api::Request as CoreRequest;
+    let bytes = match axum::body::to_bytes(req.into_body(), 32 * 1024 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+    };
+    let parsed: Value = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(_) => return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+    };
+    let received = match &parsed {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    };
+    let Value::Object(body) = parsed else {
+        return json_response(
+            StatusCode::BAD_REQUEST,
+            &serde_json::json!({
+                "error": "Validation error",
+                "details": [{
+                    "expected": "object",
+                    "code": "invalid_type",
+                    "path": [],
+                    "message": format!("Invalid input: expected object, received {received}"),
+                }],
+            }),
+        );
+    };
+    if !streaming {
+        return dispatch_action_json(state, CoreRequest::CharacterWizard { body }).await;
+    }
+    let Some(host) = state.host() else {
+        return error_json(StatusCode::SERVICE_UNAVAILABLE, "The engine is not running");
+    };
+    use quilltap_core::api::QuilltapCore as _;
+    let progress_id = uuid::Uuid::new_v4().to_string();
+    let req = CoreRequest::CharacterWizardStream {
+        progress_id: Some(progress_id.clone()),
+        body,
+    };
+    let core = host.core().clone();
+    let dispatch = async move { core.dispatch(req).await };
+    crate::generator_sse::stream_generator(
+        host.core().event_sender(),
+        progress_id,
+        dispatch,
+        |resp: Response| match resp {
+            Response::Character(_) => Ok(()),
+            Response::Error(e) => Err(core_error_status_body(e)),
+            _ => Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::json!({ "error": "Unexpected core response" }),
+            )),
+        },
+    )
+    .await
 }

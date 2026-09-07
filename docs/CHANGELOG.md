@@ -282,6 +282,28 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — feat(generators): P4.9K2 unit 6 — the host wizard driver LIVE, `?action=ai-wizard` on the characters collection and `?action=ai-import-stream` on `POST /api/v1/system/tools`
+
+_Versions: host 0.0.110, web 0.0.125._
+
+`quilltap-host::generators_wizard_driver` implements `GeneratorsWizardDriver`
+over the spine bundle's completion provider, the file-storage backend and the
+engine's version string, assembled where unit 3 left `None` — the
+`characterWizard` / `characterWizardStream` / `aiImportStream` verbs now
+reach real providers in production (⚠ 💸 LIVE model spend on every wizard
+field and every import step). `characters_collection_post` gains
+`?action=ai-wizard` (`stream: true` → v4's SSE re-framing over the
+`generatorProgress` event; otherwise the JSON `WizardResult`) beside
+`import` / `reset-builtins`, and `system_data_routes` gains
+`?action=ai-import-stream` with v4's body arms (a non-JSON body → 500 with
+V8's `JSON.parse` wording; `null` → v4's `Cannot read properties of null`
+500; a non-object → the missing-`profileId` 400). The
+`query_param_semantics_equivalence` family retires its `ai-import-stream`
+UNSERVED row and re-pins the four collection-POST action lists to the served
+set. `generators_wizard_routes` boots the production spine factory and proves
+the driver WIRED (the transport's 500 at a dead socket, never the
+not-assembled refusal) on all three edges.
+
 #### 2026-09-07 — feat(generators): P4.9K2 unit 5 — the AI import runner (Summon From Lore) as the `aiImportStream` verb (tier 3)
 
 _Versions: core 0.0.825, harness 0.0.714._

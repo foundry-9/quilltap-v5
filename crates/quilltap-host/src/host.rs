@@ -616,6 +616,11 @@ impl EngineAssembler for HostAssembler {
             .as_ref()
             .and_then(|bundle| bundle.generators_detail.clone());
         // === end P4.9K1 ===
+        // === P4.9K2: the creation-pair generator driver, the same pickup shape. ===
+        let generators_wizard = spine_bundle
+            .as_ref()
+            .and_then(|bundle| bundle.generators_wizard.clone());
+        // === end P4.9K2 ===
         let (
             chat_send,
             chat_create,
@@ -957,11 +962,11 @@ impl EngineAssembler for HostAssembler {
             // answer their NAMED refusal after v4's 404 + Zod arms. ===
             generators_detail,
             // === end P4.9K1 ===
-            // === P4.9K2: the creation-pair generator driver — `None` until the
-            // driver unit wires `generators_wizard_driver.rs` from the spine
-            // bundle; the three verbs answer their NAMED refusal meanwhile,
-            // after v4's parse arms. ===
-            generators_wizard: None,
+            // === P4.9K2: the creation-pair generator driver, LIVE from the spine
+            // bundle (⚠ 💸 real spend: the wizard + the AI import). Spine-less
+            // assemblies keep `None` → the three verbs answer their NAMED
+            // refusal after v4's parse arms. ===
+            generators_wizard,
             // === end P4.9K2 ===
         })
     }
