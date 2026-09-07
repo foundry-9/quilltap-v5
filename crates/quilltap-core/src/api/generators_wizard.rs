@@ -505,12 +505,12 @@ pub fn parse_ai_import_body(body: &Value) -> Result<AiImportRequest, Response> {
     // `includeMemories: body.includeMemories ?? true` / `includeChats ?? false`
     // — NULLISH: `false`/`0`/`''` are kept and read for truthiness downstream.
     let include_memories = match get("includeMemories") {
-        None | Some(Value::Null) => true,
-        Some(v) => crate::api::system_qtap::js_truthy(Some(v)),
+        None | Some(Value::Null) => Value::Bool(true),
+        Some(v) => v.clone(),
     };
     let include_chats = match get("includeChats") {
-        None | Some(Value::Null) => false,
-        Some(v) => crate::api::system_qtap::js_truthy(Some(v)),
+        None | Some(Value::Null) => Value::Bool(false),
+        Some(v) => v.clone(),
     };
     // `existingResult: body.existingResult || undefined`
     let existing_result = get("existingResult")
@@ -564,8 +564,8 @@ pub async fn ai_import_stream(
         profile_id = %request.profile_id,
         source_file_count = request.source_file_ids.len(),
         has_source_text = !crate::jsstr::js_trim(&request.source_text).is_empty(),
-        include_memories = request.include_memories,
-        include_chats = request.include_chats,
+        include_memories = %request.include_memories,
+        include_chats = %request.include_chats,
         "[System Tools v1] AI Import stream starting"
     );
     let Some(driver) = driver else {

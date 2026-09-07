@@ -112980,3 +112980,121 @@ with the lane's seven `QT_ORACLE_*` vars **522 test binaries / 2,947 passed
 `character_wizard_matches_oracle ... ok` confirmed by name (the first run's
 one red was the activity-span tripwire above, fixed by moving the row).
 Versions: core 0.0.824, harness 0.0.713, host 0.0.109.
+
+### Unit H (K2 unit 5) — `run_ai_import_streaming`, the `aiImportStream` verb, `ai_import_tier3_equivalence`
+
+**The runner** (the second half of `generators::ai_import`): `buildSourceContext`
+(each source file through `extract_file_content` — a missing or unauthorized
+file is the `Source file not found or unauthorized` warn + skip, a failed
+extraction the `Failed to extract file content` warn + skip; the trimmed
+freeform text; the PRIOR analysis appended — and appended AGAIN by
+`enrichedContext` when it came in through `existingResult`, v4's own double
+carry, reproduced), the `No source material provided…` throw, the
+`analyzing` gate (`sourceContext.length > 30000` in UTF-16 units, the
+`characterName || 'Analysis complete'` snippet carried as a VALUE), the step
+chain with v4's per-step temperatures / token budgets / snippets
+(`getSnippet(firstMessage || '')`, `${length || 0} prompt(s)` — a string's
+length counts, `shortPrompt`, the sanitized wardrobe count,
+`describeGeneratedProperties(props, 'pronouns not derivable — left blank')`
+with `pronouns` left ABSENT (never `null`) and the `Pronouns not derivable`
+info line, `memories generated`, `chats?.title || 'Chat generated'`), each
+step's containment (`step_error {error}` + the warn, or the ERROR-level line
+for `character_basics`), the fatal `Failed to generate character basics —
+cannot proceed without a character name`, `Character name: ${charName}`
+appended to the context, the assembly (`step_error assembly` + `done
+{error, stepResults, errors}` on a throw), the restamp at `now`, and `done
+{result, stepResults, errors?}` / the catch's `done {error, stepResults,
+errors: {…, _fatal}}` with the `Streaming generation failed` line.
+
+**⚠ The `validation` / `repair` steps — a NAMED REFUSAL, recorded both
+ways.** v4 validates the assembled export through ajv over
+`public/schemas/qtap-export.schema.json` and repairs failing sections through
+the model up to twice; v5 links no JSON-Schema engine and adding one is a
+dependency add — a STOP-and-flag under the lane's rules (flagged in the
+report). The step lands as v4's `step_start validation` followed by a
+`step_error validation` carrying `VALIDATION_UNAVAILABLE`, `errors.validation`
+set to the same sentence, no repair pass; the export is still re-stamped and
+returned. The differential asserts v4's `[step_start, step_complete
+{Validation passed}]` and v5's `[step_start, step_error {sentence}]` pairs
+explicitly on every successful run (both directions), then strips them
+before the byte diff — the pin retires when an engine lands.
+**`appVersion`:** v4 stamps `package.json`'s (`4.10.0-dev.0` at the pin), v5
+the engine's version string; both asserted, then normalized.
+
+**The differential — `ai_import_tier3_equivalence`** (tier 3;
+`harness/oracle/cases/ai-import-tier3.test.ts` drives v4's REAL
+`system/tools` route with the clock frozen and the storage manager un-mocked;
+24 cases): text only / files only / both with chats, memories off, the
+analyzing gate over a 30,000+ unit source (complete, throwing, unparseable —
+all non-fatal), `existingResult` + `regenerateSteps` (a step present with
+`null` still skipped; the re-run), an IMAGE source file (the placeholder), a
+missing file skipped / the only source missing (fatal), basics throwing /
+nameless / empty-named / unparseable (fatal), a step unparseable and a step throwing (the
+chain continues; V8's parse wording on the wire through the twin), pronouns
+null, chats unparseable, the assembly failing on a `chats` step without
+`messages`, a missing profile, the two route 400s, and the route's nullish
+defaults (`includeMemories: null` → true, `includeChats: 0` → false,
+`sourceFileIds: null` → `[]`). Comparands: the 400s, the whole frame trace
+with the `done.result` export (uuids remapped `<minted-N>`, the fixture's
+pinned `-0000-4000-8000-` ids left alone), every model call, the log lines.
+RESULT: GREEN after four port fixes its first runs
+measured (none a diff-side fix): (1) the V8 `JSON.parse` twin treated every
+`t`/`f`/`n` start as a "legal value" fall-through, so a step answering `no
+json here` carried serde's `expected ident at line 1 column 2` where V8 scans
+the keyword and names `'o'` at ITS position — the keyword arms (mismatch /
+truncated → `Unexpected end of JSON input` / whole keyword + trailing →
+`Unexpected non-whitespace character after JSON at position N (line L
+column C)`) measured on Node 24.13.1 and added to `optimizer.rs`'s table
+(the former `("tru", None)` row was a recorded divergence now closed); the
+optimizer, external-prompt and wizard families re-run green on the shared
+twin; (2) `regenerateSteps: null` on the Starting line where v4's JSON drops
+the `undefined` member — the key is now present only when sent; (3) the
+route's raw `includeMemories` / `includeChats` (v4's `??` keeps `0`, `""`,
+`1`) collapsed to booleans before the Starting line and the export
+manifest's `settings.includeMemories` — `AiImportRequest` now carries the raw
+`Value`s and the assembly leaf takes `include_memories: &Value` (truthiness
+at every `if`, raw where v4 serializes it; the assembly family re-run
+green); (4) `stepsCompleted` on the completion line — v4's
+`stepResults.pronouns = props.pronouns ?? undefined` assigns the KEY, which
+`Object.keys` counts while every JSON projection drops it, so a completed
+`pronouns` step that left no entry now counts one. The harness also asserts
+and strips v5's own `Validation unavailable` warn line and discounts the
+refusal's `errors.validation` from the completion line's `stepsWithErrors`
+(both consequences of the recorded refusal, pinned beside the frame pair).
+Final: 24 cases, 116 model calls, 338 frames, 15 validation pins, 2 route
+refusals, 7 fatal runs, zero DIFFER.
+
+**The importability proof** (the order's tier-2 item 8): the text-only
+run's `done.result` fed to v5's REAL `system_qtap::import_execute` on the
+same pair with `{conflictStrategy: 'duplicate', importMemories: true}` — the
+character lands by name. RESULT: PASSES inside the family run
+(the assertion sits in the harness beside the text-only case).
+
+Mutation proofs: nine, each reddening its arm(s) — the analyzing threshold
+raised to 40,000 → 3 cases; the missing-source-file warn reworded → 2; the
+undefined `pronouns` key not counted → 1; `regenerateSteps` ignored → 1; the
+`Character name:` context append dropped → 16; `includeChats` defaulting
+`true` → red (the extra `chats` step walks into a call the script never
+canned — the harness panics by design); the prior-analysis carry dropped from
+`enrichedContext` → 2; the V8 keyword scan reverted → 2 (the twin fix's own
+pin); and a nameless `character_basics` result TOLERATED — which SURVIVED
+the first pass: the corpus's nameless case carried no `name` key at all, so
+the truthiness filter on an EMPTY name was unmeasured. The corpus gained
+`basics_empty_name_is_fatal` (`{"name": ""}` — v4 throws the same fatal
+sentence), the oracle was regenerated from the K2 pin in its own invocation
+(23 → 24 rows), and the mutation now reddens. Every mutation restored by
+file backup, the family re-run green.
+
+Recorded, not compared: the `AI_IMPORT` `llm_logs` rows (their user message
+the `[source context + instruction - <80 chars>...]` placeholder, ported);
+v4's `Failed to log LLM call` warn arm (no v5 arm — `log_llm_call` never
+throws); the api key argument.
+
+**Gate** (`CARGO_INCREMENTAL=0`, full log + sentinel): `cargo fmt --all
+--check` clean; clippy both feature sets exit 0 (the first run's one lint
+was `type_complexity` on the step parser's signature — now the
+`StepParser` alias, no behaviour moved); `cargo test --workspace` with the
+lane's eight `QT_ORACLE_*` vars **523 test binaries / 2,948 passed / 0
+failed, zero `SKIP:` lines, exit 0** — `ai_import_matches_oracle ... ok`
+and `ai_import_assembly_matches_oracle ... ok` confirmed by name. Versions:
+core 0.0.825, harness 0.0.714.

@@ -183,7 +183,7 @@ fn ai_import_assembly_matches_oracle() {
                 let got = outcome(
                     assemble_qtap_export(
                         &r.step_results,
-                        r.include_memories,
+                        &json!(r.include_memories),
                         r.include_chats,
                         &r.app_version,
                         corpus.frozen_now_ms,

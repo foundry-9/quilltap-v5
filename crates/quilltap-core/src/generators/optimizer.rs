@@ -848,21 +848,70 @@ fn js_typeof(v: &Value) -> &'static str {
 /// cannot start a JSON value → `Unexpected token '<c>', <context> is not valid
 /// JSON`, where the context is the whole source when it is shorter than 21
 /// UTF-16 units, else a 10-unit window on the side(s) of the position with
-/// `...` marking the elided side. `None` for every other shape (a failure
-/// INSIDE a value that starts legally) — the caller falls back to serde's
-/// message, a RECORDED divergence.
+/// `...` marking the elided side. A `t`/`f`/`n` start is scanned against its
+/// keyword as V8's `ScanLiteral` does — the first mismatching unit is the
+/// token, at its own position (`no json here` → `'o'`); a source ending
+/// inside the keyword is `Unexpected end of JSON input`; a whole keyword
+/// followed by anything but whitespace is `Unexpected non-whitespace
+/// character after JSON at position N (line L column C)`. `None` for every
+/// other shape (a failure INSIDE a value that starts legally) — the caller
+/// falls back to serde's message, a RECORDED divergence.
 pub fn v8_json_parse_message(text: &str) -> Option<String> {
     let units: Vec<u16> = text.encode_utf16().collect();
     let is_ws = |u: u16| matches!(u, 0x20 | 0x09 | 0x0a | 0x0d);
     let Some(pos) = units.iter().position(|u| !is_ws(*u)) else {
         return Some("Unexpected end of JSON input".to_string());
     };
+    let mut pos = pos;
     let c = units[pos];
-    let starts_value = matches!(c, 0x7b | 0x5b | 0x22 | 0x2d) // { [ " -
-        || (0x30..=0x39).contains(&c)
-        || matches!(c, 0x74 | 0x66 | 0x6e); // t f n
-    if starts_value {
-        return None;
+    // A literal start is scanned against its keyword (V8 `ScanLiteral`): the
+    // first mismatching unit is the reported token at ITS position; a source
+    // that ends inside the keyword is `Unexpected end of JSON input`; a whole
+    // keyword followed by a non-whitespace unit is the after-JSON arm.
+    let keyword = match c {
+        0x74 => Some("true"),
+        0x66 => Some("false"),
+        0x6e => Some("null"),
+        _ => None,
+    };
+    if let Some(keyword) = keyword {
+        let kw: Vec<u16> = keyword.encode_utf16().collect();
+        let mut mismatch = None;
+        for (j, k) in kw.iter().enumerate().skip(1) {
+            match units.get(pos + j) {
+                None => return Some("Unexpected end of JSON input".to_string()),
+                Some(u) if u != k => {
+                    mismatch = Some(pos + j);
+                    break;
+                }
+                Some(_) => {}
+            }
+        }
+        match mismatch {
+            Some(at) => pos = at,
+            None => {
+                let end = pos + kw.len();
+                let Some(off) = units[end..].iter().position(|u| !is_ws(*u)) else {
+                    return None; // a valid literal — no failure to word
+                };
+                let at = end + off;
+                let line = 1 + units[..at].iter().filter(|u| **u == 0x0a).count();
+                let line_start = units[..at]
+                    .iter()
+                    .rposition(|u| *u == 0x0a)
+                    .map_or(0, |i| i + 1);
+                let column = at - line_start + 1;
+                return Some(format!(
+                    "Unexpected non-whitespace character after JSON at position {at} (line {line} column {column})"
+                ));
+            }
+        }
+    } else {
+        let starts_value = matches!(c, 0x7b | 0x5b | 0x22 | 0x2d) // { [ " -
+            || (0x30..=0x39).contains(&c);
+        if starts_value {
+            return None;
+        }
     }
     const K: usize = 10;
     let len = units.len();
@@ -2228,8 +2277,50 @@ mod tests {
             ("{\"a\":1,}", None),
             ("[1,2", None),
             ("\"unterminated", None),
-            ("tru", None),
             ("-", None),
+            // Literal starts — V8 scans the keyword (measured on Node 24.13.1).
+            ("tru", Some("Unexpected end of JSON input")),
+            ("n", Some("Unexpected end of JSON input")),
+            ("nul", Some("Unexpected end of JSON input")),
+            ("fals", Some("Unexpected end of JSON input")),
+            ("null", None),
+            (
+                "no json here",
+                Some("Unexpected token 'o', \"no json here\" is not valid JSON"),
+            ),
+            ("nope", Some("Unexpected token 'o', \"nope\" is not valid JSON")),
+            (
+                "nonsense that is quite long indeed",
+                Some("Unexpected token 'o', \"nonsense th\"... is not valid JSON"),
+            ),
+            (
+                "    nah, not json at all here",
+                Some("Unexpected token 'a', \"    nah, not js\"... is not valid JSON"),
+            ),
+            (
+                "null x",
+                Some("Unexpected non-whitespace character after JSON at position 5 (line 1 column 6)"),
+            ),
+            (
+                "truex",
+                Some("Unexpected non-whitespace character after JSON at position 4 (line 1 column 5)"),
+            ),
+            (
+                "false!",
+                Some("Unexpected non-whitespace character after JSON at position 5 (line 1 column 6)"),
+            ),
+            (
+                "\nnull x",
+                Some("Unexpected non-whitespace character after JSON at position 6 (line 2 column 6)"),
+            ),
+            (
+                "\n\n  true  !",
+                Some("Unexpected non-whitespace character after JSON at position 10 (line 3 column 9)"),
+            ),
+            (
+                "null\n\nx",
+                Some("Unexpected non-whitespace character after JSON at position 6 (line 3 column 1)"),
+            ),
             ("12ab", None),
         ];
         for (input, want) in table {

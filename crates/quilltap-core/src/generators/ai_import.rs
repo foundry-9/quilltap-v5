@@ -12,8 +12,9 @@
 //! (`shouldRunStep`, `getSnippet`) — diffed against v4's real exports by
 //! `ai_import_assembly_equivalence` (tier 1, no fixture: the minted uuids are
 //! remapped `<minted-N>` in first-seen order on both sides, the clock is a
-//! parameter here and frozen in the oracle). The runner follows in a later
-//! unit.
+//! parameter here and frozen in the oracle). The second half (P4.9K2 unit 5)
+//! is the runner — `run_ai_import_streaming` — diffed end-to-end by
+//! `ai_import_tier3_equivalence`.
 //!
 //! ## Input shape
 //!
@@ -41,13 +42,31 @@ use serde_json::{json, Map, Value};
 
 use crate::api::system_qtap::js_truthy;
 use crate::chat_activity::is_character_authored_message;
+use crate::cheap_llm::profile_params_value;
 use crate::clock::iso_from_unix_ms;
+use crate::db::files::FilesRepository;
+use crate::db::runtime::Db;
+use crate::db::{api_keys, connection_profiles, DbError};
 use crate::generators::field_semantics::{
     FULL_FIELD_SEMANTICS, PHYSICAL_DESCRIPTION_SEMANTICS, PROMPT_SEMANTICS, PROPERTIES_SEMANTICS,
 };
-use crate::generators::generated_items::{order_json_leaf_first, wardrobe_items_generation_prompt};
+use crate::generators::file_content::extract_file_content;
+use crate::generators::generated_items::{
+    order_json_leaf_first, sanitize_generated_wardrobe_items, wardrobe_items_generation_prompt,
+};
+use crate::generators::generated_properties::{
+    describe_generated_properties, parse_generated_properties,
+};
+use crate::generators::llm_json::parse_llm_json;
+use crate::generators::optimizer::llm_json_failure_message;
 use crate::jsstr::js_trim;
+use crate::model::completion::{CompletionMessage, CompletionParams, CompletionProvider};
 use crate::pascal::js_value::{to_js_string, to_number};
+use crate::services::file_storage::StorageBackend;
+use crate::services::llm_logging::{
+    log_llm_call, LogContext, LogLlmCallParams, LogRequest, LogRequestMessage, LogResponse,
+    LogUsage,
+};
 
 // ============================================================================
 // Types
@@ -82,8 +101,11 @@ pub struct AiImportRequest {
     pub profile_id: String,
     pub source_file_ids: Vec<String>,
     pub source_text: String,
-    pub include_memories: bool,
-    pub include_chats: bool,
+    /// The RAW value after `?? true` — v4 logs it and stamps it into the
+    /// export manifest as sent (`0`, `1`, `"yes"`…); truthiness decides.
+    pub include_memories: Value,
+    /// The RAW value after `?? false`; truthiness decides.
+    pub include_chats: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub existing_result: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -473,7 +495,7 @@ enum ArrayOp {
 /// required for assembly`, or the TypeError a malformed `chats` step trips).
 pub fn assemble_qtap_export_with(
     step_results: &Value,
-    include_memories: bool,
+    include_memories: &Value,
     include_chats: bool,
     app_version: &str,
     now_ms: i64,
@@ -630,7 +652,7 @@ pub fn assemble_qtap_export_with(
 
     // Build memories array
     let mut memories: Vec<Value> = Vec::new();
-    if include_memories {
+    if js_truthy(Some(include_memories)) {
         if let Some(list) = step_results.get("memories").filter(|m| js_truthy(Some(m))) {
             for mem in require_array(Some(list), "stepResults.memories", ArrayOp::ForOf)? {
                 let mut o = Map::new();
@@ -733,7 +755,7 @@ pub fn assemble_qtap_export_with(
 /// [`assemble_qtap_export_with`] minting v4 uuids.
 pub fn assemble_qtap_export(
     step_results: &Value,
-    include_memories: bool,
+    include_memories: &Value,
     include_chats: bool,
     app_version: &str,
     now_ms: i64,
@@ -885,4 +907,850 @@ pub fn restamp_structural_fields_with(
 /// [`restamp_structural_fields_with`] minting v4 uuids.
 pub fn restamp_structural_fields(data: &mut Value, now: &str) -> i64 {
     restamp_structural_fields_with(data, now, &mut || uuid::Uuid::new_v4().to_string())
+}
+
+// ============================================================================
+// The runner (v4 `runAIImportStreaming` — P4.9K2 unit 5)
+// ============================================================================
+//
+// Seams: the completion provider (v4 `createLLMProvider(...).sendMessage`),
+// the storage backend (`fileStorageManager.downloadFile` under
+// `extractFileContent`), the `Db`, the clock (`now_ms` — the assembler's
+// `new Date()` / `Date.now()` and the restamp's), the `app_version` the
+// manifest stamps (v4 `packageJson.version`; v5 stamps its own — the
+// differential normalizes the value and pins each side's, recorded).
+//
+// ## ⚠ The `validation` / `repair` steps — a NAMED REFUSAL (recorded divergence)
+//
+// v4 validates the assembled export against `public/schemas/qtap-export.
+// schema.json` through ajv (`lib/validation/qtap-schema-validator.ts`) and,
+// on failure, asks the model to repair the failing sections up to twice. v5
+// carries NO JSON-Schema engine and adding one is a dependency add — a
+// STOP-and-flag under the lane's rules — so the step lands as v4's
+// `step_start validation` followed by a `step_error validation` carrying
+// [`VALIDATION_UNAVAILABLE`], `errors.validation` set to the same sentence,
+// and NO repair pass; the export is still re-stamped and returned. Where v4
+// answers `step_complete validation` (`Validation passed`) for a well-formed
+// export, v5 answers the refusal; the differential pins BOTH directions and
+// retires the pin when an engine lands.
+
+/// The named refusal the `validation` step answers in this build.
+pub const VALIDATION_UNAVAILABLE: &str = "Schema validation is not available in this build: no JSON-Schema engine is linked, so the assembled export is returned unvalidated (and unrepaired)";
+
+/// The tracing target every `[AIImport]` line is emitted under.
+pub const AI_IMPORT_LOG_TARGET: &str = "quilltap::ai_import";
+
+/// v4's `onProgress` callback shape.
+pub type OnProgress<'a> = &'a mut (dyn FnMut(Value) + Send);
+
+fn ctx(v: Value) -> String {
+    serde_json::to_string(&v).unwrap_or_default()
+}
+
+fn str_of(v: &Value, key: &str) -> String {
+    v.get(key).map(to_js_string).unwrap_or_default()
+}
+
+/// The per-run call context (v4 `llmOpts` + the provider handle).
+struct ImportCallCtx<'a, CMP: CompletionProvider> {
+    db: &'a Db,
+    completion: &'a CMP,
+    provider: String,
+    base_url: Option<String>,
+    model_name: String,
+    profile_parameters: Option<Value>,
+    user_id: &'a str,
+}
+
+/// v4 `callLLM` — `[system SYSTEM_MESSAGE, user `${sourceContext}\n\n---\n\n
+/// ${instruction}`]`, the `No response from model` refusal, the best-effort
+/// `AI_IMPORT` log row (its user message the `[source context + instruction -
+/// <80 chars>...]` placeholder), the TRIMMED content.
+async fn call_llm<CMP: CompletionProvider>(
+    c: &ImportCallCtx<'_, CMP>,
+    source_context: &str,
+    instruction: &str,
+    temperature: f64,
+    max_tokens: i64,
+) -> Result<String, String> {
+    let messages = vec![
+        CompletionMessage::system(SYSTEM_MESSAGE),
+        CompletionMessage::user(format!("{source_context}\n\n---\n\n{instruction}")),
+    ];
+    let params = CompletionParams {
+        messages,
+        model: c.model_name.clone(),
+        temperature: Some(temperature),
+        max_tokens: Some(max_tokens),
+        strict_max_tokens: false,
+        top_p: None,
+        cache_key: None,
+        profile_parameters: c.profile_parameters.clone(),
+        attachments: Vec::new(),
+        request_timeout_ms: None,
+    };
+    let start_ms = crate::clock::now_unix_ms();
+    let response = c
+        .completion
+        .send_message(&c.provider, c.base_url.as_deref(), &params)
+        .await
+        .map_err(|e| e.message)?;
+    let duration_ms = crate::clock::now_unix_ms() - start_ms;
+    if response.content.is_empty() {
+        return Err("No response from model".to_string());
+    }
+    let _ = log_llm_call(
+        c.db,
+        LogLlmCallParams {
+            user_id: c.user_id.to_string(),
+            log_type: LOG_TYPE_AI_IMPORT.to_string(),
+            message_id: None,
+            chat_id: None,
+            character_id: None,
+            provider: c.provider.clone(),
+            model_name: c.model_name.clone(),
+            connection_profile_id: None,
+            image_profile_id: None,
+            request: LogRequest {
+                messages: vec![
+                    LogRequestMessage {
+                        role: "system".to_string(),
+                        content: SYSTEM_MESSAGE.to_string(),
+                        attachments: None,
+                    },
+                    LogRequestMessage {
+                        role: "user".to_string(),
+                        content: format!(
+                            "[source context + instruction - {}...]",
+                            utf16_prefix(instruction, 80)
+                        ),
+                        attachments: None,
+                    },
+                ],
+                temperature: Some(temperature),
+                max_tokens: Some(max_tokens),
+                tools: None,
+            },
+            response: LogResponse {
+                content: utf16_prefix(&response.content, 500),
+                error: None,
+                finish_reason: None,
+                tool_calls: None,
+            },
+            usage: response.usage.map(|u| LogUsage {
+                prompt_tokens: Some(u.prompt_tokens),
+                completion_tokens: Some(u.completion_tokens),
+                total_tokens: Some(u.total_tokens),
+            }),
+            cache_usage: None,
+            raw_provider_usage: None,
+            request_hashes: None,
+            duration_ms: Some(duration_ms as f64),
+        },
+        &LogContext::none(),
+    )
+    .await;
+    Ok(js_trim(&response.content).to_string())
+}
+
+/// v4 `buildSourceContext` — the uploaded files' extracted text (a missing or
+/// unauthorized file is a warn + skip, a failed extraction a warn + skip), the
+/// trimmed freeform text, the prior analysis; joined by blank lines.
+fn build_source_context(
+    db: &Db,
+    backend: &dyn StorageBackend,
+    source_file_ids: &[String],
+    source_text: &str,
+    user_id: &str,
+    analysis: Option<&Value>,
+) -> Result<String, String> {
+    let mut parts: Vec<String> = Vec::new();
+    for file_id in source_file_ids {
+        let fid = file_id.clone();
+        let file = db
+            .read_main(move |c| FilesRepository::new(c).find_full_by_id(&fid))
+            .map_err(|e| e.to_string())?;
+        let Some(file) = file.filter(|f| f.user_id == user_id) else {
+            tracing::warn!(
+                target: AI_IMPORT_LOG_TARGET,
+                context = %ctx(json!({"fileId": file_id, "userId": user_id})),
+                "[AIImport] Source file not found or unauthorized"
+            );
+            continue;
+        };
+        let result = extract_file_content(db, backend, &file);
+        match result.content.as_deref().filter(|c| !c.is_empty()) {
+            Some(content) if result.success => {
+                parts.push(format!(
+                    "=== Source File: {} ===\n{content}",
+                    file.original_filename
+                ));
+            }
+            _ => {
+                tracing::warn!(
+                    target: AI_IMPORT_LOG_TARGET,
+                    context = %ctx(json!({
+                        "fileId": file_id,
+                        "filename": file.original_filename,
+                        "error": result.error,
+                    })),
+                    "[AIImport] Failed to extract file content"
+                );
+            }
+        }
+    }
+    let trimmed = js_trim(source_text);
+    if !trimmed.is_empty() {
+        parts.push(format!("=== Source Text ===\n{trimmed}"));
+    }
+    // `if (analysis)` — JS truthy on the string.
+    if let Some(a) = analysis.filter(|a| js_truthy(Some(a))) {
+        parts.push(format!("=== Prior Analysis ===\n{}", to_js_string(a)));
+    }
+    Ok(parts.join("\n\n"))
+}
+
+/// One step's outcome, as v4 records it: the parsed value into
+/// `stepResults[step]`, a `step_complete {snippet}` frame; or the message
+/// into `errors[step]`, a `step_error {error}` frame, the log line.
+/// A step's parse-and-store closure: the raw answer and the step-results bag
+/// in, the snippet out (or v4's thrown message).
+type StepParser<'a> =
+    dyn Fn(&str, &mut Map<String, Value>) -> Result<StepOutcome, String> + Sync + 'a;
+
+struct StepOutcome {
+    snippet: Value,
+}
+
+/// v4 `runAIImportStreaming(request, userId, repos, onProgress)`: never
+/// fails — every throw inside v4's `try` becomes the `Streaming generation
+/// failed` error line plus `done {error, stepResults, errors: {…, _fatal}}`.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_ai_import_streaming<CMP: CompletionProvider>(
+    db: &Db,
+    completion: &CMP,
+    backend: &dyn StorageBackend,
+    request: &AiImportRequest,
+    user_id: &str,
+    on_progress: OnProgress<'_>,
+    app_version: &str,
+    now_ms: i64,
+) {
+    // `regenerateSteps: request.regenerateSteps` — an `undefined` member is
+    // DROPPED by the logger's JSON, so the key is present only when sent.
+    let mut starting = json!({
+        "userId": user_id,
+        "profileId": request.profile_id,
+        "sourceFileCount": request.source_file_ids.len(),
+        "hasSourceText": !js_trim(&request.source_text).is_empty(),
+        "includeMemories": request.include_memories,
+        "includeChats": request.include_chats,
+        "hasExistingResult": request.existing_result.is_some(),
+    });
+    if let Some(steps) = &request.regenerate_steps {
+        starting["regenerateSteps"] = json!(steps);
+    }
+    tracing::info!(
+        target: AI_IMPORT_LOG_TARGET,
+        context = %ctx(starting),
+        "[AIImport] Starting AI character import"
+    );
+
+    on_progress(json!({"type": "start"}));
+
+    // `const stepResults = { ...(request.existingResult || {}) }`
+    let mut step_results: Map<String, Value> = request
+        .existing_result
+        .as_ref()
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    let mut errors: Map<String, Value> = Map::new();
+
+    let outcome = run_import_inner(
+        db,
+        completion,
+        backend,
+        request,
+        user_id,
+        on_progress,
+        app_version,
+        now_ms,
+        &mut step_results,
+        &mut errors,
+    )
+    .await;
+
+    if let Err(error_message) = outcome {
+        tracing::error!(
+            target: AI_IMPORT_LOG_TARGET,
+            context = %ctx(json!({"error": error_message})),
+            "[AIImport] Streaming generation failed"
+        );
+        let mut all_errors = errors.clone();
+        all_errors.insert("_fatal".into(), Value::String(error_message.clone()));
+        on_progress(json!({
+            "type": "done",
+            "error": error_message,
+            "stepResults": Value::Object(step_results.clone()),
+            "errors": Value::Object(all_errors),
+        }));
+    }
+}
+
+/// Run one LLM step: `step_start`, the call + parse through `parse`, the
+/// `step_complete {snippet}` or the contained `step_error {error}` + log line.
+#[allow(clippy::too_many_arguments)]
+async fn run_step<CMP: CompletionProvider>(
+    c: &ImportCallCtx<'_, CMP>,
+    on_progress: &mut (dyn FnMut(Value) + Send),
+    step_results: &mut Map<String, Value>,
+    errors: &mut Map<String, Value>,
+    step: &str,
+    context: &str,
+    instruction: &str,
+    temperature: f64,
+    max_tokens: i64,
+    fallback_message: &str,
+    log_level_error: bool,
+    log_message: &str,
+    parse: &StepParser<'_>,
+) {
+    on_progress(json!({"type": "step_start", "step": step}));
+    let outcome = match call_llm(c, context, instruction, temperature, max_tokens).await {
+        Ok(raw) => parse(&raw, step_results),
+        Err(e) => Err(e),
+    };
+    match outcome {
+        Ok(StepOutcome { snippet }) => {
+            on_progress(json!({"type": "step_complete", "step": step, "snippet": snippet}));
+        }
+        Err(msg) => {
+            // `error instanceof Error ? error.message : '<fallback>'` — every
+            // failure here is an Error, so the fallback never renders; kept
+            // for the record.
+            let _ = fallback_message;
+            errors.insert(step.to_string(), Value::String(msg.clone()));
+            on_progress(json!({"type": "step_error", "step": step, "error": msg}));
+            if log_level_error {
+                tracing::error!(
+                    target: AI_IMPORT_LOG_TARGET,
+                    context = %ctx(json!({"error": msg})),
+                    "{log_message}"
+                );
+            } else {
+                tracing::warn!(
+                    target: AI_IMPORT_LOG_TARGET,
+                    context = %ctx(json!({"error": msg})),
+                    "{log_message}"
+                );
+            }
+        }
+    }
+}
+
+/// v4's `x?.length || 0` for the `N prompt(s) generated` snippets — an array's
+/// length, a string's UTF-16 length, else 0.
+fn js_length_or_zero(v: Option<&Value>) -> usize {
+    match v {
+        Some(Value::Array(a)) => a.len(),
+        Some(Value::String(s)) => utf16_len(s),
+        _ => 0,
+    }
+}
+
+/// The body of v4's `try` — `Err` is the thrown error's `.message`.
+#[allow(clippy::too_many_arguments)]
+async fn run_import_inner<CMP: CompletionProvider>(
+    db: &Db,
+    completion: &CMP,
+    backend: &dyn StorageBackend,
+    request: &AiImportRequest,
+    user_id: &str,
+    on_progress: OnProgress<'_>,
+    app_version: &str,
+    now_ms: i64,
+    step_results: &mut Map<String, Value>,
+    errors: &mut Map<String, Value>,
+) -> Result<(), String> {
+    let db_msg = |e: DbError| e.to_string();
+
+    // Get connection profile
+    let pid = request.profile_id.clone();
+    let profile = db
+        .read_main(move |c| connection_profiles::find_by_id(c, &pid))
+        .map_err(db_msg)?
+        .filter(|p| {
+            p.get("userId")
+                .and_then(Value::as_str)
+                .is_none_or(|u| u == user_id)
+        })
+        .ok_or_else(|| "Connection profile not found".to_string())?;
+
+    // Get API key (read-order fidelity; the seam resolves its own)
+    if let Some(key_id) = profile
+        .get("apiKeyId")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+    {
+        let (key_id, uid) = (key_id.to_string(), user_id.to_string());
+        let _ = db
+            .read_main(move |c| api_keys::find_by_id_and_user_id(c, &key_id, &uid))
+            .map_err(db_msg)?;
+    }
+
+    // Create LLM provider — `profile.baseUrl || undefined` (truthy)
+    let c = ImportCallCtx {
+        db,
+        completion,
+        provider: str_of(&profile, "provider"),
+        base_url: profile
+            .get("baseUrl")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        model_name: str_of(&profile, "modelName"),
+        profile_parameters: profile_params_value(&profile),
+        user_id,
+    };
+    // v4's `Object.keys(stepResults).length` counts a key holding `undefined`.
+    let mut pronouns_key_undefined = false;
+    let should_run = |step: &str| {
+        should_run_step(
+            step,
+            request.existing_result.as_ref(),
+            request.regenerate_steps.as_deref(),
+        )
+    };
+
+    // Step 0: Analyzing (only for large source material)
+    let source_context = build_source_context(
+        db,
+        backend,
+        &request.source_file_ids,
+        &request.source_text,
+        user_id,
+        step_results.get("analyzing"),
+    )?;
+    if js_trim(&source_context).is_empty() {
+        return Err(
+            "No source material provided. Upload files or enter text to import from.".to_string(),
+        );
+    }
+
+    if utf16_len(&source_context) > SOURCE_ANALYSIS_THRESHOLD && should_run("analyzing") {
+        let instruction = get_analyzing_prompt(utf16_len(&source_context));
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "analyzing",
+            &source_context,
+            &instruction,
+            0.3,
+            2000,
+            "Analysis failed",
+            false,
+            "[AIImport] Analysis step failed (non-fatal)",
+            &|raw, results| {
+                let analysis =
+                    parse_llm_json(raw).map_err(|e| llm_json_failure_message(raw, &e))?;
+                results.insert(
+                    "analyzing".into(),
+                    Value::String(serde_json::to_string_pretty(&analysis).unwrap_or_default()),
+                );
+                // `(analysis.characterName as string) || 'Analysis complete'`
+                let name = analysis.get("characterName");
+                Ok(StepOutcome {
+                    snippet: if js_truthy(name) {
+                        name.cloned().unwrap()
+                    } else {
+                        Value::String("Analysis complete".into())
+                    },
+                })
+            },
+        )
+        .await;
+    }
+
+    // Rebuild context with analysis if available
+    let enriched_context = match step_results.get("analyzing").filter(|a| js_truthy(Some(a))) {
+        Some(a) => format!(
+            "{source_context}\n\n=== Prior Analysis ===\n{}",
+            to_js_string(a)
+        ),
+        None => source_context.clone(),
+    };
+
+    // Step 1: Character Basics (REQUIRED)
+    if should_run("character_basics") {
+        let instruction = character_basics_prompt();
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "character_basics",
+            &enriched_context,
+            &instruction,
+            0.7,
+            2000,
+            "Character basics failed",
+            true,
+            "[AIImport] Character basics step failed",
+            &|raw, results| {
+                let parsed = parse_llm_json(raw).map_err(|e| llm_json_failure_message(raw, &e))?;
+                // `stepResults.character_basics?.name || 'Basics generated'`
+                let name = parsed.get("name");
+                let snippet = if js_truthy(name) {
+                    name.cloned().unwrap()
+                } else {
+                    Value::String("Basics generated".into())
+                };
+                results.insert("character_basics".into(), parsed);
+                Ok(StepOutcome { snippet })
+            },
+        )
+        .await;
+    }
+
+    let char_name = step_results
+        .get("character_basics")
+        .and_then(|b| b.get("name"))
+        .filter(|n| js_truthy(Some(n)))
+        .cloned()
+        .ok_or_else(|| {
+            "Failed to generate character basics — cannot proceed without a character name"
+                .to_string()
+        })?;
+    let char_name_text = to_js_string(&char_name);
+    let char_context = format!("{enriched_context}\n\nCharacter name: {char_name_text}");
+
+    // Step 2: First Message & Example Dialogues
+    if should_run("first_message") {
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "first_message",
+            &char_context,
+            FIRST_MESSAGE_PROMPT,
+            0.8,
+            1500,
+            "First message failed",
+            false,
+            "[AIImport] First message step failed (non-fatal)",
+            &|raw, results| {
+                let parsed = parse_llm_json(raw).map_err(|e| llm_json_failure_message(raw, &e))?;
+                // `getSnippet(stepResults.first_message?.firstMessage || '')`
+                let fm = parsed.get("firstMessage");
+                let snippet = if js_truthy(fm) {
+                    get_snippet(fm.unwrap(), 100)
+                } else {
+                    String::new()
+                };
+                results.insert("first_message".into(), parsed);
+                Ok(StepOutcome {
+                    snippet: Value::String(snippet),
+                })
+            },
+        )
+        .await;
+    }
+
+    // Step 3: System Prompts
+    if should_run("system_prompts") {
+        let instruction = system_prompts_prompt();
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "system_prompts",
+            &char_context,
+            &instruction,
+            0.7,
+            1500,
+            "System prompts failed",
+            false,
+            "[AIImport] System prompts step failed (non-fatal)",
+            &|raw, results| {
+                let parsed = parse_llm_json(raw).map_err(|e| llm_json_failure_message(raw, &e))?;
+                let n = js_length_or_zero(Some(&parsed));
+                results.insert("system_prompts".into(), parsed);
+                Ok(StepOutcome {
+                    snippet: Value::String(format!("{n} prompt(s) generated")),
+                })
+            },
+        )
+        .await;
+    }
+
+    // Step 4: Physical Descriptions
+    if should_run("physical_descriptions") {
+        let instruction = physical_descriptions_prompt();
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "physical_descriptions",
+            &char_context,
+            &instruction,
+            0.7,
+            2000,
+            "Physical descriptions failed",
+            false,
+            "[AIImport] Physical descriptions step failed (non-fatal)",
+            &|raw, results| {
+                let parsed = parse_llm_json(raw).map_err(|e| llm_json_failure_message(raw, &e))?;
+                let sp = parsed.get("shortPrompt");
+                let snippet = if js_truthy(sp) {
+                    get_snippet(sp.unwrap(), 100)
+                } else {
+                    String::new()
+                };
+                results.insert("physical_descriptions".into(), parsed);
+                Ok(StepOutcome {
+                    snippet: Value::String(snippet),
+                })
+            },
+        )
+        .await;
+    }
+
+    // Step 4b: Wardrobe Items
+    if should_run("wardrobe_items") {
+        let instruction = wardrobe_items_prompt();
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "wardrobe_items",
+            &char_context,
+            &instruction,
+            0.7,
+            3000,
+            "Wardrobe items failed",
+            false,
+            "[AIImport] Wardrobe items step failed (non-fatal)",
+            &|raw, results| {
+                let parsed = parse_llm_json(raw).map_err(|e| llm_json_failure_message(raw, &e))?;
+                let items = sanitize_generated_wardrobe_items(&parsed);
+                let n = items.len();
+                results.insert(
+                    "wardrobe_items".into(),
+                    serde_json::to_value(items).unwrap_or(Value::Null),
+                );
+                Ok(StepOutcome {
+                    snippet: Value::String(format!("{n} wardrobe item(s) generated")),
+                })
+            },
+        )
+        .await;
+    }
+
+    // Step 5: Properties (pronouns + aliases; step keeps its historical name)
+    if should_run("pronouns") {
+        let instruction = properties_extraction_prompt();
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "pronouns",
+            &char_context,
+            &instruction,
+            0.3,
+            300,
+            "Properties extraction failed",
+            false,
+            "[AIImport] Properties step failed (non-fatal)",
+            &|raw, results| {
+                let props = parse_generated_properties(raw)
+                    .map_err(|e| llm_json_failure_message(raw, &e))?;
+                // `stepResults.pronouns = props.pronouns ?? undefined` — an
+                // absent key, never `null` (JSON omits `undefined`).
+                match &props.pronouns {
+                    Some(p) => {
+                        results.insert(
+                            "pronouns".into(),
+                            serde_json::to_value(p).unwrap_or(Value::Null),
+                        );
+                    }
+                    None => {
+                        results.remove("pronouns");
+                        tracing::info!(
+                            target: AI_IMPORT_LOG_TARGET,
+                            "[AIImport] Pronouns not derivable from source — leaving null"
+                        );
+                    }
+                }
+                results.insert(
+                    "aliases".into(),
+                    Value::Array(
+                        props
+                            .aliases
+                            .iter()
+                            .map(|a| Value::String(a.clone()))
+                            .collect(),
+                    ),
+                );
+                Ok(StepOutcome {
+                    snippet: Value::String(describe_generated_properties(
+                        &props,
+                        "pronouns not derivable — left blank",
+                    )),
+                })
+            },
+        )
+        .await;
+        // `stepResults.pronouns = props.pronouns ?? undefined` assigns the KEY
+        // even when the value is `undefined`: `Object.keys(stepResults)` counts
+        // it while every JSON projection drops it. A completed step that left
+        // no `pronouns` entry is exactly that key — counted, never serialized.
+        pronouns_key_undefined =
+            !errors.contains_key("pronouns") && !step_results.contains_key("pronouns");
+    }
+
+    // Step 6: Memories (if requested)
+    if js_truthy(Some(&request.include_memories)) && should_run("memories") {
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "memories",
+            &char_context,
+            MEMORIES_PROMPT,
+            0.7,
+            3000,
+            "Memories failed",
+            false,
+            "[AIImport] Memories step failed (non-fatal)",
+            &|raw, results| {
+                let parsed = parse_llm_json(raw).map_err(|e| llm_json_failure_message(raw, &e))?;
+                let n = js_length_or_zero(Some(&parsed));
+                results.insert("memories".into(), parsed);
+                Ok(StepOutcome {
+                    snippet: Value::String(format!("{n} memories generated")),
+                })
+            },
+        )
+        .await;
+    }
+
+    // Step 7: Example Chats (if requested)
+    if js_truthy(Some(&request.include_chats)) && should_run("chats") {
+        run_step(
+            &c,
+            on_progress,
+            step_results,
+            errors,
+            "chats",
+            &char_context,
+            CHATS_PROMPT,
+            0.8,
+            4000,
+            "Chat generation failed",
+            false,
+            "[AIImport] Chats step failed (non-fatal)",
+            &|raw, results| {
+                let parsed = parse_llm_json(raw).map_err(|e| llm_json_failure_message(raw, &e))?;
+                // `stepResults.chats?.title || 'Chat generated'`
+                let title = parsed.get("title");
+                let snippet = if js_truthy(title) {
+                    title.cloned().unwrap()
+                } else {
+                    Value::String("Chat generated".into())
+                };
+                results.insert("chats".into(), parsed);
+                Ok(StepOutcome { snippet })
+            },
+        )
+        .await;
+    }
+
+    // Step 8: Assembly (no LLM call)
+    on_progress(json!({"type": "step_start", "step": "assembly"}));
+    let mut export_data = match assemble_qtap_export(
+        &Value::Object(step_results.clone()),
+        &request.include_memories,
+        js_truthy(Some(&request.include_chats)),
+        app_version,
+        now_ms,
+    ) {
+        Ok(v) => {
+            on_progress(json!({
+                "type": "step_complete",
+                "step": "assembly",
+                "snippet": format!("{char_name_text} assembled"),
+            }));
+            v
+        }
+        Err(msg) => {
+            errors.insert("assembly".into(), Value::String(msg.clone()));
+            on_progress(json!({"type": "step_error", "step": "assembly", "error": msg}));
+            tracing::error!(
+                target: AI_IMPORT_LOG_TARGET,
+                context = %ctx(json!({"error": msg})),
+                "[AIImport] Assembly step failed"
+            );
+            // Assembly failure is fatal
+            on_progress(json!({
+                "type": "done",
+                "error": msg,
+                "stepResults": Value::Object(step_results.clone()),
+                "errors": Value::Object(errors.clone()),
+            }));
+            return Ok(());
+        }
+    };
+
+    // Step 9: Validation — the NAMED REFUSAL (module header): no JSON-Schema
+    // engine in this build, so no repair pass either.
+    on_progress(json!({"type": "step_start", "step": "validation"}));
+    tracing::warn!(
+        target: AI_IMPORT_LOG_TARGET,
+        "[AIImport] Validation unavailable in this build; returning the export unvalidated"
+    );
+    on_progress(json!({
+        "type": "step_error",
+        "step": "validation",
+        "error": VALIDATION_UNAVAILABLE,
+    }));
+    errors.insert(
+        "validation".into(),
+        Value::String(VALIDATION_UNAVAILABLE.to_string()),
+    );
+
+    // Guarantee the structural scaffolding the import path requires survived
+    // assembly (and, in v4, any LLM repair).
+    if let Some(data) = export_data.get_mut("data") {
+        restamp_structural_fields(data, &iso_from_unix_ms(now_ms));
+    }
+
+    tracing::info!(
+        target: AI_IMPORT_LOG_TARGET,
+        context = %ctx(json!({
+            "characterName": char_name,
+            "stepsCompleted": step_results.len() + usize::from(pronouns_key_undefined),
+            "stepsWithErrors": errors.len(),
+        })),
+        "[AIImport] AI character import complete"
+    );
+
+    let mut done = json!({
+        "type": "done",
+        "result": export_data,
+        "stepResults": Value::Object(step_results.clone()),
+    });
+    if !errors.is_empty() {
+        done["errors"] = Value::Object(errors.clone());
+    }
+    on_progress(done);
+    Ok(())
 }

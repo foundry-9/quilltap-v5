@@ -282,6 +282,51 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — feat(generators): P4.9K2 unit 5 — the AI import runner (Summon From Lore) as the `aiImportStream` verb (tier 3)
+
+_Versions: core 0.0.825, harness 0.0.714._
+
+Ports the runner half of v4's `lib/services/ai-import.service.ts`:
+`buildSourceContext` (each source file through `extract_file_content` with
+v4's two warn-and-skip arms, the trimmed freeform text, the prior analysis
+appended — and appended again through `enrichedContext` when it arrives via
+`existingResult`, v4's own double carry), the `analyzing` gate over 30,000
+UTF-16 units, the step chain with v4's per-step temperatures, token budgets
+and snippets, per-step containment (`step_error` + the warn; the error-level
+line for `character_basics`), the fatal nameless-basics arm, the assembly and
+restamp, and the `done` frame in its three shapes. The `aiImportStream` verb
+rides the `generatorProgress` event under `progressId` and resolves
+`{ terminal }`; its body parse carries v4's `||` / `??` defaults and both
+400s.
+
+⚠ Recorded refusal: v4's `validation` step runs ajv over
+`public/schemas/qtap-export.schema.json` and repairs failing sections through
+the model up to twice; v5 links no JSON-Schema engine and adding one is a
+dependency add (STOP-and-flag under the lane's rules). The step lands as
+`step_start validation` → `step_error validation` carrying the named
+`VALIDATION_UNAVAILABLE` sentence, no repair pass; the export is still
+restamped and returned. The differential asserts BOTH sides' pairs explicitly
+on every successful run and strips them before the byte diff — the pin
+retires when an engine lands.
+
+New tier-3 family `ai_import_tier3_equivalence` (24 cases driving v4's REAL
+`system/tools` route over the committed `character-generators-{main,mount}.db`
+pair with the clock frozen; every model call, the whole frame trace with the
+`done.result` export uuid-remapped, the log lines; `appVersion` asserted per
+side then normalized) plus the importability proof — the text-only run's
+export fed to v5's real `import_execute`, the character landing by name.
+Its first runs fixed four port defects: the V8 `JSON.parse` twin gave up on a
+`t`/`f`/`n` start where V8 scans the keyword and names the first mismatching
+unit (`no json here` → `'o'`; the after-JSON and truncated-keyword arms
+measured on Node 24 and added to the twin's table — every family sharing the
+twin re-run green); `regenerateSteps` logged as `null` where v4's JSON drops
+the `undefined` member; the route's raw `includeMemories` / `includeChats`
+values (v4's `??` keeps `0`) collapsed to booleans before the log line and
+the export manifest; and `stepsCompleted` missed v4's `pronouns` key holding
+`undefined` (`Object.keys` counts it, JSON never shows it). Nine mutation
+proofs each reddening its arm — one only after the corpus gained the
+empty-string-name case it had been blind to.
+
 #### 2026-09-07 — feat(generators): P4.9K2 unit 3 — the AI Wizard's five generators and both runners as the `characterWizard` / `characterWizardStream` verbs (tier 3)
 
 _Versions: core 0.0.824, harness 0.0.713, host 0.0.109._
