@@ -2434,7 +2434,6 @@ fn is_route_identifier(field: &str) -> bool {
 // the route params by `createContextParamsHandler`, never from a body; the two
 // body keys those verbs carry (`title` / `content`) ride as `Value` and are the
 // handler's Zod ladder — 411 → 419.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 421;
 // P4.9K1 added two (`CharacterRename.character_id` + `CharacterRefreshArchive.
 // character_id`), both v4 `/api/v1/characters/[id]?action=` route params; the
 // verbs' body fields ride as `Value` and are censused by hand — 411 → 413.
@@ -2449,7 +2448,9 @@ const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 421;
 // progress_id` (the client-minted progress scopes; each verb's body rides as a
 // flattened `Map<String, Value>` parsed by v4's own schema / hand-rolled read
 // inside the handler) — 416 → 418.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 418;
+// Unified (the `2f4254b42` round): the P4.D163 eight and the P4.9K1/K2 seven
+// landed from parallel lanes off the same 411 — 411 + 8 + 7 = 426.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 426;
 
 #[test]
 fn census_covers_every_typed_request_field() {
