@@ -109,16 +109,28 @@ describe('CharactersList', () => {
     expect(text).toContain('Import from SillyTavern');
   });
 
-  it('keeps Summon From Lore disabled but Reset Built-in Characters live (P4.6r)', async () => {
+  it('Summon From Lore and Reset Built-in Characters are both live (p4.9k4 / P4.6r)', async () => {
     const fixture = await render(stubClient([character({})]));
     const buttons = Array.from(
       fixture.nativeElement.querySelectorAll('button'),
     ) as HTMLButtonElement[];
     const summon = buttons.find((b) => b.textContent?.includes('Summon From Lore'));
     const reset = buttons.find((b) => b.textContent?.includes('Reset Built-in Characters'));
-    expect(summon?.disabled).toBe(true);
-    // Reset is now wired to the live WEB-EDGE ?action=reset-builtins route.
+    // p4.9k4: Summon From Lore opens the AI Import wizard.
+    expect(summon?.disabled).toBe(false);
+    // Reset is wired to the live WEB-EDGE ?action=reset-builtins route.
     expect(reset?.disabled).toBe(false);
+  });
+
+  it('Summon From Lore opens the AI Import wizard (p4.9k4)', async () => {
+    const fixture = await render(stubClient([character({})]));
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button'),
+    ) as HTMLButtonElement[];
+    const summon = buttons.find((b) => b.textContent?.includes('Summon From Lore'));
+    summon?.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('qt-ai-import-wizard')).toBeTruthy();
   });
 
   it('shows the empty state when there are no characters', async () => {

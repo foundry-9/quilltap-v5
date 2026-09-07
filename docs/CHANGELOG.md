@@ -474,6 +474,38 @@ proven end-to-end by a jsdom integration spec that drives the whole
 four-step flow over a fake `CoreClient`, plus new unit tests wired into
 `character-edit.spec.ts` and `new-character.spec.ts` for the two hosts' own
 apply/stage-until-creation flows.
+#### 2026-09-07 — feat(characters): the AI Import wizard, "Summon from Lore" (p4.9k4)
+
+_Versions: SPA 0.5.659._
+
+Ports v4's `AIImportWizard` (the four-step source → configuration →
+generation → review flow, streaming `aiImportStream` progress through the
+same `generatorProgress` fold shape as the optimizer) to
+`screens/characters/generators/ai-import/`. File upload rides the existing
+`POST /api/v1/files?action=upload` REST leg (already live in
+`quilltap-web`); the final import step is the existing `systemImportExecute`
+verb. Mounted from two places: the characters list's "Summon From Lore"
+toolbar button (v4 `AuroraView.tsx:694-698` — refetch-only on success), and
+the Salon's Add-Character dialog, retiring the `summonRefused` refusal stub
+— a summoned character does NOT auto-join the chat; it hands its id back to
+the picker, preselected, exactly like a freshly-created NPC, so the operator
+finishes adding it through the ordinary controls (v4
+`SummonFromLoreModal.tsx` + `AddCharacterDialog.tsx:260-266`, both error
+sentences carried verbatim for the zero/multiple-ids cases). Two existing
+specs that pinned the retired stub's disabled/refusal behavior
+(`add-character-dialog.spec.ts`, `characters-list.spec.ts`) are updated to
+assert the live behavior instead — the one deliberate exception to this
+round's "don't touch an existing spec" rule, since retiring the stub those
+specs pinned is the mandate itself. One new e2e beat
+(`ai-import-flow.spec.ts`) is ACTIVATE-AT-UNIFY behind
+`P49K2_SERVER_LANDED`.
+
+Noted divergence: the wizard titles itself by wizard step ("Source
+Material", "Configuration", …) rather than a fixed "Summon From Lore" chrome
+title — v4 gets that fixed title from `SummonFromLoreModal.tsx`'s separate
+wrapper around the shared `AIImportWizard`, which this port folds into one
+component rather than keeping two.
+
 #### 2026-09-07 — feat(characters): the Character Optimizer ("Refine from Memories") and the External Prompt dialogs (p4.9k4)
 
 _Versions: SPA 0.5.658._

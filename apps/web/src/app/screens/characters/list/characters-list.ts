@@ -29,6 +29,7 @@ import {
 } from '../characters.api';
 import { GroupsSection } from '../../groups/groups-section';
 import { GroupEditor } from '../../groups/group-editor';
+import { AiImportWizard } from '../generators/ai-import/ai-import-wizard';
 import { CharacterCard } from './character-card';
 import { CharacterDeleteDialog, type DeleteChoice } from './character-delete-dialog';
 import { CharacterImportDialog } from './character-import-dialog';
@@ -87,8 +88,9 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
  * toggles with optimistic updates, the Create / Import toolbar, and the Groups
  * section (P4.6l) above the grid. "Reset Built-in Characters" is LIVE (the
  * WEB-EDGE `?action=reset-builtins` route, live since P4.4u4) via a confirm
- * dialog + result banner. "Summon From Lore" (AI import) remains a deferral —
- * disabled with v4 microcopy. Copy + `qt-*` classes carry over verbatim.
+ * dialog + result banner. "Summon From Lore" opens the AI Import wizard
+ * (p4.9k4, `generators/ai-import/ai-import-wizard.ts`) — v4
+ * `AuroraView.tsx:694-698`. Copy + `qt-*` classes carry over verbatim.
  */
 @Component({
   selector: 'qt-characters-list',
@@ -105,6 +107,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
     GroupsSection,
     CharacterDetail,
     GroupEditor,
+    AiImportWizard,
   ],
   template: `
     @if (selectedCharacterId(); as cid) {
@@ -162,9 +165,9 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
             </button>
             <button
               type="button"
-              class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50"
-              title="AI generation of character from any text source (not yet available)"
-              disabled
+              class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
+              title="AI generation of a character from any text source"
+              (click)="aiImportOpen.set(true)"
             >
               Summon From Lore
             </button>
@@ -250,6 +253,13 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
       @if (resetOpen()) {
         <qt-reset-builtins-dialog (close)="resetOpen.set(false)" (done)="onReset()" />
       }
+
+      <!-- p4.9k4: Summon From Lore (v4 AuroraView.tsx:694-698 — the mount just
+           refetches on a successful import; it does not drill into the new
+           character). -->
+      @if (aiImportOpen()) {
+        <qt-ai-import-wizard (closed)="aiImportOpen.set(false)" (imported)="onAiImported()" />
+      }
     }
   `,
 })
@@ -320,6 +330,7 @@ export class CharactersList {
 
   protected readonly importOpen = signal(false);
   protected readonly resetOpen = signal(false);
+  protected readonly aiImportOpen = signal(false);
   protected readonly deleteTarget = signal<CharacterListItem | null>(null);
 
   /**
@@ -466,6 +477,12 @@ export class CharactersList {
 
   protected async onReset(): Promise<void> {
     this.resetOpen.set(false);
+    await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
+  }
+
+  /** v4 `AuroraView.tsx:696-698` `onImportSuccess`: refetch, nothing else. */
+  protected async onAiImported(): Promise<void> {
+    this.aiImportOpen.set(false);
     await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
   }
 }

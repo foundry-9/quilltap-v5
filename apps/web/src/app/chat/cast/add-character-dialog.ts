@@ -18,6 +18,7 @@ import type {
   ConnectionProfileDto,
 } from '../../core/core-contract';
 import { MarkdownField } from '../../editor/markdown-field';
+import { AiImportWizard } from '../../screens/characters/generators/ai-import/ai-import-wizard';
 import { characterAvatarSrc, characterKeys, fetchCharacterList } from '../../screens/characters/characters.api';
 import { OutfitSelector, type OutfitSelectorCharacter } from '../../screens/new-chat/outfit-selector';
 import { Avatar } from '../../ui/avatar';
@@ -59,20 +60,20 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
  * - **The nested dialogs' click-outside suppression** (`:161-164`): while Create
  *   NPC is open, a backdrop click or Escape must not close THIS dialog too.
  *
- * ## Deferred, loudly and by name
+ * ## Summon from Lore (p4.9k4)
  *
- * **Summon from Lore** (v4 `SummonFromLoreModal.tsx`, nested at
- * `AddCharacterDialog.tsx:624`) is not ported. Its 84 lines are a wrapper around
- * `components/settings/ai-import/AIImportWizard` (703 LOC, unported) — its own
- * header says it "deliberately reuses AIImportWizard and the import-execute path
- * rather than forking either", so porting Summon means porting the Aurora
- * AI-import wizard, a round of its own. v4's entry point is KEPT and says so
- * when pressed, rather than being quietly dropped from the grid.
+ * v4 `SummonFromLoreModal.tsx` (84 lines) — a thin wrapper around
+ * `AIImportWizard` that resolves the single summoned character and hands its
+ * id back so the operator finishes adding it (connection profile, outfit)
+ * through the ordinary controls, exactly as {@link onNpcCreated} does for a
+ * freshly-created NPC. `handleImportSuccess` (`:43-64`): zero ids is an error
+ * toast, more than one is a DIFFERENT error toast (both v4 sentences
+ * verbatim), exactly one pre-selects it and refetches the roster.
  */
 @Component({
   selector: 'qt-add-character-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, MarkdownField, OutfitSelector, ProviderModelBadge, CreateNpcDialog],
+  imports: [Avatar, Icon, MarkdownField, OutfitSelector, ProviderModelBadge, CreateNpcDialog, AiImportWizard],
   template: `
     <div class="qt-dialog-overlay p-4" (click)="onBackdrop($event)">
       <div
@@ -218,14 +219,12 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
                       </div>
                     </button>
 
-                    <!-- Summon from Lore — the entry point stays; pressing it
-                         says what it is waiting on (v4 :457-479). -->
                     <button
                       type="button"
                       class="p-3 rounded-lg border border-dashed qt-border-default hover:qt-border-primary/50 hover:qt-bg-primary/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       [disabled]="adding()"
-                      title="Not yet available: Summon from Lore needs Aurora’s AI-import wizard"
-                      (click)="summonRefused.set(true)"
+                      title="Conjure a character from lore via the AI Import wizard"
+                      (click)="aiImportOpen.set(true)"
                     >
                       <div class="flex items-center gap-3">
                         <div
@@ -241,15 +240,6 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
                         </div>
                       </div>
                     </button>
-
-                    @if (summonRefused()) {
-                      <div class="col-span-full qt-alert-warning" role="status">
-                        Summoning from lore is not yet available in this edition: the séance
-                        depends on Aurora&rsquo;s import wizard, which has not made the crossing.
-                        (v4 <code>SummonFromLoreModal.tsx</code>, over
-                        <code>components/settings/ai-import/AIImportWizard</code>.)
-                      </div>
-                    }
                   }
                 </div>
               </div>
@@ -381,6 +371,10 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
           (created)="onNpcCreated($event)"
         />
       }
+
+      @if (aiImportOpen()) {
+        <qt-ai-import-wizard (closed)="aiImportOpen.set(false)" (imported)="onSummoned($event)" />
+      }
     </div>
   `,
 })
@@ -407,7 +401,7 @@ export class AddCharacterDialog {
   protected readonly outfitSelection = signal<ChatCreateOutfitSelectionInput | null>(null);
   protected readonly adding = signal(false);
   protected readonly createNpcOpen = signal(false);
-  protected readonly summonRefused = signal(false);
+  protected readonly aiImportOpen = signal(false);
 
   protected readonly charactersQuery = injectQuery(() => ({
     queryKey: characterKeys.list(),
@@ -533,6 +527,33 @@ export class AddCharacterDialog {
   protected onNpcCreated(characterId: string): void {
     this.selectedCharacterId.set(characterId);
     this.createNpcOpen.set(false);
+    void this.charactersQuery.refetch();
+  }
+
+  /**
+   * v4 `SummonFromLoreModal.tsx:43-64` (`handleImportSuccess`) + `AddCharacterDialog.tsx:260-266`
+   * (`handleSummoned`): a summoning does NOT add the character to the chat by
+   * itself — it hands the id back to THIS picker, preselected, so the operator
+   * finishes adding it (connection profile, outfit) through the ordinary "Add
+   * Character" button, mirroring {@link onNpcCreated} exactly. Zero ids or more
+   * than one is an error toast (v4's two sentences verbatim); the wizard already
+   * closed itself by the time this fires (its own `closed` output), so there is
+   * no dialog to dismiss here beyond the picker's own state.
+   */
+  protected onSummoned(event: { importedCharacterIds: string[] }): void {
+    const ids = event.importedCharacterIds;
+    if (ids.length === 0) {
+      this.toasts.showError('The summoning came back empty-handed — do try again.');
+      return;
+    }
+    if (ids.length > 1) {
+      this.toasts.showError(
+        'That conjuration produced more than one soul — repair to Aurora to sort them out.',
+      );
+      return;
+    }
+    this.selectedCharacterId.set(ids[0]);
+    this.aiImportOpen.set(false);
     void this.charactersQuery.refetch();
   }
 

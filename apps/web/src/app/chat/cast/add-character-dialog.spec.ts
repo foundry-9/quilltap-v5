@@ -360,19 +360,17 @@ describe('AddCharacterDialog (v4 components/chat/AddCharacterDialog.tsx)', () =>
     expect(closed).toBe(0);
   });
 
-  it('Summon from Lore refuses BY NAME rather than disappearing', async () => {
+  it('Summon from Lore opens the AI Import wizard (p4.9k4)', async () => {
     const s = stub({ characters: [character({ id: 'c-1' })] });
     const fixture = await mount(s);
     const summon = [...fixture.nativeElement.querySelectorAll('.grid button')].find((b) =>
       (b.textContent ?? '').includes('Summon from Lore'),
     ) as HTMLButtonElement;
     expect(summon).toBeTruthy();
+    expect(summon.disabled).toBe(false);
     summon.click();
     fixture.detectChanges();
-    const body = text(fixture);
-    expect(body).toContain('not yet available');
-    expect(body).toContain('SummonFromLoreModal.tsx');
-    expect(body).toContain('AIImportWizard');
+    expect(fixture.nativeElement.querySelector('qt-ai-import-wizard')).toBeTruthy();
   });
 
   it('warns when there is no connection profile to control an LLM with', async () => {
