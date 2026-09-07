@@ -37,10 +37,7 @@ export {
   GENERAL_SCENARIO_PREFIX,
   GROUP_SCENARIO_PREFIX,
 } from '../../scenario/scenario.types';
-import type {
-  CharacterScenario,
-  ProjectScenarioOption,
-} from '../../scenario/scenario.types';
+import type { CharacterScenario, ProjectScenarioOption } from '../../scenario/scenario.types';
 
 /** The special connection-profile option that flips a cast entry to the user (v4 `USER_CONTROLLED_PROFILE`). */
 export const USER_CONTROLLED_PROFILE = '__USER_CONTROLLED__';
@@ -94,6 +91,8 @@ export interface NewChatSelectedCharacter {
   character: CharacterListItem;
   connectionProfileId: string;
   selectedSystemPromptId?: string | null;
+  /** Ids of the character's subprompts to put in play for this chat (v4 `2f4254b42`). */
+  selectedSubpromptIds?: string[];
   controlledBy: 'llm' | 'user';
 }
 

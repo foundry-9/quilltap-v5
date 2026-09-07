@@ -43,9 +43,7 @@ describe('OutfitSlotsPreview (v4 OutfitSlotsPreview.tsx)', () => {
 
   it('badges a worn hairdo with the rose wardrobe-hair class (v4 WARDROBE_SLOT_META)', () => {
     const fixture = render({ ...EMPTY, hair: [entry('h1', 'Marcel Waves')] });
-    const badge = (fixture.nativeElement as HTMLElement).querySelector(
-      '.qt-badge-wardrobe-hair',
-    );
+    const badge = (fixture.nativeElement as HTMLElement).querySelector('.qt-badge-wardrobe-hair');
     expect(badge).not.toBeNull();
     expect(badge?.textContent?.trim()).toContain('Marcel Waves');
     // The rose badge is hair's alone — the garment slots keep their own.

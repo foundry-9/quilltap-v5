@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import type { CharacterListItem } from '../../core/core-contract';
 import { Avatar } from '../../ui/avatar';
 import { Icon } from '../../ui/icon';
+import { SubpromptPicker } from '../../subprompts/subprompt-picker';
 import { characterAvatarSrc } from '../characters/characters.api';
 import { applyProfileChange, seedSelectedCharacter, sortRoster } from './new-chat.logic';
 import { NewChatState } from './new-chat.state';
@@ -20,7 +21,7 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
 @Component({
   selector: 'qt-new-chat-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, Avatar, Icon],
+  imports: [FormsModule, Avatar, Icon, SubpromptPicker],
   template: `
     <div class="new-chat-character-picker grid grid-cols-1 gap-6 lg:grid-cols-2 items-stretch">
       <!-- Roster -->
@@ -134,6 +135,17 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
                         </select>
                       </div>
                     }
+                    @if (sc.controlledBy !== 'user') {
+                      <div class="mt-2">
+                        <qt-subprompt-picker
+                          [characterId]="sc.character.id"
+                          [characterName]="sc.character.name"
+                          [selectedIds]="sc.selectedSubpromptIds ?? []"
+                          [disabled]="disabled()"
+                          (selectionChange)="onSubpromptsChange(sc.character.id, $event)"
+                        />
+                      </div>
+                    }
                   </div>
                   <button
                     type="button"
@@ -226,6 +238,15 @@ export class CharacterPickerPanel {
     this.core().setSelectedCharacters((prev) =>
       prev.map((sc) =>
         sc.character.id === characterId ? { ...sc, selectedSystemPromptId: promptId || null } : sc,
+      ),
+    );
+  }
+
+  /** v4 `handleSubpromptsChange` (`CharacterPickerPanel.tsx:143-149`). */
+  protected onSubpromptsChange(characterId: string, ids: string[]): void {
+    this.core().setSelectedCharacters((prev) =>
+      prev.map((sc) =>
+        sc.character.id === characterId ? { ...sc, selectedSubpromptIds: ids } : sc,
       ),
     );
   }

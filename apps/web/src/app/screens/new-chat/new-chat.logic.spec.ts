@@ -202,7 +202,6 @@ describe('scenarioSelectPatch (v4 handleScenarioSelectChange)', () => {
     expect(next.generalScenarioPath).toBe('Scenarios/c.md');
     expect(next.scenario).toBe('typed notes');
   });
-
 });
 
 describe('scenarioSelectionPatch (v4 44a8137e handleScenarioSelectionChange)', () => {
@@ -246,6 +245,72 @@ describe('buildCreateRequest (v4 handleCreateChat payload)', () => {
       { type: 'CHARACTER', characterId: 'a', connectionProfileId: 'p1', controlledBy: 'llm' },
       { type: 'CHARACTER', characterId: 'b', controlledBy: 'user' },
     ]);
+  });
+
+  /**
+   * v4 `components/new-chat/__tests__/useNewChat.request-body.test.tsx:127-171`
+   * ("useNewChat create request — subprompts"), transcribed 1:1 against
+   * `buildCreateRequest` — v5's home for the same rule (v4
+   * `useNewChat.ts:751-768`).
+   */
+  describe('subprompts', () => {
+    it('omits selectedSubpromptIds when none are ticked, so a plain create is unchanged (v4 :146-150)', () => {
+      const body = buildCreateRequest([llm(char('a', 'Alice'))], form(), null, undefined);
+      const [participant] = body.participants as unknown as Array<Record<string, unknown>>;
+      expect(participant).not.toHaveProperty('selectedSubpromptIds');
+    });
+
+    it('…and an EMPTY array is an omission too, not an empty key', () => {
+      const body = buildCreateRequest(
+        [{ ...llm(char('a', 'Alice')), selectedSubpromptIds: [] }],
+        form(),
+        null,
+        undefined,
+      );
+      const [participant] = body.participants as unknown as Array<Record<string, unknown>>;
+      expect(participant).not.toHaveProperty('selectedSubpromptIds');
+    });
+
+    it('sends the ticked subprompt ids verbatim for an LLM seat (v4 :152-156)', () => {
+      const body = buildCreateRequest(
+        [{ ...llm(char('a', 'Alice')), selectedSubpromptIds: ['terse', 'verse'] }],
+        form(),
+        null,
+        undefined,
+      );
+      const [participant] = body.participants as unknown as Array<Record<string, unknown>>;
+      expect(participant['selectedSubpromptIds']).toEqual(['terse', 'verse']);
+    });
+
+    it('flipping a seat to user-controlled KEEPS the ids in state — only the body omits them', () => {
+      // v4's user-flip handler does not clear `selectedSubpromptIds` either
+      // (measured at `2f4254b42`: no seed or flip site was touched), so
+      // flipping back restores the selection rather than silently losing it.
+      const flipped = applyProfileChange(
+        [{ ...llm(char('a', 'Alice')), selectedSubpromptIds: ['terse'] }],
+        'a',
+        USER_CONTROLLED_PROFILE,
+      );
+      expect(flipped[0].selectedSubpromptIds).toEqual(['terse']);
+      const body = buildCreateRequest(flipped, form(), null, undefined);
+      const [participant] = body.participants as unknown as Array<Record<string, unknown>>;
+      expect(participant).not.toHaveProperty('selectedSubpromptIds');
+    });
+
+    it('never sends subprompts for a user-controlled seat (v4 :158-170)', () => {
+      const body = buildCreateRequest(
+        [
+          { ...llm(char('a', 'Alice')), selectedSubpromptIds: ['terse'] },
+          { ...user(char('b', 'Bob')), selectedSubpromptIds: ['stray'] },
+        ],
+        form(),
+        null,
+        undefined,
+      );
+      const participants = body.participants as unknown as Array<Record<string, unknown>>;
+      expect(participants[0]['selectedSubpromptIds']).toEqual(['terse']);
+      expect(participants[1]).not.toHaveProperty('selectedSubpromptIds');
+    });
   });
 
   it('honors the scenario precedence chain scenarioId > project > group > general', () => {

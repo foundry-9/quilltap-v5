@@ -24,7 +24,12 @@ describe('computeSyncInitialMode (v4 8bf3cb5f)', () => {
 
   it('the user persona opens on default even when flagged (this dialog IS the choosing)', () => {
     expect(
-      computeSyncInitialMode({ id: 'u', name: 'You', canChooseOutfit: true, isUserControlled: true }),
+      computeSyncInitialMode({
+        id: 'u',
+        name: 'You',
+        canChooseOutfit: true,
+        isUserControlled: true,
+      }),
     ).toBe('default');
   });
 });

@@ -64,6 +64,19 @@ interface PlayAsOption {
  * than taking scenario props, so there is no caller that could withhold the
  * setter. The checkbox therefore always renders — which is exactly what v4's
  * page, the one caller v5 has, does.
+ *
+ * **NO-COUNTERPART (measured 2026-09-07): v4's single-character subprompt
+ * picker.** v4 `2f4254b42` adds a `SubpromptPicker` to this form under
+ * `showSingleCharacterControls && singleLlm` (`NewChatForm.tsx:511-522`), beside
+ * the single-character Connection Profile and System Prompt selects. v5 has
+ * none of those three, and the reason is one decision, not three omissions: only
+ * v4's `NewChatModal` ever passes that prop true (`NewChatModal.tsx:253`,
+ * `!pickerExpanded`), and v5 never ported the modal — the standing no-modal
+ * divergence. v4's PAGE, which IS this screen's counterpart, passes
+ * `showSingleCharacterControls={false}` (`app/salon/new/NewChatPageClient.tsx
+ * :139`), so v4 renders nothing there either and v5's rendered surface stays
+ * faithful. The multi-character picker panel carries the feature, exactly as it
+ * does in v4's page mode.
  */
 @Component({
   selector: 'qt-new-chat-form',

@@ -9,10 +9,7 @@
 
 import { buildAutonomousCreatePatch } from '../../autonomous/autonomous.logic';
 import type { CharacterListItem, ChatCreateRequest } from '../../core/core-contract';
-import {
-  scenarioValueToSelection,
-  type ScenarioSelection,
-} from '../../scenario/scenario.types';
+import { scenarioValueToSelection, type ScenarioSelection } from '../../scenario/scenario.types';
 import {
   USER_CONTROLLED_PROFILE,
   type NewChatFormState,
@@ -191,6 +188,12 @@ export function buildCreateRequest(
     characterId: sc.character.id,
     ...(sc.controlledBy === 'llm' ? { connectionProfileId: sc.connectionProfileId } : {}),
     ...(sc.selectedSystemPromptId ? { selectedSystemPromptId: sc.selectedSystemPromptId } : {}),
+    // Omitted when empty so a plain create stays byte-identical, and never sent
+    // at all for a user-controlled seat — the server would store `[]` for it
+    // regardless (v4 `useNewChat.ts:758-762`).
+    ...(sc.controlledBy === 'llm' && sc.selectedSubpromptIds && sc.selectedSubpromptIds.length > 0
+      ? { selectedSubpromptIds: sc.selectedSubpromptIds }
+      : {}),
     controlledBy: sc.controlledBy,
   }));
 

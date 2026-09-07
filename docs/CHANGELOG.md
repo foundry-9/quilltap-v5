@@ -584,6 +584,36 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — feat(new-chat): the subprompt picker on every LLM seat, and the omit-when-empty create rule
+
+_Versions: SPA 0.5.669._
+
+P4.D165 unit 4. `NewChatSelectedCharacter` gains `selectedSubpromptIds`;
+`buildCreateRequest` carries it ONLY for an LLM-controlled seat with something
+ticked, so a plain create stays byte-identical to what it has always been (v4
+`useNewChat.ts:751-768`). v4's three request-body cases are transcribed as
+specs, plus two v5 additions: an empty array is an omission too, and flipping a
+seat to user-controlled KEEPS the ids in state while the body omits them —
+which is v4's behaviour, measured (no seed or flip site was touched at
+`2f4254b42`). All three guards are mutation-proven.
+
+The picker itself lands on each selected-cast card in the multi-character
+panel, under the system-prompt select and withheld from user-controlled seats
+(v4 `CharacterPickerPanel.tsx:307-317`).
+
+**NO-COUNTERPART, measured:** v4's SINGLE-character subprompt picker
+(`NewChatForm.tsx:511-522`) has no v5 home, and not because it was skipped.
+It renders only under `showSingleCharacterControls`, which only v4's
+`NewChatModal` ever passes true — and v5 never ported the modal (the standing
+no-modal divergence). v4's PAGE, this screen's actual counterpart, passes
+`showSingleCharacterControls={false}`, so v4 renders nothing there either;
+v5's rendered surface is faithful, and the panel carries the feature exactly as
+it does in v4's page mode. Recorded in `new-chat-form.ts`'s class doc, beside
+the identical finding a previous round made about the same prop.
+
+Two pre-existing spec harnesses needed the stream surface and a query client:
+a picker on every LLM seat pulls the realtime hub into the panel's injector.
+
 #### 2026-09-07 — feat(subprompts): the Aurora Subprompts section under the System Prompts tab's prompt list
 
 _Versions: SPA 0.5.668._

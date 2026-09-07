@@ -1,7 +1,9 @@
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
-import type { CoreClient } from '../../core/core-client';
+import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
 import type { CharacterListItem } from '../../core/core-contract';
 import { CharacterPickerPanel } from './character-picker-panel';
 import { NewChatState } from './new-chat.state';
@@ -36,7 +38,16 @@ function char(id: string, name: string, over: Partial<CharacterListItem> = {}): 
   };
 }
 
-const stubCore = {} as CoreClient;
+/**
+ * The stream surface + a `characterSubpromptList` answer are required since
+ * P4.D165 put a `qt-subprompt-picker` on every LLM seat's card: the picker's
+ * shared query injects `RealtimeService`, whose constructor subscribes to
+ * `events$` (`core-client.testing.ts`'s header).
+ */
+const stubCore = {
+  ...coreStreamStub(),
+  dispatchData: async () => ({ subprompts: [] }),
+} as unknown as CoreClient;
 
 function makeState(): NewChatState {
   const state = new NewChatState(stubCore, {});
@@ -47,7 +58,14 @@ function makeState(): NewChatState {
 }
 
 function render(state: NewChatState): ComponentFixture<CharacterPickerPanel> {
-  TestBed.configureTestingModule({ imports: [CharacterPickerPanel] });
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    imports: [CharacterPickerPanel],
+    providers: [
+      provideTanStackQuery(new QueryClient()),
+      { provide: CoreClient, useValue: stubCore },
+    ],
+  });
   const fixture = TestBed.createComponent(CharacterPickerPanel);
   fixture.componentRef.setInput('state', state);
   fixture.detectChanges();
@@ -93,5 +111,48 @@ describe('CharacterPickerPanel', () => {
       (fixture.nativeElement as HTMLElement).querySelectorAll('option'),
     ).map((o) => o.textContent?.trim());
     expect(options).toContain('Play As (User)');
+  });
+
+  /** v4 `CharacterPickerPanel.tsx:307-317` at `2f4254b42`. */
+  describe('the subprompt picker on each seat', () => {
+    function withCast(controlledBy: 'llm' | 'user'): ComponentFixture<CharacterPickerPanel> {
+      const state = makeState();
+      state.selectedCharacters.set([
+        { character: char('a', 'Alice'), connectionProfileId: 'p1', controlledBy },
+      ]);
+      return render(state);
+    }
+
+    it('renders under an LLM seat', () => {
+      const fixture = withCast('llm');
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('qt-subprompt-picker'),
+      ).toBeTruthy();
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Subprompts');
+    });
+
+    it('is withheld from a USER-controlled seat — it has no identity stack to carry them', () => {
+      const fixture = withCast('user');
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('qt-subprompt-picker'),
+      ).toBeNull();
+    });
+
+    it('a selection change writes `selectedSubpromptIds` onto that cast entry alone', () => {
+      const state = makeState();
+      state.selectedCharacters.set([
+        { character: char('a', 'Alice'), connectionProfileId: 'p1', controlledBy: 'llm' },
+        { character: char('b', 'Bob'), connectionProfileId: 'p1', controlledBy: 'llm' },
+      ]);
+      const fixture = render(state);
+      (
+        fixture.componentInstance as unknown as {
+          onSubpromptsChange(id: string, ids: string[]): void;
+        }
+      ).onSubpromptsChange('a', ['terse', 'verse']);
+      fixture.detectChanges();
+      expect(state.selectedCharacters()[0].selectedSubpromptIds).toEqual(['terse', 'verse']);
+      expect(state.selectedCharacters()[1].selectedSubpromptIds).toBeUndefined();
+    });
   });
 });

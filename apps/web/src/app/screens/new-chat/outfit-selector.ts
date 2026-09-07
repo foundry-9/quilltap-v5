@@ -212,8 +212,7 @@ export class OutfitSelector {
       opts.push({
         value: 'previous_chat',
         label: 'Same as last conversation',
-        description:
-          'Carry forward whatever they were wearing at the end of the source chat',
+        description: 'Carry forward whatever they were wearing at the end of the source chat',
       });
     }
     opts.push(
