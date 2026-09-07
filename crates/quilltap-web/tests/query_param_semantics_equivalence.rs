@@ -56,9 +56,11 @@
 //!   → `notFound('Character')` BEFORE the action gate; v5's edge refuses
 //!   without a lookup. The oracle mocks the character into existence so v4's
 //!   *sentence* is on the record, but the two trees gate in different orders,
-//!   so the rows are pinned on the v5 side rather than cross-compared. v5 also
-//!   serves only `archive`/`rehydrate` here (the P4.D66 CLI edge); the other
-//!   eleven v4 actions ride `/api/dispatch`.
+//!   so the rows are pinned on the v5 side rather than cross-compared. v5
+//!   serves six of v4's thirteen actions here (`archive`/`rehydrate` — the
+//!   P4.D66 CLI edge — plus P4.9K1's `rename`, `refresh-archive`,
+//!   `generate-external-prompt` and `optimize-stream`); the other seven ride
+//!   `/api/dispatch`.
 //! - The other four [`V5_PINNED_ENDPOINTS`] (P4.72) — `character_item_get`,
 //!   `characters_collection_post`, `chat_item_get`, `chat_item_post` — are the
 //!   same class one route wider: v5 hosts a strict subset of the v4 route (the
@@ -445,22 +447,22 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
     (
         "character_item_post__bare",
         400,
-        "This route serves ?action=archive and ?action=rehydrate only",
+        "This route serves ?action=archive, ?action=rehydrate, ?action=rename",
     ),
     (
         "character_item_post__empty",
         400,
-        "This route serves ?action=archive and ?action=rehydrate only",
+        "This route serves ?action=archive, ?action=rehydrate, ?action=rename",
     ),
     (
         "character_item_post__unknown",
         400,
-        "This route serves ?action=archive and ?action=rehydrate only",
+        "This route serves ?action=archive, ?action=rehydrate, ?action=rename",
     ),
     (
         "character_item_post__empty_then_known",
         400,
-        "This route serves ?action=archive and ?action=rehydrate only",
+        "This route serves ?action=archive, ?action=rehydrate, ?action=rename",
     ),
     // --- P4.72 ---
     // `GET /api/v1/characters/{id}` — v4 has NO refusal leg here at all:

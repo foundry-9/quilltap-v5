@@ -108,7 +108,7 @@ async fn the_cli_action_url_archives_and_rehydrates() {
         body["error"]
             .as_str()
             .unwrap()
-            .contains("archive and ?action=rehydrate only"),
+            .contains("?action=archive, ?action=rehydrate"),
         "unexpected 400 body: {body}"
     );
 

@@ -423,7 +423,13 @@ async function main(): Promise<void> {
     }
   }
 
-  // Force the empty tables the read paths touch into existence.
+  // Force the empty tables the read paths touch into existence — through the
+  // repos' own lazy `ensureCollection`s, so the DDL is v4's. `chats` (the
+  // rename's chat sweep + v5's boot reconcile), `chat_messages` (the sweep's
+  // message walk), `embedding_status` (v5's boot dimension reconcile).
+  await repos.chats.findByCharacterId(spec.characters[0].id);
+  await repos.chats.getMessages('00000000-0000-4000-8000-000000000000');
+  await repos.embeddingStatus.findByUserId(spec.userId);
   await repos.backgroundJobs.findByUserId(spec.userId, 'PENDING');
   await repos.vectorIndices.findMetaByCharacterId(spec.characters[1].id);
   await repos.vectorIndices.findEntriesByCharacterId(spec.characters[1].id);

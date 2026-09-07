@@ -387,3 +387,37 @@ pub async fn serve_instance(
     });
     (addr, state)
 }
+
+/// P4.9K1 unit 5: materialize an instance dir from the committed
+/// `character-generators-*` pair (two characters — Mira, vaulted and rich, and
+/// Nix, bare — two connection profiles pointing at `http://127.0.0.1:1`, a
+/// default embedding profile, an uploads mount with four blob-backed files,
+/// ten memories with a 4-dim vector index; built by
+/// `harness/oracle/fixtures/build-character-generators-fixture.ts` from v4's
+/// own repositories at the pin; the fixture owner `FIXTURE_USER` is rewritten
+/// to the engine's single user). Used by the generator web-edge tests.
+#[allow(dead_code)]
+pub fn materialize_generators_instance() -> tempfile::TempDir {
+    let base = tempfile::tempdir().expect("tempdir");
+    let data = base.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::copy(
+        fixtures_dir().join("character-generators-main.db"),
+        data.join("quilltap.db"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures_dir().join("character-generators-mount.db"),
+        data.join("quilltap-mount-index.db"),
+    )
+    .unwrap();
+    {
+        let w = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
+        w.connection().execute_batch(LLM_LOGS_DDL).unwrap();
+    }
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+        rewrite_user_ids(w.connection());
+    }
+    base
+}

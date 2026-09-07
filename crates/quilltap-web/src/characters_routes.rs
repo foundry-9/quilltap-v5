@@ -291,51 +291,267 @@ where
 }
 
 // ===========================================================================
-// POST /api/v1/characters/{id}?action=archive|rehydrate  (the CLI's JSON leg)
+// POST /api/v1/characters/{id}?action=…  (v4 `[id]/handlers/post.ts`)
 // ===========================================================================
 
-/// v4 `POST /api/v1/characters/[id]` (`handlers/post.ts`). v5's SPA drives the
-/// character JSON actions over `/api/dispatch`, but v4's CLI — ported as
-/// `quilltap db characters archive|rehydrate` (P4.D66) — POSTs this URL with a
-/// bare `fetch`, so the two verbs the CLI uses get a REST edge delegating into
-/// the same P4.D65 dispatch arms. Success is v4's raw result bag
-/// (`NextResponse.json(result)`); errors keep the arms' status + `{error}`
-/// body (v4's `badRequest`/`serverError` envelope). Every other action stays
-/// on `/api/dispatch` (the `characters_get` precedent below).
+/// The actions this edge serves; every other v4 action on this URL rides
+/// `POST /api/dispatch` (recorded in `query_param_semantics_equivalence`).
+const CHARACTER_ACTION_SERVED: &str = "This route serves ?action=archive, ?action=rehydrate, \
+     ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt and \
+     ?action=optimize-stream; the other JSON actions live on /api/dispatch";
+
+/// `error_to_http`'s status map, for the arms that need the status and the
+/// body apart (the SSE refusal envelope).
+fn status_of_kind(kind: &ErrorKind) -> StatusCode {
+    match kind {
+        ErrorKind::BadRequest => StatusCode::BAD_REQUEST,
+        ErrorKind::NotFound => StatusCode::NOT_FOUND,
+        ErrorKind::Conflict => StatusCode::CONFLICT,
+        ErrorKind::Forbidden => StatusCode::FORBIDDEN,
+        ErrorKind::Unauthorized => StatusCode::UNAUTHORIZED,
+        ErrorKind::Unprocessable => StatusCode::UNPROCESSABLE_ENTITY,
+        ErrorKind::Locked | ErrorKind::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+        ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+    }
+}
+
+/// v4's error bodies on this route as a `(status, body)` pair: the Zod
+/// `validationError` envelope (`{error, details}`), the store-unavailable
+/// `{error, <entity>Id}`, else `{error}`.
+fn core_error_status_body(e: quilltap_core::api::CoreError) -> (StatusCode, Value) {
+    let status = status_of_kind(&e.kind);
+    let body = e
+        .validation_wire_body()
+        .or_else(|| e.unavailable_wire_body())
+        .unwrap_or_else(|| serde_json::json!({ "error": e.message }));
+    (status, body)
+}
+
+fn json_response(status: StatusCode, body: &Value) -> AxumResponse {
+    (
+        status,
+        [(CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response()
+}
+
+/// Decode a JSON action body THROUGH the `Request` enum (the profile-routes
+/// precedent) so the absent / explicit-`null` / value tri-state is resolved by
+/// exactly one piece of code — the variants' `double_option` fields — and
+/// v4's Zod arms inside the handler see what v4's `req.json()` handed them.
+/// Only `keys` are carried (a stray key is neither an error nor a field).
+///
+/// `Err` is what v4 answers for a body that never reaches its schema: a body
+/// that is not JSON throws `SyntaxError` out of `req.json()` into the
+/// middleware's generic catch (`500 Internal server error`); a JSON value that
+/// is not an object reaches `schema.parse` as a root-level `invalid_type`
+/// (`400 Validation error` with that one issue).
+fn decode_action_body(
+    body: &str,
+    verb: &str,
+    character_id: &str,
+    keys: &[&str],
+    extra: &[(&str, Value)],
+) -> Result<quilltap_core::api::Request, (StatusCode, Value)> {
+    let parsed: Value = serde_json::from_str(body).map_err(|_| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": "Internal server error" }),
+        )
+    })?;
+    let received = match &parsed {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    };
+    let Value::Object(fields) = parsed else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            serde_json::json!({
+                "error": "Validation error",
+                "details": [{
+                    "expected": "object",
+                    "code": "invalid_type",
+                    "path": [],
+                    "message": format!("Invalid input: expected object, received {received}"),
+                }],
+            }),
+        ));
+    };
+    let mut map = serde_json::Map::new();
+    map.insert("type".into(), Value::String(verb.into()));
+    map.insert("characterId".into(), Value::String(character_id.into()));
+    for (k, v) in extra {
+        map.insert((*k).to_string(), v.clone());
+    }
+    for (k, v) in fields {
+        if keys.contains(&k.as_str()) {
+            map.insert(k, v);
+        }
+    }
+    serde_json::from_value::<quilltap_core::api::Request>(Value::Object(map)).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            serde_json::json!({ "error": format!("Unexpected request shape: {e}") }),
+        )
+    })
+}
+
+/// A body that failed to decode, answered in v4's ORDER: v4 resolves the
+/// character (`findById` → `notFound`) before any handler reads the body, so
+/// a missing character answers 404 whatever the body was. The existence probe
+/// is a `characterRename` with NO fields — it runs exactly v4's ownership gate
+/// and then refuses (`At least one replacement must be specified`) before
+/// touching anything, so it has no side effect.
+async fn answer_body_failure(
+    state: &SharedState,
+    character_id: &str,
+    failure: (StatusCode, Value),
+) -> AxumResponse {
+    let probe = quilltap_core::api::Request::CharacterRename {
+        character_id: character_id.to_string(),
+        primary_rename: None,
+        additional_replacements: None,
+        dry_run: None,
+    };
+    match crate::text_replacements_routes::dispatch_core(state, probe).await {
+        Ok(Response::Error(e)) if e.kind == ErrorKind::NotFound => {
+            crate::text_replacements_routes::error_to_http(e)
+        }
+        Err(resp) => resp,
+        _ => json_response(failure.0, &failure.1),
+    }
+}
+
+/// Dispatch one JSON action and answer v4's envelope: the raw result bag on
+/// success (`NextResponse.json(result)`), `{error[, details]}` + status on
+/// failure.
+async fn dispatch_action_json(
+    state: &SharedState,
+    req: quilltap_core::api::Request,
+) -> AxumResponse {
+    match crate::text_replacements_routes::dispatch_core(state, req).await {
+        Ok(Response::Character(v)) => json_response(StatusCode::OK, &v),
+        Ok(Response::Error(e)) => {
+            let (status, body) = core_error_status_body(e);
+            json_response(status, &body)
+        }
+        Ok(_) => error_json(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Unexpected core response",
+        ),
+        Err(resp) => resp,
+    }
+}
+
+/// v4 `POST /api/v1/characters/[id]?action=…` — the P4.D66 `archive` /
+/// `rehydrate` CLI edge plus (P4.9K1 unit 5) the four generator actions:
+/// `rename` / `refresh-archive` / `generate-external-prompt` as JSON, and
+/// `optimize-stream` as v4's `text/event-stream` through the K0 re-framer
+/// (`generator_sse::stream_generator`): the engine's `characterOptimize` runs
+/// under a server-minted `progressId` and every frame it publishes is written
+/// back as `data: <JSON>\n\n`; a refusal before the first frame (the 404, the
+/// Zod 400, the not-assembled 503) answers JSON with its status, as v4's
+/// route does. The other seven v4 actions on this URL ride `/api/dispatch`
+/// (recorded).
 pub async fn characters_action_post(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     Query(pairs): Query<crate::query::QueryPairs>,
+    body: String,
 ) -> AxumResponse {
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
     use quilltap_core::api::Request as CoreRequest;
 
-    let req = match query.get("action").map(String::as_str) {
-        Some("archive") => CoreRequest::CharacterArchive { character_id: id },
-        Some("rehydrate") => CoreRequest::CharacterRehydrate { character_id: id },
-        _ => {
-            return error_json(
-                StatusCode::BAD_REQUEST,
-                "This route serves ?action=archive and ?action=rehydrate only; \
-                 the other JSON actions live on /api/dispatch",
-            )
+    match query.get("action").map(String::as_str) {
+        Some("archive") => {
+            dispatch_action_json(&state, CoreRequest::CharacterArchive { character_id: id }).await
         }
-    };
-    match crate::text_replacements_routes::dispatch_core(&state, req).await {
-        Ok(Response::Character(v)) => (
-            StatusCode::OK,
-            [(CONTENT_TYPE, "application/json")],
-            v.to_string(),
-        )
-            .into_response(),
-        Ok(Response::Error(e)) => crate::text_replacements_routes::error_to_http(e),
-        Ok(_) => error_json(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Unexpected core response",
-        ),
-        Err(resp) => resp,
+        Some("rehydrate") => {
+            dispatch_action_json(&state, CoreRequest::CharacterRehydrate { character_id: id }).await
+        }
+        Some("refresh-archive") => {
+            dispatch_action_json(
+                &state,
+                CoreRequest::CharacterRefreshArchive { character_id: id },
+            )
+            .await
+        }
+        Some("rename") => match decode_action_body(
+            &body,
+            "characterRename",
+            &id,
+            &["primaryRename", "additionalReplacements", "dryRun"],
+            &[],
+        ) {
+            Ok(req) => dispatch_action_json(&state, req).await,
+            Err(failure) => answer_body_failure(&state, &id, failure).await,
+        },
+        Some("generate-external-prompt") => match decode_action_body(
+            &body,
+            "characterGenerateExternalPrompt",
+            &id,
+            &[
+                "connectionProfileId",
+                "systemPromptId",
+                "scenarioId",
+                "maxTokens",
+            ],
+            &[],
+        ) {
+            Ok(req) => dispatch_action_json(&state, req).await,
+            Err(failure) => answer_body_failure(&state, &id, failure).await,
+        },
+        Some("optimize-stream") => {
+            let Some(host) = state.host() else {
+                return error_json(StatusCode::SERVICE_UNAVAILABLE, "The engine is not running");
+            };
+            let progress_id = uuid::Uuid::new_v4().to_string();
+            let req = match decode_action_body(
+                &body,
+                "characterOptimize",
+                &id,
+                &[
+                    "connectionProfileId",
+                    "maxMemories",
+                    "searchQuery",
+                    "useSemanticSearch",
+                    "sinceDate",
+                    "beforeDate",
+                    "outputMode",
+                ],
+                &[("progressId", Value::String(progress_id.clone()))],
+            ) {
+                Ok(req) => req,
+                Err(failure) => return answer_body_failure(&state, &id, failure).await,
+            };
+            // The dispatch future is handed in UN-POLLED (the re-framer
+            // subscribes first — its module header, step 1).
+            use quilltap_core::api::QuilltapCore as _;
+            let core = host.core().clone();
+            let dispatch = async move { core.dispatch(req).await };
+            crate::generator_sse::stream_generator(
+                host.core().event_sender(),
+                progress_id,
+                dispatch,
+                |resp: Response| match resp {
+                    Response::Character(_) => Ok(()),
+                    Response::Error(e) => Err(core_error_status_body(e)),
+                    _ => Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        serde_json::json!({ "error": "Unexpected core response" }),
+                    )),
+                },
+            )
+            .await
+        }
+        _ => error_json(StatusCode::BAD_REQUEST, CHARACTER_ACTION_SERVED),
     }
 }
 

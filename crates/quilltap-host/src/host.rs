@@ -611,6 +611,11 @@ impl EngineAssembler for HostAssembler {
             .as_ref()
             .and_then(|bundle| bundle.help_chat_send.clone());
         // === end P4.9I2A ===
+        // === P4.9K1: the per-character generator driver, the same pickup shape. ===
+        let generators_detail = spine_bundle
+            .as_ref()
+            .and_then(|bundle| bundle.generators_detail.clone());
+        // === end P4.9K1 ===
         let (
             chat_send,
             chat_create,
@@ -946,11 +951,11 @@ impl EngineAssembler for HostAssembler {
             // refusal. ===
             help_chat_send,
             // === end P4.9I2A ===
-            // === P4.9K1: the per-character generator driver — `None` until the
-            // driver unit wires `generators_detail_driver.rs` from the spine
-            // bundle; the two model-calling verbs answer their NAMED refusal
-            // meanwhile, after v4's 404 + Zod arms. ===
-            generators_detail: None,
+            // === P4.9K1: the per-character generator driver, LIVE from the spine
+            // bundle (⚠ 💸 real spend: the optimizer + the external prompt).
+            // Spine-less assemblies keep `None` → the two model-calling verbs
+            // answer their NAMED refusal after v4's 404 + Zod arms. ===
+            generators_detail,
             // === end P4.9K1 ===
         })
     }

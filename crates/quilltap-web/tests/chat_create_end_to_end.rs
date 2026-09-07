@@ -208,6 +208,8 @@ impl SpineFactory for CreateSpineFactory {
             // above (the listing and the runner answer from one fact).
             search_providers: Vec::new(),
             job_handlers: Vec::new(),
+            // P4.9K1: the canned factory assembles no generator driver.
+            generators_detail: None,
         }
     }
 }

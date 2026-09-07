@@ -3223,6 +3223,17 @@ pub struct SpineBundle {
     /// the runner does not have. Empty for canned test factories.
     pub search_providers: Vec<&'static quilltap_core::provider_manifest::search::SearchManifest>,
     pub job_handlers: Vec<(String, Box<dyn JobHandler>)>,
+    // === P4.9K1 ===
+    /// The per-character generator driver (P4.9K1 unit 5): `characterOptimize`
+    /// and `characterGenerateExternalPrompt` over the SAME completion and
+    /// embedding providers the send driver holds. `None` for canned test
+    /// factories — the two verbs answer their NAMED refusal after v4's 404 and
+    /// Zod arms. ⚠ 💸 LIVE: one model call per external prompt; one analysis
+    /// call plus one per sub-step per optimizer run (and one embedding call for
+    /// a semantic search).
+    pub generators_detail:
+        Option<Arc<dyn quilltap_core::api::generators_detail::GeneratorsDetailDriver>>,
+    // === end P4.9K1 ===
 }
 
 /// Builds the chat-send + chat-create drivers + the model-dependent job
@@ -3285,6 +3296,11 @@ impl SpineFactory for ProductionSpineFactory {
         let streaming = Arc::new(self.io.streaming_provider(DbProviderKeys(db.clone())));
         let completion = Arc::new(wire.completion(db));
         let embedding = Arc::new(wire.embedding(db));
+        // === P4.9K1: the generator driver shares the two provider Arcs (taken
+        // here, before the create-spine literal below consumes the originals). ===
+        let generators_completion = Arc::clone(&completion);
+        let generators_embedding = Arc::clone(&embedding);
+        // === end P4.9K1 ===
         let env = production_self_inventory_env(&self.version, self.docs_dir.as_deref(), db);
         let backend: Arc<dyn StorageBackend> =
             Arc::new(LocalStorageBackend::new(self.base_dir.join("files")));
@@ -3541,6 +3557,18 @@ impl SpineFactory for ProductionSpineFactory {
             // P4.59: the registration that decided `serper_registered` above.
             search_providers,
             job_handlers,
+            // === P4.9K1: the per-character generator driver, LIVE from this
+            // assembly's providers (⚠ 💸 real spend on a real click: the
+            // optimizer's analysis + per-sub-step calls, the external prompt's
+            // one call). ===
+            generators_detail: Some(Arc::new(
+                crate::generators_detail_driver::HostGeneratorsDetailDriver {
+                    db: db.clone(),
+                    completion: generators_completion,
+                    embedding: generators_embedding,
+                },
+            )),
+            // === end P4.9K1 ===
         }
     }
 }

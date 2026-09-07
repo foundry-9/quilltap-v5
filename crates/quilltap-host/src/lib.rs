@@ -58,6 +58,11 @@ pub mod providers;
 pub mod spine;
 pub mod terminal;
 pub mod wire;
+// === P4.9K1 ===
+/// The per-character generator driver (P4.9K1 unit 5) — the optimizer +
+/// external-prompt runners over the spine's providers.
+pub mod generators_detail_driver;
+// === end P4.9K1 ===
 
 pub use apply_fs::ApplyFsOps;
 pub use avatar_preview::HostAvatarPreviewRenderer;

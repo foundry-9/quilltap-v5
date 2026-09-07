@@ -282,6 +282,45 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — feat(generators): P4.9K1 unit 5 — the host generator driver LIVE, and the four generator actions on `POST /api/v1/characters/{id}`
+
+_Versions: host 0.0.108, web 0.0.124._
+
+Wires `GeneratorsDetailDriver` into the production assembly
+(`quilltap-host::generators_detail_driver` over the spine bundle's shared
+completion + embedding providers): `characterGenerateExternalPrompt` and
+`characterOptimize` now run for real. ⚠ 💸 LIVE spend — one model call per
+external prompt; one analysis call plus one per sub-step (the general fields,
+every scenario, every system prompt, the physical description, the wardrobe,
+the aliases, new prompts) per optimizer run, plus one embedding call when a
+semantic search query is given. Spine-less assemblies (canned test factories)
+keep the named refusal.
+
+The REST edge `POST /api/v1/characters/{id}?action=` gains v4's four generator
+actions beside the P4.D66 `archive`/`rehydrate` pair: `rename`,
+`refresh-archive` and `generate-external-prompt` as JSON (the body decoded
+THROUGH the `Request` enum so the absent / `null` / value tri-state reaches
+v4's Zod arms; a missing character answers 404 before any body is read, as
+v4's route does; a non-JSON body is v4's generic 500, a JSON non-object the
+root-level `invalid_type` 400; the Zod `details` envelope on the wire), and
+`optimize-stream` as v4's `text/event-stream` through the K0 re-framer (a
+server-minted `progressId`; a refusal before the first frame answers JSON with
+its status). The unknown-action sentence names all six served actions; the
+other seven v4 actions stay on `/api/dispatch` (the query-param semantics
+family's four recorded rows re-pinned).
+
+New web-edge test `characters_generators_routes` over the committed
+`character-generators` pair and the PRODUCTION spine: the tri-state reaching
+Zod, the 404-before-body order, the rename preview, `refresh-archive`, the
+driver proven WIRED (a valid external-prompt request reaches the socket-refused
+provider and answers v4's 500, not the not-assembled 503), and the optimizer's
+frames streamed as v4's bytes through the real pipeline (`start` → the
+`loading` step's eight memories → `analyzing` → the provider `error` frame).
+The fixture builder now forces `chats` / `chat_messages` / `embedding_status`
+into existence through v4's own repositories (the rename's chat sweep and v5's
+boot reconcile read them; the pair is rebuilt, the optimizer oracle
+regenerated and re-run green).
+
 #### 2026-09-07 — feat(generators): P4.9K1 unit 4 — the character optimizer runner as the `characterOptimize` verb, streamed over the generator-progress channel
 
 _Versions: core 0.0.822, harness 0.0.711._

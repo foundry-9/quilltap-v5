@@ -179,6 +179,17 @@ const CLOSURE_NEEDLE: &str = ".as_str())";
 /// `(routes file, expected closure-form sites, the adjudication)`.
 const CLOSURE_CENSUS: &[(&str, usize, &str)] = &[
     (
+        "crates/quilltap-web/src/characters_routes.rs",
+        1,
+        "NOT a body-VALUE read (P4.9K1 unit 5): `decode_action_body`'s one site \
+         is `keys.contains(&k.as_str())` — a KEY-membership test over the \
+         schema's key list while it copies a JSON body into the `Request` \
+         variant. The VALUES pass through untouched as `Value` tri-states \
+         (`double_option`), so a wrong-typed body key reaches v4's Zod arm \
+         inside the handler exactly as `req.json()` hands it there; nothing \
+         collapses. The row exists so the file stays UNDER the census.",
+    ),
+    (
         "crates/quilltap-web/src/query.rs",
         2,
         "NOT a body read — the only two sites are the shared query reader's \

@@ -112717,3 +112717,77 @@ the four families' env vars — **519 test binaries / 2,944 passed / 0 failed,
 zero `SKIP:` lines**; the optimizer family re-run by name with `--nocapture`:
 28 cases / 182 model calls / 497 frames / 2 files / 60 log rows. Versions:
 core 0.0.822, harness 0.0.711.
+
+### Unit D (K1 unit 5) — the host driver LIVE + the four REST arms
+
+**The driver.** `quilltap-host/src/generators_detail_driver.rs` —
+`HostGeneratorsDetailDriver { db, completion, embedding }` implementing both
+trait methods over the runners directly (no thread bridge: every await is a
+`Send` provider future or a synchronous `Db` read). Assembled in
+`ProductionSpineFactory::build`'s `SpineBundle` (a K1-fenced field at the END
+of the struct and the literal; the two provider `Arc`s cloned BEFORE the
+create-spine literal consumes the originals), picked up in `host.rs` beside
+the help-chat driver, handed to `EngineAssembly.generators_detail` in place of
+the Unit-B `None`. ⚠ 💸 LIVE. Consequential out-of-ownership edits: the two
+canned `SpineBundle` literals in `quilltap-web/tests/{chat_send_smoke,
+chat_create_end_to_end}.rs` gain `generators_detail: None` (a new bundle field
+cannot be added any other way — the `image_describe` precedent).
+
+**The REST arms** (`characters_routes.rs::characters_action_post`, rewritten
+whole): `rename` / `generate-external-prompt` decode their body THROUGH the
+`Request` enum (the profile-routes precedent — the tri-state is resolved by
+the variants' `double_option` fields, never re-implemented at the edge; only
+the schema's keys are carried); `refresh-archive` is body-less;
+`optimize-stream` mints a `progressId`, dispatches `characterOptimize` through
+K0's `generator_sse::stream_generator` and answers v4's bytes (a refusal before
+the first frame is JSON + status; the SSE `outcome` maps `CoreError` through
+the same `{error, details}` / store-unavailable / `{error}` envelopes the JSON
+arms use). v4's order is kept for a malformed body: `handlePost` resolves the
+character BEFORE any handler reads the body, so a decode failure first probes
+existence through a field-less `characterRename` (v4's ownership gate then the
+`At least one replacement` refusal — no side effect) and answers 404 when the
+character is missing, else v4's generic `500 Internal server error` (a body
+that is not JSON — `req.json()`'s `SyntaxError` into the middleware's catch)
+or the root-level `invalid_type` 400 (a JSON non-object reaching
+`schema.parse`). The unknown-action sentence now names all six served
+actions; the other seven v4 actions stay on `/api/dispatch`, and
+`query_param_semantics_equivalence`'s four `character_item_post__*` recorded
+rows are re-pinned to the new prefix (the family regenerated from the pin and
+re-run: 54 cross-compared refusal rows, all four rows intact) — the K2-owned
+file edited here because both orders run in this one lane.
+
+**The wire test — `characters_generators_routes`** (web edge, over
+`common::materialize_generators_instance` — the committed pair with the
+fixture user rewritten to the engine's single user — and the PRODUCTION spine
+registered in the `configure` closure, the FIRST web wire test to boot it;
+`HostConfig::new` registers none, which is how the test's first run measured
+the not-assembled 503 and proved it can tell the two apart): the unknown-action
+sentence; the rename preview (`characterId`/`dryRun`/`summary.total > 0`); a
+`null` `primaryRename` answering Zod's `invalid_type` THROUGH the edge; the
+no-replacement 400; a non-JSON body → 500 on Mira, 404 on a missing id, `[1]`
+→ the root-level issue; `refresh-archive` → `{queued: 0}`; the
+external-prompt Zod 400 and — the driver WIRED — a valid request answering
+the socket-refused transport's 500, never the 503; `optimize-stream`'s Zod
+400 as JSON, the 404, and a real run streamed as `text/event-stream` /
+`no-cache`: `start`, `step_start loading`, `step_complete loading` with
+`memoryCount 8` (the real pipeline over the fixture's memories), `step_start
+analyzing`, then the provider `error` frame — with no spend (the profile's
+`http://127.0.0.1:1`). Its first runs caught two fixture-vintage gaps: the
+pair carried no `chats` table (`Failed to process rename request` on a real
+boot — v4's `ensureCollection` is lazy, a real instance has it), so the
+builder now forces `chats` / `chat_messages` / `embedding_status` through v4's
+own repositories; the pair is rebuilt (md5 main `495c2d2a…` / mount
+`7f5da3e5…`, superseding Unit C's), the optimizer oracle regenerated and
+re-run green (28 cases, unchanged numbers). The `maxTokens` floor (1000) also
+corrected a test body.
+
+**Gate (Unit D):** fmt clean; clippy both feature sets clean (the first run
+caught a `doc_lazy_continuation` on the new bundle field's doc — a line
+opening with `+`, the markdown-list trap — and the web-edge body-parse
+census's closure needle found `decode_action_body`'s key-membership
+`as_str()`, adjudicated as a non-read with its own census row); `cargo test
+--workspace` with the five families' env vars — **520 test binaries / 2,945
+passed / 0 failed, zero `SKIP:` lines**; `characters_generators_routes` and
+`query_param_semantics_equivalence` (the latter regenerated from the pin
+through the sweep driver: 54 cross-compared refusal rows, the four re-pinned
+rows intact) confirmed RUN by name. Versions: host 0.0.108, web 0.0.124.
