@@ -11,6 +11,14 @@
 //! the prompt); a selected non-default system prompt; the `defaultPartnerId`
 //! user-character resolution.
 //!
+//! **P4.D164 (v4 `2f4254b42`) — the greeting's `## Additional Instructions`.**
+//! Five `sp_*` cases pass the FIFTH argument (the opener's subprompts,
+//! resolved on both sides through the REAL resolver from Aria's planted
+//! `Subprompts/`): two ids without a scenario and with one + a user character
+//! (`scene.md` renders `{{scenario}}`/`{{persona}}` — the greeting-local RAW
+//! context, no active-scenario fallback), a dangling id, an empty selection,
+//! and ids alongside a selected system prompt.
+//!
 //! Build the fixtures + oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
@@ -28,6 +36,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::Writer;
 use quilltap_core::services::chat_initialize::build_chat_context;
+use quilltap_core::subprompts::resolve_selected_subprompts;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -100,20 +109,26 @@ fn chat_context_init_matches_oracle() {
     let main = main_w.connection();
     let mount = mount_w.connection();
 
+    // (id, characterId, userCharacterId, scenario, selectedSystemPromptId,
+    //  selectedSubpromptIds — P4.D164: `None` = the pre-feature call shape;
+    //  `Some(ids)` resolves through `resolve_selected_subprompts` exactly as
+    //  the chat-create handler does before the fifth argument.)
     type Case = (
         &'static str,
         String,
         Option<String>,
         Option<String>,
         Option<String>,
+        Option<Vec<&'static str>>,
     );
     let cases: Vec<Case> = vec![
-        ("basic", spec.aria_id.clone(), None, None, None),
+        ("basic", spec.aria_id.clone(), None, None, None, None),
         (
             "with_user_scenario",
             spec.aria_id.clone(),
             Some(spec.sam_id.clone()),
             Some("A misty harbor at dawn.".to_string()),
+            None,
             None,
         ),
         (
@@ -122,11 +137,65 @@ fn chat_context_init_matches_oracle() {
             None,
             None,
             Some(spec.aria_sp2.clone()),
+            None,
         ),
-        ("default_partner", spec.bob_id.clone(), None, None, None),
+        (
+            "default_partner",
+            spec.bob_id.clone(),
+            None,
+            None,
+            None,
+            None,
+        ),
+        // P4.D164 / v4 `2f4254b42`: the greeting's `## Additional Instructions`.
+        (
+            "sp_two_no_scenario",
+            spec.aria_id.clone(),
+            None,
+            None,
+            None,
+            Some(vec!["terse", "scene"]),
+        ),
+        (
+            "sp_two_with_scenario_and_user",
+            spec.aria_id.clone(),
+            Some(spec.sam_id.clone()),
+            Some("A misty harbor at dawn.".to_string()),
+            None,
+            Some(vec!["scene", "TERSE"]),
+        ),
+        (
+            "sp_dangling_only_renders_nothing",
+            spec.aria_id.clone(),
+            None,
+            None,
+            None,
+            Some(vec!["gone"]),
+        ),
+        (
+            "sp_empty_renders_nothing",
+            spec.aria_id.clone(),
+            None,
+            None,
+            None,
+            Some(vec![]),
+        ),
+        (
+            "sp_with_selected_prompt",
+            spec.aria_id.clone(),
+            None,
+            None,
+            Some(spec.aria_sp2.clone()),
+            Some(vec!["terse"]),
+        ),
     ];
 
-    for (id, character_id, ucid, scenario, sel) in cases {
+    let mut subprompt_hits = 0usize;
+    for (id, character_id, ucid, scenario, sel, sp_ids) in cases {
+        let subprompts = sp_ids.as_ref().map(|ids| {
+            let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+            resolve_selected_subprompts(main, mount, &character_id, &ids)
+        });
         let ctx = build_chat_context(
             main,
             mount,
@@ -134,11 +203,16 @@ fn chat_context_init_matches_oracle() {
             ucid.as_deref(),
             scenario.as_deref(),
             sel.as_deref(),
+            subprompts.as_deref(),
         )
         .unwrap_or_else(|e| panic!("case {id}: build_chat_context: {e}"));
+        if id.starts_with("sp_") {
+            subprompt_hits += 1;
+        }
 
         let got = json!({
             "id": id,
+            "selectedSubpromptIds": sp_ids,
             "systemPrompt": ctx.system_prompt,
             "firstMessage": ctx.first_message,
             "characterId": ctx.character.get("id").and_then(Value::as_str).unwrap_or_default(),
@@ -152,5 +226,6 @@ fn chat_context_init_matches_oracle() {
             .unwrap_or_else(|| panic!("oracle missing case {id}"));
         assert_eq!(&got, want, "case {id}: rust != oracle");
     }
-    assert_eq!(oracle.len(), 4, "oracle case count drifted");
+    assert_eq!(oracle.len(), 9, "oracle case count drifted");
+    assert_eq!(subprompt_hits, 5, "the five P4.D164 `sp_*` cases must run");
 }

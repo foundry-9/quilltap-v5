@@ -1364,6 +1364,16 @@ where
     )?;
 
     // 5. Build the chat context (system prompt + first message + characters).
+    // v4 `2f4254b42` (`chats/route.ts:1164`): the opener's subprompts,
+    // resolved from the first character's vault off its seat's selection
+    // (`?? []` — a user-controlled opener stores `[]`), ride in as the fifth
+    // argument so the greeting head carries the `## Additional Instructions`.
+    let opener_subprompts = crate::subprompts::resolve_selected_subprompts(
+        main,
+        mount,
+        &built.first_character_id,
+        built.first_selected_subprompt_ids.as_deref().unwrap_or(&[]),
+    );
     let chat_context = build_chat_context(
         main,
         mount,
@@ -1371,6 +1381,7 @@ where
         built.first_user_character_id.as_deref(),
         resolved_scenario.as_deref(),
         built.first_selected_system_prompt_id.as_deref(),
+        Some(&opener_subprompts),
     )?;
 
     let chat_settings = chat_settings::find_by_user_id(main, user_id)?;
@@ -1817,7 +1828,8 @@ struct BuiltParticipants {
     /// selection, read by P4.D164 for the greeting's `resolveSelectedSubprompts`
     /// (the stacked order's ONE call site in this file — it removes this
     /// `allow` when it lands the resolve + the fifth `build_chat_context` arg).
-    #[allow(dead_code)]
+    /// The opener's `selectedSubpromptIds` (P4.D163's carry; P4.D164 resolves
+    /// it for the greeting head).
     first_selected_subprompt_ids: Option<Vec<String>>,
     first_image_profile_id: Option<String>,
 }

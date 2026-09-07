@@ -138,12 +138,15 @@ fn template_character(character: &Value) -> TemplateCharacter {
 /// Because it is a SEPARATE function, the greeting head is structurally excluded
 /// from every option the shared builder grew: no Taboo section and — verified per
 /// call site at the P4.D103 port (v4 `8f868109`) — no standing-instructions
-/// section either. v4's own greeting head is the same shape.
+/// section either. v4's own greeting head is the same shape. The ONE option it
+/// did grow is `subprompts` (v4 `2f4254b42`): the opener's ticked-on
+/// instructions, appended right after the system prompt.
 fn build_system_prompt(
     character: &Value,
     user_character: Option<&UserCharacter>,
     scenario: Option<&str>,
     selected_system_prompt_id: Option<&str>,
+    subprompts: Option<&[crate::subprompts::SubpromptForPrompt]>,
 ) -> String {
     let character_name = s(character, "name").unwrap_or_default();
     let system_prompt_content =
@@ -162,6 +165,47 @@ fn build_system_prompt(
     );
 
     let mut prompt = processed.system_prompt.clone();
+
+    // Subprompts ticked on for this chat — same register as the system prompt,
+    // so they follow it directly (mirrors buildIdentityStack's placement). The
+    // context is THIS function's own six keys over the RAW fields: `scenario`
+    // is the raw parameter (`scenario || ''` — NO `firstActiveScenarioContent`
+    // fallback, unlike the stack's context), `persona` the user character's
+    // description. Appended with a `\n\n` seam, BEFORE "You are roleplaying as".
+    if let Some(subprompts) = subprompts.filter(|s| !s.is_empty()) {
+        let mut ctx = TemplateContext::default();
+        ctx.set("char", character_name.clone());
+        ctx.set(
+            "user",
+            match user_character {
+                Some(uc) if !uc.name.is_empty() => uc.name.clone(),
+                _ => "User".to_string(),
+            },
+        );
+        ctx.set(
+            "description",
+            s(character, "description").unwrap_or_default(),
+        );
+        ctx.set(
+            "personality",
+            s(character, "personality").unwrap_or_default(),
+        );
+        ctx.set("scenario", scenario.unwrap_or_default().to_string());
+        ctx.set(
+            "persona",
+            user_character
+                .and_then(|uc| uc.description.clone())
+                .unwrap_or_default(),
+        );
+        let rendered = subprompts
+            .iter()
+            .map(|sp| format!("### {}\n{}", sp.title, process_template(&sp.content, &ctx)))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        prompt.push_str(&format!(
+            "\n\n## Additional Instructions\nThe following also apply to you in this conversation.\n{rendered}"
+        ));
+    }
 
     prompt.push_str(&format!("\n\nYou are roleplaying as {character_name}."));
 
@@ -268,6 +312,7 @@ pub fn build_chat_context(
     user_character_id: Option<&str>,
     custom_scenario: Option<&str>,
     selected_system_prompt_id: Option<&str>,
+    subprompts: Option<&[crate::subprompts::SubpromptForPrompt]>,
 ) -> Result<ChatContext, DbError> {
     let character = characters_read::find_by_id(main, mount, character_id)?
         .ok_or_else(|| DbError::Internal("Character not found".to_string()))?;
@@ -296,6 +341,7 @@ pub fn build_chat_context(
         user_character.as_ref(),
         scenario,
         selected_system_prompt_id,
+        subprompts,
     );
 
     // First message: the processed character firstMessage (system prompt =
@@ -369,7 +415,7 @@ mod tests {
             "personality": "bold",
             "systemPrompts": [{"id": "a", "content": "Base.", "isDefault": true}]
         });
-        let prompt = build_system_prompt(&c, None, Some("A dark forest."), None);
+        let prompt = build_system_prompt(&c, None, Some("A dark forest."), None, None);
         assert!(prompt.starts_with("Base.\n\nYou are roleplaying as Aria."));
         assert!(prompt.contains("\n\nCharacter Description:\nA brave knight"));
         assert!(prompt.contains("\n\nPersonality:\nbold"));
@@ -394,7 +440,7 @@ mod tests {
             manifesto: None,
             personality: Some("curious".into()),
         };
-        let prompt = build_system_prompt(&c, Some(&uc), None, None);
+        let prompt = build_system_prompt(&c, Some(&uc), None, None, None);
         assert!(prompt.contains(
             "You are talking to Sam (also known as: Sammy, S) (pronouns: they/them/their)."
         ));

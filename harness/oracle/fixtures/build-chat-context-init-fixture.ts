@@ -129,6 +129,22 @@ async function main(): Promise<void> {
   await bake(spec.samId, spec.sam);
   await bake(spec.bobId, spec.bob);
 
+  // [P4.D164 / v4 `2f4254b42`] Aria's `Subprompts/` for the greeting arms:
+  // one file uses `{{scenario}}` so the greeting's RAW-parameter context (no
+  // `firstActiveScenarioContent` fallback, unlike the identity stack's) can be
+  // told apart from the stack's.
+  {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+    const { composeSubpromptContent, SUBPROMPTS_FOLDER } = await import('@/lib/subprompts/subprompts');
+    const raw = await repos.characters.findByIdRaw(spec.ariaId);
+    const vault = raw?.characterDocumentMountPointId as string | null;
+    if (!vault) throw new Error('Aria has no vault');
+    await ensureFolderPath(vault, SUBPROMPTS_FOLDER);
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/terse.md`, composeSubpromptContent('Be terse', '{{char}} answers {{user}} in one line.'));
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/scene.md`, composeSubpromptContent('Mind the scene', 'The scene is: [{{scenario}}]. Persona: [{{persona}}].'));
+  }
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 

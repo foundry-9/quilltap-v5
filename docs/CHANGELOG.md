@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(greeting): the opener's `## Additional Instructions` in the chat head (P4.D164 unit 4)
+
+_Versions: core 0.0.827, harness 0.0.716._
+
+`build_chat_context` takes the opener's subprompts as a fifth argument; the
+greeting head appends the block after the system prompt and before "You are
+roleplaying as", each body processed through the greeting's own raw
+six-key context (the raw scenario parameter, no active-scenario fallback).
+The chat-create call site resolves the first seat's ids from its vault.
+`chat_context_init_equivalence` (the family that drives v4's real
+`buildChatContext` — the order's `initial_greeting` attribution corrected)
+gains five cases over Aria's planted `Subprompts/`, red-first at the pin.
+
 #### 2026-09-07 — feat(build-context): resolve the seat's subprompts on the read-through fallback (P4.D164 unit 3)
 
 _Versions: core 0.0.826, harness 0.0.715._

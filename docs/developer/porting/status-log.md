@@ -112245,3 +112245,42 @@ Versions: core 0.0.823.
   the wrong one SKIPs green in 0.00 s (caught by the duration, re-run).
 - Versions: core 0.0.826, harness 0.0.715.
 
+### Unit 4 — the greeting head (RED FIRST) + the chat-create call site
+
+- `services/chat_initialize.rs`: the module-private `build_system_prompt`
+  gains the fifth parameter; after `processed.system_prompt` and BEFORE
+  `\n\nYou are roleplaying as …` it appends `\n\n## Additional Instructions
+  \nThe following also apply to you in this conversation.\n` + the items,
+  each body processed through the GREETING-LOCAL six-key context over the RAW
+  fields — `scenario` is the raw parameter (`scenario || ''`, NO
+  `firstActiveScenarioContent` fallback, unlike the stack's), `persona` the
+  user character's description. `build_chat_context` takes the fifth
+  argument and threads it. `services/chat_create.rs` (the ONE region this
+  order owns there): the opener's ids resolve through
+  `resolve_selected_subprompts` off `built.first_selected_subprompt_ids`
+  (P4.D163's carry, its `#[allow(dead_code)]` retired) and ride in as the
+  argument. The two in-crate unit tests pass `None`.
+- **Family attribution corrected:** the order names `initial_greeting_
+  equivalence` / `initial-greeting.test.ts` for this arm; the family that
+  drives v4's REAL `buildChatContext` is `chat_context_init_equivalence`
+  (`harness/oracle/cases/chat-context-init.ts` + the `/tmp`
+  `build-chat-context-init-fixture.ts` builder). `initial_greeting` is the
+  streamed auto-greeting (`autoGenerateFirstMessage`), whose prompt is the
+  chat's stored head — untouched by `2f4254b42`.
+- `chat-context-init.ts` + builder: Aria's vault gains `Subprompts/terse.md`
+  (`{{char}}`/`{{user}}`) + `scene.md` (`The scene is: [{{scenario}}].
+  Persona: [{{persona}}].`); the matrix gains five `sp_*` cases, the opener's
+  ids resolved on BOTH sides through the REAL resolver before the fifth
+  argument (exactly as `handleCreate` does): `sp_two_no_scenario` (renders
+  `The scene is: []. Persona: []` — the raw context, no fallback),
+  `sp_two_with_scenario_and_user` (the scenario + Sam's description land;
+  `TERSE` matches `terse.md` case-insensitively), `sp_dangling_only_renders_
+  nothing`, `sp_empty_renders_nothing`, `sp_with_selected_prompt`. Rebuilt +
+  regenerated at the pin (the family header's recipe); RED FIRST with the
+  signature-only port (`case sp_two_no_scenario: rust != oracle`), green after
+  the render; `oracle.len() == 9` + a five-case floor.
+- The capstone's greeting + green-room arm (`sp_greeting_and_green_room_
+  carry_block`, `sp_greeting_dangling_ids_render_nothing`; Aria's `Subprompts/`
+  planted in `build-chat-create-capstone.ts`) is spliced now and regenerated
+  ONCE after unit 5 (the green-room bytes land there too) — see unit 5.
+- Versions: core 0.0.827, harness 0.0.716.

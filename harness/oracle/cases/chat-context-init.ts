@@ -66,18 +66,32 @@ async function main(): Promise<void> {
     userCharacterId?: string;
     scenario?: string;
     selectedSystemPromptId?: string;
+    /** P4.D164: the opener's selection, resolved through v4's REAL
+     *  `resolveSelectedSubprompts` exactly as `handleCreate` does. */
+    selectedSubpromptIds?: string[];
   }> = [
     { id: 'basic', characterId: spec.ariaId },
     { id: 'with_user_scenario', characterId: spec.ariaId, userCharacterId: spec.samId, scenario: 'A misty harbor at dawn.' },
     { id: 'selected_prompt', characterId: spec.ariaId, selectedSystemPromptId: spec.ariaSp2 },
     { id: 'default_partner', characterId: spec.bobId },
+    // P4.D164 / v4 `2f4254b42`: the greeting's `## Additional Instructions`.
+    { id: 'sp_two_no_scenario', characterId: spec.ariaId, selectedSubpromptIds: ['terse', 'scene'] },
+    { id: 'sp_two_with_scenario_and_user', characterId: spec.ariaId, userCharacterId: spec.samId, scenario: 'A misty harbor at dawn.', selectedSubpromptIds: ['scene', 'TERSE'] },
+    { id: 'sp_dangling_only_renders_nothing', characterId: spec.ariaId, selectedSubpromptIds: ['gone'] },
+    { id: 'sp_empty_renders_nothing', characterId: spec.ariaId, selectedSubpromptIds: [] },
+    { id: 'sp_with_selected_prompt', characterId: spec.ariaId, selectedSystemPromptId: spec.ariaSp2, selectedSubpromptIds: ['terse'] },
   ];
 
+  const { resolveSelectedSubprompts } = await import('@/lib/subprompts/subprompts');
   const rows: unknown[] = [];
   for (const c of matrix) {
-    const ctx = await buildChatContext(c.characterId, c.userCharacterId, c.scenario, c.selectedSystemPromptId);
+    const subprompts = c.selectedSubpromptIds === undefined
+      ? undefined
+      : await resolveSelectedSubprompts(c.characterId, c.selectedSubpromptIds);
+    const ctx = await buildChatContext(c.characterId, c.userCharacterId, c.scenario, c.selectedSystemPromptId, subprompts);
     rows.push({
       id: c.id,
+      selectedSubpromptIds: c.selectedSubpromptIds ?? null,
       systemPrompt: ctx.systemPrompt,
       firstMessage: ctx.firstMessage,
       characterId: ctx.character.id,
