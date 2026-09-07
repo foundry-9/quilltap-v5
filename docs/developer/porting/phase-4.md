@@ -6395,6 +6395,98 @@ from the pin zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Play
 
 PB1 stays parked by the standing rule.
 
+## The `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81) — UNIFIED 2026-09-07
+
+**UNIFIED on main (2026-09-07) — P4.9K0, P4.9K3, P4.9K4 and P4.80 CLOSED;
+P4.81 CLOSED except item 7 (measured, not fixed); P4.9K1 and P4.9K2 OPEN —
+PARTIAL (each landed its pure first unit only); the baseline STAYS
+`f699da6f6`** (the §2 probe passed at planning, at every lane start, and at
+this unification; v4 did not move). The substrate landed whole (the four
+leaf modules tier-1 exact — 46/20/13/6 rows, three JS-fidelity questions
+answered by measurement; the `generatorProgress` Event kind + emitter; the
+web SSE re-framer with v4's byte-exact framing and the subscribe-before-poll
+proof). The two server lanes stopped early by design — every remaining v4
+unit hides behind one exported runner, so there is no tier-1 path to it and
+the runner + its seams must land as ONE unit — and banked their surveys:
+the optimizer's pure arms (bug 119's `coerce_suggestion_array` byte-exact;
+the rename service's three literal-scan / `GetSubstitution` / Canonicalize
+measurements and their ruling; the external-prompt riders CONFIRMED at the
+pin) and the wizard's prompt half (the generated `FIELD_PROMPTS` — TEN, not
+the order's thirteen — plus `build_context_prompt`). The two SPA lanes
+landed WHOLE against §B, mocked, with their six server-dependent beats gated
+on `P49K1_SERVER_LANDED` / `P49K2_SERVER_LANDED` (both false on main).
+Dogfood #117 CLOSED end to end (the `chatDelete` verb over the caller-less
+cascade, v4's whole DELETE dispatch, a 21-row table-census differential over
+the NEW committed `chat-delete-{main,mount,llmlogs}.db` trio, the trash
+button on both cards, two live beats — and a v5-only workspace bug found on
+the way: every button inside a card's link was eaten by the capture-phase
+interceptor). P4.81 discharged the two host wires (the `chatCreate` Zod
+`details` carry; validate-before-emitter), the `text_block_turn` marker (the
+second scripted stream now fires — 34 calls, 6 framed rows), the three
+chain-stop log lines, the two mirror prunes, the README line, and the
+composer's wide `hasActiveCharacters` twin with a live beat.
+
+**The §3 review (four parallel readers, verdict owned at the wire) caught
+two would-have-shipped SPA defects and eleven should-fixes, all fixed on the
+unify branch:** K3's wardrobe-create response read `item` where the verb
+answers `{ wardrobeItem }` — every composite outfit would have saved with
+no components, and the host specs' stubs answered the same wrong key (the
+vacuous-stub class); K3's gallery source sent a vault LINK id as `imageId`,
+which the wizard server resolves through `files.findById` and could never
+find (now `qt-image-gallery` over `imagesList`, v4's shape). On P4.80's REST
+edge: an empty body answered 400 where v4 answers 500, a non-object body the
+wrong Zod issue, and the broken-vault delete was silent where v4 warns (the
+#103/#110/#116 class, on the lane's own surface). K2's `pronouns` gate was
+a null test where v4 tests truthiness — corpus-blind until two rows were
+added. The unified gate's own catch: K4's invented pending dot used a
+`qt-bg-muted-foreground/40` class no rule defines (the qt-class guard),
+replaced by v4's four text glyphs; and the unifier's own comment twice
+carried backticks inside an inline template (the memory-noted trap).
+
+Gate: fmt + clippy both feature sets clean (re-checked after the review fixes' rustfmt); release build; the seven affected families regenerated FRESH from the `f699da6f6` pin through the sweep driver (7/7, then the chat-delete family re-run at 21 rows and the wizard-prompts family at 19 contexts after the review fixes, zero SKIP, changed bytes grepped — the repaired help-chat marker present ×2 and the old form ×0, 34 calls / 6 framed rows); `cargo test --workspace` with the round's 19-variable env block **515 test binaries / 2,932 passed / 0 failed / 1 ignored, zero `SKIP:` lines, exit 0** (every round family confirmed RUN by name); mutation proofs run at the wire (the pronouns null test, the object gate, the resolver warn — each reddening exactly its rows); SPA lint clean (incl. the qt-class guard), `npm test` 401 spec files / 0 failed, build clean; full Playwright **288 passed / 0 failed / 6 skipped (the six named `P49K1/K2_SERVER_LANDED` gates), exit 0** — after the reverse-`{{user}}` beat's first live run was repaired spec-side (unlock-first, the rendered-shape assertion, select-by-value) and the two P4.D161 pause-toast beats' once-per-page hook was made per-frame (red twice in the full suite, green alone and in three pairs with the new specs); the quill spec's one red in one run is its documented slow-stream intermittent (green alone). Versions: core 0.0.819, harness 0.0.708, web 0.0.123, host 0.0.106, SPA 0.5.665; cli/tauri unchanged. Round record: `status-log.md` →
+"Round record — the `p4.9k` character-generators round unification".
+
+**Next candidates, in rough value order** (updated at this unification,
+2026-09-07):
+
+1. **Finish P4.9K1 and P4.9K2 — the generator RUNNERS**, as runner-sized
+   units with injected seams (both lane records name the structure): K1's
+   optimizer runner + the three verbs + the host driver + the tier-3 family
+   over the canned `CompletionProvider` (the bug-119 `runSubStep`
+   containment is the ledger's remaining obligation), the rename service
+   under the banked literal-scan ruling, the external prompt, refresh-
+   archive; K2's wizard runners + five generators, `generators::ai_import`
+   (its three exported assembly functions first — tier-1, no fixture), the
+   NEW `character-generators-*.db` pair, the three verbs + driver + REST
+   arms. At their landing: flip the six gated beats (the optimizer beat
+   must seed ≥ 2 reinforced memories; the AI-import beat needs a
+   prompt-keyed mock — both recipes are in the spec headers), fold the six
+   §B DTOs into `core-contract.ts` and retire the `as unknown as
+   CoreRequest` casts, and dedupe the two SPA fold helpers onto K3's
+   `mintProgressId` / `isGeneratorProgressEvent`.
+2. **The owed dogfood pass** on the Friday copy: a chat deleted from both
+   cards (the vault summary file gone, memories surviving), the Salon card
+   buttons that used to open the chat (copy-link, the Scriptorium badge,
+   the project X), the composer enabled on a user-driven-only cast, the
+   `chatCreate` refusal's `details` on the wire; plus the standing queue
+   (the Brahma deep query, dedup/summaries, #101 — human).
+3. **The follow-ups this round recorded:** the K3 review pane's three
+   missing renders (voice line, physical-description tier panel, scenario
+   markup); the `[Chats v1] Impersonation stopped` line missing from
+   `chat_stop_impersonate`; `useSSEStreaming`'s continue-mode toast (a
+   fourth wide-predicate site); the interceptor rule's nested-button
+   census; `runTemplateSave` lifted onto `apply-character-field-updates`;
+   the `promptTemplateList` verb (ImportModal's empty catalogue); the
+   `imported` count line and the two optimizer phase divergences; the
+   K0 `Closed`-channel dispatch drop; P4.81 item 7 (needs request-body
+   tracing to find the flipping spec).
+4. The census's honest totality + the present-but-null lead; the
+   `CaptureLayer` consolidation; the sweep driver's SHELL_START class;
+   `image_profiles.rs:655`; the carried smalls.
+
+PB1 stays parked by the standing rule.
+
+
 ## The `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81) — ORDERED 2026-09-07
 
 **Baseline `f699da6f6`; v4 `main` HEAD = the baseline (zero commits past),

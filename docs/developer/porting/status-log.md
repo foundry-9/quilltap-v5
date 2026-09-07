@@ -111493,3 +111493,157 @@ lines in `crates/quilltap-core/src/services/conversation_summary_vault_bridge.rs
 `pub(crate)` visibility widenings in `crates/quilltap-core/src/api/settings.rs`
 (`zod_uuid_ok`, `zod_parsed_type`) so the Zod issue helpers have ONE home
 rather than a second transcription — behavior-neutral, no other line touched.
+
+## Round record — the `p4.9k` character-generators round unification (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81), 2026-09-07
+
+### §1 Survey
+
+Seven lane branches, all clean worktrees, all with commits past `main`
+(K0 3, K1 5 = K0's 3 + 2 own, K2 5 = K0's 3 + 2 own, K3 1, K4 4, P4.80 3,
+P4.81 7). K1 and K2 were confirmed STACKED on K0's tip (`f1031c0f`) by
+`merge-base --is-ancestor`. The drift ledger's §2 probe PASSED at
+unification start (checkout on `bugfix`, tree clean, `f699da6f6..main` and
+`1a2b2164c..bugfix` both empty) — v4 did not move during the round; the
+regen rule stayed PIN REQUIRED for the checkout-on-`bugfix` reason alone,
+and every regen ran from `/tmp/qt-v4-pin-unify-f699da6f6`.
+
+Delivered scope, verified against each order's tiers (not the headers):
+K0 whole (three tier-1 leaf families' worth in ONE family, the Event kind,
+the re-framer + seven wire tests + the `/api/events` pass-through);
+**K1 PARTIAL — unit 1 of 8** (the optimizer's pure arms; the rename
+findings banked with a ruling; the external-prompt riders confirmed);
+**K2 PARTIAL — the prompt half of unit 1** (a corrected count: TEN
+`FIELD_PROMPTS`, not thirteen); K3 whole (wizard modal + four steps, the
+rename tab, the two prompt-editor modals, 13 spec files, two gated beats);
+K4 Tier 1 whole (optimizer modal + apply path, external prompt dialogs, the
+AI-import wizard on two mounts with the Summon stub retired, three beats —
+two gated; **no Playwright run in the lane**, honestly flagged); P4.80 whole
+(+ three flagged out-of-ownership edits); P4.81 items 1–6, 8 (item 7
+MEASURED, not fixed — STOPped per its order).
+
+### §2 Reconcile
+
+`unify/p4.9k-round` from `main`; cherry-picks in dependency order K0 → K1
+→ K2 → P4.81 → P4.80 → K3 → K4 with `merge=union` on the two append-only
+docs. Conflicts: ONE source fence collision (`generators/mod.rs` — K1 and
+K2 opened their fences on the same line; both kept) and the expected
+version files (every lane's non-version manifest delta audited FIRST —
+all version-only; resolved ours and RECOUNTED as base + total bumps: core
+812 + 6 → 0.0.818, harness 700 + 7 → 0.0.707, web 120 + 2 → 0.0.122, host
+105 + 1 → 0.0.106, SPA 657 + 7 → 0.5.664). The sequencer stalled once with
+a clean tree after K2's docs commit (`--quit`, resumed). P4.80's lane record
+had landed at the TOP of the status-log via the union — moved to the end.
+Cross-lane file overlap beyond the fences: none (types.rs and web `lib.rs`
+by fence; `dogfood-findings.md` two disjoint sections).
+
+### §3 Review
+
+Four parallel readers (K0–K2 Rust; P4.80 + P4.81; K3; K4) over the whole
+combined diff against v4 at the pin, plus the unifier's own reads of the
+contract wire, the fenced unions, the interceptor widening and the host
+two-phase validate. **Two BLOCKING findings, both K3, fixed on the unify
+branch (`7aee15cc`):**
+
+1. `saveGeneratedWardrobeItems` read the create response's `item` key; the
+   verb answers `{ wardrobeItem }` (v4 `save-generated-wardrobe.ts:47`).
+   Every composite outfit would have saved with `componentItemIds: []` —
+   and the two host specs' stubs answered the SAME wrong key, which is why
+   the lane's specs were green (the vacuous-stub class). Stubs corrected;
+   the new `save-generated.spec.ts` drives the helper over the real
+   envelope and asserts the leaf's minted id reaches the composite body.
+2. The gallery source dispatched a vault LINK id from `characterPhotoList`
+   as `imageId`; the wizard server resolves it through `repos.files.
+   findById` (`character-wizard.service.ts:735`) and could never find it.
+   Now v4's shape: `qt-image-gallery` (already in v5) over the `imagesList`
+   verb, selecting `image.id` + `image.url || /api/v1/files/<id>`
+   (`DescriptionSourceStep.tsx:94-97`); v4's gallery copy.
+
+**Should-fixes, all landed (same commit):** P4.80's REST edge — an EMPTY
+body on stop-impersonate answered 400 where v4's `req.json()` SyntaxError
+is a 500; the edge now parses and passes `Option<&Value>` and the composite
+judges AFTER its chat gate (a missing chat with an unreadable body is v4's
+404); a NON-object body answered a per-field issue where Zod 4.5.4 refuses
+at the root; the broken-vault delete was SILENT where v4's resolver catch
+warns `Failed to resolve character vault store` (the mount row is checked
+on the mount-index partition — a first attempt on the main partition made
+EVERY vault fail and was caught by the family before it could ship);
+family 17 → 21 rows (`stop_impersonate_{null,array,empty,missing_chat_
+empty}_body`), the oracle's mock rejecting `req.json()` with a `SyntaxError`
+for the unreadable rows. K2's `pronouns` gate: a null test where v4's
+`if (existingData.pronouns)` is truthiness — corpus-blind (only `null` and
+objects) until `existing-falsy-pronouns` / `existing-zero-pronouns` were
+added and the oracle regenerated (10/2/19). K1's `coerce_suggestion_text`
+gained a Node-measured unit pin (a `pub fn` with no caller or test; v4's
+twin is private). K0: two further `JSON.parse`/serde divergence classes
+recorded; the re-framer warns on `Lagged`; the recorder's "13". K3: Escape
+at document level; v4's fixed properties toast; the wizard beat expands a
+row before asserting; the pending-refs pin made order-sensitive; a dead
+declaration; the upload receipt read from `data` only; the review-pane
+divergence widened (three v4 renders missing). K4: the Aurora mount no
+longer closes the wizard on every `imported`; v4's own 3/15/20 s progress
+segments; `isDefault` carried on `CharacterConnectionProfile` so both
+pickers prefer the default; Review on the DONE frame's own `result`; the
+fixed profile-load sentence; five ellipsis bytes; the `Remove` text button;
+the curly-quote placeholder; one invented + one altered tooltip; the
+invented "returned no result" arm; the two gated beats' headers now carry
+the measured first-run recipe (flat optimizer reply, `1 of N`, the ≥ 2
+reinforced memories to seed; the AI-import beat's need for a prompt-keyed
+mock). Mutation proofs run at the wire: the `pronouns` null test reddens
+`existing-falsy-pronouns`; the object gate removed reddens exactly the null
+and array rows; the resolver warn removed reddens `log_broken`.
+
+**The unified gate's own catches:** K4's invented pending dot used
+`qt-bg-muted-foreground/40`, a class no rule defines — `check-qt-classes`
+stopped `npm test` before vitest ran (replaced by v4's four text glyphs ✓ ⚠
+● ○ with `animate-pulse` / `qt-text-muted`, `AIImportWizard.tsx:294-318`);
+the unifier's own HTML comments twice carried backticks inside an inline
+template (the memory-noted trap — the compiler blamed everything but the
+comment); and the qt-class guard reads comments too (a class name in prose
+trips it).
+
+**Recorded, not changed:** the Event envelope's wire order is `progressId`
+first (§B.5 lists keys, not bytes; the `creationProgress` precedent); a
+`Closed` channel drops the un-resolved dispatch (engine shutdown only);
+`chat_stop_impersonate` lacks v4's `[Chats v1] Impersonation stopped` line;
+`useSSEStreaming`'s continue-mode toast is a fourth wide-predicate site
+with no v5 twin; the interceptor rule's safety rests on nested buttons
+stopping propagation; `run_create` opens the partitions before validating
+(not observable); the `imported` count line, the stale-closure apply
+banner and the error-terminal phase (K4 divergences); `runTemplateSave`
+duplicates the apply helper; `AiImportState.regenerateStep` is dead in
+both apps; K3's ImportModal catalogue is empty because no `promptTemplateList`
+verb exists.
+
+### §4 Wires
+
+The §B name-for-name diff: the eight verbs' `type` literals in the three
+SPA wire files match §B (`characterRename`, `characterWizard`,
+`characterWizardStream`, `characterOptimize`, `characterGenerateExternal
+Prompt`, `aiImportStream`, `chatDelete`) and K0's Event kind
+(`generatorProgress` / `GeneratorKind` spellings). Server-side only
+`chatDelete` and the Event kind exist — **the six generator DTOs stay
+lane-local with their `as unknown as CoreRequest` casts** (folding them
+would type-check the SPA against verbs that answer `unknown request type`);
+`ChatDeleteRequest` was folded into `core-contract.ts` and its cast retired
+(`d4d435a0`). P4.80's banked `realtime_hint_wire` intermittent deflaked at
+the wire (match the `jobs` topic by name, never "any topic"). The six gated
+beats stay gated by NAME; the reverse-`{{user}}`, chat-delete and
+composer-active-seat beats run live.
+
+### §5 Gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean in BOTH feature sets (default and `--features quilltap-core/native-transport`), run before the review fixes and re-run after their rustfmt (`b4074c07`); `cargo build --workspace --release` clean, rebuilt after the review fixes so Playwright ran against the final Rust tree.
+- **Every affected oracle regenerated FRESH from the `f699da6f6` pin** (`/tmp/qt-v4-pin-unify-f699da6f6`, all three symlink classes) through the sweep driver, one family per invocation: `generators_leaf_equivalence` (46/20/13/6), `character_optimizer_prompts_equivalence`, `generators_wizard_prompts_equivalence` (10/2/17 → re-run at 19 contexts after the review's two rows), `chat_delete_equivalence` (17 → re-run at 21 rows after the review's four), `chat_create_capstone_equivalence` (108 cases), `help_chat_orchestrator_tier3_equivalence` (the repaired `[[HELP_NAVIGATE url="/salon" /]]` marker ×2 in the fresh NDJSON, the old JSON-blob form ×0; `34 calls; … 6 framed rows`), `orchestrator_tier3_equivalence` — all `family_exit=0`, oracles non-empty with this run's mtimes, zero `SKIP`.
+- `cargo test --workspace --no-fail-fast` with the round's 19-variable env block (extracted from the sweep's own run stages; no duplicate variable names; every path present): **515 test binaries / 2,932 passed / 0 failed / 1 ignored, ZERO `SKIP:` lines, exit 0** — the round's families confirmed RUN by name (`generators_leaf_matches_oracle`, `character_optimizer_prompts_match_oracle`, `generators_wizard_prompts_match_oracle`, `chat_delete_matches_oracle` + `chat_delete_log_lines` + `delete_action_classification`, `chat_delete_edge`, `generator_sse_wire` ×7, `generator_progress_events_passthrough`, `chat_create_capstone_matches_oracle` + the two P4.81 pins, `help_chat_orchestrator_tier3_matches_oracle`, `orchestrator_tier3_matches_oracle`). ⚠ `grep -c FAILED` over this log reads 2 — both are the boot line `FAILED-status exclusion disabled`.
+- Mutation proofs at the wire: the `pronouns` null test reddens `existing-falsy-pronouns`; the object gate removed reddens exactly `stop_impersonate_null_body` + `_array_body`; the resolver warn removed reddens `log_broken`; every mutation restored by string edit and verified.
+- SPA: `npm run lint` clean (the qt-class guard's catch fixed first — an invented class, then the guard reading the class name in a comment); `npm test` **401 spec files / 0 failed** (+1 with `save-generated.spec.ts`); `npm run build` clean.
+- Full Playwright against the rebuilt release binaries: first run 285 / 3 / 6, second 285 / 3 / 6, third **288 passed / 0 failed / 6 skipped (7.3 m), exit 0**. The six skips are the named gates. The reds were run to ground: K4's reverse-`{{user}}` beat (its FIRST live run — the lane ran no Playwright) died alone at its seed (dispatch before unlock, the P4.6z trap), then on a literal-text assertion (`qt-template-display` renders the token as the resolved name with a badge), then on a regex `selectOption` label — all spec-side, zero product code; the two P4.D161 pause-toast beats were red in BOTH full runs and green alone and in three pairs — their once-per-page frame hook was consumed by a foreign `chainComplete` on the instance-wide stream (now per-frame); the quill spec's single red in run 2 is its documented slow-stream intermittent (green alone).
+
+### §6 Docs + baseline
+
+The seven order status headers (unification blocks prepended); `phase-4.md`
+UNIFIED section + the refreshed next-candidates list; the drift ledger's §1
+check date and the bug-119 row's PARTIAL note (baseline unchanged);
+`m6-screen-parity.md` rows 545–548; CLAUDE.md's Status bullet; the CHANGELOG
+unification entry; the memory note. Versions after the unify fixes:
+core 0.0.819, harness 0.0.708, web 0.0.123, host 0.0.106, SPA 0.5.665; cli/tauri unchanged.

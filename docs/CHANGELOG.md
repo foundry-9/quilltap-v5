@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — unify: the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81) — baseline stays `f699da6f6`
+_Versions: core 0.0.819, harness 0.0.708, web 0.0.123, host 0.0.106, SPA 0.5.665; cli/tauri unchanged_
+
+Seven lanes unified: the character-generator substrate whole (the four shared
+leaf modules tier-1 exact against v4, the `generatorProgress` event kind and
+its emitter, the web SSE re-framer reproducing v4's stream bytes), the two
+server lanes PARTIAL at their pure first units (the optimizer's prompt
+builders with bug 119's coercion table; the wizard's generated prompt table
+and context builder), both SPA lanes whole against the round's contract with
+their six server-dependent beats gated by name, a salon chat deletable again
+on every surface (dogfood #117) with a 21-row table-census differential over
+a new committed fixture trio, and the round's smalls (the create refusal's
+Zod details on the wire, the composer enabled on a user-driven cast, the
+chain-stop log lines, the repaired help-chat marker). The review caught two
+defects that would have shipped in the wizard (composite outfits saved with
+no components; gallery images that the server could never resolve) and three
+chat-delete edge divergences; every fix is pinned. Gate: fmt + clippy both feature sets clean (re-checked after the review fixes' rustfmt); release build; the seven affected families regenerated FRESH from the `f699da6f6` pin through the sweep driver (7/7, then the chat-delete family re-run at 21 rows and the wizard-prompts family at 19 contexts after the review fixes, zero SKIP, changed bytes grepped — the repaired help-chat marker present ×2 and the old form ×0, 34 calls / 6 framed rows); `cargo test --workspace` with the round's 19-variable env block **515 test binaries / 2,932 passed / 0 failed / 1 ignored, zero `SKIP:` lines, exit 0** (every round family confirmed RUN by name); mutation proofs run at the wire (the pronouns null test, the object gate, the resolver warn — each reddening exactly its rows); SPA lint clean (incl. the qt-class guard), `npm test` 401 spec files / 0 failed, build clean; full Playwright **288 passed / 0 failed / 6 skipped (the six named `P49K1/K2_SERVER_LANDED` gates), exit 0** — after the reverse-`{{user}}` beat's first live run was repaired spec-side (unlock-first, the rendered-shape assertion, select-by-value) and the two P4.D161 pause-toast beats' once-per-page hook was made per-frame (red twice in the full suite, green alone and in three pairs with the new specs); the quill spec's one red in one run is its documented slow-stream intermittent (green alone).
+
 #### 2026-09-07 — docs(porting): the P4.9K1 lane record — unit 1 landed, units 2-8 open with their survey banked
 
 _Docs-only change._

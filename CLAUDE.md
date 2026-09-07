@@ -3073,6 +3073,39 @@ records THERE. Update this summary only when a phase or round completes.
   predating v5; a dispatch verb answered 200 with a full payload having
   written nothing, every field being `#[serde(default)]`). **Still owed
   (human):** the Brahma deep query, dedup/summaries, and #101.
+- **The `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥
+  P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81): UNIFIED on main (2026-09-07) — K0, K3,
+  K4, P4.80 CLOSED; P4.81 CLOSED except item 7 (measured, not fixed); K1 and
+  K2 OPEN — PARTIAL at their pure first units; the baseline STAYS
+  `f699da6f6`** (no drift; the first round since P4.59 with none to absorb).
+  The substrate whole (the four shared leaf modules tier-1 exact — 46/20/13/6
+  rows; the `generatorProgress` Event kind + emitter; the web SSE re-framer
+  with v4's byte-exact framing) ∥ the optimizer's pure arms with bug 119's
+  `coerce_suggestion_array` byte-exact + the rename service's literal-scan /
+  `GetSubstitution` / Canonicalize measurements banked as a ruling ∥ the
+  wizard's generated prompt table (TEN `FIELD_PROMPTS`, not the order's
+  thirteen) + `build_context_prompt` ∥ the whole edit-side SPA (wizard modal
+  from both hosts, Rename & Replace, the prompt-editor modals) and the whole
+  detail/list/cast SPA (optimizer + apply path, external prompt, the AI
+  import on two mounts with the Summon stub retired), all mocked against §B
+  with six beats gated by NAME ∥ **dogfood #117 CLOSED** (the `chatDelete`
+  verb over the caller-less cascade, v4's whole DELETE dispatch, a 21-row
+  table-census family over the new `chat-delete-*` trio, the trash button on
+  both cards — and a v5-only workspace bug found on the way: every button
+  inside a card's link was eaten by the capture-phase interceptor) ∥ the two
+  host wires, the `text_block_turn` marker (its second stream now fires),
+  the three chain-stop log lines, the composer's wide `hasActiveCharacters`
+  twin with a live beat. **The §3 review caught two would-have-shipped SPA
+  defects:** composite outfits saved with NO components (the create
+  response's key misread — and the host specs' stubs answered the same wrong
+  key), and gallery images the wizard server could never resolve (a vault
+  link id sent as a files id); plus three chat-delete edge divergences (an
+  empty body's 500, the root-level Zod issue, the silent broken-vault warn),
+  a corpus-blind truthiness test, and a copy/pin batch — all fixed with pins;
+  the qt-class guard caught an invented class at the unified gate. Gate:
+  fmt + clippy both feature sets clean (re-checked after the review fixes' rustfmt); release build; the seven affected families regenerated FRESH from the `f699da6f6` pin through the sweep driver (7/7, then the chat-delete family re-run at 21 rows and the wizard-prompts family at 19 contexts after the review fixes, zero SKIP, changed bytes grepped — the repaired help-chat marker present ×2 and the old form ×0, 34 calls / 6 framed rows); `cargo test --workspace` with the round's 19-variable env block **515 test binaries / 2,932 passed / 0 failed / 1 ignored, zero `SKIP:` lines, exit 0** (every round family confirmed RUN by name); mutation proofs run at the wire (the pronouns null test, the object gate, the resolver warn — each reddening exactly its rows); SPA lint clean (incl. the qt-class guard), `npm test` 401 spec files / 0 failed, build clean; full Playwright **288 passed / 0 failed / 6 skipped (the six named `P49K1/K2_SERVER_LANDED` gates), exit 0** — after the reverse-`{{user}}` beat's first live run was repaired spec-side (unlock-first, the rendered-shape assertion, select-by-value) and the two P4.D161 pause-toast beats' once-per-page hook was made per-frame (red twice in the full suite, green alone and in three pairs with the new specs); the quill spec's one red in one run is its documented slow-stream intermittent (green alone). **Next: finish K1/K2 as RUNNER-sized units (the beats'
+  first-run recipes are in their headers), then the owed dogfood pass** —
+  see phase-4.md. Versions: core 0.0.819, harness 0.0.708, web 0.0.123, host 0.0.106, SPA 0.5.665; cli/tauri unchanged. Round record: `status-log.md`.
 - **Oracle baseline: `f699da6f6` (2026-09-06, v4 main — the tip of the
   4.9.1 + 4.9.2 release cycles), adopted at the `f699da6f6` 4.9.x drift
   catch-up round unification (2026-09-06).**

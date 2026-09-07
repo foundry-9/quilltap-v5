@@ -542,10 +542,10 @@ vertical, not a re-skin, and CLAUDE.md's *"the wardrobe dialog"* deferral
 
 | Dialog | v4 | v5 | Verdict |
 | --- | --- | --- | --- |
-| AIWizardModal | `components/characters/ai-wizard/AIWizardModal.tsx`; `NewCharacterView.tsx:507`, `CharacterEditView.tsx:415` | absent (`git grep "AIWizard\|ai-wizard"` → 0) | **MISSING** → `p4.9k` |
-| CharacterOptimizerModal | `components/characters/optimizer/CharacterOptimizerModal.tsx`; `CharacterDetailView.tsx:373` | absent | **MISSING** → `p4.9k` |
-| system-prompts-editor modals | `components/characters/system-prompts-editor/{PromptModal,PreviewModal,ImportModal}.tsx` | `screens/characters/edit/prompt-modal.ts:26` (partial) | **MISSING (partial)** → `p4.9k` |
-| ExternalPrompt / ReverseUser dialogs | `app/aurora/[id]/view/components/{ExternalPromptDialog,ExternalPromptResultDialog,ReverseUserDialog}.tsx` | absent | **MISSING** → `p4.9k` |
+| AIWizardModal | `components/characters/ai-wizard/AIWizardModal.tsx`; `NewCharacterView.tsx:454`, `CharacterEditView.tsx:370` | `screens/characters/generators/wizard/**` (P4.9K3, both hosts) | **LANDED (SPA, mocked)** — the `characterWizardStream` verb is P4.9K2's OPEN remainder; beat gated on `P49K2_SERVER_LANDED` |
+| CharacterOptimizerModal | `components/characters/optimizer/CharacterOptimizerModal.tsx`; `CharacterDetailView.tsx:471` | `screens/characters/generators/optimizer/**` (P4.9K4) | **LANDED (SPA, mocked)** — the `characterOptimize` verb is P4.9K1's OPEN remainder; beat gated on `P49K1_SERVER_LANDED` |
+| system-prompts-editor modals | `components/characters/system-prompts-editor/{PromptModal,PreviewModal,ImportModal}.tsx` | `edit/prompt-modal.ts` + `generators/prompts-editor/**` (P4.9K3) | **LANDED** — ImportModal's catalogue is honestly empty (no `promptTemplateList` verb; a recorded follow-up) |
+| ExternalPrompt / ReverseUser dialogs | `app/aurora/[id]/view/components/{ExternalPromptDialog,ExternalPromptResultDialog,ReverseUserDialog}.tsx` | `generators/external-prompt/**` (P4.9K4); the reverse-user picker was already in `view/tabs/details-tab.ts` | **LANDED (SPA)** — the external prompt is mocked (P4.9K1's verb OPEN; beat gated); reverse-user live with its own beat |
 
 These are the character family's tier-3 **LLM-service** refusals
 (`status-log.md:6163-6164`) — they need live model calls, which is why they
