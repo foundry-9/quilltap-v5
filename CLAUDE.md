@@ -3033,6 +3033,46 @@ records THERE. Update this summary only when a phase or round completes.
   the off-turn Skip, the #112/#114 live legs, a Console question's
   `llm_logs` rows, a `controlledBy: "LLM"` create refused. **The owed
   dogfood pass is the top next candidate.** Round record: `status-log.md`.
+- **The `f699da6f6`-round dogfood pass RAN (2026-09-06/07, agent-driven, on
+  the Friday copy) — 18 rows, 16 PASS, ONE finding found and FIXED, one
+  recorded, and the round's whole 💸 queue discharged.** Walk doc:
+  `dogfood-walks/2026-09-06-pause-skip-google-tools-pass.md`; record in
+  `status-log.md`. The ledger's §2 probe passed at walk start and the one
+  open drift row is an unported surface, so nothing could blame drift. **The
+  pre-walk measurement bought the best comparand:** v4 has already written
+  `llm_logs` rows for its OWN Brahma chats here — 56 across the two most
+  recent — in exactly the shape P4.79 ports, so D1 was judged against v4's
+  own bytes. **Proven live:** all four gates of bug 123's pause announcement,
+  *discriminated* rather than asserted (the chain-error **warning**, the
+  out-of-band mid-chain **info** — different severity and sentence — and
+  **silence** when the operator paused it themselves, the same frame judged
+  against a different pre-turn belief); the off-turn Skip banner in both
+  sentences on one chat; Skip lifting a pause silently; an impersonated LLM
+  seat skipping through the Bug-44 overlay; **dogfood #112 and #114 — this
+  port's own filings — confirmed fixed on the configurations that produced
+  them**, with one fresh-seat GOOGLE help turn proving bug 125's strip, bug
+  124's threading and the P4.9I2 §3 id-less-row rule at once; P4.78 refusing
+  six shapes with nothing written, its guard order proven by discriminator
+  (the same bogus continuation id answers 404 with a good body, 400 with a
+  bad one); and P4.79 writing six `CHAT_MESSAGE` rows for one Console
+  question plus, against a purpose-built half-stream endpoint, persisting
+  **no half reply and no salvage sentence**. **FIXED: finding #116** — the
+  Google builder strips every tool from a turn on two arms v4 *announces* and
+  v5 took in silence, so a GOOGLE-seated help turn came back empty with
+  `UNEXPECTED_TOOL_CALL` and nothing in the log said why; the behaviour is
+  v4-faithful and stays, the two log lines were the whole gap (the #103/#110
+  class), ported with v4's counts, four capture tests, three mutations each
+  reddening one and a fourth surviving *correctly* and recorded rather than
+  chased (`4e62e936`, core 0.0.812; live-proven on the same instance).
+  **RECORDED: finding #117** — a salon chat cannot be deleted on ANY v5
+  surface (`DELETE /api/v1/chats/{id}` is 405 and no `chatDelete` verb
+  exists); the client half is a documented P4.6g deferral whose note names
+  only the card, so the server edge went unported with it — needs an order.
+  Three instrument errors banked (a missed Send click made a whole arm
+  vacuous; NULL-`role` `chat_messages` rows are system events, 52,000 of them
+  predating v5; a dispatch verb answered 200 with a full payload having
+  written nothing, every field being `#[serde(default)]`). **Still owed
+  (human):** the Brahma deep query, dedup/summaries, and #101.
 - **Oracle baseline: `f699da6f6` (2026-09-06, v4 main — the tip of the
   4.9.1 + 4.9.2 release cycles), adopted at the `f699da6f6` 4.9.x drift
   catch-up round unification (2026-09-06).**

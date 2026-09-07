@@ -12,6 +12,13 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(dogfood): the `f699da6f6`-round walk — 16 PASS, findings #116 and #117
+
+_Docs-only change._
+
+The walk doc, the findings rows for #116 (fixed the same day) and #117, the
+status-log record, and CLAUDE.md's Status bullet for the pass.
+
 #### 2026-09-07 — fix(model): google announces the turns whose tools it silently disabled (dogfood #116)
 
 _Versions: core 0.0.812._

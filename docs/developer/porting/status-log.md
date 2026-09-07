@@ -109838,6 +109838,81 @@ while release finishes in seconds. (`e2e/support/env.ts` prefers
 
 ---
 
+## Dogfood pass — the `f699da6f6` 4.9.x drift catch-up round (2026-09-06/07)
+
+**Agent-driven, on the Friday copy at `~/qt-dogfood-friday`; 18 rows — 16 PASS,
+1 PARTIAL, 4 deferred to the human; TWO findings (#116 FIXED on main, #117
+recorded for an order); the round's 💸 queue discharged.** Walk doc:
+`dogfood-walks/2026-09-06-pause-skip-google-tools-pass.md`. Build under test:
+main at `a6e92abe` (the round's unification), binaries + SPA built after it.
+
+**Drift at walk start:** the ledger's §2 probe PASSED (v4 on `bugfix`, tree
+clean, both logs empty); baseline `f699da6f6` = v4 `main` HEAD. The one open §3
+row (bug 119) is the unported `p4.9k`, so no step could blame drift.
+
+**The pre-walk measurement bought the pass its best comparand (ledger §5.5):**
+v4 has already written `llm_logs` rows for its OWN Brahma chats on this instance
+— 56 across the two most recent — and their shape is exactly what P4.79 ports
+(`CHAT_MESSAGE`, `messageId` NULL, `characterId` NULL, measured `durationMs`).
+D1 was therefore judged against v4's own bytes rather than against the order.
+
+**Proven live.** All four gates of bug 123's pause announcement, discriminated
+rather than asserted: the chain-error **warning** on a dead second seat (chat
+paused, one toast, byte-exact), the out-of-band mid-chain pause's **info** toast
+(different severity AND sentence), and **silence** when the operator paused it
+themselves — the same frame, judged against a different pre-turn belief. The
+off-turn Skip banner showed both non-must-speak sentences on one chat; Skip
+lifted a pause silently and moved the floor; an impersonated LLM seat skipped
+through the Bug-44 overlay ("The Host observes **Daciana** declining the
+floor…"). Dogfood **#112** and **#114** — this port's own filings — came back
+fixed and were confirmed on the configurations that produced them, and one
+fresh-seat GOOGLE help turn proved bug 125's strip, bug 124's threading and the
+P4.9I2 §3 id-less-row rule at once (call 1 empty + `finish_reason: STOP`, a
+persisted `TOOL` row, call 2 reading the result back). P4.78's validation stage
+refused six shapes with nothing written, **and its guard order is proven by
+discriminator**: the same bogus `continuationFromChatId` answers 404 with a good
+body and 400 with a bad one. P4.79 wrote six `CHAT_MESSAGE` rows for one Console
+question and, against a purpose-built half-stream endpoint, persisted **no half
+reply and no budget-salvage sentence** — the vacuous shape the unified gate
+caught. Regression: 1,934-message chat rendered and scrolled, `listChats` 1.42 s
+/ `systemHome` 0.32 s (vs the pre-batching 8.6–12.2 s / 8.8 s), zero panics.
+
+**FIXED — finding #116** (`4e62e936`, core 0.0.812): `format_messages_for_google`
+strips every tool from a turn on two arms v4 **announces** and v5 took in
+silence. Found by consequence — a GOOGLE-seated help turn came back empty with
+`finishReason: UNEXPECTED_TOOL_CALL`, persisted nothing, and no log line said
+why; the cause is a thinking model whose history carries assistant rows without
+thought signatures, which is every help chat seated across providers. The
+BEHAVIOUR is v4-faithful and stays; the two log lines were the whole gap (the
+#103/#110 class). Ported byte-for-byte with v4's counts, four capture-layer
+tests, three mutations each reddening exactly one, and one that **survives
+correctly** (counting over all messages rather than `non_system` — a `System`
+row is never an `Assistant`) recorded rather than chased. `request_builder_
+google_equivalence` green, core lib 2,065/0, clippy both feature sets, release
+build. Live proof on the same instance: `WARN quilltap::model::request_builder::
+google: Disabling tools for thinking model due to legacy messages without
+thought signatures legacy_message_count=5 total_assistant_messages=5
+model_name=gemini-2.5-flash`.
+
+**RECORDED — finding #117:** a salon chat cannot be deleted on **any** v5
+surface. `DELETE /api/v1/chats/{id}` is 405 (the route registers `get`+`post`)
+and there is no `chatDelete` dispatch verb, among forty `*Delete` verbs. The
+client half is a documented P4.6g deferral; the note names only the card, so the
+**server edge went unported with it** and nothing — CLI, curl, or a future
+client — can reach it. Needs an order (v4's cascade is the substance).
+
+**Three instrument errors caught and banked**, all of the standing class: a
+Send click that missed made an entire "no toast" arm vacuous (prove the
+*gesture* landed, not just the observer); two NULL-`role` `chat_messages` rows
+read as debris until the projection was widened to `type`/`systemEventType`
+(they are system-event rows, and 52,000 of them predate v5); and a
+`chatUpdateParticipant` sent as `{updates:{…}}` answered **200 with a full
+payload having written nothing**, because every field is `#[serde(default)]` —
+read the write back before believing a 200.
+
+**Still owed (human):** the Brahma deep query, memory dedup + conversation-
+summaries regeneration, and the NanoGPT prompt-caching cost question (#101).
+
 ## Round record — the `f699da6f6` 4.9.x drift catch-up round unification (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79, 2026-09-06)
 
 **UNIFIED on main — ALL FIVE ORDERS CLOSED; the oracle baseline MOVES
