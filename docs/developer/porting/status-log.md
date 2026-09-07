@@ -110536,3 +110536,90 @@ gate failed at binary 168 on `generators_leaf_equivalence` reading a
 a port regression and is not one — the ledger's "a deleted path reads like a
 regression" trap, met in the wild. Regenerating the substrate family at the new
 lane's pin is both the fix and the neutrality check.
+## P4.9K2 — the character-generators SERVER lane, the creation pair (2026-09-07) — **PARTIAL, unit 1 only**
+
+Lane branch `claude/p4-9k2-generators-wizard-import-b1`, branched from
+P4.9K0's tip `f1031c0f` per §S.1. Baseline `f699da6f6`; the drift-ledger §2
+probe PASSED at lane start and again before the regen; every regen ran from the
+lane-unique pin `/tmp/qt-v4-pin-p49k2-f699da6f6`.
+
+**Status: the prompt half of tier-1 item 1 landed.** Everything else is OPEN.
+
+### Unit 1 — the wizard's PURE arms (LANDED, `4f7fb42d`)
+
+`generators::wizard_prompts` is a GENERATED module in the K0 idiom — the
+recorder (`harness/oracle/cases/generators-wizard-prompts.ts`) and the generator
+(`harness/oracle/tools/gen-wizard-prompts.mjs`) are both committed, so the
+stored bytes are v4's. It holds `FIELD_PROMPTS` in v4's own INSERTION order plus
+`PROPERTIES_PROMPT` and `HEAD_AND_SHOULDERS_PHYSICAL_PROMPT`.
+`generators::wizard::build_context_prompt` is the hand port of the context every
+field call opens with. **v4's banked riders `40d507cc` and `4423ad10` are in
+this file at the baseline and are closed by porting it as it stands.**
+
+⚠ **A measured correction to the order.** The order says `FIELD_PROMPTS` has
+**13** keys. It has **TEN**: name, title, identity, description, manifesto,
+personality, scenarios, exampleDialogues, firstMessage, systemPrompt. Thirteen
+is the size of `WizardRequest.fieldsToGenerate`'s union (`:64-78`); the three
+extra members — `properties`, `physicalDescription`, `wardrobeItems` — are
+served by dedicated generators (`generateProperties`,
+`generatePhysicalDescriptions`, `generateWardrobeItems`), not by this table.
+The differential's floor is 10 and its coverage row is diffed exactly, so a
+drift in either direction is loud. Recorded per §B.6 — the lane delivers and
+records rather than reshaping the contract.
+
+**The input-shape decision.** `existingData` is a `serde_json::Value`: v4
+distinguishes three inputs a typed struct collapses into one — absent, `null`,
+and present-but-blank. It tests most members with `?.trim()` but tests
+`pronouns` with PLAIN TRUTHINESS, so an all-empty-string pronoun triple still
+renders `Pronouns: //`. A corpus row (`existing-odd-scalars`) pins that
+asymmetry, and the mutation that narrows it reddens exactly there.
+
+**Differential:** `generators_wizard_prompts_equivalence` over the committed
+`harness/oracle/fixtures/generators-wizard-prompts.json` — all 10 field prompts,
+both constants, and 17 `buildContextPrompt` cases through v4's REAL exports.
+The table is compared BOTH ways and its ORDER asserted, because the generated
+table records v4's insertion order rather than sorting.
+
+**Five mutation proofs**, each reddening exactly one named arm: one byte of
+`FIELD_PROMPTS.name`; the table's first two keys transposed; the `pronouns`
+truthiness test narrowed to a blank test; the three `label:\n` labels given a
+space instead; the empty-string guard dropped from the image/document blocks
+(`empty-image-string`).
+
+### What remains OPEN under this order
+
+Tier-1 items 1 (the RUNNERS and the five generators), 2, 3, 4, 5, 6, 7; all of
+tier 2; both tier-3 recordings. Specifically:
+
+- **The wizard's two runners** (`runCharacterWizard` `:694-952` and
+  `runCharacterWizardStreaming` `:954-1213`, ~250 duplicated lines) and the five
+  generators (`generateField`, `generateImageDescription`,
+  `generatePhysicalDescriptions`, `generateWardrobeItems`, `generateProperties`
+  — the last already has K0's `generated_properties` + `sanitize_pronouns`
+  underneath it).
+- **`generators::ai_import` whole.** Surveyed: `CHARACTER_BASICS_PROMPT`,
+  `assembleWardrobeItems` (`:426`), `assembleQtapExport` (`:462`) and
+  `restampStructuralFields` (`:696`) ARE exported and are therefore tier-1
+  testable on their own — `assembleQtapExport` mints `crypto.randomUUID()` and
+  `new Date().toISOString()`, so it needs the `<minted-N>` remap, and
+  `restampStructuralFields` MUTATES its argument and returns a count, so the
+  oracle must emit the mutated bag as well as the number. That is the natural
+  next unit and it needs no fixture.
+- The NEW committed `character-generators-{main,mount}.db` pair and its builder.
+- The three verbs, the host driver, the three REST arms, and the
+  `UNSERVED_KNOWN_ACTIONS` retirement for `ai-import-stream`.
+
+**The structural note this lane confirms:** unlike K1's services, K2's two
+services DO export several pure functions, so tier-1 differentials are available
+for the prompts (done) and for the import's three assembly functions (next). The
+runners still need injected seams.
+
+### Gate at the lane's tip
+
+`cargo fmt --all --check` 0; clippy 0 in BOTH feature sets; `cargo test
+--workspace` with `QT_ORACLE_GENERATORS_LEAF` + `QT_ORACLE_GENERATORS_WIZARD_
+PROMPTS` — **513 test binaries / 2,925 passed / 0 failed / 1 ignored, exit 0,
+zero `SKIP:` lines**; the new family through `recipe_sweep.py --show` and K0's
+`generators_leaf_equivalence` re-run at THIS lane's pin as the substrate
+neutrality check — green, 46/20/13/6. `git diff main -- apps/web/` empty; the
+K0 substrate files untouched; `characters-{main,mount}.db` untouched.

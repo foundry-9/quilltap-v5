@@ -77,6 +77,18 @@ nullish instead of JS-falsy, at both the prompt's count and the context's skip.
 That last pair only reddens because the mutation pass first found the corpus
 BLIND to it — the two spellings differ only on a falsy-but-not-nullish
 `archivedAt`, so a `""` row was added and the oracle regenerated.
+#### 2026-09-07 — docs(porting): the P4.9K2 lane record — the wizard's prompt half landed, the rest open
+
+_Docs-only change._
+
+The lane record for P4.9K2's partial run, and a measured correction to the
+round's order: `FIELD_PROMPTS` has ten keys, not thirteen — thirteen is the size
+of `WizardRequest.fieldsToGenerate`'s union, whose three extra members have
+dedicated generators. Also records that the AI import exports
+`assembleWardrobeItems`, `assembleQtapExport` and `restampStructuralFields`, so
+those are tier-1 testable with no fixture and are the natural next unit, with
+the two traps they carry noted.
+
 #### 2026-09-07 — port(generators): the AI Wizard's prompt constants and buildContextPrompt, byte-exact against v4
 
 _Versions: core 0.0.815, harness 0.0.702._
