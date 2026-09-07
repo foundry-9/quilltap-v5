@@ -43,6 +43,21 @@ export function interpretWorkspaceLinkClick(e: MouseEvent): OpenIntent | null {
   const target = e.target as HTMLElement | null;
   const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null;
   if (!anchor) return null;
+  // **A v5-only rule, and v4 needs none** (P4.80). v4's chat card is a `<div>`
+  // whose own `handleCardClick` early-returns for `closest('button')`
+  // (`ChatCard.tsx:188-194`), so a click on one of its action buttons never
+  // reaches v4's interceptor as a link click at all. v5's card wraps its whole
+  // body in an `<a routerLink>`, which makes every action button — delete,
+  // copy-link, the Scriptorium badge, the project-remove X — an anchor
+  // DESCENDANT. Without this guard the capture handler `stopImmediatePropagation`s
+  // first and the button's own handler never runs: the button silently opens the
+  // chat instead of doing its job. Measured on the copy-link button, which
+  // shipped long before P4.80 tripped over it with the delete button.
+  //
+  // Widening only: this can make the interceptor pass a click THROUGH, never
+  // open a tab it would not have opened.
+  const button = target?.closest?.('button');
+  if (button && anchor.contains(button)) return null;
   if (anchor.hasAttribute('download')) return null;
   const linkTarget = anchor.getAttribute('target');
   if (linkTarget && linkTarget !== '_self') return null;
@@ -61,9 +76,7 @@ export function interpretWorkspaceLinkClick(e: MouseEvent): OpenIntent | null {
     return {
       kind: 'salon-new',
       payload:
-        characterId || projectId || autonomous
-          ? { characterId, projectId, autonomous }
-          : undefined,
+        characterId || projectId || autonomous ? { characterId, projectId, autonomous } : undefined,
     };
   }
 

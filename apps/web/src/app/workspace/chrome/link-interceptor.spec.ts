@@ -55,13 +55,17 @@ describe('interpretWorkspaceLinkClick', () => {
   });
 
   it('passes through download / target / external / already-prevented', () => {
-    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/characters', download: '' })))).toBeNull();
+    expect(
+      interpretWorkspaceLinkClick(click(anchor({ href: '/characters', download: '' }))),
+    ).toBeNull();
     expect(
       interpretWorkspaceLinkClick(click(anchor({ href: '/characters', target: '_blank' }))),
     ).toBeNull();
     expect(interpretWorkspaceLinkClick(click(anchor({ href: 'https://x.example' })))).toBeNull();
     expect(
-      interpretWorkspaceLinkClick(click(anchor({ href: '/characters' }), { defaultPrevented: true })),
+      interpretWorkspaceLinkClick(
+        click(anchor({ href: '/characters' }), { defaultPrevented: true }),
+      ),
     ).toBeNull();
   });
 
@@ -83,16 +87,51 @@ describe('interpretWorkspaceLinkClick', () => {
       kind: 'salon-new',
       payload: { characterId: 'abc', projectId: undefined, autonomous: false },
     });
-    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?autonomous=1' })))).toEqual({
-      kind: 'salon-new',
-      payload: { characterId: undefined, projectId: undefined, autonomous: true },
-    });
-    expect(
-      interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?projectId=p' }))),
-    ).toEqual({
+    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?autonomous=1' })))).toEqual(
+      {
+        kind: 'salon-new',
+        payload: { characterId: undefined, projectId: undefined, autonomous: true },
+      },
+    );
+    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?projectId=p' })))).toEqual({
       kind: 'salon-new',
       payload: { characterId: undefined, projectId: 'p', autonomous: false },
     });
+  });
+
+  /**
+   * P4.80 — the v5-only button guard. v5's chat card wraps its whole body in an
+   * `<a routerLink>`, so its action buttons are anchor DESCENDANTS; v4's card is
+   * a `<div>` whose own handler early-returns on `closest('button')`, so v4's
+   * interceptor never sees such a click. Without the guard the capture handler
+   * `stopImmediatePropagation`s and the button's handler never runs — the
+   * delete / copy-link / Scriptorium / project-remove buttons all silently open
+   * the chat instead. The nested-span case above is the counterexample that
+   * keeps the guard honest: a plain element inside the anchor still navigates.
+   */
+  it('lets a click on a BUTTON inside an in-app anchor through (v5-only)', () => {
+    const a = anchor({ href: '/salon/abc' });
+    const button = document.createElement('button');
+    const icon = document.createElement('span');
+    button.appendChild(icon);
+    a.appendChild(button);
+    document.body.appendChild(a);
+    // Both the button itself and anything nested inside it.
+    expect(interpretWorkspaceLinkClick(click(button))).toBeNull();
+    expect(interpretWorkspaceLinkClick(click(icon))).toBeNull();
+    document.body.removeChild(a);
+  });
+
+  it('still intercepts a button that merely SITS BESIDE an in-app anchor', () => {
+    // The guard is scoped to a button the anchor CONTAINS — a sibling button
+    // whose own click happens to land on a link elsewhere is not this case, and
+    // an anchor nested inside a button still opens its tab.
+    const button = document.createElement('button');
+    const a = anchor({ href: '/prospero' });
+    button.appendChild(a);
+    document.body.appendChild(button);
+    expect(interpretWorkspaceLinkClick(click(a))).toEqual({ kind: 'prospero' });
+    document.body.removeChild(button);
   });
 
   // v4 `8d86847a`: the salon list is a tab now — the rail's Chats item and the

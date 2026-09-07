@@ -353,6 +353,42 @@ and returns the mapped refusal before constructing it. Pinned by a new
 wire test, `p4_81_refused_create_emits_no_progress_frame`, which drives a
 real `ChatCreateSpine::create` over an invalid body and asserts the
 engine's `Event` broadcast received nothing.
+#### 2026-09-07 — fix(workspace): a click on a button inside a card's link is not a link click (P4.80 follow-up)
+
+_Versions: SPA 0.5.659._
+
+The chat-delete beats' first honest live run found the new delete button
+unreachable in the workspace: clicking it opened the chat. The cause is
+pre-existing and wider than that button.
+
+`workspace-host` installs one delegated **capture**-phase click listener;
+`interpretWorkspaceLinkClick` walks up to the nearest `a[href]` and the host
+then `preventDefault` + `stopImmediatePropagation`s so Angular's `RouterLink`
+(which ignores `defaultPrevented`) cannot navigate. Capture runs before any
+bubble handler, so a button's own `(click)` never fires at all — its
+`preventDefault`/`stopPropagation` are far too late.
+
+v4 needs no guard: its chat card is a `<div>` whose `handleCardClick`
+early-returns for `closest('button')`, so such a click never reaches v4's
+interceptor as a link click. v5's card wraps its whole body in an
+`<a routerLink>`, which makes every action button an anchor descendant.
+Measured on the `Copy link to this chat` button, which shipped long before this
+lane: it opens the chat instead of copying, and so do the Scriptorium badge and
+the project-remove X.
+
+Fixed at the root: a click on a button the anchor CONTAINS is not a link click.
+Widening only — it can make the interceptor pass a click through, never open a
+tab it would not have opened. Two specs pin it (the button and a nested icon;
+plus an anchor nested inside a button, which must still intercept),
+mutation-proven by removing the guard.
+
+The two e2e beats gained their own repairs from the same run: they unlock before
+seeding by dispatch (a locked vault answers an empty character list — the P4.6z
+lesson), re-route rather than `reload()` between arms (a bare reload restores
+the workspace's own last-active tab), open the character by its name link rather
+than a description paragraph that may be empty, and take the ready-heading per
+screen. Full suite 284 → 286, zero skips.
+
 #### 2026-09-07 — feat(chats): a salon chat can be deleted again — the `chatDelete` verb, v4's whole DELETE dispatch, and the affordance on both cards (dogfood #117)
 
 _Versions: core 0.0.813, harness 0.0.701, web 0.0.121, SPA 0.5.658._
@@ -401,6 +437,16 @@ SPA: the salon and character-conversation cards gain v4's `actionType="delete"`
 trash button with v4's classes and title; the Salon list confirms and refetches,
 the Conversations tab confirms and filters locally, exactly as v4's two callers
 do. The confirmation sentence and the failure toast are v4's byte for byte.
+
+The e2e beats' first honest run found the button unreachable in the workspace,
+and the cause was pre-existing and wider: the workspace's capture-phase link
+interceptor swallows every click inside the chat card's wrapping `<a>` — the
+copy-link button, the Scriptorium badge and the project-remove X included —
+because capture runs before the button's own handler. v4 needs no guard there
+(its card is a `<div>` whose handler early-returns on `closest('button')`); v5's
+anchor-wrapped card does. `interpretWorkspaceLinkClick` now passes through a
+click on a button the anchor contains — widening only, spec-pinned in both
+directions, mutation-proven.
 
 #### 2026-09-07 — docs(porting): order the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81)
 Docs only — no crate versions bumped. Planned by `/setupphase` from the

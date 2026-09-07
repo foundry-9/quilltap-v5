@@ -258,6 +258,66 @@ deleted, so the proof is the server answering "gone" for the id afterwards. The
 Salon beat asserts the CANCEL arm first, on the same card, so it cannot pass by
 never having been able to delete at all.
 
+### Unit 7 — the workspace ate every button inside the chat card
+
+The e2e beats' FIRST honest live run (after a port collision with a sibling
+lane's Playwright had made three earlier runs meaningless — see below) found the
+delete button unreachable in the workspace: clicking it opened the chat instead.
+The cause is not this lane's button.
+
+`workspace/chrome/workspace-host.ts` installs ONE delegated **capture**-phase
+click listener on `document`. `interpretWorkspaceLinkClick` walks up to the
+nearest `a[href]`, and the host then `preventDefault` +
+`stopImmediatePropagation`s so Angular's `RouterLink` (which ignores
+`defaultPrevented`) cannot navigate. Capture runs BEFORE any bubble handler, so
+the button's own `(click)` never fires at all — `preventDefault` /
+`stopPropagation` inside it are far too late.
+
+**v4 needs no guard because v4's card is a `<div>`.** `ChatCard.tsx:188-194`'s
+`handleCardClick` early-returns for `closest('button')` / `closest('a[href]')`,
+so a click on one of its action buttons never reaches v4's interceptor as a link
+click. v5's card wraps its whole body in an `<a routerLink>`, which makes every
+action button an anchor DESCENDANT — a v5-only structure with a v5-only
+consequence.
+
+**It is PRE-EXISTING and wider than the delete button.** Measured with a
+throwaway probe on the `Copy link to this chat` button, which shipped long
+before this lane: clicking it opens the chat rather than copying, and the same
+holds for the Scriptorium badge and the project-remove X.
+
+Fixed at the root, in `link-interceptor.ts`: a click on a button the anchor
+CONTAINS is not a link click. The rule is **widening only** — it can make the
+interceptor pass a click through, never open a tab it would not have opened —
+and it is recorded in the module as v5-only with v4's line cited. Two specs pin
+it (the button itself and a nested icon inside it; plus an anchor nested inside
+a button, which must still intercept), mutation-proven by removing the guard.
+
+⚠ `apps/web/src/app/workspace/chrome/link-interceptor.{ts,spec.ts}` is in no
+lane's Owns column this round and in no lane's Must-not-touch — an
+out-of-ownership edit, flagged here and in the lane report. Without it the
+delete affordance cannot work at all, so it is not optional for closing #117.
+
+### The e2e run that lied
+
+Three full-suite runs reported this lane's two beats red for reasons that had
+nothing to do with the code. Port 4319 is repo-wide and the sibling P4.81 lane's
+Playwright held it: this lane's `global-setup` server lost the bind and **every
+beat drove P4.81's server and P4.81's SPA build**. The suite ran, 283 beats
+passed, and these two failed as though the feature were never written — the
+delete button simply absent from a card whose compiled `@if` block was provably
+in this worktree's own `dist`. The tell is one line: the `main-*.js` the PAGE
+loaded (`main-KMQYYL5P.js`) versus the one this dist's `index.html` names
+(`main-NWNPXCFF.js`); a `ggrep -rl` across the worktrees' dists named the lane.
+Checking the port before starting is NOT enough — it was free at launch and the
+sibling bound it seconds later. Banked as a memory note.
+
+Two real beat defects surfaced once the port was genuinely this lane's: seeding
+by raw dispatch before the page unlocks answers an EMPTY character list (the
+P4.6z lesson — `salon-autonomous-entry`'s own header says exactly this), and
+`maybeUnlock` waited for the Salon's "Chats" heading on the Characters screen.
+Both fixed; the beats now unlock first, seed, and re-ROUTE (not `reload()`,
+which restores the workspace's own last-active tab) before each arm.
+
 ### Tier 3 — deferrals, loud
 
 - **The re-extract-memories card action** (v4 `onReextractMemories` — `DELETE
