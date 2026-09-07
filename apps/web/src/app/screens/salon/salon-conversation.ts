@@ -460,7 +460,7 @@ interface CascadePrompt {
         [busy]="busy()"
         [chatId]="chatId()!"
         [speakingAs]="speakingAsSeat()"
-        [hasActiveCharacters]="hasActiveCharacters()"
+        [hasActiveCharacters]="hasAnyActiveCharacter()"
         [terminalActive]="terminalActive()"
         [documentActive]="documentPaneActive()"
         [compositionMode]="compositionMode()"
@@ -1846,6 +1846,12 @@ export class SalonConversation {
     return alreadyPersisted ? msgs : [...msgs, temp];
   });
 
+  /**
+   * `controlledBy === 'llm'` — the NARROW twin, correct for `onSidebarSkip`
+   * alone (P4.81 item 8: the composer's `[hasActiveCharacters]` input used to
+   * bind here too; it now reads the WIDE {@link hasAnyActiveCharacter}, v4's
+   * `useParticipants.hasActiveCharacters`, per `SalonView.tsx:1539`).
+   */
   protected readonly hasActiveCharacters = computed(() =>
     (this.chat()?.participants ?? []).some(
       (p) => p.type === 'CHARACTER' && p.isActive && p.controlledBy === 'llm',
@@ -2094,13 +2100,16 @@ export class SalonConversation {
 
   /**
    * v4 `useParticipants.hasActiveCharacters` (`useParticipants.ts:70-72`) — any
-   * active CHARACTER, whoever drives it. Distinct from this component's
-   * `hasActiveCharacters`, which is spelled `controlledBy === 'llm'` — v5's
-   * NARROWING of v4's `useTurnManagement` twin (`useTurnManagement.ts:121`,
-   * `!== 'user'`), tracked with dogfood finding #115; v4 keeps both and
-   * this lane needs the wider one for the Skip banner's gate.
+   * active CHARACTER, whoever drives it. Distinct from this component's OWN
+   * (now-retired) `hasActiveCharacters`, which was spelled `controlledBy ===
+   * 'llm'` — v5's NARROWING of v4's `useTurnManagement` twin
+   * (`useTurnManagement.ts:121`, `!== 'user'`), tracked with dogfood finding
+   * #115; v4 keeps both, and this is the WIDE one both the Skip banner's gate
+   * (`bannerSeat`) and the composer's `[hasActiveCharacters]` input
+   * (`SalonView.tsx:1539`) bind to. `protected`: the template reads it
+   * directly.
    */
-  private readonly hasAnyActiveCharacter = computed(() =>
+  protected readonly hasAnyActiveCharacter = computed(() =>
     (this.chat()?.participants ?? []).some((p) => p.type === 'CHARACTER' && p.isActive),
   );
 

@@ -231,6 +231,32 @@ Deferred loudly (tier 3, named not performed): the five per-caller JSON
 extractors v5 already carries stay where they are — each is oracle-pinned in
 place, and `generators::llm_json` is a NEW home for v4's module, not a
 consolidation of them.
+#### 2026-09-07 — fix(web): the composer's hasActiveCharacters binding is the WIDE twin (P4.81 item 8, dogfood standing note)
+
+_Versions: SPA 0.5.658._
+
+v4 has two predicates by this name: `useParticipants.hasActiveCharacters`
+(`type === 'CHARACTER' && isActive`, no `controlledBy` filter —
+`SalonView.tsx:1539`, what the composer reads) and a narrower one
+(`controlledBy !== 'user'`) for `useTurnManagement`. `SalonConversation`
+had ONE computed, spelled `controlledBy === 'llm'` — correct for
+`onSidebarSkip` alone — bound to BOTH that site and the composer's
+`[hasActiveCharacters]` input. A chat whose only active character is the
+operator's own therefore had a working composer in v4 and a disabled one
+("Add a character to start chatting…") in v5.
+
+The composer binding now reads `hasAnyActiveCharacter()` (P4.D161's wide
+twin, added for the Skip banner and left unwired to the composer at the
+time); the narrow computed stays bound to `onSidebarSkip` alone. A parity
+spec (`salon-conversation.spec.ts`) drives the wide predicate + the real
+`ChatComposer`'s received input directly; a new live beat
+(`e2e/composer-active-seat.spec.ts`) builds a chat with an LLM seat and a
+"Play As (User)" seat through New Chat, sets the LLM seat's Participation
+status to Absent (the sidebar's own `canRemove` correctly refuses to
+Remove the LAST LLM character even with a user-driven seat present, so
+Absent — not Remove — reaches the target state), and asserts the composer
+stays enabled. Both mutation-proven against the old binding.
+
 #### 2026-09-07 — docs(web): the e2e prerequisites build release binaries, not debug (P4.81 item 6)
 
 _Docs-only change._

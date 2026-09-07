@@ -44,7 +44,7 @@ import {
   reduceChatFrame,
   type ChatStreamState,
 } from '../../core/chat-stream.reducer';
-import type { ToolExecutionStatus } from '../../chat/chat-composer';
+import { ChatComposer, type ToolExecutionStatus } from '../../chat/chat-composer';
 import { SalonConversation, messageIsOptimisticEcho } from './salon-conversation';
 import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
 import { By } from '@angular/platform-browser';
@@ -3156,5 +3156,45 @@ describe('SalonConversation — the optimistic bubble reconciles against a mid-t
 
     const echoes = inst.displayMessages().filter((m) => m.content === 'Are we there yet?');
     expect(echoes).toHaveLength(2); // the earlier persisted row + this send's own bubble
+  });
+});
+
+/**
+ * The composer's `[hasActiveCharacters]` input (P4.81 item 8, dogfood: "the
+ * composer's `hasActiveCharacters` reads v4's NARROW twin"). v4's composer
+ * gate is `useParticipants.hasActiveCharacters` (`useParticipants.ts:70-72` —
+ * `type === 'CHARACTER' && isActive`, no `controlledBy` filter,
+ * `SalonView.tsx:1539`); v5 used to bind the component's OWN narrower
+ * `hasActiveCharacters` (`controlledBy === 'llm'`, the right predicate for
+ * `onSidebarSkip` alone), so a chat whose only active character is
+ * user-driven left the composer disabled where v4 enables it.
+ */
+describe("SalonConversation — the composer's hasActiveCharacters input is the WIDE twin", () => {
+  type Host = { hasAnyActiveCharacter(): boolean };
+
+  it('enables the composer when the only active character is user-driven', async () => {
+    const chat: ChatDetail = {
+      ...chatDetail(),
+      participants: [
+        participant({
+          id: 'pu',
+          controlledBy: 'user',
+          character: { id: 'u', name: 'Bertie', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null },
+        }),
+      ],
+    };
+    const events$ = new Subject<ScopedEvent>();
+    const fixture = await render(stubClient(chat, events$));
+    const inst = fixture.componentInstance as unknown as Host;
+
+    // The wide predicate: TRUE (a user-driven CHARACTER is still an active
+    // character). The old, narrow `controlledBy === 'llm'` predicate would
+    // have been FALSE here — that gap is exactly dogfood's standing note.
+    expect(inst.hasAnyActiveCharacter()).toBe(true);
+
+    const composer = fixture.debugElement.query(By.directive(ChatComposer));
+    expect(composer).toBeTruthy();
+    const composerInst = composer.componentInstance as ChatComposer;
+    expect(composerInst.hasActiveCharacters()).toBe(true);
   });
 });

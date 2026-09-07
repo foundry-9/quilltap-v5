@@ -663,6 +663,15 @@ change beyond bug 123's client half, unmeasured against the e2e beats, and it
 sits on the same predicate finding #115 tripped (`controlledBy: "LLM"`). One
 lane, one spec, one beat.
 
+**CLOSED (2026-09-07, P4.81 item 8).** `salon-conversation.ts`'s
+`[hasActiveCharacters]` composer binding now reads `hasAnyActiveCharacter()`
+(the wide twin) instead of the narrow `controlledBy === 'llm'` one, which
+stays bound only to `onSidebarSkip`, its correct site. A parity spec
+(`salon-conversation.spec.ts` — a chat whose only active character is
+user-driven) and a new live beat (`composer-active-seat.spec.ts` — New Chat
+with an LLM seat + a "Play As (User)" seat, the LLM seat set Absent, the
+composer stays enabled) both mutation-proven against the old binding.
+
 ### The handler-logging inventory's scope misses the daily maintenance sweep (2026-09-05, finding #110)
 
 `harness/tools/handler_log_inventory.py` surveys exactly
