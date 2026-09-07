@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 
 import { Icon } from '../../../../ui/icon';
+import { PromptFieldExample } from '../../../../ui/prompt-field-example';
 import { PROMPT_FIELD_HINTS } from '../../../../ui/prompt-field-hints';
 import type { OptimizerSuggestion, SuggestionDecision } from '../detail-generators.api';
 import { FIELD_BADGE_CLASS, FIELD_HINT_KEYS, FIELD_LABELS } from './field-meta';
@@ -12,7 +13,7 @@ import { FIELD_BADGE_CLASS, FIELD_HINT_KEYS, FIELD_LABELS } from './field-meta';
 @Component({
   selector: 'qt-suggestion-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, PromptFieldExample],
   template: `
     <div
       [class]="
@@ -38,7 +39,7 @@ import { FIELD_BADGE_CLASS, FIELD_HINT_KEYS, FIELD_LABELS } from './field-meta';
       </div>
 
       @if (!editing() && voiceExample()) {
-        <p class="qt-text-secondary mt-1 text-xs">Written as: <em>{{ voiceExample() }}</em></p>
+        <qt-prompt-field-example [example]="voiceExample()!" />
       }
 
       @if (!editing()) {

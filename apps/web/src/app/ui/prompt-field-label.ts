@@ -6,6 +6,7 @@ import {
   input,
 } from '@angular/core';
 
+import { PromptFieldExample } from './prompt-field-example';
 import type { PromptFieldHint } from './prompt-field-hints';
 
 /**
@@ -34,6 +35,7 @@ import type { PromptFieldHint } from './prompt-field-hints';
 @Component({
   selector: 'qt-prompt-field-label',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [PromptFieldExample],
   // An Angular custom-element host is `display: inline` by default, and a React
   // component has no host element at all — so without this the appearance tab,
   // where the header is a DIRECT child of a `space-y-4` stack, would silently
@@ -55,8 +57,11 @@ import type { PromptFieldHint } from './prompt-field-hints';
       @if (helperText()) {
         <p class="text-xs qt-text-secondary mt-1">{{ helperText() }}</p>
       }
-      @if (exampleText()) {
-        <p class="text-xs qt-text-secondary mt-1">Written as: <em>{{ exampleText() }}</em></p>
+      @if (exampleText(); as example) {
+        <qt-prompt-field-example
+          [example]="example"
+          className="text-xs qt-text-secondary mt-1"
+        />
       }
     </div>
   `,

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, input, output } from '@angular/core
 import type { CharacterScenario } from '../../../core/core-contract';
 import { MarkdownField } from '../../../editor/markdown-field';
 import { Icon } from '../../../ui/icon';
+import { PromptFieldExample } from '../../../ui/prompt-field-example';
 import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
 import { newScenario } from './character-form';
 
@@ -51,7 +52,7 @@ import { newScenario } from './character-form';
 @Component({
   selector: 'qt-scenario-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, MarkdownField],
+  imports: [Icon, MarkdownField, PromptFieldExample],
   template: `
     <div>
       <div class="flex justify-between items-center mb-2">
@@ -69,7 +70,7 @@ import { newScenario } from './character-form';
         Archiving a scenario keeps it here but hides it from the chat pickers unless
         &ldquo;Show archived&rdquo; is ticked there. Chats already using it are unaffected.
       </p>
-      <p class="text-xs qt-text-secondary mb-3">Written as: <em>{{ scenarioExample }}</em></p>
+      <qt-prompt-field-example [example]="scenarioExample" className="text-xs qt-text-secondary mb-3" />
 
       @if (scenarios().length === 0) {
         <div class="qt-card text-center py-6">

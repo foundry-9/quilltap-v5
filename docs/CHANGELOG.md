@@ -649,6 +649,28 @@ The new family's names are all `*_PT_ROUTES` /
 (`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
 `build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
 Both families run side by side through the sweep driver.
+#### 2026-09-07 — refactor(spa): extract `qt-prompt-field-example`, v4's shared `Written as:` line
+
+_Versions: SPA 0.5.674._
+
+v4 exports `PromptFieldExample` from `components/prompt-fields/PromptFieldLabel.tsx`
+(`:41-58`) — the `Written as: <em>…</em>` line — and uses it from its own
+`PromptFieldLabel` header, from the optimizer's `SuggestionCard` (`:161`) and
+from the AI Wizard's `GenerationStep` (`:379`). v5 had the line hand-copied at
+five places and no shared component; this adds `ui/prompt-field-example.ts` and
+adopts it in the label header, the optimizer suggestion card and the character
+scenario editor.
+
+The host is `display: contents`, not `block`: v4's is a React function
+component, so it contributes no element to the box tree and each adoption site
+relies on the `<p>` being its container's direct layout child. (The opposite
+call from `PromptFieldLabel`'s host, for the opposite reason — that one IS a
+`space-y-*` child.) The paragraph classes ride `[attr.class]` rather than
+`[class]`, because Angular's class binding dedups and reorders the tokens and
+so cannot reproduce v4's `className` string byte-for-byte.
+
+The AI-import wizard's two copies stay inline: v4 writes them inline too, in a
+different structural context and with a different class (`qt-text-muted`).
 
 #### 2026-09-07 — docs(setupphase): P4.86 authorized — the `jsonschema` dependency ruling granted
 
