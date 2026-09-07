@@ -116,6 +116,27 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — fix(salon): v4's `[Chats v1] Impersonation stopped` line, which v5 took in silence
+
+_Versions: core 0.0.835, harness 0.0.725._
+
+P4.85 item 1. v4 logs `[Chats v1] Impersonation stopped` at
+`app/api/v1/chats/[id]/actions/participants.ts:126` — after the optional
+connection-profile reassignment and the `resolveParticipantCharacterName`
+read, before the response, with `{ chatId, participantId, characterName }`.
+v5's `chat_stop_impersonate` ran the identical sequence and said nothing.
+The line is now emitted at v4's position with the same three fields.
+
+Pinned by `stop_impersonate_log_line` in `chat_delete_equivalence` — the
+capture-layer rig over the committed `chat-delete-*` trio the P4.80 family
+already drives. The `character_name` field is asserted against the response
+envelope's own `characterName` rather than a transcribed literal, which is
+what proves the line sits after the resolve. Three silence arms (a 404 chat,
+a participant that is not on the chat, and a dangling
+`newConnectionProfileId` whose 404 lands between the impersonation write and
+the log line) pin its position; without them a line moved above the write
+would still pass. Mutation-proven: deleting the `tracing::info!` reddens the
+test.
 
 #### 2026-09-07 — docs(setupphase): P4.86 authorized — the `jsonschema` dependency ruling granted
 

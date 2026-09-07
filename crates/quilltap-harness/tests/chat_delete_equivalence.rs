@@ -874,3 +874,109 @@ fn chat_delete_log_lines() {
         "v4 warns when a participant's vault cannot be resolved: {lines:#?}"
     );
 }
+
+/// **P4.85 item 1 — v4's `[Chats v1] Impersonation stopped`.** The `?action=
+/// stop-impersonate` leg of this same dispatch: v4 logs it at
+/// `app/api/v1/chats/[id]/actions/participants.ts:126`, AFTER the optional
+/// profile reassignment and the `resolveParticipantCharacterName` read and
+/// BEFORE the response, with `{ chatId, participantId, characterName }`. v5's
+/// `chat_stop_impersonate` ran the identical sequence in SILENCE until this
+/// lane — invisible to the census above (the line writes no row) and to the
+/// body diff (the line is not in it), which is exactly why it needs its own pin.
+///
+/// The `characterName` field is asserted against the RESPONSE's own
+/// `characterName` rather than a transcribed literal: v4 logs the value it
+/// just resolved, so binding the two is what proves the line sits after the
+/// resolve rather than before it.
+///
+/// Mutation: delete the `tracing::info!` in `api::salon::chat_stop_impersonate`
+/// → the first `line_with` panics; move it above the `remove_impersonation`
+/// write → the 404 / bad-participant silence arms below fail.
+#[test]
+fn stop_impersonate_log_line() {
+    let Ok(raw) = std::fs::read_to_string(spec_path()) else {
+        eprintln!("SKIP: the chat-delete spec is missing.");
+        return;
+    };
+    let spec: Spec = serde_json::from_str(&raw).unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    const SENTENCE: &str = "[Chats v1] Impersonation stopped";
+    let has = |lines: &[String], s: &str| lines.iter().any(|l| l.contains(s));
+
+    // --- the success arm: exactly one line, at info, with v4's three fields ---
+    let db = fresh_db(&spec, "log_stop_imp");
+    let (response, lines) = quilltap_core::test_support::captured_with(|| {
+        rt.block_on(chat_delete_dispatch(
+            &db,
+            CHAT_IMP,
+            Some("stop-impersonate"),
+            Some(&json!({ "participantId": P_IMP_CLIO })),
+        ))
+    });
+    let name = match &response {
+        Response::ChatImpersonation(v) => v["characterName"].as_str().unwrap().to_string(),
+        other => panic!("expected the impersonation envelope, got {other:?}"),
+    };
+    assert_eq!(
+        lines.iter().filter(|l| l.contains(SENTENCE)).count(),
+        1,
+        "v4 logs this once per stop; got {lines:#?}"
+    );
+    let line = lines.iter().find(|l| l.contains(SENTENCE)).unwrap();
+    assert!(line.starts_with("INFO "), "v4 logs at info: {line}");
+    for field in [
+        format!("chat_id={CHAT_IMP}"),
+        format!("participant_id={P_IMP_CLIO}"),
+        format!("character_name={name}"),
+    ] {
+        assert!(line.contains(&field), "missing {field} in {line}");
+    }
+
+    // --- the SILENCE half. Without it, a line moved above the write passes. ---
+    // A 404 chat: v4 returns before `removeImpersonation`.
+    let db = fresh_db(&spec, "log_stop_imp_404");
+    let lines = quilltap_core::test_support::captured(|| {
+        rt.block_on(chat_delete_dispatch(
+            &db,
+            MISSING_ID,
+            Some("stop-impersonate"),
+            Some(&json!({ "participantId": P_IMP_CLIO })),
+        ));
+    });
+    assert!(!has(&lines, SENTENCE), "a 404 announces nothing: {lines:#?}");
+
+    // A participant that is not on the chat: the 404 lands before the write too.
+    let db = fresh_db(&spec, "log_stop_imp_noseat");
+    let lines = quilltap_core::test_support::captured(|| {
+        rt.block_on(chat_delete_dispatch(
+            &db,
+            CHAT_IMP,
+            Some("stop-impersonate"),
+            Some(&json!({ "participantId": P_UNKNOWN })),
+        ));
+    });
+    assert!(
+        !has(&lines, SENTENCE),
+        "an unknown participant announces nothing: {lines:#?}"
+    );
+
+    // A dangling `newConnectionProfileId`: v4 404s BETWEEN the impersonation
+    // write and the log line, so the state moved but nothing is announced —
+    // the arm that pins the line's position after the profile branch.
+    let db = fresh_db(&spec, "log_stop_imp_badprofile");
+    let lines = quilltap_core::test_support::captured(|| {
+        rt.block_on(chat_delete_dispatch(
+            &db,
+            CHAT_IMP,
+            Some("stop-impersonate"),
+            Some(&json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": MISSING_ID })),
+        ));
+    });
+    assert!(
+        !has(&lines, SENTENCE),
+        "the profile 404 short-circuits before v4's line: {lines:#?}"
+    );
+}

@@ -1917,6 +1917,18 @@ pub async fn chat_stop_impersonate(
         Ok(character_name(main, mount, &participant))
     })
     .unwrap_or_else(|_| "Unknown".to_string());
+
+    // v4 `participants.ts:126` — AFTER the optional profile reassignment and the
+    // `resolveParticipantCharacterName` read, BEFORE the response. The one line
+    // an operator greps when a seat stops answering as its owner; v5 took the
+    // whole handler in silence until P4.85 (the #103/#110/#116 class).
+    tracing::info!(
+        chat_id = %chat_id,
+        participant_id = %participant_id,
+        character_name = %name,
+        "[Chats v1] Impersonation stopped"
+    );
+
     Response::ChatImpersonation(json!({
         "success": true,
         "participantId": participant_id,
