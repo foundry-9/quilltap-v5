@@ -12,6 +12,44 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(chats): the participant `selectedSubpromptIds` carry — a data-safety fix landed first (P4.D163 unit 1)
+
+_Versions: core 0.0.820, harness 0.0.710._
+
+v4 `2f4254b42` writes `selectedSubpromptIds` onto every created participant on
+the shared instance, and every v5 participant write was a strict round-trip
+through `ChatParticipant`, which had no such field — so any v5 rewrite of a
+seat silently dropped a v4-written selection. Pinned red-first by a
+byte-for-byte test over a raw v4 row (`update_participant` on `displayOrder`
+alone must keep `"selectedSubpromptIds":["terse","VERSE"]` in schema position),
+then landed: the `ChatParticipant` field (a plain `Option<Vec<String>>` —
+v4's rule is `.optional()`, never `.nullable()`; absent stays absent), the
+update verb (`ParticipantUpdateData` + `parse_selected_subprompt_ids` shared by
+the dispatch arm and the chat-PUT bag; an explicit `null`, a non-array or a
+non-string element is v4's whole-parse 400; the `.max(100)` / per-id
+`.min(1).max(120)` code-point bounds in `validate`), the recompile trigger
+(`same_id_set` transcribed with v4's multiset-blindness reproduced + the
+`[Chats v1] Recompiling identity stack after participant prompt change` debug
+line, capture-pinned), the create path (`check_participant`'s Zod arm with
+every measured issue shape; `isUserControlled ? [] : (ids ?? [])` always
+present on a created seat; the `LlmCandidate` / `first_selected_subprompt_ids`
+carry P4.D164 reads), and the chat-GET projection (`selectedSubpromptIds: []`
+always present after `selectedSystemPromptId`). The dispatch variant carries
+the field `double_option` over a raw `Value` so a present-but-invalid value
+reaches the handler (the P4.D57 idiom). Families moved at the `2f4254b42` pin:
+`chats_participants_tier2` (a fifth seeded chat + seven carry ops),
+`chat_create_capstone` (eleven `sp_*` arms, Zod `details` byte-compared),
+`chat_cast_routes` (twelve `update_subprompts_*` cases incl. a repository-level
+pre-seed so the `sameIdSet` recompile is visible as `compiledIdentityStacks`
+null → object), `participant_resolver_tier2` and `salon_reads` (neutral
+regens, the projection now carried). Mutation proofs: the struct field removed
+(the byte test red), `skip_serializing_if` dropped (the chats-participants
+family red on the pre-feature seat's `null`). The capstone's
+`outfit_llm_choose_shared_composite` row is RED at this commit by
+construction: v4's outfit-selection prompt gained a fifth bullet in the same
+commit, P4.D164's surface, landing later in this lane (§R.11 regenerates the
+family once after both orders).
+
 #### 2026-09-07 — feat(help): re-vendor the four `help/` files `2f4254b42` touched (character subprompts) — P4.D163 unit 0
 
 _Versions: harness 0.0.709, host 0.0.107._

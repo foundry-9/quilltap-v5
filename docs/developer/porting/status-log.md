@@ -111687,3 +111687,115 @@ a shortcut past `commit.md` §5.
   `VENDORED_FILE_COUNT = 120` — the tripwire firing as designed; moved to 121
   with the sha named in the constant's doc comment, then green.
 - Versions: harness 0.0.709, host 0.0.107 (the embed). No Rust source moved.
+
+### Unit 1 — the participant carry (RED FIRST) + the update/create/GET arms
+
+**The data-safety pin.** `db/chats_participants.rs::tests::update_participant_
+keeps_a_v4_written_selected_subprompt_ids_byte_for_byte`: provisions a fresh
+instance, creates a chat, then writes the seat row with RAW SQL in v4's own
+bytes and schema order (`…"selectedSystemPromptId":null,"selectedSubpromptIds":
+["terse","VERSE"],"displayOrder":0…`), patches `displayOrder` alone through
+`update_participant`, and asserts the stored cell still contains
+`"selectedSystemPromptId":null,"selectedSubpromptIds":["terse","VERSE"],
+"displayOrder":5`. **Run RED with the struct field removed by string edit** (the
+re-serialized seat had no `selectedSubpromptIds` at all — the measured data loss),
+then GREEN with the field restored. The field is a plain `Option<Vec<String>>`
+after `selected_system_prompt_id` with `skip_serializing_if = "Option::is_none"`
+— v4's rule is `.optional()` and never `.nullable()`, so absent stays absent
+(a pre-feature row keeps its bytes) and a stored `null` cannot exist.
+
+**The update verb.** `ParticipantUpdateData.selected_subprompt_ids:
+Option<Vec<String>>`; ONE parse home `parse_selected_subprompt_ids` (null /
+non-array / non-string element → the whole-parse `Validation error` 400) used
+by BOTH entrances — `from_value` (the chat-PUT bag) and the dispatch arm in
+`engine.rs` — with the bounds (`.max(100)` items; per id `.min(1).max(120)`
+CODE POINTS via `jsstr::zod_len_*`) in `validate()`. The `ChatUpdateParticipant`
+variant carries the field `double_option` over a raw `Value` (the P4.D57 idiom,
+so a present `null` reaches the handler instead of collapsing to absent at
+serde). ⚠ Its `#[serde]` is TWO one-line attributes on purpose: the web
+`dispatch_wrong_type_census` parser strips `#[` LINES only, and a multi-line
+`#[serde(…)]` leaves a `)]` that unbalanced its field split — the census
+reported seven `ChatUpdateParticipant` fields "no longer present" (the fields
+AFTER mine). Recorded as a memory-note candidate; the same shape already sits
+on `ChatCreate.concierge_state` unnoticed because every field after it is a
+`Value` bag the census skips anyway.
+
+**The recompile trigger.** v4's `promptChanged || subpromptsChanged` with
+`sameIdSet` transcribed EXACTLY, multiset-blindness included (`['a','a']` →
+`['a','b']` recompiles; `['a','b']` → `['a','a']` does not — NOT a divergence,
+pinned as a plain equality both in the unit table and in two chat-cast cases),
+an absent key comparing as `[]`, and the `[Chats v1] Recompiling identity stack
+after participant prompt change` debug line with `prompt_changed` /
+`subprompts_changed` — capture-pinned over a provisioned instance
+(`subprompt_tests::recompile_debug_line_fires_only_when_the_set_changes` +
+`…treats_an_absent_key_as_empty_and_reproduces_the_blind_spot`).
+
+**The create path.** `ChatCreateParticipant.selected_subprompt_ids` (lenient
+read); `check_participant` gains `check_opt_subprompt_ids` with every issue
+shape MEASURED on Zod 4.5.4 at the pin — `invalid_type expected array` (null
+included), per-element `invalid_type expected string` / `too_small` (string,
+min 1) / `too_big` (string, max 120, code points), then the array's own
+`too_big` (max 100) LAST (`['', …100 more]` answers two issues in that order);
+the `json!` literal writes `isUserControlled ? [] : (ids ?? [])` — always
+present; `LlmCandidate` + `BuiltParticipants.first_selected_subprompt_ids`
+carry the opener's raw selection (`#[allow(dead_code)]` until P4.D164's
+greeting call site reads it — the stacked order removes the allow).
+
+**The GET projection.** `EnrichedParticipantDetail.selected_subprompt_ids:
+Vec<String>` — always present, after `selectedSystemPromptId`.
+
+**`chats_routes.rs` measured, NOT edited:** v5 has no `POST /api/v1/chats/{id}`
+edge at all (the `?action=update-participant` verb rides `/api/dispatch` by
+serde) — the order's "if the edge needs a hand edit at all" resolves to no.
+
+**Families at the pin** (`recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d163-2f4254b42
+--run <family>`, one at a time; §2 probe re-run PASS before the batch):
+- `chats_participants_tier2_equivalence` — GREEN; the `/tmp` builder's corpus
+  gained a fifth chat (an LLM seat carrying `["terse","VERSE"]`, one carrying
+  `[]`, one pre-feature seat) + seven ops (patch another field only; replace
+  the set; the reordered-equal set; a pre-feature seat patched elsewhere keeps
+  the key ABSENT; `[]` on a pre-feature seat; `setParticipantStatus` and
+  `removeParticipant` rewrites keep the carry). `grep -o selectedSubpromptIds`
+  in the fresh NDJSON = 3.
+- `chat_create_capstone_equivalence` — the eleven `sp_*` arms ALL matched
+  (`sp_ok_selected_subprompt_ids`, `sp_empty_id_400`, `sp_id_121_code_points_
+  400`, `sp_ok_id_120_astral_code_points`, `sp_101_items_400`,
+  `sp_empty_and_101_items_two_issues_400`, `sp_null_400`,
+  `sp_string_not_array_400`, `sp_number_element_400`, `sp_ok_absent_key_
+  stores_empty`, `sp_ok_user_controlled_seat_stores_empty` — verified by
+  front-loading them in a temporary copy of the corpus, since the harness
+  panics at the first failing case; the committed corpus order is untouched,
+  the eleven spliced as pure additions). ⚠ The family is RED at this commit on
+  ONE pre-existing row, `outfit_llm_choose_shared_composite`: v4's
+  `OUTFIT_SELECTION_PROMPT` gained its fifth bullet in `2f4254b42`, the fresh
+  oracle's outfit recording carries it, and that bullet is P4.D164's surface
+  (`outfit_selections.rs`). Per §R.11 the family is regenerated ONCE after
+  both orders; the red is expected until then and is NOT a unit-1 defect.
+- `chat_cast_routes_equivalence` — GREEN with twelve new `update_subprompts_*`
+  cases: set (recompiles), `[]` on a pre-feature seat (no recompile — `sameIdSet
+  (old ?? [], [])` is true), reordered-equal (no recompile), replace
+  (recompiles), the two multiset-blind rows, a user seat (stored as sent), and
+  the five Zod refusals (`null`, `""`, 121 code points, 101 items, a string) —
+  the last five in `VALIDATION_DETAILS_GAP` (the standing P4.6bb envelope
+  deferral on this family). The recompile discriminator: a REPOSITORY-level
+  pre-seed (`seededUpdateCase` / `upd_sp`'s seed leg — `repos.chats.
+  updateParticipant` never recompiles) leaves `compiledIdentityStacks` null
+  until the measured call, so null → object IS "recompiled". Bram's vault
+  holds no `Subprompts/`, so the compiled bytes are the same both sides — the
+  block render is P4.D164's. `grep -o selectedSubpromptIds` = 40.
+- `participant_resolver_tier2_equivalence` — GREEN (neutral).
+- `salon_reads_equivalence` — GREEN; the chat-GET now projects
+  `selectedSubpromptIds: []` on every participant both sides (`grep -o` = 10).
+
+**Mutation proofs:** the struct field removed → the byte test RED; the
+`skip_serializing_if` replaced by `is_some` → `chats_participants_tier2` RED
+on the pre-feature seat's `"selectedSubpromptIds":null` vs v4's absent key;
+both restored by file backup, green after.
+
+**Zod shapes measured on v4 (`zod` 4.5.4 from inside the pin):** `['']` →
+`too_small` at `[…,0]`; `['x'×121]` → `too_big` maximum 120; 101 items →
+`too_big` origin array maximum 100; `null` / `'a'` → `invalid_type expected
+array`; `[1]` → `invalid_type expected string` at `[…,0]`; `['😀'×120]` OK
+(code points); `['', …100 more]` → the element issue THEN the array issue.
+
+Versions: core 0.0.820, harness 0.0.710.

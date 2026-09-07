@@ -1,0 +1,663 @@
+{
+  "$comment": "P4.D163 subprompts helpers corpus: every row drives v4's REAL lib/subprompts/subprompts.ts exports at the 2f4254b42 pin (harness/oracle/cases/subprompts-helpers.ts).",
+  "ids": [
+    {
+      "name": "plain-slug",
+      "input": "be-terse"
+    },
+    {
+      "name": "spaced",
+      "input": "My Prompt"
+    },
+    {
+      "name": "mixed-case",
+      "input": "Be-TERSE"
+    },
+    {
+      "name": "empty",
+      "input": ""
+    },
+    {
+      "name": "dot",
+      "input": "."
+    },
+    {
+      "name": "dotdot",
+      "input": ".."
+    },
+    {
+      "name": "dot-prefixed",
+      "input": ".hidden"
+    },
+    {
+      "name": "dotdot-prefixed",
+      "input": "..x"
+    },
+    {
+      "name": "backslash",
+      "input": "a\\b"
+    },
+    {
+      "name": "slash",
+      "input": "a/b"
+    },
+    {
+      "name": "lt",
+      "input": "a<b"
+    },
+    {
+      "name": "gt",
+      "input": "a>b"
+    },
+    {
+      "name": "colon",
+      "input": "a:b"
+    },
+    {
+      "name": "dquote",
+      "input": "a\"b"
+    },
+    {
+      "name": "pipe",
+      "input": "a|b"
+    },
+    {
+      "name": "question",
+      "input": "a?b"
+    },
+    {
+      "name": "star",
+      "input": "a*b"
+    },
+    {
+      "name": "control-u0001",
+      "input": "a\u0001b"
+    },
+    {
+      "name": "tab",
+      "input": "a\tb"
+    },
+    {
+      "name": "newline",
+      "input": "a\nb"
+    },
+    {
+      "name": "del-u007f-allowed",
+      "input": "a\u007fb"
+    },
+    {
+      "name": "space-u0020-allowed-inside",
+      "input": "a b"
+    },
+    {
+      "name": "leading-space",
+      "input": " a"
+    },
+    {
+      "name": "trailing-space",
+      "input": "a "
+    },
+    {
+      "name": "leading-nbsp",
+      "input": "\u00a0a"
+    },
+    {
+      "name": "trailing-nbsp",
+      "input": "a\u00a0"
+    },
+    {
+      "name": "leading-ideographic-space",
+      "input": "\u3000a"
+    },
+    {
+      "name": "trailing-bom-feff",
+      "input": "a\ufeff"
+    },
+    {
+      "name": "leading-lf",
+      "input": "\na"
+    },
+    {
+      "name": "len-120-ascii",
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "len-121-ascii",
+      "input": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "name": "astral-single",
+      "input": "\ud83d\ude00"
+    },
+    {
+      "name": "astral-60-is-120-units",
+      "input": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00"
+    },
+    {
+      "name": "astral-61-is-122-units",
+      "input": "\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00\ud83d\ude00"
+    },
+    {
+      "name": "nfc-e-acute",
+      "input": "caf\u00e9"
+    },
+    {
+      "name": "nfd-e-acute",
+      "input": "cafe\u0301"
+    },
+    {
+      "name": "hangul",
+      "input": "\ud55c\uae00-prompt"
+    },
+    {
+      "name": "number-not-string",
+      "input": 42
+    },
+    {
+      "name": "null-not-string",
+      "input": null
+    },
+    {
+      "name": "bool-not-string",
+      "input": true
+    },
+    {
+      "name": "array-not-string",
+      "input": [
+        "a"
+      ]
+    },
+    {
+      "name": "unicode-quote-allowed",
+      "input": "a\u201cb\u201d"
+    },
+    {
+      "name": "percent",
+      "input": "100%"
+    },
+    {
+      "name": "hash",
+      "input": "#one"
+    },
+    {
+      "name": "semicolon",
+      "input": "a;b"
+    }
+  ],
+  "slugs": [
+    {
+      "name": "plain",
+      "title": "Be Terse!"
+    },
+    {
+      "name": "accented",
+      "title": "  Caf\u00e9   au lait "
+    },
+    {
+      "name": "all-symbols",
+      "title": "!!!"
+    },
+    {
+      "name": "empty",
+      "title": ""
+    },
+    {
+      "name": "only-hyphens",
+      "title": "---"
+    },
+    {
+      "name": "only-spaces",
+      "title": "   "
+    },
+    {
+      "name": "fullwidth",
+      "title": "\uff26\uff55\uff4c\uff4c\u3000\uff37\uff49\uff44\uff54\uff48\u3000\uff11\uff12\uff13"
+    },
+    {
+      "name": "turkish-dotted-I",
+      "title": "\u0130stanbul"
+    },
+    {
+      "name": "turkish-dotless-i",
+      "title": "\u0131s\u0131"
+    },
+    {
+      "name": "german-eszett",
+      "title": "Stra\u00dfe"
+    },
+    {
+      "name": "umlaut",
+      "title": "\u00dcber Gr\u00f6\u00dfe"
+    },
+    {
+      "name": "ligature-fi",
+      "title": "\ufb01ne print"
+    },
+    {
+      "name": "roman-numeral-xii",
+      "title": "Chapter \u216b"
+    },
+    {
+      "name": "dz-digraph",
+      "title": "\u01c4emal"
+    },
+    {
+      "name": "emoji-only",
+      "title": "\ud83d\ude00\ud83d\ude00"
+    },
+    {
+      "name": "emoji-mixed",
+      "title": "Be \ud83d\ude00 terse"
+    },
+    {
+      "name": "leading-trailing-hyphens",
+      "title": "--a-b--"
+    },
+    {
+      "name": "60th-char-hyphen",
+      "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbb"
+    },
+    {
+      "name": "exactly-60",
+      "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "61-chars",
+      "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "name": "200-chars",
+      "title": "ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab ab "
+    },
+    {
+      "name": "hyphen-at-cut-then-more",
+      "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bcccccccccccccccccccc"
+    },
+    {
+      "name": "multi-hyphen-collapse",
+      "title": "a  --  b"
+    },
+    {
+      "name": "digits",
+      "title": "2026 Plan 07"
+    },
+    {
+      "name": "nbsp-and-tab",
+      "title": "a\u00a0b\tc"
+    },
+    {
+      "name": "cjk",
+      "title": "\u65e5\u672c\u8a9e\u306e\u30bf\u30a4\u30c8\u30eb"
+    },
+    {
+      "name": "cyrillic",
+      "title": "\u041f\u0440\u0438\u0432\u0435\u0442 \u043c\u0438\u0440"
+    },
+    {
+      "name": "greek-final-sigma",
+      "title": "\u039f\u0394\u03a5\u03a3\u03a3\u0395\u03a5\u03a3"
+    },
+    {
+      "name": "combining-marks-only",
+      "title": "\u0301\u0302"
+    },
+    {
+      "name": "kelvin-sign",
+      "title": "\u212aelvin"
+    },
+    {
+      "name": "angstrom-sign",
+      "title": "\u212bngstrom"
+    },
+    {
+      "name": "underscore-dot",
+      "title": "snake_case.v2"
+    }
+  ],
+  "compose": [
+    {
+      "name": "simple",
+      "title": "Be terse",
+      "content": "You answer in one line.\n"
+    },
+    {
+      "name": "crlf-content",
+      "title": "Be terse",
+      "content": "Line one.\r\nLine two.\r\n"
+    },
+    {
+      "name": "leading-trailing-ws",
+      "title": "  Padded  ",
+      "content": "\n\n  body with edges  \n\n"
+    },
+    {
+      "name": "colon-title",
+      "title": "Rule: one",
+      "content": "x"
+    },
+    {
+      "name": "hash-title",
+      "title": "#1 Rule",
+      "content": "x"
+    },
+    {
+      "name": "quote-title",
+      "title": "He said \"no\"",
+      "content": "x"
+    },
+    {
+      "name": "apostrophe-title",
+      "title": "Don't",
+      "content": "x"
+    },
+    {
+      "name": "leading-hyphen-title",
+      "title": "- dash",
+      "content": "x"
+    },
+    {
+      "name": "numeric-title",
+      "title": "123",
+      "content": "x"
+    },
+    {
+      "name": "bool-title",
+      "title": "true",
+      "content": "x"
+    },
+    {
+      "name": "null-title",
+      "title": "null",
+      "content": "x"
+    },
+    {
+      "name": "empty-title",
+      "title": "",
+      "content": "x"
+    },
+    {
+      "name": "multiline-title",
+      "title": "a\nb",
+      "content": "x"
+    },
+    {
+      "name": "unicode-title",
+      "title": "Caf\u00e9 \u2615",
+      "content": "x"
+    },
+    {
+      "name": "yaml-special-title",
+      "title": "a: b # c",
+      "content": "x"
+    },
+    {
+      "name": "brackets-title",
+      "title": "[x] {y}",
+      "content": "x"
+    },
+    {
+      "name": "empty-content",
+      "title": "T",
+      "content": ""
+    },
+    {
+      "name": "frontmatter-in-content",
+      "title": "T",
+      "content": "---\ntitle: nested\n---\nbody"
+    },
+    {
+      "name": "tab-title",
+      "title": "a\tb",
+      "content": "x"
+    },
+    {
+      "name": "trailing-space-title",
+      "title": "Title ",
+      "content": "x"
+    },
+    {
+      "name": "long-title",
+      "title": "TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT",
+      "content": "x"
+    },
+    {
+      "name": "emoji-content",
+      "title": "T",
+      "content": "\ud83d\ude00 wins\n"
+    },
+    {
+      "name": "nbsp-content",
+      "title": "T",
+      "content": "\u00a0padded\u00a0"
+    },
+    {
+      "name": "only-whitespace-content",
+      "title": "T",
+      "content": "  \n\t "
+    }
+  ],
+  "parse": [
+    {
+      "name": "plain",
+      "id": "be-terse",
+      "raw": "---\ntitle: Be terse\n---\nYou answer in one line.\n",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "no-frontmatter",
+      "id": "dropped-in",
+      "raw": "Just a body.",
+      "updatedAt": "x"
+    },
+    {
+      "name": "blank-title",
+      "id": "blank",
+      "raw": "---\ntitle: \n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "whitespace-title",
+      "id": "ws",
+      "raw": "---\ntitle: '   '\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "numeric-title",
+      "id": "num",
+      "raw": "---\ntitle: 123\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "bool-title",
+      "id": "bool",
+      "raw": "---\ntitle: true\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "array-title",
+      "id": "arr",
+      "raw": "---\ntitle: [a, b]\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "null-title",
+      "id": "nul",
+      "raw": "---\ntitle: null\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "crlf",
+      "id": "crlf",
+      "raw": "---\r\ntitle: X\r\n---\r\nbody\r\n",
+      "updatedAt": "x"
+    },
+    {
+      "name": "leading-blank-lines",
+      "id": "lead",
+      "raw": "---\ntitle: X\n---\n\n\n\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "trailing-whitespace",
+      "id": "trail",
+      "raw": "---\ntitle: X\n---\nbody   \n\n\t\n",
+      "updatedAt": "x"
+    },
+    {
+      "name": "body-is-delimiter",
+      "id": "delim",
+      "raw": "---\ntitle: X\n---\n---",
+      "updatedAt": "x"
+    },
+    {
+      "name": "body-is-delimiter-with-more",
+      "id": "delim2",
+      "raw": "---\ntitle: X\n---\n---\nmore",
+      "updatedAt": "x"
+    },
+    {
+      "name": "no-closing-delimiter",
+      "id": "noclose",
+      "raw": "---\ntitle: X\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "only-opener",
+      "id": "onlyopen",
+      "raw": "---\n",
+      "updatedAt": "x"
+    },
+    {
+      "name": "empty-file",
+      "id": "empty",
+      "raw": "",
+      "updatedAt": "x"
+    },
+    {
+      "name": "quoted-title",
+      "id": "quoted",
+      "raw": "---\ntitle: \"Quoted: yes\"\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "padded-title",
+      "id": "padded",
+      "raw": "---\ntitle:    Padded   \n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "unicode-title",
+      "id": "uni",
+      "raw": "---\ntitle: Caf\u00e9 \u2615\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "astral-in-frontmatter",
+      "id": "astral",
+      "raw": "---\ntitle: \ud83d\ude00\ud83d\ude00\nnote: \ud83d\ude00\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "empty-body",
+      "id": "nobody",
+      "raw": "---\ntitle: X\n---\n",
+      "updatedAt": "x"
+    },
+    {
+      "name": "no-body-newline",
+      "id": "nonl",
+      "raw": "---\ntitle: X\n---",
+      "updatedAt": "x"
+    },
+    {
+      "name": "extra-keys",
+      "id": "extra",
+      "raw": "---\ntitle: X\nfoo: bar\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "title-later-key",
+      "id": "later",
+      "raw": "---\nfoo: bar\ntitle: Y\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "leading-space-in-body-kept",
+      "id": "lsp",
+      "raw": "---\ntitle: X\n---\n   indented\n",
+      "updatedAt": "x"
+    },
+    {
+      "name": "only-newlines-body",
+      "id": "nlonly",
+      "raw": "---\ntitle: X\n---\n\n\n",
+      "updatedAt": "x"
+    },
+    {
+      "name": "cr-only-body",
+      "id": "cronly",
+      "raw": "---\ntitle: X\n---\n\rbody\r",
+      "updatedAt": "x"
+    },
+    {
+      "name": "invalid-yaml",
+      "id": "bad",
+      "raw": "---\ntitle: [unclosed\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "scalar-yaml",
+      "id": "scalar",
+      "raw": "---\njust a string\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "empty-frontmatter",
+      "id": "emptyfm",
+      "raw": "---\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "comment-only-frontmatter",
+      "id": "comment",
+      "raw": "---\n# nothing\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "mixed-case-id",
+      "id": "MiXeD",
+      "raw": "---\ntitle: M\n---\nbody",
+      "updatedAt": "x"
+    },
+    {
+      "name": "nbsp-body-edges",
+      "id": "nbsp",
+      "raw": "---\ntitle: X\n---\n\u00a0body\u00a0",
+      "updatedAt": "x"
+    },
+    {
+      "name": "title-with-nbsp-edges",
+      "id": "nbspt",
+      "raw": "---\ntitle: \"\u00a0T\u00a0\"\n---\nbody",
+      "updatedAt": "x"
+    }
+  ],
+  "paths": [
+    {
+      "name": "plain",
+      "id": "be-terse"
+    },
+    {
+      "name": "spaced",
+      "id": "My Prompt"
+    },
+    {
+      "name": "unicode",
+      "id": "caf\u00e9"
+    },
+    {
+      "name": "astral",
+      "id": "\ud83d\ude00"
+    }
+  ]
+}

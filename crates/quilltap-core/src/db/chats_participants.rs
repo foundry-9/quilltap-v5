@@ -326,6 +326,83 @@ pub fn get_user_controlled_participants(participants: &[ChatParticipant]) -> Vec
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db::chats::{ChatCreate, CreateOptions};
+    use crate::db::Writer;
+
+    const TEST_PEPPER: &str = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+
+    /// **P4.D163 unit 1 — the data-safety pin, written RED FIRST.** v4
+    /// `2f4254b42` writes `selectedSubpromptIds` onto every created participant
+    /// on the SHARED instance; every v5 participant write is a strict round-trip
+    /// through [`ChatParticipant`], so before the field existed a v4-written
+    /// selection was silently DROPPED by any unrelated patch. The seed row is
+    /// written with RAW SQL (v4's bytes, in v4's schema order — after
+    /// `selectedSystemPromptId`, before `displayOrder`) so the seed cannot
+    /// itself depend on the struct under test; the patch touches ONLY
+    /// `displayOrder`; the stored cell must still carry the array byte-for-byte
+    /// in schema position. Against the pre-change struct this fails: the
+    /// re-serialized participant has no `selectedSubpromptIds` at all.
+    #[test]
+    fn update_participant_keeps_a_v4_written_selected_subprompt_ids_byte_for_byte() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), TEST_PEPPER).unwrap();
+        let w = Writer::open_writable(&dir.path().join("quilltap.db"), TEST_PEPPER).unwrap();
+        let conn = w.connection();
+
+        let chat_id = "c0000010-0000-4000-8000-0000000000aa";
+        let pid = "e0000010-0000-4000-8000-0000000000aa";
+        let ts = "2026-02-01T00:00:00.000Z";
+        let create: ChatCreate = serde_json::from_value(serde_json::json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "Carry",
+            "participants": [],
+        }))
+        .unwrap();
+        ChatsRepository::new(conn)
+            .create(
+                &create,
+                &CreateOptions {
+                    id: chat_id.to_string(),
+                    created_at: ts.to_string(),
+                    updated_at: ts.to_string(),
+                },
+            )
+            .unwrap();
+        // v4's own bytes for a created LLM seat carrying a selection (the
+        // `buildCharacterParticipant` literal + the repo's minted fields).
+        let v4_row = format!(
+            "[{{\"id\":\"{pid}\",\"type\":\"CHARACTER\",\"characterId\":\"a1000000-0000-4000-8000-0000000000aa\",\
+             \"controlledBy\":\"llm\",\"connectionProfileId\":null,\"imageProfileId\":null,\
+             \"selectedSystemPromptId\":null,\"selectedSubpromptIds\":[\"terse\",\"VERSE\"],\
+             \"displayOrder\":0,\"isActive\":true,\"status\":\"active\",\"hasHistoryAccess\":false,\
+             \"createdAt\":\"{ts}\",\"updatedAt\":\"{ts}\"}}]"
+        );
+        conn.execute(
+            "UPDATE chats SET participants = ?1 WHERE id = ?2",
+            rusqlite::params![v4_row, chat_id],
+        )
+        .unwrap();
+
+        let ok = ChatParticipantsRepository::new(conn)
+            .update_participant(chat_id, pid, &serde_json::json!({ "displayOrder": 5 }))
+            .unwrap();
+        assert!(ok);
+
+        let stored: String = conn
+            .query_row(
+                "SELECT participants FROM chats WHERE id = ?1",
+                [chat_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            stored.contains(
+                "\"selectedSystemPromptId\":null,\"selectedSubpromptIds\":[\"terse\",\"VERSE\"],\"displayOrder\":5"
+            ),
+            "a v4-written selection must survive an unrelated patch byte-for-byte in schema \
+             position; stored participants: {stored}"
+        );
+    }
 
     /// A participant with the given control mode + status (other fields default).
     fn part(id: &str, controlled_by: &str, status: &str) -> ChatParticipant {

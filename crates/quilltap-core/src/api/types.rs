@@ -2930,6 +2930,19 @@ pub enum Request {
         image_profile_id: Option<Option<String>>,
         #[serde(default)]
         selected_system_prompt_id: Option<Option<String>>,
+        /// P4.D163 (v4 `2f4254b42`): the seat's `Subprompts/*.md` selection —
+        /// `z.array(z.string().min(1).max(120)).max(100).optional()`. PRESENT
+        /// replaces the whole set; ABSENT leaves it alone. Carried
+        /// `double_option` over a RAW `Value` (the P4.D57 idiom) so an explicit
+        /// `null`, a non-array or a non-string element reaches the handler as
+        /// PRESENT and is refused with v4's `Validation error` 400 instead of
+        /// collapsing to key-absent at the serde boundary (the Taboo §3 lesson).
+        /// Two one-line attributes on purpose: `dispatch_wrong_type_census`'s
+        /// parser strips `#[` LINES, and a multi-line `#[serde(…)]` leaves a
+        /// `)]` that unbalances its field split for the rest of the variant.
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        selected_subprompt_ids: Option<Option<serde_json::Value>>,
         #[serde(default)]
         display_order: Option<i64>,
         #[serde(default)]

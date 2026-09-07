@@ -115,6 +115,10 @@ pub struct ChatCreateParticipant {
     pub image_profile_id: Option<String>,
     pub controlled_by: Option<String>,
     pub selected_system_prompt_id: Option<String>,
+    /// P4.D163 (v4 `2f4254b42`): the raw optional array as sent — `absent`
+    /// stays `None` so `firstCharacter.selectedSubpromptIds` carries
+    /// `undefined` exactly as v4's `chosen.selectedSubpromptIds` does.
+    pub selected_subprompt_ids: Option<Vec<String>>,
 }
 
 impl ChatCreateParticipant {
@@ -132,6 +136,17 @@ impl ChatCreateParticipant {
             image_profile_id: s("imageProfileId"),
             controlled_by: s("controlledBy"),
             selected_system_prompt_id: s("selectedSystemPromptId"),
+            // Lenient like every other read here: the Zod stage has already
+            // refused a non-array or a non-string element, so the filter is
+            // unreachable for an accepted body.
+            selected_subprompt_ids: obj
+                .get("selectedSubpromptIds")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                }),
         }
     }
 }
@@ -743,6 +758,82 @@ fn check_participant(v: &Value, index: usize, issues: &mut Vec<CreateZodIssue>) 
         base("selectedSystemPromptId"),
         issues,
     );
+    // v4 `2f4254b42`: `z.array(z.string().min(1).max(120)).max(100).optional()`.
+    check_opt_subprompt_ids(
+        obj.get("selectedSubpromptIds"),
+        &[
+            key("participants"),
+            idx.clone(),
+            key("selectedSubpromptIds"),
+        ],
+        issues,
+    );
+}
+
+/// `z.array(z.string().min(1).max(120)).max(100).optional()` — every shape
+/// MEASURED on Zod 4.5.4 at the `2f4254b42` pin (P4.D163): a non-array is
+/// `invalid_type` `expected: "array"` (an explicit `null` included — the rule is
+/// `.optional()`, never `.nullable()`); each element is checked IN ORDER, a
+/// non-string as `invalid_type` `expected: "string"` at `[…, i]`, an empty
+/// string as `too_small` (`origin: "string"`, minimum 1), an over-long one as
+/// `too_big` (`origin: "string"`, maximum 120 — CODE POINTS, `jsstr::zod_len_*`);
+/// and the array's own `too_big` (`origin: "array"`, maximum 100) comes LAST,
+/// after every element issue (`['', …100 more]` answers two issues in that
+/// order).
+fn check_opt_subprompt_ids(v: Option<&Value>, at: &[Value], issues: &mut Vec<CreateZodIssue>) {
+    let Some(v) = v else { return };
+    let Some(list) = v.as_array() else {
+        issues.push(invalid_type("array", at.to_vec(), Some(v)));
+        return;
+    };
+    for (i, item) in list.iter().enumerate() {
+        let mut at_i = at.to_vec();
+        at_i.push(json!(i));
+        let Some(s) = item.as_str() else {
+            issues.push(invalid_type("string", at_i, Some(item)));
+            continue;
+        };
+        if !crate::jsstr::zod_len_min_ok(s, 1) {
+            issues.push(CreateZodIssue::TooSmall {
+                origin: "string",
+                code: "too_small",
+                minimum: json!(1),
+                inclusive: true,
+                path: at_i,
+                message: "Too small: expected string to have >=1 characters".to_string(),
+            });
+        } else if !crate::jsstr::zod_len_max_ok(
+            s,
+            crate::services::chat_participants::SELECTED_SUBPROMPT_ID_MAX_LENGTH,
+        ) {
+            issues.push(CreateZodIssue::TooBig {
+                origin: "string",
+                code: "too_big",
+                maximum: json!(
+                    crate::services::chat_participants::SELECTED_SUBPROMPT_ID_MAX_LENGTH
+                ),
+                inclusive: true,
+                path: at_i,
+                message: format!(
+                    "Too big: expected string to have <={} characters",
+                    crate::services::chat_participants::SELECTED_SUBPROMPT_ID_MAX_LENGTH
+                ),
+            });
+        }
+    }
+    if list.len() > crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS {
+        issues.push(CreateZodIssue::TooBig {
+            origin: "array",
+            code: "too_big",
+            maximum: json!(crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS),
+            inclusive: true,
+            path: at.to_vec(),
+            message: format!(
+                "Too big: expected array to have <={} items",
+                crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS
+            ),
+        });
+    }
 }
 
 /// v4 `TimestampConfigSchema` (`lib/schemas/settings.types.ts`). Every field
@@ -1722,12 +1813,19 @@ struct BuiltParticipants {
     first_character_id: String,
     first_user_character_id: Option<String>,
     first_selected_system_prompt_id: Option<String>,
+    /// P4.D163: v4 `firstCharacter.selectedSubpromptIds` — the opener's raw
+    /// selection, read by P4.D164 for the greeting's `resolveSelectedSubprompts`
+    /// (the stacked order's ONE call site in this file — it removes this
+    /// `allow` when it lands the resolve + the fifth `build_chat_context` arg).
+    #[allow(dead_code)]
+    first_selected_subprompt_ids: Option<Vec<String>>,
     first_image_profile_id: Option<String>,
 }
 
 struct LlmCandidate {
     character_id: String,
     selected_system_prompt_id: Option<String>,
+    selected_subprompt_ids: Option<Vec<String>>,
     talkativeness: f64,
 }
 
@@ -1805,6 +1903,13 @@ fn build_all_participants(
                 Some(id) => Value::String(id.to_string()),
                 None => Value::Null,
             },
+            // v4 `2f4254b42`: `isUserControlled ? [] : (data.selectedSubpromptIds
+            // ?? [])` — ALWAYS present on a created participant.
+            "selectedSubpromptIds": if is_user_controlled {
+                json!([])
+            } else {
+                json!(data.selected_subprompt_ids.clone().unwrap_or_default())
+            },
             "displayOrder": i as i64,
             "isActive": true,
         });
@@ -1832,6 +1937,7 @@ fn build_all_participants(
             candidates.push(LlmCandidate {
                 character_id: character_id.to_string(),
                 selected_system_prompt_id: data.selected_system_prompt_id.clone(),
+                selected_subprompt_ids: data.selected_subprompt_ids.clone(),
                 talkativeness: character
                     .get("talkativeness")
                     .and_then(Value::as_f64)
@@ -1856,6 +1962,7 @@ fn build_all_participants(
         first_character_id: chosen.character_id.clone(),
         first_user_character_id,
         first_selected_system_prompt_id: chosen.selected_system_prompt_id.clone(),
+        first_selected_subprompt_ids: chosen.selected_subprompt_ids.clone(),
         first_image_profile_id,
     })
 }
@@ -3071,16 +3178,19 @@ mod tests {
             LlmCandidate {
                 character_id: "a".into(),
                 selected_system_prompt_id: None,
+                selected_subprompt_ids: None,
                 talkativeness: 1.0,
             },
             LlmCandidate {
                 character_id: "b".into(),
                 selected_system_prompt_id: None,
+                selected_subprompt_ids: None,
                 talkativeness: 1.0,
             },
             LlmCandidate {
                 character_id: "c".into(),
                 selected_system_prompt_id: None,
+                selected_subprompt_ids: None,
                 talkativeness: 1.0,
             },
         ];
@@ -3102,11 +3212,13 @@ mod tests {
             LlmCandidate {
                 character_id: "a".into(),
                 selected_system_prompt_id: None,
+                selected_subprompt_ids: None,
                 talkativeness: 0.0,
             },
             LlmCandidate {
                 character_id: "b".into(),
                 selected_system_prompt_id: None,
+                selected_subprompt_ids: None,
                 talkativeness: 0.0,
             },
         ];

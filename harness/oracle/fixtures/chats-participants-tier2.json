@@ -79,6 +79,45 @@
           "updatedAt": "2026-02-01T00:00:00.000Z"
         }
       ]
+    },
+    {
+      "id": "c0000050-0000-4000-8000-000000000001",
+      "userId": "11111111-1111-4111-8111-111111111111",
+      "title": "Subprompts-Carry Chat",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z",
+      "participants": [
+        {
+          "id": "fd000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "dddd4444-4444-4444-8444-444444444444",
+          "controlledBy": "llm",
+          "selectedSystemPromptId": null,
+          "selectedSubpromptIds": [
+            "terse",
+            "VERSE"
+          ],
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "fe000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "eeee5555-5555-4555-8555-555555555555",
+          "controlledBy": "llm",
+          "selectedSubpromptIds": [],
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        },
+        {
+          "id": "ff000001-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "cccc3333-3333-4333-8333-333333333333",
+          "controlledBy": "llm",
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "ops": [
@@ -175,6 +214,63 @@
       "chatId": "c0000030-0000-4000-8000-000000000001",
       "participantId": "f0000099-0000-4000-8000-000000000099",
       "status": "absent"
+    },
+    {
+      "kind": "updateParticipant",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "participantId": "fd000001-0000-4000-8000-000000000001",
+      "data": {
+        "displayOrder": 3
+      }
+    },
+    {
+      "kind": "updateParticipant",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "participantId": "fe000001-0000-4000-8000-000000000001",
+      "data": {
+        "selectedSubpromptIds": [
+          "alpha",
+          "beta"
+        ]
+      }
+    },
+    {
+      "kind": "updateParticipant",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "participantId": "fd000001-0000-4000-8000-000000000001",
+      "data": {
+        "selectedSubpromptIds": [
+          "VERSE",
+          "terse"
+        ]
+      }
+    },
+    {
+      "kind": "updateParticipant",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "participantId": "ff000001-0000-4000-8000-000000000001",
+      "data": {
+        "hasHistoryAccess": true
+      }
+    },
+    {
+      "kind": "updateParticipant",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "participantId": "ff000001-0000-4000-8000-000000000001",
+      "data": {
+        "selectedSubpromptIds": []
+      }
+    },
+    {
+      "kind": "setParticipantStatus",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "participantId": "fd000001-0000-4000-8000-000000000001",
+      "status": "silent"
+    },
+    {
+      "kind": "removeParticipant",
+      "chatId": "c0000050-0000-4000-8000-000000000001",
+      "participantId": "fe000001-0000-4000-8000-000000000001"
     }
   ]
 }

@@ -61,6 +61,7 @@ use std::path::PathBuf;
 use quilltap_core::api::chat_cast;
 use quilltap_core::api::salon;
 use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::db::chats_participants::ChatParticipantsRepository;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::chat_participants::{ParticipantAddData, ParticipantUpdateData};
 use serde::Deserialize;
@@ -83,8 +84,17 @@ const V4_CREATED_CASES: &[&str] = &[
 ];
 
 /// Cases whose 400 body carries v4's Zod `details` array.
-const VALIDATION_DETAILS_GAP: &[&str] =
-    &["update_invalid_status", "update_talkativeness_out_of_range"];
+const VALIDATION_DETAILS_GAP: &[&str] = &[
+    "update_invalid_status",
+    "update_talkativeness_out_of_range",
+    // P4.D163: the `selectedSubpromptIds` Zod arms (`.optional()` never
+    // `.nullable()`; `.min(1).max(120)` per id; `.max(100)` items).
+    "update_subprompts_null_400",
+    "update_subprompts_empty_id_400",
+    "update_subprompts_id_121_400",
+    "update_subprompts_101_items_400",
+    "update_subprompts_not_array_400",
+];
 
 /// (`?action=` case, chat-PUT-bag case) pairs that perform the same mutation.
 /// The third element drops `equippedOutfit` before comparing (see the header).
@@ -943,6 +953,144 @@ fn chat_cast_routes_match_oracle() {
             "update_talkativeness_out_of_range",
             &chat_main,
             json!({ "participantId": p_bram, "talkativeness": 4 }),
+            false,
+        );
+
+        // ── P4.D163 / v4 `2f4254b42`: `selectedSubpromptIds` on update ────
+        // Driven through the SAME parse the two production entrances use
+        // (`ParticipantUpdateData::from_value` — the bag; the dispatch arm
+        // funnels through `parse_selected_subprompt_ids` + `validate`), so a
+        // refusing bag answers the 400 here instead of being flattened into
+        // the synthetic no-op bag `update_data` builds for the older cases.
+        // `upd_seeded` first gives the seat a selection through the
+        // REPOSITORY (never recompiles), so `compiledIdentityStacks` stays
+        // null until the measured call: null → object is "recompiled".
+        let mut upd_sp = |tag: &str,
+                          name: &str,
+                          chat: &str,
+                          seed: Option<(&str, Vec<&str>)>,
+                          bag: Value,
+                          dump: bool| {
+            let db = fresh_db(&spec, tag);
+            if let Some((pid, ids)) = seed {
+                let (chat_s, pid_s, ids_v): (String, String, Vec<String>) = (
+                    chat.to_string(),
+                    pid.to_string(),
+                    ids.iter().map(|s| s.to_string()).collect(),
+                );
+                db.write_blocking(move |w| {
+                    ChatParticipantsRepository::new(w.main().connection()).update_participant(
+                        &chat_s,
+                        &pid_s,
+                        &json!({ "selectedSubpromptIds": ids_v }),
+                    )
+                })
+                .expect("repository seed");
+            }
+            let r = match ParticipantUpdateData::from_value(&bag) {
+                Ok(data) => rt.block_on(chat_cast::chat_update_participant(&db, chat, &data)),
+                Err(e) => Response::error(ErrorKind::BadRequest, e.message),
+            };
+            let tables = dump.then(|| cast_tables(&db, chat));
+            check(name, &r, tables);
+        };
+        upd_sp(
+            "sp1",
+            "update_subprompts_set_recompiles",
+            &chat_main,
+            None,
+            json!({ "participantId": p_bram, "selectedSubpromptIds": ["terse", "VERSE"] }),
+            true,
+        );
+        upd_sp(
+            "sp2",
+            "update_subprompts_empty_on_pre_feature_seat_no_recompile",
+            &chat_main,
+            None,
+            json!({ "participantId": p_bram, "selectedSubpromptIds": [] }),
+            true,
+        );
+        upd_sp(
+            "sp3",
+            "update_subprompts_reordered_equal_no_recompile",
+            &chat_main,
+            Some((&p_bram, vec!["terse", "VERSE"])),
+            json!({ "participantId": p_bram, "selectedSubpromptIds": ["VERSE", "terse"] }),
+            true,
+        );
+        upd_sp(
+            "sp4",
+            "update_subprompts_replace_recompiles",
+            &chat_main,
+            Some((&p_bram, vec!["terse"])),
+            json!({ "participantId": p_bram, "selectedSubpromptIds": ["verse"] }),
+            true,
+        );
+        upd_sp(
+            "sp5",
+            "update_subprompts_multiset_blind_aa_to_ab_recompiles",
+            &chat_main,
+            Some((&p_bram, vec!["a", "a"])),
+            json!({ "participantId": p_bram, "selectedSubpromptIds": ["a", "b"] }),
+            true,
+        );
+        upd_sp(
+            "sp6",
+            "update_subprompts_multiset_blind_ab_to_aa_no_recompile",
+            &chat_main,
+            Some((&p_bram, vec!["a", "b"])),
+            json!({ "participantId": p_bram, "selectedSubpromptIds": ["a", "a"] }),
+            true,
+        );
+        upd_sp(
+            "sp7",
+            "update_subprompts_on_user_seat_stored",
+            &chat_main,
+            None,
+            json!({ "participantId": p_aria, "selectedSubpromptIds": ["x"] }),
+            true,
+        );
+        upd_sp(
+            "sp8",
+            "update_subprompts_null_400",
+            &chat_main,
+            None,
+            json!({ "participantId": p_bram, "selectedSubpromptIds": null }),
+            false,
+        );
+        upd_sp(
+            "sp9",
+            "update_subprompts_empty_id_400",
+            &chat_main,
+            None,
+            json!({ "participantId": p_bram, "selectedSubpromptIds": [""] }),
+            false,
+        );
+        upd_sp(
+            "sp10",
+            "update_subprompts_id_121_400",
+            &chat_main,
+            None,
+            json!({ "participantId": p_bram, "selectedSubpromptIds": ["x".repeat(121)] }),
+            false,
+        );
+        upd_sp(
+            "sp11",
+            "update_subprompts_101_items_400",
+            &chat_main,
+            None,
+            json!({
+                "participantId": p_bram,
+                "selectedSubpromptIds": (0..101).map(|i| format!("i{i}")).collect::<Vec<_>>()
+            }),
+            false,
+        );
+        upd_sp(
+            "sp12",
+            "update_subprompts_not_array_400",
+            &chat_main,
+            None,
+            json!({ "participantId": p_bram, "selectedSubpromptIds": "terse" }),
             false,
         );
 

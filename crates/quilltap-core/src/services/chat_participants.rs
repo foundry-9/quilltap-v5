@@ -160,6 +160,11 @@ pub struct ParticipantUpdateData {
     pub connection_profile_id: Option<String>,
     pub image_profile_id: Option<Option<String>>,
     pub selected_system_prompt_id: Option<Option<String>>,
+    /// v4 `2f4254b42`: `z.array(z.string().min(1).max(120)).max(100).optional()`
+    /// — `.optional()`, NOT nullish: PRESENT replaces the whole set, ABSENT
+    /// leaves it alone, and an explicit `null` is a Zod `invalid_type` 400
+    /// (refused by [`parse_selected_subprompt_ids`] before this is built).
+    pub selected_subprompt_ids: Option<Vec<String>>,
     pub display_order: Option<i64>,
     pub is_active: Option<bool>,
     pub status: Option<String>,
@@ -167,6 +172,38 @@ pub struct ParticipantUpdateData {
     pub has_history_access: Option<bool>,
     pub join_scenario: Option<Option<String>>,
     pub talkativeness: Option<Option<f64>>,
+}
+
+/// v4 `updateParticipantSchema` / `createParticipantSchema`:
+/// `selectedSubpromptIds: z.array(z.string().min(1).max(120)).max(100)`.
+pub const SELECTED_SUBPROMPT_IDS_MAX_ITEMS: usize = 100;
+/// The per-id `.max(120)` — `SUBPROMPT_ID_MAX_LENGTH` on the storage side too.
+pub const SELECTED_SUBPROMPT_ID_MAX_LENGTH: usize = 120;
+
+/// The typed read of a PRESENT `selectedSubpromptIds` value — the dispatch
+/// arm and the chat-PUT bag both funnel through here so an explicit `null`,
+/// a non-array, or a non-string element is v4's whole-parse `invalid_type`
+/// refusal (400 `Validation error`) on both entrances. The BOUNDS live in
+/// [`ParticipantUpdateData::validate`], which every caller runs afterwards.
+pub fn parse_selected_subprompt_ids(v: &Value) -> Result<Vec<String>, ParticipantError> {
+    let arr = v.as_array().ok_or_else(bad)?;
+    arr.iter()
+        .map(|e| e.as_str().map(str::to_string).ok_or_else(bad))
+        .collect()
+}
+
+/// v4 `sameIdSet` (`helpers.ts:323`) — "order-insensitive equality of two id
+/// lists": same length ∧ every `b` is in `Set(a)`. Reproduced EXACTLY,
+/// multiset-blindness included: `['a','a']` vs `['a','b']` → false (`'b'` is
+/// not in `{a}`), but `['a','b']` vs `['a','a']` → true (both `a`s are in
+/// `{a,b}`), so that second patch does NOT recompile on either side. Pinned by
+/// [`tests::same_id_set_reproduces_v4_multiset_blindness`]; NOT a divergence.
+pub fn same_id_set(a: &[String], b: &[String]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let set: std::collections::HashSet<&str> = a.iter().map(String::as_str).collect();
+    b.iter().all(|id| set.contains(id.as_str()))
 }
 
 /// A Zod rejection: v4 answers 400 `{error: 'Validation error', details: […]}`.
@@ -204,6 +241,22 @@ impl ParticipantUpdateData {
                 return Err(bad());
             }
         }
+        // `z.array(z.string().min(1).max(120)).max(100)` — the string bounds
+        // count CODE POINTS (Zod 4.5, `jsstr::zod_len_*`), the array bound
+        // items. Zod checks every element before the array size; the whole
+        // parse fails either way, so the order is invisible here.
+        if let Some(ids) = &self.selected_subprompt_ids {
+            if ids.len() > SELECTED_SUBPROMPT_IDS_MAX_ITEMS {
+                return Err(bad());
+            }
+            for id in ids {
+                if !crate::jsstr::zod_len_min_ok(id, 1)
+                    || !crate::jsstr::zod_len_max_ok(id, SELECTED_SUBPROMPT_ID_MAX_LENGTH)
+                {
+                    return Err(bad());
+                }
+            }
+        }
         // `z.number().min(0.1).max(1.0).nullish()` — the bound applies only to a
         // present, non-null value.
         if let Some(Some(t)) = &self.talkativeness {
@@ -227,6 +280,9 @@ impl ParticipantUpdateData {
         }
         if let Some(v) = &self.selected_system_prompt_id {
             m.insert("selectedSystemPromptId".into(), json!(v));
+        }
+        if let Some(v) = &self.selected_subprompt_ids {
+            m.insert("selectedSubpromptIds".into(), json!(v));
         }
         if let Some(v) = self.display_order {
             m.insert("displayOrder".into(), json!(v));
@@ -751,6 +807,18 @@ pub async fn handle_participant_update(
     let old_selected_prompt_id = old_participant
         .as_ref()
         .and_then(|p| p.get("selectedSystemPromptId").cloned());
+    // v4 `oldParticipant?.selectedSubpromptIds ?? []` — an absent key (a
+    // pre-feature seat) compares as the empty set.
+    let old_selected_subprompt_ids: Vec<String> = old_participant
+        .as_ref()
+        .and_then(|p| p.get("selectedSubpromptIds"))
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
 
     // 4. The patch itself.
     if !write_update_participant(db, chat_id, participant_id, data.to_patch()).await? {
@@ -1006,18 +1074,39 @@ pub async fn handle_participant_update(
     //    rewrites the entire map last, so the end state matches v4's ordering.
     let final_chat = find_chat(db, chat_id)?;
     if let Some(final_chat) = &final_chat {
-        if let Some(new_prompt_id) = &data.selected_system_prompt_id {
-            let new_value = match new_prompt_id {
-                Some(v) => Value::String(v.clone()),
-                None => Value::Null,
-            };
-            // v4 compares against the RAW old value: an absent key is `undefined`,
-            // which `!==` any string AND `!== null`.
-            let old_value = old_selected_prompt_id.clone().unwrap_or(Value::Null);
-            let old_absent = old_selected_prompt_id.is_none();
-            if old_absent || old_value != new_value {
-                compile_stack_best_effort(db, final_chat.clone(), participant_id).await;
+        // v4 `promptChanged`: present AND `oldParticipant?.selectedSystemPromptId
+        // !== participantData.selectedSystemPromptId` — compared against the RAW
+        // old value: an absent key is `undefined`, which `!==` any string AND
+        // `!== null`.
+        let prompt_changed = match &data.selected_system_prompt_id {
+            Some(new_prompt_id) => {
+                let new_value = match new_prompt_id {
+                    Some(v) => Value::String(v.clone()),
+                    None => Value::Null,
+                };
+                let old_value = old_selected_prompt_id.clone().unwrap_or(Value::Null);
+                let old_absent = old_selected_prompt_id.is_none();
+                old_absent || old_value != new_value
             }
+            None => false,
+        };
+        // v4 `2f4254b42` `subpromptsChanged`: "Subprompts are baked into the
+        // stack too, so a change to the set in play recompiles the same way
+        // (order-insensitive compare)" — present AND `!sameIdSet(old ?? [], new)`.
+        let subprompts_changed = data
+            .selected_subprompt_ids
+            .as_ref()
+            .is_some_and(|new| !same_id_set(&old_selected_subprompt_ids, new));
+        if prompt_changed || subprompts_changed {
+            tracing::debug!(
+                target: "quilltap::chats",
+                chat_id = %chat_id,
+                participant_id = %participant_id,
+                prompt_changed = prompt_changed,
+                subprompts_changed = subprompts_changed,
+                "[Chats v1] Recompiling identity stack after participant prompt change"
+            );
+            compile_stack_best_effort(db, final_chat.clone(), participant_id).await;
         }
         // v4 `bd419ae9` (bug 23): a `controlledBy` change alters
         // `{{user}}/{{persona}}` for everyone, so recompile ALL stacks. Now
@@ -1475,6 +1564,10 @@ impl ParticipantUpdateData {
             connection_profile_id: opt_str(obj, "connectionProfileId")?,
             image_profile_id: nullish_str(obj, "imageProfileId")?,
             selected_system_prompt_id: nullish_str(obj, "selectedSystemPromptId")?,
+            selected_subprompt_ids: match obj.get("selectedSubpromptIds") {
+                None => None,
+                Some(v) => Some(parse_selected_subprompt_ids(v)?),
+            },
             display_order: opt_int(obj, "displayOrder")?,
             is_active: opt_bool(obj, "isActive")?,
             status: opt_str(obj, "status")?,
@@ -1509,5 +1602,220 @@ impl ParticipantAddData {
         };
         out.validate()?;
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod subprompt_tests {
+    //! P4.D163 (v4 `2f4254b42`): the `selectedSubpromptIds` carry through the
+    //! update-participant helper — the Zod arms, `sameIdSet`'s exact truth
+    //! table, and the recompile trigger's debug line (capture-pinned, the
+    //! #103/#110/#116 class).
+    use super::*;
+    use crate::db::runtime::{Db, DbPaths};
+    use crate::test_support::captured_with;
+
+    const TEST_PEPPER: &str = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+
+    fn v(s: &[&str]) -> Vec<String> {
+        s.iter().map(|x| x.to_string()).collect()
+    }
+
+    /// v4 `sameIdSet` transcribed — multiset-blindness INCLUDED (the survey's
+    /// note; NOT a divergence): `['a','a']` vs `['a','b']` is false, but
+    /// `['a','b']` vs `['a','a']` is true.
+    #[test]
+    fn same_id_set_reproduces_v4_multiset_blindness() {
+        assert!(same_id_set(&[], &[]));
+        assert!(same_id_set(&v(&["a", "b"]), &v(&["b", "a"])));
+        assert!(!same_id_set(&v(&["a"]), &v(&["a", "b"])));
+        assert!(
+            !same_id_set(&v(&["a", "a"]), &v(&["a", "b"])),
+            "'b' is not in {{a}}"
+        );
+        assert!(
+            same_id_set(&v(&["a", "b"]), &v(&["a", "a"])),
+            "both a's are in {{a,b}} — v4's blind spot, reproduced"
+        );
+    }
+
+    #[test]
+    fn parse_selected_subprompt_ids_refuses_null_non_array_and_non_string() {
+        assert_eq!(
+            parse_selected_subprompt_ids(&json!(["terse", "VERSE"])).unwrap(),
+            v(&["terse", "VERSE"])
+        );
+        assert!(parse_selected_subprompt_ids(&json!([])).unwrap().is_empty());
+        for bad_value in [
+            json!(null),
+            json!("terse"),
+            json!([1]),
+            json!([null]),
+            json!({}),
+        ] {
+            let e = parse_selected_subprompt_ids(&bad_value).unwrap_err();
+            assert_eq!((e.status, e.message.as_str()), (400, VALIDATION_ERROR));
+        }
+    }
+
+    #[test]
+    fn validate_enforces_the_zod_bounds_in_code_points() {
+        let data = |ids: Vec<String>| ParticipantUpdateData {
+            participant_id: "e1000000-0000-4000-8000-000000000003".to_string(),
+            selected_subprompt_ids: Some(ids),
+            ..Default::default()
+        };
+        assert!(data(v(&["a"])).validate().is_ok());
+        assert!(data(vec![]).validate().is_ok());
+        assert!(
+            data(vec!["😀".repeat(120)]).validate().is_ok(),
+            "120 astral CODE POINTS pass"
+        );
+        assert!(data(vec!["x".repeat(121)]).validate().is_err());
+        assert!(data(v(&[""])).validate().is_err());
+        assert!(data((0..100).map(|i| format!("i{i}")).collect())
+            .validate()
+            .is_ok());
+        assert!(data((0..101).map(|i| format!("i{i}")).collect())
+            .validate()
+            .is_err());
+        // The bag entrance funnels through the same parser + bounds.
+        let bag = json!({ "participantId": "e1000000-0000-4000-8000-000000000003",
+                          "selectedSubpromptIds": null });
+        assert!(ParticipantUpdateData::from_value(&bag).is_err());
+    }
+
+    #[test]
+    fn to_patch_carries_the_set_only_when_present() {
+        let mut d = ParticipantUpdateData::default();
+        assert!(!d.to_patch().contains_key("selectedSubpromptIds"));
+        d.selected_subprompt_ids = Some(vec![]);
+        assert_eq!(d.to_patch()["selectedSubpromptIds"], json!([]));
+    }
+
+    /// Provision a fresh two-partition instance and seed ONE chat with one LLM
+    /// seat (no character row — the recompile is best-effort and the debug
+    /// line fires BEFORE it, which is the thing under test).
+    fn scratch_chat(dir: &tempfile::TempDir, seat_ids: Option<Vec<&str>>) -> (Db, String, String) {
+        let dpath = dir.path().to_path_buf();
+        crate::services::provisioning::provision_fresh_instance(&dpath, TEST_PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: dpath.join("quilltap.db"),
+                mount_index: Some(dpath.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            TEST_PEPPER,
+        )
+        .unwrap();
+        let chat_id = "c0000010-0000-4000-8000-0000000000bb".to_string();
+        let pid = "e0000010-0000-4000-8000-0000000000bb".to_string();
+        let ts = "2026-02-01T00:00:00.000Z";
+        let mut seat = json!({
+            "id": pid, "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000bb",
+            "controlledBy": "llm", "createdAt": ts, "updatedAt": ts,
+        });
+        if let Some(ids) = seat_ids {
+            seat["selectedSubpromptIds"] = json!(ids);
+        }
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID, "title": "Trigger", "participants": [seat],
+        }))
+        .unwrap();
+        let cid = chat_id.clone();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(db.write(move |w| {
+            ChatsRepository::new(w.main().connection()).create(
+                &create,
+                &crate::db::chats::CreateOptions {
+                    id: cid,
+                    created_at: ts.to_string(),
+                    updated_at: ts.to_string(),
+                },
+            )
+        }))
+        .unwrap();
+        (db, chat_id, pid)
+    }
+
+    const RECOMPILE_LINE: &str =
+        "[Chats v1] Recompiling identity stack after participant prompt change";
+
+    fn run_update(db: &Db, chat_id: &str, pid: &str, ids: Vec<&str>) -> Vec<String> {
+        let data = ParticipantUpdateData {
+            participant_id: pid.to_string(),
+            selected_subprompt_ids: Some(v(&ids)),
+            ..Default::default()
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (res, lines) =
+            captured_with(|| rt.block_on(handle_participant_update(db, chat_id, &data)));
+        res.expect("update ok");
+        lines
+    }
+
+    /// The recompile fires on an order-INSENSITIVE change of the set, with
+    /// v4's exact debug sentence and its two boolean flags; a reordered-equal
+    /// set (and the multiset-blind `['a','b']` → `['a','a']`) stays silent.
+    #[test]
+    fn recompile_debug_line_fires_only_when_the_set_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let (db, chat_id, pid) = scratch_chat(&dir, Some(vec!["terse", "VERSE"]));
+        let lines = run_update(&db, &chat_id, &pid, vec!["VERSE", "terse"]);
+        assert!(
+            !lines.iter().any(|l| l.contains(RECOMPILE_LINE)),
+            "a reordered-equal set must not recompile: {lines:?}"
+        );
+        let lines = run_update(&db, &chat_id, &pid, vec!["verse"]);
+        let hit = lines
+            .iter()
+            .find(|l| l.contains(RECOMPILE_LINE))
+            .unwrap_or_else(|| panic!("no recompile line in {lines:?}"));
+        assert!(hit.starts_with("DEBUG quilltap::chats"), "{hit}");
+        assert!(hit.contains("prompt_changed=false"), "{hit}");
+        assert!(hit.contains("subprompts_changed=true"), "{hit}");
+        assert!(hit.contains(&format!("chat_id={chat_id}")), "{hit}");
+        assert!(hit.contains(&format!("participant_id={pid}")), "{hit}");
+    }
+
+    /// A pre-feature seat (no key) compares as the EMPTY set: `[]` is not a
+    /// change, `['x']` is. And v4's blind spot: `['a','b']` → `['a','a']` is
+    /// not a change either.
+    #[test]
+    fn recompile_trigger_treats_an_absent_key_as_empty_and_reproduces_the_blind_spot() {
+        let dir = tempfile::tempdir().unwrap();
+        let (db, chat_id, pid) = scratch_chat(&dir, None);
+        let lines = run_update(&db, &chat_id, &pid, vec![]);
+        assert!(
+            !lines.iter().any(|l| l.contains(RECOMPILE_LINE)),
+            "{lines:?}"
+        );
+        let lines = run_update(&db, &chat_id, &pid, vec!["x"]);
+        assert!(
+            lines.iter().any(|l| l.contains(RECOMPILE_LINE)),
+            "{lines:?}"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let (db, chat_id, pid) = scratch_chat(&dir, Some(vec!["a", "b"]));
+        let lines = run_update(&db, &chat_id, &pid, vec!["a", "a"]);
+        assert!(
+            !lines.iter().any(|l| l.contains(RECOMPILE_LINE)),
+            "{lines:?}"
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let (db, chat_id, pid) = scratch_chat(&dir, Some(vec!["a", "a"]));
+        let lines = run_update(&db, &chat_id, &pid, vec!["a", "b"]);
+        assert!(
+            lines.iter().any(|l| l.contains(RECOMPILE_LINE)),
+            "{lines:?}"
+        );
     }
 }

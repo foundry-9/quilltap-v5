@@ -340,6 +340,9 @@ pub struct EnrichedParticipantDetail {
     pub connection_profile: Option<EnrichedConnectionProfile>,
     pub image_profile: Option<EnrichedImageProfile>,
     pub selected_system_prompt_id: Option<String>,
+    /// v4 `2f4254b42`: `participant.selectedSubpromptIds ?? []` — ALWAYS
+    /// present on the wire, directly after `selectedSystemPromptId`.
+    pub selected_subprompt_ids: Vec<String>,
     pub talkativeness: Option<f64>,
     pub created_at: String,
     pub updated_at: String,
@@ -528,6 +531,15 @@ pub fn enrich_participant_detail(
         connection_profile,
         image_profile,
         selected_system_prompt_id: s(participant, "selectedSystemPromptId"),
+        selected_subprompt_ids: participant
+            .get("selectedSubpromptIds")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
         talkativeness: participant.get("talkativeness").and_then(Value::as_f64),
         created_at: s(participant, "createdAt").unwrap_or_default(),
         updated_at: s(participant, "updatedAt").unwrap_or_default(),

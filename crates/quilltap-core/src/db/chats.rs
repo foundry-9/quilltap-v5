@@ -113,6 +113,33 @@ pub struct ChatParticipant {
         skip_serializing_if = "Option::is_none"
     )]
     pub selected_system_prompt_id: Option<Option<String>>,
+    /// v4 `2f4254b42` (character subprompts) — ids (vault file names sans
+    /// `.md`) of the character's `Subprompts/*.md` in play for this chat.
+    /// Schema position: directly after `selectedSystemPromptId`, before
+    /// `displayOrder` (`ChatParticipantBaseSchema`, `chat.types.ts:649`).
+    ///
+    /// A PLAIN `Option<Vec<String>>`, not a double-`Option`: v4's rule is
+    /// `z.array(z.string().min(1).max(120)).optional()` — `.optional()` and
+    /// never `.nullable()` — so the only two on-disk shapes are ABSENT (a
+    /// pre-feature row, kept byte-identical) and an array, possibly empty
+    /// (`buildCharacterParticipant` writes `isUserControlled ? [] :
+    /// (data.selectedSubpromptIds ?? [])`, so a CREATED participant always
+    /// carries the key). A stored `null` cannot exist: Zod refuses it.
+    ///
+    /// ⚠ P4.D163 unit 1 — a DATA-SAFETY fix landed before any feature code.
+    /// Every participant write is a strict round-trip through this struct
+    /// (`chats_participants::read_participants` → re-serialize), so until this
+    /// field existed any v5 rewrite of a seat — `updateParticipant`,
+    /// `addParticipant`, `removeParticipant`, `setParticipantStatus`, merge —
+    /// silently DROPPED the selection v4 had written onto the shared instance.
+    /// Pinned red-first by `chats_participants::tests::update_participant_keeps_
+    /// a_v4_written_selected_subprompt_ids_byte_for_byte`.
+    #[serde(
+        rename = "selectedSubpromptIds",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub selected_subprompt_ids: Option<Vec<String>>,
     #[serde(rename = "displayOrder", default)]
     pub display_order: i64,
     #[serde(rename = "isActive", default = "default_true")]

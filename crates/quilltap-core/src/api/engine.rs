@@ -1296,6 +1296,7 @@ impl CoreEngine {
                 connection_profile_id,
                 image_profile_id,
                 selected_system_prompt_id,
+                selected_subprompt_ids,
                 display_order,
                 is_active,
                 status,
@@ -1305,11 +1306,28 @@ impl CoreEngine {
                 talkativeness,
             } => match self.ready_db() {
                 Ok(db) => {
+                    // P4.D163: the raw tri-state → the typed set. A present
+                    // `null` / non-array / non-string element is v4's Zod
+                    // `invalid_type` — the whole-parse 400 (`Validation error`),
+                    // never a silent keep. The bounds run in `validate()`.
+                    let selected_subprompt_ids = match selected_subprompt_ids {
+                        None => None,
+                        Some(raw) => {
+                            let raw = raw.unwrap_or(serde_json::Value::Null);
+                            match crate::services::chat_participants::parse_selected_subprompt_ids(
+                                &raw,
+                            ) {
+                                Ok(ids) => Some(ids),
+                                Err(e) => return Response::error(ErrorKind::BadRequest, e.message),
+                            }
+                        }
+                    };
                     let data = crate::services::chat_participants::ParticipantUpdateData {
                         participant_id,
                         connection_profile_id,
                         image_profile_id,
                         selected_system_prompt_id,
+                        selected_subprompt_ids,
                         display_order,
                         is_active,
                         status,

@@ -334,6 +334,30 @@ async function main(): Promise<void> {
       return dump ? { status, body: out, tables: await castTables(chatId) } : { status, body: out };
     },
   });
+  /**
+   * P4.D163 (v4 `2f4254b42`): an update-participant case whose seat is FIRST
+   * given a selection through the REPOSITORY (`repos.chats.updateParticipant`,
+   * which never recompiles) — so the fresh fixture's `compiledIdentityStacks`
+   * stays null until the measured route call, and the `sameIdSet` recompile
+   * decision is visible as null → object (recompiled) vs null (not).
+   */
+  const seededUpdateCase = (
+    name: string,
+    chatId: string,
+    seed: { participantId: string; selectedSubpromptIds: string[] },
+    body: unknown,
+    dump = true,
+  ): CaseSpec => ({
+    name,
+    run: async () => {
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      await getRepositories().chats.updateParticipant(chatId, seed.participantId, {
+        selectedSubpromptIds: seed.selectedSubpromptIds,
+      });
+      const { status, body: out } = await respond(await post(chatId, 'update-participant', body));
+      return dump ? { status, body: out, tables: await castTables(chatId) } : { status, body: out };
+    },
+  });
   const removeCase = (name: string, chatId: string, body: unknown, dump = true): CaseSpec => ({
     name,
     run: async () => {
@@ -564,6 +588,85 @@ async function main(): Promise<void> {
       'update_talkativeness_out_of_range',
       I.chatMain,
       { participantId: I.pBram, talkativeness: 4 },
+      false,
+    ),
+    // ── P4.D163 / v4 `2f4254b42`: `selectedSubpromptIds` on update ──────────
+    // Bram's vault holds no `Subprompts/`, so a recompile bakes NO block; the
+    // discriminator is `compiledIdentityStacks` null → object (the fixture
+    // seeds it null) vs still null. The seat's persisted bytes carry the set.
+    updateCase('update_subprompts_set_recompiles', I.chatMain, {
+      participantId: I.pBram,
+      selectedSubpromptIds: ['terse', 'VERSE'],
+    }),
+    // `sameIdSet(old ?? [], [])` on a pre-feature seat is TRUE → no recompile,
+    // but the key is now stored as `[]`.
+    updateCase('update_subprompts_empty_on_pre_feature_seat_no_recompile', I.chatMain, {
+      participantId: I.pBram,
+      selectedSubpromptIds: [],
+    }),
+    seededUpdateCase(
+      'update_subprompts_reordered_equal_no_recompile',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: ['terse', 'VERSE'] },
+      { participantId: I.pBram, selectedSubpromptIds: ['VERSE', 'terse'] },
+    ),
+    seededUpdateCase(
+      'update_subprompts_replace_recompiles',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: ['terse'] },
+      { participantId: I.pBram, selectedSubpromptIds: ['verse'] },
+    ),
+    // v4's `sameIdSet` is MULTISET-BLIND (length + `b ⊂ Set(a)`): `['a','a']` →
+    // `['a','b']` is a change (recompiles), `['a','b']` → `['a','a']` is NOT
+    // (no recompile). Reproduced, not fixed — a plain equality both ways.
+    seededUpdateCase(
+      'update_subprompts_multiset_blind_aa_to_ab_recompiles',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: ['a', 'a'] },
+      { participantId: I.pBram, selectedSubpromptIds: ['a', 'b'] },
+    ),
+    seededUpdateCase(
+      'update_subprompts_multiset_blind_ab_to_aa_no_recompile',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: ['a', 'b'] },
+      { participantId: I.pBram, selectedSubpromptIds: ['a', 'a'] },
+    ),
+    // A user-controlled seat: the update helper does not gate on control, so
+    // the set is stored as sent; the recompile then DROPS a user seat's entry.
+    updateCase('update_subprompts_on_user_seat_stored', I.chatMain, {
+      participantId: I.pAria,
+      selectedSubpromptIds: ['x'],
+    }),
+    // The Zod arms: `.optional()` never `.nullable()`; `.min(1).max(120)` per id
+    // (code points); `.max(100)` items.
+    updateCase(
+      'update_subprompts_null_400',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: null },
+      false,
+    ),
+    updateCase(
+      'update_subprompts_empty_id_400',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: [''] },
+      false,
+    ),
+    updateCase(
+      'update_subprompts_id_121_400',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: ['x'.repeat(121)] },
+      false,
+    ),
+    updateCase(
+      'update_subprompts_101_items_400',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: Array.from({ length: 101 }, (_, i) => `i${i}`) },
+      false,
+    ),
+    updateCase(
+      'update_subprompts_not_array_400',
+      I.chatMain,
+      { participantId: I.pBram, selectedSubpromptIds: 'terse' },
       false,
     ),
 
