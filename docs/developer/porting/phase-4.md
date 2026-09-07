@@ -6520,6 +6520,109 @@ in the help tree); `cargo test --workspace` **529 test binaries / 2,980 passed /
 
 PB1 stays parked by the standing rule.
 
+## The generator follow-ups + prompt-templates round (P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86-conditional) — ORDERED 2026-09-07
+
+**Baseline `2f4254b42`; v4 `main` HEAD AT the baseline, v4 `bugfix` tip
+`1a2b2164c` unmoved; the ledger's §3 EMPTY — zero drift; the checkout on
+`main` and clean; regen rule NO PIN REQUIRED (re-probe before every regen
+batch; a lane that finds the probe failing STOPs).** The first non-drift
+round since the follow-ups round 2: the `p4.9k` + `2f4254b42` dogfood pass
+(candidate 1) already ran on 2026-09-07 with zero v5 defects, so this round
+is candidates 2 and 3 whole plus the two smalls from candidate 4 that fit —
+every item a "recorded, not fixed" row from the last two round records or an
+OPEN order remainder. Round name in the work orders: "the generator
+follow-ups + prompt-templates round". The round-wide §R meeting points and
+the Ownership table are spliced byte-identically into every order
+(md5-verified at planning: §R `19ba30ce…`, Ownership `1ebd6804…`).
+
+- **P4.82 — the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + boot-time
+  enqueuer** (`work-orders/p4.82-headshoulders-backfill-job.md`): P4.9K2's
+  named Tier-3 deferral, unblocked by `generators::wizard` — v4's
+  `character-headshoulders-backfill.ts` (the eleven arms; ONE cheap-LLM
+  `generateField` at 350 tokens through the wizard's shared implementation
+  exposed `pub(crate)`; the COMPLETE merged `physicalDescription` written
+  through the vault overlay), the dedupe-on-enqueue queue helper, and the
+  `instance_settings`-gated startup scan (`headshoulders_backfill_enqueued_
+  v1` — a SHARED key v4 has already set on the Friday copy, so the
+  cross-app "boot writes nothing" leg is the dogfood proof) wired into
+  `seed_built_ins`'s boot-repair thread; a tier-3 family over v4's real
+  handler (the title-update recipe) + a tier-2 family over v4's real
+  enqueuer, a NEW committed `headshoulders-{main,mount}.db` pair, two host
+  wiring pins.
+- **P4.83 — prompt templates** (`work-orders/p4.83-prompt-templates-
+  vertical.md`): the `promptTemplateList` verb + `GET /api/v1/prompt-
+  templates` over the existing repo's new reads, and the built-in seeding
+  v5 NEVER HAD — v4 seeds the 21 sample prompts lazily on first list,
+  insert-if-absent by `(name, isBuiltIn)`, never updating; v5 vendors the
+  catalogue through a generator with a byte-identity guard (a re-vendor
+  hazard for the ledger). **Corrects the `d123658d`-round ratification of
+  `9c01fa99`**: "v5 consumes plugin content from the instance at runtime"
+  was never true for the sample prompts (no registry, no seeding). Tier 2:
+  the create/get/update/delete edges with the route-level built-in
+  refusals. SPA: fetch-on-open on both hosts with v4's two DIFFERENT open
+  semantics; a live beat importing `MODERN_GENERAL`. Closes the `p4.9k`
+  "ImportModal's catalogue is always empty" divergence.
+- **P4.84 — the SPA follow-ups** (`work-orders/p4.84-spa-generator-
+  smalls.md`): the wizard review pane's three missing renders (the
+  "Written as:" example, the physical-description tier panel, scenarios as
+  title + pre-wrapped content) + the `fullDescription` preview through a
+  bare CommonMark pipeline — **refuting the K3 note's premise** (v5 has two
+  chat-independent renderers already; v4's ReactMarkdown here has NO GFM);
+  `useSSEStreaming`'s two continue-mode toasts at v5's `runTurn` continue
+  entrance; `runTemplateSave` lifted onto the shared
+  `applyCharacterFieldUpdates`; the Salon mount's fixed "Summon From Lore"
+  title; the three K4 divergences named only by phrase (the `imported`
+  count line, the stale-closure apply banner, the error-terminal phase)
+  located against v4 and ported or recorded; the interceptor's
+  nested-button census spec.
+- **P4.85 — the Rust follow-ups** (`work-orders/p4.85-rust-generator-
+  smalls.md`): the `[Chats v1] Impersonation stopped` line at v4's site,
+  capture-pinned; the K0 re-framer's two `RecvError::Closed` arms made
+  LOUD (a v5-only divergence, unit-pinned); `generators_detail.rs`'s seven
+  `.expect("no issues")` sites + the silent `:504-507` sibling + the
+  `unwrap_or(Null)` 200 on ONE typed 500 arm; the two route-level
+  "starting" lines pinned with v4's bags; `image_profiles.rs:655`'s
+  UTF-16 count → the Zod code-point helpers with an astral arm; **K1/K2's
+  OPEN Tier-2 items 9/10 for the optimizer, wizard and external-prompt
+  families** (the oracles gain `rawSse` + `llmLogCounts`; byte-equal SSE
+  wire tests per edge; `llm_logs` counts compared).
+- **P4.86 — CONDITIONAL: the AI-import validation engine**
+  (`work-orders/p4.86-qtap-schema-engine-conditional.md`): needs the
+  human's ruling to add the `jsonschema` crate (Draft 2020-12) — the one
+  pre-authorized dependency add of the round, and only once granted. Then:
+  the vendored `qtap-export.schema.json` (89,769 bytes at the baseline)
+  with an embed guard, `validate_qtap_export` configured as v4's ajv
+  (`allErrors`, non-strict, formats), v4's steps 9–10 (the repair loop with
+  the byte-exact prompt, `MAX_REPAIR_ATTEMPTS`, replace-present-sections,
+  revalidate) retiring `VALIDATION_UNAVAILABLE` and its both-directions
+  pins; a NEW tier-1 `qtap_schema_validate_equivalence` over a recorded
+  corpus (`valid` + the error-section SET exact; count/paths/messages
+  recorded as the measured engine diff). Also this lane's, by file
+  ownership: the two v4-truthiness arms (`sourceFileIds`/`regenerateSteps`
+  non-array truthy), the dead `fallback_message` parameter,
+  `generators_wizard.rs`'s ten `.expect` sites + its "starting" line, and
+  K2's items 9/10 for the AI-import family.
+
+**Ownership split that settles the one collision:** every AI-import file
+(`generators/ai_import.rs`, `api/generators_wizard.rs`, the AI-import
+oracle/family/fixture) is P4.86's; P4.85 touches none of it. If the ruling
+is refused, P4.86's Tier-2 (engine-independent) items are re-ordered as a
+plain smalls lane next round. **Deliberately left out:** P4.81 item 7 (the
+flipping shared-default spec — measured, unreproducible, no lead), the
+`CaptureLayer` consolidation and the sweep driver's SHELL_START class (both
+harness-hygiene, no product surface), the census's honest totality + the
+present-but-null lead (each its own order), the `#OLD` version-comment
+lines (a bump-tool decision for the human), and the standing human-only 💸
+items (the Brahma deep query, dedup/summaries, #101).
+
+Recommended arrangement: P4.82 / P4.83 / P4.84 / P4.85 in parallel, one
+worktree each; P4.86 starts only on the ruling (it can run in parallel with
+the rest once granted). The unifier regenerates all four generator tier-3
+families ONCE after P4.85 + P4.86 both land, runs the full Playwright suite
+(the two SPA lanes each run only their own spec files), and adds the two
+re-vendor hazards (the sample-prompt catalogue; the qtap schema) to the
+ledger's §1 list.
+
 ## The `2f4254b42` character-subprompts round (P4.D163 → P4.D164 stacked ∥ P4.D165 ∥ P4.9K1-resumed ∥ P4.9K2-resumed) — ORDERED 2026-09-07
 
 **Baseline `f699da6f6`; v4 `main` HEAD `2f4254b42` (ONE past — "feat:

@@ -12,6 +12,36 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(setupphase): the generator follow-ups + prompt-templates round ordered — P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86-conditional
+
+_Docs-only change._
+
+Plans the first non-drift round since the follow-ups round 2 (the drift
+ledger's §2 probe passed at planning: v4 `main` AT the `2f4254b42` baseline,
+`bugfix` unmoved, §3 empty — regen rule NO PIN REQUIRED). Five work orders
+under `docs/developer/porting/work-orders/`, every item a "recorded, not
+fixed" row from the `p4.9k` and `2f4254b42` round records or an OPEN order
+remainder: P4.82 the `CHARACTER_HEADSHOULDERS_BACKFILL` job handler + its
+boot-time enqueuer (P4.9K2's named Tier-3 deferral, unblocked by
+`generators::wizard`; the shared `instance_settings` flag is a cross-app
+proof for the dogfood pass); P4.83 the `promptTemplateList` verb + REST
+edge + the built-in sample-prompt seeding v5 never had (vendored catalogue
++ guard; corrects the `d123658d`-round `9c01fa99` ratification premise) +
+the Import-from-Template catalogue on both hosts; P4.84 the SPA follow-ups
+(the wizard review pane's three missing renders on a bare CommonMark
+pipeline — the K3 "no chat-independent renderer" premise refuted — the
+continue-mode toasts, `runTemplateSave` onto the shared apply helper, the
+fixed "Summon From Lore" title, the three K4 divergences, the interceptor's
+nested-button census); P4.85 the Rust follow-ups (the impersonation-stopped
+line, the K0 `Closed` arms made loud, the `generators_detail.rs` parse path
+on one typed 500 arm, the "starting" lines pinned, `image_profiles.rs`'s
+UTF-16 count, and K1/K2's OPEN Tier-2 items 9/10 for three families); P4.86
+CONDITIONAL on the human's `jsonschema` dependency ruling (the AI-import
+validation + repair steps retiring `VALIDATION_UNAVAILABLE`, plus every
+other AI-import follow-up by file ownership). The §R meeting points and the
+Ownership table are spliced byte-identically into every order (md5-verified
+at planning); phase-4.md gains the round's ORDERED section.
+
 #### 2026-09-07 — docs(dogfood): the `p4.9k` + `2f4254b42` rounds' pass — 24 rows, zero v5 defects, both 💸 queues discharged
 
 _Docs-only change._
