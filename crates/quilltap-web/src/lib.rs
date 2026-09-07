@@ -31,6 +31,9 @@ pub mod custom_tools_routes;
 pub mod dispatch;
 pub mod embedding_profiles_routes;
 pub mod events;
+// === P4.9K0 ===
+pub mod generator_sse;
+// === end P4.9K0 ===
 pub mod files_routes;
 pub mod health;
 pub mod help_routes;

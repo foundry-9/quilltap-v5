@@ -12,6 +12,42 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — port(web): the character-generator SSE re-framer, v4's stream bytes off the Event channel
+
+_Versions: web 0.0.121._
+
+P4.9K0 tier-1 item 6 and tier-2 item 9. `quilltap-web::generator_sse::
+stream_generator(events, progress_id, dispatch, outcome)` turns a subscription
+on one `progressId` plus an un-polled dispatch future back into v4's stream.
+v4's three generator handlers are the same nine lines — `data:
+${JSON.stringify(event)}\n\n` per event, `controller.close()` after the runner
+resolves, and the headers `Content-Type: text/event-stream`, `Cache-Control:
+no-cache`, `Connection: keep-alive`. No `event:` names, no `id:` field, no
+retry, no keep-alive comments: this is deliberately not `/api/events`.
+
+The order of operations is the correctness: subscribe FIRST, before the
+dispatch future is polled at all (a Rust future does nothing until awaited, so
+a frame the runner emits synchronously cannot predate the subscription); then
+race the run against the first matching frame, so a refusal that produced no
+frame answers a status plus the dispatch envelope rather than a stream; then
+forward every matching frame and close after draining what was emitted before
+the run resolved. Awaiting the dispatch before subscribing empties five of the
+seven wire tests.
+
+Seven wire tests pin the exact bytes and headers, a synchronously emitted first
+frame, another `progressId`'s frames (and another Event family on the same
+scope tag) not being forwarded, the refusal envelope, a silent success still
+being a stream, a post-first-frame failure keeping the stream, and the
+forwarded bytes being the inner event verbatim with non-alphabetical key order
+intact.
+
+Survey finding held mechanically: `quilltap-web::events` filters no Event
+kinds, so the new family needed no allow-list entry and no fence there. A new
+integration test boots a real instance, subscribes to `GET /api/events`,
+publishes a `GeneratorProgress` on the engine's sender, and asserts the frame
+arrives with its bytes intact — so the day someone adds a kind filter, this
+fails.
+
 #### 2026-09-07 — port(generators): the `generatorProgress` Event kind and its scope-tagged emitter
 
 _Versions: core 0.0.814._

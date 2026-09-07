@@ -110172,3 +110172,230 @@ could not write that file); CLAUDE.md's Status gained the round's bullet.
    it the P4.9I2 §3 GOOGLE-keeps-id-less-tool-rows live leg), a Brahma
    Console question leaving its `llm_logs` rows, and a `controlledBy: "LLM"`
    create refused with v4's `details` (engine-side; the wire half is item 1).
+
+
+## P4.9K0 — the character-generators SUBSTRATE (2026-09-07)
+
+Lane branch `claude/p4-9k0-generators-substrate-cd1c7f`, run FIRST and ALONE
+per §S.1; **P4.9K1 and P4.9K2 branch from this lane's tip.** Baseline
+`f699da6f6`; the drift-ledger §2 freshness probe PASSED at lane start
+(checkout on `bugfix`, tree clean, `f699da6f6..main` and `1a2b2164c..bugfix`
+both empty), so the regen rule stood: PIN REQUIRED, every regen from the
+lane-unique `/tmp/qt-v4-pin-p49k0-f699da6f6` detached worktree with all three
+symlink classes. The probe was re-run before the final regen batch and passed
+again — v4 did not move during the lane.
+
+### Unit 1 — the four leaf modules + `generators_leaf_equivalence`
+
+`crates/quilltap-core/src/generators/` is the one v5 home for the four pure
+leaves every v4 generator imports:
+
+| v5 module | v4 file |
+| --- | --- |
+| `llm_json` | `lib/llm/llm-json.ts` |
+| `field_semantics` | `lib/services/character-field-semantics.ts` |
+| `generated_properties` | `lib/characters/generated-properties.ts` |
+| `sanitize_pronouns` | `lib/characters/sanitize-pronouns.ts` |
+
+`llm_json` carries v4's chain in v4's order — `strip_code_fences` → parse →
+`escape_control_chars_in_strings` → parse → `repair_truncated_json` → parse —
+with each `catch` becoming a fall-through and the last failure the returned
+`Err`. The truncation repair keeps v4's fixed ORDER, which the port comments
+because it is load-bearing and invisible: the bracket stack is walked over the
+string as it stands AFTER the first trailing-comma strip and BEFORE both the
+unclosed-string close and the trailing-key strip.
+
+`field_semantics` is a GENERATED file. The recorder
+(`harness/oracle/cases/generators-field-semantics.ts`) prints v4's six exports
+as NDJSON and `harness/oracle/tools/gen-field-semantics.mjs` writes the Rust
+constants — both committed, per `byte-exact-static-data-transcription`. Two of
+the strings interpolate `HAIR_PHYSICAL_BOUNDARY` /
+`HAIR_PHYSICAL_DESCRIPTION_NOTE` from `lib/wardrobe/slot-guidance`, so
+recording the RESOLVED string is also a free check on v5's own independent
+copies of those two constants in `crate::wardrobe`.
+
+**Three JS-fidelity questions, answered by MEASUREMENT (Node 24.13.1), not
+assumption:**
+
+1. **Case folding — a real divergence, avoided.** `parseLLMJsonObject`'s fence
+   regex carries the JS `i` flag WITHOUT `u`, and Canonicalize refuses to fold
+   a non-ASCII code unit onto an ASCII one. Measured: v4's regex on
+   ` ```jſon\n{"a":1}\n``` ` captures `"jſon\n{\"a\":1}\n"` — hint and all,
+   because the optional `(?:json)?` did NOT match. A Unicode-aware Rust
+   `(?i)json` WOULD fold U+017F onto `s` and capture only the body. The port
+   spells `(?i-u:json)`; flipping it to `(?i:json)` reddens
+   `fence_case_folding_is_ascii_only`.
+2. **`JSON.parse` vs `serde_json` — ONE divergence class: lone surrogates.**
+   `JSON.parse` of a `\ud800` escape succeeds in V8 and yields an ill-formed
+   JS string; `serde_json` refuses it, because a Rust `String` cannot hold one.
+   Every other axis measured AGREES: duplicate keys take the LAST value at the
+   FIRST key's position (`{"a":1,"b":2,"a":3}` → `{"a":3,"b":2}` on both — the
+   `preserve_order` `IndexMap::insert` does exactly that), a raw control
+   character inside a string literal is refused by both (which is why
+   `escapeControlCharsInStrings` exists at all), and `-0` / `1e2` / `1.0` all
+   parse. The divergence is unreachable from the corpus — a lone surrogate
+   cannot survive an NDJSON round trip either — so it is pinned by unit test
+   instead, in both directions.
+3. **Iteration width.** v4 walks UTF-16 code units in
+   `escapeControlCharsInStrings` and code POINTS in `repairTruncatedJson`.
+   Both ported with `chars()`, justified in the module header and pinned: the
+   only units either machine inspects are `"`, `\` and code ≤ 0x1F, all BMP
+   non-surrogate, and both halves of a surrogate pair are copied through
+   untouched.
+
+Every `\s` and every `.trim()` goes through `jsstr` (`JS_WS_CLASS` /
+`js_trim`), so U+FEFF trims and U+0085 does not — the reverse of Rust's
+`char::is_whitespace`. The pronoun length bound counts UTF-16 units
+(`utf16_len`), matching v4's `String.length`.
+
+**The differential.** ONE tier-1 family, `generators_leaf_equivalence`, over
+ONE tsx oracle case importing v4's four modules by name, driving the committed
+corpus `harness/oracle/fixtures/generators-leaf.json`: **46 `llm_json` rows /
+20 `sanitize_pronouns` rows / 13 `generated_properties` rows / all 6
+field-semantics exports** (the order's floors were 25 / 8 / 8, and the floors
+are asserted so a future trim is loud). Parsed values are compared as
+SERIALIZED bytes so key order is part of the assertion, with
+`normalize_js_numbers` applied to both sides (a JS number does not distinguish
+`3` from `3.0`). Coverage is asserted by SHAPE in both directions off the
+oracle's own `coverage` row, and v5's `ALL_EXPORTS` table is diffed against the
+oracle's export list so a v4 export that never reached the generated file is
+visible.
+
+**Mutation proofs — six, each reddening exactly one named arm:**
+
+| mutation | reddened |
+| --- | --- |
+| the truncation-repair stage removed from `parse_llm_json` | the truncated `parseLLMJson` rows |
+| the trailing-key strip removed from `repair_truncated_json` | `repairTruncatedJson 'trunc-trailing-key'` |
+| the `\t` control-char escape arm dropped | `escapeControlCharsInStrings 'raw-tab-and-crlf-in-strings'` |
+| one byte changed in `FIELD_SEMANTICS_PREAMBLE` | `field semantics 'FIELD_SEMANTICS_PREAMBLE'` |
+| the pronoun bound counted in code points, not UTF-16 units | `sanitizePronouns 'twenty-astral-characters'` |
+| the bare-pronouns fall-through arm dropped | `parseGeneratedProperties 'bare-pronouns-shape'` |
+| `(?i-u:json)` → `(?i:json)` (unit-tier) | `fence_case_folding_is_ascii_only` |
+
+**Deferred loudly (tier 3 — NAMED, not performed).** `generators::llm_json` is
+a NEW home for v4's module, not a consolidation of the five per-caller JSON
+extractors v5 already carries — each is oracle-pinned where it sits and must
+not be retargeted: `services::answer_confirmation::extract_json` (private),
+`memory_tasks`, `services::image_scene_tasks`, `services::outfit_selections`,
+`services::context_summary::title_verdict`. The consolidation candidate is
+recorded in the `generators` module header.
+
+### Unit 2 — `Event::GeneratorProgress` + the emitter
+
+`api/types.rs` gains, inside a `// === P4.9K0 ===` fence: `GeneratorKind`
+(`Optimizer` / `Wizard` / `AiImport` → `"optimizer"` / `"wizard"` /
+`"aiImport"`, with `as_wire()` and `Display` decided HERE so K1 and K2 spell
+their log-context `generator` once), the internally-tagged
+`GeneratorProgressPayload`, the `EventPayload::GeneratorProgress` variant, and
+the `Event::generator_progress` constructor.
+
+**The wire bytes, pinned against a literal:**
+
+```
+{"progressId":"p-1","type":"generatorProgress","generator":"aiImport","event":{…}}
+```
+
+⚠ **A note for the unifier's §B.5 name-for-name diff:** the ORDER is the
+envelope's scope tag first, then the flattened payload — exactly what the
+existing `creationProgress` family does (`{"progressId":"p1","kind":"done",
+"ts":7}`). §B.5 lists the four keys as a field list, not a byte order, and no
+reader is order-sensitive (the SPA filters `type` and `progressId` off a parsed
+object). Recorded rather than silently reconciled.
+
+The `event` value is passed through UNTOUCHED — `serde_json`'s
+`preserve_order` keeps the key order the generator lanes build, which is the
+whole reason the SSE re-framer can reproduce v4's stream (the
+`json-column-key-order` rule).
+
+`services::generator_progress::GeneratorProgressEmitter` mirrors
+`CreationProgressEmitter`'s SHAPE — `from_id(Option<&str>, kind, sender)`,
+`None` or empty → entirely inert — but deliberately carries **no bus**. The
+module header says why: the Green Room needs a replay buffer because its
+dialog opens its reader around the instant the create POST fires; a generator
+run has no such gap (the client mints the `progressId`, subscribes, and only
+then dispatches — and the SSE edge subscribes before it polls the dispatch
+future at all). No new bus and no scheduler; the core has neither.
+
+**Mutation proof:** replacing `from_id`'s guard with an unconditional
+`Self::active(progress_id.unwrap_or(""), …)` reddens
+`an_absent_progress_id_emits_nothing` AND `an_empty_progress_id_is_inert_too`,
+and nothing else.
+
+**One out-of-ownership edit, recorded loudly.** `realtime/types.rs` carries a
+deliberate exhaustiveness tripwire (`fn _exhaustive(p: &EventPayload)` — "the
+payload enum still has exactly the four families"). It FIRED as designed. It
+is acknowledged with the fifth arm spelled out and the comment updated — NOT
+widened to a wildcard. That file is outside this lane's Owns column; the edit
+is four lines in a test module and is flagged here for the unifier.
+
+### Unit 3 — the web SSE re-framer
+
+`quilltap-web::generator_sse::stream_generator(events, progress_id, dispatch,
+outcome)` turns "a subscription on one `progressId`" plus "an un-polled
+dispatch future" back into v4's stream. v4's three handlers are the same nine
+lines (`app/api/v1/characters/[id]/handlers/post.ts:113-140`,
+`app/api/v1/characters/handlers/post.ts:548-575`,
+`app/api/v1/system/tools/route.ts:1223-1252`): `data: ${JSON.stringify(event)}
+\n\n` per event, `controller.close()` after the runner resolves, and the
+three headers. No `event:` names, no `id:`, no retry, no keep-alives — this is
+deliberately NOT `/api/events`, which prefixes `id:` and sends `: keep-alive`.
+
+The mechanism, in order: subscribe FIRST (a Rust future does nothing until
+awaited, so passing it in un-polled is what makes a synchronously-emitted
+first frame safe); race the dispatch against the first matching frame so a
+refusal that produced NO frame can still answer a status + JSON envelope
+rather than a stream (§B.1 — v4's Zod parse and route-level `badRequest`
+answer JSON); then forward every matching frame and close after DRAINING what
+was emitted before the dispatch resolved.
+
+Seven wire tests in `crates/quilltap-web/tests/generator_sse_wire.rs`: the
+three-frame stream's exact bytes and all three headers; a synchronously
+emitted frame surviving; another `progressId`'s frames (and another Event
+family on the SAME scope tag) not forwarded; a dispatch error before any frame
+answering the envelope with its status and `application/json`; a silent
+SUCCESS still being a stream, not a refusal; a failure AFTER the first frame
+keeping the stream; and the forwarded bytes being the inner event verbatim
+with deliberately non-alphabetical key order intact.
+
+**Mutation proof:** awaiting the dispatch to completion before subscribing
+empties five of the seven bodies (and turns the post-first-frame failure into
+a 500) — the subscribe-before-dispatch order is load-bearing and pinned.
+
+**Tier-2 item 9 — the `events.rs` finding.** `quilltap-web::events` filters
+NOTHING: it serializes every `Event` the engine broadcasts, so the new family
+needed **no allow-list entry and no K0 fence in that file**. That is a fact
+about today's transport, not a guarantee, so it is held mechanically by
+`crates/quilltap-web/tests/generator_progress_events_passthrough.rs`, which
+boots a real instance, subscribes to `GET /api/events`, publishes a
+`GeneratorProgress` on the engine's own sender, and asserts the §B.5 bytes
+arrive intact — inner key order included.
+
+### The lane's verification gate
+
+`cargo fmt --all --check`; `cargo clippy --workspace --all-targets --
+-D warnings` in BOTH feature sets (default + `quilltap-core/native-transport`);
+`cargo build --workspace`; the release build; `cargo test --workspace` with
+`QT_ORACLE_GENERATORS_LEAF` set, full log to a file (never `| tail`) and
+grepped for `SKIP:`; the family by NAME through
+`recipe_sweep.py --run generators_leaf_equivalence --v4 <pin>` with `--show`
+read first; `python3 harness/tools/check_spelling.py`. `git diff main --
+apps/web/` empty; `git diff main -- crates/quilltap-core/src/api/engine.rs
+crates/quilltap-host/` empty (this lane touches neither).
+
+### What P4.9K1 and P4.9K2 inherit
+
+- `quilltap_core::generators::{llm_json, field_semantics,
+  generated_properties, sanitize_pronouns}` — import by name, port none of
+  them again.
+- `quilltap_core::api::types::{GeneratorKind, GeneratorProgressPayload}` and
+  `Event::generator_progress`.
+- `quilltap_core::services::generator_progress::GeneratorProgressEmitter` —
+  construct with `from_id(body.progress_id.as_deref(), kind,
+  core.event_sender().clone())` and call `emit(json)` at every v4
+  `onProgress` site, with the v4 event object's key order built as v4 builds
+  it.
+- `quilltap_web::generator_sse::stream_generator` for the Tier-2 REST SSE
+  edges.
+- `crates/quilltap-core/src/generators/mod.rs` carries a comment marking where
+  each lane's `pub mod` line goes, inside its own fence.
