@@ -50,13 +50,14 @@ fn both_llm_choose_entrances_pass_a_dressing_instructions_resolver() {
 
     // Neither production site may hand `choose_llm_outfit` a null resolver. The
     // `|| None` spellings that DO appear are the unit tests' (a stalled
-    // provider, a batch of consults, the timeout, and — P4.D164 — the two
-    // consults of the green-room debug-line pin).
+    // provider, a batch of consults, the timeout). The green-room debug-line
+    // pin no longer consults: the `2f4254b42` unification moved that line into
+    // the seat resolver, where v4 logs it with the chat id.
     assert_eq!(
         src.matches("|| None,").count(),
-        5,
+        3,
         "a production `choose_llm_outfit` call site has been given a null \
-         resolver (only the five unit-test call sites may pass `|| None`)"
+         resolver (only the three unit-test call sites may pass `|| None`)"
     );
 
     // …and the shared helper must actually reach the cascade.
@@ -84,10 +85,11 @@ fn both_llm_choose_entrances_pass_a_subprompts_resolver() {
     // entrance's call, and the `_for` wrapper's call.
     assert_eq!(
         src.matches("resolve_subprompts_for_seat_conn(").count(),
-        5,
+        6,
         "expected the conn-flavoured seat resolver's definition, the create \
-         entrance's call, the `_for` wrapper's call, and the two calls of the \
-         warn/silence unit pin — no more, no fewer"
+         entrance's call, the `_for` wrapper's call, the two calls of the \
+         warn/silence unit pin, and the debug-line pin's call — no more, no \
+         fewer"
     );
     // The out-of-create entrance — a `Db` in hand: the definition and
     // `run_llm_choose_via_db`'s call.
@@ -99,13 +101,13 @@ fn both_llm_choose_entrances_pass_a_subprompts_resolver() {
     );
     // Neither production site may hand `choose_llm_outfit` an empty resolver.
     // The `Vec::new,` spellings that DO appear are the unit tests' (the three
-    // P4.D119 consults + the debug-line pin's SILENT second consult); clippy's
-    // `redundant_closure` is why they are not `|| Vec::new()`.
+    // P4.D119 consults); clippy's `redundant_closure` is why they are not
+    // `|| Vec::new()`.
     assert_eq!(
         src.matches("Vec::new,").count(),
-        4,
+        3,
         "a production `choose_llm_outfit` call site has been given an empty \
-         subprompts resolver (only the four unit-test call sites may)"
+         subprompts resolver (only the three unit-test call sites may)"
     );
     assert_eq!(
         src.matches("|| Vec::new(),").count(),
