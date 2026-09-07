@@ -9,7 +9,10 @@
 
 import { buildAutonomousCreatePatch } from '../../autonomous/autonomous.logic';
 import type { CharacterListItem, ChatCreateRequest } from '../../core/core-contract';
-import { scenarioValueToSelection, type ScenarioSelection } from '../../scenario/scenario.types';
+import {
+  scenarioValueToSelection,
+  type ScenarioSelection,
+} from '../../scenario/scenario.types';
 import {
   USER_CONTROLLED_PROFILE,
   type NewChatFormState,

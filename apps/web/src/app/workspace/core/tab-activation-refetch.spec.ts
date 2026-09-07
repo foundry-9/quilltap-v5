@@ -20,12 +20,7 @@ import { Component, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
-import {
-  WORKSPACE_TAB_VISIBLE,
-  onTabActivated,
-  type TabKind,
-  type WorkspaceTab,
-} from '../workspace-contract';
+import { WORKSPACE_TAB_VISIBLE, onTabActivated, type TabKind, type WorkspaceTab } from '../workspace-contract';
 import { characterKeys, tagKeys } from '../../screens/characters/characters.api';
 import { groupKeys } from '../../screens/groups/groups.api';
 import { homeKeys } from '../../screens/home/home.api';

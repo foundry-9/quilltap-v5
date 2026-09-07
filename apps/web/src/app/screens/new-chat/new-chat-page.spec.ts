@@ -37,8 +37,8 @@ function stubClient(): Partial<CoreClient> {
     }
   };
   return {
-    dispatchData: (async (req: DispatchReq) =>
-      handle(req) as Record<string, unknown>) as CoreClient['dispatchData'],
+    dispatchData: (async (req: DispatchReq) => handle(req) as Record<string, unknown>) as
+      CoreClient['dispatchData'],
     dispatchExpect: (async (req: DispatchReq) => handle(req)) as CoreClient['dispatchExpect'],
   };
 }

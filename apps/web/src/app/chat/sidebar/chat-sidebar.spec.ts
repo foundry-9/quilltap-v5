@@ -136,9 +136,9 @@ function sidebarEl(fixture: ComponentFixture<Host>): HTMLElement {
 }
 
 function button(fixture: ComponentFixture<Host>, label: string): HTMLButtonElement {
-  const found = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
-    (b) => (b as HTMLButtonElement).getAttribute('aria-label') === label,
-  );
+  const found = Array.from(
+    fixture.nativeElement.querySelectorAll('button'),
+  ).find((b) => (b as HTMLButtonElement).getAttribute('aria-label') === label);
   return found as HTMLButtonElement;
 }
 
@@ -204,9 +204,9 @@ describe('ChatSidebar', () => {
   it('lists the cast in predicted turn order and nudges through the card action', async () => {
     localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
     const fixture = await render();
-    const names = Array.from(sidebarEl(fixture).querySelectorAll('.qt-participant-card-name')).map(
-      (n) => n.textContent?.trim(),
-    );
+    const names = Array.from(
+      sidebarEl(fixture).querySelectorAll('.qt-participant-card-name'),
+    ).map((n) => n.textContent?.trim());
     // Bob is the selected next speaker, so he leads; the user seat trails the
     // eligible character (v4's ordering: next → eligible → user-turn).
     expect(names).toEqual(['Bob', 'Alice', 'You']);

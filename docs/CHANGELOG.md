@@ -584,6 +584,26 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — chore(subprompts): strip the prettier churn a directory-wide --write dragged into the lane's diff
+
+_Versions: SPA 0.5.673._
+
+Running `prettier --write` over whole directories rather than the touched files
+reformatted eleven files this lane never edited, and re-wrapped a dozen more
+lines inside files it did. Every such hunk is reverted to main's form, leaving
+the lane's diff to its own work; four files (`outfit-selector.ts`,
+`outfit-selector.spec.ts`, `outfit-slots-preview.spec.ts`,
+`new-chat-page.spec.ts`) drop out of the diff entirely.
+
+The affected files were already prettier-dirty at `HEAD` — measured, one by one
+— so nothing here is a formatting regression; the churn was cosmetic noise that
+would have made the unification review read a 98-file diff for a 20-file change.
+
+Gate re-run after the strip: lint clean, build clean, `npm test` 405 files /
+6,434 tests, and the full Playwright suite **288 passed / 0 failed / 9 skipped**
+— the standing six gated beats plus this lane's three, so no existing beat
+moved.
+
 #### 2026-09-07 — docs(subprompts): say why the editor dialog's footer is hand-rolled rather than qt-form-actions
 
 _Versions: SPA 0.5.672._

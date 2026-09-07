@@ -249,6 +249,7 @@ describe('NewChatForm roleplay template picker', () => {
   });
 });
 
+
 // --- The Concierge picker (v4 `303288fb4` NewChatForm.test.tsx) ---------------
 
 /**
@@ -361,12 +362,7 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
   ): void {
     const c = char('c1', 'Aria', { scenarios });
     const cast: NewChatSelectedCharacter[] = [
-      {
-        character: c,
-        connectionProfileId: 'p1',
-        selectedSystemPromptId: null,
-        controlledBy: 'llm',
-      },
+      { character: c, connectionProfileId: 'p1', selectedSystemPromptId: null, controlledBy: 'llm' },
     ];
     state.selectedCharacters.set(cast);
   }
@@ -383,9 +379,9 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
    * autonomous toggle above it), so scope by the label's own text.
    */
   function archivedBox(fixture: ComponentFixture<NewChatForm>): HTMLInputElement {
-    const label = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('label')).find(
-      (l) => (l.textContent ?? '').trim() === 'Show archived',
-    );
+    const label = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
+    ).find((l) => (l.textContent ?? '').trim() === 'Show archived');
     if (!label) throw new Error('no "Show archived" label rendered');
     return label.querySelector('input[type="checkbox"]') as HTMLInputElement;
   }
@@ -440,9 +436,7 @@ describe('NewChatForm — archived scenarios and the group tier', () => {
     ]);
     const fixture = render(state);
     const groups = [
-      ...(fixture.nativeElement as HTMLElement).querySelectorAll(
-        '#new-chat-scenario-select optgroup',
-      ),
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('#new-chat-scenario-select optgroup'),
     ].map((g) => g.getAttribute('label'));
     expect(groups).toContain('Group Scenarios: The Irregulars');
     expect(optionTexts(fixture)).toContain('The Den');

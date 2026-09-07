@@ -24,7 +24,10 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
   it('jobs drives BOTH the chips and the tasks queue', () => {
     expect(queryKeysForTopic('jobs')).toEqual([systemJobsKeys.all, tasksQueueKeys.all]);
     // v4 ignores an id on this topic; so does v5.
-    expect(queryKeysForTopic('jobs', 'anything')).toEqual([systemJobsKeys.all, tasksQueueKeys.all]);
+    expect(queryKeysForTopic('jobs', 'anything')).toEqual([
+      systemJobsKeys.all,
+      tasksQueueKeys.all,
+    ]);
   });
 
   it('autonomousRooms drives the one room key', () => {
@@ -92,7 +95,7 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
   });
 });
 
-describe("realtimeHintFromFrame (§B.5 discrimination + v4's safeParse)", () => {
+describe('realtimeHintFromFrame (§B.5 discrimination + v4\'s safeParse)', () => {
   it('accepts the wire shape §B.2 pins, with and without a scope id', () => {
     expect(realtimeHintFromFrame({ v: 1, topic: 'jobs', at: 17 })).toEqual({
       v: 1,

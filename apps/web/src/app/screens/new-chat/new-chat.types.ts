@@ -37,7 +37,10 @@ export {
   GENERAL_SCENARIO_PREFIX,
   GROUP_SCENARIO_PREFIX,
 } from '../../scenario/scenario.types';
-import type { CharacterScenario, ProjectScenarioOption } from '../../scenario/scenario.types';
+import type {
+  CharacterScenario,
+  ProjectScenarioOption,
+} from '../../scenario/scenario.types';
 
 /** The special connection-profile option that flips a cast entry to the user (v4 `USER_CONTROLLED_PROFILE`). */
 export const USER_CONTROLLED_PROFILE = '__USER_CONTROLLED__';

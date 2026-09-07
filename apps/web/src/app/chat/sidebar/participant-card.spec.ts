@@ -60,7 +60,9 @@ function cardProviders() {
   ];
 }
 
-function mount(inputs: Record<string, unknown> = {}): ComponentFixture<ParticipantCard> {
+function mount(
+  inputs: Record<string, unknown> = {},
+): ComponentFixture<ParticipantCard> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({ imports: [ParticipantCard], providers: cardProviders() });
   const fixture = TestBed.createComponent(ParticipantCard);
@@ -133,13 +135,11 @@ describe('ParticipantCard — the restored cast controls', () => {
 
   it('renders the system-prompt select only when the character has named prompts', () => {
     const bare = mount({});
-    expect(
-      selects(bare).some((s) => (s.getAttribute('aria-label') ?? '').includes('System prompt')),
-    ).toBe(false);
+    expect(selects(bare).some((s) => (s.getAttribute('aria-label') ?? '').includes('System prompt'))).toBe(
+      false,
+    );
     // The rebuild button is offered either way (v4 :455-469).
-    expect(
-      bare.nativeElement.querySelector('[aria-label="Rebuild system prompt for Bram"]'),
-    ).toBeTruthy();
+    expect(bare.nativeElement.querySelector('[aria-label="Rebuild system prompt for Bram"]')).toBeTruthy();
 
     const withPrompts = mount({});
     withPrompts.componentRef.setInput(
@@ -274,9 +274,7 @@ describe('ParticipantCard — the restored cast controls', () => {
     expect(seen).toEqual(['p-1']);
 
     expect(
-      mount({ canRemove: false }).nativeElement.querySelector(
-        '[aria-label="Remove Bram from chat"]',
-      ),
+      mount({ canRemove: false }).nativeElement.querySelector('[aria-label="Remove Bram from chat"]'),
     ).toBeNull();
     expect(
       mount({ canRemove: true, isUserParticipant: true }).nativeElement.querySelector(
