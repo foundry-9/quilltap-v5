@@ -12,6 +12,29 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(subprompts): the pure helpers + the `subprompts_helpers_equivalence` tier-1 family (P4.D163 unit 2)
+
+_Versions: core 0.0.821, harness 0.0.711._
+
+New `quilltap_core::subprompts` (v4 `lib/subprompts/subprompts.ts` at
+`2f4254b42`): the constants, the `Subprompt` / `SubpromptForPrompt` records in
+v4's key order, the two error shapes with v4's sentences, and the five pure
+helpers — `is_valid_subprompt_id` (UTF-16 length 1..=120, `.`/`..`, the nine
+reserved characters, any code unit below 32, JS `trim` identity),
+`subprompt_path_for_id`, `slugify_subprompt_title` (NFKD → the U+0300–036F
+strip → JS lowercase → `[^a-z0-9]+` → `-` → edge trim → `slice(0,60)` →
+trailing-hyphen re-trim → `subprompt` fallback), `compose_subprompt_content`
+(over the existing `serialize_frontmatter` twin) and `parse_subprompt_content`
+(over `parse_frontmatter`'s UTF-16 `bodyStartOffset`; leading `\n`s stripped,
+JS `trimEnd`; the title falls back to the id) — plus the two validators'
+sentences. A new committed corpus (`harness/oracle/fixtures/subprompts-
+helpers.json`: 45 ids, 32 slugs, 24 compose, 34 parse, 4 paths) driven through
+v4's REAL exports by `harness/oracle/cases/subprompts-helpers.ts`; the Rust
+family compares 139 rows byte for byte and asserts coverage by shape. Five
+mutation proofs recorded in the lane record (each reddening the row it was
+aimed at: U+FEFF trim, the post-cut hyphen re-trim, code points vs UTF-16 on
+the 120-cap, the combining-mark strip, the leading-newline-only body strip).
+
 #### 2026-09-07 — feat(chats): the participant `selectedSubpromptIds` carry — a data-safety fix landed first (P4.D163 unit 1)
 
 _Versions: core 0.0.820, harness 0.0.710._

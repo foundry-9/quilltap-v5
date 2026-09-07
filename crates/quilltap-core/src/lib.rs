@@ -235,6 +235,9 @@ pub mod stable_sort;
 pub mod staff_display_names;
 pub mod standing_instructions;
 pub mod state;
+// === P4.D163 ===
+pub mod subprompts;
+// === end P4.D163 ===
 pub mod system_prompt;
 pub mod tag_style;
 pub mod template_prompt_hint;

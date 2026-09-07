@@ -111799,3 +111799,55 @@ array`; `[1]` → `invalid_type expected string` at `[…,0]`; `['😀'×120]` O
 (code points); `['', …100 more]` → the element issue THEN the array issue.
 
 Versions: core 0.0.820, harness 0.0.710.
+
+### Unit 2 — the `subprompts` pure helpers + `subprompts_helpers_equivalence` (tier 1)
+
+NEW `crates/quilltap-core/src/subprompts/mod.rs` (the `// === P4.D163 ===`
+fence in `lib.rs`): `SUBPROMPTS_FOLDER` / `SUBPROMPT_TITLE_MAX_LENGTH` (100) /
+`SUBPROMPT_ID_MAX_LENGTH` (120); `Subprompt` (§C.1 key order) and
+`SubpromptForPrompt`; `SubpromptNotFoundError` (`Subprompt "<id>" not found for
+character <cid>`) and `SubpromptValidationError` (the message IS the wire);
+`is_valid_subprompt_id` (+ the `_value` twin for the `typeof` arm),
+`subprompt_path_for_id`, `slugify_subprompt_title`, `compose_subprompt_content`
+(over `doc_edit::markdown_parser::serialize_frontmatter`),
+`parse_subprompt_content` (over `markdown::parse_frontmatter` + `utf16_slice_
+from`), the private `is_root_subprompt_file` / `id_from_relative_path`, and the
+two validators with v4's three sentences. NFKD comes from the crate's existing
+`unicode-normalization` dependency — no dependency add.
+
+**The family.** `harness/oracle/fixtures/subprompts-helpers.json` (45 ids, 32
+slugs, 24 compose, 34 parse, 4 paths — the order's floors met: both dot forms,
+every reserved character, U+0001/tab/newline, U+007F allowed, leading/trailing
+U+0020 / U+00A0 / U+3000 / U+FEFF / LF, 120 vs 121 ASCII units, one astral and
+60 vs 61 astral, NFC vs NFD é, hangul, four non-string inputs; accented Latin,
+fullwidth, Turkish İ and ı, ß, umlauts, the ﬁ ligature, Ⅻ, Ǆ, emoji, the
+61-char title whose 60th char is `-`, exactly 60, 200 chars, only hyphens,
+CJK/Cyrillic/Greek (⇒ `subprompt`), the Kelvin/Ångström signs; compose with
+CRLF, NBSP edges, YAML-special titles incl. `|-` block scalars; parse with no
+frontmatter, blank / non-string / null titles, CRLF (NOT frontmatter), leading
+blank lines, trailing whitespace, a `---` body, no closing delimiter, invalid
+YAML, a scalar YAML root, a leading-NBSP body). `harness/oracle/cases/
+subprompts-helpers.ts` drives v4's REAL exports at the pin → 139 NDJSON rows;
+`crates/quilltap-harness/tests/subprompts_helpers_equivalence.rs` compares
+field for field and asserts coverage by shape + per-kind floors. **139/139 on
+the first run.** The recipe extracts cleanly under the sweep driver (`--show`
+verified; the header follows `recipe-header-conventions`).
+
+**Findings the corpus settled:** JS `trim` strips U+FEFF where Rust's
+`str::trim` keeps it (`trailing-bom-feff` → invalid on v4; `jsstr::js_trim`
+agrees); a leading NBSP in the body SURVIVES (`replace(/^\n+/, '')` strips
+only `\n`) while a trailing one is trimmed (`nbsp-body-edges` → `" body"`);
+a CRLF file is not frontmatter to either side (`crlf` → the whole raw is the
+body, `title` = the id); `ısı` → `s` and `Straße` → `stra-e` (no
+decomposition for ı/ß, swept by the class replace); the 60th-char hyphen row
+→ 59 `a`s (cut then re-trim).
+
+**Mutation proofs (each restored by file backup):** `js_trim` → `str::trim`
+in `is_valid_subprompt_id` reddened `id/trailing-bom-feff`; the post-cut
+`trim_end_matches('-')` dropped reddened `slug/60th-char-hyphen`; `utf16_len`
+→ `chars().count()` reddened `id/astral-61-is-122-units`; the combining-mark
+strip dropped reddened `slug/accented` (and siblings); the leading-newline
+strip widened to `trim_start()` reddened `parse/nbsp-body-edges` +
+`parse/leading-space-in-body-kept`. Green after restore.
+
+Versions: core 0.0.821, harness 0.0.711.
