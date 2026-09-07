@@ -241,6 +241,24 @@ async function main(): Promise<void> {
     } as never);
   }
 
+  // 4a. [P4.D164 / v4 `2f4254b42`] Aria's vault gets a `Subprompts/` folder,
+  //     so a create whose opener seat selects ids can show the block in BOTH
+  //     places the create path renders it: the greeting head (the canned
+  //     stream's system message) and the green room's user message. `terse.md`
+  //     templates `{{char}}`/`{{user}}`; `Verse.md` is mixed case (selected as
+  //     "VERSE"). Written through v4's REAL document-store writer.
+  {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+    const { composeSubpromptContent, SUBPROMPTS_FOLDER } = await import('@/lib/subprompts/subprompts');
+    const raw = await repos.characters.findByIdRaw(spec.characters.aria.id as string);
+    const vault = raw?.characterDocumentMountPointId as string | null | undefined;
+    if (!vault) throw new Error('Aria has no vault mount point');
+    await ensureFolderPath(vault, SUBPROMPTS_FOLDER);
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/terse.md`, composeSubpromptContent('Be terse', '{{char}} answers {{user}} in one line.'));
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/Verse.md`, composeSubpromptContent('Answer in verse', 'Every reply is a quatrain.'));
+  }
+
   // 4b. P4.D39 — the wardrobe, across all THREE tiers, so the chat-start
   //     dressing this fixture exercises can be measured at all. Before this the
   //     capstone had no wardrobe of any kind and every created chat's

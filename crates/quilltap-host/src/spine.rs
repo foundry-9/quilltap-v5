@@ -776,6 +776,7 @@ where
                 &self.db,
                 &*self.completion,
                 &executor,
+                &req.chat_id,
                 &req.character_id,
                 req.scenario_text.as_deref(),
                 req.cheap_settings.as_ref(),

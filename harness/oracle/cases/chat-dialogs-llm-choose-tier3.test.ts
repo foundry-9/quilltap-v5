@@ -171,9 +171,26 @@ async function readTables(chatId: string): Promise<unknown> {
 
 interface CaseSpec {
   name: string;
-  action: 'add-participant' | 'merge-conversation';
+  /** [P4.D164 / v4 `2f4254b42`] `apply-outfit-selections` drives v4's REAL
+   *  `applyOutfitSelections` DIRECTLY over `chatId` (no route) — the only way
+   *  a seat that ALREADY carries `selectedSubpromptIds` can reach the green
+   *  room: the add-participant body has no such key and `applyChatMerge`
+   *  builds the joining seat from explicit fields, so neither route can ever
+   *  hand the consult a selecting seat (measured at the pin). The `body` is
+   *  the `OutfitSelection[]`; the reduced body claim is `{}`. */
+  action: 'add-participant' | 'merge-conversation' | 'apply-outfit-selections';
   chatId: string;
   body: unknown;
+  /** [P4.D164] Seed a seat for `characterId` on the TARGET chat's participants
+   *  (raw JSON update on the fresh copy, never a route) carrying the given
+   *  `selectedSubpromptIds` and `controlledBy`, and plant `Subprompts/*.md`
+   *  in that character's vault through the RAW document-store write. */
+  seedSeat?: {
+    characterId: string;
+    controlledBy: 'llm' | 'user';
+    selectedSubpromptIds: string[];
+    subprompts: Array<{ file: string; title: string; content: string }>;
+  };
   reply?: string; // key into spec.cannedOutfits
   throws?: boolean;
   /** [P4.D119 / v4 `b86bb1a5`] Seed `Wardrobe/instructions.md` on the fresh
@@ -238,6 +255,45 @@ async function runCase(
     await writeDatabaseDocument(mp, 'Wardrobe/instructions.md', seed.content);
   }
 
+  if (c.seedSeat) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+    const { composeSubpromptContent, SUBPROMPTS_FOLDER } = await import('@/lib/subprompts/subprompts');
+    const seed = c.seedSeat;
+    const row = await getRepositories().characters.findByIdRaw(seed.characterId);
+    const mp = (row?.characterDocumentMountPointId as string) ?? null;
+    if (!mp) throw new Error(`no vault for seedSeat character ${seed.characterId}`);
+    await ensureFolderPath(mp, SUBPROMPTS_FOLDER);
+    for (const sp of seed.subprompts) {
+      await writeDatabaseDocument(mp, `${SUBPROMPTS_FOLDER}/${sp.file}`, composeSubpromptContent(sp.title, sp.content));
+    }
+    const main = getRawDatabase();
+    if (!main) throw new Error('main db handle unavailable');
+    const cur = main.prepare('SELECT participants FROM chats WHERE id = ?').get(c.chatId) as { participants: string } | undefined;
+    if (!cur) throw new Error(`seedSeat: chat ${c.chatId} missing`);
+    const participants = JSON.parse(cur.participants) as Array<Record<string, unknown>>;
+    participants.push({
+      id: 'e5000000-0000-4000-8000-00000d164001',
+      type: 'CHARACTER',
+      characterId: seed.characterId,
+      controlledBy: seed.controlledBy,
+      connectionProfileId: null,
+      imageProfileId: null,
+      selectedSystemPromptId: null,
+      selectedSubpromptIds: seed.selectedSubpromptIds,
+      displayOrder: participants.length,
+      isActive: true,
+      status: 'active',
+      hasHistoryAccess: false,
+      joinScenario: null,
+      createdAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-01T00:00:00.000Z',
+    });
+    main.prepare('UPDATE chats SET participants = ? WHERE id = ?').run(JSON.stringify(participants), c.chatId);
+  }
+
   if (c.archiveTier) {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     const { getRepositories } = await import('@/lib/repositories/factory');
@@ -295,6 +351,21 @@ async function runCase(
   } as unknown as DateConstructor;
 
   try {
+    if (c.action === 'apply-outfit-selections') {
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      const { applyOutfitSelections } = await import('@/lib/wardrobe/apply-outfit-selections');
+      await applyOutfitSelections(c.chatId, c.body as never, getRepositories() as never, {
+        userId: spec.userId,
+        projectMountPointIds: [],
+      });
+      return {
+        name: c.name,
+        status: 200,
+        body: {},
+        llmMessages: seenMessages,
+        tables: await readTables(c.chatId),
+      };
+    }
     const route = (await import('@/app/api/v1/chats/[id]/route')) as never as Record<
       string,
       (...a: unknown[]) => Promise<unknown>
@@ -641,6 +712,58 @@ async function main(): Promise<void> {
         outfitSelection: { characterId: PIP, mode: 'llm_choose' },
       },
       reply: 'stringyDeliberate',
+    },
+    // ── P4.D164 / v4 `2f4254b42` — the green-room subprompts note ────────
+    // Neither route can seat a character WITH ids (see `CaseSpec.action`), so
+    // these drive v4's REAL `applyOutfitSelections` over a seat seeded on the
+    // target with a selection: the LLM seat's ids reach the user message as
+    // `Additional Instructions in play for this scene …` (title + trimmed
+    // content, NO template processing — the `{{char}}` stays literal); a USER
+    // seat carrying the same ids never reaches the note (the resolver's
+    // `controlledBy !== 'user'` filter); dangling ids render nothing.
+    {
+      name: 'apply_llm_choose_llm_seat_with_subprompts',
+      action: 'apply-outfit-selections',
+      chatId: MERGE_TARGET,
+      body: [{ characterId: PIP, mode: 'llm_choose' }],
+      reply: 'pipPick',
+      seedSeat: {
+        characterId: PIP,
+        controlledBy: 'llm',
+        selectedSubpromptIds: ['oilskins', 'QUIET'],
+        subprompts: [
+          { file: 'oilskins.md', title: 'Keep to oilskins', content: '\n{{char}} wears oilskins on the quay, whatever the hour.\n\n' },
+          { file: 'Quiet.md', title: 'Speak softly', content: 'Never raise your voice.' },
+        ],
+      },
+    },
+    {
+      name: 'apply_llm_choose_user_seat_ids_never_reach_the_note',
+      action: 'apply-outfit-selections',
+      chatId: MERGE_TARGET,
+      body: [{ characterId: PIP, mode: 'llm_choose' }],
+      reply: 'pipPick',
+      seedSeat: {
+        characterId: PIP,
+        controlledBy: 'user',
+        selectedSubpromptIds: ['oilskins'],
+        subprompts: [
+          { file: 'oilskins.md', title: 'Keep to oilskins', content: 'You wear oilskins on the quay.' },
+        ],
+      },
+    },
+    {
+      name: 'apply_llm_choose_dangling_ids_render_nothing',
+      action: 'apply-outfit-selections',
+      chatId: MERGE_TARGET,
+      body: [{ characterId: PIP, mode: 'llm_choose' }],
+      reply: 'pipPick',
+      seedSeat: {
+        characterId: PIP,
+        controlledBy: 'llm',
+        selectedSubpromptIds: ['gone'],
+        subprompts: [],
+      },
     },
   ];
 

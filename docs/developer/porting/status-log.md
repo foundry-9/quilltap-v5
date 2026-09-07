@@ -112284,3 +112284,67 @@ Versions: core 0.0.823.
   planted in `build-chat-create-capstone.ts`) is spliced now and regenerated
   ONCE after unit 5 (the green-room bytes land there too) — see unit 5.
 - Versions: core 0.0.827, harness 0.0.716.
+
+### Unit 5 — the green room (the fifth bullet, the `subpromptsNote`, the seat resolver at BOTH entrances), mutation-proven by differential
+
+- `services/outfit_selections.rs`: `OUTFIT_SELECTION_PROMPT`'s fifth bullet
+  after the dressing one (byte-exact; every pre-existing `outfit_llm_choose_
+  tier3` row moved by EXACTLY the bullet — 19/19 green on the regenerated
+  oracle with no other change); `build_outfit_messages` gains `subprompts`
+  and renders `\nAdditional Instructions in play for this scene (addressed to
+  {name} in the second person — "you" is {name}):\n` + `### {title}\n
+  {js_trim(content)}` joined `\n\n` — NO template processing (a `{{char}}`
+  stays literal, pinned) — after the dressing note; `choose_llm_outfit` gains
+  the sibling `resolve_subprompts: G` closure (called right before the
+  consult; the debug line with `count` when non-empty);
+  `resolve_subprompts_for_seat_conn(main, mount, chat_id, character_id)` =
+  v4's `resolveSubpromptsForSeat` (the FIRST seat with the character's id
+  whose `controlledBy != user` and `status != removed`; `selectedSubpromptIds
+  ?? []`; empty → `[]` without the resolver; a read failure → the warn +
+  `[]`) + the `_for` wrapper for the `Db` entrances; `run_llm_choose_via_db`
+  gains `chat_id` (the request already carried it — the host spine and the
+  tier-3 runner pass `req.chat_id`); `resolve_llm_choose` (the create spine)
+  passes the conn resolver. **The create path's ordering measured:**
+  `chat_create.rs` step 8 creates the chat, step 9 consults — persisted before
+  the consult as v4 states, no divergence.
+- **The out-of-create entrances cannot be reached with a selecting seat
+  through v4's REAL routes** (recorded in the lane header): the add body has
+  no `selectedSubpromptIds`, the merge builds the joining seat from explicit
+  fields. So `chat-dialogs-llm-choose-tier3.test.ts` gains a THIRD action,
+  `apply-outfit-selections`, driving v4's REAL `applyOutfitSelections`
+  directly over a seat seeded on the target (raw participants-cell update +
+  `Subprompts/` planted through the real document-store writer), and the Rust
+  family mirrors it by driving the CREATE-SPINE batch
+  (`apply_outfit_selections` → `resolve_llm_choose`) over a `Writer` pair —
+  **which also closes the P4.D119 guard's recorded gap ("no differential
+  drives the create entrance's consult")**. Cases: `apply_llm_choose_llm_seat_
+  with_subprompts` (ids `["oilskins","QUIET"]`; the note with the literal
+  `{{char}}` and the trimmed body), `apply_llm_choose_user_seat_ids_never_
+  reach_the_note` (a USER seat carrying ids → no note), `apply_llm_choose_
+  dangling_ids_render_nothing`. Regenerated at the pin; 22/22 green
+  (messages + tables). `outfit_instructions_wiring_guard` gains the sibling
+  test (definition/call counts for both resolvers, the empty-closure census,
+  the reach into `resolve_selected_subprompts`).
+- **Family attribution corrected:** the order's `chats_outfits_tier2_
+  equivalence` "seat-with-ids case" — that family is the repo-level
+  equipped-outfit ops (`chats-outfits-tier2.ts`), which never consult a
+  model; the seat-with-ids + user-seat arms live in the tier-3 family above.
+- **Unit 7's pins (this file's `tests`):** the bullet's slot (byte-exact), the
+  note's bytes / trim / no-processing / omitted-when-empty (the note is the
+  ONLY difference in the user message), the WARN on a read failure with v4's
+  sentence + `chat_id`/`character_id`/`error` and its SILENCE on a chat
+  without such a seat (over a provisioned instance), and the DEBUG line
+  firing through `choose_llm_outfit` with `count=1` for exactly the consult
+  whose resolver returns items (thread-scoped capture). The compiler and
+  fallback WIRING pins are the differentials themselves: unit 2's red-first
+  and unit 3's M1 each redden when their site stops reaching the resolver —
+  stronger than a source walk, recorded in place of one.
+- The capstone (`chat_create_capstone_equivalence`): Aria's `Subprompts/`
+  planted in `build-chat-create-capstone.ts`; corpus 119 → 121 with
+  `sp_greeting_and_green_room_carry_block` (an opener seat selecting
+  `["terse","VERSE","gone"]` + `llm_choose` — the block in the persisted head,
+  Aria has a stored first message so nothing streams, and the note in the
+  outfit `send`) and `sp_greeting_dangling_ids_render_nothing`. Regenerated
+  ONCE at the pin after units 4 + 5 (`/tmp/p4d164-cc-regen.sh` = the family
+  header's recipe); the run recorded below.
+- Versions: core 0.0.828, host 0.0.109, harness 0.0.717.

@@ -27,13 +27,16 @@ use std::sync::{Arc, Mutex};
 
 use quilltap_core::api::types::Response;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::db::Writer;
 use quilltap_core::model::completion::{
     CompletionError, CompletionParams, CompletionProvider, CompletionResponse, CompletionUsage,
 };
 use quilltap_core::services::chat_participants::ParticipantAddData;
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
+use quilltap_core::services::creation_progress::CreationProgressEmitter;
 use quilltap_core::services::outfit_selections::{
-    run_llm_choose_via_db, OutfitLlmChooseRequest, OutfitLlmChooseRunner,
+    apply_outfit_selections, run_llm_choose_via_db, OutfitContext, OutfitLlmChooseRequest,
+    OutfitLlmChooseRunner, OutfitSelection,
 };
 use quilltap_core::wardrobe::Slots;
 use serde::Deserialize;
@@ -119,6 +122,7 @@ impl OutfitLlmChooseRunner for CannedRunner {
                 &self.db,
                 &*self.provider,
                 &executor,
+                &req.chat_id,
                 &req.character_id,
                 req.scenario_text.as_deref(),
                 req.cheap_settings.as_ref(),
@@ -199,15 +203,18 @@ fn first_diff(got: &str, want: &str) -> String {
 /// The oracle's `readTables` mirror.
 fn dump_tables(db: &Db, chat_id: &str) -> Value {
     let cid = chat_id.to_string();
-    let chat = db
-        .read_main(move |c| quilltap_core::db::chats_read::find_by_id(c, &cid))
+    db.read_main(move |c| Ok(dump_tables_conn(c, &cid)))
+        .unwrap()
+}
+
+/// [`dump_tables`] over an open main connection (the apply arm holds a
+/// `Writer` pair rather than a `Db`).
+fn dump_tables_conn(c: &rusqlite::Connection, chat_id: &str) -> Value {
+    let chat = quilltap_core::db::chats_read::find_by_id(c, chat_id)
         .unwrap()
         .unwrap_or(Value::Null);
-    let equipped = db
-        .read_main(|c| {
-            quilltap_core::db::chats_outfits::ChatOutfitsRepository::new(c)
-                .get_equipped_outfit(chat_id)
-        })
+    let equipped = quilltap_core::db::chats_outfits::ChatOutfitsRepository::new(c)
+        .get_equipped_outfit(chat_id)
         .unwrap()
         .unwrap_or_else(|| json!({}));
     let participants: Vec<Value> = chat
@@ -274,6 +281,15 @@ fn outfit_llm_choose_matches_oracle() {
         /// TO END through the recorded prompt rather than by a pool unit test.
         /// `"all"` is v4's "hands the LLM nothing at all" case.
         archive_tier: Option<&'a str>,
+        /// [P4.D164 / v4 `2f4254b42`] `Some` = the `apply-outfit-selections`
+        /// action: seed a seat for `character` on the TARGET carrying these
+        /// ids (raw participants-cell update on the fresh copy) + plant the
+        /// `Subprompts/` files in its vault, then drive the CREATE-SPINE batch
+        /// (`apply_outfit_selections` → `resolve_llm_choose`) directly — the
+        /// oracle drives v4's REAL `applyOutfitSelections` the same way. The
+        /// only way a seat that ALREADY carries ids reaches the green room:
+        /// neither route can seat one (see the oracle case's `CaseSpec`).
+        seed_seat: Option<SeedSeat>,
     }
     let cases = [
         Case {
@@ -284,6 +300,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         Case {
             name: "add_llm_choose_invalid_ids",
@@ -293,6 +310,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         Case {
             name: "add_llm_choose_provider_fails",
@@ -302,6 +320,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         Case {
             name: "merge_llm_choose_pick",
@@ -311,6 +330,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         Case {
             name: "merge_llm_choose_provider_fails",
@@ -320,6 +340,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         // ── P4.D39 / v4 `8bb1a958` ────────────────────────────────────────
         // THE GUARD FIX: Wren owns no wardrobe. Before the fix the candidate
@@ -334,6 +355,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: WREN,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         // ── P4.D71 / v4 `8600c83f` ────────────────────────────────────────
         // THE GROUP TIER AT CHAT START. Wren is a Lamplighter with an empty
@@ -352,6 +374,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: WREN,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         // The validator used to drop any id outside the character's own vault,
         // so a pick from the shared tier evaporated.
@@ -363,6 +386,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         // Naked on purpose — honoured, no default fallback.
         Case {
@@ -373,6 +397,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         // The same empty answer with no flag reads as a failure to choose.
         Case {
@@ -383,6 +408,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
         },
         // ── P4.D120 / v4 `d25dacc1` ───────────────────────────────────────
         // ARCHIVED GARMENTS NEVER AUDITION, in any tier, with no parameter and
@@ -398,6 +424,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: Some("character"),
+            seed_seat: None,
         },
         Case {
             name: "add_llm_choose_archived_general_tier_never_auditions",
@@ -407,6 +434,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: Some("general"),
+            seed_seat: None,
         },
         Case {
             name: "add_llm_choose_archived_group_tier_never_auditions",
@@ -416,6 +444,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: WREN,
             seed_instructions: None,
             archive_tier: Some("group"),
+            seed_seat: None,
         },
         Case {
             // Every tier archived: the pool is empty, so the consult never
@@ -427,6 +456,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: Some("all"),
+            seed_seat: None,
         },
         // ── P4.D119 / v4 `b86bb1a5` ───────────────────────────────────────
         // Dressing instructions reach the outfit-selection prompt. The system
@@ -445,6 +475,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "  You keep to oilskins on the quay, whatever the hour.  \n",
             )),
             archive_tier: None,
+            seed_seat: None,
         },
         // The merge entrance, same seed.
         Case {
@@ -458,6 +489,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "You keep to oilskins on the quay, whatever the hour.",
             )),
             archive_tier: None,
+            seed_seat: None,
         },
         Case {
             name: "add_llm_choose_with_general_instructions",
@@ -470,6 +502,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "The house dresses for the weather, not the occasion.",
             )),
             archive_tier: None,
+            seed_seat: None,
         },
         // A whitespace-only file counts as absent: the user message must be
         // BYTE-IDENTICAL to `add_llm_choose_pick`'s.
@@ -481,6 +514,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: Some(("character", "   \n  ")),
             archive_tier: None,
+            seed_seat: None,
         },
         // Only a real boolean counts.
         Case {
@@ -491,10 +525,87 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_seat: None,
+        },
+        // ── P4.D164 / v4 `2f4254b42` — the green-room subprompts note ────
+        // The LLM seat's ids reach the user message as `Additional
+        // Instructions in play for this scene …` (title + TRIMMED content,
+        // NO template processing — `{{char}}` stays literal); a USER seat
+        // carrying the same ids never reaches the note; dangling ids render
+        // nothing. These drive the CREATE-SPINE entrance (`resolve_llm_choose`
+        // through `apply_outfit_selections`) — the entrance the P4.D119 guard
+        // records as otherwise un-driven by any differential.
+        Case {
+            name: "apply_llm_choose_llm_seat_with_subprompts",
+            add: false,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: None,
+            seed_seat: Some(SeedSeat {
+                controlled_by: "llm",
+                ids: &["oilskins", "QUIET"],
+                subprompts: &[
+                    (
+                        "oilskins.md",
+                        "Keep to oilskins",
+                        "\n{{char}} wears oilskins on the quay, whatever the hour.\n\n",
+                    ),
+                    ("Quiet.md", "Speak softly", "Never raise your voice."),
+                ],
+            }),
+        },
+        Case {
+            name: "apply_llm_choose_user_seat_ids_never_reach_the_note",
+            add: false,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: None,
+            seed_seat: Some(SeedSeat {
+                controlled_by: "user",
+                ids: &["oilskins"],
+                subprompts: &[(
+                    "oilskins.md",
+                    "Keep to oilskins",
+                    "You wear oilskins on the quay.",
+                )],
+            }),
+        },
+        Case {
+            name: "apply_llm_choose_dangling_ids_render_nothing",
+            add: false,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: None,
+            seed_seat: Some(SeedSeat {
+                controlled_by: "llm",
+                ids: &["gone"],
+                subprompts: &[],
+            }),
         },
     ];
 
     for c in cases {
+        if let Some(seed) = &c.seed_seat {
+            drive_apply_case(
+                &spec,
+                c.name,
+                c.character,
+                c.reply,
+                c.throws,
+                seed,
+                &rt,
+                &oracle,
+                &mut driven,
+                &mut failed,
+            );
+            continue;
+        }
         let db = fresh_db(&spec, c.name);
         if let Some((scope, content)) = c.seed_instructions {
             seed_instructions_file(&db, scope, c.character, content);
@@ -634,6 +745,166 @@ fn outfit_llm_choose_matches_oracle() {
         failed.is_empty(),
         "llm-choose tier-3 mismatches: {failed:?}"
     );
+}
+
+/// [P4.D164] A seat seeded on the target for the `apply-outfit-selections` arm.
+struct SeedSeat {
+    controlled_by: &'static str,
+    ids: &'static [&'static str],
+    /// `(file, title, content)` — composed through the REAL
+    /// `compose_subprompt_content`, as the oracle's seeding does.
+    subprompts: &'static [(&'static str, &'static str, &'static str)],
+}
+
+/// [P4.D164] The `apply-outfit-selections` arm: a `Writer` pair over fresh
+/// copies (the create spine holds open connections, not a `Db`), the seat +
+/// vault seeding, then `apply_outfit_selections` — resolve AND persist, so the
+/// `tables` comparand reads the same `equippedOutfit` v4's apply wrote.
+#[allow(clippy::too_many_arguments)]
+fn drive_apply_case(
+    spec: &Spec,
+    name: &str,
+    character_id: &str,
+    reply: Option<&str>,
+    throws: bool,
+    seed: &SeedSeat,
+    rt: &tokio::runtime::Runtime,
+    oracle: &HashMap<String, Value>,
+    driven: &mut BTreeSet<String>,
+    failed: &mut Vec<String>,
+) {
+    let scratch = std::env::temp_dir().join(format!("qt-lc-{}-{}", name, std::process::id()));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).unwrap();
+    let main_path = scratch.join("main.db");
+    let mount_path = scratch.join("mount.db");
+    std::fs::copy(fixtures_dir().join("chat-dialogs-main.db"), &main_path).unwrap();
+    std::fs::copy(fixtures_dir().join("chat-dialogs-mount.db"), &mount_path).unwrap();
+    let main_w = Writer::open_writable(&main_path, &spec.test_pepper_base64).expect("open main");
+    let mount_w = Writer::open_writable(&mount_path, &spec.test_pepper_base64).expect("open mount");
+    let main = main_w.connection();
+    let mount = mount_w.connection();
+
+    // The seat, on the TARGET's participants cell (a raw update — never a
+    // route), and the vault files through the REAL document-store writer.
+    let mp: String = main
+        .query_row(
+            "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+            [character_id],
+            |r| r.get::<_, Option<String>>(0),
+        )
+        .expect("character row")
+        .expect("the seeded character has a vault");
+    let links = quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount);
+    links
+        .ensure_folder_path(&mp, quilltap_core::subprompts::SUBPROMPTS_FOLDER)
+        .expect("ensure Subprompts/");
+    for (file, title, content) in seed.subprompts {
+        links
+            .write_database_document(
+                &mp,
+                &format!("{}/{file}", quilltap_core::subprompts::SUBPROMPTS_FOLDER),
+                &quilltap_core::subprompts::compose_subprompt_content(title, content),
+            )
+            .expect("plant subprompt");
+    }
+    let cell: String = main
+        .query_row(
+            "SELECT participants FROM chats WHERE id = ?1",
+            [MERGE_TARGET],
+            |r| r.get(0),
+        )
+        .expect("target participants");
+    let mut participants: Vec<Value> = serde_json::from_str(&cell).expect("participants JSON");
+    participants.push(json!({
+        "id": "e5000000-0000-4000-8000-00000d164001",
+        "type": "CHARACTER",
+        "characterId": character_id,
+        "controlledBy": seed.controlled_by,
+        "connectionProfileId": Value::Null,
+        "imageProfileId": Value::Null,
+        "selectedSystemPromptId": Value::Null,
+        "selectedSubpromptIds": seed.ids,
+        "displayOrder": participants.len(),
+        "isActive": true,
+        "status": "active",
+        "hasHistoryAccess": false,
+        "joinScenario": Value::Null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z",
+    }));
+    main.execute(
+        "UPDATE chats SET participants = ?1 WHERE id = ?2",
+        rusqlite::params![serde_json::to_string(&participants).unwrap(), MERGE_TARGET],
+    )
+    .expect("seed seat");
+
+    let provider = CannedOutfitProvider {
+        reply: reply.map(|k| spec.canned_outfits[k].clone()),
+        throws,
+        seen: Mutex::new(Vec::new()),
+    };
+    let executor = CheapLlmTaskExecutor::new();
+    let emitter = CreationProgressEmitter::inert();
+    let ctx = OutfitContext {
+        user_id: &spec.user_id,
+        project_mount_point_ids: &[],
+        scenario_text: None,
+        cheap_settings: None,
+        source_chat_id: None,
+    };
+    let selections = vec![OutfitSelection {
+        character_id: character_id.to_string(),
+        mode: "llm_choose".to_string(),
+        slots: None,
+    }];
+    let applied = rt.block_on(apply_outfit_selections(
+        main,
+        mount,
+        &provider,
+        &executor,
+        MERGE_TARGET,
+        &selections,
+        &ctx,
+        &emitter,
+    ));
+    driven.insert(name.to_string());
+    let Some(want) = oracle.get(name) else {
+        failed.push(format!("{name}_MISSING_FROM_ORACLE"));
+        return;
+    };
+    // v4's direct call answers nothing; the oracle records 200 + `{}`.
+    if want["status"].as_u64() != Some(200) || applied.is_err() {
+        eprintln!(
+            "[{name}] status drift (v4={}, v5 ok={})",
+            want["status"],
+            applied.is_ok()
+        );
+        failed.push(format!("{name}_status"));
+    }
+    if norm(&json!({})) != norm(&want["body"]) {
+        failed.push(format!("{name}_body"));
+    }
+    let seen = Value::Array(provider.seen.lock().unwrap().clone());
+    if norm(&seen) != norm(&want["llmMessages"]) {
+        eprintln!(
+            "[{name}] LLM MESSAGES MISMATCH:\n{}",
+            first_diff(&norm(&seen), &norm(&want["llmMessages"]))
+        );
+        failed.push(format!("{name}_llm_messages"));
+    } else {
+        eprintln!("[{name}] llm messages OK.");
+    }
+    let got_tables = dump_tables_conn(main, MERGE_TARGET);
+    if norm(&got_tables) != norm(&want["tables"]) {
+        eprintln!(
+            "[{name} tables] MISMATCH:\n{}",
+            first_diff(&norm(&got_tables), &norm(&want["tables"]))
+        );
+        failed.push(format!("{name}_tables"));
+    } else {
+        eprintln!("[{name} tables] OK.");
+    }
 }
 
 /// [P4.D119 / v4 `b86bb1a5`] Seed one `Wardrobe/instructions.md` on a fresh

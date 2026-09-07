@@ -2810,6 +2810,68 @@
           }
         ]
       }
+    },
+    {
+      "name": "sp_greeting_and_green_room_carry_block",
+      "progressId": "e0000000-0000-4000-8000-00000d164001",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingContent": "A quatrain, then: hello.",
+      "greetingUsage": {
+        "promptTokens": 40,
+        "completionTokens": 6,
+        "totalTokens": 46
+      },
+      "outfitContent": "{\"top\": [\"d0000000-0000-4000-8000-000000000004\"], \"bottom\": [], \"footwear\": [], \"accessories\": []}",
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-00000d164001",
+        "projectId": "d0000000-0000-4000-8000-0000000000f2",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002",
+            "selectedSubpromptIds": [
+              "terse",
+              "VERSE",
+              "gone"
+            ]
+          }
+        ],
+        "outfitSelections": [
+          {
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "mode": "llm_choose"
+          }
+        ]
+      }
+    },
+    {
+      "name": "sp_greeting_dangling_ids_render_nothing",
+      "progressId": "e0000000-0000-4000-8000-00000d164002",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "greetingContent": "Hello, plainly.",
+      "greetingUsage": {
+        "promptTokens": 30,
+        "completionTokens": 3,
+        "totalTokens": 33
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-00000d164002",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002",
+            "selectedSubpromptIds": [
+              "gone"
+            ]
+          }
+        ]
+      }
     }
   ],
   "dangerousContentSettings": {

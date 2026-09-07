@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(green-room): the subprompts note and the seat resolver at both outfit entrances (P4.D164 unit 5)
+
+_Versions: core 0.0.828, host 0.0.109, harness 0.0.717._
+
+v4 `2f4254b42`'s green room: `OUTFIT_SELECTION_PROMPT` gains its fifth
+bullet; the outfit user message gains the `Additional Instructions in play
+for this scene` note (title + trimmed body, no template processing) after
+the dressing note; `choose_llm_outfit` takes a sibling resolver closure, and
+both production entrances (`resolve_llm_choose` on the create spine,
+`run_llm_choose_via_db` behind the host runner — which now carries the chat
+id) resolve the seat's `selectedSubpromptIds` from the persisted participant
+record with v4's warn/debug lines. `outfit_llm_choose_tier3_equivalence`
+gains an `apply-outfit-selections` action driving v4's real
+`applyOutfitSelections` over a seeded seat (the only way a selecting seat
+reaches the consult — neither route can seat one), mirrored on the Rust side
+by the create-spine batch; 22/22 green at the pin with every pre-existing
+row moved by exactly the bullet. The wiring guard gains the sibling asserts;
+unit pins for the note, the bullet's slot, and the two log lines; the
+capstone corpus gains the greeting + green-room carry case.
+
 #### 2026-09-07 — feat(greeting): the opener's `## Additional Instructions` in the chat head (P4.D164 unit 4)
 
 _Versions: core 0.0.827, harness 0.0.716._

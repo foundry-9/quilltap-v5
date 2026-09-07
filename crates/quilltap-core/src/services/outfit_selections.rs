@@ -58,6 +58,7 @@ use crate::services::creation_progress::{
     CreationProgressEmitter, LogLevel, OutfitPreviewEntry, OutfitPreviewSlots,
 };
 use crate::services::image_job_common::build_cheap_llm_selection;
+use crate::subprompts::SubpromptForPrompt;
 use crate::tools::wardrobe_shared::resolve_equipped_outfit_leaf_values;
 use crate::wardrobe::{sort_for_default_outfit, Slots, WARDROBE_SLOT_TYPES};
 use crate::wardrobe_instructions::resolve_wardrobe_instructions;
@@ -70,6 +71,7 @@ const OUTFIT_SELECTION_PROMPT: &str = "You are a wardrobe assistant for a rolepl
 - The scenario/setting description
 - The character's personality
 - The character's own dressing instructions, when provided — these describe what the character prefers to wear and under what circumstances; weigh them heavily, above general appropriateness guesses
+- Any additional instructions in play for this scene, when provided — smaller standing directions the character is following in this particular conversation; honour anything in them that bears on dress
 
 Choose items that are contextually appropriate. For example, formal wear for a business meeting, casual clothes for relaxing at home, or era-appropriate costume for a historical setting.
 
@@ -294,6 +296,7 @@ fn build_outfit_messages(
     wardrobe_items: &[Value],
     scenario_text: Option<&str>,
     dressing_instructions: Option<&str>,
+    subprompts: &[SubpromptForPrompt],
 ) -> Vec<CompletionMessage> {
     let character_name = s(character, "name").unwrap_or_default();
     let note = |label: &str, field: &str| -> String {
@@ -323,6 +326,24 @@ fn build_outfit_messages(
             crate::jsstr::js_trim(instr)
         ),
         _ => String::new(),
+    };
+
+    // v4 `2f4254b42`: the seat's subprompts in play, surfaced so a standing
+    // direction that bears on dress reaches the green room too. Same second-
+    // person preamble shape as the dressing instructions; each item is
+    // `### {title}` + the body TRIMMED — and, unlike the identity stack, NO
+    // template processing (a `{{char}}` stays literal here). Empty → no note.
+    let subprompts_note = if subprompts.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\nAdditional Instructions in play for this scene (addressed to {character_name} in the second person — \"you\" is {character_name}):\n{}",
+            subprompts
+                .iter()
+                .map(|sp| format!("### {}\n{}", sp.title, crate::jsstr::js_trim(&sp.content)))
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        )
     };
 
     let wardrobe_section = wardrobe_items
@@ -367,7 +388,7 @@ fn build_outfit_messages(
         .join("\n");
 
     let user_content = format!(
-        "Character: {character_name}{manifesto_note}{description_note}{personality_note}{scenario_note}{instructions_note}\n\nAvailable Wardrobe Items:\n{wardrobe_section}\n\nChoose what {character_name} should wear for this scene:"
+        "Character: {character_name}{manifesto_note}{description_note}{personality_note}{scenario_note}{instructions_note}{subprompts_note}\n\nAvailable Wardrobe Items:\n{wardrobe_section}\n\nChoose what {character_name} should wear for this scene:"
     );
 
     vec![
@@ -779,7 +800,11 @@ pub enum LlmChooseOutcome {
 /// probe up to four vault files on an instance with no connection profiles, and
 /// would narrate the consult after the reads rather than before them).
 #[allow(clippy::too_many_arguments)]
-pub async fn choose_llm_outfit<C: CompletionProvider, F: FnOnce() -> Option<String>>(
+pub async fn choose_llm_outfit<
+    C: CompletionProvider,
+    F: FnOnce() -> Option<String>,
+    G: FnOnce() -> Vec<SubpromptForPrompt>,
+>(
     completion: &C,
     executor: &CheapLlmTaskExecutor,
     character: Option<&Value>,
@@ -788,6 +813,7 @@ pub async fn choose_llm_outfit<C: CompletionProvider, F: FnOnce() -> Option<Stri
     cheap_settings: Option<&Value>,
     scenario_text: Option<&str>,
     resolve_dressing_instructions: F,
+    resolve_subprompts: G,
     character_id: &str,
     emitter: Option<&CreationProgressEmitter>,
 ) -> LlmChooseOutcome {
@@ -813,11 +839,25 @@ pub async fn choose_llm_outfit<C: CompletionProvider, F: FnOnce() -> Option<Stri
     // Soft-fails to None — instructions never block the outfit choice.
     let dressing_instructions = resolve_dressing_instructions();
 
+    // Subprompts ticked on for this seat ride into the green room too (v4
+    // `2f4254b42`). The chat row is already persisted at every call site
+    // (creation — step 8 before step 9; add-participant; merge), so the seat's
+    // selection is readable here. Soft-fails to none inside the resolver.
+    let subprompts = resolve_subprompts();
+    if !subprompts.is_empty() {
+        tracing::debug!(
+            character_id,
+            count = subprompts.len(),
+            "[applyOutfitSelections] Subprompts in play for the green room"
+        );
+    }
+
     let messages = build_outfit_messages(
         character,
         wardrobe_items,
         scenario_text,
         dressing_instructions.as_deref(),
+        &subprompts,
     );
     let items_for_parse = wardrobe_items.to_vec();
     let consult = executor.execute(
@@ -946,6 +986,90 @@ fn resolve_dressing_instructions_for(
     .flatten()
 }
 
+/// v4 `resolveSubpromptsForSeat(repos, chatId, characterId)` (`apply-outfit-
+/// selections.ts:60`): the subprompts in play for `character_id`'s LLM-
+/// controlled seat in `chat_id`, resolved from the persisted participant
+/// record — the FIRST seat with the same `characterId` whose `controlledBy`
+/// is not `user` and whose `status` is not `removed`; its
+/// `selectedSubpromptIds ?? []`; an empty selection returns `[]` WITHOUT
+/// calling the resolver. `[]` when the chat or seat cannot be found, or on
+/// any read error (the warn) — the outfit choice never waits on this.
+fn resolve_subprompts_for_seat_conn(
+    main: &Connection,
+    mount: &Connection,
+    chat_id: &str,
+    character_id: &str,
+) -> Vec<SubpromptForPrompt> {
+    let chat = match crate::db::chats_read::find_by_id(main, chat_id) {
+        Ok(chat) => chat,
+        Err(e) => {
+            tracing::warn!(
+                chat_id,
+                character_id,
+                error = %e,
+                "[applyOutfitSelections] Could not read subprompts for the green room — continuing without"
+            );
+            return Vec::new();
+        }
+    };
+    let seat = chat
+        .as_ref()
+        .and_then(|c| c.get("participants"))
+        .and_then(Value::as_array)
+        .and_then(|ps| {
+            ps.iter().find(|p| {
+                p.get("characterId").and_then(Value::as_str) == Some(character_id)
+                    && p.get("controlledBy").and_then(Value::as_str) != Some("user")
+                    && p.get("status").and_then(Value::as_str) != Some("removed")
+            })
+        });
+    let selected: Vec<String> = seat
+        .and_then(|p| p.get("selectedSubpromptIds"))
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if selected.is_empty() {
+        return Vec::new();
+    }
+    crate::subprompts::resolve_selected_subprompts(main, mount, character_id, &selected)
+}
+
+/// [`resolve_subprompts_for_seat_conn`] for the out-of-create entrances, which
+/// hold a [`Db`](crate::db::runtime::Db) rather than open connections. A
+/// pool failure takes v4's catch road: the warn, then `[]`.
+fn resolve_subprompts_for_seat_for(
+    db: &crate::db::runtime::Db,
+    chat_id: &str,
+    character_id: &str,
+) -> Vec<SubpromptForPrompt> {
+    match db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            Ok(resolve_subprompts_for_seat_conn(
+                main,
+                mount,
+                chat_id,
+                character_id,
+            ))
+        })
+    }) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                chat_id,
+                character_id,
+                error = %e,
+                "[applyOutfitSelections] Could not read subprompts for the green room — continuing without"
+            );
+            Vec::new()
+        }
+    }
+}
+
 /// The host-seam contract for one out-of-create `llm_choose` pick (P4.9E3B):
 /// the composing host holds the completion provider + a per-call LOGGING cheap
 /// executor (the `RegenerateTitleDriver` arrangement). `None` means the pick
@@ -976,10 +1100,12 @@ pub trait OutfitLlmChooseRunner: Send + Sync {
 /// emitter. Shared by the production `HostOutfitLlmChooseRunner` and the
 /// tier-3 differential's canned runner, so the differential drives the exact
 /// composition production uses.
+#[allow(clippy::too_many_arguments)]
 pub async fn run_llm_choose_via_db<C: CompletionProvider>(
     db: &crate::db::runtime::Db,
     completion: &C,
     executor: &CheapLlmTaskExecutor,
+    chat_id: &str,
     character_id: &str,
     scenario_text: Option<&str>,
     cheap_settings: Option<&Value>,
@@ -1018,6 +1144,7 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
         cheap_settings,
         scenario_text,
         || resolve_dressing_instructions_for(db, character.as_ref(), None, character_id, &mounts),
+        || resolve_subprompts_for_seat_for(db, chat_id, character_id),
         character_id,
         None,
     )
@@ -1080,6 +1207,7 @@ async fn resolve_llm_choose<C: CompletionProvider>(
                 ctx.project_mount_point_ids,
             )
         },
+        || resolve_subprompts_for_seat_conn(main, mount, chat_id, character_id),
         character_id,
         emitter,
     )
@@ -1399,6 +1527,7 @@ mod tests {
             None,
             None,
             || None,
+            Vec::new,
             "c1",
             None,
         )
@@ -1468,6 +1597,7 @@ mod tests {
             None,
             None,
             || None,
+            Vec::new,
             "c1",
             None,
         )
@@ -1511,6 +1641,7 @@ mod tests {
                 None,
                 None,
                 || None,
+                Vec::new,
                 "c1",
                 None,
             )
@@ -1548,7 +1679,7 @@ mod tests {
             json!({ "id": "a1", "title": "Cloak", "types": ["top"], "componentItemIds": [] }),
             json!({ "id": "a2", "title": "Set", "types": ["top", "bottom"], "componentItemIds": ["x", "y"], "description": "a bundle" }),
         ];
-        let msgs = build_outfit_messages(&character, &items, Some("A keep."), None);
+        let msgs = build_outfit_messages(&character, &items, Some("A keep."), None, &[]);
         assert_eq!(msgs[0].content, OUTFIT_SELECTION_PROMPT);
         let u = &msgs[1].content;
         assert!(
@@ -1572,13 +1703,206 @@ mod tests {
     /// hands this function a whitespace-only string. v4 pins the byte-identity
     /// the same way (a direct call), and so does this: the guard is the reason a
     /// caller who DOES pass `""` cannot slip an empty header into the prompt.
+    /// P4.D164 (v4 `2f4254b42`): the fifth bullet, byte-exact, in its slot
+    /// right after the dressing-instructions bullet.
+    #[test]
+    fn outfit_prompt_carries_the_additional_instructions_bullet_after_the_dressing_one() {
+        let dressing = "- The character's own dressing instructions, when provided — these describe what the character prefers to wear and under what circumstances; weigh them heavily, above general appropriateness guesses\n";
+        let extra = "- Any additional instructions in play for this scene, when provided — smaller standing directions the character is following in this particular conversation; honour anything in them that bears on dress\n\nChoose items";
+        let i = OUTFIT_SELECTION_PROMPT
+            .find(dressing)
+            .expect("the dressing bullet");
+        assert!(
+            OUTFIT_SELECTION_PROMPT[i + dressing.len()..].starts_with(extra),
+            "the fifth bullet must follow the dressing bullet, byte-exact"
+        );
+    }
+
+    /// P4.D164: the `subpromptsNote` — the second-person preamble, then per
+    /// item `### title` and the TRIMMED body, items joined by a blank line, and
+    /// NO template processing (unlike the identity stack, `{{char}}` stays
+    /// literal). An empty list emits nothing (the user message is
+    /// byte-identical to before).
+    #[test]
+    fn subprompts_note_is_byte_exact_trimmed_unprocessed_and_omitted_when_empty() {
+        let character = json!({ "name": "Aria", "description": "", "personality": "" });
+        let items = vec![json!({
+            "id": "i1", "title": "Coat", "types": ["top"], "description": null,
+            "appropriateness": null, "componentItemIds": []
+        })];
+        let sps = vec![
+            SubpromptForPrompt {
+                title: "Keep to oilskins".into(),
+                content: "\n{{char}} wears oilskins.\n\n".into(),
+            },
+            SubpromptForPrompt {
+                title: "Speak softly".into(),
+                content: "Never raise your voice.".into(),
+            },
+        ];
+        let with = build_outfit_messages(&character, &items, None, None, &sps)[1]
+            .content
+            .clone();
+        let without = build_outfit_messages(&character, &items, None, None, &[])[1]
+            .content
+            .clone();
+        assert!(with.contains(
+            "\nAdditional Instructions in play for this scene (addressed to Aria in the second person — \"you\" is Aria):\n### Keep to oilskins\n{{char}} wears oilskins.\n\n### Speak softly\nNever raise your voice.\n\nAvailable Wardrobe Items:"
+        ));
+        assert!(!without.contains("Additional Instructions in play"));
+        assert_eq!(
+            with.replace(
+                "\nAdditional Instructions in play for this scene (addressed to Aria in the second person — \"you\" is Aria):\n### Keep to oilskins\n{{char}} wears oilskins.\n\n### Speak softly\nNever raise your voice.",
+                ""
+            ),
+            without,
+            "the note is the ONLY difference"
+        );
+    }
+
+    /// P4.D164 (unit 7): the seat resolver's WARN when the chat cannot be read
+    /// (a connection with no `chats` table), byte-exact with v4's sentence and
+    /// its three fields, and its silence + `[]` on a chat that has no such
+    /// seat. Thread-scoped capture (the P4.77 rig).
+    #[test]
+    fn seat_resolver_warns_on_a_read_failure_and_is_silent_without_a_seat() {
+        use crate::test_support::captured_with;
+        let empty = Connection::open_in_memory().unwrap();
+        let (out, lines) =
+            captured_with(|| resolve_subprompts_for_seat_conn(&empty, &empty, "chat-x", "char-y"));
+        assert!(out.is_empty());
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("Could not read subprompts for the green room"))
+            .unwrap_or_else(|| panic!("no warn line in {lines:?}"));
+        assert!(warn.starts_with("WARN "), "{warn}");
+        assert!(
+            warn.contains("[applyOutfitSelections] Could not read subprompts for the green room — continuing without"),
+            "{warn}"
+        );
+        // The rig renders bare `&str` fields WITHOUT quotes (Display).
+        assert!(
+            warn.contains("chat_id=chat-x") && warn.contains("character_id=char-y"),
+            "{warn}"
+        );
+        assert!(warn.contains("error="), "{warn}");
+
+        // A readable chat (a real provisioned instance) whose only seat is
+        // another character's: nothing logged, `[]` — and the resolver is never
+        // reached, so the mount connection can be the empty one.
+        const TEST_PEPPER: &str = "cXVpbGx0YXAtdGVzdC1wZXBwZXItMzItYnl0ZXMhIQ==";
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), TEST_PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), TEST_PEPPER).unwrap();
+        let main = w.connection();
+        let chat_id = "c0000010-0000-4000-8000-0000000000bb";
+        let ts = "2026-02-01T00:00:00.000Z";
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "Green room",
+            "participants": [],
+        }))
+        .unwrap();
+        crate::db::chats::ChatsRepository::new(main)
+            .create(
+                &create,
+                &crate::db::chats::CreateOptions {
+                    id: chat_id.to_string(),
+                    created_at: ts.to_string(),
+                    updated_at: ts.to_string(),
+                },
+            )
+            .unwrap();
+        main.execute(
+            "UPDATE chats SET participants = ?1 WHERE id = ?2",
+            rusqlite::params![
+                r#"[{"id":"p1","type":"CHARACTER","characterId":"other","controlledBy":"llm","status":"active","selectedSubpromptIds":["a"]}]"#,
+                chat_id
+            ],
+        )
+        .unwrap();
+        let (out, lines) =
+            captured_with(|| resolve_subprompts_for_seat_conn(main, &empty, chat_id, "char-y"));
+        assert!(out.is_empty());
+        assert!(lines.iter().all(|l| !l.contains("green room")), "{lines:?}");
+    }
+
+    /// P4.D164 (unit 7): the DEBUG line fires through `choose_llm_outfit` when
+    /// the resolver hands back items, with the count — and not when it hands
+    /// back none. Pinned at the WIRING, not the resolver.
+    #[tokio::test]
+    async fn green_room_debug_line_fires_with_the_count_only_when_subprompts_are_in_play() {
+        let _activity = crate::services::activity_registry::ActivityTestGuard::new();
+        let (character, items, profiles) = consult_inputs();
+        // `Some(0)`: settles at once (`None` never settles — the ceiling test's
+        // arm — and would hold this pin for the whole 60 s phase ceiling).
+        let provider = SlowProvider {
+            delay_ms: Some(0),
+            in_flight: Default::default(),
+        };
+        let executor = CheapLlmTaskExecutor::new();
+        let sps = vec![SubpromptForPrompt {
+            title: "Be terse".into(),
+            content: "One line.".into(),
+        }];
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        {
+            use tracing_subscriber::layer::SubscriberExt;
+            let subscriber = tracing_subscriber::registry()
+                .with(crate::test_support::CaptureLayer(logs.clone()));
+            let _guard = tracing::subscriber::set_default(subscriber);
+            let _ = choose_llm_outfit(
+                &provider,
+                &executor,
+                Some(&character),
+                &items,
+                &profiles,
+                None,
+                None,
+                || None,
+                || sps.clone(),
+                "c1",
+                None,
+            )
+            .await;
+            let _ = choose_llm_outfit(
+                &provider,
+                &executor,
+                Some(&character),
+                &items,
+                &profiles,
+                None,
+                None,
+                || None,
+                Vec::new,
+                "c1",
+                None,
+            )
+            .await;
+        }
+        let lines = logs.lock().unwrap().clone();
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Subprompts in play for the green room"))
+            .collect();
+        assert_eq!(hits.len(), 1, "exactly the first consult logs: {lines:?}");
+        assert!(hits[0].starts_with("DEBUG "), "{}", hits[0]);
+        assert!(hits[0].contains("[applyOutfitSelections] Subprompts in play for the green room"));
+        assert!(
+            hits[0].contains("character_id=c1") && hits[0].contains("count=1"),
+            "{}",
+            hits[0]
+        );
+    }
+
     #[test]
     fn dressing_instructions_note_is_byte_exact_and_omitted_when_blank() {
         let character = json!({ "name": "Aria", "description": "", "personality": "" });
         let items =
             vec![json!({ "id": "a1", "title": "Cloak", "types": ["top"], "componentItemIds": [] })];
         let user = |instr: Option<&str>| {
-            build_outfit_messages(&character, &items, Some("A keep."), instr)[1]
+            build_outfit_messages(&character, &items, Some("A keep."), instr, &[])[1]
                 .content
                 .clone()
         };
