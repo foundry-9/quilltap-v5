@@ -474,6 +474,23 @@ proven end-to-end by a jsdom integration spec that drives the whole
 four-step flow over a fake `CoreClient`, plus new unit tests wired into
 `character-edit.spec.ts` and `new-character.spec.ts` for the two hosts' own
 apply/stage-until-creation flows.
+#### 2026-09-07 — test(e2e): three p4.9k4 generator beats (two gated, one live)
+
+_Versions: SPA 0.5.660._
+
+`character-optimizer-flow.spec.ts` and the External-Prompt half of
+`character-external-prompt-flow.spec.ts` are ACTIVATE-AT-UNIFY behind
+`P49K1_SERVER_LANDED`; `ai-import-flow.spec.ts` is ACTIVATE-AT-UNIFY behind
+`P49K2_SERVER_LANDED` (both named constants, per this round's standing e2e
+rule — never a capability probe). The reverse-`{{user}}` half of
+`character-external-prompt-flow.spec.ts` is NOT gated — it rides existing
+verbs only, seeding its own throwaway second user-controlled character and
+restoring the fixture character's original field afterward. The AI-import
+beat likewise restores "Group Expedition"'s participant roster after
+walking Summon-from-Lore end to end, matching the `salon-cast-flow.spec.ts`
+precedent (a sibling spec's whisper-gate assertion keys off that chat's
+exact roster size).
+
 #### 2026-09-07 — feat(characters): the AI Import wizard, "Summon from Lore" (p4.9k4)
 
 _Versions: SPA 0.5.659._
