@@ -110,9 +110,14 @@ async fn an_enqueue_puts_a_jobs_hint_on_the_event_stream() {
         .unwrap();
     assert_eq!(resp.status(), 201, "the enqueue itself");
 
-    let (payload, hint) = next_matching(events, |v| v.get("topic").is_some())
+    // Match the JOBS hint by name, not "any hint": the boot sweep can publish
+    // an `autonomousRooms` hint first on a loaded machine, and taking the
+    // first hint of ANY topic made this beat a race (P4.80's banked
+    // intermittent — six parallel lanes, `topic: "autonomousRooms"` where the
+    // assertion below wanted `"jobs"`; green in isolation every time).
+    let (payload, hint) = next_matching(events, |v| v.get("topic") == Some(&json!("jobs")))
         .await
-        .expect("a realtime hint within 10s — is the bus armed at boot?");
+        .expect("a `jobs` realtime hint within 10s — is the bus armed at boot?");
 
     // §B.2, byte for byte: v, topic, at — in that order, with `id` absent on a
     // collection-wide hint and no scope tag of any kind.

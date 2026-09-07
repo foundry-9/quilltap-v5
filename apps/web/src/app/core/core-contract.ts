@@ -5266,6 +5266,7 @@ export type MemoryRequest =
   | HelpChatRenameRequest
   | HelpChatUpdateContextRequest
   | HelpChatDeleteRequest
+  | ChatDeleteRequest
   | HelpChatMessagesRequest
   | HelpChatSendRequest
   // P4.9G2 — the Data & System tab's sixteen §1 verbs (P4.9G1 delivers them in
@@ -6485,6 +6486,15 @@ export interface HelpChatUpdateContextRequest {
 /** `DELETE /api/v1/help-chats/{id}` (`[id]/route.ts:169-190`). */
 export interface HelpChatDeleteRequest {
   type: 'helpChatDelete';
+  chatId: string;
+}
+/**
+ * v4 `DELETE /api/v1/chats/[id]` with NO action (`handlers/delete.ts:48-63`):
+ * 404 `Chat not found`, else the repository cascade → `{ success: true }`
+ * (P4.80, dogfood #117; folded from `chat-delete.api.ts` at unification).
+ */
+export interface ChatDeleteRequest {
+  type: 'chatDelete';
   chatId: string;
 }
 /** `GET /api/v1/help-chats/{id}/messages` (`messages/route.ts:92-105`). */

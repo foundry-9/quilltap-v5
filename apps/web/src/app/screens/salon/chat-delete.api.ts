@@ -12,17 +12,8 @@
  * @module screens/salon/chat-delete.api
  */
 
-import { CoreDispatchError, type CoreRequest } from '../../core/core-contract';
+import { CoreDispatchError, type ChatDeleteRequest } from '../../core/core-contract';
 import type { CoreClient } from '../../core/core-client';
-
-/**
- * §B.4 — `chatDelete { chatId }`. Declared here rather than in
- * `core-contract.ts`, which the round freezes; the unifier folds it.
- */
-export interface ChatDeleteRequest {
-  type: 'chatDelete';
-  chatId: string;
-}
 
 /** v4's body: `NextResponse.json({ success: true })`. */
 export interface ChatDeleteResult {
@@ -58,10 +49,7 @@ export async function confirmAndDeleteChat(
   }
   try {
     const req: ChatDeleteRequest = { type: 'chatDelete', chatId };
-    // The cast is the lane-time shape for a §B verb not yet folded into
-    // `core-contract.ts` (frozen this round — the `home.api.ts`/`images.api.ts`
-    // pattern); the unifier folds the interface and retires the cast.
-    await core.dispatchData(req as unknown as CoreRequest);
+    await core.dispatchData(req);
     return true;
   } catch (err) {
     toastError(
