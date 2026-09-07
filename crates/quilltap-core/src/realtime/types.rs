@@ -220,13 +220,17 @@ mod tests {
             .unwrap(),
             r#"{"progressId":"p1","kind":"done","ts":7}"#
         );
-        // And the payload enum still has exactly the four families.
+        // And the payload enum still has exactly the five families. (P4.9K0
+        // added the fifth — `generatorProgress`, whose own wire bytes are
+        // pinned in `services::generator_progress`; this tripwire fired as
+        // designed and is acknowledged here, not widened to a wildcard.)
         fn _exhaustive(p: &EventPayload) {
             match p {
                 EventPayload::Chat(_)
                 | EventPayload::ChatError(_)
                 | EventPayload::CreationProgress(_)
-                | EventPayload::Realtime(_) => {}
+                | EventPayload::Realtime(_)
+                | EventPayload::GeneratorProgress(_) => {}
             }
         }
     }

@@ -4456,7 +4456,65 @@ pub enum EventPayload {
     /// three scope tags — a hint is recognizable by carrying BOTH `topic` and
     /// `v`, which no other family does.
     Realtime(RealtimeHint),
+    // === P4.9K0 ===
+    /// A character-GENERATOR progress frame (`p4.9k`, §B.5), scope-tagged by
+    /// `progress_id`.
+    ///
+    /// v4 streams each generator as its own HTTP SSE response of
+    /// `data: <JSON>\n\n` frames (three identical nine-line `ReadableStream`
+    /// handlers). v5's boundary streams only on the Event channel, so every v4
+    /// `onProgress(event)` becomes ONE of these, carrying the v4 progress event
+    /// object VERBATIM in `event` — key order and bytes untouched, which is what
+    /// lets `quilltap-web::generator_sse` re-frame it into v4's exact stream.
+    GeneratorProgress(GeneratorProgressPayload),
+    // === end P4.9K0 ===
 }
+
+// === P4.9K0 ===
+/// Which generator a [`EventPayload::GeneratorProgress`] frame belongs to
+/// (§B.5). The three wire spellings are the round's contract and are spelled
+/// ONCE, here, so K1 and K2 cannot disagree — they are also what the lanes'
+/// `logger.info` context bags carry as `generator`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GeneratorKind {
+    Optimizer,
+    Wizard,
+    AiImport,
+}
+
+impl GeneratorKind {
+    /// The wire spelling — the same bytes serde emits.
+    pub fn as_wire(self) -> &'static str {
+        match self {
+            GeneratorKind::Optimizer => "optimizer",
+            GeneratorKind::Wizard => "wizard",
+            GeneratorKind::AiImport => "aiImport",
+        }
+    }
+}
+
+impl std::fmt::Display for GeneratorKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_wire())
+    }
+}
+
+/// The `generatorProgress` payload (§B.5). An internally-tagged struct, so it
+/// flattens into the [`Event`] envelope as
+/// `{"type":"generatorProgress","progressId":…,"generator":…,"event":{…}}`.
+///
+/// `event` is passed through UNTOUCHED — the generator lanes own those bytes,
+/// and `serde_json`'s `preserve_order` keeps the key order they built (the
+/// `json-column-key-order` rule; re-serializing through a `BTreeMap` would
+/// silently re-sort v4's object-literal order).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "type", rename = "generatorProgress", rename_all = "camelCase")]
+pub struct GeneratorProgressPayload {
+    pub generator: GeneratorKind,
+    pub event: serde_json::Value,
+}
+// === end P4.9K0 ===
 
 /// v4 `encodeErrorEvent(encoder, error, errorType, details)`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -4514,6 +4572,23 @@ impl Event {
             payload: EventPayload::CreationProgress(frame),
         }
     }
+
+    // === P4.9K0 ===
+    /// A character-generator progress frame scope-tagged by `progress_id`
+    /// (§B.5). `event` is the v4 progress object verbatim.
+    pub fn generator_progress(
+        progress_id: impl Into<String>,
+        generator: GeneratorKind,
+        event: serde_json::Value,
+    ) -> Event {
+        Event {
+            chat_id: None,
+            room_id: None,
+            progress_id: Some(progress_id.into()),
+            payload: EventPayload::GeneratorProgress(GeneratorProgressPayload { generator, event }),
+        }
+    }
+    // === end P4.9K0 ===
 }
 
 #[cfg(test)]

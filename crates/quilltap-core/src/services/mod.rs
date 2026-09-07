@@ -98,6 +98,9 @@ pub mod file_storage;
 pub mod first_message_context;
 pub mod fold_episode_pass;
 pub mod frozen_archive;
+// === P4.9K0 ===
+pub mod generator_progress;
+// === end P4.9K0 ===
 pub mod help_doc_chunking;
 pub mod help_doc_sync;
 pub mod home;

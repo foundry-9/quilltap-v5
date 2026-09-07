@@ -12,6 +12,35 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — port(generators): the `generatorProgress` Event kind and its scope-tagged emitter
+
+_Versions: core 0.0.814._
+
+P4.9K0 tier-1 items 4–5 and tier-2 item 8. `api/types.rs` gains, inside a
+`// === P4.9K0 ===` fence: `GeneratorKind` (`optimizer` / `wizard` /
+`aiImport`) with `as_wire()` and `Display` so the two generator lanes spell
+their log-context `generator` once; the internally-tagged
+`GeneratorProgressPayload`; the `EventPayload::GeneratorProgress` variant; and
+the `Event::generator_progress` constructor. The wire bytes are pinned against
+a literal:
+`{"progressId":"p-1","type":"generatorProgress","generator":"aiImport","event":{…}}`
+— the envelope's scope tag first, then the flattened payload, exactly as the
+existing `creationProgress` family serializes. The `event` value is passed
+through untouched, so `preserve_order` keeps the key order the generator lanes
+build.
+
+`services::generator_progress::GeneratorProgressEmitter` mirrors
+`CreationProgressEmitter`'s shape — `from_id(Option<&str>, kind, sender)`, with
+`None` or an empty string entirely inert — but deliberately carries no bus of
+its own: a generator run has no subscribe gap (the client mints the
+`progressId`, subscribes, and only then dispatches), so there is nothing to
+replay. No new bus and no scheduler. Replacing the `from_id` guard with an
+unconditional active emitter reddens both inert-arm tests and nothing else.
+
+One out-of-ownership edit, flagged for the unifier: `realtime/types.rs` carries
+a deliberate exhaustiveness tripwire over `EventPayload`. It fired as designed
+and is acknowledged with the fifth arm spelled out — not widened to a wildcard.
+
 #### 2026-09-07 — port(generators): the four shared character-generator leaf modules, tier-1 exact against v4
 
 _Versions: core 0.0.813, harness 0.0.701._
