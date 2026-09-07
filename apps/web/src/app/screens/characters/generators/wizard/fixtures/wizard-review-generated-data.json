@@ -1,0 +1,17 @@
+{
+  "$comment": "A recorded `GeneratedCharacterData` for the review pane's three renders (P4.84). Shapes chosen to discriminate: the short prompt runs past 100 UTF-16 units so the teaser truncates; the four tiers have four DIFFERENT lengths; `fullDescription` carries a CommonMark heading, a `qtap://` link, a raw `<b>` tag (which the pipeline must drop), and a GFM table + strikethrough (which bare CommonMark must NOT render, the one thing separating this pipeline from the Almanack's).",
+  "identity": "I am Perpetua Quill, and I keep the ledgers nobody else will.",
+  "scenarios": [
+    { "title": "The Ledger Room", "content": "Line one.\nLine two, after a hard break." },
+    { "title": "The Airship Deck", "content": "Wind, and a great deal of it." }
+  ],
+  "physicalDescription": {
+    "name": "Appearance",
+    "headAndShouldersPrompt": "a head-and-shoulders study",
+    "shortPrompt": "A tall woman in a brass-buttoned coat, hair pinned severely, spectacles perched low, ink on both cuffs and no patience whatsoever.",
+    "mediumPrompt": "A tall woman in a brass-buttoned coat.",
+    "longPrompt": "A tall woman in a brass-buttoned coat, hair pinned severely.",
+    "completePrompt": "A tall woman.",
+    "fullDescription": "## Appearance\n\nShe stands **taller** than the doorway prefers, and she reads [the ledger](qtap://project/ledger.md) before she reads the room.\n\nA raw <b>bold</b> tag, a ~~struck~~ phrase, and a table:\n\n| a | b |\n| - | - |\n| 1 | 2 |\n"
+  }
+}

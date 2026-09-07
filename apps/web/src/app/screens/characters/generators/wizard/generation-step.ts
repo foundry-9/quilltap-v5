@@ -1,7 +1,16 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
 import { Icon } from '../../../../ui/icon';
-import type { GeneratableField, GeneratedCharacterData } from '../edit-generators.api';
+import { PromptFieldExample } from '../../../../ui/prompt-field-example';
+import { PROMPT_FIELD_HINTS } from '../../../../ui/prompt-field-hints';
+import type {
+  GeneratableField,
+  GeneratedCharacterData,
+  GeneratedPhysicalDescription,
+} from '../edit-generators.api';
+import { FIELD_HINT_KEYS } from '../optimizer/field-meta';
+import { renderGenerationPreviewMarkdown } from './generation-preview-markdown';
 import { FIELD_LABELS, normalizeGeneratedScenarios } from './wizard-types';
 import { WizardState } from './wizard-state';
 
@@ -10,16 +19,23 @@ import { WizardState } from './wizard-state';
  * ready/generating/complete three-way render, a per-field checklist during
  * generation, and an expandable review list once done.
  *
- * Deviation from v4: `physicalDescription.fullDescription` renders as plain
- * pre-wrapped text rather than through ReactMarkdown — v5 has no
- * chat-independent Markdown renderer to reuse here (`markdown-renderer.ts`
- * is the Salon message pipeline, not a generic component), and the review
- * pane is a preview surface, not the field's persisted home.
+ * The expanded review row is v4's, whole (P4.84): the shared
+ * `Written as:` voice hint above every hinted field (`:379`), then
+ * `renderFieldPreview` (`:96-170`) — the physical-description tier panel, the
+ * per-scenario title + pre-wrapped content, or the plain pre-wrapped text every
+ * other field takes.
+ *
+ * `fullDescription` renders through {@link renderGenerationPreviewMarkdown},
+ * v4's bare-CommonMark ReactMarkdown chain (NO GFM). The note this component
+ * used to carry — that v5 "has no chat-independent Markdown renderer to reuse
+ * here" — was wrong twice over: v5 has two (`almanack/almanack-markdown.ts`,
+ * `help/help-doc-markdown.ts`), and neither is reusable anyway, because both
+ * add plugins v4's wizard pipeline does not have. See that module's header.
  */
 @Component({
   selector: 'qt-wizard-generation-step',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, PromptFieldExample],
   template: `
     @if (!wizard.generating() && !wizard.generatedData()) {
       <div class="space-y-6">
@@ -209,7 +225,49 @@ import { WizardState } from './wizard-state';
                   @if (hasError(field)) {
                     <p class="text-sm qt-text-destructive">{{ fieldError(field) }}</p>
                   } @else if (fieldContent(field); as content) {
-                    <div class="mt-2 text-sm qt-text-secondary whitespace-pre-wrap">{{ content }}</div>
+                    <!-- v4 :379 - the shared voice hint above every hinted field -->
+                    @if (voiceExample(field); as voiceExample) {
+                      <qt-prompt-field-example [example]="voiceExample" />
+                    }
+                    <!-- v4 renderFieldPreview, :96-170 -->
+                    @if (physicalFor(field); as pd) {
+                      <div class="mt-2 space-y-3">
+                        <div class="text-xs qt-text-secondary"><strong>Short prompt:</strong> {{ shortPromptTeaser(pd) }}</div>
+                        <!-- Always rendered: v4 reaches renderFieldPreview only
+                             from inside its own isExpanded block (:377-381), so
+                             that flag is invariably true here. -->
+                        <div class="space-y-2 text-sm">
+                          @for (tier of tiers(pd); track tier.label) {
+                            <div>
+                              <strong class="text-foreground"
+                                >{{ tier.label }} ({{ tier.chars }} chars):</strong
+                              >
+                              <p class="qt-text-secondary">{{ tier.text }}</p>
+                            </div>
+                          }
+                          <div>
+                            <strong class="text-foreground">Full Description:</strong>
+                            <div
+                              class="prose prose-sm qt-prose-auto max-w-none mt-1"
+                              [innerHTML]="fullDescriptionHtml(pd)"
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    } @else if (scenariosFor(field); as scenarios) {
+                      <div class="mt-2 space-y-2">
+                        @for (s of scenarios; track $index) {
+                          <div class="text-sm">
+                            <strong class="text-foreground">{{ s.title }}</strong>
+                            <p class="qt-text-secondary mt-0.5 whitespace-pre-wrap">{{ s.content }}</p>
+                          </div>
+                        }
+                      </div>
+                    } @else {
+                      <div class="mt-2">
+                        <div class="text-sm qt-text-secondary whitespace-pre-wrap">{{ content }}</div>
+                      </div>
+                    }
                   } @else {
                     <p class="text-sm qt-text-secondary">No content generated</p>
                   }
@@ -231,19 +289,8 @@ import { WizardState } from './wizard-state';
 })
 export class WizardGenerationStep {
   protected readonly wizard = inject(WizardState);
+  private readonly sanitizer = inject(DomSanitizer);
   protected readonly fieldLabels = FIELD_LABELS;
-  /**
-   * RECORDED DIVERGENCE (the §3 unification review widened the lane's note):
-   * v4's expanded review row renders three things this pane does not —
-   * `<PromptFieldExample>` ("Written as: …") above every hinted field
-   * (`GenerationStep.tsx:379`), the physical-description tier panel
-   * (`:103-148`: the Short-prompt teaser; expanded Short/Medium/Long/Complete
-   * with char counts, then Full Description), and scenarios as
-   * `<strong>title</strong>` + pre-wrapped content (`:151-163`). v5 shows each
-   * field's plain text pre-wrapped (`fullDescription` alone for the physical
-   * description). A follow-up ports the three renders; nothing persisted
-   * differs — this pane is a preview.
-   */
   protected readonly expandedField = signal<GeneratableField | null>(null);
 
   protected selectedList(): GeneratableField[] {
@@ -329,5 +376,68 @@ export class WizardGenerationStep {
 
     const value = (data as unknown as Record<string, unknown>)[field];
     return typeof value === 'string' ? value || null : null;
+  }
+
+  /**
+   * v4 `:335-338`: `FIELD_HINT_KEYS[field]` → `PROMPT_FIELD_HINTS[hintKey]` →
+   * `hint?.example`. The map is already in v5, byte-transcribed from v4's
+   * `components/prompt-fields/field-hints.ts:134-145`; it lives beside the
+   * optimizer (its first v5 consumer) rather than beside the hints table, where
+   * v4 keeps it — a home divergence only, recorded here so the next reader can
+   * see the two consumers share ONE table.
+   */
+  protected voiceExample(field: GeneratableField): string | undefined {
+    const hintKey = FIELD_HINT_KEYS[field];
+    if (!hintKey) return undefined;
+    // The keyed literal's per-key value SHAPES differ (some entries carry no
+    // `example`), so TS refuses `.example` on the union without the cast.
+    return (PROMPT_FIELD_HINTS[hintKey] as { example?: string }).example;
+  }
+
+  /** v4 `:101` — the tier panel's guard, `field === 'physicalDescription' && generatedData?.physicalDescription`. */
+  protected physicalFor(field: GeneratableField): GeneratedPhysicalDescription | null {
+    if (field !== 'physicalDescription') return null;
+    return this.wizard.generatedData()?.physicalDescription ?? null;
+  }
+
+  /** v4 `:151-152` — guarded on `generatedData?.scenarios` being truthy, then normalized. */
+  protected scenariosFor(field: GeneratableField): Array<{ title: string; content: string }> | null {
+    if (field !== 'scenarios') return null;
+    const data = this.wizard.generatedData();
+    if (!data?.scenarios) return null;
+    return normalizeGeneratedScenarios(data.scenarios);
+  }
+
+  /** v4 `:105` — `pd.shortPrompt.substring(0, 100)` with a literal `...` appended, always. */
+  protected shortPromptTeaser(pd: GeneratedPhysicalDescription): string {
+    return `${pd.shortPrompt.substring(0, 100)}...`;
+  }
+
+  /**
+   * v4 `:108-133` — the four tiers in v4's order, each labelled with its length
+   * in UTF-16 code units (JS `String.length`, which `string.length` matches in
+   * TypeScript exactly).
+   */
+  protected tiers(
+    pd: GeneratedPhysicalDescription,
+  ): Array<{ label: string; chars: number; text: string }> {
+    return [
+      { label: 'Short', chars: pd.shortPrompt.length, text: pd.shortPrompt },
+      { label: 'Medium', chars: pd.mediumPrompt.length, text: pd.mediumPrompt },
+      { label: 'Long', chars: pd.longPrompt.length, text: pd.longPrompt },
+      { label: 'Complete', chars: pd.completePrompt.length, text: pd.completePrompt },
+    ];
+  }
+
+  /**
+   * v4 `:127-140` — `fullDescription` through bare ReactMarkdown. Trusted with
+   * `bypassSecurityTrustHtml` for the same reason the Almanack report is:
+   * Angular's URL sanitizer would otherwise rewrite a `qtap://` href to
+   * `unsafe:`, and the pipeline itself already drops raw HTML.
+   */
+  protected fullDescriptionHtml(pd: GeneratedPhysicalDescription): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(
+      renderGenerationPreviewMarkdown(pd.fullDescription),
+    );
   }
 }

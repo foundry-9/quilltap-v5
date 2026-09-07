@@ -649,6 +649,36 @@ The new family's names are all `*_PT_ROUTES` /
 (`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
 `build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
 Both families run side by side through the sweep driver.
+#### 2026-09-07 — feat(spa): the AI Wizard review pane's three missing renders, over v4's bare-CommonMark preview
+
+_Versions: SPA 0.5.675._
+
+The `p4.9k` round recorded three renders v4's `GenerationStep.tsx` has and v5's
+review pane did not. All three land:
+
+- the shared `Written as:` voice hint above every hinted field (v4 `:379`),
+  resolved through `FIELD_HINT_KEYS` → `PROMPT_FIELD_HINTS` exactly as v4 does
+  (the map was already transcribed in v5, beside the optimizer);
+- the physical-description tier panel (v4 `:103-148`): the 100-unit Short-prompt
+  teaser, then Short/Medium/Long/Complete each labelled with its length in UTF-16
+  code units, then Full Description;
+- scenarios as `<strong>title</strong>` plus pre-wrapped content (v4 `:151-163`)
+  instead of the `**title**\ncontent` join, which stays the collapsed teaser's
+  shape on both sides.
+
+`fullDescription` renders through a new `generation-preview-markdown.ts`: v4
+passes NO `remarkPlugins` there, so this is bare CommonMark — narrower than
+either of v5's two existing chat-independent renderers (the Almanack's adds GFM,
+the help reader's adds GFM and math). That refutes the note the component
+carried, which said v5 had no chat-independent renderer to reuse: it has two,
+and the reason for a third is the plugin list, not their absence. Raw HTML is
+dropped (remark-rehype's default, and ReactMarkdown's) and `qtap://` hrefs stay
+on a plain anchor, which is what every other v5 surface does — v4's `QtapLink`
+component has no v5 analog anywhere, and that stays recorded, not invented here.
+
+The wizard e2e spec gains a beat over a mock that answers the six
+physical-description calls apart by `max_tokens`.
+
 #### 2026-09-07 — refactor(spa): extract `qt-prompt-field-example`, v4's shared `Written as:` line
 
 _Versions: SPA 0.5.674._

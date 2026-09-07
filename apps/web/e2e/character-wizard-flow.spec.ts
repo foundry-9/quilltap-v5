@@ -48,6 +48,34 @@ const MOCK_LLM_PORT = 45304;
 
 const GENERATED_TEXT = 'The mock model has spoken: a blacksmith who studies forbidden magic.';
 
+/**
+ * The physical-description tiers (P4.84). `generate_physical_descriptions`
+ * (`quilltap-core/src/generators/wizard.rs:630-653`, v4
+ * `generatePhysicalDescriptions`) makes SIX calls in a fixed order —
+ * headAndShoulders, short, medium, long, complete, full — distinguished on the
+ * wire only by `max_tokens` (1500 for `full`, 400 for `complete`, 300 for the
+ * other four), so the mock keys on that plus a counter over the four 300s.
+ *
+ * The four tier texts have four DIFFERENT lengths and the short prompt runs
+ * past 100 UTF-16 units, so the review pane's `Short (N chars)` labels and its
+ * truncated teaser are all discriminating. `FULL_DESCRIPTION_MD` carries a
+ * CommonMark heading, a `qtap://` link and a raw `<b>` tag, which the pane must
+ * render as markup, keep, and DROP respectively.
+ */
+const PHYSICAL_300 = [
+  // headAndShoulders
+  'A head-and-shoulders study, brass spectacles catching the lamplight.',
+  // short — deliberately past the 100-unit teaser cut
+  'A tall woman in a brass-buttoned coat, hair pinned severely, spectacles perched low, ink on both cuffs and no patience whatsoever.',
+  // medium
+  'A tall woman in a brass-buttoned coat.',
+  // long
+  'A tall woman in a brass-buttoned coat, hair pinned severely.',
+];
+const PHYSICAL_COMPLETE = 'A tall woman.';
+const FULL_DESCRIPTION_MD =
+  '## Appearance\n\nShe reads [the ledger](qtap://project/ledger.md) before she reads the room. A raw <b>bold</b> tag.';
+
 /** Every fixture table the walk reads is filtered by userId — rewrite them all. */
 const USER_TABLES = ['characters', 'chats', 'tags', 'api_keys', 'connection_profiles', 'image_profiles', 'files'];
 
@@ -62,6 +90,7 @@ let server: ChildProcess | undefined;
  * ask for `stream: false`.
  */
 async function startNonStreamingMockLlm(port: number): Promise<{ url: string; close: () => Promise<void> }> {
+  let physical300Calls = 0;
   const httpServer: Server = createServer((req, res) => {
     if (req.method === 'GET' && req.url?.includes('/models')) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -72,8 +101,21 @@ async function startNonStreamingMockLlm(port: number): Promise<{ url: string; cl
       res.writeHead(404).end();
       return;
     }
-    req.on('data', () => {});
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => {
+      // The physical-description generator's six calls are told apart by
+      // `max_tokens` alone; every other field's call falls through to
+      // GENERATED_TEXT, exactly as before.
+      let content = GENERATED_TEXT;
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { max_tokens?: number };
+        if (body.max_tokens === 1500) content = FULL_DESCRIPTION_MD;
+        else if (body.max_tokens === 400) content = PHYSICAL_COMPLETE;
+        else if (body.max_tokens === 300) content = PHYSICAL_300[physical300Calls++] ?? GENERATED_TEXT;
+      } catch {
+        // A body we cannot read takes the default reply.
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(
         JSON.stringify({
@@ -81,7 +123,7 @@ async function startNonStreamingMockLlm(port: number): Promise<{ url: string; cl
           object: 'chat.completion',
           model: 'mock-model',
           choices: [
-            { index: 0, message: { role: 'assistant', content: GENERATED_TEXT }, finish_reason: 'stop' },
+            { index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' },
           ],
           usage: { prompt_tokens: 20, completion_tokens: 12, total_tokens: 32 },
         }),
@@ -237,6 +279,60 @@ test.describe('P4.9K3 — the AI Wizard modal (New Character + Edit)', () => {
 
       await page.getByRole('button', { name: 'Apply to Character' }).click();
       await expect(page.locator('[aria-label="Identity"]')).toContainText(GENERATED_TEXT);
+    } finally {
+      await mock.close();
+    }
+  });
+
+  test('the review pane renders the voice hint, the tier panel and the Markdown preview', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    const mock = await startNonStreamingMockLlm(MOCK_LLM_PORT);
+    try {
+      await page.goto(`${WIZARD_BASE_URL}/characters`);
+      await unlockIfLocked(page);
+      await page.goto(`${WIZARD_BASE_URL}/characters/new`);
+
+      await page.getByRole('button', { name: 'AI Wizard' }).click();
+      await expect(page.getByText('Select AI Model')).toBeVisible();
+      await page.getByRole('button', { name: 'Next' }).click();
+      await expect(page.getByRole('heading', { name: 'Physical Description Source' })).toBeVisible();
+      await page.getByRole('button', { name: 'Next' }).click();
+
+      await expect(page.getByText('Select Fields')).toBeVisible();
+      // Physical Description ALONE: the six physical calls must not interleave
+      // with another field's, since the mock tells them apart by max_tokens.
+      await page.getByRole('checkbox', { name: /^Physical Description / }).check();
+      await page.getByRole('button', { name: 'Review & Generate' }).click();
+
+      await expect(page.getByText('Ready to Generate')).toBeVisible();
+      await page.getByRole('button', { name: 'Generate Character Content' }).click();
+      await expect(page.getByText('Generation Complete')).toBeVisible({ timeout: 30_000 });
+
+      await page.getByRole('button', { name: /Physical Description/ }).first().click();
+
+      // P4.84 render 1 — the shared voice hint (v4 `GenerationStep.tsx:379`).
+      const hint = page.locator('qt-prompt-field-example p');
+      await expect(hint).toBeVisible();
+      await expect(hint).toContainText('Written as:');
+
+      // P4.84 render 2 — the tier panel (v4 `:103-148`): the truncated teaser
+      // and the four labelled tiers with their UTF-16 char counts.
+      await expect(page.getByText(`Short prompt: ${PHYSICAL_300[1].substring(0, 100)}...`)).toBeVisible();
+      await expect(page.getByText(`Short (${PHYSICAL_300[1].length} chars):`)).toBeVisible();
+      await expect(page.getByText(`Medium (${PHYSICAL_300[2].length} chars):`)).toBeVisible();
+      await expect(page.getByText(`Long (${PHYSICAL_300[3].length} chars):`)).toBeVisible();
+      await expect(page.getByText(`Complete (${PHYSICAL_COMPLETE.length} chars):`)).toBeVisible();
+
+      // P4.84 render 3 — `fullDescription` through the bare-CommonMark preview
+      // (v4 `:127-140`): a real heading element, the qtap href intact past
+      // Angular's URL sanitizer, and the raw `<b>` dropped.
+      const prose = page.locator('.prose.qt-prose-auto');
+      await expect(prose.locator('h2')).toHaveText('Appearance');
+      await expect(prose.locator('a')).toHaveAttribute('href', 'qtap://project/ledger.md');
+      await expect(prose.locator('b')).toHaveCount(0);
+      await expect(prose).not.toContainText('## Appearance');
     } finally {
       await mock.close();
     }
