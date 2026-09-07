@@ -218,6 +218,7 @@ item at `status-log.md:14678-14679`.
 | Detail (9 tabs) | `app/aurora/[id]/view/CharacterDetailView.tsx` | `screens/characters/view/character-detail.ts:46-58`, `app.routes.ts:55-59` | **PARITY** (P4.6g/i/j) |
 | Edit | `app/aurora/[id]/edit/CharacterEditView.tsx` | `screens/characters/edit/character-edit.ts`, `app.routes.ts:50-54` | **PARITY** (P4.6g) |
 | Character LLM-logs section | `CharacterEditView.tsx:390` → `LLMLogsSection.tsx:102` | `characters/edit/llm-logs-section.ts` | **DONE** (`p4.9g2`, 2026-07-24) |
+| Subprompts section (System Prompts tab) | `components/characters/system-prompts-editor/SubpromptsSection.tsx`, mounted at `index.tsx:86-88` | `subprompts/subprompts-section.ts`, hosted at `characters/edit/system-prompts-tab.ts` under the prompt list | **PARITY** (P4.D165, v4 `2f4254b42`) |
 | Depiction-guidelines no-vault hint | proactive suppression | proactive suppression on both appearance tabs | **PARITY** (P4.6aw) |
 | Group detail | `app/aurora/groups/[id]/GroupDetailView.tsx` | `screens/groups/group-editor.ts`, `app.routes.ts:46-49` | **PARITY** (P4.6l) |
 
@@ -435,6 +436,10 @@ v5 verdict.
 | Project create/delete | `app/prospero/components/{Create,Delete}ProjectDialog.tsx` | `screens/prospero/project-{create,delete}-dialog.ts` | **PARITY** (P4.6l) |
 | MemoryCascadeDialog | via `ChatModals.tsx:454` | `chat/memory-cascade-dialog.ts:6` | **PARITY** (P4.6t) |
 | FileConflictDialog | via `ChatModals.tsx:434` | `chat/file-conflict-dialog.ts:14` | **PARITY** (P4.6ac) |
+| SubpromptEditorModal | `components/subprompts/SubpromptEditorModal.tsx` | `subprompts/subprompt-editor-modal.ts` | **PARITY** (P4.D165) |
+| SubpromptPicker (New Chat, multi-character panel) | `components/new-chat/CharacterPickerPanel.tsx:307-317` | `subprompts/subprompt-picker.ts` in `screens/new-chat/character-picker-panel.ts` | **PARITY** (P4.D165) |
+| SubpromptPicker (Salon participant card) | `components/chat/ParticipantCard.tsx:484-499` | `subprompts/subprompt-picker.ts` in `chat/sidebar/participant-card.ts` | **PARITY** (P4.D165) |
+| SubpromptPicker (New Chat, single-character shortcut) | `components/new-chat/NewChatForm.tsx:511-522`, under `showSingleCharacterControls` | — | **NO-COUNTERPART** — only v4's unported `NewChatModal` sets that prop; v4's PAGE passes it `false`, so v4 renders nothing there either (P4.D165, measured) |
 | NewChatModal | `components/new-chat/NewChatModal.tsx`, 3 callers | **replaced by route** `/salon/new` (`app.routes.ts:23-26`) | **DIVERGENCE-DOCUMENTED** |
 
 `StateEditorModal` is dual-host in v4 — project (`SettingsCard.tsx:102`)

@@ -4,6 +4,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
 import { coreStreamStub } from '../core/core-client.testing';
 import { characterKeys } from '../screens/characters/characters.api';
 import {
@@ -274,5 +275,51 @@ describe('injectCharacterSubprompts', () => {
     await settle(fixture);
     expect(fixture.componentInstance.api.savePending()).toBe(false);
     expect(seen.filter((r) => r.type === 'characterSubpromptList').length).toBe(1);
+  });
+});
+
+/**
+ * Tier 2, the realtime arm end to end on the client: a `characters/<id>` hint
+ * on the live channel re-fires the subprompts list, because the topic map fans
+ * that topic out onto `characterKeys.subprompts(id)` (v4 `topic-map.ts:79`).
+ *
+ * The hint is injected at the WIRE — through the app's real `CoreClient.events$`
+ * — rather than by calling the hub, so the whole path is the comparand: frame →
+ * `RealtimeService` → topic map → invalidation → refetch (the P4.D125
+ * `realtime_hint_wire` idiom, client side).
+ */
+describe('the subprompts list on the realtime channel', () => {
+  it('re-fires on a characters hint scoped to THIS character', async () => {
+    const seen: Req[] = [];
+    const stream = coreStreamStub();
+    const core = {
+      ...stream,
+      dispatchData: vi.fn(async (req: Req) => {
+        seen.push(req);
+        return { subprompts: [] };
+      }),
+    } as unknown as CoreClient;
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [Host],
+      providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: core }],
+    });
+    // The hub is a root service that nothing constructs on its own; the app
+    // root injects it at bootstrap, so a spec must do the same.
+    TestBed.inject(RealtimeService);
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    await settle(fixture);
+    const lists = () => seen.filter((r) => r.type === 'characterSubpromptList').length;
+    expect(lists()).toBe(1);
+
+    stream.frames.next({ v: 1, topic: 'characters', id: 'char-1', at: 1 } as unknown as never);
+    await settle(fixture);
+    expect(lists()).toBe(2);
+
+    // …and NOT on a hint about a different character.
+    stream.frames.next({ v: 1, topic: 'characters', id: 'char-2', at: 2 } as unknown as never);
+    await settle(fixture);
+    expect(lists()).toBe(2);
   });
 });

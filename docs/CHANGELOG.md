@@ -584,6 +584,35 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — test(subprompts): the gated end-to-end walk, the realtime-refetch arm, and the m6 parity rows
+
+_Versions: SPA 0.5.671._
+
+P4.D165 unit 6. `character-subprompts-flow.spec.ts` is written COMPLETE and
+gated ACTIVATE-AT-UNIFY behind the named `P4D163_SERVER_LANDED = false` — never
+a capability probe, since a DEFINED-but-refusing verb defeats one. Three beats:
+Aurora creates a subprompt, renames it and proves the FILE NAME does not move
+(the reason a chat's selection survives an edit), then deletes it through the
+inline confirm; New Chat reads `None on file`, creates one from inside the
+picker, watches it auto-tick to `1 of 1 in play`, creates the chat and reads the
+seat's persisted `selectedSubpromptIds` back through `chatGet` — then unticks it
+on the Salon card and reads back `[]`; and the shared group chat proves the
+user-controlled seat has NO picker while the LLM seat beside it does, so the
+negative is not vacuous.
+
+The walk seeds nothing up front and tears down what it writes: it uses **Bram**,
+the fixture's plain LLM seat, because Aria carries the default systemPrompt
+other specs key off and Dax is what the rename walk renames.
+
+Tier 2: a spec drives a `characters/<id>` hint through the app's real
+`CoreClient.events$` and proves the subprompts list re-fires — and does NOT fire
+for a different character's hint. Both arms are mutation-proven (dropping the
+key from the topic map, and widening the fan-out to `characterKeys.all`).
+
+`m6-screen-parity.md` gains four rows: the Subprompts section under Characters,
+the editor dialog and the two picker hosts under Landed, and the
+single-character picker as a measured NO-COUNTERPART.
+
 #### 2026-09-07 — feat(salon): the subprompt picker on the participant card, and the Subprompts updated round-trip
 
 _Versions: SPA 0.5.670._
