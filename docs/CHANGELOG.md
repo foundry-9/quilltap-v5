@@ -231,6 +231,30 @@ Deferred loudly (tier 3, named not performed): the five per-caller JSON
 extractors v5 already carries stay where they are — each is oracle-pinned in
 place, and `generators::llm_json` is a NEW home for v4's module, not a
 consolidation of them.
+#### 2026-09-07 — fix(core): execute_turn_chain carries v4's three chain-stop log lines (P4.81 item 4)
+
+_Versions: core 0.0.813, harness 0.0.703._
+
+`execute_turn_chain` was missing three of v4 `turn-orchestrator.service.ts`'s
+four chain-stop `logger` calls (the fourth, the paused-chat line, was
+already ported). Added at the same sites, v4's levels, v4's context bags:
+`logger.info('[TurnOrchestrator] singleTurn: skipping chain loop', {
+chatId, userId })` on the single-turn early return; `logger.info('...Chain
+stopped: empty response', { chatId, chainDepth, userId })` on the
+has-no-content-and-not-skipped loop exit; `logger.error('...Chain error,
+stopping', { chatId, chainDepth, userId, error })` on the `process_message`
+`Err` arm.
+
+Capture-pinned two ways: the existing `chain_skips_on_guard_and_single_turn`
+unit test (quilltap-core) now also asserts the singleTurn line fires on
+exactly the two `single_turn: true` rows and nowhere else; a new capture
+wrap in `orchestrator_tier3_equivalence.rs` (harness) pins the other two
+lines against the family's EXISTING corpus cases that reach them —
+`multi_chain` (an empty second stream) for the empty-response line,
+`chain_error_pause` (a scripted stream error) for the error line, byte-exact
+— and asserts every other case stays silent on both. All three lines
+mutation-proven (reverting each one reddens its pin).
+
 #### 2026-09-07 — fix(harness): the text_block_turn case now actually parses its own marker (P4.81 item 3)
 
 _Versions: harness 0.0.702._

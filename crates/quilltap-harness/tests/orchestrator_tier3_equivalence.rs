@@ -868,6 +868,14 @@ fn orchestrator_tier3_matches_oracle() {
     });
 
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
+    // P4.81 item 4: the three `execute_turn_chain` chain-stop log lines,
+    // captured per case (thread-scoped — `rt` is current-thread, so the whole
+    // `block_on` below runs on this thread and cannot steal a sibling test's
+    // subscriber). `multi_chain`'s chained turn scripts an empty second
+    // stream (`"content": ""`) and `chain_error_pause`'s scripts a stream
+    // error — the ONLY two corpus cases that reach the chain loop's two
+    // stop-with-a-line branches; every other case must stay silent on both.
+    let mut chain_logs: HashMap<String, Vec<String>> = HashMap::new();
 
     // P4.D154 (bug 121): the host byte layer the re-hydration reads through.
     // The corpus's planted files are text / pdf / zip, so nothing image-shaped
@@ -1058,23 +1066,26 @@ fn orchestrator_tier3_matches_oracle() {
                     // INITIAL result's `hasContent`, which the chain options
                     // take by value below.
                     let initial_had_content = result.has_content;
-                    rt.block_on(orchestrator::execute_turn_chain(
-                        &mut deps,
-                        ExecuteTurnChainOptions {
-                            chat_id: call.chat_id.clone(),
-                            user_id: spec.user_id.clone(),
-                            initial_result: result,
-                            initial_continue_mode: call.continue_mode,
-                            never_pause_for_user: false,
-                            single_turn: false,
-                            chain_start_time_ms: frozen,
-                            config: ChainConfig::default(),
-                        },
-                        frozen,
-                        0.0,
-                        make_chain_input,
-                    ))
-                    .expect("chain");
+                    let lines = quilltap_core::test_support::captured(|| {
+                        rt.block_on(orchestrator::execute_turn_chain(
+                            &mut deps,
+                            ExecuteTurnChainOptions {
+                                chat_id: call.chat_id.clone(),
+                                user_id: spec.user_id.clone(),
+                                initial_result: result,
+                                initial_continue_mode: call.continue_mode,
+                                never_pause_for_user: false,
+                                single_turn: false,
+                                chain_start_time_ms: frozen,
+                                config: ChainConfig::default(),
+                            },
+                            frozen,
+                            0.0,
+                            make_chain_input,
+                        ))
+                        .expect("chain");
+                    });
+                    chain_logs.insert(call.name.clone(), lines);
                     // P4.6BM: v4's post-cycle Scriptorium trigger, at v4's own
                     // placement (`orchestrator.service.ts:236-247` — after the
                     // chain, "every turn with content"). The production analog
@@ -1111,6 +1122,72 @@ fn orchestrator_tier3_matches_oracle() {
             .get(name)
             .unwrap_or_else(|| panic!("oracle events missing for {name}"));
         assert_events_eq(name, got, want);
+    }
+
+    // --- P4.81 item 4: the chain-stop log lines, pinned per case ---
+    // v4 `turn-orchestrator.service.ts`'s `logger.info('[TurnOrchestrator] Chain
+    // stopped: empty response', { chatId, chainDepth, userId })` and
+    // `logger.error('[TurnOrchestrator] Chain error, stopping', { chatId,
+    // chainDepth, userId, error })`. Only `multi_chain` (an empty second
+    // stream) and `chain_error_pause` (a scripted stream error) reach these
+    // branches; every other case's chain either never loops or stops silently
+    // (`user_turn` / `max_depth` / `paused`, already pinned elsewhere).
+    for (name, lines) in &chain_logs {
+        let empty_response_hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[TurnOrchestrator] Chain stopped: empty response"))
+            .collect();
+        let chain_error_hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("[TurnOrchestrator] Chain error, stopping"))
+            .collect();
+        match name.as_str() {
+            "multi_chain" => {
+                assert_eq!(
+                    empty_response_hits.len(),
+                    1,
+                    "multi_chain's empty second stream must log the stop line \
+                     exactly once: {lines:?}"
+                );
+                assert_eq!(
+                    empty_response_hits[0],
+                    "INFO quilltap_core::services::orchestrator [TurnOrchestrator] \
+                     Chain stopped: empty response chat_id=c89ee722-b555-40db-9e02-bbd0e82ee56b \
+                     chain_depth=1 user_id=e18e05bc-63e8-4539-8a85-719b7a508850",
+                );
+                assert!(
+                    chain_error_hits.is_empty(),
+                    "multi_chain must not also log the error line: {lines:?}"
+                );
+            }
+            "chain_error_pause" => {
+                assert_eq!(
+                    chain_error_hits.len(),
+                    1,
+                    "chain_error_pause's scripted stream error must log the error \
+                     line exactly once: {lines:?}"
+                );
+                assert!(
+                    chain_error_hits[0].starts_with(
+                        "ERROR quilltap_core::services::orchestrator [TurnOrchestrator] \
+                         Chain error, stopping chat_id=9c8a0002-0000-4000-8000-0000000000e1 \
+                         chain_depth=1 user_id=e18e05bc-63e8-4539-8a85-719b7a508850 error="
+                    ),
+                    "unexpected error-line shape for chain_error_pause: {:?}",
+                    chain_error_hits.first()
+                );
+                assert!(
+                    empty_response_hits.is_empty(),
+                    "chain_error_pause must not also log the empty-response line: {lines:?}"
+                );
+            }
+            _ => {
+                assert!(
+                    empty_response_hits.is_empty() && chain_error_hits.is_empty(),
+                    "case {name} must not log either chain-stop line: {lines:?}"
+                );
+            }
+        }
     }
 
     // --- tool slate AT THE WIRE (W4.1g) ---

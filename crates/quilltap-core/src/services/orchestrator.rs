@@ -3804,6 +3804,11 @@ where
     }
     // Single-turn callers enqueue the next turn themselves.
     if opts.single_turn {
+        tracing::info!(
+            chat_id = %opts.chat_id,
+            user_id = %opts.user_id,
+            "[TurnOrchestrator] singleTurn: skipping chain loop",
+        );
         return Ok(());
     }
 
@@ -3914,6 +3919,12 @@ where
                 // fall through to the next decideNextTurn iteration. Only a
                 // genuinely empty response (no content, no skip) stops the chain.
                 if !chain_result.has_content && !chain_result.skipped {
+                    tracing::info!(
+                        chat_id = %opts.chat_id,
+                        chain_depth = chain_depth,
+                        user_id = %opts.user_id,
+                        "[TurnOrchestrator] Chain stopped: empty response",
+                    );
                     let _ = turn_orchestrator::persist_turn_participant_id(db, &opts.chat_id, None)
                         .await;
                     deps.sink
@@ -3930,7 +3941,14 @@ where
                     break;
                 }
             }
-            Err(_chain_error) => {
+            Err(chain_error) => {
+                tracing::error!(
+                    chat_id = %opts.chat_id,
+                    chain_depth = chain_depth,
+                    user_id = %opts.user_id,
+                    error = %chain_error,
+                    "[TurnOrchestrator] Chain error, stopping",
+                );
                 // Safety stop: pause so a failing provider cannot be re-polled turn
                 // after turn. The pause outlives this stream — the user lifts it
                 // with Resume — so it must be announced (`paused: true`), not just
@@ -4721,6 +4739,27 @@ mod tests {
                 assert_eq!(
                     paused_lines[0],
                     "INFO quilltap_core::services::orchestrator [TurnOrchestrator] Chat paused, not chaining after initial turn chat_id=chat-x user_id=user-x",
+                );
+            }
+            // P4.81 item 4: v4's `logger.info('[TurnOrchestrator] singleTurn:
+            // skipping chain loop', { chatId, userId })` — fired on exactly the
+            // two `single_turn` rows (the guard runs BEFORE the pause check, so
+            // row 5's is_paused=true never reaches the pause line either — the
+            // `want.is_empty()` assertion above already pins that).
+            let single_turn_lines: Vec<&String> = lines
+                .iter()
+                .filter(|l| l.contains("[TurnOrchestrator] singleTurn: skipping chain loop"))
+                .collect();
+            if single_turn {
+                assert_eq!(single_turn_lines.len(), 1, "one line, once: {lines:?}");
+                assert_eq!(
+                    single_turn_lines[0],
+                    "INFO quilltap_core::services::orchestrator [TurnOrchestrator] singleTurn: skipping chain loop chat_id=chat-x user_id=user-x",
+                );
+            } else {
+                assert!(
+                    single_turn_lines.is_empty(),
+                    "a non-single-turn row must not log the singleTurn line: {lines:?}"
                 );
             }
         }
