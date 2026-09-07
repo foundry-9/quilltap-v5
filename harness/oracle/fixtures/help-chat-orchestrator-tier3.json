@@ -274,7 +274,7 @@
       "streams": [
         [
           {
-            "content": "[[HELP_NAVIGATE {\"url\": \"/salon\", \"label\": \"Open the Salon\"}]][[/HELP_NAVIGATE]] The Salon is where chats live."
+            "content": "[[HELP_NAVIGATE url=\"/salon\" /]] The Salon is where chats live."
           },
           {
             "done": true,

@@ -231,6 +231,27 @@ Deferred loudly (tier 3, named not performed): the five per-caller JSON
 extractors v5 already carries stay where they are — each is oracle-pinned in
 place, and `generators::llm_json` is a NEW home for v4's module, not a
 consolidation of them.
+#### 2026-09-07 — fix(harness): the text_block_turn case now actually parses its own marker (P4.81 item 3)
+
+_Versions: harness 0.0.702._
+
+`help-chat-orchestrator-tier3.json`'s `text_block_turn` case scripted a
+first-stream marker, `[[HELP_NAVIGATE {"url": "/salon", "label": "Open the
+Salon"}]][[/HELP_NAVIGATE]]`, that never matched EITHER side's text-block
+detector: v4's `hasTextBlockMarkers` (`/\[\[\w+[\s\w="'\\\/]*\]\]/i`)
+requires only whitespace/word/`=`/`"`/`'`/`\`/`/` characters between the
+tool name and the closing `]]`, and a bare `{` fails that class
+immediately — so the marker was invisible before parsing was ever
+attempted, and the case's SECOND scripted stream (`"It is the room of
+conversations."`) never fired on either side. v4's real self-closing form,
+confirmed against the pinned checkout
+(`lib/tools/legacy/text-block-prompt.ts:142`), is
+`[[HELP_NAVIGATE url="/salon" /]]`. The fixture now uses it; the family's
+oracle regenerated at the `f699da6f6` pin. Mutation-proven: reverting to
+the old marker and re-running against the SAME (unmodified) fresh oracle
+drops `text_block_turn` from 6 frames / a 34-canned-stream corpus total to
+2 frames / 33 — the second stream is provably alive now.
+
 #### 2026-09-07 — fix(host): the chatCreate refusal wire carries v4's Zod details, and the progress emitter waits on validation (P4.81 items 1–2)
 
 _Versions: host 0.0.106, harness 0.0.701._
