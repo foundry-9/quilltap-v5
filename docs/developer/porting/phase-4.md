@@ -6395,6 +6395,95 @@ from the pin zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Play
 
 PB1 stays parked by the standing rule.
 
+## The `2f4254b42` character-subprompts round (P4.D163 → P4.D164 stacked ∥ P4.D165 ∥ P4.9K1-resumed ∥ P4.9K2-resumed) — ORDERED 2026-09-07
+
+**Baseline `f699da6f6`; v4 `main` HEAD `2f4254b42` (ONE past — "feat:
+character subprompts — per-chat optional instructions from the vault",
+`4.10.0-dev.1`, 57 files, +2442/−17, ten already-ported surfaces + four
+`help/` files), v4 `bugfix` tip `1a2b2164c` (unmoved, nothing unabsorbed);
+the checkout back on `main` and clean; regen rule PIN REQUIRED with TWO pin
+shas — `2f4254b42` for every family the feature moves (the drift lanes pin
+at the sha they absorb, the P4.D119 precedent) and `f699da6f6` for the
+resumed K lanes and every neutrality regen.** The standing rule clears the
+drift first: the one ledger row is a whole PORT-NEW feature and splits into
+a stacked server pair plus one SPA lane; the two OPEN orders from the
+`p4.9k` round (candidates list item 1) resume beside them, their v4
+surfaces verified untouched by the drift BY PATH. Round name in the work
+orders: "the `2f4254b42` character-subprompts round". The round-wide §R
+meeting points, the §C wire contract and the Ownership table are spliced
+byte-identically into every order and addendum (md5-verified at planning).
+
+- **P4.D163 — subprompts SERVER part 1** (`work-orders/p4.d163-character-
+  subprompts-server.md`): unit 1 is a MEASURED data-safety fix landed
+  red-first — `db/chats.rs:62 ChatParticipant` has no unknown-key carry, so
+  every v5 participant rewrite drops a v4-written `selectedSubpromptIds`
+  on the shared Friday instance today; then the `subprompts` module (pure
+  helpers tier-1 over a committed corpus; vault reads/writes + the
+  case-insensitive `resolve_selected_subprompts` tier-2 over the NEW
+  committed `subprompts-{main,mount}.db` pair), the fan-out over
+  `find_by_character_id` with the delete-strip, the five verbs + REST edges
+  (guard ladders MEASURED — POST/PUT parse the body before the 404) +
+  realtime, the create/update/enrichment carries (`chat_create_capstone` at
+  108 cases moves), the log lines capture-pinned, and Tier 0: the four
+  `help/` files re-vendored at `2f4254b42` with the four help families
+  regenerated (the ledger's fired `help/**` hazard).
+- **P4.D164 — subprompts SERVER part 2, STACKED** (`work-orders/p4.d164-
+  subprompts-prompt-assembly-server.md`): the `## Additional Instructions`
+  block at v4's position with NO builder-version bump (the P4.D103 goldens
+  + the cross-implementation hash must stay UNMOVED — pinned), the compiler
+  bake, the `build_context` fallback resolved only without a precompiled
+  stack, the greeting's fifth positional with its RAW six-key context (no
+  scenario fallback — a measured difference from the stack's), the green
+  room's fifth bullet + `subpromptsNote` (no template processing,
+  `content.trim()`) at BOTH v5 `llm_choose` entrances, and the NEW
+  `subprompts_prompt_tier2_equivalence` proving the chain end to end
+  (compile → edit → delete-strip) over the pair extended ONCE.
+- **P4.D165 — subprompts SPA** (`work-orders/p4.d165-character-subprompts-
+  spa.md`): the shared trio (picker with the missing-id line-through rows
+  and the `enabled` gating, the keyed-remount editor modal, the query hook
+  over the §C verbs), the Aurora section under the prompt list, both
+  New-Chat pickers with the omit-when-empty body rule, the participant-card
+  picker + `Subprompts updated`, the realtime arm, the thirteenth hint
+  (the P4.D103 comparand regenerated at the pin), v4's three jest suites as
+  parity specs, and a four-beat walk gated on `P4D163_SERVER_LANDED`
+  ACTIVATE-AT-UNIFY. Owns `apps/web/**` whole — the only SPA lane.
+- **P4.9K1-resumed** (`work-orders/p4.9k1-generators-server-detail.md` +
+  its Round-2 resume addendum): Tier-1 items 2–8 as runner-sized units
+  with injected seams per the lane record — the optimizer runner with the
+  bug-119 `run_sub_step` containment (the ledger's `15573c3a1` obligation),
+  the external prompt with its two riders, the rename under the banked
+  literal-scan + `GetSubstitution` ruling, refresh-archive, the four verbs
+  + driver + REST arms, the three tier-3 families. Pin `f699da6f6`.
+- **P4.9K2-resumed** (`work-orders/p4.9k2-generators-server-wizard-import.md`
+  + its addendum): the AI import's three exported assembly functions first
+  (tier-1, no fixture), then both wizard runners + five generators,
+  `ai_import` whole, the NEW `character-generators-{main,mount}.db`, the
+  three verbs + driver + REST arms, the `UNSERVED_KNOWN_ACTIONS` retirement,
+  both tier-3 families. Pin `f699da6f6`.
+
+**Unifier wires named at planning (§R.6):** flip the six `P49K1/K2_SERVER_
+LANDED` beats (first-run recipes in their headers) and P4.D165's
+`P4D163_SERVER_LANDED`; fold the six §B generator DTOs + the §C subprompts
+DTOs into `core-contract.ts` with the name-for-name diff; retire the `as
+unknown as CoreRequest` casts; dedupe the two SPA fold helpers onto K3's
+`mintProgressId` / `isGeneratorProgressEvent`; regenerate every family over
+`subprompts-*.db` ONCE after P4.D164's extension; retire the ledger's two
+rows at the baseline move to `2f4254b42`.
+
+Deliberately left out of the round: the owed dogfood pass (it gains every
+surface above and runs after the unification — the standing queue's
+Brahma deep query, dedup/summaries and #101 stay human); the K3 review
+pane's three missing renders, the `[Chats v1] Impersonation stopped` line,
+`useSSEStreaming`'s continue-mode toast, the interceptor rule's
+nested-button census, `runTemplateSave`, `promptTemplateList`, the
+`imported` count line, the K0 `Closed`-channel drop, P4.81 item 7
+(candidates list item 3 — small follow-ups, none order-sized, each waiting
+on a lane that owns its file); the census's honest totality + the
+present-but-null lead, the `CaptureLayer` consolidation, the sweep driver's
+SHELL_START class, `image_profiles.rs:655` (item 4); PB1 by the standing
+rule.
+
+
 ## The `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81) — UNIFIED 2026-09-07
 
 **UNIFIED on main (2026-09-07) — P4.9K0, P4.9K3, P4.9K4 and P4.80 CLOSED;

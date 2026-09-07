@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(orders): the `2f4254b42` character-subprompts round — three new work orders + two resume addenda, the ledger row ORDERED, the phase-4 ORDERED section
+
+_Docs-only change._
+
+`/setupphase` from the main checkout; the drift ledger's §2 probe passed
+(v4 `main` at `2f4254b42`, one past the `f699da6f6` baseline; `bugfix`
+unmoved; checkout on `main`, clean). The round clears the one UNPROCESSED
+row first and resumes the two OPEN `p4.9k` orders beside it:
+
+- `work-orders/p4.d163-character-subprompts-server.md` — the participant
+  carry landed FIRST as a measured data-safety fix (v5's `ChatParticipant`
+  has no unknown-key carry, so every v5 participant rewrite drops a
+  v4-written `selectedSubpromptIds` today), the `subprompts` module +
+  fan-out, the five verbs + REST edges + realtime, a new committed
+  `subprompts-{main,mount}.db`, and the four-file `help/` re-vendor.
+- `work-orders/p4.d164-subprompts-prompt-assembly-server.md` (stacked) —
+  the `## Additional Instructions` block with no builder-version bump, the
+  compiler bake, the `build_context` fallback, the greeting's raw six-key
+  context, the green room at both `llm_choose` entrances.
+- `work-orders/p4.d165-character-subprompts-spa.md` — the picker / editor
+  modal / section trio, both New-Chat pickers, the participant-card picker,
+  the realtime key, the thirteenth field hint, parity specs, a gated walk.
+- Resume addenda prepended to `p4.9k1-generators-server-detail.md` and
+  `p4.9k2-generators-server-wizard-import.md` (probe values, the
+  `f699da6f6` pin verified by path, the `main` base, this round's siblings).
+
+The round-wide §R meeting points, the §C wire contract and the Ownership
+table are spliced byte-identically into all five documents (md5-verified).
+The ledger's `2f4254b42` row is `ORDERED(P4.D163 ∥ P4.D164 ∥ P4.D165)`;
+`phase-4.md` gains the ORDERED section with the unifier wires and the
+deliberate exclusions.
+
 #### 2026-09-07 — docs(drift): v4 drift check — one commit past `f699da6f6` (character subprompts)
 
 _Versions: docs-only; no crate source touched._
