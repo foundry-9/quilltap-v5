@@ -1,0 +1,193 @@
+{
+  "$schema-note": "P4.9K2 wizard-prompts corpus. Drives v4's REAL buildContextPrompt through harness/oracle/cases/generators-wizard-prompts.ts. Every id here must appear in the oracle output and vice versa (the coverage row).",
+  "contexts": [
+    {
+      "id": "name-and-background",
+      "characterName": "Aria",
+      "background": "A quiet library world."
+    },
+    {
+      "id": "no-name",
+      "characterName": "",
+      "background": "A world."
+    },
+    {
+      "id": "whitespace-name",
+      "characterName": "   ",
+      "background": "A world."
+    },
+    {
+      "id": "no-background",
+      "characterName": "Aria",
+      "background": ""
+    },
+    {
+      "id": "whitespace-background",
+      "characterName": "Aria",
+      "background": "  \n "
+    },
+    {
+      "id": "neither",
+      "characterName": "",
+      "background": ""
+    },
+    {
+      "id": "image-only",
+      "characterName": "Aria",
+      "background": "",
+      "imageDescription": "Auburn hair, grey eyes."
+    },
+    {
+      "id": "document-only",
+      "characterName": "Aria",
+      "background": "",
+      "documentContent": "# Lore\nShe reads."
+    },
+    {
+      "id": "image-and-document",
+      "characterName": "Aria",
+      "background": "B",
+      "imageDescription": "Tall.",
+      "documentContent": "Doc."
+    },
+    {
+      "id": "empty-image-string",
+      "characterName": "Aria",
+      "background": "B",
+      "imageDescription": ""
+    },
+    {
+      "id": "empty-document-string",
+      "characterName": "Aria",
+      "background": "B",
+      "documentContent": ""
+    },
+    {
+      "id": "existing-full",
+      "characterName": "Aria",
+      "background": "B",
+      "existingData": {
+        "title": "The Wandering Scholar",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "aliases": [
+          "Ari",
+          "The Botanist"
+        ],
+        "identity": "A research librarian.",
+        "description": "Finishes sentences.",
+        "manifesto": "You do not lie.",
+        "personality": "You keep your worry behind your teeth.",
+        "scenarios": [
+          {
+            "id": "s1",
+            "title": "Reading Room",
+            "content": "Lamplight."
+          },
+          {
+            "id": "s2",
+            "title": "Greenhouse",
+            "content": ""
+          }
+        ],
+        "firstMessage": "Hello there.",
+        "exampleDialogues": "A: hi\nB: hello",
+        "systemPrompt": "You answer briefly."
+      }
+    },
+    {
+      "id": "existing-all-blank",
+      "characterName": "Aria",
+      "background": "B",
+      "existingData": {
+        "title": "   ",
+        "identity": "   ",
+        "description": "   ",
+        "manifesto": "   ",
+        "personality": "   ",
+        "firstMessage": "   ",
+        "exampleDialogues": "   ",
+        "systemPrompt": "   ",
+        "pronouns": null,
+        "aliases": [],
+        "scenarios": []
+      }
+    },
+    {
+      "id": "existing-empty-object",
+      "characterName": "Aria",
+      "background": "B",
+      "existingData": {}
+    },
+    {
+      "id": "existing-null",
+      "characterName": "Aria",
+      "background": "B",
+      "existingData": null
+    },
+    {
+      "id": "existing-odd-scalars",
+      "characterName": "Aria",
+      "background": "B",
+      "existingData": {
+        "pronouns": {
+          "subject": "",
+          "object": null,
+          "possessive": 1
+        },
+        "aliases": [
+          "a",
+          null,
+          3
+        ],
+        "scenarios": [
+          {
+            "title": 7,
+            "content": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "everything",
+      "characterName": "Aria",
+      "background": "B",
+      "existingData": {
+        "title": "The Wandering Scholar",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "aliases": [
+          "Ari",
+          "The Botanist"
+        ],
+        "identity": "A research librarian.",
+        "description": "Finishes sentences.",
+        "manifesto": "You do not lie.",
+        "personality": "You keep your worry behind your teeth.",
+        "scenarios": [
+          {
+            "id": "s1",
+            "title": "Reading Room",
+            "content": "Lamplight."
+          },
+          {
+            "id": "s2",
+            "title": "Greenhouse",
+            "content": ""
+          }
+        ],
+        "firstMessage": "Hello there.",
+        "exampleDialogues": "A: hi\nB: hello",
+        "systemPrompt": "You answer briefly."
+      },
+      "imageDescription": "Tall.",
+      "documentContent": "Doc."
+    }
+  ]
+}

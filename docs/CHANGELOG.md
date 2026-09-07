@@ -77,6 +77,42 @@ nullish instead of JS-falsy, at both the prompt's count and the context's skip.
 That last pair only reddens because the mutation pass first found the corpus
 BLIND to it — the two spellings differ only on a falsy-but-not-nullish
 `archivedAt`, so a `""` row was added and the oracle regenerated.
+#### 2026-09-07 — port(generators): the AI Wizard's prompt constants and buildContextPrompt, byte-exact against v4
+
+_Versions: core 0.0.815, harness 0.0.702._
+
+P4.9K2 unit 1 — the pure half of v4's `lib/services/character-wizard.service.ts`.
+`generators::wizard_prompts` is a GENERATED module (the recorder
+`harness/oracle/cases/generators-wizard-prompts.ts` and the generator
+`harness/oracle/tools/gen-wizard-prompts.mjs` are both committed) holding
+`FIELD_PROMPTS` in v4's own insertion order plus `PROPERTIES_PROMPT` and
+`HEAD_AND_SHOULDERS_PHYSICAL_PROMPT`. `generators::wizard::build_context_prompt`
+is the hand port of the context every field-generation call opens with.
+
+⚠ **A measured correction to the round's work order:** `FIELD_PROMPTS` has
+**10** keys, not the 13 the order states. Thirteen is the size of
+`WizardRequest.fieldsToGenerate`'s union; `properties`, `physicalDescription`
+and `wardrobeItems` are served by dedicated generators rather than by this
+table. The differential's floor is 10 and its coverage row is diffed exactly, so
+a drift in either direction is loud.
+
+`existingData` is read as `serde_json::Value` because v4 distinguishes three
+inputs a typed struct would collapse into one: absent, `null`, and present but
+blank. v4 tests most members with `?.trim()` but tests `pronouns` with plain
+truthiness, so an all-empty-string pronoun triple still renders — a corpus row
+pins that asymmetry.
+
+The differential is the new `generators_wizard_prompts_equivalence` family over
+the committed `harness/oracle/fixtures/generators-wizard-prompts.json`: all 10
+field prompts, both constants, and 17 `buildContextPrompt` cases driven through
+v4's REAL exports. The `FIELD_PROMPTS` table is compared both ways and its ORDER
+is asserted, because the generated table records v4's insertion order rather
+than sorting.
+
+Five mutation proofs, each reddening exactly one named arm: one byte of a field
+prompt; the table's first two keys transposed; the `pronouns` truthiness test
+narrowed to a blank test; the three `label:\n` labels given a space instead; and
+the empty-string guard dropped from the image/document blocks.
 
 #### 2026-09-07 — port(web): the character-generator SSE re-framer, v4's stream bytes off the Event channel
 

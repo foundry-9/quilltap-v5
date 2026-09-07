@@ -35,6 +35,11 @@
 pub mod optimizer;
 // === end P4.9K1 ===
 
+// === P4.9K2 ===
+pub mod wizard;
+pub mod wizard_prompts;
+// === end P4.9K2 ===
+
 pub mod field_semantics;
 pub mod generated_properties;
 pub mod llm_json;
