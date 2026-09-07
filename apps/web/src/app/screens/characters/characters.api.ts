@@ -51,6 +51,16 @@ export const characterKeys = {
   photos: (id: string) => ['characters', 'photos', id] as const,
   depiction: (id: string) => ['characters', 'depiction', id] as const,
   prompts: (id: string) => ['characters', 'prompts', id] as const,
+  /**
+   * The character's `Subprompts/` folder (v4 `queryKeys.characters.subprompts`,
+   * `lib/query/keys.ts:31`). v4 spells its per-character sub-keys
+   * `['characters', id, '<what>']`; v5 has spelled them `['characters',
+   * '<what>', id]` since the vertical landed (see `prompts` above), and this
+   * one follows the file rather than v4 — only the DISTINCTNESS is
+   * contractual, and the `['characters']` prefix that mutations invalidate
+   * reaches both spellings identically.
+   */
+  subprompts: (id: string) => ['characters', 'subprompts', id] as const,
   scenarios: (id: string) => ['characters', 'scenarios', id] as const,
   defaultPartner: (id: string) => ['characters', 'default-partner', id] as const,
 };

@@ -4,7 +4,9 @@ import { PROMPT_FIELD_HINTS, type PromptFieldHintKey } from './prompt-field-hint
 
 /**
  * The v4-client-oracle parity pin for the prompt-field hint table (v4
- * `components/prompt-fields/field-hints.ts` at `a6870c5a`).
+ * `components/prompt-fields/field-hints.ts`, re-emitted at `2f4254b42` — the
+ * character-subprompts commit, which inserted the `subprompt` entry between
+ * `systemPrompt` and `physicalDescription`).
  *
  * The expectation rows below were EMITTED from v4's real module — a tsx script
  * imported `PROMPT_FIELD_HINTS` from the v4 checkout and printed each entry as
@@ -68,6 +70,12 @@ const V4_HINTS: Row[] = [
     'You are Ariadne. You answer plainly and you never flatter.',
   ],
   [
+    'subprompt',
+    'Subprompt',
+    'A smaller instruction the character may carry into a particular chat, switched on or off per conversation. Written to the character directly, in the second person, exactly as a system prompt is — it lands immediately after the system prompt and is read by nobody else.',
+    'You keep every reply under three sentences unless asked for more.',
+  ],
+  [
     'physicalDescription',
     'Physical Description',
     'Descriptive phrases only — this text also drives image generation, so keep to what a lens would record, never a sentence addressed to anyone.',
@@ -100,7 +108,7 @@ const V4_HINTS: Row[] = [
 ];
 
 describe('PROMPT_FIELD_HINTS — v4 parity', () => {
-  it('carries exactly v4’s thirteen keys, in v4’s order', () => {
+  it('carries exactly v4’s fourteen keys, in v4’s order', () => {
     expect(Object.keys(PROMPT_FIELD_HINTS)).toEqual(V4_HINTS.map(([key]) => key));
   });
 

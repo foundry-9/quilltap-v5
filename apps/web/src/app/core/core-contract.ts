@@ -313,6 +313,13 @@ export interface ChatUpdateParticipantRequest {
   imageProfileId?: string | null;
   /** Three-valued — an explicit `null` means "use the default prompt". */
   selectedSystemPromptId?: string | null;
+  /**
+   * §C.3 — the whole set of subprompts in play for this seat. NOT three-valued:
+   * PRESENT replaces the set, ABSENT leaves it untouched, and an explicit `null`
+   * is a Zod `invalid_type` 400 on v4's side. Schema order puts it directly
+   * after `selectedSystemPromptId`.
+   */
+  selectedSubpromptIds?: string[];
   displayOrder?: number;
   isActive?: boolean;
   status?: ParticipantStatusWire;
@@ -779,6 +786,13 @@ export interface ChatCreateParticipantInput {
   characterId: string;
   connectionProfileId?: string;
   selectedSystemPromptId?: string;
+  /**
+   * §C.3 — omitted when nothing is ticked or the seat is user-controlled, so a
+   * plain create stays byte-identical to what it was before the feature. The
+   * server stores `isUserControlled ? [] : (given ?? [])`, so a CREATED
+   * participant always carries the key even when the client sends none.
+   */
+  selectedSubpromptIds?: string[];
   controlledBy?: 'llm' | 'user';
 }
 
@@ -1151,6 +1165,47 @@ export interface CharacterPromptSetDefaultRequest {
   type: 'characterPromptSetDefault';
   characterId: string;
   promptId: string;
+}
+
+/**
+ * Subprompt sub-resource CRUD (§C.2; v4 `/characters/:id/subprompts`).
+ *
+ * §C.2 `characterSubpromptList` — title-sorted; `[]` for no vault / no folder.
+ */
+export interface CharacterSubpromptListRequest {
+  type: 'characterSubpromptList';
+  characterId: string;
+}
+
+/** §C.2 `characterSubpromptGet`. */
+export interface CharacterSubpromptGetRequest {
+  type: 'characterSubpromptGet';
+  characterId: string;
+  subpromptId: string;
+}
+
+/** §C.2 `characterSubpromptCreate` (v4's REST twin answers 201). */
+export interface CharacterSubpromptCreateRequest {
+  type: 'characterSubpromptCreate';
+  characterId: string;
+  title: string;
+  content: string;
+}
+
+/** §C.2 `characterSubpromptUpdate` — both fields optional, as v4's PUT schema is. */
+export interface CharacterSubpromptUpdateRequest {
+  type: 'characterSubpromptUpdate';
+  characterId: string;
+  subpromptId: string;
+  title?: string;
+  content?: string;
+}
+
+/** §C.2 `characterSubpromptDelete`. */
+export interface CharacterSubpromptDeleteRequest {
+  type: 'characterSubpromptDelete';
+  characterId: string;
+  subpromptId: string;
 }
 
 /** Scenario sub-resource CRUD (v4 `/characters/:id/scenarios`). */
@@ -2385,6 +2440,11 @@ export type CoreRequest =
   | CharacterPromptUpdateRequest
   | CharacterPromptDeleteRequest
   | CharacterPromptSetDefaultRequest
+  | CharacterSubpromptListRequest
+  | CharacterSubpromptGetRequest
+  | CharacterSubpromptCreateRequest
+  | CharacterSubpromptUpdateRequest
+  | CharacterSubpromptDeleteRequest
   | CharacterScenarioListRequest
   | CharacterScenarioCreateRequest
   | CharacterScenarioUpdateRequest
@@ -2865,6 +2925,12 @@ export interface ParticipantDetail {
   } | null;
   imageProfile: { id: string; name: string; provider: string; modelName: string } | null;
   selectedSystemPromptId?: string | null;
+  /**
+   * §C.3 — ALWAYS present on the enrichment (`participant.selectedSubpromptIds
+   * ?? []`), directly after `selectedSystemPromptId`. Optional here only so a
+   * pre-feature server (or a test double) still type-checks.
+   */
+  selectedSubpromptIds?: string[];
   talkativeness?: number | null;
   createdAt: string;
   updatedAt: string;
@@ -3004,6 +3070,25 @@ export interface CharacterSystemPrompt {
   content: string;
   isDefault: boolean;
   createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One subprompt in a character's vault (§C.1; v4 `Subprompt`,
+ * `lib/subprompts/subprompts.ts:52-63`) — a short Markdown instruction kept in
+ * the vault's root-level `Subprompts/` folder, switched on or off per chat.
+ *
+ * Key order here is the wire's. `id` is the file name without `.md` (ONE path
+ * segment, stable across title edits — that is why a chat's selection survives
+ * a rename); `path` is `Subprompts/<id>.md`; `title` is the frontmatter title
+ * falling back to the id; `content` is the body with frontmatter stripped; and
+ * `updatedAt` is the file's mtime as an ISO 8601 string.
+ */
+export interface SubpromptRecord {
+  id: string;
+  path: string;
+  title: string;
+  content: string;
   updatedAt: string;
 }
 

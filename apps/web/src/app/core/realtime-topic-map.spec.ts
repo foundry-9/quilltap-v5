@@ -24,10 +24,7 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
   it('jobs drives BOTH the chips and the tasks queue', () => {
     expect(queryKeysForTopic('jobs')).toEqual([systemJobsKeys.all, tasksQueueKeys.all]);
     // v4 ignores an id on this topic; so does v5.
-    expect(queryKeysForTopic('jobs', 'anything')).toEqual([
-      systemJobsKeys.all,
-      tasksQueueKeys.all,
-    ]);
+    expect(queryKeysForTopic('jobs', 'anything')).toEqual([systemJobsKeys.all, tasksQueueKeys.all]);
   });
 
   it('autonomousRooms drives the one room key', () => {
@@ -60,11 +57,14 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     ]);
   });
 
-  it('characters: v4\'s exact detail/prompts/photos trio when scoped', () => {
+  it("characters: v4's exact detail/prompts/subprompts/photos quartet when scoped", () => {
+    // v4 `__tests__/unit/realtime/topic-map.test.ts:46-52` at `2f4254b42` — the
+    // subprompts key joined the fan-out in THAT position, third of four.
     expect(queryKeysForTopic('characters')).toEqual([characterKeys.all]);
     expect(queryKeysForTopic('characters', 'c-1')).toEqual([
       characterKeys.detail('c-1'),
       characterKeys.prompts('c-1'),
+      characterKeys.subprompts('c-1'),
       characterKeys.photos('c-1'),
     ]);
   });
@@ -92,7 +92,7 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
   });
 });
 
-describe('realtimeHintFromFrame (§B.5 discrimination + v4\'s safeParse)', () => {
+describe("realtimeHintFromFrame (§B.5 discrimination + v4's safeParse)", () => {
   it('accepts the wire shape §B.2 pins, with and without a scope id', () => {
     expect(realtimeHintFromFrame({ v: 1, topic: 'jobs', at: 17 })).toEqual({
       v: 1,

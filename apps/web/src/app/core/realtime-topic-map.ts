@@ -89,7 +89,12 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
 
     case 'characters':
       return id
-        ? [characterKeys.detail(id), characterKeys.prompts(id), characterKeys.photos(id)]
+        ? [
+            characterKeys.detail(id),
+            characterKeys.prompts(id),
+            characterKeys.subprompts(id),
+            characterKeys.photos(id),
+          ]
         : [characterKeys.all];
 
     case 'mountPoints':

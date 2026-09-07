@@ -584,6 +584,43 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — feat(subprompts): the subprompts wire — the five §C.2 verbs, the shared query helper, the query key, the realtime fan-out, and the fourteenth prompt-field hint
+
+_Versions: SPA 0.5.666._
+
+P4.D165 unit 1 (the SPA half of v4's `2f4254b42`). The §C DTOs land in
+`core-contract.ts` — `SubpromptRecord` in the wire's key order, the five
+`characterSubprompt*` request types beside their `characterPrompt*` siblings and
+in the `CoreRequest` union, plus `selectedSubpromptIds` on the
+update-participant patch (NOT three-valued — present replaces, absent leaves
+alone), on the chat-create participant input (omitted when empty), and on the
+enriched participant projection.
+
+`subprompts/subprompts.api.ts` is v4's `useCharacterSubprompts` hook: the five
+ops through `CoreClient.dispatchData`, and `injectCharacterSubprompts()` — the
+`injectCharInsertSettings` precedent — carrying v4's `enabled` gating, its
+`enabled && isLoading` rule, the invalidate-on-success of all three writes, and
+the realtime-gated 60 s fallback poll.
+
+Two v4 pieces are recorded as having no counterpart rather than ported: the
+`encodeURIComponent(subpromptId)` in v4's `itemUrl` (v5 builds no URL — the id
+rides as a JSON field), and `subpromptErrorMessage`, whose `ApiFetchError`
+branch cannot exist here because `CoreDispatchError` is constructed FROM the
+error envelope; what remains of it is exactly `coreErrorMessage`, which the
+subprompts surfaces call directly.
+
+`characterKeys.subprompts` follows the characters file's own `['characters',
+'<what>', id]` spelling rather than v4's `['characters', id, '<what>']` — the
+divergence the file already carries for `prompts`; the `['characters']` prefix
+that mutations invalidate reaches both identically. The `characters` realtime
+topic and the `character-view` tab-activation map both gain the key in v4's
+position, third of four.
+
+The prompt-field hint table was RE-EMITTED from v4's real module at
+`2f4254b42` (the P4.D103 mechanism) rather than hand-edited: fourteen keys, not
+the order's predicted thirteen — v5 already carried thirteen — with `subprompt`
+between `systemPrompt` and `physicalDescription`, and every pre-existing row
+byte-identical after the re-emission.
 
 #### 2026-09-07 — docs(orders): the `2f4254b42` character-subprompts round — three new work orders + two resume addenda, the ledger row ORDERED, the phase-4 ORDERED section
 

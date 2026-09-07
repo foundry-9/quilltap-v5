@@ -120,6 +120,7 @@ export function tabActivationQueryKeys(tab: WorkspaceTab): QueryKeyPrefix[] {
       return [
         characterKeys.detail(payload.characterId),
         characterKeys.prompts(payload.characterId),
+        characterKeys.subprompts(payload.characterId),
         characterKeys.photos(payload.characterId),
       ];
     }
