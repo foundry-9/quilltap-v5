@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(lane): the P4.D164 lane record's verification + gate record; the P4.D163 stacked-lane close
+
+_Docs-only change._
+
+The stacked lane's verification record: the seven moved families through
+the sweep driver at the `2f4254b42` pin with the changed-bytes counts, the
+step-6 ownership diffs empty, the mutation proofs, and the full gate (fmt,
+clippy both feature sets, build, `cargo test --workspace` with both orders'
+env block — 520 binaries / 2,962 / 0 / 1 ignored, zero SKIP — and the
+release build), plus the cleanup and the close status of both orders.
+
 #### 2026-09-07 — test(subprompts): the end-to-end prompt-assembly tier-2 family over the committed pair (P4.D164 unit 6)
 
 _Versions: harness 0.0.718._
