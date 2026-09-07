@@ -282,6 +282,33 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — feat(generators): P4.9K2 unit 2 — the AI import's assembly leaf (`generators::ai_import`, tier 1)
+
+_Versions: core 0.0.823, harness 0.0.712._
+
+Ports the pure half of v4's `lib/services/ai-import.service.ts` (Summon From
+Lore): the twelve step names, every prompt (`CHARACTER_BASICS_PROMPT`, the
+per-step prompts, the analyzing and repair prompt builders, the system
+message), `shouldRunStep` / `getSnippet`, and the three exported assembly
+functions — `assembleWardrobeItems` (leaf-first ids minted per batch, a
+duplicate title sharing one id, case-insensitive component resolution),
+`assembleQtapExport` (the whole character / memories / manifest literal with
+JS semantics: truthy `scenario`, `undefined` keys omitted, the substring caps,
+`Math.max(0, Math.min(1, x))` with its `NaN` → `null`, the built-and-dropped
+`chats` array with its one observable throw arm) and `restampStructuralFields`
+(in-place, counting). The uuid minter and the clock are injectable.
+
+New tier-1 family `ai_import_assembly_equivalence` (`harness/oracle/cases/
+ai-import-assembly.ts` over the committed `ai-import-assembly.json`): 6
+wardrobe rows, 16 export rows (six throwing — v4's own sentence and V8's exact
+`TypeError` wording for a malformed step result), 6 restamp rows carrying the
+mutated bag beside the count, and the prompt; uuids remapped `<minted-N>` in
+first-seen order on both sides, the clock frozen in the oracle. Green after
+one JS-number fix (an integral clamp serializes as `1`, not `1.0`).
+
+Recorded: v4's `assembleQtapExport` builds a `chats` array it never attaches —
+the assembled export carries no chat (a candidate upstream filing).
+
 #### 2026-09-07 — feat(generators): P4.9K1 unit 5 — the host generator driver LIVE, and the four generator actions on `POST /api/v1/characters/{id}`
 
 _Versions: host 0.0.108, web 0.0.124._

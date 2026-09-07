@@ -1,0 +1,727 @@
+{
+  "frozenNowMs": 1772446830000,
+  "wardrobe": [
+    {
+      "id": "composite-leaf-first",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "now": "2026-03-02T10:20:30.000Z",
+      "items": [
+        {
+          "title": "Harbor Kit",
+          "description": "The whole working rig.",
+          "types": [
+            "top",
+            "footwear",
+            "accessories"
+          ],
+          "isDefault": true,
+          "components": [
+            "Lantern Coat",
+            " brass ring ",
+            "SEA BOOTS"
+          ],
+          "replace": true
+        },
+        {
+          "title": "Lantern Coat",
+          "description": "An oilskin coat with brass toggles.",
+          "imagePrompt": "oilskin coat, brass toggles",
+          "types": [
+            "top"
+          ],
+          "appropriateness": "working, foul weather",
+          "isDefault": true
+        },
+        {
+          "title": "Brass Ring",
+          "description": "",
+          "imagePrompt": "",
+          "types": [
+            "accessories"
+          ],
+          "isDefault": false
+        },
+        {
+          "title": "Sea Boots",
+          "description": "Tall boots.",
+          "types": [
+            "footwear"
+          ],
+          "isDefault": false
+        }
+      ]
+    },
+    {
+      "id": "empty",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "now": "2026-03-02T10:20:30.000Z",
+      "items": []
+    },
+    {
+      "id": "unknown-component-dropped",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "now": "2026-03-02T10:20:30.000Z",
+      "items": [
+        {
+          "title": "Outfit",
+          "description": "x",
+          "types": [
+            "top"
+          ],
+          "isDefault": false,
+          "components": [
+            "Ghost Item",
+            "Lantern Coat"
+          ]
+        },
+        {
+          "title": "Lantern Coat",
+          "description": "An oilskin coat with brass toggles.",
+          "imagePrompt": "oilskin coat, brass toggles",
+          "types": [
+            "top"
+          ],
+          "appropriateness": "working, foul weather",
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "id": "duplicate-titles-share-an-id",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "now": "2026-03-02T10:20:30.000Z",
+      "items": [
+        {
+          "title": "Coat",
+          "description": "first",
+          "types": [
+            "top"
+          ],
+          "isDefault": false
+        },
+        {
+          "title": "coat",
+          "description": "second",
+          "types": [
+            "top"
+          ],
+          "isDefault": true
+        }
+      ]
+    },
+    {
+      "id": "flags-are-strict-equality",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "now": "2026-03-02T10:20:30.000Z",
+      "items": [
+        {
+          "title": "Hat",
+          "description": "a hat",
+          "types": [
+            "accessories"
+          ],
+          "isDefault": "yes",
+          "replace": 1,
+          "appropriateness": ""
+        }
+      ]
+    },
+    {
+      "id": "leaf-only-no-components-key",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "now": "2026-03-02T10:20:30.000Z",
+      "items": [
+        {
+          "title": "Sea Boots",
+          "description": "Tall boots.",
+          "types": [
+            "footwear"
+          ],
+          "isDefault": false
+        }
+      ]
+    }
+  ],
+  "export": [
+    {
+      "id": "full",
+      "stepResults": {
+        "analyzing": "{\"characterName\":\"Mira\"}",
+        "character_basics": {
+          "name": "Mira Lanternwright",
+          "title": "The Harbor Keeper",
+          "identity": "Mira keeps the harbor lanterns.",
+          "description": "She hums while she works.",
+          "manifesto": "You do not let the lanterns go dark.",
+          "personality": "You keep your worry behind your teeth.",
+          "scenario": "The harbor at dusk, rain coming in."
+        },
+        "first_message": {
+          "firstMessage": "*She looks up.* Evening.",
+          "exampleDialogues": "{{char}}: Hm.\n{{user}}: Hi."
+        },
+        "system_prompts": [
+          {
+            "name": "Main",
+            "content": "You are Mira.",
+            "isDefault": true
+          },
+          {
+            "name": "Terse",
+            "content": "Few words.",
+            "isDefault": false
+          }
+        ],
+        "physical_descriptions": {
+          "headAndShouldersPrompt": "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh",
+          "shortPrompt": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+          "mediumPrompt": "mmmmmmmmmm",
+          "longPrompt": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+          "completePrompt": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "fullDescription": "## Overview\nTall."
+        },
+        "wardrobe_items": [
+          {
+            "title": "Harbor Kit",
+            "description": "The whole working rig.",
+            "types": [
+              "top",
+              "footwear",
+              "accessories"
+            ],
+            "isDefault": true,
+            "components": [
+              "Lantern Coat",
+              " brass ring ",
+              "SEA BOOTS"
+            ],
+            "replace": true
+          },
+          {
+            "title": "Lantern Coat",
+            "description": "An oilskin coat with brass toggles.",
+            "imagePrompt": "oilskin coat, brass toggles",
+            "types": [
+              "top"
+            ],
+            "appropriateness": "working, foul weather",
+            "isDefault": true
+          },
+          {
+            "title": "Brass Ring",
+            "description": "",
+            "imagePrompt": "",
+            "types": [
+              "accessories"
+            ],
+            "isDefault": false
+          },
+          {
+            "title": "Sea Boots",
+            "description": "Tall boots.",
+            "types": [
+              "footwear"
+            ],
+            "isDefault": false
+          }
+        ],
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "aliases": [
+          "Keeper",
+          "Lanternwright"
+        ],
+        "memories": [
+          {
+            "content": "Lit the lamps in the storm.",
+            "summary": "Storm lamps.",
+            "keywords": [
+              "storm",
+              "lamps"
+            ],
+            "importance": 1.5
+          },
+          {
+            "content": "Lost the ring once.",
+            "summary": "The ring.",
+            "keywords": [],
+            "importance": -0.2
+          },
+          {
+            "content": "Pays in stories.",
+            "summary": "Stories.",
+            "keywords": [
+              "chandler"
+            ],
+            "importance": 0.7
+          }
+        ],
+        "chats": {
+          "title": "A wet evening",
+          "messages": [
+            {
+              "role": "ASSISTANT",
+              "content": "*nods* Evening."
+            },
+            {
+              "role": "USER",
+              "content": "Cold out."
+            },
+            {
+              "role": "ASSISTANT",
+              "content": "It is."
+            },
+            {
+              "role": "USER",
+              "content": "Any news?"
+            }
+          ]
+        }
+      },
+      "includeMemories": true,
+      "includeChats": true,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "minimal",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        }
+      },
+      "includeMemories": true,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "no-name-throws",
+      "stepResults": {
+        "character_basics": {
+          "title": "Nameless"
+        }
+      },
+      "includeMemories": true,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "empty-name-throws",
+      "stepResults": {
+        "character_basics": {
+          "name": ""
+        }
+      },
+      "includeMemories": false,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "numeric-name-is-truthy",
+      "stepResults": {
+        "character_basics": {
+          "name": 42,
+          "scenario": "Somewhere."
+        }
+      },
+      "includeMemories": false,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "blank-optional-text-skipped",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix",
+          "title": "   ",
+          "identity": "",
+          "description": 5,
+          "manifesto": null,
+          "personality": "Kept."
+        },
+        "first_message": {
+          "firstMessage": " ",
+          "exampleDialogues": "Hi."
+        }
+      },
+      "includeMemories": true,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "scenario-falsy-is-empty-list",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix",
+          "scenario": ""
+        }
+      },
+      "includeMemories": true,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "memories-excluded-by-flag",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        },
+        "memories": [
+          {
+            "content": "x",
+            "summary": "y",
+            "keywords": [],
+            "importance": 0.5
+          }
+        ]
+      },
+      "includeMemories": false,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "pronouns-null-pd-partial-aliases-absent",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        },
+        "pronouns": null,
+        "physical_descriptions": {
+          "headAndShouldersPrompt": "face",
+          "longPrompt": null
+        }
+      },
+      "includeMemories": true,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "importance-odd-values",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        },
+        "memories": [
+          {
+            "content": "a",
+            "summary": "b",
+            "importance": "0.9"
+          },
+          {
+            "content": "c",
+            "summary": "d",
+            "keywords": null
+          },
+          {
+            "content": "e",
+            "summary": "f",
+            "keywords": [
+              "k"
+            ],
+            "importance": true
+          }
+        ]
+      },
+      "includeMemories": true,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "chats-without-messages-throws",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        },
+        "chats": {
+          "title": "Only a title"
+        }
+      },
+      "includeMemories": false,
+      "includeChats": true,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "chats-messages-object-throws",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        },
+        "chats": {
+          "title": "t",
+          "messages": {
+            "role": "USER",
+            "content": "x"
+          }
+        }
+      },
+      "includeMemories": false,
+      "includeChats": true,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "chats-ignored-without-flag",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        },
+        "chats": {
+          "title": "Only a title"
+        }
+      },
+      "includeMemories": false,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "system-prompts-object-throws",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        },
+        "system_prompts": {
+          "name": "Main",
+          "content": "x",
+          "isDefault": true
+        }
+      },
+      "includeMemories": false,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "memories-object-throws",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        },
+        "memories": {
+          "content": "x"
+        }
+      },
+      "includeMemories": true,
+      "includeChats": false,
+      "appVersion": "4.10.0-dev.0"
+    },
+    {
+      "id": "app-version-passes-through",
+      "stepResults": {
+        "character_basics": {
+          "name": "Nix"
+        }
+      },
+      "includeMemories": true,
+      "includeChats": false,
+      "appVersion": "0.0.0-v5"
+    }
+  ],
+  "restamp": [
+    {
+      "id": "already-stamped-no-op",
+      "now": "2026-03-02T10:20:30.000Z",
+      "data": {
+        "characters": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "name": "Nix",
+            "systemPrompts": [
+              {
+                "id": "22222222-2222-4222-8222-222222222222",
+                "name": "Main",
+                "content": "x",
+                "isDefault": true,
+                "createdAt": "2026-03-02T10:20:30.000Z",
+                "updatedAt": "2026-03-02T10:20:30.000Z"
+              }
+            ],
+            "scenarios": [],
+            "physicalDescription": {
+              "id": "33333333-3333-4333-8333-333333333333",
+              "name": "AI Generated",
+              "createdAt": "2026-03-02T10:20:30.000Z",
+              "updatedAt": "2026-03-02T10:20:30.000Z"
+            },
+            "wardrobeItems": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "characterId": "11111111-1111-4111-8111-111111111111",
+                "title": "Coat",
+                "componentItemIds": [
+                  "22222222-2222-4222-8222-222222222222"
+                ],
+                "createdAt": "2026-03-02T10:20:30.000Z",
+                "updatedAt": "2026-03-02T10:20:30.000Z"
+              }
+            ]
+          }
+        ],
+        "memories": [
+          {
+            "id": "55555555-5555-4555-8555-555555555555",
+            "content": "x",
+            "createdAt": "2026-03-02T10:20:30.000Z",
+            "updatedAt": "2026-03-02T10:20:30.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "nested-missing",
+      "now": "2026-03-02T10:20:30.000Z",
+      "data": {
+        "characters": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "systemPrompts": [
+              {
+                "name": "Main",
+                "content": "x"
+              }
+            ],
+            "scenarios": [
+              {
+                "id": "nope",
+                "title": "t",
+                "content": "c",
+                "createdAt": "  ",
+                "updatedAt": null
+              }
+            ],
+            "physicalDescription": {
+              "name": "",
+              "headAndShouldersPrompt": "x"
+            },
+            "wardrobeItems": [
+              {
+                "title": "Coat",
+                "characterId": "bogus",
+                "componentItemIds": [
+                  "not-a-uuid",
+                  "22222222-2222-4222-8222-222222222222",
+                  7
+                ]
+              },
+              {
+                "title": "Hat",
+                "componentItemIds": "x"
+              },
+              {
+                "title": "Untouched",
+                "id": "22222222-2222-4222-8222-222222222222",
+                "characterId": "11111111-1111-4111-8111-111111111111",
+                "createdAt": "2026-03-02T10:20:30.000Z",
+                "updatedAt": "2026-03-02T10:20:30.000Z"
+              }
+            ]
+          }
+        ],
+        "memories": [
+          {
+            "content": "x"
+          },
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "createdAt": "2026-03-02T10:20:30.000Z",
+            "updatedAt": "2026-03-02T10:20:30.000Z"
+          }
+        ]
+      }
+    },
+    {
+      "id": "non-objects-skipped",
+      "now": "2026-03-02T10:20:30.000Z",
+      "data": {
+        "characters": [
+          null,
+          "str",
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "systemPrompts": [
+              null,
+              3,
+              {
+                "name": "a"
+              }
+            ],
+            "wardrobeItems": [
+              "x",
+              {
+                "title": "Coat"
+              }
+            ]
+          }
+        ],
+        "memories": [
+          "m",
+          null,
+          {
+            "content": "c"
+          }
+        ]
+      }
+    },
+    {
+      "id": "character-id-invalid-leaves-wardrobe-character-id",
+      "now": "2026-03-02T10:20:30.000Z",
+      "data": {
+        "characters": [
+          {
+            "id": "not-a-uuid",
+            "wardrobeItems": [
+              {
+                "title": "Coat",
+                "characterId": "also-bad"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "uppercase-uuids-are-valid",
+      "now": "2026-03-02T10:20:30.000Z",
+      "data": {
+        "characters": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "scenarios": [
+              {
+                "id": "22222222-2222-4222-8222-222222222222",
+                "createdAt": "2026-03-02T10:20:30.000Z",
+                "updatedAt": "2026-03-02T10:20:30.000Z"
+              }
+            ],
+            "wardrobeItems": [
+              {
+                "id": "22222222-2222-4222-8222-222222222222",
+                "characterId": "11111111-1111-4111-8111-111111111111",
+                "componentItemIds": [
+                  "22222222-2222-4222-8222-222222222222"
+                ],
+                "createdAt": "2026-03-02T10:20:30.000Z",
+                "updatedAt": "2026-03-02T10:20:30.000Z"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "physical-description-non-object-skipped",
+      "now": "2026-03-02T10:20:30.000Z",
+      "data": {
+        "characters": [
+          {
+            "id": "11111111-1111-4111-8111-111111111111",
+            "physicalDescription": "prose",
+            "memories": "ignored"
+          }
+        ],
+        "memories": {
+          "not": "an array"
+        }
+      }
+    }
+  ]
+}

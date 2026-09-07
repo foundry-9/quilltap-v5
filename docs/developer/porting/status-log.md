@@ -112791,3 +112791,70 @@ passed / 0 failed, zero `SKIP:` lines**; `characters_generators_routes` and
 `query_param_semantics_equivalence` (the latter regenerated from the pin
 through the sweep driver: 54 cross-compared refusal rows, the four re-pinned
 rows intact) confirmed RUN by name. Versions: host 0.0.108, web 0.0.124.
+
+## P4.9K2 (resumed, in the same worktree as K1) — the creation pair
+
+### Unit E (K2 unit 2) — the AI import's assembly leaf, tier 1
+
+`generators::ai_import`, the pure half of v4's `ai-import.service.ts`: the
+twelve `AIImportStepName`s, `SYSTEM_MESSAGE`, `SOURCE_ANALYSIS_THRESHOLD` /
+`MAX_REPAIR_ATTEMPTS`, every prompt (`getAnalyzingPrompt`,
+`CHARACTER_BASICS_PROMPT`, `FIRST_MESSAGE_PROMPT` with its literal `\n`
+escapes, `SYSTEM_PROMPTS_PROMPT`, `PHYSICAL_DESCRIPTIONS_PROMPT`,
+`WARDROBE_ITEMS_PROMPT` over the shared generation prompt,
+`PROPERTIES_EXTRACTION_PROMPT`, `MEMORIES_PROMPT`, `CHATS_PROMPT`, the repair
+prompt builder), `shouldRunStep` (key PRESENCE in `existingResult` — a step
+present with `null` still counts as done), the import's `getSnippet`, and the
+three exported assembly functions with the uuid minter and the clock
+injectable (`*_with` twins; the plain names mint `Uuid::new_v4`). Measured
+JS semantics carried: `basics.scenario ? [{…}] : []` truthy; the spread
+`optionalTextFields` gate `typeof value === 'string' && value.trim()`;
+`mem.keywords` copied as-is so an ABSENT key is omitted and a `null` kept;
+`Math.max(0, Math.min(1, x))` with `to_number` coercion (`"0.9"` → 0.9,
+`true` → 1, absent → `NaN` → JSON `null`) and an integral result written as
+`1` not `1.0`; `pronouns || null`; `fullDescription: pd.fullDescription`
+omitted when absent; `isDefault === true` / `replace === true` strict; the
+`Map` keyed by `title.toLowerCase()` so two items folding to one title SHARE
+an id (the last mint wins) and a composite's components resolve through
+`trim().toLowerCase()`; the `chats` build that v4 never attaches (kept for
+its one observable arm — a `chats` step without a `messages` array throws
+out of the assembly; recorded as a candidate upstream filing).
+
+**The differential — `ai_import_assembly_equivalence`** (tier 1, no fixture;
+`harness/oracle/cases/ai-import-assembly.ts` drives v4's real exports with the
+clock frozen): 6 wardrobe rows (leaf-first composite, empty, an unknown
+component dropped, duplicate titles sharing an id, strict flag equality, a
+leaf with no `components` key), 16 export rows (full; minimal; no / empty /
+numeric name; blank optional text skipped; a falsy scenario; memories
+excluded by the flag; null pronouns + a partial physical description + absent
+aliases; odd importance values; the four THROW arms with V8's exact wording —
+`Cannot read properties of undefined (reading 'map')`,
+`stepResults.chats.messages.map is not a function`,
+`(stepResults.system_prompts || []).map is not a function`,
+`stepResults.memories is not iterable` — plus the assembler's own sentence
+twice; chats ignored without the flag; the app version passing through), 6
+restamp rows (a stamped no-op at 0 fixes, the nested-missing bag at 23,
+non-objects skipped, an invalid character id leaving the wardrobe
+`characterId` alone, uppercase uuids valid, a non-object physical description
+skipped), and the prompt; uuids remapped `<minted-N>` in first-seen order on
+BOTH sides so a shared id survives the remap. **Green after one fix** —
+the first run's only diff was the JS-number shape (`1.0`), fixed at the
+clamp.
+
+**Seven mutation proofs**, each reddening its arm(s): the leaf-first ordering
+dropped → 3 rows; the id map keyed by the exact title → 5 (the duplicate-title
+sharing and every case-insensitive component lookup); an absent
+`fullDescription` written as `null` → `pronouns-null-pd-partial-aliases-
+absent`; the optional-text blank guard dropped → `blank-optional-text-
+skipped`; the restamp `componentItemIds` filter dropped → `restamp:nested-
+missing` (the first attempt's sed anchor missed rustfmt's reflow and proved
+nothing — re-applied by line); `includeMemories` ignored → `memories-excluded-
+by-flag`; a falsy scenario treated as present → `scenario-falsy-is-empty-
+list`. Every mutation restored by file backup and the family re-run green.
+
+**Gate** (`CARGO_INCREMENTAL=0`, full log + sentinel): `cargo fmt --all
+--check` clean; clippy both feature sets exit 0; `cargo test --workspace`
+with the six `QT_ORACLE_*` vars of the lane's families **521 test binaries /
+2,946 passed / 0 failed, zero `SKIP:` lines, exit 0** —
+`ai_import_assembly_matches_oracle ... ok` confirmed by name. Versions: core
+0.0.823, harness 0.0.712.
