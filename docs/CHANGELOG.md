@@ -12,6 +12,38 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(porting): order the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81)
+Docs only — no crate versions bumped. Planned by `/setupphase` from the
+drift ledger: its §2 probe passed (checkout on `bugfix`, tree clean, both
+logs empty; v4 `main` HEAD = the `f699da6f6` baseline), so this is the
+first round since P4.59 with no drift catch-up to run first — the ledger's
+one row (`15573c3a1`, bug 119) is the post-fix optimizer shape and is now
+`ORDERED(P4.9K1)`. The round takes `p4.9k`, the last unported vertical of
+any size (the Character Optimizer, the AI Wizard, Summon From Lore / the
+AI import, Rename & Replace, the external-prompt generator, ~4,300 lines
+of v4 services + ~5,800 of client), split by fixture and file ownership
+into a substrate lane that runs first (the four shared leaf modules, the
+`generatorProgress` Event kind, the web SSE re-framer) with two stacked
+server lanes and two independent SPA lanes; plus dogfood finding #117
+(chat delete end to end) and a smalls lane (the two one-line host wires,
+the composer's `hasActiveCharacters` twin, the five follow-ups the
+`f699da6f6` round named).
+
+Seven work orders under `docs/developer/porting/work-orders/`
+(`p4.9k0-generators-substrate.md`, `p4.9k1-generators-server-detail.md`,
+`p4.9k2-generators-server-wizard-import.md`,
+`p4.9k3-generators-spa-edit-new.md`,
+`p4.9k4-generators-spa-detail-list-cast.md`,
+`p4.80-chat-delete-end-to-end.md`,
+`p4.81-host-wire-composer-twin-smalls.md`), each with a dated fresh v4
+survey from the shipped files at the pin and the three shared blocks (§B
+the wire contract — one streaming mechanism on the Event channel with a
+client-minted `progressId`, eight verbs by name; §S the meeting points;
+the Ownership table) spliced from one source and verified byte-identical
+by md5 across all seven. Regen rule PIN REQUIRED at `f699da6f6` for every
+lane (the checkout is on `bugfix`). The drift ledger's §3 row is marked;
+`phase-4.md` gains the round's ORDERED section.
+
 #### 2026-09-07 — docs(dogfood): the `f699da6f6`-round walk — 16 PASS, findings #116 and #117
 
 _Docs-only change._

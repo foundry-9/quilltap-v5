@@ -6395,6 +6395,115 @@ from the pin zero SKIP; 508 binaries / 2,872 / 0 zero SKIP; ng 387 / 6,244; Play
 
 PB1 stays parked by the standing rule.
 
+## The `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81) — ORDERED 2026-09-07
+
+**Baseline `f699da6f6`; v4 `main` HEAD = the baseline (zero commits past),
+v4 `bugfix` tip `1a2b2164c` (docs/versions only, content-empty against
+main); regen rule PIN REQUIRED for ONE reason — the v4 checkout sits on
+`bugfix` — one pin sha, `f699da6f6`, for every lane.** The drift ledger's
+§2 probe passed at planning (branch `bugfix`, tree clean, both `log`
+ranges empty), so for the first time since P4.59 there is NO drift
+catch-up to run first: the ledger's one remaining row (`15573c3a1`, bug
+119) is the post-fix optimizer shape and is `ORDERED(P4.9K1)`. The round
+takes candidate 3 of the `f699da6f6` unification's list — **`p4.9k`, the
+character AI dialogs, the last unported vertical of any size** (v4:
+`character-optimizer.service.ts` 1,399 / `character-wizard.service.ts`
+1,213 / `ai-import.service.ts` 1,262 / `character-rename.service.ts` 445 /
+`external-prompt-generator.service.ts` 304 lines of services; ~5,800
+lines of client across the optimizer, ai-wizard, ai-import, RenameReplace,
+ExternalPrompt/ReverseUser and system-prompts-editor components) — plus
+dogfood finding #117 (chat delete, order-sized) and candidate 2's smalls.
+Round name in the work orders: "the `p4.9k` character-generators round".
+
+The split is by FIXTURE and FILE ownership, not by v4's feature list: the
+four leaf modules every generator imports (`llm-json`, field semantics,
+generated properties, pronoun sanitizer) would otherwise be ported twice
+under two names, so they are a substrate lane that runs FIRST and the two
+server lanes STACK on its branch tip (the `P4.D119→P4.D120` precedent).
+
+- **P4.9K0 — the substrate** (`work-orders/p4.9k0-generators-substrate.md`,
+  runs first and alone): the four leaves tier-1 exact through ONE tsx
+  family, the `Event::GeneratorProgress` kind + `GeneratorKind` + a
+  scope-tagged emitter mirroring `creation_progress.rs` (no new bus), and
+  the web SSE re-framer that turns a `progressId` subscription + a dispatch
+  future into v4's byte-exact `data: <JSON>\n\n` stream. No verb, no
+  handler, no SPA.
+- **P4.9K1 — server, the per-character trio** (`work-orders/p4.9k1-
+  generators-server-detail.md`, stacked on K0): the Character Optimizer
+  POST-bug-119 (`coerceSuggestionArray`'s ordered key list, the
+  `runSubStep` containment, both log lines), the external-prompt generator
+  (closing the P4.D82/P4.D83 riders), Rename & Replace (pure DB, tier 2),
+  `refresh-archive`; the §B.2 verbs with a host-composed driver for the two
+  model-calling services; the REST arms on `characters_action_post`
+  (`optimize-stream` as SSE through K0's re-framer); three differentials
+  over the committed `characters-{main,mount}.db` read-only.
+- **P4.9K2 — server, the creation pair** (`work-orders/p4.9k2-generators-
+  server-wizard-import.md`, stacked on K0): the AI Wizard's BOTH runners
+  and the AI import (closing the `40d507cc`/`4423ad10` generators-lane
+  bank), the §B.3 verbs + ONE driver, the REST/SSE arms on
+  `characters_collection_post` and `system_tools_post` (retiring the
+  `ai-import-stream` `UNSERVED_KNOWN_ACTIONS` row), the NEW committed
+  `character-generators-{main,mount}.db` pair, two tier-3 differentials,
+  the importability cross-proof into the existing `import_execute`.
+- **P4.9K3 — SPA, the edit + new hosts** (`work-orders/p4.9k3-generators-
+  spa-edit-new.md`): the four-step AI Wizard modal from both hosts, the
+  Rename & Replace tab, the Preview/Import system-prompt modals (m6 row
+  547 closes); parity specs vs the executed v4 modules; three beats gated
+  ACTIVATE-AT-UNIFY on `P49K1_SERVER_LANDED`/`P49K2_SERVER_LANDED`.
+- **P4.9K4 — SPA, the detail + list + cast hosts** (`work-orders/p4.9k4-
+  generators-spa-detail-list-cast.md`): the optimizer modal with the
+  client-side apply path (porting `apply-character-field-updates.ts` over
+  existing verbs), the External Prompt + Result dialogs and the
+  Reverse-`{{user}}` picker, the AI Import wizard from the characters list
+  AND as Summon from Lore (the `add-character-dialog.ts` refusal stub
+  retired); four gated beats. m6 rows 545/546/548 close.
+- **P4.80 — chat delete end to end** (`work-orders/p4.80-chat-delete-end-
+  to-end.md`, dogfood #117): the `chatDelete` verb over the already-ported,
+  caller-less `delete_conversation_with_vault_sweep`, v4's whole DELETE
+  dispatch on `/api/v1/chats/{id}` (`reset-state` / `stop-impersonate` /
+  the data-loss-guarding 400), a tier-2 table-census differential, the
+  trash button on both cards with v4's confirmation + toast, one live
+  spec.
+- **P4.81 — the smalls** (`work-orders/p4.81-host-wire-composer-twin-
+  smalls.md`): the two one-line host wires in `spine.rs` (the `chatCreate`
+  Zod `details` carry — tripwire retired; the progress emitter below the
+  parse), the composer's `hasActiveCharacters` re-pointed to v4's wide
+  twin with a beat, `text_block_turn` made to fire, the three chain-stop
+  log lines, the two `docs/v4/` deletions, the e2e README line, the
+  default-profile-flipping spec found and made to restore.
+
+**Shared contract (§B, binding, byte-identical in all seven orders):** the
+one streaming mechanism (client-minted `progressId`; every v4
+`onProgress(event)` → `{type:'generatorProgress', progressId, generator,
+event}` on the Event channel; the dispatch resolves with `{terminal}` = the
+last v4 event; the REST SSE edges re-frame the same Events byte-exact), the
+eight verbs by name and field, the Event kind. §S pins the stacking, the
+fenced files (`characters_routes.rs` fenced BY FUNCTION), the frozen
+`core-contract.ts`/`characters.api.ts`, version-bump ownership, the
+fixture ownership (nobody regenerates `characters-*.db`; K2 delivers
+`character-generators-*.db`), and the bug-119 obligation.
+
+**Execution shape:** K0 alone first (a short lane; Opus). Then six in
+parallel, each in its own worktree — K1 and K2 branched from K0's tip, the
+other four from `main`. Disk is the constraint (118 GB free at planning;
+five Rust worktrees): run every gate with `CARGO_INCREMENTAL=0`, and if the
+budget bites, wave the round as K1 ∥ K2 ∥ K3 ∥ K4 then P4.80 ∥ P4.81. One
+Playwright at a time (port 4319). Regens pin `/tmp/qt-v4-pin-<order>-
+f699da6f6`. The owed 💸 queue (the Brahma deep query, dedup/summaries,
+#101 — all human) stays queued; the round adds its own live proofs (a real
+Refine from Memories, a real Summon, a real external prompt, a chat
+deleted on the Friday copy).
+
+Deliberately left out of the round: the dispatch census's honest totality
++ the present-but-null lead; the `CaptureLayer` → `test_support`
+consolidation and the sweep driver's SHELL_START class; `image_profiles.
+rs:655`'s UTF-16 count and v4's `chat_settings` read-time validation drop;
+the `MessageContextSeams` dead argument, the `announcer_tier3` targeted
+memory, the thirteenth participant-status copy; the re-extract-memories
+card action (P4.80 records it); the head-and-shoulders backfill handler's
+wizard import (K2 records it). All carried.
+
+
 ## The `f699da6f6` 4.9.x drift catch-up + `chatCreate`-parse + Brahma round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79) — UNIFIED 2026-09-06
 
 **UNIFIED on main (2026-09-06) — ALL FIVE ORDERS CLOSED; the oracle baseline
