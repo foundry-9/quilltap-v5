@@ -112030,3 +112030,66 @@ unit-1 `[Chats v1] Recompiling identity stack…` line is pinned in
 `quilltap::subprompts::fanout`, `quilltap::characters`, `quilltap::chats`.
 
 Versions: core 0.0.822, harness 0.0.712, web 0.0.124.
+
+### Unit 6 — the `.qtap` export/import carry, PROVEN
+
+The export writer (`qtap_export/records.rs`, `with_tag_names("chat", &chat,
+…)`) spreads the RAW chat row into the record — the `participants` cell rides
+untouched, no per-key projection; the import reader
+(`quilltap_import/reconcile.rs:380-411`) re-writes the array through
+`ChatParticipant` (`serde_json::from_value::<Vec<ChatParticipant>>` → the id
+remap → `patch.participants`). Neither file is in this lane's Ownership, so
+the pin is `db::chats::subprompt_carry_tests::the_import_remap_round_trips_a_
+selection_and_leaves_a_pre_feature_seat_keyless`: the import's exact
+expression keeps `"selectedSystemPromptId":null,"selectedSubpromptIds":
+["terse","VERSE"],"displayOrder":0` byte-for-byte and writes NO key on a
+pre-feature seat (the `skip_serializing_if` — which is also why the
+pre-feature `system-data-*` import/export families stayed green through unit
+1: a spurious `null` would have reddened them).
+
+### Unit 7 — the `Subprompts/` folder through the vault write overlay
+
+`harness/oracle/fixtures/build-vault-character-write-fixture.ts` now plants
+`Subprompts/keep-me.md` (+ the folder, through v4's real `ensureFolderPath` +
+`writeDatabaseDocument`) in the seeded store BEFORE the projection sequence.
+`vault_character_write_equivalence` regenerated through the driver at a
+SECOND lane-unique pin, `/tmp/qt-v4-pin-p4d163n-f699da6f6` (the feature does
+not move this family — the order's neutrality rule; the pin verified by marker:
+no `help/character-subprompts.md` in that worktree, and the fresh NDJSONs of
+this batch carry zero `Additional Instructions` / `selectedSubpromptIds`
+bytes) — GREEN with `keep-me` present in the fresh oracle (grep = 1) and the
+five-table census identical after BOTH ops: v4 keeps `Subprompts/` outside its
+managed set and the reproject sweeps only `Prompts/` + `Scenarios/`; v5's
+overlay writer (`db/vault_character_write.rs:330`) does the same. Neutrality:
+`characters_reads_equivalence` + `characters_mutations_equivalence` at the same
+pin, green.
+
+### Tier 3 — recorded, no refusal arm needed
+
+- **The archive bundle carries `Subprompts/` by construction.** The bundle is
+  the characters export (`character_archive/service.rs:331`
+  `create_archive_bundle` → `stream_export_records`), whose vault carry walks
+  EVERY folder (`qtap_export/records.rs:642` `folders.find_by_mount_point_id`)
+  and EVERY document (`:668` `find_full_json_by_mount_point_id`) with no
+  folder filter (only blob-typed content is skipped); the prune
+  (`service.rs:1346`) dooms every link outside `KEPT_MANAGED_PATHS` +
+  `Wardrobe/` + the avatar links, so a `Subprompts/*.md` is packed and then
+  pruned exactly like a `Prompts/*.md`. No fixture extension needed.
+- **The `ensureCharacterVault` provision arm is LIVE, not a divergence.** The
+  order's "if the `CharacterVaultWriteInput` cannot be built from a raw row"
+  never arises: the raw row goes through serde with every managed field at its
+  default (`post_office::deliver` / `tools::list_email` on main), and the
+  storage family's `create_c_provisions_vault` / `update_c_no_vault_
+  provisions_then_404` / `delete_c_no_vault_provisions_then_false` measure the
+  arm end-to-end against v4 (the orphan store ADOPTED, the FK re-linked, the
+  warn fired).
+
+### Item 8 — the `sameIdSet` multiset-blind row
+
+Landed in unit 1 as a plain equality both ways: the unit truth table
+(`same_id_set_reproduces_v4_multiset_blindness`), the trigger test
+(`…reproduces_the_blind_spot`), and the two chat-cast rows
+(`update_subprompts_multiset_blind_aa_to_ab_recompiles` /
+`…_ab_to_aa_no_recompile`) — v4 has the same blind spot; NOT a divergence.
+
+Versions: core 0.0.823.

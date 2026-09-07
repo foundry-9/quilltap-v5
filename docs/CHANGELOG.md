@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — test(subprompts): the `.qtap` carry pin + the vault-write overlay leaves `Subprompts/` alone (P4.D163 units 6–7)
+
+_Versions: core 0.0.823._
+
+Unit 6: the `.qtap` export spreads the raw chat row (the `participants` cell
+rides untouched) and the import re-writes the array through `ChatParticipant`
+— neither file is this lane's, so the pin sits on the struct: the import's
+exact parse → id-remap → serialize keeps a v4-written `selectedSubpromptIds`
+byte-for-byte in schema position and leaves a pre-feature seat keyless (the
+pre-feature `system-data-*` import families stayed green through unit 1 for
+the same reason). Unit 7: the `/tmp` vault-write fixture builder now plants
+`Subprompts/keep-me.md` (+ its folder) in the vault before the projection
+sequence; `vault_character_write_equivalence` regenerated at a second,
+lane-unique `f699da6f6` pin and green with the planted link, document and
+folder surviving both ops on both sides — v4 keeps the folder outside its
+managed set and the reproject sweeps only `Prompts/` + `Scenarios/`.
+`characters_reads_equivalence` + `characters_mutations_equivalence` regenerated
+at that pin, green (neutral). Tier 3 recorded: the archive bundle carries
+`Subprompts/` by construction (the characters export walks every folder and
+document of the vault, `qtap_export/records.rs:642`, and the prune dooms
+everything outside the managed set, `character_archive/service.rs:1346`); the
+`ensureCharacterVault` provision arm is live (the raw row builds the input
+through serde, the `post_office::deliver` idiom) — no divergence to record.
+
 #### 2026-09-07 — feat(subprompts): vault storage + the selection resolver + the chat fan-out, the five verbs + REST edges + realtime, the committed fixture, the log pins (P4.D163 units 3–5)
 
 _Versions: core 0.0.822, harness 0.0.712, web 0.0.124._

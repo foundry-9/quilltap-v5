@@ -127,6 +127,21 @@ async function main(): Promise<void> {
     'CREATE UNIQUE INDEX IF NOT EXISTS "idx_doc_mount_blobs_fileId" ON "doc_mount_blobs" ("fileId")'
   );
 
+  // [P4.D163] A `Subprompts/` file the managed-fields projection must NEVER
+  // touch: v4 keeps the folder outside its managed set (it is neither a
+  // top-level projection folder nor a kept managed path), so every op's
+  // projection — the full create and the reproject that sweeps `Prompts/` +
+  // `Scenarios/` — must leave this link, its document and its folder in
+  // place on BOTH sides. The five-table census carries it.
+  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+  await ensureFolderPath(spec.store.id, 'Subprompts');
+  await writeDatabaseDocument(
+    spec.store.id,
+    'Subprompts/keep-me.md',
+    '---\ntitle: Keep me\n---\n\nA subprompt the overlay must not sweep.\n',
+  );
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 

@@ -1401,3 +1401,68 @@ fn opt_json_text(v: &Option<Value>) -> Result<Option<String>, DbError> {
         None => Ok(None),
     }
 }
+
+#[cfg(test)]
+mod subprompt_carry_tests {
+    //! P4.D163 unit 6 — the `.qtap` carry of `selectedSubpromptIds`, pinned at
+    //! the ONE mechanism both directions share. The export writer spreads the
+    //! raw chat row (`qtap_export/records.rs` `with_tag_names("chat", &chat,
+    //! …)` — the `participants` cell rides untouched, no per-key projection),
+    //! and the import reader re-writes the array through THIS struct
+    //! (`quilltap_import/reconcile.rs:380-411`: `serde_json::from_value::<Vec<
+    //! ChatParticipant>>` → the id remap → `patch.participants`). Neither file
+    //! is this lane's to edit, so the pin sits on the struct: the exact
+    //! parse → remap → serialize the import performs must keep a v4-written
+    //! selection byte-for-byte in schema position, and must leave a
+    //! pre-feature seat's key ABSENT (never a spurious `null`) — which is also
+    //! what keeps the pre-feature `system-data-*` import families green.
+    use super::*;
+
+    const V4_SEAT_WITH_KEY: &str =
+        "{\"id\":\"e1000000-0000-4000-8000-000000000001\",\"type\":\"CHARACTER\",\
+        \"characterId\":\"a1000000-0000-4000-8000-0000000000a1\",\"controlledBy\":\"llm\",\
+        \"connectionProfileId\":null,\"imageProfileId\":null,\"selectedSystemPromptId\":null,\
+        \"selectedSubpromptIds\":[\"terse\",\"VERSE\"],\"displayOrder\":0,\"isActive\":true,\
+        \"status\":\"active\",\"hasHistoryAccess\":false,\
+        \"createdAt\":\"2026-06-01T00:00:00.000Z\",\"updatedAt\":\"2026-06-01T00:00:00.000Z\"}";
+    const PRE_FEATURE_SEAT: &str =
+        "{\"id\":\"e1000000-0000-4000-8000-000000000002\",\"type\":\"CHARACTER\",\
+        \"characterId\":\"a1000000-0000-4000-8000-0000000000b2\",\"controlledBy\":\"llm\",\
+        \"connectionProfileId\":null,\"imageProfileId\":null,\"selectedSystemPromptId\":null,\
+        \"displayOrder\":1,\"isActive\":true,\"status\":\"active\",\"hasHistoryAccess\":false,\
+        \"createdAt\":\"2026-06-01T00:00:00.000Z\",\"updatedAt\":\"2026-06-01T00:00:00.000Z\"}";
+
+    #[test]
+    fn the_import_remap_round_trips_a_selection_and_leaves_a_pre_feature_seat_keyless() {
+        let blob = format!("[{V4_SEAT_WITH_KEY},{PRE_FEATURE_SEAT}]");
+        let parts: Value = serde_json::from_str(&blob).unwrap();
+        // The import's exact expression.
+        let mut participants: Vec<ChatParticipant> =
+            serde_json::from_value(parts).expect("the blob parses through the struct");
+        for p in &mut participants {
+            // The remap the import performs (a mapped character id).
+            if p.character_id == "a1000000-0000-4000-8000-0000000000a1" {
+                p.character_id = "a1000000-0000-4000-8000-0000000000a9".to_string();
+            }
+        }
+        let written = serde_json::to_string(&participants).unwrap();
+        assert_eq!(
+            written,
+            format!(
+                "[{},{PRE_FEATURE_SEAT}]",
+                V4_SEAT_WITH_KEY.replace("0000000000a1", "0000000000a9")
+            ),
+        );
+        assert!(
+            written.contains(
+                "\"selectedSystemPromptId\":null,\"selectedSubpromptIds\":[\"terse\",\"VERSE\"],\"displayOrder\":0"
+            ),
+            "schema position: {written}"
+        );
+        assert_eq!(
+            written.matches("selectedSubpromptIds").count(),
+            1,
+            "the pre-feature seat must stay KEYLESS: {written}"
+        );
+    }
+}
