@@ -935,4 +935,264 @@ describe('Salon turn controls', () => {
     expect((sends[0] as { respondingParticipantId?: string }).respondingParticipantId).toBe('pA');
     expect((sends[0] as { continueMode?: boolean }).continueMode).toBe(true);
   });
+
+  // ---------------------------------------------------------------------
+  // P4.84 — v4 `triggerContinueMode`'s two error toasts
+  // (`useSSEStreaming.ts:997-1012`), ported at `runTurn`'s continue entrance.
+  //
+  // Both arms are reachable only through a STALE roster (the continue controls
+  // are disabled by the same predicate that gates the second arm), so each spec
+  // drives the gesture against a chat whose participants have moved under it —
+  // the P4.D90 refresh class. Driving the RENDERED control, not `runTurn`
+  // directly, is deliberate: a handler-direct spec would leave the template
+  // wiring unpinned.
+  // ---------------------------------------------------------------------
+
+  it('refuses a continue for a seat that is no longer in the chat (v4 :1002-1006)', async () => {
+    // Aaron is on the roster when the sidebar renders, and gone by the click.
+    const before = groupChat();
+    const after = groupChat({
+      participants: before.participants.filter((p) => p.id !== 'pA'),
+    });
+    const { client, dispatch } = stubClient(before, {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+      chatAfterSend: after,
+    });
+    const fixture = await render(client);
+    const nudgeBtn = [...fixture.nativeElement.querySelectorAll('button')].find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Nudge Aaron'),
+    ) as HTMLButtonElement;
+
+    // The roster moves under the rendered card, exactly as another tab's
+    // removal would land through the chat query.
+    before.participants = after.participants;
+    nudgeBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'This participant is no longer available in the chat.',
+    });
+    // v4 returns before the request: nothing was sent.
+    expect(calls(dispatch, 'chatSend')).toHaveLength(0);
+  });
+
+  it('refuses a continue for a seat that is present but INACTIVE (v4 `&& p.isActive`)', async () => {
+    const chat = groupChat();
+    const { client, dispatch } = stubClient(chat, {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
+    const fixture = await render(client);
+    const nudgeBtn = [...fixture.nativeElement.querySelectorAll('button')].find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Nudge Aaron'),
+    ) as HTMLButtonElement;
+
+    // Deactivated, not removed — v4's find filters on `isActive` too, so this
+    // arm reddens if the port drops that half of the predicate.
+    chat.participants = chat.participants.map((p) =>
+      p.id === 'pA' ? { ...p, isActive: false } : p,
+    );
+    nudgeBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'This participant is no longer available in the chat.',
+    });
+    expect(calls(dispatch, 'chatSend')).toHaveLength(0);
+  });
+
+  it("the sidebar nudge no longer swallows an absent seat in silence (v4 `handleNudge` has no such return)", async () => {
+    // v4's `handleNudge` (`useTurnManagement.ts:126-155`) guards ONLY
+    // `controlledBy === 'user'`; an id it cannot find falls straight through to
+    // `triggerContinueMode`, which is where the sentence lives. v5 used to
+    // `return` here in silence, which made the seat arm unreachable from the
+    // sidebar entirely.
+    const { client, dispatch } = stubClient(groupChat(), {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
+    const fixture = await render(client);
+
+    await (
+      fixture.componentInstance as unknown as { onSidebarNudge(id: string): Promise<void> }
+    ).onSidebarNudge('a-seat-that-is-not-here');
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'This participant is no longer available in the chat.',
+    });
+    expect(calls(dispatch, 'chatSend')).toHaveLength(0);
+  });
+
+  it("checks the seat arm FIRST — v4's order, when both arms would fire", async () => {
+    // Rendered with EVERY character seat inactive, so the roster arm is already
+    // false when the call is made (an in-place mutation cannot move it: it is a
+    // memoized `computed` over the chat signal — the trap that made an earlier
+    // draft of this case vacuous). The named seat is inactive too, so both arms
+    // would refuse; v4 checks the participant first, so its sentence is the one
+    // that shows. Swap the two arms and this reddens.
+    //
+    // Driven through `onSidebarNudge`, the handler the sidebar's Nudge binds
+    // (that binding is pinned by "nudges the next LLM speaker" above): the
+    // button itself is not rendered for an inactive seat.
+    const chat = groupChat({
+      participants: groupChat().participants.map((p) =>
+        p.type === 'CHARACTER' ? { ...p, isActive: false } : p,
+      ),
+    });
+    const { client, dispatch } = stubClient(chat, {
+      query: { nextSpeakerId: null, nextSpeakerControlledBy: null },
+    });
+    const fixture = await render(client);
+
+    await (
+      fixture.componentInstance as unknown as { onSidebarNudge(id: string): Promise<void> }
+    ).onSidebarNudge('pA');
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'This participant is no longer available in the chat.',
+    });
+    expect(calls(dispatch, 'chatSend')).toHaveLength(0);
+  });
+
+  it("raises the roster sentence when the seat survives but the room's characters do not", async () => {
+    // The named seat stays active; the OTHER character goes. The wide predicate
+    // (`type === 'CHARACTER' && isActive`, no `controlledBy` filter) is still
+    // satisfied by the seat itself — so this must SEND, not toast. The narrow
+    // `controlledBy === 'llm'` twin would also pass here; the discriminator for
+    // wide-vs-narrow is the next case.
+    const chat = groupChat();
+    const { client, dispatch } = stubClient(chat, {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
+    const fixture = await render(client);
+    const nudgeBtn = [...fixture.nativeElement.querySelectorAll('button')].find((b) =>
+      (b as HTMLButtonElement).textContent?.includes('Nudge Aaron'),
+    ) as HTMLButtonElement;
+    chat.participants = chat.participants.map((p) =>
+      p.id === 'pB' ? { ...p, isActive: false } : p,
+    );
+    nudgeBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(toasts().filter((t) => t.type === 'error')).toHaveLength(0);
+    expect(calls(dispatch, 'chatSend')).toHaveLength(1);
+  });
+
+  it('reads the WIDE predicate — a user-driven character still counts as present', async () => {
+    // The composer's Continue names NO seat, so only the roster arm can fire.
+    // Both LLM characters go inactive; the user-controlled CHARACTER remains.
+    // v4's `useParticipants.hasActiveCharacters` counts it (no `controlledBy`
+    // filter), so the continue proceeds — spelling this arm
+    // `controlledBy === 'llm'`, this component's OTHER and narrower twin (which
+    // belongs to `onSidebarSkip`), would raise the roster sentence instead.
+    const chat = groupChat();
+    const { client, dispatch } = stubClient(chat, {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
+    const fixture = await render(client);
+    chat.participants = chat.participants.map((p) =>
+      p.controlledBy === 'llm' ? { ...p, isActive: false } : p,
+    );
+    const continueBtn = fixture.nativeElement.querySelector(
+      'button[aria-label="Continue"]',
+    ) as HTMLButtonElement;
+    expect(continueBtn).toBeTruthy();
+    continueBtn.click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(toasts().filter((t) => t.type === 'error')).toHaveLength(0);
+    const sends = calls(dispatch, 'chatSend');
+    expect(sends).toHaveLength(1);
+    expect((sends[0] as { respondingParticipantId?: string }).respondingParticipantId).toBeUndefined();
+  });
+
+  it('raises the roster sentence when no active character remains (v4 :1008-1011)', async () => {
+    // Rendered with the room already emptied of active characters, which is the
+    // ONLY state this arm fires in. The composer's Continue is correctly
+    // DISABLED there (`chat-composer.ts:381`, the same wide predicate), so the
+    // gesture cannot be clicked — asserting the disabled button pins that
+    // wiring, and the handler call pins the guard behind it. That pairing is
+    // the honest shape: the guard exists for the stale-roster case (P4.D90),
+    // where the roster empties AFTER the click has already been dispatched, and
+    // a jsdom spec cannot land a click inside that window.
+    const chat = groupChat({
+      participants: groupChat().participants.map((p) =>
+        p.type === 'CHARACTER' ? { ...p, isActive: false } : p,
+      ),
+    });
+    const { client, dispatch } = stubClient(chat, {
+      query: { nextSpeakerId: null, nextSpeakerControlledBy: null },
+    });
+    const fixture = await render(client);
+
+    const continueBtn = fixture.nativeElement.querySelector(
+      'button[aria-label="Continue"]',
+    ) as HTMLButtonElement;
+    expect(continueBtn).toBeTruthy();
+    expect(continueBtn.disabled).toBe(true);
+
+    (fixture.componentInstance as unknown as { continueTurn(): void }).continueTurn();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(toasts().at(-1)).toEqual({
+      type: 'error',
+      message: 'No characters available. Add a character to continue the conversation.',
+    });
+    expect(calls(dispatch, 'chatSend')).toHaveLength(0);
+  });
+
+  it('RECORDED DIVERGENCE — a paused chat still generates from the sidebar Skip', async () => {
+    // P4.84 Tier 2 item 7, MEASURED not ported. v4's `triggerContinueMode`
+    // opens `if (isPaused) return` (`useSSEStreaming.ts:1000`) — a SILENT
+    // refusal. Of v4's four call sites two lift the pause first
+    // (`handleNudge` :137-139, `handleSkipUserTurn` :225-227), so the guard is
+    // a no-op there; the one that does NOT is `handleContinue` (:195-208), the
+    // user card's Continue — v5's `onSidebarSkip`. On a paused chat v4 runs the
+    // turn query, applies the result and then generates NOTHING; v5 sends.
+    //
+    // Not ported here because the fix is a chokepoint decision this lane cannot
+    // close on its own evidence: `runTurn` is the twin of v4's ONE
+    // `triggerContinueMode`, but v5's unpause-first entrances reach it through
+    // `setPauseState`'s `invalidateQueries`, so a guard there depends on the
+    // refetch having landed in the chat signal before the call — an ordering
+    // this lane did not measure. Pinned so the divergence is visible and the
+    // next lane has its repro.
+    const { client, dispatch } = stubClient(groupChat({ isPaused: true }), {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
+    const fixture = await render(client);
+
+    await (
+      fixture.componentInstance as unknown as { onSidebarSkip(): Promise<void> }
+    ).onSidebarSkip();
+    await new Promise((r) => setTimeout(r, 0));
+
+    // v4 would have stopped at the pause guard; v5 sends.
+    expect(calls(dispatch, 'chatSend')).toHaveLength(1);
+    // And it is not one of THIS lane's toasts that let it through.
+    expect(toasts().filter((t) => t.type === 'error')).toHaveLength(0);
+  });
+
+  it('leaves a plain send alone — the guards are the CONTINUE entrance only', async () => {
+    const chat = groupChat();
+    const { client, dispatch } = stubClient(chat, {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+    });
+    const fixture = await render(client);
+    chat.participants = chat.participants.map((p) =>
+      p.type === 'CHARACTER' ? { ...p, isActive: false } : p,
+    );
+    (fixture.componentInstance as unknown as { send(p: { content: string; fileIds: string[] }): void }).send({
+      content: 'Even with nobody active, a send is a send.',
+      fileIds: [],
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(toasts().filter((t) => t.type === 'error')).toHaveLength(0);
+    expect(calls(dispatch, 'chatSend')).toHaveLength(1);
+  });
 });

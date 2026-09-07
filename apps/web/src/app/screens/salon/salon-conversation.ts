@@ -2623,7 +2623,11 @@ export class SalonConversation {
       );
       return;
     }
-    if (!participant) return;
+    // v4 `handleNudge` has NO early return for a participant it cannot find
+    // (`useTurnManagement.ts:126-133` guards only `controlledBy === 'user'`):
+    // the call falls through to `triggerContinueMode`, which is where the
+    // "no longer available" toast lives. v5 used to return here in SILENCE,
+    // which is what made that arm unreachable from the sidebar.
     if (chat?.isPaused) {
       await this.onTogglePause();
     }
@@ -3001,6 +3005,44 @@ export class SalonConversation {
     const chatId = this.chatId();
     if (!chatId || this.busy()) {
       return;
+    }
+    // v4 `triggerContinueMode` (`useSSEStreaming.ts:997-1012`) — the two guards
+    // every continue passes, in v4's order (a stale id AND an empty roster
+    // together answer the FIRST sentence). v4's own entrance is the single
+    // `triggerContinueMode`, reached from all four of its continue call sites
+    // (`SalonView.tsx:688`, `useTurnManagement.ts:154`/`:204`/`:240`), which map
+    // one-for-one onto v5's `onSidebarNudge` / `onNudge` / `onSidebarSkip`; this
+    // is that chokepoint's twin.
+    //
+    // Both arms are reachable only through a STALE roster — the sidebar's
+    // continue button and the composer's are both disabled by the same
+    // predicate that gates the second arm — so this is the P4.D90 refresh class:
+    // a participant removed or deactivated by another tab between render and
+    // click. The unit specs drive exactly those two shapes.
+    if (opts.continueMode) {
+      // The participant arm only when a seat was named. v5's composer Continue
+      // (`chat-composer.ts:376-386`) names none — v4 has no composer Continue at
+      // all, and its `triggerContinueMode` requires a participantId, so there is
+      // no v4 behaviour for that call to contradict.
+      if (opts.respondingParticipantId) {
+        const seat = (this.chat()?.participants ?? []).find(
+          (p) => p.id === opts.respondingParticipantId && p.isActive,
+        );
+        if (!seat) {
+          this.toasts.showError('This participant is no longer available in the chat.');
+          return;
+        }
+      }
+      // v4's WIDE predicate here (`useParticipants.hasActiveCharacters`, any
+      // active CHARACTER whoever drives it) — NOT this component's narrow
+      // `controlledBy === 'llm'` twin, which belongs to `onSidebarSkip` and
+      // carries v4's OTHER, shorter sentence.
+      if (!this.hasAnyActiveCharacter()) {
+        this.toasts.showError(
+          'No characters available. Add a character to continue the conversation.',
+        );
+        return;
+      }
     }
     // Bug 48: a turn action supersedes the optimistic impersonate-takes-turn
     // override — v4 recomputes `turnSelectionResult` from history once a message

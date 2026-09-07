@@ -649,6 +649,34 @@ The new family's names are all `*_PT_ROUTES` /
 (`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
 `build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
 Both families run side by side through the sweep driver.
+#### 2026-09-07 — fix(spa): v4's two continue-mode refusals at the Salon's continue entrance
+
+_Versions: SPA 0.5.676._
+
+v4's `triggerContinueMode` (`useSSEStreaming.ts:997-1012`) refuses a continue
+twice before it sends: once when the named seat is no longer on the roster (or
+is no longer active), once when the room has no active character at all. v5 had
+neither. Both land at `runTurn`'s continue entrance — the twin of v4's single
+`triggerContinueMode`, which all four of its continue call sites go through.
+
+The seat arm is checked first, so a stale id and an empty roster together raise
+the participant sentence, as v4 does. The roster arm reads v4's WIDE predicate
+(`useParticipants.hasActiveCharacters`, any active CHARACTER whoever drives it),
+not this component's narrower `controlledBy === 'llm'` twin, which belongs to
+`onSidebarSkip` and carries v4's other, shorter sentence.
+
+`onSidebarNudge` also loses a silent early return v4 does not have: v4's
+`handleNudge` guards only `controlledBy === 'user'` and lets an unfindable id
+fall through to the toast, so v5's `return` had made that arm unreachable from
+the sidebar entirely.
+
+Recorded, not ported: v4's `if (isPaused) return`. Two of v4's four call sites
+lift the pause first, so the guard is a no-op there; the one that does not is
+the user card's Continue, where v5 generates and v4 does not. The fix depends on
+whether `setPauseState`'s invalidation has landed in the chat signal before the
+unpause-first entrances reach `runTurn`, which this change did not measure — so
+the divergence is pinned with its repro instead.
+
 #### 2026-09-07 — feat(spa): the AI Wizard review pane's three missing renders, over v4's bare-CommonMark preview
 
 _Versions: SPA 0.5.675._
