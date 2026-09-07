@@ -65,7 +65,14 @@ async function injectPausedChainComplete(page: Page, reason: string): Promise<vo
     if (!proto || !desc?.get || !desc?.set) return;
     const nativeGet = desc.get;
     const nativeSet = desc.set;
-    let injected = false;
+    // Rewrite EVERY `chainComplete` this page's stream carries, not the first
+    // one: `/api/events` is instance-wide, and in the full suite the shared
+    // server can still be finishing ANOTHER chat's chain when this beat opens
+    // Group Expedition — a once-per-page latch was consumed by that foreign
+    // frame and this chat's own arrived un-rewritten (red twice in the full
+    // suite, green alone and in pairs, at the p4.9k unification). The
+    // conversation's fold is scoped to its own chatId, so a rewritten frame
+    // for another chat is ignored, and this chat's is the one that toasts.
     Object.defineProperty(proto, 'onmessage', {
       configurable: true,
       get(this: EventSource) {
@@ -79,14 +86,13 @@ async function injectPausedChainComplete(page: Page, reason: string): Promise<vo
         const call = handler as (e: MessageEvent<string>) => void;
         const wrapped = (ev: MessageEvent<string>) => {
           let data = ev.data;
-          if (!injected && typeof data === 'string') {
+          if (typeof data === 'string') {
             try {
               const frame = JSON.parse(data) as Record<string, unknown>;
               if (frame['chainComplete'] === true) {
                 frame['reason'] = chainReason;
                 frame['paused'] = true;
                 data = JSON.stringify(frame);
-                injected = true;
               }
             } catch {
               /* not JSON (a keep-alive) — pass it through untouched */

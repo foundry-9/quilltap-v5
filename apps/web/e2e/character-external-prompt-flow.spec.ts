@@ -80,6 +80,13 @@ test.describe('p4.9k4 — external prompt + reverse-{{user}}', () => {
     let ariaId: string | null = null;
     let originalIdentity: string | null = null;
     try {
+      // UNLOCK FIRST: a raw dispatch before the instance is unlocked answers an
+      // EMPTY character list (the P4.6z lesson `chat-delete-flow.spec.ts` and
+      // `salon-autonomous-entry` both record) — this beat's first isolated run
+      // died at `expect(ariaId).toBeTruthy()` for exactly that reason.
+      await page.goto('/salon');
+      await maybeUnlock(page);
+
       // Seed a second user-controlled character to pick from the reverse picker.
       const created = await dispatch(ctx, {
         type: 'characterCreate',
@@ -104,15 +111,27 @@ test.describe('p4.9k4 — external prompt + reverse-{{user}}', () => {
       });
 
       await openAria(page);
-      await expect(page.getByText('sworn to serve {{user}} alone.')).toBeVisible({ timeout: 15_000 });
+      // `qt-template-display` renders a `{{user}}` token as the RESOLVED user
+      // character name wearing a badge whose `title` carries the literal — so
+      // the literal `{{user}}` is never visible text. Assert the rendered
+      // shape: the prefix text plus the badge (the beat's first live run, at
+      // the p4.9k unification, died on a literal-text assertion).
+      const identity = page
+        .locator('qt-template-display')
+        .filter({ hasText: 'A keeper of the archive, sworn to serve' })
+        .first();
+      await expect(identity).toBeVisible({ timeout: 15_000 });
+      await expect(identity.locator('[title="User character name (from {{user}})"]')).toBeVisible();
 
       const reverseButton = page.getByRole('button', { name: /^\{\{user\}\}.*name…/ });
       await reverseButton.click();
       await expect(page.getByRole('heading', { name: 'Restore {{user}} to a name' })).toBeVisible();
+      // The picker's option values are character ids (`details-tab.ts:183`);
+      // `selectOption`'s `label` must be a string, never a regex.
       await page
         .locator('select')
         .filter({ has: page.locator('option', { hasText: 'Second Persona' }) })
-        .selectOption({ label: /Second Persona/ });
+        .selectOption({ value: secondCharacterId! });
       await page.getByRole('button', { name: 'Replace {{user}}' }).click();
 
       await expect(page.getByText('Restored {{user}} to Second Persona')).toBeVisible({ timeout: 15_000 });
