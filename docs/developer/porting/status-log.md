@@ -110623,3 +110623,191 @@ zero `SKIP:` lines**; the new family through `recipe_sweep.py --show` and K0's
 `generators_leaf_equivalence` re-run at THIS lane's pin as the substrate
 neutrality check — green, 46/20/13/6. `git diff main -- apps/web/` empty; the
 K0 substrate files untouched; `characters-{main,mount}.db` untouched.
+## Lane record — P4.81 (the round's smalls: the two host wires, the text_block_turn repair, the three chain-stop log lines, the docs prunes, the composer's hasActiveCharacters twin)
+
+Branch `claude/p4-81-host-wire-composer-2e6db3`. Freshness probe at lane
+start matched the drift ledger exactly (checkout on `bugfix`, tree clean,
+both `main`/`bugfix` log ranges empty against the `f699da6f6` baseline) —
+proceeded without a pin for regens whose surface the family already pins,
+and built one lane-unique pin (`/tmp/qt-v4-pin-p481-f699da6f6`) for the
+one regen the order named (item 3's `help_chat_orchestrator_tier3_equivalence`).
+
+**Items 1–2 (`908c7778a`): the host wire's two named sites, one commit —
+they share the capstone family's pin.** `map_create_error` carries
+`e.details().cloned().map(Box::new)`; the `p4_78_host_wire_details_carry_
+is_deferred` tripwire retired into `p4_81_host_wire_carries_create_details`
+(a positive twin driving `quilltap_host::spine::map_create_error` directly
+— it had to go `pub fn`, the one signature edit beyond the two named
+lines). The progress emitter: measured that its construction alone has
+zero side effect (no `bus`/`events` touch until an explicit `.status()`/
+`.emit()` call, and `handle_create` already re-validates before ever
+reaching the emitter) — so the pre-existing behaviour was ALREADY
+v4-faithful (a refused body already emitted no frame). Landed the
+byte-faithful two-phase shape anyway (`run_create` now runs
+`validate_create_body` itself, ahead of the emitter, importing it into
+`spine.rs`'s existing `chat_create` module use-list) and pinned the
+invariant with a NEW wire test, `p4_81_refused_create_emits_no_progress_
+frame` — a real `ChatCreateSpine::create` over an invalid body, asserting
+the `Event` broadcast received nothing. `chat_create_capstone_
+equivalence` re-run at the pin: 3/3 (the two new tests + the unchanged
+main differential).
+
+**Item 3 (`5ccb13a77`): the `text_block_turn` marker fixed, not renamed.**
+Measured on the pinned checkout: v4's real self-closing HELP_NAVIGATE
+format is `[[HELP_NAVIGATE url="/settings?tab=chat&section=dangerous-
+content" /]]` (`lib/tools/legacy/text-block-prompt.ts:142`); the fixture's
+`{"url": ..., "label": ...}` JSON-blob form fails v4's OWN
+`hasTextBlockMarkers` regex (`/\[\[\w+[\s\w="'\\\/]*\]\]/i` — a bare `{`
+is outside the character class), so the marker was invisible before
+parsing on EITHER side, and the case's second scripted stream never
+fired. Fixed to `[[HELP_NAVIGATE url="/salon" /]]` — a one-line fixture
+diff. Oracle regenerated at the pin (14 cases, 34 canned streams, up from
+33); `help_chat_orchestrator_tier3_equivalence` re-run green.
+**Mutation-proof (not the usual code-mutation — a marker reversion):**
+reverting to the OLD marker, re-running the RUST side against the SAME
+(unmodified) fresh oracle, reddens `text_block_turn`'s frame-count
+assertion at 2 frames instead of 6 (`slates OK (33 calls; …; 5 framed
+rows)` vs the fixed run's `34 calls; …; 6 framed rows`) — the second
+stream provably went from dead to alive.
+
+**Item 4 (`7bb4c5c4c`): the three chain-stop log lines.** Transcribed at
+v4's exact sites in `execute_turn_chain`, v4's levels + context bags
+(`turn-orchestrator.service.ts:305-440`) — the paused-chat line was
+already ported (bug 123). Capture-pinned two ways: (a) the EXISTING
+`orchestrator.rs::tests::chain_skips_on_guard_and_single_turn` unit test
+extended to assert `singleTurn: skipping chain loop` fires on exactly the
+two `single_turn: true` guard rows and nowhere else — reusing its
+already-built minimal seam bundle, zero new fixture; (b) a new capture
+wrap around `orchestrator_tier3_equivalence.rs`'s per-case
+`execute_turn_chain` call (`quilltap_core::test_support::captured`,
+thread-scoped — the harness's `rt` is `new_current_thread`, so the whole
+`block_on` stays on one OS thread), keyed per case name into a
+`HashMap<String, Vec<String>>`, asserted after the case loop: the
+family's EXISTING `multi_chain` case (an empty second stream) is the ONLY
+one that logs `Chain stopped: empty response`, byte-exact including
+`chat_id`/`chain_depth`/`user_id`; the EXISTING `chain_error_pause` case
+(a scripted stream error) is the ONLY one that logs `Chain error,
+stopping` (prefix-matched — the error suffix is a live `DbError` Display,
+not worth pinning byte-for-byte); every other case in the 14-case corpus
+asserted silent on both. Each of the three lines mutation-proven by
+deleting the `tracing::` call and re-running — all three redden their own
+pin and nothing else's. `orchestrator_tier3_equivalence` and the
+extended `chain_skips_on_guard_and_single_turn` both green.
+
+**Item 5 (`f5b36c495`): the two `docs/v4/` files.** Verified absent from
+`docs/WINDOWS.md` and `docs/help/database-protection.md` in the
+`/tmp/qt-v4-pin-p481-f699da6f6` worktree (the top-level `help/database-
+protection.md` v4 still ships is a DIFFERENT file — the vendored help
+content, not the docs mirror). Deleted both.
+
+**Item 6 (`bcc19fcae`): the README's e2e prerequisite.** `env.ts` prefers
+`target/release/{quilltap-web,quilltap}`; corrected the prescribed build
+line to `CARGO_INCREMENTAL=0 cargo build --workspace --release`.
+
+**Item 7 — MEASURED, NOT FIXED; STOPped per the order's own escape
+hatch.** Could not identify a live culprit spec to restore. Exhausted the
+static search the order's own text pointed at (`connectionProfileUpdate`/
+`Create` with `isDefault` across every `e2e/*.spec.ts` and
+`e2e/support/*.ts`) and confirmed the MECHANISM is real —
+`profile-modal.ts:1019-1020` auto-seeds a NEW OpenAI-Compatible profile's
+`baseUrl` to the manifest's `http://localhost:8080/v1` default the moment
+the provider is picked, UNLESS the field already carries a value — but
+found no spec in the CURRENT tree that selects `OPENAI_COMPATIBLE` (or
+clicks the wizard's "OpenAI-Compatible" button) and then SAVES (not
+Cancels) without filling the base URL, on the SHARED server (the one spec
+that does exactly this, `settings-flow.spec.ts`, spins up its OWN
+isolated instance + port and tears it fully down in `afterAll` — provably
+not the source). The server has no INFO-level dispatch-body logging
+(`tower_http::trace::TraceLayer` is wired but at DEBUG, which the default
+`RUST_LOG=info` global-setup launches with never surfaces, and even at
+DEBUG it logs method+path, not the POST body), so the order's own
+"one grep over a full-suite server log" method is not mechanically
+available without adding request-body tracing to `quilltap-web` — out of
+scope for a smalls lane. **Four full-suite Playwright runs this lane (see
+the gate section) showed the symptom NOT ONCE** — `workspace-brahma-
+console-flow.spec.ts`'s own defensive pin never had to fire on a
+mismatched default, and no other spec failed on a stray one — so whatever
+produced the `p4.9i2`-round incident may no longer be reliably
+reproducible in the current tree, or is racy enough that this lane's four
+runs didn't trip it. **The two existing pins stand, untouched** (`seed-
+help-fixture.ts`, `workspace-brahma-console-flow.spec.ts`) per the
+order's "keep the two pins" instruction — no spec was edited for this
+item. Recorded as a standing follow-up, not carried forward silently.
+
+**Item 8 (`63f097c8f`): the composer's `hasActiveCharacters` twin
+(dogfood's standing note, D161's find).** `salon-conversation.ts`'s
+`[hasActiveCharacters]` composer binding re-pointed from the narrow
+`controlledBy === 'llm'` computed (still correctly bound to
+`onSidebarSkip` alone) to `hasAnyActiveCharacter()` — P4.D161's wide twin,
+added for the Skip banner and left unwired to the composer at the time,
+made `protected` so the template can read it. Both computeds' doc
+comments updated to cross-reference the split. A parity spec
+(`salon-conversation.spec.ts`) constructs a chat whose only participant
+is `controlledBy: 'user'`, asserts `hasAnyActiveCharacter()` AND the real
+nested `ChatComposer`'s received `hasActiveCharacters()` input (queried
+via `By.directive(ChatComposer)` — the WIRING, not just the signal) are
+both `true`; mutation-proven by reverting the template binding (red:
+`expected false to be true`). The new live beat,
+`e2e/composer-active-seat.spec.ts`: New Chat with the roster favorite
+(LLM, satisfies `llmSelected().length > 0`) + a second character flipped
+to "Play As (User)" via the picker's `USER_CONTROLLED_PROFILE` sentinel
+→ Create → open Participants → **measured that Remove is NOT the path**
+(`chat-sidebar.ts`'s `activeCharacterCount` excludes `controlledBy ===
+'user'` seats by design, so `canRemove` correctly refuses to strip the
+LAST LLM character even with a user-driven seat present — v4's own
+last-character guard, keyed on LLM seats specifically) → the LLM seat's
+Participation-status `<select>` set to `absent` instead (`isActive:
+false`, no such guard on the status path) → the composer's placeholder is
+not v4's "no active character" sentence and the Send button enables on
+typed text. First run (pre-fix) failed exactly as expected (`Remove …
+from chat` never renders); post-fix green, and confirmed the OLD narrow
+binding fails this beat too (re-ran it against `hasActiveCharacters()` —
+red on the Remove-button assumption before the status-select rewrite, and
+red on the disabled-composer assertion after). `dogfood-findings.md`'s
+standing note ("The composer's `hasActiveCharacters` reads v4's NARROW
+twin") closed with a pointer to this item, per the order's one-section
+carve-out.
+
+**Gate.** `cargo fmt --all --check` clean (one `cargo fmt --all` run
+early, before any commit, reformatted the item-1 test's issue-vec
+literal). `cargo clippy --workspace --all-targets -- -D warnings` and
+`--features quilltap-core/native-transport` both clean, zero warnings.
+`cargo build --workspace --release` (used for the e2e binaries) clean.
+`cargo test --workspace` with all three families' env vars set: 508 test
+binaries / 0 failed, zero `SKIP:` lines for the three touched families
+(all ran and passed with real fixtures, not skip-branches) — confirmed by
+name: `chat_create_capstone_equivalence` (3/3), `help_chat_orchestrator_
+tier3_equivalence` (5/5), `orchestrator_tier3_equivalence` (1/1, the new
+capture assertions embedded in its single test fn), plus
+`services::orchestrator::tests::chain_skips_on_guard_and_single_turn` in
+the `quilltap-core` lib target. `npm run lint` (the qt-class guard) clean.
+`npm test` (`ng-run.mjs test --watch=false`): 387 files / 6269 tests, all
+green. `npm run build`: clean, no bundle errors. **Full Playwright: four
+runs total** — run 1 (283 passed, item 8's beat pre-fix + the standing
+`salon-thinking-indicator` intermittent, both isolated-reproduced
+separately: the beat's failure diagnosed and fixed same-session, the
+flake confirmed pre-existing and unrelated by a clean solo re-run); runs
+2–3 collided with OTHER lanes' concurrent Playwright processes on this
+machine (`EADDRINUSE 127.0.0.1:45301`, a sibling worktree's mock-LLM port
+— port 4319/45301 are repo-wide, and this round runs six lanes at once;
+waited out via `Monitor` on the port rather than forcing a run through
+contention); **run 4 (final, after the port cleared on its own): 284
+passed, 1 failed** — `salon-thinking-indicator.spec.ts` alone, the SAME
+pre-existing intermittent, isolated-reproduced as a clean pass on its own
+in an earlier check. No run surfaced anything else. This lane did not
+touch that spec or its feature area (the thinking/waiting-quill
+indicator) at any point.
+
+**Fixtures changed:** `harness/oracle/fixtures/help-chat-orchestrator-
+tier3.json` (item 3, one line) — invalidates nothing else committed to
+that fixture family; no other family reads it. **Regen recipes:**
+`chat_create_capstone_equivalence` and `help_chat_orchestrator_tier3_
+equivalence` both via `harness/tools/recipe_sweep.py --v4 <pin> --run
+<family>` from the worktree root (see each family's own `.rs` header for
+the underlying `tsx`/`jest` invocations the driver extracts); `orchestrator_
+tier3_equivalence` re-run with its EXISTING fixture/oracle unchanged
+(items 1/2/4 touch no v4-facing surface that family's corpus didn't
+already cover).
+
+**Versions:** core 0.0.813, harness 0.0.703, host 0.0.106, SPA 0.5.658;
+web/cli/tauri unchanged. Worktree `target/` cleaned before handoff.
