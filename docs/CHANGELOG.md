@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(help): re-vendor the four `help/` files `2f4254b42` touched (character subprompts) — P4.D163 unit 0
+
+_Versions: harness 0.0.709, host 0.0.107._
+
+The v5 `help/` tree is a vendored artifact embedded into the host binary at
+compile time; v4 `2f4254b42` added `help/character-subprompts.md` (92 lines)
+and edited `character-system-prompts.md` (+5), `chat-participants.md` (+9) and
+`chats.md` (+1). The four files are copied byte-for-byte from a detached
+worktree pinned at `2f4254b42` (`diff -rq` against the pin is now empty; 120 →
+121 files). `help_tree_equivalence`, `help_doc_sync_equivalence`,
+`help_doc_chunking_equivalence` and `help_docs_tier2_equivalence` were
+regenerated at that pin through the sweep driver and re-run green; the fresh
+`help_tree` NDJSON carries `count: 121` and the `character-subprompts` slug.
+`help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
+tripwire fired as designed on the first run). No Rust source moved; the host
+bump is the embed.
+
 #### 2026-09-07 — docs(orders): the `2f4254b42` character-subprompts round — three new work orders + two resume addenda, the ledger row ORDERED, the phase-4 ORDERED section
 
 _Docs-only change._

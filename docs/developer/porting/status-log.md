@@ -111647,3 +111647,43 @@ check date and the bug-119 row's PARTIAL note (baseline unchanged);
 `m6-screen-parity.md` rows 545–548; CLAUDE.md's Status bullet; the CHANGELOG
 unification entry; the memory note. Versions after the unify fixes:
 core 0.0.819, harness 0.0.708, web 0.0.123, host 0.0.106, SPA 0.5.665; cli/tauri unchanged.
+
+## Lane record — P4.D163 (character subprompts, SERVER part 1: the participant carry, the `subprompts` module, the fan-out, the five verbs + REST edges + realtime, the committed fixture, the `help/` re-vendor)
+
+Ordered against oracle baseline **`f699da6f6`**, absorbing the ONE commit past it
+(**`2f4254b42`**, "feat: character subprompts — per-chat optional instructions
+from the vault"). **Drift-ledger §2 freshness probe at lane start (2026-09-07):**
+PASS — v4 checkout on `main`, tree clean, `git log 2f4254b42..main` empty,
+`git log 1a2b2164c..bugfix` empty. §1's verdict (PIN REQUIRED) stands; the lane
+never wrote the ledger.
+
+**Pin:** one lane-unique detached worktree at `/tmp/qt-v4-pin-p4d163-2f4254b42`
+(the `2f4254b42` sha, all three symlink classes per ledger §5.1). Every fixture
+build, oracle regen and Zod probe in this record ran from it. Verified by
+marker: `help/character-subprompts.md` exists only in that worktree.
+
+**Gate cadence (recorded up front):** the order's Verification gate says the
+full workspace gate runs ONCE for the stacked lane (after P4.D164) — so each
+unit commit here runs the affected families by name through the sweep driver
+plus the touched crates' tests and clippy, and the single full
+`cargo test --workspace` closes the stacked lane. This is the order's rule, not
+a shortcut past `commit.md` §5.
+
+### Unit 0 — the `help/` re-vendor at `2f4254b42`
+
+- `help/character-subprompts.md` NEW (92 lines, `url: /aurora/:id/edit`);
+  `character-system-prompts.md` (+5), `chat-participants.md` (+9), `chats.md`
+  (+1) — all four copied from the pin; `diff -rq help/ $PIN/help/` is EMPTY
+  afterwards, 120 → 121 files.
+- The four help families regenerated at the pin through
+  `recipe_sweep.py --v4 /tmp/qt-v4-pin-p4d163-2f4254b42 --run <family>` (one
+  at a time, never concurrently) and re-run green: `help_tree_equivalence`
+  (the fresh NDJSON: `count: 121`, `grep -c character-subprompts` = 1),
+  `help_doc_sync_equivalence`, `help_doc_chunking_equivalence`,
+  `help_docs_tier2_equivalence` (the last three walk fixture SUBSETS of the
+  tree, not the shipped tree, so their `character-subprompts` count is 0 by
+  construction — recorded so nobody reads the zero as a stale pin).
+- `help_tree_embed_guard` ran locally and FAILED FIRST on its hard-coded
+  `VENDORED_FILE_COUNT = 120` — the tripwire firing as designed; moved to 121
+  with the sha named in the constant's doc comment, then green.
+- Versions: harness 0.0.709, host 0.0.107 (the embed). No Rust source moved.

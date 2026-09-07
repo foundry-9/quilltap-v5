@@ -22,8 +22,9 @@ use std::path::PathBuf;
 use quilltap_host::files_store::{embedded_help_source_files, load_help_source_files};
 use quilltap_host::help_content::EMBEDDED_HELP;
 
-/// The shipped tree at the vendored pin (v4 `d883a5ee1`: 120 files, 1.6 MB).
-const VENDORED_FILE_COUNT: usize = 120;
+/// The shipped tree at the vendored pin (v4 `2f4254b42`: 121 files — the P4.D163
+/// re-vendor added `help/character-subprompts.md`; 120 at `d883a5ee1`).
+const VENDORED_FILE_COUNT: usize = 121;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
