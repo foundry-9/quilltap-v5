@@ -267,6 +267,7 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (addCharacter)="addCharacter.emit()"
             (connectionProfileChange)="connectionProfileChange.emit($event)"
             (systemPromptChange)="systemPromptChange.emit($event)"
+            (subpromptsChange)="subpromptsChange.emit($event)"
             (rebuildSystemPrompt)="rebuildSystemPrompt.emit($event)"
             (talkativenessChange)="talkativenessChange.emit($event)"
             (statusChange)="statusChange.emit($event)"
@@ -454,6 +455,7 @@ export class ChatSidebar implements OnInit {
     controlledBy: 'llm' | 'user';
   }>();
   readonly systemPromptChange = output<{ participantId: string; promptId: string | null }>();
+  readonly subpromptsChange = output<{ participantId: string; subpromptIds: string[] }>();
   readonly rebuildSystemPrompt = output<string>();
   readonly talkativenessChange = output<{ participantId: string; value: number }>();
   readonly statusChange = output<{ participantId: string; status: ParticipantStatusWire }>();

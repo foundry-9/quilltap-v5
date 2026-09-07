@@ -86,6 +86,12 @@ export interface UpdateParticipantPatch {
   connectionProfileId?: string;
   imageProfileId?: string | null;
   selectedSystemPromptId?: string | null;
+  /**
+   * §C.3 — the whole set of subprompts in play for this seat. NOT one of the
+   * four `| null` fields: present replaces the set, absent leaves it alone, and
+   * an explicit `null` is a Zod `invalid_type` 400 on v4's side.
+   */
+  selectedSubpromptIds?: string[];
   displayOrder?: number;
   isActive?: boolean;
   status?: ParticipantStatusWire;

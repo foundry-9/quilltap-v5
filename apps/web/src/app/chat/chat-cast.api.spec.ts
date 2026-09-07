@@ -127,6 +127,28 @@ describe('chat-cast.api — chatUpdateParticipant and the three-valued fields', 
     });
   }
 
+  /**
+   * §C.3 — `selectedSubpromptIds` is NOT one of the four tri-state fields. It is
+   * a plain optional array: present replaces the whole set (an empty array
+   * clears it), absent leaves it untouched, and an explicit `null` is a Zod
+   * `invalid_type` 400 on v4's side — which is why it is spelled `string[]` and
+   * has no `| null` arm to send.
+   */
+  it('selectedSubpromptIds: absent when unset, an EMPTY ARRAY when cleared, the set when chosen', async () => {
+    const { core, dispatchData } = coreStub({});
+
+    await updateParticipant(core, 'chat-1', 'p-1', {});
+    expect('selectedSubpromptIds' in sentBody(dispatchData, 0)).toBe(false);
+
+    await updateParticipant(core, 'chat-1', 'p-1', { selectedSubpromptIds: [] });
+    expect(sentBody(dispatchData, 1)['selectedSubpromptIds']).toEqual([]);
+
+    await updateParticipant(core, 'chat-1', 'p-1', {
+      selectedSubpromptIds: ['terse', 'verse'],
+    });
+    expect(sentBody(dispatchData, 2)['selectedSubpromptIds']).toEqual(['terse', 'verse']);
+  });
+
   it('the connection-profile flip sends controlledBy with the profile (v4 :500-515)', async () => {
     const { core, dispatchData } = coreStub({});
     await updateParticipant(core, 'chat-1', 'p-1', {

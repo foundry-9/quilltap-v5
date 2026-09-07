@@ -1,6 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+
+import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
 import type { ParticipantDetail } from '../../core/core-contract';
 import { ParticipantCard, USER_IMPERSONATION_VALUE } from './participant-card';
 
@@ -8,8 +12,9 @@ import { ParticipantCard, USER_IMPERSONATION_VALUE } from './participant-card';
  * The controls P4.9E1B restored to the cast card (v4
  * `components/chat/ParticipantCard.tsx:392-597`): the Controlled-By select, the
  * system-prompt select and its rebuild button, the talkativeness slider, the
- * four-state status select, and Remove. Each assertion is about what the card
- * REPORTS, since the writes themselves are the Salon's.
+ * four-state status select, the subprompt picker (P4.D165), and Remove. Each
+ * assertion is about what the card REPORTS, since the writes themselves are the
+ * Salon's.
  */
 
 function participant(over: Partial<ParticipantDetail> = {}): ParticipantDetail {
@@ -37,11 +42,27 @@ function participant(over: Partial<ParticipantDetail> = {}): ParticipantDetail {
   };
 }
 
-function mount(
-  inputs: Record<string, unknown> = {},
-): ComponentFixture<ParticipantCard> {
+/**
+ * Required since P4.D165 put a `qt-subprompt-picker` on the card: its shared
+ * query injects `RealtimeService`, whose constructor subscribes to `events$`
+ * (`core-client.testing.ts`'s header).
+ */
+function cardProviders() {
+  return [
+    provideTanStackQuery(new QueryClient()),
+    {
+      provide: CoreClient,
+      useValue: {
+        ...coreStreamStub(),
+        dispatchData: async () => ({ subprompts: [] }),
+      } as unknown as CoreClient,
+    },
+  ];
+}
+
+function mount(inputs: Record<string, unknown> = {}): ComponentFixture<ParticipantCard> {
   TestBed.resetTestingModule();
-  TestBed.configureTestingModule({ imports: [ParticipantCard] });
+  TestBed.configureTestingModule({ imports: [ParticipantCard], providers: cardProviders() });
   const fixture = TestBed.createComponent(ParticipantCard);
   fixture.componentRef.setInput('participant', participant());
   for (const [key, value] of Object.entries(inputs)) {
@@ -112,11 +133,13 @@ describe('ParticipantCard — the restored cast controls', () => {
 
   it('renders the system-prompt select only when the character has named prompts', () => {
     const bare = mount({});
-    expect(selects(bare).some((s) => (s.getAttribute('aria-label') ?? '').includes('System prompt'))).toBe(
-      false,
-    );
+    expect(
+      selects(bare).some((s) => (s.getAttribute('aria-label') ?? '').includes('System prompt')),
+    ).toBe(false);
     // The rebuild button is offered either way (v4 :455-469).
-    expect(bare.nativeElement.querySelector('[aria-label="Rebuild system prompt for Bram"]')).toBeTruthy();
+    expect(
+      bare.nativeElement.querySelector('[aria-label="Rebuild system prompt for Bram"]'),
+    ).toBeTruthy();
 
     const withPrompts = mount({});
     withPrompts.componentRef.setInput(
@@ -251,7 +274,9 @@ describe('ParticipantCard — the restored cast controls', () => {
     expect(seen).toEqual(['p-1']);
 
     expect(
-      mount({ canRemove: false }).nativeElement.querySelector('[aria-label="Remove Bram from chat"]'),
+      mount({ canRemove: false }).nativeElement.querySelector(
+        '[aria-label="Remove Bram from chat"]',
+      ),
     ).toBeNull();
     expect(
       mount({ canRemove: true, isUserParticipant: true }).nativeElement.querySelector(
@@ -286,7 +311,7 @@ describe('ParticipantCard — the Archived badge (P4.D64)', () => {
 
   function mountWith(over: Partial<ParticipantDetail>): ComponentFixture<ParticipantCard> {
     TestBed.resetTestingModule();
-    TestBed.configureTestingModule({ imports: [ParticipantCard] });
+    TestBed.configureTestingModule({ imports: [ParticipantCard], providers: cardProviders() });
     const fixture = TestBed.createComponent(ParticipantCard);
     fixture.componentRef.setInput('participant', participant(over));
     fixture.detectChanges();
@@ -317,5 +342,43 @@ describe('ParticipantCard — the Archived badge (P4.D64)', () => {
   it('badges nothing for a live seat', () => {
     const fixture = mountWith({});
     expect(badges(fixture)).toEqual([]);
+  });
+});
+
+/** v4 `ParticipantCard.tsx:484-499` at `2f4254b42`. */
+describe('ParticipantCard — the subprompt picker', () => {
+  const picker = (f: ComponentFixture<unknown>) =>
+    (f.nativeElement as HTMLElement).querySelector('qt-subprompt-picker');
+
+  it('renders for an LLM-controlled character seat', () => {
+    expect(picker(mount())).toBeTruthy();
+  });
+
+  it('is withheld from the operator’s own seat', () => {
+    expect(picker(mount({ isUserParticipant: true }))).toBeNull();
+  });
+
+  it('is withheld from a USER-controlled character — it has no identity stack', () => {
+    const fixture = mount();
+    fixture.componentRef.setInput('participant', participant({ controlledBy: 'user' }));
+    fixture.detectChanges();
+    expect(picker(fixture)).toBeNull();
+  });
+
+  it('is withheld when the seat resolves to no character at all', () => {
+    const fixture = mount();
+    fixture.componentRef.setInput('participant', participant({ character: null }));
+    fixture.detectChanges();
+    expect(picker(fixture)).toBeNull();
+  });
+
+  it('reports the full next set against this participant’s id', () => {
+    const fixture = mount();
+    const seen: { participantId: string; subpromptIds: string[] }[] = [];
+    fixture.componentInstance.subpromptsChange.subscribe((e) => seen.push(e));
+    (
+      fixture.componentInstance as unknown as { onSubpromptsChange(ids: string[]): void }
+    ).onSubpromptsChange(['terse', 'verse']);
+    expect(seen).toEqual([{ participantId: 'p-1', subpromptIds: ['terse', 'verse'] }]);
   });
 });

@@ -898,6 +898,57 @@ describe('SalonConversation — the standalone generate-image dialog (v4 ChatMod
     });
   });
 
+  /**
+   * v4 `useChatControls.handleSubpromptsChange` (`:464-493`) at `2f4254b42`:
+   * the whole next set, the `Subprompts updated` toast, and a re-read of the
+   * chat. Not tri-state — an empty set travels as `[]`, never as `null`.
+   */
+  it('a subprompt selection change replaces the whole set and toasts `Subprompts updated`', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(chatDetail(), events$);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as {
+      onParticipantSubpromptsChange(e: {
+        participantId: string;
+        subpromptIds: string[];
+      }): Promise<void>;
+    };
+    await inst.onParticipantSubpromptsChange({
+      participantId: 'p1',
+      subpromptIds: ['terse', 'verse'],
+    });
+    const dispatchData = client.dispatchData as unknown as { mock: { calls: unknown[][] } };
+    const call = dispatchData.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r?.['type'] === 'chatUpdateParticipant')!;
+    expect(call).toEqual({
+      type: 'chatUpdateParticipant',
+      chatId: 'chat-1',
+      participantId: 'p1',
+      selectedSubpromptIds: ['terse', 'verse'],
+    });
+    expect(toasts().at(-1)).toEqual({ type: 'success', message: 'Subprompts updated' });
+  });
+
+  it('unticking the last one sends an EMPTY ARRAY, never a null', async () => {
+    const events$ = new Subject<ScopedEvent>();
+    const client = stubClient(chatDetail(), events$);
+    const fixture = await render(client);
+    await (
+      fixture.componentInstance as unknown as {
+        onParticipantSubpromptsChange(e: {
+          participantId: string;
+          subpromptIds: string[];
+        }): Promise<void>;
+      }
+    ).onParticipantSubpromptsChange({ participantId: 'p1', subpromptIds: [] });
+    const dispatchData = client.dispatchData as unknown as { mock: { calls: unknown[][] } };
+    const call = dispatchData.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r?.['type'] === 'chatUpdateParticipant')!;
+    expect(call['selectedSubpromptIds']).toEqual([]);
+  });
+
   it('the sidebar receives the chat’s conciergeOverride beside isDangerousChat (v4 SalonView :1883/:1897 — the P4.D141 unification wire)', async () => {
     // v4 hands ChatSidebar BOTH stored fields because neither is meaningful
     // alone; the four-state control reads the pair to show an operator state.

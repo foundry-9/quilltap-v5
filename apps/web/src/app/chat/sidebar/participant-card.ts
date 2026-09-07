@@ -12,6 +12,7 @@ import type { ParticipantDetail, ParticipantStatusWire } from '../../core/core-c
 import { Avatar } from '../../ui/avatar';
 import { normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { Icon } from '../../ui/icon';
+import { SubpromptPicker } from '../../subprompts/subprompt-picker';
 import { WardrobeDialogService } from '../../wardrobe/wardrobe-dialog.service';
 import type { TurnOrderStatus } from '../turn-order';
 import { ProviderModelBadge } from './provider-model-badge';
@@ -68,7 +69,7 @@ export interface ConnectionProfileOption {
 @Component({
   selector: 'qt-participant-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, ProviderModelBadge],
+  imports: [Avatar, Icon, ProviderModelBadge, SubpromptPicker],
   template: `
     <div [class]="cardClass() + ' participant-card'">
       <!-- Position badge — every active participant with a position (v4 :277). -->
@@ -226,6 +227,21 @@ export interface ConnectionProfileOption {
               >
                 <qt-icon name="refresh" class="w-3.5 h-3.5" />
               </button>
+            </div>
+          }
+
+          <!-- Subprompts in play — the smaller per-chat instructions kept in
+               the character's vault. Same recompile path as the prompt dropdown
+               above (v4 :484-499). -->
+          @if (showSubpromptPicker()) {
+            <div class="mt-1">
+              <qt-subprompt-picker
+                [characterId]="characterId()!"
+                [characterName]="name()"
+                [selectedIds]="participant().selectedSubpromptIds ?? []"
+                size="sm"
+                (selectionChange)="onSubpromptsChange($event)"
+              />
             </div>
           }
 
@@ -452,6 +468,8 @@ export class ParticipantCard {
   }>();
   /** The named-prompt select — `null` means "use the default prompt". */
   readonly systemPromptChange = output<{ participantId: string; promptId: string | null }>();
+  /** Replace the set of subprompts in play for this participant (v4 `onSubpromptsChange`). */
+  readonly subpromptsChange = output<{ participantId: string; subpromptIds: string[] }>();
   /** Force-recompile this participant's cached identity stack. */
   readonly rebuildSystemPrompt = output<string>();
   /** Slider moves — the Salon debounces the write (v4 400 ms per participant). */
@@ -554,6 +572,19 @@ export class ParticipantCard {
     () => !this.isUserParticipant() && !this.isUserControlledCharacter(),
   );
 
+  /**
+   * v4 `:487` — `isCharacter && !isUserParticipant && !isUserControlledCharacter
+   * && entity && onSubpromptsChange`. The same three conditions as the
+   * system-prompt row, plus a resolved character: subprompts land in the
+   * identity stack, and neither the operator's own seat nor a user-controlled
+   * character has one. (v4's fifth conjunct, "the callback was passed", is how
+   * React says what an Angular output says by existing — and v5's sidebar
+   * threads it from the Salon unconditionally, as v4's does.)
+   */
+  protected readonly showSubpromptPicker = computed(
+    () => this.showSystemPromptRow() && this.characterId() !== null,
+  );
+
   /** v4 `connectionProfileValue` (`:376-378`). */
   protected readonly connectionProfileValue = computed(() =>
     this.participant().controlledBy === 'user'
@@ -606,6 +637,10 @@ export class ParticipantCard {
       participantId: this.participant().id,
       promptId: value || null,
     });
+  }
+
+  protected onSubpromptsChange(subpromptIds: string[]): void {
+    this.subpromptsChange.emit({ participantId: this.participant().id, subpromptIds });
   }
 
   /** v4 `handleTalkativenessChange` — move the thumb, then report. */

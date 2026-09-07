@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { coreStreamStub } from '../../core/core-client.testing';
 import { CoreClient } from '../../core/core-client';
 
 import type { ParticipantDetail } from '../../core/core-contract';
@@ -109,7 +110,16 @@ async function render(): Promise<ComponentFixture<Host>> {
     // while its card is closed — it needs its injectables present. (Its own
     // `hasEverOpened` latch still keeps the reference fetches from firing.)
     providers: [
-      { provide: CoreClient, useValue: { dispatch: async () => ({ type: 'chat', data: {} }) } },
+      {
+        provide: CoreClient,
+        // The stream surface + a subprompts answer are required since P4.D165
+        // put a `qt-subprompt-picker` on each cast card.
+        useValue: {
+          ...coreStreamStub(),
+          dispatch: async () => ({ type: 'chat', data: {} }),
+          dispatchData: async () => ({ subprompts: [] }),
+        },
+      },
       provideTanStackQuery(new QueryClient()),
       provideRouter([]),
     ],
@@ -126,9 +136,9 @@ function sidebarEl(fixture: ComponentFixture<Host>): HTMLElement {
 }
 
 function button(fixture: ComponentFixture<Host>, label: string): HTMLButtonElement {
-  const found = Array.from(
-    fixture.nativeElement.querySelectorAll('button'),
-  ).find((b) => (b as HTMLButtonElement).getAttribute('aria-label') === label);
+  const found = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+    (b) => (b as HTMLButtonElement).getAttribute('aria-label') === label,
+  );
   return found as HTMLButtonElement;
 }
 
@@ -194,9 +204,9 @@ describe('ChatSidebar', () => {
   it('lists the cast in predicted turn order and nudges through the card action', async () => {
     localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
     const fixture = await render();
-    const names = Array.from(
-      sidebarEl(fixture).querySelectorAll('.qt-participant-card-name'),
-    ).map((n) => n.textContent?.trim());
+    const names = Array.from(sidebarEl(fixture).querySelectorAll('.qt-participant-card-name')).map(
+      (n) => n.textContent?.trim(),
+    );
     // Bob is the selected next speaker, so he leads; the user seat trails the
     // eligible character (v4's ordering: next → eligible → user-turn).
     expect(names).toEqual(['Bob', 'Alice', 'You']);

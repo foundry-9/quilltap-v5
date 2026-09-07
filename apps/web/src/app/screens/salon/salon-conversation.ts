@@ -392,6 +392,7 @@ interface CascadePrompt {
           [connectionProfiles]="connectionProfiles()"
           (connectionProfileChange)="onParticipantProfileChange($event)"
           (systemPromptChange)="onParticipantSystemPromptChange($event)"
+          (subpromptsChange)="onParticipantSubpromptsChange($event)"
           (rebuildSystemPrompt)="onParticipantRebuildSystemPrompt($event)"
           (talkativenessChange)="onParticipantTalkativenessChange($event)"
           (statusChange)="onParticipantStatusChange($event)"
@@ -2432,6 +2433,24 @@ export class SalonConversation {
       { selectedSystemPromptId: change.promptId },
       'System prompt updated',
       'Failed to update system prompt',
+    );
+  }
+
+  /**
+   * v4 `handleSubpromptsChange` (`useChatControls.ts:464-493`) — the whole next
+   * set, replacing whatever the seat carried. The server recompiles the cached
+   * identity stack when the set actually changes (an order-insensitive compare,
+   * §C.3), so re-sending the same ids in a different order costs nothing.
+   */
+  protected async onParticipantSubpromptsChange(change: {
+    participantId: string;
+    subpromptIds: string[];
+  }): Promise<void> {
+    await this.writeParticipant(
+      change.participantId,
+      { selectedSubpromptIds: change.subpromptIds },
+      'Subprompts updated',
+      'Failed to update subprompts',
     );
   }
 

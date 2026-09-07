@@ -584,6 +584,34 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — feat(salon): the subprompt picker on the participant card, and the Subprompts updated round-trip
+
+_Versions: SPA 0.5.670._
+
+P4.D165 unit 5. `qt-subprompt-picker` (compact `size="sm"`) sits on each cast
+card between the system-prompt row and the talkativeness slider, under v4's
+guard: an LLM-driven character seat only, since neither the operator's own seat
+nor a user-controlled character has an identity stack for a subprompt to land
+in. The selection threads card → participants section → sidebar → Salon, where
+`onParticipantSubpromptsChange` sends the whole next set through
+`chatUpdateParticipant`, toasts `Subprompts updated`, and re-reads the chat (v4
+`useChatControls.ts:464-493`).
+
+`selectedSubpromptIds` is spelled `string[]` on `UpdateParticipantPatch`, not
+`string[] | null`, and the spec says why: unlike the four tri-state fields
+beside it, an empty set travels as `[]` — an explicit `null` is a Zod
+`invalid_type` 400 on v4's side, so there is no null arm to send.
+
+Two mutations were proven: dropping the resolved-character conjunct from the
+picker's guard, and mis-spelling the toast as the singular `Subprompt updated`,
+each redden exactly their own spec.
+
+Four pre-existing spec harnesses needed the stream surface and a query client —
+a picker on every cast card pulls the realtime hub into the sidebar's injector,
+and its absence fails inside `RealtimeService`'s constructor, nowhere near the
+new code. Two of them shared a mount helper; the participant card's spec had
+two, and only the workspace-wide run found the second.
+
 #### 2026-09-07 — feat(new-chat): the subprompt picker on every LLM seat, and the omit-when-empty create rule
 
 _Versions: SPA 0.5.669._
