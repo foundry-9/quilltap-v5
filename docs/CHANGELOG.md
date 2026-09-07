@@ -282,6 +282,19 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — docs(orders): P4.9K1-resumed ∥ P4.9K2-resumed lane close — both orders LANE COMPLETE, the lane-close record with the final §B wire spellings, the pinned eleven-family sweep
+
+_Docs only — no crate bumped._
+
+Both order status headers move to LANE COMPLETE (K2 with its one recorded
+refusal — the AI import's `validation`/`repair` steps behind a JSON-Schema
+dependency the lane may not add), the lane record's heading closes, and the
+lane-close record lists the eight commits, the final wire spellings for the
+unifier's name-for-name diff against K3/K4's SPA halves, the five recorded
+divergences, the fixtures changed, and the regen recipes (all eight of the
+lane's families + the three K0 neutrality families run through the sweep
+driver from the `f699da6f6` pins, all green).
+
 #### 2026-09-07 — feat(generators): P4.9K2 unit 6 — the host wizard driver LIVE, `?action=ai-wizard` on the characters collection and `?action=ai-import-stream` on `POST /api/v1/system/tools`
 
 _Versions: host 0.0.110, web 0.0.125._

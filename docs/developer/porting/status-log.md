@@ -112397,6 +112397,7 @@ Versions: core 0.0.823.
 - **Cleanup:** `rm -rf target` (this worktree only); both v4 pins removed (`/tmp/qt-v4-pin-p4d163-2f4254b42`, `/tmp/qt-v4-pin-p4d163n-f699da6f6` — `git worktree remove --force` + `prune`); the jest `/tmp` mirrors and mutation backups deleted; the NDJSON oracles + `/tmp` fixtures (and the gate copies under `/tmp/qt-p4d164-gate/`) LEFT for the unifier.
 - **Status at lane close:** P4.D163 — units 0–7 landed + item 8 recorded + the unit-0 count-pin follow-up (the order's OPEN items: none); P4.D164 — units 1–6 landed, unit 7 folded into units 3/5/6 (pins + differential-proven wiring), Tier 2 items 8–9 landed, Tier 3 recorded (the order's OPEN items: none). Both orders' `Status` headers are the unifier's to flip.
 ## P4.9K1-resumed ∥ P4.9K2-resumed — the character-generators SERVER lanes, ONE worktree (2026-09-07) — IN PROGRESS
+## P4.9K1-resumed ∥ P4.9K2-resumed — the character-generators SERVER lanes, ONE worktree (2026-09-07) — **BOTH LANES COMPLETE** (the lane-close record is at the end of this section)
 
 Both orders run in one worktree on one branch
 (`claude/generators-server-detail-wizard-a926d5`, from `main` at `27c2093b`),
@@ -113177,3 +113178,133 @@ with the lane's eight `QT_ORACLE_*` vars **524 test binaries / 2,949 passed
 `the_creation_pair_actions_resolve_over_the_live_assembly ... ok` and
 `query_param_semantics_match_oracle ... ok` confirmed by name. Versions:
 host 0.0.110, web 0.0.125.
+
+## Lane close — P4.9K1-resumed ∥ P4.9K2-resumed (2026-09-07)
+
+**Branch `claude/generators-server-detail-wizard-a926d5`** (from main
+`27c2093b`), eight commits: `7d3b94a9` (K1 unit A — rename + refresh-
+archive), `0c1077c6` (K1 units B + C0 — the external-prompt verb + the shared
+`generated_items` leaf), `a2ad87da` (K1 unit C — the optimizer runner as
+`characterOptimize`, the fixture pair), `3703ffbc` (K1 unit D — the host
+detail driver LIVE + the four REST arms), `fc88669e` (K2 unit E — the AI
+import's assembly leaf), `ba044919` (K2 unit G — the wizard's generators +
+runners + the two wizard verbs), `ba15a6e0` (K2 unit H — the AI import
+runner as `aiImportStream`), and `5dfce3e5` (K2 unit I — the host wizard
+driver LIVE + the three REST arms). Versions at the tip: core 0.0.825, harness
+0.0.714, host 0.0.110, web 0.0.125; cli/tauri/SPA untouched. `git diff main
+-- apps/web/` is EMPTY; no `subprompts/**`, `api/subprompts.rs`,
+`subprompts_routes.rs`, `chats_routes.rs`, `help/**`, drift-ledger, shell or
+workspace-contract edit; `Cargo.toml`/`Cargo.lock` version lines only (no
+dependency added — see the validation refusal below).
+
+**Both orders CLOSE** — every OPEN item of both resume lists landed; the
+bug-119 obligation (§R.12 of K1) closes with unit C's capture-pinned
+`run_sub_step` / `run_sub_step_core` containment + the two log lines, so the
+ledger's `15573c3a1` row retires at unification (the unifier's write).
+
+**The final wire spellings (§B, for the unifier's name-for-name diff
+against K3/K4's SPA halves on main):**
+
+- `characterRename {characterId, primaryRename?, additionalReplacements?,
+  dryRun?}` — the three body fields `double_option` tri-states, v4's Zod
+  arms inside the handler.
+- `characterRefreshArchive {characterId}`.
+- `characterGenerateExternalPrompt {characterId, connectionProfileId?,
+  systemPromptId?, scenarioId?, maxTokens?}` (tri-states).
+- `characterOptimize {characterId, progressId?, connectionProfileId?,
+  maxMemories?, searchQuery?, useSemanticSearch?, sinceDate?, beforeDate?,
+  outputMode?}` (tri-states) — streams `generatorProgress` frames under
+  `progressId`, resolves `{ terminal: <last frame> }`.
+- `characterWizard {…WizardRequest}` — the whole body flattened; answers
+  `WizardResult {success, generated, errors?}` or the `validationError`
+  envelope; a runner throw is `Internal server error` (500).
+- `characterWizardStream {progressId?, …WizardRequest}` — frames `start` /
+  `field_start` / `field_complete {snippet}` / `field_error {error}` /
+  `done`; resolves `{ terminal }`.
+- `aiImportStream {progressId?, profileId, sourceFileIds?, sourceText?,
+  includeMemories?, includeChats?, existingResult?, regenerateSteps?}` —
+  v4's `||` / `??` defaults inside the handler (`includeMemories` /
+  `includeChats` carried RAW — `0` stays `0` on the log line and in the
+  manifest); frames `start` / `step_start` / `step_complete {snippet}` /
+  `step_error {error}` / `done {result | error, stepResults, errors?}`;
+  resolves `{ terminal }`.
+- The named refusals (each an `ErrorKind::Unavailable` after v4's 404 /
+  parse arms, never reached by the production assembly): `character
+  optimization not available: no GeneratorsDetailDriver is assembled`,
+  `external prompt generation not available: …`, `AI wizard generation not
+  available: no GeneratorsWizardDriver is assembled`, `AI import not
+  available: …`.
+- REST: `POST /api/v1/characters/{id}?action=rename | refresh-archive |
+  generate-external-prompt | optimize-stream` (SSE); `POST
+  /api/v1/characters?action=ai-wizard | ai-wizard-stream` (SSE); `POST
+  /api/v1/system/tools?action=ai-import-stream` (SSE). The unknown-action
+  sentences: `This route serves ?action=archive, ?action=rehydrate,
+  ?action=rename, ?action=refresh-archive, ?action=generate-external-prompt
+  and ?action=optimize-stream; the other JSON actions live on /api/dispatch`
+  and `This route serves ?action=import, ?action=reset-builtins,
+  ?action=ai-wizard and ?action=ai-wizard-stream; character creation is on
+  /api/dispatch`.
+
+**Recorded divergences and refusals (all pinned):**
+
+1. ⚠ **The AI import's `validation` / `repair` steps** — v4 validates through
+   ajv over `public/schemas/qtap-export.schema.json` (89 KB) and repairs
+   through the model up to twice; no Rust JSON-Schema crate is linked and
+   adding one is a dependency add = STOP-and-flag. v5 emits `step_start
+   validation` → `step_error validation` with `VALIDATION_UNAVAILABLE`
+   (`errors.validation` set, no repair; the export still restamped and
+   returned). The harness asserts BOTH sides' pairs and v5's warn line on
+   every validated run, then strips them. **Flagged for the human: a
+   JSON-Schema engine (e.g. `jsonschema`) is the retirement path.**
+2. `pdf-parse` is installed in v4's checkout, so v4 extracts PDF text
+   through it while v5 always runs v4's regex fallback — a `.pdf` source can
+   differ in TEXT, never in shape; no committed fixture carries one.
+3. v4's `Failed to log … LLM call` warn arms have no v5 counterpart —
+   `log_llm_call` never throws.
+4. The V8 `JSON.parse` twin falls back to serde's wording for a failure
+   INSIDE a legally-started `{`/`[`/`"`/number (the keyword arms are exact).
+5. v4's `assembleQtapExport` builds a `chats` array it never attaches — a
+   candidate upstream filing (the assembled export carries no chat).
+
+**Fixtures changed / added:** `crates/quilltap-web/tests/fixtures/
+character-generators-{main,mount}.db` (NEW, committed at unit C; md5 main
+`495c2d2afa94d55d12ef2fa67d36326b`, mount `7f5da3e5e9349e1ca042e77a9100b480`;
+builder `harness/oracle/fixtures/build-character-generators-fixture.ts`, spec
+`character-generators.json`); the shared `characters-{main,mount}.db` pair
+untouched. Corpora: `character-optimizer-tier3.json` (28), `external-prompt-
+tier3.json`, `character-rename.json`, `generated-wardrobe-items.json`,
+`ai-import-assembly.json`, `character-wizard-tier3.json` (37),
+`ai-import-tier3.json` (24). No other family's oracle is invalidated by a
+fixture change (the pair is new); the three K0 families were re-run for
+neutrality: `generators_leaf_equivalence`,
+`character_optimizer_prompts_equivalence`, `generators_wizard_prompts_
+equivalence` regenerated from the K2 pin through the driver and re-run —
+all three GREEN (`run exit 0`, `test result: ok`), the K0 substrate is
+NEUTRAL under this lane.
+
+**Regen recipes** — every family's test header carries its runnable recipe
+(`cd ~/source/quilltap-server`, staged `/tmp` jest mirror, Node 24); under
+PIN REQUIRED run each through the driver from the worktree root:
+`python3 harness/tools/recipe_sweep.py --force --v4 /tmp/qt-v4-pin-p49k2-f699da6f6 --run <family>`
+for `character_rename_equivalence`, `external_prompt_tier3_equivalence`,
+`generated_wardrobe_items_equivalence`, `character_optimizer_tier3_
+equivalence`, `ai_import_assembly_equivalence`, `character_wizard_tier3_
+equivalence`, `ai_import_tier3_equivalence`, `query_param_semantics_
+equivalence` — ALL EIGHT ran through the driver after the last
+commit (`--show` exit 0 = the recipe extracts; `--run` exit 0; every family
+`test result: ok` with its case counts — 37/81 wizard, 24/116 import, 54 +
+54 query-param rows; `git status` clean afterwards, no tracked-fixture
+write). The drift-ledger §2 probe re-run before the batch: checkout on
+`main`, tree clean, `2f4254b42..main` and `1a2b2164c..bugfix` both EMPTY;
+both pins at `f699da6f6` with `help/character-subprompts.md` absent.
+
+**Gotchas worth the memory notes written this lane:** the V8 wording twin
+(now with the keyword arms); the web test venue's missing spine factory; the
+jest.setup storage-manager stub; the lazy-repo fixture lacking a boot's
+tables; the activity-span tripwire firing for a newly-ported surface (by
+design — move the row); a splice script asserting an anchor it never
+replaces (the workspace check is the net).
+
+**Cleanup:** the worktree's `target/` removed (`rm -rf`), the
+`/tmp/qt-ai-import-oracle` and `/tmp/k-lane-gates` scratch dirs removed;
+the committed fixtures and the `/tmp/oracle-*.ndjson` oracles kept.
