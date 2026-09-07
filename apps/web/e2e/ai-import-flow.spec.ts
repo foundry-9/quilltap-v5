@@ -37,7 +37,7 @@ import { openSidebarSection } from './support/sidebar';
 const P49K2_SERVER_LANDED = true;
 
 const BASICS_REPLY = {
-  name: 'Marchpane',
+  name: 'Pennyroyal',
   title: 'The Confectioner',
   identity: 'A travelling confectioner of some renown.',
   description: 'Sweet-tempered and precise.',
@@ -54,7 +54,7 @@ const STEP_REPLIES: Array<[string, unknown]> = [
   ],
   [
     'Create system prompts that instruct an AI',
-    [{ name: 'Default', content: 'You are Marchpane, a confectioner. You are patient and precise.', isDefault: true }],
+    [{ name: 'Default', content: 'You are Pennyroyal, a confectioner. You are patient and precise.', isDefault: true }],
   ],
   [
     'Generate physical descriptions of this character',
@@ -64,7 +64,7 @@ const STEP_REPLIES: Array<[string, unknown]> = [
       mediumPrompt: 'a patient confectioner with flour-dusted cheeks and steady hands',
       longPrompt: 'a patient confectioner with flour-dusted cheeks, steady hands and a kind gaze',
       completePrompt: 'a patient confectioner with flour-dusted cheeks, steady hands, a kind gaze and neat dark hair',
-      fullDescription: 'Marchpane has flour-dusted cheeks, steady hands, a kind gaze and neat dark hair.',
+      fullDescription: 'Pennyroyal has flour-dusted cheeks, steady hands, a kind gaze and neat dark hair.',
     },
   ],
   ['Ground every item in the source material', []],
@@ -74,7 +74,7 @@ const STEP_REPLIES: Array<[string, unknown]> = [
   ],
   [
     'Generate memories that this character would have',
-    [{ content: 'Marchpane once won the county sugar-work prize.', summary: 'The sugar-work prize.', keywords: ['prize'], importance: 0.5 }],
+    [{ content: 'Pennyroyal once won the county sugar-work prize.', summary: 'The sugar-work prize.', keywords: ['prize'], importance: 0.5 }],
   ],
   [
     'Generate an example chat conversation',
@@ -191,7 +191,7 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
       // (the textarea carries no accessible name — matched by its placeholder).
       await page
         .getByPlaceholder(/Paste character descriptions/)
-        .fill('A confectioner named Marchpane.');
+        .fill('A confectioner named Pennyroyal.');
       await page.getByRole('button', { name: 'Next', exact: true }).click();
 
       // Step 2 (Configuration): a connection profile is pre-selected from the
@@ -210,7 +210,7 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
         await reviewButton.click();
       }
       // Scoped to the wizard: the Salon's hidden chat cards also carry the name.
-      await expect(page.locator('qt-ai-import-wizard').getByText('Marchpane').first()).toBeVisible({
+      await expect(page.locator('qt-ai-import-wizard').getByText('Pennyroyal').first()).toBeVisible({
         timeout: 15_000,
       });
       await importButton.click();
@@ -223,7 +223,9 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
 
       await expect(dialog).toHaveCount(0, { timeout: 15_000 });
       await expect(castNames).toHaveCount(before + 1, { timeout: 15_000 });
-      const joinerName = 'Marchpane';
+      // Not `Marchpane`: the archive beat's seeded tombstone carries that name,
+    // and the roster card filters are by text (the first full-suite run's catch).
+    const joinerName = 'Pennyroyal';
       await expect(castNames.filter({ hasText: joinerName })).toHaveCount(1);
 
       // Verify through the persisted state: the chat GET carries the new participant.
@@ -241,7 +243,7 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
 
       // Clean up: remove the summoned character so the fixture's roster is
       // restored for the whisper-gate assertion in salon-post-office-flow.
-      // The import lands the character as "Marchpane (imported)" (the
+      // The import lands the character as "Pennyroyal (imported)" (the
       // `duplicate` conflict strategy's suffix), so the card's control name
       // carries it too.
       await page
@@ -258,7 +260,7 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
       await expect(
         page
           .locator('[role="toast-container"]')
-          .getByText(/Marchpane.* has been removed from the chat/),
+          .getByText(/Pennyroyal.* has been removed from the chat/),
       ).toBeVisible({ timeout: 15_000 });
     } finally {
       await mockLlm.close();
