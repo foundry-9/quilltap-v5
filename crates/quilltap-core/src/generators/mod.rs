@@ -46,6 +46,10 @@ pub mod wizard;
 pub mod wizard_prompts;
 // === end P4.9K2 ===
 
+// === P4.86 ===
+pub mod qtap_schema;
+// === end P4.86 ===
+
 pub mod field_semantics;
 pub mod generated_properties;
 pub mod llm_json;

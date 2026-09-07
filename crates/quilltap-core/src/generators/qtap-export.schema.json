@@ -1,0 +1,1674 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quilltap.app/schemas/qtap-export.schema.json",
+  "title": "Quilltap Export Format",
+  "description": "Schema for .qtap export files — Quilltap's native export/import format. Each file contains a manifest describing the export and a data object containing the exported entities.",
+  "type": "object",
+  "required": ["manifest", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "manifest": { "$ref": "#/$defs/Manifest" },
+    "data": { "$ref": "#/$defs/Data" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "characters" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["characters"],
+            "properties": {
+              "characters": { "type": "array", "items": { "$ref": "#/$defs/ExportedCharacter" } },
+              "memories": { "type": "array", "items": { "$ref": "#/$defs/Memory" } },
+              "mountPoints": { "type": "array", "items": { "$ref": "#/$defs/ExportedDocumentStore" } },
+              "folders": { "type": "array", "items": { "$ref": "#/$defs/ExportedDocumentStoreFolder" } },
+              "documents": { "type": "array", "items": { "$ref": "#/$defs/ExportedDocumentStoreDocument" } },
+              "blobs": { "type": "array", "items": { "$ref": "#/$defs/ExportedDocumentStoreBlob" } }
+            },
+            "additionalProperties": false,
+            "description": "From 4.8 a characters export carries each character's vault as well: its mount point, folders, documents and blobs appear here exactly as they would in a document-stores export. That is what makes avatars, photographs and correspondence survive a cross-instance import. Project links never appear — a character vault has none."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "chats" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["chats"],
+            "properties": {
+              "chats": { "type": "array", "items": { "$ref": "#/$defs/ExportedChat" } },
+              "memories": { "type": "array", "items": { "$ref": "#/$defs/Memory" } },
+              "conversationAnnotations": { "type": "array", "items": { "$ref": "#/$defs/ConversationAnnotation" } },
+              "chatDocuments": { "type": "array", "items": { "$ref": "#/$defs/ChatDocument" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "roleplay-templates" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["roleplayTemplates"],
+            "properties": {
+              "roleplayTemplates": { "type": "array", "items": { "$ref": "#/$defs/ExportedRoleplayTemplate" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "connection-profiles" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["connectionProfiles"],
+            "properties": {
+              "connectionProfiles": { "type": "array", "items": { "$ref": "#/$defs/SanitizedConnectionProfile" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "image-profiles" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["imageProfiles"],
+            "properties": {
+              "imageProfiles": { "type": "array", "items": { "$ref": "#/$defs/SanitizedImageProfile" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "embedding-profiles" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["embeddingProfiles"],
+            "properties": {
+              "embeddingProfiles": { "type": "array", "items": { "$ref": "#/$defs/SanitizedEmbeddingProfile" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "tags" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["tags"],
+            "properties": {
+              "tags": { "type": "array", "items": { "$ref": "#/$defs/Tag" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "projects" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["projects"],
+            "properties": {
+              "projects": { "type": "array", "items": { "$ref": "#/$defs/ExportedProject" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "groups" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["groups"],
+            "properties": {
+              "groups": { "type": "array", "items": { "$ref": "#/$defs/ExportedGroup" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "document-stores" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["mountPoints", "documents", "blobs"],
+            "properties": {
+              "mountPoints": { "type": "array", "items": { "$ref": "#/$defs/ExportedDocumentStore" } },
+              "folders": { "type": "array", "items": { "$ref": "#/$defs/ExportedDocumentStoreFolder" } },
+              "documents": { "type": "array", "items": { "$ref": "#/$defs/ExportedDocumentStoreDocument" } },
+              "blobs": { "type": "array", "items": { "$ref": "#/$defs/ExportedDocumentStoreBlob" } },
+              "projectLinks": { "type": "array", "items": { "$ref": "#/$defs/ExportedProjectDocMountLink" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "prompt-templates" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["promptTemplates"],
+            "properties": {
+              "promptTemplates": { "type": "array", "items": { "$ref": "#/$defs/ExportedPromptTemplate" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "files" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["files"],
+            "properties": {
+              "files": { "type": "array", "items": { "$ref": "#/$defs/ExportedFile" } },
+              "folders": { "type": "array", "items": { "$ref": "#/$defs/ExportedFolder" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "provider-models" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["providerModels"],
+            "properties": {
+              "providerModels": { "type": "array", "items": { "$ref": "#/$defs/ExportedProviderModel" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "plugin-configs" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["pluginConfigs"],
+            "properties": {
+              "pluginConfigs": { "type": "array", "items": { "$ref": "#/$defs/ExportedPluginConfig" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "manifest": { "properties": { "exportType": { "const": "instance-settings" } } } }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": ["instanceSettings"],
+            "properties": {
+              "instanceSettings": { "type": "array", "items": { "$ref": "#/$defs/ExportedInstanceSetting" } }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    }
+  ],
+
+  "$defs": {
+    "UUID": {
+      "type": "string",
+      "format": "uuid",
+      "description": "UUID v4 identifier"
+    },
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 date-time string"
+    },
+    "SemVer": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+",
+      "description": "Semantic version string (e.g. '2.8.0')"
+    },
+
+    "Manifest": {
+      "type": "object",
+      "description": "Export metadata describing format, version, entity type, and counts.",
+      "required": ["format", "version", "exportType", "createdAt", "appVersion", "settings", "counts"],
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "quilltap-export",
+          "description": "Format identifier — always 'quilltap-export'"
+        },
+        "version": {
+          "const": "1.0",
+          "description": "Export format version"
+        },
+        "exportType": {
+          "enum": [
+            "characters",
+            "chats",
+            "roleplay-templates",
+            "prompt-templates",
+            "connection-profiles",
+            "image-profiles",
+            "embedding-profiles",
+            "tags",
+            "projects",
+            "groups",
+            "document-stores",
+            "files",
+            "provider-models",
+            "plugin-configs",
+            "instance-settings"
+          ],
+          "description": "Type of entity contained in this export"
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "appVersion": { "$ref": "#/$defs/SemVer" },
+        "settings": { "$ref": "#/$defs/ExportSettings" },
+        "counts": { "$ref": "#/$defs/ExportCounts" }
+      }
+    },
+
+    "ExportSettings": {
+      "type": "object",
+      "description": "Configuration that was used to create this export.",
+      "required": ["includeMemories", "scope", "selectedIds"],
+      "additionalProperties": false,
+      "properties": {
+        "includeMemories": {
+          "type": "boolean",
+          "description": "Whether memories associated with exported entities are included"
+        },
+        "scope": {
+          "enum": ["all", "selected"],
+          "description": "'all' exports every entity of the type; 'selected' exports specific IDs"
+        },
+        "selectedIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Entity IDs that were selected for export (empty when scope is 'all')"
+        },
+        "preserveIds": {
+          "type": "boolean",
+          "description": "Import this bundle at its original row ids rather than minting fresh ones. Written by the character-archive tooling, whose whole premise is that chat participants, group memberships and project rosters keep resolving without a reconcile pass. An importer honouring it must refuse the entire import on any id collision rather than silently reminting — a partial application is worse than no import. Absent on ordinary exports."
+        }
+      }
+    },
+
+    "ExportCounts": {
+      "type": "object",
+      "description": "Summary counts of entities in this export, for validation and progress display.",
+      "additionalProperties": false,
+      "properties": {
+        "characters": { "type": "integer", "minimum": 0 },
+        "chats": { "type": "integer", "minimum": 0 },
+        "messages": { "type": "integer", "minimum": 0 },
+        "roleplayTemplates": { "type": "integer", "minimum": 0 },
+        "connectionProfiles": { "type": "integer", "minimum": 0 },
+        "imageProfiles": { "type": "integer", "minimum": 0 },
+        "embeddingProfiles": { "type": "integer", "minimum": 0 },
+        "tags": { "type": "integer", "minimum": 0 },
+        "memories": { "type": "integer", "minimum": 0 },
+        "projects": { "type": "integer", "minimum": 0 },
+        "groups": { "type": "integer", "minimum": 0 },
+        "documentStores": { "type": "integer", "minimum": 0 },
+        "documentStoreFolders": { "type": "integer", "minimum": 0 },
+        "documentStoreDocuments": { "type": "integer", "minimum": 0 },
+        "documentStoreBlobs": { "type": "integer", "minimum": 0 },
+        "documentStoreProjectLinks": { "type": "integer", "minimum": 0 },
+        "conversationAnnotations": { "type": "integer", "minimum": 0 },
+        "chatDocuments": { "type": "integer", "minimum": 0 },
+        "files": { "type": "integer", "minimum": 0 },
+        "folders": { "type": "integer", "minimum": 0 },
+        "promptTemplates": { "type": "integer", "minimum": 0 },
+        "providerModels": { "type": "integer", "minimum": 0 },
+        "pluginConfigs": { "type": "integer", "minimum": 0 },
+        "instanceSettings": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "Data": {
+      "type": "object",
+      "description": "Container for exported entity arrays. Which properties are present depends on manifest.exportType."
+    },
+
+    "ExportedCharacter": {
+      "type": "object",
+      "description": "A character with optional resolved relationship metadata. Fields prefixed with '_' are informational and not used during import.",
+      "required": ["id", "userId", "name", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "userId": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string" },
+        "title": { "type": "string" },
+        "identity": { "type": "string" },
+        "description": { "type": "string" },
+        "manifesto": { "type": "string" },
+        "personality": { "type": "string" },
+        "scenario": { "type": "string" },
+        "scenarios": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "content": { "type": "string" },
+              "description": { "type": "string" },
+              "archived": {
+                "type": "boolean",
+                "description": "When true, this scenario is hidden from the chat scenario pickers unless the surface asks for archived entries. Absent means active — the flag is omitted rather than written as false. Chats already using the scenario are unaffected."
+              },
+              "createdAt": { "type": "string" },
+              "updatedAt": { "type": "string" }
+            },
+            "required": ["id", "title", "content"]
+          }
+        },
+        "firstMessage": { "type": "string" },
+        "exampleDialogues": { "type": "string" },
+        "metadata": {
+          "type": ["object", "null"],
+          "description": "The character's freeform fact sheet — a flat object of user-authored keys with any JSON value, e.g. { \"hasAnsibleAccess\": true, \"clearanceLevel\": 3 }. Lives in the vault as metadata.json (its sole source of truth; no DB column), so it also travels as a document-store document; materialized here like the other managed fields, and applied back into the fresh vault on import. Absent/null and {} mean the same thing. Never LLM-authored and never injected into a prompt; read by Pascal's outcome tables via when.metadata.",
+          "additionalProperties": true
+        },
+        "physicalDescription": {
+          "oneOf": [{ "type": "object" }, { "type": "null" }],
+          "description": "Singular physical description with full text plus token-sized prompt variants (headAndShoulders/short/medium/long/complete; headAndShoulders is the head-and-shoulders crop preferred for avatar generation). Pre-4.6 exports carried a `physicalDescriptions` array instead; importers fold legacy index 0 into this field."
+        },
+        "avatarUrl": {
+          "type": ["string", "null"],
+          "description": "DEPRECATED in 4.6: avatar URLs now flow through defaultImageId and the per-vault images/avatar.webp. Retained on the schema so older `.qtap` files still validate; importers ignore it."
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "archivedAt": {
+          "type": ["string", "null"],
+          "description": "When set, this character is a tombstone: archived to a bundle in the file library, with its vault, memories and vectors torn down. The row survives so old conversations still render a name and a face. Archived characters are read-only until rehydrated."
+        },
+        "archiveFileId": {
+          "type": ["string", "null"],
+          "description": "`files.id` of the ARCHIVE-category `.qtap` bundle holding everything the archive removed. Null unless archivedAt is set."
+        },
+        "archivedAvatarFileId": {
+          "type": ["string", "null"],
+          "description": "`files.id` of the avatar thumbnail copied out of the vault before it was deleted, so a tombstone still has a face in old chats. Null unless archivedAt is set."
+        },
+        "_linkedPersonaNames": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Informational: names of linked personas at export time"
+        },
+        "_tagNames": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Informational: names of assigned tags at export time"
+        },
+        "canDressThemselves": {
+          "type": ["boolean", "null"],
+          "description": "Whether this character can change their own outfit (null = enabled by default)"
+        },
+        "canCreateOutfits": {
+          "type": ["boolean", "null"],
+          "description": "Whether this character can create new wardrobe items mid-conversation (null = enabled by default)"
+        },
+        "canChooseOutfit": {
+          "type": "boolean",
+          "description": "When true, a new chat with this character defaults its Starting Outfit to 'Let character choose'. Absent/false falls back to defaults (or Compose when there is no usable default outfit). Stored in the vault's properties.json."
+        },
+        "systemTransparency": {
+          "type": ["boolean", "null"],
+          "description": "When true, the character may inspect 'the Staff' (self_inventory, Staff messages from Lantern/Aurora/Librarian/Prospero/Host, and character vaults) subject to chat/project settings. When null or false, those three are hidden from this character regardless of any chat/project toggle — a hard character-level override. Default null (opaque)."
+        },
+        "coreWhisperEnabled": {
+          "type": ["boolean", "null"],
+          "description": "Per-character override of the global coreWhisper.enabled setting (Aurora's Core whisper). Null = inherit from global. Default null."
+        },
+        "wardrobeItems": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/WardrobeItem" },
+          "description": "Wardrobe items belonging to this character, exported alongside the character"
+        },
+        "outfitPresets": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/LegacyOutfitPreset" },
+          "description": "Legacy: pre-rework outfit preset entities. Importers fold these into composite wardrobeItems (one composite per preset, with componentItemIds drawn from the preset's slot values). New exports never emit this field; it is retained on the schema solely so older `.qtap` files still validate."
+        },
+        "pluginData": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Per-plugin metadata for this character, keyed by plugin name. Each value is arbitrary JSON."
+        }
+      }
+    },
+
+    "ExportedChat": {
+      "type": "object",
+      "description": "A chat with its messages and optional resolved participant info. Fields prefixed with '_' are informational.",
+      "required": ["id", "userId", "title", "participants", "messages", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "userId": { "$ref": "#/$defs/UUID" },
+        "title": { "type": "string" },
+        "participants": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/ChatParticipant" }
+        },
+        "messages": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/MessageEvent" }
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "_participantInfo": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["participantId", "type"],
+            "properties": {
+              "participantId": { "type": "string" },
+              "characterName": { "type": "string" },
+              "type": { "const": "CHARACTER" }
+            }
+          },
+          "description": "Informational: resolved participant names at export time"
+        },
+        "scenarioText": {
+          "type": ["string", "null"],
+          "description": "The resolved scenario content persisted on this chat at creation time"
+        },
+        "coreWhisperEnabled": {
+          "type": ["boolean", "null"],
+          "description": "Per-chat override of the global coreWhisper.enabled setting (Aurora's Core whisper). Null = inherit. Resolution: chat > character > global."
+        },
+        "coreWhisperInterval": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Per-chat override of the global coreWhisper.interval setting (assistant turns between periodic whispers). Null = inherit."
+        },
+        "timelineMode": {
+          "type": ["string", "null"],
+          "enum": ["realtime", "narrative", null],
+          "description": "Which clock the chat's story runs on (episodic recall). 'realtime' (null reads as realtime): wall-clock; 'narrative': fictional timeline — extraction preserves in-story time phrases as narrativeTime."
+        },
+        "turnSkippingEnabled": {
+          "type": ["boolean", "null"],
+          "description": "\"Nothing to add\" turn-skipping toggle. Null = enabled (the default); false = disabled."
+        },
+        "showThinking": {
+          "type": ["boolean", "null"],
+          "description": "Per-chat override for showing reasoning models' thinking (tri-state). Null = inherit global chat.thinkingDisplay.defaultVisible; true = show; false = hide. DISPLAY ONLY."
+        },
+        "_tagNames": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Informational: names of assigned tags at export time"
+        },
+        "equippedOutfit": {
+          "type": ["object", "null"],
+          "description": "Per-character equipped outfit state, keyed by characterId. Each character entry is { top, bottom, footwear, accessories, hair } where each slot is an array of wardrobe-item UUIDs (post-rework). Legacy pre-rework exports may store each slot as a single UUID or null; importers upgrade those to single-element/empty arrays.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "top": {
+                "oneOf": [
+                  { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+                  { "type": "string" },
+                  { "type": "null" }
+                ]
+              },
+              "bottom": {
+                "oneOf": [
+                  { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+                  { "type": "string" },
+                  { "type": "null" }
+                ]
+              },
+              "footwear": {
+                "oneOf": [
+                  { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+                  { "type": "string" },
+                  { "type": "null" }
+                ]
+              },
+              "accessories": {
+                "oneOf": [
+                  { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+                  { "type": "string" },
+                  { "type": "null" }
+                ]
+              },
+              "hair": {
+                "oneOf": [
+                  { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+                  { "type": "string" },
+                  { "type": "null" }
+                ]
+              }
+            }
+          }
+        },
+        "documentMode": {
+          "enum": ["normal", "split", "focus"],
+          "description": "Salon Document Mode layout state for this chat"
+        },
+        "dividerPosition": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 80,
+          "description": "Horizontal divider position (%) for the salon split layout"
+        },
+        "terminalMode": {
+          "enum": ["normal", "split", "focus"],
+          "description": "Salon Terminal Mode layout state for this chat"
+        },
+        "activeTerminalSessionId": {
+          "type": ["string", "null"],
+          "description": "UUID of the terminal session currently bound to Terminal Mode (null = no session bound)"
+        },
+        "rightPaneVerticalSplit": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 80,
+          "description": "Vertical divider position (%) for the right pane when both Document and Terminal Modes are active"
+        },
+        "isDangerousChat": {
+          "type": ["boolean", "null"],
+          "description": "Whether the Concierge has classified this chat as dangerous. NULL = not yet classified."
+        },
+        "dangerScore": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Overall danger score for this chat (0-1), null = not yet classified."
+        },
+        "dangerCategories": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Categories of dangerous content detected at chat level."
+        },
+        "dangerClassifiedAt": {
+          "type": ["string", "null"],
+          "description": "ISO 8601 timestamp of the last chat-level classification."
+        },
+        "dangerClassifiedAtMessageCount": {
+          "type": ["integer", "null"],
+          "description": "messageCount at classification time, used to detect changes for re-check."
+        },
+        "conciergeOverride": {
+          "enum": ["OFF", "UNCENSORED", null],
+          "description": "Per-chat Concierge mode override. NULL = follow the global Concierge setting; 'OFF' = Vouched Safe (the operator vouches for the chat — no moderation, ordinary providers); 'UNCENSORED' = the operator asserts the chat spicy (uncensored routing with no classification or scanning)."
+        },
+        "answerConfirmationOverride": {
+          "enum": ["ON", "OFF", null],
+          "description": "Per-chat answer-confirmation override. NULL = inherit (project override, then the global setting); 'ON'/'OFF' = force the Salon consistency check on/off for this chat."
+        },
+
+        "chatType": {
+          "enum": ["salon", "help", "autonomous", "brahma"],
+          "description": "Chat type discriminator. 'salon' = regular human-driven chat; 'help' = help-assistant chat; 'autonomous' = private character-to-character room (4.6 Private Character Rooms); 'brahma' = Brahma Console (character-less generic-LLM) chat."
+        },
+        "consoleConnectionProfileId": {
+          "type": ["string", "null"],
+          "description": "Brahma Console (chatType='brahma') active connection profile (model). NULL on every other chat type."
+        },
+
+        "budgetMaxTurns": {
+          "type": ["integer", "null"],
+          "description": "Autonomous-room cap on character turns per run. NULL = unlimited."
+        },
+        "budgetMaxTokens": {
+          "type": ["integer", "null"],
+          "description": "Autonomous-room cap on cumulative prompt + completion tokens per run."
+        },
+        "budgetMaxWallClockMs": {
+          "type": ["integer", "null"],
+          "description": "Autonomous-room wall-clock cap per run, in milliseconds."
+        },
+        "budgetEstimatedSpendCapUSD": {
+          "type": ["number", "null"],
+          "description": "Optional autonomous-room spend cap in USD, evaluated against llm_logs."
+        },
+        "scheduleCron": {
+          "type": ["string", "null"],
+          "description": "Cron expression governing autonomous-room runs. NULL = manual-only."
+        },
+        "scheduleFreshnessWindowMs": {
+          "type": ["integer", "null"],
+          "description": "Catch-up freshness window in ms; NULL = inherit user default."
+        },
+        "scheduleNextRunAt": {
+          "type": ["string", "null"],
+          "description": "ISO timestamp of the next scheduled autonomous-room run."
+        },
+        "scheduleLastRunAt": {
+          "type": ["string", "null"],
+          "description": "ISO timestamp of the most recent autonomous-room run start."
+        },
+        "runState": {
+          "enum": ["idle", "running", "paused", "stopped", "budgetExhausted", "error", null],
+          "description": "Lifecycle state of the current/most-recent autonomous-room run. NULL on non-autonomous chats."
+        },
+        "currentRunId": {
+          "type": ["string", "null"],
+          "description": "UUID of the authoritative autonomous-room run. Stale-run guard target."
+        },
+        "runStateMessage": {
+          "type": ["string", "null"],
+          "description": "Human-readable detail for paused/error states."
+        },
+        "runStartedAt": {
+          "type": ["string", "null"],
+          "description": "ISO timestamp of the current/most-recent run start."
+        },
+        "runEndedAt": {
+          "type": ["string", "null"],
+          "description": "ISO timestamp of the current/most-recent run end."
+        },
+        "runPausedAt": {
+          "type": ["string", "null"],
+          "description": "ISO timestamp the current paused interval began; cleared on resume."
+        },
+        "runPausedAccumMs": {
+          "type": ["integer", "null"],
+          "description": "Cumulative milliseconds the current run has spent paused. The wall-clock budget subtracts this from elapsed time so paused intervals are excluded without disturbing runStartedAt."
+        },
+        "runTurnsConsumed": {
+          "type": ["integer", "null"],
+          "description": "Turns consumed in the current/most-recent autonomous-room run."
+        },
+        "runTokensConsumed": {
+          "type": ["integer", "null"],
+          "description": "Tokens consumed in the current/most-recent autonomous-room run."
+        },
+        "runMilestonesAnnounced": {
+          "type": "integer",
+          "description": "Bitmask of per-run pacing nudges the Host has already posted for the current/most-recent autonomous-room run (bit 0 = halfway, bit 1 = near-end / 10% remaining). Reset to 0 at each run start."
+        },
+        "runDestructiveToolsAllowed": {
+          "type": "integer",
+          "enum": [0, 1],
+          "description": "1 = destructive tools pre-authorized for this autonomous room; 0 = disabled."
+        },
+        "budgetExcludeCacheHits": {
+          "type": "integer",
+          "enum": [0, 1],
+          "description": "Autonomous-room per-run token-budget counting mode. 1 (default) = exclude prompt-cache hit tokens from the budget, counting only billable cache-miss input + output; 0 = count every token, including cache reads (added back from cacheUsage at accounting time)."
+        },
+        "runVisibility": {
+          "enum": ["owner_only", "household", "open", null],
+          "description": "Per-room visibility override for autonomous rooms; NULL = inherit user default."
+        }
+      }
+    },
+
+    "ChatParticipant": {
+      "type": "object",
+      "description": "A participant in a chat (always a CHARACTER type).",
+      "required": ["participantId", "type"],
+      "additionalProperties": true,
+      "properties": {
+        "participantId": { "$ref": "#/$defs/UUID" },
+        "type": { "const": "CHARACTER" },
+        "selectedSystemPromptId": {
+          "type": ["string", "null"],
+          "description": "Id of the character's named system prompt this seat speaks from. Null/omitted means the character's default prompt."
+        },
+        "selectedSubpromptIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "description": "Ids (vault file names sans .md) of the character's Subprompts/*.md in play for this seat. Omitted or empty means none."
+        },
+        "status": {
+          "enum": ["active", "silent", "absent", "removed"],
+          "description": "Participation status: active (normal), silent (inner thoughts only), absent (away), removed (left chat)"
+        },
+        "talkativeness": {
+          "type": ["number", "null"],
+          "minimum": 0.1,
+          "maximum": 1.0,
+          "description": "Per-chat talkativeness override (0.1–1.0). Null/omitted means inherit from the character record."
+        }
+      }
+    },
+
+    "MessageEvent": {
+      "type": "object",
+      "description": "A single message in a chat conversation.",
+      "required": ["type", "id", "role", "content", "createdAt"],
+      "additionalProperties": true,
+      "properties": {
+        "type": { "const": "message" },
+        "id": { "$ref": "#/$defs/UUID" },
+        "role": {
+          "enum": ["SYSTEM", "USER", "ASSISTANT", "TOOL"],
+          "description": "The role of the message sender"
+        },
+        "content": { "type": "string" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "participantId": { "$ref": "#/$defs/UUID" },
+        "targetParticipantIds": {
+          "type": ["array", "null"],
+          "items": { "$ref": "#/$defs/UUID" },
+          "description": "Whisper audience: chat participant IDs that may see this message. NULL or absent means public — visible to every participant. Set on user whispers, Staff whispers (Commonplace Book recall, Librarian summaries, private Pascal rolls and Prospero tool runs), and whispered ad-hoc announcements. Like participantId, these reference participants of the exported chat."
+        },
+        "tokenCount": { "type": "integer", "minimum": 0 },
+        "promptTokens": { "type": "integer", "minimum": 0 },
+        "completionTokens": { "type": "integer", "minimum": 0 },
+        "provider": { "type": "string", "description": "Provider that generated this message (e.g., 'openai', 'anthropic')" },
+        "modelName": { "type": "string", "description": "Model name that generated this message (e.g., 'gpt-4o', 'claude-sonnet-4-20250514')" },
+        "isSilentMessage": { "type": ["boolean", "null"], "description": "Whether this message was generated by a character in silent mode (inner thoughts/actions only)" },
+        "systemSender": { "type": ["string", "null"], "enum": ["lantern", "aurora", "librarian", "concierge", "prospero", "host", "commonplaceBook", "ariel", "carina", "suparna", "pascal", null], "description": "Personified feature ('the Staff') that authored this message in lieu of a participant. 'lantern' = Lantern image announcements; 'aurora' = character-avatar refreshes; 'librarian' = Document Mode open/save announcements; 'concierge' = dangerous-content classification announcements; 'prospero' = agent / connection-profile change announcements; 'host' = Salon participation announcements; 'commonplaceBook' = memory recall whispers (recap, relevant memories, inter-character memories); 'ariel' = terminal session announcements (PTY open/close); 'carina' = inline-query reference answers (Carina), rendered with the answerer character's own avatar via carinaMeta.answererId; 'suparna' = Suparṇā's Post Office mail-delivery announcements (new letters arrived in the character's vault Mail/ folder); 'pascal' = Pascal the Croupier's custom-tool (pseudo-tool) roll outcomes, posted server-side so a model cannot fudge a failure into a success, with the roll record in pascalMeta." },
+        "systemKind": { "type": ["string", "null"], "description": "Sub-classification of a Staff-authored message — used by the Salon UI to label collapsed system-message bars (e.g. 'timestamp', 'project-context', 'memory-recap'). Always paired with systemSender." },
+        "opaqueContent": { "type": ["string", "null"], "description": "Neutral, persona-free rewrite of `content` for Staff-authored messages. Swapped into every character's LLM context when the chat has any non-user-character participant with systemTransparency !== true (the user character does not count). NULL on participant-authored messages and on legacy Staff messages from before the dual-body migration (swap falls through to `content`)." },
+        "reasoningContent": { "type": ["string", "null"], "description": "Reasoning models' full chain-of-thought ('thinking') for this turn. DISPLAY ONLY — surfaced in the Salon but never re-fed to any model as history, summary, or memory." },
+        "reasoningSegments": {
+          "type": ["array", "null"],
+          "description": "Positioned reasoning blocks (DISPLAY ONLY) used to splice thinking into the prose at the point it fired, the same way tool calls are anchored.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "anchorOffset": { "type": "number", "description": "Character offset into the message prose at which this reasoning block fired." },
+              "content": { "type": "string", "description": "Raw reasoning text for this block." },
+              "seq": { "type": "number", "description": "Turn-monotonic sequence shared with tool anchors so same-offset items render in true emission order." }
+            },
+            "required": ["anchorOffset", "content", "seq"]
+          }
+        },
+        "confirmed": { "type": ["boolean", "null"], "description": "Answer-confirmation verdict. true = the reply was consistent with what the character recalled/looked up this turn (or was successfully revised); false = the character stood by a flagged reply unchanged; null = the check could not run (error/timeout) or was not applicable (e.g. a user-driven turn). Absent when the feature was off / there was nothing to check." },
+        "confirmationChecked": { "type": ["boolean", "null"], "description": "True when a confirmation check actually ran. Distinguishes a persisted 'unverified' (confirmed null but checked) from 'never checked', since both store confirmed as SQL NULL." },
+        "confirmationRevised": { "type": ["boolean", "null"], "description": "Whether the shown `content` is a re-affirmation rewrite of the character's original reply." },
+        "confirmationNotes": { "type": ["string", "null"], "description": "The cheap-LLM discrepancy explanation surfaced on the confirmation badge hover; null when confirmed:true on the first pass or not applicable." },
+        "confirmationOriginalContent": { "type": ["string", "null"], "description": "The character's pre-revision text, retained for the logs when confirmationRevised is true; null otherwise." },
+        "hostEvent": {
+          "type": ["object", "null"],
+          "description": "Structured payload on Host announcements (systemSender = 'host'). Two shapes share this field: (a) presence transitions — { participantId, toStatus } — for add / remove / status-change; (b) off-scene character introductions — { introducedCharacterIds } — stamped by the off-scene Host announcer so the context builder can detect already-introduced characters. All fields optional; one or the other is set per announcement.",
+          "properties": {
+            "participantId": { "type": "string" },
+            "toStatus": { "type": "string", "enum": ["active", "silent", "absent", "removed"] },
+            "introducedCharacterIds": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Workspace character IDs introduced by an off-scene-characters announcement."
+            }
+          }
+        },
+        "customAnnouncer": {
+          "type": ["object", "null"],
+          "description": "Ad-hoc announcer metadata for user-authored announcement bubbles (Insert Announcement composer button). Mutually exclusive with systemSender: when set, the message renders with the named character or custom display name instead of a Staff member. 'character' kind references a workspace character not in this chat; 'custom' kind uses a free-text display name with a placeholder avatar.",
+          "required": ["kind"],
+          "properties": {
+            "kind": { "type": "string", "enum": ["character", "custom"] },
+            "characterId": { "type": ["string", "null"], "description": "Workspace character ID (kind = 'character')." },
+            "displayName": { "type": ["string", "null"], "description": "Free-text display label (kind = 'custom')." }
+          }
+        },
+        "summaryAnchor": {
+          "type": ["object", "null"],
+          "description": "Anchor tying a Staff-authored whisper (e.g. Librarian per-character summaries) to the compaction generation under which it was produced. The summarization pipeline sweeps anchors with stale generations on regen rather than relying on content-prefix matching.",
+          "required": ["compactionGeneration"],
+          "properties": {
+            "compactionGeneration": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "carinaMeta": {
+          "type": ["object", "null"],
+          "description": "Carina (inline LLM queries) provenance, set on systemSender='carina' messages. answererId = workspace character id of the answerer (drives avatar resolution + prior-exchange continuity); question = the verbatim text asked. NULL on every non-Carina message.",
+          "required": ["answererId", "question"],
+          "properties": {
+            "answererId": { "type": "string", "description": "Workspace character ID of the Carina answerer." },
+            "question": { "type": "string", "description": "Verbatim question that was asked." }
+          }
+        },
+        "pascalMeta": {
+          "type": ["object", "null"],
+          "description": "Pascal the Croupier (custom pseudo-tools) roll record, set on systemSender='pascal' messages. The server rolled and the server chose the outcome, so this is the authoritative account of the deal rather than the model's own. NULL on every non-Pascal message.",
+          "required": ["tool", "definitionTier", "definitionMountId", "params", "rollForm", "raw", "value", "state", "outcomeIndex", "invokedBy"],
+          "properties": {
+            "tool": { "type": "string", "description": "Name of the custom tool that was run (the definition's `name`, not its filename)." },
+            "toolTitle": { "type": "string", "description": "The tool's display title at the moment it ran (its `title`, or a title-cased `name`) — what the Salon labels the outcome with. Absent on messages posted before the field existed; readers fall back to `tool`." },
+            "chipLabel": { "type": "string", "description": "The definition's chipLabel template rendered at roll time — the per-run label the Salon chip and the bubble heading share ('Agent lambda — Jackie'). Absent on older rows and on tools that declare no label; readers fall back to toolTitle, then tool." },
+            "definitionTier": { "type": "string", "enum": ["character", "participant", "group", "project", "global"], "description": "Mount tier the definition resolved from. Tiers shadow one another, so the same tool name can mean different things in different rooms." },
+            "definitionMountId": { "type": "string", "description": "Mount point ID of the document store the definition was loaded from." },
+            "params": { "type": "object", "description": "Resolved parameter values for this run (declared defaults filled in, numeric values clamped).", "additionalProperties": { "type": ["number", "string", "boolean"] } },
+            "rollForm": { "type": "string", "enum": ["range", "dice"], "description": "Which roll shape ran: 'range' (uniform over a numeric range, optionally transformed) or 'dice' (dice notation)." },
+            "notation": { "type": "string", "description": "Dice notation that was rolled (rollForm = 'dice'), e.g. '3d6+2'." },
+            "raw": { "type": "number", "description": "The untransformed roll." },
+            "diceRolls": { "type": "array", "items": { "type": "number" }, "description": "Individual die results (rollForm = 'dice')." },
+            "value": { "type": "number", "description": "The final value the outcome table was tested against (raw after multiplier/offset/round)." },
+            "state": { "type": "string", "enum": ["success", "partial", "failure", "info"], "description": "Semantic state of the winning outcome; accents the result bubble." },
+            "outcomeIndex": { "type": "integer", "minimum": 0, "description": "Index of the winning entry in the definition's ordered outcome table." },
+            "metadataTested": { "type": "object", "description": "The invoking character's metadata as the WINNING outcome read it: only the keys that row tested, holding their values at the moment of the roll. Absent when the winning row consulted no metadata, and never the whole sheet — the sheet is the character's business.", "additionalProperties": { "type": ["number", "string", "boolean"] } },
+            "llm": {
+              "type": "object",
+              "required": ["ok", "output", "prompt"],
+              "description": "The LLM consult, when the definition declared one: what was asked (prompt, fully rendered), whether it was answered (ok), and the output the table tested — the model's trimmed answer, or the author's errorMessage when the consult failed. `reason` is the technical failure cause, recorded for the operator and never spoken in the fiction. Absent on tools with no llm block.",
+              "properties": {
+                "ok": { "type": "boolean" },
+                "output": { "type": "string" },
+                "prompt": { "type": "string" },
+                "reason": { "type": "string" },
+                "provider": { "type": "string" },
+                "model": { "type": "string" }
+              }
+            },
+            "effects": {
+              "type": "array",
+              "description": "The side effects this run applied — the audit of the definition's `effects` array. Each entry names the raw target ('state.encounter.count' / 'metadata.lockpick'), what the store held before (absent when nothing), what was written, and — state targets only — which tier the write landed in. Absent when the run declared or applied none.",
+              "items": {
+                "type": "object",
+                "required": ["target", "next"],
+                "properties": {
+                  "target": { "type": "string", "description": "The effect's raw target, as written in the definition." },
+                  "previous": { "description": "What the store held before the write. Absent when it held nothing." },
+                  "next": { "description": "What was written." },
+                  "tier": { "type": "string", "enum": ["chat", "project", "group", "general"], "description": "Which state store the write landed in. Absent on metadata writes." }
+                }
+              }
+            },
+            "invokedBy": { "type": "string", "enum": ["llm", "user"], "description": "Whether the model reached for the tool or the user ran it themselves." },
+            "callerParticipantId": { "type": "string", "description": "Participant who rolled, when there was one." }
+          }
+        }
+      }
+    },
+
+    "Memory": {
+      "type": "object",
+      "description": "A memory entry from the Commonplace Book system. The `embedding` vector is deliberately absent: it is enormous (a serialized Float32Array runs ~29.6 KB per row) and only meaningful against the model that produced it, so a foreign vector corrupts semantic search silently whenever the dimensionality happens to match. The importer re-embeds every memory it inserts. Archives written before this rule may still carry the field; importers drop it on sight.",
+      "required": ["id", "characterId", "content", "summary", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "characterId": { "$ref": "#/$defs/UUID" },
+        "content": { "type": "string", "description": "The full memory content" },
+        "summary": { "type": "string", "description": "Distilled version for context injection" },
+        "chatId": { "$ref": "#/$defs/UUID" },
+        "projectId": { "$ref": "#/$defs/UUID" },
+        "importance": { "type": "number" },
+        "keywords": { "type": "array", "items": { "type": "string" } },
+        "source": { "type": "string" },
+        "occurredAt": {
+          "anyOf": [{ "$ref": "#/$defs/Timestamp" }, { "type": "null" }],
+          "description": "ISO wall-clock time of the EVENT the memory records (episodic spine) — distinct from createdAt, the write clock. Durable data; always exported."
+        },
+        "narrativeTime": {
+          "type": ["string", "null"],
+          "description": "Free-text in-story time (fictional-timeline chats), e.g. 'the third night at sea'."
+        },
+        "entities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Proper nouns of the episode: places, people, named things."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["semantic", "episodic"],
+          "description": "Declared memory kind: a standing fact (semantic, default) vs. a specific dated occurrence (episodic)."
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "ConversationAnnotation": {
+      "type": "object",
+      "description": "A Scriptorium-side annotation attached to a position in a chat conversation.",
+      "required": ["id", "chatId", "messageIndex", "characterName", "content", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "chatId": { "$ref": "#/$defs/UUID" },
+        "messageIndex": { "type": "integer", "minimum": 0 },
+        "sourceMessageId": { "anyOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }] },
+        "characterName": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "ChatDocument": {
+      "type": "object",
+      "description": "Document Mode pane state — tracks which document is open alongside a chat in the split-panel editor.",
+      "required": ["id", "chatId", "filePath", "scope", "isActive", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "chatId": { "$ref": "#/$defs/UUID" },
+        "filePath": { "type": "string" },
+        "scope": { "type": "string", "enum": ["project", "document_store", "general"] },
+        "mountPoint": { "type": ["string", "null"] },
+        "displayTitle": { "type": ["string", "null"] },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "DelimiterAddOns": {
+      "type": "object",
+      "description": "Layered text flourishes applied on top of a delimiter's base style class.",
+      "properties": {
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "reverse": { "type": "boolean", "description": "Swap foreground/background." },
+        "underline": { "enum": ["none", "single", "double"] },
+        "border": { "enum": ["none", "solid", "dashed"] },
+        "font": { "enum": ["", "sans", "serif", "mono", "display", "script"] }
+      }
+    },
+
+    "TemplateDelimiter": {
+      "type": "object",
+      "description": "A formatting delimiter, discriminated on `kind`. Carries common fields (name/buttonName/style), kind-specific fields, and optional render flourishes (hideDelimiter, addOns).",
+      "required": ["kind", "name", "buttonName", "style"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "enum": ["wrap", "linePrefix", "tagPrefix"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "buttonName": { "type": "string", "minLength": 1, "maxLength": 10 },
+        "style": { "type": "string", "minLength": 1, "maxLength": 50 },
+        "hideDelimiter": { "type": "boolean", "description": "Hide the delimiter/prefix from rendered output." },
+        "addOns": { "$ref": "#/$defs/DelimiterAddOns" },
+        "delimiters": {
+          "description": "wrap only — single string (same open/close) or [open, close] pair.",
+          "anyOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 2, "maxItems": 2 }
+          ]
+        },
+        "marker": { "type": "string", "description": "linePrefix only — the line-start marker." },
+        "open": { "type": "string", "description": "tagPrefix only — opening bracket." },
+        "close": { "type": "string", "description": "tagPrefix only — closing bracket." },
+        "tokenPattern": { "type": "string", "description": "tagPrefix only — inner-token Unicode regex." }
+      }
+    },
+
+    "ExportedRoleplayTemplate": {
+      "type": "object",
+      "description": "A user-created roleplay template (built-in templates are excluded from exports).",
+      "required": ["id", "name", "systemPrompt", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "userId": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": "string" },
+        "systemPrompt": { "type": "string", "minLength": 1 },
+        "isBuiltIn": { "const": false },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+        "delimiters": {
+          "type": "array",
+          "description": "Formatting delimiters with their styles, hide flag, and add-on flourishes.",
+          "items": { "$ref": "#/$defs/TemplateDelimiter" }
+        },
+        "narrationDelimiters": {
+          "description": "Narration delimiter(s) — single string or [open, close] pair",
+          "anyOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 2, "maxItems": 2 }
+          ]
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "_tagNames": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Informational: names of assigned tags at export time"
+        }
+      }
+    },
+
+    "SanitizedConnectionProfile": {
+      "type": "object",
+      "description": "A connection profile with the API key reference removed for security. The '_apiKeyLabel' field preserves the key's display name for reference.",
+      "required": ["id", "userId", "name", "provider", "modelName", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "not": { "required": ["apiKeyId"] },
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "userId": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string" },
+        "provider": { "type": "string", "minLength": 1 },
+        "modelName": { "type": "string" },
+        "baseUrl": { "type": ["string", "null"] },
+        "parameters": { "type": "object" },
+        "isDefault": { "type": "boolean" },
+        "isCheap": { "type": "boolean" },
+        "allowWebSearch": { "type": "boolean" },
+        "useNativeWebSearch": { "type": "boolean" },
+        "isDangerousCompatible": { "type": "boolean" },
+        "allowToolUse": { "type": "boolean" },
+        "pseudoToolMode": {
+          "type": "string",
+          "enum": ["auto", "native", "simple-json", "text-block"],
+          "description": "How tool calls are framed on the wire. auto picks by model capability; simple-json is the modern <tool_call> JSON-in-XML format; text-block is the legacy [[TOOL ...]] format."
+        },
+        "multiCharacterPrefill": {
+          "type": ["boolean", "null"],
+          "description": "How a multi-character chat anchors a reply to the character whose turn it is. true prefills an assistant message containing '[Character Name]'; false appends a prose instruction to the system prompt instead, leaving the request ending on a user message. null means never chosen, and resolves to the provider default whenever the profile is used (off for Anthropic, on elsewhere)."
+        },
+        "fallbackProfileId": {
+          "type": ["string", "null"],
+          "description": "The understudy: the id of another connection profile to try when a call through this one fails outright (auth, rate limit, network, missing model, 5xx, empty response, moderation refusal). null means none named. Chains never recurse, so the understudy's own understudy is not followed. On import the id is remapped through the bundle's profile id map; a reference that still cannot be resolved is skipped at call time."
+        },
+        "allowTierFallback": {
+          "type": "boolean",
+          "description": "Whether, once this profile and its named understudy have both failed, one further candidate of the same or better modelClass quality may be drafted automatically. Defaults to false."
+        },
+        "sortIndex": { "type": "integer", "minimum": 0 },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+        "totalTokens": { "type": "integer", "minimum": 0 },
+        "totalPromptTokens": { "type": "integer", "minimum": 0 },
+        "totalCompletionTokens": { "type": "integer", "minimum": 0 },
+        "messageCount": { "type": "integer", "minimum": 0 },
+        "modelClass": {
+          "type": ["string", "null"],
+          "enum": ["Compact", "Standard", "Extended", "Deep", null],
+          "description": "Model capability tier classification"
+        },
+        "maxContext": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Maximum context window size override"
+        },
+        "maxTokens": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "description": "Maximum output tokens for this profile"
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "_apiKeyLabel": {
+          "type": "string",
+          "description": "Informational: display name of the API key that was associated with this profile"
+        }
+      }
+    },
+
+    "SanitizedImageProfile": {
+      "type": "object",
+      "description": "An image generation profile with the API key reference removed for security.",
+      "required": ["id", "userId", "name", "provider", "modelName", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "not": { "required": ["apiKeyId"] },
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "userId": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string" },
+        "provider": { "type": "string", "minLength": 1 },
+        "modelName": { "type": "string" },
+        "baseUrl": { "type": ["string", "null"] },
+        "parameters": {
+          "type": "object",
+          "description": "Open bag of generation defaults. Host-owned keys (size, aspectRatio, quality, style, n, seed, guidanceScale, steps, negativePrompt) map onto named ImageGenParams fields; everything else is forwarded to the provider plugin verbatim as ImageGenParams.profileParameters. One key is reserved: `loras`, an array of { source, scale?, triggerPhrase?, label? } LoRA adapters. Deliberately unconstrained so a profile round-trips whatever its provider plugin understands."
+        },
+        "isDefault": { "type": "boolean" },
+        "isDangerousCompatible": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "_apiKeyLabel": {
+          "type": "string",
+          "description": "Informational: display name of the API key that was associated with this profile"
+        }
+      }
+    },
+
+    "SanitizedEmbeddingProfile": {
+      "type": "object",
+      "description": "An embedding profile with the API key reference removed for security.",
+      "required": ["id", "userId", "name", "provider", "modelName", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "not": { "required": ["apiKeyId"] },
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "userId": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string" },
+        "provider": {
+          "enum": ["OPENAI", "OLLAMA", "OPENROUTER", "NANOGPT", "BUILTIN"],
+          "description": "Embedding provider type"
+        },
+        "modelName": { "type": "string" },
+        "baseUrl": { "type": ["string", "null"] },
+        "dimensions": { "type": ["integer", "null"] },
+        "truncateToDimensions": {
+          "type": ["integer", "null"],
+          "description": "Matryoshka slice target — when set, raw provider vectors are sliced to this length before storage. Null means no truncation."
+        },
+        "normalizeL2": {
+          "type": "boolean",
+          "description": "Whether stored embeddings are L2-normalised. Defaults to true."
+        },
+        "isDefault": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "_apiKeyLabel": {
+          "type": "string",
+          "description": "Informational: display name of the API key that was associated with this profile"
+        }
+      }
+    },
+
+    "Tag": {
+      "type": "object",
+      "description": "A user-defined tag for categorization.",
+      "required": ["id", "userId", "name", "nameLower", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "userId": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string" },
+        "nameLower": { "type": "string" },
+        "quickHide": { "type": "boolean" },
+        "visualStyle": {
+          "oneOf": [
+            { "$ref": "#/$defs/TagVisualStyle" },
+            { "type": "null" }
+          ]
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "TagVisualStyle": {
+      "type": "object",
+      "description": "Visual customization for a tag.",
+      "additionalProperties": false,
+      "properties": {
+        "emoji": { "type": ["string", "null"], "maxLength": 8 },
+        "foregroundColor": { "type": "string", "pattern": "^#(?:[0-9a-fA-F]{3}){1,2}$" },
+        "backgroundColor": { "type": "string", "pattern": "^#(?:[0-9a-fA-F]{3}){1,2}$" },
+        "emojiOnly": { "type": "boolean" },
+        "bold": { "type": "boolean" },
+        "italic": { "type": "boolean" },
+        "strikethrough": { "type": "boolean" }
+      }
+    },
+
+    "WardrobeItem": {
+      "type": "object",
+      "description": "A wardrobe item (clothing, accessory, etc.) belonging to a character.",
+      "required": ["id", "title", "types", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "characterId": {
+          "oneOf": [
+            { "$ref": "#/$defs/UUID" },
+            { "type": "null" }
+          ],
+          "description": "Character this item belongs to. Null for archetype (shared) items."
+        },
+        "title": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] },
+        "imagePrompt": {
+          "type": ["string", "null"],
+          "description": "Optional plain-text cue fed to image-generation pipelines (avatar + Lantern) in place of the title; falls back to title when absent. Not Markdown."
+        },
+        "types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["top", "bottom", "footwear", "accessories", "hair"]
+          },
+          "description": "Coverage slots this item covers"
+        },
+        "componentItemIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UUID" },
+          "default": [],
+          "description": "Other wardrobe items this item is composed of (composite items). Empty array means this is a leaf item. Not required for back-compat with pre-rework exports."
+        },
+        "appropriateness": {
+          "type": ["string", "null"],
+          "description": "Context tags for when this item is appropriate (e.g., casual, formal, intimate)"
+        },
+        "isDefault": {
+          "type": "boolean",
+          "description": "Whether this item is part of the character's default outfit"
+        },
+        "replace": {
+          "type": "boolean",
+          "description": "Composite items only: if true, equipping clears the slots the composite designates before placing its components; if false/absent, equipping is additive (layers without clearing). Ignored for leaf items."
+        },
+        "migratedFromClothingRecordId": {
+          "oneOf": [
+            { "$ref": "#/$defs/UUID" },
+            { "type": "null" }
+          ],
+          "description": "Provenance tracking for items migrated from legacy clothingRecords"
+        },
+        "archivedAt": {
+          "oneOf": [
+            { "$ref": "#/$defs/Timestamp" },
+            { "type": "null" }
+          ],
+          "description": "When the item was archived; null or absent means active. An archived garment is hidden from every wardrobe list and picker unless the surface asks for archived entries, and is never offered to the outfit-selection LLM. It does not undress a character already wearing it."
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "LegacyOutfitPreset": {
+      "type": "object",
+      "description": "Legacy: pre-rework outfit preset. Each preset bundled up to one item per slot under a named outfit. Post-rework, presets fold into composite WardrobeItems and this entity no longer exists. Retained on the schema solely so older `.qtap` exports still validate.",
+      "required": ["id", "name", "slots", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "characterId": {
+          "oneOf": [
+            { "$ref": "#/$defs/UUID" },
+            { "type": "null" }
+          ]
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] },
+        "slots": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "top": { "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }] },
+            "bottom": { "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }] },
+            "footwear": { "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }] },
+            "accessories": { "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }] }
+          }
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "ExportedProject": {
+      "type": "object",
+      "description": "A project with optional resolved relationship metadata. Fields prefixed with '_' are informational. The export is the flat, hydrated shape: description/instructions/state and the settings fields are read out of the project's document store (where they now live) and serialized inline for portability. `userId` was dropped in the project-store cutover — projects are global to the instance.",
+      "required": ["id", "name", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": ["string", "null"], "maxLength": 2000 },
+        "instructions": { "type": ["string", "null"], "maxLength": 10000 },
+        "allowAnyCharacter": { "type": "boolean" },
+        "characterRoster": { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+        "color": { "type": ["string", "null"], "pattern": "^#(?:[0-9a-fA-F]{3}){1,2}$" },
+        "icon": { "type": ["string", "null"], "maxLength": 50 },
+        "mountPointId": { "type": ["string", "null"] },
+        "officialMountPointId": { "type": ["string", "null"], "description": "ID of the project's canonical document store. Stripped on import; the destination instance recreates or links its own." },
+        "defaultDisabledTools": { "type": "array", "items": { "type": "string" } },
+        "defaultDisabledToolGroups": { "type": "array", "items": { "type": "string" } },
+        "defaultAgentModeEnabled": { "type": ["boolean", "null"] },
+        "answerConfirmationOverride": { "enum": ["ON", "OFF", null], "description": "Per-project answer-confirmation override for the project's chats. NULL = inherit the global setting; 'ON'/'OFF' = force the Salon consistency check on/off (a chat's own override still wins)." },
+        "defaultAvatarGenerationEnabled": { "type": ["boolean", "null"] },
+        "defaultImageProfileId": { "type": ["string", "null"] },
+        "defaultRoleplayTemplateId": { "type": ["string", "null"] },
+        "defaultAlertCharactersOfLanternImages": { "type": ["boolean", "null"] },
+        "state": { "type": "object" },
+        "storyBackgroundsEnabled": { "type": ["boolean", "null"] },
+        "staticBackgroundImageId": { "type": ["string", "null"] },
+        "storyBackgroundImageId": { "type": ["string", "null"] },
+        "backgroundDisplayMode": { "enum": ["latest_chat", "project", "static", "theme"], "description": "How the project displays a background. 'project' and 'static' were retired in 4.9 (neither ever produced an image) and remain valid here only so pre-4.9 exports still validate; importers normalize both to 'theme'." },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "_characterRosterNames": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Informational: names of characters in the roster at export time"
+        },
+        "_chatCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Informational: number of chats in this project at export time"
+        },
+        "_fileCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Informational: number of files in this project at export time"
+        }
+      }
+    },
+
+    "ExportedGroup": {
+      "type": "object",
+      "description": "A group with optional resolved relationship metadata. Fields prefixed with '_' are informational. Similar to projects, groups have substantive content (description, instructions, state, color, icon) in their official document store, overlaid on read. Groups are global to the instance.",
+      "required": ["id", "name", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "description": { "type": ["string", "null"], "maxLength": 2000 },
+        "instructions": { "type": ["string", "null"], "maxLength": 10000 },
+        "color": { "type": ["string", "null"], "pattern": "^#(?:[0-9a-fA-F]{3}){1,2}$" },
+        "icon": { "type": ["string", "null"], "maxLength": 50 },
+        "officialMountPointId": { "type": ["string", "null"], "description": "ID of the group's canonical document store. Stripped on import; the destination instance recreates or links its own." },
+        "state": { "type": "object" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "_memberNames": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Informational: names of member characters at export time"
+        },
+        "_memberCharacterIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UUID" },
+          "description": "Character IDs to re-establish membership on import"
+        },
+        "_linkedStoreMountPointIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UUID" },
+          "description": "Additional linked document store mount-point IDs (beyond the official store)"
+        }
+      }
+    },
+
+    "ExportedDocumentStore": {
+      "type": "object",
+      "description": "Scriptorium document store (mount point) configuration. basePath is empty for database-backed stores.",
+      "required": ["id", "name", "basePath", "mountType", "includePatterns", "excludePatterns", "enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "allOf": [{ "$ref": "#/$defs/UUID" }], "description": "Durable store identity. Import preserves this id on create and matches an overwrite by it (not by name), so re-importing the same archive is recognised as an update of the same store rather than a stranger clone." },
+        "name": { "type": "string", "minLength": 1 },
+        "basePath": { "type": "string" },
+        "mountType": { "enum": ["filesystem", "obsidian", "database"] },
+        "storeType": { "enum": ["documents", "character"], "description": "Content classification orthogonal to mountType. Defaults to 'documents' when absent (older exports)." },
+        "includePatterns": { "type": "array", "items": { "type": "string" } },
+        "excludePatterns": { "type": "array", "items": { "type": "string" } },
+        "enabled": { "type": "boolean" }
+      }
+    },
+
+    "ExportedDocumentStoreFolder": {
+      "type": "object",
+      "description": "A folder inside a database-backed document store. Emitted parent-first (shortest path first) so an importer can build the tree in stream order. Character vaults are largely folders — `photos/`, `Mail/`, `Wardrobe/` — so these travel in a `characters` export too.",
+      "required": ["mountPointId", "name", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }], "description": "Source folder-row id, carried so a preserveIds import (archive/rehydrate) can restore the folder at its original id. Optional: older exports omit it, and older builds ignore it." },
+        "mountPointId": { "$ref": "#/$defs/UUID" },
+        "parentId": { "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }] },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+
+    "ExportedDocumentStoreDocument": {
+      "type": "object",
+      "description": "Text document inside a database-backed document store. Instance-wide GENERAL STATE (the bottom tier of the state cascade) is not a separate export record: it lives as a `state.json` document (fileType 'json') at the root of the singleton \"Quilltap General\" mount, and therefore rides in the `documentStores` dump exactly like any other store document — but only when that mount is included in a selective document-stores export. Chat, project, and group state travel with their own entities.",
+      "required": ["mountPointId", "relativePath", "fileName", "fileType", "content", "contentSha256", "plainTextLength", "lastModified"],
+      "additionalProperties": false,
+      "properties": {
+        "mountPointId": { "$ref": "#/$defs/UUID" },
+        "relativePath": { "type": "string", "minLength": 1 },
+        "fileName": { "type": "string", "minLength": 1 },
+        "fileType": { "enum": ["markdown", "txt", "json", "jsonl"] },
+        "content": { "type": "string" },
+        "contentSha256": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "plainTextLength": { "type": "integer", "minimum": 0 },
+        "lastModified": { "$ref": "#/$defs/Timestamp" },
+        "folderId": { "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }] },
+        "fileId": {
+          "description": "Source-instance `doc_mount_files.id` for this document's content row. Optional and additive: exports before 4.8 omit it, and an importer that does not recognise it simply mints fresh ids as before. Carried so a bundle can restore identity rather than only content — see `linkId`.",
+          "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }]
+        },
+        "linkId": {
+          "description": "Source-instance `doc_mount_file_links.id` — the id a character's `defaultImageId` and `avatarOverrides[].imageId` actually point at. Without it a character exported with its vault imports faceless, because those pointers have nothing to be remapped through.",
+          "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }]
+        },
+        "linkGroupId": {
+          "description": "Deliberate hard-link group. Documents sharing a linkGroupId are one file at several paths: a write through any of them repoints all of them. Absent/null for ordinary independent documents. Note that two documents with identical content are NOT linked — content rows are deduplicated by sha256, and only this field records intent.",
+          "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }]
+        }
+      }
+    },
+
+    "ExportedDocumentStoreBlob": {
+      "type": "object",
+      "description": "Binary asset attached to a document store — images (transcoded to WebP where applicable), pdf/docx uploads with an extracted-text sidecar, and arbitrary binaries. Raw bytes are base64-encoded.",
+      "required": ["mountPointId", "relativePath", "originalFileName", "originalMimeType", "storedMimeType", "sizeBytes", "sha256", "description", "dataBase64"],
+      "additionalProperties": false,
+      "properties": {
+        "mountPointId": { "$ref": "#/$defs/UUID" },
+        "relativePath": { "type": "string", "minLength": 1 },
+        "originalFileName": { "type": "string", "minLength": 1 },
+        "originalMimeType": { "type": "string", "minLength": 1 },
+        "storedMimeType": { "type": "string", "minLength": 1 },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
+        "description": { "type": "string" },
+        "descriptionUpdatedAt": { "type": ["string", "null"] },
+        "extractedText": {
+          "type": ["string", "null"],
+          "description": "Plain-text representation of the blob, populated for pdf/docx uploads and chunked for embedding. Null for images and arbitrary binaries with no converter."
+        },
+        "extractedTextSha256": { "type": ["string", "null"] },
+        "extractionStatus": {
+          "type": "string",
+          "enum": ["none", "pending", "converted", "failed", "skipped"]
+        },
+        "extractionError": { "type": ["string", "null"] },
+        "fileId": {
+          "description": "Source-instance `doc_mount_files.id` for this blob's content row. Optional and additive, exactly as on ExportedDocumentStoreDocument.",
+          "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }]
+        },
+        "linkId": {
+          "description": "Source-instance `doc_mount_file_links.id`. This is what a character avatar pointer resolves to, so a vault-bearing character bundle depends on it.",
+          "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }]
+        },
+        "blobId": {
+          "description": "Source-instance `doc_mount_blobs.id`.",
+          "oneOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }]
+        },
+        "dataBase64": { "type": "string", "contentEncoding": "base64" }
+      }
+    },
+
+    "ExportedProjectDocMountLink": {
+      "type": "object",
+      "description": "Association between a project and a document store (mount point). Both IDs are remapped through the import's project and mount-point ID maps.",
+      "required": ["projectId", "mountPointId"],
+      "additionalProperties": false,
+      "properties": {
+        "projectId": { "$ref": "#/$defs/UUID" },
+        "mountPointId": { "$ref": "#/$defs/UUID" }
+      }
+    },
+
+    "ExportedFolder": {
+      "type": "object",
+      "description": "A folder in the general file library. `id` travels so children and files can be matched to their parent inside the archive; the importer re-mints IDs and resolves parents by path, reusing a folder that already exists at the same path rather than duplicating it.",
+      "required": ["id", "path", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "path": { "type": "string", "description": "Full normalized path, e.g. '/documents/reports/'" },
+        "name": { "type": "string" },
+        "parentFolderId": {
+          "anyOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }],
+          "description": "Null at root level"
+        },
+        "projectId": {
+          "anyOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }],
+          "description": "Null for general (non-project) files"
+        }
+      }
+    },
+
+    "ExportedFile": {
+      "type": "object",
+      "description": "A general-library file: metadata plus base64 bytes. `userId` and `storageKey` never travel — a storage key names a location inside the exporting instance's own storage (commonly 'mount-blob:<mountPointId>:<blobId>'). It rides as `_sourceStorageKey` provenance and the importer discards it, recording whatever key its own upload bridge returns. Backup files (category 'BACKUP' or folderPath '/backups') and character-archive bundles (category 'ARCHIVE' or folderPath '/archives') are never exported — both are `.qtap` archives in their own right and do not nest inside another export.",
+      "required": ["id", "sha256", "originalFilename", "mimeType", "size", "source", "category"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "sha256": { "type": "string", "minLength": 64, "maxLength": 64, "description": "SHA-256 of the bytes as stored, matching `mimeType` and `size` — not of whatever was originally uploaded. The importer recomputes all three from its own storage bridge, which transcodes bitmaps to WebP, so an archive written before 4.9.0 may carry a pre-transcode hash here and the importer's value wins." },
+        "originalFilename": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "size": { "type": "integer", "minimum": 0 },
+        "source": { "type": "string" },
+        "category": { "type": "string", "description": "Never 'BACKUP' or 'ARCHIVE' — backup files and character-archive bundles are excluded from exports" },
+        "projectId": { "anyOf": [{ "$ref": "#/$defs/UUID" }, { "type": "null" }] },
+        "folderPath": { "type": ["string", "null"] },
+        "linkedTo": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/UUID" },
+          "description": "Entities this file is attached to. On import each id is remapped where the import knows it, kept where it already names something on the receiving instance, and dropped otherwise."
+        },
+        "tags": { "type": "array", "items": { "$ref": "#/$defs/UUID" } },
+        "description": { "type": ["string", "null"] },
+        "dataBase64": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "description": "Raw file bytes. Absent when `_bytesMissing` is true. In the streaming NDJSON format these bytes arrive as separate file_blob / file_blob_chunk records."
+        },
+        "_sourceStorageKey": {
+          "type": ["string", "null"],
+          "description": "Provenance only — the storage key on the exporting instance. Never reused."
+        },
+        "_bytesMissing": {
+          "type": "boolean",
+          "description": "The bytes could not be read at export time; only metadata travels and the importer skips the row."
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "ExportedPromptTemplate": {
+      "type": "object",
+      "description": "A user-created prompt template. Built-ins are seeded from `prompts/` on every instance and never travel.",
+      "required": ["id", "name", "createdAt", "updatedAt"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "userId": { "$ref": "#/$defs/UUID" },
+        "name": { "type": "string", "minLength": 1 },
+        "description": { "type": ["string", "null"] },
+        "isBuiltIn": { "const": false },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "ExportedProviderModel": {
+      "type": "object",
+      "description": "One row of the provider model catalogue. This table is a REGENERABLE CACHE: it is normally populated by a live refetch from each provider, and a refetch supersedes anything an import wrote. Exportable purely as a convenience for offline or air-gapped instances. Imported by upsert on (provider, modelId); ids and timestamps are discarded.",
+      "required": ["provider", "modelId", "displayName"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "provider": { "type": "string" },
+        "modelId": { "type": "string", "minLength": 1 },
+        "modelType": { "type": "string", "enum": ["chat", "image", "embedding"] },
+        "displayName": { "type": "string" },
+        "baseUrl": { "type": ["string", "null"] },
+        "contextWindow": { "type": ["integer", "null"] },
+        "maxOutputTokens": { "type": ["integer", "null"] },
+        "deprecated": { "type": "boolean" },
+        "experimental": { "type": "boolean" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "ExportedPluginConfig": {
+      "type": "object",
+      "description": "A plugin's per-user configuration with secrets removed. Every key the plugin's manifest declares as `password`-typed is dropped at export time and named in `_redactedKeys`. When the manifest cannot be resolved the whole `config` is withheld and `_redactedKeys` is ['*'] — the exporter never guesses which keys are safe. `userId` never travels. Import merges into any existing config, so a redacted key leaves the receiving instance's own secret intact.",
+      "required": ["pluginName", "config"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "$ref": "#/$defs/UUID" },
+        "pluginName": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "config": { "type": "object", "description": "Non-secret configuration values" },
+        "enabled": {
+          "type": "boolean",
+          "description": "Per-user enable flag, preserved through import so a disabled plugin stays disabled"
+        },
+        "_redactedKeys": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Config keys withheld from the export. ['*'] means the entire bag was withheld."
+        },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }
+    },
+
+    "ExportedInstanceSetting": {
+      "type": "object",
+      "description": "One row of the instance_settings key/value table — the 'move my setup' export. Keys meaningful only inside the exporting instance are withheld by the writer: the three mount-point pointers (lanternBackgroundsMountPointId, userUploadsMountPointId, generalMountPointId), lastMaintenanceSweepAt, and the version-guard key highest_app_version. Import overwrites the receiving instance's values by key.",
+      "required": ["key", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "value": { "type": "string" }
+      }
+    }
+  }
+}

@@ -114339,3 +114339,108 @@ three lanes building at once. Re-run by name with headroom restored: 3
 passed. The confirming full run above (44 GB free) is green.
 
 **Versions:** core 0.0.838, harness 0.0.729, web 0.0.130.
+## P4.86 unit 2 — the `.qtap` export-schema validator (2026-09-07)
+
+**v4:** `lib/validation/qtap-schema-validator.ts` (120 lines) +
+`public/schemas/qtap-export.schema.json` (89,769 bytes, draft 2020-12).
+**v5:** `crates/quilltap-core/src/generators/qtap_schema.rs` + the vendored
+`qtap-export.schema.json` beside it.
+
+The schema is a VENDORED v5 artifact, the `help/**` arrangement: v4 reads its
+copy from `process.cwd()` at first use and caches it; a Rust engine has no cwd
+to read from, so the file is `include_str!`'d and
+`qtap_schema_embed_guard` (harness) re-reads v4's copy and byte-compares. **A
+v4 commit touching `public/schemas/qtap-export.schema.json` is a re-vendor
+obligation** — the hazard belongs in the ledger's standing list.
+
+Engine: the `jsonschema` crate (0.55, `default-features = false`), configured
+as v4's ajv is — `allErrors: true` → `iter_errors`; `strict: false` → the
+crate's default (unknown keywords are annotations); `validateFormats: true` +
+`ajv-formats` → `should_validate_formats(true)`, load-bearing because draft
+2020-12 makes `format` an annotation otherwise and the schema asserts exactly
+two, `uuid` and `date-time`. All 37 distinct `$ref`s are local
+(`#/$defs/…`), asserted by the guard, so the engine is built with no resolver
+and can never reach the network.
+
+### The differential — `qtap_schema_validate_equivalence` (tier 1, 46 rows)
+
+The oracle (`harness/oracle/cases/qtap-schema-validate.test.ts`) emits the
+INSTANCE it validated in every row, so both sides validate identical bytes and
+the family needs no database on the v5 side. The corpus
+(`harness/oracle/fixtures/qtap-schema-validate.json`) is a recipe, not a pile
+of documents:
+
+* **16 seeds** — built by v4's REAL exporter (`createNdjsonStream`,
+  `lib/export/ndjson-writer.ts`) over a fresh copy of the committed
+  `system-data-*` family, folded back into the schema's document shape by v4's
+  REAL importer (`assembleExportFromStream`,
+  `lib/import/quilltap-import-stream.ts`). That fold is the only place a whole
+  `QuilltapExport` exists in v4 — the exporter streams NDJSON records; nothing
+  else assembles the document the schema describes.
+* **22 mutations** — JSON-Pointer `set` / `remove` / `dropNulls` edits, chained
+  (a mutation may derive from an earlier one). A pointer whose parent is
+  missing, a `remove` of an absent key, or a `set` past the end of an array
+  THROWS: a silently-skipped op is a vacuous arm.
+* **8 literals** — shapes no exporter can produce (a non-object root ×4, an
+  empty object, a manifest-only document, a hand-built minimal valid export,
+  and a non-boolean `settings.includeMemories`).
+
+**Graded comparands** (the module doc carries the same table):
+
+| comparand | grade | at the baseline |
+| --- | --- | --- |
+| `valid` | EXACT | agrees on 46/46 (14 valid, 32 invalid) |
+| the `errorSections` SET (v4's `/^\/data\/(\w+)\//` over the error strings — the input to the repair pass) | EXACT | agrees on 46/46; 14 rows carry at least one |
+| the instance-path SET, ajv's `if/then` wrapper struck | EXACT | agrees on 46/46 |
+| v4's per-path error count ≥ v5's (v5 never invents an error ajv lacks) | EXACT | holds on 46/46 |
+| the error COUNT / ORDER / message TEXT | RECORDED | v4 270, v5 188 |
+
+**The measured engine divergence is ONE shape.** Where a root `allOf[i].then`
+branch fails, ajv adds a root-level `/: must match "then" schema` beside the
+real errors and duplicates errors across the fifteen `if/then` branches; the
+`jsonschema` crate reports the underlying failures only. 17 rows carry it. The
+extreme is `manifest_removed`: 112 ajv errors over the same 46 paths the crate
+reports. The count reaches the wire twice in the runner (the `step_error
+validation` frame's `N validation error(s)` and the `errors.validation`
+sentence), so unit 3 carries the divergence rather than hiding it.
+
+Message wording differs throughout by construction — ajv `must be string`, the
+crate `"x" is a required property` / `is not of type "string"` — and is not a
+comparand.
+
+### Two v4 observations (candidate upstream filings, no v5 consequence)
+
+Both came out of the seeds, i.e. from v4's own exporter over v4's own fixtures:
+
+1. **v4's exporter emits SQL NULL for optional string columns its own schema
+   declares `type: string`** (never nullable). A real `characters` export from
+   the `system-data-*` fixture fails v4's own schema with 33 errors
+   (`/data/characters/0/title: must be string`, …); `chats` fails with 3;
+   `document-stores` with 25.
+2. **`ExportedDocumentStoreBlob` REQUIRES `originalFileName` and
+   `originalMimeType`**, and the exporter leaves both null — so even after
+   dropping every null the document is invalid (21 errors). The corpus
+   therefore carries a `characters_valid_rich` base (denulled, blob section
+   removed) so the interesting mutations flip `valid` true → false rather than
+   adding an error to an already-broken document.
+
+Nothing here reaches v5: v5 validates whatever it is handed, and agrees with
+v4 on every verdict.
+
+### Mutation proofs (each reddened, then reverted)
+
+| mutation | effect |
+| --- | --- |
+| `iter_errors(data).take(1)` (ajv `allErrors: false`) | 5 rows DIFFER on the **errorSections set** — `two_broken_sections` v5=`{characters}` v4=`{characters, memories}`, `three_broken_sections` v5=`{characters}` v4=`{characters, documents, memories}` — plus 9 path-set diffs |
+| `should_validate_formats(false)` | 3 rows DIFFER on `valid` (the uuid + the two date-time rows) |
+| the root pointer renders `""` instead of `"/"` | 16 rows diverge on the instance-path set |
+
+### Files
+
+New: `crates/quilltap-core/src/generators/qtap_schema.rs`,
+`crates/quilltap-core/src/generators/qtap-export.schema.json` (vendored),
+`crates/quilltap-harness/tests/qtap_schema_validate_equivalence.rs`,
+`crates/quilltap-harness/tests/qtap_schema_embed_guard.rs`,
+`harness/oracle/cases/qtap-schema-validate.test.ts`,
+`harness/oracle/fixtures/qtap-schema-validate.json`. Touched:
+`generators/mod.rs` (the `// === P4.86 ===` fence).

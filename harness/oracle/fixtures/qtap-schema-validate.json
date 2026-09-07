@@ -1,0 +1,488 @@
+{
+  "$comment": "P4.86 \u2014 the corpus for `qtap_schema_validate_equivalence` (v4 `lib/validation/qtap-schema-validator.ts`). `seeds` are built at oracle time by v4's REAL exporter (`createNdjsonStream`) folded back into document form by v4's REAL importer (`assembleExportFromStream`) over a fresh copy of the committed `system-data-*` fixture family; `mutations` derive broken instances from a seed by JSON-Pointer ops; `literals` are hand-written shapes an exporter cannot produce. The ORACLE emits the assembled instance in every row, so the Rust side validates the identical bytes and never rebuilds an export.",
+  "seeds": [
+    {
+      "name": "characters_all_memories",
+      "options": {
+        "type": "characters",
+        "scope": "all",
+        "includeMemories": true
+      }
+    },
+    {
+      "name": "characters_all_no_memories",
+      "options": {
+        "type": "characters",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "chats_all_memories",
+      "options": {
+        "type": "chats",
+        "scope": "all",
+        "includeMemories": true
+      }
+    },
+    {
+      "name": "tags_all",
+      "options": {
+        "type": "tags",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "roleplay_templates_all",
+      "options": {
+        "type": "roleplay-templates",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "prompt_templates_all",
+      "options": {
+        "type": "prompt-templates",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "connection_profiles_all",
+      "options": {
+        "type": "connection-profiles",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "image_profiles_all",
+      "options": {
+        "type": "image-profiles",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "embedding_profiles_all",
+      "options": {
+        "type": "embedding-profiles",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "projects_all",
+      "options": {
+        "type": "projects",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "groups_all",
+      "options": {
+        "type": "groups",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "document_stores_all",
+      "options": {
+        "type": "document-stores",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "files_all",
+      "options": {
+        "type": "files",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "provider_models_all",
+      "options": {
+        "type": "provider-models",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "plugin_configs_all",
+      "options": {
+        "type": "plugin-configs",
+        "scope": "all",
+        "includeMemories": false
+      }
+    },
+    {
+      "name": "instance_settings_all",
+      "options": {
+        "type": "instance-settings",
+        "scope": "all",
+        "includeMemories": false
+      }
+    }
+  ],
+  "mutations": [
+    {
+      "name": "characters_denulled",
+      "from": "characters_all_memories",
+      "$comment": "v4's exporter emits SQL NULLs for optional string columns and its own schema forbids them (`type: string`, never nullable) \u2014 the raw seed is INVALID with 33 such errors, a recorded v4 observation. Dropping every null property yields the rich VALID document the positive arms and the interesting mutations below are derived from.",
+      "ops": [
+        {
+          "op": "dropNulls",
+          "path": "/data"
+        }
+      ]
+    },
+    {
+      "name": "characters_valid_rich",
+      "from": "characters_denulled",
+      "$comment": "The denulled seed is STILL invalid: `ExportedDocumentStoreBlob` REQUIRES `originalFileName` and `originalMimeType`, and v4's exporter emits SQL NULL for both (a second recorded v4 observation). Dropping the blob section leaves the rich, deeply-nested, VALID characters export the interesting mutations below are derived from \u2014 so each of them flips `valid` true \u2192 false rather than adding an error to an already-broken document.",
+      "ops": [
+        {
+          "op": "remove",
+          "path": "/data/blobs"
+        }
+      ]
+    },
+    {
+      "name": "memory_missing_required_summary",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "remove",
+          "path": "/data/memories/0/summary"
+        }
+      ]
+    },
+    {
+      "name": "memory_chat_id_wrong_type",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/chatId",
+          "value": 7
+        }
+      ]
+    },
+    {
+      "name": "memory_chat_id_invalid_uuid",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/memories/0/chatId",
+          "value": "not-a-uuid"
+        }
+      ]
+    },
+    {
+      "name": "character_created_at_invalid_date_time",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters/0/createdAt",
+          "value": "yesterday-ish"
+        }
+      ]
+    },
+    {
+      "name": "manifest_created_at_invalid_date_time",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/manifest/createdAt",
+          "value": "2026-13-45T99:99:99Z"
+        }
+      ]
+    },
+    {
+      "name": "manifest_app_version_off_pattern",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/manifest/appVersion",
+          "value": "four-ten"
+        }
+      ]
+    },
+    {
+      "name": "manifest_export_type_off_enum",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/manifest/exportType",
+          "value": "grimoires"
+        }
+      ]
+    },
+    {
+      "name": "manifest_format_off_const",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/manifest/format",
+          "value": "quilltap-exports"
+        }
+      ]
+    },
+    {
+      "name": "unknown_top_level_key",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/marginalia",
+          "value": "a pressed flower"
+        }
+      ]
+    },
+    {
+      "name": "unknown_data_section",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/grimoires",
+          "value": []
+        }
+      ]
+    },
+    {
+      "name": "two_broken_sections",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters/0/name",
+          "value": 12
+        },
+        {
+          "op": "remove",
+          "path": "/data/memories/0/content"
+        }
+      ]
+    },
+    {
+      "name": "three_broken_sections",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters/0/name",
+          "value": 12
+        },
+        {
+          "op": "remove",
+          "path": "/data/memories/0/content"
+        },
+        {
+          "op": "set",
+          "path": "/data/documents/0/mountPointId",
+          "value": false
+        }
+      ]
+    },
+    {
+      "name": "empty_data",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data",
+          "value": {}
+        }
+      ]
+    },
+    {
+      "name": "data_is_an_array",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data",
+          "value": []
+        }
+      ]
+    },
+    {
+      "name": "characters_not_an_array",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters",
+          "value": {
+            "0": "Mira"
+          }
+        }
+      ]
+    },
+    {
+      "name": "manifest_removed",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "remove",
+          "path": "/manifest"
+        }
+      ]
+    },
+    {
+      "name": "counts_negative",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/manifest/counts/characters",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "name": "settings_scope_off_enum",
+      "from": "characters_valid_rich",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/manifest/settings/scope",
+          "value": "some"
+        }
+      ]
+    },
+    {
+      "name": "chat_message_role_off_enum",
+      "from": "chats_all_memories",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/messages/0/role",
+          "value": "NARRATOR"
+        }
+      ]
+    },
+    {
+      "name": "project_color_off_pattern",
+      "from": "projects_all",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/projects/0/color",
+          "value": "puce"
+        }
+      ]
+    }
+  ],
+  "literals": [
+    {
+      "name": "non_object_root_string",
+      "instance": "nope"
+    },
+    {
+      "name": "non_object_root_null",
+      "instance": null
+    },
+    {
+      "name": "non_object_root_array",
+      "instance": []
+    },
+    {
+      "name": "non_object_root_number",
+      "instance": 7
+    },
+    {
+      "name": "empty_object",
+      "instance": {}
+    },
+    {
+      "name": "manifest_only",
+      "instance": {
+        "manifest": {
+          "format": "quilltap-export",
+          "version": "1.0",
+          "exportType": "characters",
+          "createdAt": "2026-03-02T12:00:30.000Z",
+          "appVersion": "4.10.0",
+          "settings": {
+            "includeMemories": false,
+            "scope": "all",
+            "selectedIds": []
+          },
+          "counts": {}
+        }
+      }
+    },
+    {
+      "name": "minimal_valid_characters_export",
+      "instance": {
+        "manifest": {
+          "format": "quilltap-export",
+          "version": "1.0",
+          "exportType": "characters",
+          "createdAt": "2026-03-02T12:00:30.000Z",
+          "appVersion": "4.10.0",
+          "settings": {
+            "includeMemories": true,
+            "scope": "selected",
+            "selectedIds": [
+              "11111111-0000-4000-8000-000000000001"
+            ]
+          },
+          "counts": {
+            "characters": 1
+          }
+        },
+        "data": {
+          "characters": [
+            {
+              "id": "11111111-0000-4000-8000-000000000001",
+              "userId": "11111111-0000-4000-8000-0000000000ff",
+              "name": "Mira Lanternwright",
+              "createdAt": "2026-03-02T12:00:30.000Z",
+              "updatedAt": "2026-03-02T12:00:30.000Z"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "include_memories_not_a_boolean",
+      "instance": {
+        "manifest": {
+          "format": "quilltap-export",
+          "version": "1.0",
+          "exportType": "characters",
+          "createdAt": "2026-03-02T12:00:30.000Z",
+          "appVersion": "4.10.0",
+          "settings": {
+            "includeMemories": "yes",
+            "scope": "selected",
+            "selectedIds": [
+              "11111111-0000-4000-8000-000000000001"
+            ]
+          },
+          "counts": {
+            "characters": 0
+          }
+        },
+        "data": {
+          "characters": []
+        }
+      }
+    }
+  ]
+}

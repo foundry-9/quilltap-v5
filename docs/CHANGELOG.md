@@ -348,6 +348,52 @@ a participant that is not on the chat, and a dangling
 the log line) pin its position; without them a line moved above the write
 would still pass. Mutation-proven: deleting the `tracing::info!` reddens the
 test.
+#### 2026-09-07 — feat(core): the `.qtap` export schema validator (P4.86 unit 2)
+
+_Versions: core 0.0.836, harness 0.0.725._
+
+Ports v4's `lib/validation/qtap-schema-validator.ts` as
+`generators::qtap_schema::validate_qtap_export`, with the schema VENDORED
+into the crate (`crates/quilltap-core/src/generators/qtap-export.schema.json`,
+a byte-copy of v4's `public/schemas/qtap-export.schema.json` at the
+`2f4254b42` baseline — 89,769 bytes, draft 2020-12) and `include_str!`'d:
+v4 reads its copy from `process.cwd()`, and a Rust engine has no cwd to read
+it from. That makes a v4 commit touching the schema a re-vendor obligation,
+which `qtap_schema_embed_guard` fires on.
+
+The engine is configured as v4's ajv is: every error, not the first
+(`allErrors: true` → `iter_errors`); unknown keywords ignored
+(`strict: false` → the crate's default); formats ASSERTED
+(`validateFormats: true` + `ajv-formats` → `should_validate_formats(true)`,
+because draft 2020-12 makes `format` an annotation otherwise and this schema
+asserts exactly two, `uuid` and `date-time`). Errors render v4's
+`` `${instancePath || '/'}: ${message}` `` shape, and a schema that failed to
+compile answers v4's `Schema validation error: …` catch arm with its
+`[QtapSchemaValidator] Validation error` log line.
+
+New tier-1 family `qtap_schema_validate_equivalence` (46 rows) over a new
+recorded corpus: sixteen seeds built by v4's REAL exporter
+(`createNdjsonStream`) folded back into document shape by v4's REAL importer
+(`assembleExportFromStream`) over the committed `system-data-*` fixture
+family, twenty-two JSON-Pointer mutations of those, and eight literals. The
+oracle emits the instance it validated, so both sides validate identical
+bytes and the family needs no database on the v5 side.
+
+Graded comparands: `valid` EXACT (46/46); the `errorSections` set v4's repair
+pass derives (`/^\/data\/(\w+)\//`) EXACT; the instance-path SET EXACT once
+ajv's `if/then` root wrapper is struck, with v4's per-path count never below
+v5's; the error COUNT recorded (v4 270, v5 188 across the corpus — the whole
+divergence is that ajv adds a root `must match "then" schema` on 17 rows and
+duplicates errors across the fifteen `if/then` branches).
+
+Two v4 observations recorded on the way, both from the seeds: v4's own
+exporter emits SQL NULL for optional string columns its own schema declares
+`type: string` (33 errors on a real characters export), and
+`ExportedDocumentStoreBlob` REQUIRES `originalFileName`/`originalMimeType`
+which the exporter also leaves null — so a `.qtap` characters or
+document-stores export from v4 fails v4's own schema. Neither is a v5
+concern; both are candidate upstream filings.
+
 #### 2026-09-07 — build(core): add the `jsonschema` engine (P4.86, under the human's dependency ruling)
 
 _Versions: core 0.0.835._
