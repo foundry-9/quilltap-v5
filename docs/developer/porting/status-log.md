@@ -111326,3 +111326,170 @@ chat/cast apps/web/src/app/core/core-contract.ts` both empty.
 
 Versions: SPA 0.5.658; core/harness/host/web/cli/tauri unchanged (no Rust
 touched this lane).
+## Lane record — P4.9K4 (the character-generators SPA lane, DETAIL + LIST + CAST hosts)
+
+**Branch:** `claude/p4-9k4-generators-spa-detail-bedea5`. **Commits:**
+`1cc4718f0` (optimizer + external-prompt), `552b71fed` (AI import wizard +
+both mounts), `3e737dfd4` (three e2e beats). Freshness probe at lane start:
+checkout `bugfix`, tree clean, both `log` ranges empty — matched the ledger,
+proceeded with no drift catch-up.
+
+### What landed (Tier 1, all four items)
+
+1. **The optimizer modal** — `generators/optimizer/`: `character-optimizer-
+   modal.ts` (the four-phase modal, `providers: [OptimizerState]`),
+   `optimizer-state.ts` (the modal-scoped injectable, v4
+   `useCharacterOptimizer.ts`), `optimizer-fold.ts` (the pure progress-event
+   reducer — every non-terminal streamed event folds through it; the
+   `done`/`error` terminal folds through it exactly once from the dispatch's
+   own resolution, never the stream, per §B.1 and the almanack-card.ts
+   precedent), `apply-plan-builder.ts` (the pure field-routing/merge logic,
+   split out of `applyChanges` for testability), `apply-character-field-
+   updates.ts` (v4's shared helper, ported over EXISTING `characterUpdate`/
+   `characterPromptUpdate`/`characterPromptCreate` — v5 had no prior twin;
+   `details-tab.ts`'s `runTemplateSave` duplicates the same fan-out inline
+   for its own two callers, pre-existing, out of scope here),
+   `suggestion-card.ts` / `analysis-summary.ts` / `apply-confirmation.ts`
+   (the three review subcomponents), `field-meta.ts` (FIELD_LABELS /
+   FIELD_BADGE_CLASS / FIELD_HINT_KEYS, byte-transcribed). Wired live from
+   `character-header.ts`'s "Refine from Memories" button (previously
+   disabled) and mounted from `character-detail.ts`.
+2. **External Prompt + Result dialogs** — `generators/external-prompt/`:
+   `external-prompt-dialog.ts` (the options form, `characterGenerate
+   ExternalPrompt`) and `external-prompt-result-dialog.ts` (copy/download,
+   rendering through the EXISTING `qt-message-content` markdown pipeline
+   rather than a second renderer). Wired live from the header's
+   "Non-Quilltap Prompt" button. **The Reverse-`{{user}}` picker needed NO
+   work** — a full survey found it already shipped in `details-tab.ts`
+   (`openReverseUserDialog`/`confirmReverseUser`, jsdom-covered in
+   `details-tab.spec.ts`), evidently landed in an earlier round as part of
+   the general template-replacement feature. Only its e2e beat was missing;
+   this lane added it.
+3. **The AI Import wizard** — `generators/ai-import/` (`ai-import.types.ts`,
+   `ai-import-fold.ts`, `ai-import-state.ts`, `ai-import-wizard.ts`,
+   `ai-import-wizard.spec.ts`; drafted by a delegated background agent
+   against this lane's wire contract and house conventions, reviewed and
+   integrated by the lane). Mounted from `characters-list.ts`'s "Summon From
+   Lore" toolbar button (previously disabled — refetch-only on success, v4
+   `AuroraView.tsx:696-698`) and from `add-character-dialog.ts`, retiring the
+   `summonRefused` refusal stub: a summoned character does NOT auto-join the
+   chat — `onSummoned` mirrors `onNpcCreated` exactly (preselect, refetch),
+   with v4's two error sentences (zero ids / more than one id) carried
+   verbatim. File upload rides the EXISTING `POST /api/v1/files?action=upload`
+   REST route (`quilltap-web` already had it — the order's fallback
+   "disabled control" deferral plan was not needed); import commits through
+   the EXISTING `systemImportExecute` verb.
+4. **Parity specs**: `optimizer-fold.spec.ts` (a recorded 12-frame run plus
+   terminal/mutation-guard cases), `apply-plan-builder.spec.ts` (every field
+   branch + the merge logic, mutation-style assertions on the physical-
+   description/scenario/alias merges), `field-meta.spec.ts` (an independent
+   second transcription), `ai-import-wizard.spec.ts` (10 cases, the agent's
+   own transcription-parity + reducer-sequence tests).
+
+### The wire contract
+
+`generators/detail-generators.api.ts` declares `characterOptimize`,
+`characterGenerateExternalPrompt`, `aiImportStream`, and the
+`generatorProgress` Event envelope per this round's §B — none are members of
+`CoreRequest` yet (K1/K2 not landed), so `dispatchGenerator` casts once at
+the shared seam (the `file-manager-transport.ts` / P4.6x precedent) rather
+than at every call site. `asGeneratorProgress(frame, progressId)` narrows a
+raw `ScopedEvent` defensively (`type`/`generator`/`event` aren't real
+`ScopedEvent` fields pre-P4.9K0) — a cast, not a mock. `systemImportExecute`
+is the one exception: a REAL existing `CoreRequest` member, imported from
+`core-contract.ts` rather than shadowed.
+
+### Two existing specs updated (the one deliberate "must not touch any
+### existing spec" exception)
+
+`add-character-dialog.spec.ts` and `characters-list.spec.ts` each pinned the
+retired stub's disabled/refusal state byte-for-byte; retiring the stub those
+specs exist to pin is this lane's own mandate, so both were updated to
+assert the live behavior instead (new assertions: the button is enabled, and
+clicking it mounts `qt-ai-import-wizard`). No other existing spec was
+touched.
+
+### A noted fidelity divergence
+
+The AI Import wizard titles itself by wizard step ("Source Material",
+"Configuration", "Generation", "Review") rather than a fixed "Summon From
+Lore" chrome title. v4 gets the fixed title from `SummonFromLoreModal.tsx`'s
+separate Salon-side wrapper around the shared `AIImportWizard`; this port
+folds the wrapper's concerns (the two error-toast sentences, the preselect)
+into the caller (`add-character-dialog.ts`) rather than keeping a second
+component whose only job was a title and a Close button. Recorded here
+rather than silently accepted; a future round could restore the fixed title
+with a thin `[title]` input if the divergence proves to matter.
+
+### Gate
+
+`npm run lint` clean; `npm test` (incl. `check-qt-classes` + `ng test`) —
+**391/391 test files, 6,310/6,310 tests, 0 failed**; `npm run build` clean.
+`git diff main -- crates/` empty (this lane touched no Rust). No Rust gate
+applies — SPA-only lane.
+
+### What remains OPEN
+
+- **Tier 2 (should land), not attempted this pass**: the suggestions-file
+  outcome e2e beat (item 6 — the vault-listing verification), jsdom specs
+  for `SuggestionCard`'s three decisions and edited-value precedence (item
+  7 — the component's logic is exercised indirectly through
+  `apply-plan-builder.spec.ts` and a TestBed smoke render, but no dedicated
+  decision-matrix spec exists yet). Deferred for time, not blocked — no
+  typed refusal needed since nothing here is a missing verb.
+- **The three e2e beats' real proof is owed to the unifier**: two are
+  ACTIVATE-AT-UNIFY behind `P49K1_SERVER_LANDED` (`character-optimizer-flow`,
+  the external-prompt half of `character-external-prompt-flow`) and one
+  behind `P49K2_SERVER_LANDED` (`ai-import-flow`) — none has run against a
+  real server; their mock-LLM JSON reply shapes are BEST-EFFORT
+  transcriptions of what K1/K2's real services might expect, explicitly
+  flagged unverified in each file's header comment. The unifier should
+  re-check both mock replies against the real services' prompt/parse
+  pipeline before trusting either beat's first live run. The reverse-`{{user}}`
+  beat in `character-external-prompt-flow.spec.ts` is NOT gated (existing
+  verbs only) but has likewise never been run against a live server in this
+  lane (no release binaries were built this pass — see below).
+- **No live Playwright run at all this pass.** `npm run build`/`npm test`
+  (the Angular/TypeScript gates) ran and are green; the actual browser walk
+  — including the one beat that isn't sibling-gated — was not exercised
+  against release Rust binaries, for lack of remaining time in this lane.
+  This is the one verification-gate item NOT discharged; flagged loudly
+  rather than claimed. Recommend running `npm run e2e` (or the targeted
+  three new spec files) against a release build before/at unification.
+
+### Fixtures
+
+None delivered under `crates/`, per the order. The two e2e beats that need
+fixture-shaped data seed it themselves via API dispatch at run time
+(a throwaway second user-controlled character for the reverse-`{{user}}`
+beat; the summoned character's add/remove round-trip for the AI-import
+beat) rather than a committed `.db` pair.
+
+### Gotchas worth a memory note
+
+- **A backtick inside an Angular template's `<!-- -->` HTML comment**
+  terminates the outer TS template literal early, cascading into a wall of
+  unrelated-looking syntax errors elsewhere in the same file (confirms the
+  existing `backtick-in-an-angular-inline-template-comment.md` note — hit it
+  twice independently in this lane, once in a doc-style comment quoting
+  v4's `isArchived ? undefined : …` gate and once quoting `profiles()` in a
+  dogfood-#6 rationale comment).
+- **Assigning a concrete named interface (not a fresh object literal) to a
+  `Record<string, unknown>`-typed parameter/variable fails TS structural
+  checks** even though the value type is `unknown` — a fresh object literal
+  is exempted from this, a typed variable is not. Hit porting v4's scenario/
+  physicalDescription merge logic against `CharacterDetail`'s concrete
+  `CharacterScenario[]`/`CharacterPhysicalDescription` fields; fixed by
+  typing the merge helper's parameter as `Pick<CharacterDetail, …>` instead
+  of a hand-rolled `Record<string, unknown> & {…}` shape, and by an explicit
+  `as Record<string, unknown>` cast at the one spot importing a real DTO
+  into an already-loose bag.
+- **Indexing a keyed object literal whose per-key value SHAPES differ**
+  (some entries carry an optional field, some don't) produces a union type
+  where TS refuses `.optionalField` even with `?.` if the property is
+  wholly ABSENT (not just optional) on some union members — `'field' in
+  obj ? obj.field : …` or `(obj as {field?: T}).field` are the two ways
+  out; `PROMPT_FIELD_HINTS[key].example` needed the cast (hit independently
+  in both this lane's `suggestion-card.ts` and the delegated agent's
+  `ai-import-wizard.ts` — the same construct, same fix, worth a shared
+  note if this pattern recurs).
