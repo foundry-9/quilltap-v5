@@ -202,19 +202,52 @@ pub fn format_messages_for_google(
     let mut should_disable_tools = false;
     if has_tools && !supports_tool_calling(model) {
         should_disable_tools = true;
+        // v4 `GoogleProvider.formatMessagesForGoogle:325` — an `info`. Both
+        // arms of this decision are ANNOUNCED in v4 and were silent in v5
+        // until dogfood finding #116: the turn keeps running with its tools
+        // stripped, the model calls one anyway on the prompt's instructions,
+        // and Google answers `UNEXPECTED_TOOL_CALL` with empty content — a
+        // silent turn whose cause is nowhere in the log. v4's `context:` field
+        // is the tracing target here, the house idiom.
+        tracing::info!(
+            target: "quilltap::model::request_builder::google",
+            model_name = %model,
+            "Disabling tools - model does not support function calling"
+        );
     }
     if !should_disable_tools && is_thinking && has_tools {
-        let legacy = non_system.iter().any(|m| {
-            matches!(
-                m,
-                StreamMessage::Assistant {
-                    thought_signature: None,
-                    ..
-                }
-            )
-        });
-        if legacy {
+        // v4 counts both populations for its warning, so v5 counts them too
+        // rather than short-circuiting on the first legacy row.
+        let total_assistant_messages = non_system
+            .iter()
+            .filter(|m| matches!(m, StreamMessage::Assistant { .. }))
+            .count();
+        let legacy_message_count = non_system
+            .iter()
+            .filter(|m| {
+                matches!(
+                    m,
+                    StreamMessage::Assistant {
+                        thought_signature: None,
+                        ..
+                    }
+                )
+            })
+            .count();
+        if legacy_message_count > 0 {
             should_disable_tools = true;
+            // v4 `GoogleProvider.formatMessagesForGoogle:338` — a `warn`, with
+            // v4's two counts. This is the arm dogfood #116 was found on: a
+            // help chat whose history carries assistant rows written by other
+            // providers has no thought signatures, so a Gemini thinking seat
+            // silently loses every tool.
+            tracing::warn!(
+                target: "quilltap::model::request_builder::google",
+                legacy_message_count,
+                total_assistant_messages,
+                model_name = %model,
+                "Disabling tools for thinking model due to legacy messages without thought signatures"
+            );
         }
     }
 
@@ -791,6 +824,135 @@ mod schema_sanitizer_tests {
         assert_eq!(
             sanitized["properties"]["list"]["items"]["required"],
             json!(["id"])
+        );
+    }
+}
+
+#[cfg(test)]
+mod disable_tools_log_tests {
+    //! Dogfood finding #116 — v4 ANNOUNCES both arms of `shouldDisableTools`
+    //! and v5 took them in silence.
+    //!
+    //! The decision is consequential and invisible from its effects: the turn
+    //! runs on, the system prompt still describes the tools, the model calls
+    //! one anyway, and Gemini answers `finishReason: UNEXPECTED_TOOL_CALL`
+    //! with empty content — a help turn that ends saying nothing, with no line
+    //! in `combined.log` naming the cause. Found live on the 2026-09-06 walk
+    //! (B3): a GOOGLE-seated help chat whose history carried assistant rows
+    //! written by other providers, so not one of them had a thought signature.
+    //!
+    //! A differential cannot see a log-only fix, so the capture layer is the
+    //! proof, one test per line (`crate::test_support`, P4.77).
+
+    use super::*;
+    use crate::test_support::captured;
+
+    fn assistant(thought_signature: Option<&str>) -> StreamMessage {
+        StreamMessage::Assistant {
+            content: "a reply".to_string(),
+            tool_calls: Vec::new(),
+            reasoning_content: None,
+            thought_signature: thought_signature.map(str::to_string),
+            cache_control: None,
+        }
+    }
+
+    #[test]
+    fn an_unsupported_model_announces_why_its_tools_went_away() {
+        let msgs = [StreamMessage::user("hello")];
+        let lines = captured(|| {
+            let out = format_messages_for_google(&msgs, "imagen-4.0-generate-001", true);
+            assert!(out.should_disable_tools);
+        });
+        let line = lines
+            .iter()
+            .find(|l| l.contains("does not support function calling"))
+            .unwrap_or_else(|| panic!("no unsupported-model line; got {lines:?}"));
+        assert!(
+            line.starts_with("INFO quilltap::model::request_builder::google"),
+            "{line}"
+        );
+        assert!(
+            line.contains("model_name=imagen-4.0-generate-001"),
+            "{line}"
+        );
+        assert!(
+            line.contains("Disabling tools - model does not support function calling"),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn a_legacy_thinking_history_announces_both_counts() {
+        // Two assistant rows, one of them signed — v4's two counts differ, so a
+        // fix that reported the same number twice cannot pass.
+        let msgs = [
+            StreamMessage::system("you are a helper"),
+            StreamMessage::user("hello"),
+            assistant(Some("sig-1")),
+            assistant(None),
+        ];
+        let lines = captured(|| {
+            let out = format_messages_for_google(&msgs, "gemini-2.5-flash", true);
+            assert!(out.should_disable_tools);
+        });
+        let line = lines
+            .iter()
+            .find(|l| l.contains("legacy messages without thought signatures"))
+            .unwrap_or_else(|| panic!("no legacy-signature line; got {lines:?}"));
+        assert!(
+            line.starts_with("WARN quilltap::model::request_builder::google"),
+            "{line}"
+        );
+        assert!(line.contains("legacy_message_count=1"), "{line}");
+        assert!(line.contains("total_assistant_messages=2"), "{line}");
+        assert!(line.contains("model_name=gemini-2.5-flash"), "{line}");
+        assert!(
+            line.contains(
+                "Disabling tools for thinking model due to legacy messages \
+                 without thought signatures"
+            ),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn a_fully_signed_history_stays_silent() {
+        // A history whose assistant rows all carry signatures keeps its tools,
+        // so neither line may fire. Without this arm a fix that logged
+        // unconditionally would pass the two tests above (mutation M4).
+        //
+        // MEASURED, not assumed: taking the counts over ALL messages instead of
+        // `non_system` is a SURVIVING mutation, and correctly so — a `System`
+        // row is never an `Assistant`, so v4's filter cannot move either count.
+        // No arm is added to chase it; the note is the honest record.
+        let msgs = [
+            StreamMessage::system("you are a helper"),
+            StreamMessage::user("hello"),
+            assistant(Some("sig-1")),
+        ];
+        let lines = captured(|| {
+            let out = format_messages_for_google(&msgs, "gemini-2.5-flash", true);
+            assert!(!out.should_disable_tools);
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains("Disabling tools")),
+            "a signed history must not announce a disable: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_toolless_turn_is_silent_on_both_arms() {
+        // `has_tools == false` short-circuits both arms in v4; a turn that never
+        // had tools has nothing to announce losing.
+        let msgs = [StreamMessage::user("hello"), assistant(None)];
+        let lines = captured(|| {
+            let out = format_messages_for_google(&msgs, "gemini-2.5-flash", false);
+            assert!(!out.should_disable_tools);
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains("Disabling tools")),
+            "a tool-less turn must be silent: {lines:?}"
         );
     }
 }

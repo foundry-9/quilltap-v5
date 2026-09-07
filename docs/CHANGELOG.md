@@ -12,6 +12,33 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — fix(model): google announces the turns whose tools it silently disabled (dogfood #116)
+
+_Versions: core 0.0.812._
+
+`format_messages_for_google` decides `shouldDisableTools` on two arms — a model
+that does not support function calling, and a thinking model whose history
+carries an assistant message without a `thoughtSignature` — and v5 took both in
+silence. v4 announces each: an `info` for the first, a `warn` carrying
+`legacyMessageCount` / `totalAssistantMessages` / `modelName` for the second
+(`GoogleProvider.formatMessagesForGoogle:325` and `:338`).
+
+The gap matters because the decision is invisible from its effects. The turn
+runs on with its tools stripped, the system prompt still describes them, the
+model calls one anyway, and Gemini answers `finishReason: UNEXPECTED_TOOL_CALL`
+with empty content — a turn that ends saying nothing, with nothing in
+`combined.log` naming the cause. Found live on the 2026-09-06 dogfood walk: a
+GOOGLE-seated help chat whose history was written by other providers has no
+thought signatures anywhere, so a Gemini thinking seat loses every tool.
+
+Behaviour is unchanged — the two lines are the whole fix, and
+`request_builder_google_equivalence` stays green. Four capture-layer tests, one
+per arm plus both silences; mutations deleting the info line, swapping the two
+counts, and logging unconditionally each redden exactly one. Taking the counts
+over all messages rather than `non_system` is a surviving mutation and correctly
+so: a `System` row is never an `Assistant`, so v4's filter cannot move either
+count — recorded in the test rather than chased with an arm.
+
 #### 2026-09-06 — unify: the `f699da6f6` 4.9.x drift catch-up round (P4.D160 ∥ P4.D161 ∥ P4.D162 ∥ P4.78 ∥ P4.79) — baseline → `f699da6f6`
 
 _Versions: core 0.0.811, harness 0.0.700, web 0.0.120, host 0.0.105, SPA 0.5.657._
