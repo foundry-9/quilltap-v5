@@ -268,6 +268,23 @@ async function main(): Promise<void> {
     );
   }
 
+  // [P4.D164 / v4 `2f4254b42`] Ada's vault carries a `Subprompts/` folder for
+  // the read-through fallback arms: `terse.md` (templated) + `Verse.md`
+  // (mixed case — the op selects it as "VERSE"). Written through v4's REAL
+  // document-store writer so the listing/resolve under test is the real one.
+  {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const { ensureFolderPath } = await import('@/lib/mount-index/folder-paths');
+    const { composeSubpromptContent, SUBPROMPTS_FOLDER } = await import('@/lib/subprompts/subprompts');
+    const ada = spec.characters[0];
+    const raw = await repos.characters.findByIdRaw(ada.id);
+    const vault = raw?.characterDocumentMountPointId as string | null | undefined;
+    if (!vault) throw new Error(`character ${ada.name} has no vault mount point`);
+    await ensureFolderPath(vault, SUBPROMPTS_FOLDER);
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/terse.md`, composeSubpromptContent('Be terse', '{{char}} answers {{user}} in one line about {{scenario}}.'));
+    await writeDatabaseDocument(vault, `${SUBPROMPTS_FOLDER}/Verse.md`, composeSubpromptContent('Answer in verse', 'Every reply is a quatrain.'));
+  }
+
   // Knowledge files into the responding character's vault + chunks with embeddings.
   const links = new DocMountFileLinksRepository();
   const chunks = new DocMountChunksRepository();

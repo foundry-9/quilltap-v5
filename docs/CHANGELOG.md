@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(build-context): resolve the seat's subprompts on the read-through fallback (P4.D164 unit 3)
+
+_Versions: core 0.0.826, harness 0.0.715._
+
+`RespondingParticipant` carries the seat's `selectedSubpromptIds`;
+`build_context` resolves them from the vault only when the precompiled
+identity stack is absent or empty (v4's truthiness gate — a whitespace-only
+stack resolves nothing and then builds fresh without the block) and hands
+them to the builder; a precompiled stack wins untouched. Both orchestrator
+constructors read the seat's ids. `build_context_tier3_equivalence` gains
+four ops (fresh build renders the block; precompiled stack wins; whitespace
+falls through without the block; dangling ids render nothing) over Ada's
+planted `Subprompts/`, with the oracle's `getCompiledIdentityStack` mock now
+per-op; regenerated at the pin, two mutations each reddening exactly the
+predicted op.
+
 #### 2026-09-07 — feat(compiler): bake the seat's subprompts into the compiled identity stack (P4.D164 unit 2)
 
 _Versions: core 0.0.825, harness 0.0.714._

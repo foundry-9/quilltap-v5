@@ -112199,3 +112199,49 @@ Versions: core 0.0.823.
   cell lacked the block; green after the port. No Rust harness change (the
   family compares the whole envelope).
 - Versions: core 0.0.825, harness 0.0.714.
+
+### Unit 3 — the read-through fallback (`buildContext`), mutation-proven
+
+- `services/build_context.rs`: `RespondingParticipant.selected_subprompt_ids:
+  Vec<String>`; the input assembler resolves through
+  `resolve_selected_subprompts(main, mount, character.id, ids)` ONLY when the
+  precompiled stack is `None` or `""` — v4's JS-truthiness gate
+  (`context-manager.ts:914`): a whitespace-only string is truthy there
+  (nothing resolves) and falsy at the builder's `.trim()` test (a fresh build
+  WITHOUT the block). That asymmetry is v4's and is pinned. Constructors:
+  `orchestrator.rs` (both sites read `selectedSubpromptIds` via
+  `json_str_array`, v4's `?? []`), the in-crate unit test, the tier-3 harness.
+- `harness/oracle/cases/build-context-tier3.test.ts`: the
+  `getCompiledIdentityStack` mock is now PER-OP (a module-level cell the op
+  loop sets — the doMock factory runs once); `Op.participants[].
+  selectedSubpromptIds` + `Op.precompiledIdentityStack`. The fixture builder
+  plants Ada's `Subprompts/terse.md` (templated) + `Verse.md` through v4's
+  REAL document-store writer (the case already un-mocks the character-vault
+  bridge — the `jest-oracle-character-vault-bridge-is-mocked` trap does not
+  bite here). Corpus 27 → 31 ops, spliced as TEXT (pure additions):
+  `sp_seat_ids_fresh_build_renders_block` (ids `["terse","VERSE"]`, no stack →
+  the block in the system message), `sp_seat_ids_precompiled_stack_wins`
+  (the same seat + a stack lacking the block → NO block; the stack wins),
+  `sp_seat_ids_whitespace_precompiled_falls_through_without_block` (`"   \n
+  "` → a fresh build, NO block), `sp_seat_dangling_ids_render_nothing`. The
+  regenerated oracle: exactly ONE row carries `Additional Instructions` (the
+  fresh-build arm's `result`), as predicted.
+- The order's item-3 caveat ("measure whether the tier-3 fixture's mocked
+  repositories can express a vault listing") — measured YES: the case runs
+  v4's real repositories over the real fixture DB, so the fallback arm stays
+  in this family (nothing moves to the tier-2 family).
+- **Mutations (each reddening exactly the predicted op, then restored and
+  re-run green):** M1 the resolver dropped (`subprompts: None` at the builder
+  call) → `sp_seat_ids_fresh_build_renders_block` red; M3 the gate treating
+  whitespace as falsy (`js_trim(s).is_empty()`) →
+  `sp_seat_ids_whitespace_precompiled_falls_through_without_block` red (v5
+  would render the block v4 does not).
+- Regen: `/tmp/p4d164-bc-regen.sh` = the family header's recipe from the pin
+  (`TZ=UTC`, fixture then jest, the `/tmp/qt-bc-oracle-p4d164` mirror);
+  run with `QT_ORACLE_BUILD_CONTEXT=/tmp/oracle-build-context.ndjson
+  QT_FIXTURE_BC_MAIN=/tmp/qt-build-context-main.db QT_FIXTURE_BC_MOUNT=
+  /tmp/qt-build-context-mount.db`. ⚠ the regen's OWN env var is
+  `QT_ORACLE_OUT`; the family reads `QT_ORACLE_BUILD_CONTEXT` — a run with
+  the wrong one SKIPs green in 0.00 s (caught by the duration, re-run).
+- Versions: core 0.0.826, harness 0.0.715.
+

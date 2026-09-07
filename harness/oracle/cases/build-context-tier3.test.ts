@@ -70,6 +70,9 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
+/** P4.D164: the per-op `getCompiledIdentityStack` answer (see the doMock). */
+let currentPrecompiledStack: string | null = null;
+
 interface Op {
   name: string;
   characterId: string;
@@ -91,7 +94,14 @@ interface Op {
     status: string;
     hasHistoryAccess: boolean;
     createdAt: string;
+    /** [P4.D164 / v4 `2f4254b42`] the seat's subprompt selection — read by
+     *  `buildContext` off `respondingParticipant` on the fallback path. */
+    selectedSubpromptIds?: string[];
   }>;
+  /** [P4.D164] what `getCompiledIdentityStack` answers for THIS op (absent =
+   *  null, the fresh build). Whitespace-only is v4-TRUTHY at the resolve gate
+   *  and falsy at the builder's `.trim()` test — the arm that pins it. */
+  precompiledIdentityStack?: string;
   messagesWithParticipants?: Array<{
     id: string;
     role: string;
@@ -292,9 +302,12 @@ async function main(): Promise<void> {
   //      `resolveTieredMountPool`, `generateMemoryRecap`, `getOrComputeFrozenArchive`,
   //      `getMemoryRecallSettings`, `extractMemorySearchKeywords`,
   //      `resolveCoreWhisperConfig`/`assembleCorePacket` all run real.
+  // P4.D164: per-op — the fallback arms need the stack absent, the
+  // precompiled-wins arm needs one present. Read through a module-level cell
+  // the op loop sets before each call (the doMock factory runs once).
   jest.doMock('@/lib/services/system-prompt-compiler/compiler', () => {
     const actual = jest.requireActual('@/lib/services/system-prompt-compiler/compiler');
-    return { __esModule: true, ...actual, getCompiledIdentityStack: () => null };
+    return { __esModule: true, ...actual, getCompiledIdentityStack: () => currentPrecompiledStack };
   });
 
   // ---- W4.6b post-office writers → no-op / recorded (the POSTs stay seamed) ----
@@ -354,6 +367,7 @@ async function main(): Promise<void> {
   } as never;
 
   for (const op of spec.ops) {
+    currentPrecompiledStack = op.precompiledIdentityStack ?? null;
     currentOp = op.name;
     const character = await repos.characters.findById(op.characterId);
     if (!character) throw new Error(`character ${op.characterId} not found`);

@@ -102,6 +102,10 @@ struct SpecOp {
     chat_overrides: Option<SpecChatOverrides>,
     #[serde(default)]
     responding_participant_id: Option<String>,
+    /// P4.D164: what `getCompiledIdentityStack` answers for this op (absent =
+    /// the fresh build). The whitespace arm pins v4's truthiness asymmetry.
+    #[serde(default)]
+    precompiled_identity_stack: Option<String>,
     #[serde(default)]
     active_user_participant_id: Option<String>,
     #[serde(default)]
@@ -236,6 +240,9 @@ struct SpecParticipant {
     status: String,
     has_history_access: bool,
     created_at: String,
+    /// P4.D164 (v4 `2f4254b42`): the seat's subprompt selection.
+    #[serde(default)]
+    selected_subprompt_ids: Vec<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -548,10 +555,17 @@ async fn build_context_tier3_matches_oracle() {
             && !op.messages_with_participants.is_empty();
         let (responding_participant, all_participants, participant_characters, mwp) = if is_multi {
             let rp_id = op.responding_participant_id.clone().unwrap();
+            let rp_ids = op
+                .participants
+                .iter()
+                .find(|p| p.id == rp_id)
+                .map(|p| p.selected_subprompt_ids.clone())
+                .unwrap_or_default();
             let responding = Some(
                 quilltap_core::services::build_context::RespondingParticipant {
                     id: rp_id,
                     selected_system_prompt_id: None,
+                    selected_subprompt_ids: rp_ids,
                 },
             );
             let all: Vec<quilltap_core::services::build_context::FullParticipant> = op
@@ -721,6 +735,7 @@ async fn build_context_tier3_matches_oracle() {
                     .chat_overrides
                     .as_ref()
                     .and_then(|o| o.project_id.clone()),
+                precompiled_identity_stack: op.precompiled_identity_stack.clone(),
                 ..Default::default()
             },
             existing_messages: build_existing(op),

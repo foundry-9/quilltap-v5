@@ -379,6 +379,10 @@ pub use crate::chat_timestamp::TimestampConfig;
 pub struct RespondingParticipant {
     pub id: String,
     pub selected_system_prompt_id: Option<String>,
+    /// The seat's `selectedSubpromptIds` (v4 `2f4254b42`) — read only on the
+    /// read-through fallback (no precompiled stack). Empty for a pre-feature
+    /// seat.
+    pub selected_subprompt_ids: Vec<String>,
 }
 
 /// A full participant view for the multi-character branches.
@@ -1901,6 +1905,43 @@ where
         );
     }
 
+    // Subprompts only matter on the read-through fallback — a precompiled
+    // stack already carries them (v4 `2f4254b42`, `context-manager.ts:911`).
+    // v4's gate is JS truthiness on the precompiled string: `None`/`""` resolve,
+    // ANY other string (whitespace included) resolves nothing — and the
+    // builder's own `.trim()` test then builds fresh WITHOUT the block. That
+    // asymmetry is v4's and is pinned by the tier-3 whitespace arm. The
+    // resolver fails soft to none on its own; a connection-pool failure here
+    // takes the same road (v4's `resolveSelectedSubprompts` catches internally).
+    let fallback_subprompts: Option<Vec<crate::subprompts::SubpromptForPrompt>> = if input
+        .chat
+        .precompiled_identity_stack
+        .as_deref()
+        .is_none_or(str::is_empty)
+    {
+        let ids: &[String] = input
+            .responding_participant
+            .as_ref()
+            .map(|p| p.selected_subprompt_ids.as_slice())
+            .unwrap_or(&[]);
+        let character_id = input.character.id.clone();
+        Some(
+            db.read_main(|main| {
+                db.read_mount_index(|mount| {
+                    Ok(crate::subprompts::resolve_selected_subprompts(
+                        main,
+                        mount,
+                        &character_id,
+                        ids,
+                    ))
+                })
+            })
+            .unwrap_or_default(),
+        )
+    } else {
+        None
+    };
+
     // System prompt (block 1).
     let system_prompt = build_system_prompt(&BuildSystemPromptOptions {
         character: &input.character.sys,
@@ -1913,7 +1954,7 @@ where
         timezone: input.timezone.as_deref(),
         scenario_text: input.chat.scenario_text.as_deref(),
         precompiled_identity_stack: input.chat.precompiled_identity_stack.as_deref(),
-        subprompts: None,
+        subprompts: fallback_subprompts.as_deref(),
         taboo_phrases: Some(&taboo_phrases),
         standing_instructions: standing_instructions.as_deref(),
         now_ms: input.now_ms,
@@ -4413,6 +4454,7 @@ mod inter_character_log_tests {
             responding_participant: multi.then(|| RespondingParticipant {
                 id: "participant-a".to_string(),
                 selected_system_prompt_id: None,
+                selected_subprompt_ids: Vec::new(),
             }),
             all_participants: multi.then(|| {
                 vec![

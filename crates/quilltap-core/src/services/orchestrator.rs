@@ -4116,6 +4116,8 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
     let responding_participant = Some(build_context::RespondingParticipant {
         id: json_str(args.character_participant, "id").unwrap_or_default(),
         selected_system_prompt_id: json_str(args.character_participant, "selectedSystemPromptId"),
+        // v4 `2f4254b42`: `respondingParticipant?.selectedSubpromptIds ?? []`.
+        selected_subprompt_ids: json_str_array(args.character_participant, "selectedSubpromptIds"),
     });
     // The all-participants list + per-character map are message-independent (they
     // feed buildContext's attribution/system-prompt). The `existing_messages` /
@@ -4216,6 +4218,7 @@ fn multi_character_fields(
         id: json_str(character_participant, "id").unwrap_or_default(),
         // v4 reads `characterParticipant.selectedSystemPromptId`.
         selected_system_prompt_id: json_str(character_participant, "selectedSystemPromptId"),
+        selected_subprompt_ids: json_str_array(character_participant, "selectedSubpromptIds"),
     };
     let participants: Vec<build_context::FullParticipant> = chat
         .get("participants")
