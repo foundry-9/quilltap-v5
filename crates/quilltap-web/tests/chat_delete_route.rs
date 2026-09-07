@@ -213,7 +213,10 @@ async fn chat_delete_edge() {
         Some(String::new()),
     )
     .await;
-    assert_eq!(status, 500, "an empty body is a SyntaxError, not a Zod error: {body}");
+    assert_eq!(
+        status, 500,
+        "an empty body is a SyntaxError, not a Zod error: {body}"
+    );
     assert_eq!(body["error"].as_str(), Some("Internal server error"));
 
     // The chat every action arm above ran against is still standing — none of

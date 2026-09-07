@@ -164,7 +164,10 @@ pub async fn chat_delete(
         Err(r) => return *r,
     };
     let resp = quilltap_core::api::chat_delete::chat_delete_dispatch(
-        &db, &chat_id, raw_action, json_body.as_ref(),
+        &db,
+        &chat_id,
+        raw_action,
+        json_body.as_ref(),
     )
     .await;
     match resp {

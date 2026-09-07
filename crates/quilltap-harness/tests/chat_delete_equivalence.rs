@@ -536,13 +536,17 @@ fn chat_delete_matches_oracle() {
             name: "stop_impersonate_with_profile",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: Some(json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": CONN_PROFILE })),
+            body: Some(
+                json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": CONN_PROFILE }),
+            ),
         },
         Case {
             name: "stop_impersonate_unknown_profile",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: Some(json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": MISSING_ID })),
+            body: Some(
+                json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": MISSING_ID }),
+            ),
         },
         Case {
             name: "stop_impersonate_unknown_participant",
@@ -629,7 +633,12 @@ fn chat_delete_matches_oracle() {
     for c in &cases {
         driven.insert(c.name.to_string());
         let db = fresh_db(&spec, c.name);
-        let r = rt.block_on(chat_delete_dispatch(&db, c.chat_id, c.action, c.body.as_ref()));
+        let r = rt.block_on(chat_delete_dispatch(
+            &db,
+            c.chat_id,
+            c.action,
+            c.body.as_ref(),
+        ));
         let (status, body) = status_body(&r);
         let mut tables = census(&db, &spec);
 
@@ -825,7 +834,12 @@ fn chat_delete_log_lines() {
     // --- the SILENCE half: a 404 delete announces nothing at all ---
     let db = fresh_db(&spec, "log_missing");
     let lines = quilltap_core::test_support::captured(|| {
-        rt.block_on(chat_delete_dispatch(&db, MISSING_ID, None, Some(&json!({}))));
+        rt.block_on(chat_delete_dispatch(
+            &db,
+            MISSING_ID,
+            None,
+            Some(&json!({})),
+        ));
     });
     assert!(
         !has(&lines, "Chat deleted") && !has(&lines, "Unknown DELETE action"),
@@ -840,7 +854,12 @@ fn chat_delete_log_lines() {
     //     found this arm SILENT in v5; the warn is ported and pinned here.
     let db = fresh_db(&spec, "log_broken");
     let lines = quilltap_core::test_support::captured(|| {
-        rt.block_on(chat_delete_dispatch(&db, CHAT_BROKEN, None, Some(&json!({}))));
+        rt.block_on(chat_delete_dispatch(
+            &db,
+            CHAT_BROKEN,
+            None,
+            Some(&json!({})),
+        ));
     });
     assert!(
         has(&lines, "[Chats v1] Chat deleted"),
