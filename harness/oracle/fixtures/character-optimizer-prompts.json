@@ -1,0 +1,767 @@
+{
+  "$schema-note": "P4.9K1 unit-1 corpus. Drives v4's REAL character-optimizer pure exports through harness/oracle/cases/character-optimizer-prompts.ts. Every id here must appear in the oracle output and vice versa (the coverage row).",
+  "coerce": [
+    {
+      "id": "array-passthrough",
+      "value": [
+        {
+          "field": "identity"
+        }
+      ]
+    },
+    {
+      "id": "empty-array",
+      "value": []
+    },
+    {
+      "id": "wrapper-suggestions",
+      "value": {
+        "suggestions": [
+          {
+            "field": "identity"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wrapper-items",
+      "value": {
+        "items": [
+          {
+            "field": "description"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wrapper-results",
+      "value": {
+        "results": [
+          {
+            "field": "manifesto"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wrapper-data",
+      "value": {
+        "data": [
+          {
+            "field": "personality"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wrapper-amendments",
+      "value": {
+        "amendments": [
+          {
+            "field": "aliases"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wrapper-order-items-first",
+      "value": {
+        "items": [
+          {
+            "field": "ITEMS"
+          }
+        ],
+        "suggestions": [
+          {
+            "field": "SUGGESTIONS"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wrapper-order-all-five",
+      "value": {
+        "amendments": [
+          1
+        ],
+        "data": [
+          2
+        ],
+        "results": [
+          3
+        ],
+        "items": [
+          4
+        ],
+        "suggestions": [
+          5
+        ]
+      }
+    },
+    {
+      "id": "wrapper-key-not-an-array",
+      "value": {
+        "suggestions": "nope",
+        "items": [
+          {
+            "field": "x"
+          }
+        ]
+      }
+    },
+    {
+      "id": "lone-object-with-field",
+      "value": {
+        "field": "personality",
+        "proposedValue": "x"
+      }
+    },
+    {
+      "id": "lone-object-field-not-a-string",
+      "value": {
+        "field": 7,
+        "proposedValue": "x"
+      }
+    },
+    {
+      "id": "object-without-field",
+      "value": {
+        "proposedValue": "x"
+      }
+    },
+    {
+      "id": "null",
+      "value": null
+    },
+    {
+      "id": "number",
+      "value": 7
+    },
+    {
+      "id": "zero",
+      "value": 0
+    },
+    {
+      "id": "string",
+      "value": "just prose"
+    },
+    {
+      "id": "empty-string",
+      "value": ""
+    },
+    {
+      "id": "bool-true",
+      "value": true
+    },
+    {
+      "id": "empty-object",
+      "value": {}
+    }
+  ],
+  "contexts": [
+    {
+      "id": "full",
+      "character": {
+        "id": "char-1",
+        "name": "Aria",
+        "title": "The Librarian",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "aliases": [
+          "Ari",
+          "The Botanist"
+        ],
+        "identity": "Aria is a research librarian at the Athenaeum.",
+        "description": "She finishes other people's sentences and apologises afterwards.",
+        "manifesto": "You do not lie to Charlie, not even kindly.",
+        "personality": "You keep your worry behind your teeth.",
+        "scenarios": [
+          {
+            "id": "sc-1",
+            "title": "The Reading Room",
+            "content": "Lamplight and dust."
+          },
+          {
+            "id": "sc-2",
+            "title": "The Greenhouse",
+            "content": ""
+          }
+        ],
+        "firstMessage": "Hello there.",
+        "exampleDialogues": "A: hi\nB: hello",
+        "talkativeness": 0.7,
+        "systemPrompts": [
+          {
+            "id": "sp-1",
+            "name": "Terse",
+            "content": "You answer briefly.",
+            "isDefault": true
+          },
+          {
+            "id": "sp-2",
+            "name": "Warm",
+            "content": "You answer warmly.",
+            "isDefault": false
+          }
+        ],
+        "physicalDescription": {
+          "id": "pd-1",
+          "name": "Aria's look",
+          "fullDescription": "Auburn hair cut short; grey eyes.",
+          "headAndShouldersPrompt": "auburn bob, grey eyes",
+          "shortPrompt": "short",
+          "mediumPrompt": "medium",
+          "longPrompt": "long",
+          "completePrompt": "complete"
+        }
+      },
+      "wardrobeItems": [
+        {
+          "id": "w-1",
+          "title": "Grey Coat",
+          "types": [
+            "top"
+          ],
+          "description": "A heavy grey coat.",
+          "isDefault": true,
+          "appropriateness": "everyday"
+        },
+        {
+          "id": "w-2",
+          "title": "Boots",
+          "types": [
+            "footwear"
+          ],
+          "description": "",
+          "componentItemIds": []
+        },
+        {
+          "id": "w-3",
+          "title": "Archived Scarf",
+          "types": [
+            "accessories"
+          ],
+          "description": "Old.",
+          "archivedAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "w-4",
+          "title": "Sunday Best",
+          "types": [
+            "top",
+            "bottom"
+          ],
+          "description": "A composite.",
+          "componentItemIds": [
+            "w-1",
+            "w-2"
+          ],
+          "isDefault": false
+        },
+        {
+          "id": "w-5",
+          "title": "Null-archived",
+          "types": [
+            "hair"
+          ],
+          "description": "A braided updo.",
+          "archivedAt": null
+        },
+        {
+          "id": "w-6",
+          "title": "Empty-string-archived",
+          "types": [
+            "bottom"
+          ],
+          "description": "Kept: '' is falsy.",
+          "archivedAt": ""
+        }
+      ]
+    },
+    {
+      "id": "full-no-wardrobe-arg",
+      "character": {
+        "id": "char-1",
+        "name": "Aria",
+        "title": "The Librarian",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "aliases": [
+          "Ari",
+          "The Botanist"
+        ],
+        "identity": "Aria is a research librarian at the Athenaeum.",
+        "description": "She finishes other people's sentences and apologises afterwards.",
+        "manifesto": "You do not lie to Charlie, not even kindly.",
+        "personality": "You keep your worry behind your teeth.",
+        "scenarios": [
+          {
+            "id": "sc-1",
+            "title": "The Reading Room",
+            "content": "Lamplight and dust."
+          },
+          {
+            "id": "sc-2",
+            "title": "The Greenhouse",
+            "content": ""
+          }
+        ],
+        "firstMessage": "Hello there.",
+        "exampleDialogues": "A: hi\nB: hello",
+        "talkativeness": 0.7,
+        "systemPrompts": [
+          {
+            "id": "sp-1",
+            "name": "Terse",
+            "content": "You answer briefly.",
+            "isDefault": true
+          },
+          {
+            "id": "sp-2",
+            "name": "Warm",
+            "content": "You answer warmly.",
+            "isDefault": false
+          }
+        ],
+        "physicalDescription": {
+          "id": "pd-1",
+          "name": "Aria's look",
+          "fullDescription": "Auburn hair cut short; grey eyes.",
+          "headAndShouldersPrompt": "auburn bob, grey eyes",
+          "shortPrompt": "short",
+          "mediumPrompt": "medium",
+          "longPrompt": "long",
+          "completePrompt": "complete"
+        }
+      }
+    },
+    {
+      "id": "full-empty-wardrobe",
+      "character": {
+        "id": "char-1",
+        "name": "Aria",
+        "title": "The Librarian",
+        "pronouns": {
+          "subject": "she",
+          "object": "her",
+          "possessive": "hers"
+        },
+        "aliases": [
+          "Ari",
+          "The Botanist"
+        ],
+        "identity": "Aria is a research librarian at the Athenaeum.",
+        "description": "She finishes other people's sentences and apologises afterwards.",
+        "manifesto": "You do not lie to Charlie, not even kindly.",
+        "personality": "You keep your worry behind your teeth.",
+        "scenarios": [
+          {
+            "id": "sc-1",
+            "title": "The Reading Room",
+            "content": "Lamplight and dust."
+          },
+          {
+            "id": "sc-2",
+            "title": "The Greenhouse",
+            "content": ""
+          }
+        ],
+        "firstMessage": "Hello there.",
+        "exampleDialogues": "A: hi\nB: hello",
+        "talkativeness": 0.7,
+        "systemPrompts": [
+          {
+            "id": "sp-1",
+            "name": "Terse",
+            "content": "You answer briefly.",
+            "isDefault": true
+          },
+          {
+            "id": "sp-2",
+            "name": "Warm",
+            "content": "You answer warmly.",
+            "isDefault": false
+          }
+        ],
+        "physicalDescription": {
+          "id": "pd-1",
+          "name": "Aria's look",
+          "fullDescription": "Auburn hair cut short; grey eyes.",
+          "headAndShouldersPrompt": "auburn bob, grey eyes",
+          "shortPrompt": "short",
+          "mediumPrompt": "medium",
+          "longPrompt": "long",
+          "completePrompt": "complete"
+        }
+      },
+      "wardrobeItems": []
+    },
+    {
+      "id": "bare",
+      "character": {
+        "id": "char-2",
+        "name": "Dax",
+        "title": "",
+        "pronouns": null,
+        "aliases": [],
+        "identity": "",
+        "description": "",
+        "manifesto": "",
+        "personality": "",
+        "scenarios": [],
+        "firstMessage": "",
+        "exampleDialogues": "",
+        "talkativeness": 0.5,
+        "systemPrompts": [],
+        "physicalDescription": null
+      },
+      "wardrobeItems": []
+    },
+    {
+      "id": "absent-keys",
+      "character": {
+        "id": "char-3",
+        "name": "Bram"
+      }
+    },
+    {
+      "id": "odd-scalars",
+      "character": {
+        "id": "char-4",
+        "name": 42,
+        "title": 0,
+        "pronouns": {
+          "subject": 1,
+          "object": null,
+          "possessive": true
+        },
+        "aliases": [
+          "a",
+          null,
+          3
+        ],
+        "identity": false,
+        "description": " ",
+        "manifesto": "0",
+        "personality": [],
+        "scenarios": [
+          {
+            "id": "sc-9",
+            "title": 7,
+            "content": null
+          }
+        ],
+        "firstMessage": null,
+        "exampleDialogues": 1.25,
+        "talkativeness": null,
+        "systemPrompts": [
+          {
+            "id": "sp-9",
+            "name": null,
+            "content": "",
+            "isDefault": false
+          }
+        ],
+        "physicalDescription": {
+          "id": "pd-2",
+          "name": "Sparse",
+          "fullDescription": "",
+          "headAndShouldersPrompt": null,
+          "shortPrompt": "",
+          "mediumPrompt": null,
+          "longPrompt": "",
+          "completePrompt": null
+        }
+      },
+      "wardrobeItems": [
+        {
+          "id": "w-5",
+          "title": "Null-archived",
+          "types": [
+            "hair"
+          ],
+          "description": "A braided updo.",
+          "archivedAt": null
+        }
+      ]
+    }
+  ],
+  "memories": [
+    {
+      "id": "three",
+      "entries": [
+        {
+          "memory": {
+            "content": "She whispered.",
+            "reinforcementCount": 3
+          }
+        },
+        {
+          "memory": {
+            "content": "She apologised.",
+            "reinforcementCount": 1
+          }
+        },
+        {
+          "memory": {
+            "content": "Multi\nline.",
+            "reinforcementCount": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "empty",
+      "entries": []
+    },
+    {
+      "id": "one-absent-fields",
+      "entries": [
+        {
+          "memory": {}
+        }
+      ]
+    }
+  ],
+  "analyses": [
+    {
+      "id": "full",
+      "analysis": {
+        "behavioralPatterns": [
+          {
+            "pattern": "speaks softly",
+            "evidence": "whispers \"hi\" at the door",
+            "frequency": "often"
+          },
+          {
+            "pattern": "apologises after finishing a sentence",
+            "evidence": "three separate evenings",
+            "frequency": "rare"
+          }
+        ],
+        "summary": "A quiet soul.\nTwo lines, and an em dash — kept."
+      }
+    },
+    {
+      "id": "empty",
+      "analysis": {
+        "behavioralPatterns": [],
+        "summary": ""
+      }
+    },
+    {
+      "id": "odd-key-order-and-scalars",
+      "analysis": {
+        "summary": "reversed key order",
+        "behavioralPatterns": [
+          {
+            "frequency": "n/a",
+            "pattern": "p",
+            "evidence": "e"
+          }
+        ],
+        "extra": {
+          "nested": {},
+          "list": [],
+          "n": 1.5,
+          "neg": 0,
+          "t": true,
+          "nil": null
+        }
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "with-content",
+      "scenario": {
+        "id": "sc-1",
+        "title": "The Reading Room",
+        "content": "Lamplight and dust."
+      }
+    },
+    {
+      "id": "empty-content",
+      "scenario": {
+        "id": "sc-2",
+        "title": "The Greenhouse",
+        "content": ""
+      }
+    },
+    {
+      "id": "absent-content",
+      "scenario": {
+        "id": "sc-3",
+        "title": "No content key"
+      }
+    },
+    {
+      "id": "quote-in-title",
+      "scenario": {
+        "id": "sc-4",
+        "title": "The \"Quiet\" Room",
+        "content": "x"
+      }
+    }
+  ],
+  "systemPrompts": [
+    {
+      "id": "default-variant",
+      "prompt": {
+        "id": "sp-1",
+        "name": "Terse",
+        "content": "You answer briefly.",
+        "isDefault": true
+      }
+    },
+    {
+      "id": "non-default",
+      "prompt": {
+        "id": "sp-2",
+        "name": "Warm",
+        "content": "You answer warmly.",
+        "isDefault": false
+      }
+    },
+    {
+      "id": "empty-content",
+      "prompt": {
+        "id": "sp-3",
+        "name": "Blank",
+        "content": "",
+        "isDefault": false
+      }
+    },
+    {
+      "id": "absent-isdefault",
+      "prompt": {
+        "id": "sp-4",
+        "name": "No flag",
+        "content": "x"
+      }
+    }
+  ],
+  "physicals": [
+    {
+      "id": "full",
+      "physical": {
+        "id": "pd-1",
+        "name": "Aria's look",
+        "fullDescription": "Auburn hair cut short; grey eyes.",
+        "headAndShouldersPrompt": "auburn bob, grey eyes",
+        "shortPrompt": "short",
+        "mediumPrompt": "medium",
+        "longPrompt": "long",
+        "completePrompt": "complete"
+      }
+    },
+    {
+      "id": "sparse",
+      "physical": {
+        "id": "pd-2",
+        "name": "Sparse",
+        "fullDescription": "",
+        "headAndShouldersPrompt": null,
+        "shortPrompt": "",
+        "mediumPrompt": null,
+        "longPrompt": "",
+        "completePrompt": null
+      }
+    },
+    {
+      "id": "null",
+      "physical": null
+    }
+  ],
+  "wardrobes": [
+    {
+      "id": "mixed",
+      "items": [
+        {
+          "id": "w-1",
+          "title": "Grey Coat",
+          "types": [
+            "top"
+          ],
+          "description": "A heavy grey coat.",
+          "isDefault": true,
+          "appropriateness": "everyday"
+        },
+        {
+          "id": "w-2",
+          "title": "Boots",
+          "types": [
+            "footwear"
+          ],
+          "description": "",
+          "componentItemIds": []
+        },
+        {
+          "id": "w-3",
+          "title": "Archived Scarf",
+          "types": [
+            "accessories"
+          ],
+          "description": "Old.",
+          "archivedAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "w-4",
+          "title": "Sunday Best",
+          "types": [
+            "top",
+            "bottom"
+          ],
+          "description": "A composite.",
+          "componentItemIds": [
+            "w-1",
+            "w-2"
+          ],
+          "isDefault": false
+        },
+        {
+          "id": "w-5",
+          "title": "Null-archived",
+          "types": [
+            "hair"
+          ],
+          "description": "A braided updo.",
+          "archivedAt": null
+        },
+        {
+          "id": "w-6",
+          "title": "Empty-string-archived",
+          "types": [
+            "bottom"
+          ],
+          "description": "Kept: '' is falsy.",
+          "archivedAt": ""
+        }
+      ]
+    },
+    {
+      "id": "empty",
+      "items": []
+    },
+    {
+      "id": "all-archived",
+      "items": [
+        {
+          "id": "w-3",
+          "title": "Archived Scarf",
+          "types": [
+            "accessories"
+          ],
+          "description": "Old.",
+          "archivedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    }
+  ]
+}

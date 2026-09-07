@@ -31,6 +31,10 @@
 // (`optimizer` / `external_prompt` / `rename` / `refresh_archive` and
 // `wizard` / `ai_import`), each inside its own `// === P4.9K<n> ===` fence.
 
+// === P4.9K1 ===
+pub mod optimizer;
+// === end P4.9K1 ===
+
 pub mod field_semantics;
 pub mod generated_properties;
 pub mod llm_json;

@@ -12,6 +12,50 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — port(generators): the character optimizer's pure arms, byte-exact against v4 (bug 119's post-fix shape)
+
+_Versions: core 0.0.815, harness 0.0.702._
+
+P4.9K1 unit 1 — the pure half of v4's `lib/services/character-optimizer.service.ts`
+(Aurora's "Refine from Memories"), ported from the POST-bug-119 shape (v4
+`15573c3a1`, the drift ledger's one open row). The pre-fix inline `.filter` on a
+`parseLLMJson<OptimizerSuggestion[]>` cast never existed in v5 and is not
+transcribed anywhere.
+
+`generators::optimizer` carries `coerce_suggestion_text`,
+`coerce_suggestion_array`, `build_character_context`, `build_memory_context`,
+`get_analysis_prompt` and the six suggestion-prompt builders, plus
+`SYSTEM_MESSAGE` and `SUGGESTION_SCHEMA_PREAMBLE`. Every one of those strings
+reaches a paid model verbatim, so all of it is diffed whole rather than sampled.
+`coerce_suggestion_array`'s key list — `suggestions`, `items`, `results`,
+`data`, `amendments` — is ORDERED and load-bearing: the first array-valued
+property wins.
+
+Character, wardrobe, memory and analysis inputs are read as `serde_json::Value`
+rather than typed structs, deliberately: v4 interpolates these into prose with
+JS semantics, where `x || '(empty)'` is JS truthiness, `${x}` is JS `ToString`,
+and an ABSENT key renders `undefined` where an explicit `null` renders `null`.
+Typed structs would normalize away exactly the edges the differential exists to
+catch.
+
+The differential is the new `character_optimizer_prompts_equivalence` family
+over the committed `harness/oracle/fixtures/character-optimizer-prompts.json`:
+20 coercion rows, 6 character contexts, 3 memory contexts, 3 analyses, 4
+scenarios, 4 system prompts, 3 physical descriptions and 3 wardrobes, driven
+through v4's REAL exports. Because six prompts embed
+`JSON.stringify(analysis, null, 2)`, the corpus's analyses are a pretty-printer
+comparand too — one is deliberately non-alphabetical with nested empties and odd
+scalars.
+
+Five mutation proofs, each reddening exactly one named arm: the bug-119 key list
+reordered (`items` before `suggestions`); the lone-object `field` fingerprint
+widened from "is a string" to "is present"; one byte of
+`SUGGESTION_SCHEMA_PREAMBLE`; and the wardrobe `archivedAt` test spelled
+nullish instead of JS-falsy, at both the prompt's count and the context's skip.
+That last pair only reddens because the mutation pass first found the corpus
+BLIND to it — the two spellings differ only on a falsy-but-not-nullish
+`archivedAt`, so a `""` row was added and the oracle regenerated.
+
 #### 2026-09-07 — port(web): the character-generator SSE re-framer, v4's stream bytes off the Event channel
 
 _Versions: web 0.0.121._
