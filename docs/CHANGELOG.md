@@ -584,6 +584,16 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — docs(subprompts): say why the editor dialog's footer is hand-rolled rather than qt-form-actions
+
+_Versions: SPA 0.5.672._
+
+A comment only, but the kind a reviewer would otherwise "fix" the wrong way.
+v4's own `PromptModal` uses its `FormActions`; the subprompt dialog does not
+(`SubpromptEditorModal.tsx:80-90`) — it writes `gap-3` where `FormActions`
+writes `gap-2`, and it shows no spinner beside the label. Adopting the house
+component here would silently add one.
+
 #### 2026-09-07 — docs(subprompts): the P4.D165 lane record and the order's status header
 
 _Docs-only change._

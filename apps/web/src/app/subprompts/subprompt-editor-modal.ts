@@ -81,6 +81,12 @@ export interface SubpromptSaved {
         </div>
       </div>
 
+      <!-- Hand-rolled rather than qt-form-actions, deliberately: v4's own
+           PromptModal uses its FormActions, but THIS dialog does not
+           (SubpromptEditorModal.tsx:80-90) — it writes gap-3 where FormActions
+           writes gap-2, and it shows no spinner beside the label. Adopting the
+           house component here would silently add one. (No backticks in an
+           inline template comment — they terminate the TS literal.) -->
       <div qt-modal-footer>
         <div class="flex justify-end gap-3">
           <button
