@@ -12,6 +12,47 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — port(generators): the four shared character-generator leaf modules, tier-1 exact against v4
+
+_Versions: core 0.0.813, harness 0.0.701._
+
+P4.9K0 tier-1 items 1–3 and 7 — the substrate the two generator server lanes
+stack on, so neither ports a shared v4 leaf twice under two names. New
+`quilltap_core::generators` holds `llm_json` (v4 `lib/llm/llm-json.ts`:
+`strip_code_fences`, `escape_control_chars_in_strings`,
+`repair_truncated_json`, `parse_llm_json`, `parse_llm_json_object`, with v4's
+parse → escape → repair → parse chain and the Rust `Result` standing in for
+each `catch`), `field_semantics` (a GENERATED constants module — the recorder
+`harness/oracle/cases/generators-field-semantics.ts` plus the generator
+`harness/oracle/tools/gen-field-semantics.mjs` are committed, so the stored
+bytes are v4's including the two `slot-guidance` interpolations),
+`sanitize_pronouns` and `generated_properties`.
+
+Three JS-fidelity questions were settled by measurement on Node 24.13.1, not
+assumed. The fence regex carries the JS `i` flag WITHOUT `u`, whose
+Canonicalize refuses to fold U+017F onto ASCII `s`, so the port spells
+`(?i-u:json)`; a Unicode-aware `(?i)` captures a different body and reddens
+the pin. `JSON.parse` and `serde_json` agree on every axis measured except
+lone surrogates, which V8 accepts and serde refuses — recorded, pinned, and
+unreachable from the corpus. Every `\s` and `.trim()` is the JS class via
+`jsstr`.
+
+The differential is the new `generators_leaf_equivalence` family over the
+committed `harness/oracle/fixtures/generators-leaf.json`: 46 `llm_json` rows,
+20 `sanitize_pronouns` rows, 13 `generated_properties` rows and all six
+field-semantics exports, driven through v4's REAL exports by
+`harness/oracle/cases/generators-leaf.ts`. Coverage is asserted by shape in
+both directions off the oracle's own `coverage` row. Six mutation proofs, each
+reddening exactly one named arm: the truncation-repair stage removed, the
+trailing-key strip removed, the `\t` control-char escape dropped, one
+field-semantics byte changed, the pronoun length counted in code points instead
+of UTF-16 units, and the bare-pronouns fall-through arm dropped.
+
+Deferred loudly (tier 3, named not performed): the five per-caller JSON
+extractors v5 already carries stay where they are — each is oracle-pinned in
+place, and `generators::llm_json` is a NEW home for v4's module, not a
+consolidation of them.
+
 #### 2026-09-07 — docs(porting): order the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81)
 Docs only — no crate versions bumped. Planned by `/setupphase` from the
 drift ledger: its §2 probe passed (checkout on `bugfix`, tree clean, both

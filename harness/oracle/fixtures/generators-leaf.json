@@ -1,0 +1,386 @@
+{
+  "$schema-note": "P4.9K0 generators-leaf corpus. Cases drive v4's REAL lib/llm/llm-json.ts, lib/characters/generated-properties.ts and lib/characters/sanitize-pronouns.ts through harness/oracle/cases/generators-leaf.ts. Every id here must appear in the oracle output and vice versa (the coverage row).",
+  "missingPronounsLabel": "no pronouns found",
+  "llmJson": [
+    {
+      "id": "plain-object",
+      "text": "{\"name\": \"Test\"}"
+    },
+    {
+      "id": "plain-array",
+      "text": "[1, 2, 3]"
+    },
+    {
+      "id": "fence-json",
+      "text": "```json\n{\"name\": \"Test\"}\n```"
+    },
+    {
+      "id": "fence-bare",
+      "text": "```\n{\"name\": \"Test\"}\n```"
+    },
+    {
+      "id": "fence-json-array",
+      "text": "```json\n[{\"a\": 1}, {\"b\": 2}]\n```"
+    },
+    {
+      "id": "fence-uppercase-hint",
+      "text": "```JSON\n{\"a\":1}\n```"
+    },
+    {
+      "id": "fence-inline",
+      "text": "```json {\"a\":1} ```"
+    },
+    {
+      "id": "fence-crlf",
+      "text": "```json\r\n{\"a\":1}\r\n```"
+    },
+    {
+      "id": "fence-unclosed",
+      "text": "```json\n{\"a\":1}"
+    },
+    {
+      "id": "fence-empty",
+      "text": "```\n```"
+    },
+    {
+      "id": "prose-wrapped-object",
+      "text": "Sure! {\"revise\": true, \"reply\": \"fixed\"} — hope that helps"
+    },
+    {
+      "id": "prose-then-fence",
+      "text": "Here is my verdict:\n```json\n{\"consistent\": false, \"discrepancies\": \"wrong date\"}\n```\nDone."
+    },
+    {
+      "id": "object-with-trailing-prose",
+      "text": "{\"a\":1} and that is it"
+    },
+    {
+      "id": "nested-braces",
+      "text": "{\"a\": {\"b\": 1}, \"c\": [{\"d\": 2}]}"
+    },
+    {
+      "id": "leading-trailing-whitespace",
+      "text": "  \n{\"name\": \"Test\"}\n  "
+    },
+    {
+      "id": "raw-newline-in-string",
+      "text": "{\"firstMessage\": \"Hello there.\nHow do you do?\"}"
+    },
+    {
+      "id": "raw-tab-and-crlf-in-strings",
+      "text": "{\"a\": \"x\ty\", \"b\": \"line1\r\nline2\"}"
+    },
+    {
+      "id": "escaped-quotes-then-raw-newline",
+      "text": "{\"a\": \"she said \\\"hi\\\"\nthen left\"}"
+    },
+    {
+      "id": "structural-whitespace-untouched",
+      "text": "{\n  \"name\": \"Maya\",\n  \"age\": 30\n}"
+    },
+    {
+      "id": "raw-vertical-tab-in-string",
+      "text": "{\"a\": \"x\u000by\"}"
+    },
+    {
+      "id": "raw-bell-in-string-has-no-short-escape",
+      "text": "{\"a\": \"x\u0007y\"}"
+    },
+    {
+      "id": "unicode-escape",
+      "text": "{\"name\": \"Ren\\u00e9e\"}"
+    },
+    {
+      "id": "numbers-of-every-shape",
+      "text": "{\"i\": 3, \"f\": 1.5, \"neg\": -2, \"exp\": 1e2, \"zero\": 0}"
+    },
+    {
+      "id": "trunc-unclosed-brace",
+      "text": "{\"name\": \"Alice\""
+    },
+    {
+      "id": "trunc-nested-braces",
+      "text": "{\"outer\": {\"inner\": \"value\""
+    },
+    {
+      "id": "trunc-array-bracket",
+      "text": "[1, 2, 3"
+    },
+    {
+      "id": "trunc-mixed-brace-bracket",
+      "text": "{\"items\": [{\"name\": \"a\"}, {\"name\": \"b\""
+    },
+    {
+      "id": "trunc-trailing-comma",
+      "text": "{\"items\": [1, 2,"
+    },
+    {
+      "id": "trunc-unclosed-string",
+      "text": "{\"name\": \"Alice"
+    },
+    {
+      "id": "trunc-trailing-key",
+      "text": "{\"name\": \"Alice\", \"age\":"
+    },
+    {
+      "id": "trunc-trailing-key-with-space",
+      "text": "{\"name\": \"Alice\", \"age\": "
+    },
+    {
+      "id": "trunc-three-levels-deep",
+      "text": "{\"a\": {\"b\": [{\"c\": \"d\""
+    },
+    {
+      "id": "trunc-string-after-escaped-quote",
+      "text": "{\"a\": \"he said \\\""
+    },
+    {
+      "id": "trunc-string-ending-in-escaped-backslash",
+      "text": "{\"a\": \"path\\\\"
+    },
+    {
+      "id": "trunc-deep-real-optimizer-answer",
+      "text": "{\"behavioralPatterns\": [{\"pattern\": \"speaks softly\", \"evidence\": \"whispers\", \"frequency\": \"often\"}], \"summary\": \"The character is quiet\""
+    },
+    {
+      "id": "trunc-array-of-objects",
+      "text": "[{\"field\": \"description\", \"proposedValue\": \"A quiet soul\", \"significance\": 0.5}"
+    },
+    {
+      "id": "trunc-array-inside-fence",
+      "text": "```json\n[\n  {\"field\": \"a\"}\n```"
+    },
+    {
+      "id": "empty-string",
+      "text": ""
+    },
+    {
+      "id": "whitespace-only",
+      "text": "   \n  "
+    },
+    {
+      "id": "non-json-prose",
+      "text": "I cannot answer that."
+    },
+    {
+      "id": "bug119-wrapper-suggestions",
+      "text": "{\"suggestions\": [{\"field\": \"identity\", \"proposedValue\": \"x\"}]}"
+    },
+    {
+      "id": "bug119-wrapper-items",
+      "text": "{\"items\": [{\"field\": \"description\"}]}"
+    },
+    {
+      "id": "bug119-wrapper-amendments-empty",
+      "text": "{\"amendments\": []}"
+    },
+    {
+      "id": "bug119-lone-object-with-field",
+      "text": "{\"field\": \"personality\", \"proposedValue\": \"x\"}"
+    },
+    {
+      "id": "bug119-top-level-null",
+      "text": "null"
+    },
+    {
+      "id": "bug119-top-level-string",
+      "text": "\"just a sentence\""
+    }
+  ],
+  "pronouns": [
+    {
+      "id": "usable-triple",
+      "text": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "trimmed-triple",
+      "text": {
+        "subject": "  they  ",
+        "object": "them",
+        "possessive": "theirs"
+      }
+    },
+    {
+      "id": "placeholder-unknown",
+      "text": {
+        "subject": "unknown",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "placeholder-mixed-case-na",
+      "text": {
+        "subject": "N/A",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "placeholder-padded-tbd",
+      "text": {
+        "subject": "  tbd  ",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "placeholder-empty-string",
+      "text": {
+        "subject": "",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "placeholder-whitespace-only",
+      "text": {
+        "subject": "   ",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "non-string-field",
+      "text": {
+        "subject": "she",
+        "object": 3,
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "missing-field",
+      "text": {
+        "subject": "she",
+        "object": "her"
+      }
+    },
+    {
+      "id": "null-field",
+      "text": {
+        "subject": "she",
+        "object": null,
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "exactly-twenty-units",
+      "text": {
+        "subject": "aaaaaaaaaaaaaaaaaaaa",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "twenty-one-units",
+      "text": {
+        "subject": "aaaaaaaaaaaaaaaaaaaaa",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "twenty-astral-characters",
+      "text": {
+        "subject": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "object": "her",
+        "possessive": "hers"
+      }
+    },
+    {
+      "id": "extra-keys-ignored",
+      "text": {
+        "subject": "xe",
+        "object": "xem",
+        "possessive": "xyrs",
+        "extra": 1
+      }
+    },
+    {
+      "id": "null-input",
+      "text": null
+    },
+    {
+      "id": "array-input",
+      "text": []
+    },
+    {
+      "id": "array-of-strings-input",
+      "text": [
+        "she",
+        "her",
+        "hers"
+      ]
+    },
+    {
+      "id": "string-input",
+      "text": "she/her"
+    },
+    {
+      "id": "number-input",
+      "text": 0
+    },
+    {
+      "id": "bool-input",
+      "text": false
+    }
+  ],
+  "properties": [
+    {
+      "id": "full-shape",
+      "text": "{\"pronouns\": {\"subject\": \"she\", \"object\": \"her\", \"possessive\": \"hers\"}, \"aliases\": [\"Em\", \"The Botanist\"]}"
+    },
+    {
+      "id": "bare-pronouns-shape",
+      "text": "{\"subject\": \"they\", \"object\": \"them\", \"possessive\": \"theirs\"}"
+    },
+    {
+      "id": "aliases-need-trimming-and-filtering",
+      "text": "{\"aliases\": [\"A\", \"  B  \", \"\", \"   \", 1, null, true]}"
+    },
+    {
+      "id": "aliases-not-an-array",
+      "text": "{\"aliases\": \"Em\"}"
+    },
+    {
+      "id": "aliases-object",
+      "text": "{\"aliases\": {\"0\": \"Em\"}}"
+    },
+    {
+      "id": "no-keys-at-all",
+      "text": "{}"
+    },
+    {
+      "id": "placeholder-pronouns-fall-through-to-null",
+      "text": "{\"pronouns\": {\"subject\": \"unknown\", \"object\": \"unknown\", \"possessive\": \"unknown\"}, \"aliases\": [\"Q\"]}"
+    },
+    {
+      "id": "pronouns-is-a-string",
+      "text": "{\"pronouns\": \"she/her\", \"aliases\": [\"Z\"]}"
+    },
+    {
+      "id": "fenced",
+      "text": "```json\n{\"pronouns\": {\"subject\": \"he\", \"object\": \"him\", \"possessive\": \"his\"}, \"aliases\": []}\n```"
+    },
+    {
+      "id": "truncated",
+      "text": "{\"pronouns\": {\"subject\": \"he\", \"object\": \"him\", \"possessive\": \"his\"}, \"aliases\": [\"Doc\""
+    },
+    {
+      "id": "top-level-null",
+      "text": "null"
+    },
+    {
+      "id": "top-level-array",
+      "text": "[{\"subject\": \"she\"}]"
+    },
+    {
+      "id": "non-json",
+      "text": "no idea"
+    }
+  ]
+}

@@ -187,6 +187,9 @@ pub mod folder_utils;
 pub mod format_bytes;
 pub mod format_time;
 pub mod format_tokens;
+// === P4.9K0 ===
+pub mod generators;
+// === end P4.9K0 ===
 pub mod help_doc_slug;
 pub mod image_gen;
 pub mod image_gen_data;
