@@ -6586,10 +6586,10 @@ the Ownership table are spliced byte-identically into every order
   OPEN Tier-2 items 9/10 for the optimizer, wizard and external-prompt
   families** (the oracles gain `rawSse` + `llmLogCounts`; byte-equal SSE
   wire tests per edge; `llm_logs` counts compared).
-- **P4.86 — CONDITIONAL: the AI-import validation engine**
-  (`work-orders/p4.86-qtap-schema-engine-conditional.md`): needs the
-  human's ruling to add the `jsonschema` crate (Draft 2020-12) — the one
-  pre-authorized dependency add of the round, and only once granted. Then:
+- **P4.86 — the AI-import validation engine (AUTHORIZED 2026-09-07)**
+  (`work-orders/p4.86-qtap-schema-engine-conditional.md`): the human
+  granted the `jsonschema` crate (Draft 2020-12) in writing the same day
+  — the one pre-authorized dependency add of the round. Then:
   the vendored `qtap-export.schema.json` (89,769 bytes at the baseline)
   with an embed guard, `validate_qtap_export` configured as v4's ajv
   (`allErrors`, non-strict, formats), v4's steps 9–10 (the repair loop with
@@ -6615,9 +6615,8 @@ present-but-null lead (each its own order), the `#OLD` version-comment
 lines (a bump-tool decision for the human), and the standing human-only 💸
 items (the Brahma deep query, dedup/summaries, #101).
 
-Recommended arrangement: P4.82 / P4.83 / P4.84 / P4.85 in parallel, one
-worktree each; P4.86 starts only on the ruling (it can run in parallel with
-the rest once granted). The unifier regenerates all four generator tier-3
+Recommended arrangement: all five lanes in parallel, one worktree each
+(P4.86's ruling was granted the day the round was ordered). The unifier regenerates all four generator tier-3
 families ONCE after P4.85 + P4.86 both land, runs the full Playwright suite
 (the two SPA lanes each run only their own spec files), and adds the two
 re-vendor hazards (the sample-prompt catalogue; the qtap schema) to the

@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(setupphase): P4.86 authorized — the `jsonschema` dependency ruling granted
+
+_Docs-only change._
+
+Records the human's written ruling ("Yes, add `jsonschema` to
+`quilltap-core` please.") in P4.86's status header and preamble and in the
+round's phase-4.md section: the lane is no longer conditional and runs in
+parallel with its four siblings.
+
 #### 2026-09-07 — docs(setupphase): the generator follow-ups + prompt-templates round ordered — P4.82 ∥ P4.83 ∥ P4.84 ∥ P4.85 ∥ P4.86-conditional
 
 _Docs-only change._
