@@ -307,6 +307,29 @@ function phys(overrides: Record<string, any>): any {
     const out = buildIdentityStack({ character, userCharacter, scenarioText, selectedSystemPromptId })
     rows.push({ kind: 'identityStack', id, character, userCharacter, scenarioText, selectedSystemPromptId, out })
   }
+
+  // ==== P4.D164 / v4 `2f4254b42`: the `## Additional Instructions` block ====
+  // `subprompts` on `BuildIdentityStackOptions`; rendered directly after the
+  // base system prompt, before the author-carried blocks; template-processed
+  // through the stack's own six-key context; `[]` and `null` render NOTHING
+  // (the no-version-bump contract: an unselected seat is byte-identical).
+  const SP1 = { id: '55555555-5555-4555-8555-555555555551', name: 'Base', content: 'You are {{char}}, base prompt for {{user}}.', isDefault: true, createdAt: '2026-02-01T00:00:00.000Z', updatedAt: '2026-02-01T00:00:00.000Z' }
+  const withPrompt = (extra: Partial<Character> = {}) => ch({ name: 'Ada', personality: 'Curious and dry.', systemPrompts: [SP1] as never, ...extra })
+  const spCases: Array<[string, Character, any, string | null | undefined, string | null | undefined, ReadonlyArray<{ title: string; content: string }> | null | undefined]> = [
+    ['sp-two-with-templates', withPrompt(), { name: 'Nadia', description: 'a wanderer' }, 'A rainy quay.', undefined,
+      [{ title: 'Be terse', content: '{{char}} answers {{user}} in one line about {{scenario}}.' }, { title: 'Answer in verse', content: 'Every reply is a quatrain.' }]],
+    ['sp-one', withPrompt(), null, undefined, undefined, [{ title: 'Be terse', content: 'One line, never two.' }]],
+    ['sp-empty-array-renders-nothing', withPrompt(), null, undefined, undefined, []],
+    ['sp-null-renders-nothing', withPrompt(), null, undefined, undefined, null],
+    ['sp-content-edges-crlf-and-blank-lines', withPrompt(), null, undefined, undefined, [{ title: 'Edges', content: '\n\nLine one.\r\nLine two.\n\n\n' }]],
+    ['sp-title-with-hash-and-newline-unsanitized', withPrompt(), null, undefined, undefined, [{ title: '# Not a heading\nSecond line', content: 'Body.' }]],
+    ['sp-no-base-prompt-block-still-renders', ch({ name: 'Ada', personality: 'Curious and dry.' }), null, undefined, undefined, [{ title: 'Be terse', content: 'One line.' }]],
+    ['sp-with-persona-and-description', withPrompt({ description: 'Fidgets with gears.' }), { name: 'Nadia', description: 'a wanderer' }, undefined, undefined, [{ title: 'Persona aware', content: 'You know {{persona}} and {{description}}.' }]],
+  ]
+  for (const [id, character, userCharacter, scenarioText, selectedSystemPromptId, subprompts] of spCases) {
+    const out = buildIdentityStack({ character, userCharacter, scenarioText, selectedSystemPromptId, subprompts })
+    rows.push({ kind: 'identityStack', id, character, userCharacter, scenarioText, selectedSystemPromptId, subprompts: subprompts ?? null, out })
+  }
 }
 
 // ==== buildPublicIdentityCard ==============================================
@@ -375,6 +398,7 @@ function pushSystemPrompt(
     precompiledIdentityStack?: string | null
     tabooPhrases?: string[]
     standingInstructions?: string | null
+    subprompts?: ReadonlyArray<{ title: string; content: string }> | null
   },
   nowMs: number,
 ) {
@@ -394,6 +418,7 @@ function pushSystemPrompt(
     timezone: opts.timezone ?? null,
     scenarioText: opts.scenarioText ?? null,
     precompiledIdentityStack: opts.precompiledIdentityStack ?? null,
+    subprompts: opts.subprompts ?? null,
     // `undefined` (the option omitted) is emitted as null so the Rust side can
     // tell "no option" from "explicit empty list" — the two arms whose byte
     // identity keeps the golden prompt hash stable.
@@ -437,6 +462,36 @@ pushSystemPrompt(
 pushSystemPrompt(
   'precompiled-stack',
   { character: ch({ name: 'Ada', personality: 'ignored because precompiled' }), precompiledIdentityStack: '## Precompiled\nStable prefix for Ada.' },
+  T_MAIN,
+)
+// P4.D164: on the read-through fallback the block renders inside the identity
+// stack; a precompiled stack WINS and the subprompts are ignored (v4's
+// "already carries them"); the Tier-2 order proof — subprompts + Taboo +
+// standing instructions in one prompt, the block inside the stack before
+// `## Character Personality`, the later sections at their P4.D103 slots.
+pushSystemPrompt(
+  'sp-fallback-renders-block',
+  { character: ch({ name: 'Ada', personality: 'Curious and dry.' }), subprompts: [{ title: 'Be terse', content: 'One line for {{user}}.' }] },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'sp-precompiled-wins-ignores-subprompts',
+  { character: ch({ name: 'Ada', personality: 'ignored because precompiled' }), precompiledIdentityStack: '## Precompiled\nStable prefix for Ada.', subprompts: [{ title: 'Be terse', content: 'Must NOT appear.' }] },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'sp-precompiled-blank-falls-through-with-subprompts',
+  { character: ch({ name: 'Ada', personality: 'Used because precompiled is blank.' }), precompiledIdentityStack: '   \n  ', subprompts: [{ title: 'Be terse', content: 'Renders on the fresh build.' }] },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'sp-with-taboo-and-standing-order',
+  {
+    character: ch({ name: 'Ada', personality: 'Curious and dry.' }),
+    subprompts: [{ title: 'Be terse', content: 'One line.' }],
+    tabooPhrases: ['delve', 'tapestry'],
+    standingInstructions: 'Keep the airship logs in order.',
+  },
   T_MAIN,
 )
 pushSystemPrompt(

@@ -41,6 +41,7 @@ use crate::chat_timestamp::{
     calculate_current_timestamp, should_inject_timestamp, InvalidTimezone, TimestampConfig,
 };
 use crate::jsstr::js_trim;
+use crate::subprompts::SubpromptForPrompt;
 use crate::templates::{process_template, TemplateContext};
 
 /// Pronouns triple, mirroring v4's `Pronouns` (`subject`/`object`/`possessive`).
@@ -161,6 +162,13 @@ pub struct BuildIdentityStackOptions<'a> {
     pub user_character: Option<&'a UserCharacter>,
     pub selected_system_prompt_id: Option<&'a str>,
     pub scenario_text: Option<&'a str>,
+    /// The character's subprompts in play for this chat (`Subprompts/*.md` in
+    /// the vault, chosen per participant via `selectedSubpromptIds`), already
+    /// resolved by the async caller — see [`crate::subprompts`]. Rendered
+    /// directly after the base system prompt. `None` or empty → no block, so
+    /// the output for a chat with no selection is byte-identical to before the
+    /// feature (v4 `2f4254b42`; `IDENTITY_STACK_BUILDER_VERSION` did NOT move).
+    pub subprompts: Option<&'a [SubpromptForPrompt]>,
 }
 
 /// A user character for the `{{user}}`/`{{persona}}` placeholders — v4's
@@ -277,6 +285,24 @@ pub fn build_identity_stack(options: &BuildIdentityStackOptions<'_>) -> String {
         if !content.is_empty() {
             parts.push(process_template(content, &ctx));
         }
+    }
+
+    // Subprompts — the smaller instructions ticked on for this chat (v4
+    // `2f4254b42`). They sit right under the base prompt because they are of
+    // the same kind: stage direction addressed to the character in the second
+    // person. Each keeps its title as a sub-heading so the model can tell where
+    // one ends. Pushed whether or not a base prompt was pushed above (v4 does
+    // not condition on it); the title is NOT sanitized (a `#` or a newline in
+    // it renders verbatim — measured on v4).
+    if let Some(subprompts) = options.subprompts.filter(|s| !s.is_empty()) {
+        let rendered = subprompts
+            .iter()
+            .map(|s| format!("### {}\n{}", s.title, process_template(&s.content, &ctx)))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        parts.push(format!(
+            "\n## Additional Instructions\nThe following also apply to you in this conversation.\n{rendered}"
+        ));
     }
 
     // WHY the wrappers and second person throughout (v4 `a6870c5a`): the
@@ -458,6 +484,11 @@ pub struct BuildSystemPromptOptions<'a> {
     pub scenario_text: Option<&'a str>,
     /// Phase H: precompiled identity-stack from `chats.compiledIdentityStacks`.
     pub precompiled_identity_stack: Option<&'a str>,
+    /// Subprompts in play for the responding participant, resolved by the
+    /// async caller. Only consulted on the read-through fallback (no
+    /// precompiled stack) — a precompiled stack already has them baked in
+    /// (v4 `2f4254b42`).
+    pub subprompts: Option<&'a [SubpromptForPrompt]>,
     /// Instance-wide Taboo phrases (`instance_settings['taboo']`), read by the
     /// async caller and passed down because this builder is deliberately
     /// synchronous. `None` (v4: omitting the option) omits the section — which
@@ -562,6 +593,7 @@ pub fn build_system_prompt(
             user_character: options.user_character,
             selected_system_prompt_id: options.selected_system_prompt_id,
             scenario_text: options.scenario_text,
+            subprompts: options.subprompts,
         }),
     };
 
@@ -793,6 +825,7 @@ mod tests {
             user_character: None,
             selected_system_prompt_id: None,
             scenario_text: None,
+            subprompts: None,
         }
     }
 
@@ -808,6 +841,7 @@ mod tests {
             timezone: None,
             scenario_text: None,
             precompiled_identity_stack: None,
+            subprompts: None,
             taboo_phrases: None,
             standing_instructions: None,
             now_ms: 0,
@@ -913,6 +947,7 @@ mod tests {
             }),
             selected_system_prompt_id: Some("22222222-2222-2222-2222-222222222222"),
             scenario_text: Some("A draughty observatory two hours past midnight."),
+            subprompts: None,
         }));
         // Changed the wording without bumping the version → fails here. A drift
         // here is ALSO a divergence from v4: these are v4's own registered hashes.
@@ -1072,6 +1107,7 @@ mod p4d50_taboo_section_tests {
             timezone: None,
             scenario_text: None,
             precompiled_identity_stack: None,
+            subprompts: None,
             taboo_phrases: None,
             standing_instructions: None,
             now_ms: 0,

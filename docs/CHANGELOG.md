@@ -12,6 +12,32 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(system-prompt): the `## Additional Instructions` block in the identity stack (P4.D164 unit 1)
+
+_Versions: core 0.0.824, harness 0.0.713._
+
+v4 `2f4254b42`, the prompt-assembly half of character subprompts.
+`BuildIdentityStackOptions` and `BuildSystemPromptOptions` gain
+`subprompts: Option<&[SubpromptForPrompt]>`; the stack pushes
+`\n## Additional Instructions\nThe following also apply to you in this
+conversation.\n` + the `### {title}\n{content}` items joined by a blank line
+directly after the base system prompt (whether or not one was pushed), each
+body template-processed through the stack's own six-key context, the title
+unsanitized. `None`/empty renders nothing, so an unselected seat is
+byte-identical to before — `IDENTITY_STACK_BUILDER_VERSION` stays 2 and
+`PROMPT_CACHE_STRUCTURE_VERSION` stays 4, both measured at the pin, and the
+two P4.D103 cache goldens still reproduce. `build_system_prompt` threads the
+option into its read-through fallback only. Every constructor site updated:
+the compiler and `build_context` pass `None` until units 2–3 thread the
+resolver; self-inventory, the announcer, and Carina pass `None` for good
+(v4's own call sites carry no `subprompts` — the caller census).
+`system_prompt_equivalence` red-first at the pin: eight `identityStack` rows
+(two with templates, one, `[]`, `null`, CRLF + blank-line edges, a `#`/newline
+title, no base prompt, persona/description keys) and four `systemPrompt` rows
+(fallback renders, precompiled wins, whitespace precompiled falls through,
+subprompts + Taboo + standing instructions with the section ORDER asserted);
+a `>= 12` row floor guards a stale oracle.
+
 #### 2026-09-07 — test(help): move the two help-tree count pins the unit-0 re-vendor left at 120 (P4.D163 unit 0 follow-up)
 
 _Versions: host 0.0.108, web 0.0.125._

@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 
 use quilltap_core::chat_timestamp::{TimestampConfig, TimestampFormat, TimestampMode};
+use quilltap_core::subprompts::SubpromptForPrompt;
 use quilltap_core::system_prompt::{
     build_identity_reinforcement, build_identity_stack, build_other_participants_info,
     build_public_identity_card, build_system_prompt, BuildIdentityStackOptions,
@@ -160,6 +161,10 @@ enum Row {
         selected_system_prompt_id: Option<String>,
         #[serde(rename = "scenarioText", default)]
         scenario_text: Option<String>,
+        /// P4.D164 (v4 `2f4254b42`). `null` = v4's OMITTED option (no block);
+        /// `[]` must render identically (the no-version-bump contract).
+        #[serde(default)]
+        subprompts: Option<Vec<WireSubprompt>>,
         out: String,
     },
     #[serde(rename = "publicCard")]
@@ -199,6 +204,9 @@ enum Row {
         /// P4.D103 (v4 `8f868109`). `null` = v4's OMITTED option (no section).
         #[serde(rename = "standingInstructions", default)]
         standing_instructions: Option<String>,
+        /// P4.D164 (v4 `2f4254b42`): consulted only on the read-through fallback.
+        #[serde(default)]
+        subprompts: Option<Vec<WireSubprompt>>,
         #[serde(rename = "nowMs")]
         now_ms: i64,
         #[serde(rename = "localOffsetMin")]
@@ -280,6 +288,23 @@ fn to_char(w: &WireCharacter) -> Character {
             })
             .collect(),
     }
+}
+
+#[derive(Deserialize)]
+struct WireSubprompt {
+    title: String,
+    content: String,
+}
+
+fn to_subprompts(w: &Option<Vec<WireSubprompt>>) -> Option<Vec<SubpromptForPrompt>> {
+    w.as_ref().map(|v| {
+        v.iter()
+            .map(|s| SubpromptForPrompt {
+                title: s.title.clone(),
+                content: s.content.clone(),
+            })
+            .collect()
+    })
 }
 
 fn to_user(w: &Option<WireUserCharacter>) -> Option<UserCharacter> {
@@ -373,6 +398,9 @@ fn system_prompt_matches_oracle() {
     // P4.D103: likewise for the standing-instructions rows — a stale oracle that
     // predates the slot must not pass by simply not carrying them.
     let mut standing_hits = 0usize;
+    // P4.D164: the subprompt rows (8 identityStack + 4 systemPrompt) must all
+    // be present — a stale oracle predating the block must not pass silently.
+    let mut subprompt_hits = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::IdentityStack {
@@ -381,17 +409,23 @@ fn system_prompt_matches_oracle() {
                 user_character,
                 selected_system_prompt_id,
                 scenario_text,
+                subprompts,
                 out,
             } => {
                 let ch = to_char(&character);
                 let uc = to_user(&user_character);
+                let sp = to_subprompts(&subprompts);
                 let got = build_identity_stack(&BuildIdentityStackOptions {
                     character: &ch,
                     user_character: uc.as_ref(),
                     selected_system_prompt_id: selected_system_prompt_id.as_deref(),
                     scenario_text: scenario_text.as_deref(),
+                    subprompts: sp.as_deref(),
                 });
                 assert_eq!(got, out, "identityStack '{id}'");
+                if id.starts_with("sp-") {
+                    subprompt_hits += 1;
+                }
             }
             Row::PublicCard {
                 id,
@@ -417,12 +451,14 @@ fn system_prompt_matches_oracle() {
                 precompiled_identity_stack,
                 taboo_phrases,
                 standing_instructions,
+                subprompts,
                 now_ms,
                 local_offset_min,
                 out,
             } => {
                 let ch = to_char(&character);
                 let uc = to_user(&user_character);
+                let sp = to_subprompts(&subprompts);
                 let ts = timestamp_config.as_ref().map(to_ts_config);
                 let got = build_system_prompt(&BuildSystemPromptOptions {
                     character: &ch,
@@ -435,6 +471,7 @@ fn system_prompt_matches_oracle() {
                     timezone: timezone.as_deref(),
                     scenario_text: scenario_text.as_deref(),
                     precompiled_identity_stack: precompiled_identity_stack.as_deref(),
+                    subprompts: sp.as_deref(),
                     taboo_phrases: taboo_phrases.as_deref(),
                     standing_instructions: standing_instructions.as_deref(),
                     now_ms,
@@ -444,6 +481,31 @@ fn system_prompt_matches_oracle() {
                 assert_eq!(got, out, "systemPrompt '{id}'");
                 if id.starts_with("standing-") {
                     standing_hits += 1;
+                }
+                if id.starts_with("sp-") {
+                    subprompt_hits += 1;
+                }
+                // P4.D164 Tier 2 (item 8): the ORDER proof — the block sits
+                // INSIDE the identity stack (before `## Character Personality`),
+                // and the Taboo + standing sections keep their P4.D103 slots
+                // after it. Asserted on v5's output (already byte-equal to v4's).
+                if id == "sp-with-taboo-and-standing-order" {
+                    let block = got
+                        .find("## Additional Instructions")
+                        .expect("block present");
+                    let personality = got.find("## Character Personality").expect("personality");
+                    let taboo = got
+                        .find("[STYLE: FORBIDDEN PHRASES]")
+                        .expect("taboo section");
+                    // `standingInstructions` is the caller's already-RENDERED
+                    // section, so the row's bare sentence is what lands.
+                    let standing = got
+                        .find("Keep the airship logs in order.")
+                        .expect("standing section");
+                    assert!(
+                        block < personality && personality < taboo && taboo < standing,
+                        "section order: block={block} personality={personality} taboo={taboo} standing={standing}"
+                    );
                 }
                 // P4.D50: v4's cache-determinism goldens
                 // (`__tests__/unit/cache-determinism/system-prompt.test.ts` at
@@ -519,6 +581,10 @@ fn system_prompt_matches_oracle() {
     }
 
     assert!(count > 0, "oracle file looks empty: {count}");
+    assert_eq!(
+        subprompt_hits, 12,
+        "expected the twelve P4.D164 `sp-*` rows — regenerate the oracle"
+    );
     assert_eq!(
         golden_hits, 2,
         "expected both cache-determinism golden rows (cache-golden-base / \

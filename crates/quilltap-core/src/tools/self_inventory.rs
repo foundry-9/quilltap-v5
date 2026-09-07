@@ -1534,6 +1534,9 @@ fn build_prompt_section(
             timezone: None,
             scenario_text: json_str(&chat, "scenarioText").as_deref(),
             precompiled_identity_stack: None,
+            // v4 `2f4254b42`: the self-inventory head passes NO subprompts (the
+            // P4.D164 caller census — only `buildContext` and the compiler do).
+            subprompts: None,
             taboo_phrases: None,
             standing_instructions: standing_instructions.as_deref(),
             now_ms: 0,

@@ -112102,3 +112102,80 @@ Landed in unit 1 as a plain equality both ways: the unit truth table
 `…_ab_to_aa_no_recompile`) — v4 has the same blind spot; NOT a divergence.
 
 Versions: core 0.0.823.
+
+## Lane record — P4.D164 (character subprompts, SERVER part 2: prompt assembly — the stack block, the compiler bake, the read-through fallback, the greeting, the green room; stacked on P4.D163 in the same worktree)
+
+- **Order:** `docs/developer/porting/work-orders/p4.d164-subprompts-prompt-assembly-server.md`.
+  Branch `claude/subprompts-server-porting-bd48c4` (the P4.D163 lane's
+  worktree, continued after that order's gate went green — the count-pin
+  follow-up above was the last P4.D163 commit).
+- **Pins:** the same `/tmp/qt-v4-pin-p4d163-2f4254b42` (the drift ledger's
+  §2 probe re-run PASSED before this order's first regen batch: v4 main at
+  `2f4254b42`, clean, nothing past it on either branch).
+- **Survey confirmations at the pin (v4 `2f4254b42`):** the stack block at
+  `lib/chat/context/system-prompt-builder.ts:198-207` (after the base prompt,
+  unconditional on it); `buildSystemPrompt` threads `subprompts` only into
+  its fresh-build arm (`:386-389`); the compiler resolves at
+  `compiler.ts:155-169`; `buildContext` resolves ONLY when the precompiled
+  stack is falsy (`context-manager.ts:911-920` — a whitespace-only string is
+  truthy there, so it resolves nothing and the builder's `.trim()` test then
+  builds fresh WITHOUT the block); the greeting's fifth positional +
+  greeting-local raw context (`initialize.ts:61-68, :200-215`); the green
+  room's fifth bullet + `subpromptsNote` (no template processing,
+  `content.trim()`) + `resolveSubpromptsForSeat` (`apply-outfit-selections.ts:
+  54-84, :419-447`). **Measured, corrects the order's shape for item 5:**
+  neither out-of-create entrance can ever see a seat with ids through v4's
+  REAL routes — the add-participant body schema has no `selectedSubpromptIds`
+  (`chats/[id]/schemas.ts:58` is the UPDATE schema) and `applyChatMerge`
+  builds the joining seat from explicit fields with no spread
+  (`apply-chat-merge.ts:190-200`), so the merged seat carries no ids on
+  EITHER side (v5's `chat_merge.rs:311` matches). The seat resolver is
+  therefore observable on the create path (the capstone) and by driving v4's
+  REAL `applyOutfitSelections` over a pre-seeded seat — the outfit tier-3
+  family gains that entrance as a third action (unit 5).
+
+### Unit 1 — the stack render (RED FIRST) + the caller census + the version pins
+
+- `crates/quilltap-core/src/system_prompt.rs`: `subprompts:
+  Option<&[SubpromptForPrompt]>` on BOTH option structs; the block pushed
+  right after the base prompt with v4's bytes (`\n## Additional
+  Instructions\nThe following also apply to you in this conversation.\n` +
+  `### {title}\n{process_template(content, ctx)}` joined `\n\n`), the
+  title unsanitized; `build_system_prompt` passes it into the fallback build
+  only. Constructor sites: the compiler + `build_context` pass `None` here
+  (units 2–3 thread the resolver); `self_inventory`, the announcer
+  (`character_voiced`), and Carina pass `None` permanently — **the caller
+  census at the pin** (`buildSystemPrompt`/`buildIdentityStack` callers:
+  `self-inventory/builders.ts:526` no subprompts; `context-manager.ts:952`
+  yes; `announcer/character-voiced.ts:109` no; `carina.service.ts:528` no;
+  `compiler.ts:163` yes; `initialize.ts` and `auto-configure.service.ts`
+  define their OWN private builders — the latter is the standing
+  auto-configure non-port). The help-chat builder: `git show --stat
+  2f4254b42` touches no help-chat file and `lib/help-chat` has zero
+  `subprompt` hits — nothing to port (Tier 3, recorded).
+- `harness/oracle/cases/system-prompt.ts` (+ `system_prompt_equivalence.rs`
+  rows gain `subprompts`): eight `identityStack` rows (`sp-two-with-templates`
+  with `{{char}}`/`{{user}}`/`{{scenario}}`, `sp-one`,
+  `sp-empty-array-renders-nothing`, `sp-null-renders-nothing`,
+  `sp-content-edges-crlf-and-blank-lines`,
+  `sp-title-with-hash-and-newline-unsanitized`,
+  `sp-no-base-prompt-block-still-renders` — the block follows the preamble
+  with a `\n\n\n` seam, measured — and `sp-with-persona-and-description`)
+  and four `systemPrompt` rows (`sp-fallback-renders-block`,
+  `sp-precompiled-wins-ignores-subprompts`,
+  `sp-precompiled-blank-falls-through-with-subprompts`,
+  `sp-with-taboo-and-standing-order` — the Tier-2 item-8 ORDER proof, asserted
+  on v5's bytes: block < `## Character Personality` < `[STYLE: FORBIDDEN
+  PHRASES]` < the standing sentence). RED FIRST against the regenerated oracle
+  (`identityStack 'sp-two-with-templates'` mismatch), then green — 87 rows, 2
+  goldens, a `subprompt_hits == 12` floor.
+- **Version pins (Tier 2 item 9):** `IDENTITY_STACK_BUILDER_VERSION` 2 (v4
+  `system-prompt-builder.ts:154` = 2) and `PROMPT_CACHE_STRUCTURE_VERSION` 4
+  (v4 `cache-key.ts:39` = 4) — both UNMOVED; the crate's own
+  `identity_stack_golden_*` tests and the two `cache-golden-*` oracle rows
+  (`937ea8197a65d022` / `bc37032e92411263`) still reproduce.
+- Regen (at the pin): `cd /tmp/qt-v4-pin-p4d163-2f4254b42 && TZ=UTC npx tsx
+  $V5W/harness/oracle/cases/system-prompt.ts > /tmp/oracle-system-prompt.ndjson`;
+  run `QT_ORACLE_SYSTEM_PROMPT=… cargo test -p quilltap-harness --test
+  system_prompt_equivalence`.
+- Versions: core 0.0.824, harness 0.0.713.

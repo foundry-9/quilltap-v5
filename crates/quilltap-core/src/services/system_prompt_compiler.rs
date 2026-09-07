@@ -181,6 +181,7 @@ fn build_stack_for(
         user_character: user_character.as_ref(),
         selected_system_prompt_id,
         scenario_text,
+        subprompts: None,
     });
     Ok(if stack.is_empty() { None } else { Some(stack) })
 }

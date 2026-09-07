@@ -330,6 +330,9 @@ where
         timezone: None,
         scenario_text: None,
         precompiled_identity_stack: None,
+        // v4 `2f4254b42`: the announcer passes NO subprompts either (the
+        // P4.D164 caller census).
+        subprompts: None,
         // v4 omits `tabooPhrases` here — the character-voiced announcer is not a
         // conversational turn, so it carries no Taboo section (`7df7de8e`).
         taboo_phrases: None,

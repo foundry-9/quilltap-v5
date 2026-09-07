@@ -1913,6 +1913,7 @@ where
         timezone: input.timezone.as_deref(),
         scenario_text: input.chat.scenario_text.as_deref(),
         precompiled_identity_stack: input.chat.precompiled_identity_stack.as_deref(),
+        subprompts: None,
         taboo_phrases: Some(&taboo_phrases),
         standing_instructions: standing_instructions.as_deref(),
         now_ms: input.now_ms,

@@ -397,6 +397,9 @@ where
             user_character: None,
             selected_system_prompt_id: s(&answerer, "defaultSystemPromptId").as_deref(),
             scenario_text: scenario_text.as_deref(),
+            // v4 `2f4254b42`: Carina's `buildIdentityStack` call passes NO
+            // subprompts (the P4.D164 caller census — a consult has no seat).
+            subprompts: None,
         },
     );
     if let Some(sc) = &scenario_text {
