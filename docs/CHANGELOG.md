@@ -231,6 +231,17 @@ Deferred loudly (tier 3, named not performed): the five per-caller JSON
 extractors v5 already carries stay where they are — each is oracle-pinned in
 place, and `generators::llm_json` is a NEW home for v4's module, not a
 consolidation of them.
+#### 2026-09-07 — docs(v4): prune two docs/v4/ files v4 no longer has (P4.81 item 5)
+
+_Docs-only change._
+
+`docs/v4/WINDOWS.md` and `docs/v4/help/database-protection.md` mirror
+paths v4 dropped before the `f699da6f6` baseline (confirmed absent from
+`docs/WINDOWS.md` and `docs/help/database-protection.md` in a worktree
+pinned at that sha — the top-level `help/database-protection.md` v4 still
+ships is a DIFFERENT file, the vendored help content, not the docs
+mirror). Deleted.
+
 #### 2026-09-07 — fix(core): execute_turn_chain carries v4's three chain-stop log lines (P4.81 item 4)
 
 _Versions: core 0.0.813, harness 0.0.703._
