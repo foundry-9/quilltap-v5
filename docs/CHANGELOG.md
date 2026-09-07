@@ -12,6 +12,28 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — docs(porting): the P4.9K1 lane record — unit 1 landed, units 2-8 open with their survey banked
+
+_Docs-only change._
+
+The lane record for P4.9K1's partial run: what landed (the optimizer's pure
+arms and their differential), and — so a resumption does not repeat the work —
+the completed survey for the external-prompt generator (both P4.D82/D83 riders
+confirmed present at the pin; v4 does log an `EXTERNAL_PROMPT` row, answering
+tier-2 item 10 for that service) and three measured JS-fidelity findings for the
+rename service: JS expands `$&`, `` $` ``, `$'` and `$$` in the replacement
+while leaving `$1`/`${x}` literal (Rust would delete those two), JS `i` without
+`u` refuses to fold U+017F onto `s` or ß onto ẞ, and v4's `escapeRegex` is
+complete for literal matching. Together they rule that the port is a literal
+scan under ECMAScript Canonicalize, not a Rust regex.
+
+Also records the structural reason the remaining units are runner-sized: v4
+exports only `runCharacterRename` and `generateExternalPrompt`, so their helpers
+have no tier-1 path and the Rust runner plus its repo seam must land in the same
+unit as the port. And a gate trap met in the wild — a workspace gate failing on
+an oracle NDJSON a previous lane's cleanup had deleted looks exactly like a port
+regression and is not one.
+
 #### 2026-09-07 — port(generators): the character optimizer's pure arms, byte-exact against v4 (bug 119's post-fix shape)
 
 _Versions: core 0.0.815, harness 0.0.702._

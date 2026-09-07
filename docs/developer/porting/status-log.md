@@ -110399,3 +110399,140 @@ crates/quilltap-host/` empty (this lane touches neither).
   edges.
 - `crates/quilltap-core/src/generators/mod.rs` carries a comment marking where
   each lane's `pub mod` line goes, inside its own fence.
+
+
+## P4.9K1 — the character-generators SERVER lane, per-character trio (2026-09-07) — **PARTIAL, unit 1 only**
+
+Lane branch `claude/p4-9k1-generators-detail-a1`, branched from P4.9K0's tip
+`f1031c0f` per §S.1. Baseline `f699da6f6`; the drift-ledger §2 probe PASSED at
+lane start (checkout on `bugfix`, tree clean, both log ranges empty); every
+regen ran from the lane-unique pin `/tmp/qt-v4-pin-p49k1-f699da6f6`.
+
+**Status: ONE of the order's eight tier-1 items landed.** What remains OPEN is
+listed at the end of this record, with the survey and measurements already done
+for it so a resumption does not repeat them.
+
+### Unit 1 — the optimizer's PURE arms (LANDED, `51d8e1a6`)
+
+`generators::optimizer` carries v4's types, constants and every prompt builder,
+ported from the POST-bug-119 shape (`15573c3a1`): `coerce_suggestion_text`,
+`coerce_suggestion_array`, `build_character_context`, `build_memory_context`,
+`get_analysis_prompt`, and the six suggestion prompts. **§S.9 discharged for the
+pure half** — `coerce_suggestion_array` carries v4's ordered key list
+(`suggestions`, `items`, `results`, `data`, `amendments`) byte-for-byte and the
+pre-fix inline `.filter` appears nowhere.
+
+**The input-shape decision.** Character / wardrobe / memory / analysis inputs are
+read as `serde_json::Value`, not typed structs. v4 interpolates these into prose
+with JS semantics — `x || '(empty)'` is JS truthiness, `${x}` is JS `ToString`,
+and an ABSENT key renders `undefined` where an explicit `null` renders `null`.
+Typed structs would normalize away exactly the edges the differential exists to
+catch. `js_interp` (absent vs null) and `js_or` are those two semantics.
+
+**Differential:** `character_optimizer_prompts_equivalence` over the committed
+`harness/oracle/fixtures/character-optimizer-prompts.json` — 20 coercion rows /
+6 character contexts / 3 memory contexts / 3 analyses / 4 scenarios / 4 system
+prompts / 3 physicals / 3 wardrobes, through v4's REAL exports. Six prompts
+embed `JSON.stringify(analysis, null, 2)`, so the analyses are a pretty-printer
+comparand as well; one is deliberately non-alphabetical with nested empties,
+`-0`, `1.5`, `true` and `null`. Coverage asserted by shape both directions.
+
+**Five mutation proofs**, each reddening exactly one named arm:
+
+| mutation | reddened |
+| --- | --- |
+| the bug-119 key list reordered (`items` before `suggestions`) | `coerceSuggestionArray 'wrapper-order-items-first'` |
+| the lone-object `field` fingerprint widened to "is present" | `coerceSuggestionArray 'lone-object-field-not-a-string'` |
+| one byte of `SUGGESTION_SCHEMA_PREAMBLE` | `getGeneralFieldsSuggestionsPrompt 'full'` line 59 |
+| the wardrobe `archivedAt` count spelled nullish | `getWardrobeSuggestionPrompt 'mixed'` line 19 |
+| the context's `archivedAt` SKIP spelled nullish | `buildCharacterContext 'full'` line 62 |
+
+⚠ **The last two only redden because the mutation pass first found the corpus
+BLIND to them.** `!js_truthy(archivedAt)` and a nullish test differ only on a
+FALSY-but-not-nullish value, and the corpus had only `null` and a timestamp — on
+which they agree. A `""` row was added and the oracle regenerated; the baseline
+stayed green, which proves v5's spelling was already right (a coverage hole
+closed, not a bug fixed).
+
+### Measured for unit 3 (rename) — findings banked, the port NOT landed
+
+The pure half was written and building, then **backed out deliberately**: v4
+exports only `runCharacterRename`, so `escapeRegex` / `performReplacement` /
+`getContext` / `rewriteField` cannot be reached by a tier-1 oracle driving v4's
+REAL code. Committing them would have meant accepting a port without its
+equivalence test. The measurements survive here so the resumption does not
+repeat them (all Node 24.13.1 @ the pin):
+
+**1. JS EXPANDS the replacement string** (`GetSubstitution`). On `"Hello Bob."`
+replacing `Bob`: `$&$&` → `Hello BobBob.`; `a$$b` → `Hello a$b.`;
+`` [$`] `` → `Hello [Hello ] there.`; `[$']` → `Hello [ there.] there.`; and
+**`$1` → `Hello $1.` and `${x}` → `Hello ${x}.` — LITERAL**, because the pattern
+is an escaped literal with no capture groups. Rust's `Regex::replace_all` would
+silently DELETE those last two (unknown group → empty) and does not support
+`$&` / `` $` `` / `$'` at all.
+
+**2. Case-insensitive matching folds differently.** JS `i` WITHOUT `u` is
+ECMAScript Canonicalize, which refuses to fold a non-ASCII code unit onto an
+ASCII one. `"Strasse Straſse"` + `strasse`/`gi` → **1** match (Rust `(?i)`
+would match both); `"STRAẞSE"` + `straßse`/`gi` → **0** matches (Rust folds
+ß↔ẞ and would match).
+
+**3. `escapeRegex` is COMPLETE for literal matching** — v4 escapes
+``[.*+?^${}()|[\]\\]``, and every JS metacharacter outside a character class
+is in it (`-` is class-only, `/` is not a metacharacter). `"x-y"` + `x-y` → 1
+match. And `g` is non-overlapping left-to-right: `"aaaa"` + `aa` → **2**.
+
+**The ruling those three produce:** port the matcher as a LITERAL SCAN with
+ECMAScript Canonicalize, not a Rust regex — both divergences then vanish
+instead of needing to be recorded — plus v4's `GetSubstitution` for `$&`,
+`` $` ``, `$'` and `$$`, leaving `$1`/`${…}` literal. The full write-up is in
+this session's scratch note and is reproduced above in full; nothing else is
+needed to redo it.
+
+### What remains OPEN under this order
+
+Items 2–8 of Tier 1, all of Tier 2, and the two Tier-3 recordings:
+
+2. `generators::external_prompt` — surveyed whole (`META_SYSTEM_PROMPT`, the
+   `buildUserMessage` section order, the `getSafeInputLimit` over-budget refusal
+   sentence, the `{success,prompt,tokensUsed,error}` result). **Both P4.D82/D83
+   riders CONFIRMED present at the pin** — `getSafeInputLimit(provider,
+   modelName, maxTokens, profile)` is the profile-first 4-arg form (`f933ba9c`)
+   and the sampling reads `profileParams(profile)` (`d89babc4`); port the file
+   as it stands and cite both shas. **Tier-2 item 10 is ANSWERED for this
+   service: v4 DOES `logLLMCall` a row, `type: 'EXTERNAL_PROMPT'`**, with the
+   two-message request bag and `temperature: 0.7`.
+3. `generators::rename` — see the banked findings above.
+4. `generators::refresh_archive`.
+5. The four verbs + `api/generators_detail.rs` + engine arms + driver trait.
+6. The host driver (`generators_detail_driver.rs` + the `spine.rs` fence).
+7. The REST arms on `characters_action_post`.
+8. `character_optimizer_tier3_equivalence`, `external_prompt_tier3_equivalence`,
+   `character_rename_equivalence` — all three need a jest oracle with injected
+   seams, which is also what makes units 2 and 3 differentially testable at all.
+
+**The structural note for whoever resumes:** every remaining v4 unit in this
+lane hides its helpers behind one exported runner, so there is no tier-1 path
+to any of them. The differential for units 2 and 3 is a jest/tsx oracle that
+calls v4's REAL runner with plain-object repositories and a canned provider —
+the mechanism v4's own suites use — which means the Rust runner and its repo
+seam must land in the SAME unit as the port. Plan them as runner-sized units,
+not leaf-sized ones.
+
+### Gate at the lane's tip
+
+`cargo fmt --all --check` 0; `cargo clippy --workspace --all-targets --
+-D warnings` 0 in BOTH feature sets; `cargo test --workspace` with
+`QT_ORACLE_GENERATORS_LEAF` + `QT_ORACLE_CHARACTER_OPTIMIZER_PROMPTS` —
+**513 test binaries / 2,925 passed / 0 failed / 1 ignored, exit 0, zero `SKIP:`
+lines**; both families by name through `recipe_sweep.py --v4 <pin>` with
+`--show` read first. K0's `generators_leaf_equivalence` re-run at THIS lane's
+pin as the substrate neutrality check (gate item 3) — green, 46/20/13/6.
+`git diff main -- apps/web/` empty. The substrate files K0 owns are untouched.
+
+⚠ **A gate trap worth the next lane's attention:** the first run of this lane's
+gate failed at binary 168 on `generators_leaf_equivalence` reading a
+`/tmp/oracle-*.ndjson` that K0's own cleanup had deleted. It looks exactly like
+a port regression and is not one — the ledger's "a deleted path reads like a
+regression" trap, met in the wild. Regenerating the substrate family at the new
+lane's pin is both the fix and the neutrality check.
