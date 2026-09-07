@@ -3453,6 +3453,54 @@ pub enum Request {
         chat_id: String,
     },
     // === end P4.80 ===
+    // === P4.D163: the character-subprompts verbs (v4 `2f4254b42`) — append-only ===
+    /// v4 `GET /api/v1/characters/[id]/subprompts` → `{ subprompts }`.
+    #[serde(rename_all = "camelCase")]
+    CharacterSubpromptList {
+        character_id: String,
+    },
+    /// v4 `GET /api/v1/characters/[id]/subprompts/[subpromptId]` → `{ subprompt }`.
+    #[serde(rename_all = "camelCase")]
+    CharacterSubpromptGet {
+        character_id: String,
+        subprompt_id: String,
+    },
+    /// v4 `POST /api/v1/characters/[id]/subprompts` → `{ subprompt }` (201 at
+    /// the REST edge). `title` / `content` ride RAW and `double_option` so the
+    /// handler runs v4's whole `createSubpromptSchema` ladder — an absent key
+    /// (`received undefined`), a present `null` (`received null`) and a wrong
+    /// type each answer their own Zod issue instead of collapsing at serde.
+    #[serde(rename_all = "camelCase")]
+    CharacterSubpromptCreate {
+        character_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Option<serde_json::Value>>,
+    },
+    /// v4 `PUT /api/v1/characters/[id]/subprompts/[subpromptId]` → `{ subprompt }`
+    /// (`updateSubpromptSchema`: both optional; a present `null` refuses).
+    #[serde(rename_all = "camelCase")]
+    CharacterSubpromptUpdate {
+        character_id: String,
+        subprompt_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        title: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        #[serde(skip_serializing_if = "Option::is_none")]
+        content: Option<Option<serde_json::Value>>,
+    },
+    /// v4 `DELETE /api/v1/characters/[id]/subprompts/[subpromptId]` →
+    /// `{ success: true }`.
+    #[serde(rename_all = "camelCase")]
+    CharacterSubpromptDelete {
+        character_id: String,
+        subprompt_id: String,
+    },
+    // === end P4.D163 ===
 }
 
 // === P4.9E2A: the announcer sender union (§1, frozen) ===

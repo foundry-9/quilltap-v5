@@ -330,6 +330,37 @@ pub fn materialize_bare_instance() -> tempfile::TempDir {
     base
 }
 
+/// P4.D163: materialize an instance dir from the committed `subprompts-*`
+/// fixture (one user; four vault-backed characters — A with a `Subprompts/`
+/// folder, B without one, C with its vault link severed, D archived; five
+/// chats carrying `selectedSubpromptIds` in every seat shape), user ids
+/// rewritten. Used by the subprompts REST-edge wire test.
+#[allow(dead_code)]
+pub fn materialize_subprompts_instance() -> tempfile::TempDir {
+    let base = tempfile::tempdir().expect("tempdir");
+    let data = base.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::copy(
+        fixtures_dir().join("subprompts-main.db"),
+        data.join("quilltap.db"),
+    )
+    .unwrap();
+    std::fs::copy(
+        fixtures_dir().join("subprompts-mount.db"),
+        data.join("quilltap-mount-index.db"),
+    )
+    .unwrap();
+    {
+        let w = Writer::open_writable(&data.join("quilltap-llm-logs.db"), TEST_PEPPER).unwrap();
+        w.connection().execute_batch(LLM_LOGS_DDL).unwrap();
+    }
+    {
+        let w = Writer::open_writable(&data.join("quilltap.db"), TEST_PEPPER).unwrap();
+        rewrite_user_ids(w.connection());
+    }
+    base
+}
+
 /// Boot + serve on an ephemeral port; returns the bound address + state.
 /// `configure` tweaks the `HostConfig` (spine factory, terminal toggle, …).
 pub async fn serve_instance(

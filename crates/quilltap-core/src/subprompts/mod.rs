@@ -32,6 +32,19 @@ use crate::doc_edit::markdown_parser::serialize_frontmatter;
 use crate::jsstr::{js_trim, js_trim_end, utf16_len, utf16_slice_from};
 use crate::markdown::parse_frontmatter;
 
+pub mod fanout;
+pub mod storage;
+
+pub use fanout::{
+    fan_out_subprompt_change, FanoutOptions, FanoutSeams, ProductionFanoutSeams,
+    SubpromptFanoutResult,
+};
+pub use storage::{
+    create_character_subprompt, delete_character_subprompt, list_character_subprompts,
+    list_subprompts_in_vault, read_character_subprompt, resolve_selected_subprompts,
+    update_character_subprompt, SubpromptCreateInput, SubpromptError, SubpromptPatch,
+};
+
 /// Root-level vault folder holding a character's subprompts.
 pub const SUBPROMPTS_FOLDER: &str = "Subprompts";
 

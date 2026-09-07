@@ -63,6 +63,9 @@ pub mod spa;
 // === end P4.10 ===
 pub mod state;
 pub mod static_serve;
+// === P4.D163: the character-subprompts REST edges ===
+pub mod subprompts_routes;
+// === end P4.D163 ===
 // === P4.6au: the home-dashboard REST edge ===
 pub mod system_routes;
 pub mod upgrade_auth;
@@ -610,6 +613,19 @@ pub fn build_router(state: SharedState) -> Router {
             get(images_routes::images_list).post(images_routes::images_post),
         )
         // === end P4.73 ===
+        // === P4.D163: the character-subprompts REST edges (v4 `2f4254b42`) ===
+        .route(
+            "/api/v1/characters/{id}/subprompts",
+            get(subprompts_routes::subprompts_collection_get)
+                .post(subprompts_routes::subprompts_collection_post),
+        )
+        .route(
+            "/api/v1/characters/{id}/subprompts/{subprompt_id}",
+            get(subprompts_routes::subprompt_item_get)
+                .put(subprompts_routes::subprompt_item_put)
+                .delete(subprompts_routes::subprompt_item_delete),
+        )
+        // === end P4.D163 ===
         .route("/setup", get(static_serve::setup))
         .fallback(get(static_serve::spa_fallback))
         // P4.18 (unit 4): the request-log analog of v4's `logRequest`. `tower-http`'s

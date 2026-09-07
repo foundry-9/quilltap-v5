@@ -12,6 +12,46 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — feat(subprompts): vault storage + the selection resolver + the chat fan-out, the five verbs + REST edges + realtime, the committed fixture, the log pins (P4.D163 units 3–5)
+
+_Versions: core 0.0.822, harness 0.0.712, web 0.0.124._
+
+The rest of v4 `2f4254b42`'s storage/API half. `subprompts::storage` — the
+split vault resolution (reads `findByIdRaw` overlay-free, archived characters
+still resolve; writes refuse an archived character and provision a vault for
+a live one lacking it, over the existing `ensure_character_vault`),
+`list_subprompts_in_vault` (root `.md` files only, unreadable files skipped
+with v4's warn, ICU title-then-id sort), `list_character_subprompts`,
+`read_character_subprompt`, `resolve_selected_subprompts` (listing order,
+case-insensitive ids, fail-soft), `create` (validate title THEN content,
+`ensure_folder_path` on EVERY create, the `base`/`base-2`/`base-3` collision
+walk), `update` (per-key validation, the id never changes) and `delete`;
+`subprompts::fanout` — `fan_out_subprompt_change` over `find_by_character_id`
+with v4's four-conjunct seat filter, the case-insensitive strip on delete, the
+per-seat fail-soft, and the compiler + realtime bus as a `FanoutSeams` seam
+(production: the real compiler and bus). `api::subprompts` — the five verbs
+(`characterSubprompt{List,Get,Create,Update,Delete}`) with v4's guard ladders
+as MEASURED on its real routes (POST/PUT parse the body before the character
+lookup; GET/DELETE validate the id first; the service's UTF-16 title rule
+after Zod's code-point rule and after the lookup), the Zod `{error, details}`
+envelope in Zod 4.5's measured issue shapes, v4's fixed 404/409/500 sentences,
+the fan-out counts folded into the info line only, and `characters/<id>`
+published on every write. `quilltap-web/src/subprompts_routes.rs` — the five
+v4-URL edges (POST → 201; the non-object body's `expected object` envelope is
+the edge's one arm). NEW committed `subprompts-{main,mount}.db` (a frozen-clock
+build through v4's real repositories: four characters — a vault with eight
+planted files incl. a document-less link, a nested file and a `.txt`; no
+folder; a severed vault link; archived — and five chats in every seat shape)
++ builder + spec. NEW families: `subprompts_storage_tier2_equivalence` (69
+cases: results, an id-free semantic census of the mount tables, the recorded
+seams) and `subprompts_routes_equivalence` (58 cases: status, body, recorded
+publishes, census), both driving v4's REAL code at the `2f4254b42` pin; a web
+wire test per edge. Every v4 log line capture-pinned at its level with its bag
+(the module's seven, the fan-out's three, the routes' six). Seven mutation
+proofs in the lane record (M7 — skipping `ensureFolderPath` on a second create
+— survives by construction, recorded). The dispatch census's route-identifier
+count moves 411 → 419 (eight genuine URL segments).
+
 #### 2026-09-07 — feat(subprompts): the pure helpers + the `subprompts_helpers_equivalence` tier-1 family (P4.D163 unit 2)
 
 _Versions: core 0.0.821, harness 0.0.711._

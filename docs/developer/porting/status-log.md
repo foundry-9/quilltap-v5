@@ -111851,3 +111851,182 @@ strip widened to `trim_start()` reddened `parse/nbsp-body-edges` +
 `parse/leading-space-in-body-kept`. Green after restore.
 
 Versions: core 0.0.821, harness 0.0.711.
+
+### Unit 3 — `subprompts::storage` + `subprompts::fanout` over the NEW committed `subprompts-{main,mount}.db`
+
+**The fixture** (`crates/quilltap-web/tests/fixtures/subprompts-{main,mount}.db`
++ `.meta.json` with the four vault ids; builder `harness/oracle/fixtures/
+build-subprompts-fixture.ts`, spec `subprompts.json`): built through v4's REAL
+repositories + `writeDatabaseDocument` / `ensureFolderPath` /
+`composeSubpromptContent` at the pin under a FROZEN clock (every baked
+`lastModified` = the seed sentinel `2026-06-01T00:00:00.000Z`), under the web
+venue's shared `TEST_PEPPER`. Character A (vault; `Subprompts/`: `terse.md`,
+`Verse.md` MIXED-CASE, `no-title.md` no frontmatter, `zulu.md` titled
+"Alpha-titled zulu" + `alpha.md` titled "Zulu-titled alpha" (titles collate
+the opposite way to the ids), `broken.md` whose DOCUMENT row is deleted by raw
+SQL after the write, `drafts/x.md` nested, `notes.txt`); B (vault, no folder);
+C (vault link severed by raw SQL — the provision-on-write arm ADOPTS the
+orphan same-name store, so the census stays remap-free); D (archived by raw
+SQL, one subprompt `keep.md`); five chats — A as an LLM seat `["terse",
+"VERSE"]`, A user-controlled `["terse"]`, A `removed` `["terse"]`, A with NO
+key, and A + B as two LLM seats each `["terse"]`. ⚠ The order named the
+fixture path `crates/quilltap-harness/fixtures/` — that directory does not
+exist; every committed pair lives under `crates/quilltap-web/tests/fixtures/`
+(`fixtures_dir()` in every family), so the pair went there. The order's
+Tier-3 "if the `CharacterVaultWriteInput` cannot be built from a raw row"
+deferral is MOOT: the row goes through serde with every managed field at its
+default, the `post_office::deliver` / `tools::list_email` idiom already on main.
+
+**The port.** `storage.rs`: `resolve_vault_for_read` (overlay-free,
+archived resolves, an empty string is falsy) / `resolve_vault_for_write`
+(NotFound `"(character)"` → archived → truthy vault → `ensure_character_vault`
++ the warn); `list_subprompts_in_vault` (`kind != "folder"` ∧
+`is_root_subprompt_file`; a read error skipped with the warn; `updatedAt =
+iso_from_unix_ms(mtime_ms)`; ICU `locale_compare` title-then-id);
+`list_character_subprompts`; `read_character_subprompt` (invalid id / no vault
+/ NOT_FOUND → `None`, any other store error propagates);
+`resolve_selected_subprompts` (`found.len() != wanted.len()` compares against
+the lowercased SET — a duplicated selection is one wanted id; fail-soft);
+`create` (title THEN content; `ensure_folder_path` EVERY time — the hunk, not
+the message; the lowercased existing-id set; `base`, `base-2`, `base-3`…);
+`update` (invalid id → NotFound; read NOT_FOUND → NotFound; each key validated
+only when present; `changed` = the present keys in v4's order); `delete`
+(invalid id → `false` BEFORE the vault resolves, so it never 409s; a valid id
+resolves in the WRITE posture — an archived character refuses even a delete).
+`SubpromptError` keeps v4's four error classes with their sentences
+(`CharacterArchivedError`'s = `Character <id> is archived: this character is
+archived; rehydrate it to continue`). `fanout.rs`: v4's four-conjunct seat
+filter (an absent `controlledBy`/`status` is `undefined !== …`), the
+case-insensitive strip, the per-seat try/catch around BOTH the strip and the
+recompile, `current` re-read after a `true` strip (v4's `updateParticipant`
+returns the chat; v5's a bool), `publish_chat` once per touched chat, the
+counts. The compiler and the bus are the `FanoutSeams` trait
+(`ProductionFanoutSeams` = the real `compile_identity_stack_for_participant` +
+`publish_realtime`); the differential passes a recorder on both sides because
+P4.D164's block render lands after this unit (v4's own `chat-fanout.test.ts`
+mocks the same two modules).
+
+**Measured on v4's real module (`harness/oracle/cases/subprompts-storage.
+test.ts` → `/tmp/oracle-subprompts-storage.ndjson`, 69 cases):** the vault's
+document lookup is CASE-INSENSITIVE (`read_a_verse_lower_case` answers `id:
+"verse", path: "Subprompts/verse.md"` for the stored `Verse.md`; v5's
+`find_content_and_mtime_by_mount_point_and_path` is `LOWER() = LOWER()` too);
+a document-less link still LISTS (skipped with the warn) and still DELETES
+(`delete_a_broken_link_only` → `true`); the vault-less character's first
+write ADOPTS the orphan store (`charC.vault` → the fixture-baked id, points
+stay 4); an `update` on the vault-less character provisions THEN 404s; the
+`updatedAt` of a baked file compares EXACTLY (ms precision —
+`toISOString(new Date(lastModified).getTime())`); the fan-out over `terse`
+touches TWO chats (the LLM seat + the two-seat chat's A seat — never the user
+seat, the removed seat, the key-less seat, or B's seat).
+
+**`subprompts_storage_tier2_equivalence`** — 69/69 (results incl. the error
+`{name, message}`, an id-free semantic census of `doc_mount_points` /
+`_folders` / `_file_links` joined to their `file` + `document` rows by path +
+orphan counts + the characters' vault links + the chats' participants and
+`compiledIdentityStacks`, the recorded `compile` / `publish` calls). A first
+run found the oracle case FREEZING its clock during the case run (the fixture
+builder's idiom copied one file too far): v4's minted timestamps then EQUALLED
+the sentinel while v5's normalized to `<ts>` — 26 mismatches of one class;
+the freeze belongs only in the builder, removed from the case, 68/68, then 69
+with the strip row below.
+
+**Mutation proofs (restored by file backup):** the resolver's match spelled
+case-sensitive → `resolve_a_terse_VERSE_gone` red; the nested-file filter
+dropped → `list_a` red; the collision suffix starting at `-1` →
+`create_a_collision_suffixes` red; the `removed`-seat exclusion dropped → all
+five `fanout_terse*` rows red (chatsTouched 3); the fan-out seat match spelled
+case-sensitive → `fanout_verse_case_insensitive` red; the remove-strip spelled
+case-sensitive SURVIVED the first corpus (no seat stored an id whose case
+differs from the deleted one in the strip arm) — `fanout_verse_remove_
+selection_strips_VERSE` added, then red; `ensureFolderPath` skipped on a
+second create SURVIVED — not observable via any census (the folder exists
+after the first create) and v5 has no recorded call; recorded, the ensure is
+unconditional in code with the hunk named in its comment.
+
+### Unit 4 — the five verbs + REST edges + realtime
+
+`api/subprompts.rs` (the `// === P4.D163 ===` fences in `api/mod.rs`,
+`api/types.rs`, `api/engine.rs`): `characterSubprompt{List,Get,Create,Update,
+Delete}` → `Response::Character` (the `characterPrompt*` precedent — no new
+Response variant). **The guard ladders as MEASURED** by `harness/oracle/cases/
+subprompts-routes.test.ts` on v4's real handlers through the real middleware
+(58 cases): POST and PUT parse the body FIRST (`create_bad_body_missing_
+character_400_not_404`, `update_bad_body_missing_character_400_not_404`; on
+PUT Zod even precedes the id check — `update_bad_body_bad_id_400_zod_first`),
+GET and DELETE validate the id first (`get_bad_id_missing_character_400_not_
+404`, `delete_bad_id_missing_character_400_not_404`), good everything + a
+missing character → 404 `Character not found`; the SERVICE's validators run
+after the lookup (`create_service_title_blank_missing_character_404`) and
+after Zod (`create_service_title_100_astral_400` — 100 astral code points pass
+`.max(100)`, fail v4's UTF-16 `.length`); `findByIdRaw` lets an archived
+character READ (`list_d_archived_reads`, `get_d_keep_archived_reads`) and the
+writes answer the three per-verb 409 sentences. The Zod envelope: `Response::
+validation_error` over `CreateZodIssue` in the measured shapes (`invalid_type`
+absent/null/wrong-type, `too_small` min 1, `too_big` max 100 CODE POINTS,
+issues in schema key order — `create_zod_both_bad_two_issues_400`); the
+non-object body (`create_zod_body_null_400`: ONE issue, `expected object`
+at path `[]`) is `body_not_object_details`, rendered by the REST edge (the
+flat dispatch variant cannot say "the body was null") and by the handler for
+any non-object it is handed. The dispatch variants carry `title` / `content`
+RAW + `double_option` (P4.D57's idiom; two one-line `#[serde]` attributes
+each — the census parser rule from unit 1); `flat_body` folds the tri-states
+back into the object the ONE ladder reads. Update's `updatedFields` =
+`Object.keys(validated)` = the present keys; PUT/DELETE run the fan-out AFTER
+the write and fold `{chatsTouched, seatsRecompiled}` into the info line ONLY
+(a test asserts the body carries neither key); every successful write
+publishes `characters/<id>` through the same seam (`FanoutSeams::
+publish_character`, so one recorder sees both topics). `quilltap-web/src/
+subprompts_routes.rs` + two route lines in the `web/src/lib.rs` fence: v4's
+five URLs, POST → 201, the `details`-aware unwrap (the `images_routes`
+precedent), a malformed-JSON body read as `{}` (the `help_routes` precedent;
+v4's `request.json()` SyntaxError arm is NOT in the corpus — recorded as
+unmeasured). `chats_routes.rs` untouched (unit 1's measurement).
+**`subprompts_routes_equivalence`** — 58/58 on the FIRST run (status via the
+ErrorKind mapping, bodies byte-for-byte incl. `details`, the recorded
+publishes, a path-keyed census). **`subprompts_web_routes`** (web) — the five
+edges over real HTTP: the title-sorted list, the 201, the edge's non-object
+envelope byte-for-byte, the 400-beats-404 on POST, the id gate, the archived
+read + the archived 409 on PUT, the DELETE's `{success:true}` then 404, and the
+strip proven off the instance's main partition. The dispatch census's
+`EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 411 → 419 (eight genuine
+`/characters/[id]/subprompts/[subpromptId]` segments — recorded in the
+constant's comment).
+
+**FINAL wire shapes for the unifier's §C diff:** `characterSubpromptList
+{characterId}` → `{subprompts: SubpromptRecord[]}`; `characterSubpromptGet
+{characterId, subpromptId}` → `{subprompt}`; `characterSubpromptCreate
+{characterId, title, content}` → `{subprompt}` (201 at the REST edge);
+`characterSubpromptUpdate {characterId, subpromptId, title?, content?}` →
+`{subprompt}`; `characterSubpromptDelete {characterId, subpromptId}` →
+`{success: true}`; all five answer the `character` Response tag
+(`{type: "character", data: …}` on `/api/dispatch`). `SubpromptRecord` keys in
+§C.1 order: `id, path, title, content, updatedAt`.
+
+### Unit 5 — the log lines, capture-pinned
+
+`subprompts::storage::log_tests` (4): `Skipping unreadable subprompt file`
+(WARN, `vault_id` / `relative_path=Subprompts/broken.md` / `error=<v4's exact
+NOT_FOUND sentence>`) + `Listed subprompts` (DEBUG, `count=5`); `Character
+has no vault; no subprompts` (DEBUG); `Some selected subprompts no longer
+exist` (DEBUG, `selected=3 found=2`, silent when every id resolves) + `Failed
+to resolve selected subprompts — continuing without them` (WARN, a store-less
+mount partition) with `[]`; `Provisioned a vault for a character with none
+before writing a subprompt` (WARN, `mount_point_id` = the adopted store) +
+`Created subprompt` (INFO) / `Updated subprompt` (`changed=["title"]`) /
+`Deleted subprompt` (`deleted=false`). `subprompts::fanout::log_tests` (2):
+`Failed to recompile a seat after a subprompt change` (WARN, the five-key
+bag, the loop continuing — `{2, 1}`) + `Subprompt change fanned out` (INFO,
+`remove_selection=true chats_touched=2 seats_recompiled=1`); `Could not list
+chats for subprompt fan-out` (WARN + zeros, the info line NOT reached).
+`api::subprompts::log_tests` (2): `[Characters v1] Listed subprompts` (DEBUG,
+`count=5`) / `Subprompt created` (INFO, `user_id`, `subprompt_id=logged`) /
+`Subprompt updated` (`updated_fields=["title"] chats_touched=2
+seats_recompiled=2`, the counts NOT in the body) / `Subprompt deleted`; three
+`characters/<id>` publishes for three writes and none for a refusal; `Error
+listing subprompts` (ERROR) with v4's fixed `Failed to list subprompts`. The
+unit-1 `[Chats v1] Recompiling identity stack…` line is pinned in
+`chat_participants::subprompt_tests`. Targets: `quilltap::subprompts`,
+`quilltap::subprompts::fanout`, `quilltap::characters`, `quilltap::chats`.
+
+Versions: core 0.0.822, harness 0.0.712, web 0.0.124.

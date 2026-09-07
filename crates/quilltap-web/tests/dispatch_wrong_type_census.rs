@@ -2428,7 +2428,13 @@ fn is_route_identifier(field: &str) -> bool {
 // every one of them a v4 `/[id]/` URL segment — 403 → 410.
 // P4.80 added ONE more (`ChatDelete.chat_id`), also a genuine `/[id]/` segment:
 // v4's `handleDelete` takes it from the route params, never from a body — 410 → 411.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 411;
+// P4.D163 added EIGHT (`CharacterSubprompt{List,Get,Create,Update,Delete}.
+// character_id` + `CharacterSubprompt{Get,Update,Delete}.subprompt_id`), every
+// one a v4 URL segment — `/characters/[id]/subprompts/[subpromptId]`, read from
+// the route params by `createContextParamsHandler`, never from a body; the two
+// body keys those verbs carry (`title` / `content`) ride as `Value` and are the
+// handler's Zod ladder — 411 → 419.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 419;
 
 #[test]
 fn census_covers_every_typed_request_field() {

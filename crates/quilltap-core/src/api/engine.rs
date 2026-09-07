@@ -5129,6 +5129,74 @@ impl CoreEngine {
                     Err(r) => r,
                 }
             } // === end P4.9I2A ===
+            // === P4.D163: the character-subprompts verbs (v4 `2f4254b42`) ===
+            Request::CharacterSubpromptList { character_id } => match self.ready_db() {
+                Ok(db) => super::subprompts::character_subprompt_list(&db, &character_id).await,
+                Err(r) => r,
+            },
+            Request::CharacterSubpromptGet {
+                character_id,
+                subprompt_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::subprompts::character_subprompt_get(&db, &character_id, &subprompt_id)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterSubpromptCreate {
+                character_id,
+                title,
+                content,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::subprompts::character_subprompt_create(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        super::subprompts::flat_body(title, content),
+                        std::sync::Arc::new(crate::subprompts::ProductionFanoutSeams),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterSubpromptUpdate {
+                character_id,
+                subprompt_id,
+                title,
+                content,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::subprompts::character_subprompt_update(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &subprompt_id,
+                        super::subprompts::flat_body(title, content),
+                        std::sync::Arc::new(crate::subprompts::ProductionFanoutSeams),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::CharacterSubpromptDelete {
+                character_id,
+                subprompt_id,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::subprompts::character_subprompt_delete(
+                        &db,
+                        SINGLE_USER_ID,
+                        &character_id,
+                        &subprompt_id,
+                        std::sync::Arc::new(crate::subprompts::ProductionFanoutSeams),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D163 ===
         }
     }
 
