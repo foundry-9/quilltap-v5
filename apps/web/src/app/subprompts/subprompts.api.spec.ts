@@ -12,6 +12,7 @@ import {
   getSubprompt,
   injectCharacterSubprompts,
   listSubprompts,
+  subpromptErrorMessage,
   updateSubprompt,
   type CharacterSubprompts,
 } from './subprompts.api';
@@ -34,6 +35,33 @@ function stub(answers: Record<string, unknown> = {}, seen: Req[] = []): CoreClie
     }),
   } as unknown as CoreClient;
 }
+
+describe('subpromptErrorMessage — v4 `useCharacterSubprompts.ts:38-44`', () => {
+  it('an Error yields its own message', () => {
+    expect(subpromptErrorMessage(new Error('Subprompt not found'), 'fallback')).toBe(
+      'Subprompt not found',
+    );
+  });
+
+  it('a BLANK-message Error yields the caller’s sentence — not an empty toast', () => {
+    // The measured difference from the shared `coreErrorMessage`, which ports
+    // v4's OTHER helper (`apiErrorMessage`, `lib/query/fetcher.ts:64`) and has
+    // no truthiness check. v4's subprompts helper does, and this is the arm
+    // where the two disagree.
+    expect(subpromptErrorMessage(new Error(''), 'Failed to create subprompt')).toBe(
+      'Failed to create subprompt',
+    );
+  });
+
+  it('a non-Error yields the caller’s sentence', () => {
+    expect(subpromptErrorMessage('nope', 'Failed to delete subprompt')).toBe(
+      'Failed to delete subprompt',
+    );
+    expect(subpromptErrorMessage(undefined, 'Failed to list subprompts')).toBe(
+      'Failed to list subprompts',
+    );
+  });
+});
 
 describe('the five subprompt verbs (§C.2)', () => {
   it('characterSubpromptList sends only the character id and unwraps `subprompts`', async () => {

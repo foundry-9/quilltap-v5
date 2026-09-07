@@ -20,15 +20,33 @@ import { characterKeys } from '../screens/characters/characters.api';
  * because no URL is ever built — the id rides as a JSON field of
  * `characterSubpromptGet` / `…Update` / `…Delete`.
  *
- * v4's `subpromptErrorMessage(err, fallback)` has no counterpart either, and for
- * a measured reason: its first branch unwraps an `ApiFetchError`'s parsed
- * `{error}` body, but v5's {@link CoreDispatchError} is CONSTRUCTED from the
- * `{type:"error"}` envelope, so `err.message` is already that sentence. What is
- * left — an `Error` yields its message, anything else the caller's fallback — is
- * exactly `coreErrorMessage`, which every subprompts surface calls directly.
+ * {@link subpromptErrorMessage} is ported rather than folded into the shared
+ * `coreErrorMessage`, because MEASUREMENT says the two are not the same
+ * function. v4 has both: `apiErrorMessage` (`lib/query/fetcher.ts:54-66`, what
+ * `coreErrorMessage` ports) ends `if (err instanceof Error) return err.message`,
+ * while this feature's own helper (`useCharacterSubprompts.ts:38-44`) ends
+ * `err instanceof Error && err.message ? err.message : fallback` — so a
+ * blank-message `Error` gets the CALLER's sentence here and an empty string
+ * there. The difference is user-visible: an empty toast versus "Failed to
+ * create subprompt".
  *
  * @module subprompts/subprompts.api
  */
+
+/**
+ * A readable message from a failed subprompt request — v4
+ * `subpromptErrorMessage` (`components/subprompts/useCharacterSubprompts.ts
+ * :38-44`), tail included.
+ *
+ * v4's FIRST branch is the piece with no counterpart: it unwraps an
+ * `ApiFetchError`'s parsed `{error}` body, and v5's {@link CoreDispatchError} is
+ * CONSTRUCTED from the `{type:"error"}` envelope, so `err.message` is already
+ * that sentence. The tail is ported verbatim, and the `&& err.message` in it is
+ * load-bearing — see the module header.
+ */
+export function subpromptErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
+}
 
 /** §C.2 `characterSubpromptList` — title-sorted; `[]` for no vault / no folder. */
 export async function listSubprompts(

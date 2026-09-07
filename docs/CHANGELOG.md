@@ -584,6 +584,44 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — feat(subprompts): the picker and the editor dialog — v4's copy, classes, ARIA and states, the keyed remount, and the missing-id rows
+
+_Versions: SPA 0.5.667._
+
+P4.D165 unit 2. `qt-subprompt-picker` and `qt-subprompt-editor-modal` port v4's
+`SubpromptPicker.tsx` and `SubpromptEditorModal.tsx` at `2f4254b42`: the
+disclosure with its three-armed summary (`None on file` / `Loading…` /
+`N of M in play`), the deferred read (`open || selectedIds.length > 0`), one
+labelled checkbox per record with the content's first 200 characters as its
+title, the struck-through rows for ids that no longer match a file — shown only
+once the list has answered, since an unloaded id is not a dead one — and the
+`New subprompt…` action that opens the editor in place and ticks a freshly
+created record on.
+
+The dialog's keyed remount is v4's, mechanism included: v4 renders its form
+under `key={editing?.id ?? 'new'}` so each opening mounts a fresh instance and
+no reset effect is needed. Angular has no `key`, so the remount is a
+one-element `@for` tracked by the same string — the seed then lives in
+`ngOnInit`, never an effect.
+
+**A correction to unit 1, found by its own spec.** Unit 1 recorded
+`subpromptErrorMessage` as having converged onto the shared `coreErrorMessage`.
+Measurement says otherwise: v4 ships BOTH helpers with different tails —
+`apiErrorMessage` (`lib/query/fetcher.ts:64`, what `coreErrorMessage` ports)
+ends `if (err instanceof Error) return err.message`, while the subprompts
+helper (`useCharacterSubprompts.ts:43`) ends `err instanceof Error &&
+err.message ? err.message : fallback`. On a blank-message error the two
+disagree visibly — an empty toast against "Failed to create subprompt" — so
+`subpromptErrorMessage` is ported as its own function with v4's tail, and only
+its `ApiFetchError` branch stays recorded as having no counterpart.
+
+Four pins were mutation-proven: dropping the truthiness tail, showing the
+missing-id rows while loading, dropping the toggle's no-op guard, and dropping
+the `mode === 'created'` guard each redden exactly their own specs. The class
+strings are pinned at their SOURCE rather than on the element — Angular's
+`[class]` binding sorts and dedups the DOM token list, so a transcribed
+`className` assertion would have measured nothing.
+
 #### 2026-09-07 — feat(subprompts): the subprompts wire — the five §C.2 verbs, the shared query helper, the query key, the realtime fan-out, and the fourteenth prompt-field hint
 
 _Versions: SPA 0.5.666._
