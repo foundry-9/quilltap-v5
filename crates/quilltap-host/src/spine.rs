@@ -124,7 +124,8 @@ use quilltap_core::services::carina_runner::{
 };
 use quilltap_core::services::character_avatar_job::CharacterAvatarGenerationHandler;
 use quilltap_core::services::chat_create::{
-    handle_create, ChatCreateDeps, ChatCreateRequest, ChatCreateResult, HandleCreateError,
+    handle_create, validate_create_body, ChatCreateDeps, ChatCreateRequest, ChatCreateResult,
+    HandleCreateError,
 };
 use quilltap_core::services::chat_events::{ChatEvent, EventSink};
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
@@ -1885,12 +1886,13 @@ where
 
 /// Map a [`HandleCreateError`] to the transport [`CoreError`] (the same shape
 /// the engine's `ChatCreate` arm returns).
-fn map_create_error(e: HandleCreateError) -> CoreError {
+pub fn map_create_error(e: HandleCreateError) -> CoreError {
     let kind = match &e {
         HandleCreateError::NotFound(_) => ErrorKind::NotFound,
         HandleCreateError::BadRequest(_) => ErrorKind::BadRequest,
         HandleCreateError::Db(_) => ErrorKind::Internal,
     };
+    let details = e.details().cloned().map(Box::new);
     CoreError {
         kind,
         message: e.to_string(),
@@ -1899,7 +1901,7 @@ fn map_create_error(e: HandleCreateError) -> CoreError {
         associations: None,
         character_id: None,
         entity: None,
-        details: None,
+        details,
     }
 }
 
@@ -2047,6 +2049,19 @@ where
             lifecycle: &lifecycle,
             greeting_log: true,
         };
+
+        // v4 validates the body FIRST (`route.ts:1084`
+        // `createChatSchema.parse(body)`) and only THEN builds the
+        // creation-progress emitter (`:1090`), so a refused body never opens a
+        // progress scope. `handle_create` re-runs this same stage internally
+        // (idempotent — same issues), but by then the emitter would already
+        // exist; check here, before constructing it, so a bad body emits no
+        // frame.
+        if let Err(issues) = validate_create_body(&request.raw) {
+            return Err(map_create_error(HandleCreateError::validation_error(
+                &issues,
+            )));
+        }
 
         let emitter = CreationProgressEmitter::from_id(
             request.progress_id.as_deref(),

@@ -951,46 +951,158 @@ fn chat_create_capstone_matches_oracle() {
     }
 }
 
-/// **P4.78's one loud deferral, made executable.**
+/// **P4.78's deferral, discharged (P4.81 item 1) — the positive twin.**
 ///
 /// The differential above proves the ENGINE half: `handle_create` answers v4's
 /// `{error: 'Validation error', details: [...]}` and
-/// [`HandleCreateError::details`] carries the issue array byte-for-byte. It
-/// does NOT reach the wire: the `HandleCreateError` → `CoreError` mapping lives
-/// in `quilltap-host/src/spine.rs::map_create_error`, which hard-codes
-/// `details: None`, and `crates/quilltap-host/**` is NOBODY's file this round
-/// (the P4.78 order's Ownership table). So a `chatCreate` refusal reaches an
-/// HTTP/Tauri caller today with v4's sentence and WITHOUT v4's `details` array.
-///
-/// The ordered shape is one line — `details: e.details().cloned().map(Box::new)`
-/// in `map_create_error`, taken before `e.to_string()` moves it. This test is
-/// the tripwire: it asserts the gap is still there, so the day a lane that owns
-/// the host closes it, this fails and says so rather than leaving a stale
-/// deferral in the docs.
+/// [`HandleCreateError::details`] carries the issue array byte-for-byte. This
+/// test proves the HOST half reaches the wire: `quilltap_host::spine::
+/// map_create_error` now carries `e.details().cloned().map(Box::new)` onto the
+/// transport [`CoreError`], so a `chatCreate` refusal answers v4's `details`
+/// array through an HTTP/Tauri caller, not just through the engine's own
+/// `Result`. `p4_78_host_wire_details_carry_is_deferred` — the tripwire that
+/// used to hold this gap open — is retired; this is its positive twin.
 #[test]
-fn p4_78_host_wire_details_carry_is_deferred() {
-    let spine = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("the harness crate sits two levels under the repo root")
-        .join("crates/quilltap-host/src/spine.rs");
-    let src =
-        std::fs::read_to_string(&spine).unwrap_or_else(|e| panic!("read {}: {e}", spine.display()));
-    let start = src
-        .find("fn map_create_error(")
-        .expect("quilltap-host no longer declares `map_create_error`");
-    let body = &src[start..start + 700.min(src.len() - start)];
-    assert!(
-        body.contains("details: None"),
-        "`map_create_error` no longer drops the Zod `details` bag — P4.78's \
-         deferral has been discharged by a host-owning lane. Delete this test \
-         and the deferral note in the P4.78 lane record, and add the wire \
-         assertion the discharge deserves."
+fn p4_81_host_wire_carries_create_details() {
+    use quilltap_core::api::types::ErrorKind;
+
+    // A validation refusal WITH issues — the shape that actually reaches a
+    // caller (an empty issue list would make the byte comparison vacuous).
+    let issues = vec![
+        quilltap_core::services::chat_create::CreateZodIssue::InvalidType {
+            expected: "array",
+            code: "invalid_type",
+            path: vec![Value::String("participants".to_string())],
+            message: "Invalid input: expected array, received undefined".to_string(),
+        },
+    ];
+    let engine_err = HandleCreateError::validation_error(&issues);
+    let engine_details = engine_err
+        .details()
+        .cloned()
+        .expect("a validation refusal always carries details");
+
+    let host_err = quilltap_host::spine::map_create_error(engine_err);
+    assert_eq!(host_err.kind, ErrorKind::BadRequest);
+    assert_eq!(host_err.message, "Validation error");
+    assert_eq!(
+        host_err.details.as_deref(),
+        Some(&engine_details),
+        "the host's CoreError must carry the SAME details bag the engine \
+         produced — byte-for-byte, not re-derived"
     );
-    // …and the bag it is dropping is really there to drop.
+
+    // The negative control: a plain `badRequest(...)` (no Zod issues) still
+    // carries no `details` key, on both sides — the host must not invent one.
+    let plain = HandleCreateError::bad_request("Source chat not found");
+    assert!(plain.details().is_none());
+    let host_plain = quilltap_host::spine::map_create_error(plain);
     assert!(
-        HandleCreateError::validation_error(&[]).details().is_some(),
-        "the engine half regressed: a validation refusal no longer carries \
-         `details`, so there is nothing for the host to forward"
+        host_plain.details.is_none(),
+        "a plain badRequest refusal must not gain a details key crossing the \
+         host boundary"
     );
+}
+
+/// **P4.81 item 2 — the progress emitter's creation, pinned at the wire.**
+///
+/// v4 validates the body FIRST (`route.ts:1084` `createChatSchema.parse`) and
+/// only THEN builds the creation-progress emitter (`:1090`), so a refused body
+/// never opens a progress scope. `ChatCreateSpine::run_create` now runs the
+/// same `validate_create_body` check before constructing the
+/// [`CreationProgressEmitter`], ahead of `handle_create` (spine.rs). This is
+/// the wire proof: a real `ChatCreateSpine::create` call over an invalid body
+/// answers v4's refusal AND emits NO frame on the engine's `Event` broadcast —
+/// the "creation progress scope" a live subscriber (Green Room / `/api/events`)
+/// would otherwise see opened.
+#[test]
+fn p4_81_refused_create_emits_no_progress_frame() {
+    let (Some(fixture_main), Some(fixture_mount)) = (
+        env_or_skip("QT_FIXTURE_CC_MAIN"),
+        env_or_skip("QT_FIXTURE_CC_MOUNT"),
+    ) else {
+        return;
+    };
+
+    use quilltap_core::api::{ChatCreateDriver, ChatCreateDriverRequest, EventPayload};
+    use quilltap_core::services::creation_progress::CreationProgressBus;
+    use quilltap_host::spine::ChatCreateSpine;
+
+    let spec: Spec = serde_json::from_str(
+        &std::fs::read_to_string(spec_path()).unwrap_or_else(|e| panic!("read spec: {e}")),
+    )
+    .expect("parse spec");
+
+    let scratch = std::env::temp_dir().join(format!(
+        "qt-cc-nowire-{}-{}",
+        std::process::id(),
+        "p4_81_refused_create_emits_no_progress_frame"
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).expect("scratch dir");
+    // `ChatCreateSpine::run_create` opens the partitions by their LITERAL
+    // filenames under `data_dir` (`spine.rs::open("quilltap.db")` etc.) — not
+    // arbitrary paths, unlike the engine-level `Db::open` above.
+    let main_work = scratch.join("quilltap.db");
+    let mount_work = scratch.join("quilltap-mount-index.db");
+    std::fs::copy(&fixture_main, &main_work).expect("copy main");
+    std::fs::copy(&fixture_mount, &mount_work).expect("copy mount");
+
+    let db = Db::open(
+        DbPaths {
+            main: main_work.clone(),
+            mount_index: Some(mount_work.clone()),
+            llm_logs: None,
+        },
+        &spec.test_pepper_base64,
+    )
+    .expect("open db");
+
+    let (events_tx, mut events_rx) = tokio::sync::broadcast::channel(16);
+    let bus = std::sync::Arc::new(CreationProgressBus::new());
+
+    let spine = ChatCreateSpine {
+        db,
+        events: events_tx,
+        bus,
+        pepper: spec.test_pepper_base64.clone(),
+        data_dir: scratch.clone(),
+        embedding: std::sync::Arc::new(CannedEmbeddingProvider::new()),
+        completion: std::sync::Arc::new(CannedCompletionProvider::new()),
+        streaming: std::sync::Arc::new(CannedStreamingProvider::new()),
+        tz: "UTC".to_string(),
+    };
+
+    // An invalid body — no `participants` at all — the FIRST rule
+    // `validate_create_body` checks.
+    let req = ChatCreateDriverRequest {
+        raw: json!({ "progressId": "8f2c1e40-0000-4000-8000-00000000e2e1" }),
+    };
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("tokio runtime");
+    let result = rt.block_on(spine.create(req));
+
+    let err = result.expect_err("an empty body must refuse, not create a chat");
+    assert_eq!(err.kind, quilltap_core::api::types::ErrorKind::BadRequest);
+    assert_eq!(err.message, "Validation error");
+    assert!(err.details.is_some(), "the refusal must carry Zod details");
+
+    // The pin: NO CreationProgress frame reached the engine's Event broadcast.
+    match events_rx.try_recv() {
+        Err(tokio::sync::broadcast::error::TryRecvError::Empty) => {}
+        Err(other) => panic!("unexpected broadcast state: {other:?}"),
+        Ok(ev) => {
+            let is_progress = matches!(ev.payload, EventPayload::CreationProgress(_));
+            panic!(
+                "a refused create body must open NO progress scope, but got \
+                 an event (progress_id={:?}, is_creation_progress={is_progress})",
+                ev.progress_id
+            );
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&scratch);
 }

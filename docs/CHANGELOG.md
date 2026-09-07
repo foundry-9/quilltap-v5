@@ -231,6 +231,35 @@ Deferred loudly (tier 3, named not performed): the five per-caller JSON
 extractors v5 already carries stay where they are — each is oracle-pinned in
 place, and `generators::llm_json` is a NEW home for v4's module, not a
 consolidation of them.
+#### 2026-09-07 — fix(host): the chatCreate refusal wire carries v4's Zod details, and the progress emitter waits on validation (P4.81 items 1–2)
+
+_Versions: host 0.0.106, harness 0.0.701._
+
+`quilltap-host/src/spine.rs::map_create_error` hard-coded `details: None`
+on every `HandleCreateError` → `CoreError` mapping; P4.78 had already
+threaded v4's Zod `details` array through the engine half
+(`HandleCreateError::details()`), but the host wire dropped it before it
+ever reached an HTTP/Tauri caller — a `chatCreate` refusal answered v4's
+sentence without the issue array. Now carries `e.details().cloned().map
+(Box::new)`. The `p4_78_host_wire_details_carry_is_deferred` tripwire that
+held this gap open is retired into its positive twin,
+`p4_81_host_wire_carries_create_details`, which drives the mapping
+directly and also proves a plain `badRequest(...)` (no Zod issues) still
+carries no `details` key.
+
+Separately, `ChatCreateSpine::run_create` built the `CreationProgressEmitter`
+BEFORE calling `handle_create` — v4 builds its emitter AFTER
+`createChatSchema.parse(body)` (`route.ts:1084` then `:1090`). Measured:
+the emitter's own construction has no side effect (it only ever touches
+the bus/events channel via an explicit `.status()`/`.emit()` call, and
+`handle_create` already re-validates before touching the emitter), so the
+existing behaviour was already correct — a refused body was already
+emitting no frame. The two-phase shape is still the byte-faithful one:
+`run_create` now runs `validate_create_body` itself, ahead of the emitter,
+and returns the mapped refusal before constructing it. Pinned by a new
+wire test, `p4_81_refused_create_emits_no_progress_frame`, which drives a
+real `ChatCreateSpine::create` over an invalid body and asserts the
+engine's `Event` broadcast received nothing.
 
 #### 2026-09-07 — docs(porting): order the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81)
 Docs only — no crate versions bumped. Planned by `/setupphase` from the
