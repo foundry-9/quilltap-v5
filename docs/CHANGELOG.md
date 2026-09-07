@@ -282,6 +282,41 @@ regenerated at that pin through the sweep driver and re-run green; the fresh
 `help_tree_embed_guard`'s hard-coded vendored count moved 120 → 121 (its
 tripwire fired as designed on the first run). No Rust source moved; the host
 bump is the embed.
+#### 2026-09-07 — feat(generators): P4.9K1 unit 3 — the external-prompt generator as a driver-backed dispatch verb, plus the shared generated-wardrobe-items leaf
+
+_Versions: core 0.0.821, harness 0.0.710, host 0.0.107._
+
+Ports v4's `lib/services/external-prompt-generator.service.ts` as
+`generators::external_prompt` (the whole file at the pin, which closes the
+P4.D82/P4.D83 riders `f933ba9c` + `d89babc4`) behind the
+`characterGenerateExternalPrompt` verb: v4's guard order (the character 404,
+then `generateExternalPromptSchema.parse` with its Zod `details` — the
+`z.string().uuid()` `invalid_format` shape, the aborting `int()` check, the
+inclusive `min`/`max`), then the new `GeneratorsDetailDriver` seam (the
+`HelpChatSendDriver` precedent; `None` answers a named `Unavailable` refusal
+AFTER the 404 + Zod arms), then v4's `{prompt, tokensUsed}` / the
+`result.error || 'Generation failed'` 500. The host assembles `None` for now;
+the driver unit wires it live.
+
+New tier-3 family `external_prompt_tier3_equivalence` (16 cases over fresh
+copies of the committed characters pair; the model boundary canned on both
+sides from the oracle's recorded call; the whole assembled user message plus
+model / temperature / maxTokens / cacheKey / profileParameters compared as
+bytes; the over-budget refusal exercised through a seeded profile
+`maxContext`) — green on its first run. Four mutation proofs recorded.
+
+Also lands `generators::generated_items` — v4's `lib/wardrobe/generated-items.ts`
+(the shared LLM-wardrobe shape, generation prompt, sanitizer, and leaf-first
+ordering that K0's substrate did not port and every generator needs) — with
+the tier-1 `generated_wardrobe_items_equivalence` family (22 sanitize rows,
+9 ordering rows, the prompt bytes; three mutation proofs).
+
+Recorded, not compared: the api key v4 hands `sendMessage` (v5's provider
+seam resolves its own — the standing host key scan) and the `EXTERNAL_PROMPT`
+`llm_logs` row (the committed pair carries no llm-logs partition). The dispatch
+wrong-type census's route-identifier count moves 413 → 414 for the new verb's
+`character_id`.
+
 #### 2026-09-07 — feat(generators): P4.9K1 unit 2 — the character Rename/Replace service + refresh-archive as dispatch verbs, with the rename differential
 
 _Versions: core 0.0.820, harness 0.0.709._

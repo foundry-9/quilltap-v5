@@ -32,6 +32,8 @@
 // `wizard` / `ai_import`), each inside its own `// === P4.9K<n> ===` fence.
 
 // === P4.9K1 ===
+pub mod external_prompt;
+pub mod generated_items;
 pub mod optimizer;
 pub mod refresh_archive;
 pub mod rename;

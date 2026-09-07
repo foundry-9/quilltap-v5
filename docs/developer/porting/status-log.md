@@ -112486,3 +112486,104 @@ is DAX; a character whose seat is `absent` (Fenn) still counts, because v4's
 `findByCharacterId` matches `participants.characterId` regardless of status.
 The two `logLLMCall` rows this order's Tier-2 item 10 asks about are not on
 this unit's path (the rename service makes no model call).
+
+### Unit B (K1 item 2 + the `characterGenerateExternalPrompt` verb + the driver trait of item 5) — `generators::external_prompt`
+
+**The port.** `crates/quilltap-core/src/generators/external_prompt.rs` is
+v4's `external-prompt-generator.service.ts` as it stands at the pin — which
+**closes the two riders** the P4.D82/P4.D83 round banked for "the future
+generators lane": `f933ba9c` (the profile-first 4-arg `getSafeInputLimit`,
+composed here from `model_context::get_safe_input_limit` over the built-in
+registry's default window — the `chat_create` recent-conversations precedent
+for the empty `model_info`/pricing rows) and `d89babc4` (`profileParams(profile)`
+→ `profile_params_value`). `META_SYSTEM_PROMPT` and `build_user_message` are
+byte-exact (every section gate is JS truthiness over the overlaid raw value;
+the `.length`-based token estimate counts UTF-16 units); every refusal is a
+`{success:false, error}` result, and only a DB read failure escapes as `Err`
+(v4's throw). The api key is resolved for read-order fidelity and dropped —
+v5's provider seam resolves per provider (the P4.D93-recorded host key scan).
+
+**The verb + the seam.** `Request::CharacterGenerateExternalPrompt {
+characterId, connectionProfileId?, systemPromptId?, scenarioId?, maxTokens? }`
+(every body field the `double_option` tri-state — `.optional()` admits only
+`undefined`), handled by `generators_detail::character_generate_external_prompt`:
+404 → the Zod 400 (`z.string().uuid()`'s `invalid_format` issue carries the
+pattern verbatim; `int()` ABORTS the bounds so a fractional value answers one
+issue — both measured) → `[Characters v1] External prompt generation starting`
+→ the NEW `GeneratorsDetailDriver` (`api/generators_detail.rs`; the
+`HelpChatSendDriver` shape — `EngineAssembly.generators_detail`, the
+`ready_db_and_generators_detail` gate, `None` → a NAMED `ErrorKind::Unavailable`
+refusal placed AFTER the 404 + Zod arms so a read-only embedder still answers
+v4's shapes short of the model call) → `{prompt, tokensUsed}` or the
+`result.error || 'Generation failed'` 500. The host assembles `None` in this
+unit (its fence in `host.rs`); the driver unit wires it LIVE.
+
+**The differential — `external_prompt_tier3_equivalence`** (tier 3; 16 cases;
+`harness/oracle/cases/external-prompt-tier3.test.ts` drives v4's REAL route
+with `createLLMProvider` canned — recording provider / baseUrl / model /
+temperature / maxTokens / cacheKey / profileParameters / the whole message
+list — over fresh copies of the committed characters pair; seeds through the
+`repos.characters.update` ↔ `update_character` and `repos.connections.update`
+↔ `ConnectionProfilesRepository::update` twins). The Rust side registers the
+canned reply under the ORACLE's recorded key, so a one-byte prompt drift
+misses the table and fails loudly. Arms: rich (every section) / bare /
+dangling-scenario / absent-usage / empty answer / provider throw / missing
+profile / missing prompt / missing character (404 beats Zod) / archived
+character generates / OVER BUDGET (a seeded `maxContext: 1200` + a
+5,000-character description → v4's exact sentence with `~1160` / `~1000`) /
+within budget / three Zod shapes. **Green on its first run** (16/16, 8 model
+calls byte-compared).
+
+**Four mutation proofs**, each reddening its arm(s): a heading byte
+(`## Description` → `## Descriptions`) → every case that reaches the model;
+the empty-content refusal removed → `empty_model_answer`; the over-budget
+guard removed → `over_budget_refuses`; the scenario-content gate spelled
+nullish instead of truthy → **SURVIVED, correctly**: the second guard inside
+`build_user_message` (v4's own `if (scenarioContent)`) re-filters an empty
+string, so the two guards are in series on both sides and no case can
+differ — the mutation LOCATED the real chokepoint rather than a coverage
+gap (the "a second normalize masks the first" class). Recorded, not chased.
+
+Recorded, not compared: the api key argument; the `EXTERNAL_PROMPT`
+`llm_logs` row (v4 writes it to its scratch data dir; the committed pair has
+no llm-logs partition — the order's Tier-2 item 10 stays a named deferral for
+this family, with the row's shape ported: the two-message request bag,
+`temperature: 0.7`, the response content, usage, and duration).
+
+### Unit C0 (the shared leaf both orders need) — `generators::generated_items`
+
+v4 `lib/wardrobe/generated-items.ts` — the LLM-wardrobe item shape,
+`WARDROBE_ITEMS_GENERATION_PROMPT`, `sanitizeGeneratedWardrobeItems` and
+`orderGeneratedItemsLeafFirst` — was NOT in K0's substrate (its record names
+it out of that lane's tree) and every generator consumes it (the optimizer's
+wardrobe sub-step, the wizard's `wardrobeItems`, the import's
+`wardrobe_items` + assembly). Landed under the P4.9K1 fence as the optimizer
+runner's first consumer; K2 consumes it as-is. The sanitizer takes the PARSED
+model answer as a `Value` (the corpus rows that matter are the ones a typed
+input would refuse before the coercion ran) and serializes in v4's literal
+key order with `undefined` keys omitted, which is exactly what the
+`JSON.stringify` comparand sees. The ordering is a STABLE sort by depth with
+the `items.find` first-match rule and the defensive self-reference stop.
+
+**The differential — `generated_wardrobe_items_equivalence`** (tier 1;
+`harness/oracle/cases/generated-wardrobe-items.ts` over the committed
+`generated-wardrobe-items.json`): the prompt bytes, 22 sanitize rows
+(non-arrays, blank/absent titles, non-array `types`, invalid slots, coerced
+optionals, case-insensitive + trimmed component resolution, self-reference,
+non-string components, the `Straße`/`STRASSE` fold) and 9 ordering rows
+(nested depth, stability among equals, unknown components, cycles). Green on
+its first run. Three mutation proofs: the self-reference exclusion dropped →
+`components-self-reference-dropped`; the `imagePrompt` trim dropped →
+`trims-title-and-image-prompt`; the equal-depth order reversed → 5 rows
+(`stable-among-equal-depth` + four siblings whose equal-depth leaves reorder).
+Every mutation restored by file backup and both families re-run green.
+
+**Gate (Units B + C0, one validated tree, one commit):** fmt clean; clippy both
+feature sets clean (the first run caught a `redundant_closure` in the ordering
+leaf, fixed); `cargo test --workspace` with the three families' env vars —
+**518 test binaries / 2,939 passed / 0 failed, zero `SKIP:` lines** (the first
+run stopped fail-fast at the dispatch wrong-type census: the external-prompt
+verb's `character_id` is one more route identifier, 413 → 414); the three
+families re-run by name with `--nocapture`: rename 27 cases, external prompt
+16 cases / 8 model calls, wardrobe items 22 + 9 rows + the prompt. Versions:
+core 0.0.821, harness 0.0.710, host 0.0.107.

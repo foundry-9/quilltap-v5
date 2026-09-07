@@ -19,6 +19,14 @@
 //!   request`. NOTE the service receives the already-loaded character.
 //! * `refresh-archive` — no body; the arm's own catch answers 500 `Failed to
 //!   refresh conversation archive`.
+//! * `generate-external-prompt` — `generateExternalPromptSchema.parse(body)`
+//!   (the same uncaught-Zod 400), the `[Characters v1] External prompt
+//!   generation starting` line, then the service through the host driver; a
+//!   `{success: false}` result is a 500 whose message is `result.error ||
+//!   'Generation failed'`, and a `{success: true}` one answers
+//!   `{ prompt, tokensUsed }`. The DRIVER refusal (no host bundle) comes
+//!   after the 404 and the Zod arms, so a read-only embedder still answers
+//!   v4's shapes for everything short of the model call.
 //!
 //! Neither arm carries an archived-character refusal: v4 hides the tabs
 //! client-side (`CharacterDetailView.tsx:415`) and the server runs the request
@@ -26,15 +34,51 @@
 //! write guard, which lands in the catch as the 500 above. Pinned by the
 //! differential's `execute_archived` arm.
 
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
 use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
 use crate::db::{characters_read, DbError};
+use crate::generators::external_prompt::{ExternalPromptRequest, ExternalPromptResult};
 use crate::generators::refresh_archive::refresh_archive;
 use crate::generators::rename::{run_character_rename, RenameRequest, ReplacementPair};
 
-use super::settings::zod_parsed_type;
+use super::settings::{zod_parsed_type, zod_uuid_ok, ZOD_UUID_PATTERN};
 use super::types::{db_error_response, ErrorKind, Response};
+
+// ===========================================================================
+// The driver seam (the `HelpChatSendDriver` / `ImageDescribeDriver` precedent)
+// ===========================================================================
+
+/// The boxed future a [`GeneratorsDetailDriver`] method returns.
+pub type GeneratorsDetailFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// The projected `characterGenerateExternalPrompt` a driver runs: the resolved
+/// single-user id, the route's character id, and the Zod-validated body.
+#[derive(Clone, Debug)]
+pub struct ExternalPromptDriverRequest {
+    pub user_id: String,
+    pub character_id: String,
+    pub request: ExternalPromptRequest,
+}
+
+/// The per-character generator driver: only the composing host holds the
+/// completion (and, for the optimizer, embedding) providers the two
+/// model-calling verbs run over. The engine keeps every DB-side arm (404, Zod,
+/// the refusal sentences) in front of it, so a driver sees only requests v4
+/// would have handed its service.
+pub trait GeneratorsDetailDriver: Send + Sync {
+    /// v4 `generateExternalPrompt(characterId, request, userId, repos)`. `Err`
+    /// is a DB failure escaping the reads (v4's throw); every modelled refusal
+    /// is an `Ok` result with `success: false`.
+    fn external_prompt<'a>(
+        &'a self,
+        req: ExternalPromptDriverRequest,
+    ) -> GeneratorsDetailFuture<'a, Result<ExternalPromptResult, DbError>>;
+}
 
 // ===========================================================================
 // Shared helpers
@@ -82,6 +126,93 @@ fn too_small_string(minimum: usize, path: &[Value], message: &str) -> Value {
         "path": path,
         "message": message,
     })
+}
+
+/// `z.string().uuid()` / `z.uuid()` — `origin, code, format, pattern, path,
+/// message`, the pattern echoed verbatim (Zod 4's `$ZodUUID` check, the same
+/// issue for both spellings — measured on the `zod_bad_uuids_*` arms).
+fn invalid_uuid(path: &[Value]) -> Value {
+    json!({
+        "origin": "string",
+        "code": "invalid_format",
+        "format": "uuid",
+        "pattern": ZOD_UUID_PATTERN,
+        "path": path,
+        "message": "Invalid UUID",
+    })
+}
+
+/// `z.string().uuid()` over a raw value at `path`: a non-string is
+/// `invalid_type`, a string that misses the pattern is `invalid_format`.
+fn check_uuid(v: Option<&Value>, path: &[Value], issues: &mut Vec<Value>) -> Option<String> {
+    match v {
+        Some(Value::String(s)) => {
+            if zod_uuid_ok(s) {
+                Some(s.clone())
+            } else {
+                issues.push(invalid_uuid(path));
+                None
+            }
+        }
+        other => {
+            issues.push(invalid_type("string", path, other));
+            None
+        }
+    }
+}
+
+/// `z.number().int().min(lo).max(hi)`: the type check, then the integer check
+/// (which ABORTS the bounds — a fractional value answers ONE issue, measured on
+/// `zod_max_tokens_above_max_and_fractional`), then the two inclusive bounds.
+fn check_int_range(
+    v: Option<&Value>,
+    lo: i64,
+    hi: i64,
+    path: &[Value],
+    issues: &mut Vec<Value>,
+) -> Option<i64> {
+    let Some(n) = v.and_then(Value::as_f64) else {
+        issues.push(invalid_type("number", path, v));
+        return None;
+    };
+    if !n.is_finite() || n.fract() != 0.0 {
+        issues.push(json!({
+            "expected": "int",
+            "format": "safeint",
+            "code": "invalid_type",
+            "path": path,
+            "message": "Invalid input: expected int, received number",
+        }));
+        return None;
+    }
+    let mut ok = true;
+    if n < lo as f64 {
+        issues.push(json!({
+            "origin": "number",
+            "code": "too_small",
+            "minimum": lo,
+            "inclusive": true,
+            "path": path,
+            "message": format!("Too small: expected number to be >={lo}"),
+        }));
+        ok = false;
+    }
+    if n > hi as f64 {
+        issues.push(json!({
+            "origin": "number",
+            "code": "too_big",
+            "maximum": hi,
+            "inclusive": true,
+            "path": path,
+            "message": format!("Too big: expected number to be <={hi}"),
+        }));
+        ok = false;
+    }
+    if ok {
+        Some(n as i64)
+    } else {
+        None
+    }
 }
 
 fn push_path(path: &[Value], key: Value) -> Vec<Value> {
@@ -290,5 +421,121 @@ pub async fn character_refresh_archive(db: &Db, user_id: &str, character_id: &st
                 "Failed to refresh conversation archive",
             )
         }
+    }
+}
+
+// ===========================================================================
+// characterGenerateExternalPrompt (v4 `post.ts:316-334`)
+// ===========================================================================
+
+/// v4 `generateExternalPromptSchema.parse(body)`: `connectionProfileId:
+/// z.string().uuid()`, `systemPromptId: z.string().uuid()`, `scenarioId:
+/// z.string().uuid().optional()`, `maxTokens: z.number().int().min(1000)
+/// .max(20000)`. `Err` is the middleware's `details` array.
+pub fn parse_external_prompt_body(
+    connection_profile_id: Option<&Value>,
+    system_prompt_id: Option<&Value>,
+    scenario_id: Option<&Value>,
+    max_tokens: Option<&Value>,
+) -> Result<ExternalPromptRequest, Vec<Value>> {
+    let mut issues: Vec<Value> = Vec::new();
+    let cp = check_uuid(
+        connection_profile_id,
+        &[Value::String("connectionProfileId".into())],
+        &mut issues,
+    );
+    let sp = check_uuid(
+        system_prompt_id,
+        &[Value::String("systemPromptId".into())],
+        &mut issues,
+    );
+    // `.optional()` admits only `undefined`; a present `null` is `invalid_type`.
+    let sc = match scenario_id {
+        None => None,
+        Some(v) => check_uuid(Some(v), &[Value::String("scenarioId".into())], &mut issues),
+    };
+    let mt = check_int_range(
+        max_tokens,
+        1000,
+        20000,
+        &[Value::String("maxTokens".into())],
+        &mut issues,
+    );
+    if !issues.is_empty() {
+        return Err(issues);
+    }
+    Ok(ExternalPromptRequest {
+        connection_profile_id: cp.unwrap_or_default(),
+        system_prompt_id: sp.unwrap_or_default(),
+        scenario_id: sc,
+        max_tokens: mt.unwrap_or_default(),
+    })
+}
+
+/// v4's `generate-external-prompt` action, whole: 404 → Zod 400 → the
+/// `[Characters v1] External prompt generation starting` line → the driver
+/// (or the named not-assembled refusal) → `{prompt, tokensUsed}` / the 500.
+#[allow(clippy::too_many_arguments)]
+pub async fn character_generate_external_prompt(
+    db: &Db,
+    driver: Option<&Arc<dyn GeneratorsDetailDriver>>,
+    user_id: &str,
+    character_id: &str,
+    connection_profile_id: Option<&Value>,
+    system_prompt_id: Option<&Value>,
+    scenario_id: Option<&Value>,
+    max_tokens: Option<&Value>,
+) -> Response {
+    if let Err(r) = require_character(db, character_id) {
+        return r;
+    }
+    let request = match parse_external_prompt_body(
+        connection_profile_id,
+        system_prompt_id,
+        scenario_id,
+        max_tokens,
+    ) {
+        Ok(r) => r,
+        Err(issues) => return Response::validation_error(Value::Array(issues)),
+    };
+
+    tracing::info!(
+        user_id = %user_id,
+        character_id = %character_id,
+        connection_profile_id = %request.connection_profile_id,
+        max_tokens = request.max_tokens,
+        "[Characters v1] External prompt generation starting"
+    );
+
+    let Some(driver) = driver else {
+        return Response::error(
+            ErrorKind::Unavailable,
+            "external prompt generation not available: no GeneratorsDetailDriver is assembled",
+        );
+    };
+    match driver
+        .external_prompt(ExternalPromptDriverRequest {
+            user_id: user_id.to_string(),
+            character_id: character_id.to_string(),
+            request,
+        })
+        .await
+    {
+        Ok(result) if result.success => Response::Character(json!({
+            "prompt": result.prompt,
+            "tokensUsed": result.tokens_used,
+        })),
+        // v4 `serverError(result.error || 'Generation failed')` — JS `||`, so
+        // an empty error sentence takes the default too.
+        Ok(result) => Response::error(
+            ErrorKind::Internal,
+            result
+                .error
+                .filter(|e| !e.is_empty())
+                .unwrap_or_else(|| "Generation failed".to_string()),
+        ),
+        // A DB failure escaping the service's reads is v4's uncaught throw →
+        // the middleware's 500 (or the contextful 503 for a broken vault).
+        Err(e) => db_error_response(e),
     }
 }

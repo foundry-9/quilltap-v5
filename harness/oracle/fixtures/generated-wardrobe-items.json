@@ -1,0 +1,37 @@
+{
+  "sanitize": [
+    { "id": "empty-array", "items": [] },
+    { "id": "not-an-array-object", "items": { "title": "Coat", "types": ["top"] } },
+    { "id": "not-an-array-null", "items": null },
+    { "id": "not-an-array-string", "items": "coat" },
+    { "id": "plain-leaf", "items": [ { "title": "Flight Jacket", "description": "A weathered leather jacket.", "imagePrompt": "worn brown leather flight jacket", "types": ["top"], "appropriateness": "casual, everyday", "isDefault": true } ] },
+    { "id": "trims-title-and-image-prompt", "items": [ { "title": "  Goggles  ", "description": "Brass aviator goggles.", "imagePrompt": "  brass goggles  ", "types": ["accessories"] } ] },
+    { "id": "blank-image-prompt-omitted", "items": [ { "title": "Scarf", "description": "", "imagePrompt": "   ", "types": ["accessories"] } ] },
+    { "id": "drops-title-less-and-blank-title", "items": [ { "description": "no title", "types": ["top"] }, { "title": "   ", "types": ["top"] }, { "title": 42, "types": ["top"] }, { "title": "Kept", "types": ["top"] } ] },
+    { "id": "drops-types-not-array", "items": [ { "title": "Boots", "types": "footwear" }, { "title": "Hat", "types": null }, { "title": "Belt", "types": ["accessories"] } ] },
+    { "id": "filters-invalid-slot-types-and-drops-empty", "items": [ { "title": "Cloak", "types": ["top", "cape", "bottom"] }, { "title": "Wand", "types": ["magic"] }, { "title": "Wig", "types": ["hair"] } ] },
+    { "id": "coerces-optional-fields", "items": [ { "title": "Vest", "description": 7, "imagePrompt": 9, "types": ["top"], "appropriateness": 3, "isDefault": "yes", "replace": "yes" } ] },
+    { "id": "null-and-false-flags", "items": [ { "title": "Vest", "description": null, "types": ["top"], "appropriateness": null, "isDefault": false, "replace": false } ] },
+    { "id": "components-resolve-case-insensitively", "items": [ { "title": "Shirt", "description": "", "types": ["top"] }, { "title": "Trousers", "description": "", "types": ["bottom"] }, { "title": "Everyday", "description": "", "types": ["top", "bottom"], "components": [" shirt ", "TROUSERS"], "replace": true, "isDefault": true } ] },
+    { "id": "components-unknown-dropped-then-cleared", "items": [ { "title": "Shirt", "types": ["top"] }, { "title": "Outfit", "types": ["top"], "components": ["Nothing", "Nobody"], "replace": true } ] },
+    { "id": "components-self-reference-dropped", "items": [ { "title": "Loop", "types": ["top"], "components": ["Loop", "loop "], "replace": true } ] },
+    { "id": "components-non-strings-filtered", "items": [ { "title": "Boots", "types": ["footwear"] }, { "title": "Kit", "types": ["footwear"], "components": [null, 3, "", "   ", "Boots"], "replace": true } ] },
+    { "id": "components-not-an-array", "items": [ { "title": "Boots", "types": ["footwear"] }, { "title": "Kit", "types": ["footwear"], "components": "Boots", "replace": true } ] },
+    { "id": "replace-without-components-cleared", "items": [ { "title": "Solo", "types": ["top"], "replace": true } ] },
+    { "id": "empty-components-cleared", "items": [ { "title": "Solo", "types": ["top"], "components": [], "replace": true } ] },
+    { "id": "duplicate-titles-kept", "items": [ { "title": "Hat", "types": ["accessories"] }, { "title": "hat", "types": ["hair"] }, { "title": "Set", "types": ["accessories"], "components": ["HAT"] } ] },
+    { "id": "null-and-non-object-entries-dropped", "items": [ null, 5, "coat", { "title": "Kept", "types": ["top"] } ] },
+    { "id": "unicode-title-fold", "items": [ { "title": "Straße", "types": ["top"] }, { "title": "Set", "types": ["top"], "components": ["STRASSE", "straße"] } ] }
+  ],
+  "order": [
+    { "id": "empty", "items": [] },
+    { "id": "leaves-only-keep-order", "items": [ { "title": "B", "types": ["top"] }, { "title": "A", "types": ["top"] } ] },
+    { "id": "composite-after-its-leaves", "items": [ { "title": "Outfit", "components": ["Shirt", "Trousers"] }, { "title": "Shirt" }, { "title": "Trousers" } ] },
+    { "id": "nested-composites-by-depth", "items": [ { "title": "Full Kit", "components": ["Outfit", "Boots"] }, { "title": "Outfit", "components": ["Shirt"] }, { "title": "Boots" }, { "title": "Shirt" } ] },
+    { "id": "stable-among-equal-depth", "items": [ { "title": "Z", "components": ["a"] }, { "title": "Y", "components": ["a"] }, { "title": "a" }, { "title": "X" } ] },
+    { "id": "unknown-component-is-depth-zero", "items": [ { "title": "Ghost", "components": ["Nobody"] }, { "title": "Real", "components": ["Ghost"] } ] },
+    { "id": "case-and-trim-in-lookup", "items": [ { "title": "SET", "components": [" shirt "] }, { "title": "Shirt" } ] },
+    { "id": "cycle-is-defensive", "items": [ { "title": "A", "components": ["B"] }, { "title": "B", "components": ["A"] }, { "title": "C" } ] },
+    { "id": "empty-components-array", "items": [ { "title": "A", "components": [] }, { "title": "B", "components": ["A"] } ] }
+  ]
+}

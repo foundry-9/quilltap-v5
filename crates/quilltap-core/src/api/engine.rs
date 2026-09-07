@@ -300,6 +300,15 @@ pub struct EngineAssembly {
     /// streamed model call per help character per send, plus tool calls.
     pub help_chat_send: Option<Arc<dyn super::help_chats::HelpChatSendDriver>>,
     // === end P4.9I2A ===
+    // === P4.9K1: the per-character generator driver (§B.2) ===
+    /// The optimizer / external-prompt driver — the composing host holds the
+    /// completion + embedding providers the two model-calling verbs need.
+    /// `None` (read-only embedders, canned test factories) → those two verbs
+    /// answer a NAMED `Unavailable` refusal AFTER v4's 404 + Zod arms; the two
+    /// DB-only verbs (`characterRename`, `characterRefreshArchive`) never read
+    /// it. ⚠ 💸 LIVE once wired: real model spend on a real click.
+    pub generators_detail: Option<Arc<dyn super::generators_detail::GeneratorsDetailDriver>>,
+    // === end P4.9K1 ===
 }
 
 impl EngineAssembly {
@@ -359,6 +368,9 @@ impl EngineAssembly {
             // === P4.9I2A ===
             help_chat_send: None,
             // === end P4.9I2A ===
+            // === P4.9K1 ===
+            generators_detail: None,
+            // === end P4.9K1 ===
         }
     }
 }
@@ -580,6 +592,11 @@ struct ReadyEngine {
     /// `HelpChatSend` arm answers the named not-assembled refusal).
     help_chat_send: Option<Arc<dyn super::help_chats::HelpChatSendDriver>>,
     // === end P4.9I2A ===
+    // === P4.9K1 ===
+    /// The per-character generator driver (P4.9K1; `None` for read-only
+    /// embedders — the two model-calling verbs answer the named refusal).
+    generators_detail: Option<Arc<dyn super::generators_detail::GeneratorsDetailDriver>>,
+    // === end P4.9K1 ===
 }
 
 /// The engine-backed `QuilltapCore`. Cloneable (`Arc` inside) so every
@@ -3148,6 +3165,37 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            Request::CharacterGenerateExternalPrompt {
+                character_id,
+                connection_profile_id,
+                system_prompt_id,
+                scenario_id,
+                max_tokens,
+            } => match self.ready_db_and_generators_detail() {
+                Ok((db, driver)) => {
+                    let tri = |o: Option<Option<serde_json::Value>>| {
+                        o.map(|x| x.unwrap_or(serde_json::Value::Null))
+                    };
+                    let (cp, sp, sc, mt) = (
+                        tri(connection_profile_id),
+                        tri(system_prompt_id),
+                        tri(scenario_id),
+                        tri(max_tokens),
+                    );
+                    super::generators_detail::character_generate_external_prompt(
+                        &db,
+                        driver.as_ref(),
+                        SINGLE_USER_ID,
+                        &character_id,
+                        cp.as_ref(),
+                        sp.as_ref(),
+                        sc.as_ref(),
+                        mt.as_ref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
             // === end P4.9K1 ===
             Request::GroupStateGet { group_id } => match self.ready_db() {
                 Ok(db) => super::groups::group_state_get(&db, &group_id),
@@ -5319,6 +5367,27 @@ impl CoreEngine {
         }
     }
 
+    // === P4.9K1 ===
+    /// The `Db` + the (optional) per-character generator driver under the
+    /// readiness gate. `None` is handed through so the handler can run v4's
+    /// 404 + Zod arms BEFORE answering the not-assembled refusal.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_generators_detail(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn super::generators_detail::GeneratorsDetailDriver>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.generators_detail.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+    // === end P4.9K1 ===
+
     /// The `Db` + the (optional) document-store refresh scheduler under the
     /// readiness gate (P4.6w). `None` when unwired — the write sites loud-skip
     /// the refresh. `Err` is the locked refusal.
@@ -6373,6 +6442,9 @@ fn open_ready(
         // === P4.9I2A ===
         help_chat_send: assembly.help_chat_send,
         // === end P4.9I2A ===
+        // === P4.9K1 ===
+        generators_detail: assembly.generators_detail,
+        // === end P4.9K1 ===
     })
 }
 

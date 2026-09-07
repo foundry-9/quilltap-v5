@@ -1,0 +1,133 @@
+{
+  "$comment": "P4.9K1 — the external-prompt generator corpus over the committed characters-{main,mount}.db pair. Each case runs on a FRESH copy; `seeds` are applied on BOTH sides through the ported repository twins before the request; `reply` is the canned model answer (`content` + optional `usage`) or `throws`. Aria's minted-but-baked ids: prompts Explorer c32fabae-25ab-8e3d-a1dc-8dbacd3f5265 / Backup febf80ad-121b-89a7-93c9-ceca75bc668b; scenarios Prologue d7e60276-71d2-868a-bb62-e6d82a06e0fc / Interlude 5d618cfa-43b6-803a-b3e4-3e111464c605. Fenn's prompt c7382b6c-711f-879d-bbee-52188e2bef48.",
+  "seedTimestamp": "2026-02-02T00:00:00.000Z",
+  "richAria": {
+    "kind": "characterPatch",
+    "characterId": "a1000000-0000-4000-8000-000000000001",
+    "patch": {
+      "identity": "Captain of the Starling, known in every port from Dover to Dar.",
+      "manifesto": "You never abandon a crewmate.\nYou pay your debts before you pay yourself.",
+      "firstMessage": "*tips her hat* Well met, stranger. Mind the ropes.",
+      "exampleDialogues": "{{user}}: Where are we bound?\n{{char}}: *grins* Wherever the wind and the ledger agree.",
+      "physicalDescription": {
+        "id": "a82c58d0-fe5f-8494-83d0-84bbadfaf069",
+        "name": "Standard",
+        "usageContext": null,
+        "headAndShouldersPrompt": "weathered face, silver-streaked hair, aviator collar",
+        "shortPrompt": "tall woman, silver-streaked hair",
+        "mediumPrompt": "tall wind-burned woman with silver-streaked dark hair and grey eyes",
+        "longPrompt": null,
+        "completePrompt": null,
+        "fullDescription": "Tall and wind-burned, with silver-streaked dark hair kept short and grey eyes that squint against imagined weather.",
+        "createdAt": "2026-02-02T00:00:00.000Z",
+        "updatedAt": "2026-02-02T00:00:00.000Z"
+      }
+    }
+  },
+  "cases": [
+    {
+      "name": "happy_rich_scenario_physical",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "seeds": ["richAria"],
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "scenarioId": "d7e60276-71d2-868a-bb62-e6d82a06e0fc", "maxTokens": 4000 },
+      "reply": { "content": "# Aria\n\nYou are Aria, sky-captain of the Starling...", "usage": { "promptTokens": 500, "completionTokens": 1000, "totalTokens": 1500 } }
+    },
+    {
+      "name": "happy_bare_aria_no_scenario",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "febf80ad-121b-89a7-93c9-ceca75bc668b", "maxTokens": 1000 },
+      "reply": { "content": "You are Aria.", "usage": { "promptTokens": 10, "completionTokens": 5, "totalTokens": 15 } }
+    },
+    {
+      "name": "scenario_dangling_is_omitted",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "seeds": ["richAria"],
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "scenarioId": "51000000-0000-4000-8000-0000000000de", "maxTokens": 20000 },
+      "reply": { "content": "You are Aria, unbounded.", "usage": { "promptTokens": 1, "completionTokens": 2, "totalTokens": 3 } }
+    },
+    {
+      "name": "usage_absent_reports_zero",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 2000 },
+      "reply": { "content": "Generated prompt text" }
+    },
+    {
+      "name": "empty_model_answer",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 2000 },
+      "reply": { "content": "" }
+    },
+    {
+      "name": "provider_throws",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 2000 },
+      "reply": { "throws": "Rate limit exceeded" }
+    },
+    {
+      "name": "missing_profile",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000009-0000-4000-8000-000000000009", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 2000 },
+      "reply": { "content": "unreached" }
+    },
+    {
+      "name": "missing_system_prompt",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c7382b6c-711f-879d-bbee-52188e2bef48", "maxTokens": 2000 },
+      "reply": { "content": "unreached" }
+    },
+    {
+      "name": "missing_character_404",
+      "characterId": "99999999-9999-4999-8999-999999999999",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 2000 },
+      "reply": { "content": "unreached" }
+    },
+    {
+      "name": "archived_fenn_generates",
+      "characterId": "a1000000-0000-4000-8000-000000000006",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c7382b6c-711f-879d-bbee-52188e2bef48", "maxTokens": 1500 },
+      "reply": { "content": "You are Fenn.", "usage": { "promptTokens": 3, "completionTokens": 4, "totalTokens": 7 } }
+    },
+    {
+      "name": "over_budget_refuses",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "seeds": [
+        "richAria",
+        { "kind": "profilePatch", "profileId": "c0000001-0000-4000-8000-000000000001", "patch": { "maxContext": 1200 } },
+        { "kind": "characterPatch", "characterId": "a1000000-0000-4000-8000-000000000001", "patch": { "description": "A daring sky-captain. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice. She keeps a ledger of every port and every debt, and reads it aloud on calm nights to a crew that has heard every entry twice." } }
+      ],
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 1000 },
+      "reply": { "content": "unreached" }
+    },
+    {
+      "name": "profile_max_context_within_budget",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "seeds": [ { "kind": "profilePatch", "profileId": "c0000001-0000-4000-8000-000000000001", "patch": { "maxContext": 8000 } } ],
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 1000 },
+      "reply": { "content": "fits", "usage": { "promptTokens": 1, "completionTokens": 1, "totalTokens": 2 } }
+    },
+    {
+      "name": "zod_max_tokens_below_min",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 999 },
+      "reply": { "content": "unreached" }
+    },
+    {
+      "name": "zod_max_tokens_above_max_and_fractional",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265", "maxTokens": 20000.5 },
+      "reply": { "content": "unreached" }
+    },
+    {
+      "name": "zod_bad_uuids_and_missing_max_tokens",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "not-a-uuid", "systemPromptId": 42, "scenarioId": "also-not" },
+      "reply": { "content": "unreached" }
+    },
+    {
+      "name": "missing_character_404_beats_zod",
+      "characterId": "99999999-9999-4999-8999-999999999999",
+      "body": { "maxTokens": "no" },
+      "reply": { "content": "unreached" }
+    }
+  ]
+}

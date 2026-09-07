@@ -3537,6 +3537,28 @@ pub enum Request {
     CharacterRefreshArchive {
         character_id: String,
     },
+    /// v4 `POST /api/v1/characters/[id]?action=generate-external-prompt`
+    /// (`post.ts:316-334`) — one model call that synthesizes the character
+    /// into a standalone second-person Markdown prompt. Every body field is
+    /// the absent / `null` / value TRI-STATE (`double_option`): v4's
+    /// `generateExternalPromptSchema.parse` runs AFTER the character 404, and
+    /// a `null` `scenarioId` is a Zod `invalid_type` where an absent one is
+    /// fine. → [`Response::Character`] `{ prompt, tokensUsed }`; a failed
+    /// generation is a 500 whose message is `result.error || 'Generation
+    /// failed'`. ⚠ 💸 LIVE: one model call per request once the host driver
+    /// is assembled; a driver-less engine answers the named refusal.
+    #[serde(rename_all = "camelCase")]
+    CharacterGenerateExternalPrompt {
+        character_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        connection_profile_id: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        system_prompt_id: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        scenario_id: Option<Option<serde_json::Value>>,
+        #[serde(default, deserialize_with = "double_option")]
+        max_tokens: Option<Option<serde_json::Value>>,
+    },
     // === end P4.9K1 ===
 }
 

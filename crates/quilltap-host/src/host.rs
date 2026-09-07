@@ -946,6 +946,12 @@ impl EngineAssembler for HostAssembler {
             // refusal. ===
             help_chat_send,
             // === end P4.9I2A ===
+            // === P4.9K1: the per-character generator driver — `None` until the
+            // driver unit wires `generators_detail_driver.rs` from the spine
+            // bundle; the two model-calling verbs answer their NAMED refusal
+            // meanwhile, after v4's 404 + Zod arms. ===
+            generators_detail: None,
+            // === end P4.9K1 ===
         })
     }
 }

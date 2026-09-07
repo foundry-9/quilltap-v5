@@ -2439,6 +2439,10 @@ const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 421;
 // character_id`), both v4 `/api/v1/characters/[id]?action=` route params; the
 // verbs' body fields ride as `Value` and are censused by hand — 411 → 413.
 
+// P4.9K1 unit 3 added `CharacterGenerateExternalPrompt.character_id` (the same
+// `/api/v1/characters/[id]?action=` route param; its four body fields are
+// `Value` tri-states parsed by v4's Zod schema inside the handler) — 413 → 414.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 414;
 
 #[test]
 fn census_covers_every_typed_request_field() {
