@@ -195,7 +195,8 @@ export class ExternalPromptDialog {
   protected readonly effectiveProfileId = (): string => {
     if (this.connectionProfileId()) return this.connectionProfileId();
     const list = this.profiles();
-    return list.length > 0 ? list[0].id : '';
+    // v4 `:66-71`: the default profile first, then the first profile.
+    return (list.find((p) => p.isDefault) ?? list[0])?.id ?? '';
   };
 
   /** v4 `:84-90` — falls back to the default (or first) system prompt until overridden. */

@@ -18,19 +18,16 @@ import { OptimizerState } from './optimizer-state';
 import { SuggestionCard } from './suggestion-card';
 
 /**
- * The optimizer's three named progress phases (v4 `STEP_LABELS`,
- * `CharacterOptimizerModal.tsx:23-27`). Durations are chosen display values —
- * v4 never measured them either (its own local `ProgressBar` predates the
- * shared `qt-progress-bar` and animated on the same unmeasured cadence).
+ * v4's own three progress segments (`components/characters/optimizer/
+ * components/ProgressBar.tsx:19-23`) — the durations pace the shared bar's
+ * fill, so they are v4's numbers, not chosen display values (the §3
+ * unification review's correction; the long phase sentences live in
+ * `STEP_LABELS` and are shown beside the bar, not on it).
  */
 const SEGMENTS: ProgressSegment[] = [
-  { key: 'loading', label: 'Retrieving the Commonplace Book…', estimatedDurationMs: 8_000 },
-  {
-    key: 'analyzing',
-    label: 'Analysing the memoirs for behavioural patterns…',
-    estimatedDurationMs: 20_000,
-  },
-  { key: 'generating', label: 'Composing suggested refinements…', estimatedDurationMs: 60_000 },
+  { key: 'loading', label: 'Retrieving', estimatedDurationMs: 3000 },
+  { key: 'analyzing', label: 'Analysing', estimatedDurationMs: 15000 },
+  { key: 'generating', label: 'Composing', estimatedDurationMs: 20000 },
 ];
 
 /**
@@ -152,7 +149,7 @@ const SEGMENTS: ProgressSegment[] = [
                           id="optimizer-search-query"
                           type="text"
                           class="qt-input"
-                          placeholder='e.g. "betrayal" or "relationship with the duke"'
+                          placeholder="e.g. &ldquo;betrayal&rdquo; or &ldquo;relationship with the duke&rdquo;"
                           maxlength="500"
                           [value]="searchQuery()"
                           (input)="searchQuery.set($any($event.target).value)"

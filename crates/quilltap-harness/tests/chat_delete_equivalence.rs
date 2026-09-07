@@ -456,7 +456,9 @@ struct Case {
     name: &'static str,
     action: Option<&'static str>,
     chat_id: &'static str,
-    body: Value,
+    /// `None` = an unreadable (empty / non-JSON) body — the oracle's mock rejects
+    /// `req.json()` with a `SyntaxError` for these rows.
+    body: Option<Value>,
 }
 
 #[test]
@@ -492,111 +494,142 @@ fn chat_delete_matches_oracle() {
             name: "delete_full",
             action: None,
             chat_id: CHAT_FULL,
-            body: json!({}),
+            body: Some(json!({})),
         },
         Case {
             name: "delete_missing",
             action: None,
             chat_id: MISSING_ID,
-            body: json!({}),
+            body: Some(json!({})),
         },
         Case {
             name: "delete_broken_vault",
             action: None,
             chat_id: CHAT_BROKEN,
-            body: json!({}),
+            body: Some(json!({})),
         },
         Case {
             name: "delete_shared_summary",
             action: None,
             chat_id: CHAT_SHARED,
-            body: json!({}),
+            body: Some(json!({})),
         },
         Case {
             name: "reset_state",
             action: Some("reset-state"),
             chat_id: CHAT_STATE,
-            body: json!({}),
+            body: Some(json!({})),
         },
         Case {
             name: "reset_state_missing",
             action: Some("reset-state"),
             chat_id: MISSING_ID,
-            body: json!({}),
+            body: Some(json!({})),
         },
         Case {
             name: "stop_impersonate",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: json!({ "participantId": P_IMP_CLIO }),
+            body: Some(json!({ "participantId": P_IMP_CLIO })),
         },
         Case {
             name: "stop_impersonate_with_profile",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": CONN_PROFILE }),
+            body: Some(json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": CONN_PROFILE })),
         },
         Case {
             name: "stop_impersonate_unknown_profile",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": MISSING_ID }),
+            body: Some(json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": MISSING_ID })),
         },
         Case {
             name: "stop_impersonate_unknown_participant",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: json!({ "participantId": P_UNKNOWN }),
+            body: Some(json!({ "participantId": P_UNKNOWN })),
         },
         Case {
             name: "stop_impersonate_missing_chat",
             action: Some("stop-impersonate"),
             chat_id: MISSING_ID,
-            body: json!({ "participantId": P_IMP_CLIO }),
+            body: Some(json!({ "participantId": P_IMP_CLIO })),
         },
         Case {
             name: "stop_impersonate_missing_chat_bad_body",
             action: Some("stop-impersonate"),
             chat_id: MISSING_ID,
-            body: json!({}),
+            body: Some(json!({})),
         },
         Case {
             name: "stop_impersonate_no_participant",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: json!({}),
+            body: Some(json!({})),
         },
         Case {
             name: "stop_impersonate_bad_uuid",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: json!({ "participantId": "not-a-uuid" }),
+            body: Some(json!({ "participantId": "not-a-uuid" })),
         },
         Case {
             name: "stop_impersonate_both_fields_bad",
             action: Some("stop-impersonate"),
             chat_id: CHAT_IMP,
-            body: json!({ "participantId": 7, "newConnectionProfileId": null }),
+            body: Some(json!({ "participantId": 7, "newConnectionProfileId": null })),
+        },
+        // Zod 4.5.4's `z.object` refuses a NON-object body before any field
+        // walk, with ONE root-path issue (the §3 unification review's catch —
+        // the per-field walk used to invent `participantId … received
+        // undefined`).
+        Case {
+            name: "stop_impersonate_null_body",
+            action: Some("stop-impersonate"),
+            chat_id: CHAT_IMP,
+            body: Some(Value::Null),
+        },
+        Case {
+            name: "stop_impersonate_array_body",
+            action: Some("stop-impersonate"),
+            chat_id: CHAT_IMP,
+            body: Some(json!([])),
+        },
+        // An UNREADABLE body (empty / not JSON): v4's `await req.json()` throws a
+        // SyntaxError → the middleware's 500 `Internal server error` — but only
+        // on the leg that reads the body, and only AFTER its chat gate.
+        Case {
+            name: "stop_impersonate_empty_body",
+            action: Some("stop-impersonate"),
+            chat_id: CHAT_IMP,
+            body: None,
+        },
+        Case {
+            name: "stop_impersonate_missing_chat_empty_body",
+            action: Some("stop-impersonate"),
+            chat_id: MISSING_ID,
+            body: None,
         },
         Case {
             name: "action_bogus",
             action: Some("zzz"),
             chat_id: CHAT_FULL,
-            body: json!({}),
+            body: Some(json!({})),
         },
         // `?action=` present but EMPTY — JS-falsy, so it DELETES.
         Case {
             name: "action_empty",
             action: Some(""),
             chat_id: CHAT_FULL,
-            body: json!({}),
+            body: Some(json!({})),
         },
     ];
 
     for c in &cases {
         driven.insert(c.name.to_string());
         let db = fresh_db(&spec, c.name);
-        let r = rt.block_on(chat_delete_dispatch(&db, c.chat_id, c.action, &c.body));
+        let r = rt.block_on(chat_delete_dispatch(&db, c.chat_id, c.action, c.body.as_ref()));
         let (status, body) = status_body(&r);
         let mut tables = census(&db, &spec);
 
@@ -737,7 +770,7 @@ fn chat_delete_log_lines() {
     // --- the happy delete: both `Chat deleted` lines + the per-vault debug ---
     let db = fresh_db(&spec, "log_delete");
     let lines = quilltap_core::test_support::captured(|| {
-        rt.block_on(chat_delete_dispatch(&db, CHAT_FULL, None, &json!({})));
+        rt.block_on(chat_delete_dispatch(&db, CHAT_FULL, None, Some(&json!({}))));
     });
     let route_line = line_with(&lines, "[Chats v1] Chat deleted");
     assert!(
@@ -773,7 +806,7 @@ fn chat_delete_log_lines() {
             &db,
             CHAT_FULL,
             Some("zzz"),
-            &json!({}),
+            Some(&json!({})),
         ));
     });
     let warn = line_with(
@@ -792,7 +825,7 @@ fn chat_delete_log_lines() {
     // --- the SILENCE half: a 404 delete announces nothing at all ---
     let db = fresh_db(&spec, "log_missing");
     let lines = quilltap_core::test_support::captured(|| {
-        rt.block_on(chat_delete_dispatch(&db, MISSING_ID, None, &json!({})));
+        rt.block_on(chat_delete_dispatch(&db, MISSING_ID, None, Some(&json!({}))));
     });
     assert!(
         !has(&lines, "Chat deleted") && !has(&lines, "Unknown DELETE action"),
@@ -800,11 +833,14 @@ fn chat_delete_log_lines() {
     );
 
     // --- a chat whose sole participant has a DANGLING vault pointer: the
-    //     sweep finds nothing, so it says nothing, and the delete still
-    //     announces itself. (v4's per-character catch is the same shape.)
+    //     sweep cannot resolve her store, SAYS SO (v4's resolver catch —
+    //     `character-vault-bridge.ts:74-81` warns `Failed to resolve character
+    //     vault store` when the hydrated read throws for a dangling pointer),
+    //     and the delete still announces itself. The §3 unification review
+    //     found this arm SILENT in v5; the warn is ported and pinned here.
     let db = fresh_db(&spec, "log_broken");
     let lines = quilltap_core::test_support::captured(|| {
-        rt.block_on(chat_delete_dispatch(&db, CHAT_BROKEN, None, &json!({})));
+        rt.block_on(chat_delete_dispatch(&db, CHAT_BROKEN, None, Some(&json!({}))));
     });
     assert!(
         has(&lines, "[Chats v1] Chat deleted"),
@@ -813,5 +849,9 @@ fn chat_delete_log_lines() {
     assert!(
         !has(&lines, "Removed conversation summary from character vault"),
         "nothing was removed from a vault that cannot be read: {lines:#?}"
+    );
+    assert!(
+        has(&lines, "Failed to resolve character vault store"),
+        "v4 warns when a participant's vault cannot be resolved: {lines:#?}"
     );
 }

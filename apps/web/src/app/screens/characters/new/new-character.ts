@@ -452,7 +452,8 @@ export class NewCharacter {
             });
           } catch (propsErr) {
             this.toasts.showError(
-              coreErrorMessage(propsErr, 'Character created, but pronouns/aliases failed to save'),
+              // v4 toasts this FIXED sentence on both arms (`NewCharacterView.tsx:170,176`).
+              'Character created, but pronouns/aliases failed to save',
             );
           }
         }

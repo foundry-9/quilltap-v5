@@ -166,7 +166,7 @@ export function sortCharacters(list: CharacterListItem[]): CharacterListItem[] {
             <button
               type="button"
               class="qt-button character-toolbar__button inline-flex items-center rounded-lg border qt-border-default qt-bg-muted/70 px-4 py-2 text-sm qt-text-primary qt-shadow-sm transition hover:qt-bg-muted"
-              title="AI generation of a character from any text source"
+              title="AI generation of character from any text source"
               (click)="aiImportOpen.set(true)"
             >
               Summon From Lore
@@ -480,9 +480,13 @@ export class CharactersList {
     await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
   }
 
-  /** v4 `AuroraView.tsx:696-698` `onImportSuccess`: refetch, nothing else. */
+  /**
+   * v4 `AuroraView.tsx:696-698` `onImportSuccess`: refetch, NOTHING else — the
+   * wizard emits `imported` on a failed attempt too, so closing here would
+   * swallow its error card and hide v4's "Import Successful!" panel (the §3
+   * unification review's catch). `closed` (Done / Close) dismisses it.
+   */
   protected async onAiImported(): Promise<void> {
-    this.aiImportOpen.set(false);
     await this.queryClient.invalidateQueries({ queryKey: characterKeys.all });
   }
 }

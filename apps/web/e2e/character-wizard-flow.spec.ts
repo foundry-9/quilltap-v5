@@ -220,6 +220,10 @@ test.describe('P4.9K3 — the AI Wizard modal (New Character + Edit)', () => {
       await page.getByRole('button', { name: 'Generate Character Content' }).click();
 
       await expect(page.getByText('Generation Complete')).toBeVisible({ timeout: 20_000 });
+      // A field's content shows only under its EXPANDED row (`generation-step.ts`
+      // `@if (expandedField() === field)`; v4 `GenerationStep.tsx:373` the same) —
+      // expand Identity first (the §3 unification review's catch).
+      await page.getByRole('button', { name: /Identity/ }).first().click();
       await expect(page.getByText(GENERATED_TEXT)).toBeVisible();
 
       await page.getByRole('button', { name: 'Apply to Character' }).click();

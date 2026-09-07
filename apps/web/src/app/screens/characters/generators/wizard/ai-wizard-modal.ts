@@ -38,7 +38,7 @@ const STEP_TITLES: Record<WizardStep, string> = {
     WizardGenerationStep,
   ],
   host: {
-    '(keydown.escape)': 'onEscape()',
+    '(document:keydown.escape)': 'onEscape()',
   },
   template: `
     <div

@@ -181,8 +181,8 @@ export async function dispatchCharacterOptimize(
   request: CharacterOptimizeRequest,
 ): Promise<OptimizerTerminalEvent> {
   const data = await dispatchGenerator(core, request);
-  return (data['terminal'] ??
-    data ?? { type: 'error', error: 'The refinement endeavour returned no result.' }) as OptimizerTerminalEvent;
+  // §B.1: the dispatch resolves with `{ terminal }` — nothing else is defined.
+  return data['terminal'] as OptimizerTerminalEvent;
 }
 
 // ===========================================================================

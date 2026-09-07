@@ -253,10 +253,37 @@ async fn resolve_vault_mount_id(db: &Db, character_id: &str) -> Option<String> {
         .read_main(move |conn| characters_read::find_by_id_raw(conn, &id_owned))
         .ok()
         .flatten()?;
-    row.get("characterDocumentMountPointId")
+    let mount_id = row
+        .get("characterDocumentMountPointId")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .map(str::to_string)
+        .map(str::to_string)?;
+    // v4 resolves through the HYDRATED `repos.characters.findById`, which
+    // throws `CharacterVaultUnavailableError` for a dangling vault pointer;
+    // its resolver's catch (`character-vault-bridge.ts:74-81`) then warns
+    // `Failed to resolve character vault store` and answers null. v5 reads
+    // the pointer raw (so the sweep can look at exactly that character), which
+    // made this arm SILENT until the §3 unification review — the mount row is
+    // checked here and the same warn emitted. The `error` text is v5's own
+    // (v4's is the thrown error's message; a live-error field, pinned by the
+    // line's presence, not its bytes), and v4's `context:` key is omitted per
+    // the crate's tracing-target convention.
+    let mount_owned = mount_id.clone();
+    // Mount-point rows live in the MOUNT-INDEX partition (v4 `docMountPoints`).
+    let mount_known = db
+        .read_mount_index(move |conn| {
+            crate::db::doc_mount_points::DocMountPointsRepository::new(conn).exists(&mount_owned)
+        })
+        .unwrap_or(false);
+    if !mount_known {
+        tracing::warn!(
+            character_id = %character_id,
+            error = %format!("vault unavailable for character {character_id} (mount {mount_id})"),
+            "Failed to resolve character vault store"
+        );
+        return None;
+    }
+    Some(mount_id)
 }
 
 /// v4 `findExistingSummaryPaths`: the `.md` files under `Conversation Summaries/`

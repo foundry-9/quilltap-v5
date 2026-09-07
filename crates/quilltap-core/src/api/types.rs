@@ -328,7 +328,8 @@ pub enum Request {
         participant_id: String,
     },
     /// Stop impersonating (v4 `DELETE …?action=stop-impersonate`); the optional
-    /// new connection profile flips the participant back to `controlledBy:'llm'`.
+    /// new connection profile is a PROFILE-ONLY reassignment of the seat —
+    /// since Bug 44 `controlledBy` never moves (`participants.ts:98-113`).
     ///
     /// v4 serves this on DELETE, not POST (`handlers/delete.ts:33-40`), and its
     /// client sends DELETE (`useImpersonation.ts:99,126`) — the doc said POST

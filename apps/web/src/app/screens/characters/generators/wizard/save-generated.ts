@@ -91,7 +91,12 @@ export async function saveGeneratedWardrobeItems(
       });
       saved++;
       if (componentItemIds.length > 0) outfits++;
-      const createdId = (data['item'] as { id?: unknown } | undefined)?.id;
+      // `characterWardrobeCreate` answers `{ wardrobeItem }` (v4
+      // `save-generated-wardrobe.ts:47` `data?.wardrobeItem?.id`; v5
+      // `characters.rs` `wrap_obj(out, "wardrobeItem")`). The §3 unification
+      // review found this reading `item` — every composite was created with
+      // `componentItemIds: []`.
+      const createdId = (data['wardrobeItem'] as { id?: unknown } | undefined)?.id;
       if (typeof createdId === 'string') {
         idByTitle.set(item.title.trim().toLowerCase(), createdId);
       }

@@ -36,6 +36,15 @@
 //!   `-0` / `1e2` / `1.0` all parse. The divergence is unreachable from the
 //!   corpus (a lone surrogate cannot survive an NDJSON round trip either) and is
 //!   pinned by [`tests::lone_surrogate_is_the_one_recorded_divergence`].
+//! * **Two further `JSON.parse`/`serde_json` classes, RECORDED not measured
+//!   (the §3 unification review):** nesting depth — `serde_json` refuses more
+//!   than 128 levels (`RecursionLimitExceeded`) where `JSON.parse` accepts, so
+//!   a valid but absurdly deep document falls through both repairs and
+//!   [`parse_llm_json`] answers `Err` where v4 answers the value; and numeric
+//!   range — `1e400` is `Infinity` under `JSON.parse` and `NumberOutOfRange`
+//!   under serde. Both are unreachable from any model answer this module is
+//!   fed; they are listed so the "every other axis agrees" sentence above is
+//!   read with its two exceptions.
 //! * **Error MESSAGE bytes are NOT v4's.** v4 propagates V8's `SyntaxError`;
 //!   [`LlmJsonError`] carries serde's wording. No ported surface may byte-compare
 //!   a parse-failure sentence without measuring v4's first.

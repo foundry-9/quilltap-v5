@@ -108,7 +108,16 @@ where
                         pending.push(frame(inner));
                     }
                 }
-                Err(RecvError::Lagged(_)) => continue,
+                // A recorded v5-only divergence: v4's per-route ReadableStream
+                // cannot lose a frame, this broadcast can (capacity 1024). Say so.
+                Err(RecvError::Lagged(n)) => {
+                    tracing::warn!(
+                        dropped = n,
+                        progress_id = %progress_id,
+                        "[generator_sse] event stream lagged; generator frames dropped"
+                    );
+                    continue;
+                }
                 Err(RecvError::Closed) => break None,
             },
             out = &mut dispatch => break Some(out),
@@ -168,7 +177,14 @@ where
                             }
                         }
                     }
-                    Err(RecvError::Lagged(_)) => continue,
+                    Err(RecvError::Lagged(n)) => {
+                        tracing::warn!(
+                            dropped = n,
+                            progress_id = %progress_id,
+                            "[generator_sse] event stream lagged; generator frames dropped"
+                        );
+                        continue;
+                    }
                     Err(RecvError::Closed) => break,
                 },
                 _ = &mut dispatch => break,

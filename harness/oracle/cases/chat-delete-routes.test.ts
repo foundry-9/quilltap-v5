@@ -70,13 +70,21 @@ const CONN_PROFILE = '93000000-0000-4000-8000-000000000001';
 
 const RealDate = Date;
 
+/** A body `req.json()` cannot parse (empty / not JSON) — the SyntaxError arm. */
+const UNPARSEABLE = Symbol('unparseable');
+
 function mockRequest(url: string, body?: unknown): unknown {
   return {
     method: 'DELETE',
     url,
     nextUrl: new URL(url),
     headers: new Headers({ 'Content-Type': 'application/json' }),
-    json: jest.fn().mockResolvedValue(body ?? {}),
+    // `undefined` (no body given) → `{}` as before; an EXPLICIT `null` must
+    // survive, so the non-object rows measure Zod's root-level refusal.
+    json:
+      body === UNPARSEABLE
+        ? jest.fn().mockRejectedValue(new SyntaxError('Unexpected end of JSON input'))
+        : jest.fn().mockResolvedValue(body === undefined ? {} : body),
   };
 }
 
@@ -408,6 +416,13 @@ async function main(): Promise<void> {
 
     // ── the unknown-action refusal, and the empty-action fall-through ────────
     // v4 refuses rather than deleting: "prevent accidental chat deletion".
+    // Zod 4.5.4's `z.object` refuses a NON-object body before any field walk,
+    // with ONE root-path issue (the §3 unification review's catch).
+    { name: 'stop_impersonate_null_body', action: 'stop-impersonate', chatId: CHAT_IMP, body: null },
+    { name: 'stop_impersonate_array_body', action: 'stop-impersonate', chatId: CHAT_IMP, body: [] },
+    // An UNREADABLE body: 500 on the leg that reads it, AFTER its chat gate.
+    { name: 'stop_impersonate_empty_body', action: 'stop-impersonate', chatId: CHAT_IMP, body: UNPARSEABLE },
+    { name: 'stop_impersonate_missing_chat_empty_body', action: 'stop-impersonate', chatId: MISSING_ID, body: UNPARSEABLE },
     { name: 'action_bogus', action: 'zzz', chatId: CHAT_FULL },
     // `?action=` is present but EMPTY, which is JS-falsy — so it takes the
     // no-action leg and the chat IS DELETED. The census is what proves it.

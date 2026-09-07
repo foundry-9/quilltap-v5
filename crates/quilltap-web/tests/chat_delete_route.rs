@@ -26,6 +26,7 @@
 //!      refuses and leaves the chat standing.
 //!   7. A body that is not JSON at all is the SyntaxError v4's middleware turns
 //!      into 500 `Internal server error` — not a ZodError, so not a 400.
+//!   8. An EMPTY body is that same SyntaxError (`req.json()` on zero bytes).
 //!
 //! Run:
 //!   cargo test -p quilltap-web --test chat_delete_route
@@ -200,6 +201,19 @@ async fn chat_delete_edge() {
         status, 500,
         "v4's `req.json()` SyntaxError is not a Zod error: {body}"
     );
+    assert_eq!(body["error"].as_str(), Some("Internal server error"));
+
+    // --- 8: an EMPTY body is the same SyntaxError -----------------------------
+    // v4 `participants.ts:89` `await req.json()` on zero bytes throws exactly
+    // as it does on prose, and the middleware (`context.ts:207`) answers 500.
+    // The §3 unification review retired an edge-side `is_empty → {}` special
+    // case that answered 400 here.
+    let (status, body) = del(
+        format!("/api/v1/chats/{survivor}?action=stop-impersonate"),
+        Some(String::new()),
+    )
+    .await;
+    assert_eq!(status, 500, "an empty body is a SyntaxError, not a Zod error: {body}");
     assert_eq!(body["error"].as_str(), Some("Internal server error"));
 
     // The chat every action arm above ran against is still standing — none of

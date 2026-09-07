@@ -232,6 +232,18 @@ import { WizardState } from './wizard-state';
 export class WizardGenerationStep {
   protected readonly wizard = inject(WizardState);
   protected readonly fieldLabels = FIELD_LABELS;
+  /**
+   * RECORDED DIVERGENCE (the §3 unification review widened the lane's note):
+   * v4's expanded review row renders three things this pane does not —
+   * `<PromptFieldExample>` ("Written as: …") above every hinted field
+   * (`GenerationStep.tsx:379`), the physical-description tier panel
+   * (`:103-148`: the Short-prompt teaser; expanded Short/Medium/Long/Complete
+   * with char counts, then Full Description), and scenarios as
+   * `<strong>title</strong>` + pre-wrapped content (`:151-163`). v5 shows each
+   * field's plain text pre-wrapped (`fullDescription` alone for the physical
+   * description). A follow-up ports the three renders; nothing persisted
+   * differs — this pane is a preview.
+   */
   protected readonly expandedField = signal<GeneratableField | null>(null);
 
   protected selectedList(): GeneratableField[] {

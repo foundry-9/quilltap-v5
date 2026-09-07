@@ -18,6 +18,8 @@
 
 use serde_json::Value;
 
+use crate::api::system_qtap::js_truthy;
+
 use crate::jsstr::js_trim;
 use crate::pascal::js_value::to_js_string;
 
@@ -85,7 +87,7 @@ pub fn build_context_prompt(
         fields.push(format!("Title: {v}"));
     }
     // v4 `if (existingData.pronouns)` — truthiness, NOT a blank test.
-    if let Some(p) = existing.get("pronouns").filter(|p| !p.is_null()) {
+    if let Some(p) = existing.get("pronouns").filter(|p| js_truthy(Some(p))) {
         fields.push(format!(
             "Pronouns: {}/{}/{}",
             p.get("subject")

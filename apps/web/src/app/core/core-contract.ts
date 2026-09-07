@@ -3270,6 +3270,8 @@ export interface CharacterConnectionProfile {
   name: string;
   provider?: string;
   modelName?: string;
+  /** Carried so v4's "prefer the default profile" auto-selects can be faithful. */
+  isDefault?: boolean;
 }
 
 // ---------------------------------------------------------------------------

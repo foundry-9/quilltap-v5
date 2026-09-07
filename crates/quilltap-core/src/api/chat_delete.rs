@@ -138,6 +138,24 @@ fn parse_stop_impersonate(body: &Value) -> Result<(String, Option<String>), Valu
         })
     };
 
+    // Zod 4.5.4's `z.object` refuses a NON-object body BEFORE any field check,
+    // with ONE issue at the root path (`{expected:"object", code:"invalid_type",
+    // path:[], message:"Invalid input: expected object, received array"}`) —
+    // a per-field walk over `null` / `[]` / `42` would instead invent a
+    // `participantId … received undefined` issue (the §3 unification review's
+    // catch; `stop_impersonate_null_body` / `_array_body` pin it).
+    if !body.is_object() {
+        return Err(json!([{
+            "expected": "object",
+            "code": "invalid_type",
+            "path": [],
+            "message": format!(
+                "Invalid input: expected object, received {}",
+                zod_parsed_type(Some(body))
+            ),
+        }]));
+    }
+
     let mut issues: Vec<Value> = Vec::new();
     let raw_pid = body.get("participantId");
     let participant_id = match raw_pid.and_then(Value::as_str) {
@@ -188,7 +206,12 @@ pub async fn chat_delete_dispatch(
     db: &Db,
     chat_id: &str,
     raw_action: Option<&str>,
-    body: &Value,
+    // `None` = the request bytes were not JSON at all (an EMPTY body included):
+    // v4's `await req.json()` throws a `SyntaxError` the middleware turns into
+    // 500 `Internal server error` — but only on the leg that READS the body,
+    // and only AFTER that leg's chat gate. The edge parses and passes the
+    // outcome; the composite decides where it matters (§3 unification review).
+    body: Option<&Value>,
 ) -> Response {
     match classify_delete_action(raw_action) {
         // v4 hands the chat id straight to `handleResetState`; no body is read.
@@ -206,6 +229,10 @@ pub async fn chat_delete_dispatch(
                     return Response::error(ErrorKind::Internal, "Internal server error");
                 }
             }
+            // Only now — after the 404 gate — does v4 `await req.json()`.
+            let Some(body) = body else {
+                return Response::error(ErrorKind::Internal, "Internal server error");
+            };
             match parse_stop_impersonate(body) {
                 Ok((participant_id, new_profile)) => {
                     super::salon::chat_stop_impersonate(

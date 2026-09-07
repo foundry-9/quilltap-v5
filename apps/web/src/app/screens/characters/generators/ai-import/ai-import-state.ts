@@ -198,13 +198,14 @@ export class AiImportState {
       const list = await fetchConnectionProfiles(this.core);
       this.profilesSig.set(list);
       if (!this.profileIdSig() && list.length > 0) {
-        this.profileIdSig.set(list[0].id);
+        // v4 `useAIImport.ts:87-92`: the default profile, else the first.
+        this.profileIdSig.set((list.find((p) => p.isDefault) ?? list[0]).id);
       }
     } catch (err) {
       this.fold.update((s) => ({
         ...s,
-        error:
-          err instanceof Error && err.message ? err.message : 'Failed to load connection profiles',
+        // v4 `useAIImport.ts:97` — always the fixed sentence.
+        error: 'Failed to load connection profiles',
       }));
     } finally {
       this.loadingProfilesSig.set(false);
@@ -259,8 +260,9 @@ export class AiImportState {
         regenerateSteps,
       });
       this.fold.update((s) => applyAiImportEvent(s, terminal as unknown as Record<string, unknown>));
-      if (this.fold().result) {
-        // Auto-advance to review (v4 `:297-300`).
+      // Auto-advance to review on the DONE frame's own `result` (v4 `:297-300`
+      // tests `event.result`) — never on state, which may hold a prior run's.
+      if ((terminal as { result?: unknown }).result) {
         this.currentStepSig.set(4);
       }
     } catch (err) {

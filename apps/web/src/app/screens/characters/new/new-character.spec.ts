@@ -31,7 +31,7 @@ function stubClient(
         case 'characterUpdate':
           return { character: { id: 'new-char-id' } };
         case 'characterWardrobeCreate':
-          return { item: { id: `item-${Math.random()}` } };
+          return { wardrobeItem: { id: `item-${Math.random()}` } };
         case 'characterScenarioCreate':
           return {
             scenario: {
@@ -365,6 +365,12 @@ describe('NewCharacter — the AI Wizard + Import Template (P4.9K3)', () => {
       characterId: 'new-char-id',
       item: { title: 'Reading Robe' },
     });
+
+    // The ORDER itself (v4 `NewCharacterView.tsx:144-192`): a reordering of
+    // `onSubmit` must redden this, not just a dropped call (the §3 review's pin).
+    const indices = [scenarioReq, pdReq, propsReq, wardrobeReq].map((r) => seen.indexOf(r!));
+    expect(indices.every((i) => i >= 0)).toBe(true);
+    expect([...indices].sort((a, b) => a - b)).toEqual(indices);
   });
 
   it('Import Template opens a real modal with v4\'s empty-state copy (no promptTemplateList verb)', async () => {

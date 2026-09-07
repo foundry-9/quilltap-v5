@@ -223,7 +223,6 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
                       type="button"
                       class="p-3 rounded-lg border border-dashed qt-border-default hover:qt-border-primary/50 hover:qt-bg-primary/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       [disabled]="adding()"
-                      title="Conjure a character from lore via the AI Import wizard"
                       (click)="aiImportOpen.set(true)"
                     >
                       <div class="flex items-center gap-3">

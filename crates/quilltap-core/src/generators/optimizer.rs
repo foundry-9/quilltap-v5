@@ -685,3 +685,31 @@ Respond with a JSON array of suggestion objects (may be empty)."#,
         analysis_json = pretty(analysis)
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// v4's `coerceSuggestionText` is NOT exported, so no tier-1 oracle can
+    /// drive it; the values below were MEASURED on Node 24.13.1 at the
+    /// `f699da6f6` pin (`String(0.5)`, `JSON.stringify({user:"x",char:"y"})`,
+    /// `String(true)`, `JSON.stringify([1,"a",null])`) — the §3 unification
+    /// review's pin for a `pub fn` that had no caller and no test.
+    #[test]
+    fn coerce_suggestion_text_matches_node() {
+        assert_eq!(coerce_suggestion_text(Some(&json!("as is"))), "as is");
+        assert_eq!(coerce_suggestion_text(None), "");
+        assert_eq!(coerce_suggestion_text(Some(&Value::Null)), "");
+        assert_eq!(coerce_suggestion_text(Some(&json!(0.5))), "0.5");
+        assert_eq!(coerce_suggestion_text(Some(&json!(true))), "true");
+        assert_eq!(
+            coerce_suggestion_text(Some(&json!({"user": "x", "char": "y"}))),
+            r#"{"user":"x","char":"y"}"#
+        );
+        assert_eq!(
+            coerce_suggestion_text(Some(&json!([1, "a", null]))),
+            r#"[1,"a",null]"#
+        );
+    }
+}

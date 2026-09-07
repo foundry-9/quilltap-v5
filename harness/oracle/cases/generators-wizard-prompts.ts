@@ -38,7 +38,7 @@ const corpus = JSON.parse(
   readFileSync(join(here, '..', 'fixtures', 'generators-wizard-prompts.json'), 'utf8'),
 ) as { contexts: ContextCase[] };
 
-// FIELD_PROMPTS is a Record; its INSERTION ORDER is the 13 field names in v4's
+// FIELD_PROMPTS is a Record; its INSERTION ORDER is the TEN field names in v4's
 // source order and is recorded as-is (the Rust table keeps it).
 for (const [name, value] of Object.entries(FIELD_PROMPTS)) {
   process.stdout.write(JSON.stringify({ kind: 'field_prompt', name, value }) + '\n');

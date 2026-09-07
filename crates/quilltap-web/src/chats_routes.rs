@@ -141,21 +141,17 @@ pub async fn chat_delete(
     let raw_action = crate::query::first(&query, "action");
 
     // `await req.json()` on an EMPTY body throws in Next just as it does here;
-    // v4 only ever reaches it on the stop-impersonate leg, where its client
-    // always sends a body. An empty body is treated as `{}` so the leg answers
-    // v4's `participantId` validation error rather than a transport 500; a body
-    // that is present but NOT JSON is the SyntaxError v4's middleware turns
-    // into 500 `Internal server error` (not a ZodError, so not a 400).
-    let json_body: Value = if body.is_empty() {
-        Value::Object(Default::default())
-    } else {
-        match serde_json::from_slice(&body) {
-            Ok(v) => v,
-            Err(_) => {
-                return error_json(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
-            }
-        }
-    };
+    // v4 only ever reaches it on the stop-impersonate leg (`participants.ts:89`
+    // `await req.json()`). ANY body that is not JSON — including an EMPTY one:
+    // `req.json()` on zero bytes throws the same `SyntaxError` — is what v4's
+    // middleware turns into 500 `Internal server error` (not a ZodError, so
+    // not a 400). The §3 unification review retired an `is_empty → {}`
+    // special case here that answered 400 where v4 answers 500; the
+    // `stop_impersonate_empty_body` corpus row now measures it.
+    // Parsed HERE, judged THERE: the composite answers the 500 only on the
+    // stop-impersonate leg and only after its chat gate (a missing chat with an
+    // unreadable body is v4's 404, `stop_impersonate_missing_chat_empty_body`).
+    let json_body: Option<Value> = serde_json::from_slice(&body).ok();
 
     // The dispatch reaches the ported composite DIRECTLY rather than through a
     // second `Request` variant: §B of the round's contract admits exactly one
@@ -168,7 +164,7 @@ pub async fn chat_delete(
         Err(r) => return *r,
     };
     let resp = quilltap_core::api::chat_delete::chat_delete_dispatch(
-        &db, &chat_id, raw_action, &json_body,
+        &db, &chat_id, raw_action, json_body.as_ref(),
     )
     .await;
     match resp {

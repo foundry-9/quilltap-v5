@@ -176,6 +176,7 @@ export async function fetchConnectionProfiles(
     name: p.name,
     provider: p.provider,
     modelName: p.modelName,
+    isDefault: p.isDefault,
   }));
 }
 

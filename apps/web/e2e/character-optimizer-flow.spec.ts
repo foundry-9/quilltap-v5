@@ -13,17 +13,29 @@ import { startMockLlm } from './support/mock-llm';
  * genuinely streams, and would silently activate this beat into a guaranteed
  * failure (the standing e2e rule, `character-archive-flow.spec.ts` precedent).
  *
- * The mock LLM's JSON reply below is a BEST-EFFORT shape (an object with a
- * `suggestions` array of `OptimizerSuggestion`s, matching the bug-119
- * `coerceSuggestionArray` key-ordering `['suggestions', ...]`) — the exact
- * shape the real K1 service expects from its own LLM call is server-internal
- * and unverified from the client side until P4.9K1 lands; the unifier should
- * re-check this fixture against the real service's prompt/parse pipeline
- * before trusting this beat's first live run.
+ * The mock LLM's ONE fixed reply must satisfy BOTH of v4's parses, because the
+ * service re-asks the same model on every call (the `p4.9k` round's §3 review
+ * measured this against `lib/services/character-optimizer.service.ts`):
+ * `parseLLMJson<OptimizerAnalysis>(analysisRaw)` reads TOP-LEVEL
+ * `behavioralPatterns` / `summary` (`:834`, `:1133`), and every sub-step's
+ * `coerceSuggestionArray` takes the `suggestions` array off a wrapper object
+ * (`:944-945`). So the reply is flat: `{behavioralPatterns, summary,
+ * suggestions}`. Because v4 re-mints an id per suggestion per sub-step
+ * (`:968`), Aria yields one proposal PER sub-step (≥ 5) — the counter is
+ * asserted as `1 of N`, not `1 of 1`.
+ *
+ * ⚠ STILL OWED before the first live run (flip {@link P49K1_SERVER_LANDED}):
+ * the service's `MIN_REINFORCED_MEMORIES = 2` (`:145`) needs at least two of
+ * Aria's memories with `reinforcementCount >= 2`; the salon fixture's two
+ * carry the schema default `1`, so an un-seeded run answers `done` with zero
+ * suggestions and the no-suggestions sentence. Seed them through the running
+ * server's memory verbs (§S.8 — never SQL) at the top of the beat.
  */
 const P49K1_SERVER_LANDED = false;
 
 const OPTIMIZER_MOCK_REPLY = JSON.stringify({
+  behavioralPatterns: [{ pattern: 'Methodical calm', evidence: 'Consistent across memories', frequency: 'often' }],
+  summary: 'Aria consistently favours careful, unhurried precision.',
   suggestions: [
     {
       id: 'opt-sug-1',
@@ -35,10 +47,6 @@ const OPTIMIZER_MOCK_REPLY = JSON.stringify({
       memoryExcerpts: ['She catalogued the whole shelf without a single wasted motion.'],
     },
   ],
-  analysis: {
-    behavioralPatterns: [{ pattern: 'Methodical calm', evidence: 'Consistent across memories', frequency: 'often' }],
-    summary: 'Aria consistently favours careful, unhurried precision.',
-  },
 });
 
 async function maybeUnlock(page: Page): Promise<void> {
@@ -79,7 +87,7 @@ test.describe('p4.9k4 — the character optimizer ("Refine from Memories")', () 
       await page.getByRole('button', { name: 'Commence Refinement' }).click();
 
       // Review: exactly one suggestion arrives from the mock reply.
-      await expect(page.getByText('Proposal 1 of 1')).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText(/Proposal 1 of \d+/)).toBeVisible({ timeout: 20_000 });
       await page.getByRole('button', { name: 'Accept', exact: true }).click();
 
       await page.getByRole('button', { name: 'Review & Apply Changes' }).click();

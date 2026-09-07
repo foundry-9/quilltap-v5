@@ -188,6 +188,29 @@
       },
       "imageDescription": "Tall.",
       "documentContent": "Doc."
+    },
+    {
+      "id": "existing-falsy-pronouns",
+      "$comment": "§3 review: v4 gates `pronouns` on plain truthiness (`if (existingData.pronouns)`), so a falsy-but-not-nullish value (`\"\"`) SKIPS the line where a null-test would render `Pronouns: undefined/undefined/undefined`.",
+      "characterName": "Aria",
+      "background": "B",
+      "existingData": {
+        "title": "T",
+        "pronouns": "",
+        "identity": "I"
+      }
+    },
+    {
+      "id": "existing-zero-pronouns",
+      "$comment": "same class, `0`",
+      "characterName": "Aria",
+      "background": "B",
+      "existingData": {
+        "pronouns": 0,
+        "aliases": [
+          "Ari"
+        ]
+      }
     }
   ]
 }

@@ -113,7 +113,7 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
                       (change)="onFileSelect($event)"
                     />
                     <p class="qt-text-secondary">
-                      {{ state.uploading() ? 'Uploading…' : 'Drop files here or click to browse' }}
+                      {{ state.uploading() ? 'Uploading...' : 'Drop files here or click to browse' }}
                     </p>
                   </div>
 
@@ -128,10 +128,10 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
                           <span class="qt-body-sm truncate mr-2">{{ file.name }} ({{ formatBytes(file.size) }})</span>
                           <button
                             type="button"
-                            class="qt-button-ghost qt-button-sm qt-text-destructive flex-shrink-0"
+                            class="qt-button-ghost qt-button-sm qt-text-destructive hover:qt-text-destructive flex-shrink-0"
                             (click)="state.removeFile(file.id)"
                           >
-                            <qt-icon name="trash" class="w-4 h-4" />
+                            Remove
                           </button>
                         </div>
                       }
@@ -149,7 +149,7 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
                     rows="8"
                     [value]="state.sourceText()"
                     (input)="state.setSourceText($any($event.target).value)"
-                    placeholder="Paste character descriptions, wiki content, backstory, personality notes…"
+                    placeholder="Paste character descriptions, wiki content, backstory, personality notes..."
                   ></textarea>
                 </div>
               </div>
@@ -166,7 +166,7 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
                     Select the AI provider to use for character generation.
                   </p>
                   @if (state.loadingProfiles()) {
-                    <p class="qt-text-secondary">Loading profiles…</p>
+                    <p class="qt-text-secondary">Loading profiles...</p>
                   } @else if (state.profiles().length === 0) {
                     <p class="qt-text-destructive">
                       No connection profiles found. Create one in Settings first.
@@ -231,7 +231,7 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
               <div class="flex flex-col gap-4">
                 @if (state.generating()) {
                   <p class="qt-body-sm qt-text-secondary">
-                    Generating character data… This may take a minute depending on source material length.
+                    Generating character data... This may take a minute depending on source material length.
                   </p>
                 }
 
@@ -239,18 +239,23 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
                   @for (stepName of visibleSteps(); track stepName) {
                     <div class="flex items-start gap-3 py-2">
                       <span [class]="'text-lg flex-shrink-0 ' + statusColorClass(stepStatus(stepName))">
+                        <!-- v4 renders text glyphs, not icons (AIImportWizard.tsx
+                             getStatusIcon, :294-304): ✓ complete, ⚠ error,
+                             ● in progress, ○ pending. The unification review
+                             retired an invented pending DOT whose
+                             utility class (a muted 40% dot) no rule defines. -->
                         @switch (stepStatus(stepName)) {
                           @case ('complete') {
-                            <qt-icon name="check" class="w-4 h-4" />
+                            &#x2713;
                           }
                           @case ('error') {
-                            <qt-icon name="alert-triangle" class="w-4 h-4" />
+                            &#x26A0;
                           }
                           @case ('in_progress') {
-                            <qt-icon name="refresh" class="w-4 h-4 animate-spin" />
+                            &#x25CF;
                           }
                           @default {
-                            <span class="qt-bg-muted-foreground/40 block h-2 w-2 rounded-full"></span>
+                            &#x25CB;
                           }
                         }
                       </span>
@@ -431,7 +436,7 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
                       class="qt-button-primary disabled:opacity-50"
                       (click)="handleImport()"
                     >
-                      {{ state.importing() ? 'Importing…' : 'Import Character' }}
+                      {{ state.importing() ? 'Importing...' : 'Import Character' }}
                     </button>
                     <button type="button" class="qt-button-secondary" (click)="state.addMoreMaterial()">
                       Add More &amp; Regenerate
@@ -574,9 +579,9 @@ export class AiImportWizard {
       case 'error':
         return 'qt-text-warning';
       case 'in_progress':
-        return 'qt-text-info';
+        return 'qt-text-info animate-pulse';
       default:
-        return 'qt-text-secondary';
+        return 'qt-text-muted';
     }
   }
 

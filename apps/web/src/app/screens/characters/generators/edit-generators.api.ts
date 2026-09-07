@@ -216,11 +216,6 @@ export interface WizardRequest {
   characterId?: string;
 }
 
-/** `characterWizard` (non-streaming; §B.3). Unused by this lane's UI, kept for completeness. */
-export interface CharacterWizardRequest extends WizardRequest {
-  type: 'characterWizard';
-}
-
 /** `characterWizardStream` (§B.3, K2's verb — the wizard's ONLY live call). */
 export interface CharacterWizardStreamRequest extends WizardRequest {
   type: 'characterWizardStream';

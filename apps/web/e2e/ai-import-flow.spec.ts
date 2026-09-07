@@ -19,22 +19,26 @@ import { startMockLlm } from './support/mock-llm';
  * exact roster size, so a beat that left an extra participant behind would
  * break a sibling spec through the fixture rather than through the code.
  *
- * The mock LLM's JSON reply is a best-effort shape (a `QuilltapExport`-ish
- * object with one character); the exact shape P4.9K2's service expects from
- * its own LLM call is server-internal and unverified from the client side
- * until that lane lands — the unifier should re-check this fixture against
- * the real service's prompt/parse pipeline before trusting this beat's first
- * live run.
+ * ⚠ The mock LLM's ONE fixed reply CANNOT satisfy the real service (measured
+ * by the `p4.9k` round's §3 review against `lib/services/ai-import.service.ts`):
+ * the `character_basics` step stores the parsed object whole and then requires
+ * TOP-LEVEL `name` (`:905`, `:919` — a nested `character` wrapper fails it),
+ * while the `system_prompts` / `wardrobe_items` / `memories` steps `.map` over
+ * ARRAYS (`:491`), so a single object reply throws inside assembly and the
+ * run ends `done {error}` with no `result` and "Review Results" never renders.
+ * STILL OWED before the first live run (flip {@link P49K2_SERVER_LANDED}): a
+ * spec-local prompt-keyed mock that switches on the user-message text —
+ * basics → an object with `name`, the array steps → arrays (the order allowed
+ * exactly this: "extend in YOUR spec's support copy, never the shared file").
+ * The reply below is only the basics step's shape, flattened.
  */
 const P49K2_SERVER_LANDED = false;
 
 const AI_IMPORT_MOCK_REPLY = JSON.stringify({
-  character: {
-    name: 'Marchpane',
-    identity: 'A travelling confectioner of some renown.',
-    description: 'Sweet-tempered and precise.',
-    personality: 'Endlessly patient, quietly ambitious.',
-  },
+  name: 'Marchpane',
+  identity: 'A travelling confectioner of some renown.',
+  description: 'Sweet-tempered and precise.',
+  personality: 'Endlessly patient, quietly ambitious.',
 });
 
 async function maybeUnlock(page: Page): Promise<void> {

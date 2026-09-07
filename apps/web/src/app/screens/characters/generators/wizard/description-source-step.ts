@@ -2,11 +2,11 @@ import { ChangeDetectionStrategy, Component, inject, input, signal } from '@angu
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../../core/core-client';
-import type { CharacterPhoto } from '../../../../core/core-contract';
 import { Icon } from '../../../../ui/icon';
 import { Modal } from '../../../../ui/modal';
 import type { DescriptionSourceType } from '../edit-generators.api';
-import { fetchCharacterPhotos } from '../../characters.api';
+import { ImageGallery } from '../../../../images/image-gallery';
+import type { ImageData } from '../../../../images/images.api';
 import { WizardState } from './wizard-state';
 
 interface SourceOption {
@@ -58,7 +58,7 @@ const SOURCE_OPTIONS: SourceOption[] = [
 @Component({
   selector: 'qt-wizard-description-source-step',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Modal],
+  imports: [Icon, Modal, ImageGallery],
   template: `
     <div class="space-y-6">
       <div>
@@ -185,23 +185,19 @@ const SOURCE_OPTIONS: SourceOption[] = [
 
           @if (showGallery()) {
             <qt-modal title="Select Image" maxWidth="4xl" (close)="showGallery.set(false)">
-              @if (photosQuery.isPending()) {
-                <div class="py-8 text-center qt-text-secondary">Loading photos...</div>
-              } @else if (photos().length === 0) {
-                <p class="qt-text-small py-4">No photos in this character's gallery yet.</p>
-              } @else {
-                <div class="grid grid-cols-4 gap-3">
-                  @for (photo of photos(); track photo.linkId) {
-                    <button
-                      type="button"
-                      class="rounded-lg overflow-hidden border-2 qt-border-default"
-                      (click)="selectGalleryPhoto(photo)"
-                    >
-                      <img [src]="photo.blobUrl" alt="" class="w-full h-full object-cover" />
-                    </button>
-                  }
-                </div>
-              }
+              <!-- v4 mounts its shared ImageGallery (tagType CHARACTER, tagId = the
+                   character) over GET /api/v1/images (DescriptionSourceStep.tsx:316-321)
+                   and selects a FILES row id (:94-97). The §3 unification review replaced
+                   a character-photos album read here (vault LINK ids the wizard server
+                   cannot resolve) with the same shape over v5's imagesList verb. -->
+              <qt-image-gallery
+                [images]="galleryImages()"
+                [loading]="imagesQuery.isPending()"
+                [error]="imagesQuery.isError() ? 'Failed to load images' : null"
+                [onSelectImage]="selectGalleryImage"
+                [selectedImageId]="wizard.selectedGalleryImageId() ?? undefined"
+                (reloadImages)="imagesQuery.refetch()"
+              />
             </qt-modal>
           }
         </div>
@@ -340,20 +336,25 @@ export class WizardDescriptionSourceStep {
   protected readonly uploadingDocument = signal(false);
   protected readonly documentUploadError = signal<string | null>(null);
 
-  protected readonly photosQuery = injectQuery(() => ({
-    queryKey: ['characters', 'photos', this.characterId() ?? ''],
+  /** v4 `<ImageGallery tagId={characterId}>` → `GET /api/v1/images?tagId=` (`imagesList`). */
+  protected readonly imagesQuery = injectQuery(() => ({
+    queryKey: ['images', 'list', this.characterId() ?? ''],
     enabled: this.showGallery() && !!this.characterId(),
-    queryFn: (): Promise<CharacterPhoto[]> => fetchCharacterPhotos(this.core, this.characterId()!),
+    queryFn: async (): Promise<ImageData[]> => {
+      const data = await this.core.dispatchData({ type: 'imagesList', tagId: this.characterId()! });
+      return (data['data'] as ImageData[] | undefined) ?? [];
+    },
   }));
 
-  protected photos(): CharacterPhoto[] {
-    return this.photosQuery.data() ?? [];
+  protected galleryImages(): ImageData[] {
+    return this.imagesQuery.data() ?? [];
   }
 
-  protected selectGalleryPhoto(photo: CharacterPhoto): void {
-    this.wizard.handleGallerySelect(photo.linkId, photo.blobUrl);
+  /** v4 `handleGalleryImageSelect` (`DescriptionSourceStep.tsx:94-97`). */
+  protected readonly selectGalleryImage = (image: ImageData): void => {
+    this.wizard.handleGallerySelect(image.id, image.url || `/api/v1/files/${image.id}`);
     this.showGallery.set(false);
-  }
+  };
 
   protected async onImageFileSelected(files: FileList | null): Promise<void> {
     const file = files?.[0];
@@ -393,7 +394,8 @@ export class WizardDescriptionSourceStep {
         contentType: file.type,
         data: base64,
       });
-      const receipt = (result['file'] ?? result['data'] ?? result) as { id?: string } | undefined;
+      // `fileUpload` answers `{ data }` (`files.rs` — the documented body); no guessing.
+      const receipt = result['data'] as { id?: string } | undefined;
       if (!receipt?.id) {
         throw new Error('Failed to upload document');
       }
