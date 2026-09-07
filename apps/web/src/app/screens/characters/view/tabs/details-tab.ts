@@ -8,6 +8,7 @@ import { Icon } from '../../../../ui/icon';
 import { Modal } from '../../../../ui/modal';
 import { ToastService } from '../../../../ui/toast.service';
 import { characterKeys } from '../../characters.api';
+import { applyCharacterFieldUpdates } from '../../generators/optimizer/apply-character-field-updates';
 import { TemplateDisplay } from '../template-display';
 import {
   applyTemplateTransform,
@@ -325,12 +326,25 @@ export class CharacterDetailsTab {
   }
 
   /**
-   * v4 `useCharacterView.ts:237-262` over `applyCharacterFieldUpdates`: partial
-   * failures are COLLECTED, not thrown (each endpoint is independent and
-   * idempotent), so one failing prompt write doesn't stop the others or hide
-   * behind a generic exception. `errors` empty ⇒ success toast; non-empty ⇒
-   * every collected message joined into one error toast. An empty transform
-   * (nothing changed) short-circuits before any dispatch.
+   * v4 `useCharacterView.ts:255-281` (`runTemplateSave`), over the SHARED
+   * {@link applyCharacterFieldUpdates} — the same helper v4 calls here and from
+   * the optimizer's apply path. v5 used to inline the fan-out for these two
+   * callers, which is what the `p4.9k` round recorded; the helper landed in that
+   * round with a note saying so.
+   *
+   * v4's order, kept: an empty transform short-circuits before any dispatch;
+   * otherwise the helper collects partial failures rather than throwing (each
+   * endpoint is independent and idempotent, so one failing prompt write does not
+   * stop the others), the character is ALWAYS refetched — including on partial
+   * failure, so the UI never shows stale optimistic state — and only then does
+   * the toast go up: every collected message joined into one error toast, or the
+   * caller's success sentence.
+   *
+   * v4 passes no `messages` override, so the helper's defaults apply — the same
+   * two sentences the inline copy carried. The one behavioural difference the
+   * lift brings is the helper's `err.message ? … : default` guard, where the
+   * inline copy took a bare `err.message`: an `Error` with an empty message now
+   * reads as the default sentence instead of an empty one.
    */
   private async runTemplateSave(
     transform: (text: string) => string,
@@ -345,34 +359,13 @@ export class CharacterDetailsTab {
       return;
     }
     const characterId = this.characterId();
-    const errors: string[] = [];
-    try {
-      for (const prompt of changedSystemPrompts) {
-        try {
-          await this.core.dispatchData({
-            type: 'characterPromptUpdate',
-            characterId,
-            promptId: prompt.id,
-            content: prompt.content,
-          });
-        } catch (err) {
-          errors.push(err instanceof Error ? err.message : 'A system prompt could not be saved.');
-        }
-      }
-      if (Object.keys(mainUpdates).length > 0) {
-        try {
-          await this.core.dispatchData({
-            type: 'characterUpdate',
-            characterId,
-            character: mainUpdates,
-          });
-        } catch (err) {
-          errors.push(err instanceof Error ? err.message : 'The character could not be updated.');
-        }
-      }
-    } finally {
-      await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(characterId) });
-    }
+    const { errors } = await applyCharacterFieldUpdates(this.core, characterId, {
+      mainUpdates,
+      promptUpdates: changedSystemPrompts,
+    });
+
+    await this.queryClient.invalidateQueries({ queryKey: characterKeys.detail(characterId) });
+
     if (errors.length > 0) {
       this.toasts.showError(errors.join(' '));
     } else {

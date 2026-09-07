@@ -13,10 +13,10 @@
  * no transaction across endpoints, and each write is idempotent, so a re-run
  * is safe).
  *
- * v5 has NO existing twin of this helper under any name (`details-tab.ts`'s
- * `runTemplateSave` inlines the same fan-out for its own two callers rather
- * than sharing it — that duplication predates this lane and is out of scope
- * here); this file is the first shared home, named for its optimizer caller.
+ * This file is the first shared home, named for its optimizer caller. Since
+ * P4.84 it has v4's second caller too: `details-tab.ts`'s `runTemplateSave`
+ * (v4 `useCharacterView.ts:255-281`) used to inline the same fan-out for its own
+ * two callers and now goes through here, as v4's does.
  */
 
 import type { CoreClient } from '../../../../core/core-client';

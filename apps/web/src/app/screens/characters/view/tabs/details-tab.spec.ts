@@ -262,6 +262,112 @@ describe('CharacterDetailsTab — template replace/restore toasts', () => {
     expect(toasts()).toEqual([{ type: 'error', message: 'the character record is locked' }]);
   });
 
+  // ---------------------------------------------------------------------
+  // P4.84 — `runTemplateSave` now goes through the SHARED
+  // `applyCharacterFieldUpdates`, as v4's `useCharacterView.ts:255-281` does.
+  // ---------------------------------------------------------------------
+
+  it('routes both prompt and main updates through the shared helper, prompts FIRST', async () => {
+    // The helper's order is v4's: prompt refinements, then prompt creations,
+    // then the main PUT — the character PUT body strips `systemPrompts`, so
+    // they cannot ride it. Replacing the helper call with the old inline
+    // fan-out (which never dispatched `characterPromptUpdate` for this tab)
+    // reddens the `characterPromptUpdate` assertion.
+    const seen: string[] = [];
+    const fixture = render(
+      {
+        dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
+          seen.push(req.type);
+          return {};
+        }) as CoreClient['dispatchData'],
+      },
+      character({
+        identity: 'Bertie is a gentleman.',
+        systemPrompts: [
+          {
+            id: 'sp1',
+            name: 'Voice',
+            content: 'Bertie speaks plainly.',
+            isDefault: false,
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    replaceCharButton(fixture).click();
+    await settle(fixture);
+
+    expect(seen).toEqual(['characterPromptUpdate', 'characterUpdate']);
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Replaced character name with {{char}}' },
+    ]);
+  });
+
+  it('refetches on PARTIAL failure and joins every collected message into one toast', async () => {
+    // v4 `:275-280`: the refetch happens ALWAYS — before the toast, and on a
+    // partial failure too, so the UI never keeps stale optimistic state. Both
+    // writes fail here with different sentences, which pins the single-space
+    // join as well as the collection.
+    const invalidated: unknown[] = [];
+    const queryClient = new QueryClient();
+    const original = queryClient.invalidateQueries.bind(queryClient);
+    vi.spyOn(queryClient, 'invalidateQueries').mockImplementation((...args: unknown[]) => {
+      // Recorded BEFORE the toast goes up — the assertion below reads the order.
+      invalidated.push(toasts().length);
+      return original(...(args as Parameters<typeof original>));
+    });
+
+    TestBed.configureTestingModule({
+      imports: [CharacterDetailsTab],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(queryClient),
+        {
+          provide: CoreClient,
+          useValue: {
+            dispatchData: (async (req: { type: string }) => {
+              if (req.type === 'characterPromptUpdate') throw new Error('the prompt is locked');
+              if (req.type === 'characterUpdate') throw new Error('the dossier is locked');
+              return {};
+            }) as CoreClient['dispatchData'],
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(CharacterDetailsTab);
+    fixture.componentRef.setInput('characterId', 'self');
+    fixture.componentRef.setInput(
+      'character',
+      character({
+        identity: 'Bertie is a gentleman.',
+        systemPrompts: [
+          {
+            id: 'sp1',
+            name: 'Voice',
+            content: 'Bertie speaks plainly.',
+            isDefault: false,
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    fixture.componentRef.setInput('defaultPartnerName', 'Jeeves');
+    fixture.componentRef.setInput('userControlledCharacters', []);
+    fixture.detectChanges();
+
+    replaceCharButton(fixture).click();
+    await settle(fixture);
+
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'the prompt is locked the dossier is locked' },
+    ]);
+    // The refetch ran, and it ran while no toast had gone up yet.
+    expect(invalidated).toEqual([0]);
+  });
+
   it('reverseTemplate toasts its own dynamic sentence', async () => {
     const seen: { type: string; [k: string]: unknown }[] = [];
     const fixture = render(

@@ -649,6 +649,22 @@ The new family's names are all `*_PT_ROUTES` /
 (`QT_ORACLE_PROMPT_TEMPLATES`, `QT_FIXTURE_PROMPT_TEMPLATES`,
 `build-prompt-templates-fixture.ts`, `/tmp/qt-prompt-templates-fixture.db`).
 Both families run side by side through the sweep driver.
+#### 2026-09-07 — refactor(spa): `runTemplateSave` onto the shared character-field-update helper
+
+_Versions: SPA 0.5.677._
+
+v4's `runTemplateSave` (`useCharacterView.ts:255-281`) calls the same
+`applyCharacterFieldUpdates` the optimizer's apply path calls. v5 landed that
+helper in the `p4.9k` round with a note saying the details tab still inlined the
+fan-out for its own two callers; it does not any more.
+
+The lift restores the prompt leg those two callers never had: a template
+replacement that touches a system prompt now dispatches `characterPromptUpdate`
+before the main update, because the character PUT body strips `systemPrompts`.
+v4's order is kept — an empty transform short-circuits, partial failures are
+collected rather than thrown, the character is always refetched (on partial
+failure too) and only then does the toast go up.
+
 #### 2026-09-07 — fix(spa): v4's two continue-mode refusals at the Salon's continue entrance
 
 _Versions: SPA 0.5.676._
