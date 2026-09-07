@@ -318,6 +318,21 @@ P4.6z lesson — `salon-autonomous-entry`'s own header says exactly this), and
 Both fixed; the beats now unlock first, seed, and re-ROUTE (not `reload()`,
 which restores the workspace's own last-active tab) before each arm.
 
+### Banked, not fixed — a pre-existing intermittent in `realtime_hint_wire`
+
+The last full workspace run (on a machine carrying six parallel lanes) failed
+`an_enqueue_puts_a_jobs_hint_on_the_event_stream` with
+`topic: "autonomousRooms"` where it wanted `"jobs"`. The beat takes the FIRST
+hint carrying ANY `topic` (`next_matching(events, |v| v.get("topic").is_some())`)
+and asserts it is the jobs one, so any hint the boot sweep publishes first wins
+the race. Green three times in isolation immediately after, and green in this
+lane's earlier complete run — an intermittent, not a regression, and nothing
+this lane touches publishes hints.
+
+The fix is one line (match on the topic rather than on "has a topic"), but
+`crates/quilltap-web/tests/realtime_hint_wire.rs` is P4.D125's guard and no part
+of this lane's mandate. Recorded here and in the lane report for the unifier.
+
 ### Tier 3 — deferrals, loud
 
 - **The re-extract-memories card action** (v4 `onReextractMemories` — `DELETE
