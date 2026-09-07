@@ -113313,10 +113313,24 @@ the committed fixtures and the `/tmp/oracle-*.ndjson` oracles kept.
 **Branch:** `claude/p4-d165-character-subprompts-af51e1`. **Commits:**
 `c2495495` (the wire + keys + hints), `3ac62acd` (the picker + the editor
 dialog), `edc1c4dc` (the Aurora section), `e6962cf5` (New Chat), `c2c15d02`
-(the Salon), `8461c193` (the gated e2e walk + Tier 2). Freshness probe at lane
-start: checkout `main`, tree clean, `2f4254b42..main` and `1a2b2164c..bugfix`
-both empty — matched the ledger, so PIN REQUIRED stood and the lane's one
-v4-side comparand was regenerated from a pinned worktree.
+(the Salon), `8461c193` (the gated e2e walk + Tier 2), `caf15e71` (this record +
+the order header), `e76576f2` (the footer note), `27ce3d88` (the prettier-churn
+strip). Freshness probe at lane start AND again before the final gate: checkout
+`main`, tree clean, `2f4254b42..main` and `1a2b2164c..bugfix` both empty —
+matched the ledger both times, so PIN REQUIRED stood and the lane's one v4-side
+comparand was regenerated from a pinned worktree.
+
+**Gate (final, after the churn strip):** `npm run lint` clean (the qt-class
+guard: 950 classes, every guarded reference resolves; self-test 5/5);
+`npm run build` clean — the only real type gate; `npm test` **405 spec files /
+6,434 tests / 0 failed**; the full Playwright suite ONCE against a release build
+of `quilltap-web` + `quilltap-cli`, **288 passed / 0 failed / 9 skipped** (7.8 m,
+exit 0) — 288 is main's standing count unmoved, and the 9 skips are the six
+pre-existing gated beats plus this lane's three. The new spec file was RUN, not
+`--grep`'d, so its gate is proven to SKIP rather than to have been filtered out.
+`git diff main -- crates/ help/ harness/` EMPTY; no existing e2e spec in the
+diff; `shell.ts` and `workspace-contract.ts` untouched. Versions: **SPA
+0.5.673** — the only bump this lane owns.
 
 **The lane runs no Rust oracle.** Its one v4-side comparand is the prompt-field
 hint table, EXECUTED at the pin (the P4.D103 mechanism) rather than hand-copied.
@@ -113428,6 +113442,15 @@ discriminates); the create rule's LLM-only and non-empty guards; the picker
 panel's `controlledBy !== 'user'` guard; the card's resolved-character conjunct;
 the singular `Subprompt updated` toast; the topic map's subprompts key; and the
 topic map widened to `characterKeys.all`.
+
+### A process note worth carrying
+
+`npx prettier --write <directory>` reformatted **eleven files this lane never
+edited** (and a dozen more lines inside files it did) — `src/app/chat/` alone
+came back as a 98-file diff. This tree is not prettier-clean, so a
+directory-wide write is never a no-op here. Every such hunk was stripped in
+`27ce3d88` after measuring, file by file, that each was already dirty at `HEAD`.
+**Run `prettier --write` on the FILES you touched; `--check` the rest.**
 
 ### Deferred loud
 
