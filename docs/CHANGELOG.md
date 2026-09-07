@@ -116,6 +116,32 @@ The gate's own catch: the guard `every_realtime_publish_site_is_present` went
 red on the new in-transaction enqueue's `publish_realtime` — the census now
 records six queue-service sites for v4's three, naming both in-transaction
 mints.
+#### 2026-09-07 — test(harness): the two `[Characters v1] … starting` route lines pinned
+
+_Versions: harness 0.0.727._
+
+P4.85 item 4. The round record recorded both as "compared by nothing", and
+they were: each generator family filters its SERVICE prefix
+(`[CharacterOptimizer]` / the external prompt's own lines), so neither
+oracle ever saw the ROUTE's announcement, and neither line moves a response
+field or a DB row.
+
+Both are now capture-layer-pinned against v4's own bags, measured at
+`app/api/v1/characters/[id]/handlers/post.ts:101` and `:320`. The optimizer's
+nine keys (`userId`, `characterId`, `connectionProfileId`, `maxMemories`,
+`searchQuery` with v4's `|| '(none)'`, `useSemanticSearch`, `sinceDate`,
+`beforeDate`, `outputMode`) are driven twice — once with every option at its
+Zod default, so `(none)` and the two `null`s are exercised as v4 renders
+them, and once with all six set. The external prompt's four keys are driven
+once, with an assertion that `systemPromptId` and `scenarioId` are NOT in
+v4's bag though they are parsed on the line above.
+
+Each has silence arms for v4's two preceding gates (the 404 and the Zod
+parse), without which a line moved above either would still pass. Both
+mutation-proven: dropping `maxTokens` and dropping `outputMode` redden
+exactly their tests. Driven with `driver: None`, so neither test makes a
+model call.
+
 #### 2026-09-07 — fix(api): the image-profile generate route counts code points, as Zod 4.5 does
 
 _Versions: core 0.0.837, harness 0.0.726._

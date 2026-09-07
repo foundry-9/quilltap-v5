@@ -683,3 +683,152 @@ fn character_optimizer_matches_oracle() {
         failed.join("\n")
     );
 }
+
+/// **P4.85 item 4 — the route-level `[Characters v1] Character optimizer
+/// starting (streaming)` line.** v4 logs it at
+/// `app/api/v1/characters/[id]/handlers/post.ts:101`, between
+/// `optimizeStreamSchema.parse(body)` and the `ReadableStream` it then returns,
+/// with nine keys: `userId`, `characterId`, `connectionProfileId`,
+/// `maxMemories`, `searchQuery` (v4's `searchQuery || '(none)'`),
+/// `useSemanticSearch`, `sinceDate`, `beforeDate`, `outputMode`.
+///
+/// The differential above cannot see it: it filters `[CharacterOptimizer]`,
+/// which is the SERVICE's prefix, and this is the ROUTE's. The round record
+/// called it "compared by nothing"; this is the pin.
+///
+/// No model call and no driver: with `driver: None` the handler logs, then
+/// answers the named not-assembled refusal — so the line's position (after the
+/// 404 and the Zod parse, before the driver) is what the arms below fix.
+///
+/// Mutation: drop any one field → its `contains` fails; move the line above the
+/// Zod parse → the `bad body` silence arm fails; above `require_character` →
+/// the 404 arm fails.
+#[test]
+fn the_optimizer_route_starting_line_carries_v4s_bag() {
+    let Ok(spec_raw) = std::fs::read_to_string(oracle_dir().join("character-generators.json"))
+    else {
+        eprintln!("SKIP: the character-generators spec is missing.");
+        return;
+    };
+    let spec: Spec = serde_json::from_str(&spec_raw).unwrap();
+    const SENTENCE: &str = "[Characters v1] Character optimizer starting (streaming)";
+    const MIRA: &str = "a2000002-0000-4000-8000-000000000001";
+    const PROFILE: &str = "c0000002-0000-4000-8000-000000000001";
+    const MISSING: &str = "00000000-0000-4000-8000-00000000dead";
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (events_tx, _rx) = broadcast::channel::<Event>(16);
+
+    // Every option left to its Zod default, so the line's `(none)` / `null`
+    // renderings are exercised as v4 renders them.
+    let (db, scratch) = fresh_pair(&spec, "route_line_defaults");
+    let lines = quilltap_core::test_support::captured(|| {
+        rt.block_on(character_optimize(
+            &db,
+            None,
+            &events_tx,
+            &spec.user_id,
+            MIRA,
+            Some("p-route-line"),
+            Some(&json!(PROFILE)),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            1_700_000_000_000,
+        ));
+    });
+    let line = lines
+        .iter()
+        .find(|l| l.contains(SENTENCE))
+        .unwrap_or_else(|| panic!("the optimizer route line is SILENT: {lines:#?}"));
+    assert!(line.starts_with("INFO "), "v4 logs at info: {line}");
+    for field in [
+        format!("user_id={}", spec.user_id),
+        format!("character_id={MIRA}"),
+        format!("connection_profile_id={PROFILE}"),
+        // `maxMemories: z.number().int().min(5).max(200).optional().default(30)`
+        "max_memories=30".to_string(),
+        // v4's `searchQuery || '(none)'` — the default is `''`, which is falsy.
+        "search_query=(none)".to_string(),
+        "use_semantic_search=true".to_string(),
+        // v4's bag carries the nulls; `logger` renders them, so v5 does too.
+        "since_date=null".to_string(),
+        "before_date=null".to_string(),
+        "output_mode=apply".to_string(),
+    ] {
+        assert!(line.contains(&field), "missing {field} in {line}");
+    }
+    drop(db);
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    // A body that DOES set them: the same line, carrying the real values.
+    let (db, scratch) = fresh_pair(&spec, "route_line_explicit");
+    let lines = quilltap_core::test_support::captured(|| {
+        rt.block_on(character_optimize(
+            &db,
+            None,
+            &events_tx,
+            &spec.user_id,
+            MIRA,
+            Some("p-route-line-2"),
+            Some(&json!(PROFILE)),
+            Some(&json!(12)),
+            Some(&json!("harbour")),
+            Some(&json!(false)),
+            Some(&json!("2026-01-01")),
+            Some(&json!("2026-02-01")),
+            Some(&json!("suggestions-file")),
+            1_700_000_000_000,
+        ));
+    });
+    let line = lines.iter().find(|l| l.contains(SENTENCE)).unwrap();
+    for field in [
+        "max_memories=12",
+        "search_query=harbour",
+        "use_semantic_search=false",
+        "since_date=2026-01-01",
+        "before_date=2026-02-01",
+        "output_mode=suggestions-file",
+    ] {
+        assert!(line.contains(field), "missing {field} in {line}");
+    }
+    drop(db);
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    // --- the SILENCE half: v4's two gates both come BEFORE the line. ---
+    for (tag, character, profile) in [
+        ("route_line_404", MISSING, json!(PROFILE)),
+        ("route_line_badbody", MIRA, json!(7)),
+    ] {
+        let (db, scratch) = fresh_pair(&spec, tag);
+        let lines = quilltap_core::test_support::captured(|| {
+            rt.block_on(character_optimize(
+                &db,
+                None,
+                &events_tx,
+                &spec.user_id,
+                character,
+                Some("p-route-line-x"),
+                Some(&profile),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                1_700_000_000_000,
+            ));
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains(SENTENCE)),
+            "{tag}: v4 refuses before it announces: {lines:#?}"
+        );
+        drop(db);
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+}

@@ -537,3 +537,97 @@ async fn external_prompt_matches_oracle() {
         failed.join("\n")
     );
 }
+
+/// **P4.85 item 4 — the route-level `[Characters v1] External prompt
+/// generation starting` line.** v4 logs it at
+/// `app/api/v1/characters/[id]/handlers/post.ts:320`, between
+/// `generateExternalPromptSchema.parse(body)` and `generateExternalPrompt(…)`,
+/// with four keys: `userId`, `characterId`, `connectionProfileId`,
+/// `maxTokens`. Note what is NOT in v4's bag — `systemPromptId` and
+/// `scenarioId` are parsed on the line above and deliberately not logged.
+///
+/// The differential above cannot see it (it compares the response envelope and
+/// the model calls, and this line moves neither); the round record called it
+/// "compared by nothing".
+///
+/// Driven with `driver: None`, so the handler logs and then answers the named
+/// not-assembled refusal — no model call, and the line's position between v4's
+/// two gates and the generation is what the silence arms fix.
+///
+/// Mutation: drop any field → its `contains` fails; add `system_prompt_id` →
+/// the not-in-v4's-bag assert fails; move the line above the parse or the 404
+/// → the matching silence arm fails.
+#[test]
+fn the_external_prompt_route_starting_line_carries_v4s_bag() {
+    const SENTENCE: &str = "[Characters v1] External prompt generation starting";
+    const ARIA: &str = "a1000000-0000-4000-8000-000000000001";
+    const PROFILE: &str = "c0000001-0000-4000-8000-000000000001";
+    const PROMPT: &str = "c32fabae-25ab-8e3d-a1dc-8dbacd3f5265";
+    const MISSING: &str = "00000000-0000-4000-8000-00000000dead";
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (db, scratch, user_id) = fresh_pair("route_line");
+    let lines = quilltap_core::test_support::captured(|| {
+        rt.block_on(character_generate_external_prompt(
+            &db,
+            None,
+            &user_id,
+            ARIA,
+            Some(&json!(PROFILE)),
+            Some(&json!(PROMPT)),
+            None,
+            Some(&json!(4000)),
+        ));
+    });
+    let line = lines
+        .iter()
+        .find(|l| l.contains(SENTENCE))
+        .unwrap_or_else(|| panic!("the external-prompt route line is SILENT: {lines:#?}"));
+    assert!(line.starts_with("INFO "), "v4 logs at info: {line}");
+    for field in [
+        format!("user_id={user_id}"),
+        format!("character_id={ARIA}"),
+        format!("connection_profile_id={PROFILE}"),
+        "max_tokens=4000".to_string(),
+    ] {
+        assert!(line.contains(&field), "missing {field} in {line}");
+    }
+    // v4's bag is exactly those four: the two ids parsed on the line above are
+    // NOT logged, and a port that helpfully added them would diverge.
+    assert!(
+        !line.contains("system_prompt_id") && !line.contains("scenario_id"),
+        "v4's bag carries neither id: {line}"
+    );
+    drop(db);
+    let _ = std::fs::remove_dir_all(&scratch);
+
+    // --- the SILENCE half: the 404 and the Zod parse both precede the line. ---
+    for (tag, character, max_tokens) in [
+        ("route_line_404", MISSING, json!(4000)),
+        // `maxTokens: z.number().int().min(1000).max(20000)` — under the floor.
+        ("route_line_badbody", ARIA, json!(10)),
+    ] {
+        let (db, scratch, user_id) = fresh_pair(tag);
+        let lines = quilltap_core::test_support::captured(|| {
+            rt.block_on(character_generate_external_prompt(
+                &db,
+                None,
+                &user_id,
+                character,
+                Some(&json!(PROFILE)),
+                Some(&json!(PROMPT)),
+                None,
+                Some(&max_tokens),
+            ));
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains(SENTENCE)),
+            "{tag}: v4 refuses before it announces: {lines:#?}"
+        );
+        drop(db);
+        let _ = std::fs::remove_dir_all(&scratch);
+    }
+}
