@@ -44,7 +44,7 @@ let server: ChildProcess | undefined;
 function runCliWrite(cli: string, sql: string): void {
   const result = spawnSync(
     cli,
-    ['db', 'characters', 'sql', '--write', '--data-dir', RENAME_INSTANCE_DIR, '--', sql],
+    ['db', '--data-dir', RENAME_INSTANCE_DIR, '--write', sql],
     { env: { ...process.env, QUILLTAP_DB_PASSPHRASE: E2E_PASSPHRASE } },
   );
   if (result.status !== 0) {
@@ -59,10 +59,13 @@ function withoutPepper(): NodeJS.ProcessEnv {
 }
 
 async function waitForHealth(): Promise<void> {
-  for (let i = 0; i < 100; i++) {
+  // A locked instance answers 423 — that is "ready" for the e2e (global
+  // setup's own rule); the boot's help-docs sync can take longer than the
+  // 10 s the first live run allowed, so the window is 60 s.
+  for (let i = 0; i < 600; i++) {
     try {
       const res = await fetch(`${RENAME_BASE_URL}/health`);
-      if (res.ok) return;
+      if (res.ok || res.status === 423) return;
     } catch {
       // not up yet
     }

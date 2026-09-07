@@ -118,10 +118,13 @@ function withoutPepper(): NodeJS.ProcessEnv {
 }
 
 async function waitForHealth(): Promise<void> {
-  for (let i = 0; i < 100; i++) {
+  // A locked instance answers 423 — that is "ready" for the e2e (global
+  // setup's own rule); the boot's help-docs sync can take longer than the
+  // 10 s the first live run allowed, so the window is 60 s.
+  for (let i = 0; i < 600; i++) {
     try {
       const res = await fetch(`${WIZARD_BASE_URL}/health`);
-      if (res.ok) return;
+      if (res.ok || res.status === 423) return;
     } catch {
       // not up yet
     }
@@ -200,20 +203,26 @@ test.describe('P4.9K3 — the AI Wizard modal (New Character + Edit)', () => {
     test.setTimeout(60_000);
     const mock = await startNonStreamingMockLlm(MOCK_LLM_PORT);
     try {
-      await page.goto(`${WIZARD_BASE_URL}/characters/new`);
+      // Unlock on the roster (the heading `unlockIfLocked` waits for lives
+      // there, not on the New Character page — the first live run's catch),
+      // then walk to New Character.
+      await page.goto(`${WIZARD_BASE_URL}/characters`);
       await unlockIfLocked(page);
+      await page.goto(`${WIZARD_BASE_URL}/characters/new`);
 
       await page.getByRole('button', { name: 'AI Wizard' }).click();
       await expect(page.getByText('Select AI Model')).toBeVisible();
       await page.getByRole('button', { name: 'Next' }).click();
 
-      await expect(page.getByText('Physical Description Source')).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Physical Description Source' })).toBeVisible();
       // 'existing' is the default source.
       await page.getByRole('button', { name: 'Next' }).click();
 
       await expect(page.getByText('Select Fields')).toBeVisible();
-      const identityRow = page.locator('label', { hasText: 'Identity' }).first();
-      await identityRow.locator('input[type=checkbox]').check();
+      // The rows are checkboxes whose accessible name opens with the field's
+      // label (the first live run's catch: a `label` text filter never
+      // resolved).
+      await page.getByRole('checkbox', { name: /^Identity / }).check();
       await page.getByRole('button', { name: 'Review & Generate' }).click();
 
       await expect(page.getByText('Ready to Generate')).toBeVisible();
@@ -252,8 +261,12 @@ test.describe('P4.9K3 — the AI Wizard modal (New Character + Edit)', () => {
 
       // Aria's fixture identity is non-empty, so the Identity checkbox is
       // disabled (existingData ⇒ not in availableFields).
-      const identityRow = page.locator('label', { hasText: 'Identity' }).first();
-      await expect(identityRow.locator('input[type=checkbox]')).toBeDisabled();
+      // The characters fixture's Aria carries a Description and a Personality
+      // but an EMPTY Identity (the first live run's catch: the order's premise
+      // named Identity; the rule is the same, the field is not). A filled
+      // field is `(has content)` and disabled; an empty one stays offered.
+      await expect(page.getByRole('checkbox', { name: /^Description \(has content\)/ })).toBeDisabled();
+      await expect(page.getByRole('checkbox', { name: /^Identity / })).toBeEnabled();
     } finally {
       await mock.close();
     }

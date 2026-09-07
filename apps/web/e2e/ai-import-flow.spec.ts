@@ -199,10 +199,21 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
       await expect(page.getByRole('heading', { name: 'Configuration' })).toBeVisible();
       await page.getByRole('button', { name: 'Generate Character' }).click();
 
-      // Step 3 (Generation) → step 4 (Review), then commit the import.
-      await page.getByRole('button', { name: 'Review Results' }).click({ timeout: 30_000 });
-      await expect(page.getByText('Marchpane')).toBeVisible({ timeout: 15_000 });
-      await page.getByRole('button', { name: 'Import Character' }).click();
+      // Step 3 (Generation) → step 4 (Review), then commit the import. The
+      // wizard advances to Review on its own when the run ends (the first live
+      // run showed step 4 already on screen); the button is clicked only when
+      // the generation step is still showing it.
+      const importButton = page.getByRole('button', { name: 'Import Character' });
+      const reviewButton = page.getByRole('button', { name: 'Review Results' });
+      await expect(importButton.or(reviewButton).first()).toBeVisible({ timeout: 30_000 });
+      if (await reviewButton.isVisible()) {
+        await reviewButton.click();
+      }
+      // Scoped to the wizard: the Salon's hidden chat cards also carry the name.
+      await expect(page.locator('qt-ai-import-wizard').getByText('Marchpane').first()).toBeVisible({
+        timeout: 15_000,
+      });
+      await importButton.click();
 
       // The wizard closes and hands the summoned character back, preselected.
       await expect(page.locator('qt-ai-import-wizard')).toHaveCount(0, { timeout: 15_000 });
@@ -230,12 +241,25 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
 
       // Clean up: remove the summoned character so the fixture's roster is
       // restored for the whisper-gate assertion in salon-post-office-flow.
-      await page.getByRole('button', { name: `Remove ${joinerName} from chat` }).click();
+      // The import lands the character as "Marchpane (imported)" (the
+      // `duplicate` conflict strategy's suffix), so the card's control name
+      // carries it too.
+      await page
+        .getByRole('button', { name: new RegExp(`^Remove ${joinerName}.* from chat$`) })
+        .click();
       const confirm = page.getByRole('dialog');
       await expect(confirm).toBeVisible();
       await confirm.getByRole('button', { name: 'Remove', exact: true }).click();
       await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 });
-      await expect(castNames).toHaveCount(before, { timeout: 15_000 });
+      // v4's remove is a SOFT remove (`status: 'removed'`) and neither app
+      // filters removed seats out of the card list — the `salon-cast-flow`
+      // precedent asserts the toast, never a card count (the first live run's
+      // catch: the count stayed at `before + 1`, correctly).
+      await expect(
+        page
+          .locator('[role="toast-container"]')
+          .getByText(/Marchpane.* has been removed from the chat/),
+      ).toBeVisible({ timeout: 15_000 });
     } finally {
       await mockLlm.close();
       testInfo.annotations.push({

@@ -135,15 +135,17 @@ export default async function globalSetup(): Promise<void> {
   );
   runCliWrite(cli, 'CREATE INDEX IF NOT EXISTS "idx_groups_createdAt" ON "groups" ("createdAt" DESC);');
 
-  // The character optimizer ("Refine from Memories", P4.9K1) refuses to run
-  // on fewer than `MIN_REINFORCED_MEMORIES = 2` memories with
-  // `reinforcementCount >= 2`; the fixture's memories carry the schema default
-  // `1` and no dispatch verb writes that column, so the count is raised here,
-  // pre-server, for the optimizer beat (`character-optimizer-flow.spec.ts`).
-  // Nothing else asserts a reinforcement count.
+  // The character optimizer ("Refine from Memories", P4.9K1) loads a
+  // character's ABOUT-SELF memories (`characterId = aboutCharacterId`, v4's
+  // `findByCharacterAboutCharacter`) and refuses to run on fewer than
+  // `MIN_REINFORCED_MEMORIES = 2` of them with `reinforcementCount >= 2`; the
+  // fixture's two Aria memories carry no `aboutCharacterId` and the schema
+  // default count `1`, and no dispatch verb writes either column, so both are
+  // set here, pre-server, for the optimizer beat
+  // (`character-optimizer-flow.spec.ts`). Nothing else asserts them.
   runCliWrite(
     cli,
-    "UPDATE memories SET reinforcementCount = 2 WHERE characterId IN (SELECT id FROM characters WHERE name = 'Aria');",
+    "UPDATE memories SET reinforcementCount = 2, aboutCharacterId = characterId WHERE characterId IN (SELECT id FROM characters WHERE name = 'Aria');",
   );
   runCliWrite(
     cli,

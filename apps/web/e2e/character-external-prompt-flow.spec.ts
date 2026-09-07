@@ -6,7 +6,9 @@ import {
   type Page,
 } from './support/fixtures';
 
-import { BASE_URL, E2E_PASSPHRASE } from './support/env';
+import { createServer, type Server } from 'node:http';
+
+import { BASE_URL, E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 
 /**
  * p4.9k4 — the External Prompt dialog + result dialog, and the
@@ -55,21 +57,76 @@ async function dispatch(ctx: APIRequestContext, req: unknown): Promise<Record<st
   return body?.data ?? {};
 }
 
+/**
+ * A non-streaming OPENAI-compatible chat-completions mock (the wizard beat's
+ * shape) — the external-prompt generator calls the NON-streaming
+ * `send_message`, which the shared SSE mock cannot answer, and this beat
+ * started no mock at all before the `2f4254b42` unification's first live run
+ * (its request died on an empty port).
+ */
+async function startNonStreamingMockLlm(
+  reply: string,
+  port: number,
+): Promise<{ url: string; close: () => Promise<void> }> {
+  const httpServer: Server = createServer((req, res) => {
+    if (req.method === 'GET' && req.url?.includes('/models')) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ id: 'mock-model' }] }));
+      return;
+    }
+    if (req.method !== 'POST' || !req.url?.includes('/chat/completions')) {
+      res.writeHead(404).end();
+      return;
+    }
+    req.on('data', () => {});
+    req.on('end', () => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          id: 'mock-external-1',
+          object: 'chat.completion',
+          model: 'mock-model',
+          choices: [{ index: 0, message: { role: 'assistant', content: reply }, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 20, completion_tokens: 12, total_tokens: 32 },
+        }),
+      );
+    });
+  });
+  const boundPort: number = await new Promise((res) => {
+    httpServer.listen(port, '127.0.0.1', () => {
+      const addr = httpServer.address();
+      res(typeof addr === 'object' && addr ? addr.port : 0);
+    });
+  });
+  return {
+    url: `http://127.0.0.1:${boundPort}`,
+    close: () => new Promise<void>((res, rej) => httpServer.close((e) => (e ? rej(e) : res()))),
+  };
+}
+
 test.describe('p4.9k4 — external prompt + reverse-{{user}}', () => {
   test('generate an external prompt, view the result, copy it', async ({ page }) => {
     test.skip(!P49K1_SERVER_LANDED, 'awaits P4.9K1: the characterGenerateExternalPrompt verb');
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
     await openAria(page);
 
-    await page.getByRole('button', { name: 'Non-Quilltap Prompt' }).click();
-    await expect(page.getByRole('heading', { name: /Generate External Prompt/ })).toBeVisible();
-    await page.getByRole('button', { name: 'Generate Prompt' }).click();
+    const mockLlm = await startNonStreamingMockLlm(
+      'You are Aria, a methodical archivist. Speak plainly and never raise your voice.',
+      MOCK_LLM_PORT,
+    );
+    try {
+      await page.getByRole('button', { name: 'Non-Quilltap Prompt' }).click();
+      await expect(page.getByRole('heading', { name: /Generate External Prompt/ })).toBeVisible();
+      await page.getByRole('button', { name: 'Generate Prompt' }).click();
 
-    await expect(page.getByRole('heading', { name: /Generated Prompt/ })).toBeVisible({
-      timeout: 20_000,
-    });
-    await page.getByRole('button', { name: 'Copy' }).click();
-    await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: /Generated Prompt/ })).toBeVisible({
+        timeout: 20_000,
+      });
+      await page.getByRole('button', { name: 'Copy' }).click();
+      await expect(page.getByRole('button', { name: 'Copied' })).toBeVisible();
+    } finally {
+      await mockLlm.close();
+    }
   });
 
   test('reverse-{{user}}: choosing a name replaces every literal token, verified through characterGet', async ({
