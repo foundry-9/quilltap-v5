@@ -50,6 +50,9 @@ import { resolveUserToken } from '../templates';
 import { ArchiveCharacterDialog } from './archive-character-dialog';
 import { CharacterHeader } from './character-header';
 import { RehydrateBundleDialog } from './rehydrate-bundle-dialog';
+import { CharacterOptimizerModal } from '../generators/optimizer/character-optimizer-modal';
+import { ExternalPromptDialog } from '../generators/external-prompt/external-prompt-dialog';
+import { ExternalPromptResultDialog } from '../generators/external-prompt/external-prompt-result-dialog';
 import { CharacterAppearanceTab } from './tabs/character-appearance-tab';
 import { CharacterConversationsTab } from './tabs/conversations-tab';
 import { CharacterDefaultsTab } from './tabs/defaults-tab';
@@ -94,6 +97,9 @@ const CHARACTER_TABS: Tab[] = [
     EntityTabs,
     ArchiveCharacterDialog,
     RehydrateBundleDialog,
+    CharacterOptimizerModal,
+    ExternalPromptDialog,
+    ExternalPromptResultDialog,
     CharacterHeader,
     CharacterDetailsTab,
     CharacterSystemPromptsTab,
@@ -177,6 +183,8 @@ const CHARACTER_TABS: Tab[] = [
           (toggleNpc)="toggleNpc()"
           (archive)="archiveDialogOpen.set(true)"
           (rehydrate)="handleRehydrate()"
+          (optimize)="optimizerModalOpen.set(true)"
+          (generateExternalPrompt)="externalPromptDialogOpen.set(true)"
         />
 
         <!-- Tabbed content. For an archived character the content renders inside
@@ -271,6 +279,39 @@ const CHARACTER_TABS: Tab[] = [
             [bundleFileId]="bundleId"
             (closed)="leftoverBundleFileId.set(null)"
             (deleted)="onBundleDeleted()"
+          />
+        }
+
+        <!-- p4.9k4: Refine from Memories. -->
+        @if (optimizerModalOpen()) {
+          <qt-character-optimizer-modal
+            [characterId]="id()"
+            [characterName]="character.name || 'Character'"
+            [profiles]="connectionProfiles()"
+            [defaultConnectionProfileId]="character.defaultConnectionProfileId"
+            [vaultAvailable]="!!character.characterDocumentMountPointId"
+            (closed)="optimizerModalOpen.set(false)"
+            (applied)="onOptimizerApplied()"
+          />
+        }
+
+        <!-- p4.9k4: Non-Quilltap Prompt. -->
+        @if (externalPromptDialogOpen()) {
+          <qt-external-prompt-dialog
+            [characterId]="id()"
+            [characterName]="character.name"
+            [systemPrompts]="character.systemPrompts"
+            [scenarios]="character.scenarios"
+            [profiles]="connectionProfiles()"
+            (cancelled)="externalPromptDialogOpen.set(false)"
+            (generated)="onExternalPromptGenerated($event)"
+          />
+        }
+        @if (externalPromptResult(); as promptResult) {
+          <qt-external-prompt-result-dialog
+            [characterName]="character.name"
+            [prompt]="promptResult"
+            (closed)="externalPromptResult.set(null)"
           />
         }
       }
@@ -519,6 +560,24 @@ export class CharacterDetail {
   /** v4 `:401` — the dialog's `onDeleted` toast. */
   protected onBundleDeleted(): void {
     this.toasts.showSuccess('The bundle is off the shelf.');
+  }
+
+  // --- p4.9k4: Refine from Memories + Non-Quilltap Prompt ---
+
+  protected readonly optimizerModalOpen = signal(false);
+  protected readonly externalPromptDialogOpen = signal(false);
+  protected readonly externalPromptResult = signal<string | null>(null);
+
+  /** v4 `CharacterDetailView.tsx:483-486` — refetch + close on a successful apply. */
+  protected onOptimizerApplied(): void {
+    void this.characterQuery.refetch();
+    this.optimizerModalOpen.set(false);
+  }
+
+  /** v4 `CharacterDetailView.tsx:508-511` — close the options dialog, show the result. */
+  protected onExternalPromptGenerated(prompt: string): void {
+    this.externalPromptDialogOpen.set(false);
+    this.externalPromptResult.set(prompt);
   }
 
   protected readonly togglingFavorite = signal(false);

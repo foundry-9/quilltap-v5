@@ -474,6 +474,41 @@ proven end-to-end by a jsdom integration spec that drives the whole
 four-step flow over a fake `CoreClient`, plus new unit tests wired into
 `character-edit.spec.ts` and `new-character.spec.ts` for the two hosts' own
 apply/stage-until-creation flows.
+#### 2026-09-07 — feat(characters): the Character Optimizer ("Refine from Memories") and the External Prompt dialogs (p4.9k4)
+
+_Versions: SPA 0.5.658._
+
+Ports v4's `CharacterOptimizerModal` and `ExternalPromptDialog`/
+`ExternalPromptResultDialog` to the Angular SPA, under
+`screens/characters/generators/{optimizer,external-prompt}/`. The optimizer
+is a four-phase modal (preflight → progress → review → apply, plus the
+suggestions-file-written outcome) built as a modal-scoped `OptimizerState`
+injectable folding `generatorProgress` events through a pure reducer
+(`optimizer-fold.ts`) mirroring v4's `useCharacterOptimizer.ts` switch; the
+apply step's field-routing/merge logic is a second pure module
+(`apply-plan-builder.ts`), and the system-prompt fan-out is
+`apply-character-field-updates.ts`, ported over EXISTING v5 verbs
+(`characterUpdate`/`characterPromptUpdate`/`characterPromptCreate`, the
+wardrobe collection/item verbs). The External Prompt dialog generates a
+standalone system prompt via `characterGenerateExternalPrompt`; its result
+dialog renders the prompt through the existing `qt-message-content` pipeline
+with copy (`navigator.clipboard.writeText`, since `clipboard-utils.ts` only
+carries an image-copy twin) and download-as-`.md`.
+
+Both header buttons ("Non-Quilltap Prompt", "Refine from Memories") go LIVE
+in `character-header.ts`; both dialogs mount from `character-detail.ts`. The
+wire contract for `characterOptimize` / `characterGenerateExternalPrompt` /
+the streaming `generatorProgress` Event (this round's §B, K1's verbs — not
+yet on this branch) lives in this lane's own `detail-generators.api.ts`, cast
+at dispatch per the `file-manager-transport.ts` precedent; the reverse-`{{user}}`
+picker was already fully ported in an earlier round and needed no change.
+Parity specs (`optimizer-fold.spec.ts`, `apply-plan-builder.spec.ts`,
+`field-meta.spec.ts`) drive the pure logic against recorded frame sequences
+and independently-transcribed v4 static data. Three new e2e beats
+(`character-optimizer-flow.spec.ts`, `character-external-prompt-flow.spec.ts`)
+are ACTIVATE-AT-UNIFY behind `P49K1_SERVER_LANDED`; the reverse-`{{user}}`
+beat in the latter file is NOT gated (existing verbs only) and seeds its own
+throwaway fixture data via API dispatch.
 
 #### 2026-09-07 — docs(porting): order the `p4.9k` character-generators round (P4.9K0 → P4.9K1 ∥ P4.9K2 ∥ P4.9K3 ∥ P4.9K4 ∥ P4.80 ∥ P4.81)
 Docs only — no crate versions bumped. Planned by `/setupphase` from the

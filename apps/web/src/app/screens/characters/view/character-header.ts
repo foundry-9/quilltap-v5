@@ -20,10 +20,11 @@ interface StatItem {
  * The header card (v4 `app/aurora/[id]/view/components/CharacterHeader.tsx`):
  * avatar, name/title/pronouns/aliases, the stat line + group badges, the three
  * inline toggles (favorite / Carina / controlled-by), and the action column
- * (Start Chat, Convert to NPC/Character, plus three disabled deferrals —
- * Non-Quilltap Prompt, Refine from Memories, Search & Replace). v4 microcopy
- * carries over verbatim; the deferred buttons get a "(not yet available)"
- * suffix on their tooltip (the list-screen precedent for disabled affordances).
+ * (Start Chat, Convert to NPC/Character, Non-Quilltap Prompt, Refine from
+ * Memories, plus one remaining disabled deferral — Search & Replace). v4
+ * microcopy carries over verbatim; the still-deferred button keeps the
+ * "(not yet available)" tooltip suffix (the list-screen precedent for
+ * disabled affordances).
  *
  * Group badges render as plain (non-navigable) chips — v5 has no `/groups`
  * route yet, so v4's `Link href="/aurora/groups/:id"` is intentionally
@@ -230,28 +231,26 @@ interface StatItem {
                 : 'Convert to NPC'
           }}
         </button>
-        <!-- ⚠ P4.D64 INHERITED GATE: v4 passes undefined for onOptimize /
-             onSearchReplace / onGenerateExternalPrompt when the character is
-             archived, which hides each button. v5's three are still DISABLED
-             deferrals, so the gate is moot today and is deliberately not
-             expressed — they cannot be pressed either way. The lane that makes
-             any of them live MUST hide it when archived (this whole column is
-             already replaced by Rehydrate, so the simplest correct answer is to
-             leave it inside the live arm below). -->
+        <!-- p4.9k4: the optimizer + external-prompt buttons went LIVE (v4
+             CharacterHeader.tsx:290-309). The P4.D64 archived gate that used
+             to be moot for these two is now real: this whole column is only
+             rendered for a LIVE character (the archived arm above is a hard
+             fork to Rehydrate), so v4's isArchived-question-mark-undefined
+             gate is satisfied structurally — nothing further to express here. -->
         <button
           type="button"
-          disabled
-          class="inline-flex items-center justify-center gap-1.5 rounded-lg border qt-border-default qt-bg-card px-4 py-2 qt-label text-foreground qt-shadow-sm disabled:opacity-50"
-          title="Generate a standalone system prompt for use in external tools (not yet available)"
+          class="inline-flex items-center justify-center gap-1.5 rounded-lg border qt-border-default qt-bg-card px-4 py-2 qt-label text-foreground qt-shadow-sm hover:qt-bg-muted"
+          title="Generate a standalone system prompt for use in external tools"
+          (click)="generateExternalPrompt.emit()"
         >
           <qt-icon name="file" class="w-4 h-4" />
           Non-Quilltap Prompt
         </button>
         <button
           type="button"
-          disabled
-          class="inline-flex items-center justify-center gap-1.5 rounded-lg border qt-border-default qt-bg-card px-4 py-2 qt-label text-foreground qt-shadow-sm disabled:opacity-50"
-          title="Analyze memories and suggest character refinements (not yet available)"
+          class="inline-flex items-center justify-center gap-1.5 rounded-lg border qt-border-default qt-bg-card px-4 py-2 qt-label text-foreground qt-shadow-sm hover:qt-bg-muted"
+          title="Analyze memories and suggest character refinements"
+          (click)="optimize.emit()"
         >
           <qt-icon name="book" class="w-4 h-4" />
           Refine from Memories
@@ -305,6 +304,10 @@ export class CharacterHeader {
   readonly archive = output<void>();
   /** Attempts rehydration (archived characters only, v4 `onRehydrate`). */
   readonly rehydrate = output<void>();
+  /** Opens the optimizer modal (v4 `onOptimize`, p4.9k4). */
+  readonly optimize = output<void>();
+  /** Opens the external-prompt dialog (v4 `onGenerateExternalPrompt`, p4.9k4). */
+  readonly generateExternalPrompt = output<void>();
 
   /** v4 `isArchived = Boolean(character?.archivedAt)`. */
   protected readonly isArchived = computed(() => Boolean(this.character().archivedAt));
