@@ -112348,3 +112348,36 @@ Versions: core 0.0.823.
   ONCE at the pin after units 4 + 5 (`/tmp/p4d164-cc-regen.sh` = the family
   header's recipe); the run recorded below.
 - Versions: core 0.0.828, host 0.0.109, harness 0.0.717.
+
+### Unit 6 — NEW `subprompts_prompt_tier2_equivalence` (the whole chain, REAL compiler behind the fan-out), mutation-proven
+
+- `harness/oracle/cases/subprompts-prompt.test.ts` +
+  `crates/quilltap-harness/tests/subprompts_prompt_tier2_equivalence.rs`
+  over the committed `subprompts-{main,mount}.db` pair — **no fixture
+  extension needed** (§R.11's "extended ONCE" allowance unused): the pair
+  already carries two chats sharing character A (`chatLlm` seat `["terse",
+  "VERSE"]`; `chatTwoSeats` seats A `["terse"]` + B `["terse"]`, and B has no
+  `Subprompts/` at all), the user / removed / pre-feature (`chatNoKey`)
+  seats, and A's baked files. Nothing mocked but the realtime bus (a no-op)
+  and the job processor; v4's REAL `compileAllIdentityStacks` /
+  `compileIdentityStackForParticipant` / `buildChatContext` /
+  `updateCharacterSubprompt` / `deleteCharacterSubprompt` /
+  `fanOutSubpromptChange`; v5 drives its twins with `ProductionFanoutSeams`
+  (the real compile behind the seams). 13 cases: five `compile_all_*` (the
+  block on `pLlm` and `pTwoA`; `pTwoB` a cell WITHOUT the block; no cell for
+  the user, removed seats; the pre-feature seat's cell without it), two
+  `compile_participant_*` (the user seat writes nothing), three `greeting_*`
+  (ids, none, dangling + a scenario), and three `fanout_*` (an update
+  rewrites BOTH chats' A cells with the new bytes; a delete strips the id and
+  recompiles without the block — incl. the lower-case `verse` stripping the
+  stored `"VERSE"`). Comparands: the reduced result, each named chat's whole
+  `compiledIdentityStacks` envelope, and `[[seatId, selectedSubpromptIds]]`;
+  a `block_cells >= 4` floor. 13/13 on the first run.
+- **Mutations:** M1 the resolver dropped in `build_stack_for`
+  (`subprompts: None`) → every selecting-seat cell red (6 cases + the floor);
+  M2 the `remove_selection` strip neutered in the fan-out → the two
+  post-delete `participants` dumps red. Restored, 13/13.
+- Regen: the family header's recipe from the pin (`/tmp/p4d164-spp-regen.sh`,
+  `TZ=UTC`, the `/tmp/qt-subprompts-prompt-oracle` mirror); run with
+  `QT_ORACLE_SUBPROMPTS_PROMPT=/tmp/oracle-subprompts-prompt.ndjson`.
+- Versions: harness 0.0.718.

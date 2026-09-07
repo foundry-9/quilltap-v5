@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## September 2026
 
+#### 2026-09-07 — test(subprompts): the end-to-end prompt-assembly tier-2 family over the committed pair (P4.D164 unit 6)
+
+_Versions: harness 0.0.718._
+
+New `subprompts_prompt_tier2_equivalence` + `subprompts-prompt.test.ts`:
+thirteen cases over fresh copies of the committed `subprompts-{main,mount}.db`
+pair driving v4's real compiler, greeting builder, storage ops and fan-out
+with nothing mocked but the realtime bus — the compiler bake (block on the
+selecting seats, none for user/removed/pre-feature seats or a character
+without `Subprompts/`), the greeting head, and the fan-out's real recompile
+across the two chats sharing character A (an update rewrites both cells; a
+delete strips the id, case-insensitively, and recompiles without the block).
+No fixture extension was needed. Two mutations each redden the predicted
+cases.
+
 #### 2026-09-07 — feat(green-room): the subprompts note and the seat resolver at both outfit entrances (P4.D164 unit 5)
 
 _Versions: core 0.0.828, host 0.0.109, harness 0.0.717._
