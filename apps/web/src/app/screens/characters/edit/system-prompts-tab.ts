@@ -8,21 +8,31 @@ import { characterKeys } from '../characters.api';
 import { CharacterPromptImportModal } from '../generators/prompts-editor/import-modal';
 import { CharacterPromptPreviewModal } from '../generators/prompts-editor/preview-modal';
 import { PromptModal, type PromptFormData } from './prompt-modal';
+import { SubpromptsSection } from '../../../subprompts/subprompts-section';
 
 /**
  * The System Prompts tab (v4
  * `components/characters/system-prompts-editor/index.tsx`): the prompt list
  * (name, default badge, preview, edit / set-default / delete) plus a
- * create/edit modal, the Preview modal, and "Import Template" (P4.9K3 —
+ * create/edit modal, the Preview modal, "Import Template" (P4.9K3 —
  * joined, but its catalogue is always empty until a `promptTemplateList`
- * verb lands; see `CharacterPromptImportModal`'s header). Per-row inline
+ * verb lands; see `CharacterPromptImportModal`'s header), and — under the
+ * prompt list, before the modals, exactly where v4 mounts it
+ * (`index.tsx:86-88`) — the Subprompts section (P4.D165, v4 `2f4254b42`).
+ * Per-row inline
  * delete confirmation collapses into a single delete button for this round;
  * copy carries over verbatim.
  */
 @Component({
   selector: 'qt-character-system-prompts-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, PromptModal, CharacterPromptPreviewModal, CharacterPromptImportModal],
+  imports: [
+    Icon,
+    PromptModal,
+    CharacterPromptPreviewModal,
+    CharacterPromptImportModal,
+    SubpromptsSection,
+  ],
   template: `
     <div class="space-y-4">
       <div class="flex justify-between items-center">
@@ -116,6 +126,14 @@ import { PromptModal, type PromptFormData } from './prompt-modal';
         </div>
       }
     </div>
+
+    <!-- Subprompts — the smaller, per-chat instructions kept in the vault's
+         Subprompts/ folder. Listed under the primary prompts and before the
+         modals, exactly where v4 mounts it (index.tsx:86-88). No backticks in
+         here: a backtick inside an inline template comment terminates the TS
+         template literal, and the errors then blame everything but the
+         comment (backtick-in-an-angular-inline-template-comment). -->
+    <qt-subprompts-section [characterId]="characterId()" [characterName]="characterName()" />
 
     @if (modalOpen()) {
       <qt-prompt-modal

@@ -4,6 +4,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../../core/core-client';
+import { coreStreamStub } from '../../../core/core-client.testing';
 import type { CharacterSystemPrompt } from '../../../core/core-contract';
 import { RichEditor } from '../../../editor/rich-editor';
 import { CharacterSystemPromptsTab } from './system-prompts-tab';
@@ -25,10 +26,17 @@ function stubClient(
   onDispatch?: (req: { type: string; [k: string]: unknown }) => void,
 ): Partial<CoreClient> {
   return {
+    // The stream surface is required since P4.D165 hosted the Subprompts
+    // section here: its shared query injects `RealtimeService`, whose
+    // constructor subscribes to `events$` (`core-client.testing.ts`'s header).
+    ...coreStreamStub(),
     dispatchData: (async (req: { type: string; [k: string]: unknown }) => {
       onDispatch?.(req);
       if (req.type === 'characterPromptList') {
         return { prompts };
+      }
+      if (req.type === 'characterSubpromptList') {
+        return { subprompts: [] };
       }
       return {};
     }) as CoreClient['dispatchData'],

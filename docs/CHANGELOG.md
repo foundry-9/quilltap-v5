@@ -584,6 +584,33 @@ the verb's three body fields (a `null` `primaryRename` is a Zod
 arm: the dry-run guard inverted (the five dry cases), the Staff-skip
 predicate dropped, the primary-first order reversed, the ASCII-fold guard
 removed (`canonicalize_long_s`).
+#### 2026-09-07 — feat(subprompts): the Aurora Subprompts section under the System Prompts tab's prompt list
+
+_Versions: SPA 0.5.668._
+
+P4.D165 unit 3. `qt-subprompts-section` ports v4's `SubpromptsSection.tsx` at
+`2f4254b42` — the heading and its whole explanatory paragraph (typographic
+apostrophe included), `+ Add Subprompt`, the three states, one card per record
+with the title, the vault path, and the body cut at 150 characters, and the
+INLINE delete confirmation anchored to the trash button rather than a modal.
+The confirm state is a single id, so exactly one row can be mid-confirmation;
+the clear is in a `finally`, so a refused delete closes it too.
+
+It mounts on `CharacterSystemPromptsTab` under the prompt list and before the
+modals — v4's slot exactly (`system-prompts-editor/index.tsx:86-88`).
+
+Hosting it pulls the realtime hub into that tab's injector, so the tab's
+existing spec stub needed the stream surface `core-client.testing.ts` exists to
+provide; its absence failed seven pre-existing tests inside
+`RealtimeService`'s constructor rather than anywhere near the new code.
+
+Three pins were mutation-proven: widening the 150-character cut to `>=`,
+replacing the trash's toggle with a plain open, and moving the confirm's clear
+out of the `finally` each redden exactly their own specs. The first attempt at
+the third mutation survived — moving the clear BELOW the try/catch is
+behaviour-identical, because the catch swallows — and was replaced with one
+that discriminates.
+
 #### 2026-09-07 — feat(subprompts): the picker and the editor dialog — v4's copy, classes, ARIA and states, the keyed remount, and the missing-id rows
 
 _Versions: SPA 0.5.667._
